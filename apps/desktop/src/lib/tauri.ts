@@ -22,7 +22,7 @@ export function trackTauriListener(
       onRegistered?.();
     })
     .catch((error) => {
-      console.warn(`[Burrete] ${label} listener setup failed`, error);
+      console.warn(`[Burette] ${label} listener setup failed`, error);
     });
 
   return () => {
@@ -38,10 +38,10 @@ function disposeTauriListener(unlisten: TauriUnlisten | undefined, label: string
     const result = unlisten();
     if (result && typeof result.then === "function") {
       void Promise.resolve(result).catch((error) => {
-        console.warn(`[Burrete] ${label} listener cleanup failed`, error);
+        console.warn(`[Burette] ${label} listener cleanup failed`, error);
       });
     }
   } catch (error) {
-    console.warn(`[Burrete] ${label} listener cleanup failed`, error);
+    console.warn(`[Burette] ${label} listener cleanup failed`, error);
   }
 }

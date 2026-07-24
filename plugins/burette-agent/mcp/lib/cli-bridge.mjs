@@ -3,12 +3,12 @@ import { existsSync } from "node:fs";
 
 import { pluginPath, pluginRoot, repoPath, repoRoot, repoRootMetadataPath, repoRootSource } from "./plugin-root.mjs";
 
-const pluginCliScript = pluginPath("scripts", "burrete-agent.mjs");
-const repoCliScript = repoPath("scripts", "burrete-agent.mjs");
+const pluginCliScript = pluginPath("scripts", "burette-agent.mjs");
+const repoCliScript = repoPath("scripts", "burette-agent.mjs");
 const cliScript = existsSync(pluginCliScript) ? pluginCliScript : repoCliScript;
 const cliRoot = existsSync(pluginCliScript) ? pluginRoot : repoRoot;
 
-export async function runBurreteAgent(args, { timeoutMs = 30000 } = {}) {
+export async function runBuretteAgent(args, { timeoutMs = 30000 } = {}) {
   if (!existsSync(cliScript)) {
     return {
       ok: false,
@@ -17,11 +17,11 @@ export async function runBurreteAgent(args, { timeoutMs = 30000 } = {}) {
       stdout: "",
       stderr: "",
       error: {
-        code: "BURRETE_REPO_ROOT_UNAVAILABLE",
+        code: "BURETTE_REPO_ROOT_UNAVAILABLE",
         message:
-          `Burrete agent CLI was not found at ${pluginCliScript} or ${repoCliScript}. ` +
+          `Burette agent CLI was not found at ${pluginCliScript} or ${repoCliScript}. ` +
           `The plugin resolved repoRoot from ${repoRootSource}. ` +
-          "Rebuild or reinstall the Burrete plugin so scripts/burrete-agent.mjs is bundled, or point BURRETE_AGENT_REPO_ROOT at a Burrete repository.",
+          "Rebuild or reinstall the Burette plugin so scripts/burette-agent.mjs is bundled, or point BURETTE_AGENT_REPO_ROOT at a Burette repository.",
         details: {
           pluginRoot,
           repoRoot,
@@ -60,7 +60,7 @@ export async function runBurreteAgent(args, { timeoutMs = 30000 } = {}) {
       stderr,
       error: parsedStderr?.error || parsedStdout?.error || {
         code: "CLI_FAILED",
-        message: stderr.trim() || stdout.trim() || `burrete-agent exited with ${exit.code}`,
+        message: stderr.trim() || stdout.trim() || `burette-agent exited with ${exit.code}`,
       },
     };
   }

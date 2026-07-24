@@ -62,7 +62,7 @@ const [
   source("apps/desktop/src/lib/browser-dev-text-files.ts"),
   source("apps/desktop/src-tauri/src/lib.rs"),
   source("apps/desktop/src-tauri/src/commands/text_files.rs"),
-  source("apps/desktop/src-tauri/permissions/burrete.toml"),
+  source("apps/desktop/src-tauri/permissions/burette.toml"),
   source("apps/desktop/src-tauri/tauri.conf.json"),
   source("apps/desktop/vite.config.ts"),
   source("package.json"),

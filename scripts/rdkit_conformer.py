@@ -237,9 +237,9 @@ if operation == "optimize":
     except Exception:
         output_mol = mol
     output_mol.SetProp("_Name", "Optimized geometry")
-    output_mol.SetProp("BURRETE_OPTIMIZER", family)
+    output_mol.SetProp("BURETTE_OPTIMIZER", family)
     if math.isfinite(energy):
-        output_mol.SetProp("BURRETE_ENERGY_KCAL_MOL", format(energy, ".10g"))
+        output_mol.SetProp("BURETTE_ENERGY_KCAL_MOL", format(energy, ".10g"))
     block = Chem.MolToMolBlock(output_mol, confId=conf_id, kekulize=False)
     sys.stdout.write(json.dumps({
         "text": block.rstrip() + "\n$$$$\n",

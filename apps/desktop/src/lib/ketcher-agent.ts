@@ -9,7 +9,7 @@ import {
   type KetcherAgentErrorCode,
   type KetcherControlAction,
   type KetcherSnapshot,
-} from "@burrete/ketcher-agent-contract";
+} from "@burette/ketcher-agent-contract";
 import type { KetcherEditorApi } from "../components/ketcher-editor";
 
 export type KetcherAgentEditor = {

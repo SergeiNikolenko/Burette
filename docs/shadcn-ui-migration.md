@@ -3,13 +3,13 @@
 ## Objective
 
 Move the ordinary React interface in `apps/desktop` onto a shared shadcn/ui
-component layer without changing Burrete into a generic dashboard. The target
+component layer without changing Burette into a generic dashboard. The target
 keeps the current compact macOS-oriented chrome, system typography, dynamic
 light/dark themes, 10 px control radius, and existing semantic CSS variables.
 shadcn/ui is used as source-owned primitives and composition guidance, not as a
 new product skin.
 
-The migration uses the Radix base because Burrete already depends on Radix
+The migration uses the Radix base because Burette already depends on Radix
 Dialog, Dropdown Menu, and Context Menu. It must not introduce a second
 incompatible primitive stack.
 
@@ -68,7 +68,7 @@ The component source of truth will live in
 and Tailwind CSS v4 is integrated into the existing Vite build. The `cn()`
 helper belongs in `apps/desktop/src/lib/utils.ts`.
 
-Generated primitives must map shadcn semantic tokens onto existing Burrete
+Generated primitives must map shadcn semantic tokens onto existing Burette
 variables such as `--bg-base`, `--fg-base`, `--surface-*`, `--line-*`,
 `--focus-ring`, and `--accent`. The app continues to select light, dark, and
 automatic themes through `.app-shell[data-theme]`; no independent shadcn theme

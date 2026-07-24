@@ -1,11 +1,11 @@
 {
   "schema": "burette_agent_compatibility.v1",
   "plugin": {
-    "name": "burrete",
+    "name": "burette",
     "version": "0.1.2"
   },
   "requires": {
-    "burreteApp": ">=0.10.44",
+    "buretteApp": ">=0.10.44",
     "agentCli": "burette-agent-cli/v1",
     "controlApi": "burette-agent-control/v1"
   },

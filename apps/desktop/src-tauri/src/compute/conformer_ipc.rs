@@ -1,4 +1,4 @@
-use burrete_compute_protocol::MAX_JSON_SAFE_INTEGER;
+use burette_compute_protocol::MAX_JSON_SAFE_INTEGER;
 use uuid::Uuid;
 
 use super::error::{ComputeCoordinatorError, ComputeResult};

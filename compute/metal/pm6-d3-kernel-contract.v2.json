@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "kernel": "burrete_pm6_d3_v2",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "kernel": "burette_pm6_d3_v2",
   "model": "PM6-D3H4 zero-damping D3 dispersion over the complete upstream Z=1..=94 domain",
   "dispatch": "one GPU thread per molecule with no cross-molecule atomics",
   "inputs": {

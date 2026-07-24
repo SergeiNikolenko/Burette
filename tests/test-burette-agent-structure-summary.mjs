@@ -45,7 +45,7 @@ const miniCif = await summarizeStructureFile("samples/mini.cif");
 assert.equal(miniCif.format, "CIF");
 assert.ok(miniCif.counts.atomSiteRows > 0);
 
-const fixtureDir = await mkdtemp(path.join(tmpdir(), "burrete-summary-"));
+const fixtureDir = await mkdtemp(path.join(tmpdir(), "burette-summary-"));
 
 const mlipCfgPath = path.join(fixtureDir, "mlip.cfg");
 await writeFile(mlipCfgPath, `BEGIN_CFG

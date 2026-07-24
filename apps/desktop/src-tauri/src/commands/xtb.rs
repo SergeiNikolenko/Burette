@@ -15,7 +15,7 @@ use tauri::{Manager, Runtime};
 
 const XTB_LOG_CAPTURE_BYTES: usize = 128 * 1024;
 const DEFAULT_XTB_TIMEOUT_SECONDS: u64 = 180;
-const XTB_RUN_METADATA_FILE: &str = ".burrete-xtb-run.json";
+const XTB_RUN_METADATA_FILE: &str = ".burette-xtb-run.json";
 
 type RunningXtbJobs = Mutex<HashMap<String, Arc<Mutex<Child>>>>;
 static RUNNING_XTB_JOBS: OnceLock<RunningXtbJobs> = OnceLock::new();
@@ -431,7 +431,7 @@ fn xtb_status_from_environment<R: Runtime>(app: &tauri::AppHandle<R>) -> XtbStat
             version: xtb_version(&resolution.executable_path),
             installer: installer_for_executable(&resolution.executable_path),
             executable_path: Some(resolution.executable_path.to_string_lossy().to_string()),
-            install_hint: "xTB is available. Burrete will use this executable for local xTB jobs."
+            install_hint: "xTB is available. Burette will use this executable for local xTB jobs."
                 .into(),
             source: Some(resolution.source),
             selected_executable_path: resolution
@@ -1610,7 +1610,7 @@ molecular dipole:
     #[test]
     fn read_xtb_summary_uses_log_metrics_without_json() {
         let work_dir =
-            std::env::temp_dir().join(format!("burrete-xtb-summary-test-{}", unix_timestamp_ms()));
+            std::env::temp_dir().join(format!("burette-xtb-summary-test-{}", unix_timestamp_ms()));
         fs::create_dir(&work_dir).expect("create test work dir");
         fs::write(
             work_dir.join("xtb.log"),

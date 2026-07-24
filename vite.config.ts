@@ -6,7 +6,7 @@ const repoRoot = fileURLToPath(new URL(".", import.meta.url));
 const desktopRoot = fileURLToPath(new URL("apps/desktop", import.meta.url));
 const desktopDist = fileURLToPath(new URL("apps/desktop/dist", import.meta.url));
 const vpContractTest = fileURLToPath(new URL("tests/vp-contract.test.mjs", import.meta.url));
-const extraFsAllow = (process.env.BURRETE_DEV_FS_ALLOW ?? "").split(delimiter).filter(Boolean);
+const extraFsAllow = (process.env.BURETTE_DEV_FS_ALLOW ?? "").split(delimiter).filter(Boolean);
 
 export default defineConfig({
   root: desktopRoot,
@@ -23,7 +23,7 @@ export default defineConfig({
     return [tailwindcss(), react(), browserDevXyzrenderPlugin()];
   }),
   define: {
-    "import.meta.env.BURRETE_REPO_ROOT": JSON.stringify(repoRoot),
+    "import.meta.env.BURETTE_REPO_ROOT": JSON.stringify(repoRoot),
   },
   // Plain `vite` does not read tsconfig `paths`, so the shadcn-style `@/` imports
   // only resolved under the desktop config's alias. Mirror it here for the

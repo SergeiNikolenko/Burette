@@ -1,4 +1,4 @@
-# Burrete Native GPU Compute Layer
+# Burette Native GPU Compute Layer
 
 Status: authoritative target architecture and delivery contract.
 
@@ -8,27 +8,27 @@ Upstream algorithm source: `guillaume-osmo/mlxmolkit` pinned at
 `9e7337f6f93c40a39ad0187991151944a4f1e274` (2026-07-08).
 
 This document replaces the earlier hybrid MLX runtime proposal. Production
-Burrete must not bundle or require Python, MLX, user environments, wheels, or a
+Burette must not bundle or require Python, MLX, user environments, wheels, or a
 Python worker. Python/MLX may be used only outside the shipped application as a
 version-pinned reference oracle, fixture generator, and benchmark comparator.
 
 ## Decision
 
-Burrete will absorb the useful algorithms and Metal ideas from `mlxmolkit` into
-one lightweight native Apple Silicon Compute Layer. Burrete owns the runtime,
+Burette will absorb the useful algorithms and Metal ideas from `mlxmolkit` into
+one lightweight native Apple Silicon Compute Layer. Burette owns the runtime,
 protocol, memory planner, scheduling, crash recovery, backend attestation,
 artifacts, and user experience. Upstream package structure is not a product
 dependency and is not reproduced wholesale.
 
 The production backend set is deliberately small:
 
-- `nativeMetal`: signed native Metal pipelines dispatched by the Burrete
+- `nativeMetal`: signed native Metal pipelines dispatched by the Burette
   compute helper;
 - `referenceCpu`: deterministic native reference implementations used for
   parity, validation, unsupported domains, and explicitly permitted fallback;
 - `rdkit`: a pinned native chemistry-semantics provider for parsing,
   sanitization, fingerprints, bounds, torsions, stereochemistry, and force-field
-  parameters where Burrete has not replaced those semantics;
+  parameters where Burette has not replaced those semantics;
 - `coordinator`: durable orchestration and artifact I/O, never reported as GPU
   work.
 
@@ -87,7 +87,7 @@ Before any adapted file is merged, it must have a provenance entry containing:
 
 | Field | Requirement |
 | --- | --- |
-| Burrete path | Exact destination path |
+| Burette path | Exact destination path |
 | Upstream path | Exact source path or paths |
 | Upstream commit | Full 40-character commit |
 | Contribution type | `adapted`, `translated`, `formula-only`, or `reference-only` |
@@ -106,7 +106,7 @@ secondary notices.
 The initial source audit identifies the following useful donors. This is an
 inventory, not a claim that upstream behavior is correct or production-ready.
 
-| Family | Candidate upstream sources | Native Burrete target |
+| Family | Candidate upstream sources | Native Burette target |
 | --- | --- | --- |
 | Fingerprint packing | `mlxmolkit/fp_uint32.py` | Fixed persisted bit-vector ABI plus Metal view conversion |
 | Fused Tanimoto/CSR | `mlxmolkit/fused_tanimoto_nlist.py` | Upper-triangle/tiled Metal neighbor construction without an `N x N` matrix |
@@ -125,37 +125,37 @@ examples, one-off scripts, training experiments, learned models, and compiled
 binary artifacts are excluded unless a later provenance review explicitly adds
 them.
 
-## Upstream Findings That Burrete Must Correct
+## Upstream Findings That Burette Must Correct
 
 The port must not preserve these upstream limitations as hidden behavior:
 
 - Morgan fingerprint generation is RDKit CPU work upstream; it is not a GPU
-  fingerprint pipeline. Burrete must attest fingerprint and packing stages
+  fingerprint pipeline. Burette must attest fingerprint and packing stages
   separately.
 - Upstream Butina tests do not prove RDKit parity. Equal-degree tie-breaking
-  differs from current RDKit behavior, so Burrete must choose and version a tie
+  differs from current RDKit behavior, so Burette must choose and version a tie
   contract before claiming parity.
 - Empty inputs, cutoff/dtype/shape validation, dense-graph edge overflow, and
   CSR integer width require explicit guards.
-- Conformer randomness is hard-coded and depends on batch position. Burrete
+- Conformer randomness is hard-coded and depends on batch position. Burette
   seeds must derive from immutable job, molecule, conformer, algorithm, and
   retry identifiers and remain invariant under chunk-size changes.
-- Upstream retry does not cover every failed-conformer case. Burrete retries are
+- Upstream retry does not cover every failed-conformer case. Burette retries are
   per conformer and durably checkpointed.
-- Upstream MMFF optimizer selection is batch-global. Burrete selects BFGS or
+- Upstream MMFF optimizer selection is batch-global. Burette selects BFGS or
   L-BFGS per molecule from a versioned memory/cost policy.
 - Upstream MMFF status `0` conflates convergence and a non-descent condition.
-  Burrete records an explicit convergence reason and never labels the latter as
+  Burette records an explicit convergence reason and never labels the latter as
   converged.
 - MMFF94s parity coverage is insufficient and needs independent fixtures.
 - Upstream Horn GPU alignment assumes equal atom count/order and can materialize
-  an unsafe `poses x references x atoms x 3` tensor. Burrete requires an atom
+  an unsafe `poses x references x atoms x 3` tensor. Burette requires an atom
   mapping contract and tiled pair scheduling.
 - `PM6_SP` registry and documentation disagree; `PM6` and `PM6_D` are aliases in
   parts of the code. Each method remains unavailable until its identity and
   parameter set are independently verified.
 - The upstream GPU Fock path is incomplete for d orbitals; D3/H4/HH is CPU
-  NumPy post-SCF. Burrete must not claim GPU d-orbital or D3H4 execution until
+  NumPy post-SCF. Burette must not claim GPU d-orbital or D3H4 execution until
   native Metal parity proves it.
 - Semiempirical support is closed-shell only upstream. Spin/open-shell,
   unsupported elements, solvent, and charged-domain limitations must fail
@@ -322,7 +322,7 @@ Every algorithm or promoted kernel requires:
   tests;
 - memory-pressure and adaptive-chunk tests;
 - a real Metal dispatch test, not a JavaScript or CPU simulation;
-- a packaged Burrete UI smoke using a real sample;
+- a packaged Burette UI smoke using a real sample;
 - stage/chunk backend evidence proving that no fallback is labelled GPU.
 
 Fixture manifests record oracle name/version, source commit, command, input
@@ -369,7 +369,7 @@ Not yet implemented and therefore not claimable:
 ## Definition of Done
 
 The Compute Layer is complete only when every useful upstream capability is
-either delivered through a packaged Burrete workflow or listed with a specific
+either delivered through a packaged Burette workflow or listed with a specific
 technical, scientific, provenance, or licensing reason for exclusion; ordinary
 operation requires no Python/MLX; Metal is used wherever parity and memory
 evidence permit; results are reproducible and independently checked; Grid and

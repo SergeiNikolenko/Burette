@@ -185,7 +185,7 @@ inline float hh_pair(float r) {
     return 118.7326f * exp(-1.53965f * pow(r, 1.72905f));
 }
 
-kernel void burrete_pm6_h4_hh_v1(
+kernel void burette_pm6_h4_hh_v1(
     device const Pm6CorrectionAtomV1* atoms [[buffer(0)]],
     device const Pm6CorrectionMoleculeV1* molecules [[buffer(1)]],
     constant uint& molecule_count [[buffer(2)]],

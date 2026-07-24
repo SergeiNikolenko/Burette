@@ -1,5 +1,5 @@
 {
-  "domainUtf8": "burrete.snapshot-record-identity.v1\u0000",
+  "domainUtf8": "burette.snapshot-record-identity.v1\u0000",
   "tupleEncoding": "sourceRecordId:u64be,moleculeContentSha256:raw32",
   "records": [
     {

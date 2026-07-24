@@ -23,8 +23,8 @@ assert.match(buildScript, /External Homebrew dependency/);
 assert.match(buildScript, /build_compute_metal_runtime/);
 assert.match(buildScript, /compute\/metal\/build-metallib\.sh/);
 assert.match(buildScript, /assert_bundled_compute_metal_runtime/);
-assert.match(buildScript, /cargo build --release --bin burrete-compute-service/);
-assert.match(buildScript, /Contents\/Helpers\/burrete-compute-service/);
+assert.match(buildScript, /cargo build --release --bin burette-compute-service/);
+assert.match(buildScript, /Contents\/Helpers\/burette-compute-service/);
 assert.match(buildScript, /smoke_bundled_compute_service/);
 assert.match(buildScript, /check-compute-service\.mjs/);
 assert.ok(
@@ -44,10 +44,10 @@ assert.match(xtbRuntime, /\.conda["']?\)\.join\(["']envs/);
 assert.match(xtbRuntime, /rejected_candidates/);
 assert.match(xtbRuntime, /Found xTB candidates but could not validate them/);
 
-assert.match(runtimeViewer, /BurreteRDKitWasmDataURL/);
+assert.match(runtimeViewer, /BuretteRDKitWasmDataURL/);
 assert.match(runtimeViewer, /Sha256::digest/);
 assert.match(runtimeViewer, /write_bytes_atomic/);
-assert.match(viewer, /BurreteRDKitWasmDataURL/);
+assert.match(viewer, /BuretteRDKitWasmDataURL/);
 assert.match(viewer, /molstarPreviewLoadRDKitWasmData/);
 
 assert.match(updater, /killall Finder/);

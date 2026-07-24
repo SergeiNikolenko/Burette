@@ -2,22 +2,22 @@
 set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-APP_ID="com.local.BurreteV10"
-EXT_ID="com.local.BurreteV10.Preview"
-PDB_CONTENT_TYPE="com.local.burrete10.pdb"
-CIF_CONTENT_TYPE="com.local.burrete10.cif"
-XYZ_CONTENT_TYPE="com.local.burrete10.xyz"
-APP_BUNDLE_NAME="Burrete.app"
+APP_ID="com.local.BuretteV10"
+EXT_ID="com.local.BuretteV10.Preview"
+PDB_CONTENT_TYPE="com.local.burette10.pdb"
+CIF_CONTENT_TYPE="com.local.burette10.cif"
+XYZ_CONTENT_TYPE="com.local.burette10.xyz"
+APP_BUNDLE_NAME="Burette.app"
 IS_DEV_FLAVOR=0
-if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
-  command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
+if [[ -n "${BURETTE_DEV_FLAVOR:-}" ]]; then
+  command -v bun >/dev/null 2>&1 || { echo "error: BURETTE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
   eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
-  APP_ID="$BURRETE_APP_ID"
-  EXT_ID="$BURRETE_PREVIEW_ID"
-  PDB_CONTENT_TYPE="$BURRETE_PDB_CONTENT_TYPE"
-  CIF_CONTENT_TYPE="${BURRETE_CONTENT_TYPE_PREFIX}cif"
-  XYZ_CONTENT_TYPE="${BURRETE_CONTENT_TYPE_PREFIX}xyz"
-  APP_BUNDLE_NAME="$BURRETE_APP_BUNDLE_NAME"
+  APP_ID="$BURETTE_APP_ID"
+  EXT_ID="$BURETTE_PREVIEW_ID"
+  PDB_CONTENT_TYPE="$BURETTE_PDB_CONTENT_TYPE"
+  CIF_CONTENT_TYPE="${BURETTE_CONTENT_TYPE_PREFIX}cif"
+  XYZ_CONTENT_TYPE="${BURETTE_CONTENT_TYPE_PREFIX}xyz"
+  APP_BUNDLE_NAME="$BURETTE_APP_BUNDLE_NAME"
   IS_DEV_FLAVOR=1
 fi
 APP="$ROOT/build/$APP_BUNDLE_NAME"
@@ -33,10 +33,10 @@ STAGING_XYZRENDER_PYTHON="$STAGING_DEST/Contents/Resources/xyzrender-python"
 LEGACY_OLD_DEST="$DEST_DIR/Bur""ette.app"
 LEGACY_BURET_DEST="$DEST_DIR/Buret.app"
 LEGACY_XYZ_DEST="$DEST_DIR/Burette XYZRender.app"
-STAGING_APPEX="$STAGING_DEST/Contents/PlugIns/BurretePreview.appex"
-DEST_APPEX="$DEST/Contents/PlugIns/BurretePreview.appex"
+STAGING_APPEX="$STAGING_DEST/Contents/PlugIns/BurettePreview.appex"
+DEST_APPEX="$DEST/Contents/PlugIns/BurettePreview.appex"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-SIGN_IDENTITY="${BURRETE_CODESIGN_IDENTITY:--}"
+SIGN_IDENTITY="${BURETTE_CODESIGN_IDENTITY:--}"
 CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
   CODESIGN_ARGS+=(--options runtime --timestamp)
@@ -47,8 +47,8 @@ if [[ ! -d "$APP" ]]; then
   echo "Run ./scripts/build.sh first and make sure it ends with BUILD SUCCEEDED." >&2
   exit 1
 fi
-if [[ ! -x "$APP/Contents/MacOS/burrete" ]]; then
-  echo "error: built Tauri app executable is missing: $APP/Contents/MacOS/burrete" >&2
+if [[ ! -x "$APP/Contents/MacOS/burette" ]]; then
+  echo "error: built Tauri app executable is missing: $APP/Contents/MacOS/burette" >&2
   echo "Do not run install.sh after a failed build. Re-run: ./scripts/build.sh && ./scripts/install.sh" >&2
   exit 1
 fi
@@ -78,7 +78,7 @@ verify_installed_bundle() {
     exit 1
   fi
 
-  built_supported_types="$(plutil -extract NSExtension.NSExtensionAttributes.QLSupportedContentTypes json -o - "$APP/Contents/PlugIns/BurretePreview.appex/Contents/Info.plist")"
+  built_supported_types="$(plutil -extract NSExtension.NSExtensionAttributes.QLSupportedContentTypes json -o - "$APP/Contents/PlugIns/BurettePreview.appex/Contents/Info.plist")"
   installed_supported_types="$(plutil -extract NSExtension.NSExtensionAttributes.QLSupportedContentTypes json -o - "$DEST_APPEX/Contents/Info.plist")"
   if [[ "$installed_supported_types" != "$built_supported_types" ]]; then
     echo "error: installed Quick Look supported content types do not match build output" >&2
@@ -135,7 +135,7 @@ unregister_legacy_launch_services_bundles() {
         next
       }
       $1 == "identifier:" {
-        if ($2 ~ /^com\.local\.(Burrete|Burette|MolstarQuickLook)/) {
+        if ($2 ~ /^com\.local\.(Burette|Burette|MolstarQuickLook)/) {
           print path
         }
       }
@@ -150,7 +150,7 @@ unregister_stale_dev_flavor_extensions() {
   while IFS= read -r old_appex; do
     [[ "$old_appex" == "$DEST_APPEX" ]] && continue
     case "$old_appex" in
-      *"/Burrete-"*.app/Contents/PlugIns/BurretePreview.appex)
+      *"/Burette-"*.app/Contents/PlugIns/BurettePreview.appex)
         pluginkit -r "$old_appex" 2>/dev/null || true
         unregister_bundle "${old_appex%/Contents/PlugIns/*}.app"
         ;;
@@ -158,12 +158,12 @@ unregister_stale_dev_flavor_extensions() {
   done < <(
     pluginkit -m -A -D -vvv -p com.apple.quicklook.preview 2>/dev/null |
       sed -n 's/^[[:space:]]*Path = //p' |
-      grep -F '/Burrete-' || true
+      grep -F '/Burette-' || true
   )
 }
-echo "Unregistering old Burrete extensions, if any..."
-pkill -f "$DEST/Contents/MacOS/Burrete" 2>/dev/null || true
-pkill -f "$DEST/Contents/MacOS/burrete" 2>/dev/null || true
+echo "Unregistering old Burette extensions, if any..."
+pkill -f "$DEST/Contents/MacOS/Burette" 2>/dev/null || true
+pkill -f "$DEST/Contents/MacOS/burette" 2>/dev/null || true
 pkill -f "$LEGACY_OLD_DEST/Contents/MacOS/MolstarQuickLook" 2>/dev/null || true
 pkill -f "$LEGACY_XYZ_DEST" 2>/dev/null || true
 pkill -f "$ROOT/build/Build/Products/Debug/MolstarQuickLook" 2>/dev/null || true
@@ -171,14 +171,14 @@ pluginkit -r "$EXT_ID" 2>/dev/null || true
 unregister_stale_dev_flavor_extensions
 if [[ "$IS_DEV_FLAVOR" != "1" ]]; then
   for OLD_ID in \
-    com.local.Burrete.Preview \
-    com.local.BurreteV4.Preview \
-    com.local.BurreteV5.Preview \
-    com.local.BurreteV6.Preview \
-    com.local.BurreteV7.Preview \
-    com.local.BurreteV8.Preview \
-    com.local.BurreteV9.Preview \
-    com.local.BurreteV10.Preview \
+    com.local.Burette.Preview \
+    com.local.BuretteV4.Preview \
+    com.local.BuretteV5.Preview \
+    com.local.BuretteV6.Preview \
+    com.local.BuretteV7.Preview \
+    com.local.BuretteV8.Preview \
+    com.local.BuretteV9.Preview \
+    com.local.BuretteV10.Preview \
     com.local.BuretteXyzRender.Preview \
     com.local.MolstarQuickLook.Preview \
     com.local.MolstarQuickLookV8.Preview \
@@ -188,19 +188,19 @@ if [[ "$IS_DEV_FLAVOR" != "1" ]]; then
   done
   while IFS= read -r OLD_ENTRY; do
     OLD_APPEX="${OLD_ENTRY##*$'\t'}"
-    if [[ "$OLD_APPEX" == *Burrete*.appex || "$OLD_APPEX" == *Burette*.appex || "$OLD_APPEX" == *MolstarQuickLook*.appex ]]; then
+    if [[ "$OLD_APPEX" == *Burette*.appex || "$OLD_APPEX" == *Burette*.appex || "$OLD_APPEX" == *MolstarQuickLook*.appex ]]; then
       pluginkit -r "$OLD_APPEX" 2>/dev/null || true
     fi
-  done < <(pluginkit -m -v -p com.apple.quicklook.preview 2>/dev/null | grep -Ei 'Burrete|Burette|MolstarQuickLook' || true)
+  done < <(pluginkit -m -v -p com.apple.quicklook.preview 2>/dev/null | grep -Ei 'Burette|Burette|MolstarQuickLook' || true)
   while IFS= read -r OLD_APPEX; do
     [[ "$OLD_APPEX" == "$DEST_APPEX" ]] && continue
-    if [[ "$OLD_APPEX" == *Burrete*.appex || "$OLD_APPEX" == *Burette*.appex || "$OLD_APPEX" == *MolstarQuickLook*.appex ]]; then
+    if [[ "$OLD_APPEX" == *Burette*.appex || "$OLD_APPEX" == *Burette*.appex || "$OLD_APPEX" == *MolstarQuickLook*.appex ]]; then
       pluginkit -r "$OLD_APPEX" 2>/dev/null || true
       if [[ "$OLD_APPEX" == */Contents/PlugIns/*.appex ]]; then
         unregister_bundle "${OLD_APPEX%/Contents/PlugIns/*}.app"
       fi
     fi
-  done < <(pluginkit -m -A -D -vvv -p com.apple.quicklook.preview 2>/dev/null | sed -n 's/^[[:space:]]*Path = //p' | grep -Ei 'Burrete|Burette|MolstarQuickLook' || true)
+  done < <(pluginkit -m -A -D -vvv -p com.apple.quicklook.preview 2>/dev/null | sed -n 's/^[[:space:]]*Path = //p' | grep -Ei 'Burette|Burette|MolstarQuickLook' || true)
 fi
 
 unregister_bundle "$DEST"
@@ -255,7 +255,7 @@ assert_bundled_xyzrender_runner() {
   local python_root="$2"
   local stage="$3"
   assert_bundled_xyzrender_runtime "$runtime" "$python_root" "$stage"
-  if [[ "$IS_DEV_FLAVOR" == "1" && "${BURRETE_SKIP_XYZRENDER_RUNNER_CHECK:-0}" == "1" ]]; then
+  if [[ "$IS_DEV_FLAVOR" == "1" && "${BURETTE_SKIP_XYZRENDER_RUNNER_CHECK:-0}" == "1" ]]; then
     echo "warning: skipped bundled xyzrender runner check $stage" >&2
     return 0
   fi
@@ -295,8 +295,8 @@ if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
     exit 1
   }
 fi
-codesign "${CODESIGN_ARGS[@]}" "$STAGING_APPEX/Contents/Resources/burrete-core-bridge" >/dev/null
-codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$STAGING_APPEX" >/dev/null
+codesign "${CODESIGN_ARGS[@]}" "$STAGING_APPEX/Contents/Resources/burette-core-bridge" >/dev/null
+codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurettePreview.entitlements" "$STAGING_APPEX" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" "$STAGING_DEST" >/dev/null
 if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
   assert_bundled_xyzrender_runner "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "after app signing"
@@ -351,13 +351,13 @@ rm -rf "$STAGING_DEST"
 [[ -x "$LSREGISTER" ]] && "$LSREGISTER" -f -R "$DEST" || true
 assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after lsregister"
 if [[ -x /usr/bin/swift ]]; then
-  BURRETE_APP_PATH="$DEST" BURRETE_APP_ID="$APP_ID" BURRETE_IS_DEV_FLAVOR="$IS_DEV_FLAVOR" /usr/bin/swift -e '
+  BURETTE_APP_PATH="$DEST" BURETTE_APP_ID="$APP_ID" BURETTE_IS_DEV_FLAVOR="$IS_DEV_FLAVOR" /usr/bin/swift -e '
 import Foundation
 import CoreServices
 
-let appURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["BURRETE_APP_PATH"] ?? "")
-let bundleID = (ProcessInfo.processInfo.environment["BURRETE_APP_ID"] ?? "com.local.BurreteV10") as CFString
-let isDevFlavor = ProcessInfo.processInfo.environment["BURRETE_IS_DEV_FLAVOR"] == "1"
+let appURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["BURETTE_APP_PATH"] ?? "")
+let bundleID = (ProcessInfo.processInfo.environment["BURETTE_APP_ID"] ?? "com.local.BuretteV10") as CFString
+let isDevFlavor = ProcessInfo.processInfo.environment["BURETTE_IS_DEV_FLAVOR"] == "1"
 LSRegisterURL(appURL as CFURL, true)
 if !isDevFlavor {
     let bundle = Bundle(url: appURL)
@@ -405,7 +405,7 @@ Installed local copy:
   $DEST
 
 Check extension registration:
-  pluginkit -m -p com.apple.quicklook.preview | grep -i Burrete
+  pluginkit -m -p com.apple.quicklook.preview | grep -i Burette
 
 Forced tests:
   qlmanage -p -c $PDB_CONTENT_TYPE "$ROOT/samples/mini.pdb"

@@ -1,24 +1,24 @@
 # Codex Repo Skills
 
-This directory contains repository-local Codex guidance for maintaining Burrete.
+This directory contains repository-local Codex guidance for maintaining Burette.
 It is separate from `plugins/burette-agent/skills`, which are packaged product
 skills for molecular workflows.
 
 Use `.codex/skills` for development-time review, release, PR, and maintenance
-workflows that should not ship as part of the Burrete agent plugin.
+workflows that should not ship as part of the Burette agent plugin.
 
 ## Skills
 
 | Skill | Use |
 | --- | --- |
-| `burrete-code-review` | Final multi-angle review orchestrator for a branch or PR. |
-| `burrete-review-breaking-contracts` | Contract review for Quick Look, browser, desktop, agent, release, and iOS surfaces. |
-| `burrete-review-change-size` | Review whether a diff is small enough to land safely. |
-| `burrete-review-context-bounds` | Review bounded payload, report, widget, log, and model-visible context behavior. |
-| `burrete-review-testing` | Review whether the changed surface has the right focused validation. |
-| `burrete-review-path-contracts` | Review path, URL, file, and session-directory boundary handling. |
-| `burrete-release-readiness` | Release-readiness review for versioning, signing, updater, Homebrew, and installer surfaces. |
-| `burrete-pr-body` | Prepare or revise a GitHub PR title/body from the actual net change. |
+| `burette-code-review` | Final multi-angle review orchestrator for a branch or PR. |
+| `burette-review-breaking-contracts` | Contract review for Quick Look, browser, desktop, agent, release, and iOS surfaces. |
+| `burette-review-change-size` | Review whether a diff is small enough to land safely. |
+| `burette-review-context-bounds` | Review bounded payload, report, widget, log, and model-visible context behavior. |
+| `burette-review-testing` | Review whether the changed surface has the right focused validation. |
+| `burette-review-path-contracts` | Review path, URL, file, and session-directory boundary handling. |
+| `burette-release-readiness` | Release-readiness review for versioning, signing, updater, Homebrew, and installer surfaces. |
+| `burette-pr-body` | Prepare or revise a GitHub PR title/body from the actual net change. |
 
 ## Boundaries
 
@@ -31,4 +31,4 @@ workflows that should not ship as part of the Burrete agent plugin.
   bootstrap checks such as tool presence, `bun install`, or `vp install`.
 - Do not copy external project-specific workflows directly. Adapt only the
   policy shape and replace all repository names, paths, commands, and contracts
-  with Burrete-specific ones.
+  with Burette-specific ones.

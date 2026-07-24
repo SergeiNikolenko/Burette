@@ -19,7 +19,7 @@ const server = new McpServer(
   },
   {
     instructions:
-      "Expose Burrete tools. Skills own workflow routing. MCP tools wrap the repository CLI, validate bounded molecular artifacts, and provide control surfaces for structures, molecule collections, trajectories, and molecular reports.",
+      "Expose Burette tools. Skills own workflow routing. MCP tools wrap the repository CLI, validate bounded molecular artifacts, and provide control surfaces for structures, molecule collections, trajectories, and molecular reports.",
   },
 );
 

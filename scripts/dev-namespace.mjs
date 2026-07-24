@@ -4,11 +4,11 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const BASE = {
-  appId: 'com.local.BurreteV10',
-  previewId: 'com.local.BurreteV10.Preview',
-  thumbnailId: 'com.local.BurreteV10.Thumbnail',
-  contentTypePrefix: 'com.local.burrete10.',
-  appName: 'Burrete',
+  appId: 'com.local.BuretteV10',
+  previewId: 'com.local.BuretteV10.Preview',
+  thumbnailId: 'com.local.BuretteV10.Thumbnail',
+  contentTypePrefix: 'com.local.burette10.',
+  appName: 'Burette',
 };
 
 const PATCH_SKIP_DIRS = new Set([
@@ -36,13 +36,13 @@ function normalizeDevFlavor(value) {
   if (!raw) return '';
   const compact = raw.replace(/[^a-z0-9]+/g, '');
   if (!compact) {
-    throw new Error('BURRETE_DEV_FLAVOR must contain at least one ASCII letter or digit.');
+    throw new Error('BURETTE_DEV_FLAVOR must contain at least one ASCII letter or digit.');
   }
   const withLeadingLetter = /^[a-z]/.test(compact) ? compact : `d${compact}`;
   return withLeadingLetter.slice(0, 32);
 }
 
-export function namespaceForFlavor(value = process.env.BURRETE_DEV_FLAVOR) {
+export function namespaceForFlavor(value = process.env.BURETTE_DEV_FLAVOR) {
   const slug = normalizeDevFlavor(value);
   if (!slug) {
     return {
@@ -85,16 +85,16 @@ function shellQuote(value) {
 
 function printShellEnv(namespace) {
   const values = {
-    BURRETE_IS_DEV_FLAVOR: namespace.isDev ? '1' : '0',
-    BURRETE_DEV_FLAVOR_SLUG: namespace.slug,
-    BURRETE_APP_ID: namespace.appId,
-    BURRETE_PREVIEW_ID: namespace.previewId,
-    BURRETE_THUMBNAIL_ID: namespace.thumbnailId,
-    BURRETE_CONTENT_TYPE_PREFIX: namespace.contentTypePrefix,
-    BURRETE_PDB_CONTENT_TYPE: namespace.pdbContentType,
-    BURRETE_XYZ_CONTENT_TYPE: namespace.xyzContentType,
-    BURRETE_APP_NAME: namespace.appName,
-    BURRETE_APP_BUNDLE_NAME: namespace.appBundleName,
+    BURETTE_IS_DEV_FLAVOR: namespace.isDev ? '1' : '0',
+    BURETTE_DEV_FLAVOR_SLUG: namespace.slug,
+    BURETTE_APP_ID: namespace.appId,
+    BURETTE_PREVIEW_ID: namespace.previewId,
+    BURETTE_THUMBNAIL_ID: namespace.thumbnailId,
+    BURETTE_CONTENT_TYPE_PREFIX: namespace.contentTypePrefix,
+    BURETTE_PDB_CONTENT_TYPE: namespace.pdbContentType,
+    BURETTE_XYZ_CONTENT_TYPE: namespace.xyzContentType,
+    BURETTE_APP_NAME: namespace.appName,
+    BURETTE_APP_BUNDLE_NAME: namespace.appBundleName,
   };
   for (const [key, value] of Object.entries(values)) {
     console.log(`${key}=${shellQuote(value)}`);
@@ -104,14 +104,14 @@ function printShellEnv(namespace) {
 function transformText(text, namespace) {
   if (!namespace.isDev) return text;
   return text
-    .replaceAll(BASE.previewId, '__BURRETE_DEV_PREVIEW_ID__')
-    .replaceAll(BASE.thumbnailId, '__BURRETE_DEV_THUMBNAIL_ID__')
-    .replaceAll(BASE.appId, '__BURRETE_DEV_APP_ID__')
-    .replaceAll(BASE.contentTypePrefix, '__BURRETE_DEV_CONTENT_TYPE_PREFIX__')
-    .replaceAll('__BURRETE_DEV_PREVIEW_ID__', namespace.previewId)
-    .replaceAll('__BURRETE_DEV_THUMBNAIL_ID__', namespace.thumbnailId)
-    .replaceAll('__BURRETE_DEV_APP_ID__', namespace.appId)
-    .replaceAll('__BURRETE_DEV_CONTENT_TYPE_PREFIX__', namespace.contentTypePrefix);
+    .replaceAll(BASE.previewId, '__BURETTE_DEV_PREVIEW_ID__')
+    .replaceAll(BASE.thumbnailId, '__BURETTE_DEV_THUMBNAIL_ID__')
+    .replaceAll(BASE.appId, '__BURETTE_DEV_APP_ID__')
+    .replaceAll(BASE.contentTypePrefix, '__BURETTE_DEV_CONTENT_TYPE_PREFIX__')
+    .replaceAll('__BURETTE_DEV_PREVIEW_ID__', namespace.previewId)
+    .replaceAll('__BURETTE_DEV_THUMBNAIL_ID__', namespace.thumbnailId)
+    .replaceAll('__BURETTE_DEV_APP_ID__', namespace.appId)
+    .replaceAll('__BURETTE_DEV_CONTENT_TYPE_PREFIX__', namespace.contentTypePrefix);
 }
 
 function shouldPatchFile(path) {

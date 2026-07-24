@@ -4,11 +4,11 @@ use std::{
     io::{BufRead, BufReader},
 };
 
-use burrete_compute_core::{
+use burette_compute_core::{
     decode_native_mmff_parameters, ConformerEnginePackArrays, ConformerEnginePackBuilder,
     ExtractedConformerParameters, NativeMmffParameters,
 };
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     ConformerInitialization, ConformerV1SubmitRequest, ConformerVariant, JobSnapshot, MmffVariant,
     MolecularSnapshotRecordV1, OrderedRecordMoleculeIdentityHasher, PackedFileDescriptor,
     MAX_PACK_BYTES, MOLECULAR_RECORDS_FILE_PATH,
@@ -495,7 +495,7 @@ fn unavailable(message: impl Into<String>) -> ComputeCoordinatorError {
 mod tests {
     use std::collections::BTreeMap;
 
-    use burrete_compute_protocol::MolecularSnapshotRecordVersion;
+    use burette_compute_protocol::MolecularSnapshotRecordVersion;
 
     use super::*;
 

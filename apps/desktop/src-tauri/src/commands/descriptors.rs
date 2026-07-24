@@ -1092,7 +1092,7 @@ fn run_external_command(path: &Path, args: &[&str], timeout: Duration) -> Result
 
 fn resolve_python_executable() -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
-    if let Some(path) = env::var_os("BURRETE_DESCRIPTOR_PYTHON") {
+    if let Some(path) = env::var_os("BURETTE_DESCRIPTOR_PYTHON") {
         candidates.push(PathBuf::from(path));
     }
     candidates.extend(descriptor_runtime_python_candidates());
@@ -1129,7 +1129,7 @@ fn descriptor_runtime_python_candidates() -> Vec<PathBuf> {
         candidates.push(
             home.join(".local")
                 .join("share")
-                .join("burrete")
+                .join("burette")
                 .join("descriptor-python")
                 .join("bin")
                 .join("python3"),
@@ -1139,20 +1139,20 @@ fn descriptor_runtime_python_candidates() -> Vec<PathBuf> {
 }
 
 fn descriptor_runtime_dir() -> Result<PathBuf, String> {
-    if let Some(path) = env::var_os("BURRETE_DESCRIPTOR_RUNTIME_DIR") {
+    if let Some(path) = env::var_os("BURETTE_DESCRIPTOR_RUNTIME_DIR") {
         return Ok(PathBuf::from(path));
     }
     let home = env::var_os("HOME").ok_or("HOME is not set for descriptor runtime install")?;
     Ok(PathBuf::from(home)
         .join("Library")
         .join("Application Support")
-        .join("Burrete")
+        .join("Burette")
         .join("descriptor-python"))
 }
 
 fn resolve_uv_executable() -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
-    if let Some(path) = env::var_os("BURRETE_UV") {
+    if let Some(path) = env::var_os("BURETTE_UV") {
         candidates.push(PathBuf::from(path));
     }
     if let Some(path) = env::var_os("PATH") {
@@ -1169,7 +1169,7 @@ fn resolve_uv_executable() -> Result<PathBuf, String> {
             return Ok(path);
         }
     }
-    Err("uv was not found. Install uv or set BURRETE_UV to the uv executable.".into())
+    Err("uv was not found. Install uv or set BURETTE_UV to the uv executable.".into())
 }
 
 fn bundled_descriptor_python_candidates(executable: &Path) -> Vec<PathBuf> {
@@ -1208,7 +1208,7 @@ fn is_executable(path: &Path) -> bool {
 }
 
 fn descriptor_install_hint() -> String {
-    "Install a uv-managed descriptor runtime from the Descriptors panel, or set BURRETE_DESCRIPTOR_PYTHON to a Python interpreter with RDKit and mordredcommunity.".into()
+    "Install a uv-managed descriptor runtime from the Descriptors panel, or set BURETTE_DESCRIPTOR_PYTHON to a Python interpreter with RDKit and mordredcommunity.".into()
 }
 
 fn current_time_millis() -> u64 {

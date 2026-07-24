@@ -32,7 +32,7 @@ type SourceState =
   | { status: "unsupported"; reason: string };
 
 const AUTO_GRID_DESCRIPTOR_LIMIT = 250;
-const GRID_DESCRIPTOR_JOB_EVENT = "burrete-grid-descriptor-job";
+const GRID_DESCRIPTOR_JOB_EVENT = "burette-grid-descriptor-job";
 
 function pendingGridJobStatus(documentId: string, totalRows: number, message: string): GridDescriptorJobStatus {
   return {

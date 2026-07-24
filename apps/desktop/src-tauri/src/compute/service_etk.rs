@@ -1,10 +1,10 @@
-use burrete_compute_core::{
+use burette_compute_core::{
     validate_etk_geometry_constraints, DistanceGeometryOptimizationOptions,
     DistanceGeometryOptimizationStatus, EtkDistanceConstraint, EtkGeometryTerms,
     EtkImproperConstraint, EtkTorsionConstraint,
 };
-use burrete_compute_metal::MetalDistanceOptimization;
-use burrete_compute_protocol::MAX_PACK_BYTES;
+use burette_compute_metal::MetalDistanceOptimization;
+use burette_compute_protocol::MAX_PACK_BYTES;
 
 const INPUT_MAGIC: &[u8; 4] = b"BEK1";
 const OUTPUT_MAGIC: &[u8; 4] = b"BEO1";

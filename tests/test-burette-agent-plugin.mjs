@@ -30,30 +30,30 @@ function runCommand(command, args, cwd = ".") {
 }
 
 const manifest = JSON.parse(await read(".codex-plugin/plugin.json"));
-assert.equal(manifest.name, "burrete");
+assert.equal(manifest.name, "burette");
 assert.equal(manifest.skills, "./skills/");
 assert.equal(manifest.mcpServers, "./.mcp.json");
-assert.equal(manifest.interface.displayName, "Burrete");
+assert.equal(manifest.interface.displayName, "Burette");
 assert.equal(manifest.interface.composerIcon, "./assets/composer-icon.png");
 assert.equal(manifest.interface.logo, "./assets/app-icon.png");
 assert.deepEqual(manifest.interface.capabilities, ["Interactive", "Read", "Write"]);
 assert.match(manifest.interface.longDescription, /observe scene state as structured JSON/);
-assert.equal(manifest.homepage, "https://github.com/SergeiNikolenko/Burrete");
-assert.equal(manifest.repository, "https://github.com/SergeiNikolenko/Burrete");
+assert.equal(manifest.homepage, "https://github.com/SergeiNikolenko/Burette");
+assert.equal(manifest.repository, "https://github.com/SergeiNikolenko/Burette");
 assert.equal(manifest.license, "MIT");
 assert.equal(manifest.interface.category, "Education & Research");
-assert.equal(manifest.interface.websiteURL, "https://github.com/SergeiNikolenko/Burrete");
-assert.equal(manifest.interface.supportURL, "https://github.com/SergeiNikolenko/Burrete/issues");
-assert.equal(manifest.interface.privacyPolicyURL, "https://github.com/SergeiNikolenko/Burrete/blob/main/PRIVACY.md");
-assert.equal(manifest.interface.termsOfServiceURL, "https://github.com/SergeiNikolenko/Burrete/blob/main/TERMS.md");
+assert.equal(manifest.interface.websiteURL, "https://github.com/SergeiNikolenko/Burette");
+assert.equal(manifest.interface.supportURL, "https://github.com/SergeiNikolenko/Burette/issues");
+assert.equal(manifest.interface.privacyPolicyURL, "https://github.com/SergeiNikolenko/Burette/blob/main/PRIVACY.md");
+assert.equal(manifest.interface.termsOfServiceURL, "https://github.com/SergeiNikolenko/Burette/blob/main/TERMS.md");
 assert.match(await readFile("PRIVACY.md", "utf8"), /local Codex\s+plugin/);
 assert.match(await readFile("TERMS.md", "utf8"), /MIT License/);
 
 const compatibility = JSON.parse(await read("compatibility.json"));
 assert.equal(compatibility.schema, "burette_agent_compatibility.v1");
-assert.equal(compatibility.plugin.name, "burrete");
+assert.equal(compatibility.plugin.name, "burette");
 assert.equal(compatibility.plugin.version, manifest.version);
-assert.equal(compatibility.requires.burreteApp, ">=0.10.44");
+assert.equal(compatibility.requires.buretteApp, ">=0.10.44");
 assert.equal(compatibility.requires.agentCli, "burette-agent-cli/v1");
 assert.equal(compatibility.requires.controlApi, "burette-agent-control/v1");
 assert.equal(compatibility.bundle.relativePath, "plugins/burette-agent");
@@ -84,8 +84,8 @@ assert.equal(rootPackageJson.scripts["install:plugin"], "bun plugins/burette-age
 assert.equal(rootPackageJson.scripts["build:agent-shell"], "bun scripts/build-agent-shell-plugin.mjs");
 
 const repoMarketplace = JSON.parse(await readFile(".agents/plugins/marketplace.json", "utf8"));
-assert.equal(repoMarketplace.name, "burrete");
-assert.equal(repoMarketplace.plugins[0].name, "burrete");
+assert.equal(repoMarketplace.name, "burette");
+assert.equal(repoMarketplace.plugins[0].name, "burette");
 assert.equal(repoMarketplace.plugins[0].source.path, "./plugins/burette-agent");
 assert.deepEqual(repoMarketplace.plugins[0].policy.products, ["CODEX"]);
 assert.equal(repoMarketplace.plugins[0].category, "Education & Research");
@@ -113,12 +113,12 @@ const requiredPreviewRuntimeAssets = [
   "trajectory-smoothing.js",
   "openchemlib/openchemlib.js",
 ];
-assert.match(installScript, /\.codex", "plugins", "burrete-marketplace"/);
+assert.match(installScript, /\.codex", "plugins", "burette-marketplace"/);
 assert.match(installScript, /"plugin", "marketplace", "add", marketplaceRoot, "--json"/);
 assert.match(installScript, /"plugin", "add", pluginId, "--json"/);
 assert.match(installScript, /"plugin", "list", "--json"/);
 assert.match(installScript, /"plugin", "remove", legacyPluginId, "--json"/);
-assert.match(installScript, /\.\/plugins\/burrete/);
+assert.match(installScript, /\.\/plugins\/burette/);
 assert.match(installScript, /readPluginVersion/);
 assert.match(installScript, /"mcp\/lib\/server-bundle\.mjs"/);
 assert.match(installScript, /"preview-web\/viewer\.js"/);
@@ -131,8 +131,8 @@ for (const asset of requiredPreviewRuntimeAssets) {
 assert.match(installScript, /missingBundleFiles/);
 assert.match(installScript, /process\.argv\.includes\("--build"\)/);
 assert.match(installScript, /mcp\/lib\/tool-response 2\.mjs/);
-assert.doesNotMatch(installScript, /\.agents\/plugins\/burrete/);
-assert.doesNotMatch(installScript, /BURRETE_PLUGIN_MARKETPLACE/);
+assert.doesNotMatch(installScript, /\.agents\/plugins\/burette/);
+assert.doesNotMatch(installScript, /BURETTE_PLUGIN_MARKETPLACE/);
 assert.doesNotMatch(installScript, /"bun", \["install", "--production"\]/);
 
 const buildAgentShellScript = await readFile("scripts/build-agent-shell-plugin.mjs", "utf8");
@@ -152,7 +152,7 @@ for (const missingAsset of [
   "browser-shell-dist/assets/missing-chunk.js",
   "mcp/lib/server-chunk-missing.mjs",
 ]) {
-  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "burrete-plugin-install-contract-"));
+  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "burette-plugin-install-contract-"));
   const fixturePluginRoot = path.join(fixtureRoot, "plugins", "burette-agent");
   const fixtureHome = path.join(fixtureRoot, "home");
   try {
@@ -211,45 +211,45 @@ assert.match(fetchRegistration, /MAX_RESPONSE_BYTES/);
 
 const workspaceRegistration = await read("mcp/registrations/molecular-workspace/register.mjs");
 assert.match(workspaceRegistration, /registerAppTool/);
-assert.match(workspaceRegistration, /burrete\.get_context/);
-assert.match(workspaceRegistration, /burrete\.open_workspace/);
-assert.match(workspaceRegistration, /burrete\.open_ketcher/);
+assert.match(workspaceRegistration, /burette\.get_context/);
+assert.match(workspaceRegistration, /burette\.open_workspace/);
+assert.match(workspaceRegistration, /burette\.open_ketcher/);
 assert.match(workspaceRegistration, /workspaceSessionId/);
 assert.match(workspaceRegistration, /viewerSessionId/);
-assert.match(workspaceRegistration, /burrete\.observe_workspace/);
-assert.match(workspaceRegistration, /burrete\.control_viewer/);
-assert.match(workspaceRegistration, /burrete\.control_ketcher/);
+assert.match(workspaceRegistration, /burette\.observe_workspace/);
+assert.match(workspaceRegistration, /burette\.control_viewer/);
+assert.match(workspaceRegistration, /burette\.control_ketcher/);
 assert.match(workspaceRegistration, /ketcherActionSchema/);
-assert.match(workspaceRegistration, /burrete\.render_panel/);
+assert.match(workspaceRegistration, /burette\.render_panel/);
 assert.match(workspaceRegistration, /PUBLIC_CONTRACT/);
-assert.match(workspaceRegistration, /open_burrete_workspace/);
-assert.match(workspaceRegistration, /summarize_burrete_structure/);
+assert.match(workspaceRegistration, /open_burette_workspace/);
+assert.match(workspaceRegistration, /summarize_burette_structure/);
 assert.match(workspaceRegistration, /summarizeStructureFile/);
 assert.match(workspaceRegistration, /structureSummary/);
-assert.match(workspaceRegistration, /manage_burrete_tabs/);
+assert.match(workspaceRegistration, /manage_burette_tabs/);
 assert.match(workspaceRegistration, /type: "manage_tabs"/);
 assert.match(workspaceRegistration, /operation: z\.enum\(\["list", "focus", "next", "previous", "open_file", "new", "close", "move"\]\)/);
-assert.match(workspaceRegistration, /manage_burrete_structure_component/);
+assert.match(workspaceRegistration, /manage_burette_structure_component/);
 assert.match(workspaceRegistration, /extractStructureComponentFile/);
 assert.match(workspaceRegistration, /type: "open_files"/);
 assert.match(workspaceRegistration, /type: "clear_selection"/);
 assert.match(workspaceRegistration, /hide_components/);
-assert.match(workspaceRegistration, /open_burrete_docking_view/);
+assert.match(workspaceRegistration, /open_burette_docking_view/);
 assert.match(workspaceRegistration, /type: "open_docking_view"/);
 assert.match(workspaceRegistration, /sceneMode: z\.enum\(\["structureAll", "structurePoses"\]\)/);
-assert.match(workspaceRegistration, /set_burrete_trajectory/);
+assert.match(workspaceRegistration, /set_burette_trajectory/);
 assert.match(workspaceRegistration, /"set_structure_pose"/);
 assert.match(workspaceRegistration, /"set_sdf_pose_index"/);
-assert.match(workspaceRegistration, /set_burrete_representation_style/);
+assert.match(workspaceRegistration, /set_burette_representation_style/);
 assert.match(workspaceRegistration, /type: "set_molstar_style"/);
-assert.match(workspaceRegistration, /focus_burrete_selection/);
+assert.match(workspaceRegistration, /focus_burette_selection/);
 assert.match(workspaceRegistration, /type: "focus_selection"/);
-assert.match(workspaceRegistration, /edit_burrete_fragment/);
+assert.match(workspaceRegistration, /edit_burette_fragment/);
 assert.match(workspaceRegistration, /editStructureFragmentFile/);
-assert.match(workspaceRegistration, /observe_burrete_workspace/);
+assert.match(workspaceRegistration, /observe_burette_workspace/);
 assert.match(workspaceRegistration, /act_molstar_scene/);
 assert.match(workspaceRegistration, /declarative Mol\* scene action/);
-assert.match(workspaceRegistration, /runBurreteAgent/);
+assert.match(workspaceRegistration, /runBuretteAgent/);
 assert.match(workspaceRegistration, /visibility: \["model"\]/);
 assert.doesNotMatch(workspaceRegistration, /openai\/outputTemplate/);
 assert.doesNotMatch(workspaceRegistration, /widgetData/);
@@ -291,7 +291,7 @@ for (const asset of [
   "preview-web/rdkit/RDKit_minimal.wasm",
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
-  "scripts/burrete-agent.mjs",
+  "scripts/burette-agent.mjs",
   "scripts/install-local.mjs",
 ]) {
   assert.equal(packedFiles.has(asset), true, `npm package is missing ${asset}`);
@@ -345,7 +345,7 @@ assert.match(indexSkill, /Completion Gate/);
 assert.match(indexSkill, /exact live URL as a clickable Markdown link/);
 
 const openWorkspaceSkill = await read("skills/open-workspace/SKILL.md");
-assert.match(openWorkspaceSkill, /\[Open Burrete in Browser\]/);
+assert.match(openWorkspaceSkill, /\[Open Burette in Browser\]/);
 assert.match(openWorkspaceSkill, /bundle directory, report, or screenshot does not replace/);
 
 const externalAgentContractSkill = await read("skills/external-agent-contract/SKILL.md");
@@ -357,8 +357,8 @@ assert.match(userContextSkill, /capability registry/);
 assert.match(userContextSkill, /Do not store arbitrary molecule facts/);
 
 const externalAgentSkill = await read("skills/external-agent-contract/SKILL.md");
-assert.match(externalAgentSkill, /burrete\.open_workspace/);
-assert.match(externalAgentSkill, /burrete\.control_viewer/);
+assert.match(externalAgentSkill, /burette\.open_workspace/);
+assert.match(externalAgentSkill, /burette\.control_viewer/);
 assert.match(externalAgentSkill, /workspaceSessionId/);
 assert.match(externalAgentSkill, /url/);
 assert.match(externalAgentSkill, /completionState: "awaiting_browser"/);
@@ -471,7 +471,7 @@ assert.match(molstarSceneSkill, /"type": "label_selection"/);
 const readme = await read("README.md");
 assert.match(readme, /bun run install:plugin/);
 assert.match(readme, /codex plugin marketplace add/);
-assert.match(readme, /burrete@burrete/);
+assert.match(readme, /burette@burette/);
 assert.match(readme, /--build/);
 assert.match(readme, /MolViewSpec Scene Language/);
 assert.match(readme, /"type":"apply_scene"/);
@@ -539,11 +539,11 @@ const selfContainedPluginCheck = runNode([
     import { mkdtemp, cp, rm } from "node:fs/promises";
     import { tmpdir } from "node:os";
     import path from "node:path";
-    const tempRoot = await mkdtemp(path.join(tmpdir(), "burrete-plugin-cache-test-"));
-    const pluginRoot = path.join(tempRoot, "cache", "burrete", "burrete", ${JSON.stringify(manifest.version)});
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "burette-plugin-cache-test-"));
+    const pluginRoot = path.join(tempRoot, "cache", "burette", "burette", ${JSON.stringify(manifest.version)});
     await cp("plugins/burette-agent", pluginRoot, { recursive: true });
     const bridge = await import(path.join(pluginRoot, "mcp", "lib", "cli-bridge.mjs"));
-    const result = await bridge.runBurreteAgent(["open", "--mode", "browser-preview", path.resolve("samples/mini.pdb")]);
+    const result = await bridge.runBuretteAgent(["open", "--mode", "browser-preview", path.resolve("samples/mini.pdb")]);
     console.log(JSON.stringify({
       ok: result.ok,
       mode: result.payload?.result?.mode,

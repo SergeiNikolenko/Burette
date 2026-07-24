@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://burrete.app/schemas/compute/protocol/compute-capability-report.v1.schema.json",
-  "title": "Burrete ComputeCapabilityReport v1",
+  "$id": "https://burette.app/schemas/compute/protocol/compute-capability-report.v1.schema.json",
+  "title": "Burette ComputeCapabilityReport v1",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -17,7 +17,7 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
-      "const": "burrete.compute-capability-report.v1"
+      "const": "burette.compute-capability-report.v1"
     },
     "reportRevision": {
       "$ref": "common.v1.schema.json#/$defs/positiveJsonSafeUInt"

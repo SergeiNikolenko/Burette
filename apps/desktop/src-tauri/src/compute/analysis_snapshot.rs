@@ -1,6 +1,6 @@
 use std::io::{BufRead, BufReader};
 
-use burrete_compute_protocol::{MolecularSnapshotRecordV1, MOLECULAR_RECORDS_FILE_PATH};
+use burette_compute_protocol::{MolecularSnapshotRecordV1, MOLECULAR_RECORDS_FILE_PATH};
 
 use crate::preview::{grid_snapshot::VerifiedSnapshot, grid_store::GridAlignmentSourceRow};
 

@@ -2,15 +2,15 @@
 set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-APP_ID="com.local.BurreteV10"
-EXT_ID="com.local.BurreteV10.Preview"
-APP_BUNDLE_NAME="Burrete.app"
-if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
-  command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
+APP_ID="com.local.BuretteV10"
+EXT_ID="com.local.BuretteV10.Preview"
+APP_BUNDLE_NAME="Burette.app"
+if [[ -n "${BURETTE_DEV_FLAVOR:-}" ]]; then
+  command -v bun >/dev/null 2>&1 || { echo "error: BURETTE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
   eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
-  APP_ID="$BURRETE_APP_ID"
-  EXT_ID="$BURRETE_PREVIEW_ID"
-  APP_BUNDLE_NAME="$BURRETE_APP_BUNDLE_NAME"
+  APP_ID="$BURETTE_APP_ID"
+  EXT_ID="$BURETTE_PREVIEW_ID"
+  APP_BUNDLE_NAME="$BURETTE_APP_BUNDLE_NAME"
 fi
 FILE="${1:-$ROOT/samples/mini.pdb}"
 if [[ -f "$FILE" ]]; then
@@ -18,7 +18,7 @@ if [[ -f "$FILE" ]]; then
 fi
 APP="$HOME/Applications/$APP_BUNDLE_NAME"
 BUILT_APP="$ROOT/build/$APP_BUNDLE_NAME"
-CONTAINER_LOG="$HOME/Library/Containers/$EXT_ID/Data/Library/Caches/Burrete/Burrete.log"
+CONTAINER_LOG="$HOME/Library/Containers/$EXT_ID/Data/Library/Caches/Burette/Burette.log"
 CUSTOM_TYPE="$("$ROOT/scripts/preview-content-type.mjs" "$FILE")"
 
 printf '\n== File ==\n%s\n' "$FILE"
@@ -48,9 +48,9 @@ fi
 printf '\n== Embedded extension plist supported types ==\n'
 PLIST=""
 if [ -d "$APP" ]; then
-  PLIST="$APP/Contents/PlugIns/BurretePreview.appex/Contents/Info.plist"
+  PLIST="$APP/Contents/PlugIns/BurettePreview.appex/Contents/Info.plist"
 elif [ -d "$BUILT_APP" ]; then
-  PLIST="$BUILT_APP/Contents/PlugIns/BurretePreview.appex/Contents/Info.plist"
+  PLIST="$BUILT_APP/Contents/PlugIns/BurettePreview.appex/Contents/Info.plist"
 fi
 if [ -n "$PLIST" ] && [ -f "$PLIST" ]; then
   /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:QLSupportedContentTypes' "$PLIST" 2>/dev/null || defaults read "$PLIST" NSExtension || true
@@ -91,11 +91,11 @@ else
 fi
 
 printf '\n== pluginkit ==\n'
-pluginkit -m -p com.apple.quicklook.preview | grep -i Burrete || echo "Burrete not listed by pluginkit."
+pluginkit -m -p com.apple.quicklook.preview | grep -i Burette || echo "Burette not listed by pluginkit."
 pluginkit -m -p com.apple.quicklook.preview -i "$EXT_ID" || true
 
 printf '\n== QuickLook plugin map hints ==\n'
-qlmanage -m plugins 2>/dev/null | grep -Ei 'Burrete|pdb|cif|sdf|palm|vesta' || true
+qlmanage -m plugins 2>/dev/null | grep -Ei 'Burette|pdb|cif|sdf|palm|vesta' || true
 
 printf '\n== Suggested tests ==\n'
 if [ -f "$FILE" ]; then
@@ -114,8 +114,8 @@ if [ -f "$FILE" ]; then
   echo "qlmanage -d 4 -p '$FILE'"
 fi
 
-printf '\n== Last Burrete log ==\n'
-for LOG in "$CONTAINER_LOG" "/tmp/Burrete.log" "${TMPDIR:-/tmp}/Burrete.log"; do
+printf '\n== Last Burette log ==\n'
+for LOG in "$CONTAINER_LOG" "/tmp/Burette.log" "${TMPDIR:-/tmp}/Burette.log"; do
   if [ -f "$LOG" ]; then
     echo "-- $LOG --"
     tail -40 "$LOG"
@@ -127,4 +127,4 @@ done
 printf '\n== Notes ==\n'
 echo "If forced preview works but normal Space does not, the issue is LaunchServices/UTI selection, not Mol*."
 echo "If the preview errors or stays on a status message, run ./scripts/tail-log.sh and paste the log."
-echo "If pluginkit shows nothing, run ./scripts/install-local.sh, then enable Burrete V10 in System Settings → General → Login Items & Extensions → Quick Look."
+echo "If pluginkit shows nothing, run ./scripts/install-local.sh, then enable Burette V10 in System Settings → General → Login Items & Extensions → Quick Look."

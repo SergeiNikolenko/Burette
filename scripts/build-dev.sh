@@ -15,29 +15,29 @@ export COPYFILE_DISABLE=1
 export COPY_EXTENDED_ATTRIBUTES_DISABLE=1
 export COPY_EXTENDED_ATTRIBUTES_DISABLE_RECURSIVE=1
 
-if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
-  echo "error: BURRETE_DEV_FLAVOR is supported by scripts/build.sh, not scripts/build-dev.sh." >&2
+if [[ -n "${BURETTE_DEV_FLAVOR:-}" ]]; then
+  echo "error: BURETTE_DEV_FLAVOR is supported by scripts/build.sh, not scripts/build-dev.sh." >&2
   echo "The fast dev build works in-place and must keep the source-tree bundle identifiers unchanged." >&2
-  echo "Run: BURRETE_DEV_FLAVOR=$BURRETE_DEV_FLAVOR ./scripts/build.sh" >&2
+  echo "Run: BURETTE_DEV_FLAVOR=$BURETTE_DEV_FLAVOR ./scripts/build.sh" >&2
   exit 2
 fi
 
-APP_ID="com.local.BurreteV10"
-PREVIEW_ID="com.local.BurreteV10.Preview"
-LOCAL_APP="$ROOT/build/Burrete.app"
+APP_ID="com.local.BuretteV10"
+PREVIEW_ID="com.local.BuretteV10.Preview"
+LOCAL_APP="$ROOT/build/Burette.app"
 TAURI_BUILT_APP_CANDIDATES=(
-  "$ROOT/apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
-  "$ROOT/target/release/bundle/macos/Burrete.app"
+  "$ROOT/apps/desktop/src-tauri/target/release/bundle/macos/Burette.app"
+  "$ROOT/target/release/bundle/macos/Burette.app"
 )
 TAURI_BUILT_APP=""
-XCODE_DERIVED="${BURRETE_DEV_DERIVED_DATA:-/private/tmp/BurreteV10XcodeDev}"
+XCODE_DERIVED="${BURETTE_DEV_DERIVED_DATA:-/private/tmp/BuretteV10XcodeDev}"
 XCODE_LOG="$ROOT/build/xcode-dev.log"
-QUICKLOOK_APPEX="$XCODE_DERIVED/Build/Products/Debug/BurretePreview.appex"
-REUSE_QUICKLOOK="${BURRETE_DEV_REUSE_QUICKLOOK:-0}"
-EXISTING_PREVIEW_APPEX="$LOCAL_APP/Contents/PlugIns/BurretePreview.appex"
+QUICKLOOK_APPEX="$XCODE_DERIVED/Build/Products/Debug/BurettePreview.appex"
+REUSE_QUICKLOOK="${BURETTE_DEV_REUSE_QUICKLOOK:-0}"
+EXISTING_PREVIEW_APPEX="$LOCAL_APP/Contents/PlugIns/BurettePreview.appex"
 
 cat <<HDR
-Burrete v10 dev build
+Burette v10 dev build
   source: $ROOT
   app id: $APP_ID
   preview id: $PREVIEW_ID
@@ -141,19 +141,19 @@ pushd apps/desktop >/dev/null
 popd >/dev/null
 
 bun run build:tauri
-cargo build --release --manifest-path apps/desktop/src-tauri/Cargo.toml --bin burrete-compute-service
+cargo build --release --manifest-path apps/desktop/src-tauri/Cargo.toml --bin burette-compute-service
 QUICKLOOK_APPEX_SOURCE="$QUICKLOOK_APPEX"
 if [[ "$REUSE_QUICKLOOK" == "1" ]]; then
   [[ -d "$EXISTING_PREVIEW_APPEX" ]] || {
-    echo "error: BURRETE_DEV_REUSE_QUICKLOOK=1 requires an existing preview extension at: $EXISTING_PREVIEW_APPEX" >&2
-    echo "Run ./scripts/build-dev.sh once without BURRETE_DEV_REUSE_QUICKLOOK=1 after changing Swift or extension packaging." >&2
+    echo "error: BURETTE_DEV_REUSE_QUICKLOOK=1 requires an existing preview extension at: $EXISTING_PREVIEW_APPEX" >&2
+    echo "Run ./scripts/build-dev.sh once without BURETTE_DEV_REUSE_QUICKLOOK=1 after changing Swift or extension packaging." >&2
     exit 1
   }
   QUICKLOOK_APPEX_SOURCE="$EXISTING_PREVIEW_APPEX"
   echo "Reusing Quick Look extension: $QUICKLOOK_APPEX_SOURCE"
 else
   mkdir -p "$XCODE_DERIVED" "$(dirname "$XCODE_LOG")"
-  if ! xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration Debug -derivedDataPath "$XCODE_DERIVED" COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build >"$XCODE_LOG" 2>&1; then
+  if ! xcodebuild -project Burette.xcodeproj -scheme BurettePreview -configuration Debug -derivedDataPath "$XCODE_DERIVED" COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build >"$XCODE_LOG" 2>&1; then
     echo "error: Xcode build failed. Last log lines:" >&2
     tail -80 "$XCODE_LOG" >&2
     exit 1
@@ -172,11 +172,11 @@ done
 
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
 mkdir -p "$TAURI_BUILT_APP/Contents/Helpers"
-ditto --norsrc --noextattr "$ROOT/target/release/burrete-compute-service" "$TAURI_BUILT_APP/Contents/Helpers/burrete-compute-service"
-chmod 755 "$TAURI_BUILT_APP/Contents/Helpers/burrete-compute-service"
-rm -f "$TAURI_BUILT_APP/Contents/MacOS/burrete-compute-service"
-rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
-ditto --norsrc --noextattr "$QUICKLOOK_APPEX_SOURCE" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
+ditto --norsrc --noextattr "$ROOT/target/release/burette-compute-service" "$TAURI_BUILT_APP/Contents/Helpers/burette-compute-service"
+chmod 755 "$TAURI_BUILT_APP/Contents/Helpers/burette-compute-service"
+rm -f "$TAURI_BUILT_APP/Contents/MacOS/burette-compute-service"
+rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex"
+ditto --norsrc --noextattr "$QUICKLOOK_APPEX_SOURCE" "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex"
 mark_regular_desktop_app "$TAURI_BUILT_APP"
 copy_app_plist_metadata "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
@@ -193,9 +193,9 @@ actual_carbon="$(/usr/libexec/PlistBuddy -c 'Print :LSRequiresCarbon' "$LOCAL_AP
 [[ -z "$actual_carbon" ]] || { echo "error: built app must not set LSRequiresCarbon." >&2; exit 1; }
 actual_pkg_info="$(cat "$LOCAL_APP/Contents/PkgInfo" 2>/dev/null || true)"
 [[ "$actual_pkg_info" == "APPL????" ]] || { echo "error: built app PkgInfo missing or invalid." >&2; exit 1; }
-[[ -x "$LOCAL_APP/Contents/MacOS/burrete" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burrete" >&2; exit 1; }
-[[ -d "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
-if [[ -e "$LOCAL_APP/Contents/Resources/Web/index.html" ]] && grep -q 'Burrete Preview' "$LOCAL_APP/Contents/Resources/Web/index.html"; then
+[[ -x "$LOCAL_APP/Contents/MacOS/burette" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burette" >&2; exit 1; }
+[[ -d "$LOCAL_APP/Contents/PlugIns/BurettePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
+if [[ -e "$LOCAL_APP/Contents/Resources/Web/index.html" ]] && grep -q 'Burette Preview' "$LOCAL_APP/Contents/Resources/Web/index.html"; then
   echo "error: built desktop app Resources/Web was overwritten by the preview shell." >&2
   exit 1
 fi
@@ -203,7 +203,7 @@ grep -q 'aria-label="Collapse controls"' "$LOCAL_APP/Contents/Resources/ViewerWe
 
 cat <<MSG
 
-DEV BUILD SUCCEEDED: Burrete v10
+DEV BUILD SUCCEEDED: Burette v10
 Built staging app:
   $LOCAL_APP
 

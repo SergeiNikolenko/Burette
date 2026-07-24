@@ -204,13 +204,13 @@ export function useAppSidebarProjects({
 function browserDevSampleProjectRoot(browserDevHasExplicitWorkspace: boolean) {
   if (isWebDemoWorkspace()) return webDemoProjectRoot();
   if (!import.meta.env.DEV || isTauriRuntime() || browserDevHasExplicitWorkspace) return null;
-  const repoRoot = String(import.meta.env.BURRETE_REPO_ROOT || "").trim().replace(/\/+$/u, "");
+  const repoRoot = String(import.meta.env.BURETTE_REPO_ROOT || "").trim().replace(/\/+$/u, "");
   return repoRoot ? `${repoRoot}/samples` : null;
 }
 
 function browserDevGeneratedProjectRoot() {
   if (!import.meta.env.DEV || isTauriRuntime()) return null;
-  const root = String(import.meta.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT || "").trim().replace(/\/+$/u, "");
+  const root = String(import.meta.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT || "").trim().replace(/\/+$/u, "");
   return root || null;
 }
 

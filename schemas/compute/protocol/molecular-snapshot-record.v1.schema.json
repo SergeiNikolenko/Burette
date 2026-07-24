@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://burrete.app/schemas/compute/protocol/molecular-snapshot-record.v1.schema.json",
-  "title": "Burrete MolecularSnapshotRecord v1",
+  "$id": "https://burette.app/schemas/compute/protocol/molecular-snapshot-record.v1.schema.json",
+  "title": "Burette MolecularSnapshotRecord v1",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -17,7 +17,7 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
-      "const": "burrete.molecular-snapshot-record.v1"
+      "const": "burette.molecular-snapshot-record.v1"
     },
     "sourceRecordId": {
       "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"

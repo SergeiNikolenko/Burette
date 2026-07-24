@@ -1,13 +1,13 @@
 {
-  "name": "burrete",
+  "name": "burette",
   "version": "0.1.2",
-  "description": "Operate Burrete as an agent-accessible molecular workspace for structures, Mol* scenes, molecule collections, trajectories, and workflow result artifacts.",
+  "description": "Operate Burette as an agent-accessible molecular workspace for structures, Mol* scenes, molecule collections, trajectories, and workflow result artifacts.",
   "author": {
-    "name": "Burrete contributors",
-    "url": "https://github.com/SergeiNikolenko/Burrete"
+    "name": "Burette contributors",
+    "url": "https://github.com/SergeiNikolenko/Burette"
   },
-  "homepage": "https://github.com/SergeiNikolenko/Burrete",
-  "repository": "https://github.com/SergeiNikolenko/Burrete",
+  "homepage": "https://github.com/SergeiNikolenko/Burette",
+  "repository": "https://github.com/SergeiNikolenko/Burette",
   "license": "MIT",
   "keywords": [
     "burette",
@@ -22,24 +22,24 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Burrete",
+    "displayName": "Burette",
     "shortDescription": "Operate molecular workspaces",
-    "longDescription": "Burrete lets an assistant open molecular structures in Browser preview or the real desktop app, observe scene state as structured JSON, run allowlisted Mol* actions, render adjacent notes/tables/charts/reports, and hand off externally prepared molecular workflow artifacts for review. It keeps molecular commands typed and auditable while using Browser and Computer surfaces for visual verification.",
-    "developerName": "Burrete",
+    "longDescription": "Burette lets an assistant open molecular structures in Browser preview or the real desktop app, observe scene state as structured JSON, run allowlisted Mol* actions, render adjacent notes/tables/charts/reports, and hand off externally prepared molecular workflow artifacts for review. It keeps molecular commands typed and auditable while using Browser and Computer surfaces for visual verification.",
+    "developerName": "Burette",
     "category": "Education & Research",
     "capabilities": [
       "Interactive",
       "Read",
       "Write"
     ],
-    "websiteURL": "https://github.com/SergeiNikolenko/Burrete",
-    "supportURL": "https://github.com/SergeiNikolenko/Burrete/issues",
-    "privacyPolicyURL": "https://github.com/SergeiNikolenko/Burrete/blob/main/PRIVACY.md",
-    "termsOfServiceURL": "https://github.com/SergeiNikolenko/Burrete/blob/main/TERMS.md",
+    "websiteURL": "https://github.com/SergeiNikolenko/Burette",
+    "supportURL": "https://github.com/SergeiNikolenko/Burette/issues",
+    "privacyPolicyURL": "https://github.com/SergeiNikolenko/Burette/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/SergeiNikolenko/Burette/blob/main/TERMS.md",
     "defaultPrompt": [
-      "Open this structure in Burrete and describe the active molecular scene",
+      "Open this structure in Burette and describe the active molecular scene",
       "Hide waters, focus the ligand, and render a right-side notes panel",
-      "Review this SDF/property table and show the selected molecule in Burrete"
+      "Review this SDF/property table and show the selected molecule in Burette"
     ],
     "brandColor": "#14A39A",
     "composerIcon": "./assets/composer-icon.png",

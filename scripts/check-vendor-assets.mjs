@@ -28,8 +28,8 @@ const assetSpecs = [
   { path: 'PreviewExtension/Web/molstar.css', package: 'molstar' },
   { path: 'PreviewExtension/Web/rdkit/RDKit_minimal.js', package: '@rdkit/rdkit' },
   { path: 'PreviewExtension/Web/rdkit/RDKit_minimal.wasm', package: '@rdkit/rdkit' },
-  { path: 'PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.js', package: 'burrete-rdkit-conformer' },
-  { path: 'PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.wasm', package: 'burrete-rdkit-conformer' },
+  { path: 'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js', package: 'burette-rdkit-conformer' },
+  { path: 'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm', package: 'burette-rdkit-conformer' },
   { path: 'PreviewExtension/Web/openchemlib/openchemlib.js', package: 'openchemlib' },
 ];
 
@@ -158,7 +158,7 @@ function validateBundleCoverage(snapshot) {
   if (resources['../../../PreviewExtension/Web'] !== 'ViewerWeb') {
     throw new Error('Tauri resources must include PreviewExtension/Web as ViewerWeb for desktop runtime profiles.');
   }
-  const pbxproj = fs.readFileSync(path.join(repoRoot, 'Burrete.xcodeproj', 'project.pbxproj'), 'utf8');
+  const pbxproj = fs.readFileSync(path.join(repoRoot, 'Burette.xcodeproj', 'project.pbxproj'), 'utf8');
   if (!pbxproj.includes('path = Web;') || !pbxproj.includes('Web in Resources')) {
     throw new Error('Quick Look Xcode resources must include PreviewExtension/Web for Quick Look profiles.');
   }

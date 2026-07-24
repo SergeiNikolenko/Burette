@@ -172,7 +172,7 @@ fn runtime_root<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String
     app.path()
         .app_data_dir()
         .map(|path| path.join("runtimes/xtb"))
-        .map_err(|error| format!("Could not locate the Burrete app-data directory: {error}"))
+        .map_err(|error| format!("Could not locate the Burette app-data directory: {error}"))
 }
 
 fn resolve_from_root(root: &Path) -> Result<XtbRuntimeResolution, String> {
@@ -194,7 +194,7 @@ fn resolve_from_root(root: &Path) -> Result<XtbRuntimeResolution, String> {
         return Ok(resolution);
     }
 
-    Err("xTB was not found. Choose an existing xTB executable in Settings or install a Burrete-managed copy.".into())
+    Err("xTB was not found. Choose an existing xTB executable in Settings or install a Burette-managed copy.".into())
 }
 
 fn resolve_automatic_candidates(
@@ -641,7 +641,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     fn fixture_root() -> PathBuf {
-        std::env::temp_dir().join(format!("burrete-xtb-runtime-{}", uuid::Uuid::new_v4()))
+        std::env::temp_dir().join(format!("burette-xtb-runtime-{}", uuid::Uuid::new_v4()))
     }
 
     fn make_executable(path: &Path) {

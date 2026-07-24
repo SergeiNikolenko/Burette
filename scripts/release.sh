@@ -10,12 +10,12 @@ done
 ROOT="$(cd -P "$(dirname "$SCRIPT")/.." >/dev/null 2>&1 && pwd -P)"
 cd "$ROOT"
 
-APP="$ROOT/build/Burrete.app"
-ZIP="$ROOT/build/release/Burrete.zip"
-DMG="$ROOT/build/release/Burrete.dmg"
-NOTARIZATION_ZIP="$ROOT/build/release/Burrete-notarization.zip"
+APP="$ROOT/build/Burette.app"
+ZIP="$ROOT/build/release/Burette.zip"
+DMG="$ROOT/build/release/Burette.dmg"
+NOTARIZATION_ZIP="$ROOT/build/release/Burette-notarization.zip"
 DRY_RUN=0
-ALLOW_ADHOC="${BURRETE_RELEASE_ALLOW_ADHOC:-0}"
+ALLOW_ADHOC="${BURETTE_RELEASE_ALLOW_ADHOC:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,21 +35,21 @@ require_release_env() {
     return 0
   fi
   local missing=0
-  [[ "${BURRETE_CODESIGN_IDENTITY:-}" == Developer\ ID\ Application:* ]] || { echo "error: BURRETE_CODESIGN_IDENTITY must be a Developer ID Application identity." >&2; missing=1; }
-  [[ -n "${BURRETE_DEVELOPMENT_TEAM:-}" ]] || { echo "error: BURRETE_DEVELOPMENT_TEAM is required." >&2; missing=1; }
-  if [[ -z "${BURRETE_NOTARY_KEYCHAIN_PROFILE:-}" ]]; then
-    [[ -n "${APPLE_ID:-}" ]] || { echo "error: APPLE_ID is required unless BURRETE_NOTARY_KEYCHAIN_PROFILE is set." >&2; missing=1; }
-    [[ -n "${APPLE_TEAM_ID:-}" ]] || { echo "error: APPLE_TEAM_ID is required unless BURRETE_NOTARY_KEYCHAIN_PROFILE is set." >&2; missing=1; }
-    [[ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]] || { echo "error: APPLE_APP_SPECIFIC_PASSWORD is required unless BURRETE_NOTARY_KEYCHAIN_PROFILE is set." >&2; missing=1; }
+  [[ "${BURETTE_CODESIGN_IDENTITY:-}" == Developer\ ID\ Application:* ]] || { echo "error: BURETTE_CODESIGN_IDENTITY must be a Developer ID Application identity." >&2; missing=1; }
+  [[ -n "${BURETTE_DEVELOPMENT_TEAM:-}" ]] || { echo "error: BURETTE_DEVELOPMENT_TEAM is required." >&2; missing=1; }
+  if [[ -z "${BURETTE_NOTARY_KEYCHAIN_PROFILE:-}" ]]; then
+    [[ -n "${APPLE_ID:-}" ]] || { echo "error: APPLE_ID is required unless BURETTE_NOTARY_KEYCHAIN_PROFILE is set." >&2; missing=1; }
+    [[ -n "${APPLE_TEAM_ID:-}" ]] || { echo "error: APPLE_TEAM_ID is required unless BURETTE_NOTARY_KEYCHAIN_PROFILE is set." >&2; missing=1; }
+    [[ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]] || { echo "error: APPLE_APP_SPECIFIC_PASSWORD is required unless BURETTE_NOTARY_KEYCHAIN_PROFILE is set." >&2; missing=1; }
   fi
   [[ "$missing" == "0" ]] || exit 1
 }
 notarize_and_staple() {
   rm -f "$NOTARIZATION_ZIP"
   ditto -c -k --keepParent "$APP" "$NOTARIZATION_ZIP"
-  if [[ -n "${BURRETE_NOTARY_KEYCHAIN_PROFILE:-}" ]]; then
+  if [[ -n "${BURETTE_NOTARY_KEYCHAIN_PROFILE:-}" ]]; then
     xcrun notarytool submit "$NOTARIZATION_ZIP" \
-      --keychain-profile "$BURRETE_NOTARY_KEYCHAIN_PROFILE" \
+      --keychain-profile "$BURETTE_NOTARY_KEYCHAIN_PROFILE" \
       --wait
   else
     xcrun notarytool submit "$NOTARIZATION_ZIP" \
@@ -93,11 +93,11 @@ if [[ "$DRY_RUN" == "1" ]]; then
   echo "Release dry run passed."
   echo "No build, notarization, stapling, packaging, or publishing was performed."
   echo "Developer ID release requires:"
-  echo "  BURRETE_CODESIGN_IDENTITY='Developer ID Application: ...'"
-  echo "  BURRETE_DEVELOPMENT_TEAM=<Apple team id>"
-  echo "  BURRETE_NOTARY_KEYCHAIN_PROFILE or APPLE_ID + APPLE_TEAM_ID + APPLE_APP_SPECIFIC_PASSWORD"
+  echo "  BURETTE_CODESIGN_IDENTITY='Developer ID Application: ...'"
+  echo "  BURETTE_DEVELOPMENT_TEAM=<Apple team id>"
+  echo "  BURETTE_NOTARY_KEYCHAIN_PROFILE or APPLE_ID + APPLE_TEAM_ID + APPLE_APP_SPECIFIC_PASSWORD"
   echo "Ad-hoc release without notarization can be built with:"
-  echo "  BURRETE_RELEASE_ALLOW_ADHOC=1"
+  echo "  BURETTE_RELEASE_ALLOW_ADHOC=1"
   exit 0
 fi
 
@@ -106,13 +106,13 @@ require_tool hdiutil "hdiutil is normally present on macOS."
 require_tool shasum "shasum is normally present on macOS."
 require_tool xcrun "Install full Xcode from the App Store."
 require_release_env
-export BURRETE_BUILD_MODE=release
-export BURRETE_XCODE_CONFIGURATION="${BURRETE_XCODE_CONFIGURATION:-Release}"
+export BURETTE_BUILD_MODE=release
+export BURETTE_XCODE_CONFIGURATION="${BURETTE_XCODE_CONFIGURATION:-Release}"
 "$ROOT/scripts/build.sh"
 mkdir -p "$(dirname "$ZIP")"
 [[ -d "$APP" ]] || { echo "error: exported app is missing: $APP" >&2; exit 1; }
 if [[ "$ALLOW_ADHOC" == "1" ]]; then
-  BURRETE_RELEASE_ALLOW_ADHOC=1 "$ROOT/scripts/check-release-signature.sh" "$APP"
+  BURETTE_RELEASE_ALLOW_ADHOC=1 "$ROOT/scripts/check-release-signature.sh" "$APP"
 else
   notarize_and_staple
   "$ROOT/scripts/check-release-signature.sh" "$APP"
@@ -123,7 +123,7 @@ ditto -c -k --keepParent "$APP" "$ZIP"
 "$ROOT/scripts/create-dmg.sh" "$APP" "$DMG"
 write_digest "$ZIP"
 write_digest "$DMG"
-if [[ -n "${BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
+if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
   bun "$ROOT/scripts/sign-update-manifest.mjs" "$ZIP" "$(dirname "$ZIP")"
 fi
 
@@ -132,9 +132,9 @@ echo "Release zip: $ZIP"
 echo "Release digest: $ZIP.sha256"
 echo "Release dmg: $DMG"
 echo "Release dmg digest: $DMG.sha256"
-if [[ -n "${BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
+if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
   echo "Release manifest: $ZIP.manifest.json"
   echo "Release manifest signature: $ZIP.manifest.json.sig"
 else
-  echo "Release manifest: skipped (no BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM)"
+  echo "Release manifest: skipped (no BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM)"
 fi

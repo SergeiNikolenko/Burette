@@ -322,7 +322,7 @@ SDK_BUILD_VERSION="$sdk_build_version" \
 generation_name="$(basename "$stage_dir")"
 metadata_sha256="$(sha256 "$metadata_file")"
 pointer_stage="$(mktemp "$output_dir/.current.XXXXXX")"
-printf '{"schemaVersion":"burrete.compute.metal-generation-pointer.v1","generation":"%s","metadataSha256":"%s"}\n' \
+printf '{"schemaVersion":"burette.compute.metal-generation-pointer.v1","generation":"%s","metadataSha256":"%s"}\n' \
   "$generation_name" "$metadata_sha256" > "$pointer_stage"
 
 # The generation is complete before the only advertised pointer is replaced.

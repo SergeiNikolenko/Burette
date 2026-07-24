@@ -5,7 +5,7 @@
 
 ## Goal
 
-Make Ketcher a first-class agent-operated surface in both Burrete runtimes:
+Make Ketcher a first-class agent-operated surface in both Burette runtimes:
 
 1. the local desktop/browser-shell workspace controlled through the repository
    CLI and local Codex plugin; and
@@ -22,7 +22,7 @@ explicit save or download.
 
 ## Non-goals
 
-- Hosted Ketcher neither controls local Burrete nor becomes a durable shared
+- Hosted Ketcher neither controls local Burette nor becomes a durable shared
   molecular workspace.
 - Live edits will not overwrite source files, grid rows, collections, or
   previously saved artifacts automatically.
@@ -69,11 +69,11 @@ flowchart LR
     App --> Context[Bounded model context]
 ```
 
-The shared package will be `@burrete/ketcher-agent-contract`. It may depend on
+The shared package will be `@burette/ketcher-agent-contract`. It may depend on
 Zod for strict runtime schemas, but it must not depend on React, Ketcher, MCP,
 Tauri, the browser shell, or hosted-server code.
 
-It owns the `burrete-ketcher-agent/v1` version, strict command/result/context
+It owns the `burette-ketcher-agent/v1` version, strict command/result/context
 schemas, bounds, error codes, pure revision/dirty transitions, and shared
 conformance fixtures.
 
@@ -151,7 +151,7 @@ UUID `actionId`, and `expectedRevision`.
 Hosted model-visible server tools are `open_ketcher`, fallback
 `control_ketcher`, and explicit `export_ketcher`. When supported, the mounted
 app exposes direct `set_structure`, `clear_structure`, `highlight_atoms`, and
-`get_structure` tools. Local MCP exposes `burrete.control_ketcher` over the CLI.
+`get_structure` tools. Local MCP exposes `burette.control_ketcher` over the CLI.
 All map to the command table above; transport names do not define semantics.
 
 `expectedRevision` means `structureRevision`. It is required for every
@@ -230,7 +230,7 @@ directory, are hash-checked and single-use, and are removed on consumption or
 session cleanup. They never carry caller-supplied filesystem paths.
 
 After the CLI contract is in place, the local MCP facade adds
-`burrete.control_ketcher`. It validates a discriminated action union and wraps
+`burette.control_ketcher`. It validates a discriminated action union and wraps
 the existing CLI `act` path. It is not an arbitrary action passthrough. The
 existing molecule-collection skill is extended; a new routing skill is not
 required.
@@ -244,13 +244,13 @@ the source file.
 The hosted plugin adds a separate stable resource:
 
 ```text
-ui://burrete/ketcher-editor-v1.html
+ui://burette/ketcher-editor-v1.html
 ```
 
-The Mol* `ui://burrete/molecular-viewer-v21.html` resource and existing preview
+The Mol* `ui://burette/molecular-viewer-v21.html` resource and existing preview
 tools remain unchanged.
 
-The hosted editor uses the real Burrete hosted shell and the existing Ketcher
+The hosted editor uses the real Burette hosted shell and the existing Ketcher
 page/controller source. Ketcher and Indigo are lazy, self-hosted chunks, so the
 Mol* widget does not pay their startup cost. The build verifies one aligned
 copy of Ketcher 3.15.0 and Indigo 1.43.0 and includes no unreviewed CDN runtime.
@@ -434,7 +434,7 @@ Both adapters run the same fixtures and assertions:
 Passing tests on one surface does not prove another. Release evidence must cover:
 
 1. browser-dev shell with a real SMILES and KET fixture;
-2. packaged macOS app with unique `BURRETE_DEV_FLAVOR`, local Codex MCP, and
+2. packaged macOS app with unique `BURETTE_DEV_FLAVOR`, local Codex MCP, and
    source-file hash unchanged until confirmed Save As;
 3. hosted Vercel preview with a fresh ChatGPT developer connector;
 4. fresh production ChatGPT web card; and

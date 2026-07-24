@@ -117,7 +117,7 @@ fn runner_path<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String>
 
 fn resolve_uv_executable() -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
-    if let Some(path) = env::var_os("BURRETE_UV") {
+    if let Some(path) = env::var_os("BURETTE_UV") {
         candidates.push(PathBuf::from(path));
     }
     if let Some(home) = env::var_os("HOME") {
@@ -131,7 +131,7 @@ fn resolve_uv_executable() -> Result<PathBuf, String> {
         PathBuf::from("/usr/local/bin/uv"),
     ]);
     resolve_uv_from_candidates(candidates).ok_or_else(|| {
-        "uv was not found. Install uv or set BURRETE_UV to the uv executable.".into()
+        "uv was not found. Install uv or set BURETTE_UV to the uv executable.".into()
     })
 }
 
@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn uv_resolution_accepts_an_executable_outside_path() {
         let root = std::env::temp_dir().join(format!(
-            "burrete-mdsmooth-uv-resolution-{}",
+            "burette-mdsmooth-uv-resolution-{}",
             std::process::id()
         ));
         let uv = root.join(".local/bin/uv");

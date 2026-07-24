@@ -9,7 +9,7 @@ import {
   parseHostedMcpStructureResult,
   selectHostedMcpInitialStructure,
 } from "../apps/desktop/src/lib/hosted-mcp-widget.ts";
-import { createSelectionContext } from "../apps/burrete-public-plugin/lib/hosted-context.ts";
+import { createSelectionContext } from "../apps/burette-public-plugin/lib/hosted-context.ts";
 import {
   deleteBrowserDevVirtualTextDocument,
   openBrowserDevMolstarContextDocument,
@@ -107,7 +107,7 @@ const replacementDocument = await openBrowserDevMolstarContextDocument({
 assert.notEqual(replacementDocument.path, contextDocument.path);
 deleteBrowserDevVirtualTextDocument(replacementDocument.path);
 
-const hostileLabel = "</script><script>globalThis.__burrete_xss_probe=1</script>.pdb";
+const hostileLabel = "</script><script>globalThis.__burette_xss_probe=1</script>.pdb";
 const hostileDocument = await openBrowserDevMolstarContextDocument({
   label: hostileLabel,
   entries: [{
@@ -174,15 +174,15 @@ const selectionContext = createSelectionContext({
     { chain: "A", sequence: 13, compId: "ARG" },
   ],
 }, "document-1");
-assert.equal(selectionContext?.structuredContent.burrete.activeSelection.atoms, 4);
-assert.deepEqual(selectionContext?.structuredContent.burrete.activeSelection.residues, [
+assert.equal(selectionContext?.structuredContent.burette.activeSelection.atoms, 4);
+assert.deepEqual(selectionContext?.structuredContent.burette.activeSelection.residues, [
   { chain: "A", sequence: 12, compId: "CYS" },
   { chain: "A", sequence: 13, compId: "ARG" },
 ]);
 assert.match(selectionContext?.content[0].text ?? "", /active molecular selection/);
-assert.deepEqual(selectionContext?.structuredContent.burrete.activeSelection.atomIdentities, [
+assert.deepEqual(selectionContext?.structuredContent.burette.activeSelection.atomIdentities, [
   { chain: "A", sequence: 12, compId: "CYS", atomName: "CA" },
 ]);
-assert.equal(createSelectionContext(null, "document-1").structuredContent.burrete.activeSelection, null);
+assert.equal(createSelectionContext(null, "document-1").structuredContent.burette.activeSelection, null);
 
 console.log("Hosted MCP widget contract tests passed");

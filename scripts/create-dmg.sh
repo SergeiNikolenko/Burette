@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd -P)"
 BACKGROUND="$ROOT/packaging/dmg/background.png"
-VOLUME_NAME="Burrete"
+VOLUME_NAME="Burette"
 
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -23,7 +23,7 @@ if [[ "${1:-}" == "--dry-run" ]]; then
 fi
 
 if [[ $# -ne 2 ]]; then
-  echo "Usage: scripts/create-dmg.sh <Burrete.app> <output.dmg>" >&2
+  echo "Usage: scripts/create-dmg.sh <Burette.app> <output.dmg>" >&2
   exit 2
 fi
 
@@ -38,10 +38,10 @@ require_tool hdiutil
 require_tool osascript
 require_tool ditto
 
-WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/burrete-dmg.XXXXXX")"
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/burette-dmg.XXXXXX")"
 STAGING_DIR="$WORK_DIR/staging"
 MOUNT_DIR=""
-RW_IMAGE="$WORK_DIR/Burrete-rw.dmg"
+RW_IMAGE="$WORK_DIR/Burette-rw.dmg"
 DEVICE=""
 
 cleanup() {
@@ -55,7 +55,7 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$STAGING_DIR/.background" "$(dirname "$OUTPUT")"
-ditto "$APP" "$STAGING_DIR/Burrete.app"
+ditto "$APP" "$STAGING_DIR/Burette.app"
 ln -s /Applications "$STAGING_DIR/Applications"
 cp "$BACKGROUND" "$STAGING_DIR/.background/background.png"
 
@@ -94,7 +94,7 @@ tell application "Finder"
     set icon size of viewOptions to 104
     set text size of viewOptions to 13
     set background picture of viewOptions to file ".background:background.png"
-    set position of item "Burrete.app" of container window to {145, 205}
+    set position of item "Burette.app" of container window to {145, 205}
     set position of item "Applications" of container window to {515, 205}
     update without registering applications
     delay 2

@@ -86,7 +86,7 @@ export function useAppGridComputeMessages({
       if (!isTauriRuntime()) {
         postGridComputeMessage(postMessageToViewerSource, source, documentId, {
           type: "gridSimilaritySearchError",
-          error: "Native similarity search is available only in the Burrete desktop runtime.",
+          error: "Native similarity search is available only in the Burette desktop runtime.",
         });
         pushStatus("Native similarity search is unavailable outside the desktop runtime.", "error");
         return true;
@@ -155,7 +155,7 @@ export function useAppGridComputeMessages({
       if (!isTauriRuntime()) {
         postGridComputeMessage(postMessageToViewerSource, source, documentId, {
           type: "gridClusterRepresentativesExportError",
-          error: "Representative export is available only in the Burrete desktop runtime.",
+          error: "Representative export is available only in the Burette desktop runtime.",
         });
         return true;
       }
@@ -215,7 +215,7 @@ export function useAppGridComputeMessages({
     if (!isTauriRuntime()) {
       postGridComputeMessage(postMessageToViewerSource, source, documentId, {
         type: "gridClusterError",
-        error: "Native clustering is available only in the Burrete desktop runtime.",
+        error: "Native clustering is available only in the Burette desktop runtime.",
       });
       pushStatus("Native clustering is unavailable outside the desktop runtime.", "error");
       return true;
@@ -341,7 +341,7 @@ function postGridComputeMessage(
   body: Record<string, unknown>,
 ) {
   postMessageToViewerSource(source, {
-    source: "burrete-grid-host",
+    source: "burette-grid-host",
     body: { documentId, ...body },
   });
 }
