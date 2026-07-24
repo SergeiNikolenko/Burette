@@ -20,6 +20,7 @@ type ChemicalSpace3DProps = {
   sourceRecordIds: number[];
   clusterIds: Array<number | null>;
   clusterColors: readonly string[];
+  pointColors: Array<string | null> | null;
   selected: Set<number>;
   hovered: number | null;
   preview: MoleculePreview | null;
@@ -51,6 +52,7 @@ export function ChemicalSpace3D({
   sourceRecordIds,
   clusterIds,
   clusterColors,
+  pointColors,
   selected,
   hovered,
   preview,
@@ -73,6 +75,7 @@ export function ChemicalSpace3D({
   const selectedRef = useRef(selected);
   const hoveredRef = useRef(hovered);
   const clusterIdsRef = useRef(clusterIds);
+  const pointColorsRef = useRef<Array<string | null>>(pointColors ?? []);
   const [lasso, setLasso] = useState<Point2[]>([]);
   const [previewAnchor, setPreviewAnchor] = useState<Point2 | null>(null);
 
@@ -83,6 +86,7 @@ export function ChemicalSpace3D({
   selectedRef.current = selected;
   hoveredRef.current = hovered;
   clusterIdsRef.current = clusterIds;
+  pointColorsRef.current = pointColors ?? [];
   const sourceRecordIdsKey = sourceRecordIds.join(",");
 
   useEffect(() => {
@@ -138,10 +142,13 @@ export function ChemicalSpace3D({
     );
     treeLines.computeLineDistances();
     scene.add(treeLines);
-    const clusterColorValues = (ids: Array<number | null>) => ids.flatMap((clusterId) => {
-      const color = clusterId === null
-        ? pointColor
-        : new THREE.Color(clusterColors[clusterId % clusterColors.length]);
+    const clusterColorValues = (ids: Array<number | null>) => ids.flatMap((clusterId, index) => {
+      const override = pointColorsRef.current[index] ?? null;
+      const color = override
+        ? new THREE.Color(override)
+        : clusterId === null
+          ? pointColor
+          : new THREE.Color(clusterColors[clusterId % clusterColors.length]);
       return [color.r, color.g, color.b];
     });
     geometry.setAttribute(
@@ -415,6 +422,7 @@ export function ChemicalSpace3D({
   useEffect(() => runtimeRef.current?.updatePointScale(pointScale), [pointScale]);
   useEffect(() => runtimeRef.current?.updateTreeLineScale(treeLineScale), [treeLineScale]);
   useEffect(() => runtimeRef.current?.updateClusters(clusterIds), [clusterIds]);
+  useEffect(() => runtimeRef.current?.updateClusters(clusterIdsRef.current), [pointColors]);
 
   useEffect(() => {
     const canvas = lassoCanvasRef.current;

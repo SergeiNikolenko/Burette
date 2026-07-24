@@ -78,6 +78,22 @@ assert.match(chemicalSpacePanel, /normalizeChemicalSpacePositions/);
 assert.match(normalization, /BULK_RADIUS_QUANTILE = 0\.9/);
 assert.match(normalization, /MAX_NORMALIZED_RADIUS = 1\.45/);
 assert.match(normalization, /Math\.log1p\(radius - 1\)/);
+
+// Activity colouring (DataWarrior-style) rides the Grid bridge as a purely visual
+// layer: numeric columns and their values flow from the grid viewer, and the panel
+// derives per-point colours that override cluster colouring in 2D and 3D.
+assert.match(gridViewer, /chemicalSpaceRequestColumns/);
+assert.match(gridViewer, /chemicalSpaceRequestColumnValues/);
+assert.match(gridViewer, /function postChemicalSpaceColumns/);
+assert.match(gridViewer, /function postChemicalSpaceColumnValues/);
+assert.match(gridViewer, /inferPropColumnType\(pool, key\)/);
+assert.match(gridViewer, /tableColumnNumericValue\(row, id\)/);
+assert.match(chemicalSpacePanel, /function requestChemicalSpaceColumns/);
+assert.match(chemicalSpacePanel, /function requestChemicalSpaceColumnValues/);
+assert.match(chemicalSpacePanel, /function buildActivityColoring/);
+assert.match(chemicalSpacePanel, /activityColors\?\.get\(point\.sourceRecordId\)/);
+assert.match(chemicalSpacePanel, /<ActivityLegend/);
+assert.match(chemicalSpace3d, /pointColorsRef\.current\[index\]/);
 const corePositions = Array.from({ length: 92 }, (_, index) => {
   const angle = index / 92 * Math.PI * 2;
   return [Math.cos(angle), Math.sin(angle), Math.sin(angle * 3) * 0.4];

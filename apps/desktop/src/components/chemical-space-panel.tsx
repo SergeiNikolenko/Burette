@@ -74,6 +74,9 @@ type CompletedStudy = {
   results: ChemicalSpaceResult[];
 };
 type ClusteringMethod = "none" | "butina";
+type ActivityColumn = { id: string; label: string };
+type ActivityDirection = "higherActive" | "lowerActive";
+type ActivityColoring = { colors: Map<number, string>; min: number; max: number };
 
 const DEFAULT_OPTIONS: ChemicalSpaceOptions = {
   representation: "morgan",
@@ -146,6 +149,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [clusterResult, setClusterResult] = useState<ChemicalSpaceClusterResult | null>(null);
   const [clusterError, setClusterError] = useState<string | null>(null);
   const [clusterRunning, setClusterRunning] = useState(false);
+  const [activityColumns, setActivityColumns] = useState<ActivityColumn[]>([]);
+  const [activityColumnId, setActivityColumnId] = useState<string | null>(null);
+  const [activityDirection, setActivityDirection] = useState<ActivityDirection>("higherActive");
+  const [activityValues, setActivityValues] = useState<Map<number, number>>(new Map());
   const workflowControllerRef = useRef<AbortController | null>(null);
   const studyControllerRef = useRef<AbortController | null>(null);
   const hoveredRef = useRef<number | null>(null);
@@ -173,7 +180,42 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setClusterResult(null);
     setClusterError(null);
     setClusterRunning(false);
+    setActivityColumnId(null);
+    setActivityDirection("higherActive");
+    setActivityValues(new Map());
   }, [documentId]);
+
+  useEffect(() => {
+    if (!documentId) {
+      setActivityColumns([]);
+      return;
+    }
+    const controller = new AbortController();
+    void requestChemicalSpaceColumns(documentId, controller.signal)
+      .then((columns) => {
+        if (!controller.signal.aborted) setActivityColumns(columns);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setActivityColumns([]);
+      });
+    return () => controller.abort();
+  }, [documentId]);
+
+  useEffect(() => {
+    if (!documentId || !activityColumnId) {
+      setActivityValues(new Map());
+      return;
+    }
+    const controller = new AbortController();
+    void requestChemicalSpaceColumnValues(documentId, activityColumnId, controller.signal)
+      .then((entries) => {
+        if (!controller.signal.aborted) setActivityValues(new Map(entries));
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setActivityValues(new Map());
+      });
+    return () => controller.abort();
+  }, [documentId, activityColumnId]);
 
   useEffect(() => {
     if (!documentId) return;
@@ -389,6 +431,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       }
     }
   };
+  const activityColoring = useMemo(
+    () => (activityColumnId ? buildActivityColoring(activityValues, activityDirection) : null),
+    [activityColumnId, activityValues, activityDirection],
+  );
   return (
     <TooltipProvider>
       <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-testid="chemical-space-panel">
@@ -541,6 +587,35 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                 <TooltipContent showArrow={false}>TMAP line width · {Math.round(tmapLineScale * 100)}%</TooltipContent>
               </Tooltip>
             ) : null}
+            {activityColumns.length > 0 ? (
+              <Field orientation="horizontal" className="min-w-0 max-w-44 flex-1 gap-2">
+                <FieldLabel className="chemical-space-control-name shrink-0 text-xs text-muted-foreground">Activity</FieldLabel>
+                <NativeSelect
+                  size="sm"
+                  className="min-w-10 flex-1"
+                  aria-label="Activity colour column"
+                  value={activityColumnId ?? ""}
+                  onChange={(event) => setActivityColumnId(event.currentTarget.value || null)}
+                >
+                  <NativeSelectOption value="">None</NativeSelectOption>
+                  {activityColumns.map((column) => (
+                    <NativeSelectOption key={column.id} value={column.id}>{column.label}</NativeSelectOption>
+                  ))}
+                </NativeSelect>
+                {activityColumnId ? (
+                  <NativeSelect
+                    size="sm"
+                    className="shrink-0"
+                    aria-label="Activity direction"
+                    value={activityDirection}
+                    onChange={(event) => setActivityDirection(event.currentTarget.value as ActivityDirection)}
+                  >
+                    <NativeSelectOption value="higherActive">High = active</NativeSelectOption>
+                    <NativeSelectOption value="lowerActive">Low = active</NativeSelectOption>
+                  </NativeSelect>
+                ) : null}
+              </Field>
+            ) : null}
           </div>
         </div>
 
@@ -554,6 +629,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               preview={preview}
               pointScale={pointScale}
               tmapLineScale={tmapLineScale}
+              activityColors={activityColoring?.colors ?? null}
               tool={tool}
               onHover={(sourceRecordId) => {
                 setHovered(sourceRecordId);
@@ -582,6 +658,13 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               onStop={stopCalculation}
             />
           )}
+          {displayedResult && activityColoring ? (
+            <ActivityLegend
+              label={activityColumns.find((column) => column.id === activityColumnId)?.label ?? "Activity"}
+              coloring={activityColoring}
+              direction={activityDirection}
+            />
+          ) : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-3 border-t border-border px-3 py-2">
@@ -798,6 +881,31 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   );
 }
 
+function ActivityLegend({
+  label,
+  coloring,
+  direction,
+}: {
+  label: string;
+  coloring: ActivityColoring;
+  direction: ActivityDirection;
+}) {
+  const gradient = `linear-gradient(to right, ${[0, 0.25, 0.5, 0.75, 1]
+    .map((t) => viridisColor(direction === "lowerActive" ? 1 - t : t))
+    .join(", ")})`;
+  const format = (value: number) => (Number.isInteger(value) ? String(value) : value.toPrecision(3));
+  return (
+    <div className="pointer-events-none absolute bottom-3 left-3 rounded-md border border-border bg-background/85 px-2 py-1.5 text-[10px] shadow-sm backdrop-blur">
+      <div className="mb-1 font-medium text-foreground">{label}</div>
+      <div className="h-2 w-28 rounded-sm" style={{ background: gradient }} />
+      <div className="mt-1 flex w-28 justify-between font-mono text-muted-foreground">
+        <span>{format(coloring.min)}</span>
+        <span>{format(coloring.max)}</span>
+      </div>
+    </div>
+  );
+}
+
 function ParameterField({ label, value, children }: { label: string; value: string | number; children: ReactNode }) {
   return (
     <Field>
@@ -818,6 +926,7 @@ type ChemicalSpaceCanvasProps = {
   preview: MoleculePreview | null;
   pointScale: number;
   tmapLineScale: number;
+  activityColors: Map<number, string> | null;
   tool: "navigate" | "lasso";
   onHover: (sourceRecordId: number | null) => void;
   onSelect: (sourceRecordIds: number[]) => void;
@@ -836,6 +945,9 @@ function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
         sourceRecordIds={props.result.sourceRecordIds}
         clusterIds={alignedClusterIds(props.result.sourceRecordIds, props.clusters)}
         clusterColors={CLUSTER_COLORS}
+        pointColors={props.activityColors
+          ? props.result.sourceRecordIds.map((sourceRecordId) => props.activityColors?.get(sourceRecordId) ?? null)
+          : null}
         selected={props.selected}
         hovered={props.hovered}
         preview={props.preview}
@@ -859,6 +971,7 @@ function ChemicalSpace2D({
   preview,
   pointScale,
   tmapLineScale,
+  activityColors,
   tool,
   onHover,
   onSelect,
@@ -937,11 +1050,14 @@ function ChemicalSpace2D({
         Math.PI * 2,
       );
       const clusterId = clusterBySource.get(point.sourceRecordId) ?? null;
+      const activityColor = activityColors?.get(point.sourceRecordId) ?? null;
       context.fillStyle = active || hot
         ? selectedColor
-        : clusterId === null
-          ? pointColor
-          : CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
+        : activityColor
+          ? activityColor
+          : clusterId === null
+            ? pointColor
+            : CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
       context.globalAlpha = active || hot ? 1 : basePointOpacity;
       context.fill();
       if (hot) {
@@ -961,7 +1077,7 @@ function ChemicalSpace2D({
       context.stroke();
       context.setLineDash([]);
     }
-  }, [camera, clusterBySource, hovered, lasso, normalized, pointScale, result.sourceRecordIds, result.treeEdges, selected, tmapLineScale, viewport]);
+  }, [activityColors, camera, clusterBySource, hovered, lasso, normalized, pointScale, result.sourceRecordIds, result.treeEdges, selected, tmapLineScale, viewport]);
 
   const localPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1509,6 +1625,175 @@ function requestBrowserChemicalSpaceRecords(
       retryTimers.push(window.setTimeout(postRequest, delay));
     }
   });
+}
+
+function requestFromGridViewer<T>(
+  documentId: string,
+  request: Record<string, unknown>,
+  parse: (body: Record<string, unknown>) => T | null,
+  signal: AbortSignal,
+  timeoutMs = 12_000,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const requestPayload = { source: "burrete-grid-host", body: { ...request, documentId } };
+    const iframeLoadListeners = new Map<HTMLIFrameElement, () => void>();
+    const retryTimers: number[] = [];
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("The Grid did not respond to a chemical-space column request."));
+    }, timeoutMs);
+    const postRequest = (target?: MessageEventSource | null) => {
+      if (signal.aborted) return;
+      if (target && typeof target === "object" && "postMessage" in target) {
+        (target as Window).postMessage(requestPayload, "*");
+        return;
+      }
+      const escapedId = CSS.escape(documentId);
+      const candidates = [
+        activeViewerIframeForDocument(documentId, "grid2d"),
+        ...document.querySelectorAll<HTMLIFrameElement>(
+          `.viewer-iframe[data-document-id="${escapedId}"][data-renderer="grid2d"]`,
+        ),
+      ];
+      const targets = new Set<Window>();
+      for (const iframe of candidates) {
+        if (!iframe) continue;
+        if (iframe.contentWindow) targets.add(iframe.contentWindow);
+        if (!iframeLoadListeners.has(iframe)) {
+          const onLoad = () => postRequest(iframe.contentWindow);
+          iframeLoadListeners.set(iframe, onLoad);
+          iframe.addEventListener("load", onLoad);
+        }
+      }
+      for (const contentWindow of targets) contentWindow.postMessage(requestPayload, "*");
+    };
+    const onAbort = () => {
+      cleanup();
+      const error = new Error("Chemical-space calculation was cancelled.");
+      error.name = "AbortError";
+      reject(error);
+    };
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data && typeof event.data === "object"
+        ? event.data as { source?: unknown; body?: Record<string, unknown> }
+        : null;
+      if (
+        data?.source !== "burrete-grid"
+        || data.body?.documentId !== documentId
+        || !isKnownViewerMessageSource(event.source, documentId)
+      ) return;
+      if (data.body.type === "ready") {
+        postRequest(event.source);
+        return;
+      }
+      const parsed = parse(data.body);
+      if (parsed === null) return;
+      cleanup();
+      resolve(parsed);
+    };
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      for (const timer of retryTimers) window.clearTimeout(timer);
+      for (const [iframe, onLoad] of iframeLoadListeners) iframe.removeEventListener("load", onLoad);
+      window.removeEventListener("message", onMessage);
+      signal.removeEventListener("abort", onAbort);
+    };
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    window.addEventListener("message", onMessage);
+    signal.addEventListener("abort", onAbort, { once: true });
+    for (const delay of [0, 250, 1_000, 3_000]) {
+      retryTimers.push(window.setTimeout(postRequest, delay));
+    }
+  });
+}
+
+function requestChemicalSpaceColumns(documentId: string, signal: AbortSignal): Promise<ActivityColumn[]> {
+  const requestId = `chemical-space-columns-${crypto.randomUUID()}`;
+  return requestFromGridViewer<ActivityColumn[]>(
+    documentId,
+    { type: "chemicalSpaceRequestColumns", requestId },
+    (body) => {
+      if (body.type !== "chemicalSpaceColumns" || body.requestId !== requestId) return null;
+      if (!Array.isArray(body.columns)) return [];
+      return body.columns.filter(
+        (column): column is ActivityColumn =>
+          Boolean(column) && typeof column === "object"
+          && typeof (column as ActivityColumn).id === "string"
+          && typeof (column as ActivityColumn).label === "string",
+      );
+    },
+    signal,
+  );
+}
+
+function requestChemicalSpaceColumnValues(
+  documentId: string,
+  columnId: string,
+  signal: AbortSignal,
+): Promise<Array<[number, number]>> {
+  const requestId = `chemical-space-values-${crypto.randomUUID()}`;
+  return requestFromGridViewer<Array<[number, number]>>(
+    documentId,
+    { type: "chemicalSpaceRequestColumnValues", requestId, columnId },
+    (body) => {
+      if (body.type !== "chemicalSpaceColumnValues" || body.requestId !== requestId) return null;
+      if (body.columnId !== columnId || !Array.isArray(body.values)) return [];
+      const entries: Array<[number, number]> = [];
+      for (const entry of body.values) {
+        if (!Array.isArray(entry) || entry.length < 2) continue;
+        const sourceRecordId = Number(entry[0]);
+        const value = Number(entry[1]);
+        if (Number.isSafeInteger(sourceRecordId) && sourceRecordId >= 0 && Number.isFinite(value)) {
+          entries.push([sourceRecordId, value]);
+        }
+      }
+      return entries;
+    },
+    signal,
+  );
+}
+
+function viridisColor(t: number): string {
+  const stops = [
+    [68, 1, 84],
+    [59, 82, 139],
+    [33, 145, 140],
+    [94, 201, 98],
+    [253, 231, 37],
+  ];
+  const clamped = Math.min(1, Math.max(0, t));
+  const scaled = clamped * (stops.length - 1);
+  const index = Math.min(stops.length - 2, Math.floor(scaled));
+  const fraction = scaled - index;
+  const from = stops[index];
+  const to = stops[index + 1];
+  const channel = (component: number) => Math.round(from[component] + (to[component] - from[component]) * fraction);
+  return `rgb(${channel(0)}, ${channel(1)}, ${channel(2)})`;
+}
+
+function buildActivityColoring(
+  values: Map<number, number>,
+  direction: ActivityDirection,
+): ActivityColoring | null {
+  if (values.size === 0) return null;
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const value of values.values()) {
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  const span = max - min;
+  const colors = new Map<number, string>();
+  for (const [sourceRecordId, value] of values) {
+    const normalized = span > 0 ? (value - min) / span : 0.5;
+    const t = direction === "lowerActive" ? 1 - normalized : normalized;
+    colors.set(sourceRecordId, viridisColor(t));
+  }
+  return { colors, min, max };
 }
 
 function isBrowserChemicalSpaceRecord(value: unknown): value is BrowserChemicalSpaceInputRecord {
