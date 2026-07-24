@@ -49,7 +49,7 @@ mod tests {
     #[test]
     fn production_open_enables_foreign_keys_and_busy_timeout() {
         let path = std::env::temp_dir().join(format!(
-            "burrete-grid-database-{}.sqlite",
+            "burette-grid-database-{}.sqlite",
             uuid::Uuid::new_v4()
         ));
         let connection = open_grid_database(&path).expect("open configured Grid database");
@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn read_only_open_never_creates_a_missing_database() {
         let path = std::env::temp_dir().join(format!(
-            "burrete-grid-database-missing-{}.sqlite",
+            "burette-grid-database-missing-{}.sqlite",
             uuid::Uuid::new_v4()
         ));
         assert!(!path.exists());
@@ -79,7 +79,7 @@ mod tests {
     #[test]
     fn read_only_open_enables_query_only() {
         let path = std::env::temp_dir().join(format!(
-            "burrete-grid-database-read-only-{}.sqlite",
+            "burette-grid-database-read-only-{}.sqlite",
             uuid::Uuid::new_v4()
         ));
         let writable = open_grid_database(&path).expect("create Grid database fixture");

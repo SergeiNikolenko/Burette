@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use tauri::Runtime;
 
-const DOCTOR_SCHEMA: &str = "burrete.external-runtime-doctor.v1";
+const DOCTOR_SCHEMA: &str = "burette.external-runtime-doctor.v1";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -266,7 +266,7 @@ mod tests {
     fn source_for_path_classifies_common_runtime_locations() {
         assert_eq!(
             source_for_path(
-                "/Applications/Burrete.app/Contents/Resources/xyzrender-runtime/bin/xyzrender"
+                "/Applications/Burette.app/Contents/Resources/xyzrender-runtime/bin/xyzrender"
             ),
             "bundled"
         );

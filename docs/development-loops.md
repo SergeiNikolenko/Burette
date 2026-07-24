@@ -1,6 +1,6 @@
 # Development Loops
 
-Burrete has several edit loops. Use the narrowest loop that matches the layer
+Burette has several edit loops. Use the narrowest loop that matches the layer
 you changed.
 
 For strict agent-facing server startup, browser Quick Look URLs, tokenized
@@ -38,29 +38,29 @@ bun run build:tauri
 
 ## Parallel Dev App Identities
 
-Use a dev flavor when multiple local worktrees need to build and install Burrete
+Use a dev flavor when multiple local worktrees need to build and install Burette
 without competing for the same Launch Services and Quick Look bundle IDs.
 Agents must treat this as the default for any packaged local build or install:
 
 ```bash
-BURRETE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
-BURRETE_DEV_FLAVOR=chat85b0 ./scripts/install.sh
+BURETTE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
+BURETTE_DEV_FLAVOR=chat85b0 ./scripts/install.sh
 ```
 
 This keeps the release identifiers untouched, but writes the local build to
-`build/Burrete-chat85b0.app`, installs it as
-`~/Applications/Burrete-chat85b0.app`, and uses isolated identifiers such as
-`com.local.BurreteV10.Dev.chat85b0.Preview` and
-`com.local.burrete10.dev.chat85b0.pdb`.
+`build/Burette-chat85b0.app`, installs it as
+`~/Applications/Burette-chat85b0.app`, and uses isolated identifiers such as
+`com.local.BuretteV10.Dev.chat85b0.Preview` and
+`com.local.burette10.dev.chat85b0.pdb`.
 
 Use the same flavor for forced preview and diagnostics:
 
 ```bash
-BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.pdb
-BURRETE_DEV_FLAVOR=chat85b0 ./scripts/diagnose.sh samples/mini.pdb
+BURETTE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.pdb
+BURETTE_DEV_FLAVOR=chat85b0 ./scripts/diagnose.sh samples/mini.pdb
 ```
 
-`scripts/build-dev.sh` intentionally does not support `BURRETE_DEV_FLAVOR`
+`scripts/build-dev.sh` intentionally does not support `BURETTE_DEV_FLAVOR`
 because it builds in-place and must not rewrite source-tree bundle identifiers.
 
 ## Preview Web Assets
@@ -75,13 +75,13 @@ bun run patch:web-assets
 This copies `PreviewExtension/Web` into the desktop viewer runtime and Quick
 Look bundle locations, then re-signs the app:
 
-- `build/Burrete.app/Contents/Resources/ViewerWeb`
-- `build/Burrete.app/Contents/PlugIns/BurretePreview.appex/Contents/Resources/Web`
+- `build/Burette.app/Contents/Resources/ViewerWeb`
+- `build/Burette.app/Contents/PlugIns/BurettePreview.appex/Contents/Resources/Web`
 
-For agent-driven work in a flavored build, set `BURRETE_APP_PATH` to the
+For agent-driven work in a flavored build, set `BURETTE_APP_PATH` to the
 flavored app path before patching.
 
-Restart Burrete or reopen the preview after patching so the WebView reloads the
+Restart Burette or reopen the preview after patching so the WebView reloads the
 updated files.
 
 ## Quick Look Native Extension
@@ -90,7 +90,7 @@ Use the flavored full build when the Swift Quick Look extension or extension
 packaging changed in an agent-managed worktree:
 
 ```bash
-BURRETE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
+BURETTE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
 ```
 
 `scripts/build-dev.sh` remains available for a deliberately unflavored in-place
@@ -100,7 +100,7 @@ in-place build is explicitly desired, reuse the existing embedded preview
 extension:
 
 ```bash
-BURRETE_DEV_REUSE_QUICKLOOK=1 ./scripts/build-dev.sh
+BURETTE_DEV_REUSE_QUICKLOOK=1 ./scripts/build-dev.sh
 ```
 
 ## Rust and Tauri Backend
@@ -147,7 +147,7 @@ Use the full macOS build only for final bundle validation, release work, or
 changes that cross several native layers:
 
 ```bash
-BURRETE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
+BURETTE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
 ```
 
 The full build runs the JavaScript/Tauri build, Rust release build, Xcode Quick

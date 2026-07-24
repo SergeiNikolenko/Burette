@@ -1,14 +1,14 @@
 # Compute protocol schemas
 
 These JSON Schema 2020-12 documents describe the untrusted JSON boundary of
-the Burrete compute protocol. They reject unknown fields, invalid enum and
+the Burette compute protocol. They reject unknown fields, invalid enum and
 token spellings, unsafe JSON integers, malformed identifiers and hashes,
 unbounded collections, non-canonical paths, invalid packed-array storage
 metadata, and incomplete state-specific evidence.
 
 The schemas are a structural prefilter, not the authority for persisted or
 executed compute state. Every decoded value must also pass the corresponding
-validator in `crates/burrete-compute-protocol`. Rust validation remains
+validator in `crates/burette-compute-protocol`. Rust validation remains
 authoritative for invariants that standard JSON Schema cannot express:
 
 - UTF-8 byte limits rather than Unicode code-point limits;

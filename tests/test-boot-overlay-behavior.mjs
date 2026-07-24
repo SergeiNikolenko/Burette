@@ -101,23 +101,23 @@ const harness = createHarness();
 vm.runInContext(source, harness.context);
 
 assert.match(
-  harness.document.getElementById("burrete-boot-overlay")?.innerHTML ?? "",
-  /Burrete is starting/,
+  harness.document.getElementById("burette-boot-overlay")?.innerHTML ?? "",
+  /Burette is starting/,
 );
 
 harness.dispatch("unhandledrejection", { reason: new Error("startup failed") });
 assert.match(
-  harness.document.getElementById("burrete-boot-overlay")?.innerHTML ?? "",
-  /Burrete UI failed to start/,
+  harness.document.getElementById("burette-boot-overlay")?.innerHTML ?? "",
+  /Burette UI failed to start/,
 );
 
-harness.context.window.__BURRETE_BOOT_OVERLAY__.markMounted();
-assert.equal(harness.document.getElementById("burrete-boot-overlay"), null);
+harness.context.window.__BURETTE_BOOT_OVERLAY__.markMounted();
+assert.equal(harness.document.getElementById("burette-boot-overlay"), null);
 
 harness.document.appShellMounted = true;
 harness.dispatch("unhandledrejection", { reason: new Error("late unregisterListener failure") });
 harness.dispatch("error", { message: "late startup error", error: new Error("late startup error") });
 harness.flushTimeouts();
-assert.equal(harness.document.getElementById("burrete-boot-overlay"), null);
+assert.equal(harness.document.getElementById("burette-boot-overlay"), null);
 
 console.log("boot overlay behavior tests passed");

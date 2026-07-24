@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "burette_agent_mcp": {
-      "title": "Burrete Agent MCP",
-      "description": "Typed tools and bounded review surfaces for Burrete molecular workspaces.",
+      "title": "Burette Agent MCP",
+      "description": "Typed tools and bounded review surfaces for Burette molecular workspaces.",
       "icons": [
         {
           "src": "./assets/composer-icon.png",

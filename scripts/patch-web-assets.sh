@@ -10,14 +10,14 @@ done
 ROOT="$(cd -P "$(dirname "$SCRIPT")/.." >/dev/null 2>&1 && pwd -P)"
 cd "$ROOT"
 
-APP="${BURRETE_APP_PATH:-${1:-$ROOT/build/Burrete.app}}"
-APPEX="$APP/Contents/PlugIns/BurretePreview.appex"
+APP="${BURETTE_APP_PATH:-${1:-$ROOT/build/Burette.app}}"
+APPEX="$APP/Contents/PlugIns/BurettePreview.appex"
 WEB_SOURCE="$ROOT/PreviewExtension/Web"
 GALLERY_SOURCE="$ROOT/apps/desktop/public/xyzrender-gallery"
 APP_WEB="$APP/Contents/Resources/ViewerWeb"
 APPEX_WEB="$APPEX/Contents/Resources/Web"
 APP_GALLERY="$APP/Contents/Resources/xyzrender-gallery"
-ENTITLEMENTS="$ROOT/PreviewExtension/BurretePreview.entitlements"
+ENTITLEMENTS="$ROOT/PreviewExtension/BurettePreview.entitlements"
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required." >&2; exit 1; }; }
 require_asset() {
@@ -70,7 +70,7 @@ bun scripts/check-js-syntax.mjs \
   PreviewExtension/Web/grid-viewer.js >/dev/null
 
 cat <<MSG
-Burrete web asset patch
+Burette web asset patch
   app: $APP
   source: $WEB_SOURCE
   gallery: $GALLERY_SOURCE
@@ -101,5 +101,5 @@ cmp -s "$GALLERY_SOURCE/asparagine_vdw.svg" "$APP_GALLERY/asparagine_vdw.svg" ||
 
 cat <<MSG
 WEB ASSET PATCH SUCCEEDED
-Restart Burrete or reopen the preview to load the patched assets.
+Restart Burette or reopen the preview to load the patched assets.
 MSG

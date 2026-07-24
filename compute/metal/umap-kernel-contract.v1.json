@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "libraryId": "burrete.compute.umap.v1",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "libraryId": "burette.compute.umap.v1",
   "source": "umap.v1.metal",
   "deploymentTarget": "14.0",
   "provenance": {
@@ -39,14 +39,14 @@
   },
   "entrypoints": [
     {
-      "name": "burrete_umap_initialize_v1",
+      "name": "burette_umap_initialize_v1",
       "buffers": [
         { "name": "positions", "index": 0, "type": "float4", "access": "write", "elements": "vertexCount" },
         { "name": "config", "index": 1, "type": "UmapEpochConfigV1", "access": "constant", "elements": "1" }
       ]
     },
     {
-      "name": "burrete_umap_epoch_v1",
+      "name": "burette_umap_epoch_v1",
       "buffers": [
         { "name": "inputPositions", "index": 0, "type": "float4", "access": "read", "elements": "vertexCount" },
         { "name": "rowOffsets", "index": 1, "type": "uint64", "access": "read", "elements": "vertexCount + 1" },

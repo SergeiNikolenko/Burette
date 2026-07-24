@@ -10,7 +10,7 @@ import { CloseIcon } from "../close-icon";
 import type { DropTargetContext } from "../../lib/drop-actions";
 import { describeDropTargetElement } from "../../lib/drop-target";
 
-const TAB_DRAG_MIME = "application/x-burrete-tab-id";
+const TAB_DRAG_MIME = "application/x-burette-tab-id";
 const TAB_REORDER_ANIMATION_MS = 170;
 const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
 const TAB_MOUSE_REORDER_THRESHOLD_PX = 8;

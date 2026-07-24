@@ -15,7 +15,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Manager, Runtime};
 
 const CONFORMER_LOG_CAPTURE_BYTES: usize = 512 * 1024;
-const CONFORMER_RUN_METADATA_FILE: &str = ".burrete-conformer-run.json";
+const CONFORMER_RUN_METADATA_FILE: &str = ".burette-conformer-run.json";
 const DIRECT_CONFORMER_ATOM_LIMIT: usize = 300;
 
 type RunningConformerJobs = Mutex<HashMap<String, Arc<Mutex<Child>>>>;
@@ -138,13 +138,13 @@ pub(crate) fn conformer_status() -> ConformerStatus {
     ConformerStatus {
         crest: conformer_tool_status(
             resolve_executable("crest"),
-            "CREST is available. Burrete will use this executable for conformer generation.",
+            "CREST is available. Burette will use this executable for conformer generation.",
             "Install CREST with pixi global install crest, conda-forge, or expose crest on PATH.",
             &["--version"],
         ),
         prism: conformer_tool_status(
             resolve_executable("prism_pruner").or_else(|| resolve_executable("prism-pruner")),
-            "PRISM Pruner is available. Burrete will use this executable for ensemble pruning.",
+            "PRISM Pruner is available. Burette will use this executable for ensemble pruning.",
             "Install PRISM Pruner with uv tool install prism_pruner, or expose prism_pruner on PATH.",
             &["--help"],
         ),

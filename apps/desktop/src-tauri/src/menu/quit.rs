@@ -928,7 +928,7 @@ pub(crate) fn exit_transition_is_active<R: Runtime>(app: &tauri::AppHandle<R>) -
 fn show_exit_error<R: Runtime>(app: &tauri::AppHandle<R>, error: String) {
     app.dialog()
         .message(format!(
-            "Burrete could not verify unsaved changes.\n\n{error}"
+            "Burette could not verify unsaved changes.\n\n{error}"
         ))
         .title("Quit Cancelled")
         .kind(MessageDialogKind::Error)

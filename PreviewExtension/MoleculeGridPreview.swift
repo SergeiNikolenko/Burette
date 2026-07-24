@@ -139,7 +139,7 @@ enum MoleculeGridPreviewBuilder {
             "label": fileURL.lastPathComponent,
             "byteCount": data.count,
             "host": host.rawValue,
-            "quickLookBuild": host == .quickLook ? "burrete-grid2d-quicklook" : "burrete-grid2d-app",
+            "quickLookBuild": host == .quickLook ? "burette-grid2d-quicklook" : "burette-grid2d-app",
             "debug": debug,
             "appViewer": host == .app,
             "quickLookViewer": host == .quickLook,
@@ -171,7 +171,7 @@ enum MoleculeGridPreviewBuilder {
 
         return MoleculeGridPreview(
             configJSON: configJSON,
-            recordsScript: "window.BurreteGridRecords = \(recordsJSON);\n",
+            recordsScript: "window.BuretteGridRecords = \(recordsJSON);\n",
             format: collection.format,
             recordsTotal: collection.recordsTotal,
             recordsIncluded: includedRecords.count

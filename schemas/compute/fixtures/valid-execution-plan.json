@@ -11,7 +11,7 @@
       "effectiveBackend": "coordinator",
       "precision": "notApplicable",
       "engine": {
-        "engineId": "burrete-coordinator",
+        "engineId": "burette-coordinator",
         "version": "1.0.0",
         "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       },
@@ -63,7 +63,7 @@
       "effectiveBackend": "nativeMetal",
       "precision": "integerExact",
       "engine": {
-        "engineId": "burrete-native-metal",
+        "engineId": "burette-native-metal",
         "version": "1.0.0",
         "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       },
@@ -89,7 +89,7 @@
       "effectiveBackend": "referenceCpu",
       "precision": "integerExact",
       "engine": {
-        "engineId": "burrete-reference-cpu",
+        "engineId": "burette-reference-cpu",
         "version": "1.0.0",
         "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       },
@@ -115,7 +115,7 @@
       "effectiveBackend": "referenceCpu",
       "precision": "integerExact",
       "engine": {
-        "engineId": "burrete-reference-cpu",
+        "engineId": "burette-reference-cpu",
         "version": "1.0.0",
         "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       },
@@ -141,7 +141,7 @@
       "effectiveBackend": "coordinator",
       "precision": "notApplicable",
       "engine": {
-        "engineId": "burrete-coordinator",
+        "engineId": "burette-coordinator",
         "version": "1.0.0",
         "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       },

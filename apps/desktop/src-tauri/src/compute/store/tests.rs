@@ -3,7 +3,7 @@ use std::{fs, sync::Barrier, thread};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-use burrete_compute_protocol::{ComputeErrorCode, ComputeFailure, JobState, OwnerSurface};
+use burette_compute_protocol::{ComputeErrorCode, ComputeFailure, JobState, OwnerSurface};
 use rusqlite::Connection;
 use uuid::Uuid;
 

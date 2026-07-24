@@ -19,8 +19,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Burrete toolchain
-        uses: ./.github/actions/setup-burrete-toolchain
+      - name: Setup Burette toolchain
+        uses: ./.github/actions/setup-burette-toolchain
         with:
           install-xyzrender: "true"
 
@@ -66,20 +66,20 @@ jobs:
           MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
-          BURRETE_CODESIGN_IDENTITY: ${{ secrets.BURRETE_CODESIGN_IDENTITY }}
+          BURETTE_CODESIGN_IDENTITY: ${{ secrets.BURETTE_CODESIGN_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
-          BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
+          BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
+          BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
-          if [[ -n "${MACOS_CERTIFICATE_P12_BASE64:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_KEYCHAIN_PASSWORD:-}" && -n "${BURRETE_CODESIGN_IDENTITY:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+          if [[ -n "${MACOS_CERTIFICATE_P12_BASE64:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_KEYCHAIN_PASSWORD:-}" && -n "${BURETTE_CODESIGN_IDENTITY:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
             echo "developer_id=true" >> "$GITHUB_OUTPUT"
           else
             echo "developer_id=false" >> "$GITHUB_OUTPUT"
           fi
-          if [[ -n "${BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" && -n "${BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
+          if [[ -n "${BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" && -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
             echo "signed_manifest=true" >> "$GITHUB_OUTPUT"
           else
             echo "signed_manifest=false" >> "$GITHUB_OUTPUT"
@@ -89,7 +89,7 @@ jobs:
           else
             echo "homebrew=false" >> "$GITHUB_OUTPUT"
           fi
-          if [[ -n "${MACOS_CERTIFICATE_P12_BASE64:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_KEYCHAIN_PASSWORD:-}" && -n "${BURRETE_CODESIGN_IDENTITY:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+          if [[ -n "${MACOS_CERTIFICATE_P12_BASE64:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_KEYCHAIN_PASSWORD:-}" && -n "${BURETTE_CODESIGN_IDENTITY:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
             echo "allow_adhoc=false" >> "$GITHUB_OUTPUT"
           else
             echo "allow_adhoc=true" >> "$GITHUB_OUTPUT"
@@ -112,12 +112,12 @@ jobs:
 
       - name: Build app
         env:
-          BURRETE_BUILD_MODE: release
-          BURRETE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
-          BURRETE_CODESIGN_IDENTITY: ${{ secrets.BURRETE_CODESIGN_IDENTITY }}
-          BURRETE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
-          BURRETE_XCODE_CONFIGURATION: Release
-          BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
+          BURETTE_BUILD_MODE: release
+          BURETTE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
+          BURETTE_CODESIGN_IDENTITY: ${{ secrets.BURETTE_CODESIGN_IDENTITY }}
+          BURETTE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          BURETTE_XCODE_CONFIGURATION: Release
+          BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
         run: ./scripts/build.sh
 
       - name: Notarize app
@@ -127,33 +127,33 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
-          ditto -c -k --keepParent build/Burrete.app notarization.zip
+          ditto -c -k --keepParent build/Burette.app notarization.zip
           xcrun notarytool submit notarization.zip \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --wait
-          xcrun stapler staple build/Burrete.app
+          xcrun stapler staple build/Burette.app
 
       - name: Validate release signing
         env:
-          BURRETE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
-        run: ./scripts/check-release-signature.sh build/Burrete.app
+          BURETTE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
+        run: ./scripts/check-release-signature.sh build/Burette.app
 
       - name: Package app
         env:
-          BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
-          BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
+          BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
+          BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
         run: |
           rm -rf release
           mkdir -p release
-          cp -R build/Burrete.app release/Burrete.app
-          ditto -c -k --keepParent release/Burrete.app "Burrete-${{ steps.version.outputs.version }}.zip"
-          shasum -a 256 "Burrete-${{ steps.version.outputs.version }}.zip" > "Burrete-${{ steps.version.outputs.version }}.zip.sha256"
-          ./scripts/create-dmg.sh release/Burrete.app "Burrete-${{ steps.version.outputs.version }}.dmg"
-          shasum -a 256 "Burrete-${{ steps.version.outputs.version }}.dmg" > "Burrete-${{ steps.version.outputs.version }}.dmg.sha256"
-          if [[ -n "${BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" && -n "${BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" ]]; then
-            bun scripts/sign-update-manifest.mjs "Burrete-${{ steps.version.outputs.version }}.zip" .
+          cp -R build/Burette.app release/Burette.app
+          ditto -c -k --keepParent release/Burette.app "Burette-${{ steps.version.outputs.version }}.zip"
+          shasum -a 256 "Burette-${{ steps.version.outputs.version }}.zip" > "Burette-${{ steps.version.outputs.version }}.zip.sha256"
+          ./scripts/create-dmg.sh release/Burette.app "Burette-${{ steps.version.outputs.version }}.dmg"
+          shasum -a 256 "Burette-${{ steps.version.outputs.version }}.dmg" > "Burette-${{ steps.version.outputs.version }}.dmg.sha256"
+          if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" && -n "${BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" ]]; then
+            bun scripts/sign-update-manifest.mjs "Burette-${{ steps.version.outputs.version }}.zip" .
           fi
 
       - name: Create GitHub release
@@ -161,20 +161,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           assets=(
-            "Burrete-${{ steps.version.outputs.version }}.zip"
-            "Burrete-${{ steps.version.outputs.version }}.dmg"
+            "Burette-${{ steps.version.outputs.version }}.zip"
+            "Burette-${{ steps.version.outputs.version }}.dmg"
           )
-          if [[ -f "Burrete-${{ steps.version.outputs.version }}.zip.sha256" ]]; then
-            assets+=("Burrete-${{ steps.version.outputs.version }}.zip.sha256")
+          if [[ -f "Burette-${{ steps.version.outputs.version }}.zip.sha256" ]]; then
+            assets+=("Burette-${{ steps.version.outputs.version }}.zip.sha256")
           fi
-          if [[ -f "Burrete-${{ steps.version.outputs.version }}.dmg.sha256" ]]; then
-            assets+=("Burrete-${{ steps.version.outputs.version }}.dmg.sha256")
+          if [[ -f "Burette-${{ steps.version.outputs.version }}.dmg.sha256" ]]; then
+            assets+=("Burette-${{ steps.version.outputs.version }}.dmg.sha256")
           fi
-          if [[ -f "Burrete-${{ steps.version.outputs.version }}.zip.manifest.json" ]]; then
-            assets+=("Burrete-${{ steps.version.outputs.version }}.zip.manifest.json")
+          if [[ -f "Burette-${{ steps.version.outputs.version }}.zip.manifest.json" ]]; then
+            assets+=("Burette-${{ steps.version.outputs.version }}.zip.manifest.json")
           fi
-          if [[ -f "Burrete-${{ steps.version.outputs.version }}.zip.manifest.json.sig" ]]; then
-            assets+=("Burrete-${{ steps.version.outputs.version }}.zip.manifest.json.sig")
+          if [[ -f "Burette-${{ steps.version.outputs.version }}.zip.manifest.json.sig" ]]; then
+            assets+=("Burette-${{ steps.version.outputs.version }}.zip.manifest.json.sig")
           fi
           release_flags=()
           if [[ "${{ steps.version.outputs.prerelease }}" == "true" ]]; then
@@ -183,34 +183,34 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" \
             "${assets[@]}" \
             "${release_flags[@]}" \
-            --title "Burrete ${{ steps.version.outputs.version }}" \
+            --title "Burette ${{ steps.version.outputs.version }}" \
             --generate-notes
 
       - name: Checkout Homebrew tap
         if: steps.version.outputs.prerelease != 'true' && steps.capabilities.outputs.homebrew == 'true'
         uses: actions/checkout@v7
         with:
-          repository: SergeiNikolenko/homebrew-burrete
-          path: homebrew-burrete
+          repository: SergeiNikolenko/homebrew-burette
+          path: homebrew-burette
           ref: main
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       - name: Update Homebrew cask
         if: steps.version.outputs.prerelease != 'true' && steps.capabilities.outputs.homebrew == 'true'
-        working-directory: homebrew-burrete
+        working-directory: homebrew-burette
         run: |
           version="${{ steps.version.outputs.version }}"
-          sha256="$(awk '{print $1}' "../Burrete-${version}.zip.sha256")"
+          sha256="$(awk '{print $1}' "../Burette-${version}.zip.sha256")"
           if [[ ! "$sha256" =~ ^[a-f0-9]{64}$ ]]; then
-            echo "::error::Invalid or missing SHA-256 for Burrete-${version}.zip."
+            echo "::error::Invalid or missing SHA-256 for Burette-${version}.zip."
             exit 1
           fi
-          cask="Casks/burrete.rb"
+          cask="Casks/burette.rb"
           if [[ ! -f "$cask" ]]; then
-            cask="Casks/b/burrete.rb"
+            cask="Casks/b/burette.rb"
           fi
           if [[ ! -f "$cask" ]]; then
-            echo "::error::Could not find burrete.rb in the Homebrew tap checkout."
+            echo "::error::Could not find burette.rb in the Homebrew tap checkout."
             exit 1
           fi
           ruby -0pi -e "gsub(/version \"[^\"]+\"/, \"version \\\"${version}\\\"\"); gsub(/sha256 \"[a-f0-9]{64}\"/, \"sha256 \\\"${sha256}\\\"\"); gsub(/depends_on macos: \">= :monterey\"/, \"depends_on macos: :monterey\")" "$cask"
@@ -222,5 +222,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$cask"
-          git commit -m "Update Burrete cask to ${version}"
+          git commit -m "Update Burette cask to ${version}"
           git push origin HEAD:main

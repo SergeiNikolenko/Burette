@@ -148,7 +148,7 @@ inline float electrostatic_pair_v1(float3 left, float leftCharge, float3 right, 
     return leftCharge * rightCharge * potential;
 }
 
-kernel void burrete_alignment_score_v1(
+kernel void burette_alignment_score_v1(
     device const float4* probePositions [[buffer(0)]],
     device const float4* probeParameters [[buffer(1)]],
     device const float4* referencePositions [[buffer(2)]],

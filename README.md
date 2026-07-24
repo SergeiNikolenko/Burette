@@ -1,4 +1,4 @@
-<h1 align="center">Burrete</h1>
+<h1 align="center">Burette</h1>
 
 <p align="center">
   A molecular file workspace with macOS Finder Quick Look previews, Mol* 3D,
@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <img alt="Latest release" src="https://img.shields.io/github/v/release/SergeiNikolenko/Burrete?style=flat-square&color=0f8f72" />
+  <img alt="Latest release" src="https://img.shields.io/github/v/release/SergeiNikolenko/Burette?style=flat-square&color=0f8f72" />
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square" /></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-blue.svg?style=flat-square" />
   <img alt="iOS source app" src="https://img.shields.io/badge/iOS-source%20app-blue.svg?style=flat-square" />
@@ -16,12 +16,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/public/burrete-quick-look-preview.png" alt="Burrete desktop preview of caffeine.fdf" width="90%" />
+  <img src="docs/public/burette-quick-look-preview.png" alt="Burette desktop preview of caffeine.fdf" width="90%" />
 </p>
 
-## What Is Burrete?
+## What Is Burette?
 
-Burrete is a macOS desktop app, Finder Quick Look extension, and source-built
+Burette is a macOS desktop app, Finder Quick Look extension, and source-built
 iPhone preview app for molecular structure files. It is built for the small
 daily loop of computational chemistry, structural biology, and cheminformatics
 work: open a structure, confirm what it is, switch renderer when needed,
@@ -31,63 +31,63 @@ need maintenance.
 Use it in two ways:
 
 - **Finder previews:** select a molecular file in Finder and press Space.
-- **Desktop workspace:** open Burrete directly to inspect files in tabs, browse
+- **Desktop workspace:** open Burette directly to inspect files in tabs, browse
   project folders, search commands and structures, sketch molecules, review
   collections, and send files to external chemistry tools.
-- **iPhone preview app:** build the `BurreteMobile` Xcode target from source,
+- **iPhone preview app:** build the `BuretteMobile` Xcode target from source,
   then open molecular documents from Files or another iOS document provider.
 - **Public molecular plugin:** preview an authorized molecular attachment or a
-  public PDB entry directly in the Burrete workspace through ChatGPT or Codex.
+  public PDB entry directly in the Burette workspace through ChatGPT or Codex.
 
-Burrete is intentionally a compact utility, not a full molecular modeling
+Burette is intentionally a compact utility, not a full molecular modeling
 environment.
 
 ## Download
 
-You can install Burrete with the Homebrew tap:
+You can install Burette with the Homebrew tap:
 
 ```bash
-brew tap SergeiNikolenko/burrete
-brew install --cask burrete
+brew tap SergeiNikolenko/burette
+brew install --cask burette
 ```
 
 Check the cask version when you need to confirm a specific release:
 
 ```bash
-brew info --cask SergeiNikolenko/burrete/burrete
+brew info --cask SergeiNikolenko/burette/burette
 ```
 
-For the latest stable GitHub release, use the Burrete Bun CLI:
+For the latest stable GitHub release, use the Burette Bun CLI:
 
 ```bash
-bunx burrete latest
-bunx burrete install
-bunx burrete doctor
+bunx burette latest
+bunx burette install
+bunx burette doctor
 ```
 
-The Bun installer places Burrete in `~/Applications` by default. Use
-`bunx burrete install --system` only when you intentionally want the app in
+The Bun installer places Burette in `~/Applications` by default. Use
+`bunx burette install --system` only when you intentionally want the app in
 `/Applications` for all users. If Finder previews do not appear after install,
-run `bunx burrete doctor` to check the app bundle, Quick Look extension,
+run `bunx burette doctor` to check the app bundle, Quick Look extension,
 `qlmanage`, and installed version.
 
-You can also download Burrete from the GitHub Releases page:
+You can also download Burette from the GitHub Releases page:
 
-[Download the latest Burrete release](https://github.com/SergeiNikolenko/Burrete/releases/latest)
+[Download the latest Burette release](https://github.com/SergeiNikolenko/Burette/releases/latest)
 
 1. Open the latest release.
-2. Download the `Burrete-<version>.zip` file.
+2. Download the `Burette-<version>.zip` file.
 3. Unzip it.
-4. Move `Burrete.app` to your `Applications` folder.
-5. Open Burrete once from `Applications`.
+4. Move `Burette.app` to your `Applications` folder.
+5. Open Burette once from `Applications`.
 
 ## Quick Start
 
 After installation:
 
-1. Open `Burrete.app` once so macOS registers the app and Quick Look extension.
+1. Open `Burette.app` once so macOS registers the app and Quick Look extension.
 2. In Finder, select a supported molecular file and press Space.
-3. Open Burrete directly for the full workspace:
+3. Open Burette directly for the full workspace:
    - `Cmd+O` opens molecular structure files.
    - `Cmd+P` or `/` opens the command palette.
    - `Cmd+,` opens settings.
@@ -95,12 +95,12 @@ After installation:
 4. If previews do not appear, run:
 
 ```bash
-bunx burrete doctor
+bunx burette doctor
 ```
 
 ## Supported Files
 
-Burrete supports several preview paths. Some formats open directly in Mol*,
+Burette supports several preview paths. Some formats open directly in Mol*,
 some use the RDKit grid runtime, and some require the external `xyzrender`
 renderer.
 
@@ -114,16 +114,16 @@ renderer.
 | OpenMM workflow artifacts | PAR, PRM, RTF, STR, KEY, CHK, CHECKPOINT | Open as text/workflow artifacts. Binary checkpoints show metadata because OpenMM checkpoint payloads are tied to the matching system, platform, version, and hardware context. |
 | FEP network workspace | GraphML | Opens a ligand network preview workspace rather than a standard molecule preview. |
 
-Multi-frame XYZ files stay in Mol* when Burrete detects trajectory content so
+Multi-frame XYZ files stay in Mol* when Burette detects trajectory content so
 the native trajectory controls can show the available frames. When you rotate a
-molecule in Mol* and switch to `xyzrender`, Burrete can pass the current
+molecule in Mol* and switch to `xyzrender`, Burette can pass the current
 orientation through the renderer handoff. CUBE, CIF, MMCIF, MCIF, XYZ, and
 external-renderer input previews expose an optional VESTA handoff when VESTA is
 installed.
 
 ## Desktop Workspace
 
-Opening Burrete directly gives you a compact molecular workspace:
+Opening Burette directly gives you a compact molecular workspace:
 
 - tabbed previews that keep renderer state alive while you switch files
 - a project sidebar for folders, nested structures, recent files, and search
@@ -137,7 +137,7 @@ Opening Burrete directly gives you a compact molecular workspace:
 ## iPhone Preview App
 
 The repository includes a source-built iPhone app target at
-[`ios/BurreteMobile`](ios/BurreteMobile). It is not part of the Homebrew macOS
+[`ios/BuretteMobile`](ios/BuretteMobile). It is not part of the Homebrew macOS
 release, but it shares the project preview runtime and supports iOS document
 handoff through Files and "Open In" sheets.
 
@@ -150,12 +150,12 @@ The mobile app focuses on phone-first inspection:
   loaded document needs them
 - app icon and document-type registration for supported molecular formats
 
-See [ios/BurreteMobile/README.md](ios/BurreteMobile/README.md) for the target
+See [ios/BuretteMobile/README.md](ios/BuretteMobile/README.md) for the target
 layout, build command, signing notes, and real-device install flow.
 
 ## Molecule Collections and Ketcher
 
-Burrete includes an RDKit-powered collection grid for SDF, SMILES, CSV, and TSV
+Burette includes an RDKit-powered collection grid for SDF, SMILES, CSV, and TSV
 files. The grid supports search, sorting, SMARTS filtering/highlighting,
 selection, infinite loading, append/merge workflows, and export.
 
@@ -180,25 +180,25 @@ for quick file previews.
 
 ## Public Plugin and MCP
 
-The hosted Burrete plugin exposes a public HTTPS MCP endpoint and renders
-molecular results directly in the Burrete workspace:
+The hosted Burette plugin exposes a public HTTPS MCP endpoint and renders
+molecular results directly in the Burette workspace:
 
-- Plugin documentation: <https://burrete-landing.vercel.app/docs/plugin>
-- MCP endpoint: <https://burrete-plugin.vercel.app/mcp>
-- Source: [`apps/burrete-public-plugin`](apps/burrete-public-plugin)
+- Plugin documentation: <https://burette-landing.vercel.app/docs/plugin>
+- MCP endpoint: <https://burette-plugin.vercel.app/mcp>
+- Source: [`apps/burette-public-plugin`](apps/burette-public-plugin)
 
 Its read-only `preview_molecular_file` tool accepts one authorized PDB, ENT,
 PDBQT, CIF, mmCIF, SDF, SD, XYZ, or extended XYZ attachment. The
 `preview_pdb_structure` tool retrieves one public RCSB entry by PDB ID. Both
 return bounded model-visible composition data and render the raw structure only
-inside the sandboxed Burrete workspace. Files are limited to 3 MiB, processed
-in memory, and not written to Burrete application storage.
+inside the sandboxed Burette workspace. Files are limited to 3 MiB, processed
+in memory, and not written to Burette application storage.
 
 The hosted plugin and the local plugin live in this repository; there is no
 separate plugin source repository. Public installation through OpenAI's Plugins
 Directory becomes available after directory review and publisher release.
 
-Burrete includes a Codex plugin that turns the local application into an
+Burette includes a Codex plugin that turns the local application into an
 agent-operable molecular workspace. The plugin bundles focused workflow skills
 with a typed local MCP server, so Codex can:
 
@@ -220,17 +220,17 @@ bun run install:plugin
 The installer stages a dedicated local marketplace and uses the current
 `codex plugin marketplace add` and `codex plugin add` flows when a working
 Codex CLI is available. Restart Codex after installation, then mention
-`@Burrete` or select it from Plugins.
+`@Burette` or select it from Plugins.
 
 See the [hosted and local agent platform contract](docs/agent-platform.md), the
 [local plugin architecture and installation guide](plugins/burette-agent/README.md),
-and the [public plugin guide](https://burrete-landing.vercel.app/docs/plugin).
-Burrete remains the canonical source repository for every application and MCP
+and the [public plugin guide](https://burette-landing.vercel.app/docs/plugin).
+Burette remains the canonical source repository for every application and MCP
 surface.
 
 ## Settings and Maintenance
 
-Burrete settings cover:
+Burette settings cover:
 
 - General workspace defaults and open documents
 - Appearance, themes, and preview backgrounds
@@ -238,7 +238,7 @@ Burrete settings cover:
 - Structure rendering, including Auto, Mol*, and external `xyzrender`
 - Stable and beta update checks
 - Files, recent structures, and project folders
-- Burrete/Codex integration status
+- Burette/Codex integration status
 - Quick Look reset, preview cache cleanup, logs, diagnostics, and maintenance
 
 Optional integrations include a local `xyzrender` executable, VESTA, and
@@ -246,10 +246,10 @@ external chemistry editors discovered by macOS.
 
 ## Unsupported file or format?
 
-If Burrete cannot open or preview a molecular file, please [open an unsupported-file issue](https://github.com/SergeiNikolenko/Burrete/issues/new?template=7-unsupported-file-format.yml). Before submitting:
+If Burette cannot open or preview a molecular file, please [open an unsupported-file issue](https://github.com/SergeiNikolenko/Burette/issues/new?template=7-unsupported-file-format.yml). Before submitting:
 
 1. Search existing issues for the extension or format name.
-2. Include the exact file extension, where the failure occurs, your Burrete and macOS versions, and the installation method.
+2. Include the exact file extension, where the failure occurs, your Burette and macOS versions, and the installation method.
 3. On macOS, include the output of:
 
    ```bash
@@ -269,7 +269,7 @@ If Burrete cannot open or preview a molecular file, please [open an unsupported-
 - [Terms of use](TERMS.md)
 - [Renderer support](docs/renderer-support.md)
 - [Quick Look debugging](docs/quicklook-debugging.md)
-- [iPhone preview app](ios/BurreteMobile/README.md)
+- [iPhone preview app](ios/BuretteMobile/README.md)
 - [Contributing](.github/CONTRIBUTING.md)
 
 ## License

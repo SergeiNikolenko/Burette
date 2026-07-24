@@ -26,8 +26,8 @@ export function useAppDiagnostics({
       }
       const outputPath = await save({
         title: "Export Diagnostics Bundle",
-        defaultPath: `Burrete-Diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.diagnostics`,
-        filters: [{ name: "Burrete diagnostics", extensions: ["diagnostics"] }],
+        defaultPath: `Burette-Diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.diagnostics`,
+        filters: [{ name: "Burette diagnostics", extensions: ["diagnostics"] }],
       });
       if (!outputPath) return;
       const exportedPath = await measureAsync("ipc:export-diagnostics", () => invoke<string>("export_diagnostics_bundle", {

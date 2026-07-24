@@ -15,7 +15,7 @@ const keyboardShortcutRows: ShortcutRow[] = [
   },
   {
     command: "New window",
-    description: "Open another Burrete workspace window.",
+    description: "Open another Burette workspace window.",
     keybindings: ["⌘N"],
   },
   {
@@ -70,7 +70,7 @@ const keyboardShortcutRows: ShortcutRow[] = [
   },
   {
     command: "Close active window",
-    description: "Close the frontmost Burrete window.",
+    description: "Close the frontmost Burette window.",
     keybindings: ["⇧⌘W"],
   },
   {

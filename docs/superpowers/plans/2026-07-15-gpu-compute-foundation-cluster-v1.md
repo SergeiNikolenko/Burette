@@ -63,7 +63,7 @@ independently specified RDKit and mathematical contracts.
 ### Files
 
 - Add reviewed Metal source under `compute/metal/`.
-- Add `crates/burrete-compute-service/` as the signed arm64/macOS 14 helper.
+- Add `crates/burette-compute-service/` as the signed arm64/macOS 14 helper.
 - Add a build script that compiles `.metal` to a precompiled `.metallib`
   with the active macOS SDK before Tauri packaging.
 - Add `config/compute-runtime-manifest.json` with protocol, workflow, kernel,
@@ -100,7 +100,7 @@ Runtime source compilation is not accepted as packaged proof.
   `schemas/compute/workflow-templates/cluster.v1.schema.json`.
 - Add valid, boundary, and rejected fixtures under
   `schemas/compute/fixtures/`.
-- Add `crates/burrete-compute-protocol/` and update the workspace lockfile.
+- Add `crates/burette-compute-protocol/` and update the workspace lockfile.
 
 ### Contract
 
@@ -230,7 +230,7 @@ Closing the transient Grid runtime cannot invalidate the snapshot.
 
 The frozen `MolecularSnapshot v1` writes two typed identity arrays and one
 canonical source-record stream at `pack/molecular-records.v1.jsonl`. Records use
-the public `burrete.molecular-snapshot-record.v1` contract and remain raw
+the public `burette.molecular-snapshot-record.v1` contract and remain raw
 preparation input; normalized chemistry and fingerprints belong to EnginePacks.
 The ordered identity digest is a domain-separated stream of strictly increasing
 big-endian source IDs and raw molecule SHA-256 bytes, with cross-language golden
@@ -331,7 +331,7 @@ trace, revision-safe Grid columns, and representative export round trips.
 Run focused tests after each commit:
 
 ```bash
-cargo test -p burrete-compute-protocol
+cargo test -p burette-compute-protocol
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml compute::
 cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
 cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const input = resolve(root, "compute/semiempirical/reference/fock_d.py");
-const output = resolve(root, "crates/burrete-compute-core/src/semiempirical/pm6_fock_map.generated.rs");
+const output = resolve(root, "crates/burette-compute-core/src/semiempirical/pm6_fock_map.generated.rs");
 const metalOutput = resolve(root, "compute/metal/pm6-one-center-fock.v1.metal");
 const source = readFileSync(input, "utf8");
 const section = source.match(/PM6_FLOCAL_MAP = \[([\s\S]*?)\n\]/)?.[1];
@@ -52,7 +52,7 @@ constant uchar PM6_FOCK_DENSITY_INDICES[243] = {${density.join(", ")}};
 constant uchar PM6_PACKED_ROWS[45] = {${packedRows.join(", ")}};
 constant uchar PM6_PACKED_COLUMNS[45] = {${packedColumns.join(", ")}};
 
-kernel void burrete_pm6_one_center_fock_v1(
+kernel void burette_pm6_one_center_fock_v1(
     device const float* density [[buffer(0)]],
     device const float* w_integrals [[buffer(1)]],
     constant uint& block_count [[buffer(2)]],

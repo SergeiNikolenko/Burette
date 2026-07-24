@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "kernel": "burrete_rm1_pair_rotate_v1",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "kernel": "burette_rm1_pair_rotate_v1",
   "source": "rm1-pair-rotate.v1.metal",
   "dispatch": {
     "threads": "pairCount",

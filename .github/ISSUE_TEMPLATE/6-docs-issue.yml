@@ -1,5 +1,5 @@
 name: Documentation Issue
-description: Report missing, incorrect, or confusing Burrete documentation.
+description: Report missing, incorrect, or confusing Burette documentation.
 labels:
   - documentation
 body:

@@ -539,7 +539,7 @@ async function resolveXyzrenderGalleryResource(src: string) {
       try {
         return convertFileSrc(await join(await resourceDir(), "xyzrender-gallery", fileName));
       } catch (error) {
-        console.warn(`[Burrete] Could not resolve xyzrender gallery asset ${fileName}`, error);
+        console.warn(`[Burette] Could not resolve xyzrender gallery asset ${fileName}`, error);
         return null;
       }
     })();

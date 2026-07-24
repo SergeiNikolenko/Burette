@@ -11,7 +11,7 @@ struct Pm6FockPairV1 {
     uint reserved;
 };
 
-kernel void burrete_pm6_pair_fock_v1(
+kernel void burette_pm6_pair_fock_v1(
     device const float* density [[buffer(0)]],
     device const Pm6FockPairV1* pairs [[buffer(1)]],
     device const float* repulsion [[buffer(2)]],

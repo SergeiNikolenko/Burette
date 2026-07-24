@@ -23,16 +23,16 @@ contract run.
 Always use a dev flavor for local packaged testing:
 
 ```bash
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
 ```
 
 Preview checks:
 
 ```bash
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.pdb
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/quicklook-preview-smoke.sh samples/mini.pdb samples/mini.cif
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/smoke-samples-quicklook.sh samples
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.pdb
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/quicklook-preview-smoke.sh samples/mini.pdb samples/mini.cif
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/smoke-samples-quicklook.sh samples
 ```
 
 `quicklook-preview-smoke.sh` is the focused CI-style smoke.
@@ -43,17 +43,17 @@ renderers fail even when Quick Look reports a lifecycle `ready`.
 
 Native Quick Look smoke skips public CSV/TSV files because macOS normally routes
 those UTIs through the system table generator. Use browser-dev or the packaged
-desktop app for Burrete grid rendering checks.
+desktop app for Burette grid rendering checks.
 
 ## Agent Platform
 
 Use the CLI as the execution contract:
 
 ```bash
-bun scripts/burrete-agent.mjs open --mode browser-preview samples/mini.pdb
-bun scripts/burrete-agent.mjs open --mode browser-dev-shell samples/mini.pdb
-bun scripts/burrete-agent.mjs observe --session-dir /tmp/burrete-agent-session
-bun scripts/burrete-agent.mjs act --session-dir /tmp/burrete-agent-session '{"type":"reset_camera"}'
+bun scripts/burette-agent.mjs open --mode browser-preview samples/mini.pdb
+bun scripts/burette-agent.mjs open --mode browser-dev-shell samples/mini.pdb
+bun scripts/burette-agent.mjs observe --session-dir /tmp/burette-agent-session
+bun scripts/burette-agent.mjs act --session-dir /tmp/burette-agent-session '{"type":"reset_camera"}'
 ```
 
 See `docs/agent-platform.md` and `plugins/burette-agent/AGENTS.md` before
@@ -87,7 +87,7 @@ Release work uses:
 ```bash
 ./scripts/release.sh
 bun run check:release
-./scripts/check-release-signature.sh build/Burrete.app
+./scripts/check-release-signature.sh build/Burette.app
 ```
 
-Release builds should not use `BURRETE_DEV_FLAVOR`.
+Release builds should not use `BURETTE_DEV_FLAVOR`.

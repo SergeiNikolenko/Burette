@@ -6,7 +6,7 @@ constant uint kRm1EigenMaximumOrder = 32;
 constant uint kRm1EigenMatrixStride = 1024;
 constant uint kRm1EigenValueStride = 32;
 
-kernel void burrete_rm1_symmetric_eigen_v1(
+kernel void burette_rm1_symmetric_eigen_v1(
     device const float* inputMatrices [[buffer(0)]],
     device const uint* orders [[buffer(1)]],
     constant uint& matrixCount [[buffer(2)]],

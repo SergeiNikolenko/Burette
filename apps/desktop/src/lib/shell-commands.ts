@@ -58,7 +58,7 @@ export function buildShellCommands(
       id: "new-window",
       group: "Suggested",
       label: "New Window",
-      description: "Open another Burrete workspace window",
+      description: "Open another Burette workspace window",
       run: actions.openNewWindow,
     },
     {

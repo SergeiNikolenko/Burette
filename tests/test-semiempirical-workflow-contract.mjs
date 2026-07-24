@@ -5,7 +5,7 @@ const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "u
 const workflow = source("apps/desktop/src-tauri/src/compute/semiempirical_workflow.rs");
 const commands = source("apps/desktop/src-tauri/src/compute/commands.rs");
 const permissions = source("apps/desktop/src-tauri/permissions/compute.toml");
-const protocol = source("crates/burrete-compute-protocol/src/workflow.rs");
+const protocol = source("crates/burette-compute-protocol/src/workflow.rs");
 const gridMessages = source("apps/desktop/src/hooks/use-app-grid-conformer-messages.ts");
 const gridViewer = source("PreviewExtension/Web/grid-viewer.js");
 const gridUi = source("apps/desktop/src/preview-grid/grid-ui.tsx");

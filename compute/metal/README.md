@@ -1,6 +1,6 @@
 # Native Metal compute kernels
 
-This directory contains reviewed Metal source owned or adapted by Burrete.
+This directory contains reviewed Metal source owned or adapted by Burette.
 Each adapted numeric map is tied to its pinned upstream path and commit in the
 provenance ledger; production kernels do not load Python or MLX.
 

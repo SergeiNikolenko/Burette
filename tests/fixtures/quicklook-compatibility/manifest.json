@@ -9,7 +9,7 @@
     {
       "path": "tests/fixtures/quicklook-compatibility/emendXRay.cif",
       "formatId": "cif",
-      "observedContentType": "com.local.burrete10.cif"
+      "observedContentType": "com.local.burette10.cif"
     },
     {
       "path": "tests/fixtures/quicklook-compatibility/ketoconazole.mol",

@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Barrier},
 };
 
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     AllGridScope, AnalysisFilter, CapabilityMaturity, DescriptorFilter, FilteredGridScope,
     GridScope, GridTextQuery, MolecularSnapshotRecordV1, RepresentativePolicy, SelectedGridScope,
     WorkflowTemplateId, MOLECULAR_RECORDS_FILE_PATH,
@@ -35,7 +35,7 @@ fn temporary_root(label: &str) -> std::path::PathBuf {
     std::env::temp_dir()
         .canonicalize()
         .expect("resolve physical temporary root")
-        .join(format!("burrete-{label}-{}", Uuid::new_v4()))
+        .join(format!("burette-{label}-{}", Uuid::new_v4()))
 }
 
 fn build_fixture(root: &Path) -> std::path::PathBuf {
@@ -625,7 +625,7 @@ fn reverify_rejects_an_identical_file_entry_swap_after_hashing() {
     let replacement_path = output_root
         .parent()
         .expect("snapshot output parent")
-        .join(format!("burrete-snapshot-file-swap-{}", Uuid::new_v4()));
+        .join(format!("burette-snapshot-file-swap-{}", Uuid::new_v4()));
     let mut verified = frozen
         .root
         .verify(&frozen.reference)
@@ -668,7 +668,7 @@ fn reverify_rejects_an_identical_content_directory_swap_after_hashing() {
     let moved_pack_path = output_root
         .parent()
         .expect("snapshot output parent")
-        .join(format!("burrete-snapshot-pack-swap-{}", Uuid::new_v4()));
+        .join(format!("burette-snapshot-pack-swap-{}", Uuid::new_v4()));
     let mut verified = frozen
         .root
         .verify(&frozen.reference)
@@ -804,7 +804,7 @@ fn verification_rejects_hardlinked_snapshot_files() {
     let link_path = output_root
         .parent()
         .expect("snapshot root parent")
-        .join(format!("burrete-snapshot-hardlink-{}", Uuid::new_v4()));
+        .join(format!("burette-snapshot-hardlink-{}", Uuid::new_v4()));
     fs::hard_link(
         frozen.root.path().join("pack/source-record-ids.bin"),
         &link_path,
@@ -968,7 +968,7 @@ fn cleanup_staging_is_strict_prevalidated_and_idempotent() {
     let external_link = output_root
         .parent()
         .expect("snapshot root parent")
-        .join(format!("burrete-staging-hardlink-{}", Uuid::new_v4()));
+        .join(format!("burette-staging-hardlink-{}", Uuid::new_v4()));
     fs::hard_link(&linked_file, &external_link).expect("hardlink staging file externally");
     assert!(root
         .cleanup_staging(linked_snapshot, linked_attempt)
@@ -990,7 +990,7 @@ fn cleanup_staging_is_strict_prevalidated_and_idempotent() {
     let external_target = output_root
         .parent()
         .expect("snapshot root parent")
-        .join(format!("burrete-staging-symlink-{}", Uuid::new_v4()));
+        .join(format!("burette-staging-symlink-{}", Uuid::new_v4()));
     fs::write(&external_target, b"external").expect("write external symlink target");
     fs::set_permissions(&external_target, fs::Permissions::from_mode(0o600))
         .expect("make external symlink target private");

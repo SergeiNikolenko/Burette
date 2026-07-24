@@ -576,7 +576,7 @@ function extractStandaloneConformers(
   mmffVariant: MmffVariant,
 ): Promise<Array<{ conformer: ArrayBuffer; mmff: ArrayBuffer }>> {
   const worker = new Worker(new URL("../workers/conformer-extract.worker.ts", import.meta.url), {
-    name: "burrete-browser-metal-conformer-extraction",
+    name: "burette-browser-metal-conformer-extraction",
     type: "module",
   });
   const requestId = `browser-metal-conformer-${crypto.randomUUID()}`;
@@ -626,7 +626,7 @@ export function browserDevComputeReportDocument(
   const id = stableTextDocumentId(`browser-dev-compute:${title}:${content}`);
   return {
     id,
-    path: `burrete-compute-report://${id}/${title}`,
+    path: `burette-compute-report://${id}/${title}`,
     title,
     extension: "json",
     language: "json",
