@@ -143,6 +143,8 @@ assert.match(chemicalSpacePanel, /<DropdownMenuGroup/);
 assert.match(chemicalSpacePanel, />\s*Reset to defaults\s*<\/DropdownMenuItem>/);
 assert.match(chemicalSpacePanel, />\s*Rebuild on Metal\s*<\/DropdownMenuItem>/);
 assert.match(chemicalSpacePanel, />\s*Run animated study on Metal\s*<\/DropdownMenuItem>/);
+assert.match(chemicalSpacePanel, /aria-label="TMAP tree edge length"/);
+assert.match(chemicalSpacePanel, /tmapEdgeScale/);
 assert.match(chemicalSpacePanel, /method: current\.method,\s*dimensions: current\.dimensions/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/empty"/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/progress"/);

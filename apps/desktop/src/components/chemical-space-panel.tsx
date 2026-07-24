@@ -112,6 +112,7 @@ const completedEmbeddings = new Map<string, ChemicalSpaceResult>();
 const GRID_SELECTION_BRIDGE_LIMIT = 100_000;
 const MAX_MOLECULE_PREVIEW_BASE64_BYTES = 350_000;
 const MAX_LASSO_POINTS = 4_096;
+const DEFAULT_TMAP_EDGE_SCALE = 1;
 const CLUSTER_COLORS = [
   "#38bdf8", "#fb7185", "#4ade80", "#facc15", "#f97316",
   "#22d3ee", "#a3e635", "#f472b6", "#60a5fa", "#fbbf24",
@@ -133,6 +134,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [hovered, setHovered] = useState<number | null>(null);
   const [preview, setPreview] = useState<MoleculePreview | null>(null);
   const [pointScale, setPointScale] = useState(1);
+  const [tmapEdgeScale, setTmapEdgeScale] = useState(DEFAULT_TMAP_EDGE_SCALE);
   const [tool, setTool] = useState<"navigate" | "lasso">("navigate");
   const [study, setStudy] = useState(DEFAULT_STUDY);
   const [completedStudy, setCompletedStudy] = useState<CompletedStudy | null>(null);
@@ -163,6 +165,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setSelected(new Set());
     setHovered(null);
     setPreview(null);
+    setTmapEdgeScale(DEFAULT_TMAP_EDGE_SCALE);
     setCompletedStudy(null);
     setStudyPosition(0);
     setStudyPlaying(false);
@@ -481,6 +484,24 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               {Math.round(pointScale * 100)}%
             </span>
           </Field>
+          {draft.method === "tmap" ? (
+            <Field orientation="horizontal" className="w-48 shrink-0 gap-2">
+              <FieldLabel className="text-xs text-muted-foreground">Length</FieldLabel>
+              <Slider
+                className="w-20"
+                tone="neutral"
+                aria-label="TMAP tree edge length"
+                min={0.5}
+                max={3}
+                step={0.1}
+                value={[tmapEdgeScale]}
+                onValueChange={([scale]) => setTmapEdgeScale(scale)}
+              />
+              <span className="w-9 text-right font-mono text-[10px] text-muted-foreground">
+                {Math.round(tmapEdgeScale * 100)}%
+              </span>
+            </Field>
+          ) : null}
           {displayedResult ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -515,6 +536,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               hovered={hovered}
               preview={preview}
               pointScale={pointScale}
+              tmapEdgeScale={tmapEdgeScale}
               tool={tool}
               onHover={(sourceRecordId) => {
                 setHovered(sourceRecordId);
@@ -596,12 +618,15 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuItem
-                  onSelect={() => setDraft((current) => ({
-                    ...DEFAULT_OPTIONS,
-                    representation: current.representation,
-                    method: current.method,
-                    dimensions: current.dimensions,
-                  }))}
+                  onSelect={() => {
+                    setTmapEdgeScale(DEFAULT_TMAP_EDGE_SCALE);
+                    setDraft((current) => ({
+                      ...DEFAULT_OPTIONS,
+                      representation: current.representation,
+                      method: current.method,
+                      dimensions: current.dimensions,
+                    }));
+                  }}
                 >
                   Reset to defaults
                 </DropdownMenuItem>
@@ -775,6 +800,7 @@ type ChemicalSpaceCanvasProps = {
   hovered: number | null;
   preview: MoleculePreview | null;
   pointScale: number;
+  tmapEdgeScale: number;
   tool: "navigate" | "lasso";
   onHover: (sourceRecordId: number | null) => void;
   onSelect: (sourceRecordIds: number[]) => void;
@@ -782,8 +808,16 @@ type ChemicalSpaceCanvasProps = {
 
 function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
   const normalized = useMemo(
-    () => normalizeChemicalSpacePositions(props.result.positions),
-    [props.result.positions],
+    () => {
+      const positions = normalizeChemicalSpacePositions(props.result.positions);
+      if (props.result.method !== "tmap") return positions;
+      return positions.map(([x, y, z]) => [
+        x * props.tmapEdgeScale,
+        y * props.tmapEdgeScale,
+        z * props.tmapEdgeScale,
+      ] as [number, number, number]);
+    },
+    [props.result.method, props.result.positions, props.tmapEdgeScale],
   );
   if (props.result.dimensions === 3) {
     return (
