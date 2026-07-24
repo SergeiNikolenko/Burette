@@ -8,7 +8,7 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '13';
   const TOOLBAR_COLLAPSED_VERSION = '5';
-  const DOCKING_POSE_POSITION_VERSION = '7';
+  const DOCKING_POSE_POSITION_VERSION = '8';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
@@ -4342,7 +4342,7 @@
       !!selectionToolbarRect && !!toolbarRect && !toolbarCollapsed);
     const mainRect = visibleRect('.msp-plugin .msp-layout-main');
     const mainTop = mainRect ? mainRect.top : 0;
-    const defaultViewportTop = mainTop + 64;
+    const defaultViewportTop = mainTop + 56;
     const panelOpenTop = selectionToolbarRect
       ? Math.ceil(selectionToolbarRect.bottom + FLOATING_LAYOUT_GAP)
       : defaultViewportTop;
@@ -12408,7 +12408,7 @@
   function applyDefaultDockingPoseControlsPosition(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     root.dataset.defaultPosition = '1';
     const bounds = dockingPoseControlsBounds(mainRect);
-    moveDockingPoseControls(root, bounds.left, 14, mainRect);
+    moveDockingPoseControls(root, bounds.left, 12, mainRect);
   }
 
   function repositionDockingPoseControls(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {

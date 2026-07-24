@@ -607,7 +607,7 @@ body.burette-mobile-host #buret-scene-tree {
   align-items: center;
   gap: 4px;
   width: min(var(--buret-selection-controls-width, 430px), var(--buret-selection-controls-max-width, calc(100vw - 24px)));
-  padding: 6px;
+  padding: 3px;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 12px;
   color: var(--buret-toolbar-color);
@@ -629,14 +629,14 @@ body.buret-selection-toolbar-open .buret-selection-bar {
   width: auto;
   min-width: 84px;
   max-width: 120px;
-  height: 26px;
+  height: 28px;
 }
 .buret-selection-button {
   display: flex;
   align-items: center;
   gap: 2px;
   flex: 0 0 auto;
-  height: 26px;
+  height: 28px;
   border: 0;
   border-radius: 8px;
   padding: 0 6px 0 8px;
@@ -677,8 +677,8 @@ body.buret-selection-toolbar-open .buret-selection-bar {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border: 0;
   border-radius: 8px;
   padding: 0;
@@ -1021,7 +1021,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   align-items: center;
   gap: 6px;
   max-width: 220px;
-  height: 30px;
+  height: 36px;
   padding: 0 11px 0 9px;
   border: 1px solid var(--buret-molstar-border);
   border-radius: 999px;
@@ -1466,7 +1466,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 }
 #buret-toolbar {
   position: absolute; top: calc(var(--buret-toolbar-safe-top) + var(--buret-viewport-top-inset, 0px)); right: var(--buret-control-island-right); left: auto; z-index: 2147483646;
-  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 6px 0;
+  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 3px 0;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 12px; color: var(--buret-toolbar-color);
   background: var(--buret-toolbar-background);
@@ -1529,10 +1529,10 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 }
 #buret-toolbar.collapsed .buret-grip,
 #buret-toolbar.buret-suppressed-by-molstar-panel .buret-grip {
-  width: 40px;
-  min-width: 40px;
-  height: 40px;
-  min-height: 40px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
   border-radius: 12px;
   cursor: pointer;
   background: var(--buret-toolbar-background);
@@ -1543,7 +1543,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 }
 .buret-button {
   position: relative;
-  min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 7px;
+  min-width: 28px; height: 28px; border: 0; border-radius: 8px; padding: 0 7px;
   color: inherit; background: transparent; font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   display: grid; place-items: center;
 }
@@ -1647,7 +1647,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 .buret-button.hidden { display: none; }
 .buret-button svg { width: 17px; height: 17px; display: block; }
 .buret-pose-toggle { width: auto; min-width: 34px; }
-.buret-grip { width: 30px; padding: 0; cursor: grab; color: currentColor; opacity: 0.66; }
+.buret-grip { width: 28px; padding: 0; cursor: grab; color: currentColor; opacity: 0.66; }
 .buret-molstar-lasso.active {
   background: var(--buret-toolbar-hover);
   box-shadow: inset 0 0 0 1px var(--buret-toolbar-border);
@@ -1961,7 +1961,7 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
 .buret-xyzrender-preset-slot.visible { display: flex; }
 .buret-xyzrender-tune.hidden { display: none; }
 .buret-select {
-  height: 30px; max-width: 96px; border: 0; border-radius: 8px; padding: 0 22px 0 8px;
+  height: 28px; max-width: 96px; border: 0; border-radius: 8px; padding: 0 22px 0 8px;
   color: inherit; background: transparent; font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 .buret-select:hover, .buret-select:focus { background: var(--buret-toolbar-hover); outline: none; }
@@ -2502,8 +2502,8 @@ body.burette-mobile-host .buret-molstar-molecule-preview {
   flex-direction: column;
   align-items: stretch;
   gap: 0;
-  min-height: 34px;
-  padding: 5px;
+  min-height: 36px;
+  padding: 3px;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 12px;
   background: var(--buret-toolbar-background);
@@ -2530,7 +2530,7 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
   transition: none;
 }
 .buret-docking-poses button {
-  height: 26px;
+  height: 28px;
   border: 0;
   border-radius: 8px;
   padding: 0 9px;
@@ -3096,11 +3096,11 @@ body .msp-plugin .msp-selection-viewport-controls-actions {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   box-sizing: border-box;
   border: 1px solid var(--buret-molstar-border);
-  border-radius: 9px;
+  border-radius: 12px;
   padding: 0;
   color: var(--buret-molstar-text);
   background: var(--buret-molstar-panel-background);
@@ -3108,8 +3108,8 @@ body .msp-plugin .msp-selection-viewport-controls-actions {
   transition: background 150ms ease, color 150ms ease;
 }
 .buret-corner-toggle > svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 /* The layers fan apart on hover and stay apart while the panel is open — the same
    motion animate-ui gives its Lucide icons, expressed as a transform because this
@@ -3167,7 +3167,7 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
 
 .buret-scene-tree {
   position: absolute;
-  top: calc(var(--buret-toolbar-safe-top) + 38px + var(--buret-viewport-top-inset, 0px));
+  top: calc(var(--buret-toolbar-safe-top) + 48px + var(--buret-viewport-top-inset, 0px));
   left: var(--buret-corner-left, var(--buret-control-island-right));
   z-index: 36;
   display: flex;
