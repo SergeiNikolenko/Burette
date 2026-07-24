@@ -218,18 +218,23 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   // Only a checked-and-missing binary disables the run buttons; an unchecked one
   // is not yet known to be missing.
   const xtbMissing = xtbStatus?.installed === false;
-  // A direct job on a whole protein is refused once it starts, with a message
-  // telling you to select something first. The atom count is already parsed, so
-  // the card can say that before the click instead of after it.
+  // A direct job is refused once it starts if the object it runs on is over the
+  // atom cap, with a message telling you to select something smaller. The count
+  // is already parsed, so the card can say that before the click. When something
+  // is selected the run scopes to it, so the cap applies to the selection's size
+  // - picking a whole chain or all polymers is still too big and must stay
+  // blocked, not just "a selection exists".
   const structureAtoms = compositionSummary ? structureAtomCountFromSummary(compositionSummary) : null;
   const jobScopedToSelection = Boolean(selectedEntity || viewerLigandSelection);
-  const oversizedForDirectJob = !jobScopedToSelection
-    && structureAtoms !== null
-    && structureAtoms > DIRECT_CHEMISTRY_JOB_ATOM_LIMIT;
+  const scopedAtoms = selectedScopeAtomCount(selectedEntity, viewerLigandSelection);
+  const effectiveAtoms = jobScopedToSelection ? scopedAtoms : structureAtoms;
+  const oversizedForDirectJob = effectiveAtoms !== null && effectiveAtoms > DIRECT_CHEMISTRY_JOB_ATOM_LIMIT;
   const oversizedNotice: EngineTool[] = oversizedForDirectJob ? [{
     name: "Scope",
     installed: false,
-    hint: `This structure has ${structureAtoms.toLocaleString()} atoms. Select a ligand or chain first — direct runs are capped at ${DIRECT_CHEMISTRY_JOB_ATOM_LIMIT}.`,
+    hint: jobScopedToSelection
+      ? `This selection has ${effectiveAtoms.toLocaleString()} atoms. Pick a single ligand or a smaller object — direct runs are capped at ${DIRECT_CHEMISTRY_JOB_ATOM_LIMIT}.`
+      : `This structure has ${effectiveAtoms.toLocaleString()} atoms. Select a ligand or chain first — direct runs are capped at ${DIRECT_CHEMISTRY_JOB_ATOM_LIMIT}.`,
   }] : [];
   const xtbBlocked = xtbMissing || oversizedForDirectJob;
   const openXtbSettingsFor = (scope: XtbSettingsScope) => {
@@ -3124,6 +3129,22 @@ function countFromSummaryValue(value: string | null, unit: string) {
   if (!value || value === "None detected") return null;
   const match = value.match(new RegExp(`(\\d[\\d,]*)\\s+${unit}\\b`, "u"));
   return match?.[1] ?? null;
+}
+
+// How many atoms a scoped run would actually touch. A ligand pick carries its
+// own count; a composition row (a chain, all polymers, all ligands) states it in
+// its value text. Used to keep the pre-click size gate honest for large
+// selections, not just for the whole structure.
+function selectedScopeAtomCount(
+  selectedEntity: SelectedStructureRow | null,
+  viewerLigandSelection: ShellViewState["viewerLigandSelection"],
+): number | null {
+  if (viewerLigandSelection?.atoms) return viewerLigandSelection.atoms;
+  if (selectedEntity) {
+    const atoms = countFromSummaryValue(selectedEntity.row.value, "atoms");
+    if (atoms) return Number(atoms.replace(/,/gu, ""));
+  }
+  return null;
 }
 
 function valueForLabel(rows: StructureSummaryRow[], label: string) {

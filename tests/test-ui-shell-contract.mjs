@@ -2459,7 +2459,12 @@ assert.match(structureInfoPanel, /const XTB_MORE_OPERATIONS = \[/);
 // The runtime refuses a direct job above the atom cap and tells you to select
 // something; the card knows the count already, so it says so before the click.
 assert.match(structureInfoPanel, /structureAtomCountFromSummary\(compositionSummary\)/);
-assert.match(structureInfoPanel, /const oversizedForDirectJob = !jobScopedToSelection/);
+// The size gate judges the scoped object, so a whole-chain selection (over the
+// cap) stays blocked rather than "a selection exists" lifting it.
+assert.match(structureInfoPanel, /const scopedAtoms = selectedScopeAtomCount\(selectedEntity, viewerLigandSelection\)/);
+assert.match(structureInfoPanel, /const effectiveAtoms = jobScopedToSelection \? scopedAtoms : structureAtoms/);
+assert.match(structureInfoPanel, /const oversizedForDirectJob = effectiveAtoms !== null && effectiveAtoms > DIRECT_CHEMISTRY_JOB_ATOM_LIMIT/);
+assert.match(structureInfoPanel, /function selectedScopeAtomCount\(/);
 assert.match(structureInfoPanel, /const xtbBlocked = xtbMissing \|\| oversizedForDirectJob/);
 assert.match(structureInfoPanel, /const crestDisabled = !canRunCrest \|\| oversized \|\| status\?\.crest\.installed === false/);
 assert.match(directChemistryGuard, /export const DIRECT_CHEMISTRY_JOB_ATOM_LIMIT = 300/);
