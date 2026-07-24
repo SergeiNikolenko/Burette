@@ -74,7 +74,20 @@ if [[ ! -x "$metal_tool" ]]; then
   fail 'Metal compiler unavailable; install the Xcode Metal Toolchain (xcodebuild -downloadComponent MetalToolchain)'
 fi
 if ! compiler_version="$("$metal_tool" --version 2>&1)"; then
-  fail "Metal compiler cannot execute: $compiler_version"
+  compiler_version=''
+  shopt -s nullglob
+  mounted_metal_tools=(
+    /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-*/Metal.xctoolchain/usr/bin/metal
+  )
+  shopt -u nullglob
+  for candidate in "${mounted_metal_tools[@]}"; do
+    if [[ -x "$candidate" ]] && candidate_version="$("$candidate" --version 2>&1)"; then
+      metal_tool="$candidate"
+      compiler_version="$candidate_version"
+      break
+    fi
+  done
+  [[ -n "$compiler_version" ]] || fail 'Metal compiler cannot execute'
 fi
 metallib_tool="$(xcrun --sdk macosx --find metallib 2>/dev/null || true)"
 if [[ ! -x "$metallib_tool" ]]; then
@@ -93,6 +106,8 @@ sdk_build_version="$(xcrun --sdk macosx --show-sdk-build-version 2>/dev/null)" |
   fail 'active macOS SDK build version is unavailable through xcrun'
 
 stage_dir="$(mktemp -d "$output_dir/generation.XXXXXX")"
+module_cache_dir="$stage_dir/module-cache"
+mkdir -p -- "$module_cache_dir"
 pointer_stage=''
 keep_stage=0
 cleanup() {
@@ -167,6 +182,7 @@ for index in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
   "$metal_tool" \
     -std=metal3.1 \
     -mmacosx-version-min=14.0 \
+    -fmodules-cache-path="$module_cache_dir" \
     -c "${source_files[$index]}" \
     -o "${air_files[$index]}"
 done

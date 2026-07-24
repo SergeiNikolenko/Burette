@@ -173,7 +173,7 @@ const AIR_PATHS: [&str; 17] = [
     "pm6-pair-fock.v1.air",
     "umap.v1.air",
 ];
-const ENTRYPOINTS: [&str; 24] = [
+const ENTRYPOINTS: [&str; 25] = [
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
     "burrete_tanimoto_query_counts_v1",
@@ -198,6 +198,7 @@ const ENTRYPOINTS: [&str; 24] = [
     "burrete_pm6_pair_fock_v1",
     "burrete_umap_initialize_v1",
     "burrete_umap_epoch_v1",
+    "burrete_diffusion_matvec_v1",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -363,7 +364,12 @@ fn validate_metadata(metadata: &BuildMetadata) -> Result<(), MetalRuntimeError> 
             .any(|(actual, expected)| actual.path != expected)
         || metadata.metallib.path != METALLIB_FILE
         || metadata.deployment_target != "14.0"
-        || metadata.compile_arguments != ["-std=metal3.1", "-mmacosx-version-min=14.0"]
+        || metadata.compile_arguments
+            != [
+                "-std=metal3.1",
+                "-mmacosx-version-min=14.0",
+                "-fmodules-cache-path=<temporary>",
+            ]
         || metadata.entrypoints != expected_entrypoints
     {
         return integrity("Metal build metadata does not match the compiled runtime contract");
@@ -600,7 +606,11 @@ mod tests {
                 "linker": { "path": "/toolchain/metallib", "sha256": hash },
                 "sdk": { "name": "macosx", "path": "/SDK", "version": "14.0", "buildVersion": "test" },
                 "deploymentTarget": "14.0",
-                "compileArguments": ["-std=metal3.1", "-mmacosx-version-min=14.0"],
+                "compileArguments": [
+                    "-std=metal3.1",
+                    "-mmacosx-version-min=14.0",
+                    "-fmodules-cache-path=<temporary>"
+                ],
                 "entrypoints": ENTRYPOINTS,
             })
         }

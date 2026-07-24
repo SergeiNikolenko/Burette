@@ -6,15 +6,15 @@ use burrete_compute_core::{
     initialize_conformer_positions, optimize_distance_geometry, pm6_d3_dispersion_energy,
     pm6_h4_energy, pm6_hh_repulsion_energy, pm6_one_center_d_fock, rm1_fock_pairs,
     score_tanimoto_query, symmetric_eigendecomposition, validate_conformer_stereo, AlignmentAtom,
-    AlignmentMode, AlignmentScores, AtomMapping, ChiralVolumeConstraint, DistanceConstraint,
-    DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
-    EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
-    GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown,
-    MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
-    MmffVanDerWaalsTerm, MmffVariant, Pm6FockPair, RigidTransform, Rm1FockPair, SemiempiricalAtom,
-    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoKnnOptions, TanimotoQueryOptions,
-    ChemicalSpaceMethod, TanimotoUmapGraph, TetrahedralConstraint, UmapOptions,
-    FINGERPRINT_WORDS,
+    AlignmentMode, AlignmentScores, AtomMapping, ChemicalSpaceMethod, ChiralVolumeConstraint,
+    DistanceConstraint, DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus,
+    EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
+    Fingerprint2048, GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm,
+    MmffEnergyBreakdown, MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters,
+    MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm, MmffVariant, Pm6FockPair,
+    RigidTransform, Rm1FockPair, SemiempiricalAtom, SemiempiricalMolecule, SymmetricCsr,
+    TanimotoCounts, TanimotoKnnOptions, TanimotoQueryOptions, TanimotoUmapGraph,
+    TetrahedralConstraint, UmapOptions, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -398,6 +398,24 @@ impl MetalComputeRuntime {
             graph,
             options,
             method,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        Ok(MetalUmapExecution {
+            positions: dispatch.positions,
+            component_count: options.n_components(),
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
+    pub fn diffusion_map_profiled(
+        &self,
+        graph: &TanimotoUmapGraph,
+        options: UmapOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalUmapExecution, MetalRuntimeError> {
+        let dispatch = self.host.diffusion_map_profiled(
+            graph,
+            options.n_components(),
             max_memory_bytes.min(self.limits.max_memory_bytes),
         )?;
         Ok(MetalUmapExecution {
@@ -2128,12 +2146,7 @@ mod tests {
             ChemicalSpaceMethod::Mmae,
         ] {
             let embedding = runtime
-                .optimize_embedding_profiled(
-                    &graph,
-                    options_2d,
-                    method,
-                    MIN_COMPUTE_MEMORY_BYTES,
-                )
+                .optimize_embedding_profiled(&graph, options_2d, method, MIN_COMPUTE_MEMORY_BYTES)
                 .expect("Metal chemical-space objective");
             assert_eq!(embedding.positions.len(), fingerprints.len());
             assert!(embedding
@@ -2142,6 +2155,16 @@ mod tests {
                 .flatten()
                 .all(|value| value.is_finite()));
         }
+        let diffusion = runtime
+            .diffusion_map_profiled(&graph, options_2d, MIN_COMPUTE_MEMORY_BYTES)
+            .expect("Metal Diffusion Maps");
+        assert_eq!(diffusion.positions.len(), fingerprints.len());
+        assert!(diffusion
+            .positions
+            .iter()
+            .flatten()
+            .all(|value| value.is_finite()));
+        assert!(diffusion.positions.iter().all(|position| position[2] == 0.0));
 
         let options_3d =
             UmapOptions::try_new(3, 20, 0.1, 1.0, 1.0, 5, 42).expect("3D UMAP options");

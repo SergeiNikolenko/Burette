@@ -201,3 +201,30 @@ kernel void burrete_umap_epoch_v1(
     }
     outputPositions[vertexIndex] = float4(updated, 0.0f);
 }
+
+// Sparse symmetric diffusion-operator multiply used by Diffusion Maps.
+// The host precomputes the alpha=1 density-normalized edge weights and keeps
+// the four-vector orthonormalization on the CPU. No dense N x N matrix exists.
+kernel void burrete_diffusion_matvec_v1(
+    device const float4* inputVectors [[buffer(0)]],
+    device const ulong* rowOffsets [[buffer(1)]],
+    device const uint* columnIndices [[buffer(2)]],
+    device const float* normalizedWeights [[buffer(3)]],
+    device float4* outputVectors [[buffer(4)]],
+    constant ulong& vertexCount [[buffer(5)]],
+    uint vertexIndex [[thread_position_in_grid]]
+) {
+    if (static_cast<ulong>(vertexIndex) >= vertexCount) {
+        return;
+    }
+    float4 result = float4(0.0f);
+    const ulong start = rowOffsets[vertexIndex];
+    const ulong end = rowOffsets[vertexIndex + 1];
+    for (ulong edge = start; edge < end; ++edge) {
+        const uint targetIndex = columnIndices[edge];
+        if (static_cast<ulong>(targetIndex) < vertexCount) {
+            result += normalizedWeights[edge] * inputVectors[targetIndex];
+        }
+    }
+    outputVectors[vertexIndex] = result;
+}

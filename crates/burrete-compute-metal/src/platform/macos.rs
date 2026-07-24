@@ -1,13 +1,19 @@
-use std::{collections::HashSet, ffi::c_void, mem::{size_of, size_of_val}, sync::OnceLock};
+use std::{
+    collections::HashSet,
+    ffi::c_void,
+    mem::{size_of, size_of_val},
+    sync::OnceLock,
+};
 
 use burrete_compute_core::{
     fit_umap_curve, pm6_h4_covalent_radius, rm1_multipole_parameters, semiempirical_parameters,
     validate_etk_geometry_constraints, validate_mmff_parameters, validate_stereo_constraints,
-    AlignmentMode, ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
-    EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
-    Fingerprint2048, GraphBuildOptions, MmffParameters, Pm6FockPair, Rm1FockPair,
-    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoKnnOptions, TanimotoQueryOptions,
-    ChemicalSpaceMethod, TanimotoUmapGraph, TetrahedralConstraint, UmapOptions,
+    AlignmentMode, ChemicalSpaceMethod, ChiralVolumeConstraint, DistanceConstraint,
+    DistanceGeometryOptimizationOptions, EtkDistanceConstraint, EtkGeometryTerms,
+    EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048, GraphBuildOptions,
+    MmffParameters, Pm6FockPair, Rm1FockPair, SemiempiricalMolecule, SymmetricCsr, TanimotoCounts,
+    TanimotoKnnOptions, TanimotoQueryOptions, TanimotoUmapGraph, TetrahedralConstraint,
+    UmapOptions,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 use metal::{
@@ -289,6 +295,7 @@ pub(crate) struct MetalHost {
     top_k_batch_pipeline: ComputePipelineState,
     umap_initialize_pipeline: ComputePipelineState,
     umap_epoch_pipeline: ComputePipelineState,
+    diffusion_matvec_pipeline: ComputePipelineState,
     conformer_initialize_pipeline: ComputePipelineState,
     conformer_distance_pipeline: ComputePipelineState,
     conformer_optimize_pipeline: ComputePipelineState,
@@ -341,6 +348,7 @@ impl MetalHost {
         let top_k_batch_pipeline = pipeline(&device, library, "burrete_tanimoto_top_k_batch_v1")?;
         let umap_initialize_pipeline = pipeline(&device, library, "burrete_umap_initialize_v1")?;
         let umap_epoch_pipeline = pipeline(&device, library, "burrete_umap_epoch_v1")?;
+        let diffusion_matvec_pipeline = pipeline(&device, library, "burrete_diffusion_matvec_v1")?;
         let conformer_initialize_pipeline =
             pipeline(&device, library, "burrete_conformer_initialize_v1")?;
         let conformer_distance_pipeline =
@@ -375,6 +383,7 @@ impl MetalHost {
             top_k_batch_pipeline,
             umap_initialize_pipeline,
             umap_epoch_pipeline,
+            diffusion_matvec_pipeline,
             conformer_initialize_pipeline,
             conformer_distance_pipeline,
             conformer_optimize_pipeline,
@@ -610,9 +619,7 @@ impl MetalHost {
             });
         }
         if neighbors_per_vertex > MAX_TANIMOTO_NEIGHBORS {
-            return resource_limit(
-                "native Metal top-K supports at most 64 neighbors per vertex",
-            );
+            return resource_limit("native Metal top-K supports at most 64 neighbors per vertex");
         }
         if record_count > u32::MAX as usize {
             return resource_limit("fingerprint count exceeds the Metal uint32 row limit");
@@ -637,20 +644,16 @@ impl MetalHost {
         let output_capacity = batch_capacity
             .checked_mul(neighbors_per_vertex)
             .ok_or_else(memory_overflow)?;
-        let output_indices = buffer_with_slice(
-            &self.device,
-            &vec![u32::MAX; output_capacity],
+        let output_indices = buffer_with_slice(&self.device, &vec![u32::MAX; output_capacity]);
+        let output_similarities = buffer_with_slice(&self.device, &vec![f32::NAN; output_capacity]);
+        let thread_width = self.counts_batch_pipeline.thread_execution_width().min(
+            self.counts_batch_pipeline
+                .max_total_threads_per_threadgroup(),
         );
-        let output_similarities =
-            buffer_with_slice(&self.device, &vec![f32::NAN; output_capacity]);
-        let thread_width = self
-            .counts_batch_pipeline
-            .thread_execution_width()
-            .min(self.counts_batch_pipeline.max_total_threads_per_threadgroup());
-        let top_k_thread_width = self
-            .top_k_batch_pipeline
-            .thread_execution_width()
-            .min(self.top_k_batch_pipeline.max_total_threads_per_threadgroup());
+        let top_k_thread_width = self.top_k_batch_pipeline.thread_execution_width().min(
+            self.top_k_batch_pipeline
+                .max_total_threads_per_threadgroup(),
+        );
         if thread_width == 0 || top_k_thread_width == 0 {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal Tanimoto kNN pipeline advertises a zero thread width".into(),
@@ -707,19 +710,24 @@ impl MetalHost {
                     (&config as *const TanimotoKnnBatchV1).cast(),
                 );
                 top_k_encoder.dispatch_threads(
-                    MTLSize { width: row_count as u64, height: 1, depth: 1 },
-                    MTLSize { width: top_k_thread_width, height: 1, depth: 1 },
+                    MTLSize {
+                        width: row_count as u64,
+                        height: 1,
+                        depth: 1,
+                    },
+                    MTLSize {
+                        width: top_k_thread_width,
+                        height: 1,
+                        depth: 1,
+                    },
                 );
                 top_k_encoder.end_encoding();
                 command.commit();
                 command.wait_until_completed();
                 completed_gpu_time(command)
             })?;
-            let selected_indices = read_buffer::<u32>(
-                &output_indices,
-                output_capacity,
-                "Tanimoto top-K index",
-            )?;
+            let selected_indices =
+                read_buffer::<u32>(&output_indices, output_capacity, "Tanimoto top-K index")?;
             let selected_similarities = read_buffer::<f32>(
                 &output_similarities,
                 output_capacity,
@@ -885,6 +893,191 @@ impl MetalHost {
         {
             return Err(MetalRuntimeError::Dispatch(
                 "Metal UMAP returned invalid positions".into(),
+            ));
+        }
+        Ok(MetalUmapDispatch {
+            positions,
+            gpu_time_seconds,
+        })
+    }
+
+    pub(crate) fn diffusion_map_profiled(
+        &self,
+        graph: &TanimotoUmapGraph,
+        component_count: u32,
+        max_memory_bytes: u64,
+    ) -> Result<MetalUmapDispatch, MetalRuntimeError> {
+        let vertex_count = graph.vertex_count();
+        if vertex_count == 0 {
+            return Ok(MetalUmapDispatch {
+                positions: Vec::new(),
+                gpu_time_seconds: 0.0,
+            });
+        }
+        if !matches!(component_count, 2 | 3) {
+            return Err(MetalRuntimeError::Dispatch(
+                "Diffusion Maps requires two or three components".into(),
+            ));
+        }
+        admit_umap_memory(vertex_count, graph.edge_count(), max_memory_bytes)?;
+        let mut density = vec![0.0_f64; vertex_count];
+        for (row, row_density) in density.iter_mut().enumerate() {
+            let start = graph.row_offsets()[row] as usize;
+            let end = graph.row_offsets()[row + 1] as usize;
+            *row_density = graph.weights()[start..end]
+                .iter()
+                .map(|weight| f64::from(*weight))
+                .sum::<f64>()
+                .max(1.0e-12);
+        }
+        let mut anisotropic_degree = vec![0.0_f64; vertex_count];
+        for row in 0..vertex_count {
+            let start = graph.row_offsets()[row] as usize;
+            let end = graph.row_offsets()[row + 1] as usize;
+            for edge in start..end {
+                let column = graph.column_indices()[edge] as usize;
+                anisotropic_degree[row] +=
+                    f64::from(graph.weights()[edge]) / (density[row] * density[column]);
+            }
+            anisotropic_degree[row] = anisotropic_degree[row].max(1.0e-12);
+        }
+        let normalized_weights = graph
+            .weights()
+            .iter()
+            .enumerate()
+            .map(|(edge, weight)| {
+                let row = graph
+                    .row_offsets()
+                    .partition_point(|offset| *offset <= edge as u64)
+                    - 1;
+                let column = graph.column_indices()[edge] as usize;
+                let anisotropic = f64::from(*weight) / (density[row] * density[column]);
+                (anisotropic / (anisotropic_degree[row] * anisotropic_degree[column]).sqrt()) as f32
+            })
+            .collect::<Vec<_>>();
+        let mut vectors = (0..vertex_count)
+            .map(|row| {
+                let phase = (row as f64 + 1.0) * 0.754_877_666_246_692_7;
+                [
+                    anisotropic_degree[row].sqrt() as f32,
+                    phase.sin() as f32,
+                    (phase * 1.618_033_988_749_895).sin() as f32,
+                    (phase * 2.414_213_562_373_095).sin() as f32,
+                ]
+            })
+            .collect::<Vec<_>>();
+        orthonormalize_diffusion_vectors(&mut vectors, component_count as usize + 1)?;
+
+        let row_offsets = buffer_with_slice(&self.device, graph.row_offsets());
+        let column_indices = buffer_with_slice(&self.device, graph.column_indices());
+        let weights = buffer_with_slice(&self.device, &normalized_weights);
+        let input = buffer_with_slice(&self.device, &vectors);
+        let output = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; vertex_count]);
+        let width = self.diffusion_matvec_pipeline.thread_execution_width().min(
+            self.diffusion_matvec_pipeline
+                .max_total_threads_per_threadgroup(),
+        );
+        if width == 0 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal diffusion pipeline advertises a zero thread width".into(),
+            ));
+        }
+        let mut gpu_time_seconds = 0.0;
+        for _ in 0..64 {
+            write_buffer(input.as_ref(), &vectors, "diffusion input")?;
+            gpu_time_seconds += autoreleasepool(|| {
+                let command = self.queue.new_command_buffer();
+                let encoder = command.new_compute_command_encoder();
+                encoder.set_compute_pipeline_state(&self.diffusion_matvec_pipeline);
+                encoder.set_buffer(0, Some(&input), 0);
+                encoder.set_buffer(1, Some(&row_offsets), 0);
+                encoder.set_buffer(2, Some(&column_indices), 0);
+                encoder.set_buffer(3, Some(&weights), 0);
+                encoder.set_buffer(4, Some(&output), 0);
+                encoder.set_bytes(
+                    5,
+                    std::mem::size_of::<u64>() as u64,
+                    (&(vertex_count as u64) as *const u64).cast(),
+                );
+                encoder.dispatch_threads(
+                    MTLSize {
+                        width: vertex_count as u64,
+                        height: 1,
+                        depth: 1,
+                    },
+                    MTLSize {
+                        width,
+                        height: 1,
+                        depth: 1,
+                    },
+                );
+                encoder.end_encoding();
+                command.commit();
+                command.wait_until_completed();
+                completed_gpu_time(command)
+            })?;
+            vectors = read_buffer::<[f32; 4]>(&output, vertex_count, "diffusion output")?;
+            orthonormalize_diffusion_vectors(&mut vectors, component_count as usize + 1)?;
+        }
+        write_buffer(input.as_ref(), &vectors, "diffusion input")?;
+        let _ = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.diffusion_matvec_pipeline);
+            encoder.set_buffer(0, Some(&input), 0);
+            encoder.set_buffer(1, Some(&row_offsets), 0);
+            encoder.set_buffer(2, Some(&column_indices), 0);
+            encoder.set_buffer(3, Some(&weights), 0);
+            encoder.set_buffer(4, Some(&output), 0);
+            encoder.set_bytes(
+                5,
+                std::mem::size_of::<u64>() as u64,
+                (&(vertex_count as u64) as *const u64).cast(),
+            );
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: vertex_count as u64,
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        let projected = read_buffer::<[f32; 4]>(&output, vertex_count, "diffusion projection")?;
+        let mut eigenvalues = [0.0_f64; 4];
+        for component in 1..=component_count as usize {
+            eigenvalues[component] = vectors
+                .iter()
+                .zip(&projected)
+                .map(|(left, right)| f64::from(left[component]) * f64::from(right[component]))
+                .sum();
+        }
+        let positions = vectors
+            .iter()
+            .map(|vector| {
+                [
+                    vector[1] * eigenvalues[1] as f32,
+                    vector[2] * eigenvalues[2] as f32,
+                    if component_count == 3 {
+                        vector[3] * eigenvalues[3] as f32
+                    } else {
+                        0.0
+                    },
+                    0.0,
+                ]
+            })
+            .collect::<Vec<_>>();
+        if positions.iter().flatten().any(|value| !value.is_finite()) {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal Diffusion Maps returned invalid positions".into(),
             ));
         }
         Ok(MetalUmapDispatch {
@@ -3447,6 +3640,63 @@ fn buffer_with_slice<T>(device: &Device, values: &[T]) -> Buffer {
         size_of_val(values) as u64,
         MTLResourceOptions::StorageModeShared,
     )
+}
+
+fn write_buffer<T: Copy>(
+    buffer: &BufferRef,
+    values: &[T],
+    label: &str,
+) -> Result<(), MetalRuntimeError> {
+    let expected = std::mem::size_of_val(values);
+    if buffer.length() != expected as u64 || buffer.contents().is_null() {
+        return Err(MetalRuntimeError::Dispatch(format!(
+            "Metal {label} buffer has an invalid mapped length"
+        )));
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            values.as_ptr().cast::<u8>(),
+            buffer.contents().cast::<u8>(),
+            expected,
+        );
+    }
+    Ok(())
+}
+
+fn orthonormalize_diffusion_vectors(
+    vectors: &mut [[f32; 4]],
+    active_components: usize,
+) -> Result<(), MetalRuntimeError> {
+    for component in 0..active_components {
+        for previous in 0..component {
+            let projection = vectors
+                .iter()
+                .map(|vector| f64::from(vector[component]) * f64::from(vector[previous]))
+                .sum::<f64>();
+            for vector in vectors.iter_mut() {
+                vector[component] -= (projection * f64::from(vector[previous])) as f32;
+            }
+        }
+        let norm = vectors
+            .iter()
+            .map(|vector| f64::from(vector[component]).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        if !norm.is_finite() || norm <= 1.0e-12 {
+            return Err(MetalRuntimeError::Dispatch(
+                "Diffusion Maps orthogonal iteration became rank deficient".into(),
+            ));
+        }
+        for vector in vectors.iter_mut() {
+            vector[component] = (f64::from(vector[component]) / norm) as f32;
+        }
+    }
+    for vector in vectors.iter_mut() {
+        for value in vector.iter_mut().skip(active_components) {
+            *value = 0.0;
+        }
+    }
+    Ok(())
 }
 
 fn read_buffer<T: Copy>(

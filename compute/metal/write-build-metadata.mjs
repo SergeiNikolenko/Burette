@@ -162,7 +162,11 @@ const metadata = {
     buildVersion: process.env.SDK_BUILD_VERSION,
   },
   deploymentTarget: "14.0",
-  compileArguments: ["-std=metal3.1", "-mmacosx-version-min=14.0"],
+  compileArguments: [
+    "-std=metal3.1",
+    "-mmacosx-version-min=14.0",
+    "-fmodules-cache-path=<temporary>",
+  ],
   entrypoints: [
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
@@ -188,6 +192,7 @@ const metadata = {
     "burrete_pm6_pair_fock_v1",
     "burrete_umap_initialize_v1",
     "burrete_umap_epoch_v1",
+    "burrete_diffusion_matvec_v1",
   ],
 };
 
