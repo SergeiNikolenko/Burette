@@ -3592,6 +3592,15 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   flex-direction: column;
   gap: 1px;
   padding: 6px 8px 8px;
+  /* Doubles as the menu's drag handle: it opens under the pointer, which is often on
+     top of the structure being edited, and these controls are worked in, not picked
+     from once. touch-action keeps a drag from scrolling the page underneath. */
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.buret-tree-menu.buret-viewport-panel-dragging .buret-tree-menu-header {
+  cursor: grabbing;
 }
 .buret-tree-menu-heading {
   overflow: hidden;

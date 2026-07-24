@@ -5932,6 +5932,10 @@
 
     const header = document.createElement('div');
     header.className = 'buret-tree-menu-header';
+    // The menu carries representation, opacity and colour controls, so it is worked in
+    // rather than picked from — and where it lands is wherever the row was clicked,
+    // often over the very structure being edited. Its heading doubles as a drag handle.
+    header.setAttribute('data-buret-panel-handle', '');
     const heading = document.createElement('span');
     heading.className = 'buret-tree-menu-heading';
     heading.textContent = node.label;
@@ -6002,6 +6006,7 @@
     const top = Math.max(6, Math.min(clientY, window.innerHeight - rect.height - 6));
     menu.style.left = `${Math.round(left)}px`;
     menu.style.top = `${Math.round(top)}px`;
+    initViewportPanelDrag(menu);
   }
 
   function runSceneTreeAction(action, ref, control) {
