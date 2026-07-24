@@ -24,7 +24,11 @@ use crate::preview::grid_store::GridAlignmentSourceRow;
 
 use super::{
     alignment_workflow::{execute_snapshot_alignment_with_run_id, GridAlignmentRequest},
-    chemical_space::{execute_chemical_space_from_fingerprints_with_knn, ChemicalSpaceRequest},
+    chemical_space::{
+        cluster_chemical_space_from_fingerprints,
+        execute_chemical_space_from_fingerprints_with_knn, ChemicalSpaceClusterRequest,
+        ChemicalSpaceRequest,
+    },
     conformer_executor::execute_conformer_distance_geometry_with_service,
     conformer_plan::ConformerMoleculeIdentity,
     conformer_stereo_executor::execute_conformer_stereo_validation,
@@ -46,6 +50,7 @@ struct DevComputeRequest {
     source: DevComputeSource,
     conformer: Option<DevConformerRequest>,
     chemical_space: Option<DevChemicalSpaceRequest>,
+    chemical_space_cluster: Option<DevChemicalSpaceClusterRequest>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -57,6 +62,7 @@ enum DevComputeOperation {
     SemiempiricalRm1,
     AlignPoses,
     ChemicalSpace,
+    ChemicalSpaceCluster,
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,6 +95,13 @@ struct DevChemicalSpaceRequest {
     options: ChemicalSpaceRequest,
     records: Vec<DevChemicalSpaceRecord>,
     knn_cache: Option<DevChemicalSpaceKnnCache>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DevChemicalSpaceClusterRequest {
+    options: ChemicalSpaceClusterRequest,
+    records: Vec<DevChemicalSpaceRecord>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -163,6 +176,13 @@ pub(crate) fn run() -> Result<(), String> {
                 .as_ref()
                 .ok_or("native Metal chemical-space request is missing fingerprints")?,
         )?,
+        DevComputeOperation::ChemicalSpaceCluster => execute_chemical_space_cluster(
+            &runtime,
+            request
+                .chemical_space_cluster
+                .as_ref()
+                .ok_or("native Metal chemical-space cluster request is missing fingerprints")?,
+        )?,
     };
     write_response(result)
 }
@@ -220,6 +240,52 @@ fn execute_chemical_space(
         "embedding": execution.result,
         "knnCache": encode_knn_cache(&execution.knn),
     }))
+}
+
+fn execute_chemical_space_cluster(
+    runtime: &MetalTanimotoRuntime,
+    input: &DevChemicalSpaceClusterRequest,
+) -> Result<Value, String> {
+    if input.records.len() < 2 || input.records.len() > 20_000 {
+        return Err(
+            "native Metal chemical-space clustering accepts between 2 and 20000 records".into(),
+        );
+    }
+    let mut fingerprints = Vec::with_capacity(input.records.len());
+    let mut source_record_ids = Vec::with_capacity(input.records.len());
+    for record in &input.records {
+        match (&record.fingerprint_base64, &record.error) {
+            (Some(encoded), None) => {
+                let bytes = STANDARD.decode(encoded).map_err(|_| {
+                    "native chemical-space cluster fingerprint is not valid base64"
+                })?;
+                let bytes: [u8; FINGERPRINT_BYTES] = bytes.try_into().map_err(|_| {
+                    format!(
+                        "native chemical-space cluster fingerprint must contain {FINGERPRINT_BYTES} bytes"
+                    )
+                })?;
+                fingerprints.push(Fingerprint2048::from_le_bytes(bytes));
+                source_record_ids.push(record.source_record_id);
+            }
+            (None, Some(_)) => {}
+            _ => {
+                return Err(
+                    "native chemical-space cluster record must contain either a fingerprint or an error"
+                        .into(),
+                )
+            }
+        }
+    }
+    serde_json::to_value(
+        cluster_chemical_space_from_fingerprints(
+            &fingerprints,
+            &source_record_ids,
+            runtime,
+            input.options,
+        )
+        .map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())
 }
 
 fn encode_knn_cache(knn: &MetalTanimotoKnnExecution) -> DevChemicalSpaceKnnCache {

@@ -10,7 +10,10 @@ use uuid::Uuid;
 use crate::compute::{
     alignment_workflow::{GridAlignmentRequest, GridAlignmentResult},
     artifact_publisher::{ClusterPublicationStep, ConformerPublicationStep},
-    chemical_space::{ChemicalSpaceRequest, ChemicalSpaceResult},
+    chemical_space::{
+        ChemicalSpaceClusterRequest, ChemicalSpaceClusterResult, ChemicalSpaceRequest,
+        ChemicalSpaceResult,
+    },
     cluster_executor::ClusterExecutionStep,
     conformer_session::ConformerSubmissionStep,
     coordinator::{
@@ -433,6 +436,24 @@ pub(crate) async fn compute_execute_chemical_space<R: Runtime>(
     let coordinator = coordinator.inner().clone();
     run_blocking(move || {
         coordinator.execute_chemical_space(&owner, job_id, expected_revision, request)
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_cluster_chemical_space<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    job_id: String,
+    expected_revision: u64,
+    request: ChemicalSpaceClusterRequest,
+) -> Result<ChemicalSpaceClusterResult, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let job_id = parse_uuid("job ID", &job_id)?;
+    validate_revision(expected_revision)?;
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || {
+        coordinator.cluster_chemical_space(&owner, job_id, expected_revision, request)
     })
     .await
 }

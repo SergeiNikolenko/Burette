@@ -14,6 +14,8 @@ type MoleculePreview = {
 type ChemicalSpace3DProps = {
   positions: Array<[number, number, number]>;
   sourceRecordIds: number[];
+  clusterIds: Array<number | null>;
+  clusterColors: readonly string[];
   selected: Set<number>;
   hovered: number | null;
   preview: MoleculePreview | null;
@@ -30,6 +32,7 @@ type ThreeRuntime = {
   updateSelected: (sourceRecordIds: Set<number>) => void;
   updatePreview: (preview: MoleculePreview | null) => void;
   updatePointScale: (pointScale: number) => void;
+  updateClusters: (clusterIds: Array<number | null>) => void;
 };
 
 const MAX_LASSO_POINTS = 4_096;
@@ -39,6 +42,8 @@ const POINT_HIT_RADIUS_PX = 6;
 export function ChemicalSpace3D({
   positions,
   sourceRecordIds,
+  clusterIds,
+  clusterColors,
   selected,
   hovered,
   preview,
@@ -59,6 +64,7 @@ export function ChemicalSpace3D({
   const positionsRef = useRef(positions);
   const selectedRef = useRef(selected);
   const hoveredRef = useRef(hovered);
+  const clusterIdsRef = useRef(clusterIds);
   const [lasso, setLasso] = useState<Point2[]>([]);
   const [previewAnchor, setPreviewAnchor] = useState<Point2 | null>(null);
 
@@ -68,6 +74,7 @@ export function ChemicalSpace3D({
   positionsRef.current = positions;
   selectedRef.current = selected;
   hoveredRef.current = hovered;
+  clusterIdsRef.current = clusterIds;
   const sourceRecordIdsKey = sourceRecordIds.join(",");
 
   useEffect(() => {
@@ -104,8 +111,19 @@ export function ChemicalSpace3D({
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions.flat(), 3));
+    const clusterColorValues = (ids: Array<number | null>) => ids.flatMap((clusterId) => {
+      const color = clusterId === null
+        ? pointColor
+        : new THREE.Color(clusterColors[clusterId % clusterColors.length]);
+      return [color.r, color.g, color.b];
+    });
+    geometry.setAttribute(
+      "color",
+      new THREE.Float32BufferAttribute(clusterColorValues(clusterIdsRef.current), 3),
+    );
     const points = new THREE.Points(geometry, new THREE.PointsMaterial({
-      color: pointColor,
+      color: 0xffffff,
+      vertexColors: true,
       map: pointTexture,
       alphaTest: 0.15,
       opacity: pointOpacity,
@@ -181,6 +199,14 @@ export function ChemicalSpace3D({
       points.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
       selectedPoints.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
       hoveredPoints.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
+      render();
+    };
+    const updateClusters = (nextClusterIds: Array<number | null>) => {
+      clusterIdsRef.current = nextClusterIds;
+      geometry.setAttribute(
+        "color",
+        new THREE.Float32BufferAttribute(clusterColorValues(nextClusterIds), 3),
+      );
       render();
     };
 
@@ -310,6 +336,7 @@ export function ChemicalSpace3D({
       updateSelected,
       updatePreview,
       updatePointScale,
+      updateClusters,
     };
     updateSelected(selected);
     updateHovered(hovered);
@@ -348,6 +375,7 @@ export function ChemicalSpace3D({
   useEffect(() => runtimeRef.current?.updateHovered(hovered), [hovered]);
   useEffect(() => runtimeRef.current?.updatePreview(preview), [preview]);
   useEffect(() => runtimeRef.current?.updatePointScale(pointScale), [pointScale]);
+  useEffect(() => runtimeRef.current?.updateClusters(clusterIds), [clusterIds]);
 
   useEffect(() => {
     const canvas = lassoCanvasRef.current;
@@ -426,6 +454,11 @@ export function ChemicalSpace3D({
       <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
         {selected.size.toLocaleString()} selected · drag to orbit · WASD to pan · wheel to zoom
       </div>
+      {clusterIds.some((clusterId) => clusterId !== null) ? (
+        <div className="pointer-events-none absolute right-2 top-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
+          Colored by Butina cluster
+        </div>
+      ) : null}
     </div>
   );
 }

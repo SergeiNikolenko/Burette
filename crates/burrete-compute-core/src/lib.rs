@@ -340,7 +340,10 @@ pub struct ButinaOptions {
 }
 
 impl ButinaOptions {
-    fn try_new(max_undirected_edges: u64, max_memory_bytes: u64) -> Result<Self, ClusterCoreError> {
+    pub fn try_new(
+        max_undirected_edges: u64,
+        max_memory_bytes: u64,
+    ) -> Result<Self, ClusterCoreError> {
         if !(1..=MAX_UNDIRECTED_SIMILARITY_EDGES).contains(&max_undirected_edges) {
             return Err(ClusterCoreError::InvalidOptions(format!(
                 "max_undirected_edges must be in 1..={MAX_UNDIRECTED_SIMILARITY_EDGES}"

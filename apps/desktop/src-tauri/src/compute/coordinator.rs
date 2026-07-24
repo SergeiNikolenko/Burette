@@ -35,7 +35,11 @@ use crate::compute::{
         materialize_conformer_artifact, reconcile_artifact_root, AnalysisArtifactPayload,
         AnalysisPublicationStep, ClusterPublicationStep, ConformerPublicationStep,
     },
-    chemical_space::{execute_chemical_space, ChemicalSpaceRequest, ChemicalSpaceResult},
+    chemical_space::{
+        cluster_chemical_space_from_fingerprints, execute_chemical_space,
+        ChemicalSpaceClusterRequest, ChemicalSpaceClusterResult, ChemicalSpaceRequest,
+        ChemicalSpaceResult,
+    },
     cluster_executor::{
         finish_clustering, graph_options, valid_fingerprints, validate_computation,
         ClusterComputation, ClusterExecutionStep,
@@ -247,6 +251,60 @@ impl ComputeCoordinator {
                 .insert(cache_key, execution.knn.clone());
         }
         Ok(execution.result)
+    }
+
+    pub(crate) fn cluster_chemical_space(
+        &self,
+        owner: &str,
+        job_id: Uuid,
+        expected_revision: u64,
+        request: ChemicalSpaceClusterRequest,
+    ) -> ComputeResult<ChemicalSpaceClusterResult> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let job = ready.store.get_job(owner, job_id)?;
+        if job.revision != expected_revision {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision,
+                actual_revision: job.revision,
+            });
+        }
+        let prepared = ready
+            .prepared_clusters
+            .lock()
+            .map_err(|_| poisoned("prepared cluster registry"))?;
+        let batch = prepared
+            .get(&job_id)
+            .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                entity: "prepared chemical-space fingerprints",
+                id: job_id.to_string(),
+            })?;
+        if batch.grid_lease.namespaced_document_id()
+            != runtime_document_id(owner, &job.request.source().document_id)
+        {
+            return Err(ComputeCoordinatorError::Forbidden(
+                "prepared chemical space does not belong to this Grid window".into(),
+            ));
+        }
+        let (fingerprints, valid_ordinals) = valid_fingerprints(batch)?;
+        let source_record_ids = valid_ordinals
+            .iter()
+            .map(|ordinal| batch.identities[*ordinal as usize].source_record_id)
+            .collect::<Vec<_>>();
+        let runtime = match &ready.native_metal {
+            NativeMetalState::Available(runtime) => runtime,
+            NativeMetalState::Unavailable { message, .. } => {
+                return Err(ComputeCoordinatorError::Unavailable(format!(
+                    "Chemical-space Metal runtime is unavailable: {message}"
+                )))
+            }
+        };
+        cluster_chemical_space_from_fingerprints(
+            &fingerprints,
+            &source_record_ids,
+            runtime,
+            request,
+        )
     }
 
     pub(crate) fn evaluate_grid_semiempirical(

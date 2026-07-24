@@ -132,7 +132,8 @@ export type ChemicalSpaceMethod =
   | "trimap"
   | "dreams"
   | "cne"
-  | "mmae";
+  | "mmae"
+  | "dmap";
 
 export type ChemicalSpaceResult = {
   sourceRecordIds: number[];
@@ -149,6 +150,14 @@ export type ChemicalSpaceResult = {
   similarityGpuTimeMs?: number;
   embeddingGpuTimeMs: number;
   hostTimeMs: number;
+};
+
+export type ChemicalSpaceClusterResult = {
+  sourceRecordIds: number[];
+  clusterIds: number[];
+  representativeSourceRecordIds: number[];
+  clusterCount: number;
+  similarityGpuTimeMs: number;
 };
 
 export type ChemicalSpaceProgress = {
@@ -374,6 +383,25 @@ export async function runChemicalSpaceWorkflow(
   throwIfAborted(signal);
   onProgress({ phase: "embedding" });
   return executePreparedChemicalSpace(job, options);
+}
+
+export async function runChemicalSpaceClusteringWorkflow(
+  documentId: string,
+  cutoff: number,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+): Promise<ChemicalSpaceClusterResult> {
+  const job = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+  throwIfAborted(signal);
+  onProgress({ phase: "embedding" });
+  return invoke<ChemicalSpaceClusterResult>("compute_cluster_chemical_space", {
+    jobId: job.jobId,
+    expectedRevision: job.revision,
+    request: {
+      cutoff,
+      maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
+    },
+  });
 }
 
 export async function runChemicalSpaceStudyWorkflow(

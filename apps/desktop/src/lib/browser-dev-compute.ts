@@ -9,6 +9,7 @@ import {
   fingerprintBrowserChemicalSpaceRecords,
   type BrowserChemicalSpaceInputRecord,
   type ChemicalSpaceOptions,
+  type ChemicalSpaceClusterResult,
   type ChemicalSpaceProgress,
   type ChemicalSpaceRepresentation,
   type ChemicalSpaceResult,
@@ -18,7 +19,7 @@ import type { StandaloneAlignmentResult, StandaloneComputeSource, StandaloneSemi
 import { stableTextDocumentId } from "./file-export";
 import type { TextFileDocument } from "../types";
 
-type BrowserDevNativeComputeOperation = "generate3d" | "generateEnsemble" | "optimizeGeometry" | "semiempiricalRm1" | "alignPoses" | "chemicalSpace";
+type BrowserDevNativeComputeOperation = "generate3d" | "generateEnsemble" | "optimizeGeometry" | "semiempiricalRm1" | "alignPoses" | "chemicalSpace" | "chemicalSpaceCluster";
 
 type BrowserDevNativeComputeResponse<T> = {
   provider: "nativeMetalDevBridge";
@@ -110,6 +111,38 @@ export async function runBrowserDevChemicalSpace(
   if (signal?.aborted) throw abortError();
   onProgress({ phase: "embedding" });
   return executeBrowserChemicalSpace(fingerprints, options);
+}
+
+export async function runBrowserDevChemicalSpaceClustering(
+  records: BrowserChemicalSpaceInputRecord[],
+  cutoff: number,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+): Promise<ChemicalSpaceClusterResult> {
+  const fingerprints = await prepareBrowserChemicalSpaceFingerprints(records, onProgress, signal);
+  if (signal?.aborted) throw abortError();
+  onProgress({ phase: "embedding" });
+  return runBrowserDevNativeCompute<ChemicalSpaceClusterResult>(
+    {
+      title: "browser-chemical-space-clusters",
+      extension: "fingerprints",
+      text: "",
+    },
+    "chemicalSpaceCluster",
+    undefined,
+    undefined,
+    {
+      options: {
+        cutoff,
+        maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
+      },
+      records: fingerprints.map((record) => ({
+        sourceRecordId: record.sourceRecordId,
+        fingerprintBase64: record.fingerprintBase64,
+        error: record.error,
+      })),
+    },
+  );
 }
 
 export async function runBrowserDevChemicalSpaceStudy(
@@ -491,11 +524,12 @@ async function runBrowserDevNativeCompute<T>(
   operation: BrowserDevNativeComputeOperation,
   conformer?: Record<string, unknown>,
   chemicalSpace?: Record<string, unknown>,
+  chemicalSpaceCluster?: Record<string, unknown>,
 ): Promise<T> {
   const response = await fetch("/__burette/native-compute", {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ operation, source, conformer, chemicalSpace }),
+    body: JSON.stringify({ operation, source, conformer, chemicalSpace, chemicalSpaceCluster }),
   });
   const payload = await response.json().catch(() => null) as BrowserDevNativeComputeResponse<T> & { error?: unknown } | null;
   if (!response.ok) {

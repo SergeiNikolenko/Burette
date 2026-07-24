@@ -29,17 +29,20 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   computeErrorMessage,
   invalidateChemicalSpaceFingerprintCache,
+  runChemicalSpaceClusteringWorkflow,
   runChemicalSpaceWorkflow,
   runChemicalSpaceStudyWorkflow,
   type BrowserChemicalSpaceInputRecord,
   type ChemicalSpaceOptions,
   type ChemicalSpaceMethod,
+  type ChemicalSpaceClusterResult,
   type ChemicalSpaceRepresentation,
   type ChemicalSpaceProgress,
   type ChemicalSpaceResult,
 } from "../lib/compute-cluster";
 import {
   runBrowserDevChemicalSpace,
+  runBrowserDevChemicalSpaceClustering,
   runBrowserDevChemicalSpaceStudy,
 } from "../lib/browser-dev-compute";
 import { normalizeChemicalSpacePositions } from "../lib/chemical-space-normalization";
@@ -70,6 +73,7 @@ type StudyState = {
 type CompletedStudy = {
   results: ChemicalSpaceResult[];
 };
+type ClusteringMethod = "none" | "butina";
 
 const DEFAULT_OPTIONS: ChemicalSpaceOptions = {
   representation: "morgan",
@@ -102,11 +106,16 @@ const CHEMICAL_SPACE_METHODS: Array<{ value: ChemicalSpaceMethod; label: string 
   { value: "dreams", label: "DREAMS" },
   { value: "cne", label: "CNE" },
   { value: "mmae", label: "MMAE" },
+  { value: "dmap", label: "DMAP" },
 ];
 const completedEmbeddings = new Map<string, ChemicalSpaceResult>();
 const GRID_SELECTION_BRIDGE_LIMIT = 100_000;
 const MAX_MOLECULE_PREVIEW_BASE64_BYTES = 350_000;
 const MAX_LASSO_POINTS = 4_096;
+const CLUSTER_COLORS = [
+  "#38bdf8", "#fb7185", "#4ade80", "#facc15", "#f97316",
+  "#22d3ee", "#a3e635", "#f472b6", "#60a5fa", "#fbbf24",
+] as const;
 const DEFAULT_STUDY: StudyState = {
   parameter: "minDist",
   range: [0.02, 0.6],
@@ -130,6 +139,11 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [studyPosition, setStudyPosition] = useState(0);
   const [studyPlaying, setStudyPlaying] = useState(false);
   const [studyRunning, setStudyRunning] = useState(false);
+  const [clusteringMethod, setClusteringMethod] = useState<ClusteringMethod>("none");
+  const [clusterCutoff, setClusterCutoff] = useState(0.6);
+  const [clusterResult, setClusterResult] = useState<ChemicalSpaceClusterResult | null>(null);
+  const [clusterError, setClusterError] = useState<string | null>(null);
+  const [clusterRunning, setClusterRunning] = useState(false);
   const workflowControllerRef = useRef<AbortController | null>(null);
   const studyControllerRef = useRef<AbortController | null>(null);
   const hoveredRef = useRef<number | null>(null);
@@ -153,6 +167,9 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setStudyPosition(0);
     setStudyPlaying(false);
     setStudyRunning(false);
+    setClusterResult(null);
+    setClusterError(null);
+    setClusterRunning(false);
   }, [documentId]);
 
   useEffect(() => {
@@ -198,6 +215,40 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       }
     };
   }, [documentId, options]);
+
+  useEffect(() => {
+    if (!documentId || clusteringMethod === "none") {
+      setClusterResult(null);
+      setClusterError(null);
+      setClusterRunning(false);
+      return;
+    }
+    const controller = new AbortController();
+    setClusterRunning(true);
+    setClusterError(null);
+    setClusterResult(null);
+    const updateProgress = () => undefined;
+    const workflow = isTauriRuntime()
+      ? runChemicalSpaceClusteringWorkflow(documentId, clusterCutoff, updateProgress, controller.signal)
+      : requestBrowserChemicalSpaceRecords(documentId, controller.signal)
+        .then((records) => runBrowserDevChemicalSpaceClustering(
+          records,
+          clusterCutoff,
+          updateProgress,
+          controller.signal,
+        ));
+    void workflow
+      .then((next) => {
+        if (!controller.signal.aborted) setClusterResult(next);
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted) setClusterError(computeErrorMessage(cause));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setClusterRunning(false);
+      });
+    return () => controller.abort();
+  }, [clusterCutoff, clusteringMethod, documentId]);
 
   useEffect(() => {
     if (!studyPlaying || !completedStudy) return;
@@ -364,6 +415,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               const method = event.currentTarget.value as ChemicalSpaceMethod;
               const next = { ...draft, method };
               setDraft(next);
+              if (method === "dmap") setStudy(studyDefaults("neighbors"));
               commitOptions(next);
             }}
           >
@@ -458,6 +510,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           {displayedResult ? (
             <ChemicalSpaceCanvas
               result={displayedResult}
+              clusters={clusteringMethod === "butina" ? clusterResult : null}
               selected={selected}
               hovered={hovered}
               preview={preview}
@@ -469,7 +522,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                 postToGrid({ type: "chemicalSpaceHoverChanged", sourceRecordId });
               }}
               onSelect={(sourceRecordIds) => {
-                const bounded = sourceRecordIds.slice(0, GRID_SELECTION_BRIDGE_LIMIT);
+                const expanded = tool === "navigate" && sourceRecordIds.length === 1
+                  ? clusterMembersForSource(clusterResult, sourceRecordIds[0])
+                  : sourceRecordIds;
+                const bounded = expanded.slice(0, GRID_SELECTION_BRIDGE_LIMIT);
                 setSelected(new Set(bounded));
                 postToGrid({
                   type: "chemicalSpaceSelectionChanged",
@@ -508,7 +564,9 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                   {methodLabel(draft.method)} parameters
                 </span>
                 <span className="font-normal">
-                  k={draft.neighbors} · min dist={draft.minDist.toFixed(2)}
+                  {draft.method === "dmap"
+                    ? `k=${draft.neighbors} · density normalization α=1`
+                    : `k=${draft.neighbors} · min dist=${draft.minDist.toFixed(2)}`}
                 </span>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
@@ -517,18 +575,22 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                   <ParameterField label="Neighbors" value={draft.neighbors}>
                     <Slider tone="neutral" min={2} max={64} step={1} value={[draft.neighbors]} onValueChange={([neighbors]) => setDraft((value) => ({ ...value, neighbors }))} />
                   </ParameterField>
-                  <ParameterField label="Minimum distance" value={draft.minDist.toFixed(2)}>
-                    <Slider tone="neutral" min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
-                  </ParameterField>
-                  <ParameterField label="Cluster spread" value={draft.spread.toFixed(1)}>
-                    <Slider tone="neutral" min={1} max={3} step={0.1} value={[draft.spread]} onValueChange={([spread]) => setDraft((value) => ({ ...value, spread }))} />
-                  </ParameterField>
-                  <ParameterField label="Epochs" value={draft.epochs}>
-                    <Slider tone="neutral" min={100} max={1500} step={100} value={[draft.epochs]} onValueChange={([epochs]) => setDraft((value) => ({ ...value, epochs }))} />
-                  </ParameterField>
-                  <ParameterField label="Learning rate" value={draft.learningRate.toFixed(1)}>
-                    <Slider tone="neutral" min={0.1} max={3} step={0.1} value={[draft.learningRate]} onValueChange={([learningRate]) => setDraft((value) => ({ ...value, learningRate }))} />
-                  </ParameterField>
+                  {draft.method !== "dmap" ? (
+                    <>
+                      <ParameterField label="Minimum distance" value={draft.minDist.toFixed(2)}>
+                        <Slider tone="neutral" min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
+                      </ParameterField>
+                      <ParameterField label="Cluster spread" value={draft.spread.toFixed(1)}>
+                        <Slider tone="neutral" min={1} max={3} step={0.1} value={[draft.spread]} onValueChange={([spread]) => setDraft((value) => ({ ...value, spread }))} />
+                      </ParameterField>
+                      <ParameterField label="Epochs" value={draft.epochs}>
+                        <Slider tone="neutral" min={100} max={1500} step={100} value={[draft.epochs]} onValueChange={([epochs]) => setDraft((value) => ({ ...value, epochs }))} />
+                      </ParameterField>
+                      <ParameterField label="Learning rate" value={draft.learningRate.toFixed(1)}>
+                        <Slider tone="neutral" min={0.1} max={3} step={0.1} value={[draft.learningRate]} onValueChange={([learningRate]) => setDraft((value) => ({ ...value, learningRate }))} />
+                      </ParameterField>
+                    </>
+                  ) : null}
                 </FieldGroup>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
@@ -548,6 +610,48 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
+              <DropdownMenuLabel>Clustering</DropdownMenuLabel>
+              <DropdownMenuGroup className="px-2 py-1.5">
+                <FieldGroup className="gap-3">
+                  <Field>
+                    <FieldLabel htmlFor="chemical-space-clustering">Method</FieldLabel>
+                    <NativeSelect
+                      id="chemical-space-clustering"
+                      size="sm"
+                      value={clusteringMethod}
+                      onChange={(event) => setClusteringMethod(event.currentTarget.value as ClusteringMethod)}
+                    >
+                      <NativeSelectOption value="none">None</NativeSelectOption>
+                      <NativeSelectOption value="butina">Butina · Tanimoto</NativeSelectOption>
+                    </NativeSelect>
+                  </Field>
+                  {clusteringMethod === "butina" ? (
+                    <ParameterField label="Tanimoto cutoff" value={clusterCutoff.toFixed(2)}>
+                      <Slider
+                        tone="neutral"
+                        min={0.3}
+                        max={0.95}
+                        step={0.01}
+                        value={[clusterCutoff]}
+                        onValueChange={([cutoff]) => setClusterCutoff(cutoff)}
+                      />
+                    </ParameterField>
+                  ) : null}
+                </FieldGroup>
+              </DropdownMenuGroup>
+              {clusteringMethod === "butina" ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>
+                    {clusterRunning
+                      ? "Clustering on Metal…"
+                      : clusterError
+                        ? clusterError
+                        : `${clusterResult?.clusterCount ?? 0} clusters · click a point to select its cluster`}
+                  </DropdownMenuLabel>
+                </>
+              ) : null}
+              <DropdownMenuSeparator />
               <DropdownMenuLabel>Parameter study</DropdownMenuLabel>
               <DropdownMenuGroup className="px-2 py-1.5">
                 <FieldGroup className="gap-3">
@@ -559,9 +663,13 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                       value={study.parameter}
                       onChange={(event) => setStudy(studyDefaults(event.currentTarget.value as StudyParameter))}
                     >
-                      <NativeSelectOption value="minDist">Minimum distance</NativeSelectOption>
                       <NativeSelectOption value="neighbors">Neighbors</NativeSelectOption>
-                      <NativeSelectOption value="learningRate">Learning rate</NativeSelectOption>
+                      {draft.method !== "dmap" ? (
+                        <>
+                          <NativeSelectOption value="minDist">Minimum distance</NativeSelectOption>
+                          <NativeSelectOption value="learningRate">Learning rate</NativeSelectOption>
+                        </>
+                      ) : null}
                     </NativeSelect>
                   </Field>
                   <ParameterField
@@ -662,6 +770,7 @@ function ParameterField({ label, value, children }: { label: string; value: stri
 
 type ChemicalSpaceCanvasProps = {
   result: ChemicalSpaceResult;
+  clusters: ChemicalSpaceClusterResult | null;
   selected: Set<number>;
   hovered: number | null;
   preview: MoleculePreview | null;
@@ -681,6 +790,8 @@ function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
       <ChemicalSpace3D
         positions={normalized}
         sourceRecordIds={props.result.sourceRecordIds}
+        clusterIds={alignedClusterIds(props.result.sourceRecordIds, props.clusters)}
+        clusterColors={CLUSTER_COLORS}
         selected={props.selected}
         hovered={props.hovered}
         preview={props.preview}
@@ -697,6 +808,7 @@ function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
 
 function ChemicalSpace2D({
   result,
+  clusters,
   selected,
   hovered,
   preview,
@@ -715,6 +827,14 @@ function ChemicalSpace2D({
   const [camera, setCamera] = useState({ yaw: -0.45, pitch: 0.35, zoom: 1, panX: 0, panY: 0 });
   const [lasso, setLasso] = useState<Point2[]>([]);
   const [cursor, setCursor] = useState<Point2 | null>(null);
+  const clusterIds = useMemo(
+    () => alignedClusterIds(result.sourceRecordIds, clusters),
+    [clusters, result.sourceRecordIds],
+  );
+  const clusterBySource = useMemo(
+    () => new Map(result.sourceRecordIds.map((sourceRecordId, index) => [sourceRecordId, clusterIds[index]])),
+    [clusterIds, result.sourceRecordIds],
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -756,7 +876,12 @@ function ChemicalSpace2D({
         0,
         Math.PI * 2,
       );
-      context.fillStyle = active || hot ? selectedColor : pointColor;
+      const clusterId = clusterBySource.get(point.sourceRecordId) ?? null;
+      context.fillStyle = active || hot
+        ? selectedColor
+        : clusterId === null
+          ? pointColor
+          : CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
       context.globalAlpha = active || hot ? 1 : basePointOpacity;
       context.fill();
       if (hot) {
@@ -776,7 +901,7 @@ function ChemicalSpace2D({
       context.stroke();
       context.setLineDash([]);
     }
-  }, [camera, hovered, lasso, normalized, pointScale, result.sourceRecordIds, selected, viewport]);
+  }, [camera, clusterBySource, hovered, lasso, normalized, pointScale, result.sourceRecordIds, selected, viewport]);
 
   const localPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -916,8 +1041,66 @@ function ChemicalSpace2D({
       <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
         {selected.size.toLocaleString()} selected · WASD or drag to pan · wheel to zoom
       </div>
+      {clusters ? <ClusterLegend clusters={clusters} /> : null}
     </div>
   );
+}
+
+function ClusterLegend({ clusters }: { clusters: ChemicalSpaceClusterResult }) {
+  const counts = new Map<number, number>();
+  for (const clusterId of clusters.clusterIds) {
+    counts.set(clusterId, (counts.get(clusterId) ?? 0) + 1);
+  }
+  const visible = [...counts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 8);
+  return (
+    <div className="pointer-events-none absolute right-2 top-2 max-w-48 rounded-lg border border-border bg-background/90 p-2 shadow-sm backdrop-blur">
+      <div className="mb-1 text-[10px] font-medium">Butina clusters</div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        {visible.map(([clusterId, count]) => (
+          <div key={clusterId} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <span
+              className="size-2 rounded-full"
+              style={{ backgroundColor: CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length] }}
+            />
+            <span>#{clusterId + 1}</span>
+            <span className="font-mono">{count}</span>
+          </div>
+        ))}
+      </div>
+      {clusters.clusterCount > visible.length ? (
+        <div className="mt-1 text-[10px] text-muted-foreground">
+          +{clusters.clusterCount - visible.length} more
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function alignedClusterIds(
+  sourceRecordIds: number[],
+  clusters: ChemicalSpaceClusterResult | null,
+): Array<number | null> {
+  if (!clusters) return sourceRecordIds.map(() => null);
+  const bySource = new Map(
+    clusters.sourceRecordIds.map((sourceRecordId, index) => [
+      sourceRecordId,
+      clusters.clusterIds[index],
+    ]),
+  );
+  return sourceRecordIds.map((sourceRecordId) => bySource.get(sourceRecordId) ?? null);
+}
+
+function clusterMembersForSource(
+  clusters: ChemicalSpaceClusterResult | null,
+  sourceRecordId: number,
+) {
+  if (!clusters) return [sourceRecordId];
+  const index = clusters.sourceRecordIds.indexOf(sourceRecordId);
+  const clusterId = index < 0 ? undefined : clusters.clusterIds[index];
+  if (clusterId === undefined) return [sourceRecordId];
+  return clusters.sourceRecordIds.filter((_, memberIndex) => clusters.clusterIds[memberIndex] === clusterId);
 }
 
 function ChemicalSpaceEmpty({ message, actionLabel, onAction }: { message: string; actionLabel?: string; onAction?: () => void }) {

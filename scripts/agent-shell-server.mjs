@@ -742,7 +742,7 @@ async function handleNativeCompute(req, res, method) {
     sendJson(res, 200, {
       available: Boolean(runtime),
       provider: runtime ? 'nativeMetalDevBridge' : null,
-      operations: runtime ? ['generate3d', 'generateEnsemble', 'optimizeGeometry', 'semiempiricalRm1', 'alignPoses', 'chemicalSpace'] : [],
+      operations: runtime ? ['generate3d', 'generateEnsemble', 'optimizeGeometry', 'semiempiricalRm1', 'alignPoses', 'chemicalSpace', 'chemicalSpaceCluster'] : [],
     });
     return;
   }

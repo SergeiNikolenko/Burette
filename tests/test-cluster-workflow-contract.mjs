@@ -56,9 +56,17 @@ assert.match(chemicalSpace, /build_tanimoto_knn_profiled/);
 assert.match(chemicalSpace, /optimize_embedding_profiled/);
 assert.match(chemicalSpace, /cached_knn/);
 assert.match(chemicalSpace, /let \(knn, tanimoto_gpu_time_ms\) = if let Some\(knn\) = reused_knn/);
-for (const method of ["Umap", "Tsne", "Pacmap", "Localmap", "Trimap", "Dreams", "Cne", "Mmae"]) {
+for (const method of ["Umap", "Tsne", "Pacmap", "Localmap", "Trimap", "Dreams", "Cne", "Mmae", "Dmap"]) {
   assert.match(chemicalSpace, new RegExp(`ChemicalSpaceMethod::${method}`));
 }
+assert.match(chemicalSpace, /cluster_chemical_space_from_fingerprints/);
+assert.match(chemicalSpace, /build_graph_profiled/);
+assert.match(chemicalSpace, /butina_clusters/);
+assert.match(chemicalSpacePanel, /value: "dmap", label: "DMAP"/);
+assert.match(chemicalSpacePanel, /Butina · Tanimoto/);
+assert.match(chemicalSpacePanel, /Tanimoto cutoff/);
+assert.match(chemicalSpacePanel, /clusterMembersForSource/);
+assert.match(chemicalSpace3d, /vertexColors: true/);
 assert.match(chemicalSpacePanel, /isKnownViewerMessageSource\(event\.source, documentId\)/);
 assert.match(chemicalSpacePanel, /MAX_LASSO_POINTS = 4_096/);
 assert.match(chemicalSpacePanel, /GRID_SELECTION_BRIDGE_LIMIT = 100_000/);

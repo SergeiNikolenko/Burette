@@ -129,6 +129,7 @@ pub fn run() {
             compute::commands::compute_submit_fingerprint_chunk,
             compute::commands::compute_execute_cluster,
             compute::commands::compute_execute_chemical_space,
+            compute::commands::compute_cluster_chemical_space,
             compute::commands::compute_publish_cluster,
             compute::commands::compute_get_job,
             compute::commands::compute_list_jobs,

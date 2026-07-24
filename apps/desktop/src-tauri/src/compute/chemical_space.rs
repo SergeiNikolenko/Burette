@@ -1,10 +1,11 @@
 use std::{num::NonZeroUsize, time::Instant};
 
 use burrete_compute_core::{
-    build_tanimoto_umap_graph, ChemicalSpaceMethod as NativeChemicalSpaceMethod, Fingerprint2048,
-    TanimotoKnnOptions, UmapOptions,
+    build_tanimoto_umap_graph, butina_clusters, ChemicalSpaceMethod as NativeChemicalSpaceMethod,
+    Fingerprint2048, GraphBuildOptions, TanimotoKnnOptions, UmapOptions,
 };
 use burrete_compute_metal::{MetalTanimotoKnnExecution, MetalTanimotoRuntime};
+use burrete_compute_protocol::{SimilarityCutoff, MAX_UNDIRECTED_SIMILARITY_EDGES};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -28,6 +29,7 @@ pub(crate) enum ChemicalSpaceMethod {
     Dreams,
     Cne,
     Mmae,
+    Dmap,
 }
 
 impl From<ChemicalSpaceMethod> for NativeChemicalSpaceMethod {
@@ -41,6 +43,7 @@ impl From<ChemicalSpaceMethod> for NativeChemicalSpaceMethod {
             ChemicalSpaceMethod::Dreams => Self::Dreams,
             ChemicalSpaceMethod::Cne => Self::Cne,
             ChemicalSpaceMethod::Mmae => Self::Mmae,
+            ChemicalSpaceMethod::Dmap => Self::Dmap,
         }
     }
 }
@@ -81,6 +84,24 @@ pub(crate) struct ChemicalSpaceResult {
 pub(crate) struct ChemicalSpaceExecution {
     pub(crate) result: ChemicalSpaceResult,
     pub(crate) knn: MetalTanimotoKnnExecution,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ChemicalSpaceClusterRequest {
+    cutoff: f32,
+    #[serde(default = "default_max_memory_bytes")]
+    max_memory_bytes: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ChemicalSpaceClusterResult {
+    pub(crate) source_record_ids: Vec<u64>,
+    pub(crate) cluster_ids: Vec<u64>,
+    pub(crate) representative_source_record_ids: Vec<u64>,
+    pub(crate) cluster_count: usize,
+    pub(crate) similarity_gpu_time_ms: u64,
 }
 
 impl ChemicalSpaceRequest {
@@ -193,14 +214,20 @@ pub(crate) fn execute_chemical_space_from_fingerprints_with_knn(
         umap_options,
     )
     .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
-    let embedding = runtime
-        .optimize_embedding_profiled(
-            &graph,
-            umap_options,
-            request.method.into(),
-            request.max_memory_bytes,
-        )
-        .map_err(metal_error)?;
+    let embedding = if request.method == ChemicalSpaceMethod::Dmap {
+        runtime
+            .diffusion_map_profiled(&graph, umap_options, request.max_memory_bytes)
+            .map_err(metal_error)?
+    } else {
+        runtime
+            .optimize_embedding_profiled(
+                &graph,
+                umap_options,
+                request.method.into(),
+                request.max_memory_bytes,
+            )
+            .map_err(metal_error)?
+    };
     let positions = embedding
         .positions
         .into_iter()
@@ -221,6 +248,71 @@ pub(crate) fn execute_chemical_space_from_fingerprints_with_knn(
             host_time_ms: started.elapsed().as_secs_f64() * 1_000.0,
         },
         knn,
+    })
+}
+
+pub(crate) fn cluster_chemical_space_from_fingerprints(
+    fingerprints: &[Fingerprint2048],
+    source_record_ids: &[u64],
+    runtime: &MetalTanimotoRuntime,
+    request: ChemicalSpaceClusterRequest,
+) -> ComputeResult<ChemicalSpaceClusterResult> {
+    if fingerprints.len() < 2 || fingerprints.len() != source_record_ids.len() {
+        return Err(ComputeCoordinatorError::Validation(
+            "Chemical-space clustering requires aligned fingerprints for at least two molecules"
+                .into(),
+        ));
+    }
+    if !request.cutoff.is_finite() || !(0.0..=1.0).contains(&request.cutoff) {
+        return Err(ComputeCoordinatorError::Validation(
+            "Chemical-space clustering cutoff must be between zero and one".into(),
+        ));
+    }
+    let denominator = 10_000_u32;
+    let numerator = (request.cutoff * denominator as f32).round() as u32;
+    let cutoff = SimilarityCutoff {
+        numerator,
+        denominator,
+    };
+    let tile_size = NonZeroUsize::new(fingerprints.len().clamp(1, 512))
+        .expect("clamped graph tile size is positive");
+    let graph_options = GraphBuildOptions::try_new(
+        tile_size,
+        MAX_UNDIRECTED_SIMILARITY_EDGES,
+        request.max_memory_bytes,
+    )
+    .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+    let graph_execution = runtime
+        .build_graph_profiled(fingerprints, cutoff, graph_options)
+        .map_err(metal_error)?;
+    let butina_options = burrete_compute_core::ButinaOptions::try_new(
+        MAX_UNDIRECTED_SIMILARITY_EDGES,
+        request.max_memory_bytes,
+    )
+    .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+    let clusters = butina_clusters(&graph_execution.graph, butina_options)
+        .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+    let mut cluster_ids = vec![u64::MAX; fingerprints.len()];
+    let mut representatives = Vec::with_capacity(clusters.len());
+    for (cluster_id, members) in clusters.iter().enumerate() {
+        if let Some(representative) = members.first() {
+            representatives.push(source_record_ids[*representative as usize]);
+        }
+        for member in members {
+            cluster_ids[*member as usize] = cluster_id as u64;
+        }
+    }
+    if cluster_ids.contains(&u64::MAX) {
+        return Err(ComputeCoordinatorError::Protocol(
+            "Butina did not assign every chemical-space molecule".into(),
+        ));
+    }
+    Ok(ChemicalSpaceClusterResult {
+        source_record_ids: source_record_ids.to_vec(),
+        cluster_ids,
+        representative_source_record_ids: representatives,
+        cluster_count: clusters.len(),
+        similarity_gpu_time_ms: graph_execution.gpu_time_ms,
     })
 }
 
