@@ -13,6 +13,7 @@ import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerW
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { DIRECT_CHEMISTRY_JOB_ATOM_LIMIT, structureAtomCountFromSummary } from "../lib/direct-chemistry-guard";
@@ -311,6 +312,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
           ) : null}
         </div>
         <p>{inspectorSummaryLine(brief.kind, compositionSummary, compositionPending, compositionError)}</p>
+        <InspectorHeaderStats document={document} summary={compositionSummary} pending={compositionPending} />
       </section>
 
       {contextStyleCard ? (
@@ -483,6 +485,58 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
       />
 
       <StructureDropSummary dockDrops={dockDrops} />
+    </div>
+  );
+}
+
+// The counts people open the panel for were only reachable by scrolling past
+// every card and expanding Details. They ride in the header instead, so they
+// survive the scroll along with the file name.
+const HEADER_STAT_LABELS = ["Chains", "Molecules", "Frames", "Models"] as const;
+
+function inspectorHeaderStats(document: ViewerDocument, summary: StructureCompositionSummary | null) {
+  const size = { label: "Size", value: formatBytes(document.byteCount) };
+  if (!summary) return [size];
+  const atomCount = structureAtomCountFromSummary(summary);
+  const counts = [
+    atomCount === null ? null : { label: "Atoms", value: atomCount.toLocaleString() },
+    ...HEADER_STAT_LABELS.map((label) => {
+      const value = valueForLabel(summary.rows, label);
+      return value === null ? null : { label, value };
+    }),
+  ].filter((stat) => stat !== null);
+  return [...counts.slice(0, 2), size];
+}
+
+function InspectorHeaderStats({
+  document,
+  summary,
+  pending,
+}: {
+  document: ViewerDocument;
+  summary: StructureCompositionSummary | null;
+  pending: boolean;
+}) {
+  if (pending) {
+    return (
+      <div className="structure-inspector-header-stats">
+        <div><span>Atoms</span><Skeleton className="structure-inspector-header-stat-skeleton" /></div>
+        <div><span>Chains</span><Skeleton className="structure-inspector-header-stat-skeleton" /></div>
+        <div><span>Size</span><strong>{formatBytes(document.byteCount)}</strong></div>
+      </div>
+    );
+  }
+  const stats = inspectorHeaderStats(document, summary);
+  // A lone size reads as a stray label, and the file card already carries it.
+  if (stats.length < 2) return null;
+  return (
+    <div className="structure-inspector-header-stats">
+      {stats.map((stat) => (
+        <div key={stat.label}>
+          <span>{stat.label}</span>
+          <strong title={stat.value}>{stat.value}</strong>
+        </div>
+      ))}
     </div>
   );
 }

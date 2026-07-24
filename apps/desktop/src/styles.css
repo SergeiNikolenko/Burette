@@ -2416,7 +2416,63 @@ img.radix-menu-item-icon {
   grid-auto-rows: max-content;
 }
 .structure-inspector-header {
-  background: var(--surface-card);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+/* Sticky over scrolling content needs an opaque base; the card tint alone is
+   translucent and the rows underneath read through it. The extra class outranks
+   .structure-brief-card, which sets the same property further down the file. */
+.structure-brief-card.structure-inspector-header {
+  background-color: var(--bg-base);
+  background-image: linear-gradient(var(--surface-card), var(--surface-card));
+}
+/* The dock scrolls with 12px of padding, so the card sticks 12px below the panel
+   edge and content slides through the gap. Cover it rather than drop the
+   padding, which also sets the card's own inset. */
+.structure-inspector-header::before {
+  content: "";
+  position: absolute;
+  inset: -13px -13px auto;
+  height: 13px;
+  background: var(--bg-base);
+}
+.structure-inspector-header-stats {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+}
+.structure-inspector-header-stats > div {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  padding: 5px 8px;
+}
+.structure-inspector-header-stats > div + div {
+  border-left: 1px solid var(--line-subtler);
+}
+.structure-inspector-header-stats span {
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.structure-inspector-header-stats strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.structure-inspector-header-stat-skeleton {
+  width: 68%;
+  height: 13px;
 }
 .structure-brief-card-header {
   min-width: 0;
