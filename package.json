@@ -103,7 +103,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@types/three": "0.153.0",
-    "@vitejs/plugin-react": "^4.6.0",
+    "@vitejs/plugin-react": "^6.0.3",
     "lefthook": "^2.1.9",
     "shadcn": "^4.13.1",
     "tailwindcss": "^4.3.3",
