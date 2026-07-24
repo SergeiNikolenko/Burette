@@ -142,8 +142,9 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   }, [document?.id]);
 
   useEffect(() => {
-    const sourcePath = trajectoryPlayback?.sourcePath || "";
-    if (!sourcePath) return;
+    const playback = trajectoryPlayback;
+    const sourcePath = playback?.sourcePath || "";
+    if (!playback || !sourcePath) return;
     if (trajectorySmoothingSourcePath.current && trajectorySmoothingSourcePath.current !== sourcePath) {
       setTrajectorySmoothingBuilt(false);
       setTrajectorySmoothingView("original");
@@ -151,7 +152,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
     }
     setTrajectorySmoothingTargetFrames(Math.max(
       2,
-      Math.round(trajectoryPlayback.frameCount * TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO[trajectorySmoothingPreset]),
+      Math.round(playback.frameCount * TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO[trajectorySmoothingPreset]),
     ));
     trajectorySmoothingSourcePath.current = sourcePath;
   }, [trajectoryPlayback?.sourcePath]);
@@ -798,7 +799,9 @@ function TrajectorySmoothingCard({
       </div>
       {open ? (
         <>
-          <p className="trajectory-smoothing-intro">Smooths playback without changing the original trajectory or analysis data.</p>
+          {built ? null : (
+            <p className="trajectory-smoothing-intro">Smooths playback without changing the original trajectory or analysis data.</p>
+          )}
           <div className="trajectory-smoothing-presets" role="group" aria-label="Smoothing strength">
             {(["light", "balanced", "strong"] as const).map((value) => (
               <button
@@ -815,7 +818,7 @@ function TrajectorySmoothingCard({
             ))}
           </div>
           <div className="trajectory-smoothing-strength-copy">
-            {mode === "kinetic" ? `${kineticStates} MSM/PCCA+ macrostates` : <><strong>{preset[0].toUpperCase() + preset.slice(1)}</strong> · {targetFrames} of {frameCount} source frames</>}
+            {mode === "kinetic" ? `${kineticStates} MSM/PCCA+ macrostates` : <>{frameCount} source frames <span aria-hidden="true">→</span> <strong>{targetFrames}</strong> played back</>}
           </div>
           <button type="button" className="trajectory-smoothing-advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
             <span>Scientific settings</span><span aria-hidden="true">{advanced ? "⌃" : "⌄"}</span>

@@ -12583,19 +12583,26 @@
       const transformerId = String(transform.transformer?.id || transform.transformer?.definition?.name || '');
       if (transformerId && transformerId !== 'model-from-trajectory' && !transformerId.endsWith('.model-from-trajectory')) return;
       const frameCount = nativeTrajectoryFrameCount(plugin, cell);
-      if (expectedCount > 0 && frameCount > 0 && frameCount !== expectedCount) return;
       matches.push({
         plugin,
         ref: transform.ref,
         params,
         frameCount,
-        selected: selectedRefs.has(transform.ref)
+        selected: selectedRefs.has(transform.ref),
+        // Smoothing rebuilds the trajectory with a frame count of its own, and a
+        // segment steps through a slice of the whole. A caller asking with the old
+        // total must still reach the cell it is stepping through, so a mismatch only
+        // deprioritises a candidate — the alternative is no transform at all, which
+        // strands the stepper on Mol*'s own buttons, and our chrome hides those.
+        countMatches: !(expectedCount > 0 && frameCount > 0 && frameCount !== expectedCount)
       });
     });
     if (matches.length) {
-      return matches.find(match => match.selected) ||
-        matches.find(match => match.frameCount > 1) ||
-        matches[0];
+      const exact = matches.filter(match => match.countMatches);
+      const pool = exact.length ? exact : matches;
+      return pool.find(match => match.selected) ||
+        pool.find(match => match.frameCount > 1) ||
+        pool[0];
     }
     if (!selection || selection.structures?.length !== 1) return null;
     const model = selection.structures[0]?.model;
@@ -12639,14 +12646,29 @@
 
   function afterNativeTrajectoryPaint() {
     return new Promise(resolve => {
-      requestAnimationFrame(() => requestAnimationFrame(resolve));
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      // Frame steps are chained through one queue, and rAF never fires while the tab
+      // is hidden — a single step taken in the background would otherwise leave the
+      // queue waiting for a paint that never comes, stalling playback for good even
+      // after the window is focused again.
+      requestAnimationFrame(() => requestAnimationFrame(finish));
+      setTimeout(finish, 250);
     });
   }
 
   async function setNativeTrajectoryPoseDirect(index, poseCount) {
-    const target = Math.max(0, Math.min(poseCount - 1, index));
     const transform = nativeTrajectoryModelTransform(poseCount);
     if (!transform) return false;
+    // Clamp against the frames the cell actually holds: after smoothing the caller's
+    // total and the loaded trajectory can disagree, and asking for a frame past the
+    // end leaves the model on its last one while we report success.
+    const limit = transform.frameCount > 0 ? transform.frameCount : poseCount;
+    const target = Math.max(0, Math.min(limit - 1, index));
     await transform.plugin.state.updateTransform(
       transform.plugin.state.data,
       transform.ref,
@@ -13623,7 +13645,9 @@
         try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
         activePose = previousIndex;
         updateControls();
-        setStatus(`[web] Could not switch ${controlLabelLower}.\n\n${error?.message || String(error)}`, 'error');
+        // Stepping frames is the most repeated action here and a loop retries it on a
+        // timer, so a failed step stays in the console: the label and buttons have
+        // already rolled back to the frame still on screen, which is the honest report.
         // eslint-disable-next-line no-console
         console.error(error);
       }

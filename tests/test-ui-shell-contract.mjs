@@ -2636,7 +2636,7 @@ assert.match(structureInfoPanel, /document\.dockingRequest\?\.ligandPaths\.inclu
 assert.match(structureInfoPanel, /const pair = trajectoryPathsFor\(document, playback\)/);
 assert.match(structureInfoPanel, /originalFrameIndex: playback\?\.globalFrameIndex \?\? 0/);
 assert.match(structureInfoPanel, /sourcePath: playback\?\.sourcePath \|\| ""/);
-assert.match(structureInfoPanel, /setTrajectorySmoothingTargetFrames\(Math\.max\(\s*2,\s*Math\.round\(trajectoryPlayback\.frameCount \* TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO\[trajectorySmoothingPreset\]\),?\s*\)\)/);
+assert.match(structureInfoPanel, /setTrajectorySmoothingTargetFrames\(Math\.max\(\s*2,\s*Math\.round\(playback\.frameCount \* TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO\[trajectorySmoothingPreset\]\),?\s*\)\)/);
 assert.match(structureInfoPanel, /if \(detail\.view === "smoothed"\) setTrajectorySmoothingBuilt\(true\)/);
 assert.match(structureInfoPanel, /role="slider"/);
 assert.match(structureInfoPanel, /onPointerMove=/);
@@ -4377,7 +4377,7 @@ assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v143"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v68"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v69"/);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
 assert.match(viteConfig, /registerBrowserDevAgentSessionRoute\(server\)/);
 assert.match(browserDevAgentSession, /__burette\/agent-session\//);
@@ -6086,7 +6086,6 @@ assert.match(previewViewer, /moveDockingPoseControls\(root, saved\.left, saved\.
 assert.match(previewViewer, /function stableTextHash\(value\)/);
 assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(nextIndex\)\)/);
 assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(previousIndex\)\)/);
-assert.match(previewViewer, /Could not switch \$\{controlLabelLower\}/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses \{/);
 assert.match(previewRuntimeCss, /body\.buret-docking-pose-controls-active \.msp-animation-viewport-controls,\s*body\.buret-docking-pose-controls-active \.msp-traj-controls \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{/);

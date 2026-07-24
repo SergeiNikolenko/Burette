@@ -2873,12 +2873,14 @@ body.burette-mobile-host .buret-docking-poses button {
   appearance: textfield;
   -moz-appearance: textfield;
   -webkit-appearance: none;
+  box-sizing: border-box;
   height: 28px;
   width: 44px;
   min-width: 44px;
-  border: 0;
-  border-radius: 7px;
-  padding: 0 7px;
+  /* An editable field among push buttons: the border is what says it can be typed in. */
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 8px;
+  padding: 0 6px;
   color: inherit;
   background: var(--buret-menu-input-background);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
