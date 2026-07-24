@@ -1,4 +1,4 @@
-use burrete_compute_protocol::JobSnapshot;
+use burette_compute_protocol::JobSnapshot;
 use rusqlite::Connection;
 use uuid::Uuid;
 
@@ -155,7 +155,7 @@ fn job_commit_atomically_writes_normalized_source_and_consumes_renamed_intent() 
         .expect("read normalized source row");
     assert_eq!(source.0, snapshot.frozen_source.snapshot_id.to_string());
     assert_eq!(
-        serde_json::from_str::<burrete_compute_protocol::MolecularSnapshotRef>(&source.1)
+        serde_json::from_str::<burette_compute_protocol::MolecularSnapshotRef>(&source.1)
             .expect("decode normalized source"),
         snapshot.frozen_source
     );
@@ -627,9 +627,9 @@ fn reconciliation_state_rejects_oversized_reference_json_before_loading_rows() {
     ));
 }
 
-fn oversized_reference_json(reference: &burrete_compute_protocol::MolecularSnapshotRef) -> String {
+fn oversized_reference_json(reference: &burette_compute_protocol::MolecularSnapshotRef) -> String {
     let mut encoded = serde_json::to_string(reference).expect("encode snapshot reference");
-    encoded.push_str(&" ".repeat(burrete_compute_protocol::MAX_CONTROL_FRAME_BYTES));
+    encoded.push_str(&" ".repeat(burette_compute_protocol::MAX_CONTROL_FRAME_BYTES));
     encoded
 }
 

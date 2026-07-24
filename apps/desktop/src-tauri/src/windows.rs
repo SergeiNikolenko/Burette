@@ -46,7 +46,7 @@ pub(crate) fn focus_or_create_workspace_window<R: Runtime>(
     preferred_label: Option<&str>,
 ) -> Result<WebviewWindow<R>, String> {
     if crate::menu::exit_transition_is_active(app) {
-        return Err("A window cannot be shown while Burrete is quitting or restarting.".into());
+        return Err("A window cannot be shown while Burette is quitting or restarting.".into());
     }
     show_workspace_application(app)?;
     let windows = app.webview_windows();
@@ -71,7 +71,7 @@ pub(crate) fn focus_or_create_workspace_window<R: Runtime>(
         if created {
             let _ = window.destroy();
         }
-        return Err("A window cannot be shown while Burrete is quitting or restarting.".into());
+        return Err("A window cannot be shown while Burette is quitting or restarting.".into());
     }
     window.show().map_err(|error| error.to_string())?;
     window.unminimize().map_err(|error| error.to_string())?;
@@ -85,7 +85,7 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
 ) -> Result<String, String> {
     if crate::menu::exit_transition_is_active(app) {
         return Err(
-            "A new window cannot be opened while Burrete is quitting or restarting.".into(),
+            "A new window cannot be opened while Burette is quitting or restarting.".into(),
         );
     }
     show_workspace_application(app)?;
@@ -94,7 +94,7 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
     if crate::menu::exit_transition_is_active(app) {
         let _ = window.destroy();
         return Err(
-            "A new window cannot be opened while Burrete is quitting or restarting.".into(),
+            "A new window cannot be opened while Burette is quitting or restarting.".into(),
         );
     }
     window.show().map_err(|error| error.to_string())?;
@@ -118,9 +118,9 @@ fn create_workspace_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
     label: String,
 ) -> Result<WebviewWindow<R>, String> {
-    let url = WebviewUrl::App(format!("index.html?burreteWindow={label}").into());
+    let url = WebviewUrl::App(format!("index.html?buretteWindow={label}").into());
     let builder = WebviewWindowBuilder::new(app, &label, url)
-        .title("Burrete")
+        .title("Burette")
         .inner_size(
             DEFAULT_WORKSPACE_WINDOW_WIDTH,
             DEFAULT_WORKSPACE_WINDOW_HEIGHT,

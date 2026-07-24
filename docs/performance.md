@@ -1,6 +1,6 @@
 # Performance Architecture
 
-Burrete optimizes the normal desktop app and Finder Quick Look as separate
+Burette optimizes the normal desktop app and Finder Quick Look as separate
 runtime paths. The desktop shell remains a visible macOS app. Quick Look remains
 the fast Finder preview path. Shared web assets are reused where possible, but
 runtime generation, caches, and diagnostics are scoped to the caller.
@@ -16,7 +16,7 @@ runtime generation, caches, and diagnostics are scoped to the caller.
   fallbacks for bundled helper failures.
 
 Do not make normal app launch hidden to improve cold-start numbers. Registration
-or maintenance launches can opt into `BURRETE_LAUNCH_MODE=register`, but user
+or maintenance launches can opt into `BURETTE_LAUNCH_MODE=register`, but user
 launch, file-open launch, tray click, and menu activation must show the app.
 
 ## Asset Profiles
@@ -73,7 +73,7 @@ be running.
 ## Binary Payload Path
 
 Desktop structure previews write the primary payload as `preview-data.bin` and
-set `window.BurreteDataURL` in `preview-config.js`. `PreviewExtension/Web/viewer.js`
+set `window.BuretteDataURL` in `preview-config.js`. `PreviewExtension/Web/viewer.js`
 loads the binary data from that URL and falls back only when the runtime
 configuration requires it.
 
@@ -121,7 +121,7 @@ page to keep Finder extension memory lower.
 `scripts/perf-smoke.sh` includes an opt-in FTS perf smoke:
 
 ```bash
-BURRETE_PERF_RUN_GRID_FTS=1 ./scripts/perf-smoke.sh
+BURETTE_PERF_RUN_GRID_FTS=1 ./scripts/perf-smoke.sh
 ```
 
 ## Performance Budgets
@@ -145,7 +145,7 @@ Use these budgets as guardrails for future changes:
 ## Do Not Regress
 
 - Do not restore removed renderer paths as a performance shortcut.
-- Do not make Burrete a background-only helper to improve launch metrics.
+- Do not make Burette a background-only helper to improve launch metrics.
 - Do not inline RDKit WASM or molecule payloads into per-document JavaScript by
   default.
 - Do not make Quick Look depend on a running desktop process.

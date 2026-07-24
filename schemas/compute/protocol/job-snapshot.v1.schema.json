@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://burrete.app/schemas/compute/protocol/job-snapshot.v1.schema.json",
-  "title": "Burrete JobSnapshot v1",
+  "$id": "https://burette.app/schemas/compute/protocol/job-snapshot.v1.schema.json",
+  "title": "Burette JobSnapshot v1",
   "$comment": "The Rust validator is authoritative for JCS hashes, plan/stage/result identity bindings, timestamp ordering, progress equality, and attempt history.",
   "type": "object",
   "required": [
@@ -27,7 +27,7 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
-      "const": "burrete.compute-job-snapshot.v1"
+      "const": "burette.compute-job-snapshot.v1"
     },
     "jobId": {
       "$ref": "common.v1.schema.json#/$defs/nonNilUuid"

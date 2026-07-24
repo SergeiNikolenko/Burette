@@ -1,10 +1,12 @@
 import type { ShellViewState, ViewerLigandSelection } from "../components/types";
+import type { StructureStory } from "../lib/structure-story";
 
 type AppShellViewStateInput = Omit<
   ShellViewState,
-  "activeDocumentId" | "visibleDocuments" | "viewerLigandSelection"
+  "activeDocumentId" | "visibleDocuments" | "viewerLigandSelection" | "structureStory"
 > & {
   viewerLigandSelections: Record<string, ViewerLigandSelection | null>;
+  structureStories: Record<string, StructureStory | null>;
 };
 
 type DocumentShellViewState = Pick<
@@ -36,7 +38,6 @@ type LayoutShellViewState = Pick<
   | "page"
   | "sidebarOpen"
   | "sidebarWidth"
-  | "sidebarDragging"
   | "status"
   | "dropActive"
   | "buildInfo"
@@ -53,14 +54,12 @@ type DockShellViewState = Pick<
   | "rightDockActiveTab"
   | "rightDockDocumentId"
   | "rightDockTool"
-  | "rightDockDragging"
   | "bottomDockOpen"
   | "bottomDockHeight"
   | "bottomDockTabs"
   | "bottomDockActiveTab"
   | "bottomDockDocumentId"
   | "bottomDockTool"
-  | "bottomDockDragging"
   | "dockDroppedStructures"
   | "structureDragActive"
 >;
@@ -76,7 +75,7 @@ type DockingShellViewState = Pick<ShellViewState, "poseReviewSelections">;
 
 type ViewerShellViewState = Pick<
   ShellViewState,
-  "viewerLigandSelection" | "structureOverlayMode"
+  "viewerLigandSelection" | "structureStory" | "structureOverlayMode"
 >;
 
 type ChemistryShellViewState = Pick<
@@ -124,7 +123,7 @@ export function flattenAppShellViewStateSlices(slices: AppShellViewStateSlices):
 }
 
 export function createAppShellViewStateSlices(input: AppShellViewStateInput): AppShellViewStateSlices {
-  const { viewerLigandSelections, ...state } = input;
+  const { viewerLigandSelections, structureStories, ...state } = input;
   return {
     documents: {
       documents: state.documents,
@@ -150,7 +149,6 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
       page: state.page,
       sidebarOpen: state.sidebarOpen,
       sidebarWidth: state.sidebarWidth,
-      sidebarDragging: state.sidebarDragging,
       status: state.status,
       dropActive: state.dropActive,
       buildInfo: state.buildInfo,
@@ -165,14 +163,12 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
       rightDockActiveTab: state.rightDockActiveTab,
       rightDockDocumentId: state.rightDockDocumentId,
       rightDockTool: state.rightDockTool,
-      rightDockDragging: state.rightDockDragging,
       bottomDockOpen: state.bottomDockOpen,
       bottomDockHeight: state.bottomDockHeight,
       bottomDockTabs: state.bottomDockTabs,
       bottomDockActiveTab: state.bottomDockActiveTab,
       bottomDockDocumentId: state.bottomDockDocumentId,
       bottomDockTool: state.bottomDockTool,
-      bottomDockDragging: state.bottomDockDragging,
       dockDroppedStructures: state.dockDroppedStructures,
       structureDragActive: state.structureDragActive,
     },
@@ -189,6 +185,9 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
     viewer: {
       viewerLigandSelection: state.activeDocument
         ? viewerLigandSelections[state.activeDocument.id] ?? null
+        : null,
+      structureStory: state.activeDocument
+        ? structureStories[state.activeDocument.id] ?? null
         : null,
       structureOverlayMode: state.structureOverlayMode,
     },

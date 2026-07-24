@@ -404,9 +404,9 @@ async function handleTrajectoryPreview(res, method, url) {
     res.setHeader('Content-Type', 'chemical/x-pdb; charset=us-ascii');
     res.setHeader('Content-Length', String(preview.bytes.length));
     res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('X-Burrete-Source-Byte-Count', String(preview.sourceByteCount));
-    res.setHeader('X-Burrete-Trajectory-Topology', preview.topologyPath);
-    res.setHeader('X-Burrete-Trajectory-Frame-Count', String(preview.frameCount));
+    res.setHeader('X-Burette-Source-Byte-Count', String(preview.sourceByteCount));
+    res.setHeader('X-Burette-Trajectory-Topology', preview.topologyPath);
+    res.setHeader('X-Burette-Trajectory-Frame-Count', String(preview.frameCount));
     res.end(preview.bytes);
   } catch (error) {
     sendJson(res, 400, { error: error?.message || String(error) });
@@ -686,15 +686,15 @@ async function handleNativeCompute(req, res, method) {
 function nativeComputeRuntime() {
   const repoRoot = resolve(scriptDir, '..');
   const runtimeRoots = [
-    String(process.env.BURRETE_DEV_COMPUTE_RUNTIME_ROOT || '').trim(),
+    String(process.env.BURETTE_DEV_COMPUTE_RUNTIME_ROOT || '').trim(),
     resolve(repoRoot, 'target', 'debug', 'ComputeMetal'),
     resolve(repoRoot, 'target', 'release', 'ComputeMetal'),
   ].filter(Boolean);
   const runtimeRoot = runtimeRoots.find((candidate) => existsSync(resolve(candidate, 'current.json')));
   if (!runtimeRoot) return null;
   const executables = [
-    resolve(repoRoot, 'target', 'debug', 'burrete-compute-dev-backend'),
-    resolve(repoRoot, 'target', 'release', 'burrete-compute-dev-backend'),
+    resolve(repoRoot, 'target', 'debug', 'burette-compute-dev-backend'),
+    resolve(repoRoot, 'target', 'release', 'burette-compute-dev-backend'),
   ];
   const executable = executables.find((candidate) => existsSync(candidate));
   return executable ? { executable, runtimeRoot } : null;

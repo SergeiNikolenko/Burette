@@ -108,7 +108,7 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
         sendJson(res, 404, { error: "External xyzrender executable was not found." });
         return;
       }
-      const tempDirectory = await mkdtemp(join(tmpdir(), "burrete-xyzrender-"));
+      const tempDirectory = await mkdtemp(join(tmpdir(), "burette-xyzrender-"));
       const outputPath = join(tempDirectory, "xyzrender.svg");
       const convertedInputPath = join(tempDirectory, `xyzrender-input.${inputExtension}`);
       const orientationRefPath = join(tempDirectory, "orientation-ref.xyz");

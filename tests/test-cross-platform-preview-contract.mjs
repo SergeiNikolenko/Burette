@@ -28,12 +28,12 @@ const [
   source("scripts/quicklook-preview-smoke.sh"),
   source("scripts/smoke-samples-quicklook.sh"),
   source(".github/workflows/nightly-smoke.yml"),
-  source("scripts/burrete-agent.mjs"),
-  source("ios/BurreteMobile/MobilePreviewScreen.swift"),
-  source("ios/BurreteMobile/MobilePreviewRuntime.swift"),
-  source("ios/BurreteMobile/MobilePreviewWebView.swift"),
-  source("ios/BurreteMobile/README.md"),
-  source("ios/BurreteMobile/Info.plist"),
+  source("scripts/burette-agent.mjs"),
+  source("ios/BuretteMobile/MobilePreviewScreen.swift"),
+  source("ios/BuretteMobile/MobilePreviewRuntime.swift"),
+  source("ios/BuretteMobile/MobilePreviewWebView.swift"),
+  source("ios/BuretteMobile/README.md"),
+  source("ios/BuretteMobile/Info.plist"),
   source("apps/desktop/src-tauri/AppMetadata.plist"),
   source("PreviewExtension/Info.plist"),
 ]);
@@ -46,15 +46,15 @@ const documentedSurfacePatterns = {
   "agent-preview": /agent-preview|Tokenized Browser Preview/i,
   "packaged-desktop": /packaged app|desktop app/i,
   "native-quicklook": /Native Finder Quick Look|Quick Look smoke/i,
-  "ios-mobile": /iOS|iPhone|BurreteMobile/i,
+  "ios-mobile": /iOS|iPhone|BuretteMobile/i,
 };
 
 for (const surface of matrix.surfaces) {
   assert.match(surfaceDocs, documentedSurfacePatterns[surface], `${surface} must be documented`);
 }
 assert.match(testingSurfaces, /quickLookFile=<absolute path>/);
-assert.match(testingSurfaces, /BURRETE_DEV_FS_ALLOW/);
-assert.match(testingSurfaces, /BURRETE_DEV_FLAVOR=<worktree-slug> \.\/scripts\/build\.sh/);
+assert.match(testingSurfaces, /BURETTE_DEV_FS_ALLOW/);
+assert.match(testingSurfaces, /BURETTE_DEV_FLAVOR=<worktree-slug> \.\/scripts\/build\.sh/);
 assert.match(testingSurfaces, /smoke-samples-quicklook\.sh samples/);
 assert.match(scriptsReadme, /Packaged App And Quick Look/);
 assert.match(scriptsReadme, /smoke-samples-quicklook\.sh` enumerates a samples directory/);
@@ -66,7 +66,7 @@ assert.match(quickLookSmoke, /validate_stability_artifacts\(\)/);
 assert.match(quickLookSmoke, /manifest\.json/);
 assert.match(quickLookSmoke, /preview-trace\.jsonl/);
 assert.match(sampleQuickLookSmoke, /preview-content-type\.mjs/);
-assert.match(sampleQuickLookSmoke, /BURRETE_DEV_FLAVOR is required/);
+assert.match(sampleQuickLookSmoke, /BURETTE_DEV_FLAVOR is required/);
 assert.match(sampleQuickLookSmoke, /fd -t f \. "\$SAMPLES_DIR" \| sort/);
 assert.match(sampleQuickLookSmoke, /while IFS= read -r sample_file/);
 assert.match(sampleQuickLookSmoke, /quicklook-semantic-check\.mjs/);
@@ -88,7 +88,7 @@ assert.match(mobileScreen, /openImportedDocument\(from: url\)/);
 assert.match(mobileScreen, /MobileRDKitMoleculeView/);
 assert.match(mobileRuntime, /case "xyzr":/);
 assert.match(mobileRuntime, /preview-data\.js/);
-assert.match(mobileRuntime, /window\.BurreteDataBase64/);
+assert.match(mobileRuntime, /window\.BuretteDataBase64/);
 assert.match(mobileWebView, /WKUserContentController/);
 assert.match(mobileWebView, /WKScriptMessageHandler/);
 assert.match(mobileWebView, /configuration\.websiteDataStore = \.nonPersistent\(\)/);
@@ -98,7 +98,7 @@ assert.match(mobileReadme, /Open an SDF document and confirm grid\/table thumbna
 
 for (const plist of [mobileInfo, appMetadata]) {
   assert.match(plist, /Molecular grid tables/);
-  assert.match(plist, /com\.local\.burrete10\.xyzrender-input/);
+  assert.match(plist, /com\.local\.burette10\.xyzrender-input/);
   assert.match(plist, /sdf/);
   assert.match(plist, /xyzr/);
 }

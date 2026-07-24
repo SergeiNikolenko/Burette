@@ -1,4 +1,4 @@
-use burrete_compute_protocol::{ComputeJobEventSchemaVersion, JobRevisionEvent, JobSnapshot};
+use burette_compute_protocol::{ComputeJobEventSchemaVersion, JobRevisionEvent, JobSnapshot};
 use rusqlite::{params, Transaction};
 use uuid::Uuid;
 

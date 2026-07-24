@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "libraryId": "burrete.compute.conformer-etk-optimize.v1",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "libraryId": "burette.compute.conformer-etk-optimize.v1",
   "source": "conformer-etk-optimize.v1.metal",
   "deploymentTarget": "14.0",
   "algorithm": "one-threadgroup-per-conformer L-BFGS refinement of ETK torsion, improper, and flat-bottom distance energy",
@@ -25,7 +25,7 @@
     ]
   },
   "entrypoint": {
-    "name": "burrete_conformer_etk_optimize_v1",
+    "name": "burette_conformer_etk_optimize_v1",
     "threadgroups": "conformerCount",
     "threadsPerThreadgroup": 32,
     "buffers": {

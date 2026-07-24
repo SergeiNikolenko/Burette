@@ -3,7 +3,7 @@ set -euo pipefail
 
 readonly expected_commit="276b5a662302c6a548ac4f1363c066f3258e3a20"
 readonly adapter_root="$(cd "$(dirname "$0")" && pwd)"
-readonly boost_dir="${BURRETE_BOOST_DIR:-/opt/boost/lib/cmake/Boost-1.87.0}"
+readonly boost_dir="${BURETTE_BOOST_DIR:-/opt/boost/lib/cmake/Boost-1.87.0}"
 readonly boost_cmake_root="$(dirname "$boost_dir")"
 
 if [[ $# -ne 2 ]]; then
@@ -32,7 +32,7 @@ if [[ ! -f "$boost_dir/BoostConfig.cmake" ]]; then
   exit 69
 fi
 
-readonly temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/burrete-rdkit-conformer.XXXXXX")"
+readonly temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/burette-rdkit-conformer.XXXXXX")"
 readonly source_worktree="$temporary_root/rdkit"
 readonly build_root="$temporary_root/build"
 cleanup() {
@@ -64,14 +64,14 @@ emcmake cmake -S "$source_worktree" -B "$build_root" \
   -DBoost_DIR="$boost_dir" \
   -Dboost_headers_DIR="$boost_cmake_root/boost_headers-1.87.0" \
   -Dboost_system_DIR="$boost_cmake_root/boost_system-1.87.0" \
-  -DBURRETE_CONFORMER_SOURCE_DIR="$adapter_root" \
+  -DBURETTE_CONFORMER_SOURCE_DIR="$adapter_root" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CXX_FLAGS="-fwasm-exceptions -O3 -DNDEBUG" \
   -DCMAKE_C_FLAGS="-fwasm-exceptions -O3 -DNDEBUG -DCOMPILE_ANSI_ONLY" \
-  -DCMAKE_EXE_LINKER_FLAGS="-fwasm-exceptions -sSTACK_OVERFLOW_CHECK=1 -sUSE_PTHREADS=0 -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=initBurreteRDKitConformer -sENVIRONMENT=worker -sFILESYSTEM=0"
+  -DCMAKE_EXE_LINKER_FLAGS="-fwasm-exceptions -sSTACK_OVERFLOW_CHECK=1 -sUSE_PTHREADS=0 -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=initBuretteRDKitConformer -sENVIRONMENT=worker -sFILESYSTEM=0"
 
-cmake --build "$build_root" --target Burrete_rdkit_conformer --parallel 2
-install -m 0644 "$build_root/Code/MinimalLib/Burrete_rdkit_conformer.js" "$output_root/"
-install -m 0644 "$build_root/Code/MinimalLib/Burrete_rdkit_conformer.wasm" "$output_root/"
+cmake --build "$build_root" --target Burette_rdkit_conformer --parallel 2
+install -m 0644 "$build_root/Code/MinimalLib/Burette_rdkit_conformer.js" "$output_root/"
+install -m 0644 "$build_root/Code/MinimalLib/Burette_rdkit_conformer.wasm" "$output_root/"
 
 echo "Built pinned RDKit conformer extractor in $output_root"

@@ -30,7 +30,7 @@ Upstream ledger:
 
 ## Current Outcome
 
-Burrete now has one complete source-level desktop workflow for molecular
+Burette now has one complete source-level desktop workflow for molecular
 clustering:
 
 1. Grid freezes an immutable selected or all-record molecular snapshot.
@@ -44,7 +44,7 @@ clustering:
    per-job capability tokens and exact length/SHA-256 verification.
 5. Deterministic CPU Butina assigns clusters and representatives without an
    `N x N` matrix.
-6. Burrete publishes immutable EnginePack and ResultPack files, commits the
+6. Burette publishes immutable EnginePack and ResultPack files, commits the
    artifact manifest, and writes typed results back to Grid.
 7. Grid exposes `clusterId`, `isRepresentative`, and per-record status/error
    values with analysis filtering.
@@ -89,7 +89,7 @@ MinimalLib and has no Python runtime. The worker-only ES module and WASM pair
 are now covered by the vendored asset lock, verified by the native engine
 catalog, and bound to the exact RDKit source revision, BCEX ABI, and BMFX ABI.
 The 32-case all-variant RDKit/Metal corpus is complete; exact coordinate-stream
-identity with upstream is intentionally not an acceptance rule because Burrete
+identity with upstream is intentionally not an acceptance rule because Burette
 replaces its schedule-dependent RNG with immutable identity-derived seeds. The
 paired `conformer.result-pack.v2` ABI is defined and
 strictly validates ragged coordinate offsets, Cartesian positions, molecule and
@@ -136,7 +136,7 @@ reference fallback. Every stage and partition must cover the same frozen record
 count and remain within the request memory limit. Artifact provenance accepts
 only this exact stage order.
 
-The first conformer Metal primitive, `burrete_conformer_initialize_v1`, now
+The first conformer Metal primitive, `burette_conformer_initialize_v1`, now
 turns each immutable 128-bit conformer seed into deterministic `float4` initial
 coordinates without schedule-dependent RNG state. Its independently written
 Rust oracle verifies bounded and prefix-stable output. Both a test-only source
@@ -274,7 +274,7 @@ implemented.
 | macOS desktop source build | `Cluster selected`, `Cluster filtered`, `Cluster all`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
 | Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, seven-term MMFF evaluation, fused automatic BFGS/L-BFGS MMFF optimization, and mapped Horn/RMSD/shape/ESP scoring on Apple M2 Pro |
-| Packaged development Metal | `Burrete-gpucompute9a97v27.app` is installed at `/Users/nikolenko/Applications/Burrete-gpucompute9a97v27.app`; it was clean-built from commit `84c019d7`, packages the hash-bound v20 runtime and one arm64 helper under `Contents/Helpers`, and passes helper handshake, runtime/helper SHA binding, replay rejection, one-shot transport recovery, real FD-based Tanimoto, alignment/shape/electrostatic, all eight semiempirical methods, DG, ETK, MMFF, stereo, the 32-case conformer corpus, and deep/strict ad-hoc signature verification on Apple M2 Pro |
+| Packaged development Metal | `Burette-gpucompute9a97v27.app` is installed at `/Users/nikolenko/Applications/Burette-gpucompute9a97v27.app`; it was clean-built from commit `84c019d7`, packages the hash-bound v20 runtime and one arm64 helper under `Contents/Helpers`, and passes helper handshake, runtime/helper SHA binding, replay rejection, one-shot transport recovery, real FD-based Tanimoto, alignment/shape/electrostatic, all eight semiempirical methods, DG, ETK, MMFF, stereo, the 32-case conformer corpus, and deep/strict ad-hoc signature verification on Apple M2 Pro |
 | Packaged production Metal | Pending external Developer ID signing, hardened-runtime verification, notarization, and UI-triggered installed-app acceptance evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -344,15 +344,15 @@ product increment; it is no longer required to read the user-facing report.
 
 | Responsibility | Primary source |
 | --- | --- |
-| Fixed request/job/artifact contracts | `crates/burrete-compute-protocol/` |
-| Exact fingerprint ABI, CPU Tanimoto/CSR, Butina | `crates/burrete-compute-core/` |
-| Metal runtime, tiling, dispatch, GPU timings | `crates/burrete-compute-metal/` |
+| Fixed request/job/artifact contracts | `crates/burette-compute-protocol/` |
+| Exact fingerprint ABI, CPU Tanimoto/CSR, Butina | `crates/burette-compute-core/` |
+| Metal runtime, tiling, dispatch, GPU timings | `crates/burette-compute-metal/` |
 | Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal`, `compute/metal/conformer-distance.v1.metal`, `compute/metal/conformer-optimize.v1.metal`, `compute/metal/conformer-stereo.v1.metal`, `compute/metal/conformer-etk.v1.metal`, `compute/metal/conformer-etk-optimize.v1.metal`, `compute/metal/mmff-energy.v1.metal` |
 | Frozen source verification and RDKit chunk sessions | `apps/desktop/src-tauri/src/compute/fingerprint_session.rs` |
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
-| Attested helper control/data plane and clustering/alignment/semiempirical dispatch | `apps/desktop/src-tauri/src/compute/service.rs`, `crates/burrete-compute-protocol/src/control/worker.rs` |
+| Attested helper control/data plane and clustering/alignment/semiempirical dispatch | `apps/desktop/src-tauri/src/compute/service.rs`, `crates/burette-compute-protocol/src/control/worker.rs` |
 | Conformer preflight admission and queued snapshot | `apps/desktop/src-tauri/src/compute/conformer_plan.rs`, `job_factory.rs` |
-| Conformer extractor validation and canonical array assembly | `apps/desktop/src/lib/conformer-extractor.ts`, `crates/burrete-compute-core/src/conformer_extract.rs`, `conformer_pack.rs` |
+| Conformer extractor validation and canonical array assembly | `apps/desktop/src/lib/conformer-extractor.ts`, `crates/burette-compute-core/src/conformer_extract.rs`, `conformer_pack.rs` |
 | Packaged conformer extraction and raw submission | `compute/rdkit-conformer/`, `apps/desktop/src/workers/conformer-extract.worker.ts`, `apps/desktop/src/lib/compute-conformer.ts`, `apps/desktop/src-tauri/src/compute/conformer_session.rs` |
 | Adaptive CPU/Metal conformer distance execution | `apps/desktop/src-tauri/src/compute/conformer_executor.rs`, `coordinator.rs` |
 | Artifact materialization and restart reconciliation | `apps/desktop/src-tauri/src/compute/artifact_publisher.rs` |
@@ -382,7 +382,7 @@ product increment; it is no longer required to read the user-facing report.
 - Metal crate unit/parity tests pass, including real graph and exact query-count
   dispatches on the local 19-core Apple M2 Pro GPU reported with Metal 4
   support.
-- The current `Burrete-gpucompute9a97v27.app` development package was rebuilt
+- The current `Burette-gpucompute9a97v27.app` development package was rebuilt
   from clean detached commit `84c019d7` in an isolated tree. The build boundary
   now excludes ephemeral `.codegraph` state. Deep/strict ad-hoc signature
   verification passes for the
@@ -407,7 +407,7 @@ product increment; it is no longer required to read the user-facing report.
   collection surface only. The shell explicitly reports that the native app
   bundle, installer, and Quick Look registration are inactive, so this result
   is not counted as installed-app or Metal UI acceptance.
-- The packaged runtime is `burrete-native-metal-v20`, generation
+- The packaged runtime is `burette-native-metal-v20`, generation
   `generation.qxCQYr`, with `native-compute.v20.metallib` SHA-256
   `341d858756cfd33438304e0d643d4ad647081df7678f88e407cc2734e87a2c84`.
   The canonical runtime pointer, metadata digest, metallib digest, source/AIR
@@ -536,16 +536,16 @@ product increment; it is no longer required to read the user-facing report.
   reports `nativeMetalScfHybrid` only after at least one verified GPU dispatch.
   SCF orchestration and adaptive float64 polishing remain CPU. Unavailable
   Metal or all-invalid input remains `nativeCpuReference`.
-- The verified v20 runtime includes `burrete_rm1_pair_fock_v1`. One thread owns one
+- The verified v20 runtime includes `burette_rm1_pair_fock_v1`. One thread owns one
   Fock-matrix element and accumulates pair tensors in deterministic order with
-  no atomics. It adds `burrete_rm1_symmetric_eigen_v1`, with one threadgroup per
-  admitted matrix. It adds `burrete_rm1_pair_rotate_v1`, with one thread per
+  no atomics. It adds `burette_rm1_symmetric_eigen_v1`, with one threadgroup per
+  admitted matrix. It adds `burette_rm1_pair_rotate_v1`, with one thread per
   H-H, heavy-H, or heavy-heavy atom pair. It also adds the batched
-  `burrete_pm6_h4_hh_v1` and full Z=1--94 `burrete_pm6_d3_v2` correction kernels,
+  `burette_pm6_h4_hh_v1` and full Z=1--94 `burette_pm6_d3_v2` correction kernels,
   with one independent molecule per GPU thread and mandatory float64 parity
   for all three output terms. Runtime v17 also adds the 45-thread-per-block
-  `burrete_pm6_one_center_fock_v1` kernel with mandatory full-matrix CPU
-  parity. Runtime v18 adds `burrete_pm6_pair_fock_v1` for exact 1/4/9-orbital
+  `burette_pm6_one_center_fock_v1` kernel with mandatory full-matrix CPU
+  parity. Runtime v18 adds `burette_pm6_pair_fock_v1` for exact 1/4/9-orbital
   tensor strides and full variable-basis SCF. The package binds sixteen
   sources, sixteen contracts, sixteen AIR files, and twenty entrypoints.
   Startup, one- and two-center PM6 Fock, two-molecule D3/H4/HH,

@@ -1,4 +1,4 @@
-// Copyright 2026 Burrete contributors.
+// Copyright 2026 Burette contributors.
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -8,7 +8,7 @@
 
 #include "mmff_extractor.h"
 
-namespace burrete::mmff {
+namespace burette::mmff {
 
 inline constexpr std::uint16_t kBinaryAbiVersion = 1;
 inline constexpr std::uint16_t kBinaryHeaderBytes = 64;
@@ -16,4 +16,4 @@ inline constexpr std::uint16_t kBinaryHeaderBytes = 64;
 std::vector<std::uint8_t> encode_binary(const ExtractedParameters &parameters,
                                         Variant variant);
 
-}  // namespace burrete::mmff
+}  // namespace burette::mmff

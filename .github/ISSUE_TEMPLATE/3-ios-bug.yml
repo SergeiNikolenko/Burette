@@ -1,5 +1,5 @@
 name: iPhone App Bug
-description: Report an issue with the source-built BurreteMobile iPhone app.
+description: Report an issue with the source-built BuretteMobile iPhone app.
 labels:
   - bug
   - iOS

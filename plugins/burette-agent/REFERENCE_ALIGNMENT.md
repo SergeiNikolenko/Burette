@@ -1,6 +1,6 @@
 # Reference Plugin Alignment
 
-This document records the architectural checks used to keep Burrete at the
+This document records the architectural checks used to keep Burette at the
 same interface level as the referenced plugins.
 
 ## Data Analytics
@@ -14,7 +14,7 @@ Reference pattern:
 - validate before visible render;
 - delivery-specific reports.
 
-Burrete implementation:
+Burette implementation:
 
 - `skills/index/SKILL.md` routes to focused molecular workflows.
 - `skills/user-context/SKILL.md` and
@@ -33,7 +33,7 @@ Reference pattern:
 - focused workflows for audit, ideation, prototype, and QA;
 - do not build without the required target.
 
-Burrete implementation:
+Burette implementation:
 
 - `skills/index/SKILL.md` routes before action.
 - `skills/open-workspace/SKILL.md` establishes the concrete file/session target
@@ -51,7 +51,7 @@ Reference pattern:
 - browser assets are kept separate from MCP registration code;
 - durable run/artifact data is passed through bounded payloads.
 
-Burrete implementation:
+Burette implementation:
 
 - `mcp/server.mjs` registers all stable tools/resources, and
   `mcp/lib/server-bundle.mjs` is the self-contained runtime entrypoint.
@@ -67,11 +67,11 @@ Reference pattern:
   checks, and visible user review;
 - keep Browser as verification, not business/domain state.
 
-Burrete implementation:
+Burette implementation:
 
 - `skills/visual-qa/SKILL.md` assigns Browser to tokenized browser-preview
   verification.
-- Molecular truth still comes from `observe_burrete_workspace` or the CLI
+- Molecular truth still comes from `observe_burette_workspace` or the CLI
   `observe` command.
 
 ## Computer
@@ -82,15 +82,15 @@ Reference pattern:
   click/type/drag fallback;
 - call `get_app_state` before interacting.
 
-Burrete implementation:
+Burette implementation:
 
-- `skills/visual-qa/SKILL.md` assigns Computer to the real Burrete desktop app.
+- `skills/visual-qa/SKILL.md` assigns Computer to the real Burette desktop app.
 - Computer can confirm Tauri/Mol* controls, but chains, ligands, waters,
   residues, and selections must come from typed `observe`.
 
 ## Completion Bar
 
-Burrete is interface-complete only when all of these exist and pass tests:
+Burette is interface-complete only when all of these exist and pass tests:
 
 - plugin manifest and MCP config;
 - router plus focused skills;

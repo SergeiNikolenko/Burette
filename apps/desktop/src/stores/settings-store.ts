@@ -59,7 +59,7 @@ export const useSettingsStore = create<SettingsState>()(
 	      restoreSnapshot: (snapshot) => set({ preferences: cloneJson(snapshot.preferences) }),
 	    }),
     {
-      name: "burrete.shell",
+      name: "burette.shell",
       partialize: (state) => ({
         preferences: state.preferences,
       }),

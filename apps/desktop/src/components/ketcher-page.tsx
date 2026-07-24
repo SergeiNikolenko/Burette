@@ -71,7 +71,7 @@ const KETCHER_EXPORT_TIMEOUT_MS = 15000;
 const KETCHER_IMPORT_INSTANCE_RETRY_DELAYS_MS = [0, 250, 750, 1500, 2500] as const;
 const KETCHER_IMPORT_REQUEST_RETRY_MS = 5000;
 type KetcherImportResult = "success" | "transient-failure" | "failure";
-const IS_KETCHER_WEB_DEMO = import.meta.env.VITE_BURRETE_WEB_DEMO === "1";
+const IS_KETCHER_WEB_DEMO = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
 let ketcherStructServiceReady = false;
 if (typeof window !== "undefined") {
   window.addEventListener("struct-service-initialized", () => {
@@ -533,9 +533,9 @@ export function KetcherPage({
         setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
       });
     };
-    window.addEventListener("burrete-ketcher-seed", handleSeed);
+    window.addEventListener("burette-ketcher-seed", handleSeed);
     handleSeed();
-    return () => window.removeEventListener("burrete-ketcher-seed", handleSeed);
+    return () => window.removeEventListener("burette-ketcher-seed", handleSeed);
   }, [applyHostedSeed, ketcher]);
 
   useEffect(() => {
@@ -1264,7 +1264,7 @@ export function KetcherPage({
               },
             ]}
             trigger={(
-              <button type="button" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch}>
+              <button type="button" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch || !hasSketch}>
                 Add to collection
                 <ShortcutTooltip label="Add sketch to SDF collection" />
               </button>
@@ -1514,7 +1514,7 @@ function isCollectionAppendTarget(document: ShellViewState["documents"][number])
   if (!collectionFamilyForExtension(collectionExtension(document.path))) return false;
   if (document.virtual || document.mergedCollection) return false;
   const normalizedPath = document.path.replace(/\\/g, "/");
-  if (/^burrete-(ketcher|collection):\/\//u.test(normalizedPath)) return false;
+  if (/^burette-(ketcher|collection):\/\//u.test(normalizedPath)) return false;
   if (/\/viewer\/(ketcher|merged)\//u.test(normalizedPath)) return false;
   return true;
 }

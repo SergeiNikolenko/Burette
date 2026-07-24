@@ -1,6 +1,6 @@
 # Keyboard Shortcuts
 
-Canonical shortcut reference for Burrete.
+Canonical shortcut reference for Burette.
 
 ## Global
 
@@ -9,8 +9,8 @@ open.
 
 | Shortcut | Action |
 | --- | --- |
-| Cmd+Shift+P or / | Open command palette |
-| Cmd+N | Open a new Burrete window |
+| Cmd+P or / | Open command palette |
+| Cmd+N | Open a new Burette window |
 | Cmd+T | Open a new launcher tab |
 | Cmd+O | Open molecular structure files |
 | Cmd+Shift+O | Open most recent structure |
@@ -52,8 +52,8 @@ These actions are available from the command palette.
 | Export Preview as PNG | Save the active external SVG preview as a PNG |
 | Export Preview as SVG | Save the active external SVG preview |
 | Reset Quick Look | Refresh Finder preview registration |
-| Open Logs Folder | Show Burrete runtime logs |
-| Check for Updates | Check Burrete releases |
+| Open Logs Folder | Show Burette runtime logs |
+| Check for Updates | Check Burette releases |
 | Renderer: Auto | Use automatic renderer selection |
 | Renderer: Mol* | Prefer Mol* rendering |
 | Renderer: xyzrender external | Prefer the external xyzrender path |

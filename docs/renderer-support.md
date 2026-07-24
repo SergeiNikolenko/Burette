@@ -1,6 +1,6 @@
 # Renderer Support
 
-Burrete supports multiple renderer paths. The desktop shell selects a renderer
+Burette supports multiple renderer paths. The desktop shell selects a renderer
 from user settings and runtime policy; Finder Quick Look uses the extension
 runtime under `PreviewExtension/`.
 
@@ -37,7 +37,7 @@ search, sorting, and inspection.
 
 OpenMM, Amber, and CHARMM coordinate artifacts render as structures when they
 contain standalone coordinates. This includes INPCRD, RST7, CRD, RST, STATE,
-and XML files with `<Position>` entries. Burrete also opens the raw text in the
+and XML files with `<Position>` entries. Burette also opens the raw text in the
 document surfaces so the parsed coordinates remain inspectable. Parameter,
 topology, stream, key, and checkpoint artifacts that do not contain standalone
 coordinates open through the text-file surface instead. Binary checkpoint

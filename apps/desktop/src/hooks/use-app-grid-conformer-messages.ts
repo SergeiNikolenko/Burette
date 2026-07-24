@@ -93,7 +93,7 @@ export function useAppGridConformerMessages({
         : [];
       const reply = (type: "gridSemiempiricalStarted" | "gridSemiempiricalFinished" | "gridSemiempiricalError", payload: Record<string, unknown> = {}) => {
         postMessageToViewerSource(source, {
-          source: "burrete-grid-host",
+          source: "burette-grid-host",
           body: { type, ...payload },
         });
       };
@@ -140,7 +140,7 @@ export function useAppGridConformerMessages({
         : [];
       const reply = (type: "gridAlignmentStarted" | "gridAlignmentFinished" | "gridAlignmentError", payload: Record<string, unknown> = {}) => {
         postMessageToViewerSource(source, {
-          source: "burrete-grid-host",
+          source: "burette-grid-host",
           body: { type, ...payload },
         });
       };
@@ -195,7 +195,7 @@ export function useAppGridConformerMessages({
     const title = bodyString(body.title).trim() || "selected-3d-molecules.sdf";
     const reply = (type: "gridGenerate3DStarted" | "gridGenerate3DFinished" | "gridGenerate3DError", payload: Record<string, unknown> = {}) => {
       postMessageToViewerSource(source, {
-        source: "burrete-grid-host",
+        source: "burette-grid-host",
         body: { type, ...payload },
       });
     };

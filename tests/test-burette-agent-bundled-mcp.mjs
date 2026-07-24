@@ -5,9 +5,9 @@ import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const sourcePluginRoot = path.resolve(process.env.BURRETE_PLUGIN_ROOT || "plugins/burette-agent");
-const tempRoot = await mkdtemp(path.join(tmpdir(), "burrete-bundled-mcp-"));
-const cleanPluginRoot = path.join(tempRoot, "burrete");
+const sourcePluginRoot = path.resolve(process.env.BURETTE_PLUGIN_ROOT || "plugins/burette-agent");
+const tempRoot = await mkdtemp(path.join(tmpdir(), "burette-bundled-mcp-"));
+const cleanPluginRoot = path.join(tempRoot, "burette");
 
 await cp(sourcePluginRoot, cleanPluginRoot, {
   recursive: true,
@@ -75,25 +75,25 @@ try {
   const initialized = await request("initialize", {
     protocolVersion: "2025-06-18",
     capabilities: {},
-    clientInfo: { name: "burrete-bundled-mcp-test", version: "1.0.0" },
+    clientInfo: { name: "burette-bundled-mcp-test", version: "1.0.0" },
   });
-  assert.equal(initialized.serverInfo.name, "burrete");
+  assert.equal(initialized.serverInfo.name, "burette");
   send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
   const listed = await request("tools/list");
   const toolNames = listed.tools.map(tool => tool.name).sort();
   for (const required of [
-    "burrete.get_context",
-    "burrete.open_workspace",
-    "burrete.observe_workspace",
-    "burrete.control_viewer",
-    "burrete.render_panel",
+    "burette.get_context",
+    "burette.open_workspace",
+    "burette.observe_workspace",
+    "burette.control_viewer",
+    "burette.render_panel",
   ]) {
     assert.equal(toolNames.includes(required), true, `Missing ${required}`);
   }
 
   const context = await request("tools/call", {
-    name: "burrete.get_context",
+    name: "burette.get_context",
     arguments: {},
   });
   assert.equal(context.isError, undefined);

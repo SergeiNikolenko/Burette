@@ -762,7 +762,7 @@ fn replace_source_atomically(
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("source");
-    let temporary_path = parent.join(format!(".{file_name}.burrete-{}.tmp", uuid::Uuid::new_v4()));
+    let temporary_path = parent.join(format!(".{file_name}.burette-{}.tmp", uuid::Uuid::new_v4()));
     let result = (|| {
         let mut temporary = OpenOptions::new()
             .write(true)
@@ -929,7 +929,7 @@ mod tests {
 
     fn temp_path(extension: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "burrete-source-editing-test-{}.{}",
+            "burette-source-editing-test-{}.{}",
             uuid::Uuid::new_v4(),
             extension
         ))
@@ -965,7 +965,7 @@ mod tests {
         }
         #[cfg(target_os = "macos")]
         let xattr_set = std::process::Command::new("/usr/bin/xattr")
-            .args(["-w", "com.burrete.source-editing-test", "retained"])
+            .args(["-w", "com.burette.source-editing-test", "retained"])
             .arg(&path)
             .status()
             .map(|status| status.success())
@@ -984,7 +984,7 @@ mod tests {
         #[cfg(target_os = "macos")]
         if xattr_set {
             let output = std::process::Command::new("/usr/bin/xattr")
-                .args(["-p", "com.burrete.source-editing-test"])
+                .args(["-p", "com.burette.source-editing-test"])
                 .arg(&path)
                 .output()
                 .unwrap();

@@ -125,7 +125,7 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
           </div>
           <div className="agent-diagnostic-group">
             <h3>Compatibility</h3>
-            <StatusRow label="Burrete" value={status?.bundledPlugin.compatibility?.app ?? "Not declared"} state={status?.bundledPlugin.compatibility?.app ? "ok" : "missing"} />
+            <StatusRow label="Burette" value={status?.bundledPlugin.compatibility?.app ?? "Not declared"} state={status?.bundledPlugin.compatibility?.app ? "ok" : "missing"} />
             <StatusRow label="CLI" value={status?.bundledPlugin.compatibility?.agentCli ?? "Not declared"} state={status?.bundledPlugin.compatibility?.agentCli ? "ok" : "missing"} />
             <StatusRow label="Control API" value={status?.bundledPlugin.compatibility?.controlApi ?? "Not declared"} state={status?.bundledPlugin.compatibility?.controlApi ? "ok" : "missing"} />
           </div>
@@ -155,14 +155,14 @@ const browserPreviewStatus: AgentIntegrationStatus = {
   appVersion: "browser-dev",
   bundledPlugin: {
     state: "ready",
-    name: "burrete",
+    name: "burette",
     version: "0.1.2",
     path: browserPreviewPluginPath(),
-    displayName: "Burrete",
+    displayName: "Burette",
     compatibility: {
       app: "desktop runtime",
       agentCli: "structured CLI contract",
-      controlApi: "Burrete Control API",
+      controlApi: "Burette Control API",
     },
   },
   codexInstall: {
@@ -199,14 +199,14 @@ function integrationSummary(status: AgentIntegrationStatus | null, error: string
   if (error) {
     return {
       title: "Status unavailable",
-      detail: "Burrete could not read the local Codex agent integration.",
+      detail: "Burette could not read the local Codex agent integration.",
       state: "missing",
     };
   }
   if (!status) {
     return {
       title: "Checking agent status",
-      detail: "Burrete is inspecting the bundled plugin and local Codex cache.",
+      detail: "Burette is inspecting the bundled plugin and local Codex cache.",
       state: "unknown",
     };
   }
@@ -220,20 +220,20 @@ function integrationSummary(status: AgentIntegrationStatus | null, error: string
   if (status.state === "install_available") {
     return {
       title: "Codex plugin is not installed",
-      detail: "Burrete includes the plugin bundle; app updates can sync it into the local Codex cache.",
+      detail: "Burette includes the plugin bundle; app updates can sync it into the local Codex cache.",
       state: status.state,
     };
   }
   if (status.state === "broken") {
     return {
       title: "Bundled plugin is incomplete",
-      detail: "One or more required plugin files are missing from this Burrete bundle.",
+      detail: "One or more required plugin files are missing from this Burette bundle.",
       state: status.state,
     };
   }
   return {
     title: "Codex agent is ready",
-    detail: "Codex can use the Burrete MCP server, skills, and Browser shell assets from this app bundle.",
+    detail: "Codex can use the Burette MCP server, skills, and Browser shell assets from this app bundle.",
     state: status.state,
   };
 }
@@ -242,7 +242,7 @@ function bundleSummary(status: AgentIntegrationStatus | null) {
   if (!status) return "Checking bundled plugin.";
   const version = status.bundledPlugin.version ? `v${status.bundledPlugin.version}` : "version unknown";
   if (status.bundledPlugin.state === "missing") return "Bundle not found.";
-  return `${version} bundled with Burrete.`;
+  return `${version} bundled with Burette.`;
 }
 
 function codexSummary(status: AgentIntegrationStatus | null) {
@@ -267,13 +267,13 @@ function findCheck(status: AgentIntegrationStatus | null, id: string) {
 }
 
 function browserPreviewPluginPath() {
-  const repoRoot = String(import.meta.env.BURRETE_REPO_ROOT || "").trim().replace(/\/+$/u, "");
+  const repoRoot = String(import.meta.env.BURETTE_REPO_ROOT || "").trim().replace(/\/+$/u, "");
   return repoRoot ? `${repoRoot}/plugins/burette-agent` : null;
 }
 
 function appSummary(status: AgentIntegrationStatus | null) {
   if (!status) return "Checking app version.";
-  return `Burrete v${status.appVersion}`;
+  return `Burette v${status.appVersion}`;
 }
 
 function badgeState(state: string) {

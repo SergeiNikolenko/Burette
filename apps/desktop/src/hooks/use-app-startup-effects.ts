@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { browserDevRuntimeNeedsRefresh } from "../lib/browser-dev-documents";
 import {
   browserDevDockingFromLocation,
+  browserDevSceneModeFromLocation,
   browserDevFilesFromLocation,
 } from "../lib/browser-dev-startup";
 import { dockingRequestForDrop, isMolstarCoordinateTrajectorySource } from "../lib/docking-documents";
@@ -9,7 +10,7 @@ import { parentDirectory } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 import type { MoleculeTab } from "../stores/molecule-store";
-import type { ViewerDocument } from "../types";
+import type { DockingSceneMode, ViewerDocument } from "../types";
 import { isWebDemoWorkspace, webDemoProjectRoot } from "../lib/web-demo-workspace";
 
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
@@ -18,6 +19,7 @@ type OpenDocuments = (paths: string[]) => unknown | Promise<unknown>;
 type OpenDockingDocument = (
   receptorPath: string,
   ligandPaths: string[],
+  options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null },
 ) => void | Promise<ViewerDocument | null>;
 
 type UseAppStartupEffectsOptions = {
@@ -135,7 +137,8 @@ export function useAppStartupEffects({
     if (isTauriRuntime()) return;
     const request = browserDevDockingFromLocation();
     if (!request) return;
-    const normalizedDocking = [request.receptorPath, ...request.ligandPaths].join("\n");
+    const sceneMode = browserDevSceneModeFromLocation();
+    const normalizedDocking = [sceneMode ?? "", request.receptorPath, ...request.ligandPaths].join("\n");
     if (openedBrowserDevDockingRef.current === normalizedDocking) return;
     openedBrowserDevDockingRef.current = normalizedDocking;
     const workspace = parentDirectory(request.receptorPath);
@@ -144,7 +147,7 @@ export function useAppStartupEffects({
       addProjectRoot(workspace);
     }
     closeAllDocuments();
-    void openDockingDocument(request.receptorPath, request.ligandPaths);
+    void openDockingDocument(request.receptorPath, request.ligandPaths, { sceneMode });
   }, [addProjectRoot, closeAllDocuments, openDockingDocument, setWorkspacePath]);
 }
 

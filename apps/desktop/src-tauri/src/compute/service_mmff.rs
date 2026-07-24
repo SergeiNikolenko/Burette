@@ -1,10 +1,10 @@
-use burrete_compute_core::{
+use burette_compute_core::{
     DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, MmffAngleTerm,
     MmffBondTerm, MmffElectrostaticTerm, MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters,
     MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm, MmffVariant,
 };
-use burrete_compute_metal::MetalMmffOptimization;
-use burrete_compute_protocol::MAX_PACK_BYTES;
+use burette_compute_metal::MetalMmffOptimization;
+use burette_compute_protocol::MAX_PACK_BYTES;
 
 const INPUT_MAGIC: &[u8; 4] = b"BMF1";
 const OUTPUT_MAGIC: &[u8; 4] = b"BMO1";

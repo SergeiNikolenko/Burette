@@ -83,7 +83,7 @@ function StructureViewerSurface({
       : null;
     iframeRef.current?.contentWindow?.postMessage(
       {
-        source: "burrete-host",
+        source: "burette-host",
         body: {
           type: "addXyzrenderSheetItems",
           documentId: document.id,

@@ -29,7 +29,7 @@ export function useAppMolstarXtbContext({
       const onMessage = (event: MessageEvent) => {
         const data = event.data;
         const body = data?.body;
-        if (data?.source !== "burrete-agent-viewer" || body?.type !== "agent-action-result" || body.id !== actionId) return;
+        if (data?.source !== "burette-agent-viewer" || body?.type !== "agent-action-result" || body.id !== actionId) return;
         if (!isKnownViewerMessageSource(event.source, document.id)) return;
         const contextDocument = body.result?.result?.contextDocument;
         finish(contextDocument && typeof contextDocument === "object" ? contextDocument : null);
@@ -37,7 +37,7 @@ export function useAppMolstarXtbContext({
       const timeout = window.setTimeout(() => finish(null), 500);
       window.addEventListener("message", onMessage);
       iframe.contentWindow?.postMessage({
-        source: "burrete-agent-host",
+        source: "burette-agent-host",
         body: {
           type: "agent-action",
           id: actionId,

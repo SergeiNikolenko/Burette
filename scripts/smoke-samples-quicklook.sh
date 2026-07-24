@@ -7,18 +7,18 @@ ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
-usage: BURRETE_DEV_FLAVOR=<flavor> scripts/smoke-samples-quicklook.sh [samples-dir]
+usage: BURETTE_DEV_FLAVOR=<flavor> scripts/smoke-samples-quicklook.sh [samples-dir]
 
-Runs every file under samples-dir through the installed Burrete Quick Look
+Runs every file under samples-dir through the installed Burette Quick Look
 preview extension and writes TSV/Markdown reports under build/reports.
 
 Environment:
-  BURRETE_DEV_FLAVOR                         Required. Keeps the smoke isolated.
-  BURRETE_SAMPLES_QUICKLOOK_TIMEOUT_SECONDS Default per-file timeout.
-  BURRETE_SAMPLES_QUICKLOOK_LONG_TIMEOUT_SECONDS
+  BURETTE_DEV_FLAVOR                         Required. Keeps the smoke isolated.
+  BURETTE_SAMPLES_QUICKLOOK_TIMEOUT_SECONDS Default per-file timeout.
+  BURETTE_SAMPLES_QUICKLOOK_LONG_TIMEOUT_SECONDS
                                              Timeout for large/heavy samples.
-  BURRETE_SAMPLES_QUICKLOOK_RESULTS         Optional TSV output path.
-  BURRETE_SAMPLES_QUICKLOOK_RESET_CACHE     1 to reset Quick Look cache at start.
+  BURETTE_SAMPLES_QUICKLOOK_RESULTS         Optional TSV output path.
+  BURETTE_SAMPLES_QUICKLOOK_RESET_CACHE     1 to reset Quick Look cache at start.
 EOF
 }
 
@@ -27,14 +27,14 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-if [[ -z "${BURRETE_DEV_FLAVOR:-}" ]]; then
-  echo "error: BURRETE_DEV_FLAVOR is required for all-samples Quick Look smoke." >&2
-  echo "Use a dev flavor such as: BURRETE_DEV_FLAVOR=8d21-demo $0" >&2
+if [[ -z "${BURETTE_DEV_FLAVOR:-}" ]]; then
+  echo "error: BURETTE_DEV_FLAVOR is required for all-samples Quick Look smoke." >&2
+  echo "Use a dev flavor such as: BURETTE_DEV_FLAVOR=8d21-demo $0" >&2
   exit 1
 fi
 
 command -v bun >/dev/null 2>&1 || {
-  echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2
+  echo "error: BURETTE_DEV_FLAVOR requires bun to compute the dev namespace." >&2
   exit 1
 }
 
@@ -47,41 +47,41 @@ if [[ ! -d "$SAMPLES_DIR" ]]; then
 fi
 SAMPLES_DIR="$(cd -P "$SAMPLES_DIR" && pwd -P)"
 
-APP_PATH="$HOME/Applications/$BURRETE_APP_BUNDLE_NAME"
-APPEX_PATH="$APP_PATH/Contents/PlugIns/BurretePreview.appex"
+APP_PATH="$HOME/Applications/$BURETTE_APP_BUNDLE_NAME"
+APPEX_PATH="$APP_PATH/Contents/PlugIns/BurettePreview.appex"
 if [[ ! -d "$APPEX_PATH" ]]; then
   echo "error: installed dev Quick Look extension not found: $APPEX_PATH" >&2
   echo "Build and install first:" >&2
-  echo "  BURRETE_DEV_FLAVOR=$BURRETE_DEV_FLAVOR ./scripts/build.sh" >&2
-  echo "  BURRETE_DEV_FLAVOR=$BURRETE_DEV_FLAVOR ./scripts/install.sh" >&2
+  echo "  BURETTE_DEV_FLAVOR=$BURETTE_DEV_FLAVOR ./scripts/build.sh" >&2
+  echo "  BURETTE_DEV_FLAVOR=$BURETTE_DEV_FLAVOR ./scripts/install.sh" >&2
   exit 1
 fi
 
-DEFAULT_TIMEOUT_SECONDS="${BURRETE_SAMPLES_QUICKLOOK_TIMEOUT_SECONDS:-25}"
-LONG_TIMEOUT_SECONDS="${BURRETE_SAMPLES_QUICKLOOK_LONG_TIMEOUT_SECONDS:-75}"
-RESET_CACHE="${BURRETE_SAMPLES_QUICKLOOK_RESET_CACHE:-1}"
+DEFAULT_TIMEOUT_SECONDS="${BURETTE_SAMPLES_QUICKLOOK_TIMEOUT_SECONDS:-25}"
+LONG_TIMEOUT_SECONDS="${BURETTE_SAMPLES_QUICKLOOK_LONG_TIMEOUT_SECONDS:-75}"
+RESET_CACHE="${BURETTE_SAMPLES_QUICKLOOK_RESET_CACHE:-1}"
 
 if ! [[ "$DEFAULT_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$DEFAULT_TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "error: BURRETE_SAMPLES_QUICKLOOK_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "error: BURETTE_SAMPLES_QUICKLOOK_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 1
 fi
 if ! [[ "$LONG_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$LONG_TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "error: BURRETE_SAMPLES_QUICKLOOK_LONG_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "error: BURETTE_SAMPLES_QUICKLOOK_LONG_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 1
 fi
 
 REPORT_DIR="$ROOT/build/reports"
 mkdir -p "$REPORT_DIR"
 STAMP="$(date +%Y%m%d%H%M%S)"
-RESULTS_PATH="${BURRETE_SAMPLES_QUICKLOOK_RESULTS:-$REPORT_DIR/quicklook-samples-smoke-${BURRETE_DEV_FLAVOR_SLUG}-${STAMP}.tsv}"
+RESULTS_PATH="${BURETTE_SAMPLES_QUICKLOOK_RESULTS:-$REPORT_DIR/quicklook-samples-smoke-${BURETTE_DEV_FLAVOR_SLUG}-${STAMP}.tsv}"
 SUMMARY_PATH="${RESULTS_PATH%.tsv}.md"
 
-LOG_ROOT="$HOME/Library/Containers/$BURRETE_PREVIEW_ID/Data/Library"
+LOG_ROOT="$HOME/Library/Containers/$BURETTE_PREVIEW_ID/Data/Library"
 LOG_FILES=(
-  "$LOG_ROOT/Caches/Burrete/BurreteV10.log"
-  "$LOG_ROOT/Caches/Burrete/Burrete.log"
-  "$LOG_ROOT/Application Support/Burrete/BurreteV10.log"
-  "$LOG_ROOT/Application Support/Burrete/Burrete.log"
+  "$LOG_ROOT/Caches/Burette/BuretteV10.log"
+  "$LOG_ROOT/Caches/Burette/Burette.log"
+  "$LOG_ROOT/Application Support/Burette/BuretteV10.log"
+  "$LOG_ROOT/Application Support/Burette/Burette.log"
 )
 
 list_sample_files() {
@@ -194,7 +194,7 @@ run_preview() {
   local content_type="$1"
   local preview_file="$2"
 
-  if [[ "$content_type" == "$BURRETE_XYZ_CONTENT_TYPE" ]]; then
+  if [[ "$content_type" == "$BURETTE_XYZ_CONTENT_TYPE" ]]; then
     # qlmanage can abort when forcing XYZ UTIs; normal Quick Look resolves the
     # installed Open Babel alias when Launch Services is healthy.
     qlmanage -p "$preview_file"
@@ -221,7 +221,7 @@ while IFS= read -r sample_file; do
 
   abs_file="$(absolute_file "$sample_file")"
   rel_file="$(relative_file "$abs_file")"
-  content_type="$(BURRETE_DEV_FLAVOR="$BURRETE_DEV_FLAVOR" "$ROOT/scripts/preview-content-type.mjs" "$abs_file" 2>/dev/null || true)"
+  content_type="$(BURETTE_DEV_FLAVOR="$BURETTE_DEV_FLAVOR" "$ROOT/scripts/preview-content-type.mjs" "$abs_file" 2>/dev/null || true)"
   if [[ -z "$content_type" || "$content_type" == "(null)" ]]; then
     skipped=$((skipped + 1))
     printf 'SKIP\t%s\t-\t0\tnone\tpreview-content-type returned empty\n' "$rel_file" >>"$RESULTS_PATH"
@@ -230,18 +230,18 @@ while IFS= read -r sample_file; do
   fi
 
   timeout_seconds="$(timeout_for_file "$abs_file")"
-  token="$BURRETE_DEV_FLAVOR_SLUG-smoke-$total $(basename "$abs_file")"
+  token="$BURETTE_DEV_FLAVOR_SLUG-smoke-$total $(basename "$abs_file")"
   tmp_base="${TMPDIR:-/tmp}"
   tmp_base="${tmp_base%/}"
-  temp_dir="$(mktemp -d "$tmp_base/BurreteSampleSmoke-${BURRETE_DEV_FLAVOR_SLUG}.XXXXXX")"
+  temp_dir="$(mktemp -d "$tmp_base/BuretteSampleSmoke-${BURETTE_DEV_FLAVOR_SLUG}.XXXXXX")"
   preview_file="$temp_dir/$token"
   ln "$abs_file" "$preview_file" 2>/dev/null || cp -p "$abs_file" "$preview_file"
 
   cleanup_quicklook_state
   sleep 1
 
-  log_snapshot="$(mktemp "${TMPDIR:-/tmp}/BurreteSampleSmokeLog.XXXXXX")"
-  stdout_path="$(mktemp "${TMPDIR:-/tmp}/BurreteSampleSmokeStdout.XXXXXX")"
+  log_snapshot="$(mktemp "${TMPDIR:-/tmp}/BuretteSampleSmokeLog.XXXXXX")"
+  stdout_path="$(mktemp "${TMPDIR:-/tmp}/BuretteSampleSmokeStdout.XXXXXX")"
   started="$SECONDS"
   (
     cd "$ROOT"
@@ -320,8 +320,8 @@ cleanup_quicklook_state
 
 {
   printf '# Quick Look Samples Smoke\n\n'
-  printf '%s\n' "- Dev flavor: \`$BURRETE_DEV_FLAVOR_SLUG\`"
-  printf '%s\n' "- Preview extension: \`$BURRETE_PREVIEW_ID\`"
+  printf '%s\n' "- Dev flavor: \`$BURETTE_DEV_FLAVOR_SLUG\`"
+  printf '%s\n' "- Preview extension: \`$BURETTE_PREVIEW_ID\`"
   printf '%s\n' "- Samples directory: \`$(relative_file "$SAMPLES_DIR")\`"
   printf '%s\n' "- Result: \`$passed passed / $failed failed / $skipped skipped / $total total\`"
   printf '%s\n\n' "- TSV: \`$(relative_file "$RESULTS_PATH")\`"

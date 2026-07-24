@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "burrete.rdkit-mmff-extractor.v1",
+  "schemaVersion": "burette.rdkit-mmff-extractor.v1",
   "magicAscii": "BMFX",
   "byteOrder": "little-endian",
   "headerBytes": 64,

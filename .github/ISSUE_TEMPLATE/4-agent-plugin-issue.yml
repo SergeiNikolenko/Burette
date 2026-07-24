@@ -1,5 +1,5 @@
 name: Agent / Plugin / MCP Issue
-description: Report an issue with Burrete agent workflows, plugin skills, MCP tools, or browser session actions.
+description: Report an issue with Burette agent workflows, plugin skills, MCP tools, or browser session actions.
 labels:
   - bug
   - agent

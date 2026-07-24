@@ -24,17 +24,17 @@ export COPY_EXTENDED_ATTRIBUTES_DISABLE_RECURSIVE=1
 # current Apple linker. The completed app is still signed and verified below.
 export CARGO_PROFILE_RELEASE_STRIP=false
 
-APP_ID="com.local.BurreteV10"
-PREVIEW_ID="com.local.BurreteV10.Preview"
-THUMBNAIL_ID="com.local.BurreteV10.Thumbnail"
-PDB_CONTENT_TYPE="com.local.burrete10.pdb"
+APP_ID="com.local.BuretteV10"
+PREVIEW_ID="com.local.BuretteV10.Preview"
+THUMBNAIL_ID="com.local.BuretteV10.Thumbnail"
+PDB_CONTENT_TYPE="com.local.burette10.pdb"
 SAFE_ROOT_BASE="${TMPDIR:-/tmp}"
-SAFE_ROOT="$(mktemp -d "${SAFE_ROOT_BASE%/}/BurreteV10BuildSafe.XXXXXX")"
-LOCAL_APP="$ROOT/build/Burrete.app"
-BUILD_MODE="${BURRETE_BUILD_MODE:-local}"
-SIGN_IDENTITY="${BURRETE_CODESIGN_IDENTITY:--}"
-DEVELOPMENT_TEAM="${BURRETE_DEVELOPMENT_TEAM:-}"
-ALLOW_ADHOC_RELEASE="${BURRETE_RELEASE_ALLOW_ADHOC:-0}"
+SAFE_ROOT="$(mktemp -d "${SAFE_ROOT_BASE%/}/BuretteV10BuildSafe.XXXXXX")"
+LOCAL_APP="$ROOT/build/Burette.app"
+BUILD_MODE="${BURETTE_BUILD_MODE:-local}"
+SIGN_IDENTITY="${BURETTE_CODESIGN_IDENTITY:--}"
+DEVELOPMENT_TEAM="${BURETTE_DEVELOPMENT_TEAM:-}"
+ALLOW_ADHOC_RELEASE="${BURETTE_RELEASE_ALLOW_ADHOC:-0}"
 APP_METADATA_PLIST="$ROOT/apps/desktop/src-tauri/AppMetadata.plist"
 LOCAL_XYZRENDER_ENV="$HOME/.local/share/uv/tools/xyzrender"
 LOCAL_XYZRENDER_PYTHON_HOME="$(sed -n 's/^home = //p' "$LOCAL_XYZRENDER_ENV/pyvenv.cfg" 2>/dev/null | head -n 1 || true)"
@@ -43,45 +43,45 @@ XYZRENDER_RUNTIME_PYTHON_PACKAGES=("datamol==0.12.5")
 if [[ -n "$LOCAL_XYZRENDER_PYTHON_HOME" ]]; then
   LOCAL_XYZRENDER_PYTHON_ROOT="$(cd -P "$LOCAL_XYZRENDER_PYTHON_HOME/.." && pwd -P)"
 fi
-VITE_BURRETE_BUILD_IDENTIFIER="$APP_ID"
-VITE_BURRETE_BUILD_FLAVOR=""
-VITE_BURRETE_BUILD_CHANNEL="dev"
+VITE_BURETTE_BUILD_IDENTIFIER="$APP_ID"
+VITE_BURETTE_BUILD_FLAVOR=""
+VITE_BURETTE_BUILD_CHANNEL="dev"
 case "$BUILD_MODE" in
   local) DEFAULT_XCODE_CONFIGURATION="Debug" ;;
   release) DEFAULT_XCODE_CONFIGURATION="Release" ;;
-  *) echo "error: BURRETE_BUILD_MODE must be local or release, got: $BUILD_MODE" >&2; exit 2 ;;
+  *) echo "error: BURETTE_BUILD_MODE must be local or release, got: $BUILD_MODE" >&2; exit 2 ;;
 esac
-XCODE_CONFIGURATION="${BURRETE_XCODE_CONFIGURATION:-$DEFAULT_XCODE_CONFIGURATION}"
+XCODE_CONFIGURATION="${BURETTE_XCODE_CONFIGURATION:-$DEFAULT_XCODE_CONFIGURATION}"
 
 if [[ "$BUILD_MODE" == "release" ]]; then
-  [[ -z "${BURRETE_DEV_FLAVOR:-}" ]] || { echo "error: BURRETE_DEV_FLAVOR is only supported for local builds." >&2; exit 2; }
+  [[ -z "${BURETTE_DEV_FLAVOR:-}" ]] || { echo "error: BURETTE_DEV_FLAVOR is only supported for local builds." >&2; exit 2; }
   if [[ "$ALLOW_ADHOC_RELEASE" != "1" ]]; then
-    [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]] || { echo "error: release builds require BURRETE_CODESIGN_IDENTITY='Developer ID Application: ...'." >&2; exit 1; }
-    [[ -n "$DEVELOPMENT_TEAM" ]] || { echo "error: release builds require BURRETE_DEVELOPMENT_TEAM." >&2; exit 1; }
+    [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]] || { echo "error: release builds require BURETTE_CODESIGN_IDENTITY='Developer ID Application: ...'." >&2; exit 1; }
+    [[ -n "$DEVELOPMENT_TEAM" ]] || { echo "error: release builds require BURETTE_DEVELOPMENT_TEAM." >&2; exit 1; }
   fi
-  [[ "$XCODE_CONFIGURATION" == "Release" ]] || { echo "error: release builds require BURRETE_XCODE_CONFIGURATION=Release." >&2; exit 1; }
-  VITE_BURRETE_BUILD_CHANNEL="release"
+  [[ "$XCODE_CONFIGURATION" == "Release" ]] || { echo "error: release builds require BURETTE_XCODE_CONFIGURATION=Release." >&2; exit 1; }
+  VITE_BURETTE_BUILD_CHANNEL="release"
 fi
 
-if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
-  command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
+if [[ -n "${BURETTE_DEV_FLAVOR:-}" ]]; then
+  command -v bun >/dev/null 2>&1 || { echo "error: BURETTE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
   eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
-  APP_ID="$BURRETE_APP_ID"
-  PREVIEW_ID="$BURRETE_PREVIEW_ID"
-  THUMBNAIL_ID="$BURRETE_THUMBNAIL_ID"
-  PDB_CONTENT_TYPE="$BURRETE_PDB_CONTENT_TYPE"
-  LOCAL_APP="$ROOT/build/$BURRETE_APP_BUNDLE_NAME"
-  VITE_BURRETE_BUILD_IDENTIFIER="$BURRETE_APP_ID"
-  VITE_BURRETE_BUILD_FLAVOR="$BURRETE_DEV_FLAVOR_SLUG"
-  VITE_BURRETE_BUILD_CHANNEL="dev"
+  APP_ID="$BURETTE_APP_ID"
+  PREVIEW_ID="$BURETTE_PREVIEW_ID"
+  THUMBNAIL_ID="$BURETTE_THUMBNAIL_ID"
+  PDB_CONTENT_TYPE="$BURETTE_PDB_CONTENT_TYPE"
+  LOCAL_APP="$ROOT/build/$BURETTE_APP_BUNDLE_NAME"
+  VITE_BURETTE_BUILD_IDENTIFIER="$BURETTE_APP_ID"
+  VITE_BURETTE_BUILD_FLAVOR="$BURETTE_DEV_FLAVOR_SLUG"
+  VITE_BURETTE_BUILD_CHANNEL="dev"
 fi
-export VITE_BURRETE_BUILD_IDENTIFIER
-export VITE_BURRETE_BUILD_FLAVOR
-export VITE_BURRETE_BUILD_CHANNEL
+export VITE_BURETTE_BUILD_IDENTIFIER
+export VITE_BURETTE_BUILD_FLAVOR
+export VITE_BURETTE_BUILD_CHANNEL
 
 cleanup_safe_root() {
   local status=$?
-  if [[ "$status" -ne 0 && "${BURRETE_KEEP_FAILED_BUILD:-0}" == "1" ]]; then
+  if [[ "$status" -ne 0 && "${BURETTE_KEEP_FAILED_BUILD:-0}" == "1" ]]; then
     echo "Preserving failed isolated build tree: $SAFE_ROOT" >&2
     return
   fi
@@ -90,7 +90,7 @@ cleanup_safe_root() {
 trap cleanup_safe_root EXIT
 
 cat <<HDR
-Burrete v10 build
+Burette v10 build
   source: $ROOT
   app id: $APP_ID
   preview id: $PREVIEW_ID
@@ -387,7 +387,7 @@ sign_bundled_xyzrender_runtime() {
 }
 bundle_quicklook_xyzrender_launcher() {
   local app="$1"
-  local appex="$app/Contents/PlugIns/BurretePreview.appex"
+  local appex="$app/Contents/PlugIns/BurettePreview.appex"
   [[ -d "$appex" ]] || return 0
   local libpython=""
   libpython="$(find "$appex/Contents/lib" -maxdepth 1 -type f \( -name 'libpython3*.dylib' -o -name 'Python' \) | head -n 1 || true)"
@@ -402,7 +402,7 @@ bundle_quicklook_xyzrender_launcher() {
 }
 sign_quicklook_xyzrender_launcher() {
   local app="$1"
-  local appex="$app/Contents/PlugIns/BurretePreview.appex"
+  local appex="$app/Contents/PlugIns/BurettePreview.appex"
   local libpython=""
   libpython="$(find "$appex/Contents/lib" -maxdepth 1 -type f \( -name 'libpython3*.dylib' -o -name 'Python' \) | head -n 1 || true)"
   [[ -f "$appex/Contents/Resources/xyzrender-python3" && -n "$libpython" && -f "$libpython" ]] || return 0
@@ -441,7 +441,7 @@ try:
     pointer = json.loads(pointer_bytes)
 except (OSError, ValueError) as error:
     fail(f"generation pointer cannot be read: {error}")
-if pointer.get("schemaVersion") != "burrete.compute.metal-generation-pointer.v1":
+if pointer.get("schemaVersion") != "burette.compute.metal-generation-pointer.v1":
     fail("generation pointer schema mismatch")
 generation = pointer.get("generation", "")
 if not re.fullmatch(r"generation\.[A-Za-z0-9]{6,64}", generation):
@@ -457,9 +457,9 @@ try:
     metadata = json.loads(metadata_bytes)
 except ValueError as error:
     fail(f"build metadata cannot be decoded: {error}")
-if metadata.get("schemaVersion") != "burrete.compute.metal-build-metadata.v2":
+if metadata.get("schemaVersion") != "burette.compute.metal-build-metadata.v2":
     fail("build metadata schema mismatch")
-if metadata.get("runtimeVersion") != "burrete-native-metal-v20":
+if metadata.get("runtimeVersion") != "burette-native-metal-v22":
     fail("runtime version mismatch")
 metallib = metadata.get("metallib", {})
 metallib_name = metallib.get("path", "")
@@ -478,19 +478,19 @@ bundle_compute_service() {
   local service="$2"
   [[ -x "$service" ]] || { echo "error: native compute service missing: $service" >&2; exit 1; }
   mkdir -p "$app/Contents/Helpers"
-  ditto --norsrc --noextattr "$service" "$app/Contents/Helpers/burrete-compute-service"
-  chmod 755 "$app/Contents/Helpers/burrete-compute-service"
-  rm -f "$app/Contents/MacOS/burrete-compute-service"
+  ditto --norsrc --noextattr "$service" "$app/Contents/Helpers/burette-compute-service"
+  chmod 755 "$app/Contents/Helpers/burette-compute-service"
+  rm -f "$app/Contents/MacOS/burette-compute-service"
 }
 assert_bundled_compute_service() {
   local app="$1"
   local label="$2"
-  local service="$app/Contents/Helpers/burrete-compute-service"
+  local service="$app/Contents/Helpers/burette-compute-service"
   [[ -x "$service" && ! -L "$service" ]] || {
     echo "error: packaged native compute service is missing $label: $service" >&2
     exit 1
   }
-  [[ ! -e "$app/Contents/MacOS/burrete-compute-service" ]] || {
+  [[ ! -e "$app/Contents/MacOS/burette-compute-service" ]] || {
     echo "error: native compute service must not be duplicated beside the app executable $label" >&2
     exit 1
   }
@@ -519,16 +519,16 @@ fi
 
 case "$ROOT" in *"/.Trash/"*|*"/Library/Mobile Documents/.Trash/"*)
   echo "error: this project is physically inside macOS Trash/iCloud Trash: $ROOT" >&2
-  echo "Delete it and unzip v10 to ~/Desktop/BurreteV10" >&2
+  echo "Delete it and unzip v10 to ~/Desktop/BuretteV10" >&2
   exit 1;;
 esac
 
 # Prevent accidentally running old v5/v6/v7/v8 folders.
 grep -Eq '"version": "1\.0\.[0-9]+(-[0-9A-Za-z.-]+)?"' package.json || { echo "error: this is not a v1 release package; package.json version is:" >&2; grep '"version"' package.json >&2 || true; exit 1; }
-grep -q 'com.local.BurreteV10.Preview' Burrete.xcodeproj/project.pbxproj || { echo "error: this Xcode project is not v10." >&2; exit 1; }
+grep -q 'com.local.BuretteV10.Preview' Burette.xcodeproj/project.pbxproj || { echo "error: this Xcode project is not v10." >&2; exit 1; }
 grep -q 'preview-content-type.mjs' scripts/force-preview.sh || { echo "error: force-preview.sh is not using the preview format registry helper." >&2; exit 1; }
 grep -q 'config.*preview-formats.json' scripts/preview-content-type.mjs || { echo "error: preview content type helper is not using the preview format registry." >&2; exit 1; }
-bun --eval "import { readFileSync } from 'node:fs'; const registry = JSON.parse(readFileSync('config/preview-formats.json', 'utf8')); if (!registry.formats?.some((format) => format.contentType === 'com.local.burrete10.pdb')) process.exit(1);" || { echo "error: preview format registry is not v10." >&2; exit 1; }
+bun --eval "import { readFileSync } from 'node:fs'; const registry = JSON.parse(readFileSync('config/preview-formats.json', 'utf8')); if (!registry.formats?.some((format) => format.contentType === 'com.local.burette10.pdb')) process.exit(1);" || { echo "error: preview format registry is not v10." >&2; exit 1; }
 
 require_asset PreviewExtension/Web/molstar.js
 require_asset PreviewExtension/Web/molstar.css
@@ -548,7 +548,7 @@ bun scripts/check-js-syntax.mjs \
   PreviewExtension/Web/grid-ui.js \
   PreviewExtension/Web/grid-viewer.js >/dev/null
 clean_detritus "$ROOT"
-rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
+rm -f /tmp/Burette.log "${TMPDIR:-/tmp}/Burette.log" 2>/dev/null || true
 
 rsync -a --delete \
   --exclude build \
@@ -560,7 +560,7 @@ rsync -a --delete \
   "$ROOT/" "$SAFE_ROOT/"
 clean_detritus "$SAFE_ROOT"
 APP_METADATA_PLIST="$SAFE_ROOT/apps/desktop/src-tauri/AppMetadata.plist"
-if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
+if [[ -n "${BURETTE_DEV_FLAVOR:-}" ]]; then
   bun "$ROOT/scripts/dev-namespace.mjs" patch-tree "$SAFE_ROOT" >/dev/null
 fi
 if [[ "$BUILD_MODE" == "release" ]]; then
@@ -576,19 +576,19 @@ pushd apps/desktop >/dev/null
 ../../node_modules/.bin/vite build --config vite.config.ts
 popd >/dev/null
 bun run build:tauri
-cargo build --release --bin burrete-core-bridge
-cargo build --release --bin burrete-compute-service
+cargo build --release --bin burette-core-bridge
+cargo build --release --bin burette-compute-service
 XCODE_SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGNING_ALLOWED=YES)
 if [[ -n "$DEVELOPMENT_TEAM" ]]; then
   XCODE_SIGN_ARGS+=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM")
 fi
-xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
-xcodebuild -project Burrete.xcodeproj -scheme BurreteThumbnail -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
+xcodebuild -project Burette.xcodeproj -scheme BurettePreview -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
+xcodebuild -project Burette.xcodeproj -scheme BuretteThumbnail -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
 TAURI_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
 TAURI_BUILT_APP_CANDIDATES=(
-  "$TAURI_TARGET_DIR/release/bundle/macos/Burrete.app"
-  "apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
-  "target/release/bundle/macos/Burrete.app"
+  "$TAURI_TARGET_DIR/release/bundle/macos/Burette.app"
+  "apps/desktop/src-tauri/target/release/bundle/macos/Burette.app"
+  "target/release/bundle/macos/Burette.app"
 )
 TAURI_BUILT_APP=""
 for candidate in "${TAURI_BUILT_APP_CANDIDATES[@]}"; do
@@ -597,21 +597,21 @@ for candidate in "${TAURI_BUILT_APP_CANDIDATES[@]}"; do
     break
   fi
 done
-QUICKLOOK_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurretePreview.appex"
-THUMBNAIL_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurreteThumbnail.appex"
-CORE_BRIDGE="$TAURI_TARGET_DIR/release/burrete-core-bridge"
-COMPUTE_SERVICE="$TAURI_TARGET_DIR/release/burrete-compute-service"
+QUICKLOOK_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurettePreview.appex"
+THUMBNAIL_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BuretteThumbnail.appex"
+CORE_BRIDGE="$TAURI_TARGET_DIR/release/burette-core-bridge"
+COMPUTE_SERVICE="$TAURI_TARGET_DIR/release/burette-compute-service"
 [[ -n "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing. Checked: ${TAURI_BUILT_APP_CANDIDATES[*]}" >&2; exit 1; }
 [[ -d "$QUICKLOOK_APPEX" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX" >&2; exit 1; }
 [[ -d "$THUMBNAIL_APPEX" ]] || { echo "error: Quick Look thumbnail extension missing: $THUMBNAIL_APPEX" >&2; exit 1; }
-[[ -x "$CORE_BRIDGE" ]] || { echo "error: burrete-core bridge helper missing: $CORE_BRIDGE" >&2; exit 1; }
-ditto --norsrc --noextattr "$CORE_BRIDGE" "$QUICKLOOK_APPEX/Contents/Resources/burrete-core-bridge"
-chmod 755 "$QUICKLOOK_APPEX/Contents/Resources/burrete-core-bridge"
+[[ -x "$CORE_BRIDGE" ]] || { echo "error: burette-core bridge helper missing: $CORE_BRIDGE" >&2; exit 1; }
+ditto --norsrc --noextattr "$CORE_BRIDGE" "$QUICKLOOK_APPEX/Contents/Resources/burette-core-bridge"
+chmod 755 "$QUICKLOOK_APPEX/Contents/Resources/burette-core-bridge"
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
-rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
-rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurreteThumbnail.appex"
-ditto --norsrc --noextattr "$QUICKLOOK_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
-ditto --norsrc --noextattr "$THUMBNAIL_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns/BurreteThumbnail.appex"
+rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex"
+rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BuretteThumbnail.appex"
+ditto --norsrc --noextattr "$QUICKLOOK_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex"
+ditto --norsrc --noextattr "$THUMBNAIL_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns/BuretteThumbnail.appex"
 mark_regular_desktop_app "$TAURI_BUILT_APP"
 copy_app_plist_metadata "$TAURI_BUILT_APP"
 bundle_xyzrender_runtime "$TAURI_BUILT_APP"
@@ -627,10 +627,10 @@ if [[ "$SIGN_IDENTITY" != "-" ]]; then
 fi
 sign_bundled_xyzrender_runtime "$TAURI_BUILT_APP"
 sign_quicklook_xyzrender_launcher "$TAURI_BUILT_APP"
-codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/Helpers/burrete-compute-service" >/dev/null
-codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/burrete-core-bridge" >/dev/null
-codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex" >/dev/null
-codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurreteThumbnail.appex" >/dev/null
+codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/Helpers/burette-compute-service" >/dev/null
+codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex/Contents/Resources/burette-core-bridge" >/dev/null
+codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurettePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex" >/dev/null
+codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurettePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BuretteThumbnail.appex" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP" >/dev/null
 clean_detritus "$TAURI_BUILT_APP"
 popd >/dev/null
@@ -652,18 +652,18 @@ actual_carbon="$(/usr/libexec/PlistBuddy -c 'Print :LSRequiresCarbon' "$LOCAL_AP
 actual_pkg_info="$(cat "$LOCAL_APP/Contents/PkgInfo" 2>/dev/null || true)"
 [[ "$actual_pkg_info" == "APPL????" ]] || { echo "error: built app PkgInfo missing or invalid." >&2; exit 1; }
 actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations:0:UTTypeIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
-[[ "$actual_pdb_type" == "$PDB_CONTENT_TYPE" ]] || { echo "error: built app is missing Burrete exported content types." >&2; exit 1; }
-[[ -x "$LOCAL_APP/Contents/MacOS/burrete" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burrete" >&2; exit 1; }
-[[ -d "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
-[[ -x "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/burrete-core-bridge" ]] || { echo "error: embedded Quick Look extension is missing burrete-core bridge helper." >&2; exit 1; }
-[[ -d "$LOCAL_APP/Contents/PlugIns/BurreteThumbnail.appex" ]] || { echo "error: embedded Quick Look thumbnail extension missing in Tauri app." >&2; exit 1; }
+[[ "$actual_pdb_type" == "$PDB_CONTENT_TYPE" ]] || { echo "error: built app is missing Burette exported content types." >&2; exit 1; }
+[[ -x "$LOCAL_APP/Contents/MacOS/burette" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burette" >&2; exit 1; }
+[[ -d "$LOCAL_APP/Contents/PlugIns/BurettePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
+[[ -x "$LOCAL_APP/Contents/PlugIns/BurettePreview.appex/Contents/Resources/burette-core-bridge" ]] || { echo "error: embedded Quick Look extension is missing burette-core bridge helper." >&2; exit 1; }
+[[ -d "$LOCAL_APP/Contents/PlugIns/BuretteThumbnail.appex" ]] || { echo "error: embedded Quick Look thumbnail extension missing in Tauri app." >&2; exit 1; }
 assert_bundled_xyzrender_runtime "$LOCAL_APP" "in build output"
 assert_bundled_compute_metal_runtime "$LOCAL_APP" "in build output"
 assert_bundled_compute_service "$LOCAL_APP" "in build output"
-thumbnail_point="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$LOCAL_APP/Contents/PlugIns/BurreteThumbnail.appex/Contents/Info.plist" 2>/dev/null || true)"
+thumbnail_point="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$LOCAL_APP/Contents/PlugIns/BuretteThumbnail.appex/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$thumbnail_point" == "com.apple.quicklook.thumbnail" ]] || { echo "error: embedded thumbnail extension has wrong extension point: ${thumbnail_point:-unknown}" >&2; exit 1; }
 BUILT_VIEWER_SHELL="$LOCAL_APP/Contents/Resources/ViewerWeb/viewer-shell.js"
-if [[ -e "$LOCAL_APP/Contents/Resources/Web/index.html" ]] && grep -q 'Burrete Preview' "$LOCAL_APP/Contents/Resources/Web/index.html"; then
+if [[ -e "$LOCAL_APP/Contents/Resources/Web/index.html" ]] && grep -q 'Burette Preview' "$LOCAL_APP/Contents/Resources/Web/index.html"; then
   echo "error: built desktop app Resources/Web was overwritten by the preview shell." >&2
   exit 1
 fi
@@ -675,7 +675,7 @@ if grep -q 'VESTA' "$BUILT_VIEWER_SHELL"; then
   echo "error: built shared viewer shell still contains removed VESTA toolbar control." >&2
   exit 1
 fi
-VERIFY_APP="$SAFE_ROOT/verify/Burrete.app"
+VERIFY_APP="$SAFE_ROOT/verify/Burette.app"
 rm -rf "$SAFE_ROOT/verify"
 mkdir -p "$SAFE_ROOT/verify"
 ditto --norsrc --noextattr "$BUILT_APP_SOURCE" "$VERIFY_APP"
@@ -688,7 +688,7 @@ codesign --verify --deep --strict "$VERIFY_APP"
 
 cat <<MSG
 
-BUILD SUCCEEDED: Burrete v10
+BUILD SUCCEEDED: Burette v10
 Built:
   $LOCAL_APP
 

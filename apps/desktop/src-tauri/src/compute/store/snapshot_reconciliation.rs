@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use burrete_compute_protocol::{MolecularSnapshotRef, MAX_CONTROL_FRAME_BYTES};
+use burette_compute_protocol::{MolecularSnapshotRef, MAX_CONTROL_FRAME_BYTES};
 use rusqlite::TransactionBehavior;
 use uuid::Uuid;
 

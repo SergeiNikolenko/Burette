@@ -5,14 +5,14 @@ ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 FILE="${1:-$ROOT/samples/mini.pdb}"
 RUNS="${RUNS:-3}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-30}"
-PREVIEW_ID="com.local.BurreteV10.Preview"
-if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
-  command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
+PREVIEW_ID="com.local.BuretteV10.Preview"
+if [[ -n "${BURETTE_DEV_FLAVOR:-}" ]]; then
+  command -v bun >/dev/null 2>&1 || { echo "error: BURETTE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
   eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
-  PREVIEW_ID="$BURRETE_PREVIEW_ID"
+  PREVIEW_ID="$BURETTE_PREVIEW_ID"
 fi
-CONTAINER_BASE="$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Caches/Burrete"
-LOG_PATH="$CONTAINER_BASE/Burrete.log"
+CONTAINER_BASE="$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Caches/Burette"
+LOG_PATH="$CONTAINER_BASE/Burette.log"
 METRICS_PATH="${METRICS_PATH:-$ROOT/metrics.json}"
 
 if [[ ! -f "$FILE" ]]; then
@@ -57,16 +57,16 @@ cleanup_run() {
   fi
 }
 
-TMP_RESULTS="$(mktemp "${TMPDIR:-/tmp}/burrete-cold-open-results.XXXXXX.jsonl")"
+TMP_RESULTS="$(mktemp "${TMPDIR:-/tmp}/burette-cold-open-results.XXXXXX.jsonl")"
 trap 'rm -f "$TMP_RESULTS"' EXIT
 
 for run in $(seq 1 "$RUNS"); do
   cleanup_preview_state
-  temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/burrete-cold-open-run${run}.XXXXXX")"
+  temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/burette-cold-open-run${run}.XXXXXX")"
   temp_input="$temp_dir/input.${FILE##*.}"
   cp "$FILE" "$temp_input"
   temp_input="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$temp_input")"
-  temp_stdout="$(mktemp "${TMPDIR:-/tmp}/burrete-cold-open-stdout.XXXXXX")"
+  temp_stdout="$(mktemp "${TMPDIR:-/tmp}/burette-cold-open-stdout.XXXXXX")"
   (
     cd "$ROOT"
     qlmanage -x -p -c "$TYPE" "$temp_input"

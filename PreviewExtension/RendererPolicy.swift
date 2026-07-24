@@ -1,42 +1,42 @@
 import Foundation
 
-private struct BurreteCoreBridgeFormat: Decodable {
+private struct BuretteCoreBridgeFormat: Decodable {
     let molstarFormat: String
     let isBinary: Bool
     let externalOnly: Bool
     let canOpenInVesta: Bool
 }
 
-private struct BurreteCoreBridgeRendererPolicy: Decodable {
+private struct BuretteCoreBridgeRendererPolicy: Decodable {
     let requestedMode: String
     let renderer: String
     let molstarAvailable: Bool
 }
 
-struct BurretePreviewPrimary: Decodable, Equatable {
+struct BurettePreviewPrimary: Decodable, Equatable {
     let role: String
     let format: String
     let binary: Bool
 }
 
-struct BurretePreviewConverter: Decodable, Equatable {
+struct BurettePreviewConverter: Decodable, Equatable {
     let id: String
     let required: Bool
 }
 
-struct BurretePreviewStagedEntry: Decodable, Equatable {
+struct BurettePreviewStagedEntry: Decodable, Equatable {
     let role: String
     let format: String
     let representation: String
     let requiredForReady: Bool
 }
 
-struct BurretePreviewFallback: Decodable, Equatable {
+struct BurettePreviewFallback: Decodable, Equatable {
     let renderer: String
     let converter: String?
 }
 
-struct BurretePreviewCapabilities: Decodable, Equatable {
+struct BurettePreviewCapabilities: Decodable, Equatable {
     let canOpenInVesta: Bool
     let canSwitchRenderer: Bool
     let hasTrajectoryControls: Bool
@@ -44,15 +44,15 @@ struct BurretePreviewCapabilities: Decodable, Equatable {
     let hasStagedEntries: Bool
 }
 
-struct BurretePreviewPlan: Decodable, Equatable {
+struct BurettePreviewPlan: Decodable, Equatable {
     let sourceExtension: String
     let strategy: String
     let renderer: String
-    let primary: BurretePreviewPrimary?
-    let converter: BurretePreviewConverter?
-    let staged: [BurretePreviewStagedEntry]
-    let fallbacks: [BurretePreviewFallback]
-    let capabilities: BurretePreviewCapabilities
+    let primary: BurettePreviewPrimary?
+    let converter: BurettePreviewConverter?
+    let staged: [BurettePreviewStagedEntry]
+    let fallbacks: [BurettePreviewFallback]
+    let capabilities: BurettePreviewCapabilities
 }
 
 private struct BundledFormatRegistryDocument: Decodable {
@@ -96,8 +96,8 @@ enum BundledFormatRegistry {
     }
 }
 
-enum BurreteCoreBridge {
-    private static let executableName = "burrete-core-bridge"
+enum BuretteCoreBridge {
+    private static let executableName = "burette-core-bridge"
     private static let processTimeout: TimeInterval = 1.0
 
     static func supportedExtension(_ fileExtension: String) -> Bool? {
@@ -114,29 +114,29 @@ enum BurreteCoreBridge {
         runText(arguments: ["size-limit", fileExtension]).flatMap { Int64($0) }
     }
 
-    static func format(fileExtension: String) -> BurreteRendererFormat? {
-        guard let response: BurreteCoreBridgeFormat = runJSON(arguments: ["format", fileExtension]) else {
+    static func format(fileExtension: String) -> BuretteRendererFormat? {
+        guard let response: BuretteCoreBridgeFormat = runJSON(arguments: ["format", fileExtension]) else {
             return nil
         }
-        return BurreteRendererFormat(
+        return BuretteRendererFormat(
             molstarFormat: response.molstarFormat,
             isBinary: response.isBinary,
             isExternalXyzrenderOnly: response.externalOnly
         )
     }
 
-    static func resolveRenderer(fileExtension: String, requestedMode: String) -> BurreteRendererPolicy? {
-        guard let response: BurreteCoreBridgeRendererPolicy = runJSON(arguments: ["resolve-renderer", fileExtension, requestedMode]) else {
+    static func resolveRenderer(fileExtension: String, requestedMode: String) -> BuretteRendererPolicy? {
+        guard let response: BuretteCoreBridgeRendererPolicy = runJSON(arguments: ["resolve-renderer", fileExtension, requestedMode]) else {
             return nil
         }
-        return BurreteRendererPolicy(
+        return BuretteRendererPolicy(
             requestedMode: response.requestedMode,
             renderer: response.renderer,
             molstarAvailable: response.molstarAvailable
         )
     }
 
-    static func previewPlan(fileExtension: String, requestedMode: String) -> BurretePreviewPlan? {
+    static func previewPlan(fileExtension: String, requestedMode: String) -> BurettePreviewPlan? {
         runJSON(arguments: ["preview-plan", fileExtension, requestedMode])
     }
 
@@ -188,7 +188,7 @@ enum BurreteCoreBridge {
     }
 }
 
-enum BurreteRendererMode {
+enum BuretteRendererMode {
     static let auto = "auto"
     static let molstar = "molstar"
     static let xyzrenderExternal = "xyzrender-external"
@@ -205,26 +205,26 @@ enum BurreteRendererMode {
     }
 }
 
-struct BurreteRendererFormat: Equatable {
+struct BuretteRendererFormat: Equatable {
     let molstarFormat: String
     let isBinary: Bool
     let isExternalXyzrenderOnly: Bool
 }
 
-struct BurreteRendererPolicy: Equatable {
+struct BuretteRendererPolicy: Equatable {
     let requestedMode: String
     let renderer: String
     let molstarAvailable: Bool
 
     static func resolve(
-        format: BurreteRendererFormat,
+        format: BuretteRendererFormat,
         requestedMode rawRequestedMode: String,
         fileExtension: String? = nil,
-        previewPlan providedPreviewPlan: BurretePreviewPlan? = nil
-    ) -> BurreteRendererPolicy {
-        let requestedMode = BurreteRendererMode.normalize(rawRequestedMode)
+        previewPlan providedPreviewPlan: BurettePreviewPlan? = nil
+    ) -> BuretteRendererPolicy {
+        let requestedMode = BuretteRendererMode.normalize(rawRequestedMode)
         let previewPlan = providedPreviewPlan ?? fileExtension.flatMap {
-            BurreteCoreBridge.previewPlan(
+            BuretteCoreBridge.previewPlan(
                 fileExtension: $0,
                 requestedMode: requestedMode
             )
@@ -234,7 +234,7 @@ struct BurreteRendererPolicy: Equatable {
             return planPolicy
         }
         if let fileExtension,
-           let bridgePolicy = BurreteCoreBridge.resolveRenderer(
+           let bridgePolicy = BuretteCoreBridge.resolveRenderer(
             fileExtension: fileExtension,
             requestedMode: rawRequestedMode
            ) {
@@ -243,57 +243,57 @@ struct BurreteRendererPolicy: Equatable {
         let renderer: String
 
         if format.isExternalXyzrenderOnly {
-            renderer = requestedMode == BurreteRendererMode.molstar
-                ? BurreteRendererMode.molstar
-                : BurreteRendererMode.xyzrenderExternal
+            renderer = requestedMode == BuretteRendererMode.molstar
+                ? BuretteRendererMode.molstar
+                : BuretteRendererMode.xyzrenderExternal
         } else {
             let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
             let canUseXyzrender = isXYZ || (!format.isBinary && ["sdf", "pdb", "pdbqt", "mmcif", "cifCore"].contains(format.molstarFormat))
             switch requestedMode {
-            case BurreteRendererMode.molstar:
-                renderer = BurreteRendererMode.molstar
-            case BurreteRendererMode.xyzrenderExternal:
-                renderer = canUseXyzrender ? BurreteRendererMode.xyzrenderExternal : BurreteRendererMode.molstar
+            case BuretteRendererMode.molstar:
+                renderer = BuretteRendererMode.molstar
+            case BuretteRendererMode.xyzrenderExternal:
+                renderer = canUseXyzrender ? BuretteRendererMode.xyzrenderExternal : BuretteRendererMode.molstar
             default:
-                renderer = isXYZ ? BurreteRendererMode.xyzrenderExternal : BurreteRendererMode.molstar
+                renderer = isXYZ ? BuretteRendererMode.xyzrenderExternal : BuretteRendererMode.molstar
             }
         }
 
-        return BurreteRendererPolicy(
+        return BuretteRendererPolicy(
             requestedMode: requestedMode,
             renderer: renderer,
             molstarAvailable: !format.isExternalXyzrenderOnly
         )
     }
 
-    static func fallbackRenderer(for format: BurreteRendererFormat) -> String {
-        BurreteRendererMode.molstar
+    static func fallbackRenderer(for format: BuretteRendererFormat) -> String {
+        BuretteRendererMode.molstar
     }
 
     private static func policyFromPreviewPlan(
-        _ previewPlan: BurretePreviewPlan,
+        _ previewPlan: BurettePreviewPlan,
         requestedMode: String
-    ) -> BurreteRendererPolicy? {
+    ) -> BuretteRendererPolicy? {
         switch previewPlan.strategy {
         case "custom", "grid":
             return nil
         case "external":
-            return BurreteRendererPolicy(
+            return BuretteRendererPolicy(
                 requestedMode: requestedMode,
-                renderer: BurreteRendererMode.normalize(previewPlan.renderer),
+                renderer: BuretteRendererMode.normalize(previewPlan.renderer),
                 molstarAvailable: false
             )
         default:
-            return BurreteRendererPolicy(
+            return BuretteRendererPolicy(
                 requestedMode: requestedMode,
-                renderer: BurreteRendererMode.normalize(previewPlan.renderer),
+                renderer: BuretteRendererMode.normalize(previewPlan.renderer),
                 molstarAvailable: true
             )
         }
     }
 }
 
-enum BurreteXyzrenderPreset {
+enum BuretteXyzrenderPreset {
     static let builtInOptions: [(String, String)] = [
         ("default", "Default"),
         ("flat", "Flat"),

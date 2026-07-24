@@ -3,7 +3,7 @@ use std::{
     io::{Read, Seek, SeekFrom},
 };
 
-use burrete_compute_protocol::{ArtifactFile, ArtifactManifest};
+use burette_compute_protocol::{ArtifactFile, ArtifactManifest};
 use rustix::{
     fs::{fstat, open, openat, FileType, Mode, OFlags},
     process::geteuid,

@@ -18,7 +18,7 @@ const contractScripts = {
   "test-tauri-structure.mjs": () => import("./test-tauri-structure.mjs"),
 };
 
-describe("Burrete contract scripts", () => {
+describe("Burette contract scripts", () => {
   for (const [script, runScript] of Object.entries(contractScripts)) {
     test(script, async () => {
       await runScript();

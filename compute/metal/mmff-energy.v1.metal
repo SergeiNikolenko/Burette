@@ -1,4 +1,4 @@
-// Copyright 2026 Burrete contributors.
+// Copyright 2026 Burette contributors.
 // SPDX-License-Identifier: MIT
 // Independent MMFF94/MMFF94s seven-term energy and reference-gradient kernel.
 
@@ -452,7 +452,7 @@ inline MmffEnergyV1 evaluate_terms(
     return energy;
 }
 
-kernel void burrete_mmff_energy_v1(
+kernel void burette_mmff_energy_v1(
     const device float4 *positions [[buffer(0)]],
     constant MmffBatchV1 &batch [[buffer(1)]],
     const device MmffTermV1 *bonds [[buffer(2)]],
@@ -472,7 +472,7 @@ kernel void burrete_mmff_energy_v1(
     breakdowns[conformer * 2 + 1] = energy.second;
 }
 
-kernel void burrete_mmff_analytic_gradient_v1(
+kernel void burette_mmff_analytic_gradient_v1(
     const device float4 *positions [[buffer(0)]],
     constant MmffBatchV1 &batch [[buffer(1)]],
     const device MmffTermV1 *bonds [[buffer(2)]],
@@ -576,7 +576,7 @@ inline void reset_bfgs(device float *hessian, uint coordinates) {
     }
 }
 
-kernel void burrete_mmff_optimize_v1(
+kernel void burette_mmff_optimize_v1(
     device float4 *positions [[buffer(0)]],
     constant MmffOptimizeConfigV1 &config [[buffer(1)]],
     const device MmffTermV1 *bonds [[buffer(2)]],
