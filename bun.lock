@@ -10,7 +10,7 @@
         "@codemirror/language": "6.12.3",
         "@codemirror/language-data": "^6.5.1",
         "@codemirror/search": "^6.7.1",
-        "@codemirror/state": "^6.5.2",
+        "@codemirror/state": "^6.7.1",
         "@codemirror/view": "^6.43.6",
         "@hugeicons/core-free-icons": "^4.1.2",
         "@hugeicons/react": "^1.1.9",
