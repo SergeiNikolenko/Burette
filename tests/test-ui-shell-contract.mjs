@@ -6095,7 +6095,7 @@ assert.match(previewRuntimeCss, /\.buret-docking-pose-all \{[\s\S]*min-width: 34
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*width: 44px;/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed\.buret-docking-pose-speed-skip \{[\s\S]*#f59e0b/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed::-webkit-inner-spin-button,\s*\.buret-docking-pose-speed::-webkit-outer-spin-button \{[\s\S]*-webkit-appearance: none;/);
-assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{[\s\S]*flex: 0 0 110px;/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{[\s\S]*flex: 1 1 0;/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses-trajectory-segments \.buret-docking-pose-animation \{[\s\S]*width: 100%;/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses-trajectory-segments \.buret-docking-pose-slider \{[\s\S]*flex: 1 1 auto;[\s\S]*width: auto;/);
 assert.match(previewViewer, /animationRow\.append\(speed, loop, slider\)/);

@@ -2959,9 +2959,15 @@ body.burette-mobile-host .buret-docking-poses button {
   text-align: center;
 }
 .buret-docking-pose-slider {
-  flex: 0 0 110px;
-  width: 110px;
-  min-width: 60px;
+  /* A basis of 110px made the slider the widest item in the playback row, so opening
+     the row stretched the whole control. Asking for nothing and taking what is left
+     lets the row fit the width the row above already set. */
+  flex: 1 1 0;
+  /* Zero rather than auto: the control's width comes from its widest row, and that
+     measurement uses a range input's natural width (~129px), which flex-basis does
+     not affect. At zero the row asks for nothing and flex-grow fills what is left. */
+  width: 0;
+  min-width: 44px;
   height: 12px;
   appearance: none;
   -webkit-appearance: none;
