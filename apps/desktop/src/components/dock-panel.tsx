@@ -438,7 +438,7 @@ function DockPanelContent({
   if (activeTabKind === "logs") {
     return (
       <div className="dock-content">
-        <Metric label="Status" value={state.status?.message ?? "No active notice"} />
+        <Metric label="Last status" value={state.status?.message ?? "No status yet"} />
         <button type="button" className="dock-action" onClick={() => void actions.openLogs()}>
           Open logs folder
         </button>

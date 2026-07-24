@@ -4,7 +4,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
-import { NotificationPopup } from "./notification-popup";
 import { OpenInEditorMenu } from "./open-in-editor-menu";
 import { QuickLookPreview } from "./quick-look-preview";
 import { Sidebar } from "./sidebar";
@@ -238,7 +237,6 @@ function useGroupPixelGuard(entries: PixelGuardEntry[]) {
 export function AppLayout({
   state,
   actions,
-  onDismissStatus,
   onToggleSidebar,
   onSidebarWidthChange,
   dropPreview,
@@ -250,7 +248,6 @@ export function AppLayout({
 }: {
   state: ShellViewState;
   actions: ShellActions;
-  onDismissStatus: () => void;
   onToggleSidebar: () => void;
   onSidebarWidthChange: (width: number) => void;
   dropPreview: FileDropPreview | null;
@@ -648,9 +645,6 @@ export function AppLayout({
         </ResizablePanelGroup>
       </section>
       <FileDropFeedback preview={dropPreview} />
-      {state.status && (
-        <NotificationPopup notice={state.status} onDismiss={onDismissStatus} />
-      )}
     </main>
   );
 }

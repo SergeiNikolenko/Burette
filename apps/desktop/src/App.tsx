@@ -1,6 +1,8 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { AppLayout } from "./components/app-layout";
+import { StatusDetailsDialog } from "./components/status-details-dialog";
 import type { StructureOverlayMode, ViewerLigandSelection } from "./components/types";
+import { Toaster } from "./components/ui/toast";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -255,7 +257,7 @@ export default function App() {
     if (active) shell.dataset.structureDragActive = "true";
     else delete shell.dataset.structureDragActive;
   }, []);
-  const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
+  const { status, statusDetails, dismissStatusDetails, pushStatus, pushErrorStatus, recentErrorsRef } = useAppStatus();
   const {
     clearDirtyGridDocuments,
     confirmDiscardDirtyGridDocument,
@@ -1069,7 +1071,6 @@ export default function App() {
       <AppLayout
         state={state}
         actions={actions}
-        onDismissStatus={clearStatus}
         onToggleSidebar={toggleSidebar}
         onSidebarWidthChange={setSidebarWidth}
         dropPreview={dropPreview}
@@ -1092,6 +1093,8 @@ export default function App() {
           />
         </Suspense>
       ) : null}
+      <Toaster />
+      <StatusDetailsDialog request={statusDetails} onDismiss={dismissStatusDetails} />
     </SourceEditingProvider>
   );
 }

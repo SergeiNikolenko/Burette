@@ -580,7 +580,7 @@ function ProjectTreeNodeView({
         title={node.path}
       >
         <span className="project-folder-icon" aria-hidden="true">
-          <HugeiconsIcon icon={Folder02Icon} size={16} color="currentColor" strokeWidth={2} />
+          <HugeiconsIcon icon={expanded ? Folder02Icon : Folder01Icon} size={16} color="currentColor" strokeWidth={2} />
         </span>
         {renaming ? (
           <input

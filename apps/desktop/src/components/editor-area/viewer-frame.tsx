@@ -49,6 +49,8 @@ export function ViewerFrame({
         "</head>",
         `<style id="burrete-hero-interaction-lock">
           #buret-toolbar,
+          #buret-scene-tree-toggle,
+          #buret-scene-tree,
           .buret-preview-dock,
           .buret-docking-poses,
           .msp-viewport-top-left-controls,
