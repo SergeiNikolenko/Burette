@@ -6029,10 +6029,15 @@ assert.match(previewViewer, /const trajectoryControlBounds = \(poseIndex\) => \{
 assert.match(previewViewer, /currentIndex\.textContent = `\$\{poseIndex - current\.segment\.startFrame \+ 1\}\/\$\{current\.segment\.frameCount\} · \$\{current\.index \+ 1\}\/\$\{trajectorySegments\.length\}`/);
 assert.match(previewViewer, /const loopBounds = trajectoryControlBounds\(loopStartPose\)/);
 assert.match(previewViewer, /return loopBounds\.start \+ \(\(loopStartPose - loopBounds\.start \+ frameOffset\) % loopBounds\.count\)/);
-assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\(\)\) => \{/);
+assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\(\), expectedLoopEpoch = loopEpoch\) => \{/);
 assert.match(previewViewer, /loopTimer = window\.setTimeout\(\(\) => \{/);
 assert.match(previewViewer, /const nextIndex = loopTargetIndex\(\)/);
 assert.match(previewViewer, /if \(nextIndex === activePose\) \{/);
+assert.match(previewViewer, /let poseUpdateQueue = Promise\.resolve\(\)/);
+assert.match(previewViewer, /let loopEpoch = 0/);
+assert.match(previewViewer, /const setPose = \(index, options = \{\}\) => \{[\s\S]*?if \(options\.loopStep !== true && loopActive\) \{[\s\S]*?loopEpoch \+= 1;[\s\S]*?loopStartPose = requestedIndex;[\s\S]*?poseUpdateQueue = queued\.catch\(\(\) => \{\}\);[\s\S]*?return queued;[\s\S]*?\};/);
+assert.match(previewViewer, /const performSetPose = async \(index, options = \{\}\) => \{/);
+assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\(\), expectedLoopEpoch = loopEpoch\) => \{[\s\S]*?if \(!loopActive \|\| expectedLoopEpoch !== loopEpoch\) return;/);
 assert.match(previewViewer, /slider\.className = 'buret-docking-pose-slider'/);
 assert.match(previewViewer, /slider\.max = String\(controlBounds\.count\)/);
 assert.match(previewViewer, /slider\.value = String\(activePose - controlBounds\.start \+ 1\)/);

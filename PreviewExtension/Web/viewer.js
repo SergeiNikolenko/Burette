@@ -13189,8 +13189,10 @@
     let loopTimer = null;
     let loopActive = Boolean(playbackRestore?.playing);
     let loopBusy = false;
+    let loopEpoch = 0;
     let loopStartedAt = 0;
     let loopStartPose = activePose;
+    let poseUpdateQueue = Promise.resolve();
     let poseRepeatDelayTimer = null;
     let poseRepeatTimer = null;
     let poseRepeatBusy = false;
@@ -13491,6 +13493,7 @@
     };
     const isAnimationOptionsOpen = () => root.classList.contains('buret-docking-poses-animation-open');
     const setLoopActive = (active) => {
+      loopEpoch += 1;
       loopActive = Boolean(active);
       if (!active && loopTimer) {
         clearTimeout(loopTimer);
@@ -13540,28 +13543,45 @@
       const untilNextFrame = delay - (elapsed % delay);
       return Math.max(minimumTrajectoryLoopTimerDelay(prepared), Math.min(delay, untilNextFrame));
     };
-    const scheduleLoopStep = (delayMs = loopNextDelay()) => {
+    const scheduleLoopStep = (delayMs = loopNextDelay(), expectedLoopEpoch = loopEpoch) => {
       loopTimer = window.setTimeout(() => {
         loopTimer = null;
-        if (!loopActive) return;
+        if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
         if (loopBusy) {
-          scheduleLoopStep();
+          scheduleLoopStep(undefined, expectedLoopEpoch);
           return;
         }
         const nextIndex = loopTargetIndex();
         if (nextIndex === activePose) {
-          scheduleLoopStep();
+          scheduleLoopStep(undefined, expectedLoopEpoch);
           return;
         }
         loopBusy = true;
-        void setPose(nextIndex, { loopStep: true }).finally(() => {
+        void setPose(nextIndex, { loopStep: true, loopEpoch: expectedLoopEpoch }).finally(() => {
           loopBusy = false;
-          if (!loopActive) return;
-          scheduleLoopStep();
+          if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
+          scheduleLoopStep(undefined, expectedLoopEpoch);
         });
       }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
     };
-    const setPose = async (index, options = {}) => {
+    const setPose = (index, options = {}) => {
+      const requestedIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
+      let queuedOptions = options;
+      if (options.loopStep !== true && loopActive) {
+        loopEpoch += 1;
+        loopStartedAt = loopNow();
+        loopStartPose = requestedIndex;
+        if (loopTimer) {
+          clearTimeout(loopTimer);
+          loopTimer = null;
+        }
+        queuedOptions = { ...options, loopEpoch };
+      }
+      const queued = poseUpdateQueue.then(() => performSetPose(requestedIndex, queuedOptions));
+      poseUpdateQueue = queued.catch(() => {});
+      return queued;
+    };
+    const performSetPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
@@ -13574,14 +13594,14 @@
           if (!switched) throw new Error('Mol* trajectory controls are not available.');
           activePose = readNativeTrajectoryPosition(prepared.poseCount)?.index ?? nextIndex;
           updateControls();
-          if (options.loopStep !== true && loopActive) {
+          if (options.loopStep !== true && loopActive && options.loopEpoch === loopEpoch) {
             loopStartedAt = loopNow();
             loopStartPose = activePose;
             if (loopTimer) {
               clearTimeout(loopTimer);
               loopTimer = null;
             }
-            scheduleLoopStep(loopDelayMs());
+            scheduleLoopStep(loopDelayMs(), loopEpoch);
           }
           if (options.focus === true) {
             scheduleMolstarStructureFocus(viewer, { reason: 'native-trajectory-pose', durationMs: 180 });
