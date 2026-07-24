@@ -17291,12 +17291,18 @@
     else if (action === 'next') stepMolstarMoleculePreview(1);
   }
 
-  // Closing the card is about the card, not the structure: the selection stays, and
-  // the same molecule simply stops asking to be drawn until a different one comes
-  // along — otherwise the next pointer move over the view brings it straight back.
+  // The card is the selection's window, so closing it drops the selection too.
+  // Hiding it alone was not enough to make it stay hidden: any pointer event over
+  // the view re-resolves the card from whatever is still selected, so the only way
+  // to close it for good is to leave nothing selected.
   function dismissMolstarMoleculePreview() {
     molstarMoleculePreviewDismissedKey = molstarMoleculePreview?.dataset?.buretPreviewKey || '';
     hideMolstarMoleculePreview({ force: true });
+    clearMolstarSelection();
+    // The host learns about selection through the selection manager's own events,
+    // and clearing this way does not reach it - so the inspector would keep
+    // showing the ligand as selected. Tell it directly.
+    notifyMolstarSelectionChanged(null);
   }
 
   function installMolstarMoleculePreviewResize(popover) {

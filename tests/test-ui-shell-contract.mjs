@@ -4918,6 +4918,10 @@ assert.match(previewViewer, /const railRect = visibleRect\('#buret-viewport-rail
 assert.match(viewerShell, /data-buret-viewport-action="animate"/);
 assert.match(previewViewer, /openViewportMenu\(control, 'Animate', viewportAnimateMenu\)/);
 assert.match(previewViewer, /function viewportAnimateMenu\(menu\) \{/);
+// Closing the molecule card drops the selection, and the host has to be told
+// directly because clearing this way does not reach the selection manager events.
+assert.match(previewViewer, /function dismissMolstarMoleculePreview\(\) \{[\s\S]*clearMolstarSelection\(\);[\s\S]*notifyMolstarSelectionChanged\(null\);/);
+assert.match(structureInfoPanel, /setActiveActionKey\(\(current\) => current && current\.includes\("focus_ligand"\) \? null : current\)/);
 assert.match(previewViewer, /const VIEWPORT_MOTION_ANIMATIONS = new Set\(\[/);
 assert.match(previewViewer, /'built-in\.animate-camera-spin'/);
 assert.match(previewViewer, /\.filter\(entry => entry\.applicability\.canApply \|\| entry\.applicability\.reason\)/);

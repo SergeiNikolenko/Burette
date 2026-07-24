@@ -136,6 +136,14 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
     setTrajectoryPlayback(null);
   }, [document?.id]);
 
+  // Closing the molecule card clears the selection inside the viewer, so a row
+  // highlighted from a ligand click here has to let go of it too - otherwise the
+  // panel keeps claiming a scope the viewer no longer has.
+  useEffect(() => {
+    if (viewerLigandSelection) return;
+    setActiveActionKey((current) => current && current.includes("focus_ligand") ? null : current);
+  }, [viewerLigandSelection]);
+
   useEffect(() => {
     const handle = (event: Event) => {
       const detail = (event as CustomEvent<Record<string, unknown>>).detail;
