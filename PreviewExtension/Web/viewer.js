@@ -13223,9 +13223,10 @@
     animation.type = 'button';
     animation.className = 'buret-docking-pose-animation-button';
     animation.textContent = '⏯';
-    animation.setAttribute('aria-label', 'Select Molstar animation');
+    const animationControlLabel = hasTrajectorySegments ? 'Toggle trajectory playback options' : 'Select Molstar animation';
+    animation.setAttribute('aria-label', animationControlLabel);
     animation.setAttribute('aria-expanded', 'false');
-    animation.title = 'Select animation';
+    animation.title = hasTrajectorySegments ? 'Playback options' : 'Select animation';
     const previous = document.createElement('button');
     previous.type = 'button';
     previous.className = 'buret-docking-pose-previous';
@@ -13374,6 +13375,17 @@
       const resolvedIndex = index >= 0 ? index : trajectorySegments.length - 1;
       return { index: resolvedIndex, segment: trajectorySegments[resolvedIndex] };
     };
+    const trajectoryControlBounds = (poseIndex) => {
+      const active = activeTrajectorySegment(poseIndex);
+      if (!active.segment) {
+        return { start: 0, end: prepared.poseCount - 1, count: prepared.poseCount };
+      }
+      return {
+        start: active.segment.startFrame,
+        end: active.segment.endFrame,
+        count: active.segment.frameCount
+      };
+    };
     const applyLabel = (poseIndex) => {
       if (!currentName || !currentIndex) {
         label.textContent = trajectoryPoseLabel(prepared, controlLabel, poseIndex);
@@ -13382,20 +13394,22 @@
       if (hasTrajectorySegments) {
         const current = activeTrajectorySegment(poseIndex);
         currentName.textContent = current.segment?.label || `${controlLabel} ${poseIndex + 1}`;
-        currentIndex.textContent = `${poseIndex + 1}/${prepared.poseCount} · ${current.index + 1}/${trajectorySegments.length}`;
+        currentIndex.textContent = `${poseIndex - current.segment.startFrame + 1}/${current.segment.frameCount} · ${current.index + 1}/${trajectorySegments.length}`;
         return;
       }
       currentName.textContent = prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`;
       currentIndex.textContent = `${poseIndex + 1}/${prepared.poseCount}`;
     };
     const updateControls = () => {
+      const controlBounds = trajectoryControlBounds(activePose);
       applyLabel(activePose);
       label.title = hasTrajectorySegments
         ? activeTrajectorySegment(activePose).segment?.label || prepared.ligandLabel || ''
         : prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
-      previous.disabled = activePose <= 0;
-      next.disabled = activePose >= prepared.poseCount - 1;
-      slider.value = String(activePose + 1);
+      previous.disabled = activePose <= controlBounds.start;
+      next.disabled = activePose >= controlBounds.end;
+      slider.max = String(controlBounds.count);
+      slider.value = String(activePose - controlBounds.start + 1);
       const activeSegmentIndex = activeTrajectorySegment(activePose).index;
       fileButtons.forEach((button, index) => {
         const active = hasTrajectorySegments ? index === activeSegmentIndex : index === activePose;
@@ -13474,7 +13488,8 @@
       const delay = loopDelayMs();
       const elapsed = Math.max(0, loopNow() - loopStartedAt);
       const frameOffset = Math.floor(elapsed / delay);
-      return (loopStartPose + frameOffset) % prepared.poseCount;
+      const loopBounds = trajectoryControlBounds(loopStartPose);
+      return loopBounds.start + ((loopStartPose - loopBounds.start + frameOffset) % loopBounds.count);
     };
     const loopNextDelay = () => {
       const delay = loopDelayMs();
@@ -13570,7 +13585,7 @@
       fileButtons.forEach((button, index) => {
         button.addEventListener('pointerenter', (event) => {
           const targetPose = hasTrajectorySegments ? trajectorySegments[index].startFrame : index;
-          if (event.pointerType === 'touch' || targetPose === activePose) return;
+          if (hasTrajectorySegments || event.pointerType === 'touch' || targetPose === activePose) return;
           scheduleSliderInputPose(targetPose);
         });
         button.addEventListener('click', () => {
@@ -13697,11 +13712,12 @@
     };
     const repeatPoseStep = (direction) => {
       if (poseRepeatBusy) return;
+      const controlBounds = trajectoryControlBounds(activePose);
       const nextIndex = activePose + direction;
-      const wrappedIndex = nextIndex < 0
-        ? prepared.poseCount - 1
-        : nextIndex >= prepared.poseCount
-          ? 0
+      const wrappedIndex = nextIndex < controlBounds.start
+        ? controlBounds.end
+        : nextIndex > controlBounds.end
+          ? controlBounds.start
           : nextIndex;
       poseRepeatBusy = true;
       void setPose(wrappedIndex, { userStep: true }).finally(() => {
@@ -13754,8 +13770,8 @@
     };
     const setControlsCollapsed = (collapsed) => {
       root.classList.toggle('buret-docking-poses-collapsed', Boolean(collapsed));
-      animation.title = collapsed ? 'Show playback controls' : 'Select animation';
-      animation.setAttribute('aria-label', collapsed ? 'Show playback controls' : 'Select Molstar animation');
+      animation.title = collapsed ? 'Show playback controls' : (hasTrajectorySegments ? 'Playback options' : 'Select animation');
+      animation.setAttribute('aria-label', collapsed ? 'Show playback controls' : animationControlLabel);
       if (!collapsed) return;
       setFileListOpen(false);
       setAnimationOptionsOpen(false);
@@ -13772,7 +13788,7 @@
       }
       const open = !isAnimationOptionsOpen();
       setAnimationOptionsOpen(open);
-      if (!open) return;
+      if (!open || hasTrajectorySegments) return;
       const button = nativeAnimationSelectButton();
       if (button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') {
         button.click();
@@ -13810,12 +13826,14 @@
     });
     speed.addEventListener('input', updateSpeedMode);
     slider.addEventListener('input', () => {
-      const previewIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
+      const controlBounds = trajectoryControlBounds(activePose);
+      const previewIndex = controlBounds.start + Math.max(0, Math.min(controlBounds.count - 1, Number(slider.value) - 1));
       applyLabel(previewIndex);
       if (supportsLivePoseInput()) scheduleSliderInputPose(previewIndex);
     });
     slider.addEventListener('change', () => {
-      const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
+      const controlBounds = trajectoryControlBounds(activePose);
+      const nextIndex = controlBounds.start + Math.max(0, Math.min(controlBounds.count - 1, Number(slider.value) - 1));
       if (supportsLivePoseInput()) {
         if (sliderInputTimer) {
           clearTimeout(sliderInputTimer);
@@ -13838,10 +13856,10 @@
       }
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        if (activePose > 0) void setPose(activePose - 1, { userStep: true });
+        if (activePose > trajectoryControlBounds(activePose).start) void setPose(activePose - 1, { userStep: true });
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        if (activePose < prepared.poseCount - 1) void setPose(activePose + 1, { userStep: true });
+        if (activePose < trajectoryControlBounds(activePose).end) void setPose(activePose + 1, { userStep: true });
       }
     };
     window.addEventListener('keydown', onKeyDown);
