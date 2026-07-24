@@ -1,4 +1,5 @@
 import type { ViewerDocument } from "../types";
+import { isTrajectoryDocumentRequest } from "./docking-documents";
 
 export type StructureBriefRow = {
   label: string;
@@ -45,6 +46,7 @@ export function structureBriefForDocument(document: ViewerDocument, sizeLabel: s
 
 export function documentKind(document: ViewerDocument) {
   if (document.dockingRequest?.sceneMode) return "Structure scene";
+  if (isTrajectoryDocumentRequest(document.dockingRequest)) return "Trajectory";
   if (document.dockingRequest) return "Docking view";
   if (document.mergedCollection) return "Merged collection";
   const extension = normalizedExtension(document);
@@ -70,6 +72,13 @@ export function usefulElements(document: ViewerDocument): StructureBriefRow[] {
       { label: "Structures", value: String(1 + document.dockingRequest.ligandPaths.length) },
       { label: "Initial mode", value: document.dockingRequest.sceneMode === "structureAll" ? "All together" : "Individual structures" },
       { label: "First structure", value: fileName(document.dockingRequest.receptorPath) },
+    ];
+  }
+  if (isTrajectoryDocumentRequest(document.dockingRequest)) {
+    return [
+      { label: "Topology", value: fileName(document.dockingRequest.receptorPath) },
+      { label: "Segments", value: String(document.dockingRequest.ligandPaths.length) },
+      { label: "Coordinates", value: document.dockingRequest.ligandPaths.length > 1 ? "Combined timeline" : "Single trajectory" },
     ];
   }
   if (document.dockingRequest) {
@@ -147,7 +156,8 @@ function structureNotes(document: ViewerDocument) {
   const notes: string[] = [];
   if (document.virtual) notes.push("This document is generated in the app");
   if (document.dockingRequest?.sceneMode) notes.push("Structure scene metadata is available from runtime config");
-  if (document.dockingRequest) notes.push("Docking metadata is available from runtime config");
+  if (isTrajectoryDocumentRequest(document.dockingRequest)) notes.push("Trajectory segments share one topology");
+  else if (document.dockingRequest) notes.push("Docking metadata is available from runtime config");
   if (document.mergedCollection) notes.push("Merged collection keeps source path references");
   if (isMaestroExtension(normalizedExtension(document))) notes.push("Maestro CT sections are available from the source text");
   return notes;

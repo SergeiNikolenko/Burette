@@ -199,5 +199,69 @@
     };
   }
 
-  window.BuretteTrajectorySmoothing = { smooth };
+  function concatenateXtcSegments(segments) {
+    if (!Array.isArray(segments) || segments.length === 0) {
+      throw new Error('Combined trajectory needs at least one XTC segment.');
+    }
+    let byteCount = 0;
+    for (const segment of segments) {
+      if (!segment || typeof segment.length !== 'number' || typeof segment.subarray !== 'function') {
+        throw new Error('Every XTC trajectory segment must be binary data.');
+      }
+      if (segment.length === 0) {
+        throw new Error('XTC trajectory segments must not be empty.');
+      }
+      byteCount += segment.length;
+    }
+    const combined = new Uint8Array(byteCount);
+    let offset = 0;
+    for (const segment of segments) {
+      combined.set(segment, offset);
+      offset += segment.length;
+    }
+    return combined;
+  }
+
+  function countXtcFrames(segment) {
+    if (!segment || typeof segment.length !== 'number' || typeof segment.subarray !== 'function') {
+      throw new Error('XTC trajectory segment must be binary data.');
+    }
+    const bytes = segment instanceof Uint8Array
+      ? segment
+      : new Uint8Array(segment.buffer, segment.byteOffset || 0, segment.byteLength);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let offset = 0;
+    let frameCount = 0;
+    while (offset < bytes.byteLength) {
+      if (bytes.byteLength - offset < 56 || view.getInt32(offset) !== 1995) {
+        throw new Error(`XTC segment does not contain a valid XTC frame at byte ${offset}.`);
+      }
+      const atomCount = view.getInt32(offset + 4);
+      const coordinateCount = view.getInt32(offset + 52);
+      if (atomCount <= 0 || coordinateCount !== atomCount) {
+        throw new Error(`XTC frame at byte ${offset} has inconsistent atom counts.`);
+      }
+      let frameByteLength;
+      if (atomCount <= 9) {
+        frameByteLength = 56 + atomCount * 12;
+      } else {
+        if (bytes.byteLength - offset < 92) {
+          throw new Error(`XTC frame at byte ${offset} is truncated.`);
+        }
+        const compressedByteLength = view.getInt32(offset + 88);
+        if (compressedByteLength < 0) {
+          throw new Error(`XTC frame at byte ${offset} has an invalid compressed payload size.`);
+        }
+        frameByteLength = 92 + Math.ceil(compressedByteLength / 4) * 4;
+      }
+      if (offset + frameByteLength > bytes.byteLength) {
+        throw new Error(`XTC frame at byte ${offset} is truncated.`);
+      }
+      offset += frameByteLength;
+      frameCount += 1;
+    }
+    return frameCount;
+  }
+
+  window.BuretteTrajectorySmoothing = { smooth, concatenateXtcSegments, countXtcFrames };
 })();

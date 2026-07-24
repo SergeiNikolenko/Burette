@@ -7,7 +7,7 @@ import {
   readBrowserDevCollectionText,
 } from "../lib/browser-dev-documents";
 import { isMoleculeCollectionPath } from "../lib/collection-documents";
-import { dockingRequestForDrop } from "../lib/docking-documents";
+import { dockingRequestForDrop, isTrajectoryDocumentRequest } from "../lib/docking-documents";
 import type { DockTabKind } from "../lib/dock";
 import { downloadTextFile } from "../lib/file-export";
 import { summarizeErrors } from "../lib/file-routing";
@@ -80,7 +80,8 @@ export function useAppDockingWorkflows({
     request.activePose = options.activePose ?? null;
     request.sceneMode = options.sceneMode ?? null;
     request.poseMode = options.sceneMode === "structureAll" ? "all" : "single";
-    pushStatus("Opening Molstar docking view...");
+    const isTrajectory = isTrajectoryDocumentRequest(request);
+    pushStatus(isTrajectory ? "Opening Molstar trajectory..." : "Opening Molstar docking view...");
     try {
       const document = isTauriRuntime()
         ? await invoke<ViewerDocument>("open_docking_document", { request, preferences })
@@ -88,11 +89,13 @@ export function useAppDockingWorkflows({
       addDocuments([document]);
       rememberRecentStructures([document]);
       setStructureDragActive(false);
-      pushStatus(`Opened docking view with ${request.ligandPaths.length} ligand${request.ligandPaths.length === 1 ? "" : "s"}`);
+      pushStatus(isTrajectory
+        ? `Opened trajectory with ${request.ligandPaths.length} segment${request.ligandPaths.length === 1 ? "" : "s"}`
+        : `Opened docking view with ${request.ligandPaths.length} ligand${request.ligandPaths.length === 1 ? "" : "s"}`);
       return document;
     } catch (error) {
       setStructureDragActive(false);
-      pushErrorStatus(error, "Docking view failed");
+      pushErrorStatus(error, isTrajectory ? "Trajectory failed" : "Docking view failed");
       return null;
     }
   }, [addDocuments, documents, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, rightDockActiveTab, rightDockOpen, setDockOpen, setStructureDragActive]);

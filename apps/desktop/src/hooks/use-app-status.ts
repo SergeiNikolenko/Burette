@@ -15,8 +15,6 @@ export type StatusDetailsRequest = {
   details: string[];
 };
 
-const NOTICE_TIMEOUT_MS = 3200;
-
 export function useAppStatus() {
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [statusDetails, setStatusDetails] = useState<StatusDetailsRequest | null>(null);
@@ -35,13 +33,14 @@ export function useAppStatus() {
       recentErrorsRef.current = recentErrorsRef.current.slice(-20);
     }
     setStatus({ kind, message: trimmed });
+    if (kind !== "error") return;
     const compact = compactStatusMessage(trimmed);
     const fullDetails = compact === trimmed ? normalizedDetails : [trimmed, ...normalizedDetails];
     toast.add({
       title: compact,
       type: kind,
-      timeout: kind === "error" ? 0 : NOTICE_TIMEOUT_MS,
-      ...(kind === "error" ? { priority: "high" as const } : {}),
+      timeout: 0,
+      priority: "high",
       ...(fullDetails.length > 0
         ? {
             actionProps: {
