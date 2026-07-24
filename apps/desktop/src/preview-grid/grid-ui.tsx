@@ -94,6 +94,7 @@ type GridControlProps = {
   onSemiempiricalMethodChange: (value: SemiempiricalMethod) => void;
   onGenerate3D: () => void;
   onOptimizeGeometry: () => void;
+  onCalculateSelectedDescriptors: () => void;
   onConformerVariantChange: (value: ConformerVariant) => void;
   onMmffVariantChange: (value: MmffVariant) => void;
   onRendererSwitch: (value: "molstar") => void;
@@ -143,6 +144,7 @@ const ICONS = {
   generate3d: <Icon paths={<><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z" /><path d="M3 8l9 5 9-5" /><path d="M12 13v8" /></>} />,
   optimize: <Icon paths={<><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></>} />,
   energy: <Icon paths={<path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />} />,
+  descriptors: <Icon paths={<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M9 9v11" /><path d="M12.5 13h5M12.5 16.5h5" /></>} />,
   align: <Icon paths={<><path d="m12 2 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5" /></>} />,
   cluster: <Icon paths={<><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>} />,
   findSimilar: <Icon paths={<><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>} />,
@@ -336,6 +338,20 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
         >
           {ICONS.align}
           <span className="ab-item-title">{props.aligningPoses ? "Aligning..." : "Align & compare"}</span>
+        </button>
+      </div>
+      <div className="ab-row">
+        <button
+          id="calculate-descriptors-selected"
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          disabled={noSelection}
+          title="Calculate Mordred descriptors for the selected molecules and write them to Grid"
+          onClick={() => props.onRun(props.onCalculateSelectedDescriptors)}
+        >
+          {ICONS.descriptors}
+          <span className="ab-item-title">Calculate descriptors</span>
         </button>
       </div>
     </>
