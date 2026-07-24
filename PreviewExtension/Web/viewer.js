@@ -12889,15 +12889,19 @@
       if (!response.ok) throw new Error(`Could not read smoothed trajectory: ${response.status}`);
       const data = await response.text();
       const frameCount = Math.max(2, Math.trunc(Number(action.frameCount) || 2));
+      // Smoothing keeps the topology whenever the run had one, and then hands back a
+      // multi-model PDB. Reading that as XYZ would throw away the residues and chains
+      // it just preserved, leaving a protein drawn as loose atoms and bonds.
+      const smoothedFormat = String(action.sourceFormat || 'xyz').toLowerCase() === 'pdb' ? 'pdb' : 'xyz';
       const smoothedPrepared = {
         ...originalPrepared,
         kind: 'trajectory',
         data,
-        format: 'xyz',
+        format: smoothedFormat,
         label: `${originalPrepared.label || 'Trajectory'} - smoothed view`,
         poseCount: frameCount,
-        pdbModelCount: 0,
-        xyzFrameCount: frameCount,
+        pdbModelCount: smoothedFormat === 'pdb' ? frameCount : 0,
+        xyzFrameCount: smoothedFormat === 'xyz' ? frameCount : 0,
         nativeTrajectoryControls: true,
         controlLabel: 'Frame',
         dockingSceneMode: false,

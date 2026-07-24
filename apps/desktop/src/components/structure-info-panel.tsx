@@ -723,6 +723,7 @@ function TrajectorySmoothingCard({
         label: "Show smoothed motion",
         notify: false,
         sourceUrl: trajectoryOutputUrl(response.outputPath),
+        sourceFormat: response.outputFormat ?? "xyz",
         frameCount: response.frameCount,
         interpolation: response.interpolation,
         frameIndex: playback?.frameIndex ?? 0,

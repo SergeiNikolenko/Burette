@@ -79,6 +79,9 @@ export type StructureViewerAction =
       label: string;
       notify?: boolean;
       sourceUrl: string;
+      // Multi-model PDB when the smoothing run had a topology to preserve, XYZ when
+      // it only had elements and positions. Parsing one as the other loses residues.
+      sourceFormat?: "pdb" | "xyz";
       frameCount: number;
       interpolation: string;
       frameIndex?: number;
