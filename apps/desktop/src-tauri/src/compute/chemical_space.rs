@@ -18,6 +18,11 @@ use super::{
 
 const MAX_NEIGHBORS: usize = 64;
 const DEFAULT_MAX_MEMORY_BYTES: u64 = 4 * 1_024 * 1_024 * 1_024;
+/// Applied cap on the sparse neighbour edges surfaced for activity cliffs. The
+/// protocol's `MAX_UNDIRECTED_SIMILARITY_EDGES` bounds the dense similarity
+/// graph, not this per-embedding kNN payload, so we keep only the highest-
+/// similarity pairs (exactly what cliffs need) and cap the serialised result.
+const MAX_NEIGHBOR_EDGES: usize = 200_000;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -393,7 +398,7 @@ fn undirected_neighbor_edges(
         }
     }
     let mut pairs: Vec<((u32, u32), f32)> = best.into_iter().collect();
-    let edge_limit = MAX_UNDIRECTED_SIMILARITY_EDGES as usize;
+    let edge_limit = MAX_NEIGHBOR_EDGES;
     if pairs.len() > edge_limit {
         pairs.sort_by(|left, right| right.1.total_cmp(&left.1));
         pairs.truncate(edge_limit);

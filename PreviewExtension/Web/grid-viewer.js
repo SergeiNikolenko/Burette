@@ -4754,8 +4754,11 @@
     const pool = chemicalSpaceColumnPool();
     const keys = new Set();
     for (const row of pool) {
-      Object.keys(row?.props || {}).forEach(key => keys.add(key));
       if (keys.size >= 64) break;
+      for (const key of Object.keys(row?.props || {})) {
+        keys.add(key);
+        if (keys.size >= 64) break;
+      }
     }
     const columns = [];
     for (const key of [...keys].sort()) {
