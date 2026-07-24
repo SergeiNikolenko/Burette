@@ -490,10 +490,40 @@ function SelectionSection(props: GridControlProps & { onRun: (action: () => void
   );
 }
 
-// Shared open/close behaviour for the toolbar's dropdowns.
+// Shared open/close behaviour for the toolbar's dropdowns. The menu is switched
+// to fixed positioning and clamped to the viewport so it stays on screen when
+// the grid panel is squeezed narrow, instead of overflowing off the left edge.
 function useMenu() {
   const [open, setOpen] = React.useState(false);
   const wrapRef = React.useRef<HTMLDivElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = React.useState<React.CSSProperties>();
+
+  const reposition = React.useCallback(() => {
+    const trigger = wrapRef.current?.querySelector<HTMLElement>('[aria-haspopup="menu"]');
+    const menu = menuRef.current;
+    if (!trigger || !menu) return;
+    const t = trigger.getBoundingClientRect();
+    const m = menu.getBoundingClientRect();
+    const margin = 8;
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    // Right-align to the trigger, then pull back inside the viewport.
+    const left = Math.max(margin, Math.min(t.right - m.width, vw - m.width - margin));
+    // Prefer opening below; flip above only when there is no room down there.
+    const top = t.bottom + margin + m.height <= vh - margin
+      ? t.bottom + margin
+      : Math.max(margin, t.top - margin - m.height);
+    setMenuStyle({ position: "fixed", top, left, right: "auto" });
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (!open) {
+      setMenuStyle(undefined);
+      return;
+    }
+    reposition();
+  }, [open, reposition]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -503,24 +533,29 @@ function useMenu() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
+    const onReflow = () => reposition();
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onReflow);
+    window.addEventListener("scroll", onReflow, true);
     return () => {
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onReflow);
+      window.removeEventListener("scroll", onReflow, true);
     };
-  }, [open]);
+  }, [open, reposition]);
 
   const onRun = React.useCallback((action: () => void) => {
     action();
     setOpen(false);
   }, []);
 
-  return { open, setOpen, wrapRef, onRun };
+  return { open, setOpen, wrapRef, menuRef, menuStyle, onRun };
 }
 
 function ActionsMenu(props: GridControlProps) {
-  const { open, setOpen, wrapRef, onRun } = useMenu();
+  const { open, setOpen, wrapRef, menuRef, menuStyle, onRun } = useMenu();
   const selectedCount = props.selectedCount;
 
   return (
@@ -535,7 +570,7 @@ function ActionsMenu(props: GridControlProps) {
         Actions
       </button>
       {open ? (
-        <div className="ab-menu" role="menu">
+        <div className="ab-menu" role="menu" ref={menuRef} style={menuStyle}>
           <div className={selectedCount > 0 ? "ab-selhead has-selection" : "ab-selhead"}>
             {selectedCount > 0
               ? `${selectedCount.toLocaleString()} selected`
@@ -553,7 +588,7 @@ function ActionsMenu(props: GridControlProps) {
 // The collection's file actions: Save stays on the surface, everything else
 // moves into an overflow menu so the header keeps one row on narrow grids.
 function HeaderActions(props: GridControlProps) {
-  const { open, setOpen, wrapRef, onRun } = useMenu();
+  const { open, setOpen, wrapRef, menuRef, menuStyle, onRun } = useMenu();
   return (
     <div className="buret-actions" hidden={!props.exportEnabled}>
       <button
@@ -578,7 +613,7 @@ function HeaderActions(props: GridControlProps) {
           <MoreIcon />
         </button>
         {open ? (
-          <div className="ab-menu" role="menu">
+          <div className="ab-menu" role="menu" ref={menuRef} style={menuStyle}>
             <div className="ab-group">File</div>
             <div className="ab-row">
               <button
