@@ -2590,6 +2590,17 @@ body.burette-mobile-host .buret-docking-poses button {
   align-items: center;
   gap: 6px;
 }
+/* With the playback row open the control is as wide as that row, whose slider takes
+   the slack. The row above has nothing that stretches, so it stopped short and left
+   Next hanging where Smooth's column begins. The frame counter takes the slack here,
+   which lines the two rows up on both edges. */
+.buret-docking-poses-animation-open .buret-docking-pose-main {
+  width: 100%;
+}
+.buret-docking-poses-animation-open .buret-docking-pose-main > span {
+  flex: 1 1 auto;
+  text-align: center;
+}
 .buret-docking-pose-current {
   display: inline-flex;
   align-items: center;
