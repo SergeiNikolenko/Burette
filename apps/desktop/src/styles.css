@@ -7465,6 +7465,83 @@ img.settings-open-destination-icon {
   }
 }
 
+/* Live status for the grid's descriptor calculation: a spinner and running
+   count while it works, mirrored in the Info panel next to the filters. */
+.grid-descriptor-status {
+  display: grid;
+  gap: 8px;
+}
+.grid-descriptor-status-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.grid-descriptor-status-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-descriptor-status-count {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.grid-descriptor-status-message {
+  color: var(--text-secondary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.grid-descriptor-spinner {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+  animation: grid-descriptor-spin 0.7s linear infinite;
+}
+@keyframes grid-descriptor-spin {
+  to { transform: rotate(360deg); }
+}
+.grid-descriptor-progress {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+.grid-descriptor-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease-out;
+}
+.grid-descriptor-progress.indeterminate > span {
+  width: 40%;
+  animation: grid-descriptor-slide 1.1s ease-in-out infinite;
+}
+@keyframes grid-descriptor-slide {
+  0% { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}
+.grid-descriptor-status[data-state="failed"] .grid-descriptor-status-title {
+  color: var(--danger, #e5484d);
+}
+@media (prefers-reduced-motion: reduce) {
+  .grid-descriptor-spinner,
+  .grid-descriptor-progress.indeterminate > span {
+    animation-duration: 0s;
+  }
+}
+
 /* Column filters for the active grid, drawn from the model the grid runtime
    publishes. One card per column, the distribution visible on numeric ones. */
 .grid-filter-count {
@@ -7545,6 +7622,11 @@ img.settings-open-destination-icon {
   cursor: crosshair;
   touch-action: none;
   user-select: none;
+}
+/* Recharts marks its surface focusable; the chart is driven by dragging, so
+   drop the browser's focus ring that showed as an orange box around it. */
+.grid-filter-chart-wrap .recharts-surface {
+  outline: none;
 }
 .grid-filter-chart {
   --grid-filter-bin: color-mix(in srgb, var(--text-primary) 14%, transparent);

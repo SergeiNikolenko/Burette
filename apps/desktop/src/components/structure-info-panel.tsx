@@ -14,6 +14,7 @@ import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
 import { GridFilterSection } from "./grid-filter-section";
+import { GridDescriptorStatus } from "./grid-descriptor-status";
 import type { GridFilterModel } from "./types";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { getMdsmoothCapabilities, installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
@@ -314,6 +315,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
           actions={actions}
         />
 
+        {document?.renderer === "grid2d" ? <GridDescriptorStatus documentId={document.id} /> : null}
         {gridFilterModel ? <GridFilterSection model={gridFilterModel} actions={actions} /> : null}
         <section className="structure-brief-card structure-inspector-xtb-card" data-collapsed={!xtbOpen || undefined}>
         <div className="structure-inspector-section-header">
