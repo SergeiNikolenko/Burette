@@ -20,6 +20,7 @@ mod etk_geometry;
 mod mmff;
 mod mmff_extract;
 mod semiempirical;
+mod tmap;
 mod umap;
 
 pub use alignment::{
@@ -86,6 +87,7 @@ pub use semiempirical::{
     SemiempiricalElementParameters, SemiempiricalError, SemiempiricalMethod, SemiempiricalMolecule,
     SemiempiricalScfOptions, SemiempiricalScfResult, SemiempiricalScfStatus,
 };
+pub use tmap::{build_tmap_layout, TmapError, TmapLayout};
 pub use umap::{
     build_tanimoto_umap_graph, fit_umap_curve, ChemicalSpaceMethod, TanimotoUmapGraph, UmapError,
     UmapOptions,

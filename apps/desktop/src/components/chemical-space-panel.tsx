@@ -99,6 +99,7 @@ const CHEMICAL_SPACE_REPRESENTATIONS: Array<{
 ];
 const CHEMICAL_SPACE_METHODS: Array<{ value: ChemicalSpaceMethod; label: string }> = [
   { value: "umap", label: "UMAP" },
+  { value: "tmap", label: "TMAP" },
   { value: "tsne", label: "t-SNE" },
   { value: "pacmap", label: "PaCMAP" },
   { value: "localmap", label: "LocalMAP" },
@@ -106,7 +107,6 @@ const CHEMICAL_SPACE_METHODS: Array<{ value: ChemicalSpaceMethod; label: string 
   { value: "dreams", label: "DREAMS" },
   { value: "cne", label: "CNE" },
   { value: "mmae", label: "MMAE" },
-  { value: "dmap", label: "DMAP" },
 ];
 const completedEmbeddings = new Map<string, ChemicalSpaceResult>();
 const GRID_SELECTION_BRIDGE_LIMIT = 100_000;
@@ -415,7 +415,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               const method = event.currentTarget.value as ChemicalSpaceMethod;
               const next = { ...draft, method };
               setDraft(next);
-              if (method === "dmap") setStudy(studyDefaults("neighbors"));
+              if (method === "tmap") setStudy(studyDefaults("neighbors"));
               commitOptions(next);
             }}
           >
@@ -487,7 +487,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                 <Badge
                   className="ml-auto"
                   variant="outline"
-                  aria-label={`${displayedResult.successfulRecords.toLocaleString()} molecules, Metal. ${representationLabel(displayedResult.representation)}. Similarity graph ${similarityTimeLabel(displayedResult)}. Embedding ${displayedResult.embeddingGpuTimeMs} milliseconds.`}
+                  aria-label={resultTimingDescription(displayedResult)}
                 >
                   {displayedResult.successfulRecords.toLocaleString()} molecules · Metal
                 </Badge>
@@ -495,7 +495,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               <TooltipContent showArrow={false}>
                 {representationLabel(displayedResult.representation)}
                 {": "}{similarityTimeLabel(displayedResult)}
-                {" · "}embedding: {displayedResult.embeddingGpuTimeMs} ms
+                {" · "}{resultTimingLabel(displayedResult)}
               </TooltipContent>
             </Tooltip>
           ) : (
@@ -564,8 +564,8 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                   {methodLabel(draft.method)} parameters
                 </span>
                 <span className="font-normal">
-                  {draft.method === "dmap"
-                    ? `k=${draft.neighbors} · density normalization α=1`
+                  {draft.method === "tmap"
+                    ? `k=${draft.neighbors} · Metal kNN → minimum spanning tree`
                     : `k=${draft.neighbors} · min dist=${draft.minDist.toFixed(2)}`}
                 </span>
               </DropdownMenuLabel>
@@ -575,7 +575,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                   <ParameterField label="Neighbors" value={draft.neighbors}>
                     <Slider tone="neutral" min={2} max={64} step={1} value={[draft.neighbors]} onValueChange={([neighbors]) => setDraft((value) => ({ ...value, neighbors }))} />
                   </ParameterField>
-                  {draft.method !== "dmap" ? (
+                  {draft.method !== "tmap" ? (
                     <>
                       <ParameterField label="Minimum distance" value={draft.minDist.toFixed(2)}>
                         <Slider tone="neutral" min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
@@ -664,7 +664,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                       onChange={(event) => setStudy(studyDefaults(event.currentTarget.value as StudyParameter))}
                     >
                       <NativeSelectOption value="neighbors">Neighbors</NativeSelectOption>
-                      {draft.method !== "dmap" ? (
+                      {draft.method !== "tmap" ? (
                         <>
                           <NativeSelectOption value="minDist">Minimum distance</NativeSelectOption>
                           <NativeSelectOption value="learningRate">Learning rate</NativeSelectOption>
@@ -789,6 +789,7 @@ function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
     return (
       <ChemicalSpace3D
         positions={normalized}
+        treeEdges={props.result.treeEdges}
         sourceRecordIds={props.result.sourceRecordIds}
         clusterIds={alignedClusterIds(props.result.sourceRecordIds, props.clusters)}
         clusterColors={CLUSTER_COLORS}
@@ -865,6 +866,20 @@ function ChemicalSpace2D({
     const ringColor = pointColor;
     const basePointRadius = adaptivePointRadius(result.successfulRecords);
     const basePointOpacity = adaptivePointOpacity(result.successfulRecords);
+    if (result.treeEdges.length > 0) {
+      context.beginPath();
+      for (const [leftIndex, rightIndex] of result.treeEdges) {
+        const left = projected[leftIndex];
+        const right = projected[rightIndex];
+        if (!left || !right) continue;
+        context.moveTo(left.x, left.y);
+        context.lineTo(right.x, right.y);
+      }
+      context.strokeStyle = pointColor;
+      context.globalAlpha = 0.48;
+      context.lineWidth = Math.max(1.5, Math.min(3.5, pointScale * 1.5));
+      context.stroke();
+    }
     for (const point of [...projected].sort((left, right) => left.depth - right.depth)) {
       const active = selected.has(point.sourceRecordId);
       const hot = hovered === point.sourceRecordId;
@@ -901,7 +916,7 @@ function ChemicalSpace2D({
       context.stroke();
       context.setLineDash([]);
     }
-  }, [camera, clusterBySource, hovered, lasso, normalized, pointScale, result.sourceRecordIds, selected, viewport]);
+  }, [camera, clusterBySource, hovered, lasso, normalized, pointScale, result.sourceRecordIds, result.treeEdges, selected, viewport]);
 
   const localPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -948,7 +963,7 @@ function ChemicalSpace2D({
           const factor = event.deltaY > 0 ? 0.9 : 1.1;
           const cursor = localPoint(event);
           setCamera((value) => {
-            const zoom = Math.max(0.35, Math.min(5, value.zoom * factor));
+            const zoom = Math.max(0.35, Math.min(20, value.zoom * factor));
             const ratio = zoom / value.zoom;
             const centerX = viewport.width / 2;
             const centerY = viewport.height / 2;
@@ -1217,6 +1232,20 @@ function similarityTimeLabel(result: ChemicalSpaceResult) {
     return result.tanimotoGpuTimeMs === 0 ? "cached" : `${result.tanimotoGpuTimeMs} ms`;
   }
   return result.similarityGpuTimeMs === 0 ? "cached" : `${result.similarityGpuTimeMs ?? 0} ms`;
+}
+
+function resultTimingLabel(result: ChemicalSpaceResult) {
+  return result.method === "tmap"
+    ? `tree layout: ${result.layoutHostTimeMs.toFixed(1)} ms`
+    : `embedding: ${result.embeddingGpuTimeMs} ms`;
+}
+
+function resultTimingDescription(result: ChemicalSpaceResult) {
+  const prefix = `${result.successfulRecords.toLocaleString()} molecules, Metal. ${representationLabel(result.representation)}. Similarity graph ${similarityTimeLabel(result)}.`;
+  if (result.method === "tmap") {
+    return `${prefix} Minimum spanning tree with ${result.treeEdges.length.toLocaleString()} edges. Layout ${result.layoutHostTimeMs.toFixed(1)} milliseconds.`;
+  }
+  return `${prefix} Embedding ${result.embeddingGpuTimeMs} milliseconds.`;
 }
 
 function methodLabel(method: ChemicalSpaceMethod) {

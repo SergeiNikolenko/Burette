@@ -173,7 +173,7 @@ const AIR_PATHS: [&str; 17] = [
     "pm6-pair-fock.v1.air",
     "umap.v1.air",
 ];
-const ENTRYPOINTS: [&str; 25] = [
+const ENTRYPOINTS: [&str; 24] = [
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
     "burrete_tanimoto_query_counts_v1",
@@ -198,7 +198,6 @@ const ENTRYPOINTS: [&str; 25] = [
     "burrete_pm6_pair_fock_v1",
     "burrete_umap_initialize_v1",
     "burrete_umap_epoch_v1",
-    "burrete_diffusion_matvec_v1",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]

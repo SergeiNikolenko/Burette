@@ -28,7 +28,7 @@ pub enum ChemicalSpaceMethod {
     Dreams = 5,
     Cne = 6,
     Mmae = 7,
-    Dmap = 8,
+    Tmap = 8,
 }
 
 impl ChemicalSpaceMethod {

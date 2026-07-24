@@ -407,24 +407,6 @@ impl MetalComputeRuntime {
         })
     }
 
-    pub fn diffusion_map_profiled(
-        &self,
-        graph: &TanimotoUmapGraph,
-        options: UmapOptions,
-        max_memory_bytes: u64,
-    ) -> Result<MetalUmapExecution, MetalRuntimeError> {
-        let dispatch = self.host.diffusion_map_profiled(
-            graph,
-            options.n_components(),
-            max_memory_bytes.min(self.limits.max_memory_bytes),
-        )?;
-        Ok(MetalUmapExecution {
-            positions: dispatch.positions,
-            component_count: options.n_components(),
-            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
-        })
-    }
-
     pub fn align_and_score_profiled(
         &self,
         batch: MetalAlignmentBatch<'_>,
@@ -2155,17 +2137,6 @@ mod tests {
                 .flatten()
                 .all(|value| value.is_finite()));
         }
-        let diffusion = runtime
-            .diffusion_map_profiled(&graph, options_2d, MIN_COMPUTE_MEMORY_BYTES)
-            .expect("Metal Diffusion Maps");
-        assert_eq!(diffusion.positions.len(), fingerprints.len());
-        assert!(diffusion
-            .positions
-            .iter()
-            .flatten()
-            .all(|value| value.is_finite()));
-        assert!(diffusion.positions.iter().all(|position| position[2] == 0.0));
-
         let options_3d =
             UmapOptions::try_new(3, 20, 0.1, 1.0, 1.0, 5, 42).expect("3D UMAP options");
         let embedding_3d = runtime

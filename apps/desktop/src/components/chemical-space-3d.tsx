@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
+import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 
 type Point2 = { x: number; y: number };
 type ProjectedPoint = Point2 & { sourceRecordId: number; depth: number };
@@ -13,6 +16,7 @@ type MoleculePreview = {
 
 type ChemicalSpace3DProps = {
   positions: Array<[number, number, number]>;
+  treeEdges: Array<[number, number]>;
   sourceRecordIds: number[];
   clusterIds: Array<number | null>;
   clusterColors: readonly string[];
@@ -41,6 +45,7 @@ const POINT_HIT_RADIUS_PX = 6;
 
 export function ChemicalSpace3D({
   positions,
+  treeEdges,
   sourceRecordIds,
   clusterIds,
   clusterColors,
@@ -98,7 +103,7 @@ export function ChemicalSpace3D({
     controls.enableDamping = false;
     controls.enablePan = true;
     controls.enableZoom = false;
-    controls.minDistance = 1.1;
+    controls.minDistance = 0.15;
     controls.maxDistance = 12;
     controls.target.set(0, 0, 0);
 
@@ -111,6 +116,25 @@ export function ChemicalSpace3D({
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions.flat(), 3));
+    const treeGeometry = new LineSegmentsGeometry();
+    const treePositions = (nextPositions: Array<[number, number, number]>) =>
+      treeEdges.flatMap(([leftIndex, rightIndex]) => [
+        ...(nextPositions[leftIndex] ?? []),
+        ...(nextPositions[rightIndex] ?? []),
+      ]);
+    treeGeometry.setPositions(treePositions(positions));
+    const treeMaterial = new LineMaterial({
+      color: foregroundColor,
+      linewidth: 2.25,
+      opacity: 0.5,
+      transparent: true,
+    });
+    const treeLines = new LineSegments2(
+      treeGeometry,
+      treeMaterial,
+    );
+    treeLines.computeLineDistances();
+    scene.add(treeLines);
     const clusterColorValues = (ids: Array<number | null>) => ids.flatMap((clusterId) => {
       const color = clusterId === null
         ? pointColor
@@ -188,6 +212,9 @@ export function ChemicalSpace3D({
       positionsRef.current = nextPositions;
       geometry.setAttribute("position", new THREE.Float32BufferAttribute(nextPositions.flat(), 3));
       geometry.computeBoundingSphere();
+      treeGeometry.setPositions(treePositions(nextPositions));
+      treeGeometry.computeBoundingSphere();
+      treeLines.computeLineDistances();
       updateSelected(selectedRef.current, false);
       updateHovered(hoveredRef.current, false);
       render();
@@ -324,6 +351,7 @@ export function ChemicalSpace3D({
       const width = Math.max(1, host.clientWidth);
       const height = Math.max(1, host.clientHeight);
       renderer.setSize(width, height, false);
+      treeMaterial.resolution.set(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       render();
@@ -356,6 +384,8 @@ export function ChemicalSpace3D({
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       geometry.dispose();
       points.material.dispose();
+      treeGeometry.dispose();
+      treeMaterial.dispose();
       selectedPoints.geometry.dispose();
       selectedPoints.material.dispose();
       hoveredPoints.geometry.dispose();
@@ -368,7 +398,7 @@ export function ChemicalSpace3D({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [methodLabel, sourceRecordIdsKey]);
+  }, [methodLabel, sourceRecordIdsKey, treeEdges]);
 
   useEffect(() => runtimeRef.current?.updatePositions(positions), [positions]);
   useEffect(() => runtimeRef.current?.updateSelected(selected), [selected]);

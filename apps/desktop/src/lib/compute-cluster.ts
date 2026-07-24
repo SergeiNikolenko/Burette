@@ -126,18 +126,19 @@ export type ChemicalSpaceRepresentation =
 
 export type ChemicalSpaceMethod =
   | "umap"
+  | "tmap"
   | "tsne"
   | "pacmap"
   | "localmap"
   | "trimap"
   | "dreams"
   | "cne"
-  | "mmae"
-  | "dmap";
+  | "mmae";
 
 export type ChemicalSpaceResult = {
   sourceRecordIds: number[];
   positions: Array<[number, number, number]>;
+  treeEdges: Array<[number, number]>;
   dimensions: 2 | 3;
   method: ChemicalSpaceMethod;
   representation: ChemicalSpaceRepresentation;
@@ -149,6 +150,7 @@ export type ChemicalSpaceResult = {
   representationTimeMs?: number;
   similarityGpuTimeMs?: number;
   embeddingGpuTimeMs: number;
+  layoutHostTimeMs: number;
   hostTimeMs: number;
 };
 

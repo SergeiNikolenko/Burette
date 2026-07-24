@@ -192,7 +192,6 @@ const metadata = {
     "burrete_pm6_pair_fock_v1",
     "burrete_umap_initialize_v1",
     "burrete_umap_epoch_v1",
-    "burrete_diffusion_matvec_v1",
   ],
 };
 

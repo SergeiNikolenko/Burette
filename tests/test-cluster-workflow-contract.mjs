@@ -56,13 +56,17 @@ assert.match(chemicalSpace, /build_tanimoto_knn_profiled/);
 assert.match(chemicalSpace, /optimize_embedding_profiled/);
 assert.match(chemicalSpace, /cached_knn/);
 assert.match(chemicalSpace, /let \(knn, tanimoto_gpu_time_ms\) = if let Some\(knn\) = reused_knn/);
-for (const method of ["Umap", "Tsne", "Pacmap", "Localmap", "Trimap", "Dreams", "Cne", "Mmae", "Dmap"]) {
+for (const method of ["Umap", "Tmap", "Tsne", "Pacmap", "Localmap", "Trimap", "Dreams", "Cne", "Mmae"]) {
   assert.match(chemicalSpace, new RegExp(`ChemicalSpaceMethod::${method}`));
 }
 assert.match(chemicalSpace, /cluster_chemical_space_from_fingerprints/);
 assert.match(chemicalSpace, /build_graph_profiled/);
 assert.match(chemicalSpace, /butina_clusters/);
-assert.match(chemicalSpacePanel, /value: "dmap", label: "DMAP"/);
+assert.match(
+  chemicalSpacePanel,
+  /\{ value: "umap", label: "UMAP" \},\s*\{ value: "tmap", label: "TMAP" \}/,
+);
+assert.match(chemicalSpacePanel, /result\.treeEdges/);
 assert.match(chemicalSpacePanel, /Butina · Tanimoto/);
 assert.match(chemicalSpacePanel, /Tanimoto cutoff/);
 assert.match(chemicalSpacePanel, /clusterMembersForSource/);

@@ -55,17 +55,6 @@
         { "name": "outputPositions", "index": 4, "type": "float4", "access": "write", "elements": "vertexCount" },
         { "name": "config", "index": 5, "type": "UmapEpochConfigV1", "access": "constant", "elements": "1" }
       ]
-    },
-    {
-      "name": "burrete_diffusion_matvec_v1",
-      "buffers": [
-        { "name": "inputVectors", "index": 0, "type": "float4", "access": "read", "elements": "vertexCount" },
-        { "name": "rowOffsets", "index": 1, "type": "uint64", "access": "read", "elements": "vertexCount + 1" },
-        { "name": "columnIndices", "index": 2, "type": "uint32", "access": "read", "elements": "edgeCount" },
-        { "name": "normalizedWeights", "index": 3, "type": "float32", "access": "read", "elements": "edgeCount" },
-        { "name": "outputVectors", "index": 4, "type": "float4", "access": "write", "elements": "vertexCount" },
-        { "name": "vertexCount", "index": 5, "type": "uint64", "access": "constant", "elements": "1" }
-      ]
     }
   ]
 }

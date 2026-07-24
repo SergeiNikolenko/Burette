@@ -1,8 +1,9 @@
 use std::{num::NonZeroUsize, time::Instant};
 
 use burrete_compute_core::{
-    build_tanimoto_umap_graph, butina_clusters, ChemicalSpaceMethod as NativeChemicalSpaceMethod,
-    Fingerprint2048, GraphBuildOptions, TanimotoKnnOptions, UmapOptions,
+    build_tanimoto_umap_graph, build_tmap_layout, butina_clusters,
+    ChemicalSpaceMethod as NativeChemicalSpaceMethod, Fingerprint2048, GraphBuildOptions,
+    TanimotoKnnOptions, UmapOptions,
 };
 use burrete_compute_metal::{MetalTanimotoKnnExecution, MetalTanimotoRuntime};
 use burrete_compute_protocol::{SimilarityCutoff, MAX_UNDIRECTED_SIMILARITY_EDGES};
@@ -29,7 +30,7 @@ pub(crate) enum ChemicalSpaceMethod {
     Dreams,
     Cne,
     Mmae,
-    Dmap,
+    Tmap,
 }
 
 impl From<ChemicalSpaceMethod> for NativeChemicalSpaceMethod {
@@ -43,7 +44,7 @@ impl From<ChemicalSpaceMethod> for NativeChemicalSpaceMethod {
             ChemicalSpaceMethod::Dreams => Self::Dreams,
             ChemicalSpaceMethod::Cne => Self::Cne,
             ChemicalSpaceMethod::Mmae => Self::Mmae,
-            ChemicalSpaceMethod::Dmap => Self::Dmap,
+            ChemicalSpaceMethod::Tmap => Self::Tmap,
         }
     }
 }
@@ -69,6 +70,7 @@ pub(crate) struct ChemicalSpaceRequest {
 pub(crate) struct ChemicalSpaceResult {
     pub(crate) source_record_ids: Vec<u64>,
     pub(crate) positions: Vec<[f32; 3]>,
+    pub(crate) tree_edges: Vec<[u32; 2]>,
     pub(crate) dimensions: u32,
     pub(crate) method: ChemicalSpaceMethod,
     pub(crate) neighbors: usize,
@@ -77,6 +79,7 @@ pub(crate) struct ChemicalSpaceResult {
     pub(crate) backend: &'static str,
     pub(crate) tanimoto_gpu_time_ms: u64,
     pub(crate) embedding_gpu_time_ms: u64,
+    pub(crate) layout_host_time_ms: f64,
     pub(crate) host_time_ms: f64,
 }
 
@@ -206,45 +209,70 @@ pub(crate) fn execute_chemical_space_from_fingerprints_with_knn(
         let gpu_time_ms = knn.gpu_time_ms;
         (knn, gpu_time_ms)
     };
-    let graph = build_tanimoto_umap_graph(
-        fingerprints.len(),
-        neighbor_count,
-        &knn.source_indices,
-        &knn.similarities,
-        umap_options,
-    )
-    .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
-    let embedding = if request.method == ChemicalSpaceMethod::Dmap {
-        runtime
-            .diffusion_map_profiled(&graph, umap_options, request.max_memory_bytes)
-            .map_err(metal_error)?
-    } else {
-        runtime
-            .optimize_embedding_profiled(
-                &graph,
-                umap_options,
-                request.method.into(),
-                request.max_memory_bytes,
+    let (positions, dimensions, tree_edges, embedding_gpu_time_ms, layout_host_time_ms) =
+        if request.method == ChemicalSpaceMethod::Tmap {
+            let layout_started = Instant::now();
+            let layout = build_tmap_layout(
+                fingerprints.len(),
+                neighbor_count,
+                &knn.source_indices,
+                &knn.similarities,
+                request.dimensions,
             )
-            .map_err(metal_error)?
-    };
-    let positions = embedding
-        .positions
-        .into_iter()
-        .map(|position| [position[0], position[1], position[2]])
-        .collect();
+            .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+            let layout_host_time_ms = layout_started.elapsed().as_secs_f64() * 1_000.0;
+            let (positions, tree_edges) = layout.into_parts();
+            (
+                positions,
+                request.dimensions,
+                tree_edges,
+                0,
+                layout_host_time_ms,
+            )
+        } else {
+            let graph = build_tanimoto_umap_graph(
+                fingerprints.len(),
+                neighbor_count,
+                &knn.source_indices,
+                &knn.similarities,
+                umap_options,
+            )
+            .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+            let embedding = runtime
+                .optimize_embedding_profiled(
+                    &graph,
+                    umap_options,
+                    request.method.into(),
+                    request.max_memory_bytes,
+                )
+                .map_err(metal_error)?;
+            let positions = embedding
+                .positions
+                .into_iter()
+                .map(|position| [position[0], position[1], position[2]])
+                .collect();
+            (
+                positions,
+                embedding.component_count,
+                Vec::new(),
+                embedding.gpu_time_ms,
+                0.0,
+            )
+        };
     Ok(ChemicalSpaceExecution {
         result: ChemicalSpaceResult {
             source_record_ids: source_record_ids.to_vec(),
             positions,
-            dimensions: embedding.component_count,
+            tree_edges,
+            dimensions,
             method: request.method,
             neighbors,
             successful_records: fingerprints.len(),
             failed_records,
             backend: "nativeMetal",
             tanimoto_gpu_time_ms,
-            embedding_gpu_time_ms: embedding.gpu_time_ms,
+            embedding_gpu_time_ms,
+            layout_host_time_ms,
             host_time_ms: started.elapsed().as_secs_f64() * 1_000.0,
         },
         knn,
