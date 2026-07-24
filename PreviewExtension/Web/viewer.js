@@ -146,7 +146,14 @@
   // and the corner the user dragged it to live out here instead of on the element.
   let molstarMoleculePreviewGeometry = null;
   let molstarMoleculePreviewSize = 's';
-  let molstarMoleculePreviewDismissedKey = '';
+  // Closing the card (×) leaves the selection alone but parks the card: nothing
+  // re-shows it until the next genuine click. Minimizing tucks it into a chip in
+  // the corner that the same molecule pops back out of.
+  let molstarMoleculePreviewSuppressed = false;
+  let molstarMoleculePreviewMinimized = false;
+  let molstarMoleculePreviewMinimizedTarget = null;
+  let molstarMoleculePreviewChip = null;
+  let molstarPreviewRevealStart = null;
   let molstarSelectionHostSignature = '';
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
@@ -6307,13 +6314,40 @@
     ['remove', 'Remove'],
     ['intersect', 'Keep']
   ];
+  // Mol* keeps scene motion in the trackball section of its viewport settings, and
+  // the rail replaced that panel — so the camera menu carries it instead. The
+  // speeds are the library's own defaults and bounds for each animation.
+  const VIEWPORT_MOTIONS = [
+    ['off', 'Off'],
+    ['spin', 'Spin'],
+    ['rock', 'Rock']
+  ];
+  // Each animation reads more than a speed - spin needs an axis, rock an axis and
+  // a sweep angle - and a missing one leaves the maths on undefined, which is a
+  // scene that simply never moves. The rest of the payload travels with the speed.
+  // The library's bounds are symmetric (a negative speed reverses direction), which
+  // parks the default just right of centre and hands half the track to reverse
+  // spin nobody reaches for. This is a magnitude slider instead: slow on the left,
+  // fast on the right, floored just above zero so Off stays the only way to stop.
+  const VIEWPORT_MOTION_SPEEDS = {
+    spin: { value: 0.1, min: 0.01, max: 1, step: 0.01, params: { axis: [0, -1, 0] } },
+    rock: { value: 0.3, min: 0.02, max: 1.5, step: 0.02, params: { angle: 10, axis: [0, -1, 0] } }
+  };
+  // The plugin ships timed camera spin and rock too; the Motion switch covers the
+  // same ground without a stopwatch, so they are not listed twice.
+  const VIEWPORT_MOTION_ANIMATIONS = new Set([
+    'built-in.animate-camera-spin',
+    'built-in.animate-camera-rock'
+  ]);
   const VIEWPORT_ICON = {
     camera: ['M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z', 'M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'],
     layFlat: ['M3 8.5 12 4l9 4.5-9 4.5Z', 'm3 15 9 4.5L21 15'],
     paint: ['M4 8.5A2.5 2.5 0 0 1 6.5 6H16a3 3 0 0 1 3 3v1.5H8.5A2.5 2.5 0 0 0 6 13v1', 'M9 14h4v4a2 2 0 0 1-4 0Z'],
     cube: ['M12 3 4.5 7v10L12 21l7.5-4V7Z', 'M4.5 7 12 11l7.5-4', 'M12 11v10'],
     scissors: ['M6.5 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'M6.5 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'm8.7 7.2 10.8 10.6', 'M19.5 6.2 8.7 16.8'],
-    undo: ['M4 9h11a5 5 0 0 1 0 10h-7', 'm8 5-4 4 4 4']
+    undo: ['M4 9h11a5 5 0 0 1 0 10h-7', 'm8 5-4 4 4 4'],
+    play: ['m8 5 11 7-11 7Z'],
+    stop: ['M6.5 6.5h11v11h-11Z']
   };
   let selectionQueryModifier = 'set';
   let viewportControlsDisposers = [];
@@ -6358,6 +6392,7 @@
     button.dataset.buretViewportMenu = action;
     Object.assign(button.dataset, options.data || {});
     if (options.disabled) button.disabled = true;
+    if (options.title) button.title = options.title;
     const icon = document.createElement('span');
     icon.className = 'buret-tree-menu-icon';
     if (options.icon) icon.appendChild(sceneTreeIconElement(options.icon));
@@ -6413,6 +6448,156 @@
     viewportMenuItem(menu, 'Reset zoom', 'camera-reset', { icon: SCENE_TREE_ICON.focus });
     viewportMenuItem(menu, 'Lay flat', 'camera-orient', { icon: VIEWPORT_ICON.layFlat });
     viewportMenuItem(menu, 'Reset axes', 'camera-axes', { icon: SCENE_TREE_ICON.restore });
+  }
+
+  // Mol*'s own animation button offered both a trackball that keeps turning and
+  // the plugin's timed animations. The rail keeps both, split by how they end:
+  // motion runs until it is switched off, the rest play once and stop themselves.
+  function viewportAnimateMenu(menu) {
+    viewportMotionControls(menu);
+    const plugin = viewportPlugin();
+    const manager = plugin?.managers?.animation;
+    const playing = manager?.state?.animationState === 'playing';
+    const animations = (manager?.animations || [])
+      .map((animation, index) => ({ animation, index }))
+      // Camera spin and rock are the Motion switch above, only on a timer.
+      .filter(entry => !VIEWPORT_MOTION_ANIMATIONS.has(entry.animation?.name))
+      .map(entry => ({ ...entry, applicability: viewportAnimationApplicability(entry.animation, plugin) }))
+      .filter(entry => entry.animation?.display?.name)
+      // A greyed row earns its place by saying why it is greyed. One that cannot
+      // is just an entry you will never be able to use.
+      .filter(entry => entry.applicability.canApply || entry.applicability.reason);
+    if (!animations.length) return;
+    // Stop leads, because the thing you most need from this menu while something
+    // is moving is the way to make it stop.
+    if (playing) {
+      sceneTreeMenuSection(menu, 'Running');
+      viewportMenuItem(menu, 'Stop', 'animation-stop', { icon: VIEWPORT_ICON.stop });
+    }
+    sceneTreeMenuSection(menu, 'Animations');
+    for (const entry of animations) {
+      viewportMenuItem(menu, entry.animation.display.name, 'animation-play', {
+        icon: VIEWPORT_ICON.play,
+        data: { animationIndex: String(entry.index) },
+        disabled: !entry.applicability.canApply,
+        // Mol* explains why an animation does not apply; a greyed row that keeps
+        // its reason to itself is the thing this rail set out to replace.
+        title: entry.applicability.reason || entry.animation.display.description
+      });
+    }
+  }
+
+  // play() with no params leaves each animation on its own defaults, and Mol*
+  // defaults Unwind Assembly to looping - a scene that keeps rebuilding itself
+  // under every click until someone finds the stop button.
+  function viewportAnimationParams(animation, plugin) {
+    const schema = typeof animation.params === 'function' ? animation.params(plugin) : animation.params;
+    const params = {};
+    for (const [key, value] of Object.entries(schema || {})) params[key] = value?.defaultValue;
+    if ('playOnce' in params) params.playOnce = true;
+    return params;
+  }
+
+  function viewportAnimationApplicability(animation, plugin) {
+    if (typeof animation?.canApply !== 'function') return { canApply: true };
+    try {
+      return animation.canApply(plugin) || { canApply: true };
+    } catch (error) {
+      debug('animation applicability failed: ' + (error && error.message || String(error)));
+      return { canApply: false, reason: 'Unavailable for this scene' };
+    }
+  }
+
+  function playViewportAnimation(index) {
+    const plugin = viewportPlugin();
+    const manager = plugin?.managers?.animation;
+    const animation = manager?.animations?.[index];
+    if (!animation) return;
+    Promise.resolve(manager.play(animation, viewportAnimationParams(animation, plugin)))
+      .then(() => updateViewportAnimateState())
+      .catch(error => setStatus(`[web] Animation failed. ${error?.message || error}`, 'error'));
+  }
+
+  // The button carries whatever is moving - a running animation or the trackball -
+  // because a still frame cannot tell you the scene is in motion.
+  function updateViewportAnimateState() {
+    const plugin = viewportPlugin();
+    const playing = plugin?.managers?.animation?.state?.animationState === 'playing';
+    const motion = viewportMotionState().name;
+    document.querySelector('[data-buret-viewport-action="animate"]')
+      ?.setAttribute('data-motion', playing ? 'playing' : motion);
+  }
+
+  function viewportMotionState() {
+    const animate = viewportPlugin()?.canvas3d?.props?.trackball?.animate;
+    const name = VIEWPORT_MOTION_SPEEDS[animate?.name] ? animate.name : 'off';
+    return { name, speed: Number(animate?.params?.speed) };
+  }
+
+  function viewportMotionControls(menu) {
+    const state = viewportMotionState();
+    sceneTreeMenuSection(menu, 'Motion');
+    const segment = document.createElement('div');
+    segment.className = 'buret-viewport-segment';
+    segment.setAttribute('role', 'group');
+    segment.setAttribute('aria-label', 'Scene motion');
+    for (const [name, label] of VIEWPORT_MOTIONS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-viewport-segment-button';
+      button.dataset.buretViewportMenu = 'camera-motion';
+      button.dataset.motion = name;
+      button.setAttribute('aria-pressed', name === state.name ? 'true' : 'false');
+      button.textContent = label;
+      segment.appendChild(button);
+    }
+    menu.appendChild(segment);
+
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
+    row.dataset.buretViewportMotionSpeed = '1';
+    const caption = document.createElement('span');
+    caption.textContent = 'Speed';
+    const control = document.createElement('input');
+    control.type = 'range';
+    control.className = 'buret-tree-menu-range';
+    control.dataset.buretViewportSlider = 'motion-speed';
+    const readout = document.createElement('span');
+    readout.className = 'buret-tree-menu-slider-value';
+    row.append(caption, control, readout);
+    menu.appendChild(row);
+    // The menu is still detached at this point, so the row has to be handed over
+    // rather than looked up in the document.
+    updateViewportMotionSpeed(state, row);
+  }
+
+  // Spin and rock do not share a speed range, so the slider is re-scaled to the
+  // running animation and hidden altogether once motion is off.
+  function updateViewportMotionSpeed(state, target) {
+    const row = target || document.querySelector('[data-buret-viewport-motion-speed]');
+    const limits = VIEWPORT_MOTION_SPEEDS[state.name];
+    if (!row) return;
+    row.hidden = !limits;
+    if (!limits) return;
+    const speed = Number.isFinite(state.speed) ? state.speed : limits.value;
+    const control = row.querySelector('input');
+    control.min = String(limits.min);
+    control.max = String(limits.max);
+    control.step = String(limits.step);
+    control.value = String(speed);
+    row.querySelector('.buret-tree-menu-slider-value').textContent = `${speed.toFixed(2)}/s`;
+  }
+
+  function setViewportMotion(name, speed) {
+    const plugin = viewportPlugin();
+    const trackball = plugin?.canvas3d?.props?.trackball;
+    const limits = VIEWPORT_MOTION_SPEEDS[name];
+    if (!trackball) return;
+    const animate = limits
+      ? { name, params: { ...limits.params, speed: Number.isFinite(speed) ? speed : limits.value } }
+      : { name: 'off', params: {} };
+    plugin.canvas3d.setProps({ trackball: { ...trackball, animate } });
+    updateViewportAnimateState();
   }
 
   // The registry ships seventy queries, twenty of which are single amino acids;
@@ -6553,7 +6738,20 @@
     if (action === 'camera-reset') plugin.canvas3d?.requestCameraReset?.({ durationMs: 250 });
     else if (action === 'camera-orient') plugin.managers.camera.orientAxes(undefined, 250);
     else if (action === 'camera-axes') plugin.managers.camera.resetAxes(250);
-    else if (action === 'modifier') {
+    else if (action === 'camera-motion') {
+      setViewportMotion(control.dataset.motion);
+      for (const button of control.parentElement?.children || []) {
+        button.setAttribute('aria-pressed', button === control ? 'true' : 'false');
+      }
+      updateViewportMotionSpeed(viewportMotionState());
+      // Motion is judged by watching it, so the menu stays up to be adjusted.
+      return true;
+    } else if (action === 'animation-play') {
+      playViewportAnimation(Number(control.dataset.animationIndex));
+    } else if (action === 'animation-stop') {
+      plugin.managers.animation.stop();
+      updateViewportAnimateState();
+    } else if (action === 'modifier') {
       selectionQueryModifier = control.dataset.modifier || 'set';
       for (const button of control.parentElement?.children || []) {
         button.setAttribute('aria-pressed', button === control ? 'true' : 'false');
@@ -6584,6 +6782,8 @@
     if (!plugin) return;
     if (action === 'camera') {
       openViewportMenu(control, 'Camera', viewportCameraMenu);
+    } else if (action === 'animate') {
+      openViewportMenu(control, 'Animate', viewportAnimateMenu);
     } else if (action === 'screenshot') {
       Promise.resolve(plugin.helpers.viewportScreenshot?.download())
         .then(() => setStatus('[web] Screenshot saved.'))
@@ -6678,6 +6878,14 @@
       // While filtering, the headings and the fold-away groups get in the way, so
       // the menu flattens to just what matched and restores itself when cleared.
       document.addEventListener('input', event => {
+        const slider = event.target.closest('[data-buret-viewport-slider="motion-speed"]');
+        if (slider) {
+          const speed = Number(slider.value);
+          setViewportMotion(viewportMotionState().name, speed);
+          const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
+          if (readout) readout.textContent = `${speed.toFixed(2)}/s`;
+          return;
+        }
         const search = event.target.closest('[data-buret-viewport-search]');
         const menu = search?.closest('#buret-viewport-menu');
         if (!menu) return;
@@ -6708,13 +6916,17 @@
     const subscriptions = [
       plugin?.behaviors?.interaction?.selectionMode?.subscribe?.(updateSelectionBar),
       plugin?.managers?.structure?.selection?.events?.changed?.subscribe?.(updateSelectionBar),
-      plugin?.managers?.interactivity?.events?.propsUpdated?.subscribe?.(updateSelectionBar)
+      plugin?.managers?.interactivity?.events?.propsUpdated?.subscribe?.(updateSelectionBar),
+      // Timed animations end on their own, so the button cannot be left holding a
+      // state nobody switched off.
+      plugin?.behaviors?.state?.isAnimating?.subscribe?.(updateViewportAnimateState)
     ].filter(Boolean);
     if (subscriptions.length) {
       viewportControlsDisposers.push(() => subscriptions.forEach(item => item?.unsubscribe?.()));
     }
     rail.querySelector('[data-buret-viewport-action="illumination"]')
       ?.setAttribute('aria-pressed', plugin?.canvas3d?.props?.illumination?.enabled === true ? 'true' : 'false');
+    updateViewportAnimateState();
     updateSelectionBar();
   }
 
@@ -16820,6 +17032,8 @@
   };
   const MOLECULE_PREVIEW_ICON = {
     close: ['M18 6 6 18', 'm6 6 12 12'],
+    minimize: ['M6 17h12'],
+    molecule: ['m12 3 7.5 4.33v8.66L12 20.33 4.5 16V7.33Z'],
     ketcher: ['M12 3v4.5', 'm12 7.5 3.9 2.25', 'm12 7.5-3.9 2.25', 'M15.9 9.75v4.5L12 16.5l-3.9-2.25v-4.5', 'M4.2 6.75 12 2.25l7.8 4.5v9L12 20.25l-7.8-4.5Z'],
     copy: ['M9 9h9a1.5 1.5 0 0 1 1.5 1.5V19a1.5 1.5 0 0 1-1.5 1.5H9A1.5 1.5 0 0 1 7.5 19v-8.5A1.5 1.5 0 0 1 9 9Z', 'M4.5 15A1.5 1.5 0 0 1 3 13.5V5a1.5 1.5 0 0 1 1.5-1.5H13A1.5 1.5 0 0 1 14.5 5']
   };
@@ -16925,7 +17139,8 @@
           <span class="buret-molecule-card-subtitle">${escapeHTML(subtitle)}</span>
         </span>
         ${molstarMoleculePreviewNavHTML()}
-        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Hide preview" title="Hide preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="minimize" aria-label="Minimize preview" title="Minimize preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.minimize)}</button>
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Close preview" title="Close preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
       </div>
       <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
       <div class="buret-molecule-card-footer">
@@ -17083,6 +17298,7 @@
 
   function runMolstarMoleculePreviewAction(action, control) {
     if (action === 'close') dismissMolstarMoleculePreview();
+    else if (action === 'minimize') minimizeMolstarMoleculePreview();
     else if (action === 'ketcher') openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
     else if (action === 'copy-smiles') void copyMolstarMoleculePreviewSmiles(molstarMoleculePreviewTarget);
     else if (action === 'size') setMolstarMoleculePreviewSize(control.dataset.size);
@@ -17090,12 +17306,55 @@
     else if (action === 'next') stepMolstarMoleculePreview(1);
   }
 
-  // Closing the card is about the card, not the structure: the selection stays, and
-  // the same molecule simply stops asking to be drawn until a different one comes
-  // along — otherwise the next pointer move over the view brings it straight back.
+  // × closes the card but leaves the selection standing. A plain hide is not
+  // enough - the next pointer move re-resolves the card from whatever is still
+  // selected - so it also latches "suppressed", which every show path checks. The
+  // latch lifts on the next genuine click (see the reveal handler on pointerup).
   function dismissMolstarMoleculePreview() {
-    molstarMoleculePreviewDismissedKey = molstarMoleculePreview?.dataset?.buretPreviewKey || '';
+    molstarMoleculePreviewSuppressed = true;
     hideMolstarMoleculePreview({ force: true });
+  }
+
+  // Minimize tucks the card into a small chip in the bottom-left corner. The
+  // selection stays, the card stays out of the way, and the chip is the one way
+  // back - hover will not pop it open again.
+  function minimizeMolstarMoleculePreview() {
+    const label = molstarMoleculePreview?.querySelector('.buret-molecule-card-title')?.textContent
+      || molstarMoleculePreviewTarget?.label || 'Molecule';
+    molstarMoleculePreviewMinimizedTarget = molstarMoleculePreviewTarget;
+    molstarMoleculePreviewMinimized = true;
+    hideMolstarMoleculePreview({ force: true });
+    showMolstarMoleculePreviewChip(label);
+  }
+
+  function restoreMolstarMoleculePreview() {
+    molstarMoleculePreviewMinimized = false;
+    molstarMoleculePreviewSuppressed = false;
+    removeMolstarMoleculePreviewChip();
+    // Prefer whatever is selected now, so restoring after picking a different
+    // ligand shows that one rather than the molecule that was parked.
+    const target = molstarSelectedMoleculePreviewTarget() || molstarMoleculePreviewMinimizedTarget;
+    molstarMoleculePreviewMinimizedTarget = null;
+    if (target) showMolstarMoleculePreview(target);
+    else scheduleMolstarSelectedMoleculePreview();
+  }
+
+  function showMolstarMoleculePreviewChip(label) {
+    removeMolstarMoleculePreviewChip();
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'buret-molecule-preview-chip';
+    chip.setAttribute('aria-label', `Restore ${label} preview`);
+    chip.title = `Restore ${label} preview`;
+    chip.innerHTML = `${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.molecule)}<span class="buret-molecule-preview-chip-label">${escapeHTML(label)}</span>`;
+    chip.addEventListener('click', () => restoreMolstarMoleculePreview());
+    document.body.appendChild(chip);
+    molstarMoleculePreviewChip = chip;
+  }
+
+  function removeMolstarMoleculePreviewChip() {
+    molstarMoleculePreviewChip?.remove();
+    molstarMoleculePreviewChip = null;
   }
 
   function installMolstarMoleculePreviewResize(popover) {
@@ -17452,9 +17711,10 @@
       hideMolstarMoleculePreview();
       return;
     }
+    // Parked by × or tucked into the chip: stay hidden until the user asks for it
+    // back, not the moment the pointer drifts back over the selected ligand.
+    if (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized) return;
     const key = molstarPreviewKey(entry);
-    if (key === molstarMoleculePreviewDismissedKey) return;
-    molstarMoleculePreviewDismissedKey = '';
     const image = molstarPreviewSvgCache.get(key) || '';
     const label = target?.label || entry?.label || (target?.scope === 'ion' ? 'Ion' : 'Ligand');
     const subtitle = target?.scope === 'ion' ? 'Ion' : 'Small molecule';
@@ -17564,6 +17824,13 @@
     const hasCandidate = Boolean(molstarSelectedMoleculePreviewTarget() || fallbackTarget);
     if (!hasCandidate) {
       hideMolstarMoleculePreview({ force: true });
+      // Nothing left to preview means nothing left to restore, so the parked chip
+      // goes with it.
+      if (molstarMoleculePreviewMinimized) {
+        molstarMoleculePreviewMinimized = false;
+        molstarMoleculePreviewMinimizedTarget = null;
+        removeMolstarMoleculePreviewChip();
+      }
       return;
     }
     if (showMolstarSelectedMoleculePreview(fallbackTarget)) return;
@@ -17586,6 +17853,10 @@
   }
 
   function clearMolstarPersistentMoleculePreview() {
+    molstarMoleculePreviewSuppressed = false;
+    molstarMoleculePreviewMinimized = false;
+    molstarMoleculePreviewMinimizedTarget = null;
+    removeMolstarMoleculePreviewChip();
     hideMolstarMoleculePreview({ force: true });
   }
 
@@ -17786,6 +18057,11 @@
     const onPointerDown = (event) => {
       beginMolstarSelectionPreserve(event);
       clearTouchContextPointer();
+      // Remember where a left press on the viewport began, so a click (not a drag
+      // to rotate) can lift a × dismissal on release.
+      molstarPreviewRevealStart = event.button === 0 && isMolstarContextMenuTarget(event.target)
+        ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+        : null;
       if (event.button === 2) {
         if (!viewer || !isMolstarContextMenuTarget(event.target)) {
           contextPointer = null;
@@ -17875,6 +18151,16 @@
     };
     const onPointerUp = (event) => {
       finishMolstarSelectionPreserve(event);
+      if (molstarPreviewRevealStart && event.pointerId === molstarPreviewRevealStart.pointerId) {
+        const moved = Math.hypot(event.clientX - molstarPreviewRevealStart.x, event.clientY - molstarPreviewRevealStart.y)
+          > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
+        molstarPreviewRevealStart = null;
+        // A click - not a drag - is the "next click" that a × dismissal waits for.
+        if (!moved && molstarMoleculePreviewSuppressed && !molstarMoleculePreviewMinimized) {
+          molstarMoleculePreviewSuppressed = false;
+          scheduleMolstarSelectedMoleculePreview();
+        }
+      }
       if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) {
         const opened = touchContextPointer.opened;
         clearTouchContextPointer();
