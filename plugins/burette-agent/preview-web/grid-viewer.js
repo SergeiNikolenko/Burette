@@ -3528,6 +3528,10 @@
   const FILTER_BINS = 32;
 
   function filterModelColumns() {
+    // Remote collections only hold the current page client-side, so ranges and
+    // histograms would describe that page, not the collection, and filters would
+    // apply to it alone. Keep the panel empty until server-side stats exist.
+    if (state.remoteMode) return [];
     const catalog = tableColumnCatalog();
     const visible = new Set(tableVisibleColumns(catalog).map(column => column.id));
     return catalog.filter(column => {

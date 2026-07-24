@@ -6,12 +6,25 @@ import type { GridDescriptorJobStatus } from "../lib/descriptors";
 // the card just vanishing the instant the job completes.
 const DONE_LINGER_MS = 6000;
 
-// Listens for the descriptor job the grid kicks off and mirrors it in the Info
-// panel: a spinner and running count while it works, a short summary after.
+// The panel can unmount and remount while a run is in flight (switching docs or
+// Inspector tabs), so the latest status per document is cached at module scope
+// by an always-on listener. A remounting card seeds from it instead of missing
+// the run entirely because it was not listening when the event fired.
+const latestJobs = new Map<string, GridDescriptorJobStatus>();
+if (typeof window !== "undefined") {
+  window.addEventListener(GRID_DESCRIPTOR_JOB_EVENT, (event: Event) => {
+    const status = (event as CustomEvent<GridDescriptorJobStatus>).detail;
+    if (status?.documentId) latestJobs.set(status.documentId, status);
+  });
+}
+
+// Mirrors the descriptor job the grid kicks off in the Info panel: a spinner and
+// running count while it works, a short summary after.
 export function GridDescriptorStatus({ documentId }: { documentId: string }) {
-  const [job, setJob] = useState<GridDescriptorJobStatus | null>(null);
+  const [job, setJob] = useState<GridDescriptorJobStatus | null>(() => latestJobs.get(documentId) ?? null);
 
   useEffect(() => {
+    setJob(latestJobs.get(documentId) ?? null);
     const onJob = (event: Event) => {
       const status = (event as CustomEvent<GridDescriptorJobStatus>).detail;
       if (!status || status.documentId !== documentId) return;

@@ -214,7 +214,7 @@ fn grid_html(
 }
 
 fn versioned_asset_url(path: &Path) -> String {
-    format!("{}?v=grid-ui-v32", asset_url(path))
+    format!("{}?v=grid-ui-v33", asset_url(path))
 }
 
 fn grid_can_preview(extension: &str) -> bool {
