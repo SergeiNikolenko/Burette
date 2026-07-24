@@ -408,6 +408,9 @@ button:disabled {
   align-items: center;
   gap: 8px;
   padding-right: 4px;
+  /* When a dock overlay caps the menu width, the trailing mini-select drops
+     below its button instead of forcing the menu back under the dock. */
+  flex-wrap: wrap;
 }
 
 #grid-controls .ab-item {

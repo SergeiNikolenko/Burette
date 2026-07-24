@@ -82,6 +82,7 @@
     viewMode: storedGridViewMode(),
     tableColumnPanelOpen: false,
     tableFiltersOpen: false,
+    gridViewportCover: 0,
     tableColumnQuery: '',
     tableColumnVisibleLimit: TABLE_COLUMN_PICKER_LIMIT,
     tableHiddenColumns: storedStringSet(TABLE_HIDDEN_COLUMNS_STORAGE_KEY),
@@ -418,6 +419,10 @@
       }
       if (body.type === 'gridClearColumnFilters') {
         clearGridColumnFilters(config(), body.columnId ? String(body.columnId) : null);
+        return;
+      }
+      if (body.type === 'gridViewportCover') {
+        setGridViewportCover(Number(body.cover) || 0);
         return;
       }
       if (body.type === 'workspaceHistoryCommand') {
@@ -1324,6 +1329,7 @@
       }
     });
     bindGridEditControlHandlers(cfg);
+    applyGridToolbarInset();
   }
 
   function refreshGridControls(cfg) {
@@ -3580,6 +3586,29 @@
     if (signature === state.gridFilterModelSignature) return;
     state.gridFilterModelSignature = signature;
     post('gridFilterModel', '[grid] Column filter model.', { model });
+  }
+
+  // How far the right dock floats over the grid. A spilling grid keeps its full
+  // width, so this is pushed from the host rather than read from a resize.
+  function setGridViewportCover(cover) {
+    const next = Math.max(0, Math.round(cover));
+    if (next === state.gridViewportCover) return;
+    state.gridViewportCover = next;
+    applyGridToolbarInset();
+  }
+
+  // Cap the toolbar to the strip the dock is not covering, so its buttons and
+  // the menus anchored to them stay clickable while the table spills under it.
+  // The cover is also mirrored onto the host dataset, where the React island's
+  // menus read it live when they position themselves.
+  function applyGridToolbarInset() {
+    const host = document.getElementById('grid-controls');
+    if (!host) return;
+    const cover = state.gridViewportCover;
+    host.dataset.viewportCover = String(cover);
+    host.style.maxWidth = cover > 0
+      ? Math.max(0, document.documentElement.clientWidth - cover) + 'px'
+      : '';
   }
 
   function applyGridColumnFilter(cfg, columnId, part, value) {

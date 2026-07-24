@@ -506,15 +506,25 @@ function useMenu() {
     const t = trigger.getBoundingClientRect();
     const m = menu.getBoundingClientRect();
     const margin = 8;
-    const vw = document.documentElement.clientWidth;
+    // The visible strip stops where the dock begins floating over the grid; the
+    // runtime writes that width onto the toolbar host as the dock moves.
+    const host = document.getElementById("grid-controls");
+    const cover = Number(host?.dataset.viewportCover) || 0;
+    const vw = Math.max(0, document.documentElement.clientWidth - cover);
     const vh = document.documentElement.clientHeight;
-    // Right-align to the trigger, then pull back inside the viewport.
-    const left = Math.max(margin, Math.min(t.right - m.width, vw - m.width - margin));
+    // When the strip is narrower than the menu, cap it (its rows wrap) so it fits
+    // rather than spilling back under the dock.
+    const maxWidth = Math.max(160, vw - margin * 2);
+    const width = Math.min(m.width, maxWidth);
+    // Right-align to the trigger, then pull back inside the visible strip.
+    const left = Math.max(margin, Math.min(t.right - width, vw - width - margin));
     // Prefer opening below; flip above only when there is no room down there.
     const top = t.bottom + margin + m.height <= vh - margin
       ? t.bottom + margin
       : Math.max(margin, t.top - margin - m.height);
-    setMenuStyle({ position: "fixed", top, left, right: "auto" });
+    setMenuStyle(cover > 0
+      ? { position: "fixed", top, left, right: "auto", maxWidth: `${maxWidth}px`, minWidth: 0 }
+      : { position: "fixed", top, left, right: "auto" });
   }, []);
 
   React.useLayoutEffect(() => {

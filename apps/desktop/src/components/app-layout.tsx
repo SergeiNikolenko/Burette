@@ -14,6 +14,7 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle, type PanelImperat
 import type { ShellActions, ShellViewState } from "./types";
 import type { FileDropPreview } from "../lib/drop-preview";
 import { isTauriRuntime } from "../lib/tauri";
+import { activeViewerIframeForDocument, postMessageToViewerSource } from "../lib/viewer-bridge";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
@@ -46,23 +47,19 @@ function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
 }
 
-// The overlap floats over the main content, which suits a centered viewer but
-// hides an interactive grid's toolbar and menus, so grids opt out and the dock
-// squeezes them normally instead.
-function rightDockOverlap(workbenchWidth: number, allowOverlap: boolean) {
-  if (!allowOverlap) return 0;
+function rightDockOverlap(workbenchWidth: number) {
   return Math.round(Math.max(0, workbenchWidth) * RIGHT_DOCK_OVERLAY_RATIO);
 }
 
 // Widest the right dock may get: the room left beside a floored viewer, plus
 // the overlap it is allowed to float over that viewer.
-function rightDockMaxWidth(workbenchWidth: number, allowOverlap: boolean) {
-  const overlap = rightDockOverlap(workbenchWidth, allowOverlap);
+function rightDockMaxWidth(workbenchWidth: number) {
+  const overlap = rightDockOverlap(workbenchWidth);
   return Math.max(0, Math.min(RIGHT_DOCK_MAX_WIDTH + overlap, workbenchWidth - MAIN_MIN_WIDTH + overlap));
 }
 
-function clampRightDockWidth(width: number, workbenchWidth: number, allowOverlap: boolean) {
-  const maxWidth = rightDockMaxWidth(workbenchWidth, allowOverlap);
+function clampRightDockWidth(width: number, workbenchWidth: number) {
+  const maxWidth = rightDockMaxWidth(workbenchWidth);
   const minWidth = Math.min(180, maxWidth);
   return Math.max(minWidth, Math.min(maxWidth, Math.round(width)));
 }
@@ -294,13 +291,11 @@ export function AppLayout({
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = sidebarVisible ? sidebarWidth : 0;
   const workbenchWidth = viewportWidth - sidebarLayoutWidth;
-  // A grid's toolbar must stay clear of the dock, so it keeps the dock from
-  // overlapping; a viewer lets the dock float over its edges.
-  const allowRightDockOverlap = state.activeDocument?.renderer !== "grid2d";
   // The viewer column may be squeezed this far below its floor; the dock covers
   // the difference rather than the content shrinking into it.
-  const mainMinLayoutWidth = Math.max(0, MAIN_MIN_WIDTH - rightDockOverlap(workbenchWidth, allowRightDockOverlap));
-  const rightDockWidth = clampRightDockWidth(state.rightDockWidth, workbenchWidth, allowRightDockOverlap);
+  const mainMinLayoutWidth = Math.max(0, MAIN_MIN_WIDTH - rightDockOverlap(workbenchWidth));
+  const rightDockWidth = clampRightDockWidth(state.rightDockWidth, workbenchWidth);
+  const activeGridId = state.activeDocument?.renderer === "grid2d" ? state.activeDocument.id : null;
   const layoutState = sidebarWidth === state.sidebarWidth && rightDockWidth === state.rightDockWidth ? state : { ...state, sidebarWidth, rightDockWidth };
   const compactLeadingChrome = !tauriRuntime || windowFullscreen;
   // How far the leading window controls reach: the tab strip starts past them
@@ -360,6 +355,33 @@ export function AppLayout({
     { elementRef: sidebarElementRef, property: "--sidebar-edge" },
     { elementRef: rightDockElementRef, property: "--right-dock-edge" },
   ]);
+  // A spilling grid keeps its full width and fires no resize when the dock
+  // floats over it, so how far the dock covers it is measured from the two rects
+  // and pushed to the grid runtime. The measurement is driven by a ResizeObserver
+  // on the dock element rather than React state: the panel library resizes the
+  // layout directly, and its widths do not always flow back through state in time.
+  useEffect(() => {
+    if (!activeGridId) return;
+    const post = () => {
+      const iframe = activeViewerIframeForDocument(activeGridId, "grid2d");
+      const win = iframe?.contentWindow ?? null;
+      if (!iframe || !win) return;
+      const dockEl = rightDockOpen ? rightDockElementRef.current : null;
+      const dockLeft = dockEl?.getBoundingClientRect().left;
+      const cover = dockLeft === undefined ? 0 : Math.max(0, Math.round(iframe.getBoundingClientRect().right - dockLeft));
+      postMessageToViewerSource(win, { source: "burrete-grid-host", body: { type: "gridViewportCover", cover } });
+    };
+    post();
+    const dockEl = rightDockElementRef.current;
+    const observer = dockEl ? new ResizeObserver(() => post()) : null;
+    if (dockEl && observer) observer.observe(dockEl);
+    // The iframe may not be mounted yet right after a load; retry once shortly.
+    const timer = window.setTimeout(post, 400);
+    return () => {
+      observer?.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, [activeGridId, viewportWidth, rightDockOpen]);
   const systemThemeMode = useSystemThemeMode();
   // The layout widths seed the chrome before the edge observer's first pass;
   // `--sidebar-edge` / `--right-dock-edge` take over from there.
@@ -615,7 +637,7 @@ export function AppLayout({
                   collapsedSize="0px"
                   defaultSize={`${initialRightDockSize}px`}
                   minSize="260px"
-                  maxSize={`${rightDockMaxWidth(workbenchWidth, allowRightDockOverlap)}px`}
+                  maxSize={`${rightDockMaxWidth(workbenchWidth)}px`}
                   groupResizeBehavior="preserve-pixel-size"
                 >
                   <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
