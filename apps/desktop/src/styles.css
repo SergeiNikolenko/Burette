@@ -2633,33 +2633,26 @@ img.radix-menu-item-icon {
 .structure-inspector-section-title-button:focus-visible {
   color: var(--text-primary);
 }
-.structure-inspector-engine-notice {
+/* Collapsible wraps the card body in one more element, so the card's own row gap
+   has to be re-established inside it. */
+.structure-inspector-engine-body {
   min-width: 0;
   display: grid;
   gap: 6px;
-  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line-subtler));
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface-subtle));
-  padding: 7px 8px;
-  justify-items: start;
 }
-.structure-inspector-engine-notice-row {
+.structure-inspector-engine-notices {
   min-width: 0;
-  width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
-.structure-inspector-engine-notice-row span {
-  min-width: 0;
+.structure-inspector-engine-notice {
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--line-subtler));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-subtle));
+}
+.structure-inspector-engine-notice [data-slot="alert-description"] {
   color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.35;
-}
-.structure-inspector-engine-notice-row strong {
-  color: var(--text-primary);
-  font-weight: 500;
 }
 .structure-inspector-xtb-card[data-collapsed] {
   gap: 0;
@@ -3182,11 +3175,11 @@ img.radix-menu-item-icon {
   height: 1px;
   background: var(--line-subtler);
 }
+/* ToggleGroup sizes itself to its content; in a settings row it has to fill the
+   control column so the options divide it evenly. */
 .structure-inspector-segment {
-  min-width: 0;
   width: 100%;
-  display: flex;
-  gap: 1px;
+  min-width: 0;
   border-radius: 7px;
   padding: 2px;
   background: var(--surface-input);
@@ -3195,30 +3188,16 @@ img.radix-menu-item-icon {
   flex: 1 1 0;
   min-width: 0;
   height: 24px;
-  border: 0;
-  border-radius: 5px;
   padding: 0 4px;
-  background: transparent;
   color: var(--text-muted);
-  font: inherit;
   font-size: 11px;
-  line-height: 1;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
   cursor: default;
-  transition: background 120ms ease-out, color 120ms ease-out;
 }
-.structure-inspector-segment-button:hover {
-  color: var(--text-secondary);
-}
-.structure-inspector-segment-button[aria-pressed="true"] {
+.structure-inspector-segment-button[data-state="on"] {
   background: color-mix(in srgb, var(--accent) 20%, var(--surface-card));
   color: var(--text-primary);
-}
-.structure-inspector-segment-button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
-  outline-offset: -2px;
 }
 .structure-inspector-xtb-setting-control .settings-select {
   width: 100%;

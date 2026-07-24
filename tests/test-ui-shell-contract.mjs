@@ -2477,6 +2477,19 @@ assert.match(foldingResultsPanel, /if \(event\.detail !== 0\) return;/);
 // Short mutually exclusive sets are switches, not dropdowns, and the engine's own
 // tokens ("gfnff", "verytight", "ch2cl2") never reach the reader untranslated.
 assert.match(structureInfoPanel, /function InlineSegmentedControl\(\{/);
+// The panel builds on the shadcn registry rather than hand-rolled equivalents:
+// ToggleGroup brings roving focus to the segmented controls, Collapsible owns the
+// card open state, Alert carries the tool notices and Badge the format pill.
+assert.match(structureInfoPanel, /from "@\/components\/ui\/toggle-group"/);
+assert.match(structureInfoPanel, /from "@\/components\/ui\/collapsible"/);
+assert.match(structureInfoPanel, /from "@\/components\/ui\/alert"/);
+assert.match(structureInfoPanel, /from "@\/components\/ui\/badge"/);
+assert.match(structureInfoPanel, /<ToggleGroup\s+type="single"/);
+// A radio group is never empty: re-clicking the active option must not clear it.
+assert.match(structureInfoPanel, /onValueChange=\{\(next\) => \{ if \(next\) onChange\(next\); \}\}/);
+assert.match(structureInfoPanel, /<Badge variant="secondary">\{brief\.format\}<\/Badge>/);
+// The scene stepper is identified by the scene itself, not by the parser failing.
+assert.match(structureInfoPanel, /if \(sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT\)/);
 assert.match(structureInfoPanel, /function InlineSettingsSection\(\{ title, children \}/);
 assert.match(structureInfoPanel, /gfnff: "GFN-FF"/);
 assert.match(structureInfoPanel, /verytight: "Very tight"/);
@@ -2662,9 +2675,10 @@ assert.match(structureInfoPanel, /if \(action\.type === "set_sdf_molecule"\) ret
 assert.match(structureInfoPanel, /if \(action\.type === "set_sdf_molecule"\) return "Show molecule"/);
 assert.match(structureInfoPanel, /if \(action\.type === "set_sdf_molecule"\) return `Molecule \$\{action\.index \+ 1\}`/);
 assert.match(structureInfoPanel, /navigator\.clipboard\?\.writeText/);
-// Water and Ions already have summary rows, so the solvent list contributes only
-// the individual ions rather than repeating its own headings.
-assert.match(structureInfoPanel, /summary\.solventRows\.filter\(\(row\) => row\.label !== "Water" && row\.label !== "Ions"\)/);
+// Water and Ions already have their rows in componentRows, so the parser emits
+// solventRows as the individual ions only - no filtering needed downstream.
+assert.match(structureInfoPanel, /row\.label === "Ions" \? summary\.solventRows/);
+assert.doesNotMatch(structureComposition, /label: "Ions",\s*value: `\$\{formatNameCounts\(ionGroups, 8\)\}/);
 assert.match(structureInfoPanel, /structure-brief-mini-action/);
 assert.match(structureInfoPanel, /function visibleComponentRows\(rows: StructureSummaryRow\[\]\)/);
 assert.match(structureInfoPanel, /row\.value !== "None detected" \|\| row\.action/);

@@ -10,6 +10,11 @@ import type { ShellActions, ShellViewState, StructureOverlayMode, StructureViewe
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow, type StructureViewerSelector } from "../lib/structure-composition";
 import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerWorkflow } from "../lib/conformer-ensemble";
+import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { DIRECT_CHEMISTRY_JOB_ATOM_LIMIT, structureAtomCountFromSummary } from "../lib/direct-chemistry-guard";
 import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
@@ -279,7 +284,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
         <div className="structure-brief-kicker">Molecular Inspector</div>
         <div className="structure-brief-title-row">
           <h3 title={document.title}>{document.title}</h3>
-          <span>{brief.format}</span>
+          <Badge variant="secondary">{brief.format}</Badge>
           {!hostedMcpWidget && !document.virtual ? (
             <button
               type="button"
@@ -493,8 +498,13 @@ type StructurePoseControls = {
 
 function structurePoseControlsFor(document: ViewerDocument, summary: StructureCompositionSummary | null): StructurePoseControls | null {
   if (document.renderer !== "molstar") return null;
+  // molstarSceneStructureCount already returns 0 for anything that is not a
+  // virtual scene, so the count alone identifies one. Requiring !summary as well
+  // used the parser failing as the signal, and for a scene built from real files
+  // the receptor almost always parses - so the stepper went missing exactly when
+  // there were several structures to step through.
   const sceneStructureCount = molstarSceneStructureCount(document);
-  if (!summary && sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT) {
+  if (sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT) {
     return {
       kind: "frames",
       title: "Structures",
@@ -1960,39 +1970,42 @@ function InspectorEngineCard({
   children: ReactNode;
 }) {
   return (
-    <section className={`structure-brief-card ${className}`} data-collapsed={!open || undefined}>
+    <Collapsible
+      open={open}
+      onOpenChange={onToggle}
+      className={`structure-brief-card ${className}`}
+      data-collapsed={!open || undefined}
+    >
       <div className="structure-inspector-section-header">
-        <button type="button" className="structure-inspector-section-title-button" aria-expanded={open} onClick={onToggle}>
+        <CollapsibleTrigger className="structure-inspector-section-title-button">
           {title}
           <ShortcutTooltip label={tooltip} />
-        </button>
+        </CollapsibleTrigger>
         <span>{status}</span>
       </div>
-      {open ? (
-        <>
-          <div
-            className="structure-inspector-xtb-summary"
-            data-modified={summaryModified || undefined}
-            data-xtb-tooltip={summaryTooltip}
-          >
-            <span>{summary}</span>
-            {onReset ? (
-              <button type="button" className="structure-inspector-inline-action" onClick={onReset}>
-                Reset
-                <ShortcutTooltip label="Restore the default settings." />
-              </button>
-            ) : null}
-          </div>
-          {scope ? (
-            <div className="structure-brief-notes">
-              <span>{scope}</span>
-            </div>
+      <CollapsibleContent className="structure-inspector-engine-body">
+        <div
+          className="structure-inspector-xtb-summary"
+          data-modified={summaryModified || undefined}
+          data-xtb-tooltip={summaryTooltip}
+        >
+          <span>{summary}</span>
+          {onReset ? (
+            <button type="button" className="structure-inspector-inline-action" onClick={onReset}>
+              Reset
+              <ShortcutTooltip label="Restore the default settings." />
+            </button>
           ) : null}
-          {notice}
-          {children}
-        </>
-      ) : null}
-    </section>
+        </div>
+        {scope ? (
+          <div className="structure-brief-notes">
+            <span>{scope}</span>
+          </div>
+        ) : null}
+        {notice}
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -2009,22 +2022,24 @@ function EngineToolNotice({ tools, onCheck }: { tools: EngineTool[]; onCheck: ()
   const missing = tools.filter((tool) => !tool.installed);
   if (missing.length === 0) return null;
   return (
-    <div className="structure-inspector-engine-notice">
+    <div className="structure-inspector-engine-notices">
       {missing.map((tool) => (
-        <div key={tool.name} className="structure-inspector-engine-notice-row">
+        <Alert key={tool.name} className="structure-inspector-engine-notice">
           {/* Every hint the backend writes already names its own tool, so repeating
               the name here would only read as a stutter. */}
-          <span>{tool.hint || `${tool.name} is not installed.`}</span>
+          <AlertDescription>{tool.hint || `${tool.name} is not installed.`}</AlertDescription>
           {tool.install ? (
-            <button type="button" className="structure-inspector-inline-action" onClick={tool.install}>
-              Install {tool.name}
-            </button>
+            <AlertAction>
+              <Button type="button" variant="outline" size="xs" onClick={tool.install}>
+                Install
+              </Button>
+            </AlertAction>
           ) : null}
-        </div>
+        </Alert>
       ))}
-      <button type="button" className="structure-inspector-inline-action structure-inspector-engine-notice-check" onClick={onCheck}>
+      <Button type="button" variant="ghost" size="xs" className="justify-self-start" onClick={onCheck}>
         Check again
-      </button>
+      </Button>
     </div>
   );
 }
@@ -3049,19 +3064,22 @@ function InlineSegmentedControl({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="structure-inspector-segment" role="group" aria-label={ariaLabel}>
+    <ToggleGroup
+      type="single"
+      value={value}
+      aria-label={ariaLabel}
+      size="sm"
+      spacing={0}
+      className="structure-inspector-segment"
+      // A radio group is never empty: clicking the active item must not clear it.
+      onValueChange={(next) => { if (next) onChange(next); }}
+    >
       {options.map((option) => (
-        <button
-          key={option}
-          type="button"
-          className="structure-inspector-segment-button"
-          aria-pressed={option === value}
-          onClick={() => onChange(option)}
-        >
+        <ToggleGroupItem key={option} value={option} className="structure-inspector-segment-button">
           {labels[option] ?? option}
-        </button>
+        </ToggleGroupItem>
       ))}
-    </div>
+    </ToggleGroup>
   );
 }
 
@@ -3265,13 +3283,12 @@ type CompositionGroup = {
 // members behind it, and the panel used to render those as separate cards. They
 // are one hierarchy, so they are shown as one.
 function compositionGroups(summary: StructureCompositionSummary): CompositionGroup[] {
-  const ionRows = summary.solventRows.filter((row) => row.label !== "Water" && row.label !== "Ions");
   const groups = visibleComponentRows(summary.componentRows).map((row) => ({
     key: `component:${row.label}`,
     row,
     children: row.label === "Polymers" ? summary.polymerRows
       : row.label === "Ligands" ? summary.ligandRows
-      : row.label === "Ions" ? ionRows
+      : row.label === "Ions" ? summary.solventRows
       : [],
   }));
   const maestroRows = summary.maestroRows ?? [];
