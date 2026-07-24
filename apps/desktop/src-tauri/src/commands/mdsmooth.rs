@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::env;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -15,7 +16,8 @@ pub(crate) fn run_mdsmooth<R: Runtime>(
     validate_request_paths(&request)?;
     let payload = serde_json::to_vec(&request)
         .map_err(|error| format!("Could not serialize the MDSmooth request: {error}"))?;
-    let mut command = Command::new("uv");
+    let uv = resolve_uv_executable()?;
+    let mut command = Command::new(&uv);
     command.arg("run");
     for dependency in RUNNER_DEPENDENCIES {
         command.args(["--with", dependency]);
@@ -27,7 +29,10 @@ pub(crate) fn run_mdsmooth<R: Runtime>(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = command.spawn().map_err(|error| {
-        format!("Could not start the MDSmooth runtime. Install uv first: {error}")
+        format!(
+            "Could not start the MDSmooth runtime with {}: {error}",
+            uv.display()
+        )
     })?;
     child
         .stdin
@@ -110,10 +115,54 @@ fn runner_path<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String>
     Err("The bundled MDSmooth runner is unavailable.".to_string())
 }
 
+fn resolve_uv_executable() -> Result<PathBuf, String> {
+    let mut candidates = Vec::new();
+    if let Some(path) = env::var_os("BURRETE_UV") {
+        candidates.push(PathBuf::from(path));
+    }
+    if let Some(home) = env::var_os("HOME") {
+        candidates.push(PathBuf::from(home).join(".local/bin/uv"));
+    }
+    if let Some(path) = env::var_os("PATH") {
+        candidates.extend(env::split_paths(&path).map(|directory| directory.join("uv")));
+    }
+    candidates.extend([
+        PathBuf::from("/opt/homebrew/bin/uv"),
+        PathBuf::from("/usr/local/bin/uv"),
+    ]);
+    resolve_uv_from_candidates(candidates).ok_or_else(|| {
+        "uv was not found. Install uv or set BURRETE_UV to the uv executable.".into()
+    })
+}
+
+fn resolve_uv_from_candidates(candidates: Vec<PathBuf>) -> Option<PathBuf> {
+    candidates
+        .into_iter()
+        .find(|path| path.is_file() && is_executable(path))
+}
+
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.metadata()
+        .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::validate_request_paths;
+    use super::{resolve_uv_from_candidates, validate_request_paths};
     use serde_json::json;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn capabilities_request_does_not_need_paths() {
@@ -126,5 +175,29 @@ mod tests {
             validate_request_paths(&json!({})).expect_err("trajectory should be required"),
             "trajectoryPath is required."
         );
+    }
+
+    #[test]
+    fn uv_resolution_accepts_an_executable_outside_path() {
+        let root = std::env::temp_dir().join(format!(
+            "burrete-mdsmooth-uv-resolution-{}",
+            std::process::id()
+        ));
+        let uv = root.join(".local/bin/uv");
+        fs::create_dir_all(uv.parent().expect("uv parent")).expect("create uv parent");
+        fs::write(&uv, "#!/bin/sh\n").expect("write uv");
+        #[cfg(unix)]
+        {
+            let mut permissions = fs::metadata(&uv).expect("uv metadata").permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&uv, permissions).expect("make uv executable");
+        }
+
+        assert_eq!(
+            resolve_uv_from_candidates(vec![PathBuf::from("/missing/uv"), uv.clone()]),
+            Some(uv)
+        );
+
+        fs::remove_dir_all(root).expect("remove test directory");
     }
 }
