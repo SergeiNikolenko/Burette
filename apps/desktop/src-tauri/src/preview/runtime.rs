@@ -1571,7 +1571,7 @@ mod document_open_tests {
         assert!(config.contains("\"docking\""));
         assert!(config.contains("\"format\":\"pdb\""));
         assert!(config.contains("\"format\":\"xtc\""));
-        assert!(payload.contains("window.BurreteDockingPayloads = "));
+        assert!(payload.contains("window.BuretteDockingPayloads = "));
 
         remove_runtime_artifacts(&document.runtime_path);
         let _ = fs::remove_dir_all(directory);
