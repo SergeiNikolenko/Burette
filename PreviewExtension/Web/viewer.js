@@ -8007,14 +8007,32 @@
   }
 
   function dockingTrajectoryPair(entries) {
-    const coordinateEntry = entries.find(isDockingCoordinateTrajectoryEntry);
-    if (!coordinateEntry) return null;
-    const modelEntry = entries.find(entry => entry !== coordinateEntry && dockingTrajectoryModelKind(entry));
+    const coordinateEntries = entries.filter(isDockingCoordinateTrajectoryEntry);
+    if (!coordinateEntries.length) return null;
+    const modelEntry = entries.find(entry => !coordinateEntries.includes(entry) && dockingTrajectoryModelKind(entry));
     if (!modelEntry) return null;
+    let coordinateEntry = coordinateEntries[0];
+    if (coordinateEntries.length > 1) {
+      const formats = new Set(coordinateEntries.map(entry => normalizeFormat(entry.format)));
+      if (formats.size !== 1 || !formats.has('xtc')) {
+        throw new Error('Combining trajectory segments currently requires XTC files with one shared topology.');
+      }
+      const concatenate = window.BurreteTrajectorySmoothing?.concatenateXtcSegments;
+      if (typeof concatenate !== 'function') {
+        throw new Error('XTC trajectory concatenation is unavailable in this viewer runtime.');
+      }
+      coordinateEntry = {
+        ...coordinateEntry,
+        data: concatenate(coordinateEntries.map(entry => entry.data)),
+        label: `${coordinateEntries.length} XTC trajectory segments`,
+        sourcePaths: coordinateEntries.map(entry => entry.sourcePath).filter(Boolean)
+      };
+    }
     return {
       modelEntry,
       modelKind: dockingTrajectoryModelKind(modelEntry),
-      coordinateEntry
+      coordinateEntry,
+      coordinateEntries
     };
   }
 
@@ -8056,7 +8074,8 @@
       entries.push({
         data,
         format,
-        label: source.label || `Ligand ${ligandIndex + 1}`
+        label: source.label || `Ligand ${ligandIndex + 1}`,
+        sourcePath: source.path || ''
       });
       poses.push({
         data,
@@ -12104,7 +12123,7 @@
   }
 
   function isDockingTrajectoryPairEntry(entry, pair) {
-    return !!pair && (entry === pair.modelEntry || entry === pair.coordinateEntry);
+    return !!pair && (entry === pair.modelEntry || pair.coordinateEntries?.includes(entry));
   }
 
   async function loadDockingTrajectoryPair(viewer, pair) {

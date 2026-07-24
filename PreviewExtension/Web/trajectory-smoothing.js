@@ -199,5 +199,28 @@
     };
   }
 
-  window.BurreteTrajectorySmoothing = { smooth };
+  function concatenateXtcSegments(segments) {
+    if (!Array.isArray(segments) || segments.length === 0) {
+      throw new Error('Combined trajectory needs at least one XTC segment.');
+    }
+    let byteCount = 0;
+    for (const segment of segments) {
+      if (!segment || typeof segment.length !== 'number' || typeof segment.subarray !== 'function') {
+        throw new Error('Every XTC trajectory segment must be binary data.');
+      }
+      if (segment.length === 0) {
+        throw new Error('XTC trajectory segments must not be empty.');
+      }
+      byteCount += segment.length;
+    }
+    const combined = new Uint8Array(byteCount);
+    let offset = 0;
+    for (const segment of segments) {
+      combined.set(segment, offset);
+      offset += segment.length;
+    }
+    return combined;
+  }
+
+  window.BurreteTrajectorySmoothing = { smooth, concatenateXtcSegments };
 })();

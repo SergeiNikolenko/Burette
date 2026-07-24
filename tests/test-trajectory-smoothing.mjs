@@ -6,7 +6,18 @@ const source = fs.readFileSync(new URL("../PreviewExtension/Web/trajectory-smoot
 const context = { window: {} };
 vm.runInNewContext(source, context);
 const smooth = context.window.BurreteTrajectorySmoothing?.smooth;
+const concatenateXtcSegments = context.window.BurreteTrajectorySmoothing?.concatenateXtcSegments;
 assert.equal(typeof smooth, "function");
+assert.equal(typeof concatenateXtcSegments, "function");
+
+const firstXtcSegment = Uint8Array.from([0, 1, 2]);
+const secondXtcSegment = Uint8Array.from([3, 4]);
+const combinedXtc = concatenateXtcSegments([firstXtcSegment, secondXtcSegment]);
+assert.deepEqual(Array.from(combinedXtc), [0, 1, 2, 3, 4]);
+assert.deepEqual(Array.from(firstXtcSegment), [0, 1, 2]);
+assert.deepEqual(Array.from(secondXtcSegment), [3, 4]);
+assert.throws(() => concatenateXtcSegments([]), /at least one XTC segment/);
+assert.throws(() => concatenateXtcSegments([new Uint8Array(), secondXtcSegment]), /must not be empty/);
 
 const xyz = [0, 1, 3, 1, 0].map((x, index) => `2\nframe ${index + 1}\nC ${x} 0 0\nO ${x + 1} 0 0`).join("\n");
 const result = smooth({ data: xyz, format: "xyz", preset: "balanced", targetFrames: 3, referenceFrame: 1, align: false });

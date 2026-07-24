@@ -708,6 +708,31 @@ assert.deepEqual(ligandOnGenericLigand, {
   },
 });
 
+const combinedTrajectorySegments = [
+  "/tmp/01_start.xtc",
+  "/tmp/02_interface.xtc",
+  "/tmp/03_middle.xtc",
+  "/tmp/04_final.xtc",
+  "/tmp/05_relaxation.xtc",
+  "/tmp/06_full.xtc",
+];
+assert.deepEqual(resolveDropActionChoices(payload(combinedTrajectorySegments), {
+  kind: "active-viewer",
+  documentPath: "/tmp/topology.pdb",
+  renderer: "molstar",
+}), [{
+  id: "open-trajectory",
+  label: "Open combined trajectory",
+  confidence: "default",
+  action: {
+    kind: "open-docking",
+    request: {
+      receptorPath: "/tmp/topology.pdb",
+      ligandPaths: combinedTrajectorySegments,
+    },
+  },
+}]);
+
 const trajectoryOnGro = resolveDropAction(payload(["/tmp/frame.xtc"]), {
   kind: "active-viewer",
   documentPath: "/tmp/frame.gro",
