@@ -179,6 +179,8 @@ assert.equal(contract.dispatch.fullPairMatrix, false);
 assert.equal(contract.dispatch.atomics, false);
 assert.equal(contract.dispatch.maximumPairsPerTile, 1024 * 1024);
 assert.equal(contract.dispatch.maximumQueryBatchRecords, 262144);
+assert.equal(contract.dispatch.maximumNeighborsPerVertex, 64);
+assert.equal(contract.dispatch.maximumKnnBatchRows, 32);
 assert.equal(contract.dispatch.logicalTilesPartitionPairDomainExactlyOnce, true);
 assert.equal(contract.dispatch.queryBatchesPartitionLibraryExactlyOnce, true);
 assert.equal(contract.dispatch.sameRowDispatchesCompleteSeriallyOnOneCommandQueue, true);
@@ -189,7 +191,7 @@ for (const abi of Object.values(contract.parameterAbis)) {
   const abiBody = source.match(new RegExp(`struct\\s+${abi.name}\\s*\\{([^}]*)\\}`, "u"))?.[1] ?? "";
   let previousField = -1;
   for (const field of abi.fields) {
-    const fieldPosition = abiBody.search(new RegExp(`ulong\\s+${field.name}\\s*;`, "u"));
+    const fieldPosition = abiBody.search(new RegExp(`(?:ulong|uint)\\s+${field.name}\\s*;`, "u"));
     assert.ok(fieldPosition > previousField, `${abi.name}.${field.name} must preserve ABI order`);
     previousField = fieldPosition;
   }
@@ -206,6 +208,12 @@ assert.deepEqual(
   contract.parameterAbis.queryBatch.fields.map(({ offsetBytes }) => offsetBytes),
   [0, 8, 16],
 );
+assert.equal(contract.parameterAbis.knnBatch.sizeBytes, 32);
+assert.equal(contract.parameterAbis.knnBatch.alignmentBytes, 8);
+assert.deepEqual(
+  contract.parameterAbis.knnBatch.fields.map(({ offsetBytes }) => offsetBytes),
+  [0, 8, 16, 24, 28],
+);
 const expectedBuffers = {
   burrete_tanimoto_degree_count_v1: ["fingerprints", "tile", "rowDegrees"],
   burrete_tanimoto_csr_fill_v1: [
@@ -217,6 +225,13 @@ const expectedBuffers = {
     "rowStatus",
   ],
   burrete_tanimoto_query_counts_v1: ["fingerprints", "query", "counts", "batch"],
+  burrete_tanimoto_counts_batch_v1: ["fingerprints", "counts", "config"],
+  burrete_tanimoto_top_k_batch_v1: [
+    "counts",
+    "outputIndices",
+    "outputSimilarities",
+    "config",
+  ],
 };
 for (const entrypoint of contract.entrypoints) {
   assert.match(source, new RegExp(`kernel\\s+void\\s+${entrypoint.name}\\s*\\(`, "u"));
@@ -288,7 +303,7 @@ if (metalLookup.status === 0 && metallibLookup.status === 0) {
     assert.ok(existsSync(resolve(generation, "conformer-optimize.v1.air")));
     assert.ok(existsSync(resolve(generation, "mmff-energy.v1.air")));
     assert.ok(existsSync(resolve(generation, "alignment-score.v1.air")));
-    assert.ok(existsSync(resolve(generation, "native-compute.v20.metallib")));
+    assert.ok(existsSync(resolve(generation, "native-compute.v22.metallib")));
     const metadataHash = createHash("sha256").update(readFileSync(metadataPath)).digest("hex");
     assert.equal(metadataHash, pointer.metadataSha256);
   } finally {
@@ -386,6 +401,7 @@ try {
         PM6_D3_SOURCE_SHA256: fakeHash,
         PM6_ONE_CENTER_FOCK_SOURCE_SHA256: fakeHash,
         PM6_PAIR_FOCK_SOURCE_SHA256: fakeHash,
+        UMAP_SOURCE_SHA256: fakeHash,
         TANIMOTO_CONTRACT_SHA256: fakeHash,
         CONFORMER_CONTRACT_SHA256: fakeHash,
         DISTANCE_CONTRACT_SHA256: fakeHash,
@@ -402,6 +418,7 @@ try {
         PM6_D3_CONTRACT_SHA256: fakeHash,
         PM6_ONE_CENTER_FOCK_CONTRACT_SHA256: fakeHash,
         PM6_PAIR_FOCK_CONTRACT_SHA256: fakeHash,
+        UMAP_CONTRACT_SHA256: fakeHash,
         TANIMOTO_AIR_SHA256: fakeHash,
         CONFORMER_AIR_SHA256: fakeHash,
         DISTANCE_AIR_SHA256: fakeHash,
@@ -418,6 +435,7 @@ try {
         PM6_D3_AIR_SHA256: fakeHash,
         PM6_ONE_CENTER_FOCK_AIR_SHA256: fakeHash,
         PM6_PAIR_FOCK_AIR_SHA256: fakeHash,
+        UMAP_AIR_SHA256: fakeHash,
         METALLIB_SHA256: fakeHash,
         METAL_TOOL_PATH: "/toolchain/metal",
         METAL_TOOL_SHA256: fakeHash,
@@ -432,7 +450,7 @@ try {
   );
   assert.equal(metadataRun.status, 0, metadataRun.stderr);
   const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
-  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v20");
+  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v22");
   assert.equal(metadata.sources[0].sha256, fakeHash);
   assert.equal(metadata.sources[1].sha256, fakeHash);
   assert.equal(metadata.sources[2].sha256, fakeHash);
@@ -456,6 +474,8 @@ try {
     "burrete_pm6_d3_v2",
     "burrete_pm6_one_center_fock_v1",
     "burrete_pm6_pair_fock_v1",
+    "burrete_umap_initialize_v1",
+    "burrete_umap_epoch_v1",
   ]);
 } finally {
   rmSync(metadataDirectory, { recursive: true, force: true });

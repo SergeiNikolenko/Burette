@@ -9,6 +9,9 @@
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
   const CLUSTER_CUTOFF_STORAGE_KEY = 'buret.grid.clusterCutoff';
+  const GRID_SELECTION_BRIDGE_LIMIT = 100000;
+  const CHEMICAL_SPACE_RECORD_LIMIT = 20000;
+  const CHEMICAL_SPACE_INPUT_BYTES_LIMIT = 8 * 1024 * 1024;
   const CONFORMER_VARIANT_STORAGE_KEY = 'buret.grid.conformerVariant';
   const MMFF_VARIANT_STORAGE_KEY = 'buret.grid.mmffVariant';
   const SEMIEMPIRICAL_METHOD_STORAGE_KEY = 'buret.grid.semiempiricalMethod';
@@ -100,6 +103,7 @@
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     hiddenRows: new Set(),
     selected: new Set(),
+    chemicalSpaceFilterActive: false,
     ketcherOpenPendingUntil: 0,
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
@@ -166,7 +170,9 @@
     railDragging: false,
     pendingGridScrollIndex: null,
     pendingGridRailPosition: null,
-    menuStateSignature: ''
+    menuStateSignature: '',
+    chemicalSpaceHoverToken: 0,
+    chemicalSpacePreviewTimer: null
   };
 
   function post(type, message, payload = {}) {
@@ -467,10 +473,49 @@
         executeGridMenuCommand(body, cfg);
         return;
       }
+      if (body.type === 'chemicalSpaceSelectionChanged') {
+        const indexes = Array.isArray(body.sourceRecordIds)
+          ? body.sourceRecordIds
+            .slice(0, GRID_SELECTION_BRIDGE_LIMIT)
+            .map(Number)
+            .filter(index => Number.isSafeInteger(index) && index >= 0)
+          : [];
+        state.selected = new Set(indexes);
+        state.chemicalSpaceFilterActive = body.filterToSelection === true && indexes.length > 0;
+        state.selectionAnchorIndex = indexes.length ? indexes[indexes.length - 1] : null;
+        refresh(config());
+        return;
+      }
+      if (body.type === 'chemicalSpaceRequestState') {
+        state.menuStateSignature = '';
+        notifyGridMenuState(config());
+        return;
+      }
+      if (body.type === 'chemicalSpaceRequestRecords') {
+        postChemicalSpaceRecords(body.requestId);
+        return;
+      }
+      if (body.type === 'chemicalSpaceHoverChanged') {
+        const index = Number(body.sourceRecordId);
+        const normalizedIndex = Number.isSafeInteger(index) && index >= 0 ? index : null;
+        if (state.chemicalSpacePreviewTimer) clearTimeout(state.chemicalSpacePreviewTimer);
+        state.chemicalSpacePreviewTimer = null;
+        if (normalizedIndex === null) {
+          state.chemicalSpaceHoverToken += 1;
+          post('chemicalSpaceMoleculePreview', '', { sourceRecordId: null });
+        } else {
+          state.chemicalSpacePreviewTimer = setTimeout(() => {
+            state.chemicalSpacePreviewTimer = null;
+            void postChemicalSpaceMoleculePreview(normalizedIndex, config());
+          }, 80);
+        }
+        return;
+      }
       if (body.type === 'gridRecordsAppended') {
         if (!capabilities(config()).editing) return;
         state.hiddenRows.clear();
         state.selected.clear();
+        state.chemicalSpaceFilterActive = false;
         state.undoStack = [];
         state.redoStack = [];
         state.svgCache.clear();
@@ -806,9 +851,14 @@
     const caps = capabilities(cfg);
     if (!caps.editing) return;
     const selectedStructureCount = selectedMolecularGridRowCount();
+    const selectedSourceIndexes = state.selected.size <= GRID_SELECTION_BRIDGE_LIMIT
+      ? [...state.selected].map(Number).filter(index => Number.isSafeInteger(index) && index >= 0)
+      : [];
     const payload = {
       selectedCount: selectedGridRowCount(),
       selectedStructureCount,
+      selectedSourceIndexes,
+      selectionTruncated: state.selected.size > GRID_SELECTION_BRIDGE_LIMIT,
       dirty: state.dirty,
       canUndo: undoEntry !== null,
       canRedo: redoEntry !== null,
@@ -2390,6 +2440,12 @@
   function refresh(cfg) {
     resetGridWindowForNewResultSet();
     if (state.remoteMode) {
+      if (state.chemicalSpaceFilterActive) {
+        state.rows = filterByChemicalSpaceSelection(state.rows);
+        state.totalRows = state.rows.length;
+        render(cfg);
+        return;
+      }
       void refreshRemote(cfg);
       return;
     }
@@ -2398,7 +2454,9 @@
     const textRows = query
       ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(query))
       : allRows.slice();
-    state.rows = filterByTableColumnControls(filterByDescriptorControls(filterBySMARTS(textRows)));
+    state.rows = filterByChemicalSpaceSelection(
+      filterByTableColumnControls(filterByDescriptorControls(filterBySMARTS(textRows)))
+    );
     if (shouldFallbackSMARTSToTextSearch()) {
       const fallbackQuery = normalize(state.query);
       state.smartsError = '';
@@ -2406,11 +2464,18 @@
       state.rows = fallbackQuery
         ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(fallbackQuery))
         : allRows.slice();
-      state.rows = filterByTableColumnControls(filterByDescriptorControls(state.rows));
+      state.rows = filterByChemicalSpaceSelection(
+        filterByTableColumnControls(filterByDescriptorControls(state.rows))
+      );
     }
     state.rows.sort((a, b) => compareWithDescriptorSort(a, b));
     state.totalRows = state.rows.length;
     render(cfg);
+  }
+
+  function filterByChemicalSpaceSelection(rows) {
+    if (!state.chemicalSpaceFilterActive) return rows;
+    return rows.filter(row => state.selected.has(Number(row.index)));
   }
 
   function resetGridWindowForNewResultSet() {
@@ -4382,6 +4447,7 @@
     state.all.push(...appendedRows);
     window.BurreteGridRecords = state.all;
     state.selected.clear();
+    state.chemicalSpaceFilterActive = false;
     state.selectionAnchorIndex = null;
     state.svgCache.clear();
     state.xyzrenderCardCache.clear();
@@ -4772,6 +4838,94 @@
     refreshGridControls();
   }
 
+  function postChemicalSpaceHover(index) {
+    post('gridHoverChanged', '', {
+      sourceRecordId: Number.isSafeInteger(index) && index >= 0 ? index : null,
+    });
+  }
+
+  async function postChemicalSpaceMoleculePreview(index, cfg) {
+    const token = ++state.chemicalSpaceHoverToken;
+    try {
+      const localPool = state.remoteMode ? state.rows : state.all;
+      let row = localPool.find(candidate => Number(candidate?.index) === index) || null;
+      if (!row && state.remoteMode) {
+        const result = await hostRequest('gridFetchPage', {
+          query: '',
+          sort: 'index',
+          columnFilters: [],
+          descriptorFilters: [],
+          analysisFilters: [],
+          descriptorSort: null,
+          offset: index,
+          limit: 1
+        });
+        row = Array.isArray(result.rows)
+          ? result.rows.find(candidate => Number(candidate?.index) === index) || null
+          : null;
+      }
+      if (token !== state.chemicalSpaceHoverToken || !row) return;
+      const input = String(row.molblock || row.smiles || '').trim();
+      let svg = '';
+      if (input) {
+        const rdkit = await initRDKit();
+        let molecule = null;
+        try {
+          molecule = rdkit.get_mol(input);
+          if (molecule) svg = molecule.get_svg(240, 160);
+        } finally {
+          molecule?.delete?.();
+        }
+      }
+      if (token !== state.chemicalSpaceHoverToken) return;
+      post('chemicalSpaceMoleculePreview', '', {
+        sourceRecordId: index,
+        name: String(row.name || `Molecule ${index + 1}`).slice(0, 240),
+        smiles: String(row.smiles || '').slice(0, 4096),
+        svgBase64: svg ? textToBase64(svg.slice(0, 262144)) : ''
+      });
+    } catch (_) {
+      if (token === state.chemicalSpaceHoverToken) {
+        post('chemicalSpaceMoleculePreview', '', {
+          sourceRecordId: index,
+          name: `Molecule ${index + 1}`,
+          smiles: '',
+          svgBase64: ''
+        });
+      }
+    }
+  }
+
+  function postChemicalSpaceRecords(requestId) {
+    const pool = state.remoteMode ? state.rows : state.all;
+    const records = [];
+    let inputBytes = 0;
+    for (const row of pool) {
+      if (records.length >= CHEMICAL_SPACE_RECORD_LIMIT) break;
+      const sourceRecordId = Number(row?.index);
+      if (!Number.isSafeInteger(sourceRecordId) || sourceRecordId < 0) continue;
+      const molblock = String(row?.molblock || '').trim();
+      const smiles = String(row?.smiles || '').trim();
+      const input = molblock || smiles;
+      if (!input) continue;
+      const nextBytes = new TextEncoder().encode(input).byteLength;
+      if (inputBytes + nextBytes > CHEMICAL_SPACE_INPUT_BYTES_LIMIT) break;
+      inputBytes += nextBytes;
+      records.push({
+        sourceRecordId,
+        moleculeContentSha256: `browser-${sourceRecordId}-${hash(input)}`,
+        format: molblock ? 'molblock' : 'smiles',
+        input
+      });
+    }
+    post('chemicalSpaceRecords', '', {
+      requestId: String(requestId || ''),
+      records,
+      truncated: records.length >= CHEMICAL_SPACE_RECORD_LIMIT
+        || inputBytes >= CHEMICAL_SPACE_INPUT_BYTES_LIMIT
+    });
+  }
+
   function toggleSelection(index, cfg) {
     if (!Number.isFinite(index)) return;
     if (state.selected.has(index)) state.selected.delete(index);
@@ -4818,8 +4972,14 @@
   }
 
   function clearSelection(cfg) {
+    const wasFilteringChemicalSpace = state.chemicalSpaceFilterActive;
     state.selected.clear();
+    state.chemicalSpaceFilterActive = false;
     state.selectionAnchorIndex = null;
+    if (wasFilteringChemicalSpace) {
+      refresh(cfg);
+      return;
+    }
     syncRenderedSelection();
     updateChrome(cfg);
   }
@@ -5520,9 +5680,16 @@
   function installCardHover(card) {
     const picture = card.querySelector('[data-buret-molecule-picture]');
     if (!picture) return;
-    picture.addEventListener('pointerenter', () => card.classList.add('buret-card-hovering-molecule'));
+    const index = Number(card.getAttribute('data-index'));
+    picture.addEventListener('pointerenter', () => {
+      card.classList.add('buret-card-hovering-molecule');
+      postChemicalSpaceHover(index);
+    });
     picture.addEventListener('pointermove', () => card.classList.add('buret-card-hovering-molecule'));
-    picture.addEventListener('pointerleave', () => card.classList.remove('buret-card-hovering-molecule'));
+    picture.addEventListener('pointerleave', () => {
+      card.classList.remove('buret-card-hovering-molecule');
+      postChemicalSpaceHover(null);
+    });
     card.addEventListener('focusin', () => card.classList.add('buret-card-hovering-molecule'));
     card.addEventListener('focusout', () => card.classList.remove('buret-card-hovering-molecule'));
   }
@@ -5532,6 +5699,7 @@
     if (!picture) return;
     picture.addEventListener('pointerenter', event => {
       if (event.pointerType === 'touch') return;
+      postChemicalSpaceHover(Number(row.index));
       showTableMoleculePreview(event, row, cfg);
     });
     picture.addEventListener('pointermove', event => {
@@ -5539,7 +5707,10 @@
       if (!state.tableMoleculePreview) showTableMoleculePreview(event, row, cfg);
       positionTableMoleculePreview(event);
     });
-    picture.addEventListener('pointerleave', hideTableMoleculePreview);
+    picture.addEventListener('pointerleave', () => {
+      postChemicalSpaceHover(null);
+      hideTableMoleculePreview();
+    });
     picture.addEventListener('contextmenu', hideTableMoleculePreview);
   }
 
@@ -6049,6 +6220,7 @@
     state.all = Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [];
     state.remoteAnalysisColumns = [];
     state.selected = new Set();
+    state.chemicalSpaceFilterActive = false;
     state.hiddenRows = new Set();
     state.findingSimilar = false;
     state.exportingClusterRepresentatives = false;

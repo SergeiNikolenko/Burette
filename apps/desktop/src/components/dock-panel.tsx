@@ -21,6 +21,7 @@ import { useSourceEditing } from "../lib/source-editing/context";
 import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
+import { ChemicalSpacePanel } from "./chemical-space-panel";
 import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
@@ -48,7 +49,32 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   logs: File02Icon,
   diagnostics: Search01Icon,
   review: Search01Icon,
+  "chemical-space": Atom01Icon,
 };
+
+function resolveChemicalSpaceDocument(
+  state: ShellViewState,
+  dockDocument: ViewerDocument | null,
+) {
+  const supportsChemicalSpace = (document: ViewerDocument | null): document is ViewerDocument => (
+    document?.renderer === "grid2d"
+    || ["csv", "tsv", "dwar", "smi", "smiles"].includes(document?.extension.toLowerCase() ?? "")
+  );
+  if (supportsChemicalSpace(dockDocument)) return dockDocument;
+  if (supportsChemicalSpace(state.activeDocument)) return state.activeDocument;
+  if (supportsChemicalSpace(state.quickLookDocument)) return state.quickLookDocument;
+  const location = state.activeTab?.location;
+  if (location?.kind === "file") {
+    const locationDocument = state.documents.find((document) => (
+      supportsChemicalSpace(document)
+      && (document.id === location.documentId || document.path === location.path)
+    ));
+    if (locationDocument) return locationDocument;
+  }
+  return state.visibleDocuments.find(supportsChemicalSpace)
+    ?? state.documents.find(supportsChemicalSpace)
+    ?? null;
+}
 
 export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
   const [dropActive, setDropActive] = useState(false);
@@ -64,6 +90,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const activeStructureDocument = dockDocument ?? state.activeDocument;
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
+  const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
   const foldingState = useFoldingResult(area === "bottom" ? activeStructureDocument : null);
   const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
@@ -73,6 +100,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     if (!catalog.includes(tab.kind)) return false;
     if (tab.kind === "spectrum") return spectrumDockAvailable;
     if (tab.kind === "folding") return foldingDockAvailable || foldingDockRequested;
+    if (tab.kind === "chemical-space") return chemicalSpaceDockAvailable;
     return true;
   });
   const activeTabKind = tabs.some((tab) => tab.kind === storedActiveTabKind) ? storedActiveTabKind : tabs[0]?.kind ?? "files";
@@ -110,6 +138,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
         if (kind === "xyzrender") return Boolean(xyzrenderDockDocument);
+        if (kind === "chemical-space") return chemicalSpaceDockAvailable;
         if (kind === "story") return Boolean(state.structureStory);
         return true;
       }).map((kind) => ({
@@ -213,16 +242,16 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
                 </div>
               );
             })}
-          </div>
-          {!readOnly ? (
-            <>
+            {!readOnly ? (
               <button type="button" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
                 +
               </button>
-              <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
-                <CloseIcon size={15} />
-              </button>
-            </>
+            ) : null}
+          </div>
+          {!readOnly ? (
+            <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
+              <CloseIcon size={15} />
+            </button>
           ) : null}
         </div>
         <DockPanelContent
@@ -257,6 +286,7 @@ function DockPanelContent({
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockStructureDocument = dockDocument ?? activeDocument;
+  const chemicalSpaceDocument = resolveChemicalSpaceDocument(state, dockDocument);
   const activeTextDocument = activeTextDocumentFromState(state);
   const fileEntries = activeTabKind === "files"
     ? dockFileEntries({
@@ -390,6 +420,9 @@ function DockPanelContent({
         actions={actions}
       />
     );
+  }
+  if (activeTabKind === "chemical-space") {
+    return <ChemicalSpacePanel document={chemicalSpaceDocument} />;
   }
   if (activeTabKind === "folding") {
     return <FoldingAnalysisPanel document={dockStructureDocument} actions={actions} />;

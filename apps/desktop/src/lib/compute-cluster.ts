@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 const FINGERPRINT_WORKER_TIMEOUT_MS = 120_000;
+const MAX_PREPARED_CHEMICAL_SPACE_JOBS = 4;
+const preparedChemicalSpaceJobs = new Map<string, Promise<ComputeJob>>();
 
 export type FingerprintInputFormat = "smiles" | "molblock" | "unsupportedIdcode";
 
@@ -101,6 +103,81 @@ export type ClusterProgress = {
   totalRecords?: number;
   job: ComputeJob;
 };
+
+export type ChemicalSpaceOptions = {
+  representation: ChemicalSpaceRepresentation;
+  method: ChemicalSpaceMethod;
+  dimensions: 2 | 3;
+  neighbors: number;
+  epochs: number;
+  minDist: number;
+  spread: number;
+  learningRate: number;
+  negativeSampleRate: number;
+  randomSeed: number;
+};
+
+export type ChemicalSpaceRepresentation =
+  | "morgan"
+  | "chemberta"
+  | "molformer"
+  | "unimol2-84m"
+  | "unimol-v1";
+
+export type ChemicalSpaceMethod =
+  | "umap"
+  | "tmap"
+  | "tsne"
+  | "pacmap"
+  | "localmap"
+  | "trimap"
+  | "dreams"
+  | "cne"
+  | "mmae";
+
+export type ChemicalSpaceResult = {
+  sourceRecordIds: number[];
+  positions: Array<[number, number, number]>;
+  treeEdges: Array<[number, number]>;
+  neighborEdges: Array<[number, number]>;
+  neighborSimilarities: number[];
+  dimensions: 2 | 3;
+  method: ChemicalSpaceMethod;
+  representation: ChemicalSpaceRepresentation;
+  neighbors: number;
+  successfulRecords: number;
+  failedRecords: number;
+  backend: "nativeMetal";
+  tanimotoGpuTimeMs: number;
+  representationTimeMs?: number;
+  similarityGpuTimeMs?: number;
+  embeddingGpuTimeMs: number;
+  layoutHostTimeMs: number;
+  hostTimeMs: number;
+};
+
+export type ChemicalSpaceClusterResult = {
+  sourceRecordIds: number[];
+  clusterIds: number[];
+  representativeSourceRecordIds: number[];
+  clusterCount: number;
+  similarityGpuTimeMs: number;
+};
+
+export type ChemicalSpaceProgress = {
+  phase: "queued" | "fingerprints" | "representations" | "embedding" | "study";
+  completedRecords?: number;
+  totalRecords?: number;
+  percent?: number;
+  representationStage?: "preparing" | "loading" | "model" | "similarity";
+  completedFrames?: number;
+  totalFrames?: number;
+};
+
+export type BrowserChemicalSpaceInputRecord = Pick<
+  FingerprintInputRecord,
+  "sourceRecordId" | "moleculeContentSha256" | "format" | "input"
+>;
 
 export type ClusterFilteredScope = {
   kind: "filtered";
@@ -221,39 +298,13 @@ export async function runClusterWorkflow(
     .filter((index) => Number.isSafeInteger(index) && index >= 0)
     .sort((left, right) => left - right);
   const cutoffFraction = similarityCutoff(cutoff);
-  const request = {
-    schemaVersion: "burrete.compute-job.v1",
-    workflowTemplate: "cluster.v1",
-    source: {
-      documentId,
-      scope: normalizedIndexes.length > 0
-        ? { kind: "selected", sourceIndexes: normalizedIndexes }
-        : filteredScope ?? { kind: "all" },
-    },
-    parameters: {
-      fingerprint: {
-        algorithm: "rdkitMorganBit.v1",
-        rdkitVersion: "2025.03.4",
-        radius: 2,
-        bitCount: 2_048,
-        useChirality: true,
-        useFeatures: false,
-        sanitize: true,
-        inputOrder: "sourceRecord",
-      },
-      similarity: { cutoff: cutoffFraction },
-      representativePolicy: "butinaMaxNeighbors.v1",
-    },
-    executionPolicy: {
-      backendPolicy: "gpuPreferred",
-      schedulingPolicy: "throughput",
-    },
-    limits: {
-      maxEdges: 100_000_000,
-      maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
-      maxDispatchMs: 250,
-    },
-  };
+  const request = clusterPreparationRequest(
+    documentId,
+    normalizedIndexes,
+    cutoffFraction,
+    filteredScope,
+    "gpuPreferred",
+  );
 
   let job: ComputeJob | null = null;
   const worker = new FingerprintWorkerClient();
@@ -321,6 +372,266 @@ export async function runClusterWorkflow(
   } finally {
     worker.dispose();
   }
+}
+
+export async function runChemicalSpaceWorkflow(
+  documentId: string,
+  options: ChemicalSpaceOptions,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+): Promise<ChemicalSpaceResult> {
+  if (options.representation !== "morgan") {
+    throw new Error("Learned Metal representations are not yet installed in the packaged runtime.");
+  }
+  const job = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+  throwIfAborted(signal);
+  onProgress({ phase: "embedding" });
+  return executePreparedChemicalSpace(job, options);
+}
+
+export async function runChemicalSpaceClusteringWorkflow(
+  documentId: string,
+  cutoff: number,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+): Promise<ChemicalSpaceClusterResult> {
+  const job = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+  throwIfAborted(signal);
+  onProgress({ phase: "embedding" });
+  return invoke<ChemicalSpaceClusterResult>("compute_cluster_chemical_space", {
+    jobId: job.jobId,
+    expectedRevision: job.revision,
+    request: {
+      cutoff,
+      maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
+    },
+  });
+}
+
+export async function runChemicalSpaceStudyWorkflow(
+  documentId: string,
+  frames: ChemicalSpaceOptions[],
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+): Promise<ChemicalSpaceResult[]> {
+  if (frames.some((frame) => frame.representation !== "morgan")) {
+    throw new Error("Learned Metal representations are not yet installed in the packaged runtime.");
+  }
+  if (frames.length < 2 || frames.length > 24) {
+    throw new Error("A parameter study requires between 2 and 24 frames.");
+  }
+  const job = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+  const results: ChemicalSpaceResult[] = [];
+  for (let index = 0; index < frames.length; index += 1) {
+    throwIfAborted(signal);
+    onProgress({
+      phase: "study",
+      completedFrames: index,
+      totalFrames: frames.length,
+    });
+    results.push(await executePreparedChemicalSpace(job, frames[index]));
+  }
+  onProgress({
+    phase: "study",
+    completedFrames: frames.length,
+    totalFrames: frames.length,
+  });
+  return results;
+}
+
+export function invalidateChemicalSpaceFingerprintCache(documentId: string) {
+  const pending = preparedChemicalSpaceJobs.get(documentId);
+  if (!pending) return;
+  preparedChemicalSpaceJobs.delete(documentId);
+  void pending
+    .then((job) => cancelComputeJob(job.jobId))
+    .catch(() => undefined);
+}
+
+export async function fingerprintBrowserChemicalSpaceRecords(
+  records: BrowserChemicalSpaceInputRecord[],
+  onProgress: (completedRecords: number, totalRecords: number) => void,
+  signal?: AbortSignal,
+): Promise<FingerprintOutputRecord[]> {
+  if (records.length < 2 || records.length > 20_000) {
+    throw new Error("Browser chemical space requires between 2 and 20000 molecular records.");
+  }
+  const worker = new FingerprintWorkerClient();
+  const sessionId = `browser-chemical-space-${crypto.randomUUID()}`;
+  const output: FingerprintOutputRecord[] = [];
+  try {
+    for (let start = 0; start < records.length; start += 256) {
+      throwIfAborted(signal);
+      const chunkRecords = records.slice(start, start + 256).map((record, offset) => ({
+        ...record,
+        ordinal: start + offset,
+      }));
+      onProgress(start, records.length);
+      const result = await worker.fingerprint({
+        sessionId,
+        jobId: sessionId,
+        startOrdinal: start,
+        completedRecords: start,
+        totalRecords: records.length,
+        settings: {
+          rdkitVersion: "2025.03.4",
+          radius: 2,
+          bitCount: 2_048,
+          useChirality: true,
+          useFeatures: false,
+          sanitize: true,
+        },
+        records: chunkRecords,
+      }, signal);
+      output.push(...result.records);
+    }
+    onProgress(records.length, records.length);
+    return output;
+  } finally {
+    worker.dispose();
+  }
+}
+
+async function prepareChemicalSpaceJob(
+  request: ReturnType<typeof clusterPreparationRequest>,
+  worker: FingerprintWorkerClient,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+) {
+  throwIfAborted(signal);
+  let job = await invoke<ComputeJob>("compute_submit_job", { request });
+  onProgress({ phase: "queued" });
+  let fingerprintStep = await invoke<FingerprintExecutionStep>("compute_begin_cluster_execution", {
+    jobId: job.jobId,
+    expectedRevision: job.revision,
+  });
+  job = fingerprintStep.job;
+  while (fingerprintStep.fingerprintChunk) {
+    throwIfAborted(signal);
+    const chunk = fingerprintStep.fingerprintChunk;
+    onProgress({
+      phase: "fingerprints",
+      completedRecords: chunk.completedRecords,
+      totalRecords: chunk.totalRecords,
+    });
+    const result = await worker.fingerprint(chunk, signal);
+    fingerprintStep = await invoke<FingerprintExecutionStep>("compute_submit_fingerprint_chunk", { result });
+    job = fingerprintStep.job;
+  }
+  if (!fingerprintStep.readyForCompute) {
+    throw new Error("The fingerprint stage completed without a compute-ready result.");
+  }
+  return job;
+}
+
+async function getPreparedChemicalSpaceJob(
+  documentId: string,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+) {
+  const cached = preparedChemicalSpaceJobs.get(documentId);
+  if (cached) {
+    preparedChemicalSpaceJobs.delete(documentId);
+    preparedChemicalSpaceJobs.set(documentId, cached);
+    return cached;
+  }
+  const request = clusterPreparationRequest(
+    documentId,
+    [],
+    { numerator: 0, denominator: 1 },
+    null,
+    "gpuRequired",
+  );
+  const pending = prepareChemicalSpaceJobForDocument(request, onProgress, signal);
+  preparedChemicalSpaceJobs.set(documentId, pending);
+  trimPreparedChemicalSpaceJobs();
+  void pending.catch(() => {
+    if (preparedChemicalSpaceJobs.get(documentId) === pending) {
+      preparedChemicalSpaceJobs.delete(documentId);
+    }
+  });
+  return pending;
+}
+
+async function prepareChemicalSpaceJobForDocument(
+  request: ReturnType<typeof clusterPreparationRequest>,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+) {
+  const worker = new FingerprintWorkerClient();
+  try {
+    return await prepareChemicalSpaceJob(request, worker, onProgress, signal);
+  } finally {
+    worker.dispose();
+  }
+}
+
+function trimPreparedChemicalSpaceJobs() {
+  while (preparedChemicalSpaceJobs.size > MAX_PREPARED_CHEMICAL_SPACE_JOBS) {
+    const oldestKey = preparedChemicalSpaceJobs.keys().next().value;
+    if (oldestKey === undefined) break;
+    const pending = preparedChemicalSpaceJobs.get(oldestKey);
+    preparedChemicalSpaceJobs.delete(oldestKey);
+    if (pending) {
+      void pending
+        .then((job) => cancelComputeJob(job.jobId))
+        .catch(() => undefined);
+    }
+  }
+}
+
+function executePreparedChemicalSpace(job: ComputeJob, options: ChemicalSpaceOptions) {
+  const { representation, ...request } = options;
+  return invoke<ChemicalSpaceResult>("compute_execute_chemical_space", {
+    jobId: job.jobId,
+    expectedRevision: job.revision,
+    request: {
+      ...request,
+      maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
+    },
+  }).then((result) => ({ ...result, representation }));
+}
+
+function clusterPreparationRequest(
+  documentId: string,
+  normalizedIndexes: number[],
+  cutoffFraction: { numerator: number; denominator: number },
+  filteredScope: ClusterFilteredScope | null,
+  backendPolicy: "gpuPreferred" | "gpuRequired",
+) {
+  return {
+    schemaVersion: "burrete.compute-job.v1",
+    workflowTemplate: "cluster.v1",
+    source: {
+      documentId,
+      scope: normalizedIndexes.length > 0
+        ? { kind: "selected", sourceIndexes: normalizedIndexes }
+        : filteredScope ?? { kind: "all" },
+    },
+    parameters: {
+      fingerprint: {
+        algorithm: "rdkitMorganBit.v1",
+        rdkitVersion: "2025.03.4",
+        radius: 2,
+        bitCount: 2_048,
+        useChirality: true,
+        useFeatures: false,
+        sanitize: true,
+        inputOrder: "sourceRecord",
+      },
+      similarity: { cutoff: cutoffFraction },
+      representativePolicy: "butinaMaxNeighbors.v1",
+    },
+    executionPolicy: {
+      backendPolicy,
+      schedulingPolicy: "throughput",
+    },
+    limits: {
+      maxEdges: 100_000_000,
+      maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
+      maxDispatchMs: 250,
+    },
+  };
 }
 
 export function computeErrorMessage(error: unknown): string {

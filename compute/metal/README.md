@@ -72,6 +72,12 @@ The canonical EnginePack row is little-endian `u64[32]`. Metal reads the same
 256 bytes as `uint32[64]`, low 32 bits then high 32 bits for each canonical
 word. This is a byte-identical view on supported little-endian Apple Silicon;
 it is not a second persisted fingerprint format.
+
+`umap.v1.metal` owns the shared race-free chemical-space optimizer. Its method
+discriminant selects the graph objectives adapted from mlx-vis 0.7.0: UMAP,
+t-SNE, PaCMAP, LocalMAP, TriMap, DREAMS, CNE, and MMAE-style manifold-distance
+matching. Every method uses the exact Tanimoto k-nearest-neighbor graph emitted
+by `tanimoto.v2.metal`; no method silently rebuilds Euclidean neighbors.
 One thread owns one row for the entire dispatch, so degree accumulation and CSR
 fill need no atomics. The ordered logical rectangles must be a gapless,
 non-overlapping partition of `[0, N) x [0, N)`. Columns advance contiguously for

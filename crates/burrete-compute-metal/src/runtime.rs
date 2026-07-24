@@ -6,14 +6,15 @@ use burrete_compute_core::{
     initialize_conformer_positions, optimize_distance_geometry, pm6_d3_dispersion_energy,
     pm6_h4_energy, pm6_hh_repulsion_energy, pm6_one_center_d_fock, rm1_fock_pairs,
     score_tanimoto_query, symmetric_eigendecomposition, validate_conformer_stereo, AlignmentAtom,
-    AlignmentMode, AlignmentScores, AtomMapping, ChiralVolumeConstraint, DistanceConstraint,
-    DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
-    EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
-    GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown,
-    MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
-    MmffVanDerWaalsTerm, MmffVariant, Pm6FockPair, RigidTransform, Rm1FockPair, SemiempiricalAtom,
-    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
-    TetrahedralConstraint, FINGERPRINT_WORDS,
+    AlignmentMode, AlignmentScores, AtomMapping, ChemicalSpaceMethod, ChiralVolumeConstraint,
+    DistanceConstraint, DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus,
+    EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
+    Fingerprint2048, GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm,
+    MmffEnergyBreakdown, MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters,
+    MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm, MmffVariant, Pm6FockPair,
+    RigidTransform, Rm1FockPair, SemiempiricalAtom, SemiempiricalMolecule, SymmetricCsr,
+    TanimotoCounts, TanimotoKnnOptions, TanimotoQueryOptions, TanimotoUmapGraph,
+    TetrahedralConstraint, UmapOptions, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -49,6 +50,24 @@ pub struct MetalQueryExecution {
     pub counts: Vec<TanimotoCounts>,
     /// Sum of Metal's completed-command-buffer GPUStartTime/GPUEndTime
     /// intervals. This excludes CPU encoding and synchronization time.
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalTanimotoKnnExecution {
+    pub source_indices: Vec<u32>,
+    pub similarities: Vec<f32>,
+    pub neighbors_per_vertex: usize,
+    /// Sum of completed Metal and MPS command-buffer GPU intervals.
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalUmapExecution {
+    /// `float4` storage; `z` is exactly zero for a 2D embedding.
+    pub positions: Vec<[f32; 4]>,
+    pub component_count: u32,
+    /// Sum of completed Metal command-buffer GPU intervals.
     pub gpu_time_ms: u64,
 }
 
@@ -335,6 +354,56 @@ impl MetalComputeRuntime {
         Ok(MetalQueryExecution {
             counts,
             gpu_time_ms: gpu_time_ms(gpu_time_seconds)?,
+        })
+    }
+
+    pub fn build_tanimoto_knn_profiled(
+        &self,
+        fingerprints: &[Fingerprint2048],
+        options: TanimotoKnnOptions,
+    ) -> Result<MetalTanimotoKnnExecution, MetalRuntimeError> {
+        let dispatch = self
+            .host
+            .build_tanimoto_knn_profiled(fingerprints, options)?;
+        Ok(MetalTanimotoKnnExecution {
+            source_indices: dispatch.source_indices,
+            similarities: dispatch.similarities,
+            neighbors_per_vertex: dispatch.neighbors_per_vertex,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
+    pub fn optimize_umap_profiled(
+        &self,
+        graph: &TanimotoUmapGraph,
+        options: UmapOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalUmapExecution, MetalRuntimeError> {
+        self.optimize_embedding_profiled(
+            graph,
+            options,
+            ChemicalSpaceMethod::Umap,
+            max_memory_bytes,
+        )
+    }
+
+    pub fn optimize_embedding_profiled(
+        &self,
+        graph: &TanimotoUmapGraph,
+        options: UmapOptions,
+        method: ChemicalSpaceMethod,
+        max_memory_bytes: u64,
+    ) -> Result<MetalUmapExecution, MetalRuntimeError> {
+        let dispatch = self.host.optimize_embedding_profiled(
+            graph,
+            options,
+            method,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        Ok(MetalUmapExecution {
+            positions: dispatch.positions,
+            component_count: options.n_components(),
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
         })
     }
 
@@ -1900,7 +1969,9 @@ mod tests {
     use std::path::PathBuf;
 
     use base64::{engine::general_purpose::STANDARD, Engine as _};
-    use burrete_compute_core::{butina_clusters, ButinaOptions};
+    use burrete_compute_core::{
+        build_tanimoto_knn, build_tanimoto_umap_graph, butina_clusters, ButinaOptions,
+    };
     use serde::Deserialize;
 
     use super::*;
@@ -1990,6 +2061,127 @@ mod tests {
                 .as_deref()
                 .expect("packaged runtime must pin its metallib"),
         );
+    }
+
+    #[test]
+    #[ignore = "manual packaged-runtime chemical-space smoke; set BURRETE_METAL_RUNTIME_ROOT"]
+    fn builds_tanimoto_umap_with_the_packaged_runtime_on_the_real_gpu() {
+        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+            .map(PathBuf::from)
+            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged ComputeMetal directory");
+        let runtime = MetalComputeRuntime::load(&root, &"0".repeat(64))
+            .expect("verified packaged Metal runtime");
+        let fingerprints = [0b1111_u64, 0b1110, 0b1100, 0b1000].map(|first_word| {
+            let mut words = [0_u64; FINGERPRINT_WORDS];
+            words[0] = first_word;
+            Fingerprint2048::from_words(words)
+        });
+        let options = TanimotoKnnOptions::try_new(
+            NonZeroUsize::new(1).expect("nonzero k"),
+            MIN_COMPUTE_MEMORY_BYTES,
+        )
+        .expect("kNN options");
+        let expected = build_tanimoto_knn(&fingerprints, options).expect("CPU kNN reference");
+        let observed = runtime
+            .build_tanimoto_knn_profiled(&fingerprints, options)
+            .expect("Metal Tanimoto kNN");
+
+        assert_eq!(observed.neighbors_per_vertex, 1);
+        assert_eq!(
+            observed.source_indices,
+            expected
+                .source_indices()
+                .iter()
+                .map(|index| *index as u32)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(observed.similarities, vec![0.75, 0.75, 2.0 / 3.0, 0.5]);
+        assert!(observed.gpu_time_ms <= 2_000);
+
+        let options_2d =
+            UmapOptions::try_new(2, 20, 0.1, 1.0, 1.0, 5, 42).expect("2D UMAP options");
+        let graph = build_tanimoto_umap_graph(
+            fingerprints.len(),
+            NonZeroUsize::new(observed.neighbors_per_vertex).expect("nonzero k"),
+            &observed.source_indices,
+            &observed.similarities,
+            options_2d,
+        )
+        .expect("Tanimoto fuzzy graph");
+        let embedding_2d = runtime
+            .optimize_umap_profiled(&graph, options_2d, MIN_COMPUTE_MEMORY_BYTES)
+            .expect("Metal UMAP 2D");
+        assert_eq!(embedding_2d.positions.len(), fingerprints.len());
+        assert_eq!(embedding_2d.component_count, 2);
+        assert!(embedding_2d
+            .positions
+            .iter()
+            .all(|position| position[2] == 0.0));
+
+        for method in [
+            ChemicalSpaceMethod::Tsne,
+            ChemicalSpaceMethod::Pacmap,
+            ChemicalSpaceMethod::Localmap,
+            ChemicalSpaceMethod::Trimap,
+            ChemicalSpaceMethod::Dreams,
+            ChemicalSpaceMethod::Cne,
+            ChemicalSpaceMethod::Mmae,
+        ] {
+            let embedding = runtime
+                .optimize_embedding_profiled(&graph, options_2d, method, MIN_COMPUTE_MEMORY_BYTES)
+                .expect("Metal chemical-space objective");
+            assert_eq!(embedding.positions.len(), fingerprints.len());
+            assert!(embedding
+                .positions
+                .iter()
+                .flatten()
+                .all(|value| value.is_finite()));
+        }
+        let options_3d =
+            UmapOptions::try_new(3, 20, 0.1, 1.0, 1.0, 5, 42).expect("3D UMAP options");
+        let embedding_3d = runtime
+            .optimize_umap_profiled(&graph, options_3d, MIN_COMPUTE_MEMORY_BYTES)
+            .expect("Metal UMAP 3D");
+        assert_eq!(embedding_3d.component_count, 3);
+        assert!(embedding_3d
+            .positions
+            .iter()
+            .any(|position| position[2] != 0.0));
+
+        let wide_fingerprints = (0_u64..66)
+            .map(|index| {
+                let mut words = [0_u64; FINGERPRINT_WORDS];
+                words[0] = index + 1;
+                words[1] = index.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+                Fingerprint2048::from_words(words)
+            })
+            .collect::<Vec<_>>();
+        let wide_options = TanimotoKnnOptions::try_new(
+            NonZeroUsize::new(64).expect("nonzero k"),
+            MIN_COMPUTE_MEMORY_BYTES,
+        )
+        .expect("wide kNN options");
+        let wide_expected =
+            build_tanimoto_knn(&wide_fingerprints, wide_options).expect("wide CPU kNN reference");
+        let wide_observed = runtime
+            .build_tanimoto_knn_profiled(&wide_fingerprints, wide_options)
+            .expect("wide Metal Tanimoto kNN");
+        assert_eq!(wide_observed.neighbors_per_vertex, 64);
+        assert_eq!(
+            wide_observed.source_indices,
+            wide_expected
+                .source_indices()
+                .iter()
+                .map(|index| *index as u32)
+                .collect::<Vec<_>>()
+        );
+        for (observed, expected) in wide_observed
+            .similarities
+            .iter()
+            .zip(wide_expected.counts())
+        {
+            assert!((observed - expected.similarity() as f32).abs() <= 1.0e-6);
+        }
     }
 
     #[test]
