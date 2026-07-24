@@ -21,6 +21,7 @@ import { useAppXyzrenderSheetMessages } from "./use-app-xyzrender-sheet-messages
 import { openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { writeClipboardText } from "../lib/clipboard";
 import { postMessageToViewerSource, isKnownViewerMessageSource } from "../lib/viewer-bridge";
+import type { GridFilterModel } from "../components/types";
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ConformerGenerationMode, MolstarStylePreference } from "../lib/conformer-generation";
 import type { MolecularComputeOperation } from "../lib/standalone-compute";
@@ -95,6 +96,7 @@ type UseAppViewerBridgeControllerOptions = {
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   addDocuments: (documents: ViewerDocument[]) => void;
   calculateGridDescriptors: (documentId: string, options?: { rowIndexes?: number[] }) => void;
+  updateGridFilterModel: (documentId: string, model: GridFilterModel, source: MessageEventSource | null) => void;
   closeGridRuntime: (documentId: string | null | undefined) => void;
   documents: ViewerDocument[];
   forgetDirtyGridDocument: (documentId: string | null | undefined) => void;
@@ -134,6 +136,7 @@ type UseAppViewerBridgeControllerOptions = {
 
 export function useAppViewerBridgeController({
   activeDocument,
+  updateGridFilterModel,
   addBackgroundDocuments,
   addDocuments,
   calculateGridDescriptors,
@@ -187,6 +190,7 @@ export function useAppViewerBridgeController({
   });
   const { handleGridControlMessage } = useAppGridControlMessages({
     activeDocument,
+    updateGridFilterModel,
     calculateGridDescriptors,
     documents,
     openKetcherWithFragment,

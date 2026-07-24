@@ -405,6 +405,7 @@ function DockPanelContent({
     return (
       <StructureInfoPanel
         document={dockStructureDocument}
+        gridFilterModel={state.gridFilterModel}
         textDocument={activeTextDocument}
         dockDrops={dockDrops}
         conformerStatus={state.conformerStatus}

@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { GridDescriptorRunOptions } from "../lib/descriptors";
+import type { GridFilterModel } from "../components/types";
 import { isTauriRuntime } from "../lib/tauri";
 import type { GridNativeMenuState } from "../lib/native-menu";
 import { isReadOnlyViewerMessageSource } from "../lib/viewer-bridge";
@@ -26,6 +27,7 @@ type OpenKetcherWithFragment = (
 type UseAppGridControlMessagesOptions = {
   activeDocument: ViewerDocument | null;
   calculateGridDescriptors: (documentId: string, options?: GridDescriptorRunOptions) => void;
+  updateGridFilterModel: (documentId: string, model: GridFilterModel, source: MessageEventSource | null) => void;
   documents: ViewerDocument[];
   openKetcherWithFragment: OpenKetcherWithFragment;
   openKetcherWithStructures: (paths: string[]) => void;
@@ -40,6 +42,7 @@ type UseAppGridControlMessagesOptions = {
 export function useAppGridControlMessages({
   activeDocument,
   calculateGridDescriptors,
+  updateGridFilterModel,
   documents,
   openKetcherWithFragment,
   openKetcherWithStructures,
@@ -96,6 +99,12 @@ export function useAppGridControlMessages({
       return true;
     }
 
+    if (body?.type === "gridFilterModel") {
+      const model = body.model as GridFilterModel | undefined;
+      const documentId = typeof model?.documentId === "string" ? model.documentId : activeDocument?.id ?? "";
+      if (model && documentId) updateGridFilterModel(documentId, model, eventSource);
+      return true;
+    }
     if (body?.type === "calculateGridDescriptors") {
       const documentId = typeof body.documentId === "string" && body.documentId.trim()
         ? body.documentId.trim()
@@ -179,7 +188,7 @@ export function useAppGridControlMessages({
     }
 
     return false;
-  }, [activeDocument, calculateGridDescriptors, documents, openKetcherWithFragment, openKetcherWithStructures, pushErrorStatus, pushStatus, updateDirtyGridDocument, updateGridMenuState, writeClipboardText, writeGridPerfMetric]);
+  }, [activeDocument, calculateGridDescriptors, updateGridFilterModel, documents, openKetcherWithFragment, openKetcherWithStructures, pushErrorStatus, pushStatus, updateDirtyGridDocument, updateGridMenuState, writeClipboardText, writeGridPerfMetric]);
 
   return { handleGridControlMessage };
 }

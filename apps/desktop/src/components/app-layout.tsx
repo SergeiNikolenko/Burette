@@ -13,13 +13,23 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle, type PanelImperat
 import type { ShellActions, ShellViewState } from "./types";
 import type { FileDropPreview } from "../lib/drop-preview";
 import { isTauriRuntime } from "../lib/tauri";
+import { activeViewerIframeForDocument, postMessageToViewerSource } from "../lib/viewer-bridge";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
 
 // Smallest the viewer/content column may become before the right dock stops
-// squeezing it (the point where an overlay dock would take over).
+// squeezing it (the point where an overlay dock takes over).
 const MAIN_MIN_WIDTH = 420;
+
+// How much further the right dock may be dragged once the viewer has hit
+// MAIN_MIN_WIDTH, as a share of the workbench. Past that point the dock keeps
+// taking layout width while the viewer's content stays at its floor, so the
+// dock floats over the content instead of squeezing it further.
+const RIGHT_DOCK_OVERLAY_RATIO = 0.2;
+
+// Sanity cap on a non-overlapping dock, kept from the pre-overlay clamp.
+const RIGHT_DOCK_MAX_WIDTH = 960;
 
 // react-resizable-panels writes `overflow: auto` inline on every panel, which
 // beats the `overflow: hidden` in our panel classes — content with its own
@@ -27,12 +37,28 @@ const MAIN_MIN_WIDTH = 420;
 // caller's `style` is merged after the library's, so this restores clipping.
 const CLIPPED_PANEL_STYLE: CSSProperties = { overflow: "hidden" };
 
+// The one panel that must not clip: once the right dock overlaps it, its
+// content keeps MAIN_MIN_WIDTH and spills past the panel's right edge, where
+// the dock — painted after it — covers the overflow.
+const SPILLING_PANEL_STYLE: CSSProperties = { overflow: "visible" };
+
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
 }
 
-function clampRightDockWidth(width: number, viewportWidth: number, sidebarLayoutWidth: number) {
-  const maxWidth = Math.max(0, Math.min(960, viewportWidth - sidebarLayoutWidth - 280));
+function rightDockOverlap(workbenchWidth: number) {
+  return Math.round(Math.max(0, workbenchWidth) * RIGHT_DOCK_OVERLAY_RATIO);
+}
+
+// Widest the right dock may get: the room left beside a floored viewer, plus
+// the overlap it is allowed to float over that viewer.
+function rightDockMaxWidth(workbenchWidth: number) {
+  const overlap = rightDockOverlap(workbenchWidth);
+  return Math.max(0, Math.min(RIGHT_DOCK_MAX_WIDTH + overlap, workbenchWidth - MAIN_MIN_WIDTH + overlap));
+}
+
+function clampRightDockWidth(width: number, workbenchWidth: number) {
+  const maxWidth = rightDockMaxWidth(workbenchWidth);
   const minWidth = Math.min(180, maxWidth);
   return Math.max(minWidth, Math.min(maxWidth, Math.round(width)));
 }
@@ -137,6 +163,24 @@ function usePanelEdgeVariables(entries: { elementRef: React.RefObject<HTMLDivEle
   return shellRef;
 }
 
+// The window width as state. Every layout bound below is derived from it — how
+// wide the sidebar may get, how wide the right dock may get, how far the viewer
+// may be squeezed before the dock starts covering it — and read straight from
+// `window` those bounds only refreshed when something else happened to
+// re-render, so they kept the width from whichever render ran last. Resize
+// events already arrive at most once a frame; nothing here defers to rAF, which
+// would stall the bounds whenever the window is not painting.
+function useViewportWidth() {
+  const [width, setWidth] = useState(() => (typeof window === "undefined" ? 1200 : window.innerWidth));
+  useEffect(() => {
+    const sync = () => setWidth(window.innerWidth);
+    sync();
+    window.addEventListener("resize", sync);
+    return () => window.removeEventListener("resize", sync);
+  }, []);
+  return width;
+}
+
 type PixelGuardEntry = {
   panelRef: React.RefObject<PanelImperativeHandle | null>;
   openRef: React.RefObject<boolean>;
@@ -213,7 +257,7 @@ export function AppLayout({
   onDrop: (event: React.DragEvent<HTMLElement>) => void;
   onPaste: (event: React.ClipboardEvent<HTMLElement>) => void;
 }) {
-  const viewportWidth = typeof window === "undefined" ? 1200 : window.innerWidth;
+  const viewportWidth = useViewportWidth();
   const tauriRuntime = isTauriRuntime();
   const [windowFullscreen, setWindowFullscreen] = useState(false);
   useEffect(() => {
@@ -243,7 +287,12 @@ export function AppLayout({
   const sidebarVisible = settingsMode || (!hostedMcpWidget && state.sidebarOpen);
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = sidebarVisible ? sidebarWidth : 0;
-  const rightDockWidth = clampRightDockWidth(state.rightDockWidth, viewportWidth, sidebarLayoutWidth);
+  const workbenchWidth = viewportWidth - sidebarLayoutWidth;
+  // The viewer column may be squeezed this far below its floor; the dock covers
+  // the difference rather than the content shrinking into it.
+  const mainMinLayoutWidth = Math.max(0, MAIN_MIN_WIDTH - rightDockOverlap(workbenchWidth));
+  const rightDockWidth = clampRightDockWidth(state.rightDockWidth, workbenchWidth);
+  const activeGridId = state.activeDocument?.renderer === "grid2d" ? state.activeDocument.id : null;
   const layoutState = sidebarWidth === state.sidebarWidth && rightDockWidth === state.rightDockWidth ? state : { ...state, sidebarWidth, rightDockWidth };
   const compactLeadingChrome = !tauriRuntime || windowFullscreen;
   // How far the leading window controls reach: the tab strip starts past them
@@ -303,6 +352,33 @@ export function AppLayout({
     { elementRef: sidebarElementRef, property: "--sidebar-edge" },
     { elementRef: rightDockElementRef, property: "--right-dock-edge" },
   ]);
+  // A spilling grid keeps its full width and fires no resize when the dock
+  // floats over it, so how far the dock covers it is measured from the two rects
+  // and pushed to the grid runtime. The measurement is driven by a ResizeObserver
+  // on the dock element rather than React state: the panel library resizes the
+  // layout directly, and its widths do not always flow back through state in time.
+  useEffect(() => {
+    if (!activeGridId) return;
+    const post = () => {
+      const iframe = activeViewerIframeForDocument(activeGridId, "grid2d");
+      const win = iframe?.contentWindow ?? null;
+      if (!iframe || !win) return;
+      const dockEl = rightDockOpen ? rightDockElementRef.current : null;
+      const dockLeft = dockEl?.getBoundingClientRect().left;
+      const cover = dockLeft === undefined ? 0 : Math.max(0, Math.round(iframe.getBoundingClientRect().right - dockLeft));
+      postMessageToViewerSource(win, { source: "burrete-grid-host", body: { type: "gridViewportCover", cover } });
+    };
+    post();
+    const dockEl = rightDockElementRef.current;
+    const observer = dockEl ? new ResizeObserver(() => post()) : null;
+    if (dockEl && observer) observer.observe(dockEl);
+    // The iframe may not be mounted yet right after a load; retry once shortly.
+    const timer = window.setTimeout(post, 400);
+    return () => {
+      observer?.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, [activeGridId, viewportWidth, rightDockOpen]);
   const systemThemeMode = useSystemThemeMode();
   // The layout widths seed the chrome before the edge observer's first pass;
   // `--sidebar-edge` / `--right-dock-edge` take over from there.
@@ -496,10 +572,16 @@ export function AppLayout({
                   if (open !== rightDockOpenRef.current) actions.setDockOpen("right", open);
                 }}
               >
-                <ResizablePanel id="workbench-main" className="workbench-main-panel" minSize={`${MAIN_MIN_WIDTH}px`} style={CLIPPED_PANEL_STYLE}>
+                <ResizablePanel
+                  id="workbench-main"
+                  className="workbench-main-panel"
+                  minSize={`${mainMinLayoutWidth}px`}
+                  style={SPILLING_PANEL_STYLE}
+                >
                   <ResizablePanelGroup
                     orientation="vertical"
                     className="workbench-main-panels"
+                    style={{ minWidth: MAIN_MIN_WIDTH }}
                     elementRef={workbenchMainGroupRef}
                     data-panels-animating={bottomDockAnimating || undefined}
                     onLayoutChanged={(_layout, meta) => {
@@ -552,7 +634,7 @@ export function AppLayout({
                   collapsedSize="0px"
                   defaultSize={`${initialRightDockSize}px`}
                   minSize="260px"
-                  maxSize="70%"
+                  maxSize={`${rightDockMaxWidth(workbenchWidth)}px`}
                   groupResizeBehavior="preserve-pixel-size"
                 >
                   <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
