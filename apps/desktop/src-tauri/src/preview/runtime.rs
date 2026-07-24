@@ -1105,7 +1105,18 @@ pub(crate) fn open_docking_document<R: Runtime>(
     );
     let document_id = stable_id(PathBuf::from(&source_id).as_path());
     let scene_mode = normalized_docking_scene_mode(request.scene_mode.as_deref());
-    let title = if scene_mode.is_some() {
+    let is_trajectory = scene_mode.is_none()
+        && ligands
+            .iter()
+            .all(|ligand| is_coordinate_trajectory_format(&ligand.format));
+    let title = if is_trajectory {
+        format!(
+            "Trajectory: {} + {} segment{}",
+            receptor.label,
+            ligands.len(),
+            if ligands.len() == 1 { "" } else { "s" }
+        )
+    } else if scene_mode.is_some() {
         format!(
             "Mol* scene: {} + {} more structure{}",
             receptor.label,
@@ -1153,6 +1164,13 @@ pub(crate) fn open_docking_document<R: Runtime>(
         docking_request: Some(docking_request),
         open_claim_id: None,
     })
+}
+
+fn is_coordinate_trajectory_format(format: &str) -> bool {
+    matches!(
+        format,
+        "xtc" | "trr" | "dcd" | "nctraj" | "nc" | "ncdf" | "netcdf" | "ncrst" | "lammpstrj"
+    )
 }
 
 fn normalized_docking_scene_mode(value: Option<&str>) -> Option<&'static str> {
