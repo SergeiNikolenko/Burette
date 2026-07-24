@@ -1,6 +1,6 @@
 import type { DockingDocumentRequest, FepSetupRequest } from "../types";
 import { isMoleculeCollectionPath } from "./collection-documents";
-import { dockingCandidatesForDrop, isMolstarCombineSource, isMolstarCoordinateTrajectorySource, isProteinLikeDockingSource } from "./docking-documents";
+import { dockingCandidatesForDrop, isMolstarCombineSource, isMolstarCoordinateTrajectorySource, isProteinLikeDockingSource, isTrajectoryDocumentRequest } from "./docking-documents";
 import type { StructureDragPayload, StructureDragRecord } from "./structure-drag";
 
 export type DropTargetContext =
@@ -170,7 +170,10 @@ export function resolveDropActionChoices(
 
   const dockingChoices = dockingActionChoices(target.documentPath, payload, target.dockingRequest);
   if (dockingChoices.length > 0) {
-    return withOpenSeparatelyChoices(payload, tagChoicesWithSource(dockingChoices, source), source);
+    const choices = tagChoicesWithSource(dockingChoices, source);
+    return choices.length === 1 && choices[0].id === "open-trajectory"
+      ? choices
+      : withOpenSeparatelyChoices(payload, choices, source);
   }
 
   return [defaultWorkspaceDropChoice(payload, source)];
@@ -263,6 +266,18 @@ function dockingActionChoices(
     return dockingRecordActionChoices(targetPath, payload, existingDockingRequest);
   }
   const candidates = dockingCandidatesForDrop(targetPath, payload.paths, existingDockingRequest);
+  if (candidates.length === 1 && isTrajectoryDocumentRequest(candidates[0])) {
+    const request = candidates[0];
+    return [choice(
+      "open-trajectory",
+      request.ligandPaths.length > 1 ? "Open combined trajectory" : "Open trajectory",
+      "default",
+      {
+        kind: "open-docking",
+        request,
+      },
+    )];
+  }
   return candidates.map((request, index) => choice(
     candidates.length === 1 ? "open-docking" : `open-docking-${index}`,
     candidates.length === 1 ? "Open docking view" : `Dock with ${fileName(request.receptorPath)}`,

@@ -607,7 +607,7 @@ body.burette-mobile-host #buret-scene-tree {
   align-items: center;
   gap: 4px;
   width: min(var(--buret-selection-controls-width, 430px), var(--buret-selection-controls-max-width, calc(100vw - 24px)));
-  padding: 6px;
+  padding: 3px;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 12px;
   color: var(--buret-toolbar-color);
@@ -629,14 +629,14 @@ body.buret-selection-toolbar-open .buret-selection-bar {
   width: auto;
   min-width: 84px;
   max-width: 120px;
-  height: 26px;
+  height: 28px;
 }
 .buret-selection-button {
   display: flex;
   align-items: center;
   gap: 2px;
   flex: 0 0 auto;
-  height: 26px;
+  height: 28px;
   border: 0;
   border-radius: 8px;
   padding: 0 6px 0 8px;
@@ -677,8 +677,8 @@ body.buret-selection-toolbar-open .buret-selection-bar {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border: 0;
   border-radius: 8px;
   padding: 0;
@@ -1021,7 +1021,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   align-items: center;
   gap: 6px;
   max-width: 220px;
-  height: 30px;
+  height: 36px;
   padding: 0 11px 0 9px;
   border: 1px solid var(--buret-molstar-border);
   border-radius: 999px;
@@ -1466,7 +1466,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 }
 #buret-toolbar {
   position: absolute; top: calc(var(--buret-toolbar-safe-top) + var(--buret-viewport-top-inset, 0px)); right: var(--buret-control-island-right); left: auto; z-index: 2147483646;
-  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 6px 0;
+  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 3px 0;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 12px; color: var(--buret-toolbar-color);
   background: var(--buret-toolbar-background);
@@ -1529,10 +1529,10 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 }
 #buret-toolbar.collapsed .buret-grip,
 #buret-toolbar.buret-suppressed-by-molstar-panel .buret-grip {
-  width: 40px;
-  min-width: 40px;
-  height: 40px;
-  min-height: 40px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
   border-radius: 12px;
   cursor: pointer;
   background: var(--buret-toolbar-background);
@@ -1540,10 +1540,13 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   box-shadow:
     0 8px 22px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  /* Rolled up, the grip is the only control left on the canvas — the muting that
+     keeps it out of the way beside the open toolbar would wash the whole island. */
+  opacity: 1;
 }
 .buret-button {
   position: relative;
-  min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 7px;
+  min-width: 28px; height: 28px; border: 0; border-radius: 8px; padding: 0 7px;
   color: inherit; background: transparent; font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   display: grid; place-items: center;
 }
@@ -1647,7 +1650,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 .buret-button.hidden { display: none; }
 .buret-button svg { width: 17px; height: 17px; display: block; }
 .buret-pose-toggle { width: auto; min-width: 34px; }
-.buret-grip { width: 30px; padding: 0; cursor: grab; color: currentColor; opacity: 0.66; }
+.buret-grip { width: 28px; padding: 0; cursor: grab; color: currentColor; opacity: 0.66; }
 .buret-molstar-lasso.active {
   background: var(--buret-toolbar-hover);
   box-shadow: inset 0 0 0 1px var(--buret-toolbar-border);
@@ -1961,7 +1964,7 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
 .buret-xyzrender-preset-slot.visible { display: flex; }
 .buret-xyzrender-tune.hidden { display: none; }
 .buret-select {
-  height: 30px; max-width: 96px; border: 0; border-radius: 8px; padding: 0 22px 0 8px;
+  height: 28px; max-width: 96px; border: 0; border-radius: 8px; padding: 0 22px 0 8px;
   color: inherit; background: transparent; font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 .buret-select:hover, .buret-select:focus { background: var(--buret-toolbar-hover); outline: none; }
@@ -2502,13 +2505,17 @@ body.burette-mobile-host .buret-molstar-molecule-preview {
   flex-direction: column;
   align-items: stretch;
   gap: 0;
-  min-height: 34px;
-  padding: 5px;
-  border: 1px solid var(--buret-menu-border);
-  border-radius: 8px;
-  background: var(--buret-menu-background);
+  min-height: 36px;
+  padding: 3px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 12px;
+  background: var(--buret-toolbar-background);
   color: var(--buret-toolbar-color);
-  box-shadow: var(--buret-menu-shadow);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   font: 400 12px/1.1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   box-sizing: border-box;
   max-width: calc(100vw - 24px);
@@ -2526,32 +2533,24 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
   transition: none;
 }
 .buret-docking-poses button {
-  height: 26px;
+  height: 28px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 0 9px;
-  background: var(--buret-menu-section-background);
+  background: transparent;
   color: inherit;
   cursor: pointer;
   font: inherit;
 }
 .buret-docking-poses button:not(:disabled):hover {
-  background: var(--buret-menu-input-focus-background);
+  background: var(--buret-toolbar-hover);
 }
 .buret-docking-poses button.active {
-  background: var(--buret-molstar-accent);
-  color: #fff;
+  background: var(--buret-toolbar-hover);
+  color: var(--buret-molstar-accent);
 }
-body.buret-theme-light .buret-docking-poses,
 body.buret-theme-light .buret-docking-pose-files {
   background: #fff;
-}
-body.buret-theme-light .buret-docking-poses button:not(.buret-docking-pose-file):not(.active) {
-  background: var(--buret-control-fill);
-  box-shadow: none;
-}
-body.buret-theme-light .buret-docking-poses button:not(.buret-docking-pose-file):not(.active):not(:disabled):hover {
-  background: color-mix(in srgb, var(--buret-control-fill) 95%, var(--buret-toolbar-color));
 }
 body.buret-theme-light .buret-docking-poses .buret-docking-pose-file:not(:disabled):hover,
 body.buret-theme-light .buret-docking-poses .buret-docking-pose-file:focus-visible {
@@ -2591,6 +2590,17 @@ body.burette-mobile-host .buret-docking-poses button {
   align-items: center;
   gap: 6px;
 }
+/* With the playback row open the control is as wide as that row, whose slider takes
+   the slack. The row above has nothing that stretches, so it stopped short and left
+   Next hanging where Smooth's column begins. The frame counter takes the slack here,
+   which lines the two rows up on both edges. */
+.buret-docking-poses-animation-open .buret-docking-pose-main {
+  width: 100%;
+}
+.buret-docking-poses-animation-open .buret-docking-pose-main > span {
+  flex: 1 1 auto;
+  text-align: center;
+}
 .buret-docking-pose-current {
   display: inline-flex;
   align-items: center;
@@ -2605,8 +2615,40 @@ body.burette-mobile-host .buret-docking-poses button {
   flex: 0 1 auto;
   overflow: hidden;
   text-align: left !important;
+  white-space: nowrap;
+}
+/* Segment names outrun any sensible toolbar width, so the control stays narrow and
+   the name is cut. Hovering walks the name through that window to show its tail.
+   The moving part is an inner element driven by transform: it composites, where
+   animating text-indent or width would relay out the line on every frame. */
+.buret-docking-pose-current-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  vertical-align: bottom;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: transform 200ms ease-out;
+}
+.buret-docking-pose-current:hover .buret-docking-pose-current-text,
+.buret-docking-pose-current:focus-visible .buret-docking-pose-current-text {
+  max-width: none;
+  text-overflow: clip;
+  transform: translateX(calc(var(--buret-marquee-shift, 0px) * -1));
+  /* The fallback duration carries the first hover: :hover applies the moment the
+     pointer lands, while the measured distance arrives from the pointerenter
+     handler. The delay lets a pointer cross the control on its way elsewhere
+     without setting the name moving. */
+  /* Eases off the mark instead of snapping to full speed, then settles at the end —
+     a linear walk read as a jerk the moment the pointer landed. */
+  transition: transform var(--buret-marquee-duration, 1.6s) cubic-bezier(0.4, 0, 0.2, 1) 120ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-docking-pose-current-text,
+  .buret-docking-pose-current:hover .buret-docking-pose-current-text,
+  .buret-docking-pose-current:focus-visible .buret-docking-pose-current-text {
+    transition: none;
+  }
 }
 .buret-docking-pose-current-index {
   min-width: 0 !important;
@@ -2634,6 +2676,24 @@ body.burette-mobile-host .buret-docking-poses button {
 }
 .buret-docking-poses-structure-scene {
   width: min(420px, calc(100vw - 24px));
+}
+.buret-docking-poses-trajectory-segments {
+  width: min(392px, calc(100vw - 24px));
+}
+.buret-docking-poses-trajectory-segments .buret-docking-pose-main {
+  width: 100%;
+}
+.buret-docking-poses-trajectory-segments .buret-docking-pose-current {
+  min-width: 0;
+  flex: 1 1 0;
+  width: auto;
+}
+.buret-docking-poses-trajectory-segments .buret-docking-pose-animation {
+  width: 100%;
+}
+.buret-docking-poses-trajectory-segments .buret-docking-pose-slider {
+  flex: 1 1 auto;
+  width: auto;
 }
 .buret-docking-poses-structure-scene .buret-docking-pose-main {
   width: 100%;
@@ -2711,6 +2771,13 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-docking-poses-collapsed .buret-docking-pose-animation {
   display: none !important;
 }
+.buret-docking-poses.buret-docking-poses-collapsed {
+  width: max-content;
+}
+.buret-docking-poses.buret-docking-poses-collapsed .buret-docking-pose-main {
+  display: inline-flex;
+  width: auto;
+}
 .buret-docking-pose-files {
   position: absolute;
   top: calc(100% + 4px);
@@ -2758,7 +2825,7 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-docking-poses .buret-docking-pose-file {
   position: relative;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
   width: 100%;
@@ -2805,8 +2872,20 @@ body.burette-mobile-host .buret-docking-poses button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.buret-docking-pose-file-meta {
+  min-width: 0 !important;
+  color: color-mix(in srgb, var(--buret-toolbar-color) 52%, transparent);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: right !important;
+  white-space: nowrap;
+}
 .buret-trajectory-smooth-button { min-width: 58px; font-weight: 600; }
 .buret-docking-pose-animation {
+  /* Collapsing by height alone still let this row set the control's width: its slider
+     and Smooth button reserved their span, leaving empty space to the right of Next
+     while the row was shut. Taken out of the flow it claims neither. */
+  position: absolute;
   max-height: 0;
   margin-top: 0;
   overflow: hidden;
@@ -2823,6 +2902,7 @@ body.burette-mobile-host .buret-docking-poses button {
   width: max-content;
 }
 .buret-docking-poses.buret-docking-poses-animation-open .buret-docking-pose-animation {
+  position: static;
   max-height: 34px;
   margin-top: 6px;
   opacity: 1;
@@ -2841,12 +2921,14 @@ body.burette-mobile-host .buret-docking-poses button {
   appearance: textfield;
   -moz-appearance: textfield;
   -webkit-appearance: none;
+  box-sizing: border-box;
   height: 28px;
   width: 44px;
   min-width: 44px;
-  border: 0;
-  border-radius: 7px;
-  padding: 0 7px;
+  /* An editable field among push buttons: the border is what says it can be typed in. */
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 8px;
+  padding: 0 6px;
   color: inherit;
   background: var(--buret-menu-input-background);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
@@ -2877,9 +2959,15 @@ body.burette-mobile-host .buret-docking-poses button {
   text-align: center;
 }
 .buret-docking-pose-slider {
-  flex: 0 0 110px;
-  width: 110px;
-  min-width: 60px;
+  /* A basis of 110px made the slider the widest item in the playback row, so opening
+     the row stretched the whole control. Asking for nothing and taking what is left
+     lets the row fit the width the row above already set. */
+  flex: 1 1 0;
+  /* Zero rather than auto: the control's width comes from its widest row, and that
+     measurement uses a range input's natural width (~129px), which flex-basis does
+     not affect. At zero the row asks for nothing and flex-grow fills what is left. */
+  width: 0;
+  min-width: 44px;
   height: 12px;
   appearance: none;
   -webkit-appearance: none;
@@ -2936,6 +3024,43 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-docking-pose-slider:focus-visible::-moz-range-thumb,
 .buret-docking-pose-slider:active::-moz-range-thumb {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-molstar-accent) 45%, transparent);
+}
+.buret-docking-poses-compact {
+  width: 100%;
+}
+.buret-docking-poses-compact .buret-docking-pose-main {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr);
+  width: 100%;
+}
+.buret-docking-poses-compact .buret-docking-pose-main > span,
+.buret-docking-poses-compact .buret-docking-pose-current {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  width: 100%;
+}
+.buret-docking-poses-compact .buret-docking-pose-animation-button {
+  grid-column: 1;
+  grid-row: 2;
+}
+.buret-docking-poses-compact .buret-docking-pose-previous {
+  grid-column: 2;
+  grid-row: 2;
+}
+.buret-docking-poses-compact .buret-docking-pose-next {
+  grid-column: 3;
+  grid-row: 2;
+}
+.buret-docking-poses-compact .buret-trajectory-smooth-button {
+  grid-area: auto / 1 / auto / -1;
+}
+.buret-docking-poses-compact .buret-docking-pose-animation {
+  flex-wrap: wrap;
+  width: 100%;
+}
+.buret-docking-poses-compact .buret-docking-pose-slider {
+  flex: 1 1 100%;
+  width: 100%;
 }
 @media (max-width: 360px) {
   .buret-docking-poses {
@@ -3100,11 +3225,11 @@ body .msp-plugin .msp-selection-viewport-controls-actions {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   box-sizing: border-box;
   border: 1px solid var(--buret-molstar-border);
-  border-radius: 9px;
+  border-radius: 12px;
   padding: 0;
   color: var(--buret-molstar-text);
   background: var(--buret-molstar-panel-background);
@@ -3112,8 +3237,8 @@ body .msp-plugin .msp-selection-viewport-controls-actions {
   transition: background 150ms ease, color 150ms ease;
 }
 .buret-corner-toggle > svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 /* The layers fan apart on hover and stay apart while the panel is open — the same
    motion animate-ui gives its Lucide icons, expressed as a transform because this
@@ -3171,7 +3296,7 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
 
 .buret-scene-tree {
   position: absolute;
-  top: calc(var(--buret-toolbar-safe-top) + 38px + var(--buret-viewport-top-inset, 0px));
+  top: calc(var(--buret-toolbar-safe-top) + 48px + var(--buret-viewport-top-inset, 0px));
   left: var(--buret-corner-left, var(--buret-control-island-right));
   z-index: 36;
   display: flex;
@@ -3181,10 +3306,14 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   max-height: var(--buret-viewport-panel-max-height);
   overflow: hidden;
   border: 1px solid var(--buret-molstar-border);
-  border-radius: var(--buret-molstar-panel-radius);
+  border-radius: 12px;
   color: var(--buret-molstar-text);
   background: var(--buret-molstar-panel-background);
-  box-shadow: 0 18px 44px var(--buret-molstar-shadow);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   /* Rows are controls, not prose: dragging across one used to leave a stray text
      highlight over the label. */
@@ -3485,6 +3614,15 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   flex-direction: column;
   gap: 1px;
   padding: 6px 8px 8px;
+  /* Doubles as the menu's drag handle: it opens under the pointer, which is often on
+     top of the structure being edited, and these controls are worked in, not picked
+     from once. touch-action keeps a drag from scrolling the page underneath. */
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.buret-tree-menu.buret-viewport-panel-dragging .buret-tree-menu-header {
+  cursor: grabbing;
 }
 .buret-tree-menu-heading {
   overflow: hidden;
