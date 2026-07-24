@@ -17,7 +17,7 @@
     "@modelcontextprotocol/ext-apps": "1.7.4",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@vercel/analytics": "2.0.1",
-    "molstar": "5.7.0",
+    "molstar": "5.10.1",
     "next": "16.2.11",
     "react": "19.2.7",
     "react-dom": "19.2.7",
