@@ -82,6 +82,9 @@ export type StructureViewerAction =
       frameCount: number;
       interpolation: string;
       frameIndex?: number;
+      originalFrameIndex?: number;
+      originalSegmentStartFrame?: number;
+      sourcePath?: string;
       playing?: boolean;
     }
   | {

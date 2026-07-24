@@ -2646,6 +2646,13 @@ body.burette-mobile-host .buret-docking-poses button {
   flex: 1 1 0;
   width: auto;
 }
+.buret-docking-poses-trajectory-segments .buret-docking-pose-animation {
+  width: 100%;
+}
+.buret-docking-poses-trajectory-segments .buret-docking-pose-slider {
+  flex: 1 1 auto;
+  width: auto;
+}
 .buret-docking-poses-structure-scene .buret-docking-pose-main {
   width: 100%;
 }

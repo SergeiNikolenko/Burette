@@ -12765,8 +12765,11 @@
     const slider = root.querySelector('.buret-docking-pose-slider');
     const speed = root.querySelector('.buret-docking-pose-speed');
     const stop = root.querySelector('button[aria-label^="Stop "]');
+    const globalFrameIndex = Number(slider?.dataset.globalFrameIndex);
     return {
-      frameIndex: Math.max(0, Math.trunc(Number(slider?.value) || 1) - 1),
+      frameIndex: Number.isFinite(globalFrameIndex)
+        ? Math.max(0, Math.trunc(globalFrameIndex))
+        : Math.max(0, Math.trunc(Number(slider?.value) || 1) - 1),
       fps: String(speed?.value || ''),
       playing: Boolean(stop)
     };
@@ -12810,7 +12813,9 @@
 
   async function applyTrajectorySmoothingFromAction(action = {}) {
     const engine = window.BurreteTrajectorySmoothing;
-    const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
+    const originalPrepared = trajectorySmoothingState?.view === 'smoothed'
+      ? trajectorySmoothingState.originalPrepared
+      : activeMolstarPrepared;
     if (!engine?.smooth || !originalPrepared) {
       return agentActionFailure('apply_trajectory_smoothing', 'NOT_AVAILABLE', 'Trajectory smoothing is unavailable in this viewer runtime.');
     }
@@ -12859,7 +12864,9 @@
   }
 
   async function applyExternalTrajectorySmoothingFromAction(action = {}) {
-    const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
+    const originalPrepared = trajectorySmoothingState?.view === 'smoothed'
+      ? trajectorySmoothingState.originalPrepared
+      : activeMolstarPrepared;
     if (!originalPrepared || !action.sourceUrl) {
       return agentActionFailure('apply_external_trajectory_smoothing', 'NOT_AVAILABLE', 'The smoothed trajectory is unavailable.');
     }
@@ -12870,6 +12877,7 @@
       const frameCount = Math.max(2, Math.trunc(Number(action.frameCount) || 2));
       const smoothedPrepared = {
         ...originalPrepared,
+        kind: 'trajectory',
         data,
         format: 'xyz',
         label: `${originalPrepared.label || 'Trajectory'} - smoothed view`,
@@ -12877,12 +12885,21 @@
         pdbModelCount: 0,
         xyzFrameCount: frameCount,
         nativeTrajectoryControls: true,
-        controlLabel: 'Frame'
+        controlLabel: 'Frame',
+        dockingSceneMode: false,
+        sdfPoseOverlayAvailable: false,
+        xyzFrameOverlayAvailable: false,
+        pdbModelOverlayAvailable: false,
+        trajectorySegments: [],
+        smoothingSourcePath: String(action.sourcePath || '')
       };
       trajectorySmoothingState = {
         originalPrepared,
         smoothedPrepared,
         result: { frameCount, interpolation: action.interpolation || 'linear' },
+        originalFrameIndex: Math.max(0, Math.trunc(Number(action.originalFrameIndex) || 0)),
+        originalSegmentStartFrame: Math.max(0, Math.trunc(Number(action.originalSegmentStartFrame) || 0)),
+        smoothedFrameIndex: Math.max(0, Math.trunc(Number(action.frameIndex) || 0)),
         view: 'smoothed'
       };
       await replaceTrajectorySmoothingPrepared(smoothedPrepared, {
@@ -12903,8 +12920,24 @@
     }
     const view = action.view === 'original' ? 'original' : 'smoothed';
     try {
+      const currentPlayback = currentTrajectoryPlaybackSnapshot();
+      if (trajectorySmoothingState.view === 'original' && currentPlayback) {
+        trajectorySmoothingState.originalFrameIndex = currentPlayback.frameIndex;
+        trajectorySmoothingState.smoothedFrameIndex = Math.max(
+          0,
+          currentPlayback.frameIndex - trajectorySmoothingState.originalSegmentStartFrame
+        );
+      } else if (trajectorySmoothingState.view === 'smoothed' && currentPlayback) {
+        trajectorySmoothingState.smoothedFrameIndex = currentPlayback.frameIndex;
+      }
       const prepared = view === 'original' ? trajectorySmoothingState.originalPrepared : trajectorySmoothingState.smoothedPrepared;
-      await replaceTrajectorySmoothingPrepared(prepared);
+      const frameIndex = view === 'original'
+        ? trajectorySmoothingState.originalFrameIndex
+        : trajectorySmoothingState.smoothedFrameIndex;
+      await replaceTrajectorySmoothingPrepared(prepared, {
+        frameIndex,
+        playing: Boolean(currentPlayback?.playing)
+      });
       trajectorySmoothingState.view = view;
       updateTrajectorySmoothingButtons();
       postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view });
@@ -13410,6 +13443,7 @@
       next.disabled = activePose >= controlBounds.end;
       slider.max = String(controlBounds.count);
       slider.value = String(activePose - controlBounds.start + 1);
+      slider.dataset.globalFrameIndex = String(activePose);
       const activeSegmentIndex = activeTrajectorySegment(activePose).index;
       fileButtons.forEach((button, index) => {
         const active = hasTrajectorySegments ? index === activeSegmentIndex : index === activePose;
@@ -13424,11 +13458,15 @@
         postHostMessage({ type: 'structureStoryChanged', ...storyPayload });
       }
       refreshNativeTrajectoryStandalonePreview();
+      const activeSegment = activeTrajectorySegment(activePose);
       postHostMessage({
         type: 'trajectoryFrameChanged',
         documentId: activeConfig?.documentId || '',
-        frameIndex: activePose,
-        frameCount: prepared.poseCount,
+        frameIndex: activePose - controlBounds.start,
+        frameCount: controlBounds.count,
+        globalFrameIndex: activePose,
+        segmentStartFrame: controlBounds.start,
+        sourcePath: activeSegment.segment?.sourcePath || prepared.smoothingSourcePath || '',
         playing: loopActive
       });
     };
@@ -13467,11 +13505,16 @@
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
       if (active) setAnimationOptionsOpen(true);
+      const controlBounds = trajectoryControlBounds(activePose);
+      const activeSegment = activeTrajectorySegment(activePose);
       postHostMessage({
         type: 'trajectoryFrameChanged',
         documentId: activeConfig?.documentId || '',
-        frameIndex: activePose,
-        frameCount: prepared.poseCount,
+        frameIndex: activePose - controlBounds.start,
+        frameCount: controlBounds.count,
+        globalFrameIndex: activePose,
+        segmentStartFrame: controlBounds.start,
+        sourcePath: activeSegment.segment?.sourcePath || prepared.smoothingSourcePath || '',
         playing: loopActive
       });
     };
@@ -13877,9 +13920,8 @@
     } else {
       if (align) mainRow.append(align);
       if (all) mainRow.append(all);
-      animationRow.append(speed, loop);
+      animationRow.append(speed, loop, slider);
       if (smoothAvailable) animationRow.append(smooth);
-      animationRow.append(slider);
     }
     root.append(mainRow);
     if (toggleRow) root.append(toggleRow);
