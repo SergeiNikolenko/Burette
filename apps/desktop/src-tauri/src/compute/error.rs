@@ -1,6 +1,6 @@
 use std::fmt;
 
-use burrete_compute_protocol::ProtocolError;
+use burette_compute_protocol::ProtocolError;
 
 #[derive(Debug)]
 pub(crate) enum ComputeCoordinatorError {

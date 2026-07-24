@@ -11,6 +11,7 @@ import { join, resourceDir } from "@tauri-apps/api/path";
 import { DOCK_TAB_LABELS, createDockTab, dockFileEntries, dockTabCatalog, type DockArea, type DockFileEntry, type DockTabKind } from "../lib/dock";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../lib/structure-drag";
 import type { StructureDragPayload } from "../lib/structure-drag";
+import type { StructureStory } from "../lib/structure-story";
 import { isTauriRuntime } from "../lib/tauri";
 import type { ShellActions, ShellViewState } from "./types";
 import { showNativeContextMenu } from "./native-context-menu";
@@ -20,6 +21,7 @@ import { useSourceEditing } from "../lib/source-editing/context";
 import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
+import { ChemicalSpacePanel } from "./chemical-space-panel";
 import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
@@ -30,7 +32,6 @@ type DockPanelProps = {
   area: DockArea;
   state: ShellViewState;
   actions: ShellActions;
-  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   readOnly?: boolean;
 };
 
@@ -39,6 +40,7 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   files: Folder01Icon,
   spectrum: Atom01Icon,
   text: File02Icon,
+  story: File02Icon,
   inspector: Search01Icon,
   folding: Atom01Icon,
   "structure-basket": Atom01Icon,
@@ -47,17 +49,40 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   logs: File02Icon,
   diagnostics: Search01Icon,
   review: Search01Icon,
+  "chemical-space": Atom01Icon,
 };
 
-export function DockPanel({ area, state, actions, onResizeStart, readOnly = false }: DockPanelProps) {
+function resolveChemicalSpaceDocument(
+  state: ShellViewState,
+  dockDocument: ViewerDocument | null,
+) {
+  const supportsChemicalSpace = (document: ViewerDocument | null): document is ViewerDocument => (
+    document?.renderer === "grid2d"
+    || ["csv", "tsv", "dwar", "smi", "smiles"].includes(document?.extension.toLowerCase() ?? "")
+  );
+  if (supportsChemicalSpace(dockDocument)) return dockDocument;
+  if (supportsChemicalSpace(state.activeDocument)) return state.activeDocument;
+  if (supportsChemicalSpace(state.quickLookDocument)) return state.quickLookDocument;
+  const location = state.activeTab?.location;
+  if (location?.kind === "file") {
+    const locationDocument = state.documents.find((document) => (
+      supportsChemicalSpace(document)
+      && (document.id === location.documentId || document.path === location.path)
+    ));
+    if (locationDocument) return locationDocument;
+  }
+  return state.visibleDocuments.find(supportsChemicalSpace)
+    ?? state.documents.find(supportsChemicalSpace)
+    ?? null;
+}
+
+export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
   const [dropActive, setDropActive] = useState(false);
   const configuredTabs = area === "right" ? state.rightDockTabs : state.bottomDockTabs;
   const rawTabs = readOnly && area === "right"
     ? [configuredTabs.find((tab) => tab.kind === "inspector") ?? createDockTab("inspector")]
     : configuredTabs;
   const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
-  const size = area === "right" ? state.rightDockWidth : state.bottomDockHeight;
-  const dragging = area === "right" ? state.rightDockDragging : state.bottomDockDragging;
   const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
@@ -65,6 +90,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
   const activeStructureDocument = dockDocument ?? state.activeDocument;
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
+  const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
   const foldingState = useFoldingResult(area === "bottom" ? activeStructureDocument : null);
   const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
@@ -74,6 +100,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
     if (!catalog.includes(tab.kind)) return false;
     if (tab.kind === "spectrum") return spectrumDockAvailable;
     if (tab.kind === "folding") return foldingDockAvailable || foldingDockRequested;
+    if (tab.kind === "chemical-space") return chemicalSpaceDockAvailable;
     return true;
   });
   const activeTabKind = tabs.some((tab) => tab.kind === storedActiveTabKind) ? storedActiveTabKind : tabs[0]?.kind ?? "files";
@@ -111,6 +138,8 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
         if (kind === "xyzrender") return Boolean(xyzrenderDockDocument);
+        if (kind === "chemical-space") return chemicalSpaceDockAvailable;
+        if (kind === "story") return Boolean(state.structureStory);
         return true;
       }).map((kind) => ({
         kind: "item" as const,
@@ -154,9 +183,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
       data-area={area}
       data-active-tab={activeTab.kind}
       data-open={open ? "true" : "false"}
-      data-dragging={dragging || undefined}
       data-drop-active={dropActive || undefined}
-      style={area === "right" ? { width: open ? size : 0 } : { height: open ? size : 0 }}
       aria-hidden={!open || undefined}
       inert={!open}
       onDragEnter={readOnly ? undefined : handleDrag}
@@ -168,17 +195,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
       onDrop={readOnly ? undefined : handleDrop}
       aria-label={`${area} dock`}
     >
-      <div
-        className="dock-resizer"
-        role="separator"
-        aria-orientation={area === "right" ? "vertical" : "horizontal"}
-        aria-label={`Resize ${area} dock`}
-        onPointerDown={onResizeStart}
-      />
-      <div
-        className="dock-panel-inner"
-        style={area === "right" ? { width: size } : { height: size }}
-      >
+      <div className="dock-panel-inner">
         <div className="dock-header">
           <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
             {visibleTabs.map((tab) => {
@@ -225,16 +242,16 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
                 </div>
               );
             })}
-          </div>
-          {!readOnly ? (
-            <>
+            {!readOnly ? (
               <button type="button" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
                 +
               </button>
-              <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
-                <CloseIcon size={15} />
-              </button>
-            </>
+            ) : null}
+          </div>
+          {!readOnly ? (
+            <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
+              <CloseIcon size={15} />
+            </button>
           ) : null}
         </div>
         <DockPanelContent
@@ -269,6 +286,7 @@ function DockPanelContent({
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockStructureDocument = dockDocument ?? activeDocument;
+  const chemicalSpaceDocument = resolveChemicalSpaceDocument(state, dockDocument);
   const activeTextDocument = activeTextDocumentFromState(state);
   const fileEntries = activeTabKind === "files"
     ? dockFileEntries({
@@ -371,6 +389,15 @@ function DockPanelContent({
       </div>
     );
   }
+  if (activeTabKind === "story") {
+    return state.structureStory
+      ? <StructureStoryPanel story={state.structureStory} />
+      : (
+          <div className="dock-content dock-content-empty">
+            <div className="dock-empty dock-empty-large">Open Story from a structure sequence</div>
+          </div>
+        );
+  }
   if (activeTabKind === "inspector") {
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
     if (dockTextDocument) return <TextDocumentInfoPanel document={dockTextDocument} actions={actions} />;
@@ -392,6 +419,9 @@ function DockPanelContent({
         actions={actions}
       />
     );
+  }
+  if (activeTabKind === "chemical-space") {
+    return <ChemicalSpacePanel document={chemicalSpaceDocument} />;
   }
   if (activeTabKind === "folding") {
     return <FoldingAnalysisPanel document={dockStructureDocument} actions={actions} />;
@@ -440,7 +470,7 @@ function DockPanelContent({
   if (activeTabKind === "logs") {
     return (
       <div className="dock-content">
-        <Metric label="Status" value={state.status?.message ?? "No active notice"} />
+        <Metric label="Last status" value={state.status?.message ?? "No status yet"} />
         <button type="button" className="dock-action" onClick={() => void actions.openLogs()}>
           Open logs folder
         </button>
@@ -509,7 +539,7 @@ async function resolveXyzrenderGalleryResource(src: string) {
       try {
         return convertFileSrc(await join(await resourceDir(), "xyzrender-gallery", fileName));
       } catch (error) {
-        console.warn(`[Burrete] Could not resolve xyzrender gallery asset ${fileName}`, error);
+        console.warn(`[Burette] Could not resolve xyzrender gallery asset ${fileName}`, error);
         return null;
       }
     })();
@@ -1758,6 +1788,32 @@ function dockFilesDragPayload(
     };
   }
   return null;
+}
+
+function StructureStoryPanel({ story }: { story: StructureStory }) {
+  return (
+    <div className="dock-content structure-story-dock">
+      <section className="structure-brief-card structure-story-card">
+        <div className="structure-brief-card-header">
+          <div>
+            <small>Step {story.stepIndex + 1} of {story.stepCount}</small>
+            <h3>{story.stage}</h3>
+          </div>
+        </div>
+        <p className="structure-story-file" title={story.fileName}>{story.fileName}</p>
+        <p className="structure-story-summary">{story.summary}</p>
+      </section>
+      {story.comparison ? (
+        <>
+          <Metric label="Cα RMSD vs previous" value={`${story.comparison.rmsd.toFixed(2)} Å`} />
+          <Metric label="Largest shared chain" value={story.comparison.chain} />
+          <Metric label="Compared residues" value={String(story.comparison.residueCount)} />
+        </>
+      ) : (
+        <Metric label="Comparison" value={story.stepIndex === 0 ? "Reference state" : "Unavailable"} />
+      )}
+    </div>
+  );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

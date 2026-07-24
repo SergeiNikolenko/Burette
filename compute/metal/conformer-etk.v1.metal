@@ -2,7 +2,7 @@
 
 using namespace metal;
 
-constant float BURRETE_ETK_MIN_NORM_SQUARED = 1.0e-12f;
+constant float BURETTE_ETK_MIN_NORM_SQUARED = 1.0e-12f;
 
 struct ConformerEtkBatchV1 {
     uint atomCount;
@@ -30,9 +30,9 @@ inline float3 dihedral_derivative(
     const float3 b3 = p3 - p2;
     const float3 n1 = cross(b1, b2);
     const float3 n2 = cross(b2, b3);
-    const float n1Squared = max(dot(n1, n1), BURRETE_ETK_MIN_NORM_SQUARED);
-    const float n2Squared = max(dot(n2, n2), BURRETE_ETK_MIN_NORM_SQUARED);
-    const float b2Squared = max(dot(b2, b2), BURRETE_ETK_MIN_NORM_SQUARED);
+    const float n1Squared = max(dot(n1, n1), BURETTE_ETK_MIN_NORM_SQUARED);
+    const float n2Squared = max(dot(n2, n2), BURETTE_ETK_MIN_NORM_SQUARED);
+    const float b2Squared = max(dot(b2, b2), BURETTE_ETK_MIN_NORM_SQUARED);
     const float b2Length = sqrt(b2Squared);
     const float inverseNormals = rsqrt(n1Squared * n2Squared);
     const float cosine = clamp(dot(n1, n2) * inverseNormals, -1.0f, 1.0f);
@@ -51,7 +51,7 @@ inline float3 dihedral_derivative(
     return d3;
 }
 
-kernel void burrete_conformer_etk_v1(
+kernel void burette_conformer_etk_v1(
     device const float4* positions [[buffer(0)]],
     device const uint4* torsionAtoms [[buffer(1)]],
     device const float* torsionCoefficients [[buffer(2)]],
@@ -118,7 +118,7 @@ kernel void burrete_conformer_etk_v1(
             continue;
         }
         const float3 delta = myPositions[atoms.x].xyz - myPositions[atoms.y].xyz;
-        const float distance = sqrt(max(dot(delta, delta), BURRETE_ETK_MIN_NORM_SQUARED));
+        const float distance = sqrt(max(dot(delta, delta), BURETTE_ETK_MIN_NORM_SQUARED));
         const float2 bounds = distanceBounds[term];
         const float violation = distance < bounds.x
             ? distance - bounds.x

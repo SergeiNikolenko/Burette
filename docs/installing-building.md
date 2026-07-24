@@ -1,7 +1,7 @@
 # Installing And Building
 
-Most users should install Burrete with Homebrew, the Bun CLI, or
-[GitHub Releases](https://github.com/SergeiNikolenko/Burrete/releases/latest).
+Most users should install Burette with Homebrew, the Bun CLI, or
+[GitHub Releases](https://github.com/SergeiNikolenko/Burette/releases/latest).
 Use this page when you want to build the app from the repository.
 
 ## System Requirements
@@ -12,7 +12,7 @@ Use this page when you want to build the app from the repository.
 | Xcode | Required for Tauri/macOS packaging, Quick Look extensions, thumbnail extension, and the source-built iPhone target. |
 | Bun | Required for workspace scripts, JavaScript checks, vendoring, package metadata, and the CLI installer. |
 | Vite+ `vp` CLI | Preferred entrypoint for frontend install, dev, check, test, and build workflows. |
-| Rust toolchain | Required for the Tauri crate and `crates/burrete-core`. |
+| Rust toolchain | Required for the Tauri crate and `crates/burette-core`. |
 | `xyzrender` | Optional external renderer for XYZ, CUBE, quantum input, MAE, CMS, and other external-renderer formats. |
 | Python + `uv` | Optional runtime installation path for descriptor, RDKit, Datamol, and MSBuddy workflows. |
 | VESTA | Optional handoff target for selected crystal and volumetric formats. |
@@ -36,12 +36,12 @@ Clone the repository, install the required local tools, then run:
 The local installer places the app here:
 
 ```text
-~/Applications/Burrete.app
+~/Applications/Burette.app
 ```
 
 ## Development Workflow
 
-Burrete uses Vite+ through the `vp` CLI for frontend development and JavaScript
+Burette uses Vite+ through the `vp` CLI for frontend development and JavaScript
 validation:
 
 ```bash
@@ -52,7 +52,7 @@ vp test
 vp build
 ```
 
-Existing Burrete package scripts may still be run through `vp run <script>` for
+Existing Burette package scripts may still be run through `vp run <script>` for
 project-specific checks. Rust validation runs from `apps/desktop/src-tauri`,
 and native release scripts remain under `scripts/`.
 
@@ -112,9 +112,9 @@ should not include raw molecule contents or credentials.
 Primary Quick Look logs are under the extension container:
 
 ```text
-~/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete/Burrete.log
+~/Library/Containers/com.local.BuretteV10.Preview/Data/Library/Caches/Burette/Burette.log
 ```
 
 For dev-flavored installs, the container identifier is flavor-specific. Use the
-same `BURRETE_DEV_FLAVOR` value across build, install, smoke, and diagnostics
+same `BURETTE_DEV_FLAVOR` value across build, install, smoke, and diagnostics
 commands.

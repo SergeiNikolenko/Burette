@@ -161,7 +161,7 @@ export async function runConformerWorkflow(
     throw new Error("Native conformer generation requires a Grid document and selected molecules.");
   }
   const request = {
-    schemaVersion: "burrete.compute-job.v1",
+    schemaVersion: "burette.compute-job.v1",
     workflowTemplate: "conformer.v1",
     source: {
       documentId,
@@ -250,7 +250,7 @@ export async function prepareConformerJob(
 
 class ConformerExtractionWorkerClient {
   private readonly worker = new Worker(new URL("../workers/conformer-extract.worker.ts", import.meta.url), {
-    name: "burrete-conformer-extraction",
+    name: "burette-conformer-extraction",
     type: "module",
   });
   private nextRequestId = 0;

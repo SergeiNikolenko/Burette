@@ -1,4 +1,4 @@
-use burrete_compute_core::evaluate_etk_geometry;
+use burette_compute_core::evaluate_etk_geometry;
 
 use super::{
     conformer_executor::{local_etk_terms, ConformerDistanceComputation},

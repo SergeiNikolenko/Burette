@@ -10,7 +10,13 @@ const {
   parseSdfCollectionRecords,
   splitSdfCollectionRecords,
 } = await import("../apps/desktop/src/lib/collection-documents.ts");
-const { openBrowserDevTextDocument, parseBrowserDevDelimitedGridRecords } = await import("../apps/desktop/src/lib/browser-dev-documents.ts");
+const {
+  openBrowserDevTextDocument,
+  parseBrowserDevDelimitedGridRecords,
+  appendToBrowserDevCollection,
+  writeBrowserDevVirtualTextDocument,
+  readBrowserDevVirtualTextDocument,
+} = await import("../apps/desktop/src/lib/browser-dev-documents.ts");
 const { defaultPreferences } = await import("../apps/desktop/src/stores/settings-store.ts");
 
 assert.equal(collectionExtension("/tmp/a.MAE.GZ"), "gz");
@@ -42,7 +48,7 @@ assert.equal(parsedSdf[0].props.NOTE, "price $$$$ marker");
 const sampleMultiSdf = await readFile(new URL("../samples/collections/sdf/multi.sdf", import.meta.url), "utf8");
 const browserGridDocument = await openBrowserDevTextDocument("multi.sdf", "sdf", sampleMultiSdf, defaultPreferences);
 assert.equal(browserGridDocument.renderer, "grid2d");
-const browserRecordsMatch = /window\.BurreteGridRecords = (\[[^;]+\]);<\/script>/u.exec(browserGridDocument.runtimePath);
+const browserRecordsMatch = /window\.BuretteGridRecords = (\[[^;]+\]);<\/script>/u.exec(browserGridDocument.runtimePath);
 assert.ok(browserRecordsMatch, "browser-dev grid should embed parsed records");
 const browserRecords = JSON.parse(browserRecordsMatch[1]);
 assert.equal(browserRecords.length, 2);
@@ -119,5 +125,26 @@ assert.throws(
   ]),
   /not a supported molecule collection/,
 );
+
+// Browser-dev "Add to collection" appends a sketch into a stable receiver that reuses
+// its tab (same path) and accumulates records instead of spawning a fresh merged snapshot.
+writeBrowserDevVirtualTextDocument("/tmp/append-target.sdf", "seed-mol\n  CDK\n$$$$\n");
+const firstAppend = await appendToBrowserDevCollection(
+  "/tmp/append-target.sdf",
+  { extension: "sdf", text: "sketch-one\n  CDK\n$$$$\n" },
+  defaultPreferences,
+);
+assert.equal(firstAppend.renderer, "grid2d");
+assert.equal(firstAppend.title, "append-target.sdf");
+assert.equal(firstAppend.mergedCollection, undefined, "append receiver is a plain collection, not a merged snapshot");
+const secondAppend = await appendToBrowserDevCollection(
+  "/tmp/append-target.sdf",
+  { extension: "sdf", text: "sketch-two\n  CDK\n$$$$\n" },
+  defaultPreferences,
+);
+assert.equal(secondAppend.path, firstAppend.path, "receiver path stays stable so the tab is reused");
+const receiverText = readBrowserDevVirtualTextDocument(secondAppend.path);
+assert.ok(receiverText, "receiver keeps its accumulated collection text");
+assert.equal((receiverText.match(/\$\$\$\$/g) ?? []).length, 3, "records accumulate across appends");
 
 console.log("collection document tests passed");

@@ -49,20 +49,20 @@ function makeHandlers(overrides = {}) {
   return { calls, handlers };
 }
 
-assert.equal(viewerBridgeSource("burrete-viewer"), "burrete-viewer");
-assert.equal(viewerBridgeSource("burrete-grid"), "burrete-grid");
-assert.equal(viewerBridgeSource("burrete-agent-viewer"), "burrete-agent-viewer");
-assert.equal(viewerBridgeSource("burrete-host"), null);
+assert.equal(viewerBridgeSource("burette-viewer"), "burette-viewer");
+assert.equal(viewerBridgeSource("burette-grid"), "burette-grid");
+assert.equal(viewerBridgeSource("burette-agent-viewer"), "burette-agent-viewer");
+assert.equal(viewerBridgeSource("burette-host"), null);
 assert.equal(viewerBridgeSource(undefined), null);
 
 const eventSource = { postMessage() {} };
 const body = { type: "viewer-ready", documentId: "doc-1" };
 const message = parseViewerBridgeMessage({
-  data: { source: "burrete-viewer", body },
+  data: { source: "burette-viewer", body },
   source: eventSource,
 });
 assert.deepEqual(message, {
-  source: "burrete-viewer",
+  source: "burette-viewer",
   body,
   eventSource,
 });
@@ -75,7 +75,7 @@ assert.equal(viewerBridgeBodyDocumentId(null), undefined);
 {
   const pubChemBody = { type: "openPubChemSearch", searchType: "identity", smiles: "C#N", documentId: "doc-1" };
   const pubChemMessage = parseViewerBridgeMessage({
-    data: { source: "burrete-viewer", body: pubChemBody },
+    data: { source: "burette-viewer", body: pubChemBody },
     source: eventSource,
   });
   assert.ok(pubChemMessage);
@@ -112,7 +112,7 @@ assert.equal(viewerBridgeBodyDocumentId(null), undefined);
   assert.equal(handled, true);
   assert.deepEqual(calls, [
     ["known", eventSource, "doc-1"],
-    ["host", "burrete-viewer", body],
+    ["host", "burette-viewer", body],
   ]);
 }
 
@@ -142,7 +142,7 @@ assert.equal(viewerBridgeBodyDocumentId(null), undefined);
 {
   const gridBody = { type: "grid-save", documentId: "grid-doc" };
   const gridMessage = parseViewerBridgeMessage({
-    data: { source: "burrete-grid", body: gridBody },
+    data: { source: "burette-grid", body: gridBody },
     source: eventSource,
   });
   assert.ok(gridMessage);
@@ -182,7 +182,7 @@ assert.equal(viewerBridgeBodyDocumentId(null), undefined);
     editingText: false,
   };
   const gridMessage = parseViewerBridgeMessage({
-    data: { source: "burrete-grid", body: gridMenuState },
+    data: { source: "burette-grid", body: gridMenuState },
     source: eventSource,
   });
   assert.ok(gridMessage);

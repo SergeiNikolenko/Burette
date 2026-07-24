@@ -1,6 +1,6 @@
 ---
 name: molecular-report
-description: "Use when molecular notes, property tables, charts, workflow reports, or provenance should be rendered beside an active Burrete workspace."
+description: "Use when molecular notes, property tables, charts, workflow reports, or provenance should be rendered beside an active Burette workspace."
 ---
 
 # Molecular Report
@@ -12,7 +12,7 @@ charts, property summaries, or workflow reports.
 
 1. Build a bounded manifest and snapshot.
 2. Validate before rendering.
-3. Open visible report content through `burrete-agent render-panel` when the
+3. Open visible report content through `burette-agent render-panel` when the
    user needs it beside the workspace.
 4. If the report references a molecule, ligand, frame, or row, link it back to
    the active workspace when possible.
@@ -27,5 +27,5 @@ charts, property summaries, or workflow reports.
 
 ## Panel Rule
 
-Use Burrete side panels for work the user should see beside the molecular
+Use Burette side panels for work the user should see beside the molecular
 viewer. MCP inline report widgets are intentionally not exposed by this plugin.

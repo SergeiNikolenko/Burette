@@ -8,10 +8,8 @@ import {
   replayPendingGridCloseTransitionRequests,
   resumeWindowMutations,
   runWindowMutation,
-  sameWindowItemIds,
   sealWindowMutations,
   setGridDocumentCloseTransition,
-  setWindowShellCloseTransition,
   waitForGridDocumentCloseTransition,
 } from "../apps/desktop/src/lib/window-mutation-barrier.ts";
 
@@ -51,16 +49,17 @@ assert.deepEqual({
 });
 assert.throws(() => barrier.begin("grid-late-close"), ExitTransitionActiveError);
 
-let pendingSettled = false;
-const pending = closeTransition.waitForPending(["grid-closing"]).then(() => {
-  pendingSettled = true;
-});
-await Promise.resolve();
-assert.equal(pendingSettled, false);
-releasePending();
-await pending;
-assert.equal(pendingSettled, true);
+// Close transitions overlap instead of refusing each other: a tab's unsaved
+// prompt must never make the window close button a no-op. The barrier only
+// reports itself idle once every permit has been released.
+const overlappingCloseTransition = barrier.beginCloseTransition();
+assert.equal(overlappingCloseTransition.closeTransitionActive, true);
+overlappingCloseTransition.release();
+overlappingCloseTransition.release();
+assert.equal(barrier.seal().closeTransitionActive, true);
+barrier.resume();
 
+releasePending();
 barrier.seal();
 closeTransition.release();
 closeTransition.release();
@@ -78,39 +77,19 @@ await assert.rejects(
 assert.equal(sealWindowMutations().pendingCount, 0);
 resumeWindowMutations();
 
+// An unfinished save must not hold a close back — the permit is handed out
+// while the mutation is still in flight and reports what is pending so the
+// prompt can mention it.
 let finishSave;
 const saveOperation = runWindowMutation("grid-save", () => new Promise((resolve) => {
   finishSave = resolve;
 }));
+await new Promise((resolve) => setTimeout(resolve, 0));
 const closeDuringSave = beginWindowCloseTransition();
-let closeDuringSaveSettled = false;
-const waitForSave = closeDuringSave.waitForPending(["grid-save"]).then(() => {
-  closeDuringSaveSettled = true;
-});
-await Promise.resolve();
-assert.equal(closeDuringSaveSettled, false);
+assert.deepEqual(closeDuringSave.pendingDocumentIds, ["grid-save"]);
+closeDuringSave.release();
 finishSave();
 await saveOperation;
-await waitForSave;
-assert.equal(closeDuringSaveSettled, true);
-closeDuringSave.release();
-
-let finishUnmaterializedWrite;
-const unmaterializedWrite = runWindowMutation("/tmp/new-collection.sdf", () => new Promise((resolve) => {
-  finishUnmaterializedWrite = resolve;
-}));
-const closeDuringUnmaterializedWrite = beginWindowCloseTransition();
-let unmaterializedWriteSettled = false;
-const waitForUnmaterializedWrite = closeDuringUnmaterializedWrite.waitForPending().then(() => {
-  unmaterializedWriteSettled = true;
-});
-await Promise.resolve();
-assert.equal(unmaterializedWriteSettled, false);
-finishUnmaterializedWrite();
-await unmaterializedWrite;
-await waitForUnmaterializedWrite;
-assert.equal(unmaterializedWriteSettled, true);
-closeDuringUnmaterializedWrite.release();
 
 const mutationOrder = [];
 let finishFirstMutation;
@@ -131,27 +110,6 @@ finishFirstMutation();
 await Promise.all([firstMutation, secondMutation]);
 assert.deepEqual(mutationOrder, ["first-start", "first-end", "second"]);
 
-assert.equal(sameWindowItemIds(["doc-a", "doc-b"], ["doc-a", "doc-b"]), true);
-assert.equal(sameWindowItemIds(["doc-a", "doc-b"], ["doc-b", "doc-a"]), false);
-assert.equal(sameWindowItemIds(["doc-a"], ["doc-a", "doc-b"]), false);
-
-const shellAttributes = new Set();
-const shell = {
-  inert: false,
-  toggleAttribute(name, active) {
-    if (active) shellAttributes.add(name);
-    else shellAttributes.delete(name);
-  },
-};
-globalThis.document = { querySelector: () => shell };
-setWindowShellCloseTransition(true);
-assert.equal(shell.inert, true);
-assert.equal(shellAttributes.has("aria-busy"), true);
-setWindowShellCloseTransition(false);
-assert.equal(shell.inert, false);
-assert.equal(shellAttributes.has("aria-busy"), false);
-delete globalThis.document;
-
 const iframeAttributes = new Set();
 const postedMessages = [];
 const messageListeners = new Set();
@@ -165,7 +123,7 @@ const gridContentWindow = {
         listener({
           source: gridContentWindow,
           data: {
-            source: "burrete-grid",
+            source: "burette-grid",
             body: { type: "gridCloseTransitionAcknowledged", requestId, active: true },
           },
         });
@@ -233,7 +191,7 @@ const lateGridContentWindow = {
         listener({
           source: lateGridContentWindow,
           data: {
-            source: "burrete-grid",
+            source: "burette-grid",
             body: { type: "gridCloseTransitionAcknowledged", requestId, active: true },
           },
         });

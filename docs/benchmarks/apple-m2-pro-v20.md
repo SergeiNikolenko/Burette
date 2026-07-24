@@ -2,7 +2,7 @@
 
 Date: 2026-07-16
 
-Runtime: `burrete-native-metal-v20`
+Runtime: `burette-native-metal-v20`
 
 Metallib SHA-256:
 `341d858756cfd33438304e0d643d4ad647081df7678f88e407cc2734e87a2c84`
@@ -11,7 +11,7 @@ Device: Apple M2 Pro, unified memory, registry ID `0x1000003c0`.
 
 The reproducible ignored test is
 `runtime::tests::benchmarks_large_fingerprint_libraries_on_the_real_gpu` in
-`burrete-compute-metal`. It uses deterministic synthetic 2,048-bit
+`burette-compute-metal`. It uses deterministic synthetic 2,048-bit
 fingerprints so scale, exact-count parity, bounded CSR allocation, and device
 timing are isolated from RDKit extraction time.
 
@@ -47,9 +47,9 @@ chemical-library benchmark in addition to this deterministic scale fixture.
 ## Commands
 
 ```bash
-BURRETE_METAL_RUNTIME_ROOT=/tmp/burrete-metal-v20.final \
-BURRETE_METAL_GRAPH_BENCHMARK_COUNT=100000 \
-cargo test -p burrete-compute-metal \
+BURETTE_METAL_RUNTIME_ROOT=/tmp/burette-metal-v20.final \
+BURETTE_METAL_GRAPH_BENCHMARK_COUNT=100000 \
+cargo test -p burette-compute-metal \
   benchmarks_large_fingerprint_libraries_on_the_real_gpu \
   -- --ignored --nocapture
 ```

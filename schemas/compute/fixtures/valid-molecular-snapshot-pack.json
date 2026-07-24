@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "burrete.molecular-snapshot.v1",
+  "schemaVersion": "burette.molecular-snapshot.v1",
   "snapshotId": "018f48f2-2e20-7e53-976b-cf93e0897701",
   "snapshotSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
   "frozenSource": {
@@ -20,7 +20,7 @@
         "relativePath": "pack/molecular-records.v1.jsonl",
         "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         "byteLength": 256,
-        "mediaType": "application/vnd.burrete.molecular-records-v1+jsonl"
+        "mediaType": "application/vnd.burette.molecular-records-v1+jsonl"
       }
     ],
     "arrays": [

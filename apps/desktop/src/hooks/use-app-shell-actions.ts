@@ -1,10 +1,7 @@
 import { useMemo } from "react";
 import type { ShellActions } from "../components/types";
 import type { DockDropInput } from "../lib/dock";
-import {
-  setGridDocumentCloseTransition,
-  type WindowCloseMutationPermit,
-} from "../lib/window-mutation-barrier";
+import type { WindowCloseMutationPermit } from "../lib/window-mutation-barrier";
 import {
   useWorkspaceHistoryStore,
   workspaceHistoryNone,
@@ -1078,17 +1075,14 @@ export function createDocumentCloseShellActions({
   pushStatus: PushStatus;
   tabs: MoleculeTab[];
 }): Pick<ShellActions, "closeDocument" | "closeTab" | "closeOtherTabs" | "closeActiveDocument" | "clearAllDocuments"> {
-  const completeClose = async (
-    permit: WindowCloseMutationPermit,
-    documentIds: string[],
-    close: () => void,
-  ) => {
-    setGridDocumentCloseTransition(documentIds, true);
+  // Closing runs to completion straight away. It used to freeze the document's
+  // grid and wait for in-flight mutations first, but that wait had no timeout,
+  // so one unfinished operation left the "Finishing current change…" overlay up
+  // for good and blocked every later close.
+  const completeClose = (permit: WindowCloseMutationPermit, close: () => void) => {
     try {
-      await permit.waitForPending(documentIds);
       close();
     } finally {
-      setGridDocumentCloseTransition(documentIds, false);
       permit.release();
     }
   };
@@ -1108,7 +1102,7 @@ export function createDocumentCloseShellActions({
       if (!confirmCloseSourceDocuments([id])) return;
       const permit = await confirmDiscardDirtyGridDocument(id);
       if (!permit) return;
-      await completeClose(permit, [id], () => {
+      completeClose(permit, () => {
         closeGridRuntime(id);
         forgetDirtyGridDocument(id);
         closeDocument(id);
@@ -1121,7 +1115,7 @@ export function createDocumentCloseShellActions({
       if (!confirmCloseSourceDocuments(documentIds)) return;
       const permit = await confirmDiscardDirtyGridDocuments(documentIds);
       if (!permit) return;
-      await completeClose(permit, documentIds, () => {
+      completeClose(permit, () => {
         closeGridRuntime(targetDocumentId);
         forgetDirtyGridDocument(targetDocumentId);
         closeTab(id);
@@ -1138,7 +1132,7 @@ export function createDocumentCloseShellActions({
       if (!confirmCloseSourceDocuments(documentIds)) return;
       const permit = await confirmDiscardDirtyGridDocuments(documentIds);
       if (!permit) return;
-      await completeClose(permit, documentIds, () => {
+      completeClose(permit, () => {
         for (const documentId of documentIds) closeGridRuntime(documentId);
         forgetDirtyGridDocuments(documentIds);
         for (const tab of otherTabs) closeTab(tab.id);
@@ -1150,7 +1144,7 @@ export function createDocumentCloseShellActions({
       if (activeDocument && !confirmCloseSourceDocuments([activeDocument.id])) return;
       const permit = await confirmDiscardDirtyGridDocument(documentId);
       if (!permit) return;
-      await completeClose(permit, documentId ? [documentId] : [], () => {
+      completeClose(permit, () => {
         closeGridRuntime(documentId);
         forgetDirtyGridDocument(documentId);
         closeActiveDocument();
@@ -1162,7 +1156,7 @@ export function createDocumentCloseShellActions({
       if (!confirmCloseSourceDocuments(documentIds)) return;
       const permit = await confirmDiscardDirtyGridDocuments(documentIds);
       if (!permit) return;
-      await completeClose(permit, documentIds, () => {
+      completeClose(permit, () => {
         for (const document of documents) closeGridRuntime(document.id);
         clearDirtyGridDocuments();
         closeAllDocuments();

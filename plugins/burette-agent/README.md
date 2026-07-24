@@ -1,6 +1,6 @@
-# Burrete Plugin
+# Burette Plugin
 
-Burrete's Codex plugin turns the app into an agent-operable molecular workspace. The
+Burette's Codex plugin turns the app into an agent-operable molecular workspace. The
 plugin is intentionally layered:
 
 - skills decide the workflow and user-facing handoff;
@@ -52,14 +52,14 @@ plugin-by-plugin alignment checklist.
 The source of truth is the repository CLI:
 
 ```bash
-bun scripts/burrete-agent.mjs open --mode auto samples/mini.pdb
-bun scripts/burrete-agent.mjs open --mode browser-preview samples/mini.pdb
-bun scripts/burrete-agent.mjs open --mode browser-agent-shell samples/mini.pdb
-bun scripts/burrete-agent.mjs open --mode desktop-app samples/mini.pdb
-bun scripts/burrete-agent.mjs observe --session-dir /tmp/burrete-agent-session
-bun scripts/burrete-agent.mjs act --session-dir /tmp/burrete-agent-session '{"type":"reset_camera"}'
-bun scripts/burrete-agent.mjs act --session-dir /tmp/burrete-agent-session '{"type":"apply_scene","components":[{"selector":"protein","label":"Protein","highlight":true},{"selector":{"chain":"A","range":[45,58]},"label":"Active loop","select":true,"focus":true}]}'
-bun scripts/burrete-agent.mjs render-panel --session-dir /tmp/burrete-agent-session --kind markdown --file notes.md
+bun scripts/burette-agent.mjs open --mode auto samples/mini.pdb
+bun scripts/burette-agent.mjs open --mode browser-preview samples/mini.pdb
+bun scripts/burette-agent.mjs open --mode browser-agent-shell samples/mini.pdb
+bun scripts/burette-agent.mjs open --mode desktop-app samples/mini.pdb
+bun scripts/burette-agent.mjs observe --session-dir /tmp/burette-agent-session
+bun scripts/burette-agent.mjs act --session-dir /tmp/burette-agent-session '{"type":"reset_camera"}'
+bun scripts/burette-agent.mjs act --session-dir /tmp/burette-agent-session '{"type":"apply_scene","components":[{"selector":"protein","label":"Protein","highlight":true},{"selector":{"chain":"A","range":[45,58]},"label":"Active loop","select":true,"focus":true}]}'
+bun scripts/burette-agent.mjs render-panel --session-dir /tmp/burette-agent-session --kind markdown --file notes.md
 ```
 
 MCP tools wrap this CLI instead of reimplementing the app control layer.
@@ -67,24 +67,24 @@ MCP tools wrap this CLI instead of reimplementing the app control layer.
 External agents should use the short facade first:
 
 ```text
-burrete.get_context
-burrete.open_workspace
-burrete.open_ketcher
-burrete.observe_workspace
-burrete.control_viewer
-burrete.control_ketcher
-burrete.render_panel
+burette.get_context
+burette.open_workspace
+burette.open_ketcher
+burette.observe_workspace
+burette.control_viewer
+burette.control_ketcher
+burette.render_panel
 ```
 
-`burrete.open_workspace` returns a stable `workspaceSessionId` and a
+`burette.open_workspace` returns a stable `workspaceSessionId` and a
 `viewerSessionId` compatibility alias. Follow-up calls should pass that handle
 instead of carrying raw URLs, session directories, or transport modes. The
 advanced tools remain available for docking setup, fragment extraction,
 trajectory review, bounded report rendering, and lower-level scene operations.
 
-Ketcher is exposed as a separate active surface. Call `burrete.open_ketcher`
-with the workspace handle, then use `burrete.control_ketcher` with an action
-that includes `apiVersion: "burrete-ketcher-agent/v1"`, the observed
+Ketcher is exposed as a separate active surface. Call `burette.open_ketcher`
+with the workspace handle, then use `burette.control_ketcher` with an action
+that includes `apiVersion: "burette-ketcher-agent/v1"`, the observed
 `surfaceId`, and the current `expectedRevision`. Structure edits, exports,
 selection/highlight state, and dirty/persisted revisions are returned in the
 bounded `chemicalEditor` snapshot. A stale revision or a tab switch fails
@@ -104,7 +104,7 @@ bun run build:agent-shell
 
 That command writes the runtime files into the plugin bundle:
 
-- `plugins/burette-agent/scripts/burrete-agent.mjs`
+- `plugins/burette-agent/scripts/burette-agent.mjs`
 - `plugins/burette-agent/scripts/agent-shell-server.mjs`
 - `plugins/burette-agent/scripts/agent-preview.mjs`
 - `plugins/burette-agent/browser-shell-dist/`
@@ -118,16 +118,16 @@ missing in a source checkout, the CLI falls back to `vp dev`.
 
 ## Codex Plugin Shape
 
-Burrete is packaged as a Codex-local plugin with bundled skills and a local
+Burette is packaged as a Codex-local plugin with bundled skills and a local
 stdio MCP server. This is the appropriate shape for a macOS application that
 must open user-selected local files and control local Browser or desktop
 sessions. This local bundle is not itself the hosted public plugin and does not
 reference an entry in `.app.json`.
 
 The same repository also owns the hosted plugin-plus-skills target at
-[`apps/burrete-public-plugin`](../../apps/burrete-public-plugin). It exposes
-<https://burrete-plugin.vercel.app/mcp> and renders one authorized attachment or
-public PDB entry in the real sandboxed Burrete browser workspace. The hosted
+[`apps/burette-public-plugin`](../../apps/burette-public-plugin). It exposes
+<https://burette-plugin.vercel.app/mcp> and renders one authorized attachment or
+public PDB entry in the real sandboxed Burette browser workspace. The hosted
 target does not open arbitrary local files or control the desktop application.
 
 The required manifest lives at `.codex-plugin/plugin.json`, the MCP server is
@@ -149,8 +149,8 @@ bun run install:plugin
 The repository contains a prebuilt MCP server with its runtime dependencies
 bundled, so standard Codex marketplace installation does not require
 `node_modules`. The installer stages that bundle and its marketplace descriptor
-under `~/.codex/plugins/burrete-marketplace`, then runs
-`codex plugin marketplace add` and `codex plugin add burrete@burrete`. Codex owns
+under `~/.codex/plugins/burette-marketplace`, then runs
+`codex plugin marketplace add` and `codex plugin add burette@burette`. Codex owns
 the installed cache copy and the enabled state in `~/.codex/config.toml`. After
 the new plugin is active, the installer removes earlier Burette plugin ids and
 marketplace entries while preserving unrelated plugins. If no working Codex CLI
@@ -186,7 +186,7 @@ camera, canvas, transforms, primitives, volumes, and animations.
 There are two execution paths:
 
 - `apply_scene` is the fast active-viewer action DSL. It maps MVS-like
-  component operations to allowlisted Burrete commands such as
+  component operations to allowlisted Burette commands such as
   `colorSelection`, `selectResidues`, `focusSelection`, `focus_ligand`,
   `contacts`, and `reset_camera`.
 - `load_mvs` is for complete MolViewSpec scenes (`mvsj`/`mvsx`) that should be
@@ -237,7 +237,7 @@ Snapshots must stay bounded and reviewed before rendering:
 - No arbitrary JavaScript execution.
 - No arbitrary shell execution from the app bridge.
 - Every local HTTP surface is token gated.
-- Desktop mode requires explicit `--burrete-agent-session`.
+- Desktop mode requires explicit `--burette-agent-session`.
 - Tools operate on local files, explicit session directories, or bounded
   payloads.
 - Destructive overwrites and remote job submissions are outside this interface

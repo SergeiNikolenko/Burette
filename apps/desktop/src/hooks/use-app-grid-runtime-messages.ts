@@ -25,7 +25,7 @@ export function useAppGridRuntimeMessages({
     bodyPayload: Record<string, unknown>,
   ) => {
     postMessageToViewerSource(source, {
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body: {
         requestId,
         documentId,

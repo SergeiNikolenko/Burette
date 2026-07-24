@@ -18,15 +18,15 @@ export function useAppXyzrenderSheetMessages({
     source: MessageEventSource | null,
   ) => {
     if (
-      sourceName !== "burrete-viewer" &&
-      sourceName !== "burrete-grid"
+      sourceName !== "burette-viewer" &&
+      sourceName !== "burette-grid"
     ) {
       return false;
     }
     if (body?.type !== "renderXyzrenderSheetItem") return false;
     if (!body.requestId) return true;
 
-    const replySource = sourceName === "burrete-grid" ? "burrete-grid-host" : "burrete-host";
+    const replySource = sourceName === "burette-grid" ? "burette-grid-host" : "burette-host";
     const reply = (bodyPayload: Record<string, unknown>) => {
       postMessageToViewerSource(source, {
         source: replySource,

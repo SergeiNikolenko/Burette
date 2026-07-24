@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "libraryId": "burrete.compute.conformer-distance.v1",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "libraryId": "burette.compute.conformer-distance.v1",
   "source": "conformer-distance.v1.metal",
   "deploymentTarget": "14.0",
   "algorithm": "normalized upper-bound and rational lower-bound distance objective with analytic float4 gradient",
@@ -23,7 +23,7 @@
     ]
   },
   "entrypoint": {
-    "name": "burrete_conformer_distance_v1",
+    "name": "burette_conformer_distance_v1",
     "threads": "atomCount * conformerCount",
     "buffers": [
       { "name": "positions", "index": 0, "type": "float4", "access": "read", "elements": "atomCount * conformerCount" },

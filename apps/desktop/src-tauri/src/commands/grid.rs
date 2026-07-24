@@ -292,7 +292,7 @@ mod tests {
 
     fn temp_path(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "burrete-grid-command-{}-{name}",
+            "burette-grid-command-{}-{name}",
             uuid::Uuid::new_v4()
         ))
     }

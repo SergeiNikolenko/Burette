@@ -15,19 +15,19 @@ use std::{
 };
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use burrete_compute_core::{
+use burette_compute_core::{
     AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping, ChiralVolumeConstraint,
     DistanceConstraint, DistanceGeometryOptimizationOptions, EtkGeometryTerms, Fingerprint2048,
     GraphBuildOptions, MmffParameters, RigidTransform, Rm1Evaluation, SemiempiricalAtom,
     SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfResult, SemiempiricalScfStatus,
     SymmetricCsr, TetrahedralConstraint, FINGERPRINT_BYTES,
 };
-use burrete_compute_metal::{
+use burette_compute_metal::{
     AlignmentPairDescriptor, MetalAlignmentBatch, MetalAlignmentExecution,
     MetalAlignmentPairResult, MetalDistanceEmbedding, MetalDistanceOptimization,
     MetalMmffOptimization, MetalRuntimeError, MetalStereoValidation, MetalTanimotoRuntime,
 };
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     read_frame, write_frame, Backend, CapabilityEntry, CapabilityLimits, CapabilityMaturity,
     CapabilityReason, CapabilityReasonCode, CapabilityReportSchemaVersion, ComputeAvailability,
     ComputeCapabilityReport, ControlErrorCode, JobCapabilityToken, PlatformIdentity, Precision,
@@ -44,8 +44,8 @@ use super::service_etk;
 use super::service_mmff;
 use super::service_stereo;
 
-const SESSION_ENV: &str = "BURRETE_COMPUTE_SESSION_TOKEN";
-const EXCHANGE_FD_ENV: &str = "BURRETE_COMPUTE_EXCHANGE_FD";
+const SESSION_ENV: &str = "BURETTE_COMPUTE_SESSION_TOKEN";
+const EXCHANGE_FD_ENV: &str = "BURETTE_COMPUTE_EXCHANGE_FD";
 const CHILD_EXCHANGE_FD: RawFd = 3;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const KERNEL_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
@@ -315,7 +315,7 @@ impl ComputeServiceConnection {
             .ok_or("compute service stdout is unavailable")?;
         let (sender, receiver) = mpsc::sync_channel(8);
         thread::Builder::new()
-            .name("burrete-compute-service-reader".into())
+            .name("burette-compute-service-reader".into())
             .spawn(move || loop {
                 match read_frame::<_, WorkerControlResponse>(&mut stdout) {
                     Ok(response) => {
@@ -662,7 +662,7 @@ pub fn run_compute_service() -> Result<(), String> {
     loop {
         let request = match read_frame::<_, WorkerControlRequest>(&mut reader) {
             Ok(request) => request,
-            Err(burrete_compute_protocol::ProtocolError::Io(message))
+            Err(burette_compute_protocol::ProtocolError::Io(message))
                 if message.contains("failed to fill whole buffer") =>
             {
                 return Ok(())
@@ -770,7 +770,7 @@ fn respond_error(
 fn parse_runtime_root() -> Result<PathBuf, String> {
     let mut args = std::env::args_os().skip(1);
     if args.next().as_deref() != Some(std::ffi::OsStr::new("--runtime-root")) {
-        return Err("usage: burrete-compute-service --runtime-root <directory>".into());
+        return Err("usage: burette-compute-service --runtime-root <directory>".into());
     }
     let root = args
         .next()
@@ -1613,7 +1613,7 @@ fn graph_output_bound(count: usize, options: GraphBuildOptions) -> Result<u64, S
 }
 
 fn anonymous_exchange_file(exchange_id: Uuid) -> Result<File, String> {
-    let path = std::env::temp_dir().join(format!(".burrete-compute-exchange-{exchange_id}"));
+    let path = std::env::temp_dir().join(format!(".burette-compute-exchange-{exchange_id}"));
     let file = OpenOptions::new()
         .read(true)
         .write(true)
@@ -1946,7 +1946,7 @@ fn now_ms() -> u64 {
 mod tests {
     use std::num::NonZeroUsize;
 
-    use burrete_compute_core::{MmffBondTerm, MmffVariant};
+    use burette_compute_core::{MmffBondTerm, MmffVariant};
 
     use super::*;
 
@@ -2133,9 +2133,9 @@ mod tests {
     #[ignore = "requires a packaged helper and a real Apple Metal runtime"]
     fn packaged_service_executes_tanimoto_on_real_metal() {
         let helper =
-            PathBuf::from(std::env::var("BURRETE_TEST_COMPUTE_SERVICE").expect("helper path"));
+            PathBuf::from(std::env::var("BURETTE_TEST_COMPUTE_SERVICE").expect("helper path"));
         let runtime =
-            PathBuf::from(std::env::var("BURRETE_TEST_COMPUTE_RUNTIME").expect("runtime path"));
+            PathBuf::from(std::env::var("BURETTE_TEST_COMPUTE_RUNTIME").expect("runtime path"));
         let client = ComputeServiceClient::launch(&helper, &runtime).expect("launch service");
         client.terminate_for_restart_test();
         assert_eq!(
@@ -2251,12 +2251,12 @@ mod tests {
             .expect("execute MMFF optimization through helper");
         assert!(matches!(
             optimized.statuses[0],
-            burrete_compute_core::DistanceGeometryOptimizationStatus::ConvergedGradient
-                | burrete_compute_core::DistanceGeometryOptimizationStatus::ConvergedStep
+            burette_compute_core::DistanceGeometryOptimizationStatus::ConvergedGradient
+                | burette_compute_core::DistanceGeometryOptimizationStatus::ConvergedStep
         ));
         assert_eq!(
             optimized.optimizers,
-            [burrete_compute_core::MmffOptimizerKind::Bfgs]
+            [burette_compute_core::MmffOptimizerKind::Bfgs]
         );
         assert!(optimized.gpu_time_ms > 0);
 
@@ -2280,7 +2280,7 @@ mod tests {
         assert_eq!(embedded.energies.len(), 2);
         assert!(embedded.gpu_time_ms > 0);
 
-        let distances = [burrete_compute_core::EtkDistanceConstraint {
+        let distances = [burette_compute_core::EtkDistanceConstraint {
             atoms: [0, 1],
             lower: 1.0,
             upper: 1.2,

@@ -57,7 +57,7 @@ export function useAppViewerConformerMessages({
       : (requestPath ? documents.find((document) => document.path === requestPath) : undefined) ?? activeDocument;
     const notifyGeneratorState = (type: "generate3dConformerStarted" | "generate3dConformerFinished") => {
       postMessageToViewerSource(source, {
-        source: "burrete-host",
+        source: "burette-host",
         body: {
           type,
           documentId: targetDocument?.id ?? requestDocumentId ?? "",

@@ -1,6 +1,6 @@
 # Contributing
 
-Burrete accepts focused, reviewed changes. Agent-assisted work is welcome when
+Burette accepts focused, reviewed changes. Agent-assisted work is welcome when
 the contributor keeps the change scoped, verifies the result, and leaves enough
 evidence for a maintainer to review the diff quickly.
 

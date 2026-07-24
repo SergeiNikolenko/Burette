@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import initializeExtractor from "../../PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.js";
+import initializeExtractor from "../../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js";
 
 const variants = ["DG", "KDG", "ETDG", "ETDGv2", "ETKDG", "ETKDGv2", "ETKDGv3", "srETKDGv3"];
 const molecules = [
@@ -12,7 +12,7 @@ const molecules = [
 ];
 const fixtureUrl = new URL("./fixtures/conformer-rdkit-2025.03.4.json", import.meta.url);
 const wasmUrl = new URL(
-  "../../PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.wasm",
+  "../../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm",
   import.meta.url,
 );
 const module = await initializeExtractor({ wasmBinary: await readFile(wasmUrl) });

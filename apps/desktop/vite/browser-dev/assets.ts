@@ -42,7 +42,7 @@ export function registerBrowserDevAppIconRoute(
         sendJson(res, 404, { error: "Icon not found" });
         return;
       }
-      const cacheDir = join(tmpdir(), "burrete-app-icons");
+      const cacheDir = join(tmpdir(), "burette-app-icons");
       const outputPath = join(cacheDir, `${id}.png`);
       if (!existsSync(outputPath)) {
         await mkdir(cacheDir, { recursive: true });

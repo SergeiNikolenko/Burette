@@ -54,7 +54,7 @@ const [
   performanceSource,
   shellActionsSource,
   settingsPanelSource,
-  commandPaletteSource,
+  shellCommandsSource,
   quickLookCommand,
   updaterCommand,
   tray,
@@ -113,7 +113,7 @@ const [
   cargoWorkspaceSource,
   tauriCargoSource,
   coreCargoSource,
-  burreteCoreSource,
+  buretteCoreSource,
   docsReadmeSource,
   architectureDocsSource,
   rendererSupportDocsSource,
@@ -139,7 +139,7 @@ const [
   source('apps/desktop/src/lib/performance.ts'),
   source('apps/desktop/src/components/types.ts'),
   source('apps/desktop/src/components/settings-panel/index.tsx'),
-  source('apps/desktop/src/components/command-palette/index.tsx'),
+  source('apps/desktop/src/lib/shell-commands.ts'),
   source('apps/desktop/src-tauri/src/commands/quicklook.rs'),
   source('apps/desktop/src-tauri/src/commands/updater.rs'),
   source('apps/desktop/src-tauri/src/tray.rs'),
@@ -163,7 +163,7 @@ const [
   source('PreviewExtension/Web/viewer-shell.js'),
   source('PreviewExtension/Web/burette-agent.js'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
-  source('apps/desktop/src-tauri/permissions/burrete.toml'),
+  source('apps/desktop/src-tauri/permissions/burette.toml'),
   source('apps/desktop/src-tauri/permissions/compute.toml'),
   source('apps/desktop/src-tauri/capabilities/default.json'),
   source('apps/desktop/src-tauri/capabilities/compute.json'),
@@ -172,7 +172,7 @@ const [
   source('scripts/build-dev.sh'),
   source('scripts/ci.sh'),
   source('.github/workflows/ci.yml'),
-  source('.github/actions/setup-burrete-toolchain/action.yml'),
+  source('.github/actions/setup-burette-toolchain/action.yml'),
   source('.github/workflows/release.yml'),
   source('scripts/check-release-version.mjs'),
   source('scripts/release.sh'),
@@ -185,9 +185,9 @@ const [
   source('apps/desktop/package.json'),
   source('vendor-assets.lock.json'),
   source('config/web-runtime-profiles.json'),
-  source('Burrete.xcodeproj/project.pbxproj'),
-  source('Burrete.xcodeproj/xcshareddata/xcschemes/BurreteThumbnail.xcscheme'),
-  source('PreviewExtension/BurretePreview.entitlements'),
+  source('Burette.xcodeproj/project.pbxproj'),
+  source('Burette.xcodeproj/xcshareddata/xcschemes/BuretteThumbnail.xcscheme'),
+  source('PreviewExtension/BurettePreview.entitlements'),
   source('apps/desktop/src-tauri/Info.plist'),
   source('apps/desktop/src-tauri/AppMetadata.plist'),
   source('scripts/install-local.sh'),
@@ -197,8 +197,8 @@ const [
   source('PreviewExtension/ThumbnailProvider.swift'),
   source('Cargo.toml'),
   source('apps/desktop/src-tauri/Cargo.toml'),
-  source('crates/burrete-core/Cargo.toml'),
-  source('crates/burrete-core/src/lib.rs'),
+  source('crates/burette-core/Cargo.toml'),
+  source('crates/burette-core/src/lib.rs'),
   source('docs/README.md'),
   source('docs/architecture.md'),
   source('docs/renderer-support.md'),
@@ -304,22 +304,22 @@ assert.match(rendererSupportDocsSource, /\[Performance architecture\]\(performan
 assert.doesNotMatch(rendererSupportDocsSource, /xyz-fast|fast-xyz/);
 assert.match(performanceDocsSource, /config\/web-runtime-profiles\.json/);
 assert.match(performanceDocsSource, /preview-data\.bin/);
-assert.match(performanceDocsSource, /window\.BurreteDataURL/);
+assert.match(performanceDocsSource, /window\.BuretteDataURL/);
 assert.match(performanceDocsSource, /RDKit_minimal\.wasm/);
 assert.match(performanceDocsSource, /molecules_fts/);
-assert.match(performanceDocsSource, /BURRETE_PERF_RUN_GRID_FTS=1 \.\/scripts\/perf-smoke\.sh/);
+assert.match(performanceDocsSource, /BURETTE_PERF_RUN_GRID_FTS=1 \.\/scripts\/perf-smoke\.sh/);
 assert.match(performanceDocsSource, /Do Not Regress/);
-assert.match(burreteCoreSource, /pub const PREVIEW_CONTRACT_SCHEMA_VERSION: u32 = 1/);
-assert.match(burreteCoreSource, /pub const PREVIEW_TRACE_FILE: &str = "preview-trace\.jsonl"/);
-assert.match(burreteCoreSource, /pub enum PreviewLifecycleState/);
-assert.match(burreteCoreSource, /pub struct PreviewLifecycle/);
-assert.match(burreteCoreSource, /pub fn transition\(&mut self, next: PreviewLifecycleState\)/);
-assert.match(burreteCoreSource, /can_transition_from/);
-assert.match(burreteCoreSource, /preview_trace_payload/);
-assert.match(burreteCoreSource, /preview_runtime_manifest/);
-assert.match(burreteCoreSource, /preview_error_code_for_message/);
+assert.match(buretteCoreSource, /pub const PREVIEW_CONTRACT_SCHEMA_VERSION: u32 = 1/);
+assert.match(buretteCoreSource, /pub const PREVIEW_TRACE_FILE: &str = "preview-trace\.jsonl"/);
+assert.match(buretteCoreSource, /pub enum PreviewLifecycleState/);
+assert.match(buretteCoreSource, /pub struct PreviewLifecycle/);
+assert.match(buretteCoreSource, /pub fn transition\(&mut self, next: PreviewLifecycleState\)/);
+assert.match(buretteCoreSource, /can_transition_from/);
+assert.match(buretteCoreSource, /preview_trace_payload/);
+assert.match(buretteCoreSource, /preview_runtime_manifest/);
+assert.match(buretteCoreSource, /preview_error_code_for_message/);
 assert.match(nightlySmokeWorkflow, /on:\s*\n\s*schedule:/);
-assert.match(nightlySmokeWorkflow, /BURRETE_DEV_FLAVOR:\s*ci/);
+assert.match(nightlySmokeWorkflow, /BURETTE_DEV_FLAVOR:\s*ci/);
 assert.match(nightlySmokeWorkflow, /scripts\/quicklook-preview-smoke\.sh/);
 for (const fixture of [
   'samples/mini.pdb',
@@ -393,7 +393,7 @@ assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_docu
 assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_agent_session/);
 assert.match(agentIntegrationCommand, /#\[tauri::command\]\s+pub\(crate\) fn agent_integration_status/);
 assert.match(agentIntegrationCommand, /PLUGIN_RELATIVE_PATH: &str = "plugins\/burette-agent"/);
-assert.match(agentIntegrationCommand, /BURRETE_AGENT_PLUGIN_DIR/);
+assert.match(agentIntegrationCommand, /BURETTE_AGENT_PLUGIN_DIR/);
 assert.match(agentIntegrationCommand, /schema: "burette_agent_integration\.v1"/);
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecule-table\/widget\.html/);
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/trajectory-review\/widget\.html/);
@@ -401,13 +401,13 @@ assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecular-repo
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecular-workspace\/widget\.html/);
 assert.match(agentIntegrationCommand, /find_codex_plugin_manifest/);
 assert.match(agentIntegrationCommand, /mcp\/lib\/server-bundle\.mjs/);
-assert.match(agentIntegrationCommand, /"scripts\/burrete-agent\.mjs"/);
+assert.match(agentIntegrationCommand, /"scripts\/burette-agent\.mjs"/);
 assert.match(agentIntegrationCommand, /"browser-shell-dist\/index\.html"/);
 assert.doesNotMatch(agentIntegrationCommand, /Command::new|spawn|remove_file|write\(/);
 assert.match(startupSource, /pub\(crate\) enum LaunchMode/);
-assert.match(startupSource, /BURRETE_LAUNCH_MODE/);
-assert.match(startupSource, /--burrete-launch-mode=register/);
-assert.match(startupSource, /--burrete-agent-session/);
+assert.match(startupSource, /BURETTE_LAUNCH_MODE/);
+assert.match(startupSource, /--burette-launch-mode=register/);
+assert.match(startupSource, /--burette-agent-session/);
 assert.match(startupSource, /pub\(crate\) fn agent_session_from_argv/);
 assert.match(startupSource, /pub\(crate\) fn emit_agent_session/);
 assert.match(startupSource, /paths_by_window: Mutex<HashMap<String, Vec<String>>>/);
@@ -418,7 +418,7 @@ assert.match(lib, /startup::emit_agent_session\(app, session_dir\)/);
 assert.match(agentSessionHook, /invoke<string \| null>\("startup_agent_session"\)/);
 assert.match(agentSessionHook, /listen<string>\("agent-session"/);
 assert.match(agentSessionHook, /trackTauriListener\(listen<string>\("agent-session"/);
-assert.match(agentSessionHook, /VITE_BURRETE_AGENT_SHELL/);
+assert.match(agentSessionHook, /VITE_BURETTE_AGENT_SHELL/);
 assert.match(agentSessionHook, /BROWSER_AGENT_SESSION_DIR/);
 assert.match(agentSessionHook, /activateSession\(BROWSER_AGENT_SESSION_DIR\)/);
 assert.doesNotMatch(agentSessionHook, /let unlisten/);
@@ -440,15 +440,15 @@ assert.match(agentSessionHook, /type === "render_panel"/);
 assert.match(agentSessionHook, /render_panel kind must be markdown, table, or chart/);
 assert.match(agentSessionHook, /openTextDocuments\(\[file\], \{ background: true \}\)/);
 assert.match(agentSessionHook, /setDockDocument\(area, document\.id\)/);
-assert.match(agentSessionHook, /source: "burrete-agent-host"/);
+assert.match(agentSessionHook, /source: "burette-agent-host"/);
 assert.match(agentSessionHook, /querySelectorAll<HTMLIFrameElement>\("iframe\.viewer-iframe\[data-document-id\]"\)/);
 assert.match(agentSessionHook, /item\.dataset\.documentId === activeDocument\.id/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_viewer_runtime_file_base64/);
 assert.match(shellCommand, /Runtime file path is outside the preview runtime directory/);
-assert.match(previewRuntimeViewer, /burrete-native-host/);
-assert.match(previewRuntimeViewer, /window\.BurreteReceiveNativeData\(body\.payload \|\| \{\}\)/);
-assert.match(previewRuntimeViewer, /window\.BurreteReceiveNativeRuntimeFile\(body\.payload \|\| \{\}\)/);
-assert.match(startupSource, /arg == "--burrete-launch-mode"/);
+assert.match(previewRuntimeViewer, /burette-native-host/);
+assert.match(previewRuntimeViewer, /window\.BuretteReceiveNativeData\(body\.payload \|\| \{\}\)/);
+assert.match(previewRuntimeViewer, /window\.BuretteReceiveNativeRuntimeFile\(body\.payload \|\| \{\}\)/);
+assert.match(startupSource, /arg == "--burette-launch-mode"/);
 assert.match(startupSource, /file_args_from_argv/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn pick_open_targets/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn classify_open_paths/);
@@ -536,7 +536,7 @@ assert.match(documentsCommand, /fn collect_supported_files/);
 assert.match(documentsCommand, /fn looks_like_supported_structure_file/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
 assert.match(runtimeDoctorCommand, /#\[tauri::command\]\s+pub\(crate\) fn external_runtime_doctor/);
-assert.match(runtimeDoctorCommand, /burrete\.external-runtime-doctor\.v1/);
+assert.match(runtimeDoctorCommand, /burette\.external-runtime-doctor\.v1/);
 for (const checkId of ['xyzrender', 'descriptors-python', 'datamol-conformer-python', 'rdkit-conformer-python', 'crest', 'prism', 'xtb', 'schrodinger']) {
   assert.match(runtimeDoctorCommand, new RegExp(`"${checkId}"`));
 }
@@ -550,13 +550,13 @@ assert.doesNotMatch(runtimeDoctorCommand, /descriptor_runtime_install|install_xt
 assert.match(previewXyzrender, /pub\(crate\) fn xyzrender_runtime_status/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn export_diagnostics_bundle/);
 assert.match(shellCommand, /timestamp level subsystem documentId event elapsedMs message/);
-assert.match(shellCommand, /BurreteApp\.log/);
+assert.match(shellCommand, /BuretteApp\.log/);
 assert.match(shellCommand, /PREVIEW_TRACE_FILE/);
 assert.match(shellCommand, /previewTraceCopied/);
 assert.match(shellCommand, /quicklook-logs/);
 assert.match(shellCommand, /rawMoleculeContentIncluded/);
 assert.match(previewIndex, /pub\(crate\) mod trace;/);
-assert.match(previewTrace, /pub\(crate\) use burrete_core::PREVIEW_TRACE_FILE/);
+assert.match(previewTrace, /pub\(crate\) use burette_core::PREVIEW_TRACE_FILE/);
 assert.match(previewTrace, /PreviewTraceEvent/);
 assert.match(previewTrace, /preview_error_code_for_message/);
 assert.match(previewTrace, /preview_trace_payload/);
@@ -582,7 +582,7 @@ assert.match(performanceSource, /export function collectPerformanceMarks/);
 assert.match(performanceSource, /export async function measureAsync/);
 assert.match(shellActionsSource, /exportDiagnostics: \(\) => void \| Promise<void>;/);
 assert.match(settingsPanelSource, /actionRow\("Diagnostics"/);
-assert.match(commandPaletteSource, /id: "export-diagnostics"/);
+assert.match(shellCommandsSource, /id: "export-diagnostics"/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_logs_folder/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_external_url/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_external_preview_svg/);
@@ -611,69 +611,69 @@ assert.match(quickLookCommand, /\.output\(\)/);
 assert.match(updaterCommand, /LSSetDefaultRoleHandlerForContentType/);
 assert.doesNotMatch(quickLookCommand, /\.spawn\(\)/);
 assert.match(buildScript, /does not accept positional arguments/);
-assert.match(buildScript, /BURRETE_BUILD_MODE/);
-assert.match(buildScript, /BURRETE_DEV_FLAVOR/);
+assert.match(buildScript, /BURETTE_BUILD_MODE/);
+assert.match(buildScript, /BURETTE_DEV_FLAVOR/);
 assert.match(buildScript, /dev-namespace\.mjs" patch-tree "\$SAFE_ROOT"/);
 assert.match(buildScript, /Developer ID Application:/);
 assert.match(buildScript, /hardenedRuntime/);
-assert.match(buildScript, /cargo build --release --bin burrete-core-bridge/);
-assert.match(buildScript, /cargo build --release --bin burrete-compute-service/);
-assert.match(buildScript, /Contents\/Helpers\/burrete-compute-service/);
-assert.match(buildScript, /rm -f "\$app\/Contents\/MacOS\/burrete-compute-service"/);
-assert.match(tauriCargoSource, /default-run\s*=\s*"burrete"/);
+assert.match(buildScript, /cargo build --release --bin burette-core-bridge/);
+assert.match(buildScript, /cargo build --release --bin burette-compute-service/);
+assert.match(buildScript, /Contents\/Helpers\/burette-compute-service/);
+assert.match(buildScript, /rm -f "\$app\/Contents\/MacOS\/burette-compute-service"/);
+assert.match(tauriCargoSource, /default-run\s*=\s*"burette"/);
 assert.match(buildScript, /check-compute-service\.mjs/);
 assert.match(buildScript, /TAURI_TARGET_DIR="\$\{CARGO_TARGET_DIR:-target\}"/);
-assert.match(buildScript, /"\$TAURI_TARGET_DIR\/release\/bundle\/macos\/Burrete\.app"/);
-assert.match(buildScript, /CORE_BRIDGE="\$TAURI_TARGET_DIR\/release\/burrete-core-bridge"/);
+assert.match(buildScript, /"\$TAURI_TARGET_DIR\/release\/bundle\/macos\/Burette\.app"/);
+assert.match(buildScript, /CORE_BRIDGE="\$TAURI_TARGET_DIR\/release\/burette-core-bridge"/);
 assert.match(buildScript, /case "\$TAURI_BUILT_APP" in/);
 assert.match(buildScript, /ditto --norsrc --noextattr "\$BUILT_APP_SOURCE" "\$VERIFY_APP"/);
-assert.match(buildScript, /-scheme BurreteThumbnail/);
-assert.match(buildScript, /BurreteThumbnail\.appex/);
-assert.match(buildScript, /Contents\/Resources\/burrete-core-bridge/);
-assert.match(buildScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" "\$TAURI_BUILT_APP\/Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/burrete-core-bridge"/);
-assert.match(buildScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$ROOT\/PreviewExtension\/BurretePreview\.entitlements" "\$TAURI_BUILT_APP\/Contents\/PlugIns\/BurreteThumbnail\.appex"/);
+assert.match(buildScript, /-scheme BuretteThumbnail/);
+assert.match(buildScript, /BuretteThumbnail\.appex/);
+assert.match(buildScript, /Contents\/Resources\/burette-core-bridge/);
+assert.match(buildScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" "\$TAURI_BUILT_APP\/Contents\/PlugIns\/BurettePreview\.appex\/Contents\/Resources\/burette-core-bridge"/);
+assert.match(buildScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$ROOT\/PreviewExtension\/BurettePreview\.entitlements" "\$TAURI_BUILT_APP\/Contents\/PlugIns\/BuretteThumbnail\.appex"/);
 assert.match(buildScript, /Add :LSUIElement bool false/);
 assert.doesNotMatch(buildScript, /Add :LSUIElement bool true/);
 assert.match(ciScript, /\.\/scripts\/build\.sh\n/);
 assert.doesNotMatch(ciScript, /\.\/scripts\/build\.sh\s+samples\/mini\.sdf/);
 assert.match(ciScript, /bun run check:vendor-assets/);
 assert.match(ciScript, /bun run test:update/);
-assert.match(ciWorkflow, /uses: \.\/\.github\/actions\/setup-burrete-toolchain/);
+assert.match(ciWorkflow, /uses: \.\/\.github\/actions\/setup-burette-toolchain/);
 assert.match(ciWorkflow, /install-xyzrender: "true"/);
 assert.match(toolchainAction, /Install xyzrender runtime/);
 assert.match(toolchainAction, /python3 -m pip install --user --break-system-packages uv/);
 assert.match(toolchainAction, /"\$\(python3 -m site --user-base\)\/bin\/uv" tool install xyzrender/);
-assert.match(releaseWorkflow, /BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX/);
-assert.match(releaseWorkflow, /BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM/);
-assert.match(releaseWorkflow, /BURRETE_BUILD_MODE: release/);
-assert.match(releaseWorkflow, /uses: \.\/\.github\/actions\/setup-burrete-toolchain/);
+assert.match(releaseWorkflow, /BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX/);
+assert.match(releaseWorkflow, /BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM/);
+assert.match(releaseWorkflow, /BURETTE_BUILD_MODE: release/);
+assert.match(releaseWorkflow, /uses: \.\/\.github\/actions\/setup-burette-toolchain/);
 assert.match(releaseWorkflow, /install-xyzrender: "true"/);
 assert.match(releaseWorkflow, /allow_adhoc=true/);
-assert.match(releaseWorkflow, /BURRETE_RELEASE_ALLOW_ADHOC/);
-assert.match(releaseWorkflow, /scripts\/create-dmg\.sh release\/Burrete\.app/);
+assert.match(releaseWorkflow, /BURETTE_RELEASE_ALLOW_ADHOC/);
+assert.match(releaseWorkflow, /scripts\/create-dmg\.sh release\/Burette\.app/);
 assert.match(releaseWorkflow, /zip\.manifest\.json/);
 assert.match(releaseWorkflow, /zip\.manifest\.json\.sig/);
 assert.match(releaseWorkflow, /prerelease=true/);
 assert.match(releaseWorkflow, /release_flags\+\=\(--prerelease\)/);
 assert.match(releaseScript, /sign-update-manifest\.mjs/);
 assert.match(releaseScript, /--dry-run/);
-assert.match(releaseScript, /BURRETE_BUILD_MODE=release/);
+assert.match(releaseScript, /BURETTE_BUILD_MODE=release/);
 assert.match(releaseScript, /notarytool submit/);
 assert.match(releaseScript, /stapler staple/);
 assert.match(releaseScript, /scripts\/create-dmg\.sh" "\$APP" "\$DMG"/);
 assert.match(createDmgScript, /packaging\/dmg\/background\.png/);
 assert.match(createDmgScript, /ln -s \/Applications/);
 assert.match(createDmgScript, /set background picture of viewOptions/);
-assert.match(createDmgScript, /set position of item "Burrete\.app"/);
+assert.match(createDmgScript, /set position of item "Burette\.app"/);
 assert.match(createDmgScript, /set position of item "Applications"/);
-assert.match(releaseSignatureScript, /BurreteThumbnail\.appex/);
-assert.match(releaseSignatureScript, /com\.local\.BurreteV10\.Thumbnail/);
+assert.match(releaseSignatureScript, /BuretteThumbnail\.appex/);
+assert.match(releaseSignatureScript, /com\.local\.BuretteV10\.Thumbnail/);
 assert.match(releaseSignatureScript, /hardened runtime/);
 assert.match(releaseSignatureScript, /spctl --assess --type execute/);
 assert.match(releaseSignatureScript, /xcrun stapler validate/);
 assert.match(signUpdateManifestScript, /crypto\.sign\(null, manifestBytes/);
 assert.match(updaterCommand, /verify_update_manifest/);
-assert.match(updaterCommand, /BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX/);
+assert.match(updaterCommand, /BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX/);
 assert.match(updaterCommand, /ed25519/);
 assert.match(updaterCommand, /manifest_asset_name/);
 assert.match(updaterCommand, /asset_sha256/);
@@ -696,25 +696,25 @@ for (const updateTest of [
 assert.equal(desktopPackageConfig.scripts.build, '../../node_modules/.bin/vite build --config vite.config.ts');
 assert.doesNotMatch(desktopPackageConfig.scripts.build, /bun --bun vite build/);
 assert.match(packageConfig.scripts['check:js'], /scripts\/dev-namespace\.mjs/);
-assert.match(buildScript, /BURRETE_DEV_FLAVOR/);
+assert.match(buildScript, /BURETTE_DEV_FLAVOR/);
 assert.match(buildScript, /bun "\$ROOT\/scripts\/dev-namespace\.mjs" shell-env/);
-assert.match(buildScript, /LOCAL_APP="\$ROOT\/build\/\$BURRETE_APP_BUNDLE_NAME"/);
+assert.match(buildScript, /LOCAL_APP="\$ROOT\/build\/\$BURETTE_APP_BUNDLE_NAME"/);
 assert.match(buildScript, /\.\.\/\.\.\/node_modules\/\.bin\/vite build --config vite\.config\.ts/);
 assert.match(buildScript, /bun "\$ROOT\/scripts\/dev-namespace\.mjs" patch-tree "\$SAFE_ROOT"/);
-assert.match(buildDevScript, /BURRETE_DEV_FLAVOR is supported by scripts\/build\.sh, not scripts\/build-dev\.sh/);
+assert.match(buildDevScript, /BURETTE_DEV_FLAVOR is supported by scripts\/build\.sh, not scripts\/build-dev\.sh/);
 assert.match(buildDevScript, /\.\.\/\.\.\/node_modules\/\.bin\/vite build --config vite\.config\.ts/);
 assert.match(buildDevScript, /bun run build:tauri/);
-assert.match(installLocalScript, /BURRETE_DEV_FLAVOR/);
+assert.match(installLocalScript, /BURETTE_DEV_FLAVOR/);
 assert.match(installLocalScript, /DEST="\$DEST_DIR\/\$APP_BUNDLE_NAME"/);
 assert.match(installLocalScript, /pluginkit -r "\$EXT_ID"/);
 assert.match(devNamespaceScript, /export function namespaceForFlavor/);
 assert.match(devNamespaceScript, /appId: `\$\{BASE\.appId\}\.Dev\.\$\{slug\}`/);
 assert.equal(packageConfig.scripts['vendor:lock'], 'bun scripts/check-vendor-assets.mjs --write');
 assert.match(cargoWorkspaceSource, /"apps\/desktop\/src-tauri"/);
-assert.match(cargoWorkspaceSource, /"crates\/burrete-core"/);
-assert.match(tauriCargoSource, /burrete-core = \{ path = "\.\.\/\.\.\/\.\.\/crates\/burrete-core" \}/);
-assert.match(coreCargoSource, /name = "burrete-core"/);
-assert.match(previewFormatsSource, /pub\(crate\) use burrete_core::\{/);
+assert.match(cargoWorkspaceSource, /"crates\/burette-core"/);
+assert.match(tauriCargoSource, /burette-core = \{ path = "\.\.\/\.\.\/\.\.\/crates\/burette-core" \}/);
+assert.match(coreCargoSource, /name = "burette-core"/);
+assert.match(previewFormatsSource, /pub\(crate\) use burette_core::\{/);
 assert.match(previewFormatsSource, /format_for_extension/);
 assert.match(previewFormatsSource, /resolve_renderer/);
 assert.match(previewFormatRegistrySource, /"id": "mol-view-spec-json"/);
@@ -723,22 +723,22 @@ assert.match(previewFormatRegistrySource, /"id": "mol-view-spec-archive"/);
 assert.match(previewFormatRegistrySource, /"extensions": \["mvsx"\]/);
 assert.ok(tauriConfig.bundle.fileAssociations?.[0]?.ext?.includes('mvsj'));
 assert.ok(tauriConfig.bundle.fileAssociations?.[0]?.ext?.includes('mvsx'));
-assert.match(rendererPolicySource, /enum BurreteCoreBridge/);
+assert.match(rendererPolicySource, /enum BuretteCoreBridge/);
 assert.match(rendererPolicySource, /supported-extension/);
 assert.match(rendererPolicySource, /resolve-renderer/);
-assert.match(rendererPolicySource, /struct BurretePreviewPlan: Decodable, Equatable/);
-assert.match(rendererPolicySource, /let primary: BurretePreviewPrimary\?/);
-assert.match(rendererPolicySource, /let converter: BurretePreviewConverter\?/);
-assert.match(rendererPolicySource, /let staged: \[BurretePreviewStagedEntry\]/);
-assert.match(rendererPolicySource, /let fallbacks: \[BurretePreviewFallback\]/);
-assert.match(rendererPolicySource, /let capabilities: BurretePreviewCapabilities/);
+assert.match(rendererPolicySource, /struct BurettePreviewPlan: Decodable, Equatable/);
+assert.match(rendererPolicySource, /let primary: BurettePreviewPrimary\?/);
+assert.match(rendererPolicySource, /let converter: BurettePreviewConverter\?/);
+assert.match(rendererPolicySource, /let staged: \[BurettePreviewStagedEntry\]/);
+assert.match(rendererPolicySource, /let fallbacks: \[BurettePreviewFallback\]/);
+assert.match(rendererPolicySource, /let capabilities: BurettePreviewCapabilities/);
 assert.match(rendererPolicySource, /Bundle\(for: PreviewViewController\.self\)/);
 assert.match(rendererPolicySource, /enum BundledFormatRegistry/);
 assert.match(rendererPolicySource, /url\(forResource: registryName, withExtension: "json"\)/);
-assert.match(quickLookPreviewController, /BurreteCoreBridge\.supportedExtension\(pathExtension\)/);
+assert.match(quickLookPreviewController, /BuretteCoreBridge\.supportedExtension\(pathExtension\)/);
 assert.match(quickLookPreviewController, /BundledFormatRegistry\.supportedExtension\(pathExtension\)/);
 assert.doesNotMatch(quickLookPreviewController, /supportedStructureExtensions/);
-assert.match(quickLookPreviewController, /let previewPlan = BurreteCoreBridge\.previewPlan/);
+assert.match(quickLookPreviewController, /let previewPlan = BuretteCoreBridge\.previewPlan/);
 assert.match(quickLookPreviewController, /shouldUseFepGraphMLPreview\(fileExtension: pathExtension, previewPlan: previewPlan\)/);
 assert.match(quickLookPreviewController, /requiresGridPreview\(fileExtension: pathExtension, previewPlan: previewPlan\)/);
 assert.match(quickLookPreviewController, /canOpenInVesta\(fileExtension: originalFileExtension, previewPlan: previewPlan\)/);
@@ -764,11 +764,11 @@ assert.match(quickLookPreviewController, /private struct StructurePreviewPayload
 assert.match(quickLookPreviewController, /private static func buildStructurePreviewPayload\(/);
 assert.match(quickLookPreviewController, /let structurePreview = try buildStructurePreviewPayload\(/);
 assert.match(quickLookPreviewController, /previewPlan: previewPlan/);
-assert.match(quickLookPreviewController, /BurreteCoreBridge\.quickLookSizeLimit\(fileExtension: fileExtension\)/);
-assert.match(quickLookPreviewController, /BurreteCoreBridge\.format\(fileExtension: ext\)/);
+assert.match(quickLookPreviewController, /BuretteCoreBridge\.quickLookSizeLimit\(fileExtension: fileExtension\)/);
+assert.match(quickLookPreviewController, /BuretteCoreBridge\.format\(fileExtension: ext\)/);
 assert.match(xcodeProjectSource, /preview-formats\.json in Resources/);
 assert.match(xcodeProjectSource, /path = "config\/preview-formats\.json"/);
-assert.match(xcodeProjectSource, /BurreteThumbnail/);
+assert.match(xcodeProjectSource, /BuretteThumbnail/);
 assert.match(xcodeProjectSource, /ThumbnailProvider\.swift in Sources/);
 assert.match(xcodeProjectSource, /INFOPLIST_FILE = PreviewExtension\/ThumbnailInfo\.plist/);
 assert.match(xcodeProjectSource, /Bundle xyzrender launcher/);
@@ -782,13 +782,13 @@ assert.match(quickLookXyzrenderLauncherScript, /install_name_tool -change/);
 assert.match(quickLookXyzrenderLauncherScript, /@executable_path\/\.\.\/lib\/\$PYTHON_LIBRARY_NAME/);
 assert.match(quickLookXyzrenderLauncherScript, /libpython3\*\.dylib/);
 assert.doesNotMatch(quickLookXyzrenderLauncherScript, /Contents\/lib\/libpython3\.13\.dylib/);
-assert.match(xcodeThumbnailScheme, /BlueprintName = "BurreteThumbnail"/);
-assert.match(xcodeThumbnailScheme, /BuildableName = "BurreteThumbnail\.appex"/);
+assert.match(xcodeThumbnailScheme, /BlueprintName = "BuretteThumbnail"/);
+assert.match(xcodeThumbnailScheme, /BuildableName = "BuretteThumbnail\.appex"/);
 assert.match(thumbnailInfoPlist, /com\.apple\.quicklook\.thumbnail/);
 assert.match(thumbnailInfoPlist, /ThumbnailProvider/);
-assert.match(thumbnailInfoPlist, /com\.local\.burrete10\.pdb/);
-assert.match(thumbnailInfoPlist, /com\.local\.burrete10\.sdf/);
-assert.match(thumbnailInfoPlist, /com\.local\.burrete10\.xyz/);
+assert.match(thumbnailInfoPlist, /com\.local\.burette10\.pdb/);
+assert.match(thumbnailInfoPlist, /com\.local\.burette10\.sdf/);
+assert.match(thumbnailInfoPlist, /com\.local\.burette10\.xyz/);
 assert.match(thumbnailInfoPlist, /gg\.flew\.unfold\.gromacs-structure/);
 assert.match(thumbnailProviderSource, /final class ThumbnailProvider: QLThumbnailProvider/);
 assert.match(thumbnailProviderSource, /QLThumbnailReply\(contextSize: size\)/);
@@ -809,8 +809,8 @@ assert.deepEqual(vendorAssetsLock.assets.map((asset) => asset.path).toSorted(), 
   'PreviewExtension/Web/molstar.css',
   'PreviewExtension/Web/molstar.js',
   'PreviewExtension/Web/openchemlib/openchemlib.js',
-  'PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.js',
-  'PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.wasm',
+  'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js',
+  'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm',
   'PreviewExtension/Web/rdkit/RDKit_minimal.js',
   'PreviewExtension/Web/rdkit/RDKit_minimal.wasm',
 ]);
@@ -825,7 +825,7 @@ assert.deepEqual(vendorAssetsLock.bundleTargets, webRuntimeProfiles.bundleTarget
 assert.ok(webRuntimeProfiles.profiles['desktop-molstar'].includes('molstar.js'));
 assert.ok(webRuntimeProfiles.profiles['desktop-grid'].includes('openchemlib/openchemlib.js'));
 assert.ok(webRuntimeProfiles.profiles['desktop-grid'].includes('rdkit/RDKit_minimal.wasm'));
-assert.ok(webRuntimeProfiles.profiles['desktop-native-compute'].includes('rdkit-conformer/Burrete_rdkit_conformer.wasm'));
+assert.ok(webRuntimeProfiles.profiles['desktop-native-compute'].includes('rdkit-conformer/Burette_rdkit_conformer.wasm'));
 assert.ok(webRuntimeProfiles.profiles['quicklook-molstar'].includes('viewer.js'));
 assert.ok(webRuntimeProfiles.profiles['quicklook-grid'].includes('grid-viewer.js'));
 assert.ok(webRuntimeProfiles.profiles['quicklook-grid'].includes('openchemlib/openchemlib.js'));
@@ -850,8 +850,8 @@ assert.match(releaseVersionCheck, /semver release or prerelease/);
 assert.doesNotMatch(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Alternate<\/string>/);
 assert.match(appMetadata, /<key>CFBundleTypeName<\/key>\s*<string>Molecular grid tables<\/string>/);
 assert.match(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Owner<\/string>/);
-assert.match(appMetadata, /com\.local\.burrete10\.graphml/);
-assert.match(thumbnailInfoPlist, /com\.local\.burrete10\.graphml/);
+assert.match(appMetadata, /com\.local\.burette10\.graphml/);
+assert.match(thumbnailInfoPlist, /com\.local\.burette10\.graphml/);
 assert.match(thumbnailProviderSource, /parseCIF/);
 assert.match(thumbnailProviderSource, /parseMol2/);
 assert.match(thumbnailProviderSource, /parseCube/);
@@ -860,22 +860,22 @@ const quickLookSupportedContentTypesBlock = previewExtensionInfoPlist.match(
 )?.[1] ?? '';
 assert.match(quickLookSupportedContentTypesBlock, /public\.comma-separated-values-text/);
 assert.match(quickLookSupportedContentTypesBlock, /public\.tab-separated-values-text/);
-assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.csv/);
-assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.tsv/);
-assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.smiles/);
-assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.graphml/);
-assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.fep-edge-list/);
-assert.match(quickLookSupportedContentTypesBlock, /com\.local\.burrete10\.openmm-coordinate-artifact/);
-assert.match(quickLookSupportedContentTypesBlock, /com\.local\.burrete10\.openmm-workflow-text-artifact/);
+assert.match(previewExtensionInfoPlist, /com\.local\.burette10\.csv/);
+assert.match(previewExtensionInfoPlist, /com\.local\.burette10\.tsv/);
+assert.match(previewExtensionInfoPlist, /com\.local\.burette10\.smiles/);
+assert.match(previewExtensionInfoPlist, /com\.local\.burette10\.graphml/);
+assert.match(previewExtensionInfoPlist, /com\.local\.burette10\.fep-edge-list/);
+assert.match(quickLookSupportedContentTypesBlock, /com\.local\.burette10\.openmm-coordinate-artifact/);
+assert.match(quickLookSupportedContentTypesBlock, /com\.local\.burette10\.openmm-workflow-text-artifact/);
 assert.match(appMetadata, /<string>graphml<\/string>/);
 assert.match(appMetadata, /<string>edge<\/string>/);
-assert.match(appMetadata, /com\.local\.burrete10\.graphml/);
-assert.match(appMetadata, /com\.local\.burrete10\.fep-edge-list/);
-assert.match(appMetadata, /com\.local\.burrete10\.openmm-coordinate-artifact/);
-assert.match(appMetadata, /com\.local\.burrete10\.openmm-workflow-text-artifact/);
+assert.match(appMetadata, /com\.local\.burette10\.graphml/);
+assert.match(appMetadata, /com\.local\.burette10\.fep-edge-list/);
+assert.match(appMetadata, /com\.local\.burette10\.openmm-coordinate-artifact/);
+assert.match(appMetadata, /com\.local\.burette10\.openmm-workflow-text-artifact/);
 assert.match(tauriConfigSource, /"graphml"/);
 assert.match(tauriConfigSource, /"edge"/);
-assert.match(quickLookPreviewController, /shouldUseFepGraphMLPreview\(fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
+assert.match(quickLookPreviewController, /shouldUseFepGraphMLPreview\(fileExtension: String, previewPlan: BurettePreviewPlan\?\)/);
 assert.match(quickLookPreviewController, /\["graphml", "edge"\]\.contains\(fileExtension\.lowercased\(\)\)/);
 assert.match(quickLookPreviewController, /detected\.previewMode=fep-graphml/);
 assert.match(quickLookPreviewController, /layoutFepGraphMLPreview/);
@@ -895,7 +895,7 @@ assert.match(quickLookPreviewController, /rdkit\.get_mol\(String\(entry\.molbloc
 assert.match(quickLookPreviewController, /mol\.set_new_coords\?\.\(\)/);
 assert.match(quickLookPreviewController, /rdkitImages: rdkitImages/);
 assert.match(quickLookPreviewController, /score: " \+ String\(format: "%\.3f", \$0\)/);
-assert.match(quickLookPreviewController, /shouldUseTextArtifactPreview\(url: URL, fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
+assert.match(quickLookPreviewController, /shouldUseTextArtifactPreview\(url: URL, fileExtension: String, previewPlan: BurettePreviewPlan\?\)/);
 assert.match(quickLookPreviewController, /private static func isPreferredTextArtifact\(url: URL\) -> Bool \{[\s\S]*url\.lastPathComponent\.lowercased\(\) == "log\.lammps"/);
 assert.match(quickLookPreviewController, /detected\.previewMode=text-artifact/);
 assert.match(quickLookPreviewController, /textFallback\.originalError=/);
@@ -905,7 +905,7 @@ assert.match(installLocalScript, /for contentType in Set\(contentTypes\)/);
 assert.match(installLocalScript, /Contents\/Resources\/ViewerWeb/);
 assert.match(buildScript, /LOCAL_XYZRENDER_ENV="\$HOME\/\.local\/share\/uv\/tools\/xyzrender"/);
 assert.match(buildScript, /bun run build:agent-shell/);
-assert.match(updaterCommand, /sync_burrete_codex_plugin\(\)/);
+assert.match(updaterCommand, /sync_burette_codex_plugin\(\)/);
 assert.match(updaterCommand, /Contents\/Resources\/plugins\/burette-agent/);
 assert.match(updaterCommand, /mcp" \/ "lib" \/ "server-bundle\.mjs/);
 assert.doesNotMatch(updaterCommand, /"0\.1\.0"/);
@@ -924,8 +924,8 @@ assert.match(buildScript, /Contents\/Resources\/xyzrender-python/);
 assert.doesNotMatch(buildScript, /bundle_quicklook_xyzrender_python/);
 assert.doesNotMatch(buildScript, /rsync -aL --delete "\$source_runtime\/" "\$appex_runtime\/"/);
 assert.doesNotMatch(buildScript, /rsync -aL --delete "\$source_python\/" "\$appex_python\/"/);
-assert.doesNotMatch(buildScript, /Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/xyzrender-runtime/);
-assert.doesNotMatch(buildScript, /Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/xyzrender-python/);
+assert.doesNotMatch(buildScript, /Contents\/PlugIns\/BurettePreview\.appex\/Contents\/Resources\/xyzrender-runtime/);
+assert.doesNotMatch(buildScript, /Contents\/PlugIns\/BurettePreview\.appex\/Contents\/Resources\/xyzrender-python/);
 assert.match(buildScript, /bundle_quicklook_xyzrender_launcher\(\)/);
 assert.match(buildScript, /Contents\/Resources\/xyzrender-python3/);
 assert.doesNotMatch(buildScript, /Contents\/MacOS\/xyzrender-python3/);
@@ -964,8 +964,8 @@ assert.doesNotMatch(installLocalScript, /rsync -aL --delete "\$LOCAL_XYZRENDER_P
 assert.doesNotMatch(installLocalScript, /APPEX_XYZRENDER/);
 assert.doesNotMatch(installLocalScript, /rsync -aL --delete "\$STAGING_XYZRENDER_ENV\/" "\$STAGING_APPEX_XYZRENDER_ENV\/"/);
 assert.doesNotMatch(installLocalScript, /rsync -aL --delete "\$STAGING_XYZRENDER_PYTHON\/" "\$STAGING_APPEX_XYZRENDER_PYTHON\/"/);
-assert.doesNotMatch(installLocalScript, /Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/xyzrender-runtime/);
-assert.doesNotMatch(installLocalScript, /Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/xyzrender-python/);
+assert.doesNotMatch(installLocalScript, /Contents\/PlugIns\/BurettePreview\.appex\/Contents\/Resources\/xyzrender-runtime/);
+assert.doesNotMatch(installLocalScript, /Contents\/PlugIns\/BurettePreview\.appex\/Contents\/Resources\/xyzrender-python/);
 assert.doesNotMatch(installLocalScript, /bundle_quicklook_xyzrender_launcher\(\)/);
 assert.match(installLocalScript, /Contents\/Resources\/xyzrender-python3/);
 assert.doesNotMatch(installLocalScript, /Contents\/MacOS\/xyzrender-python3/);
@@ -973,20 +973,20 @@ assert.match(installLocalScript, /-name 'libpython3\*\.dylib'/);
 assert.match(installLocalScript, /-name 'Python'/);
 assert.match(installLocalScript, /Contents\/lib\/\{libpython3\*\.dylib,Python\}/);
 assert.doesNotMatch(installLocalScript, /Contents\/lib\/libpython3\.13\.dylib/);
-assert.match(installLocalScript, /SIGN_IDENTITY="\$\{BURRETE_CODESIGN_IDENTITY:--\}"/);
+assert.match(installLocalScript, /SIGN_IDENTITY="\$\{BURETTE_CODESIGN_IDENTITY:--\}"/);
 assert.match(installLocalScript, /CODESIGN_ARGS=\(--force --sign "\$SIGN_IDENTITY"\)/);
 assert.doesNotMatch(installLocalScript, /XYZRENDER_CODESIGN_ENTITLEMENTS/);
 assert.doesNotMatch(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$entitlements" "\$binary"/);
 assert.doesNotMatch(installLocalScript, /sign_quicklook_xyzrender_launcher\(\)/);
-assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" "\$STAGING_APPEX\/Contents\/Resources\/burrete-core-bridge"/);
-assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$ROOT\/PreviewExtension\/BurretePreview\.entitlements" "\$STAGING_APPEX"/);
+assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" "\$STAGING_APPEX\/Contents\/Resources\/burette-core-bridge"/);
+assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$ROOT\/PreviewExtension\/BurettePreview\.entitlements" "\$STAGING_APPEX"/);
 assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" "\$STAGING_DEST"/);
 assert.doesNotMatch(installLocalScript, /codesign --force --deep --sign - "\$STAGING_DEST"/);
 assert.match(installLocalScript, /codesign --verify --deep --strict "\$STAGING_DEST"/);
 assert.match(installLocalScript, /run_bundled_xyzrender_help\(\)\s*\{/);
 assert.match(installLocalScript, /local timeout_seconds=10/);
 assert.match(installLocalScript, /return 124/);
-assert.match(installLocalScript, /\[\[ "\$IS_DEV_FLAVOR" == "1" && "\$\{BURRETE_SKIP_XYZRENDER_RUNNER_CHECK:-0\}" == "1" \]\]/);
+assert.match(installLocalScript, /\[\[ "\$IS_DEV_FLAVOR" == "1" && "\$\{BURETTE_SKIP_XYZRENDER_RUNNER_CHECK:-0\}" == "1" \]\]/);
 assert.match(installLocalScript, /for attempt in \$\(seq 1 6\)/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "from build output"/);
 assert.match(installLocalScript, /local python="\$python_root\/bin\/python3"/);
@@ -1031,7 +1031,7 @@ assert.match(windowsSource, /pub\(crate\) fn focus_or_create_workspace_window/);
 assert.match(windowsSource, /create_workspace_window\(app, MAIN_WINDOW_LABEL\.to_string\(\)\)/);
 assert.match(windowsSource, /let label = next_workspace_label\(app\);\s*let window = create_workspace_window\(app, label\.clone\(\)\)\?/);
 assert.match(windowsSource, /WebviewWindowBuilder::new\(app, &label, url\)/);
-assert.match(windowsSource, /index\.html\?burreteWindow=\{label\}/);
+assert.match(windowsSource, /index\.html\?buretteWindow=\{label\}/);
 assert.match(windowsSource, /\.transparent\(true\)\s*\.background_color\(Color\(0, 0, 0, 0\)\)/);
 assert.match(windowsSource, /Effect::HudWindow/);
 assert.match(windowsSource, /EffectState::Active/);
@@ -1161,7 +1161,7 @@ for (const [id, accelerator] of [
   assertMenuItemAccelerator(nativeMenuSource, id, accelerator);
 }
 assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+Shift\+N"\)/);
-assert.match(nativeMenuSource, /accelerator\("CmdOrCtrl\+Shift\+P"\)/);
+assert.match(nativeMenuSource, /accelerator\("CmdOrCtrl\+P"\)/);
 assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+U"\)/);
 assert.match(nativeMenuSource, /const MENU_COMMAND_EVENT/);
 assert.match(nativeMenuSource, /pub\(crate\) fn emit_command_to_focused_window/);
@@ -1317,7 +1317,7 @@ assert.ok(authorizeExitIndex < appExitIndex);
 assert.match(updaterCommand, /finish_failed_exit_authorization\(&app, helper, error\)/);
 assert.match(updaterCommand, /helper\.abort\(\)/);
 assert.match(updaterCommand, /helper\.commit\(\)/);
-assert.match(nativeMenuSource, /"Burrete Help"/);
+assert.match(nativeMenuSource, /"Burette Help"/);
 assert.match(nativeMenuSource, /"Optimize & Calculate Frequencies"/);
 assert.match(nativeMenuSource, /"Calculate Vertical IP\/EA \(IPEA-xTB\)"/);
 assert.match(nativeMenuSource, /"Select Visible Molecules"/);
@@ -1351,8 +1351,8 @@ assert.match(previewRuntime, /active_pose: Option<usize>/);
 assert.match(previewRuntime, /request\.active_pose/);
 assert.match(previewRuntime, /create_grid_runtime/);
 assert.match(previewRuntime, /create_runtime/);
-assert.match(previewFormats, /pub\(crate\) use burrete_core::\{/);
-assert.match(burreteCoreSource, /"grid2d" \| "grid" \| "grid-2d" => "grid2d"/);
+assert.match(previewFormats, /pub\(crate\) use burette_core::\{/);
+assert.match(buretteCoreSource, /"grid2d" \| "grid" \| "grid-2d" => "grid2d"/);
 assert.doesNotMatch(previewRuntime, /fn parse_sdf_grid/);
 assert.doesNotMatch(previewRuntime, /fn viewer_html/);
 assert.match(previewRuntimeGrid, /pub\(crate\) fn create_grid_runtime/);
@@ -1360,7 +1360,7 @@ assert.match(previewRuntimeGrid, /build_grid_store/);
 assert.match(previewRuntimeGrid, /include_single_sdf: options\.include_single_sdf\s*\|\|\s*normalize_renderer_mode\(&preferences\.renderer_mode\) == "grid2d"/);
 assert.match(previewGridStore, /!options\.include_single_sdf\s*&& \(\(extension == "sdf" \|\| extension == "sd"\) && records_indexed <= 1\)/);
 assert.match(previewRuntimeGrid, /"sourcePath": file_path\.to_string_lossy\(\)/);
-assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*\)/);
+assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*grid_store\.ingest_worker,\s*\)/);
 assert.match(previewRuntimeGrid, /"gridDataMode": "bridge"/);
 assert.match(previewRuntimeGrid, /"recordsIndexed": collection\.records_indexed/);
 assert.match(previewRuntimeGrid, /"indexReady": collection\.index_ready/);
@@ -1390,15 +1390,15 @@ assert.match(previewRuntimeViewer, /assets\.join\("viewer-runtime\.css"\)/);
 assert.match(previewRuntimeViewer, /Content-Security-Policy/);
 assert.match(previewRuntimeViewer, /const webkit = window\.webkit \|\| \{\};/);
 assert.match(previewRuntimeViewer, /const messageHandlers = webkit\.messageHandlers \|\| \{\};/);
-assert.match(previewRuntimeViewer, /if \(!messageHandlers\.burrete\) \{/);
-assert.match(previewRuntimeViewer, /messageHandlers\.burrete = \{ postMessage: postToParent \};/);
-assert.match(previewRuntimeViewer, /window\.__mqlAction = \(name\) => messageHandlers\.burrete\.postMessage/);
-assert.match(previewRuntimeViewer, /window\.parent\.postMessage\(\{ source: 'burrete-viewer', body \}, '\*'\)/);
-assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ source: 'burrete-viewer', body \}, window\.location\.origin\)/);
+assert.match(previewRuntimeViewer, /if \(!messageHandlers\.burette\) \{/);
+assert.match(previewRuntimeViewer, /messageHandlers\.burette = \{ postMessage: postToParent \};/);
+assert.match(previewRuntimeViewer, /window\.__mqlAction = \(name\) => messageHandlers\.burette\.postMessage/);
+assert.match(previewRuntimeViewer, /window\.parent\.postMessage\(\{ source: 'burette-viewer', body \}, '\*'\)/);
+assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ source: 'burette-viewer', body \}, window\.location\.origin\)/);
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
 assert.match(previewRuntimeGrid, /'unsafe-eval'/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
-assert.match(previewRuntimeGrid, /grid-ui-v11/);
+assert.match(previewRuntimeGrid, /grid-ui-v12/);
 assert.match(previewXyzrender, /std::env::current_exe\(\)/);
 assert.match(previewXyzrender, /xyzrender-runtime/);
 assert.match(gridViewerJS, /resetDocumentRuntimeState\(\);\n\s+state\.remoteMode = isRemoteMode\(cfg\);/);
@@ -1442,17 +1442,17 @@ assert.match(quickLookPreviewController, /elapsed\.runtimeWriteMs/);
 assert.match(quickLookPreviewController, /elapsed\.wkLoadStartMs/);
 assert.match(quickLookPreviewController, /elapsed\.jsReadyMs/);
 assert.match(quickLookPreviewController, /elapsed\.renderCompleteMs/);
-assert.match(quickLookPreviewController, /requiresRDKit: structurePreview\.renderer == BurreteRendererMode\.molstar/);
+assert.match(quickLookPreviewController, /requiresRDKit: structurePreview\.renderer == BuretteRendererMode\.molstar/);
 assert.match(quickLookPreviewController, /let rdkitWasmAsset: String/);
 assert.match(quickLookPreviewController, /rdkitWasmAsset = """\s*<script src="preview-rdkit-wasm\.js"><\/script>/);
 assert.match(quickLookPreviewController, /<script src="preview-rdkit-wasm\.js"><\/script>/);
 assert.match(quickLookPreviewController, /burette-quicklook-host/);
-assert.match(quickLookPreviewController, /window\.BurreteRDKitWasmBase64 = \\"\\\(wasmData\.base64EncodedString\(\)\)\\";\\n/);
+assert.match(quickLookPreviewController, /window\.BuretteRDKitWasmBase64 = \\"\\\(wasmData\.base64EncodedString\(\)\)\\";\\n/);
 assert.match(quickLookPreviewController, /molstarRuntimeCSP[^\n]*script-src[^\n]*'wasm-unsafe-eval'/);
 assert.match(quickLookPreviewController, /payload\["rdkitWasmPath"\] = "\.\.\/assets\/rdkit\/RDKit_minimal\.wasm"/);
 assert.doesNotMatch(quickLookPreviewController, /<script src="preview-data\.js"><\/script>/);
-assert.doesNotMatch(quickLookPreviewController, /window\.BurreteDataBase64 = null;\\nwindow\.BurreteDataURL = null;\\n/);
-assert.doesNotMatch(quickLookPreviewController, /window\.BurreteDataBase64 = \\"\\\(structureData\.base64EncodedString\(\)\)\\";\\nwindow\.BurreteDataURL = '\.\/preview-data\.bin';\\n/);
+assert.doesNotMatch(quickLookPreviewController, /window\.BuretteDataBase64 = null;\\nwindow\.BuretteDataURL = null;\\n/);
+assert.doesNotMatch(quickLookPreviewController, /window\.BuretteDataBase64 = \\"\\\(structureData\.base64EncodedString\(\)\)\\";\\nwindow\.BuretteDataURL = '\.\/preview-data\.bin';\\n/);
 assert.doesNotMatch(quickLookPreviewController, /preview-data\.js"\), options: \[\.atomic\]/);
 assert.match(quickLookPreviewController, /renderTimeoutWorkItem\?\.cancel\(\)/);
 assert.match(quickLookPreviewController, /finishPreviewIfNeeded\(nil, requestID: requestID, cancelRenderTimeout: false\)/);
@@ -1464,7 +1464,7 @@ assert.match(quickLookPreviewController, /DispatchSource\.makeTimerSource/);
 assert.match(quickLookPreviewController, /schedulePreviewSourceReload\(for: url, fingerprint: fingerprint\)/);
 assert.match(quickLookPreviewController, /if type == "requestData" \{/);
 assert.match(quickLookPreviewController, /handleJavaScriptStructureDataRequest\(body\)/);
-assert.match(quickLookPreviewController, /window\.BurreteReceiveNativeData && window\.BurreteReceiveNativeData\(/);
+assert.match(quickLookPreviewController, /window\.BuretteReceiveNativeData && window\.BuretteReceiveNativeData\(/);
 assert.match(quickLookPreviewController, /PreviewError\.webRenderFailed\("The embedded WebKit process terminated while loading the Quick Look preview\."\)/);
 assert.match(quickLookPreviewController, /finishPreviewIfNeeded\(nil, requestID: activePreviewRequestID\)/);
 assert.match(quickLookPreviewController, /guard let url = currentPreviewURL else \{/);
@@ -1477,25 +1477,25 @@ assert.match(viewerJS, /window\.__mqlPost\('requestData', 'requestData', \{ requ
 assert.match(viewerJS, /function loadArrayBufferViaXHR\(url\)/);
 assert.match(viewerJS, /fetch preview-data\.bin failed, falling back to XMLHttpRequest/);
 assert.match(viewerJS, /XMLHttpRequest preview-data\.bin failed, requesting native structure payload/);
-assert.match(viewerJS, /window\.BurreteDataBytes = await loadArrayBufferViaXHR\(requestURL\);/);
+assert.match(viewerJS, /window\.BuretteDataBytes = await loadArrayBufferViaXHR\(requestURL\);/);
 assert.match(viewerJS, /setTimeout\(hideStatus, isQuickLookHost\(\) \? 0 : 700\);/);
 assert.match(viewerJS, /if \(isQuickLookHost\(\)\) \{\s+setTimeout\(finish, 35\);\s+requestAnimationFrame\(finish\);\s+return;/);
-assert.doesNotMatch(quickLookPreviewController, /BurreteLauncher\.open\(fileURL: url\)/);
+assert.doesNotMatch(quickLookPreviewController, /BuretteLauncher\.open\(fileURL: url\)/);
 assert.doesNotMatch(quickLookPreviewController, /launchViaExecutable\(fileURL: fileURL, appURL: appURL, fallbackError: error, completion: completion\)/);
-assert.doesNotMatch(quickLookPreviewController, /appendingPathComponent\("burrete", isDirectory: false\)/);
-assert.match(quickLookPreviewController, /BurreteRDKitWasmBase64/);
+assert.doesNotMatch(quickLookPreviewController, /appendingPathComponent\("burette", isDirectory: false\)/);
+assert.match(quickLookPreviewController, /BuretteRDKitWasmBase64/);
 assert.match(previewRuntimeViewer, /"documentId": stable_id\(file_path\)/);
 assert.match(previewRuntimeViewer, /runtime\.join\("preview-data\.bin"\)/);
-assert.match(previewRuntimeViewer, /window\.BurreteDataBase64 = \\"\{\}\\";\\nwindow\.BurreteDataURL = null;\\n/);
+assert.match(previewRuntimeViewer, /window\.BuretteDataBase64 = \\"\{\}\\";\\nwindow\.BuretteDataURL = null;\\n/);
 assert.match(previewRuntimeViewer, /STANDARD\.encode\(&payload\.data\)/);
-assert.match(previewRuntimeViewer, /window\.BurreteDockingPayloads = \{payload_text\};/);
-assert.match(previewRuntimeViewer, /window\.BurretePreviewConfigURL = \{config_js:\?\};/);
-assert.match(previewRuntimeViewer, /window\.BurretePreviewDataScriptURL = \{data_js:\?\};/);
-assert.match(previewRuntimeViewer, /window\.BurreteDataURL = \{data_bin_js:\?\};/);
+assert.match(previewRuntimeViewer, /window\.BuretteDockingPayloads = \{payload_text\};/);
+assert.match(previewRuntimeViewer, /window\.BurettePreviewConfigURL = \{config_js:\?\};/);
+assert.match(previewRuntimeViewer, /window\.BurettePreviewDataScriptURL = \{data_js:\?\};/);
+assert.match(previewRuntimeViewer, /window\.BuretteDataURL = \{data_bin_js:\?\};/);
 assert.match(previewRuntimeViewer, /let rdkit_js = asset_url\(&assets\.join\("rdkit\/RDKit_minimal\.js"\)\)/);
 assert.match(previewRuntimeViewer, /let rdkit_wasm = asset_url\(&assets\.join\("rdkit\/RDKit_minimal\.wasm"\)\)/);
-assert.match(previewRuntimeViewer, /window\.BurreteRDKitJSURL = \{rdkit_js:\?\};/);
-assert.match(previewRuntimeViewer, /window\.BurreteRDKitWasmURL = \{rdkit_wasm:\?\};/);
+assert.match(previewRuntimeViewer, /window\.BuretteRDKitJSURL = \{rdkit_js:\?\};/);
+assert.match(previewRuntimeViewer, /window\.BuretteRDKitWasmURL = \{rdkit_wasm:\?\};/);
 assert.match(previewRuntimeViewer, /EMBEDDED_PREVIEW_DATA_SCRIPT_MAX_BYTES: usize = 32 \* 1024 \* 1024/);
 assert.match(previewRuntimeViewer, /let include_data_script = should_embed_preview_data_script\(payload\.data\.len\(\)\);/);
 assert.match(previewRuntimeViewer, /include_data_script: bool/);
@@ -1506,8 +1506,8 @@ assert.match(previewRuntimeViewer, /VIEWER_EXTERNAL_ARTIFACT_CSP/);
 assert.match(previewRuntimeViewer, /worker-src 'none'/);
 assert.match(previewRuntimeViewer, /fn viewer_csp\(renderer: &str\)/);
 assert.match(previewRuntimeViewer, /<meta http-equiv="Content-Security-Policy" content="\{csp\}"/);
-assert.match(previewRuntimeViewer, /window\.BurreteMolstarURL = \{molstar_js:\?\};/);
-assert.doesNotMatch(previewRuntimeViewer, /BurreteXyzFastURL|xyz_fast_js/);
+assert.match(previewRuntimeViewer, /window\.BuretteMolstarURL = \{molstar_js:\?\};/);
+assert.doesNotMatch(previewRuntimeViewer, /BuretteXyzFastURL|xyz_fast_js/);
 assert.match(previewGridStore, /pub\(crate\) struct GridRuntimeRegistry/);
 assert.match(previewGridStore, /pub\(crate\) fn build_grid_store/);
 assert.match(previewGridStore, /pub\(crate\) fn append_text/);
@@ -1517,7 +1517,7 @@ assert.match(previewGridStore, /query\.limit\.clamp\(1, 240\)/);
 assert.match(previewRuntimeGrid, /use base64::Engine;/);
 assert.match(previewRuntimeGrid, /let rdkit_wasm = runtime\.join\("RDKit_minimal\.wasm"\)/);
 assert.match(previewRuntimeGrid, /fs::copy\(assets\.join\("rdkit"\)\.join\("RDKit_minimal\.wasm"\), &rdkit_wasm\)/);
-assert.match(previewRuntimeGrid, /window\.BurreteRDKitWasmBase64 =/);
+assert.match(previewRuntimeGrid, /window\.BuretteRDKitWasmBase64 =/);
 assert.match(previewRuntimeGrid, /let rdkit_wasm_path = asset_url\(&rdkit_wasm\)/);
 assert.match(previewRuntimeGrid, /"rdkitWasmPath": rdkit_wasm_path/);
 assert.match(previewRuntimeGrid, /const GRID_RUNTIME_CSP/);
@@ -1527,7 +1527,7 @@ assert.match(previewRuntimeGrid, /runtime\.join\("preview-rdkit-wasm\.js"\)/);
 assert.match(previewRuntimeGrid, /<script src="\{rdkit_wasm_js\}"><\/script>/);
 assert.match(previewRuntimeGrid, /assets\.join\("openchemlib"\)\.join\("openchemlib\.js"\)/);
 assert.match(previewRuntimeGrid, /<script src="\{openchemlib_js\}"><\/script>/);
-assert.match(previewRuntimeViewer, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
+assert.match(previewRuntimeViewer, /body\.documentId = String\(window\.BuretteConfig\.documentId\)/);
 assert.match(viewerRuntimeCSS, /--buret-toolbar-safe-top: 12px/);
 assert.match(viewerRuntimeCSS, /--buret-viewport-controls-top: calc\(var\(--buret-toolbar-safe-top\) \+ 42px\)/);
 assert.match(viewerRuntimeCSS, /#buret-toolbar\.collapsed/);
@@ -1544,7 +1544,7 @@ assert.match(viewerShell, /aria-expanded="true"/);
 assert.match(viewerShell, />Seq</);
 assert.match(viewerShell, /data-buret-action="sdf-poses"/);
 assert.doesNotMatch(viewerShell, /id="buret-open-in-app"/);
-assert.doesNotMatch(viewerShell, /data-buret-action="open-burrete"/);
+assert.doesNotMatch(viewerShell, /data-buret-action="open-burette"/);
 assert.doesNotMatch(viewerShell, /VESTA/);
 assert.match(viewerRuntimeCSS, /--buret-panel-background/);
 assert.match(viewerRuntimeCSS, /\.buret-pose-toggle/);
@@ -1555,13 +1555,13 @@ assert.match(quickLookPreviewController, /viewer-shell\.js/);
 assert.match(viewerJS, /function appendCacheBuster\(url, cb\)/);
 assert.match(viewerJS, /startsWith\('asset:\/\/'\)/);
 assert.match(viewerJS, /function runtimeURL\(globalName, fallback\)/);
-assert.match(viewerJS, /runtimeURL\('BurretePreviewConfigURL', '\.\/preview-config\.js'\)/);
-assert.match(viewerJS, /runtimeURL\('BurretePreviewDataScriptURL', '\.\/preview-data\.js'\)/);
-assert.match(viewerJS, /runtimeURL\('BurreteMolstarURL', '\.\/molstar\.js'\)/);
+assert.match(viewerJS, /runtimeURL\('BurettePreviewConfigURL', '\.\/preview-config\.js'\)/);
+assert.match(viewerJS, /runtimeURL\('BurettePreviewDataScriptURL', '\.\/preview-data\.js'\)/);
+assert.match(viewerJS, /runtimeURL\('BuretteMolstarURL', '\.\/molstar\.js'\)/);
 assert.match(viewerJS, /SDF_POSE_MODE_STORAGE_KEY/);
 assert.match(viewerJS, /function buildSdfPoseOverlay/);
 assert.match(viewerJS, /M  V30 BEGIN CTAB/);
-assert.doesNotMatch(viewerJS, /BurreteXyzFastURL|xyz-fast\.js/);
+assert.doesNotMatch(viewerJS, /BuretteXyzFastURL|xyz-fast\.js/);
 assert.match(previewRuntimeViewer, /window\.__mqlPost = \(type, message, payload\) => postToParent\(\{ type, message: message \|\| '', \.\.\.\(payload \|\| \{\}\) \}\);/);
 assert.match(viewerJS, /function isQuickLookHost\(\)/);
 assert.match(viewerJS, /powerPreference: String\(activeConfig\?\.molstarPowerPreference \|\| ''\) === 'default' \|\| isQuickLookHost\(\)/);

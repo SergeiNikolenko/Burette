@@ -14,7 +14,7 @@ app, and native Finder Quick Look are different runtimes.
   tab or an unknown server from another worktree.
 - Keep the server process visible or record its `processId` and `logPath`.
   Stop the server after the check.
-- Set `BURRETE_DEV_FS_ALLOW` when the browser-dev server must read files outside
+- Set `BURETTE_DEV_FS_ALLOW` when the browser-dev server must read files outside
   the repository root.
 - Browser success does not prove packaged desktop app or Finder Quick Look
   success. Native checks still need the packaged app and Quick Look scripts.
@@ -30,8 +30,8 @@ debugging the renderer generically.
 | Browser Quick Look works but Finder Quick Look fails | Native extension registration, Launch Services, app install location, or Quick Look cache is stale. | `docs/quicklook-debugging.md`, `PreviewExtension/AGENTS.md`, `scripts/quicklook-preview-smoke.sh` |
 | Native forced preview works but normal Spacebar preview does not | Launch Services routed the public file type to another generator. | `config/preview-formats.json`, `PreviewExtension/Info.plist`, `scripts/force-preview.sh` |
 | Agent session opens but observe returns stale or empty state | Wrong session directory, old dev server, or missing browser shell agent endpoint. | CLI JSON `sessionDir`, `logPath`, `processId`; `apps/desktop/vite/browser-dev/agent-session.ts` |
-| Tokenized preview works but full browser shell actions fail | Preview transport and shell session contracts are different surfaces. | `scripts/agent-preview.mjs`, `scripts/burrete-agent.mjs`, `apps/desktop/src/hooks/use-agent-session.ts` |
-| External file fails only in browser-dev | Dev server file allowlist excludes the file path. | `BURRETE_DEV_FS_ALLOW`, Vite server logs, CLI `logPath` |
+| Tokenized preview works but full browser shell actions fail | Preview transport and shell session contracts are different surfaces. | `scripts/agent-preview.mjs`, `scripts/burette-agent.mjs`, `apps/desktop/src/hooks/use-agent-session.ts` |
+| External file fails only in browser-dev | Dev server file allowlist excludes the file path. | `BURETTE_DEV_FS_ALLOW`, Vite server logs, CLI `logPath` |
 
 ## Dev Server: Full Browser Shell
 
@@ -40,15 +40,15 @@ port, starts `vp dev`, writes a session directory, and prints JSON with `url`,
 `sessionDir`, `logPath`, and `processId`.
 
 ```bash
-bun scripts/burrete-agent.mjs open --mode browser-dev-shell samples/mini.pdb
+bun scripts/burette-agent.mjs open --mode browser-dev-shell samples/mini.pdb
 ```
 
 Then navigate the in-app Browser to `result.url` from the JSON output.
 Machine-readable checks use the returned session directory:
 
 ```bash
-bun scripts/burrete-agent.mjs observe --session-dir <sessionDir>
-bun scripts/burrete-agent.mjs act --session-dir <sessionDir> '{"type":"reset_camera"}'
+bun scripts/burette-agent.mjs observe --session-dir <sessionDir>
+bun scripts/burette-agent.mjs act --session-dir <sessionDir> '{"type":"reset_camera"}'
 ```
 
 Stop the returned `processId` when the Browser check is complete.
@@ -63,7 +63,7 @@ as `quickLookFile`.
 
 ```bash
 PORT=1438
-BURRETE_DEV_FS_ALLOW="$PWD/samples" \
+BURETTE_DEV_FS_ALLOW="$PWD/samples" \
   vp dev apps/desktop \
     --host 127.0.0.1 \
     --port "$PORT" \
@@ -99,11 +99,11 @@ Navigate the in-app Browser to that URL. Use this surface to test quick-look
 document routing, browser-dev preview generation, spectrum/text fallback, and
 viewer layout without rebuilding the packaged app.
 
-For external files, set `BURRETE_DEV_FS_ALLOW` to the containing directory
+For external files, set `BURETTE_DEV_FS_ALLOW` to the containing directory
 before starting the server:
 
 ```bash
-BURRETE_DEV_FS_ALLOW="/absolute/folder/with/files" vp dev apps/desktop --host 127.0.0.1 --port 1439 --strictPort --config apps/desktop/vite.config.ts
+BURETTE_DEV_FS_ALLOW="/absolute/folder/with/files" vp dev apps/desktop --host 127.0.0.1 --port 1439 --strictPort --config apps/desktop/vite.config.ts
 ```
 
 ## Tokenized Browser Preview
@@ -124,15 +124,15 @@ Native Finder Quick Look requires a packaged app and registered extension. Use a
 dev flavor in agent-managed worktrees:
 
 ```bash
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/quicklook-preview-smoke.sh samples/mini.pdb samples/mini.cif samples/mini.sdf
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/quicklook-preview-smoke.sh samples/mini.pdb samples/mini.cif samples/mini.sdf
 ```
 
 For all sample files:
 
 ```bash
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/smoke-samples-quicklook.sh samples
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/smoke-samples-quicklook.sh samples
 ```
 
 Use native Quick Look scripts for bundle identifiers, content types, extension
@@ -143,9 +143,9 @@ multi-frame trajectory evidence, and xyzrender SVG artifacts.
 
 Native Finder Quick Look is not the authoritative grid test for public
 `.csv`/`.tsv` files. macOS can route `public.comma-separated-values-text` and
-`public.tab-separated-values-text` to the system table generator before Burrete's
+`public.tab-separated-values-text` to the system table generator before Burette's
 extension sees the file. `quicklook-preview-smoke.sh` reports those inputs as
-`SKIP`; verify Burrete grid rendering through browser-dev or the packaged
+`SKIP`; verify Burette grid rendering through browser-dev or the packaged
 desktop app instead.
 
 ## Contract Checks

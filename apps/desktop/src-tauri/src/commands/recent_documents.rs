@@ -536,7 +536,7 @@ mod tests {
     #[test]
     fn persisted_snapshot_restores_after_registry_restart() {
         let runtime_dir = std::env::temp_dir().join(format!(
-            "burrete-recent-documents-{}-{}",
+            "burette-recent-documents-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -564,7 +564,7 @@ mod tests {
     #[test]
     fn persisted_clear_rejects_a_stale_startup_snapshot() {
         let runtime_dir = std::env::temp_dir().join(format!(
-            "burrete-recent-clear-{}-{}",
+            "burette-recent-clear-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)

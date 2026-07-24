@@ -1,6 +1,6 @@
 # Vite+ Development Workflow
 
-Burrete follows the Writer Computer convention of using Vite+ through the
+Burette follows the Writer Computer convention of using Vite+ through the
 global `vp` CLI as the development entrypoint for frontend and JavaScript
 tooling.
 
@@ -9,7 +9,7 @@ tooling.
 - Use `vp` for day-to-day package installation, frontend development, and
   JavaScript validation.
 - Prefer the Vite+ built-ins: `vp dev`, `vp check`, `vp test`, and `vp build`.
-- Run Burrete package scripts through `vp run <script>` only when a
+- Run Burette package scripts through `vp run <script>` only when a
   project-specific check is not covered by a Vite+ built-in.
 - Keep direct Bun calls inside repository-owned scripts until the lockfile,
   release scripts, and package installer are migrated in a separate step.
@@ -32,7 +32,7 @@ For a full local readiness pass, use:
 vp run ready
 ```
 
-`vp test` runs a Vitest wrapper over the existing Burrete contract scripts.
+`vp test` runs a Vitest wrapper over the existing Burette contract scripts.
 `vp check` runs Vite+ linting and type-aware checks. Vite+ formatting is
 temporarily disabled for the legacy source tree to avoid a repository-wide
 format-only diff during the toolchain migration.
