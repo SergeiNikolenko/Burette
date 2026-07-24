@@ -1398,7 +1398,7 @@ assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ sourc
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
 assert.match(previewRuntimeGrid, /'unsafe-eval'/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
-assert.match(previewRuntimeGrid, /grid-ui-v12/);
+assert.match(previewRuntimeGrid, /grid-ui-v33/);
 assert.match(previewXyzrender, /std::env::current_exe\(\)/);
 assert.match(previewXyzrender, /xyzrender-runtime/);
 assert.match(gridViewerJS, /resetDocumentRuntimeState\(\);\n\s+state\.remoteMode = isRemoteMode\(cfg\);/);
