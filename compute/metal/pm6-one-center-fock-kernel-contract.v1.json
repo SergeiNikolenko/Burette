@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "kernel": "burrete_pm6_one_center_fock_v1",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "kernel": "burette_pm6_one_center_fock_v1",
   "model": "PM6 one-center 9x9 d-basis Fock contraction",
   "dispatch": "one GPU thread per packed symmetric output element, 45 threads per block",
   "inputs": {

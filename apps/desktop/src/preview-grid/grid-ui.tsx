@@ -103,7 +103,7 @@ type SegmentedOption<T extends string> = {
 
 declare global {
   interface Window {
-    BurreteGridUI?: GridUIApi;
+    BuretteGridUI?: GridUIApi;
   }
 }
 
@@ -700,4 +700,4 @@ function mountGridControls(container: Element, props: GridControlProps) {
   });
 }
 
-window.BurreteGridUI = { mountGridControls };
+window.BuretteGridUI = { mountGridControls };

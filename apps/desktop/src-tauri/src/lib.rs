@@ -99,7 +99,7 @@ pub fn run() {
                             &initial_app,
                             Some(windows::MAIN_WINDOW_LABEL),
                         ) {
-                            eprintln!("failed to create the initial Burrete workspace: {error}");
+                            eprintln!("failed to create the initial Burette workspace: {error}");
                         }
                     } else {
                         show_and_emit_open_documents(&initial_app, startup_paths);
@@ -227,7 +227,7 @@ pub fn run() {
             commands::xtb::cancel_xtb_job,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building Burrete Tauri application");
+        .expect("error while building Burette Tauri application");
 
     #[cfg(target_os = "macos")]
     macos::install_termination_handler(app.handle())
@@ -278,7 +278,7 @@ fn should_keep_running_after_last_window_closed(code: Option<i32>, has_windows: 
 }
 
 fn packaged_compute_service_path() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("BURRETE_COMPUTE_SERVICE_PATH").map(PathBuf::from) {
+    if let Some(path) = std::env::var_os("BURETTE_COMPUTE_SERVICE_PATH").map(PathBuf::from) {
         return path.is_file().then_some(path);
     }
     let executable = std::env::current_exe().ok()?;
@@ -286,11 +286,11 @@ fn packaged_compute_service_path() -> Option<PathBuf> {
     let packaged = directory
         .parent()?
         .join("Helpers")
-        .join("burrete-compute-service");
+        .join("burette-compute-service");
     if packaged.is_file() {
         return Some(packaged);
     }
-    let development = directory.join("burrete-compute-service");
+    let development = directory.join("burette-compute-service");
     development.is_file().then_some(development)
 }
 

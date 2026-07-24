@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v2",
-  "libraryId": "burrete.compute.tanimoto.v2",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v2",
+  "libraryId": "burette.compute.tanimoto.v2",
   "source": "tanimoto.v2.metal",
   "deploymentTarget": "14.0",
   "fingerprint": {
@@ -82,7 +82,7 @@
   },
   "entrypoints": [
     {
-      "name": "burrete_tanimoto_degree_count_v1",
+      "name": "burette_tanimoto_degree_count_v1",
       "buffers": [
         { "name": "fingerprints", "index": 0, "type": "uint32", "alignmentBytes": 4, "access": "read", "elements": "recordCount * 64" },
         { "name": "tile", "index": 1, "type": "TanimotoTileV1", "alignmentBytes": 8, "access": "constant", "elements": "1" },
@@ -90,7 +90,7 @@
       ]
     },
     {
-      "name": "burrete_tanimoto_csr_fill_v1",
+      "name": "burette_tanimoto_csr_fill_v1",
       "buffers": [
         { "name": "fingerprints", "index": 0, "type": "uint32", "alignmentBytes": 4, "access": "read", "elements": "recordCount * 64" },
         { "name": "tile", "index": 1, "type": "TanimotoTileV1", "alignmentBytes": 8, "access": "constant", "elements": "1" },
@@ -101,7 +101,7 @@
       ]
     },
     {
-      "name": "burrete_tanimoto_query_counts_v1",
+      "name": "burette_tanimoto_query_counts_v1",
       "buffers": [
         { "name": "fingerprints", "index": 0, "type": "uint32", "alignmentBytes": 4, "access": "read", "elements": "recordCount * 64" },
         { "name": "query", "index": 1, "type": "uint32", "alignmentBytes": 4, "access": "constant", "elements": "64" },
@@ -110,7 +110,7 @@
       ]
     },
     {
-      "name": "burrete_tanimoto_counts_batch_v1",
+      "name": "burette_tanimoto_counts_batch_v1",
       "buffers": [
         { "name": "fingerprints", "index": 0, "type": "uint32", "alignmentBytes": 4, "access": "read", "elements": "recordCount * 64" },
         { "name": "counts", "index": 1, "type": "uint2", "alignmentBytes": 8, "access": "write", "elements": "rowCount * recordCount" },
@@ -118,7 +118,7 @@
       ]
     },
     {
-      "name": "burrete_tanimoto_top_k_batch_v1",
+      "name": "burette_tanimoto_top_k_batch_v1",
       "buffers": [
         { "name": "counts", "index": 0, "type": "uint2", "alignmentBytes": 8, "access": "read", "elements": "rowCount * recordCount" },
         { "name": "outputIndices", "index": 1, "type": "uint32", "alignmentBytes": 4, "access": "write", "elements": "rowCount * neighborCount" },

@@ -52,7 +52,7 @@ export function useAppViewerReloadActions({
       ));
     if (iframe?.contentWindow && canPatchXyzrenderIframe) {
       iframe.contentWindow.postMessage({
-        source: "burrete-host",
+        source: "burette-host",
         body: {
           type: "setXyzrenderControls",
           documentId: document.id,

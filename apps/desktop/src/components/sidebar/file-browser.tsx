@@ -168,7 +168,7 @@ export function FileBrowser({
   return (
     <ScrollFade className="sidebar-scroll">
       <div className="sidebar-browser-header">
-        <strong className="sidebar-browser-title">Burrete</strong>
+        <strong className="sidebar-browser-title">Burette</strong>
         <button
           ref={searchToggleRef}
           type="button"

@@ -1,11 +1,11 @@
 {
-  "name": "burrete",
+  "name": "burette",
   "interface": {
-    "displayName": "Burrete"
+    "displayName": "Burette"
   },
   "plugins": [
     {
-      "name": "burrete",
+      "name": "burette",
       "source": {
         "source": "local",
         "path": "./plugins/burette-agent"

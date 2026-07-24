@@ -78,10 +78,10 @@ assert.match(viewer, /return `\$\{SDF_CONTEXT_COLOR_STORAGE_KEY\}\.\$\{documentI
 assert.doesNotMatch(viewer, /buret\.xyzrender\.popover\.open/);
 assert.match(viewer, /return `buret\.structureScene\.poseMode\.\$\{documentId\}`/);
 assert.match(viewer, /return `buret\.structureScene\.poseMode\.fallback-\$\{stableTextHash\(fallback\)\}`/);
-assert.match(viewer, /return `burrete\.dockingPose\.\$\{documentId\}`/);
-assert.match(viewer, /return `burrete\.dockingPose\.fallback-\$\{stableTextHash\(fallback\)\}`/);
-assert.match(viewer, /return `burrete\.trajectoryControl\.\$\{documentId\}`/);
-assert.match(viewer, /return `burrete\.trajectoryControl\.fallback-\$\{stableTextHash\(fallback\)\}`/);
+assert.match(viewer, /return `burette\.dockingPose\.\$\{documentId\}`/);
+assert.match(viewer, /return `burette\.dockingPose\.fallback-\$\{stableTextHash\(fallback\)\}`/);
+assert.match(viewer, /return `burette\.trajectoryControl\.\$\{documentId\}`/);
+assert.match(viewer, /return `burette\.trajectoryControl\.fallback-\$\{stableTextHash\(fallback\)\}`/);
 assert.match(viewer, /return `\$\{trajectoryControlStorageKey\(config, prepared\)\}\.fps\.v1`/);
 
 assert.doesNotMatch(`${viewer}\n${gridViewer}`, /['"`]burette\./i);

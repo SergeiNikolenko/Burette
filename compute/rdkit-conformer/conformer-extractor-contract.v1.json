@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "burrete.rdkit-conformer-extractor.v1",
+  "schemaVersion": "burette.rdkit-conformer-extractor.v1",
   "magicAscii": "BCEX",
   "byteOrder": "little-endian",
   "headerBytes": 64,

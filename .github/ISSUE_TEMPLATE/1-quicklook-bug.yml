@@ -48,4 +48,4 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: macOS version, Burrete version, install method, Apple Silicon/Intel.
+      description: macOS version, Burette version, install method, Apple Silicon/Intel.

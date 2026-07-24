@@ -4,7 +4,7 @@ Date: 2026-07-23
 
 Device: Apple M2 Pro, 19-core integrated GPU, Metal supported.
 
-Runtime: `burrete-native-metal-v22`
+Runtime: `burette-native-metal-v22`
 
 Metallib SHA-256:
 `765166a64f5e5713a4796711c8288fbadf6b40a6eb7e55682e330d700390b923`
@@ -72,7 +72,7 @@ metric.
 ```bash
 cargo build \
   --manifest-path apps/desktop/src-tauri/Cargo.toml \
-  --bin burrete-compute-dev-backend
+  --bin burette-compute-dev-backend
 
 node scripts/benchmark-chemical-space.mjs \
   --input /path/to/moses-10k.csv \

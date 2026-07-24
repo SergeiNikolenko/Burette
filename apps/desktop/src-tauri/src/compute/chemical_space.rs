@@ -1,12 +1,12 @@
 use std::{num::NonZeroUsize, time::Instant};
 
-use burrete_compute_core::{
+use burette_compute_core::{
     build_tanimoto_umap_graph, build_tmap_layout, butina_clusters,
     ChemicalSpaceMethod as NativeChemicalSpaceMethod, Fingerprint2048, GraphBuildOptions,
     TanimotoKnnOptions, UmapOptions,
 };
-use burrete_compute_metal::{MetalTanimotoKnnExecution, MetalTanimotoRuntime};
-use burrete_compute_protocol::{SimilarityCutoff, MAX_UNDIRECTED_SIMILARITY_EDGES};
+use burette_compute_metal::{MetalTanimotoKnnExecution, MetalTanimotoRuntime};
+use burette_compute_protocol::{SimilarityCutoff, MAX_UNDIRECTED_SIMILARITY_EDGES};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -328,7 +328,7 @@ pub(crate) fn cluster_chemical_space_from_fingerprints(
     let graph_execution = runtime
         .build_graph_profiled(fingerprints, cutoff, graph_options)
         .map_err(metal_error)?;
-    let butina_options = burrete_compute_core::ButinaOptions::try_new(
+    let butina_options = burette_compute_core::ButinaOptions::try_new(
         MAX_UNDIRECTED_SIMILARITY_EDGES,
         request.max_memory_bytes,
     )
@@ -416,7 +416,7 @@ const fn default_max_memory_bytes() -> u64 {
     DEFAULT_MAX_MEMORY_BYTES
 }
 
-fn metal_error(error: burrete_compute_metal::MetalRuntimeError) -> ComputeCoordinatorError {
+fn metal_error(error: burette_compute_metal::MetalRuntimeError) -> ComputeCoordinatorError {
     ComputeCoordinatorError::Unavailable(format!(
         "native Metal chemical-space execution failed: {error}"
     ))

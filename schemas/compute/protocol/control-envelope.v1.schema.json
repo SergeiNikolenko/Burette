@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://burrete.app/schemas/compute/protocol/control-envelope.v1.schema.json",
-  "title": "Burrete compute control envelopes protocol v1",
+  "$id": "https://burette.app/schemas/compute/protocol/control-envelope.v1.schema.json",
+  "title": "Burette compute control envelopes protocol v1",
   "description": "Strict client/coordinator and coordinator/worker messages carried by the bounded length-prefixed channel.",
   "type": "object",
   "additionalProperties": false,

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const input = resolve(root, "compute/semiempirical/reference/parameters_PM6_MOPAC.csv");
-const output = resolve(root, "crates/burrete-compute-core/src/semiempirical/pm6_full_parameters.generated.rs");
+const output = resolve(root, "crates/burette-compute-core/src/semiempirical/pm6_full_parameters.generated.rs");
 const valence = new Map([
   [1, 1], [3, 1], [4, 2], [5, 3], [6, 4], [7, 5], [8, 6], [9, 7],
   [11, 1], [12, 2], [13, 3], [14, 4], [15, 5], [16, 6], [17, 7],

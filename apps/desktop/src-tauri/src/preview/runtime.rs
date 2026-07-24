@@ -1,4 +1,4 @@
-use burrete_core::{PreviewLifecycle, PreviewLifecycleState, PreviewSubsystem};
+use burette_core::{PreviewLifecycle, PreviewLifecycleState, PreviewSubsystem};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs::{self, File};
@@ -788,7 +788,7 @@ fn create_desmond_trajectory_preview<R: Runtime>(
         return Err("Schrodinger Desmond preview extractor is unavailable.".to_string());
     }
     let temp_dir =
-        std::env::temp_dir().join(format!("burrete-desmond-preview-{}", uuid::Uuid::new_v4()));
+        std::env::temp_dir().join(format!("burette-desmond-preview-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&temp_dir).map_err(|err| err.to_string())?;
     let output_path = temp_dir.join("desmond-preview.pdb");
     let output = Command::new(SCHRODINGER_RUN)
@@ -1143,7 +1143,7 @@ pub(crate) fn open_docking_document<R: Runtime>(
     )?;
     Ok(ViewerDocument {
         id: document_id.clone(),
-        path: format!("burrete-docking://{document_id}"),
+        path: format!("burette-docking://{document_id}"),
         title,
         extension: "docking".to_string(),
         renderer: runtime.renderer,
@@ -1309,7 +1309,7 @@ mod document_open_tests {
 
     fn prepend_fake_xyzrender_environment(script: &str) -> PathBuf {
         let root =
-            std::env::temp_dir().join(format!("burrete-open-document-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("burette-open-document-{}", uuid::Uuid::new_v4()));
         let bin_dir = root.join(".local").join("bin");
         fs::create_dir_all(&bin_dir).expect("fake xyzrender bin dir should be created");
         let executable = bin_dir.join("xyzrender");
@@ -1394,7 +1394,7 @@ mod document_open_tests {
 
     fn create_temp_file(extension: &str, data: &[u8]) -> PathBuf {
         let directory =
-            std::env::temp_dir().join(format!("burrete-runtime-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("burette-runtime-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&directory).expect("temp test directory should be created");
         let path = directory.join(format!("probe.{extension}"));
         fs::write(&path, data).expect("temp test file should be written");
@@ -1403,7 +1403,7 @@ mod document_open_tests {
 
     fn create_temp_directory() -> PathBuf {
         let directory =
-            std::env::temp_dir().join(format!("burrete-runtime-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("burette-runtime-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&directory).expect("temp test directory should be created");
         directory
     }
@@ -1806,7 +1806,7 @@ Atoms # charge
                 .expect("preview config should be written");
             let config_json = config_js
                 .trim()
-                .strip_prefix("window.BurreteConfig = ")
+                .strip_prefix("window.BuretteConfig = ")
                 .and_then(|value| value.strip_suffix(';'))
                 .expect("preview config should be a JS assignment");
             let config: serde_json::Value =
@@ -2044,12 +2044,12 @@ f_m_ct {
             .expect("runtime HTML should be written");
         assert!(runtime_dir.join("preview-data.bin").is_file());
         assert!(runtime_dir.join("preview-data.js").is_file());
-        assert!(html.contains("window.BurreteDataURL = "));
+        assert!(html.contains("window.BuretteDataURL = "));
         assert!(html.contains("preview-data.js\"></script>"));
         let data_script = fs::read_to_string(runtime_dir.join("preview-data.js"))
             .expect("preview data script should be written");
-        assert!(data_script.contains("window.BurreteDataBase64 = "));
-        assert!(data_script.contains("window.BurreteDataURL = null;"));
+        assert!(data_script.contains("window.BuretteDataBase64 = "));
+        assert!(data_script.contains("window.BuretteDataURL = null;"));
 
         remove_runtime_artifacts(&document.runtime_path);
         if let Some(parent) = path.parent() {
@@ -2191,7 +2191,7 @@ f_m_ct {
 
     #[test]
     fn opens_real_example_corpus_when_configured() {
-        let Some(root) = std::env::var_os("BURRETE_REAL_EXAMPLES_ROOT") else {
+        let Some(root) = std::env::var_os("BURETTE_REAL_EXAMPLES_ROOT") else {
             return;
         };
         let root = PathBuf::from(root);

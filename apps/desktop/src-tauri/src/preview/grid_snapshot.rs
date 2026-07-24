@@ -5,7 +5,7 @@ use std::{
     path::Path,
 };
 
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     FrozenSourceIdentity, GridScope, GridTextQuery, MolecularSnapshotManifest,
     MolecularSnapshotRecordV1, MolecularSnapshotRecordVersion, MolecularSnapshotRef,
     MolecularSnapshotVersion, OrderedRecordMoleculeIdentityHasher, PackedArrayDescriptor,

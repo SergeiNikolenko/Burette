@@ -64,7 +64,7 @@ async function fetchPublicUrl(input) {
       redirect: "follow",
       signal: controller.signal,
       headers: {
-        "user-agent": "Burrete-Agent-Fetch/0.1",
+        "user-agent": "Burette-Agent-Fetch/0.1",
         accept: "text/html, text/plain, application/json, application/xml, text/markdown;q=0.9, */*;q=0.5",
       },
     });

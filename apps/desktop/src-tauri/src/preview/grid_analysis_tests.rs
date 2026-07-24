@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use burrete_compute_protocol::{CapabilityMaturity, RepresentativePolicy, WorkflowTemplateId};
+use burette_compute_protocol::{CapabilityMaturity, RepresentativePolicy, WorkflowTemplateId};
 use rusqlite::{params, Connection};
 use serde_json::json;
 use uuid::Uuid;
@@ -33,7 +33,7 @@ struct ProductionFixture {
 impl ProductionFixture {
     fn create() -> Self {
         let runtime_dir =
-            std::env::temp_dir().join(format!("burrete-grid-analysis-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("burette-grid-analysis-{}", Uuid::new_v4()));
         fs::create_dir_all(&runtime_dir).expect("create analysis runtime directory");
         let handle = build_grid_store(&runtime_dir, "smi", b"CC Ethane\nO Water\n")
             .expect("build production Grid store")

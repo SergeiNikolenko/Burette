@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Minimal permissions for the Burrete desktop shell",
+  "description": "Minimal permissions for the Burette desktop shell",
   "windows": [
     "main",
     "workspace-*"

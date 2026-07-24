@@ -102,7 +102,7 @@ async function waitForHealth(port, child, log) {
   throw new Error(`agent shell server did not become ready. stdout=${log.stdout} stderr=${log.stderr}`);
 }
 
-const tempDir = await mkdtemp(join(tmpdir(), 'burrete-amber-nc-test-'));
+const tempDir = await mkdtemp(join(tmpdir(), 'burette-amber-nc-test-'));
 const topologyPath = join(tempDir, 'reference.pdb');
 const trajectoryPath = join(tempDir, 'trajectory.nc');
 const outputPath = join(tempDir, 'preview.pdb');
@@ -136,7 +136,7 @@ try {
   assert.match(pdb, / 10\.000  11\.000  12\.000/);
 
   await mkdir(distDir);
-  await writeFile(join(distDir, 'index.html'), '<!doctype html><title>Burrete</title>');
+  await writeFile(join(distDir, 'index.html'), '<!doctype html><title>Burette</title>');
   const port = await freePort();
   const log = { stdout: '', stderr: '' };
   const child = spawn(process.execPath, [
@@ -160,9 +160,9 @@ try {
     url.searchParams.set('path', trajectoryPath);
     const response = await requestBuffer(url);
     assert.equal(response.statusCode, 200, response.body.toString('utf8'));
-    assert.equal(response.headers['x-burrete-trajectory-topology'], topologyPath);
-    assert.equal(response.headers['x-burrete-trajectory-frame-count'], '2');
-    assert.equal(response.headers['x-burrete-source-byte-count'], String((await stat(trajectoryPath)).size));
+    assert.equal(response.headers['x-burette-trajectory-topology'], topologyPath);
+    assert.equal(response.headers['x-burette-trajectory-frame-count'], '2');
+    assert.equal(response.headers['x-burette-source-byte-count'], String((await stat(trajectoryPath)).size));
     const routedPdb = response.body.toString('utf8');
     assert.match(routedPdb, /^MODEL\s+1$/m);
     assert.match(routedPdb, /^MODEL\s+2$/m);

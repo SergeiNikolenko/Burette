@@ -1,0 +1,162 @@
+{
+  "$schema": "https://developers.openai.com/apps-sdk/schemas/chatgpt-app-submission.v1.json",
+  "schema_version": 1,
+  "app_info": {
+    "display_name": "Burette",
+    "subtitle": "Preview molecular structures",
+    "description": "Burette opens supported molecular structure attachments and explicit public PDB entries as interactive 3D scenes, with bounded composition summaries for chains, residues, ligands, molecules, and elements.",
+    "category": "EDUCATION"
+  },
+  "tools": {
+    "preview_molecular_file": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Only retrieves one user-authorized attachment into memory and computes a bounded preview without saving or changing the file.",
+        "open_world_justification": "Does not publish content or change any public or third-party system.",
+        "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
+      }
+    },
+    "preview_pdb_structure": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Only retrieves the explicitly requested public RCSB PDB entry and computes a bounded preview.",
+        "open_world_justification": "Reads public structure data without writing to RCSB or any other external system.",
+        "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
+      }
+    },
+    "render_molecular_scene": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Only re-renders one explicitly supplied structure with bounded client-side viewer actions and does not save a workspace.",
+        "open_world_justification": "Viewer actions affect only the isolated result widget and do not write to RCSB or another external system.",
+        "destructive_justification": "Cannot modify the source file, persist a molecular edit, or perform an irreversible external action."
+      }
+    },
+    "open_ketcher": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Opens only an ephemeral in-memory editor surface and does not change the source file or write a workspace.",
+        "open_world_justification": "The editor is isolated to the current MCP widget and cannot publish content or contact third-party systems.",
+        "destructive_justification": "The tool cannot delete, overwrite, or persist a file; persistence requires a separate user-confirmed action."
+      }
+    },
+    "control_ketcher": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Edits only the ephemeral Ketcher surface in the current widget; it never mutates the source attachment or local files.",
+        "open_world_justification": "Revision-checked actions stay inside the isolated Burette relay and do not publish content or call third-party systems.",
+        "destructive_justification": "Clear and replace affect only the transient widget state; saving stops at an explicit user-confirmation boundary."
+      }
+    }
+  },
+  "test_cases": [
+    {
+      "description": "Preview a small attached PDB macromolecule.",
+      "user_prompt": "Preview this PDB file in the full molecular viewer and summarize its chains, residues, and atoms.",
+      "file_attachment_urls": [
+        "https://raw.githubusercontent.com/SergeiNikolenko/Burette/main/samples/mini.pdb"
+      ],
+      "tools_triggered": "preview_molecular_file",
+      "expected_output": "Returns bounded PDB composition counts and opens the attached structure in the interactive Burette Mol* viewer.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Preview an attached mmCIF structure.",
+      "user_prompt": "Open this mmCIF structure and show its chain and element summary.",
+      "file_attachment_urls": [
+        "https://raw.githubusercontent.com/SergeiNikolenko/Burette/main/samples/mini.cif"
+      ],
+      "tools_triggered": "preview_molecular_file",
+      "expected_output": "Returns bounded mmCIF counts and renders the structure with sequence and structure controls.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Preview an attached SDF collection.",
+      "user_prompt": "Preview this SDF and summarize the molecules and elements it contains.",
+      "file_attachment_urls": [
+        "https://raw.githubusercontent.com/SergeiNikolenko/Burette/main/samples/mini.sdf"
+      ],
+      "tools_triggered": "preview_molecular_file",
+      "expected_output": "Returns bounded SDF molecule and element counts and renders the available coordinates interactively.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Select and focus a residue range in a public PDB scene.",
+      "user_prompt": "Open PDB 1CRN, select residues 10 through 20 in chain A, focus that selection, and hide water.",
+      "file_attachment_urls": null,
+      "tools_triggered": "render_molecular_scene",
+      "expected_output": "Re-renders 1CRN, selects and focuses the requested chain A residue range, hides water, and reports the bounded client-side action results.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Retrieve an explicit public PDB entry.",
+      "user_prompt": "Open PDB 1CRN in the full molecular viewer and summarize its composition.",
+      "file_attachment_urls": null,
+      "tools_triggered": "preview_pdb_structure",
+      "expected_output": "Retrieves 1CRN from RCSB, returns bounded composition counts, and renders the structure in the full interactive viewer.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Open an ephemeral Ketcher editor with a small inline structure.",
+      "user_prompt": "Open a Ketcher editor and seed it with ethanol using the SMILES CCO.",
+      "file_attachment_urls": null,
+      "tools_triggered": "open_ketcher",
+      "expected_output": "Creates an isolated revisioned Ketcher surface and renders the focused chemical editor without writing a file.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Apply a revision-checked chemical edit in Ketcher.",
+      "user_prompt": "In the open Ketcher editor, replace the structure with CCO and return its SMILES.",
+      "file_attachment_urls": null,
+      "tools_triggered": "control_ketcher",
+      "expected_output": "Applies the edit to the current surface, returns a bounded snapshot and export, and leaves persistence to the user.",
+      "expected_output_url": null
+    }
+  ],
+  "negative_test_cases": [
+    {
+      "description": "Do not invoke a read-only preview tool for destructive local file editing.",
+      "user_prompt": "Delete several atoms from my local PDB file and overwrite the original file.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The plugin should not be invoked because it cannot edit, delete, or overwrite local molecular files.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Do not use a molecular preview as medical diagnosis.",
+      "user_prompt": "Diagnose whether I have cancer from a protein structure.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The plugin should not be invoked because molecular visualization is not a medical diagnostic workflow.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Do not trigger for unrelated three-dimensional asset formats.",
+      "user_prompt": "Render this Blender OBJ model and edit its materials.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The plugin should not be invoked because general 3D assets and material editing are outside its molecular structure formats.",
+      "expected_output_url": null
+    }
+  ]
+}

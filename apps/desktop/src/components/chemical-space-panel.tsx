@@ -347,7 +347,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         ? event.data as { source?: unknown; body?: Record<string, unknown> }
         : null;
       if (
-        data?.source !== "burrete-grid"
+        data?.source !== "burette-grid"
         || data.body?.documentId !== documentId
         || !isKnownViewerMessageSource(event.source, documentId)
       ) return;
@@ -387,7 +387,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     };
     window.addEventListener("message", onMessage);
     activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body: { type: "chemicalSpaceRequestState", documentId },
     }, "*");
     return () => window.removeEventListener("message", onMessage);
@@ -396,7 +396,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const postToGrid = useCallback((body: Record<string, unknown>) => {
     if (!documentId) return;
     activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body: { ...body, documentId },
     }, "*");
   }, [documentId]);
@@ -1701,7 +1701,7 @@ function requestBrowserChemicalSpaceRecords(
       reject(new Error("The Grid did not provide molecular records for browser chemical space."));
     }, 15_000);
     const requestPayload = {
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body: { type: "chemicalSpaceRequestRecords", requestId, documentId },
     };
     const postRequest = (target?: MessageEventSource | null) => {
@@ -1741,7 +1741,7 @@ function requestBrowserChemicalSpaceRecords(
         ? event.data as { source?: unknown; body?: Record<string, unknown> }
         : null;
       if (
-        data?.source !== "burrete-grid"
+        data?.source !== "burette-grid"
         || data.body?.documentId !== documentId
         || !isKnownViewerMessageSource(event.source, documentId)
       ) return;
@@ -1790,7 +1790,7 @@ function requestFromGridViewer<T>(
   timeoutMs = 12_000,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    const requestPayload = { source: "burrete-grid-host", body: { ...request, documentId } };
+    const requestPayload = { source: "burette-grid-host", body: { ...request, documentId } };
     const iframeLoadListeners = new Map<HTMLIFrameElement, () => void>();
     const retryTimers: number[] = [];
     const timeout = window.setTimeout(() => {
@@ -1833,7 +1833,7 @@ function requestFromGridViewer<T>(
         ? event.data as { source?: unknown; body?: Record<string, unknown> }
         : null;
       if (
-        data?.source !== "burrete-grid"
+        data?.source !== "burette-grid"
         || data.body?.documentId !== documentId
         || !isKnownViewerMessageSource(event.source, documentId)
       ) return;

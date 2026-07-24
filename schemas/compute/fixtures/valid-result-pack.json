@@ -5,7 +5,7 @@
   "jobId": "018f48f2-2e20-7e53-976b-cf93e08976ff",
   "workflowTemplate": "cluster.v1",
   "molecularSnapshot": {
-    "schemaVersion": "burrete.molecular-snapshot.v1",
+    "schemaVersion": "burette.molecular-snapshot.v1",
     "snapshotId": "018f48f2-2e20-7e53-976b-cf93e0897701",
     "snapshotSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "frozenSource": {

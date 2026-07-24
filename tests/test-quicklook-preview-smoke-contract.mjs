@@ -17,7 +17,7 @@ assert.match(smoke, /quicklook-semantic-check\.mjs/);
 assert.match(smoke, /validate_semantic_preview\(\)/);
 assert.match(smoke, /semantic preview failed/);
 assert.match(smoke, /export PATH="\/usr\/bin:\/bin:\/usr\/sbin:\/sbin:\/opt\/homebrew\/bin:\/usr\/local\/bin:\$\{PATH:-\}"/);
-assert.match(smoke, /BURRETE_QUICKLOOK_SMOKE_TRACE/);
+assert.match(smoke, /BURETTE_QUICKLOOK_SMOKE_TRACE/);
 assert.match(smoke, /trace_request_id_for_block\(\)/);
 assert.match(smoke, /runtime_directory_for_block\(\)/);
 assert.match(smoke, /validate_stability_artifacts\(\)/);
@@ -40,22 +40,22 @@ assert.match(smoke, /preview-trace\.jsonl/);
 assert.match(smoke, /manifest\.json/);
 assert.match(smoke, /trace\+manifest/);
 assert.match(smoke, /DEV_FLAVOR_SLUG/);
-assert.match(smoke, /APP_BUNDLE_NAME="\$BURRETE_APP_BUNDLE_NAME"/);
+assert.match(smoke, /APP_BUNDLE_NAME="\$BURETTE_APP_BUNDLE_NAME"/);
 assert.match(smoke, /tmp_base="\$\{TMPDIR:-\/tmp\}"/);
 assert.match(smoke, /tmp_base="\$\{tmp_base%\/*\}"/);
-assert.match(smoke, /mktemp -d "\$tmp_base\/BurretePreview-\$\{DEV_FLAVOR_SLUG\}\.XXXXXX"/);
+assert.match(smoke, /mktemp -d "\$tmp_base\/BurettePreview-\$\{DEV_FLAVOR_SLUG\}\.XXXXXX"/);
 assert.match(smoke, /preview_file="\$dev_preview_dir\/\$\{DEV_FLAVOR_SLUG\} \$\(basename "\$abs_file"\)"/);
 assert.match(smoke, /run_preview\(\)/);
 assert.match(smoke, /qlmanage -p -c "\$type" "\$preview_file"/);
 assert.doesNotMatch(smoke, /scripts\/force-preview\.sh/);
-assert.match(smoke, /BURRETE_QUICKLOOK_SMOKE_RESULTS/);
-assert.match(smoke, /BURRETE_QUICKLOOK_SMOKE_TIMEOUT_SECONDS/);
+assert.match(smoke, /BURETTE_QUICKLOOK_SMOKE_RESULTS/);
+assert.match(smoke, /BURETTE_QUICKLOOK_SMOKE_TIMEOUT_SECONDS/);
 assert.match(smoke, /qlmanage -r cache/);
 assert.doesNotMatch(smoke, /screencapture/);
 assert.doesNotMatch(smoke, /pkill -f/);
 assert.doesNotMatch(smoke, /killall quicklookd/);
 assert.match(forcePreview, /native Finder Quick Look for public CSV\/TSV is owned by the system table generator/);
-assert.match(forcePreview, /Use browser-dev or the desktop app to verify Burrete grid rendering/);
+assert.match(forcePreview, /Use browser-dev or the desktop app to verify Burette grid rendering/);
 assert.match(forcePreview, /qlmanage -p -c "\$TYPE" "\$PREVIEW_FILE"/);
 assert.doesNotMatch(forcePreview, /Normal Quick Look resolves XYZ/);
 
@@ -71,7 +71,7 @@ assert.match(
 );
 assert.doesNotMatch(ciFast, /quicklook-preview-smoke\.sh/);
 assert.match(nightlySmoke, /schedule:/);
-assert.match(nightlySmoke, /BURRETE_DEV_FLAVOR:\s*ci/);
+assert.match(nightlySmoke, /BURETTE_DEV_FLAVOR:\s*ci/);
 assert.match(nightlySmoke, /quicklook-preview-smoke\.sh/);
 for (const fixture of [
   "samples/mini.pdb",
@@ -84,6 +84,6 @@ for (const fixture of [
   assert.match(nightlySmoke, new RegExp(fixture.replaceAll("/", "\\/")));
 }
 assert.doesNotMatch(nightlySmoke, /cp samples\/mini\.xyz build\/smoke\/single\.xyzr/);
-assert.match(nightlySmoke, /BURRETE_PERF_RUN_GUI:\s*0/);
+assert.match(nightlySmoke, /BURETTE_PERF_RUN_GUI:\s*0/);
 
 console.log("quicklook preview smoke contract tests passed");

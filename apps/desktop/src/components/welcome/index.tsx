@@ -17,7 +17,7 @@ export function WelcomeScreen({ actions, buildInfo }: { actions: ShellActions; b
     <div className="new-tab-page">
       <div className="new-tab-copy">
         <div className="new-tab-eyebrow-row">
-          <p className="new-tab-eyebrow">Burrete Desktop</p>
+          <p className="new-tab-eyebrow">Burette Desktop</p>
           {buildInfo.isDevBuild ? (
             <span className="new-tab-build-badge" title={`${buildInfo.identifier}\n${buildDetail(buildInfo)}`}>
               {buildLabel(buildInfo)}

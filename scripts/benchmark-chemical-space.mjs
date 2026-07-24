@@ -111,7 +111,7 @@ for (const dimensions of options.dimensions) {
 }
 
 const report = {
-  schemaVersion: "burrete.chemical-space-benchmark.v1",
+  schemaVersion: "burette.chemical-space-benchmark.v1",
   generatedAt: new Date().toISOString(),
   input: {
     sources: sources.map((source) => ({
@@ -231,7 +231,7 @@ function parseArguments(args) {
     input,
     supplements: (values.get("supplement") || "").split(",").filter(Boolean),
     runtimeRoot,
-    backend: values.get("backend") || "target/debug/burrete-compute-dev-backend",
+    backend: values.get("backend") || "target/debug/burette-compute-dev-backend",
     output: values.get("output") || "build/reports/chemical-space-10k.json",
     recordCount: numericOption(values, "records", DEFAULT_RECORD_COUNT),
     neighbors: numericOption(values, "neighbors", 15),
