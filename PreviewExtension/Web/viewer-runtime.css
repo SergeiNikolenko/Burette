@@ -590,6 +590,13 @@ body.burette-mobile-host #buret-scene-tree {
   color: var(--buret-molstar-accent);
   background: var(--buret-toolbar-hover);
 }
+/* A moving scene is easy to miss on a still frame, so the animate button carries
+   the state while its menu is closed. */
+.buret-rail-button[data-motion="spin"],
+.buret-rail-button[data-motion="rock"],
+.buret-rail-button[data-motion="playing"] {
+  color: var(--buret-molstar-accent);
+}
 .buret-selection-bar {
   position: fixed;
   top: var(--buret-selection-controls-top, calc(var(--buret-toolbar-safe-top) + 48px));
@@ -1002,6 +1009,52 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 .buret-molecule-card-icon:focus-visible {
   outline: 2px solid var(--buret-molstar-accent);
   outline-offset: 1px;
+}
+/* Minimized preview: a small pill parked in the bottom-left corner that pops the
+   same molecule back out when clicked. */
+.buret-molecule-preview-chip {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 42;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  height: 30px;
+  padding: 0 11px 0 9px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 999px;
+  background: var(--buret-molstar-panel-background);
+  color: var(--buret-molstar-text);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+.buret-molecule-preview-chip:hover {
+  background: var(--buret-molstar-hover-background);
+  transform: translateY(-1px);
+}
+.buret-molecule-preview-chip:focus-visible {
+  outline: 2px solid var(--buret-molstar-accent);
+  outline-offset: 2px;
+}
+.buret-molecule-preview-chip > svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  color: var(--buret-molstar-accent);
+}
+.buret-molecule-preview-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.burette-mobile-host .buret-molecule-preview-chip {
+  display: none;
 }
 .buret-molecule-card-footer {
   display: flex;
@@ -3548,6 +3601,9 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   align-items: center;
   gap: 6px;
   padding: 2px 8px 6px;
+}
+.buret-tree-menu-field[hidden] {
+  display: none;
 }
 .buret-tree-menu-field > span {
   flex: 0 0 auto;

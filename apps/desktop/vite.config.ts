@@ -1915,7 +1915,23 @@ type BrowserDevConformerRunRequest = {
 async function browserDevConformerStatus() {
   const crest = resolveExecutable("crest");
   const prism = resolveExecutable("prism_pruner") ?? resolveExecutable("prism-pruner");
+  // Browser dev prepares CREST input with obabel just like the app does, so it
+  // has to report on it too - otherwise the panel can only say "unavailable".
+  const obabel = resolveExecutable("obabel");
   return {
+    openbabel: obabel
+      ? {
+          installed: true,
+          executable: obabel,
+          version: await browserDevExecutableVersion(obabel, ["--version"]),
+          installHint: "Open Babel is available for conformer input preparation.",
+        }
+      : {
+          installed: false,
+          executable: null,
+          version: null,
+          installHint: "Install Open Babel or expose obabel on PATH to prepare non-XYZ CREST inputs.",
+        },
     crest: crest
       ? {
           installed: true,

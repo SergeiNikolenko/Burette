@@ -133,6 +133,8 @@ const [
   settingControl,
   dockPanel,
   structureInfoPanel,
+  foldingResultsPanel,
+  foldingResultsLib,
   closeIcon,
   shortcutTooltip,
   pageKinds,
@@ -337,6 +339,8 @@ const [
   source('apps/desktop/src/components/settings-panel/setting-control.tsx'),
   source('apps/desktop/src/components/dock-panel.tsx'),
   source('apps/desktop/src/components/structure-info-panel.tsx'),
+  source('apps/desktop/src/components/folding-results-panel.tsx'),
+  source('apps/desktop/src/lib/folding-results.ts'),
   source('apps/desktop/src/components/close-icon.tsx'),
   source('apps/desktop/src/components/shortcut-tooltip.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/index.ts'),
@@ -790,6 +794,9 @@ assert.match(browserDevDescriptors, /server\.middlewares\.use\("\/__burette\/des
 assert.match(browserDevDescriptors, /sendJsonError\(res, 500, error, "no-cache"\)/);
 assert.match(viteConfig, /registerBrowserDevConformerJobRoutes\(server,/);
 assert.match(browserDevConformerJobs, /server\.middlewares\.use\("\/__burette\/conformer-status"/);
+// Browser dev prepares CREST input with obabel, so its status payload reports on
+// it the same way the Tauri command does.
+assert.match(viteConfig, /const obabel = resolveExecutable\("obabel"\);\s*return \{\s*openbabel: obabel/);
 assert.match(browserDevConformerJobs, /server\.middlewares\.use\("\/__burette\/prepare-conformer-job"/);
 assert.match(viteConfig, /registerBrowserDevXtbRoutes\(server,/);
 assert.match(browserDevXtb, /server\.middlewares\.use\("\/__burette\/xtb-status"/);
@@ -1216,6 +1223,10 @@ assert.match(appChemistryJobsHook, /normalizeXtbSettings\(settings\)/);
 assert.match(appChemistryJobsHook, /saveXtbSettings\(normalized\)/);
 assert.match(appChemistryJobsHook, /requestConformerStatus\(\)/);
 assert.match(appChemistryJobsHook, /pushStatus\(conformerStatusLine\(status\)\)/);
+// Both statuses are probed at startup, silently - the inspector decides what it
+// can offer from them, so "not checked" is not a useful starting state.
+assert.match(appChemistryJobsHook, /let cancelled = false;\s*void requestConformerStatus\(\)\.then\(\(status\) => \{ if \(!cancelled\) setConformerStatus\(status\); \}\)/);
+assert.match(appChemistryJobsHook, /void requestXtbStatus\(\)\.then\(\(status\) => \{ if \(!cancelled\) setXtbStatus\(status\); \}\)/);
 assert.match(appChemistryJobsHook, /requestXtbStatus\(\)/);
 assert.match(appChemistryJobsHook, /installXtbRequest\(\)/);
 assert.match(appChemistryJobsHook, /cancelConformerRequest\(jobId\)/);
@@ -2435,12 +2446,84 @@ assert.match(structureInfoPanel, /actions\.revealDocument\(document\)/);
 assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
 assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\)\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument\(document\.path\)/);
-assert.match(structureInfoPanel, /compositionSummary\?\.maestroRows\?\.length/);
-assert.match(structureInfoPanel, /StructureSectionHeader title="Maestro entries"/);
+assert.match(structureInfoPanel, /StructureSectionHeader title="Composition"/);
+// Conformers and xTB share one card shell, and a missing binary has to say what
+// it is and how to get it rather than leaving a dead disabled button.
+assert.match(structureInfoPanel, /function InspectorEngineCard\(\{/);
+assert.match(structureInfoPanel, /function EngineToolNotice\(\{ tools, onCheck \}/);
+assert.match(structureInfoPanel, /const missing = tools\.filter\(\(tool\) => !tool\.installed\)/);
+assert.match(structureInfoPanel, /const xtbMissing = xtbStatus\?\.installed === false/);
+assert.match(structureInfoPanel, /install: \(\) => void actions\.installXtb\(\)/);
+assert.match(structureInfoPanel, /function conformerTools\(status: ShellViewState\["conformerStatus"\]\): EngineTool\[\]/);
+assert.match(structureInfoPanel, /const XTB_MORE_OPERATIONS = \[/);
+// The runtime refuses a direct job above the atom cap and tells you to select
+// something; the card knows the count already, so it says so before the click.
+assert.match(structureInfoPanel, /structureAtomCountFromSummary\(compositionSummary\)/);
+// The size gate judges the scoped object, so a whole-chain selection (over the
+// cap) stays blocked rather than "a selection exists" lifting it.
+assert.match(structureInfoPanel, /const scopedAtoms = selectedScopeAtomCount\(selectedEntity, viewerLigandSelection\)/);
+assert.match(structureInfoPanel, /const effectiveAtoms = jobScopedToSelection \? scopedAtoms : structureAtoms/);
+assert.match(structureInfoPanel, /const oversizedForDirectJob = effectiveAtoms !== null && effectiveAtoms > DIRECT_CHEMISTRY_JOB_ATOM_LIMIT/);
+assert.match(structureInfoPanel, /function selectedScopeAtomCount\(/);
+assert.match(structureInfoPanel, /const xtbBlocked = xtbMissing \|\| oversizedForDirectJob/);
+assert.match(structureInfoPanel, /const crestDisabled = !canRunCrest \|\| oversized \|\| status\?\.crest\.installed === false/);
+assert.match(directChemistryGuard, /export const DIRECT_CHEMISTRY_JOB_ATOM_LIMIT = 300/);
+assert.match(directChemistryGuard, /export function structureAtomCountFromSummary\(summary: StructureCompositionSummary\)/);
+// The backend writes --cpcmx; the old list guessed --cpcm, so a solvated run was
+// reported back as gas phase.
+assert.match(structureInfoPanel, /"--cpcmx": "CPCM-X"/);
+assert.match(structureInfoPanel, /XTB_SOLVATION_FLAG_LABELS\[part\.toLowerCase\(\)\]/);
+// inputLabel exists from the moment a job is queued, so it must be testable
+// without a result - otherwise a running job never matches its own document.
+assert.match(structureInfoPanel, /if \(job\.inputLabel === document\.title\) return true;/);
+assert.match(structureInfoPanel, /const runningXtbJob = latestXtbJob\?\.status === "running" \? latestXtbJob : null/);
+// The panel the "Full PAE" button opens has to actually contain the matrix.
+// A structure with only a stray metadata sidecar is not a folding result, so the
+// card requires real folding signal rather than "any model or artifact".
+assert.match(foldingResultsLib, /const isFoldingArtifact = \(artifact: \{ kind: string \}\) => artifact\.kind !== "metadata"/);
+assert.match(foldingResultsLib, /model\.metrics\.length > 0/);
+assert.match(foldingResultsLib, /\|\| bundle\.artifacts\.some\(isFoldingArtifact\)/);
+assert.doesNotMatch(foldingResultsLib, /bundle\.models\.length > 0 \|\| bundle\.artifacts\.length > 0/);
+assert.match(foldingResultsPanel, /<FoldingMatrixHeatmap preview=\{activeModel\.matrixPreview\} size="large" \/>/);
+// A keyboard-generated click reports detail 0; the pointer handlers own the rest.
+assert.match(foldingResultsPanel, /if \(event\.detail !== 0\) return;/);
+// Short mutually exclusive sets are switches, not dropdowns, and the engine's own
+// tokens ("gfnff", "verytight", "ch2cl2") never reach the reader untranslated.
+assert.match(structureInfoPanel, /function InlineSegmentedControl\(\{/);
+// The panel builds on the shadcn registry rather than hand-rolled equivalents:
+// ToggleGroup brings roving focus to the segmented controls, Collapsible owns the
+// card open state, Alert carries the tool notices and Badge the format pill.
+assert.match(structureInfoPanel, /from "@\/components\/ui\/toggle-group"/);
+assert.match(structureInfoPanel, /from "@\/components\/ui\/collapsible"/);
+assert.match(structureInfoPanel, /from "@\/components\/ui\/alert"/);
+assert.match(structureInfoPanel, /from "@\/components\/ui\/badge"/);
+assert.match(structureInfoPanel, /<ToggleGroup\s+type="single"/);
+// A radio group is never empty: re-clicking the active option must not clear it.
+assert.match(structureInfoPanel, /onValueChange=\{\(next\) => \{ if \(next\) onChange\(next\); \}\}/);
+assert.match(structureInfoPanel, /<Badge variant="secondary">\{brief\.format\}<\/Badge>/);
+// The scene stepper is identified by the scene itself, not by the parser failing.
+assert.match(structureInfoPanel, /if \(sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT\)/);
+assert.match(structureInfoPanel, /function InlineSettingsSection\(\{ title, children \}/);
+assert.match(structureInfoPanel, /gfnff: "GFN-FF"/);
+assert.match(structureInfoPanel, /verytight: "Very tight"/);
+assert.match(structureInfoPanel, /ch2cl2: "Dichloromethane"/);
+assert.match(structureInfoPanel, /none: "Gas phase"/);
+assert.match(structureInfoPanel, /function XtbSettingsGroup\(\{ title, labelled, children \}/);
+assert.match(settingControl, /labels\?: Record<string, string>/);
+assert.match(settingControl, /\{labels\?\.\[option\] \?\? option\}/);
+assert.match(structureInfoPanel, /key: "maestro"/);
+assert.match(structureInfoPanel, /label: "Maestro entries"/);
 assert.match(structureInfoPanel, /\["Maestro entry", summary\.maestroRows \?\? \[\]\]/);
 assert.match(structureInfoPanel, /valueForLabel\(summary\.rows, "Preview atoms"\)/);
-assert.match(structureInfoPanel, /StructureSectionHeader title="Chains"/);
-assert.match(structureInfoPanel, /StructureSectionHeader title="Selected entity"/);
+// Chains, ligands and ions hang off their own summary row rather than getting a
+// card each, which is what stops the panel repeating itself.
+assert.match(structureInfoPanel, /row\.label === "Polymers" \? summary\.polymerRows/);
+assert.match(structureInfoPanel, /row\.label === "Ligands" \? summary\.ligandRows/);
+assert.match(structureInfoPanel, /const COMPOSITION_AUTO_EXPAND_LIMIT = 8/);
+// The standalone "Selected entity" card was removed - the tree row highlight and
+// the run-scope line already say what is selected, so the card only repeated them.
+assert.doesNotMatch(structureInfoPanel, /StructureSectionHeader title="Selected entity"/);
+assert.doesNotMatch(structureInfoPanel, /function SelectedEntityCard\(/);
 assert.match(structureInfoPanel, /const SDF_CONTEXT_STYLE_OPTIONS = \[/);
 assert.match(structureInfoPanel, /\{ value: "line", label: "Line" \}/);
 assert.match(structureInfoPanel, /\{ value: "cartoon", label: "Cartoon" \}/);
@@ -2563,8 +2646,8 @@ assert.doesNotMatch(structureInfoPanel, /opacityDisabled/);
 assert.match(structureInfoPanel, /onInput=\{\(event\) => applyOpacity\(Number\(event\.currentTarget\.value\)\)\}/);
 assert.match(structureInfoPanel, /Math\.round\(opacity \* 100\)/);
 assert.ok(
-  structureInfoPanel.indexOf("<SdfContextStyleCard") < structureInfoPanel.indexOf('StructureSectionHeader title="Components"'),
-  "SDF all-background controls should appear above Components"
+  structureInfoPanel.indexOf("<SdfContextStyleCard") < structureInfoPanel.indexOf("<StructureCompositionCard"),
+  "SDF all-background controls should appear above the composition tree"
 );
 assert.match(styles, /\.structure-inspector-style-options \{/);
 assert.match(styles, /\.structure-brief \{[\s\S]*?grid-auto-rows: max-content/);
@@ -2576,7 +2659,6 @@ assert.match(previewRuntimeCss, /@media \(max-width: 360px\)[\s\S]*?top: 64px;[\
 assert.match(previewRuntimeCss, /grid-template-columns: 28px auto minmax\(62px, 1fr\) auto auto/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-trajectory-smooth-button \{\s*grid-column:/);
 assert.match(styles, /\.structure-inspector-opacity-control \{/);
-assert.match(structureInfoPanel, /structure-inspector-selection-pill/);
 assert.match(structureInfoPanel, /inspectorSummaryLine\(brief\.kind, compositionSummary, compositionPending, compositionError\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument/);
 assert.match(structureInfoPanel, /function structureCompositionSourceForDocument\(document: ViewerDocument\): InspectorStructureTextSource/);
@@ -2588,13 +2670,13 @@ assert.match(structureInfoPanel, /const virtualText = source\.virtual \? readBro
 assert.match(structureInfoPanel, /return readStructureText\(source\.path, \{ maxBytes \}\)/);
 assert.match(structureInfoPanel, /return 12 \* 1024 \* 1024/);
 assert.match(structureInfoPanel, /const primaryAction = row\.action/);
-assert.match(structureInfoPanel, /key=\{structureActionRowKey\(row, index\)\}/);
+assert.match(structureInfoPanel, /key=\{structureActionRowKey\(child, index\)\}/);
 assert.match(structureInfoPanel, /function structureActionRowKey\(row: StructureSummaryRow, index: number\)/);
-assert.match(structureInfoPanel, /const handleKeyDown = \(event: KeyboardEvent<HTMLDivElement>\) => \{/);
+assert.match(structureInfoPanel, /function structureRowsKeyDown\(event: KeyboardEvent<HTMLDivElement>\) \{/);
 assert.match(structureInfoPanel, /event\.key !== "ArrowDown" && event\.key !== "ArrowUp"/);
 assert.match(structureInfoPanel, /buttons\[nextIndex\]\.focus\(\)/);
 assert.match(structureInfoPanel, /buttons\[nextIndex\]\.click\(\)/);
-assert.match(structureInfoPanel, /onKeyDown=\{handleKeyDown\}/);
+assert.match(structureInfoPanel, /onKeyDown=\{structureRowsKeyDown\}/);
 assert.match(structureInfoPanel, /const primaryActionKey = selectionActionKey\(document, primaryAction\)/);
 assert.match(structureInfoPanel, /primaryActionKey !== null && primaryActionKey === activeActionKey/);
 assert.match(structureInfoPanel, /data-selected=\{selected \|\| undefined\}/);
@@ -2605,10 +2687,11 @@ assert.match(structureInfoPanel, /type: "clear_selection", label: "Clear selecti
 assert.match(structureInfoPanel, /actions\.runStructureViewerAction\(document, action\)/);
 assert.match(structureInfoPanel, /selectionActionKey\(document: ViewerDocument, action: StructureViewerAction\)/);
 assert.match(structureInfoPanel, /if \(action\.type === "set_sdf_molecule"\) return JSON\.stringify\(\[document\.id, action\.type, action\.index\]\)/);
-assert.match(structureInfoPanel, /if \(action\.type === "set_sdf_molecule"\) return "Show molecule"/);
-assert.match(structureInfoPanel, /if \(action\.type === "set_sdf_molecule"\) return `Molecule \$\{action\.index \+ 1\}`/);
 assert.match(structureInfoPanel, /navigator\.clipboard\?\.writeText/);
-assert.match(structureInfoPanel, /Water \/ ions/);
+// Water and Ions already have their rows in componentRows, so the parser emits
+// solventRows as the individual ions only - no filtering needed downstream.
+assert.match(structureInfoPanel, /row\.label === "Ions" \? summary\.solventRows/);
+assert.doesNotMatch(structureComposition, /label: "Ions",\s*value: `\$\{formatNameCounts\(ionGroups, 8\)\}/);
 assert.match(structureInfoPanel, /structure-brief-mini-action/);
 assert.match(structureInfoPanel, /function visibleComponentRows\(rows: StructureSummaryRow\[\]\)/);
 assert.match(structureInfoPanel, /row\.value !== "None detected" \|\| row\.action/);
@@ -2647,7 +2730,6 @@ assert.match(structureBrief, /\["cube", "cub"\]/);
 assert.match(styles, /\.structure-brief-card \{/);
 assert.match(styles, /\.structure-brief-actions \{/);
 assert.match(styles, /\.structure-inspector-header \{/);
-assert.match(styles, /\.structure-inspector-selection-pill \{/);
 assert.doesNotMatch(structureInfoPanel, /structure-inspector-row-action/);
 assert.doesNotMatch(structureInfoPanel, /rowActionLabel/);
 assert.doesNotMatch(structureInfoPanel, /selectedEntity\.action\.type === "focus_ligand" \? "Focus" : "Select"/);
@@ -4842,6 +4924,43 @@ assert.match(previewRuntimeCss, /body:has\(\.msp-viewport-controls-buttons \.msp
 assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*hideGenerate3DMenu\(\);/);
 assert.match(previewViewer, /const viewportControlRailRect = visibleRect\('\.msp-plugin \.msp-viewport-controls-buttons'\);/);
 assert.match(previewViewer, /const railRect = visibleRect\('#buret-viewport-rail'\) \|\| viewportControlRailRect;/);
+// The rail carries its own animation button, the way Mol*'s viewport controls did:
+// a trackball that keeps turning plus the plugin's timed animations, each listed
+// once and each able to say why it is unavailable.
+assert.match(viewerShell, /data-buret-viewport-action="animate"/);
+assert.match(previewViewer, /openViewportMenu\(control, 'Animate', viewportAnimateMenu\)/);
+assert.match(previewViewer, /function viewportAnimateMenu\(menu\) \{/);
+// Closing the molecule card drops the selection, and the host has to be told
+// directly because clearing this way does not reach the selection manager events.
+// × parks the card without touching the selection: it latches "suppressed" and
+// hides, and the latch lifts on the next genuine click (pointerup, no drag).
+assert.match(previewViewer, /function dismissMolstarMoleculePreview\(\) \{\s*molstarMoleculePreviewSuppressed = true;\s*hideMolstarMoleculePreview\(\{ force: true \}\);\s*\}/);
+assert.doesNotMatch(previewViewer, /function dismissMolstarMoleculePreview\(\)[\s\S]{0,200}clearMolstarSelection\(\)/);
+assert.match(previewViewer, /if \(molstarMoleculePreviewSuppressed \|\| molstarMoleculePreviewMinimized\) return;/);
+assert.match(previewViewer, /if \(!moved && molstarMoleculePreviewSuppressed && !molstarMoleculePreviewMinimized\)/);
+// Minimize tucks the card into a corner chip that restores the same molecule.
+assert.match(previewViewer, /function minimizeMolstarMoleculePreview\(\)/);
+assert.match(previewViewer, /function restoreMolstarMoleculePreview\(\)/);
+assert.match(previewViewer, /data-buret-molecule-preview-action="minimize"/);
+assert.match(previewRuntimeCss, /\.buret-molecule-preview-chip \{/);
+assert.match(structureInfoPanel, /setActiveActionKey\(\(current\) => current && current\.includes\("focus_ligand"\) \? null : current\)/);
+assert.match(previewViewer, /const VIEWPORT_MOTION_ANIMATIONS = new Set\(\[/);
+assert.match(previewViewer, /'built-in\.animate-camera-spin'/);
+assert.match(previewViewer, /\.filter\(entry => entry\.applicability\.canApply \|\| entry\.applicability\.reason\)/);
+// Rock reads an angle and an axis besides its speed; a partial payload leaves the
+// maths on undefined and the scene simply never moves.
+assert.match(previewViewer, /rock: \{ value: 0\.3, min: 0\.02, max: 1\.5, step: 0\.02, params: \{ angle: 10, axis: \[0, -1, 0\] \} \}/);
+assert.match(previewViewer, /spin: \{ value: 0\.1, min: 0\.01, max: 1, step: 0\.01, params: \{ axis: \[0, -1, 0\] \} \}/);
+// Mol* defaults Unwind Assembly to looping, so an animation started from here has
+// to be told to finish.
+assert.match(previewViewer, /if \('playOnce' in params\) params\.playOnce = true;/);
+assert.match(previewViewer, /manager\.play\(animation, viewportAnimationParams\(animation, plugin\)\)/);
+assert.match(previewViewer, /plugin\?\.behaviors\?\.state\?\.isAnimating\?\.subscribe\?\.\(updateViewportAnimateState\)/);
+// Motion lives on the animate button now, so the camera menu must not offer it too.
+assert.doesNotMatch(
+  previewViewer.slice(previewViewer.indexOf("function viewportCameraMenu"), previewViewer.indexOf("function viewportAnimateMenu")),
+  /viewportMotionControls/,
+);
 assert.match(previewViewer, /window\.innerWidth - railRect\.left \+ FLOATING_LAYOUT_GAP \* 2/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-generate-3d-control-right', generate3DControlRight \+ 'px'\);/);
 assert.match(previewRuntimeCss, /background: color-mix\(in srgb, var\(--buret-toolbar-background\) 92%/);
