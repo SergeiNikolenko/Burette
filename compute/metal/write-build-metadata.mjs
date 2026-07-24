@@ -24,6 +24,7 @@ const requiredEnvironment = [
   "PM6_D3_SOURCE_SHA256",
   "PM6_ONE_CENTER_FOCK_SOURCE_SHA256",
   "PM6_PAIR_FOCK_SOURCE_SHA256",
+  "UMAP_SOURCE_SHA256",
   "TANIMOTO_CONTRACT_SHA256",
   "CONFORMER_CONTRACT_SHA256",
   "DISTANCE_CONTRACT_SHA256",
@@ -40,6 +41,7 @@ const requiredEnvironment = [
   "PM6_D3_CONTRACT_SHA256",
   "PM6_ONE_CENTER_FOCK_CONTRACT_SHA256",
   "PM6_PAIR_FOCK_CONTRACT_SHA256",
+  "UMAP_CONTRACT_SHA256",
   "TANIMOTO_AIR_SHA256",
   "CONFORMER_AIR_SHA256",
   "DISTANCE_AIR_SHA256",
@@ -56,6 +58,7 @@ const requiredEnvironment = [
   "PM6_D3_AIR_SHA256",
   "PM6_ONE_CENTER_FOCK_AIR_SHA256",
   "PM6_PAIR_FOCK_AIR_SHA256",
+  "UMAP_AIR_SHA256",
   "METALLIB_SHA256",
   "METAL_TOOL_PATH",
   "METAL_TOOL_SHA256",
@@ -80,8 +83,8 @@ for (const name of requiredEnvironment.filter((name) => name.endsWith("_SHA256")
 const normalizedVersion = process.env.METAL_TOOL_VERSION.trim().replace(/\s+/g, " ");
 const metadata = {
   schemaVersion: "burrete.compute.metal-build-metadata.v2",
-  runtimeVersion: "burrete-native-metal-v20",
-  libraryId: "burrete.compute.native.v20",
+  runtimeVersion: "burrete-native-metal-v22",
+  libraryId: "burrete.compute.native.v22",
   sources: [
     { path: "compute/metal/tanimoto.v2.metal", sha256: process.env.TANIMOTO_SOURCE_SHA256 },
     { path: "compute/metal/conformer-initialize.v1.metal", sha256: process.env.CONFORMER_SOURCE_SHA256 },
@@ -99,6 +102,7 @@ const metadata = {
     { path: "compute/metal/pm6-d3.v2.metal", sha256: process.env.PM6_D3_SOURCE_SHA256 },
     { path: "compute/metal/pm6-one-center-fock.v1.metal", sha256: process.env.PM6_ONE_CENTER_FOCK_SOURCE_SHA256 },
     { path: "compute/metal/pm6-pair-fock.v1.metal", sha256: process.env.PM6_PAIR_FOCK_SOURCE_SHA256 },
+    { path: "compute/metal/umap.v1.metal", sha256: process.env.UMAP_SOURCE_SHA256 },
   ],
   contracts: [
     { path: "compute/metal/tanimoto-kernel-contract.v2.json", sha256: process.env.TANIMOTO_CONTRACT_SHA256 },
@@ -117,6 +121,7 @@ const metadata = {
     { path: "compute/metal/pm6-d3-kernel-contract.v2.json", sha256: process.env.PM6_D3_CONTRACT_SHA256 },
     { path: "compute/metal/pm6-one-center-fock-kernel-contract.v1.json", sha256: process.env.PM6_ONE_CENTER_FOCK_CONTRACT_SHA256 },
     { path: "compute/metal/pm6-pair-fock-kernel-contract.v1.json", sha256: process.env.PM6_PAIR_FOCK_CONTRACT_SHA256 },
+    { path: "compute/metal/umap-kernel-contract.v1.json", sha256: process.env.UMAP_CONTRACT_SHA256 },
   ],
   air: [
     { path: "tanimoto.v2.air", sha256: process.env.TANIMOTO_AIR_SHA256 },
@@ -135,9 +140,10 @@ const metadata = {
     { path: "pm6-d3.v2.air", sha256: process.env.PM6_D3_AIR_SHA256 },
     { path: "pm6-one-center-fock.v1.air", sha256: process.env.PM6_ONE_CENTER_FOCK_AIR_SHA256 },
     { path: "pm6-pair-fock.v1.air", sha256: process.env.PM6_PAIR_FOCK_AIR_SHA256 },
+    { path: "umap.v1.air", sha256: process.env.UMAP_AIR_SHA256 },
   ],
   metallib: {
-    path: "native-compute.v20.metallib",
+    path: "native-compute.v22.metallib",
     sha256: process.env.METALLIB_SHA256,
   },
   compiler: {
@@ -156,11 +162,17 @@ const metadata = {
     buildVersion: process.env.SDK_BUILD_VERSION,
   },
   deploymentTarget: "14.0",
-  compileArguments: ["-std=metal3.1", "-mmacosx-version-min=14.0"],
+  compileArguments: [
+    "-std=metal3.1",
+    "-mmacosx-version-min=14.0",
+    "-fmodules-cache-path=<temporary>",
+  ],
   entrypoints: [
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
     "burrete_tanimoto_query_counts_v1",
+    "burrete_tanimoto_counts_batch_v1",
+    "burrete_tanimoto_top_k_batch_v1",
     "burrete_conformer_initialize_v1",
     "burrete_conformer_distance_v1",
     "burrete_conformer_optimize_v1",
@@ -178,6 +190,8 @@ const metadata = {
     "burrete_pm6_d3_v2",
     "burrete_pm6_one_center_fock_v1",
     "burrete_pm6_pair_fock_v1",
+    "burrete_umap_initialize_v1",
+    "burrete_umap_epoch_v1",
   ],
 };
 

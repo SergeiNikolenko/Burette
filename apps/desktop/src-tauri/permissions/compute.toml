@@ -16,6 +16,8 @@ commands.allow = [
   "compute_begin_cluster_execution",
   "compute_submit_fingerprint_chunk",
   "compute_execute_cluster",
+  "compute_execute_chemical_space",
+  "compute_cluster_chemical_space",
   "compute_publish_cluster",
   "compute_get_job",
   "compute_list_jobs",

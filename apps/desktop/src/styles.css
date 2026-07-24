@@ -93,6 +93,19 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; back
 button, select, input { font: inherit; }
 button { color: inherit; cursor: default; }
 strong { font-weight: 400; }
+
+@keyframes burette-progress-indeterminate {
+  0% {
+    transform: translateX(-110%);
+  }
+  55% {
+    transform: translateX(135%);
+  }
+  100% {
+    transform: translateX(310%);
+  }
+}
+
 *[data-tauri-drag-region] {
   app-region: drag;
   -webkit-app-region: drag;
@@ -7421,6 +7434,16 @@ img.settings-open-destination-icon {
 }
 .settings-action-button:hover:not(:disabled) { background: var(--surface-subtle-strong); color: var(--text-primary); }
 .settings-action-button:disabled { opacity: 0.48; }
+.chemical-space-visual-controls {
+  container-type: inline-size;
+}
+
+@container (max-width: 580px) {
+  .chemical-space-visual-controls .chemical-space-control-name {
+    display: none;
+  }
+}
+
 @container settings-panel (max-width: 520px) {
   .settings-card { margin: 0; }
   .settings-control { display: grid; gap: 10px; }

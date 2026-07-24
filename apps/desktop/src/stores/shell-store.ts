@@ -457,7 +457,10 @@ export const useShellStore = create<ShellState>()(
           const rightDockTabs = snapshot.rightDockOpen
             ? ensureDefaultDockTabs("right", normalizedRightDockTabs)
             : normalizedRightDockTabs;
-          const bottomDockTabs = persistentDockTabs("bottom", cloneJson(snapshot.bottomDockTabs));
+          const normalizedBottomDockTabs = persistentDockTabs("bottom", cloneJson(snapshot.bottomDockTabs));
+          const bottomDockTabs = snapshot.bottomDockOpen
+            ? ensureDefaultDockTabs("bottom", normalizedBottomDockTabs)
+            : normalizedBottomDockTabs;
           const projectRoots = persistentRoots(snapshot.projectRoots);
           const pinnedProjectRoots = persistentRoots(snapshot.pinnedProjectRoots)
             .filter((root) => projectRoots.includes(root));
