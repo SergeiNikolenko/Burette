@@ -657,6 +657,10 @@ function collectBrowserDevFoldingFiles(root: string, depth: number, files: Array
   }
   for (const dirent of dirents) {
     if (files.length >= 5000) return;
+    // Hidden entries are tooling side-cars, never folding output. A trajectory leaves
+    // `.<name>.xtc_offsets.npz` index caches beside its frames, and those counted as
+    // folding arrays, which showed a plain MD folder as a folding result bundle.
+    if (dirent.name.startsWith(".")) continue;
     const path = join(root, dirent.name);
     if (dirent.isDirectory()) {
       collectBrowserDevFoldingFiles(path, depth + 1, files);

@@ -118,13 +118,63 @@ def signal_series(signal: str, selected_frames: np.ndarray, reference_index: int
 
 
 def interpolate(frames: np.ndarray, keyframes: np.ndarray):
+    """Rebuild the trajectory from its keyframes with a Catmull-Rom spline.
+
+    Straight lines between keyframes meet at an angle, so velocity flips direction
+    at every one of them and the playback reads as a series of jerks -- the fewer
+    keyframes a preset keeps, the more often that happens. A Catmull-Rom spline
+    still passes exactly through each keyframe but arrives and leaves along the
+    same tangent, so the motion carries through them.
+    """
     output = np.empty_like(frames)
-    for start, end in zip(keyframes[:-1], keyframes[1:]):
+    keys = np.asarray(keyframes, dtype=int)
+    if len(keys) < 2:
+        return frames.copy()
+    anchors = frames[keys]
+    last = len(keys) - 1
+    for index, (start, end) in enumerate(zip(keys[:-1], keys[1:])):
         count = int(end - start)
+        # The segment's own ends, plus the neighbours that set the tangents. At the
+        # trajectory's ends there is no neighbour, so the end point stands in for it
+        # and the spline simply eases out of the first frame and into the last.
+        p0 = anchors[max(0, index - 1)]
+        p1 = anchors[index]
+        p2 = anchors[index + 1]
+        p3 = anchors[min(last, index + 2)]
         for offset in range(count + 1):
-            fraction = 0.0 if count == 0 else offset / count
-            output[start + offset] = frames[start] + (frames[end] - frames[start]) * fraction
+            t = 0.0 if count == 0 else offset / count
+            t2 = t * t
+            t3 = t2 * t
+            output[start + offset] = 0.5 * (
+                2.0 * p1
+                + (-p0 + p2) * t
+                + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+                + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+            )
     return output
+
+
+def has_residue_topology(universe) -> bool:
+    """Whether the universe knows more than element and position.
+
+    XYZ carries neither residues nor chains, so a viewer given one can only draw
+    atoms and bonds. When the run started from a real topology that information is
+    already loaded here, and writing it back out is what lets the viewer recognise
+    a protein and draw it as a ribbon.
+    """
+    try:
+        return len(universe.residues) > 1 and hasattr(universe.atoms, "resnames")
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
+def write_pdb(path: Path, universe, frames: np.ndarray):
+    import MDAnalysis as mda
+
+    with mda.Writer(str(path), n_atoms=universe.atoms.n_atoms, multiframe=True) as writer:
+        for frame in frames:
+            universe.atoms.positions = frame
+            writer.write(universe.atoms)
 
 
 def write_xyz(path: Path, universe, frames: np.ndarray):
@@ -206,14 +256,24 @@ def analyze(request: dict):
             "cosineContentHigh": bool(filtered_result.cosine_content_high),
         })
 
-    output_path = Path(request.get("outputPath") or Path(trajectory).with_name(f"{Path(trajectory).stem}.mdsmooth.xyz"))
+    smoothed = interpolate(aligned_all, np.sort(keyframes))
+    keeps_topology = has_residue_topology(universe)
+    output_format = "pdb" if keeps_topology else "xyz"
+    requested_output = str(request.get("outputPath") or "").strip()
+    output_path = Path(requested_output) if requested_output else Path(trajectory).with_name(
+        f"{Path(trajectory).stem}.mdsmooth.{output_format}"
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    write_xyz(output_path, universe, interpolate(aligned_all, np.sort(keyframes)))
+    if keeps_topology:
+        write_pdb(output_path, universe, smoothed)
+    else:
+        write_xyz(output_path, universe, smoothed)
     return {
         "ok": True,
         "trajectoryPath": str(Path(trajectory).resolve()),
         "topologyPath": str(Path(topology).resolve()) if topology else None,
         "outputPath": str(output_path.resolve()),
+        "outputFormat": output_format,
         "signal": signal,
         "selection": selection,
         "selectedAtomCount": int(selected.n_atoms),
@@ -225,7 +285,7 @@ def analyze(request: dict):
         "cutoffFrequency": cutoff,
         "spectrum": spectrum_payload(np.asarray(raw)),
         "diagnostics": diagnostics,
-        "interpolation": "linear",
+        "interpolation": "catmull-rom",
     }
 
 
