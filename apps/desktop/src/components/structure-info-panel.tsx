@@ -13,6 +13,7 @@ import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerW
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -197,11 +198,22 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
     }
     return (
       <div className="dock-content structure-brief">
-        <section className="structure-brief-card">
-          <div className="structure-brief-kicker">Molecular Inspector</div>
-          <h3>No active structure</h3>
-          <p>Open a molecular file to see a compact summary here.</p>
-        </section>
+        <Empty className="structure-inspector-empty">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <StructureEmptyIcon />
+            </EmptyMedia>
+            <EmptyTitle>No active structure</EmptyTitle>
+            <EmptyDescription>
+              Open a molecular file to see its composition, calculations and results here.
+            </EmptyDescription>
+          </EmptyHeader>
+          {!hostedMcpWidget ? (
+            <Button type="button" variant="secondary" size="sm" onClick={() => void actions.chooseFiles()}>
+              Open structure
+            </Button>
+          ) : null}
+        </Empty>
         <StructureDropSummary dockDrops={dockDrops} />
       </div>
     );
@@ -486,6 +498,17 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
 
       <StructureDropSummary dockDrops={dockDrops} />
     </div>
+  );
+}
+
+function StructureEmptyIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <path d="M4.6 10.4 8 5.4l3.6 3.2" strokeLinecap="round" />
+      <circle cx="4.1" cy="11" r="1.7" fill="currentColor" stroke="none" />
+      <circle cx="8.2" cy="4.9" r="1.7" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="8.7" r="1.7" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
 

@@ -3635,8 +3635,37 @@ img.radix-menu-item-icon {
 }
 /* The composition tree stacks each group with its members, so the separator has
    to move from the rows to the groups. */
+/* A structure with a hundred waters used to push every card below it off the
+   panel. The tree keeps its own scroll instead, so the sections after it stay
+   reachable no matter how long the composition is. */
+.structure-brief-rows.structure-inspector-tree {
+  max-height: 264px;
+  overflow-y: auto;
+}
 .structure-inspector-tree-group + .structure-inspector-tree-group {
   border-top: 1px solid var(--line-subtler);
+}
+.structure-inspector-empty {
+  border: 1px solid var(--line-subtler);
+  border-radius: var(--control-radius);
+  background: var(--surface-card);
+  gap: 10px;
+  padding: 22px 14px;
+}
+.structure-inspector-empty [data-slot="empty-title"] {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.structure-inspector-empty [data-slot="empty-description"] {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.structure-inspector-empty [data-slot="empty-icon"][data-variant="icon"] {
+  border: 1px solid var(--line-subtler);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
 }
 .structure-inspector-tree-toggle,
 .structure-inspector-tree-spacer {
