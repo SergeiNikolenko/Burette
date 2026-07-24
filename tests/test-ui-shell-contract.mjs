@@ -1330,7 +1330,7 @@ assert.match(appLayout, /from "\.\/file-drop-feedback"/);
 assert.doesNotMatch(appLayout, /SidebarLeftIcon/);
 assert.doesNotMatch(appLayout, /from "\.\/system-icon"/);
 assert.match(appLayout, /function DockToggleIcon\(\{ className \}: \{ className\?: string \}\)/);
-assert.match(appLayout, /function clampRightDockWidth\(width: number, viewportWidth: number, sidebarLayoutWidth: number\)/);
+assert.match(appLayout, /function clampRightDockWidth\(width: number, workbenchWidth: number\)/);
 // The hand-drawn toggle SVG was replaced by the Lucide panel icon.
 assert.match(appLayout, /import \{ ArrowLeft, ArrowRight, PanelLeft \} from "lucide-react"/);
 assert.match(appLayout, /<PanelLeft className=\{className\} size=\{18\} strokeWidth=\{1\.8\} aria-hidden \/>/);
@@ -1353,7 +1353,14 @@ assert.match(appLayout, /const sidebarVisible = settingsMode \|\| \(!hostedMcpWi
 assert.match(appLayout, /const chromeVisible = !settingsMode && !hostedMcpWidget/);
 assert.match(appLayout, /\{!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region \/>\}/);
 assert.match(appLayout, /const sidebarLayoutWidth = sidebarVisible \? sidebarWidth : 0/);
-assert.match(appLayout, /const rightDockWidth = clampRightDockWidth\(state\.rightDockWidth, viewportWidth, sidebarLayoutWidth\)/);
+assert.match(appLayout, /const workbenchWidth = viewportWidth - sidebarLayoutWidth/);
+assert.match(appLayout, /const rightDockWidth = clampRightDockWidth\(state\.rightDockWidth, workbenchWidth\)/);
+// A spilling grid is told how far the dock floats over it, measured from the
+// two rects, so its toolbar menus stay out of the covered strip. The cover is
+// pushed on any dock resize because a spilling grid fires no resize of its own.
+assert.match(appLayout, /const cover = dockLeft === undefined \? 0 : Math\.max\(0, Math\.round\(iframe\.getBoundingClientRect\(\)\.right - dockLeft\)\)/);
+assert.match(appLayout, /type: "gridViewportCover", cover/);
+assert.match(appLayout, /new ResizeObserver\(\(\) => post\(\)\)/);
 assert.doesNotMatch(appLayout, /Math\.max\(360, clampedSidebarWidth\)/);
 assert.match(appLayout, /const compactLeadingChrome = !tauriRuntime \|\| windowFullscreen/);
 // The tab strip is placed from the panels' measured edges, not from the stored
@@ -2067,7 +2074,7 @@ assert.match(styles, /\.molecule-stage/);
 assert.match(styles, /inset: var\(--chrome-height\) 0 0/);
 assert.match(styles, /--accent: #af52de/);
 assert.match(styles, /--control-radius: 10px/);
-assert.equal(styles.match(/border-radius: 8px/g)?.length, 2);
+assert.equal(styles.match(/border-radius: 8px/g)?.length, 4);
 assert.match(styles, /--chrome-drag-height: 72px/);
 assert.match(styles, /\.app-shell\[data-theme="light"\] \{[^}]*--bg-base: #ffffff;[^}]*--fg-base: #0d0d0d;[^}]*--bg: rgba\(255, 255, 255, 0\.715\);[^}]*--surface-card: transparent;/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\] \{[^}]*--bg-base: #ffffff;[^}]*--bg: rgba\(255, 255, 255, 0\.715\);[^}]*--surface-card: transparent;/);
@@ -4359,7 +4366,7 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v143"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v166"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v66"/);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
 assert.match(viteConfig, /registerBrowserDevAgentSessionRoute\(server\)/);
@@ -5269,7 +5276,7 @@ assert.match(gridViewer, /\['ketcher', 'Edit in Ketcher'\]/);
 assert.match(gridViewer, /function isMoleculeContextTarget\(target\)/);
 assert.match(gridViewer, /target\.closest\('\[data-buret-card-resize\], button, input, select, textarea, \[contenteditable="true"\]'\)/);
 assert.doesNotMatch(gridViewer, /function isMoleculeContextTarget\(target\)[\s\S]*?\.buret-card-body[\s\S]*?return !!target\.closest\('\[data-buret-molecule-picture\], \.buret-card'\);/);
-assert.match(gridViewer, /return !!target\.closest\('\[data-buret-molecule-picture\], \.buret-card'\);/);
+assert.match(gridViewer, /return !!target\.closest\('\[data-buret-molecule-picture\], \.buret-card, \.buret-grid-table-row'\);/);
 assert.match(gridViewer, /\['molstar', 'Open in Mol\*'\]/);
 assert.match(gridViewer, /\['duplicate', 'Duplicate'\]/);
 assert.match(gridViewer, /\['remove', 'Delete from collection'\]/);
@@ -6497,9 +6504,12 @@ assert.match(gridViewer, /body\.type === 'gridApplyKetcherRow'/);
 assert.match(gridViewer, /body\.type === 'gridGenerate3DStarted'/);
 assert.match(gridViewer, /body\.type === 'gridGenerate3DError'/);
 assert.match(gridUi, /function ControlTooltip\(\{ label \}: \{ label: string \}\)/);
-assert.match(gridUi, /<ControlTooltip label="Save changes back to this collection" \/>/);
-assert.match(gridUi, /<ControlTooltip label="Save this collection as a new file" \/>/);
-assert.match(gridUi, /<ControlTooltip label="Undo the last grid edit" \/>/);
+// Save stays on the toolbar; Save As and Undo moved into the overflow menu,
+// all three carrying their hint through the button `title` from grid-viewer.
+assert.match(gridUi, /id="save-grid"[\s\S]*?title=\{props\.saveTitle\}/);
+assert.match(gridUi, /id="save-grid-as"[\s\S]*?title=\{props\.saveAsTitle\}/);
+assert.match(gridUi, /id="undo-grid-edit"[\s\S]*?title=\{props\.undoTitle\}/);
+assert.match(gridViewer, /saveAsTitle: !editing[\s\S]*?'Save this collection as a new file'/);
 assert.match(gridUi, /ariaLabel="Grid view mode"/);
 assert.match(gridUi, /dataAttribute="buret-grid-view-mode"/);
 assert.match(gridUi, /id="table-columns"/);
@@ -6508,12 +6518,14 @@ assert.match(gridUi, /id="generate-3d-selected"/);
 assert.match(gridUi, /data-buret-grid-generate-3d-label/);
 assert.match(gridUi, /Generate 3D/);
 assert.doesNotMatch(gridUi, /Calculate selected descriptors/);
-assert.match(gridUi, /const selectedPresetLabel = props\.xyzrenderPresetOptions\.find\(/);
-assert.match(gridUi, /"--buret-xyzrender-preset-width": `\$\{presetWidth\}px`/);
+// The preset picker is now a plain mini-select, sized by the shared control
+// styles instead of a computed per-label width.
+assert.match(gridUi, /id="xyzrender-preset"\s+className="ab-mini"/);
+assert.match(gridUi, /value=\{props\.xyzrenderPreset\}/);
 assert.match(gridCss, /\.buret-control-tooltip \{/);
 assert.match(gridCss, /\.buret-actions button:hover > \.buret-control-tooltip/);
-assert.match(gridCss, /\.buret-grid-toolbar \.buret-grid-xyzrender-preset-control select \{[^}]*width: var\(--buret-xyzrender-preset-width, 86px\);/s);
-assert.doesNotMatch(gridCss, /\.buret-grid-toolbar \.buret-grid-xyzrender-preset-control select \{[^}]*width: 104px;/s);
+assert.match(gridCss, /\.buret-grid-toolbar \.buret-grid-xyzrender-preset-control \{[^}]*height: var\(--buret-control-height\);/s);
+assert.doesNotMatch(gridCss, /--buret-xyzrender-preset-width/);
 assert.match(gridViewer, /onSaveGrid\(\) \{ saveGrid\(cfg\); \}/);
 assert.match(gridViewer, /onSaveGridAs\(\) \{ saveGridAs\(cfg\); \}/);
 assert.match(gridViewer, /onUndoGridEdit\(\) \{ undoLastGridEdit\(cfg\); \}/);
@@ -6741,13 +6753,13 @@ assert.match(gridUi, /id="select-all"/);
 assert.match(gridUi, /id="clear-selection"/);
 assert.match(gridUi, /id="rdkit-use-input-coords"/);
 assert.match(gridUi, /Use file coords/);
-assert.match(gridViewer, /function initRdkitCoordinatesControl\(cfg\)/);
+assert.match(gridViewer, /function initRdkitCoordinatesControl\(\)/);
 assert.match(gridViewer, /function syncRdkitCoordinatesControl\(\)/);
 assert.match(gridViewer, /const hasInputCoordinates = hasInputCoordinateRows\(\)/);
 assert.match(gridViewer, /control\.hidden = state\.cardRenderer !== 'rdkit' \|\| !hasInputCoordinates/);
-assert.match(gridViewer, /control\.toggleAttribute\('aria-disabled', !hasInputCoordinates\)/);
-assert.match(gridViewer, /input\.disabled = !hasInputCoordinates/);
-assert.match(gridViewer, /input\.checked = hasInputCoordinates && state\.rdkitUseInputCoords/);
+// The checkbox became an icon toggle button driven by `aria-pressed`.
+assert.match(gridViewer, /toggle\.disabled = !hasInputCoordinates/);
+assert.match(gridViewer, /toggle\.setAttribute\('aria-pressed', hasInputCoordinates && state\.rdkitUseInputCoords \? 'true' : 'false'\)/);
 assert.match(gridViewer, /syncRdkitCoordinatesControl\(\);\s*syncGridEditControls\(\);\s*let footerText;/s);
 assert.match(gridViewer, /document\.getElementById\('footer'\)\.textContent = footerText/);
 assert.match(gridViewer, /function hasMolblockInputCoordinates\(value\)/);
@@ -6783,15 +6795,15 @@ assert.match(gridCss, /\.buret-selection-actions,[\s\S]*\.buret-selected-open-ac
 assert.match(gridCss, /\.buret-grid-segmented-control,[\s\S]*\.buret-grid-card-renderer-switch\s*\{[^}]*box-sizing: border-box;[^}]*height: var\(--buret-control-height\);/s);
 assert.match(gridCss, /\.buret-grid-segmented-control button,[\s\S]*\.buret-grid-card-renderer-switch button\s*\{[^}]*background: var\(--buret-control-surface\);/s);
 assert.match(gridCss, /\.buret-grid-segmented-control button:hover,[\s\S]*\.buret-grid-card-renderer-switch button\.active\s*\{[^}]*background: var\(--buret-control-active\);/s);
-assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\s*\{[^}]*display: inline-flex;/s);
-assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\s*\{[^}]*box-sizing: border-box;[^}]*height: var\(--buret-control-height\);/s);
-assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\s*\{[^}]*background: var\(--buret-control-surface\);/s);
+// The coords control is now an icon toggle button, so its wrapper lost the pill
+// styling and the checkbox-era state selectors.
+assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\s*\{[^}]*display: inline-flex;[^}]*align-items: center;/s);
+assert.doesNotMatch(gridCss, /\.buret-rdkit-coords-control\s*\{[^}]*background: var\(--buret-control-surface\)/s);
+assert.doesNotMatch(gridCss, /\.buret-rdkit-coords-control:has\(input:checked\)/);
 assert.match(gridCss, /\.buret-grid-renderer-switch\s*\{[^}]*background: transparent;/s);
 assert.match(gridCss, /\.buret-grid-renderer-switch button\s*\{[^}]*background: var\(--buret-control-surface\);/s);
 assert.match(gridCss, /\.buret-grid-renderer-switch button:hover,[\s\S]*\.buret-grid-renderer-switch button\.active\s*\{[^}]*background: var\(--buret-control-active\);/s);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\[hidden\]\s*\{[^}]*display: none;/s);
-assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control:has\(input:checked\)\s*\{/);
-assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\[aria-disabled="true"\]\s*\{[^}]*opacity: 0\.58;/s);
 assert.match(gridCss, /\.buret-toolbar-row-view\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap;/s);
 assert.doesNotMatch(gridCss, /\.buret-toolbar-row-main,\s*\.buret-toolbar-row-view\s*\{\s*grid-template-columns: 1fr;/);
 assert.match(gridViewer, /card\.classList\.add\('buret-card-resizing'\)/);
@@ -7004,7 +7016,7 @@ assert.match(gridViewer, /root\.addEventListener\('contextmenu', handleGridShell
 assert.match(gridViewer, /function handleGridShellContextMenu\(event\)/);
 assert.match(gridViewer, /if \(target\.closest\('\.buret-card'\)\) return;/);
 assert.match(gridViewer, /function isMoleculeContextTarget\(target\)/);
-assert.match(gridViewer, /return !!target\.closest\('\[data-buret-molecule-picture\], \.buret-card'\);/);
+assert.match(gridViewer, /return !!target\.closest\('\[data-buret-molecule-picture\], \.buret-card, \.buret-grid-table-row'\);/);
 assert.match(gridViewer, /STRUCTURE_DRAG_MIME = 'application\/x-burette-structure-paths'/);
 assert.match(gridViewer, /function installCardDrag\(el, row\)/);
 assert.match(gridViewer, /function isCardDragSource\(target\)/);

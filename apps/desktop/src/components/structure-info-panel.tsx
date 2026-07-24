@@ -19,12 +19,16 @@ import { DIRECT_CHEMISTRY_JOB_ATOM_LIMIT, structureAtomCountFromSummary } from "
 import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
+import { GridFilterSection } from "./grid-filter-section";
+import { GridDescriptorStatus } from "./grid-descriptor-status";
+import type { GridFilterModel } from "./types";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { getMdsmoothCapabilities, installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
 import { isTauriRuntime } from "../lib/tauri";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings } from "../types";
 
 type StructureInfoPanelProps = {
+  gridFilterModel: GridFilterModel | null;
   document: ViewerDocument | null;
   textDocument?: TextFileDocument | null;
   dockDrops: ShellViewState["dockDroppedStructures"];
@@ -103,7 +107,7 @@ const TRAJECTORY_SMOOTHING_EXTENSIONS = new Set([
   "xyz", "pdb", "ent", "gro", "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj",
 ]);
 
-export function StructureInfoPanel({ document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
+export function StructureInfoPanel({ gridFilterModel, document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
   const hostedMcpWidget = isHostedMcpWidget();
   const composition = useStructureComposition(document);
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
@@ -350,6 +354,8 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
           actions={actions}
         />
 
+        {document?.renderer === "grid2d" ? <GridDescriptorStatus documentId={document.id} /> : null}
+        {gridFilterModel ? <GridFilterSection model={gridFilterModel} actions={actions} /> : null}
         <InspectorEngineCard
           className="structure-inspector-xtb-card"
           title="xTB"
