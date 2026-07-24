@@ -2882,6 +2882,10 @@ body.burette-mobile-host .buret-docking-poses button {
 }
 .buret-trajectory-smooth-button { min-width: 58px; font-weight: 600; }
 .buret-docking-pose-animation {
+  /* Collapsing by height alone still let this row set the control's width: its slider
+     and Smooth button reserved their span, leaving empty space to the right of Next
+     while the row was shut. Taken out of the flow it claims neither. */
+  position: absolute;
   max-height: 0;
   margin-top: 0;
   overflow: hidden;
@@ -2898,6 +2902,7 @@ body.burette-mobile-host .buret-docking-poses button {
   width: max-content;
 }
 .buret-docking-poses.buret-docking-poses-animation-open .buret-docking-pose-animation {
+  position: static;
   max-height: 34px;
   margin-top: 6px;
   opacity: 1;
