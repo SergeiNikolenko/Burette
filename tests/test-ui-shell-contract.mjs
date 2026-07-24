@@ -103,7 +103,8 @@ const [
   packageJson,
   themeSource,
   appLayout,
-  notificationPopup,
+  statusDetailsDialog,
+  uiToast,
   main,
   bootOverlayScript,
   sidebar,
@@ -306,7 +307,8 @@ const [
   source('package.json'),
   source('apps/desktop/src/lib/theme.ts'),
   source('apps/desktop/src/components/app-layout.tsx'),
-  source('apps/desktop/src/components/notification-popup.tsx'),
+  source('apps/desktop/src/components/status-details-dialog.tsx'),
+  source('apps/desktop/src/components/ui/toast.tsx'),
   source('apps/desktop/src/main.tsx'),
   source('apps/desktop/public/boot-overlay.js'),
   source('apps/desktop/src/components/sidebar/index.tsx'),
@@ -1124,13 +1126,17 @@ assert.match(bundleReportScript, /const initialKetcherAssets = assets\.filter\(\
 assert.match(bundleReportScript, /const mainImportsKetcher = \/from\\s\*\["'\]\\\.\\\/ketcher-/);
 assert.match(bundleReportScript, /const ketcherBoundaryOk = ketcherChunks\.length > 0 && initialKetcherAssets\.length === 0 && !mainImportsKetcher/);
 assert.match(bundleReportScript, /Ketcher lazy boundary failed/);
-assert.match(app, /const \{ status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef \} = useAppStatus\(\)/);
+assert.match(app, /const \{ status, statusDetails, dismissStatusDetails, pushStatus, pushErrorStatus, recentErrorsRef \} = useAppStatus\(\)/);
+assert.match(app, /<Toaster \/>/);
+assert.match(app, /<StatusDetailsDialog request=\{statusDetails\} onDismiss=\{dismissStatusDetails\} \/>/);
 assert.match(appStatusHook, /useState<StatusNotice \| null>\(null\)/);
 assert.match(appStatusHook, /const pushStatus = useCallback/);
 assert.match(appStatusHook, /const pushErrorStatus = useCallback/);
 assert.match(appStatusHook, /recentErrorsRef\.current = recentErrorsRef\.current\.slice\(-20\)/);
-assert.match(appStatusHook, /window\.setTimeout/);
-assert.match(appStatusHook, /current\?\.id === status\.id \? null : current/);
+// Status notices surface through the shared Base UI toast manager; errors stay
+// until dismissed while info/success auto-close.
+assert.match(appStatusHook, /toast\.add\(\{/);
+assert.match(appStatusHook, /timeout: kind === "error" \? 0 : NOTICE_TIMEOUT_MS/);
 assert.match(app, /useAppDescriptors\(\{\s*documents,\s*pushStatus,\s*\}\)/s);
 assert.match(appDescriptorsHook, /const GRID_DESCRIPTOR_JOB_EVENT = "burrete-grid-descriptor-job"/);
 assert.match(appDescriptorsHook, /type: "gridDescriptorControls"/);
@@ -1309,7 +1315,6 @@ assert.match(openEventsHook, /openPendingDocuments\(\{ replace: true \}, true\)/
 assert.match(appLayout, /from "\.\/editor-area"/);
 assert.match(appLayout, /from "\.\/editor-area\/editor-tabs"/);
 assert.match(appLayout, /from "\.\/sidebar"/);
-assert.match(appLayout, /from "\.\/notification-popup"/);
 assert.match(appLayout, /from "\.\/file-drop-feedback"/);
 assert.doesNotMatch(appLayout, /SidebarLeftIcon/);
 assert.doesNotMatch(appLayout, /from "\.\/system-icon"/);
@@ -1318,15 +1323,21 @@ assert.match(appLayout, /function clampRightDockWidth\(width: number, viewportWi
 // The hand-drawn toggle SVG was replaced by the Lucide panel icon.
 assert.match(appLayout, /import \{ ArrowLeft, ArrowRight, PanelLeft \} from "lucide-react"/);
 assert.match(appLayout, /<PanelLeft className=\{className\} size=\{18\} strokeWidth=\{1\.8\} aria-hidden \/>/);
-assert.match(appLayout, /onDismissStatus: \(\) => void;/);
-assert.match(appLayout, /<NotificationPopup notice=\{state\.status\} onDismiss=\{onDismissStatus\} \/>/);
 assert.match(appLayout, /<FileDropFeedback preview=\{dropPreview\} \/>/);
 assert.doesNotMatch(appLayout, /drop-overlay/);
 assert.doesNotMatch(appLayout, /StatusSurface/);
-assert.match(notificationPopup, /export function NotificationPopup/);
-assert.match(notificationPopup, /className="notification-popup"/);
-assert.match(notificationPopup, /aria-live=\{notice\.kind === "error" \? "assertive" : "polite"\}/);
-assert.match(notificationPopup, /compactNotificationMessage/);
+// The legacy single-notice popup is gone: notices render as stacked toasts
+// mounted from App, so the layout no longer owns notification UI.
+assert.doesNotMatch(appLayout, /NotificationPopup|onDismissStatus/);
+assert.match(statusDetailsDialog, /export function StatusDetailsDialog/);
+assert.match(statusDetailsDialog, /className="radix-dialog-close"/);
+assert.match(appStatusHook, /compactStatusMessage/);
+// Toasts must portal into .app-shell: theme variables and the dark variant
+// only apply inside it, and document.body would escape both.
+assert.match(uiToast, /useAppShellPortalContainer/);
+assert.match(uiToast, /<ToastPortal container=\{portalContainer\}>/);
+assert.match(uiToast, /createToastManager\(\)/);
+assert.match(uiToast, /HugeiconsIcon/);
 assert.match(appLayout, /const sidebarVisible = settingsMode \|\| \(!hostedMcpWidget && state\.sidebarOpen\)/);
 assert.match(appLayout, /const chromeVisible = !settingsMode && !hostedMcpWidget/);
 assert.match(appLayout, /\{!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region \/>\}/);
@@ -2087,10 +2098,7 @@ assert.doesNotMatch(styles, /\.main-stage \{[^}]*border-radius: 20px 0 0 20px;/s
 assert.match(styles, /\.app-shell\[data-theme="auto"\] \{[^}]*color-scheme: light dark/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
 assert.match(styles, /@media \(prefers-color-scheme: dark\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
-assert.match(styles, /\.notification-popup \{/);
-assert.match(styles, /\.notification-popup\[data-kind="error"\] \{/);
-assert.match(styles, /\.notification-popup-copy p \{[^}]*max-height: calc\(1\.35em \* 2\)/s);
-assert.match(styles, /\.notification-popup-dismiss \{/);
+assert.doesNotMatch(styles, /\.notification-popup/);
 assert.match(styles, /\.sidebar-product:hover/);
 assert.match(styles, /\.sidebar-section-title-button/);
 assert.match(styles, /\.sidebar-section-menu-button/);
@@ -2118,7 +2126,7 @@ assert.match(styles, /\.tab-close:hover \{[^}]*color: var\(--text-secondary\);[^
 assert.match(closeIcon, /export function CloseIcon/);
 assert.match(closeIcon, /className="close-glyph"/);
 assert.doesNotMatch(closeIcon, /from "\.\/system-icon"/);
-for (const sourceText of [dockPanel, editorTabs, notificationPopup, settingControl]) {
+for (const sourceText of [dockPanel, editorTabs, statusDetailsDialog, settingControl]) {
   assert.doesNotMatch(sourceText, /className="(?:tab-close|dock-tab-close|radix-dialog-close)"[\s\S]*?>\s*[x×]\s*<\/button>/);
 }
 assert.doesNotMatch(dockPanel, /aria-label=\{`Close \$\{area\} dock`\}[\s\S]*?>\s*x\s*<\/button>/);
