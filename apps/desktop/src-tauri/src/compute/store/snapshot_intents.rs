@@ -1,4 +1,4 @@
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     MolecularSnapshotRef, MAX_CONTROL_FRAME_BYTES, MAX_JSON_SAFE_INTEGER,
 };
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};

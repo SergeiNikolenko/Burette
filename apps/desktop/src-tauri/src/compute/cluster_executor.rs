@@ -1,9 +1,9 @@
 use std::num::NonZeroUsize;
 
-use burrete_compute_core::{
+use burette_compute_core::{
     butina_clusters, ButinaOptions, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
 };
-use burrete_compute_protocol::{JobSnapshot, SchedulingPolicy};
+use burette_compute_protocol::{JobSnapshot, SchedulingPolicy};
 use serde::Serialize;
 
 use super::{
@@ -236,7 +236,7 @@ fn allocation(label: &'static str) -> ComputeCoordinatorError {
 mod tests {
     use super::*;
     use crate::compute::store::test_support::queued_snapshot;
-    use burrete_compute_core::{build_tanimoto_graph, Fingerprint2048};
+    use burette_compute_core::{build_tanimoto_graph, Fingerprint2048};
 
     #[test]
     fn scheduling_policy_selects_a_bounded_nonzero_tile() {

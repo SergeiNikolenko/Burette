@@ -1,8 +1,8 @@
-use burrete_compute_core::{
+use burette_compute_core::{
     validate_stereo_constraints, ChiralVolumeConstraint, TetrahedralConstraint,
 };
-use burrete_compute_metal::MetalStereoValidation;
-use burrete_compute_protocol::MAX_PACK_BYTES;
+use burette_compute_metal::MetalStereoValidation;
+use burette_compute_protocol::MAX_PACK_BYTES;
 
 const INPUT_MAGIC: &[u8; 4] = b"BST1";
 const OUTPUT_MAGIC: &[u8; 4] = b"BSV1";

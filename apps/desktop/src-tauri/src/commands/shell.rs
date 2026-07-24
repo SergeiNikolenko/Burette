@@ -11,7 +11,7 @@ use tauri::{Manager, Runtime};
 use crate::preview::trace::PREVIEW_TRACE_FILE;
 use crate::windows;
 
-const APP_LOG_NAME: &str = "BurreteApp.log";
+const APP_LOG_NAME: &str = "BuretteApp.log";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,7 +95,7 @@ pub(crate) fn read_external_preview_svg(runtime_path: String) -> Result<String, 
         .map_err(|err| format!("{}: {err}", config_path.display()))?;
     let json_text = config
         .trim()
-        .strip_prefix("window.BurreteConfig = ")
+        .strip_prefix("window.BuretteConfig = ")
         .and_then(|value| value.strip_suffix(';'))
         .ok_or_else(|| "Preview config is not in the expected format".to_string())?;
     let payload: Value = serde_json::from_str(json_text).map_err(|err| err.to_string())?;
@@ -236,15 +236,15 @@ pub(crate) fn export_diagnostics_bundle<R: Runtime>(
 #[tauri::command]
 pub(crate) fn open_external_url(url: String) -> Result<(), String> {
     if !is_allowed_external_url(&url) {
-        return Err("Only approved Burrete project URLs can be opened".into());
+        return Err("Only approved Burette project URLs can be opened".into());
     }
     tauri_plugin_opener::open_url(url, None::<&str>).map_err(|err| err.to_string())
 }
 
 fn is_allowed_external_url(url: &str) -> bool {
-    const PROJECT_URL: &str = "https://github.com/SergeiNikolenko/Burrete";
-    const RELEASES_URL: &str = "https://github.com/SergeiNikolenko/Burrete/releases";
-    const NEW_ISSUE_URL: &str = "https://github.com/SergeiNikolenko/Burrete/issues/new";
+    const PROJECT_URL: &str = "https://github.com/SergeiNikolenko/Burette";
+    const RELEASES_URL: &str = "https://github.com/SergeiNikolenko/Burette/releases";
+    const NEW_ISSUE_URL: &str = "https://github.com/SergeiNikolenko/Burette/issues/new";
 
     url == PROJECT_URL
         || url == NEW_ISSUE_URL
@@ -416,11 +416,11 @@ fn quicklook_log_candidates() -> Vec<PathBuf> {
         let root = home
             .join("Library")
             .join("Containers")
-            .join("com.local.BurreteV10.Preview")
+            .join("com.local.BuretteV10.Preview")
             .join("Data")
             .join("Library");
-        for directory in ["Caches/Burrete", "Application Support/Burrete"] {
-            for file_name in ["BurreteV10.log", "Burrete.log", PREVIEW_TRACE_FILE] {
+        for directory in ["Caches/Burette", "Application Support/Burette"] {
+            for file_name in ["BuretteV10.log", "Burette.log", PREVIEW_TRACE_FILE] {
                 candidates.push(root.join(directory).join(file_name));
             }
         }
@@ -536,7 +536,7 @@ mod tests {
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "burrete-shell-command-{}-{name}",
+            "burette-shell-command-{}-{name}",
             uuid::Uuid::new_v4()
         ))
     }
@@ -544,20 +544,20 @@ mod tests {
     #[test]
     fn external_url_allowlist_is_limited_to_project_help_destinations() {
         for url in [
-            "https://github.com/SergeiNikolenko/Burrete",
-            "https://github.com/SergeiNikolenko/Burrete/releases",
-            "https://github.com/SergeiNikolenko/Burrete/releases/tag/v1.0.0",
-            "https://github.com/SergeiNikolenko/Burrete/issues/new",
+            "https://github.com/SergeiNikolenko/Burette",
+            "https://github.com/SergeiNikolenko/Burette/releases",
+            "https://github.com/SergeiNikolenko/Burette/releases/tag/v1.0.0",
+            "https://github.com/SergeiNikolenko/Burette/issues/new",
         ] {
             assert!(is_allowed_external_url(url), "expected {url} to be allowed");
         }
 
         for url in [
-            "http://github.com/SergeiNikolenko/Burrete",
-            "https://github.com/SergeiNikolenko/Burrete/issues",
-            "https://github.com/SergeiNikolenko/Burrete/issues/new/extra",
-            "https://github.com/SergeiNikolenko/Burrete/releases.evil.example",
-            "https://github.com.evil.example/SergeiNikolenko/Burrete/releases",
+            "http://github.com/SergeiNikolenko/Burette",
+            "https://github.com/SergeiNikolenko/Burette/issues",
+            "https://github.com/SergeiNikolenko/Burette/issues/new/extra",
+            "https://github.com/SergeiNikolenko/Burette/releases.evil.example",
+            "https://github.com.evil.example/SergeiNikolenko/Burette/releases",
         ] {
             assert!(
                 !is_allowed_external_url(url),
@@ -574,7 +574,7 @@ mod tests {
         fs::write(&index, "<!doctype html>").expect("index should be writable");
         fs::write(
             runtime.join("preview-config.js"),
-            r#"window.BurreteConfig = {"externalArtifact":{"type":"svg","inlineSvg":"<svg id=\"molecule\"></svg>"}};"#,
+            r#"window.BuretteConfig = {"externalArtifact":{"type":"svg","inlineSvg":"<svg id=\"molecule\"></svg>"}};"#,
         )
         .expect("config should be writable");
 
@@ -594,7 +594,7 @@ mod tests {
         fs::write(runtime.join("preview.svg"), "<svg></svg>").expect("svg should be writable");
         fs::write(
             runtime.join("preview-config.js"),
-            r#"window.BurreteConfig = {"externalArtifact":{"type":"svg","path":"preview.svg"}};"#,
+            r#"window.BuretteConfig = {"externalArtifact":{"type":"svg","path":"preview.svg"}};"#,
         )
         .expect("config should be writable");
 
@@ -632,7 +632,7 @@ mod tests {
     #[test]
     fn redacts_local_paths_from_diagnostic_text() {
         let redacted = redact_diagnostic_text(
-            "Could not read /Users/alice/Research/ligand.pdb: see file:///private/tmp/Burrete/run.log, C:\\Users\\alice\\secret.sdf and /__burette/read-file",
+            "Could not read /Users/alice/Research/ligand.pdb: see file:///private/tmp/Burette/run.log, C:\\Users\\alice\\secret.sdf and /__burette/read-file",
         );
 
         assert!(!redacted.contains("/Users/alice"));

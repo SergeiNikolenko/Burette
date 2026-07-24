@@ -100,7 +100,7 @@
   const DOCKING_COORDINATE_TRAJECTORY_FORMATS = new Set(['xtc', 'trr', 'dcd', 'nctraj', 'nc', 'ncdf', 'netcdf', 'ncrst', 'lammpstrj']);
   const DOCKING_MODEL_TRAJECTORY_FORMATS = new Set(['pdb', 'pdbqt', 'mmcif', 'gro']);
   const DOCKING_TOPOLOGY_TRAJECTORY_FORMATS = new Set(['top', 'psf', 'prmtop', 'tpr']);
-  const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
+  const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   const MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS = 'buret-molstar-viewport-panel-open';
   let xyzrenderControlsApplyTimer = 0;
   let xyzrenderInlineRequestSerial = 0;
@@ -160,8 +160,8 @@
   const molstarPreviewSvgCache = new Map();
   const molstarEditUndoStack = [];
   let activeDockingPrepared = null;
-  let burreteAgentActionPollTimer = 0;
-  let burreteAgentActionPollBusy = false;
+  let buretteAgentActionPollTimer = 0;
+  let buretteAgentActionPollBusy = false;
   let molstarViewportPanelObserver = null;
   let generate3dPending = false;
   let generate3dPendingMode = 'single';
@@ -180,17 +180,17 @@
   function postHostMessage(payload) {
     try {
       const body = { ...(payload || {}) };
-      if (window.BurreteConfig && window.BurreteConfig.documentId) {
-        body.documentId = String(window.BurreteConfig.documentId);
+      if (window.BuretteConfig && window.BuretteConfig.documentId) {
+        body.documentId = String(window.BuretteConfig.documentId);
       }
-      if (window.BurreteConfig && window.BurreteConfig.previewRequestID) {
-        body.requestID = String(window.BurreteConfig.previewRequestID);
+      if (window.BuretteConfig && window.BuretteConfig.previewRequestID) {
+        body.requestID = String(window.BuretteConfig.previewRequestID);
       }
-      const hasWebkitBridge = !!window.webkit?.messageHandlers?.burrete;
-      window.webkit?.messageHandlers?.burrete?.postMessage(body);
+      const hasWebkitBridge = !!window.webkit?.messageHandlers?.burette;
+      window.webkit?.messageHandlers?.burette?.postMessage(body);
       if (hasWebkitBridge) return true;
       if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ source: 'burrete-viewer', body }, '*');
+        window.parent.postMessage({ source: 'burette-viewer', body }, '*');
         return true;
       }
       return false;
@@ -334,7 +334,7 @@
   }
 
   function canUseDownloadExportBridge() {
-    return !!window.webkit?.messageHandlers?.burrete || (window.parent && window.parent !== window);
+    return !!window.webkit?.messageHandlers?.burette || (window.parent && window.parent !== window);
   }
 
   async function exportDownloadBlob(href, name) {
@@ -395,7 +395,7 @@
     if (status) {
       setStatusText(text);
       status.classList.toggle('error', kind === 'error');
-      status.classList.toggle('hidden', kind !== 'error' && !window.BurreteDebug);
+      status.classList.toggle('hidden', kind !== 'error' && !window.BuretteDebug);
     }
     if (shouldReportStatus(text, kind)) {
       post(kind === 'error' ? 'error' : 'status', text);
@@ -426,7 +426,7 @@
   }
 
   function shouldReportStatus(text, kind) {
-    if (kind === 'error' || window.BurreteDebug) return true;
+    if (kind === 'error' || window.BuretteDebug) return true;
     return text.startsWith('[web] Loading Mol* engine') ||
       text.startsWith('[web] Mol* engine loaded') ||
       text.startsWith('[web] Loading xyzrender artifact') ||
@@ -436,22 +436,22 @@
   }
 
   function debug(message) {
-    if (!window.BurreteDebug) return;
+    if (!window.BuretteDebug) return;
     post('debug', message);
   }
 
-  async function reportBurreteAgentState() {
-    const control = window.BurreteAgentControl;
+  async function reportBuretteAgentState() {
+    const control = window.BuretteAgentControl;
     const reportUrl = typeof control?.reportUrl === 'string' ? control.reportUrl : '';
-    if (!reportUrl || !window.BurreteAgent?.run) return;
+    if (!reportUrl || !window.BuretteAgent?.run) return;
     try {
-      const capabilities = await window.BurreteAgent.run({ command: 'capabilities' });
+      const capabilities = await window.BuretteAgent.run({ command: 'capabilities' });
       let summary = null;
       const warnings = [];
       if (capabilities?.ok && capabilities.result?.ready) {
-        summary = await window.BurreteAgent.run({ command: 'summary', args: { includeLigands: true } });
+        summary = await window.BuretteAgent.run({ command: 'summary', args: { includeLigands: true } });
       } else {
-        warnings.push('BurreteAgent was present but did not report ready=true.');
+        warnings.push('BuretteAgent was present but did not report ready=true.');
       }
       await fetch(reportUrl, {
         method: 'POST',
@@ -466,25 +466,25 @@
         })
       });
     } catch (error) {
-      debug('BurreteAgent live report failed: ' + (error && error.message || String(error)));
+      debug('BuretteAgent live report failed: ' + (error && error.message || String(error)));
     }
   }
 
-  function startBurreteAgentActionPolling() {
-    const control = window.BurreteAgentControl;
+  function startBuretteAgentActionPolling() {
+    const control = window.BuretteAgentControl;
     const nextActionUrl = typeof control?.nextActionUrl === 'string' ? control.nextActionUrl : '';
     const actionResultUrl = typeof control?.actionResultUrl === 'string' ? control.actionResultUrl : '';
-    if (!nextActionUrl || !actionResultUrl || !window.BurreteAgent?.run || burreteAgentActionPollTimer) return;
+    if (!nextActionUrl || !actionResultUrl || !window.BuretteAgent?.run || buretteAgentActionPollTimer) return;
     const intervalMs = Math.max(250, Math.min(5000, Number(control.actionPollIntervalMs) || 500));
-    burreteAgentActionPollTimer = window.setInterval(() => {
-      void pollBurreteAgentAction(nextActionUrl, actionResultUrl);
+    buretteAgentActionPollTimer = window.setInterval(() => {
+      void pollBuretteAgentAction(nextActionUrl, actionResultUrl);
     }, intervalMs);
-    void pollBurreteAgentAction(nextActionUrl, actionResultUrl);
+    void pollBuretteAgentAction(nextActionUrl, actionResultUrl);
   }
 
-  async function pollBurreteAgentAction(nextActionUrl, actionResultUrl) {
-    if (burreteAgentActionPollBusy) return;
-    burreteAgentActionPollBusy = true;
+  async function pollBuretteAgentAction(nextActionUrl, actionResultUrl) {
+    if (buretteAgentActionPollBusy) return;
+    buretteAgentActionPollBusy = true;
     try {
       const response = await fetch(nextActionUrl, { credentials: 'same-origin' });
       if (response.status === 204) return;
@@ -493,7 +493,7 @@
       if (!payload?.id || !payload.action) return;
       let result;
       try {
-        result = await executeBurreteAgentAction(payload.action);
+        result = await executeBuretteAgentAction(payload.action);
       } catch (error) {
         const actionType = String(payload.action?.type || 'unknown');
         result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
@@ -504,15 +504,15 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: payload.id, result })
       });
-      void reportBurreteAgentState();
+      void reportBuretteAgentState();
     } catch (error) {
-      debug('BurreteAgent action poll failed: ' + (error && error.message || String(error)));
+      debug('BuretteAgent action poll failed: ' + (error && error.message || String(error)));
     } finally {
-      burreteAgentActionPollBusy = false;
+      buretteAgentActionPollBusy = false;
     }
   }
 
-  async function executeBurreteAgentAction(action) {
+  async function executeBuretteAgentAction(action) {
     const type = String(action?.type || '');
     if (type === 'get_xtb_context') {
       const target = molstarSelectedMoleculeTargetFromSelection();
@@ -526,12 +526,12 @@
         }
       };
     }
-    if (!window.BurreteAgent?.run) {
-      return agentActionFailure(type, 'NO_VIEWER', 'BurreteAgent is not available in this viewer runtime.');
+    if (!window.BuretteAgent?.run) {
+      return agentActionFailure(type, 'NO_VIEWER', 'BuretteAgent is not available in this viewer runtime.');
     }
     if (type === 'focus_ligand') {
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
-      const result = await window.BurreteAgent.run({
+      const result = await window.BuretteAgent.run({
         command: 'focusLigand',
         args: {
           selector: action.selector || action,
@@ -547,17 +547,17 @@
       return result;
     }
     if (type === 'show_ligands') {
-      return window.BurreteAgent.run({ command: 'showLigands', args: action.args || {} });
+      return window.BuretteAgent.run({ command: 'showLigands', args: action.args || {} });
     }
     if (type === 'hide_components') {
-      return window.BurreteSceneActions?.hideComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.hideComponents is unavailable.');
+      return window.BuretteSceneActions?.hideComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.hideComponents is unavailable.');
     }
     if (type === 'show_components') {
-      return window.BurreteSceneActions?.showComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.showComponents is unavailable.');
+      return window.BuretteSceneActions?.showComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showComponents is unavailable.');
     }
     if (type === 'select_residues') {
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
-      const result = await window.BurreteAgent.run({
+      const result = await window.BuretteAgent.run({
         command: 'selectResidues',
         args: {
           ...(action.args || {}),
@@ -608,7 +608,7 @@
       return setSdfPoseIndexFromAction(action);
     }
     if (type === 'focus_selection') {
-      return window.BurreteAgent.run({
+      return window.BuretteAgent.run({
         command: 'focusSelection',
         args: {
           ...(action.args || {}),
@@ -617,7 +617,7 @@
       });
     }
     if (type === 'label_selection') {
-      return window.BurreteAgent.run({
+      return window.BuretteAgent.run({
         command: 'labelSelection',
         args: {
           selection: action.selection,
@@ -639,31 +639,31 @@
       });
     }
     if (type === 'contacts') {
-      return window.BurreteAgent.run({ command: 'contacts', args: action.args || action });
+      return window.BuretteAgent.run({ command: 'contacts', args: action.args || action });
     }
     if (type === 'reset_camera') {
-      return window.BurreteAgent.run({ command: 'resetCamera', args: action.args || {} });
+      return window.BuretteAgent.run({ command: 'resetCamera', args: action.args || {} });
     }
     if (type === 'hide_waters') {
-      return window.BurreteSceneActions?.hideWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.hideWaters is unavailable.');
+      return window.BuretteSceneActions?.hideWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.hideWaters is unavailable.');
     }
     if (type === 'show_waters') {
-      return window.BurreteSceneActions?.showWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.showWaters is unavailable.');
+      return window.BuretteSceneActions?.showWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showWaters is unavailable.');
     }
     if (type === 'show_surface') {
-      return window.BurreteSceneActions?.showSurface?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.showSurface is unavailable.');
+      return window.BuretteSceneActions?.showSurface?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showSurface is unavailable.');
     }
     if (type === 'color_by_chain') {
-      return window.BurreteSceneActions?.colorByChain?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.colorByChain is unavailable.');
+      return window.BuretteSceneActions?.colorByChain?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.colorByChain is unavailable.');
     }
     if (type === 'render_panel') {
-      return renderBurreteAgentPanel(action);
+      return renderBuretteAgentPanel(action);
     }
     if (type === 'apply_scene') {
-      return executeBurreteSceneSpec(action);
+      return executeBuretteSceneSpec(action);
     }
     if (type === 'load_mvs') {
-      return window.BurreteAgent.run({
+      return window.BuretteAgent.run({
         command: 'loadMVS',
         args: {
           data: action.data,
@@ -675,51 +675,51 @@
       });
     }
     if (type === 'screenshot' || type === 'export_image') {
-      return window.BurreteAgent.run({ command: 'screenshot', args: action.args || {} });
+      return window.BuretteAgent.run({ command: 'screenshot', args: action.args || {} });
     }
-    if (type === 'raw_burrete_agent') {
-      if (!action.command) return agentActionFailure(type, 'INVALID_ARGS', 'raw_burrete_agent requires command.');
-      return window.BurreteAgent.run({ command: action.command, args: action.args || {} });
+    if (type === 'raw_burette_agent') {
+      if (!action.command) return agentActionFailure(type, 'INVALID_ARGS', 'raw_burette_agent requires command.');
+      return window.BuretteAgent.run({ command: action.command, args: action.args || {} });
     }
-    return agentActionFailure(type, 'NOT_IMPLEMENTED', `Unsupported BurreteAgent action: ${type}`);
+    return agentActionFailure(type, 'NOT_IMPLEMENTED', `Unsupported BuretteAgent action: ${type}`);
   }
 
-  function burreteSceneSpecOperations(action) {
+  function buretteSceneSpecOperations(action) {
     const raw = Array.isArray(action?.operations) ? action.operations : action?.components;
     return Array.isArray(raw) ? raw : [];
   }
 
-  function burreteSceneSpecTarget(operation) {
+  function buretteSceneSpecTarget(operation) {
     if (operation?.selector != null) return operation.selector;
     if (operation?.target != null) return operation.target;
     if (operation?.component != null) return operation.component;
     return null;
   }
 
-  function burreteSceneSpecLabel(operation, index) {
+  function buretteSceneSpecLabel(operation, index) {
     return operation?.label || operation?.name || operation?.id || `scene-component-${index + 1}`;
   }
 
-  async function executeBurreteSceneSpec(action) {
-    const operations = burreteSceneSpecOperations(action);
+  async function executeBuretteSceneSpec(action) {
+    const operations = buretteSceneSpecOperations(action);
     if (!operations.length) return agentActionFailure('apply_scene', 'INVALID_ARGS', 'apply_scene requires components or operations.');
 
     const results = [];
     for (let index = 0; index < operations.length; index++) {
       const operation = operations[index] || {};
-      const target = burreteSceneSpecTarget(operation);
+      const target = buretteSceneSpecTarget(operation);
       if (target == null) {
         results.push(agentActionFailure('apply_scene', 'INVALID_ARGS', `Scene operation ${index + 1} requires selector or target.`));
         continue;
       }
-      const label = burreteSceneSpecLabel(operation, index);
+      const label = buretteSceneSpecLabel(operation, index);
       const kind = String(operation.kind || operation.action || '').toLowerCase();
       const wantsSelect = operation.select === true || kind === 'select' || kind === 'selection';
       const wantsFocus = operation.focus === true || kind === 'focus';
       const wantsHighlight = operation.highlight === true || operation.color != null || operation.representation != null || kind === 'highlight' || kind === 'color';
 
       if (wantsHighlight || (!wantsSelect && !wantsFocus)) {
-        results.push(await window.BurreteAgent.run({
+        results.push(await window.BuretteAgent.run({
           command: 'colorSelection',
           args: {
             selector: target,
@@ -732,7 +732,7 @@
         }));
       }
       if (wantsSelect) {
-        results.push(await window.BurreteAgent.run({
+        results.push(await window.BuretteAgent.run({
           command: 'selectResidues',
           args: {
             selector: target,
@@ -743,7 +743,7 @@
         }));
       }
       if (wantsFocus) {
-        results.push(await window.BurreteAgent.run({
+        results.push(await window.BuretteAgent.run({
           command: 'focusSelection',
           args: {
             selector: target,
@@ -763,18 +763,18 @@
   }
 
   window.addEventListener('message', event => {
-    const body = event.data && event.data.source === 'burrete-agent-host' ? event.data.body : null;
+    const body = event.data && event.data.source === 'burette-agent-host' ? event.data.body : null;
     if (!body || body.type !== 'agent-action' || !body.id) return;
     void (async () => {
       let result;
       try {
-        result = await executeBurreteAgentAction(body.action);
+        result = await executeBuretteAgentAction(body.action);
       } catch (error) {
         const actionType = String(body.action?.type || 'unknown');
         result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
       }
       event.source?.postMessage({
-        source: 'burrete-agent-viewer',
+        source: 'burette-agent-viewer',
         body: {
           type: 'agent-action-result',
           id: body.id,
@@ -784,7 +784,7 @@
     })();
   });
 
-  window.BurreteViewerActions = { run: executeBurreteAgentAction };
+  window.BuretteViewerActions = { run: executeBuretteAgentAction };
 
   let hostedMcpActionsApplied = false;
   function hostedMcpSelectionFromResults(actions, results) {
@@ -815,24 +815,24 @@
 
   async function applyHostedMcpActions() {
     if (hostedMcpActionsApplied) return;
-    const requestedActions = Array.isArray(window.BurreteConfig?.hostedMcpActions)
-      ? window.BurreteConfig.hostedMcpActions.slice(0, 8)
+    const requestedActions = Array.isArray(window.BuretteConfig?.hostedMcpActions)
+      ? window.BuretteConfig.hostedMcpActions.slice(0, 8)
       : [];
     if (!requestedActions.length) return;
     hostedMcpActionsApplied = true;
     try {
-      await window.BurreteHostedAppBridge?.ready;
-      const actions = window.BurreteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
+      await window.BuretteHostedAppBridge?.ready;
+      const actions = window.BuretteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
       if (actions.length !== requestedActions.length) {
-        throw new Error('Hosted scene contained an action outside the public Burrete allowlist.');
+        throw new Error('Hosted scene contained an action outside the public Burette allowlist.');
       }
-      await window.BurreteAgent?.ready;
+      await window.BuretteAgent?.ready;
       const results = [];
-      for (const action of actions) results.push(await executeBurreteAgentAction(action));
+      for (const action of actions) results.push(await executeBuretteAgentAction(action));
       window.__mqlPost?.('sceneActionsApplied', '', {
         report: {
           revision: Date.now(),
-          documentId: String(window.BurreteConfig?.documentId || 'active-structure'),
+          documentId: String(window.BuretteConfig?.documentId || 'active-structure'),
           selection: hostedMcpSelectionFromResults(actions, results),
           results
         }
@@ -858,7 +858,7 @@
     };
   }
 
-  function renderBurreteAgentPanel(action) {
+  function renderBuretteAgentPanel(action) {
     const panel = action?.panel || action;
     const kind = String(panel.kind || action?.kind || '').trim();
     const content = String(panel.content || '');
@@ -868,11 +868,11 @@
     if (!content) {
       return agentActionFailure('render_panel', 'INVALID_ARGS', 'render_panel requires panel content.');
     }
-    const root = ensureBurreteAgentPanelRoot();
+    const root = ensureBuretteAgentPanelRoot();
     const title = String(panel.title || action?.title || `${kind} panel`);
-    root.querySelector('[data-burrete-agent-panel-title]').textContent = title;
+    root.querySelector('[data-burette-agent-panel-title]').textContent = title;
     root.dataset.kind = kind;
-    const body = root.querySelector('[data-burrete-agent-panel-body]');
+    const body = root.querySelector('[data-burette-agent-panel-body]');
     body.replaceChildren(renderPanelContent(kind, content));
     root.classList.remove('hidden');
     return {
@@ -886,21 +886,21 @@
     };
   }
 
-  function ensureBurreteAgentPanelRoot() {
-    let root = document.querySelector('[data-burrete-agent-panel]');
+  function ensureBuretteAgentPanelRoot() {
+    let root = document.querySelector('[data-burette-agent-panel]');
     if (root) return root;
     root = document.createElement('aside');
     root.className = 'buret-agent-panel hidden';
-    root.setAttribute('data-burrete-agent-panel', '');
-    root.setAttribute('aria-label', 'Burrete agent panel');
+    root.setAttribute('data-burette-agent-panel', '');
+    root.setAttribute('aria-label', 'Burette agent panel');
     root.innerHTML = `
       <header class="buret-agent-panel-header">
-        <strong data-burrete-agent-panel-title>Panel</strong>
-        <button type="button" data-burrete-agent-panel-close aria-label="Close panel">Close</button>
+        <strong data-burette-agent-panel-title>Panel</strong>
+        <button type="button" data-burette-agent-panel-close aria-label="Close panel">Close</button>
       </header>
-      <div class="buret-agent-panel-body" data-burrete-agent-panel-body></div>
+      <div class="buret-agent-panel-body" data-burette-agent-panel-body></div>
     `;
-    root.querySelector('[data-burrete-agent-panel-close]').addEventListener('click', () => root.classList.add('hidden'));
+    root.querySelector('[data-burette-agent-panel-close]').addEventListener('click', () => root.classList.add('hidden'));
     document.body.appendChild(root);
     return root;
   }
@@ -1067,7 +1067,7 @@
   const MAX_VIEWER_UI_SCALE = 0.9;
   const VIEWER_UI_SCALE_STEP = 0.08;
 
-  let panelControlsVisible = window.BurretePanelControlsVisible !== false;
+  let panelControlsVisible = window.BurettePanelControlsVisible !== false;
   let transparentBackground = false;
   let viewerTheme = 'auto';
   let canvasBackground = 'auto';
@@ -1206,7 +1206,7 @@
   function setSdfCollectionContextStyle(style) {
     const value = normalizeSdfCollectionContextStyle(style);
     try {
-      window.localStorage?.setItem(sdfCollectionContextStyleStorageKey(activeConfig || window.BurreteConfig || {}), value);
+      window.localStorage?.setItem(sdfCollectionContextStyleStorageKey(activeConfig || window.BuretteConfig || {}), value);
     } catch (_) {}
     return value;
   }
@@ -1222,7 +1222,7 @@
   function setSdfCollectionContextOpacity(opacity) {
     const value = normalizeSdfCollectionContextOpacity(opacity);
     try {
-      window.localStorage?.setItem(sdfCollectionContextOpacityStorageKey(activeConfig || window.BurreteConfig || {}), value.toFixed(2));
+      window.localStorage?.setItem(sdfCollectionContextOpacityStorageKey(activeConfig || window.BuretteConfig || {}), value.toFixed(2));
     } catch (_) {}
     return value;
   }
@@ -1247,7 +1247,7 @@
   function setSdfCollectionContextColor(color) {
     const value = normalizeSdfCollectionContextColor(color);
     try {
-      window.localStorage?.setItem(sdfCollectionContextColorStorageKey(activeConfig || window.BurreteConfig || {}), value);
+      window.localStorage?.setItem(sdfCollectionContextColorStorageKey(activeConfig || window.BuretteConfig || {}), value);
     } catch (_) {}
     return value;
   }
@@ -1857,7 +1857,7 @@
     if (!sent) setStatus('Renderer switching is available only in the app or Quick Look viewer.', 'error');
   }
 
-  function activeTrajectoryFrameIndexForRendererSwitch(config = activeConfig || window.BurreteConfig || {}, prepared = activeMolstarPrepared) {
+  function activeTrajectoryFrameIndexForRendererSwitch(config = activeConfig || window.BuretteConfig || {}, prepared = activeMolstarPrepared) {
     const poseCount = Number(
       prepared?.poseCount ||
       prepared?.xyzFrameCount ||
@@ -1874,7 +1874,7 @@
   }
 
   function requestBrowserDevRendererSwitch(renderer) {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     if (config.tauriViewer !== false) return false;
     const value = normalizeRenderer(renderer);
     if (value === normalizeRenderer(config.renderer)) return true;
@@ -1889,9 +1889,9 @@
   }
 
   async function switchBrowserDevMolstar() {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     if (config.tauriViewer !== false) return;
-    const cb = window.BurreteCacheBuster || String(Date.now());
+    const cb = window.BuretteCacheBuster || String(Date.now());
     const format = normalizeFormat(config.molstarFormat || config.format);
     const trajectoryFrameCount = Number(config.trajectoryFrameCount || 0);
     const nextConfig = {
@@ -1903,7 +1903,7 @@
       trajectoryControls: config.trajectoryControls === true || trajectoryFrameCount > 1
     };
     activeConfig = nextConfig;
-    window.BurreteConfig = nextConfig;
+    window.BuretteConfig = nextConfig;
     postHostMessage({
       type: 'rendererChanged',
       documentId: nextConfig.documentId,
@@ -1921,9 +1921,9 @@
   }
 
   function embeddedStructureDataByteLength() {
-    if (window.BurreteDataBytes instanceof Uint8Array) return window.BurreteDataBytes.length;
-    if (typeof window.BurreteDataBase64 !== 'string') return 0;
-    const text = window.BurreteDataBase64.trim();
+    if (window.BuretteDataBytes instanceof Uint8Array) return window.BuretteDataBytes.length;
+    if (typeof window.BuretteDataBase64 !== 'string') return 0;
+    const text = window.BuretteDataBase64.trim();
     if (!text) return 0;
     const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0;
     return Math.max(0, Math.floor(text.length * 3 / 4) - padding);
@@ -1935,8 +1935,8 @@
     const expectedBytes = Number(config.previewByteCount || config.byteCount || 0);
     if (!Number.isFinite(expectedBytes) || expectedBytes <= 1) return;
     if (embeddedStructureDataByteLength() > 1) return;
-    window.BurreteDataBytes = null;
-    window.BurreteDataBase64 = null;
+    window.BuretteDataBytes = null;
+    window.BuretteDataBase64 = null;
     await loadStructureData(config, cb);
   }
 
@@ -2006,7 +2006,7 @@
   function applyGenerate3DPendingState(button) {
     const label = button.querySelector('[data-buret-generate-3d-label]');
     if (!button.dataset.readyLabel) button.dataset.readyLabel = label?.textContent?.trim() || 'Generate 3D';
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const renderer = normalizeRenderer(config.renderer);
     const canGenerate3d = canGenerate3DConformerFromConfig(config, renderer);
     button.classList.toggle('generating', generate3dPending);
@@ -2047,7 +2047,7 @@
   });
 
   function requestMolecularCompute(operation = 'generate3d', options = {}) {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
       setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
@@ -2093,7 +2093,7 @@
 
   window.addEventListener('message', event => {
     const data = event.data || {};
-    const body = data.source === 'burrete-host' ? data.body : null;
+    const body = data.source === 'burette-host' ? data.body : null;
     if (!body) return;
     if (body.type === 'workspaceHistoryCommand') {
       void handleWorkspaceHistoryCommand(body, event.source);
@@ -2104,7 +2104,7 @@
     if (body.type === 'setViewerTheme') {
       const nextTheme = normalizeViewerTheme(body.value);
       if (activeConfig) activeConfig.theme = nextTheme;
-      if (window.BurreteConfig) window.BurreteConfig.theme = nextTheme;
+      if (window.BuretteConfig) window.BuretteConfig.theme = nextTheme;
       setViewerTheme(nextTheme, activeViewer);
       return;
     }
@@ -2116,7 +2116,7 @@
       return;
     }
     if (body.type === 'setXyzrenderControls') {
-      const config = activeConfig || window.BurreteConfig || {};
+      const config = activeConfig || window.BuretteConfig || {};
       const documentId = String(config.documentId || '');
       const hasXyzrenderArtifact = Boolean(document.querySelector('.buret-external-artifact-root, .buret-xyzrender-sheet-item-base, .buret-external-artifact-object'));
       if (body.documentId && documentId && String(body.documentId) !== documentId && !hasXyzrenderArtifact) return;
@@ -2169,7 +2169,7 @@
       setStatus(`[web] ${direction === 'redo' ? 'Redo' : 'Undo'} failed.\n\n${error?.message || String(error)}`, 'error');
     }
     source?.postMessage({
-      source: 'burrete-viewer',
+      source: 'burette-viewer',
       body: {
         type: 'workspaceHistoryCommandResult',
         requestId: body.requestId,
@@ -2179,7 +2179,7 @@
   }
 
   async function replaceMolstarStructureFromHost(body) {
-    const documentId = String((activeConfig || window.BurreteConfig || {}).documentId || '');
+    const documentId = String((activeConfig || window.BuretteConfig || {}).documentId || '');
     if (body.documentId && documentId && String(body.documentId) !== documentId) return;
     if (!activeViewer) throw new Error('Mol* viewer is not ready.');
     const textBase64 = typeof body.textBase64 === 'string' ? body.textBase64.trim() : '';
@@ -2187,9 +2187,9 @@
     const text = base64ToText(textBase64);
     const title = String(body.title || 'generated-3d.sdf').trim() || 'generated-3d.sdf';
     const byteCount = Number(body.byteCount || new TextEncoder().encode(text).byteLength);
-    const generatedStyle = normalizeMolstarStyle(body.molstarStyle || configuredMolstarStyle(activeConfig || window.BurreteConfig || {}));
+    const generatedStyle = normalizeMolstarStyle(body.molstarStyle || configuredMolstarStyle(activeConfig || window.BuretteConfig || {}));
     const nextConfig = {
-      ...(activeConfig || window.BurreteConfig || {}),
+      ...(activeConfig || window.BuretteConfig || {}),
       label: title,
       format: 'sdf',
       molstarFormat: 'sdf',
@@ -2210,9 +2210,9 @@
       trajectoryFrameCount: 0
     };
     activeConfig = nextConfig;
-    window.BurreteConfig = nextConfig;
-    window.BurreteDataBytes = null;
-    window.BurreteDataBase64 = textBase64;
+    window.BuretteConfig = nextConfig;
+    window.BuretteDataBytes = null;
+    window.BuretteDataBase64 = textBase64;
     activeMolstarCacheBuster = String(Date.now());
     setStatus(`[web] Updating Mol* structure…\n${title}`);
     const plugin = activeViewer?.plugin;
@@ -2239,12 +2239,12 @@
       throw error;
     }
     try {
-      window.BurreteAgent?.notifyStructureLoaded?.({ viewer: activeViewer, plugin: activeViewer.plugin, config: nextConfig, prepared });
-      postHostMessage({ type: 'agentReady', message: 'Burrete agent ready' });
+      window.BuretteAgent?.notifyStructureLoaded?.({ viewer: activeViewer, plugin: activeViewer.plugin, config: nextConfig, prepared });
+      postHostMessage({ type: 'agentReady', message: 'Burette agent ready' });
     } catch (error) {
-      debug('BurreteAgent notifyStructureLoaded failed after in-place structure update: ' + (error && error.message || String(error)));
+      debug('BuretteAgent notifyStructureLoaded failed after in-place structure update: ' + (error && error.message || String(error)));
     }
-    void reportBurreteAgentState();
+    void reportBuretteAgentState();
     setGenerate3DPending(false);
     setStatus(`[web] Updated ${title} with generated 3D coordinates`);
     postHostMessage({
@@ -2309,7 +2309,7 @@
     delays.forEach(delayMs => {
       window.setTimeout(() => {
         if (serial !== molstarStructureFocusSerial) return;
-        if (viewer !== activeViewer && viewer !== window.BurreteViewer && viewer !== window.BuretteViewer) return;
+        if (viewer !== activeViewer && viewer !== window.BuretteViewer && viewer !== window.BuretteViewer) return;
         try { viewer?.handleResize?.(); } catch (_) {}
         requestMolstarStructureFocus(viewer, options);
       }, Math.max(0, Number(delayMs) || 0));
@@ -2413,7 +2413,7 @@
 
   function notifyStructureOverlayModeChanged(prepared = activeMolstarPrepared) {
     if (!structureOverlayAvailable(prepared)) return;
-    const documentId = String(activeConfig?.documentId || window.BurreteConfig?.documentId || '');
+    const documentId = String(activeConfig?.documentId || window.BuretteConfig?.documentId || '');
     postHostMessage({
       type: 'structureOverlayModeChanged',
       documentId,
@@ -2563,14 +2563,14 @@
     scheduleLayoutStateReapply(viewer);
     try { viewer.handleResize(); } catch (_) {}
     try {
-      window.BurreteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
-      postHostMessage({ type: 'agentReady', message: 'Burrete agent ready' });
+      window.BuretteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
+      postHostMessage({ type: 'agentReady', message: 'Burette agent ready' });
     } catch (error) {
-      debug('BurreteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
+      debug('BuretteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
     }
     await applyMolstarContextFocus(config);
-    void reportBurreteAgentState();
-    startBurreteAgentActionPolling();
+    void reportBuretteAgentState();
+    startBuretteAgentActionPolling();
     {
       const poseCount = Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || prepared?.xyzFrameCount || config?.trajectoryFrameCount || 0);
       setStatus(`[web] Rendered ${config.label || 'structure'}`);
@@ -2596,7 +2596,7 @@
   }
 
   function requestOpenInKetcher() {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     if (config.ketcherEditable !== true) {
       setStatus('This structure is too large or not supported by Ketcher.', 'error');
       return;
@@ -2682,9 +2682,9 @@
   }
 
   function previewDockDocumentRows() {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const rows = [
-      ['Document', config.label || config.title || 'Burrete preview'],
+      ['Document', config.label || config.title || 'Burette preview'],
       ['Format', config.format || config.molstarFormat || 'unknown']
     ];
     if (config.byteCount !== undefined) rows.push(['Size', `${Number(config.byteCount || 0).toLocaleString()} bytes`]);
@@ -2805,7 +2805,7 @@
       : `<div class="buret-preview-dock-section">
           <div class="buret-preview-dock-card">
             <div class="buret-preview-dock-label">Active preview</div>
-            <div class="buret-preview-dock-value">${escapeHtml((activeConfig || window.BurreteConfig || {}).label || 'Burrete preview')}</div>
+            <div class="buret-preview-dock-value">${escapeHtml((activeConfig || window.BuretteConfig || {}).label || 'Burette preview')}</div>
           </div>
           <div class="buret-preview-dock-card">
             <div class="buret-preview-dock-label">Status</div>
@@ -2822,7 +2822,7 @@
   }
 
   function previewDockObserveUrl() {
-    return window.BurreteAgentControl?.observeUrl || '/__agent/observe';
+    return window.BuretteAgentControl?.observeUrl || '/__agent/observe';
   }
 
   async function refreshPreviewDockObserve() {
@@ -2873,7 +2873,7 @@
   }
 
   function previewDocksEnabled() {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     return config.enablePreviewDocks === true;
   }
 
@@ -2922,7 +2922,7 @@
 
   function applyDefaultPreviewDocks(toolbar) {
     if (!toolbar || !previewDocksEnabled() || toolbar.dataset.previewDocksDefaulted === '1') return;
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const defaultDocks = Array.isArray(config.defaultPreviewDocks) ? config.defaultPreviewDocks : [];
     toolbar.dataset.previewDocksDefaulted = '1';
     for (const area of defaultDocks) {
@@ -2933,7 +2933,7 @@
   function requestMolstarStyle(style) {
     const value = normalizeMolstarStyle(style);
     activeConfig = {
-      ...(activeConfig || window.BurreteConfig || {}),
+      ...(activeConfig || window.BuretteConfig || {}),
       molstarStyle: value
     };
     if (activeMolstarPrepared?.molstarStyleOverride) {
@@ -2942,7 +2942,7 @@
         molstarStyleOverride: value
       };
     }
-    window.BurreteConfig = { ...(window.BurreteConfig || {}), ...activeConfig };
+    window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
     const toolbar = document.getElementById('buret-toolbar');
     const select = toolbar?.querySelector('[data-buret-molstar-style]');
     if (select) select.value = value;
@@ -3062,7 +3062,7 @@
   }
 
   function requestBrowserDevXyzrenderUpdate(options = {}) {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const endpoint = String(config.xyzrenderEndpoint || '').trim();
     const sourcePath = String(config.xyzrenderSourcePath || config.sourcePath || '').trim();
     const renderer = options.rendererSwitch === true ? 'xyzrender-external' : normalizeRenderer(config.renderer);
@@ -3145,7 +3145,7 @@
     const badge = document.querySelector('.buret-xyz-badge span');
     if (badge) badge.textContent = `SVG · ${preset}${elapsed ? ` · ${elapsed} ms` : ''}`;
     activeConfig = {
-      ...(activeConfig || window.BurreteConfig || {}),
+      ...(activeConfig || window.BuretteConfig || {}),
       renderer: 'xyzrender-external',
       ...(Number.isFinite(activeModel) && activeModel >= 0 ? { activeModel: Math.trunc(activeModel) } : {}),
       xyzrenderControls: controls,
@@ -3163,7 +3163,7 @@
         log: typeof payload.log === 'string' ? payload.log : ''
       }
     };
-    window.BurreteConfig = { ...(window.BurreteConfig || {}), ...activeConfig };
+    window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
     postHostMessage({
       type: 'rendererChanged',
       documentId: activeConfig.documentId,
@@ -3365,7 +3365,7 @@
 
   function requestXyzrenderOrientationReset(toolbar) {
     latestXyzrenderOrientationRef = null;
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const controls = toolbar
       ? readXyzrenderControlsForm(toolbar)
       : normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
@@ -3478,7 +3478,7 @@
 
     const lines = [
       String(frame.atoms.length),
-      `Burrete Mol* orientation reference for ${config.label || 'structure'}`
+      `Burette Mol* orientation reference for ${config.label || 'structure'}`
     ];
     for (const atom of frame.atoms) {
       const x = atom.x - basis.origin.x;
@@ -3889,7 +3889,7 @@
     const select = toolbar.querySelector('[data-buret-molstar-style]');
     populateMolstarStyleSelect(select);
     if (select) {
-      select.value = configuredMolstarStyle(activeConfig || window.BurreteConfig || {});
+      select.value = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
       select.addEventListener('change', () => requestMolstarStyle(select.value));
     }
     toolbar.dataset.molstarStyleBound = '1';
@@ -3969,7 +3969,7 @@
   }
 
   function isXyzrenderLassoSurfaceActive() {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     return normalizeRenderer(config.renderer) === 'xyzrender-external' || !!document.querySelector('.buret-external-artifact-root');
   }
 
@@ -4052,7 +4052,7 @@
   }
 
   function restoreToolbarCollapsed(toolbar, viewer) {
-    if (window.BurreteConfig?.hostedMcpWidgetBootstrap === true) {
+    if (window.BuretteConfig?.hostedMcpWidgetBootstrap === true) {
       setToolbarCollapsed(toolbar, true, viewer, false);
       return;
     }
@@ -4139,9 +4139,9 @@
     let drag = null;
     let ignoreNextGripClick = false;
     const grip = toolbar.querySelector('[data-drag-handle]');
-    if (grip && window.__BURRETE_HOSTED_GRIP_FALLBACK__) {
-      grip.removeEventListener('click', window.__BURRETE_HOSTED_GRIP_FALLBACK__);
-      delete window.__BURRETE_HOSTED_GRIP_FALLBACK__;
+    if (grip && window.__BURETTE_HOSTED_GRIP_FALLBACK__) {
+      grip.removeEventListener('click', window.__BURETTE_HOSTED_GRIP_FALLBACK__);
+      delete window.__BURETTE_HOSTED_GRIP_FALLBACK__;
     }
     grip?.addEventListener('click', event => {
       event.preventDefault();
@@ -4567,7 +4567,7 @@
     }
   }
 
-  function applyMobileLayoutState(state, viewer = activeViewer || window.BurreteViewer || null) {
+  function applyMobileLayoutState(state, viewer = activeViewer || window.BuretteViewer || null) {
     const next = state && typeof state === 'object' ? state : {};
     const boolRegion = (value, visibleState = 'full') => value === true ? visibleState : 'hidden';
     document.body?.classList.toggle('burette-mobile-show-left', next.left === true);
@@ -4667,10 +4667,10 @@
     }
   }
 
-  window.BurreteApplyMobileLayoutState = applyMobileLayoutState;
-  window.BurreteRunMobileControlAction = runMobileControlAction;
-  if (window.BurreteMobileControls?.pendingLayoutState) {
-    requestAnimationFrame(() => applyMobileLayoutState(window.BurreteMobileControls.pendingLayoutState));
+  window.BuretteApplyMobileLayoutState = applyMobileLayoutState;
+  window.BuretteRunMobileControlAction = runMobileControlAction;
+  if (window.BuretteMobileControls?.pendingLayoutState) {
+    requestAnimationFrame(() => applyMobileLayoutState(window.BuretteMobileControls.pendingLayoutState));
   }
 
   function scheduleLayoutStateReapply(viewer) {
@@ -4731,7 +4731,7 @@
     toolbar.querySelector('[data-buret-toggle="log"]')?.classList.toggle('active', layoutState.bottom === 'full');
   }
 
-  // Scene tree: a Burrete-styled stand-in for the Mol* left object tree. It mirrors
+  // Scene tree: a Burette-styled stand-in for the Mol* left object tree. It mirrors
   // the same hierarchy Mol* shows — data, model, assembly, components, their
   // representations — but as a compact draggable overlay. Rows carry only the two
   // controls Mol* puts there (visibility, remove); focus and colouring live in the
@@ -7125,7 +7125,7 @@
   }
 
 
-  function previewReadyPayload(config = activeConfig || window.BurreteConfig || {}, extra = {}) {
+  function previewReadyPayload(config = activeConfig || window.BuretteConfig || {}, extra = {}) {
     const cfg = config && typeof config === 'object' ? config : {};
     return {
       mode: cfg.mode || 'structure',
@@ -7159,7 +7159,7 @@
 
   function hideStatus(payload = null) {
     post('ready', 'ready', payload || previewReadyPayload());
-    if (window.BurreteDebug) return;
+    if (window.BuretteDebug) return;
     if (status) status.classList.add('hidden');
   }
 
@@ -7211,13 +7211,13 @@
   }
 
   function installNativeDataBridge() {
-    if (typeof window.BurreteReceiveNativeData === 'function') return;
-    window.BurreteReceiveNativeData = function (payload) {
+    if (typeof window.BuretteReceiveNativeData === 'function') return;
+    window.BuretteReceiveNativeData = function (payload) {
       if (!payload || typeof payload !== 'object') return;
       if (typeof payload.base64 === 'string' && payload.base64.length > 0) {
-        window.BurreteDataBase64 = payload.base64;
+        window.BuretteDataBase64 = payload.base64;
       }
-      window.dispatchEvent(new CustomEvent('BurreteNativeDataReady', { detail: payload }));
+      window.dispatchEvent(new CustomEvent('BuretteNativeDataReady', { detail: payload }));
     };
   }
 
@@ -7231,7 +7231,7 @@
       const requestToken = 'native-data-' + Math.random().toString(36).slice(2);
       let settled = false;
       const cleanup = () => {
-        window.removeEventListener('BurreteNativeDataReady', onReady);
+        window.removeEventListener('BuretteNativeDataReady', onReady);
         clearTimeout(timeout);
       };
       const finish = (fn, value) => {
@@ -7252,7 +7252,7 @@
       const timeout = setTimeout(() => {
         finish(reject, new Error('Timed out while waiting for structure payload from native Quick Look.'));
       }, 10000);
-      window.addEventListener('BurreteNativeDataReady', onReady);
+      window.addEventListener('BuretteNativeDataReady', onReady);
       try {
         window.__mqlPost('requestData', 'requestData', { requestToken });
       } catch (error) {
@@ -7262,9 +7262,9 @@
   }
 
   function installNativeRuntimeFileBridge() {
-    if (typeof window.BurreteReceiveNativeRuntimeFile === 'function') return;
-    window.BurreteReceiveNativeRuntimeFile = function (payload) {
-      window.dispatchEvent(new CustomEvent('BurreteNativeRuntimeFileReady', { detail: payload || {} }));
+    if (typeof window.BuretteReceiveNativeRuntimeFile === 'function') return;
+    window.BuretteReceiveNativeRuntimeFile = function (payload) {
+      window.dispatchEvent(new CustomEvent('BuretteNativeRuntimeFileReady', { detail: payload || {} }));
     };
   }
 
@@ -7278,7 +7278,7 @@
       const requestToken = 'native-file-' + Math.random().toString(36).slice(2);
       let settled = false;
       const cleanup = () => {
-        window.removeEventListener('BurreteNativeRuntimeFileReady', onReady);
+        window.removeEventListener('BuretteNativeRuntimeFileReady', onReady);
         clearTimeout(timeout);
       };
       const finish = (fn, value) => {
@@ -7303,7 +7303,7 @@
       const timeout = setTimeout(() => {
         finish(reject, new Error('Timed out while waiting for runtime file from native Quick Look.'));
       }, 10000);
-      window.addEventListener('BurreteNativeRuntimeFileReady', onReady);
+      window.addEventListener('BuretteNativeRuntimeFileReady', onReady);
       try {
         window.__mqlPost('requestRuntimeFile', 'requestRuntimeFile', { requestToken, path });
       } catch (error) {
@@ -7336,9 +7336,9 @@
   }
 
   async function loadStructureData(config, cb) {
-    if (window.BurreteDataBytes instanceof Uint8Array || window.BurreteDataBase64) return;
+    if (window.BuretteDataBytes instanceof Uint8Array || window.BuretteDataBase64) return;
     const configured = typeof config.dataPath === 'string' ? config.dataPath : null;
-    const scripted = typeof window.BurreteDataURL === 'string' ? window.BurreteDataURL : null;
+    const scripted = typeof window.BuretteDataURL === 'string' ? window.BuretteDataURL : null;
     const url = configured || scripted || './preview-data.bin';
     const requestURL = appendCacheBuster(url, cb);
     try {
@@ -7346,13 +7346,13 @@
       if (!response.ok) {
         throw new Error('Could not load structure payload: HTTP ' + response.status);
       }
-      window.BurreteDataBytes = new Uint8Array(await response.arrayBuffer());
+      window.BuretteDataBytes = new Uint8Array(await response.arrayBuffer());
       return;
     } catch (error) {
       debug('fetch preview-data.bin failed, falling back to XMLHttpRequest: ' + (error && error.message || String(error)));
     }
     try {
-      window.BurreteDataBytes = await loadArrayBufferViaXHR(requestURL);
+      window.BuretteDataBytes = await loadArrayBufferViaXHR(requestURL);
       return;
     } catch (error) {
       debug('XMLHttpRequest preview-data.bin failed, requesting native structure payload: ' + (error && error.message || String(error)));
@@ -7423,9 +7423,9 @@
   }
 
   function requireConfig() {
-    const config = window.BurreteConfig;
+    const config = window.BuretteConfig;
     if (!config || typeof config !== 'object') {
-      throw new Error('preview-config.js did not define window.BurreteConfig.');
+      throw new Error('preview-config.js did not define window.BuretteConfig.');
     }
     if (!config.format) throw new Error('preview-config.js is missing format.');
     return config;
@@ -7439,8 +7439,8 @@
 
   function installDirectTemplateFallback() {
     if (!isDirectTemplatePreview()) return false;
-    window.BurreteConfig = {
-      label: 'Burrete mini sample',
+    window.BuretteConfig = {
+      label: 'Burette mini sample',
       format: 'pdb',
       binary: false,
       renderer: 'molstar',
@@ -7458,16 +7458,16 @@
         bottom: 'hidden'
       }
     };
-    window.BurreteDataBase64 = 'SEVBREVSICAgIE1JTkkgR0xZLUFMQSBQRVBUSURFIEZPUiBRVUlDSyBMT09LIFRFU1QKVElUTEUgICAgIE1PTFNUQVIgUVVJQ0sgTE9PSyBTQU1QTEUKQVRPTSAgICAgIDEgIE4gICBHTFkgQSAgIDEgICAgICAtMS4yMDQgICAwLjE3NiAgIDAuMDAwICAxLjAwIDIwLjAwICAgICAgICAgICBOCkFUT00gICAgICAyICBDQSAgR0xZIEEgICAxICAgICAgIDAuMDAwICAgMC4wMDAgICAwLjAwMCAgMS4wMCAyMC4wMCAgICAgICAgICAgQwpBVE9NICAgICAgMyAgQyAgIEdMWSBBICAgMSAgICAgICAwLjcyMiAgIDEuMjcxICAgMC4wMDAgIDEuMDAgMjAuMDAgICAgICAgICAgIEMKQVRPTSAgICAgIDQgIE8gICBHTFkgQSAgIDEgICAgICAgMC4xNjMgICAyLjM2MCAgIDAuMDAwICAxLjAwIDIwLjAwICAgICAgICAgICBPCkFUT00gICAgICA1ICBOICAgQUxBIEEgICAyICAgICAgIDIuMDUyICAgMS4xODkgICAwLjAwMCAgMS4wMCAyMC4wMCAgICAgICAgICAgTgpBVE9NICAgICAgNiAgQ0EgIEFMQSBBICAgMiAgICAgICAyLjg5NiAgIDIuMzc3ICAgMC4wMDAgIDEuMDAgMjAuMDAgICAgICAgICAgIEMKQVRPTSAgICAgIDcgIENCICBBTEEgQSAgIDIgICAgICAgMy43MTEgICAyLjI3MyAgIDEuMjc2ICAxLjAwIDIwLjAwICAgICAgICAgICBDCkFUT00gICAgICA4ICBDICAgQUxBIEEgICAyICAgICAgIDMuNzkzICAgMi40NzcgIC0xLjIzMCAgMS4wMCAyMC4wMCAgICAgICAgICAgQwpBVE9NICAgICAgOSAgTyAgIEFMQSBBICAgMiAgICAgICA0LjY3NSAgIDMuMzM2ICAtMS4yMzYgIDEuMDAgMjAuMDAgICAgICAgICAgIE8KVEVSICAgICAgMTAgICAgICBBTEEgQSAgIDIKRU5ECg==';
+    window.BuretteDataBase64 = 'SEVBREVSICAgIE1JTkkgR0xZLUFMQSBQRVBUSURFIEZPUiBRVUlDSyBMT09LIFRFU1QKVElUTEUgICAgIE1PTFNUQVIgUVVJQ0sgTE9PSyBTQU1QTEUKQVRPTSAgICAgIDEgIE4gICBHTFkgQSAgIDEgICAgICAtMS4yMDQgICAwLjE3NiAgIDAuMDAwICAxLjAwIDIwLjAwICAgICAgICAgICBOCkFUT00gICAgICAyICBDQSAgR0xZIEEgICAxICAgICAgIDAuMDAwICAgMC4wMDAgICAwLjAwMCAgMS4wMCAyMC4wMCAgICAgICAgICAgQwpBVE9NICAgICAgMyAgQyAgIEdMWSBBICAgMSAgICAgICAwLjcyMiAgIDEuMjcxICAgMC4wMDAgIDEuMDAgMjAuMDAgICAgICAgICAgIEMKQVRPTSAgICAgIDQgIE8gICBHTFkgQSAgIDEgICAgICAgMC4xNjMgICAyLjM2MCAgIDAuMDAwICAxLjAwIDIwLjAwICAgICAgICAgICBPCkFUT00gICAgICA1ICBOICAgQUxBIEEgICAyICAgICAgIDIuMDUyICAgMS4xODkgICAwLjAwMCAgMS4wMCAyMC4wMCAgICAgICAgICAgTgpBVE9NICAgICAgNiAgQ0EgIEFMQSBBICAgMiAgICAgICAyLjg5NiAgIDIuMzc3ICAgMC4wMDAgIDEuMDAgMjAuMDAgICAgICAgICAgIEMKQVRPTSAgICAgIDcgIENCICBBTEEgQSAgIDIgICAgICAgMy43MTEgICAyLjI3MyAgIDEuMjc2ICAxLjAwIDIwLjAwICAgICAgICAgICBDCkFUT00gICAgICA4ICBDICAgQUxBIEEgICAyICAgICAgIDMuNzkzICAgMi40NzcgIC0xLjIzMCAgMS4wMCAyMC4wMCAgICAgICAgICAgQwpBVE9NICAgICAgOSAgTyAgIEFMQSBBICAgMiAgICAgICA0LjY3NSAgIDMuMzM2ICAtMS4yMzYgIDEuMDAgMjAuMDAgICAgICAgICAgIE8KVEVSICAgICAgMTAgICAgICBBTEEgQSAgIDIKRU5ECg==';
     setStatus('[web] Using built-in mini sample for direct template preview.');
     return true;
   }
 
   async function loadRuntimeInputs(cb) {
-    if (window.BurreteConfig) return;
+    if (window.BuretteConfig) return;
     try {
-      if (!window.BurreteConfig) {
-        await loadScript(appendCacheBuster(runtimeURL('BurretePreviewConfigURL', './preview-config.js'), cb), 'preview config', 10000);
+      if (!window.BuretteConfig) {
+        await loadScript(appendCacheBuster(runtimeURL('BurettePreviewConfigURL', './preview-config.js'), cb), 'preview config', 10000);
       }
     } catch (error) {
       if (installDirectTemplateFallback()) return;
@@ -7476,10 +7476,10 @@
   }
 
   function rawStructureData(config) {
-    if (window.BurreteDataBytes instanceof Uint8Array) {
-      return config.binary ? window.BurreteDataBytes : new TextDecoder('utf-8', { fatal: false }).decode(window.BurreteDataBytes);
+    if (window.BuretteDataBytes instanceof Uint8Array) {
+      return config.binary ? window.BuretteDataBytes : new TextDecoder('utf-8', { fatal: false }).decode(window.BuretteDataBytes);
     }
-    const base64 = window.BurreteDataBase64;
+    const base64 = window.BuretteDataBase64;
     if (!base64 || typeof base64 !== 'string') {
       throw new Error('Preview payload was not loaded.');
     }
@@ -7783,9 +7783,9 @@
 
   function dockingPoseStorageKey(config) {
     const documentId = String(config?.documentId || '').trim();
-    if (documentId) return `burrete.dockingPose.${documentId}`;
+    if (documentId) return `burette.dockingPose.${documentId}`;
     const fallback = `${config?.label || 'active'}:${window.location.pathname}:${window.location.search}`;
-    return `burrete.dockingPose.fallback-${stableTextHash(fallback)}`;
+    return `burette.dockingPose.fallback-${stableTextHash(fallback)}`;
   }
 
   function stableTextHash(value) {
@@ -7812,9 +7812,9 @@
   function trajectoryControlStorageKey(config, prepared) {
     if (prepared?.kind === 'docking') return dockingPoseStorageKey(config);
     const documentId = String(config?.documentId || '').trim();
-    if (documentId) return `burrete.trajectoryControl.${documentId}`;
+    if (documentId) return `burette.trajectoryControl.${documentId}`;
     const fallback = `${config?.label || 'active'}:${window.location.pathname}:${window.location.search}`;
-    return `burrete.trajectoryControl.fallback-${stableTextHash(fallback)}`;
+    return `burette.trajectoryControl.fallback-${stableTextHash(fallback)}`;
   }
 
   function readTrajectoryControlIndex(config, prepared, poseCount) {
@@ -8020,7 +8020,7 @@
 
   function prepareDockingStructure(config) {
     const docking = config.docking || {};
-    const payloads = window.BurreteDockingPayloads || {};
+    const payloads = window.BuretteDockingPayloads || {};
     const receptor = docking.receptor;
     if (!receptor) throw new Error('Docking view is missing a receptor.');
     const ligandSources = Array.isArray(docking.ligands) ? docking.ligands : [];
@@ -8404,7 +8404,7 @@
   }
 
   function sheetItemExportLabel(item) {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     return item?.getAttribute?.('aria-label') || config.label || 'xyzrender';
   }
 
@@ -8896,7 +8896,7 @@
     let sheetItemSerial = sheet.querySelectorAll('.buret-xyzrender-sheet-item').length;
 
     const addSheetItems = async (entries, point = null) => {
-      const config = activeConfig || window.BurreteConfig || {};
+      const config = activeConfig || window.BuretteConfig || {};
       const cleanEntries = uniqueSheetEntries(entries);
       if (cleanEntries.length === 0) return;
       setStatus(`[web] Adding ${cleanEntries.length} structure${cleanEntries.length === 1 ? '' : 's'} to xyzrender sheet…`);
@@ -8947,15 +8947,15 @@
     const onMessage = event => {
       const data = event.data || {};
       const body = data.body || {};
-      if (data.source === 'burrete-host' && (
+      if (data.source === 'burette-host' && (
         body.type === 'xyzrenderSheetItemRendered' ||
         body.type === 'xyzrenderSheetItemError'
       )) {
         resolveHostXyzrenderSheetItem(body);
         return;
       }
-      if (data.source !== 'burrete-host' || body.type !== 'addXyzrenderSheetItems') return;
-      const documentId = String((activeConfig || window.BurreteConfig || {}).documentId || '');
+      if (data.source !== 'burette-host' || body.type !== 'addXyzrenderSheetItems') return;
+      const documentId = String((activeConfig || window.BuretteConfig || {}).documentId || '');
       if (body.documentId && documentId && String(body.documentId) !== documentId) return;
       const point = normalizeSheetClientPoint(body.point);
       void addSheetItems(
@@ -9019,7 +9019,7 @@
     return bytesToBase64(new TextEncoder().encode(text));
   }
 
-  function baseXyzrenderSheetEntry(config = activeConfig || window.BurreteConfig || {}) {
+  function baseXyzrenderSheetEntry(config = activeConfig || window.BuretteConfig || {}) {
     const path = String(
       config.xyzrenderSourcePath ||
       config.sourcePath ||
@@ -9077,7 +9077,7 @@
     }, items[0]);
   }
 
-  function xyzrenderSheetItemPreset(item, config = activeConfig || window.BurreteConfig || {}) {
+  function xyzrenderSheetItemPreset(item, config = activeConfig || window.BuretteConfig || {}) {
     return normalizeXyzrenderPreset(
       item?.dataset?.buretXyzrenderPreset ||
       config.externalArtifact?.preset ||
@@ -9298,7 +9298,7 @@
       if (!atomSelector) continue;
       try {
         const regions = [...xyzrenderSheetItemRegions(group.item), { atoms: atomSelector, preset: normalizedPreset }];
-        const nextControls = normalizeXyzrenderControls({ ...controls, regions }, activeConfig || window.BurreteConfig || {});
+        const nextControls = normalizeXyzrenderControls({ ...controls, regions }, activeConfig || window.BuretteConfig || {});
         const basePreset = xyzrenderSheetItemPreset(group.item);
         const payload = await renderXyzrenderSheetItemPayload(entry, basePreset, nextControls);
         pushXyzrenderActionHistory(group.item, `apply ${normalizedPreset} region`);
@@ -9341,7 +9341,7 @@
           showVdw: true,
           vdwAtoms: atomSelector,
           regions: xyzrenderSheetItemRegions(group.item)
-        }, activeConfig || window.BurreteConfig || {});
+        }, activeConfig || window.BuretteConfig || {});
         const basePreset = xyzrenderSheetItemPreset(group.item);
         const payload = await renderXyzrenderSheetItemPayload(entry, normalizedPreset || basePreset, nextControls);
         pushXyzrenderActionHistory(group.item, 'apply partial vdW');
@@ -9365,7 +9365,7 @@
   }
 
   async function updateSelectedXyzrenderSheetItems(items, options = {}) {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const controls = normalizeXyzrenderControls(options.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
     const preset = normalizeXyzrenderPreset(options.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
     setStatus(`[web] Updating ${items.length} selected xyzrender structure${items.length === 1 ? '' : 's'}…`);
@@ -9395,7 +9395,7 @@
   }
 
   async function renderXyzrenderSheetItemPayload(entry, preset, controls, options = {}) {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const endpoint = String(config.xyzrenderEndpoint || '').trim();
     const path = sheetEntryLabel(entry);
     const inputDataBase64 = sheetEntryInputDataBase64(entry);
@@ -10239,8 +10239,8 @@
 
     return {
       data: [
-        'Burrete SDF Grid',
-        '  Burrete',
+        'Burette SDF Grid',
+        '  Burette',
         `${molecules.length} of ${records.length} SDF records`,
         formatSdfCountsLine(totalAtoms, totalBonds),
         ...atoms,
@@ -10287,8 +10287,8 @@
 
     return {
       data: [
-        'Burrete SDF Pose Overlay',
-        '  Burrete',
+        'Burette SDF Pose Overlay',
+        '  Burette',
         `${molecules.length} poses overlaid from ${label}`,
         '  0  0  0     0  0            999 V3000',
         'M  V30 BEGIN CTAB',
@@ -10327,8 +10327,8 @@
       atomCount: molecule.atomCount
     }));
     const lines = [
-      `REMARK ${String(label || 'Burrete molecule collection').slice(0, 66)}`,
-      `REMARK Burrete SDF collection with ${molecules.length} molecules`
+      `REMARK ${String(label || 'Burette molecule collection').slice(0, 66)}`,
+      `REMARK Burette SDF collection with ${molecules.length} molecules`
     ];
     let serialOffset = 0;
     const adjacency = new Map();
@@ -10355,7 +10355,7 @@
     appendPdbConectLines(lines, adjacency);
     lines.push('END', '');
     const singlePdbs = molecules.map((molecule, index) => (
-      sdfMoleculesToPdbStructure([molecule], `${label || 'Burrete molecule'} Molecule ${index + 1}`)
+      sdfMoleculesToPdbStructure([molecule], `${label || 'Burette molecule'} Molecule ${index + 1}`)
     ));
     return { data: lines.join('\n'), residues, singlePdbs, molecules };
   }
@@ -10363,7 +10363,7 @@
   function sdfMoleculesToPdbStructure(molecules, label) {
     const totalAtoms = molecules.reduce((sum, molecule) => sum + molecule.atomCount, 0);
     if (totalAtoms <= 0 || totalAtoms > 99999) return null;
-    const lines = [`REMARK ${String(label || 'Burrete molecule').slice(0, 66)}`];
+    const lines = [`REMARK ${String(label || 'Burette molecule').slice(0, 66)}`];
     let serialOffset = 0;
     const adjacency = new Map();
     for (const molecule of molecules) {
@@ -11740,7 +11740,7 @@
   }
 
   function activeMolstarViewer() {
-    return activeViewer || window.BurreteViewer || window.BuretteViewer || null;
+    return activeViewer || window.BuretteViewer || window.BuretteViewer || null;
   }
 
   function molstarComponentsByKind(viewer, kind) {
@@ -11955,7 +11955,7 @@
     await plugin.build().to(target).apply(transform, {
       radius: Number.isFinite(Number(options.radius)) ? Number(options.radius) : 0.035,
       color: Number.isFinite(Number(options.color)) ? Number(options.color) : 0x2f6f66
-    }, { tags: ['burrete-box-geometry'] }).commit({ revertOnError: true });
+    }, { tags: ['burette-box-geometry'] }).commit({ revertOnError: true });
     return true;
   }
 
@@ -11993,7 +11993,7 @@
     return { ok: false, command, error: { code, message } };
   }
 
-  window.BurreteSceneActions = {
+  window.BuretteSceneActions = {
     hideComponents: hideMolstarComponents,
     showComponents: showMolstarComponents,
     hideWaters: hideMolstarWaters,
@@ -12229,7 +12229,7 @@
     const selector = focus.selector && typeof focus.selector === 'object' ? focus.selector : { kind: 'ligand' };
     const radiusA = Number(focus.radiusA || focus.extraRadius || 5);
     try {
-      const result = await window.BurreteAgent?.run?.({
+      const result = await window.BuretteAgent?.run?.({
         command: 'focusLigand',
         args: {
           selector,
@@ -12748,7 +12748,7 @@
   }
 
   async function applyTrajectorySmoothingFromAction(action = {}) {
-    const engine = window.BurreteTrajectorySmoothing;
+    const engine = window.BuretteTrajectorySmoothing;
     const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
     if (!engine?.smooth || !originalPrepared) {
       return agentActionFailure('apply_trajectory_smoothing', 'NOT_AVAILABLE', 'Trajectory smoothing is unavailable in this viewer runtime.');
@@ -13501,7 +13501,7 @@
       storyOpenRight.addEventListener('click', () => {
         const posted = postHostMessage({ type: 'openStructureStory', ...structureStoryPayload() });
         if (!posted) {
-          setStatus('[web] The Story sidebar is available in the full Burrete workspace.', 'error');
+          setStatus('[web] The Story sidebar is available in the full Burette workspace.', 'error');
         }
       });
     }
@@ -15507,7 +15507,7 @@
     if (bonds.length > 999) return null;
     return [
       String(label || 'Molecule').slice(0, 80),
-      '  Burrete',
+      '  Burette',
       'Small structure preview',
       formatSdfCountsLine(sdfAtoms.length, bonds.length),
       ...sdfAtoms.map(atom => formatSdfAtomLine(atom, atom.x, atom.y, atom.z)),
@@ -15783,7 +15783,7 @@
     const firstAtom = parsePdbAtomLine(lines[0]);
     const resolvedCompId = compId || firstAtom?.compId || 'Ligand';
     return {
-      data: ['HEADER    BURRETE PICKED SELECTION', ...lines, 'END', ''].join('\n'),
+      data: ['HEADER    BURETTE PICKED SELECTION', ...lines, 'END', ''].join('\n'),
       format: 'pdb',
       label: [resolvedCompId, chainId, seqId].filter(Boolean).join(' ')
     };
@@ -15828,7 +15828,7 @@
     return {
       data: [
         label,
-        '  Burrete',
+        '  Burette',
         'PDB ligand selection',
         formatSdfCountsLine(parsedAtoms.length, sdfBonds.length),
         ...parsedAtoms.map(current => formatSdfAtomLine({
@@ -15878,7 +15878,7 @@
       if (atom && selectedResidues.has(atom.residueKey)) selectedLines.push(line);
     }
     return {
-      data: ['HEADER    BURRETE DOCKING CONTEXT', ...selectedLines, 'END', ''].join('\n'),
+      data: ['HEADER    BURETTE DOCKING CONTEXT', ...selectedLines, 'END', ''].join('\n'),
       label: `${receptor?.label || 'Receptor'} environment`,
       fallback: false,
       residueCount: selectedResidues.size
@@ -16142,7 +16142,7 @@
     if (!toMmCif) throw new Error('mmCIF export is unavailable in this Mol* runtime.');
     const exports = molstarCurrentStructuresForExport();
     if (!exports.length) throw new Error('No modified Mol* structure is available to save.');
-    const label = exports.length === 1 ? exports[0].name : 'burrete_modified_structures';
+    const label = exports.length === 1 ? exports[0].name : 'burette_modified_structures';
     const structures = exports.length === 1 ? exports[0].structure : exports.map(entry => entry.structure);
     const text = toMmCif(label, structures, false, { copyAllCategories: true });
     if (typeof text !== 'string' || !text.trim()) throw new Error('Mol* returned an empty mmCIF export.');
@@ -16271,7 +16271,7 @@
       data: text,
       format,
       label,
-      molstarStyleOverride: configuredMolstarStyle(activeConfig || window.BurreteConfig || {})
+      molstarStyleOverride: configuredMolstarStyle(activeConfig || window.BuretteConfig || {})
     };
     const plugin = activeViewer.plugin;
     const transitionFrame = captureMolstarTransitionFrame();
@@ -16294,15 +16294,15 @@
     setMolstarStructureDirty(snapshot.dirty === true);
     clearMolstarSelection();
     try {
-      window.BurreteAgent?.notifyStructureLoaded?.({
+      window.BuretteAgent?.notifyStructureLoaded?.({
         viewer: activeViewer,
         plugin: activeViewer.plugin,
-        config: activeConfig || window.BurreteConfig || {},
+        config: activeConfig || window.BuretteConfig || {},
         prepared
       });
-      postHostMessage({ type: 'agentReady', message: 'Burrete agent ready' });
+      postHostMessage({ type: 'agentReady', message: 'Burette agent ready' });
     } catch (error) {
-      debug('BurreteAgent notifyStructureLoaded failed after Mol* undo: ' + (error && error.message || String(error)));
+      debug('BuretteAgent notifyStructureLoaded failed after Mol* undo: ' + (error && error.message || String(error)));
     }
   }
 
@@ -16324,7 +16324,7 @@
 
   async function resetMolstarCameraForContext() {
     try {
-      const result = await window.BurreteAgent?.run?.({
+      const result = await window.BuretteAgent?.run?.({
         command: 'resetCamera',
         args: { durationMs: 250 }
       });
@@ -16901,7 +16901,7 @@
     }
   }
 
-  window.BurreteRunMobileContextMenuAction = function (action, mode = 'molecule') {
+  window.BuretteRunMobileContextMenuAction = function (action, mode = 'molecule') {
     const actionName = String(action || '');
     if (!actionName) return;
     const nextMode = mode === 'atom' ? 'atom' : 'molecule';
@@ -17489,7 +17489,7 @@
 
   async function molstarPreviewLoadRDKitScript() {
     const sources = [
-      runtimeURL('BurreteRDKitJSURL', '../assets/rdkit/RDKit_minimal.js'),
+      runtimeURL('BuretteRDKitJSURL', '../assets/rdkit/RDKit_minimal.js'),
       'rdkit/RDKit_minimal.js'
     ];
     let lastError = null;
@@ -17511,8 +17511,8 @@
       const text = String(value || '').trim();
       if (text && !candidates.includes(text)) candidates.push(text);
     };
-    add(window.BurreteConfig?.rdkitWasmPath);
-    add(runtimeURL('BurreteRDKitWasmURL', ''));
+    add(window.BuretteConfig?.rdkitWasmPath);
+    add(runtimeURL('BuretteRDKitWasmURL', ''));
     add('rdkit/RDKit_minimal.wasm');
     add('../assets/rdkit/RDKit_minimal.wasm');
     add('/__burette/rdkit-wasm');
@@ -17536,8 +17536,8 @@
   }
 
   async function molstarPreviewLoadRDKitWasmData() {
-    if (window.BurreteRDKitWasmBase64) return;
-    const dataURL = runtimeURL('BurreteRDKitWasmDataURL', '');
+    if (window.BuretteRDKitWasmBase64) return;
+    const dataURL = runtimeURL('BuretteRDKitWasmDataURL', '');
     if (!dataURL) return;
     await molstarPreviewLoadScript(dataURL);
   }
@@ -17557,9 +17557,9 @@
       if (typeof window.initRDKitModule !== 'function') throw new Error('RDKit_minimal.js is missing.');
       await molstarPreviewLoadRDKitWasmData();
       const options = { locateFile: molstarPreviewRDKitWasmPath };
-      if (window.BurreteRDKitWasmBase64) {
-        options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
-        window.BurreteRDKitWasmBase64 = '';
+      if (window.BuretteRDKitWasmBase64) {
+        options.wasmBinary = base64ToBytes(window.BuretteRDKitWasmBase64);
+        window.BuretteRDKitWasmBase64 = '';
       } else {
         options.wasmBinary = await molstarPreviewLoadRDKitWasmBinary();
       }
@@ -18432,7 +18432,7 @@
     if (document.querySelector('link[href*="molstar.css"]')) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = runtimeURL('BurreteMolstarCSSURL', './molstar.css');
+    link.href = runtimeURL('BuretteMolstarCSSURL', './molstar.css');
     document.head.appendChild(link);
   }
 
@@ -18462,7 +18462,7 @@
     setMolstarStructureDirty(false);
     clearMolstarEditUndoHistory();
     resetXyzFrameOverlayState(activeViewer);
-    const viewer = activeViewer || window.BurreteViewer || window.BuretteViewer;
+    const viewer = activeViewer || window.BuretteViewer || window.BuretteViewer;
     try { viewer?.plugin?.dispose?.(); } catch (_) {}
     if (molstarContainerResizeCleanup) {
       molstarContainerResizeCleanup();
@@ -18476,16 +18476,16 @@
       window.removeEventListener('resize', molstarWindowResizeHandler);
       molstarWindowResizeHandler = null;
     }
-    if (burreteAgentActionPollTimer) {
-      window.clearInterval(burreteAgentActionPollTimer);
-      burreteAgentActionPollTimer = 0;
+    if (buretteAgentActionPollTimer) {
+      window.clearInterval(buretteAgentActionPollTimer);
+      buretteAgentActionPollTimer = 0;
     }
     activeViewer = null;
     activeMolstarPrepared = null;
     trajectorySmoothingState = null;
     updateSdfPoseButton(null);
     activeMolstarCacheBuster = null;
-    window.BurreteViewer = null;
+    window.BuretteViewer = null;
     window.BuretteViewer = null;
   }
 
@@ -18501,7 +18501,7 @@
     if (!window.molstar) {
       setStatus(`[web] Loading Mol* engine…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
-      await loadScript(appendCacheBuster(runtimeURL('BurreteMolstarURL', './molstar.js'), cb), 'Mol* engine', 120000);
+      await loadScript(appendCacheBuster(runtimeURL('BuretteMolstarURL', './molstar.js'), cb), 'Mol* engine', 120000);
     }
 
     setStatus(`[web] Mol* engine loaded. Creating WebGL viewer…
@@ -18515,15 +18515,15 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     setStatus(`[web] WebGL viewer created. Parsing structure…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyViewerBackground(viewer);
-    window.BurreteViewer = viewer;
+    window.BuretteViewer = viewer;
     window.BuretteViewer = viewer;
     try {
-      window.BurreteAgent?.attach?.({ viewer, plugin: viewer.plugin, config });
+      window.BuretteAgent?.attach?.({ viewer, plugin: viewer.plugin, config });
     } catch (error) {
-      debug('BurreteAgent attach failed: ' + (error && error.message || String(error)));
+      debug('BuretteAgent attach failed: ' + (error && error.message || String(error)));
     }
     activeViewer = viewer;
-    window.BurreteHandleResize = () => scheduleViewerResize(viewer, 60);
+    window.BuretteHandleResize = () => scheduleViewerResize(viewer, 60);
     molstarContainerResizeCleanup = installMolstarContainerResizeObserver(viewer);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
@@ -18537,7 +18537,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyLayoutState(viewer);
     try { viewer.handleResize(); } catch (_) {}
 
-    debug('before structureDataForMolstar: bytes=' + (window.BurreteDataBytes ? window.BurreteDataBytes.length : -1) + '; base64 chars=' + (window.BurreteDataBase64 ? window.BurreteDataBase64.length : -1));
+    debug('before structureDataForMolstar: bytes=' + (window.BuretteDataBytes ? window.BuretteDataBytes.length : -1) + '; base64 chars=' + (window.BuretteDataBase64 ? window.BuretteDataBase64.length : -1));
     const prepared = structureDataForMolstar(config);
     activeMolstarCacheBuster = cb;
     debug('prepared format=' + prepared.format + '; data type=' + (prepared.data && prepared.data.constructor ? prepared.data.constructor.name : typeof prepared.data) + '; data length=' + (prepared.data ? prepared.data.length : -1));
@@ -18555,15 +18555,15 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     }
 
     try {
-      window.BurreteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
-      postHostMessage({ type: 'agentReady', message: 'Burrete agent ready' });
+      window.BuretteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
+      postHostMessage({ type: 'agentReady', message: 'Burette agent ready' });
     } catch (error) {
-      debug('BurreteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
+      debug('BuretteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
     }
     await applyMolstarContextFocus(config);
     notifyMolstarSelectionChanged(molstarSelectedMoleculePreviewTarget());
-    void reportBurreteAgentState();
-    startBurreteAgentActionPolling();
+    void reportBuretteAgentState();
+    startBuretteAgentActionPolling();
     trackMolstarOrientation(viewer, config);
 
     if (molstarWindowResizeHandler) window.removeEventListener('resize', molstarWindowResizeHandler);
@@ -18602,17 +18602,17 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 
   async function start() {
     debug('viewer.js executed');
-    setStatus('[web] Booting Burrete viewer JavaScript…');
+    setStatus('[web] Booting Burette viewer JavaScript…');
     installDownloadExportBridge();
 
-    const cb = window.BurreteCacheBuster || String(Date.now());
+    const cb = window.BuretteCacheBuster || String(Date.now());
     await loadRuntimeInputs(cb);
 
     const config = requireConfig();
     activeConfig = config;
-    if (!(window.BurreteDataBytes instanceof Uint8Array) && !window.BurreteDataBase64) {
-      if (!config.dataPath && !window.BurreteDataURL) {
-        await loadScript(appendCacheBuster(runtimeURL('BurretePreviewDataScriptURL', './preview-data.js'), cb), 'structure data', 30000);
+    if (!(window.BuretteDataBytes instanceof Uint8Array) && !window.BuretteDataBase64) {
+      if (!config.dataPath && !window.BuretteDataURL) {
+        await loadScript(appendCacheBuster(runtimeURL('BurettePreviewDataScriptURL', './preview-data.js'), cb), 'structure data', 30000);
       }
       await loadStructureData(config, cb);
     }
@@ -18814,10 +18814,10 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 
   function showError(error) {
     const message = error && (error.stack || error.message) ? (error.stack || error.message) : String(error);
-    const diagnostics = window.__BURRETE_HOSTED_MCP_WIDGET__ === true
+    const diagnostics = window.__BURETTE_HOSTED_MCP_WIDGET__ === true
       ? ''
       : '\n\nCheck: ./scripts/tail-log.sh';
-    setStatus(`[web] Burrete web renderer failed to load this file.\n\n${message}${diagnostics}`, 'error');
+    setStatus(`[web] Burette web renderer failed to load this file.\n\n${message}${diagnostics}`, 'error');
     // eslint-disable-next-line no-console
     console.error(error);
   }

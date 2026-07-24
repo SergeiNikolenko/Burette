@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://burrete.app/schemas/compute/workflow-templates/cluster.v1.schema.json",
-  "title": "Burrete cluster.v1 submit request",
+  "$id": "https://burette.app/schemas/compute/workflow-templates/cluster.v1.schema.json",
+  "title": "Burette cluster.v1 submit request",
   "description": "The fixed RDKit 2025.03.4 Morgan, exact Tanimoto, and deterministic Butina workflow. Internal stages are coordinator-owned.",
   "type": "object",
   "required": ["schemaVersion", "workflowTemplate", "source", "parameters", "executionPolicy", "limits"],
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
-      "const": "burrete.compute-job.v1"
+      "const": "burette.compute-job.v1"
     },
     "workflowTemplate": {
       "const": "cluster.v1"

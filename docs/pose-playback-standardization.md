@@ -241,8 +241,8 @@ Keep each test URL tied to the worktree under test.
   real multi-frame XYZ trajectory-like file.
 - `/Users/nikolenko/Desktop/BurettePreviewSamples/structures/mn-h2.v000.xyz`:
   second multi-frame XYZ file.
-- `/tmp/burrete-5c01-gnina/5c01.pdb` plus
-  `/tmp/burrete-5c01-gnina/*_gnina.sdf`: docking receptor plus pose files.
+- `/tmp/burette-5c01-gnina/5c01.pdb` plus
+  `/tmp/burette-5c01-gnina/*_gnina.sdf`: docking receptor plus pose files.
 - `samples/schrodinger/metadynamics-binding.mae`: Maestro/scene-style input.
 - `samples/mvs/docking_story.mvsj`: MolViewSpec scene input.
 
@@ -267,7 +267,7 @@ For manual browser-dev testing:
 
 ```bash
 PORT=1439
-BURRETE_DEV_FS_ALLOW="$PWD/samples:/Users/nikolenko/Desktop/BurettePreviewSamples:/Users/nikolenko/Downloads/results/gnina:/tmp/burrete-5c01-gnina" \
+BURETTE_DEV_FS_ALLOW="$PWD/samples:/Users/nikolenko/Desktop/BurettePreviewSamples:/Users/nikolenko/Downloads/results/gnina:/tmp/burette-5c01-gnina" \
   vp dev apps/desktop \
     --host 127.0.0.1 \
     --port "$PORT" \

@@ -43,7 +43,7 @@ MODEL_SPECS = {
         "dimensions": 512,
     },
 }
-PROGRESS_PREFIX = "BURRETE_PROGRESS\t"
+PROGRESS_PREFIX = "BURETTE_PROGRESS\t"
 
 
 @dataclass(frozen=True)

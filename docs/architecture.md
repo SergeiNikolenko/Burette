@@ -1,6 +1,6 @@
-# Burrete Architecture
+# Burette Architecture
 
-Burrete is a macOS menu bar app with a Tauri desktop shell and a Swift Quick
+Burette is a macOS menu bar app with a Tauri desktop shell and a Swift Quick
 Look preview extension for molecular structure files.
 
 ## Repository Boundaries
@@ -11,7 +11,7 @@ Look preview extension for molecular structure files.
 - `PreviewExtension/` owns the Swift Quick Look extension.
 - `PreviewExtension/Web/` owns the bundled web runtime used inside Finder
   previews.
-- `Burrete.xcodeproj` owns the Quick Look extension build target.
+- `Burette.xcodeproj` owns the Quick Look extension build target.
 - `scripts/` owns local build, install, release, vendor, preview, and diagnostic
   workflows.
 - `config/web-runtime-profiles.json` owns the web asset profile manifest used by
@@ -35,7 +35,7 @@ Open molecule pages stay mounted while inactive when their renderer state should
 survive tab switches.
 
 Normal app launch remains a visible full-window launch. Registration-only
-maintenance may opt into `BURRETE_LAUNCH_MODE=register`; file-open and tray/menu
+maintenance may opt into `BURETTE_LAUNCH_MODE=register`; file-open and tray/menu
 paths still show the full app. See [Launch modes](launch-modes.md).
 
 ## Preview Runtime
@@ -58,13 +58,13 @@ RDKit WASM loading, grid search, and performance budgets are documented in
 Quick Look remains the only Swift runtime boundary. Its extension identifier is:
 
 ```text
-com.local.BurreteV10.Preview
+com.local.BuretteV10.Preview
 ```
 
 The shipped app bundle must contain:
 
 ```text
-build/Burrete.app/Contents/PlugIns/BurretePreview.appex
+build/Burette.app/Contents/PlugIns/BurettePreview.appex
 ```
 
 Keep the identifier stable unless doing an explicit Quick Look registration

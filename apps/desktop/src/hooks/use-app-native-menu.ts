@@ -29,7 +29,7 @@ import {
 import type { ViewerPreferences, ViewerReloadOptions } from "../types";
 import { useMenuEvents } from "./use-menu-events";
 
-const PROJECT_URL = "https://github.com/SergeiNikolenko/Burrete";
+const PROJECT_URL = "https://github.com/SergeiNikolenko/Burette";
 const GENERATE_3D_EXTENSIONS = new Set(["sdf", "sd", "mol", "smi", "smiles"]);
 const DIRECT_XTB_EXTENSIONS = new Set(["sdf", "sd", "mol", "xyz", "pdb"]);
 const CREST_OPENBABEL_EXTENSIONS = new Set(["sdf", "sd", "mol", "mol2", "pdb", "pdbqt", "ent", "cif", "mmcif", "mcif"]);
@@ -60,7 +60,7 @@ type UseAppNativeMenuOptions = {
 
 function postGridMenuCommand(documentId: string, command: string) {
   activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
-    source: "burrete-grid-host",
+    source: "burette-grid-host",
     body: { type: "gridMenuCommand", command },
   }, "*");
 }
@@ -258,7 +258,7 @@ export function useAppNativeMenu({
     if (!isTauriRuntime()) return undefined;
     return trackTauriListener(getCurrentWindow().onCloseRequested((event) => {
       // The close button quits the whole application, matching Cmd+Q and the
-      // "Quit Burrete" menu item. Preventing the default window close and
+      // "Quit Burette" menu item. Preventing the default window close and
       // routing through request_app_quit is deliberate: a plain window close
       // left a windowless process alive (macOS default) that then recreated a
       // window, so the button looked like it did nothing. request_quit runs the

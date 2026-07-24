@@ -8,14 +8,14 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const packageInfo = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
 const zipPath = path.resolve(process.argv[2] || '');
 const outputDir = path.resolve(process.argv[3] || path.dirname(zipPath));
-const privateKeyPem = process.env.BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM;
+const privateKeyPem = process.env.BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM;
 
 if (!zipPath || !fs.existsSync(zipPath)) {
-  console.error('usage: scripts/sign-update-manifest.mjs /path/to/Burrete-version.zip [output-dir]');
+  console.error('usage: scripts/sign-update-manifest.mjs /path/to/Burette-version.zip [output-dir]');
   process.exit(1);
 }
 if (!privateKeyPem) {
-  console.error('error: BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM is required to sign update manifests.');
+  console.error('error: BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM is required to sign update manifests.');
   process.exit(1);
 }
 
@@ -29,11 +29,11 @@ const manifest = {
   tagName,
   version,
   assetName,
-  assetUrl: `https://github.com/SergeiNikolenko/Burrete/releases/download/${tagName}/${assetName}`,
+  assetUrl: `https://github.com/SergeiNikolenko/Burette/releases/download/${tagName}/${assetName}`,
   assetSize: archiveBytes.length,
   assetSha256: crypto.createHash('sha256').update(archiveBytes).digest('hex'),
-  bundleId: 'com.local.BurreteV10',
-  extensionId: 'com.local.BurreteV10.Preview',
+  bundleId: 'com.local.BuretteV10',
+  extensionId: 'com.local.BuretteV10.Preview',
   minimumSystemVersion: '12.0',
 };
 

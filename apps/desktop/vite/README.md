@@ -52,7 +52,7 @@ For endpoint groups, add the focused tests that match the touched behavior:
 ```bash
 bun tests/test-browser-dev-maestro-preview.mjs
 bun tests/test-folding-results-contract.mjs
-bun tests/test-burrete-agent-cli.mjs
+bun tests/test-burette-agent-cli.mjs
 bun tests/test-runtime-storage-contract.mjs
 ```
 

@@ -24,17 +24,17 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         app,
         None,
         Some(AboutMetadata {
-            name: Some("Burrete".into()),
+            name: Some("Burette".into()),
             version: Some(pkg.version.to_string()),
             short_version: Some(pkg.version.to_string()),
             comments: Some("Native molecular structure viewer and analysis workspace.".into()),
             ..Default::default()
         }),
     )?;
-    let quit = MenuItemBuilder::with_id("app.quit", "Quit Burrete")
+    let quit = MenuItemBuilder::with_id("app.quit", "Quit Burette")
         .accelerator("CmdOrCtrl+Q")
         .build(app)?;
-    let app_menu = SubmenuBuilder::new(app, "Burrete")
+    let app_menu = SubmenuBuilder::new(app, "Burette")
         .items(&[
             &about,
             &updates,
@@ -329,7 +329,7 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         ])
         .build()?;
 
-    let github = MenuItemBuilder::with_id("help.open", "Burrete Help").build(app)?;
+    let github = MenuItemBuilder::with_id("help.open", "Burette Help").build(app)?;
     let shortcuts =
         MenuItemBuilder::with_id("help.keyboard-shortcuts", "Keyboard Shortcuts").build(app)?;
     let whats_new = MenuItemBuilder::with_id("help.whats-new", "What’s New").build(app)?;

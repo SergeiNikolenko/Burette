@@ -57,7 +57,7 @@ export function browserDevHasExplicitWorkspace() {
 
 export function browserDevAgentFocusLayout(
   search = typeof window === "undefined" ? "" : window.location.search,
-  isAgentShell = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1",
+  isAgentShell = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1",
 ) {
   if (!isAgentShell) return false;
   return new URLSearchParams(search).get("agentLayout") === "focus";

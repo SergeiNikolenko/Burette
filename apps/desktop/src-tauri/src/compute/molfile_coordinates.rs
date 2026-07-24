@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn parses_v2000_and_rejects_non_finite_coordinates() {
-        let mol = "x\n  Burrete\n\n  1  0  0  0  0  0            999 V2000\n    1.2500   -2.5000    3.7500 C   0  0  0  0  0  0  0  0  0  0  0  0\nM  END";
+        let mol = "x\n  Burette\n\n  1  0  0  0  0  0            999 V2000\n    1.2500   -2.5000    3.7500 C   0  0  0  0  0  0  0  0  0  0  0  0\nM  END";
         assert_eq!(
             parse_molfile_positions(mol).unwrap(),
             [[1.25, -2.5, 3.75, 0.0]]

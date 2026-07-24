@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use burrete_compute_core::{align_and_score, AlignmentAtom, AlignmentMode, AtomMapping};
-use burrete_compute_metal::{AlignmentPairDescriptor, MetalAlignmentBatch, MetalTanimotoRuntime};
-use burrete_compute_protocol::{
+use burette_compute_core::{align_and_score, AlignmentAtom, AlignmentMode, AtomMapping};
+use burette_compute_metal::{AlignmentPairDescriptor, MetalAlignmentBatch, MetalTanimotoRuntime};
+use burette_compute_protocol::{
     AlignmentModeV1, AlignmentV1Parameters, AlignmentV1SubmitRequest, AnalysisResourceLimits,
     BackendPolicy, ComputeJobSchemaVersion, ExecutionPolicy, GridScope, GridSourceReference,
     SchedulingPolicy, SelectedGridScope, WorkflowTemplateId,
@@ -260,7 +260,7 @@ fn execute_alignment_rows(
         combined_similarity: 1.0,
     }];
     let mut transforms = vec![rigid_transform_matrix(
-        burrete_compute_core::RigidTransform::IDENTITY,
+        burette_compute_core::RigidTransform::IDENTITY,
     )];
     let mut sdf_records = vec![sdf_record(
         &parsed[0],
@@ -352,7 +352,7 @@ pub(crate) fn apply_grid_alignment_result(
     )
 }
 
-fn rigid_transform_matrix(transform: burrete_compute_core::RigidTransform) -> [f32; 16] {
+fn rigid_transform_matrix(transform: burette_compute_core::RigidTransform) -> [f32; 16] {
     [
         transform.rotation[0][0],
         transform.rotation[0][1],
@@ -807,7 +807,7 @@ fn validate_cpu_parity(
     probe: &ParsedMolfile,
     reference: &ParsedMolfile,
     mapping: &[AtomMapping],
-    metal: &burrete_compute_metal::MetalAlignmentPairResult,
+    metal: &burette_compute_metal::MetalAlignmentPairResult,
 ) -> ComputeResult<()> {
     let cpu = align_and_score(
         &probe.atoms,
@@ -847,7 +847,7 @@ fn validate_cpu_parity(
 
 fn sdf_record(
     molecule: &ParsedMolfile,
-    transform: Option<burrete_compute_core::RigidTransform>,
+    transform: Option<burette_compute_core::RigidTransform>,
     score: &GridAlignmentScore,
     device: &str,
 ) -> ComputeResult<String> {
@@ -899,7 +899,7 @@ fn sdf_record(
         .map(|value| format!("{value:.8}"))
         .unwrap_or_else(|| "unavailable (no non-zero atomic charges)".into());
     Ok(format!(
-        "{}\n>  <BURRETE_ALIGNMENT_REFERENCE>\n{}\n\n>  <BURRETE_ALIGNED_RMSD>\n{:.8}\n\n>  <BURRETE_SHAPE_TANIMOTO>\n{:.8}\n\n>  <BURRETE_ELECTROSTATIC_CARBO>\n{}\n\n>  <BURRETE_COMBINED_SIMILARITY>\n{:.8}\n\n>  <BURRETE_COMPUTE_BACKEND>\nMetal GPU ({})\n\n$$$$",
+        "{}\n>  <BURETTE_ALIGNMENT_REFERENCE>\n{}\n\n>  <BURETTE_ALIGNED_RMSD>\n{:.8}\n\n>  <BURETTE_SHAPE_TANIMOTO>\n{:.8}\n\n>  <BURETTE_ELECTROSTATIC_CARBO>\n{}\n\n>  <BURETTE_COMBINED_SIMILARITY>\n{:.8}\n\n>  <BURETTE_COMPUTE_BACKEND>\nMetal GPU ({})\n\n$$$$",
         lines.join("\n"),
         score.is_reference,
         score.rmsd,
@@ -1029,7 +1029,7 @@ mod tests {
 
     #[test]
     fn parses_and_rewrites_v2000_coordinates() {
-        let mol = "ethane\n  Burrete\n\n  2  1  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.5000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\nM  END";
+        let mol = "ethane\n  Burette\n\n  2  1  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.5000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\nM  END";
         let parsed = parse_molfile(mol).expect("parse fixture");
         assert_eq!(parsed.symbols, ["C", "C"]);
         assert_eq!(parsed.atoms[1].position[0], 1.5);
@@ -1038,11 +1038,11 @@ mod tests {
     #[test]
     fn infers_non_identity_mapping_from_element_and_bond_graph() {
         let reference = parse_molfile(
-            "methanol\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  2  3  1  0  0  0  0\nM  END",
+            "methanol\n  Burette\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  2  3  1  0  0  0  0\nM  END",
         )
         .expect("parse reference");
         let reordered = parse_molfile(
-            "methanol pose\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n  2  3  1  0  0  0  0\n  3  1  1  0  0  0  0\nM  END",
+            "methanol pose\n  Burette\n\n  3  2  0  0  0  0            999 V2000\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n  2  3  1  0  0  0  0\n  3  1  1  0  0  0  0\nM  END",
         )
         .expect("parse reordered pose");
         let mapping = infer_atom_mapping(&reordered, &reference).expect("infer mapping");
@@ -1056,11 +1056,11 @@ mod tests {
     #[test]
     fn rejects_same_elements_with_a_different_bond_graph() {
         let connected = parse_molfile(
-            "connected\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  2  3  1  0  0  0  0\nM  END",
+            "connected\n  Burette\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  2  3  1  0  0  0  0\nM  END",
         )
         .expect("parse connected");
         let disconnected = parse_molfile(
-            "disconnected\n  Burrete\n\n  3  1  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\nM  END",
+            "disconnected\n  Burette\n\n  3  1  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\nM  END",
         )
         .expect("parse disconnected");
         assert!(infer_atom_mapping(&disconnected, &connected).is_err());
@@ -1068,23 +1068,23 @@ mod tests {
 
     #[test]
     fn rejects_unknown_elements_and_invalid_selection_sizes() {
-        let mol = "x\n  Burrete\n\n  1  0  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 Xx  0  0  0  0  0  0  0  0  0  0  0  0\nM  END";
+        let mol = "x\n  Burette\n\n  1  0  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 Xx  0  0  0  0  0  0  0  0  0  0  0  0\nM  END";
         assert!(parse_molfile(mol).is_err());
         assert!(normalized_indexes(&[1]).is_err());
     }
 
     #[test]
-    #[ignore = "manual real-GPU smoke; set BURRETE_METAL_RUNTIME_ROOT"]
+    #[ignore = "manual real-GPU smoke; set BURETTE_METAL_RUNTIME_ROOT"]
     fn aligns_a_reordered_grid_pose_on_the_real_gpu() {
-        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+        let root = std::env::var_os("BURETTE_METAL_RUNTIME_ROOT")
             .map(std::path::PathBuf::from)
-            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged runtime");
+            .expect("BURETTE_METAL_RUNTIME_ROOT must name a packaged runtime");
         let runtime = MetalTanimotoRuntime::load(&root, &"0".repeat(64))
             .expect("load verified Metal runtime");
         let grid_root =
-            std::env::temp_dir().join(format!("burrete-alignment-grid-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("burette-alignment-grid-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&grid_root).expect("create Grid root");
-        let sdf = "methanol\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  2  3  1  0  0  0  0\nM  END\n$$$$\nmethanol pose\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n  2  3  1  0  0  0  0\n  3  1  1  0  0  0  0\nM  END\n$$$$\n";
+        let sdf = "methanol\n  Burette\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  2  3  1  0  0  0  0\nM  END\n$$$$\nmethanol pose\n  Burette\n\n  3  2  0  0  0  0            999 V2000\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n  2  3  1  0  0  0  0\n  3  1  1  0  0  0  0\nM  END\n$$$$\n";
         let handle =
             crate::preview::grid_store::build_grid_store(&grid_root, "sdf", sdf.as_bytes())
                 .expect("build Grid")

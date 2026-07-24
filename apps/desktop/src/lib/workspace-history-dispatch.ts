@@ -46,7 +46,7 @@ export function requestFocusedRuntimeWorkspaceHistory(direction: WorkspaceHistor
     };
     window.addEventListener("message", onMessage);
     target.postMessage({
-      source: "burrete-host",
+      source: "burette-host",
       body: {
         type: "workspaceHistoryCommand",
         direction,

@@ -206,14 +206,14 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                       ),
                       actionRow(
                         "Selection",
-                        state.xtbStatus?.selectedExecutablePath ? "An explicit executable is selected." : "Burrete is discovering xTB automatically.",
+                        state.xtbStatus?.selectedExecutablePath ? "An explicit executable is selected." : "Burette is discovering xTB automatically.",
                         "Use Automatically",
                         () => void actions.clearXtbExecutableSelection(),
                         !state.xtbStatus?.selectedExecutablePath,
                       ),
                       actionRow(
                         "Managed Runtime",
-                        "Install xTB in an isolated Burrete environment.",
+                        "Install xTB in an isolated Burette environment.",
                         "Install Managed",
                         () => void actions.installXtb(),
                       ),

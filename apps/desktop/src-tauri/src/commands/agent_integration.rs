@@ -5,7 +5,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const PLUGIN_NAME: &str = "burrete";
+const PLUGIN_NAME: &str = "burette";
 const PLUGIN_RELATIVE_PATH: &str = "plugins/burette-agent";
 const MANIFEST_RELATIVE_PATH: &str = ".codex-plugin/plugin.json";
 const COMPATIBILITY_RELATIVE_PATH: &str = "compatibility.json";
@@ -115,7 +115,7 @@ fn bundle_status(path: &Path, checks: &mut Vec<AgentIntegrationCheck>) -> Plugin
         "Plugin manifest",
         &manifest_path,
         manifest_ok,
-        "Expected .codex-plugin/plugin.json for Burrete.",
+        "Expected .codex-plugin/plugin.json for Burette.",
     ));
 
     let compatibility_path = path.join(COMPATIBILITY_RELATIVE_PATH);
@@ -137,7 +137,7 @@ fn bundle_status(path: &Path, checks: &mut Vec<AgentIntegrationCheck>) -> Plugin
             "Preflight",
             "scripts/burette_agent_preflight.mjs",
         ),
-        ("cli", "Agent CLI", "scripts/burrete-agent.mjs"),
+        ("cli", "Agent CLI", "scripts/burette-agent.mjs"),
         (
             "browser-preview",
             "Browser preview",
@@ -156,7 +156,7 @@ fn bundle_status(path: &Path, checks: &mut Vec<AgentIntegrationCheck>) -> Plugin
             label,
             &candidate,
             candidate.exists(),
-            "Required by the Burrete plugin.",
+            "Required by the Burette plugin.",
         ));
     }
 
@@ -172,7 +172,7 @@ fn bundle_status(path: &Path, checks: &mut Vec<AgentIntegrationCheck>) -> Plugin
         .map(ToOwned::to_owned);
     let compatibility_summary = compatibility.as_ref().map(|value| CompatibilitySummary {
         app: value
-            .pointer("/requires/burreteApp")
+            .pointer("/requires/buretteApp")
             .and_then(Value::as_str)
             .map(ToOwned::to_owned),
         agent_cli: value
@@ -221,7 +221,7 @@ fn codex_install_status(bundled_version: Option<&str>) -> CodexInstallStatus {
             state: "not_installed".to_string(),
             version: None,
             path: None,
-            message: "Burrete is not installed in the local Codex plugin cache.".to_string(),
+            message: "Burette is not installed in the local Codex plugin cache.".to_string(),
         };
     };
     let version = installed
@@ -235,9 +235,9 @@ fn codex_install_status(bundled_version: Option<&str>) -> CodexInstallStatus {
         _ => "unknown",
     };
     let message = match state {
-        "current" => "The local Codex cache has the same plugin version as this Burrete bundle.",
-        "update_available" => "The local Codex cache has a different Burrete plugin version.",
-        _ => "Codex has a Burrete plugin manifest, but the version could not be compared.",
+        "current" => "The local Codex cache has the same plugin version as this Burette bundle.",
+        "update_available" => "The local Codex cache has a different Burette plugin version.",
+        _ => "Codex has a Burette plugin manifest, but the version could not be compared.",
     };
 
     CodexInstallStatus {
@@ -284,7 +284,7 @@ fn find_codex_plugin_manifest(cache: &Path) -> Option<InstalledPluginManifest> {
 }
 
 fn find_bundled_plugin_root() -> Option<PathBuf> {
-    if let Some(path) = env::var_os("BURRETE_AGENT_PLUGIN_DIR").map(PathBuf::from) {
+    if let Some(path) = env::var_os("BURETTE_AGENT_PLUGIN_DIR").map(PathBuf::from) {
         if path.join(MANIFEST_RELATIVE_PATH).exists() {
             return Some(normalize_path(&path));
         }

@@ -207,14 +207,14 @@ useMoleculeStore.setState({
   recentStructures: [],
 });
 
-const persisted = JSON.parse(storage.get("burrete.molecule.session"));
+const persisted = JSON.parse(storage.get("burette.molecule.session"));
 assert.deepEqual(persisted.state.documents, []);
 assert.equal(persisted.state.tabs.some((tab) => tab.location.kind === "file"), false);
 assert.equal(persisted.state.tabs.some((tab) => tab.location.kind === "settings"), false);
 assert.equal(persisted.state.tabs.some((tab) => tab.location.kind === "ketcher"), true);
 
 resetStore();
-storage.set("burrete.molecule.session", JSON.stringify({
+storage.set("burette.molecule.session", JSON.stringify({
   state: {
     documents: [],
     tabs: [
@@ -250,7 +250,7 @@ useMoleculeStore.getState().rememberRecentStructures(manyDocuments);
 
 const recent = useMoleculeStore.getState().recentStructures;
 assert.equal(recent.length, manyDocuments.length);
-assert.equal(JSON.parse(storage.get("burrete.recent.structures")).documents.length, manyDocuments.length);
+assert.equal(JSON.parse(storage.get("burette.recent.structures")).documents.length, manyDocuments.length);
 assert.deepEqual(
   recent.map((structure) => structure.path).sort(),
   manyDocuments.map((structure) => structure.path).sort(),
@@ -276,6 +276,6 @@ assert.deepEqual(
 
 useMoleculeStore.getState().clearRecentStructures();
 assert.deepEqual(useMoleculeStore.getState().recentStructures, []);
-assert.deepEqual(JSON.parse(storage.get("burrete.recent.structures")).documents, []);
+assert.deepEqual(JSON.parse(storage.get("burette.recent.structures")).documents, []);
 
 console.log("molecule store behavior tests passed");

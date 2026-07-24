@@ -1,4 +1,4 @@
-export const STRUCTURE_DRAG_MIME = "application/x-burrete-structure-paths";
+export const STRUCTURE_DRAG_MIME = "application/x-burette-structure-paths";
 
 export type StructureDragRecord = {
   path: string;

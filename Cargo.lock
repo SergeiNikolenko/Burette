@@ -350,14 +350,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
-name = "burrete"
+name = "burette"
 version = "1.0.31"
 dependencies = [
  "base64 0.22.1",
- "burrete-compute-core",
- "burrete-compute-metal",
- "burrete-compute-protocol",
- "burrete-core",
+ "burette-compute-core",
+ "burette-compute-metal",
+ "burette-compute-protocol",
+ "burette-core",
  "cocoa",
  "core-foundation",
  "dispatch2",
@@ -381,23 +381,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "burrete-compute-core"
+name = "burette-compute-core"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "burrete-compute-protocol",
+ "burette-compute-protocol",
  "serde",
  "serde_json",
  "sha2 0.11.0",
 ]
 
 [[package]]
-name = "burrete-compute-metal"
+name = "burette-compute-metal"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "burrete-compute-core",
- "burrete-compute-protocol",
+ "burette-compute-core",
+ "burette-compute-protocol",
  "metal",
  "objc",
  "serde",
@@ -407,7 +407,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "burrete-compute-protocol"
+name = "burette-compute-protocol"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -418,7 +418,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "burrete-core"
+name = "burette-core"
 version = "0.1.0"
 dependencies = [
  "serde",

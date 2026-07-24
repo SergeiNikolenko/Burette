@@ -2,7 +2,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")" && pwd)"
-build_dir="$(mktemp -d "${TMPDIR:-/tmp}/burrete-conformer-binary.XXXXXX")"
+build_dir="$(mktemp -d "${TMPDIR:-/tmp}/burette-conformer-binary.XXXXXX")"
 trap 'rm -rf "$build_dir"' EXIT
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \

@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "libraryId": "burrete.compute.conformer-stereo.v1",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "libraryId": "burette.compute.conformer-stereo.v1",
   "source": "conformer-stereo.v1.metal",
   "deploymentTarget": "14.0",
   "algorithm": "batched signed chiral-volume and tetrahedral non-planarity validation",
@@ -22,7 +22,7 @@
     ]
   },
   "entrypoint": {
-    "name": "burrete_conformer_stereo_validate_v1",
+    "name": "burette_conformer_stereo_validate_v1",
     "threads": "conformerCount",
     "buffers": [
       { "name": "positions", "index": 0, "type": "float4", "access": "read", "elements": "atomCount * conformerCount" },

@@ -44,7 +44,7 @@ function postJson(url, value, headers = {}) {
 }
 
 function previewDataText(body) {
-  const match = body.match(/^window\.BurreteDataBase64 = "([^"]+)";/);
+  const match = body.match(/^window\.BuretteDataBase64 = "([^"]+)";/);
   assert.ok(match, 'preview-data.js should contain a base64 payload');
   return Buffer.from(match[1], 'base64').toString('utf8');
 }
@@ -99,7 +99,7 @@ try {
 
   const staticAgent = await get(`${base}/burette-agent.js`);
   assert.equal(staticAgent.statusCode, 200);
-  assert.match(staticAgent.body, /window\.BurreteAgent/);
+  assert.match(staticAgent.body, /window\.BuretteAgent/);
   const staticViewerRuntimeCSS = await get(`${base}/viewer-runtime.css`);
   assert.equal(staticViewerRuntimeCSS.statusCode, 200);
   assert.doesNotMatch(staticViewerRuntimeCSS.body, /#buret-toolbar\.collapsed:hover/);
@@ -133,23 +133,23 @@ try {
   assert.match(htmlWithToken.body, /viewer-shell\.js\?v=\d+/);
   assert.match(htmlWithToken.body, /burette-agent\.js\?v=\d+/);
   assert.match(htmlWithToken.body, /viewer\.js\?v=\d+/);
-  const cookie = htmlWithToken.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='));
+  const cookie = htmlWithToken.headers['set-cookie']?.find(value => value.startsWith('BuretteAgentPreviewToken='));
   assert.ok(cookie, 'authorized HTML response should set the preview token cookie');
 
   const cookieHeader = cookie.split(';')[0];
   const dataWithCookie = await get(`${base}/preview-data.js`, { Cookie: cookieHeader });
   assert.equal(dataWithCookie.statusCode, 200);
-  assert.match(dataWithCookie.body, /^window\.BurreteDataBase64 = "/);
+  assert.match(dataWithCookie.body, /^window\.BuretteDataBase64 = "/);
 
   const configWithCookie = await get(`${base}/preview-config.js`, { Cookie: cookieHeader });
   assert.equal(configWithCookie.statusCode, 200);
-  assert.match(configWithCookie.body, /^window\.BurreteConfig = /);
+  assert.match(configWithCookie.body, /^window\.BuretteConfig = /);
   assert.match(configWithCookie.body, /"enablePreviewDocks":true/);
   assert.match(configWithCookie.body, /"defaultPreviewDocks":\[\]/);
-  assert.match(configWithCookie.body, /window\.BurreteAgentControl = /);
+  assert.match(configWithCookie.body, /window\.BuretteAgentControl = /);
   assert.match(configWithCookie.body, /"observeUrl":"\/__agent\/observe"/);
 
-  const tempDir = await mkdtemp(join(tmpdir(), 'burrete-agent-preview-'));
+  const tempDir = await mkdtemp(join(tmpdir(), 'burette-agent-preview-'));
   const maePath = join(tempDir, 'ligand.mae');
   await writeFile(maePath, `
 f_m_ct {
@@ -181,7 +181,7 @@ f_m_ct {
     const maeReady = await waitForReady(maeChild);
     const maeHtml = await get(maeReady.url);
     assert.equal(maeHtml.statusCode, 200);
-    const maeCookie = maeHtml.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='));
+    const maeCookie = maeHtml.headers['set-cookie']?.find(value => value.startsWith('BuretteAgentPreviewToken='));
     assert.ok(maeCookie, 'authorized Maestro HTML response should set the preview token cookie');
     const maeCookieHeader = maeCookie.split(';')[0];
     const maeConfig = await get(`http://127.0.0.1:${maePort}/preview-config.js`, { Cookie: maeCookieHeader });
@@ -198,7 +198,7 @@ f_m_ct {
     await rm(tempDir, { recursive: true, force: true });
   }
 
-  const coordinateTempDir = await mkdtemp(join(tmpdir(), 'burrete-coordinate-preview-'));
+  const coordinateTempDir = await mkdtemp(join(tmpdir(), 'burette-coordinate-preview-'));
   const amberPath = join(coordinateTempDir, 'amber.inpcrd');
   const charmmPath = join(coordinateTempDir, 'charmm.crd');
   const statePath = join(coordinateTempDir, 'openmm.state');
@@ -337,7 +337,7 @@ Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
       const coordinateReady = await waitForReady(coordinateChild);
       const coordinateHtml = await get(coordinateReady.url);
       assert.equal(coordinateHtml.statusCode, 200);
-      const coordinateCookie = coordinateHtml.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='));
+      const coordinateCookie = coordinateHtml.headers['set-cookie']?.find(value => value.startsWith('BuretteAgentPreviewToken='));
       assert.ok(coordinateCookie, 'authorized coordinate HTML response should set the preview token cookie');
       const coordinateCookieHeader = coordinateCookie.split(';')[0];
       const coordinateConfig = await get(`http://127.0.0.1:${coordinatePort}/preview-config.js`, { Cookie: coordinateCookieHeader });
@@ -361,7 +361,7 @@ Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
   try {
     const lammpsLogReady = await waitForReady(lammpsLogChild);
     const lammpsLogHtml = await get(lammpsLogReady.url);
-    const lammpsLogCookie = lammpsLogHtml.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='))?.split(';')[0];
+    const lammpsLogCookie = lammpsLogHtml.headers['set-cookie']?.find(value => value.startsWith('BuretteAgentPreviewToken='))?.split(';')[0];
     assert.ok(lammpsLogCookie, 'authorized log.lammps HTML response should set the preview token cookie');
     const lammpsLogConfig = await get(`http://127.0.0.1:${lammpsLogPort}/preview-config.js`, { Cookie: lammpsLogCookie });
     assert.equal(lammpsLogConfig.statusCode, 200);
@@ -372,7 +372,7 @@ Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
   }
   await rm(coordinateTempDir, { recursive: true, force: true });
 
-  const trajectoryTempDir = await mkdtemp(join(tmpdir(), 'burrete-trajectory-pair-preview-'));
+  const trajectoryTempDir = await mkdtemp(join(tmpdir(), 'burette-trajectory-pair-preview-'));
   const groPath = join(trajectoryTempDir, 'md_smoke_100ps.gro');
   const xtcPath = join(trajectoryTempDir, 'md_smoke_100ps_centered.xtc');
   await writeFile(groPath, `Protein in water
@@ -390,7 +390,7 @@ Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
     const trajectoryReady = await waitForReady(trajectoryChild);
     const trajectoryHtml = await get(trajectoryReady.url);
     assert.equal(trajectoryHtml.statusCode, 200);
-    const trajectoryCookie = trajectoryHtml.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='));
+    const trajectoryCookie = trajectoryHtml.headers['set-cookie']?.find(value => value.startsWith('BuretteAgentPreviewToken='));
     assert.ok(trajectoryCookie, 'authorized trajectory HTML response should set the preview token cookie');
     const trajectoryCookieHeader = trajectoryCookie.split(';')[0];
     const trajectoryConfig = await get(`http://127.0.0.1:${trajectoryPort}/preview-config.js`, { Cookie: trajectoryCookieHeader });
@@ -398,7 +398,7 @@ Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
     assert.match(trajectoryConfig.body, /"docking":/);
     assert.match(trajectoryConfig.body, /"format":"gro"/);
     assert.match(trajectoryConfig.body, /"format":"xtc"/);
-    assert.match(trajectoryConfig.body, /window\.BurreteDockingPayloads = /);
+    assert.match(trajectoryConfig.body, /window\.BuretteDockingPayloads = /);
     const trajectoryData = await get(`http://127.0.0.1:${trajectoryPort}/preview-data.js`, { Cookie: trajectoryCookieHeader });
     assert.equal(trajectoryData.statusCode, 200);
     assert.equal(previewDataText(trajectoryData.body), '\n');
@@ -596,7 +596,7 @@ Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
   assert.equal(nextPanel.id, queuedPanel.action.id);
   assert.equal(nextPanel.action.panel.kind, 'markdown');
   assert.equal(nextPanel.action.panel.title, 'README.md');
-  assert.match(nextPanel.action.panel.content, /Burrete/);
+  assert.match(nextPanel.action.panel.content, /Burette/);
 
   const actionObserve = await get(`${base}/__agent/observe`, { Cookie: cookieHeader });
   assert.equal(actionObserve.statusCode, 200);

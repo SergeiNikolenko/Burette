@@ -11,10 +11,10 @@ use tauri::Manager;
 
 use super::update_progress;
 
-const APP_ID: &str = "com.local.BurreteV10";
-const EXTENSION_ID: &str = "com.local.BurreteV10.Preview";
+const APP_ID: &str = "com.local.BuretteV10";
+const EXTENSION_ID: &str = "com.local.BuretteV10.Preview";
 const RELEASE_DOWNLOAD_PREFIX: &str =
-    "https://github.com/SergeiNikolenko/Burrete/releases/download/";
+    "https://github.com/SergeiNikolenko/Burette/releases/download/";
 const DOWNLOAD_PROGRESS_START: f64 = 0.04;
 const DOWNLOAD_PROGRESS_END: f64 = 0.34;
 const DOWNLOAD_PROGRESS_POLL_INTERVAL: Duration = Duration::from_millis(500);
@@ -210,7 +210,7 @@ pub(crate) async fn install_update(
                     }
                     helper.commit();
                     interaction_pause.keep_paused();
-                    update_progress::show(&app, "Restarting Burrete...", Some(1.0));
+                    update_progress::show(&app, "Restarting Burette...", Some(1.0));
                     app.exit(0);
                     Ok(true)
                 }
@@ -509,7 +509,7 @@ fn curl_download_command(package_version: &str, url: &str, target: &Path) -> Com
             "--retry-all-errors",
         ])
         .arg("--header")
-        .arg(format!("User-Agent: Burrete/{package_version}"))
+        .arg(format!("User-Agent: Burette/{package_version}"))
         .arg("--output")
         .arg(target)
         .arg(url);
@@ -773,7 +773,7 @@ fn should_verify_manifest(request: &UpdateInstallRequest) -> bool {
 }
 
 fn manifest_public_key() -> Option<&'static str> {
-    option_env!("BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX").and_then(|value| {
+    option_env!("BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX").and_then(|value| {
         let trimmed = value.trim();
         if trimmed.is_empty() {
             None
@@ -788,7 +788,7 @@ fn verify_update_manifest(
     signature_text: &str,
 ) -> Result<UpdateManifest, String> {
     let public_key = manifest_public_key().ok_or_else(|| {
-        "This Burrete build does not contain an update manifest public key.".to_string()
+        "This Burette build does not contain an update manifest public key.".to_string()
     })?;
     verify_update_manifest_with_key(manifest_bytes, signature_text, public_key)
 }
@@ -872,7 +872,7 @@ fn find_downloaded_app(directory: &Path) -> Result<PathBuf, String> {
             }
         }
     }
-    Err("The update archive does not contain Burrete.app.".into())
+    Err("The update archive does not contain Burette.app.".into())
 }
 
 fn validate_downloaded_app(
@@ -884,7 +884,7 @@ fn validate_downloaded_app(
     let info_plist = app.join("Contents/Info.plist");
     let bundle_id = read_plist_value(&info_plist, "CFBundleIdentifier")?;
     if bundle_id != APP_ID {
-        return Err("The archive does not contain com.local.BurreteV10.".into());
+        return Err("The archive does not contain com.local.BuretteV10.".into());
     }
 
     let downloaded_version = read_plist_value(&info_plist, "CFBundleShortVersionString")?;
@@ -901,7 +901,7 @@ fn validate_downloaded_app(
         ));
     }
 
-    let executable = app.join("Contents/MacOS/burrete");
+    let executable = app.join("Contents/MacOS/burette");
     if !executable.is_file() {
         return Err("The downloaded app executable is missing.".into());
     }
@@ -936,7 +936,7 @@ fn validate_downloaded_extension_signature(
     let extension = app
         .join("Contents")
         .join("PlugIns")
-        .join("BurretePreview.appex");
+        .join("BurettePreview.appex");
     if !extension.is_dir() {
         return Err("Downloaded app is missing the Quick Look extension.".into());
     }
@@ -1059,7 +1059,7 @@ LOG_FILE={log}
 
 mkdir -p "$(dirname "$LOG_FILE")"
 exec >>"$LOG_FILE" 2>&1
-echo "== Burrete updater $(date) =="
+echo "== Burette updater $(date) =="
 echo "new app: $NEW_APP"
 echo "destination: $DEST_APP"
 
@@ -1070,7 +1070,7 @@ for _ in $(seq 1 80); do
   sleep 0.25
 done
 if kill -0 "$APP_PID" 2>/dev/null; then
-  echo "error: Burrete did not quit in time"
+  echo "error: Burette did not quit in time"
   exit 1
 fi
 
@@ -1109,16 +1109,16 @@ if ! /bin/mv "$TMP_APP" "$DEST_APP"; then
 fi
 rm -rf "$BACKUP_APP"
 
-APPEX="$DEST_APP/Contents/PlugIns/BurretePreview.appex"
+APPEX="$DEST_APP/Contents/PlugIns/BurettePreview.appex"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 [ -x "$LSREGISTER" ] && "$LSREGISTER" -f -R "$DEST_APP" || true
 if [ -x /usr/bin/swift ]; then
-  BURRETE_APP_PATH="$DEST_APP" BURRETE_APP_ID="$APP_ID" /usr/bin/swift - <<'SWIFT' >/dev/null 2>&1 || true
+  BURETTE_APP_PATH="$DEST_APP" BURETTE_APP_ID="$APP_ID" /usr/bin/swift - <<'SWIFT' >/dev/null 2>&1 || true
 import CoreServices
 import Foundation
 
-let appPath = ProcessInfo.processInfo.environment["BURRETE_APP_PATH"] ?? ""
-let bundleID = (ProcessInfo.processInfo.environment["BURRETE_APP_ID"] ?? "com.local.BurreteV10") as CFString
+let appPath = ProcessInfo.processInfo.environment["BURETTE_APP_PATH"] ?? ""
+let bundleID = (ProcessInfo.processInfo.environment["BURETTE_APP_ID"] ?? "com.local.BuretteV10") as CFString
 let appURL = URL(fileURLWithPath: appPath)
 LSRegisterURL(appURL as CFURL, true)
 let bundle = Bundle(url: appURL)
@@ -1135,7 +1135,7 @@ fi
 /usr/bin/qlmanage -r cache >/dev/null 2>&1 || true
 /usr/bin/killall quicklookd >/dev/null 2>&1 || true
 /usr/bin/killall Finder >/dev/null 2>&1 || true
-sync_burrete_codex_plugin() {{
+sync_burette_codex_plugin() {{
   local plugin_src="$DEST_APP/Contents/Resources/plugins/burette-agent"
   if [ ! -f "$plugin_src/.codex-plugin/plugin.json" ]; then
     echo "codex plugin sync skipped: bundled plugin not found"
@@ -1149,7 +1149,7 @@ sync_burrete_codex_plugin() {{
   local javascript_bin
   javascript_bin="$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v node || PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v bun || true)"
   if [ -f "$plugin_installer" ] && [ -n "$javascript_bin" ]; then
-    if BURRETE_APP_BUNDLE="$DEST_APP" PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" "$javascript_bin" "$plugin_installer"; then
+    if BURETTE_APP_BUNDLE="$DEST_APP" PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" "$javascript_bin" "$plugin_installer"; then
       echo "codex plugin synced with bundled installer"
       return 0
     fi
@@ -1161,7 +1161,7 @@ sync_burrete_codex_plugin() {{
     echo "codex plugin sync skipped: python3 was not found"
     return 0
   fi
-  BURRETE_PLUGIN_SRC="$plugin_src" BURRETE_DEST_APP="$DEST_APP" PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" "$python_bin" <<'PY' || echo "warning: Codex plugin sync failed"
+  BURETTE_PLUGIN_SRC="$plugin_src" BURETTE_DEST_APP="$DEST_APP" PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" "$python_bin" <<'PY' || echo "warning: Codex plugin sync failed"
 import json
 import os
 import re
@@ -1169,12 +1169,12 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-plugin_src = Path(os.environ["BURRETE_PLUGIN_SRC"])
-dest_app = os.environ["BURRETE_DEST_APP"]
+plugin_src = Path(os.environ["BURETTE_PLUGIN_SRC"])
+dest_app = os.environ["BURETTE_DEST_APP"]
 home = Path(os.environ["HOME"])
 marketplace_path = home / ".agents" / "plugins" / "marketplace.json"
-plugin_symlink = home / ".agents" / "plugins" / "burrete"
-plugin_source_root = home / ".codex" / "plugins" / "burrete"
+plugin_symlink = home / ".agents" / "plugins" / "burette"
+plugin_source_root = home / ".codex" / "plugins" / "burette"
 plugin_cache_root = home / ".codex" / "plugins" / "cache"
 codex_config = home / ".codex" / "config.toml"
 
@@ -1192,10 +1192,10 @@ def marketplace_name():
                 return name
         except Exception:
             pass
-    return "burrete"
+    return "burette"
 
 marketplace = marketplace_name()
-install_root = plugin_cache_root / marketplace / "burrete" / plugin_version
+install_root = plugin_cache_root / marketplace / "burette" / plugin_version
 source_temporary = plugin_source_root.with_name(f"{{plugin_source_root.name}}.updating")
 source_backup = plugin_source_root.with_name(f"{{plugin_source_root.name}}.previous")
 
@@ -1239,19 +1239,19 @@ if not plugin_symlink.exists():
     plugin_symlink.symlink_to(plugin_source_root)
 
 marketplace_path.parent.mkdir(parents=True, exist_ok=True)
-marketplace_data = {{"name": marketplace, "interface": {{"displayName": "Burrete" if marketplace == "burrete" else marketplace}}, "plugins": []}}
+marketplace_data = {{"name": marketplace, "interface": {{"displayName": "Burette" if marketplace == "burette" else marketplace}}, "plugins": []}}
 if marketplace_path.exists():
     try:
         marketplace_data = json.loads(marketplace_path.read_text(encoding="utf-8"))
     except Exception:
         pass
 marketplace_data["name"] = marketplace
-marketplace_data["interface"] = marketplace_data.get("interface") or {{"displayName": "Burrete" if marketplace == "burrete" else marketplace}}
-plugins = [plugin for plugin in marketplace_data.get("plugins", []) if plugin.get("name") != "burrete"]
+marketplace_data["interface"] = marketplace_data.get("interface") or {{"displayName": "Burette" if marketplace == "burette" else marketplace}}
+plugins = [plugin for plugin in marketplace_data.get("plugins", []) if plugin.get("name") != "burette"]
 plugins.append(
     {{
-        "name": "burrete",
-        "source": {{"source": "local", "path": "./.codex/plugins/burrete"}},
+        "name": "burette",
+        "source": {{"source": "local", "path": "./.codex/plugins/burette"}},
         "policy": {{"installation": "AVAILABLE", "authentication": "ON_INSTALL", "products": ["CODEX"]}},
         "category": "Education & Research",
     }}
@@ -1277,17 +1277,17 @@ shutil.rmtree(backup, ignore_errors=True)
 
 codex_config.parent.mkdir(parents=True, exist_ok=True)
 existing = codex_config.read_text(encoding="utf-8") if codex_config.exists() else ""
-cleaned = re.sub(r'\n?\[plugins\."burrete@[^"]+"\]\n(?:[^\n\[]*\n)*', "\n", existing)
+cleaned = re.sub(r'\n?\[plugins\."burette@[^"]+"\]\n(?:[^\n\[]*\n)*', "\n", existing)
 cleaned = re.sub(r"\n{{3,}}", "\n\n", cleaned).rstrip()
-plugin_block = f'[plugins."burrete@{{marketplace}}"]\nenabled = true\n'
-if f'[plugins."burrete@{{marketplace}}"]' not in cleaned:
+plugin_block = f'[plugins."burette@{{marketplace}}"]\nenabled = true\n'
+if f'[plugins."burette@{{marketplace}}"]' not in cleaned:
     cleaned = f"{{cleaned}}\n\n{{plugin_block}}" if cleaned else plugin_block
 codex_config.write_text(cleaned.rstrip() + "\n", encoding="utf-8")
 
 print(f"codex plugin synced with cache fallback: {{install_root}}")
 PY
 }}
-sync_burrete_codex_plugin
+sync_burette_codex_plugin
 /usr/bin/open "$DEST_APP"
 echo "update installed"
 "#,
@@ -1611,36 +1611,36 @@ mod tests {
     use std::cell::Cell;
 
     const TEST_PUBLIC_KEY_HEX: &str =
-        "83acdae4aa36bc1749f7abfb138bd44a06eeaa6076640a9a118a00200beed26c";
+        "9c5fe2e84e83317228f7792b06428614f83ecdc3531e9a1949b48d1914822065";
     const TEST_MANIFEST: &str = r#"{
   "schemaVersion": 1,
   "tagName": "v0.10.32",
   "version": "0.10.32",
-  "assetName": "Burrete-0.10.32.zip",
-  "assetUrl": "https://github.com/SergeiNikolenko/Burrete/releases/download/v0.10.32/Burrete-0.10.32.zip",
+  "assetName": "Burette-0.10.32.zip",
+  "assetUrl": "https://github.com/SergeiNikolenko/Burette/releases/download/v0.10.32/Burette-0.10.32.zip",
   "assetSize": 12345,
   "assetSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "bundleId": "com.local.BurreteV10",
-  "extensionId": "com.local.BurreteV10.Preview",
+  "bundleId": "com.local.BuretteV10",
+  "extensionId": "com.local.BuretteV10.Preview",
   "minimumSystemVersion": "12.0"
 }
 "#;
-    const TEST_SIGNATURE_HEX: &str = "59ff3c912e73ec4dd31cb7135cfbde9e87a052093d54d52168c312422bef645440ca148a7ac113311142465bf731a84eee67f9cbeee703937700156bd04c2d06";
+    const TEST_SIGNATURE_HEX: &str = "e9f4d47940c0006b3f02dc1d6a6b4b29349796870f798c8c3db4ff511bc9342c0f23bf1c9a11401e3293dbc1572b1220cc1664b3b186eaf8cce2172d350b5307";
 
     fn install_request() -> UpdateInstallRequest {
         UpdateInstallRequest {
             tag_name: "v0.10.32".to_string(),
-            asset_name: "Burrete-0.10.32.zip".to_string(),
-            browser_download_url: "https://github.com/SergeiNikolenko/Burrete/releases/download/v0.10.32/Burrete-0.10.32.zip".to_string(),
+            asset_name: "Burette-0.10.32.zip".to_string(),
+            browser_download_url: "https://github.com/SergeiNikolenko/Burette/releases/download/v0.10.32/Burette-0.10.32.zip".to_string(),
             size: 12345,
-            sha256_asset_name: Some("Burrete-0.10.32.zip.sha256".to_string()),
-            sha256_browser_download_url: Some("https://github.com/SergeiNikolenko/Burrete/releases/download/v0.10.32/Burrete-0.10.32.zip.sha256".to_string()),
+            sha256_asset_name: Some("Burette-0.10.32.zip.sha256".to_string()),
+            sha256_browser_download_url: Some("https://github.com/SergeiNikolenko/Burette/releases/download/v0.10.32/Burette-0.10.32.zip.sha256".to_string()),
             sha256_size: Some(80),
-            manifest_asset_name: Some("Burrete-0.10.32.zip.manifest.json".to_string()),
-            manifest_browser_download_url: Some("https://github.com/SergeiNikolenko/Burrete/releases/download/v0.10.32/Burrete-0.10.32.zip.manifest.json".to_string()),
+            manifest_asset_name: Some("Burette-0.10.32.zip.manifest.json".to_string()),
+            manifest_browser_download_url: Some("https://github.com/SergeiNikolenko/Burette/releases/download/v0.10.32/Burette-0.10.32.zip.manifest.json".to_string()),
             manifest_size: Some(TEST_MANIFEST.len() as u64),
-            manifest_signature_asset_name: Some("Burrete-0.10.32.zip.manifest.json.sig".to_string()),
-            manifest_signature_browser_download_url: Some("https://github.com/SergeiNikolenko/Burrete/releases/download/v0.10.32/Burrete-0.10.32.zip.manifest.json.sig".to_string()),
+            manifest_signature_asset_name: Some("Burette-0.10.32.zip.manifest.json.sig".to_string()),
+            manifest_signature_browser_download_url: Some("https://github.com/SergeiNikolenko/Burette/releases/download/v0.10.32/Burette-0.10.32.zip.manifest.json.sig".to_string()),
             manifest_signature_size: Some(TEST_SIGNATURE_HEX.len() as u64 + 1),
             allow_same_version: None,
         }

@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-APP="${BURRETE_APP_PATH:-$ROOT/build/Burrete.app}"
-REPORT="${BURRETE_SIZE_REPORT:-$ROOT/build/reports/size-report.txt}"
+APP="${BURETTE_APP_PATH:-$ROOT/build/Burette.app}"
+REPORT="${BURETTE_SIZE_REPORT:-$ROOT/build/reports/size-report.txt}"
 
 mkdir -p "$(dirname "$REPORT")"
 
@@ -59,7 +59,7 @@ print_file_matches() {
     return 0
   fi
   local tmp
-  tmp="$(mktemp "${TMPDIR:-/tmp}/burrete-size-matches.XXXXXX")"
+  tmp="$(mktemp "${TMPDIR:-/tmp}/burette-size-matches.XXXXXX")"
   trap 'rm -f "$tmp"' RETURN
   find "$APP" -type f "$@" -print0 2>/dev/null |
     while IFS= read -r -d '' file; do
@@ -90,7 +90,7 @@ print_web_bundle_locations() {
   print_section "Web Bundle Locations"
   local desktop_app_web="$APP/Contents/Resources/Web"
   local desktop_web="$APP/Contents/Resources/ViewerWeb"
-  local appex_web="$APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/Web"
+  local appex_web="$APP/Contents/PlugIns/BurettePreview.appex/Contents/Resources/Web"
   print_path_size "Desktop App Web" "$desktop_app_web"
   print_path_size "Desktop Viewer Web" "$desktop_web"
   print_path_size "Quick Look Web" "$appex_web"
@@ -174,7 +174,7 @@ print_web_asset_duplication() {
   echo "Rows here identify byte-identical files that are duplicated when both bundles package the shared Web folder."
   echo
   local desktop_web="$APP/Contents/Resources/ViewerWeb"
-  local appex_web="$APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/Web"
+  local appex_web="$APP/Contents/PlugIns/BurettePreview.appex/Contents/Resources/Web"
   local names=(
     "molstar.js"
     "molstar.css"
@@ -217,13 +217,13 @@ print_web_asset_duplication() {
 }
 
 generate_report() {
-  printf 'Burrete size report\n'
+  printf 'Burette size report\n'
   printf 'Generated: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   printf 'Root: %s\n' "$ROOT"
   printf 'App: %s\n' "$APP"
 
   print_section "Bundle Size"
-  print_path_size "Burrete.app" "$APP"
+  print_path_size "Burette.app" "$APP"
 
   print_section "Archives"
   if [[ -d "$ROOT/build" ]]; then
@@ -255,7 +255,7 @@ generate_report() {
   print_section "Exact Duplicate Files By SHA256"
   if [[ -d "$APP" ]]; then
     local hashes
-    hashes="$(mktemp "${TMPDIR:-/tmp}/burrete-size-hashes.XXXXXX")"
+    hashes="$(mktemp "${TMPDIR:-/tmp}/burette-size-hashes.XXXXXX")"
     find "$APP" -type f -print0 |
       while IFS= read -r -d '' file; do
         shasum -a 256 "$file" | awk -v path="${file#$APP/}" '{ print $1 "\t" path }'
@@ -286,11 +286,11 @@ generate_report() {
   print_file_matches "Ketcher Assets" \( -iname '*ketcher*' \)
   print_file_matches "Tauri Binary" \( -path '*/Contents/MacOS/*' \)
   print_directory_summary "Quick Look Extension" \
-    "$APP/Contents/PlugIns/BurretePreview.appex"
+    "$APP/Contents/PlugIns/BurettePreview.appex"
   print_directory_summary "Web Assets" \
     "$APP/Contents/Resources/Web" \
     "$APP/Contents/Resources/ViewerWeb" \
-    "$APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/Web"
+    "$APP/Contents/PlugIns/BurettePreview.appex/Contents/Resources/Web"
   print_web_bundle_locations
   print_web_runtime_profiles
   print_web_asset_duplication

@@ -55,14 +55,14 @@ type GitHubRelease = {
   assets?: GitHubAsset[];
 };
 
-const RELEASES_URL = "https://api.github.com/repos/SergeiNikolenko/Burrete/releases";
-const RELEASES_PAGE_URL = "https://github.com/SergeiNikolenko/Burrete/releases";
+const RELEASES_URL = "https://api.github.com/repos/SergeiNikolenko/Burette/releases";
+const RELEASES_PAGE_URL = "https://github.com/SergeiNikolenko/Burette/releases";
 const AUTOMATIC_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const AUTOMATIC_FAILURE_RETRY_MS = 60 * 60 * 1000;
 const STORAGE_PREFIX = "buret.update.";
 
 export const CURRENT_VERSION = packageInfo.version;
-const CURRENT_BUILD_CHANNEL = import.meta.env.VITE_BURRETE_BUILD_CHANNEL ?? (import.meta.env.DEV ? "dev" : "release");
+const CURRENT_BUILD_CHANNEL = import.meta.env.VITE_BURETTE_BUILD_CHANNEL ?? (import.meta.env.DEV ? "dev" : "release");
 const IS_RELEASE_BUILD = CURRENT_BUILD_CHANNEL === "release";
 
 export const defaultUpdatePreferences: UpdatePreferences = {
@@ -186,7 +186,7 @@ function installAssetFor(assets: GitHubAsset[]): UpdateAsset | null {
     }))
     .filter((entry): entry is { asset: GitHubAsset; digest: GitHubAsset; manifest: GitHubAsset | null; signature: GitHubAsset | null } =>
       entry.digest !== null);
-  const selected = candidates.find((entry) => /burrete|burette/i.test(entry.asset.name!)) ?? candidates[0];
+  const selected = candidates.find((entry) => /burette|burette/i.test(entry.asset.name!)) ?? candidates[0];
   if (!selected) return null;
   const signedManifest = selected.manifest && selected.signature
     ? {

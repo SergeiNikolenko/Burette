@@ -1,4 +1,4 @@
-// Copyright 2026 Burrete contributors.
+// Copyright 2026 Burette contributors.
 // SPDX-License-Identifier: MIT
 // Independent adapter over pinned RDKit MMFF parameter APIs.
 
@@ -21,7 +21,7 @@
 #include <GraphMol/MolOps.h>
 #include <GraphMol/ROMol.h>
 
-namespace burrete::mmff {
+namespace burette::mmff {
 namespace {
 
 using Properties = RDKit::MMFF::MMFFMolProperties;
@@ -235,4 +235,4 @@ ExtractedParameters extract_parameters(RDKit::ROMol &mol, Variant variant) {
   return output;
 }
 
-}  // namespace burrete::mmff
+}  // namespace burette::mmff

@@ -128,9 +128,9 @@
   }
 
   function attach({ viewer, plugin, config } = {}) {
-    const nextViewer = viewer || state.viewer || window.BurreteViewer || window.BuretteViewer || null;
+    const nextViewer = viewer || state.viewer || window.BuretteViewer || window.BuretteViewer || null;
     const nextPlugin = plugin || nextViewer?.plugin || state.plugin || null;
-    const nextConfig = config || state.config || window.BurreteConfig || null;
+    const nextConfig = config || state.config || window.BuretteConfig || null;
     const changed = nextViewer !== state.viewer || nextPlugin !== state.plugin || nextConfig !== state.config;
     state.viewer = nextViewer;
     state.plugin = nextPlugin;
@@ -142,7 +142,7 @@
   function notifyStructureLoaded({ viewer, plugin, prepared, config } = {}) {
     attach({ viewer, plugin, config });
     state.prepared = prepared || state.prepared || null;
-    state.config = config || state.config || window.BurreteConfig || null;
+    state.config = config || state.config || window.BuretteConfig || null;
     state.structureReady = true;
     state.sceneVersion++;
     try { state.readyResolve?.({ viewer: state.viewer, plugin: state.plugin }); } catch (_) {}
@@ -177,7 +177,7 @@
       version: AGENT_VERSION,
       molstarVersion: getMolstarVersion(),
       commands: commands(),
-      aliases: ['window.BurreteAgent', 'window.BuretteAgent'],
+      aliases: ['window.BuretteAgent', 'window.BuretteAgent'],
       ready: state.structureReady,
       hasViewer: !!viewer,
       hasPlugin: !!plugin,
@@ -197,7 +197,7 @@
   function ensureViewer() {
     attach();
     if (!state.viewer || !state.plugin) {
-      const error = new Error('Burrete Mol* viewer is not attached yet.');
+      const error = new Error('Burette Mol* viewer is not attached yet.');
       error.code = 'NO_VIEWER';
       throw error;
     }
@@ -442,8 +442,8 @@
       if (!loci || isEmptySelectionLoci(loci)) continue;
       const created = await manager.addLabel(loci, {
         labelParams,
-        selectionTags: ['burrete-agent-label-selection'],
-        reprTags: ['burrete-agent-label']
+        selectionTags: ['burette-agent-label-selection'],
+        reprTags: ['burette-agent-label']
       });
       if (created) {
         result.push({
@@ -1344,10 +1344,10 @@
     _state: state
   };
 
-  window.BurreteAgent = agent;
+  window.BuretteAgent = agent;
   window.BuretteAgent = agent;
 
-  if (window.BurreteViewer || window.BuretteViewer) {
-    attach({ viewer: window.BurreteViewer || window.BuretteViewer });
+  if (window.BuretteViewer || window.BuretteViewer) {
+    attach({ viewer: window.BuretteViewer || window.BuretteViewer });
   }
 })();

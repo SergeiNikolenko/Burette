@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 
-import { runBurreteAgent } from "../../lib/cli-bridge.mjs";
+import { runBuretteAgent } from "../../lib/cli-bridge.mjs";
 import {
   createWorkspaceSession,
   listWorkspaceSessions,
@@ -32,24 +32,24 @@ const OBSERVE_OUTPUT_LIMIT = 256 * 1024;
 const OBSERVE_STRING_LIMIT = 4096;
 const OBSERVE_TOTAL_STRING_LIMIT = 64 * 1024;
 const PUBLIC_CONTRACT = {
-  apiVersion: "burrete-external-agent/v1",
+  apiVersion: "burette-external-agent/v1",
   tools: [
-    "burrete.get_context",
-    "burrete.open_workspace",
-    "burrete.open_ketcher",
-    "burrete.observe_workspace",
-    "burrete.control_viewer",
-    "burrete.control_ketcher",
-    "burrete.render_panel",
+    "burette.get_context",
+    "burette.open_workspace",
+    "burette.open_ketcher",
+    "burette.observe_workspace",
+    "burette.control_viewer",
+    "burette.control_ketcher",
+    "burette.render_panel",
   ],
   advancedTools: [
-    "open_burrete_workspace",
-    "observe_burrete_workspace",
+    "open_burette_workspace",
+    "observe_burette_workspace",
     "act_molstar_scene",
-    "manage_burrete_tabs",
-    "manage_burrete_structure_component",
-    "open_burrete_docking_view",
-    "summarize_burrete_structure",
+    "manage_burette_tabs",
+    "manage_burette_structure_component",
+    "open_burette_docking_view",
+    "summarize_burette_structure",
   ],
   supportedFormats: ["pdb", "cif", "mmcif", "mol", "sdf", "xyz", "mae", "maegz"],
   capabilities: {
@@ -67,9 +67,9 @@ const PUBLIC_CONTRACT = {
 export function registerMolecularWorkspace(server) {
   registerAppTool(
     server,
-    "burrete.get_context",
+    "burette.get_context",
     {
-      title: "Get Burrete Agent Context",
+      title: "Get Burette Agent Context",
       description: "Return the short external-agent contract, known workspace sessions, and optional live workspace model context.",
       inputSchema: {
         workspaceSessionId: z.string().trim().optional(),
@@ -92,7 +92,7 @@ export function registerMolecularWorkspace(server) {
     async input => {
       const hasLocator = Boolean(input.workspaceSessionId || input.viewerSessionId || input.url || input.sessionDir);
       if (!hasLocator) {
-        return publicContractResult("burrete.get_context", {
+        return publicContractResult("burette.get_context", {
           ok: true,
           session: null,
           observe: null,
@@ -100,14 +100,14 @@ export function registerMolecularWorkspace(server) {
         });
       }
       const resolved = resolveWorkspaceSession(input);
-      if (!resolved.ok) return publicContractFailure("burrete.get_context", resolved.error);
+      if (!resolved.ok) return publicContractFailure("burette.get_context", resolved.error);
       const observed = await observeWorkspaceSession(resolved.session);
       const readiness = workspaceReadiness(observed.payload?.result || null);
       const ready = observed.ok && readiness.ready;
       const session = updateKnownSession(resolved.session, {
         observe: observed.payload?.result || null,
       });
-      return publicContractResult("burrete.get_context", {
+      return publicContractResult("burette.get_context", {
         ok: ready,
         session,
         observe: observed.payload?.result || null,
@@ -123,9 +123,9 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
-    "burrete.open_workspace",
+    "burette.open_workspace",
     {
-      title: "Open Burrete Workspace",
+      title: "Open Burette Workspace",
       description: "Open a local molecular artifact and return a stable workspaceSessionId for external-agent follow-up actions.",
       inputSchema: {
         file: z.string().trim(),
@@ -157,9 +157,9 @@ export function registerMolecularWorkspace(server) {
       if (input.port) args.push("--port", String(input.port));
       if (input.noLaunch) args.push("--no-launch");
       args.push(input.file);
-      const result = await runBurreteAgent(args, { timeoutMs: 45000 });
+      const result = await runBuretteAgent(args, { timeoutMs: 45000 });
       if (!result.ok) {
-        return publicContractFailure("burrete.open_workspace", result.error, {
+        return publicContractFailure("burette.open_workspace", result.error, {
           exitCode: result.exitCode,
         });
       }
@@ -178,7 +178,7 @@ export function registerMolecularWorkspace(server) {
       const session = updateWorkspaceSession(provisionalSession.workspaceSessionId, {
         observe: observed.payload?.result || null,
       }) || provisionalSession;
-      return publicContractResult("burrete.open_workspace", {
+      return publicContractResult("burette.open_workspace", {
         ok: ready || awaitingBrowser,
         session,
         observe: observed.payload?.result || null,
@@ -195,10 +195,10 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
-    "burrete.open_ketcher",
+    "burette.open_ketcher",
     {
-      title: "Open Burrete Ketcher",
-      description: "Open a Ketcher chemical editor in an existing Burrete workspace session.",
+      title: "Open Burette Ketcher",
+      description: "Open a Ketcher chemical editor in an existing Burette workspace session.",
       inputSchema: {
         workspaceSessionId: z.string().trim().optional(),
         viewerSessionId: z.string().trim().optional(),
@@ -218,7 +218,7 @@ export function registerMolecularWorkspace(server) {
     },
     async input => {
       const resolved = resolveWorkspaceSession(input);
-      if (!resolved.ok) return publicContractFailure("burrete.open_ketcher", resolved.error);
+      if (!resolved.ok) return publicContractFailure("burette.open_ketcher", resolved.error);
       const actionResult = await runWorkspaceAction({
         url: resolved.session.url,
         sessionDir: resolved.session.sessionDir,
@@ -230,7 +230,7 @@ export function registerMolecularWorkspace(server) {
       const session = updateKnownSession(resolved.session, {
         observe: observed?.payload?.result || resolved.session.observe || null,
       });
-      return publicContractResult("burrete.open_ketcher", {
+      return publicContractResult("burette.open_ketcher", {
         ok: actionResult.ok,
         session,
         observe: observed?.payload?.result || null,
@@ -247,9 +247,9 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
-    "burrete.observe_workspace",
+    "burette.observe_workspace",
     {
-      title: "Observe Burrete Workspace",
+      title: "Observe Burette Workspace",
       description: "Observe a workspace through workspaceSessionId or a direct url/sessionDir and return compact model context.",
       inputSchema: {
         workspaceSessionId: z.string().trim().optional(),
@@ -271,14 +271,14 @@ export function registerMolecularWorkspace(server) {
     },
     async input => {
       const resolved = resolveWorkspaceSession(input);
-      if (!resolved.ok) return publicContractFailure("burrete.observe_workspace", resolved.error);
+      if (!resolved.ok) return publicContractFailure("burette.observe_workspace", resolved.error);
       const observed = await observeWorkspaceSession(resolved.session);
       const readiness = workspaceReadiness(observed.payload?.result || null);
       const ready = observed.ok && readiness.ready;
       const session = updateKnownSession(resolved.session, {
         observe: observed.payload?.result || null,
       });
-      return publicContractResult("burrete.observe_workspace", {
+      return publicContractResult("burette.observe_workspace", {
         ok: ready,
         session,
         observe: observed.payload?.result || null,
@@ -294,9 +294,9 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
-    "burrete.control_viewer",
+    "burette.control_viewer",
     {
-      title: "Control Burrete Viewer",
+      title: "Control Burette Viewer",
       description: "Run an allowlisted viewer action against a workspaceSessionId and return a refreshed model context.",
       inputSchema: {
         workspaceSessionId: z.string().trim().optional(),
@@ -320,7 +320,7 @@ export function registerMolecularWorkspace(server) {
     },
     async input => {
       const resolved = resolveWorkspaceSession(input);
-      if (!resolved.ok) return publicContractFailure("burrete.control_viewer", resolved.error);
+      if (!resolved.ok) return publicContractFailure("burette.control_viewer", resolved.error);
       const actionResult = await runWorkspaceAction({
         url: resolved.session.url,
         sessionDir: resolved.session.sessionDir,
@@ -331,7 +331,7 @@ export function registerMolecularWorkspace(server) {
       const session = updateKnownSession(resolved.session, {
         observe: observed?.payload?.result || resolved.session.observe || null,
       });
-      return publicContractResult("burrete.control_viewer", {
+      return publicContractResult("burette.control_viewer", {
         ok: actionResult.ok,
         session,
         observe: observed?.payload?.result || null,
@@ -346,10 +346,10 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
-    "burrete.control_ketcher",
+    "burette.control_ketcher",
     {
-      title: "Control Burrete Ketcher",
-      description: "Apply a bounded, revision-checked action to the active Burrete Ketcher surface.",
+      title: "Control Burette Ketcher",
+      description: "Apply a bounded, revision-checked action to the active Burette Ketcher surface.",
       inputSchema: {
         workspaceSessionId: z.string().trim().optional(),
         viewerSessionId: z.string().trim().optional(),
@@ -372,7 +372,7 @@ export function registerMolecularWorkspace(server) {
     },
     async input => {
       const resolved = resolveWorkspaceSession(input);
-      if (!resolved.ok) return publicContractFailure("burrete.control_ketcher", resolved.error);
+      if (!resolved.ok) return publicContractFailure("burette.control_ketcher", resolved.error);
       const action = input.action.actionId
         ? input.action
         : { ...input.action, actionId: randomUUID() };
@@ -386,7 +386,7 @@ export function registerMolecularWorkspace(server) {
       const session = updateKnownSession(resolved.session, {
         observe: observed?.payload?.result || resolved.session.observe || null,
       });
-      return publicContractResult("burrete.control_ketcher", {
+      return publicContractResult("burette.control_ketcher", {
         ok: actionResult.ok,
         session,
         observe: observed?.payload?.result || null,
@@ -401,10 +401,10 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
-    "burrete.render_panel",
+    "burette.render_panel",
     {
-      title: "Render Burrete Panel",
-      description: "Render a markdown, table, or chart file into a Burrete workspace dock through the short external-agent contract.",
+      title: "Render Burette Panel",
+      description: "Render a markdown, table, or chart file into a Burette workspace dock through the short external-agent contract.",
       inputSchema: {
         workspaceSessionId: z.string().trim().optional(),
         viewerSessionId: z.string().trim().optional(),
@@ -429,7 +429,7 @@ export function registerMolecularWorkspace(server) {
     },
     async input => {
       const resolved = resolveWorkspaceSession(input);
-      if (!resolved.ok) return publicContractFailure("burrete.render_panel", resolved.error);
+      if (!resolved.ok) return publicContractFailure("burette.render_panel", resolved.error);
       const action = {
         type: "render_panel",
         kind: input.kind,
@@ -446,7 +446,7 @@ export function registerMolecularWorkspace(server) {
       const session = updateKnownSession(resolved.session, {
         observe: observed?.payload?.result || resolved.session.observe || null,
       });
-      return publicContractResult("burrete.render_panel", {
+      return publicContractResult("burette.render_panel", {
         ok: actionResult.ok,
         session,
         observe: observed?.payload?.result || null,
@@ -461,10 +461,10 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
-    "open_burrete_workspace",
+    "open_burette_workspace",
     {
-      title: "Open Burrete Workspace",
-      description: "Open a local molecular artifact in the full Browser shell, Browser preview, or the real Burrete desktop app through the repository CLI.",
+      title: "Open Burette Workspace",
+      description: "Open a local molecular artifact in the full Browser shell, Browser preview, or the real Burette desktop app through the repository CLI.",
       inputSchema: {
         file: z.string().trim(),
         mode: z.enum(["auto", "browser-agent-shell", "browser-dev-shell", "browser-preview", "desktop-app"]).default("auto"),
@@ -494,15 +494,15 @@ export function registerMolecularWorkspace(server) {
       if (input.port) args.push("--port", String(input.port));
       if (input.noLaunch) args.push("--no-launch");
       args.push(input.file);
-      const result = await runBurreteAgent(args, { timeoutMs: 45000 });
+      const result = await runBuretteAgent(args, { timeoutMs: 45000 });
       const structureSummary = await safeStructureSummary(input.file);
-      if (!result.ok) return cliToolResult("open_burrete_workspace", result, { structureSummary });
+      if (!result.ok) return cliToolResult("open_burette_workspace", result, { structureSummary });
       const openResult = result.payload?.result || null;
       const observed = await observeWorkspaceSession({
         url: openResult?.url,
         sessionDir: openResult?.sessionDir,
       });
-      return observedWorkspaceToolResult("open_burrete_workspace", {
+      return observedWorkspaceToolResult("open_burette_workspace", {
         started: true,
         result: openResult,
         observed,
@@ -514,10 +514,10 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
-    "summarize_burrete_structure",
+    "summarize_burette_structure",
     {
-      title: "Summarize Burrete Structure",
-      description: "Read a local molecular file, or the active Burrete workspace document, and return an Info-panel-style structured summary for agent planning.",
+      title: "Summarize Burette Structure",
+      description: "Read a local molecular file, or the active Burette workspace document, and return an Info-panel-style structured summary for agent planning.",
       inputSchema: {
         file: z.string().trim().optional(),
         url: z.string().trim().optional(),
@@ -539,10 +539,10 @@ export function registerMolecularWorkspace(server) {
       const resolved = await resolveStructureSummaryTarget(input);
       if (!resolved.ok) {
         return {
-          content: toolText(`summarize_burrete_structure failed: ${resolved.error.message}`),
+          content: toolText(`summarize_burette_structure failed: ${resolved.error.message}`),
           structuredContent: {
             ok: false,
-            tool: "summarize_burrete_structure",
+            tool: "summarize_burette_structure",
             summary: null,
             observe: boundedWorkspaceObserve(resolved.observe || null),
             error: resolved.error,
@@ -551,10 +551,10 @@ export function registerMolecularWorkspace(server) {
       }
       const summary = boundedStructureSummary(await summarizeStructureFile(resolved.file));
       return {
-        content: toolText(`summarize_burrete_structure completed: ${summary.summaryLine}`),
+        content: toolText(`summarize_burette_structure completed: ${summary.summaryLine}`),
         structuredContent: {
           ok: true,
-          tool: "summarize_burrete_structure",
+          tool: "summarize_burette_structure",
           summary,
           observe: boundedWorkspaceObserve(resolved.observe || null),
           error: null,
@@ -565,10 +565,10 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
-    "observe_burrete_workspace",
+    "observe_burette_workspace",
     {
-      title: "Observe Burrete Workspace",
-      description: "Read structured Burrete workspace state from a tokenized Browser preview URL or desktop session directory.",
+      title: "Observe Burette Workspace",
+      description: "Read structured Burette workspace state from a tokenized Browser preview URL or desktop session directory.",
       inputSchema: {
         url: z.string().trim().optional(),
         sessionDir: z.string().trim().optional(),
@@ -589,8 +589,8 @@ export function registerMolecularWorkspace(server) {
       const args = ["observe"];
       if (input.url) args.push("--url", input.url);
       if (input.sessionDir) args.push("--session-dir", input.sessionDir);
-      const result = await runBurreteAgent(args);
-      return observedWorkspaceToolResult("observe_burrete_workspace", {
+      const result = await runBuretteAgent(args);
+      return observedWorkspaceToolResult("observe_burette_workspace", {
         started: true,
         result: null,
         observed: result,
@@ -600,10 +600,10 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
-    "manage_burrete_tabs",
+    "manage_burette_tabs",
     {
-      title: "Manage Burrete Tabs",
-      description: "List, focus, open, close, and move tabs inside the active Burrete Browser shell or desktop workspace.",
+      title: "Manage Burette Tabs",
+      description: "List, focus, open, close, and move tabs inside the active Burette Browser shell or desktop workspace.",
       inputSchema: {
         operation: z.enum(["list", "focus", "next", "previous", "open_file", "new", "close", "move"]),
         url: z.string().trim().optional(),
@@ -632,8 +632,8 @@ export function registerMolecularWorkspace(server) {
         const args = ["observe"];
         if (input.url) args.push("--url", input.url);
         if (input.sessionDir) args.push("--session-dir", input.sessionDir);
-        const result = await runBurreteAgent(args);
-        return cliToolResult("manage_burrete_tabs", result, {
+        const result = await runBuretteAgent(args);
+        return cliToolResult("manage_burette_tabs", result, {
           tabs: result.payload?.result?.tabs || [],
           activeTabId: result.payload?.result?.activeTabId || null,
         });
@@ -654,17 +654,17 @@ export function registerMolecularWorkspace(server) {
       args.push(JSON.stringify(action));
       const waitMs = input.waitMs ?? 12000;
       args.push("--wait-ms", String(waitMs));
-      const result = await runBurreteAgent(args, { timeoutMs: Math.max(30000, waitMs + 5000) });
-      return cliToolResult("manage_burrete_tabs", result);
+      const result = await runBuretteAgent(args, { timeoutMs: Math.max(30000, waitMs + 5000) });
+      return cliToolResult("manage_burette_tabs", result);
     },
   );
 
   registerAppTool(
     server,
-    "manage_burrete_structure_component",
+    "manage_burette_structure_component",
     {
-      title: "Manage Burrete Structure Component",
-      description: "Select, focus, hide, show, clear, or open a chain/ligand/water/ion/polymer/element from the active Burrete structure as its own tab.",
+      title: "Manage Burette Structure Component",
+      description: "Select, focus, hide, show, clear, or open a chain/ligand/water/ion/polymer/element from the active Burette structure as its own tab.",
       inputSchema: {
         operation: z.enum(["select", "focus", "hide", "show", "clear", "open_as_tab"]),
         component: z.enum(["polymer", "ligand", "water", "ion", "chain", "element"]).optional(),
@@ -694,10 +694,10 @@ export function registerMolecularWorkspace(server) {
       const resolved = await resolveStructureComponentTarget(input);
       if (!resolved.ok) {
         return {
-          content: toolText(`manage_burrete_structure_component failed: ${resolved.error.message}`),
+          content: toolText(`manage_burette_structure_component failed: ${resolved.error.message}`),
           structuredContent: {
             ok: false,
-            tool: "manage_burrete_structure_component",
+            tool: "manage_burette_structure_component",
             error: resolved.error,
             observe: resolved.observe || null,
           },
@@ -723,7 +723,7 @@ export function registerMolecularWorkspace(server) {
             paths: [extracted.outputPath],
           },
         });
-        if (!result.ok) return cliToolResult("manage_burrete_structure_component", result, { extracted });
+        if (!result.ok) return cliToolResult("manage_burette_structure_component", result, { extracted });
         const readiness = await waitForWorkspaceDocumentReady({
           url: input.url,
           sessionDir: input.sessionDir,
@@ -733,12 +733,12 @@ export function registerMolecularWorkspace(server) {
         const error = readiness.ok ? null : boundedToolError(readiness.error);
         return {
           content: toolText(readiness.ok
-            ? `manage_burrete_structure_component completed: ${extracted.outputPath} is ready.`
-            : `manage_burrete_structure_component is not complete: ${error.message}`),
+            ? `manage_burette_structure_component completed: ${extracted.outputPath} is ready.`
+            : `manage_burette_structure_component is not complete: ${error.message}`),
           ...(readiness.ok ? {} : { isError: true }),
           structuredContent: {
             ok: readiness.ok,
-            tool: "manage_burrete_structure_component",
+            tool: "manage_burette_structure_component",
             started: true,
             ready: readiness.ok,
             completionState: readiness.ok ? "ready" : "not_ready",
@@ -754,10 +754,10 @@ export function registerMolecularWorkspace(server) {
       const action = structureComponentAction(input);
       if (!action.ok) {
         return {
-          content: toolText(`manage_burrete_structure_component failed: ${action.error.message}`),
+          content: toolText(`manage_burette_structure_component failed: ${action.error.message}`),
           structuredContent: {
             ok: false,
-            tool: "manage_burrete_structure_component",
+            tool: "manage_burette_structure_component",
             error: action.error,
           },
         };
@@ -768,7 +768,7 @@ export function registerMolecularWorkspace(server) {
         waitMs: input.waitMs ?? 12000,
         action: action.value,
       });
-      return cliToolResult("manage_burrete_structure_component", result, {
+      return cliToolResult("manage_burette_structure_component", result, {
         selector: action.value.selector || null,
       });
     },
@@ -776,10 +776,10 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
-    "open_burrete_docking_view",
+    "open_burette_docking_view",
     {
-      title: "Open Burrete Docking View",
-      description: "Open a Mol* docking or combined structure-scene view inside the active Burrete Browser shell or desktop workspace.",
+      title: "Open Burette Docking View",
+      description: "Open a Mol* docking or combined structure-scene view inside the active Burette Browser shell or desktop workspace.",
       inputSchema: {
         receptorPath: z.string().trim(),
         ligandPaths: z.array(z.string().trim()).min(1),
@@ -814,15 +814,15 @@ export function registerMolecularWorkspace(server) {
           sceneMode: input.sceneMode,
         },
       });
-      return cliToolResult("open_burrete_docking_view", result);
+      return cliToolResult("open_burette_docking_view", result);
     },
   );
 
   registerAppTool(
     server,
-    "set_burrete_trajectory",
+    "set_burette_trajectory",
     {
-      title: "Set Burrete Trajectory",
+      title: "Set Burette Trajectory",
       description: "Switch the active Mol* trajectory/model/pose frame and optionally toggle single/all pose overlay mode.",
       inputSchema: {
         index: z.number().int().min(0),
@@ -868,7 +868,7 @@ export function registerMolecularWorkspace(server) {
         },
       });
       results.push(result);
-      return cliToolResult("set_burrete_trajectory", result, {
+      return cliToolResult("set_burette_trajectory", result, {
         results: results.map((item) => item.payload?.result || item.error || null),
         actionType,
       });
@@ -877,9 +877,9 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
-    "set_burrete_representation_style",
+    "set_burette_representation_style",
     {
-      title: "Set Burrete Representation Style",
+      title: "Set Burette Representation Style",
       description: "Change the active Mol* representation style through an allowlisted viewer action.",
       inputSchema: {
         style: z.enum(["default", "illustrative", "polymer-ligand", "cartoon", "ball-and-stick", "spacefill", "line", "molecular-surface"]),
@@ -909,15 +909,15 @@ export function registerMolecularWorkspace(server) {
           style: input.style,
         },
       });
-      return cliToolResult("set_burrete_representation_style", result, { style: input.style });
+      return cliToolResult("set_burette_representation_style", result, { style: input.style });
     },
   );
 
   registerAppTool(
     server,
-    "focus_burrete_selection",
+    "focus_burette_selection",
     {
-      title: "Focus Burrete Selection",
+      title: "Focus Burette Selection",
       description: "Select, focus, highlight, label, or clear a Mol* fragment selection by selector.",
       inputSchema: {
         operation: z.enum(["select", "focus", "highlight", "label", "clear"]),
@@ -953,15 +953,15 @@ export function registerMolecularWorkspace(server) {
         waitMs: input.waitMs ?? 12000,
         action,
       });
-      return cliToolResult("focus_burrete_selection", result, { action });
+      return cliToolResult("focus_burette_selection", result, { action });
     },
   );
 
   registerAppTool(
     server,
-    "edit_burrete_fragment",
+    "edit_burette_fragment",
     {
-      title: "Edit Burrete Fragment",
+      title: "Edit Burette Fragment",
       description: "Create a derived PDB by extracting, removing, or replacing a matched fragment without mutating the source file.",
       inputSchema: {
         operation: z.enum(["extract", "remove_to_new_file", "replace_to_new_file"]),
@@ -1020,12 +1020,12 @@ export function registerMolecularWorkspace(server) {
       });
       return {
         content: toolText(ok
-          ? `edit_burrete_fragment completed: ${edited.outputPath}`
-          : `edit_burrete_fragment created ${edited.outputPath}, but the derived viewer is not ready: ${error.message}`),
+          ? `edit_burette_fragment completed: ${edited.outputPath}`
+          : `edit_burette_fragment created ${edited.outputPath}, but the derived viewer is not ready: ${error.message}`),
         ...(ok ? {} : { isError: true }),
         structuredContent: {
           ok,
-          tool: "edit_burrete_fragment",
+          tool: "edit_burette_fragment",
           started: Boolean(opened),
           ready: opened ? readiness?.ok === true : null,
           completionState: opened ? (readiness?.ok ? "ready" : "not_ready") : "created",
@@ -1044,7 +1044,7 @@ export function registerMolecularWorkspace(server) {
     "act_molstar_scene",
     {
       title: "Act On Molstar Scene",
-      description: "Queue an allowlisted high-level or declarative Mol* scene action through the Burrete agent contract.",
+      description: "Queue an allowlisted high-level or declarative Mol* scene action through the Burette agent contract.",
       inputSchema: {
         action: actionSchema,
         url: z.string().trim().optional(),
@@ -1069,7 +1069,7 @@ export function registerMolecularWorkspace(server) {
       if (input.sessionDir) args.push("--session-dir", input.sessionDir);
       args.push(JSON.stringify(input.action));
       if (input.waitMs) args.push("--wait-ms", String(input.waitMs));
-      const result = await runBurreteAgent(args, { timeoutMs: Math.max(30000, (input.waitMs || 0) + 5000) });
+      const result = await runBuretteAgent(args, { timeoutMs: Math.max(30000, (input.waitMs || 0) + 5000) });
       return cliToolResult("act_molstar_scene", result);
     },
   );
@@ -1081,7 +1081,7 @@ async function observeWorkspaceSession(session) {
   const locator = workspaceLocatorArgs(session);
   if (!locator.ok) return missingWorkspaceLocatorResult(locator.error);
   args.push(...locator.args);
-  return await runBurreteAgent(args);
+  return await runBuretteAgent(args);
 }
 
 function updateKnownSession(session, patch) {
@@ -1144,7 +1144,7 @@ function publicContractResult(tool, {
   const modelContext = buildModelContext({ session, observe: boundedObserve, structureSummary: structureSummary || session?.structureSummary || null });
   return {
     content: toolText(completionState === "awaiting_browser"
-      ? `${tool} started. Open the returned workspace URL, then call burrete.observe_workspace. Do not claim that the structure is visible until ready is true and the central canvas is visually verified.`
+      ? `${tool} started. Open the returned workspace URL, then call burette.observe_workspace. Do not claim that the structure is visible until ready is true and the central canvas is visually verified.`
       : ok
         ? `${tool} completed.`
       : completionState === "not_ready"
@@ -1260,7 +1260,7 @@ async function resolveStructureSummaryTarget(input) {
   const args = ["observe"];
   if (input.url) args.push("--url", input.url);
   if (input.sessionDir) args.push("--session-dir", input.sessionDir);
-  const result = await runBurreteAgent(args);
+  const result = await runBuretteAgent(args);
   const observe = result.payload?.result || null;
   const file = observe?.activeDocument?.path;
   if (!result.ok) {
@@ -1438,7 +1438,7 @@ async function runWorkspaceAction({ url, sessionDir, action, waitMs }) {
   if (sessionDir) args.push("--session-dir", sessionDir);
   args.push(JSON.stringify(action));
   args.push("--wait-ms", String(waitMs));
-  return await runBurreteAgent(args, { timeoutMs: Math.max(30000, waitMs + 5000) });
+  return await runBuretteAgent(args, { timeoutMs: Math.max(30000, waitMs + 5000) });
 }
 
 async function safeStructureSummary(file) {
@@ -1485,7 +1485,7 @@ function observedWorkspaceToolResult(tool, {
   const error = ready ? null : boundedToolError(observed.error || viewerNotReadyError(readiness));
   return {
     content: toolText(awaitingBrowser
-      ? `${tool} started. Open the returned workspace URL, then call observe_burrete_workspace. Do not claim that the structure is visible until ready is true and the central canvas is visually verified.`
+      ? `${tool} started. Open the returned workspace URL, then call observe_burette_workspace. Do not claim that the structure is visible until ready is true and the central canvas is visually verified.`
       : ready
       ? `${tool} completed: the molecular viewer is ready.`
       : `${tool} is not complete: ${error.message}`),
@@ -1755,7 +1755,7 @@ function workspaceReadiness(observe) {
 function viewerNotReadyError(readiness) {
   return {
     code: "VIEWER_NOT_READY",
-    message: "The Burrete workspace started, but the active molecular viewer is not ready. Do not claim that the structure is visible; open the workspace URL, observe it again, and visually verify the central canvas.",
+    message: "The Burette workspace started, but the active molecular viewer is not ready. Do not claim that the structure is visible; open the workspace URL, observe it again, and visually verify the central canvas.",
     details: readiness,
   };
 }

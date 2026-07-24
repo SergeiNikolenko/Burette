@@ -195,7 +195,7 @@
     "json": "Registered for Launch Services spectrum JSON handoff; it is not a generic preview format until routed by schema or UTI."
   },
   "quickLookContentTypeGaps": {
-    "com.local.burrete10.spectrum-json": "Registered as a Quick Look content type for spectrum JSON handoff; it needs a dedicated format entry or explicit schema router before sample preview coverage."
+    "com.local.burette10.spectrum-json": "Registered as a Quick Look content type for spectrum JSON handoff; it needs a dedicated format entry or explicit schema router before sample preview coverage."
   },
   "smokeSets": {
     "nativeQuickLookFocused": [

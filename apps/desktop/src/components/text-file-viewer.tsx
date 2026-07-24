@@ -14,7 +14,7 @@ import type { MarkdownOpenPaths } from "./text-file-viewer/markdown-link-navigat
 import { hasStructureTextHighlighting, structureTextHighlighting, textNumberHighlighting } from "./text-file-viewer/structure-text-highlighting";
 import { Button } from "./ui/button";
 
-const AGENT_SHELL_BUILD = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
+const AGENT_SHELL_BUILD = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
 
 export function TextFileViewer({
   document,

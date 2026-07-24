@@ -1031,7 +1031,7 @@ mod tests {
 
     fn temp_dir(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
-            "burrete-folding-result-test-{}-{name}",
+            "burette-folding-result-test-{}-{name}",
             uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&path).expect("fixture dir should create");

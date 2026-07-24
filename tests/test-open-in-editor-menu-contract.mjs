@@ -9,7 +9,7 @@ const staticServer = await readFile("scripts/agent-shell-server.mjs", "utf8");
 const viteConfig = await readFile("apps/desktop/vite.config.ts", "utf8");
 const tauriCommands = await readFile("apps/desktop/src-tauri/src/commands/chemical_editors.rs", "utf8");
 const tauriLib = await readFile("apps/desktop/src-tauri/src/lib.rs", "utf8");
-const tauriPermissions = await readFile("apps/desktop/src-tauri/permissions/burrete.toml", "utf8");
+const tauriPermissions = await readFile("apps/desktop/src-tauri/permissions/burette.toml", "utf8");
 
 assert.match(menu, /iconUrl: defaultApplicationIconUrl \?\? undefined/);
 assert.match(menu, /iconUrl: finderIconUrl \?\? undefined/);

@@ -15,15 +15,15 @@ if (!home) {
   throw new Error("HOME is not set.");
 }
 
-const marketplaceName = "burrete";
-const marketplaceRoot = path.join(home, ".codex", "plugins", "burrete-marketplace");
+const marketplaceName = "burette";
+const marketplaceRoot = path.join(home, ".codex", "plugins", "burette-marketplace");
 const marketplacePath = path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json");
-const personalPluginRoot = path.join(marketplaceRoot, "plugins", "burrete");
+const personalPluginRoot = path.join(marketplaceRoot, "plugins", "burette");
 const codexConfigPath = path.join(home, ".codex", "config.toml");
 const legacyMarketplacePath = path.join(home, ".agents", "plugins", "marketplace.json");
 const pluginVersion = await readPluginVersion();
-const pluginId = `burrete@${marketplaceName}`;
-const installRoot = path.join(home, ".codex", "plugins", "cache", marketplaceName, "burrete", pluginVersion);
+const pluginId = `burette@${marketplaceName}`;
+const installRoot = path.join(home, ".codex", "plugins", "cache", marketplaceName, "burette", pluginVersion);
 const requiredBundleFiles = [
   "browser-shell-dist/boot-overlay.js",
   "browser-shell-dist/index.html",
@@ -45,7 +45,7 @@ const requiredBundleFiles = [
   "preview-web/rdkit/RDKit_minimal.wasm",
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
-  "scripts/burrete-agent.mjs",
+  "scripts/burette-agent.mjs",
   "mcp/lib/server-bundle.mjs",
 ];
 
@@ -55,7 +55,7 @@ if (isSourceCheckout() && (shouldBuild || missingBundleFiles().length > 0)) {
 
 const missingFiles = missingBundleFiles();
 if (missingFiles.length > 0) {
-  throw new Error(`Incomplete Burrete plugin bundle. Missing: ${missingFiles.join(", ")}. Run bun run build:agent-shell before installing.`);
+  throw new Error(`Incomplete Burette plugin bundle. Missing: ${missingFiles.join(", ")}. Run bun run build:agent-shell before installing.`);
 }
 
 await rm(personalPluginRoot, { recursive: true, force: true });
@@ -124,10 +124,10 @@ async function updateMarketplace() {
   await mkdir(path.dirname(marketplacePath), { recursive: true });
   const data = {
     name: marketplaceName,
-    interface: { displayName: "Burrete" },
+    interface: { displayName: "Burette" },
     plugins: [{
-      name: "burrete",
-      source: { source: "local", path: "./plugins/burrete" },
+      name: "burette",
+      source: { source: "local", path: "./plugins/burette" },
       policy: { installation: "AVAILABLE", authentication: "ON_INSTALL", products: ["CODEX"] },
       category: "Education & Research",
     }],
@@ -140,7 +140,7 @@ function installWithCodex(command) {
   const payload = runCodexJson(command, ["plugin", "add", pluginId, "--json"], "plugin installation");
   const installed = runCodexJson(command, ["plugin", "list", "--json"], "plugin inventory").installed || [];
   const migratedPluginIds = installed
-    .filter((plugin) => plugin.name === "burrete" && plugin.pluginId !== pluginId)
+    .filter((plugin) => plugin.name === "burette" && plugin.pluginId !== pluginId)
     .map((plugin) => plugin.pluginId);
   for (const legacyPluginId of migratedPluginIds) {
     runCodexJson(command, ["plugin", "remove", legacyPluginId, "--json"], `legacy plugin removal (${legacyPluginId})`);
@@ -183,7 +183,7 @@ async function cleanupLegacySources() {
     try {
       const data = JSON.parse(await readFile(legacyMarketplacePath, "utf8"));
       const plugins = Array.isArray(data.plugins) ? data.plugins : [];
-      const filteredPlugins = plugins.filter((plugin) => plugin.name !== "burrete");
+      const filteredPlugins = plugins.filter((plugin) => plugin.name !== "burette");
       if (filteredPlugins.length !== plugins.length) {
         data.plugins = filteredPlugins;
         await writeFile(legacyMarketplacePath, `${JSON.stringify(data, null, 2)}\n`);
@@ -199,7 +199,7 @@ async function cleanupLegacySources() {
 async function updateCodexConfig() {
   await mkdir(path.dirname(codexConfigPath), { recursive: true });
   const existing = existsSync(codexConfigPath) ? await readFile(codexConfigPath, "utf8") : "";
-  const oldBlockPattern = /\n?\[plugins\."burrete@[^"]+"\]\n(?:[^\n\[]*\n)*/gu;
+  const oldBlockPattern = /\n?\[plugins\."burette@[^"]+"\]\n(?:[^\n\[]*\n)*/gu;
   const cleaned = existing.replace(oldBlockPattern, "\n").replace(/\n{3,}/gu, "\n\n");
   if (new RegExp(`^\\[plugins\\."${escapeRegExp(pluginId)}"\\]`, "mu").test(cleaned)) return;
   const next = `${cleaned.replace(/\s*$/u, "")}\n\n[plugins."${pluginId}"]\nenabled = true\n`;
@@ -217,7 +217,7 @@ async function readPluginVersion() {
 
 function findWorkingCodexBinary() {
   const candidates = [
-    process.env.BURRETE_CODEX_BIN,
+    process.env.BURETTE_CODEX_BIN,
     "/Applications/ChatGPT.app/Contents/Resources/codex",
     "/Applications/Codex.app/Contents/Resources/codex",
     "codex",

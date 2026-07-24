@@ -106,10 +106,10 @@ export function registerBrowserDevNativeComputeRoute(server: ViteDevServer, repo
 }
 
 function molecularRepresentationPython(repoRoot: string) {
-  const configured = process.env.BURRETE_CHEMICAL_SPACE_MODEL_PYTHON?.trim();
+  const configured = process.env.BURETTE_CHEMICAL_SPACE_MODEL_PYTHON?.trim();
   const candidates = [
     configured || null,
-    join(homedir(), "Library", "Application Support", "Burrete", "model-python", "bin", "python"),
+    join(homedir(), "Library", "Application Support", "Burette", "model-python", "bin", "python"),
     join(repoRoot, ".venv-chemical-space", "bin", "python"),
   ].filter((candidate): candidate is string => Boolean(candidate));
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
@@ -124,7 +124,7 @@ async function runMolecularRepresentation(
   const python = molecularRepresentationPython(repoRoot);
   if (!python) {
     throw new Error(
-      "Metal model runtime is not installed. Configure BURRETE_CHEMICAL_SPACE_MODEL_PYTHON.",
+      "Metal model runtime is not installed. Configure BURETTE_CHEMICAL_SPACE_MODEL_PYTHON.",
     );
   }
   const script = join(repoRoot, "compute", "models", "chemical_space_representations.py");
@@ -132,7 +132,7 @@ async function runMolecularRepresentation(
     homedir(),
     "Library",
     "Application Support",
-    "Burrete",
+    "Burette",
     "chemical-space-models",
   );
   const output = await runWithStdin(
@@ -198,7 +198,7 @@ function cacheChemicalSpaceKnn(response: unknown, cacheKey: string | null) {
 }
 
 function nativeComputeRuntimeRoot(repoRoot: string) {
-  const configured = process.env.BURRETE_DEV_COMPUTE_RUNTIME_ROOT?.trim();
+  const configured = process.env.BURETTE_DEV_COMPUTE_RUNTIME_ROOT?.trim();
   const candidates = [
     configured || null,
     join(repoRoot, "target", "debug", "ComputeMetal"),
@@ -212,8 +212,8 @@ async function runNativeCompute(repoRoot: string, input: string) {
   if (!runtimeRoot) {
     throw new Error("Native Metal dev runtime is missing. Build the desktop compute runtime first.");
   }
-  const packagedBackend = join(dirname(dirname(runtimeRoot)), "MacOS", "burrete-compute-dev-backend");
-  const configuredBackend = process.env.BURRETE_DEV_COMPUTE_BACKEND?.trim();
+  const packagedBackend = join(dirname(dirname(runtimeRoot)), "MacOS", "burette-compute-dev-backend");
+  const configuredBackend = process.env.BURETTE_DEV_COMPUTE_BACKEND?.trim();
   const directBackend = [configuredBackend || null, packagedBackend]
     .filter((candidate): candidate is string => Boolean(candidate))
     .find((candidate) => existsSync(candidate));
@@ -240,7 +240,7 @@ async function runNativeCompute(repoRoot: string, input: string) {
       "--manifest-path",
       manifestPath,
       "--bin",
-      "burrete-compute-dev-backend",
+      "burette-compute-dev-backend",
       "--",
       "--runtime-root",
       runtimeRoot,
@@ -307,9 +307,9 @@ function runWithStdin(
       const lines = stderrBuffer.split("\n");
       stderrBuffer = lines.pop() ?? "";
       for (const line of lines) {
-        if (line.startsWith("BURRETE_PROGRESS\t")) {
+        if (line.startsWith("BURETTE_PROGRESS\t")) {
           try {
-            onProgress?.(JSON.parse(line.slice("BURRETE_PROGRESS\t".length)));
+            onProgress?.(JSON.parse(line.slice("BURETTE_PROGRESS\t".length)));
           } catch {
             stderrChunks.push(Buffer.from(`${line}\n`));
           }

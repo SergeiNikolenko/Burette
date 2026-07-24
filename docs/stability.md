@@ -1,6 +1,6 @@
 # Stability Program
 
-Burrete stability work should improve observability and runtime handoff safety
+Burette stability work should improve observability and runtime handoff safety
 without changing renderer selection policy unless a task explicitly targets that
 policy.
 
@@ -13,7 +13,7 @@ The first stability layer is deliberately narrow:
 - include `preview-trace.jsonl` in exported diagnostics bundles
 - write `manifest.json` into generated desktop and Quick Look runtime
   directories
-- keep the desktop trace and runtime manifest schema in `burrete-core`
+- keep the desktop trace and runtime manifest schema in `burette-core`
 - run packaged build, install, forced Quick Look smoke, and perf report in the
   scheduled `nightly-smoke.yml` workflow
 - make Quick Look smoke fail when a successful preview is missing its completed
@@ -51,7 +51,7 @@ Trace events must not include raw molecule content, base64 payloads, or
 structure text.
 
 The Rust source of truth for trace state names, schema version, desktop error
-code mapping, and the small lifecycle transition guard is `burrete-core`.
+code mapping, and the small lifecycle transition guard is `burette-core`.
 Quick Look mirrors the same contract in Swift because the extension does not
 link the Rust crate.
 
@@ -88,10 +88,10 @@ problem.
    smoke before changing renderer orchestration.
 4. Expand the lifecycle state machine only around orchestration states that
    already exist in runtime code.
-5. Move additional shared, platform-neutral contracts into `burrete-core` only
+5. Move additional shared, platform-neutral contracts into `burette-core` only
    after the desktop and Quick Look boundaries are documented and pinned by
    tests.
 
 Do not make Quick Look depend on the desktop process. Do not change
-`BurreteConfig`, `BurreteDataURL`, asset profiles, or renderer fallback behavior
+`BuretteConfig`, `BuretteDataURL`, asset profiles, or renderer fallback behavior
 as part of observability-only work.

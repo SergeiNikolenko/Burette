@@ -112,7 +112,7 @@ export function useAppGridControlMessages({
     }
 
     if (body?.type === "gridPerfMetric") {
-      console.info("[Burrete grid perf]", JSON.stringify(body));
+      console.info("[Burette grid perf]", JSON.stringify(body));
       writeGridPerfMetric(body);
       return true;
     }

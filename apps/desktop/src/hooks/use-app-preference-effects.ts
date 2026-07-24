@@ -34,7 +34,7 @@ function broadcastLiveAppliedPreferences(keys: LiveAppliedPreferenceKey[], prefe
   for (const frame of document.querySelectorAll<HTMLIFrameElement>("iframe[data-document-id]")) {
     for (const key of keys) {
       frame.contentWindow?.postMessage({
-        source: "burrete-host",
+        source: "burette-host",
         body: { type: LIVE_APPLIED_PREFERENCE_MESSAGES[key], value: preferences[key] },
       }, "*");
     }

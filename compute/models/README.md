@@ -18,8 +18,8 @@ server at it:
 ```bash
 uv venv --python 3.12 .venv-chemical-space
 uv pip install --python .venv-chemical-space/bin/python -r compute/models/requirements.txt
-BURRETE_CHEMICAL_SPACE_MODEL_PYTHON="$PWD/.venv-chemical-space/bin/python" vp dev
+BURETTE_CHEMICAL_SPACE_MODEL_PYTHON="$PWD/.venv-chemical-space/bin/python" vp dev
 ```
 
 Weights download on first explicit use into
-`~/Library/Application Support/Burrete/chemical-space-models`.
+`~/Library/Application Support/Burette/chemical-space-models`.

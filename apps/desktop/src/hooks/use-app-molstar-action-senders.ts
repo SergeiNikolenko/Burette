@@ -27,7 +27,7 @@ export function useAppMolstarActionSenders({
     const iframe = activeViewerIframeForDocument(targetDocument.id);
     if (!iframe?.contentWindow) return;
     iframe.contentWindow.postMessage({
-      source: "burrete-agent-host",
+      source: "burette-agent-host",
       body: {
         type: "agent-action",
         id: `text-selection-${Date.now()}`,
@@ -53,7 +53,7 @@ export function useAppMolstarActionSenders({
       return;
     }
     iframe.contentWindow.postMessage({
-      source: "burrete-agent-host",
+      source: "burette-agent-host",
       body: {
         type: "agent-action",
         id: `structure-action-${Date.now()}`,

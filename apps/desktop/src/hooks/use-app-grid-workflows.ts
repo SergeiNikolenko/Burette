@@ -69,7 +69,7 @@ export function useAppGridWorkflows({
       : null;
     iframe.contentWindow.postMessage(
       {
-        source: "burrete-host",
+        source: "burette-host",
         body: {
           type: "addXyzrenderSheetItems",
           documentId,
@@ -112,7 +112,7 @@ export function useAppGridWorkflows({
   const notifyGridRecordsAppended = useCallback((targetDocumentId: string, result: GridAppendResult) => {
     const iframe = activeViewerIframeForDocument(targetDocumentId, "grid2d");
     iframe?.contentWindow?.postMessage({
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body: {
         type: "gridRecordsAppended",
         documentId: targetDocumentId,
@@ -128,7 +128,7 @@ export function useAppGridWorkflows({
     );
     if (!iframe?.contentWindow || readyBrowserGridFramesRef.current.get(targetDocumentId) !== iframe.contentWindow) return false;
     iframe.contentWindow.postMessage({
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body: {
         type: "gridAppendRecords",
         documentId: targetDocumentId,
@@ -274,7 +274,7 @@ export function useAppGridWorkflows({
         source?: unknown;
         body?: { type?: unknown; documentId?: unknown };
       } : null;
-      if (data?.source !== "burrete-grid" || data.body?.type !== "ready" || typeof data.body.documentId !== "string") return;
+      if (data?.source !== "burette-grid" || data.body?.type !== "ready" || typeof data.body.documentId !== "string") return;
       const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
         (item) => item.dataset.documentId === data.body?.documentId,
       );
