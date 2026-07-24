@@ -77,6 +77,15 @@ type ClusteringMethod = "none" | "butina";
 type ActivityColumn = { id: string; label: string };
 type ActivityDirection = "higherActive" | "lowerActive";
 type ActivityColoring = { colors: Map<number, string>; min: number; max: number };
+type ActivityCliff = {
+  sourceA: number;
+  sourceB: number;
+  indexA: number;
+  indexB: number;
+  similarity: number;
+  delta: number;
+  sali: number;
+};
 
 const DEFAULT_OPTIONS: ChemicalSpaceOptions = {
   representation: "morgan",
@@ -153,6 +162,9 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [activityColumnId, setActivityColumnId] = useState<string | null>(null);
   const [activityDirection, setActivityDirection] = useState<ActivityDirection>("higherActive");
   const [activityValues, setActivityValues] = useState<Map<number, number>>(new Map());
+  const [cliffsEnabled, setCliffsEnabled] = useState(false);
+  const [cliffMinSimilarity, setCliffMinSimilarity] = useState(0.6);
+  const [cliffMinDelta, setCliffMinDelta] = useState(1);
   const workflowControllerRef = useRef<AbortController | null>(null);
   const studyControllerRef = useRef<AbortController | null>(null);
   const hoveredRef = useRef<number | null>(null);
@@ -183,6 +195,9 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setActivityColumnId(null);
     setActivityDirection("higherActive");
     setActivityValues(new Map());
+    setCliffsEnabled(false);
+    setCliffMinSimilarity(0.6);
+    setCliffMinDelta(1);
   }, [documentId]);
 
   useEffect(() => {
@@ -216,6 +231,18 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       });
     return () => controller.abort();
   }, [documentId, activityColumnId]);
+
+  useEffect(() => {
+    if (activityValues.size === 0) return;
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    for (const value of activityValues.values()) {
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
+    const range = max - min;
+    setCliffMinDelta(range > 0 ? Math.round(range * 0.2 * 100) / 100 : 1);
+  }, [activityValues]);
 
   useEffect(() => {
     if (!documentId) return;
@@ -435,6 +462,26 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     () => (activityColumnId ? buildActivityColoring(activityValues, activityDirection) : null),
     [activityColumnId, activityValues, activityDirection],
   );
+  const cliffs = useMemo(
+    () => (cliffsEnabled && displayedResult && activityColumnId
+      ? computeActivityCliffs(displayedResult, activityValues, cliffMinSimilarity, cliffMinDelta)
+      : []),
+    [cliffsEnabled, displayedResult, activityColumnId, activityValues, cliffMinSimilarity, cliffMinDelta],
+  );
+  const activityColumnLabel = activityColumns.find((column) => column.id === activityColumnId)?.label ?? "activity";
+  const cliffDeltaMax = activityColoring && activityColoring.max > activityColoring.min
+    ? Math.round((activityColoring.max - activityColoring.min) * 100) / 100
+    : 10;
+  const cliffDeltaStep = Math.max(0.01, Math.round((cliffDeltaMax / 50) * 100) / 100);
+  const selectCliffPair = useCallback((cliff: ActivityCliff) => {
+    const pair = [cliff.sourceA, cliff.sourceB];
+    setSelected(new Set(pair));
+    postToGrid({
+      type: "chemicalSpaceSelectionChanged",
+      sourceRecordIds: pair,
+      filterToSelection: false,
+    });
+  }, [postToGrid]);
   return (
     <TooltipProvider>
       <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-testid="chemical-space-panel">
@@ -630,6 +677,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               pointScale={pointScale}
               tmapLineScale={tmapLineScale}
               activityColors={activityColoring?.colors ?? null}
+              cliffs={cliffs}
               tool={tool}
               onHover={(sourceRecordId) => {
                 setHovered(sourceRecordId);
@@ -664,6 +712,9 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               coloring={activityColoring}
               direction={activityDirection}
             />
+          ) : null}
+          {displayedResult && cliffsEnabled && cliffs.length > 0 ? (
+            <CliffTable cliffs={cliffs} activityLabel={activityColumnLabel} onSelectPair={selectCliffPair} />
           ) : null}
         </div>
 
@@ -776,6 +827,39 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                   </DropdownMenuLabel>
                 </>
               ) : null}
+              {activityColumnId ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Activity cliffs</DropdownMenuLabel>
+                  <DropdownMenuGroup className="px-2 py-1.5">
+                    <FieldGroup className="gap-3">
+                      <Field orientation="horizontal" className="items-center justify-between">
+                        <FieldLabel htmlFor="chemical-space-cliffs" className="text-xs">Discover cliffs</FieldLabel>
+                        <input
+                          id="chemical-space-cliffs"
+                          type="checkbox"
+                          className="size-3.5 accent-primary"
+                          checked={cliffsEnabled}
+                          onChange={(event) => setCliffsEnabled(event.currentTarget.checked)}
+                        />
+                      </Field>
+                      {cliffsEnabled ? (
+                        <>
+                          <ParameterField label="Min similarity" value={cliffMinSimilarity.toFixed(2)}>
+                            <Slider tone="neutral" min={0.3} max={0.95} step={0.01} value={[cliffMinSimilarity]} onValueChange={([value]) => setCliffMinSimilarity(value)} />
+                          </ParameterField>
+                          <ParameterField label={`Min Δ ${activityColumnLabel}`} value={cliffMinDelta.toFixed(2)}>
+                            <Slider tone="neutral" min={0} max={cliffDeltaMax} step={cliffDeltaStep} value={[Math.min(cliffMinDelta, cliffDeltaMax)]} onValueChange={([value]) => setCliffMinDelta(value)} />
+                          </ParameterField>
+                          <span className="text-[11px] text-muted-foreground">
+                            SALI = Δactivity / (1 − Tanimoto) · {cliffs.length} pair{cliffs.length === 1 ? "" : "s"}
+                          </span>
+                        </>
+                      ) : null}
+                    </FieldGroup>
+                  </DropdownMenuGroup>
+                </>
+              ) : null}
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Parameter study</DropdownMenuLabel>
               <DropdownMenuGroup className="px-2 py-1.5">
@@ -881,6 +965,57 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   );
 }
 
+function CliffTable({
+  cliffs,
+  activityLabel,
+  onSelectPair,
+}: {
+  cliffs: ActivityCliff[];
+  activityLabel: string;
+  onSelectPair: (cliff: ActivityCliff) => void;
+}) {
+  const [sortBy, setSortBy] = useState<"sali" | "delta" | "similarity">("sali");
+  const sorted = useMemo(() => [...cliffs].sort((left, right) => right[sortBy] - left[sortBy]), [cliffs, sortBy]);
+  const header = (key: "sali" | "delta" | "similarity", label: string) => (
+    <button
+      type="button"
+      className={`text-right tabular-nums ${sortBy === key ? "text-foreground" : "text-muted-foreground"}`}
+      onClick={() => setSortBy(key)}
+    >
+      {label}{sortBy === key ? " ↓" : ""}
+    </button>
+  );
+  return (
+    <div className="pointer-events-auto absolute right-3 top-3 flex max-h-[min(65%,22rem)] w-60 flex-col overflow-hidden rounded-md border border-border bg-background/90 text-[11px] shadow-sm backdrop-blur">
+      <div className="flex items-center justify-between border-b border-border px-2 py-1 font-medium text-foreground">
+        <span>Activity cliffs · {activityLabel}</span>
+        <span className="text-muted-foreground">{cliffs.length}</span>
+      </div>
+      <div className="grid grid-cols-[1fr_2.2rem_2.6rem_2.8rem] gap-1 border-b border-border px-2 py-1">
+        <span className="text-muted-foreground">pair</span>
+        {header("similarity", "sim")}
+        {header("delta", "Δ")}
+        {header("sali", "SALI")}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {sorted.map((cliff) => (
+          <button
+            key={`${cliff.sourceA}-${cliff.sourceB}`}
+            type="button"
+            className="grid w-full grid-cols-[1fr_2.2rem_2.6rem_2.8rem] gap-1 px-2 py-1 text-left tabular-nums hover:bg-accent"
+            onClick={() => onSelectPair(cliff)}
+          >
+            <span className="truncate">#{cliff.sourceA + 1} ↔ #{cliff.sourceB + 1}</span>
+            <span className="text-right text-muted-foreground">{cliff.similarity.toFixed(2)}</span>
+            <span className="text-right text-muted-foreground">{cliff.delta.toFixed(2)}</span>
+            <span className="text-right font-medium text-foreground">{cliff.sali.toFixed(1)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ActivityLegend({
   label,
   coloring,
@@ -927,6 +1062,7 @@ type ChemicalSpaceCanvasProps = {
   pointScale: number;
   tmapLineScale: number;
   activityColors: Map<number, string> | null;
+  cliffs: ActivityCliff[];
   tool: "navigate" | "lasso";
   onHover: (sourceRecordId: number | null) => void;
   onSelect: (sourceRecordIds: number[]) => void;
@@ -948,6 +1084,7 @@ function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
         pointColors={props.activityColors
           ? props.result.sourceRecordIds.map((sourceRecordId) => props.activityColors?.get(sourceRecordId) ?? null)
           : null}
+        cliffEdges={props.cliffs.map((cliff) => [cliff.indexA, cliff.indexB] as [number, number])}
         selected={props.selected}
         hovered={props.hovered}
         preview={props.preview}
@@ -972,6 +1109,7 @@ function ChemicalSpace2D({
   pointScale,
   tmapLineScale,
   activityColors,
+  cliffs,
   tool,
   onHover,
   onSelect,
@@ -1038,6 +1176,23 @@ function ChemicalSpace2D({
       context.lineWidth = Math.max(1.5, Math.min(3.5, pointScale * 1.5)) * tmapLineScale;
       context.stroke();
     }
+    if (cliffs.length > 0) {
+      const maxSali = cliffs[0]?.sali || 1;
+      for (const cliff of cliffs) {
+        const left = projected[cliff.indexA];
+        const right = projected[cliff.indexB];
+        if (!left || !right) continue;
+        const intensity = Math.max(0.25, Math.min(1, cliff.sali / maxSali));
+        context.beginPath();
+        context.moveTo(left.x, left.y);
+        context.lineTo(right.x, right.y);
+        context.strokeStyle = "#ef4444";
+        context.globalAlpha = 0.35 + intensity * 0.5;
+        context.lineWidth = 1 + intensity * 2.5;
+        context.stroke();
+      }
+      context.globalAlpha = 1;
+    }
     for (const point of [...projected].sort((left, right) => left.depth - right.depth)) {
       const active = selected.has(point.sourceRecordId);
       const hot = hovered === point.sourceRecordId;
@@ -1077,7 +1232,7 @@ function ChemicalSpace2D({
       context.stroke();
       context.setLineDash([]);
     }
-  }, [activityColors, camera, clusterBySource, hovered, lasso, normalized, pointScale, result.sourceRecordIds, result.treeEdges, selected, tmapLineScale, viewport]);
+  }, [activityColors, camera, cliffs, clusterBySource, hovered, lasso, normalized, pointScale, result.sourceRecordIds, result.treeEdges, selected, tmapLineScale, viewport]);
 
   const localPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1794,6 +1949,42 @@ function buildActivityColoring(
     colors.set(sourceRecordId, viridisColor(t));
   }
   return { colors, min, max };
+}
+
+const MAX_CLIFF_RESULTS = 500;
+
+// Sparse activity-cliff discovery over the Metal kNN neighbour graph. SALI is
+// the structure–activity landscape index (Δactivity / (1 − Tanimoto)); raw Δ is
+// kept alongside it. No dense pairwise matrix is ever built — we only walk the
+// bounded neighbour edges the backend already computed.
+function computeActivityCliffs(
+  result: ChemicalSpaceResult,
+  activityValues: Map<number, number>,
+  minSimilarity: number,
+  minDelta: number,
+): ActivityCliff[] {
+  const edges = result.neighborEdges ?? [];
+  const similarities = result.neighborSimilarities ?? [];
+  if (edges.length === 0 || activityValues.size === 0) return [];
+  const ids = result.sourceRecordIds;
+  const cliffs: ActivityCliff[] = [];
+  for (let edge = 0; edge < edges.length; edge += 1) {
+    const similarity = similarities[edge] ?? 0;
+    if (similarity < minSimilarity) continue;
+    const [indexA, indexB] = edges[edge];
+    const sourceA = ids[indexA];
+    const sourceB = ids[indexB];
+    if (sourceA === undefined || sourceB === undefined) continue;
+    const activityA = activityValues.get(sourceA);
+    const activityB = activityValues.get(sourceB);
+    if (activityA === undefined || activityB === undefined) continue;
+    const delta = Math.abs(activityA - activityB);
+    if (delta < minDelta) continue;
+    const sali = delta / Math.max(1e-6, 1 - similarity);
+    cliffs.push({ sourceA, sourceB, indexA, indexB, similarity, delta, sali });
+  }
+  cliffs.sort((left, right) => right.sali - left.sali);
+  return cliffs.slice(0, MAX_CLIFF_RESULTS);
 }
 
 function isBrowserChemicalSpaceRecord(value: unknown): value is BrowserChemicalSpaceInputRecord {

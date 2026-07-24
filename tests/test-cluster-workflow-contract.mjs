@@ -94,6 +94,18 @@ assert.match(chemicalSpacePanel, /function buildActivityColoring/);
 assert.match(chemicalSpacePanel, /activityColors\?\.get\(point\.sourceRecordId\)/);
 assert.match(chemicalSpacePanel, /<ActivityLegend/);
 assert.match(chemicalSpace3d, /pointColorsRef\.current\[index\]/);
+
+// Activity cliffs ride the sparse Metal kNN graph: the backend surfaces the
+// deduplicated neighbour edges + similarities, and the panel scores SALI over
+// them (never a dense matrix), rendering cliff edges and a sortable table.
+assert.match(chemicalSpace, /fn undirected_neighbor_edges/);
+assert.match(chemicalSpace, /neighbor_edges: Vec<\[u32; 2\]>/);
+assert.match(chemicalSpace, /MAX_UNDIRECTED_SIMILARITY_EDGES as usize/);
+assert.match(workflow, /neighborEdges: Array<\[number, number\]>/);
+assert.match(chemicalSpacePanel, /function computeActivityCliffs/);
+assert.match(chemicalSpacePanel, /delta \/ Math\.max\(1e-6, 1 - similarity\)/);
+assert.match(chemicalSpacePanel, /<CliffTable/);
+assert.match(chemicalSpace3d, /updateCliffs/);
 const corePositions = Array.from({ length: 92 }, (_, index) => {
   const angle = index / 92 * Math.PI * 2;
   return [Math.cos(angle), Math.sin(angle), Math.sin(angle * 3) * 0.4];

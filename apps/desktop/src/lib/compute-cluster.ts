@@ -139,6 +139,8 @@ export type ChemicalSpaceResult = {
   sourceRecordIds: number[];
   positions: Array<[number, number, number]>;
   treeEdges: Array<[number, number]>;
+  neighborEdges: Array<[number, number]>;
+  neighborSimilarities: number[];
   dimensions: 2 | 3;
   method: ChemicalSpaceMethod;
   representation: ChemicalSpaceRepresentation;

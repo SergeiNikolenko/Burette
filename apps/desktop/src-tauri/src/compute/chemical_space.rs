@@ -71,6 +71,8 @@ pub(crate) struct ChemicalSpaceResult {
     pub(crate) source_record_ids: Vec<u64>,
     pub(crate) positions: Vec<[f32; 3]>,
     pub(crate) tree_edges: Vec<[u32; 2]>,
+    pub(crate) neighbor_edges: Vec<[u32; 2]>,
+    pub(crate) neighbor_similarities: Vec<f32>,
     pub(crate) dimensions: u32,
     pub(crate) method: ChemicalSpaceMethod,
     pub(crate) neighbors: usize,
@@ -259,11 +261,19 @@ pub(crate) fn execute_chemical_space_from_fingerprints_with_knn(
                 0.0,
             )
         };
+    let (neighbor_edges, neighbor_similarities) = undirected_neighbor_edges(
+        fingerprints.len(),
+        knn.neighbors_per_vertex,
+        &knn.source_indices,
+        &knn.similarities,
+    );
     Ok(ChemicalSpaceExecution {
         result: ChemicalSpaceResult {
             source_record_ids: source_record_ids.to_vec(),
             positions,
             tree_edges,
+            neighbor_edges,
+            neighbor_similarities,
             dimensions,
             method: request.method,
             neighbors,
@@ -342,6 +352,59 @@ pub(crate) fn cluster_chemical_space_from_fingerprints(
         cluster_count: clusters.len(),
         similarity_gpu_time_ms: graph_execution.gpu_time_ms,
     })
+}
+
+/// Collapse the directed Metal kNN adjacency into a deduplicated, undirected
+/// sparse edge list with the highest Tanimoto similarity seen for each pair.
+/// This is the graph activity-cliff discovery rides on; it never materialises a
+/// dense N×N matrix and is bounded by [`MAX_UNDIRECTED_SIMILARITY_EDGES`].
+fn undirected_neighbor_edges(
+    vertex_count: usize,
+    neighbors_per_vertex: usize,
+    source_indices: &[u32],
+    similarities: &[f32],
+) -> (Vec<[u32; 2]>, Vec<f32>) {
+    use std::collections::BTreeMap;
+    let mut best: BTreeMap<(u32, u32), f32> = BTreeMap::new();
+    for vertex in 0..vertex_count {
+        let base = vertex * neighbors_per_vertex;
+        for offset in 0..neighbors_per_vertex {
+            let index = base + offset;
+            let Some(&neighbor) = source_indices.get(index) else {
+                continue;
+            };
+            if neighbor as usize == vertex {
+                continue;
+            }
+            let similarity = similarities.get(index).copied().unwrap_or(0.0);
+            let left = vertex as u32;
+            let key = if left < neighbor {
+                (left, neighbor)
+            } else {
+                (neighbor, left)
+            };
+            best.entry(key)
+                .and_modify(|current| {
+                    if similarity > *current {
+                        *current = similarity;
+                    }
+                })
+                .or_insert(similarity);
+        }
+    }
+    let mut pairs: Vec<((u32, u32), f32)> = best.into_iter().collect();
+    let edge_limit = MAX_UNDIRECTED_SIMILARITY_EDGES as usize;
+    if pairs.len() > edge_limit {
+        pairs.sort_by(|left, right| right.1.total_cmp(&left.1));
+        pairs.truncate(edge_limit);
+    }
+    let mut edges = Vec::with_capacity(pairs.len());
+    let mut sims = Vec::with_capacity(pairs.len());
+    for ((left, right), similarity) in pairs {
+        edges.push([left, right]);
+        sims.push(similarity);
+    }
+    (edges, sims)
 }
 
 const fn default_max_memory_bytes() -> u64 {

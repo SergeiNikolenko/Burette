@@ -21,6 +21,7 @@ type ChemicalSpace3DProps = {
   clusterIds: Array<number | null>;
   clusterColors: readonly string[];
   pointColors: Array<string | null> | null;
+  cliffEdges: Array<[number, number]>;
   selected: Set<number>;
   hovered: number | null;
   preview: MoleculePreview | null;
@@ -40,6 +41,7 @@ type ThreeRuntime = {
   updatePointScale: (pointScale: number) => void;
   updateTreeLineScale: (treeLineScale: number) => void;
   updateClusters: (clusterIds: Array<number | null>) => void;
+  updateCliffs: (cliffEdges: Array<[number, number]>) => void;
 };
 
 const MAX_LASSO_POINTS = 4_096;
@@ -53,6 +55,7 @@ export function ChemicalSpace3D({
   clusterIds,
   clusterColors,
   pointColors,
+  cliffEdges,
   selected,
   hovered,
   preview,
@@ -76,6 +79,7 @@ export function ChemicalSpace3D({
   const hoveredRef = useRef(hovered);
   const clusterIdsRef = useRef(clusterIds);
   const pointColorsRef = useRef<Array<string | null>>(pointColors ?? []);
+  const cliffEdgesRef = useRef(cliffEdges);
   const [lasso, setLasso] = useState<Point2[]>([]);
   const [previewAnchor, setPreviewAnchor] = useState<Point2 | null>(null);
 
@@ -87,6 +91,7 @@ export function ChemicalSpace3D({
   hoveredRef.current = hovered;
   clusterIdsRef.current = clusterIds;
   pointColorsRef.current = pointColors ?? [];
+  cliffEdgesRef.current = cliffEdges;
   const sourceRecordIdsKey = sourceRecordIds.join(",");
 
   useEffect(() => {
@@ -142,6 +147,25 @@ export function ChemicalSpace3D({
     );
     treeLines.computeLineDistances();
     scene.add(treeLines);
+    const cliffPositions = (
+      nextPositions: Array<[number, number, number]>,
+      edges: Array<[number, number]>,
+    ) =>
+      edges.flatMap(([leftIndex, rightIndex]) => [
+        ...(nextPositions[leftIndex] ?? []),
+        ...(nextPositions[rightIndex] ?? []),
+      ]);
+    const cliffGeometry = new LineSegmentsGeometry();
+    cliffGeometry.setPositions(cliffPositions(positions, cliffEdgesRef.current));
+    const cliffMaterial = new LineMaterial({
+      color: 0xef4444,
+      linewidth: 2.5,
+      opacity: 0.85,
+      transparent: true,
+    });
+    const cliffLines = new LineSegments2(cliffGeometry, cliffMaterial);
+    cliffLines.computeLineDistances();
+    scene.add(cliffLines);
     const clusterColorValues = (ids: Array<number | null>) => ids.flatMap((clusterId, index) => {
       const override = pointColorsRef.current[index] ?? null;
       const color = override
@@ -225,6 +249,8 @@ export function ChemicalSpace3D({
       treeGeometry.setPositions(treePositions(nextPositions));
       treeGeometry.computeBoundingSphere();
       treeLines.computeLineDistances();
+      cliffGeometry.setPositions(cliffPositions(nextPositions, cliffEdgesRef.current));
+      cliffLines.computeLineDistances();
       updateSelected(selectedRef.current, false);
       updateHovered(hoveredRef.current, false);
       render();
@@ -248,6 +274,12 @@ export function ChemicalSpace3D({
         "color",
         new THREE.Float32BufferAttribute(clusterColorValues(nextClusterIds), 3),
       );
+      render();
+    };
+    const updateCliffs = (nextCliffEdges: Array<[number, number]>) => {
+      cliffEdgesRef.current = nextCliffEdges;
+      cliffGeometry.setPositions(cliffPositions(positionsRef.current, nextCliffEdges));
+      cliffLines.computeLineDistances();
       render();
     };
 
@@ -366,6 +398,7 @@ export function ChemicalSpace3D({
       const height = Math.max(1, host.clientHeight);
       renderer.setSize(width, height, false);
       treeMaterial.resolution.set(width, height);
+      cliffMaterial.resolution.set(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       render();
@@ -380,6 +413,7 @@ export function ChemicalSpace3D({
       updatePointScale,
       updateTreeLineScale,
       updateClusters,
+      updateCliffs,
     };
     updateSelected(selected);
     updateHovered(hovered);
@@ -401,6 +435,8 @@ export function ChemicalSpace3D({
       points.material.dispose();
       treeGeometry.dispose();
       treeMaterial.dispose();
+      cliffGeometry.dispose();
+      cliffMaterial.dispose();
       selectedPoints.geometry.dispose();
       selectedPoints.material.dispose();
       hoveredPoints.geometry.dispose();
@@ -423,6 +459,7 @@ export function ChemicalSpace3D({
   useEffect(() => runtimeRef.current?.updateTreeLineScale(treeLineScale), [treeLineScale]);
   useEffect(() => runtimeRef.current?.updateClusters(clusterIds), [clusterIds]);
   useEffect(() => runtimeRef.current?.updateClusters(clusterIdsRef.current), [pointColors]);
+  useEffect(() => runtimeRef.current?.updateCliffs(cliffEdges), [cliffEdges]);
 
   useEffect(() => {
     const canvas = lassoCanvasRef.current;
