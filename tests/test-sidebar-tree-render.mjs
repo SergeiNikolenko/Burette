@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { fileKindForPath } from "../apps/desktop/src/components/sidebar/file-kind-icon.tsx";
 import { ProjectGroup } from "../apps/desktop/src/components/sidebar/file-tree-node.tsx";
 
 const project = {
@@ -74,6 +76,25 @@ assert.match(crowdedHtml, /Show more/);
 assert.match(crowdedHtml, /Show 2 more files in results/);
 assert.match(crowdedHtml, /pose-5\.sdf/);
 assert.doesNotMatch(crowdedHtml, /pose-6\.sdf/);
+
+// A file row is identified by the scientific role of its contents, not by one
+// shared document glyph, so the fixture's four files must land on three kinds.
+for (const kind of ["protein", "trajectory", "molecule"]) {
+  assert.match(html, new RegExp(`data-file-kind="${kind}"`));
+}
+assert.doesNotMatch(html, /data-file-kind="default"/);
+
+// Every format the app can preview must resolve to a real kind. Without this a
+// newly registered format silently falls back to the blank page glyph.
+const previewRegistry = JSON.parse(readFileSync(new URL("../config/preview-formats.json", import.meta.url), "utf8"));
+const registryExtensions = previewRegistry.formats.flatMap((format) => format.extensions);
+const unmapped = registryExtensions.filter((extension) => fileKindForPath(`/fixtures/sample.${extension}`) === "default");
+assert.deepEqual(unmapped, [], `preview formats with no sidebar icon kind: ${unmapped.join(", ")}`);
+
+// The extension wins over a path that has none, and an unknown one still renders.
+assert.equal(fileKindForPath("/fixtures/receptor", "pdb"), "protein");
+assert.equal(fileKindForPath("/fixtures/topology.PRMTOP"), "topology");
+assert.equal(fileKindForPath("/fixtures/notes.unknownext"), "default");
 
 console.log("sidebar tree render tests passed");
 

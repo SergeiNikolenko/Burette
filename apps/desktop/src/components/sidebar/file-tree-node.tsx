@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import {
-  File02Icon,
   Folder01Icon,
   Folder02Icon,
 } from "@hugeicons/core-free-icons";
@@ -14,6 +13,7 @@ import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
 import { RadixDropdownMenu } from "../radix-menu";
 import type { ShellActions, ShellViewState } from "../types";
+import { FileKindIcon, fileKindForPath } from "./file-kind-icon";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
 
 const COLLAPSED_PROJECT_ITEM_LIMIT = 5;
@@ -771,6 +771,7 @@ export function ProjectItem({
     item.isPinned ? "pinned" : "",
     nested ? "nested-project" : "",
   ].filter(Boolean).join(" ");
+  const fileKind = fileKindForPath(item.path, item.extension);
 
   return (
     <div
@@ -797,8 +798,8 @@ export function ProjectItem({
       aria-label={`${item.relativePath}, ${rendererLabel(item.renderer)}${item.isPinned ? ", pinned" : ""}`}
       title={item.relativePath}
     >
-      <span className="project-icon" aria-hidden="true">
-        <HugeiconsIcon icon={File02Icon} size={16} color="currentColor" strokeWidth={2} />
+      <span className="project-icon" data-file-kind={fileKind} aria-hidden="true">
+        <FileKindIcon kind={fileKind} />
       </span>
       <span className="project-copy">
         <span className="project-name">{item.title}</span>
