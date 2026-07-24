@@ -8,7 +8,7 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '13';
   const TOOLBAR_COLLAPSED_VERSION = '5';
-  const DOCKING_POSE_POSITION_VERSION = '6';
+  const DOCKING_POSE_POSITION_VERSION = '7';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
@@ -12348,9 +12348,13 @@
     const margin = TOOLBAR_MARGIN;
     const left = mainRect ? Math.max(margin, Math.ceil(mainRect.left + margin)) : margin;
     const right = mainRect ? Math.min(window.innerWidth - margin, Math.floor(mainRect.right - margin)) : window.innerWidth - margin;
+    // Keep the trajectory toolbar glued to the left edge but clear of the scene-tree
+    // corner toggle, so it sits right next to that button instead of on top of it.
+    const cornerRect = visibleRect('#buret-viewport-corner');
+    const clearedLeft = cornerRect ? Math.max(left, Math.ceil(cornerRect.right + 8)) : left;
     return {
-      left,
-      right: Math.max(left, right),
+      left: clearedLeft,
+      right: Math.max(clearedLeft, right),
       top: margin,
       bottom: window.innerHeight - margin
     };

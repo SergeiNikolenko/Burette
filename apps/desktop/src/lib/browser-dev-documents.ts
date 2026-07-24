@@ -110,7 +110,7 @@ const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
 const GRID_ASSET_VERSION = "grid-ui-v143";
-const VIEWER_ASSET_VERSION = "viewer-ui-v66";
+const VIEWER_ASSET_VERSION = "viewer-ui-v67";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = String(
   (typeof window !== "undefined" ? window.__BURRETE_WEB_ASSETS_BASE__ : "")
