@@ -1416,9 +1416,33 @@ kbd span { margin-left: 2px; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--fg-base);
-  opacity: 0.54;
+  /* Hue and alpha are mixed here rather than set as color + opacity so a tinted
+     kind can be louder than an untinted one without a second opacity rule. Every
+     hue is pulled toward the foreground first, which darkens it on the light theme
+     and lightens it on the dark one from a single literal — yellow in particular
+     dies against a light sidebar otherwise. Untinted kinds set the hue to
+     --fg-base, so for them that first mix is an identity. */
+  --file-icon-hue: var(--fg-base);
+  --file-icon-strength: 54%;
+  color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--file-icon-hue) 76%, var(--fg-base)) var(--file-icon-strength),
+    transparent
+  );
 }
+/* Only the kinds that carry science get a hue. Logs, code, configs and plain
+   documents stay neutral, so a project's molecular payload reads at a glance
+   instead of every row shouting. Hues are damped Apple system colours, which
+   the status chips elsewhere in the app already use. Each rule carries its own
+   strength so a tinted kind is named in exactly one place. */
+.project-icon[data-file-kind="protein"] { --file-icon-hue: #5ac8fa; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="crystal"] { --file-icon-hue: #7d7aec; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="molecule"] { --file-icon-hue: #3ecf6a; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="table"] { --file-icon-hue: #e8c249; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="trajectory"] { --file-icon-hue: #ff6482; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="topology"] { --file-icon-hue: #c48af0; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="spectrum"] { --file-icon-hue: #ff9f0a; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="network"] { --file-icon-hue: #3fc7bd; --file-icon-strength: 82%; }
 .project-copy {
   min-width: 0;
   flex: 1;
