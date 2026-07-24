@@ -3245,17 +3245,6 @@ img.radix-menu-item-icon {
   padding: 4px 7px;
   font-size: 11px;
 }
-.structure-inspector-settings-category {
-  min-width: 0;
-  display: grid;
-  gap: 6px;
-}
-.structure-inspector-settings-category h5 {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-}
 .structure-inspector-number-control {
   width: 100%;
   max-width: 150px;
@@ -3757,16 +3746,6 @@ img.radix-menu-item-icon {
   font-size: 12px;
   line-height: 1.3;
 }
-.structure-brief-chip-list {
-  min-width: 0;
-  display: grid;
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid var(--line-subtler);
-  border-radius: 7px;
-  background: var(--surface-card);
-}
-.structure-brief-chip-list > span,
 .structure-brief-chip-button,
 .structure-brief-chip-summary {
   min-width: 0;
@@ -3779,13 +3758,6 @@ img.radix-menu-item-icon {
   font-size: 11px;
   line-height: 1.25;
 }
-.structure-brief-chip-list .structure-brief-action-entry {
-  border-top: 0;
-}
-.structure-brief-chip-list .structure-brief-action-entry + .structure-brief-action-entry {
-  border-top: 1px solid var(--line-subtler);
-}
-.structure-brief-chip-list > span > strong,
 .structure-brief-chip-button strong,
 .structure-brief-chip-summary strong {
   min-width: 0;

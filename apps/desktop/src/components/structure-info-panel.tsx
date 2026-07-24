@@ -200,6 +200,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   const trajectoryDocument = isTrajectorySmoothingDocument(document, poseControls);
   const contextStyleCard = structureContextStyleCardFor(document, compositionSummary, structureOverlayMode);
   const latestXtbJob = latestXtbJobForDocument(document, xtbJobs);
+  const runningXtbJob = latestXtbJob?.status === "running" ? latestXtbJob : null;
   const structureXtbArtifact = xtbArtifactInfoForPath(document.path, document.extension);
   const clearSelection = () => {
     actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear selection" });
@@ -339,7 +340,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
           className="structure-inspector-xtb-card"
           title="xTB"
           tooltip="Semiempirical quantum calculations for the current molecular scope."
-          status={xtbStatusLine(xtbStatus, isBrowserDev)}
+          status={runningXtbJob ? `Running ${operationTitle(runningXtbJob.operation).toLowerCase()}` : xtbStatusLine(xtbStatus, isBrowserDev)}
           open={xtbOpen}
           onToggle={() => setXtbOpen((open) => !open)}
           summary={xtbSettingsSummary(xtbSettings)}
@@ -348,7 +349,15 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
           onReset={xtbSettingsModified(xtbSettings) ? () => actions.setXtbSettings(defaultXtbSettings) : undefined}
           // xTB takes the viewer's selection as its scope the same way CREST does,
           // and that changes what the run costs - worth saying out loud.
-          scope={jobScopedToSelection ? "Scope: selected object" : undefined}
+          scope={runningXtbJob ? (
+            <>
+              {runningXtbJob.inputLabel} is running.
+              {" "}
+              <button type="button" className="structure-inspector-inline-action" onClick={() => void actions.cancelXtbJob(runningXtbJob.id)}>
+                Cancel
+              </button>
+            </>
+          ) : jobScopedToSelection ? "Scope: selected object" : undefined}
           notice={(
             <EngineToolNotice
               tools={[...oversizedNotice, {
@@ -1939,7 +1948,7 @@ function InspectorEngineCard({
   className: string;
   title: string;
   tooltip: string;
-  status: string;
+  status: ReactNode;
   open: boolean;
   onToggle: () => void;
   summary: string;
@@ -1947,7 +1956,7 @@ function InspectorEngineCard({
   summaryModified?: boolean;
   onReset?: () => void;
   notice?: ReactNode;
-  scope?: string;
+  scope?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -2598,14 +2607,17 @@ const XTB_PATTERN_ARTIFACTS: Record<string, Omit<XtbTextArtifactInfo, "runName">
 };
 
 function latestXtbJobForDocument(document: ViewerDocument, jobs: ShellViewState["xtbJobs"]) {
+  const documentPaths = [document.path, document.sourcePath].filter((path): path is string => Boolean(path));
   return jobs.find((job) => {
+    // The label is set when the job is queued; everything else only exists once
+    // it finishes. Testing it behind `result &&` meant a running job could never
+    // match its own document, so the panel stayed silent until the run ended.
+    if (job.inputLabel === document.title) return true;
     const result = job.result;
-    const documentPaths = [document.path, document.sourcePath].filter((path): path is string => Boolean(path));
-    return result && (
-      documentPaths.includes(result.primaryOpenPath ?? "")
-      || job.inputLabel === document.title
-      || result.command.some((part) => documentPaths.includes(part))
-      || result.artifacts.some((artifact) => documentPaths.includes(artifact.path))
+    return Boolean(result) && (
+      documentPaths.includes(result!.primaryOpenPath ?? "")
+      || result!.command.some((part) => documentPaths.includes(part))
+      || result!.artifacts.some((artifact) => documentPaths.includes(artifact.path))
     );
   }) ?? null;
 }
@@ -2624,21 +2636,14 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
   const runName = xtbRunNameForPath(result.workDir) ?? fileName(result.workDir);
   const commandSummary = xtbCommandSummary(result.command);
   const openedInMs = Number.isFinite(result.elapsedMs) ? `${Math.max(0.1, result.elapsedMs / 1000).toFixed(1)} s` : "n/a";
-  const colorChargesInMolstar = () => {
+  // Both renderers took the same action with the same payload; only the button
+  // label differed.
+  const colorCharges = () => {
     actions.runStructureViewerAction(document, {
       type: "color_xtb_charges",
       label: "Color xTB charges",
       charges: allCharges,
       chargeFilePath: chargesArtifact?.path,
-    });
-  };
-  const colorChargesInXyzrender = () => {
-    if (!chargesArtifact) return;
-    actions.runStructureViewerAction(document, {
-      type: "color_xtb_charges",
-      label: "Color xTB charges",
-      charges: allCharges,
-      chargeFilePath: chargesArtifact.path,
     });
   };
   const colorFukuiInMolstar = (mode: "fplus" | "fminus" | "fzero") => {
@@ -2684,11 +2689,11 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
           columns={["Atom", "Charge"]}
           rows={charges.map((charge, index) => [`#${index + 1}`, charge.toFixed(4)])}
           action={document.renderer === "molstar" ? (
-            <button type="button" className="structure-inspector-xtb-table-action" onClick={colorChargesInMolstar}>
+            <button type="button" className="structure-inspector-xtb-table-action" onClick={colorCharges}>
               Color in Mol*
             </button>
           ) : document.renderer === "xyzrender-external" && chargesArtifact ? (
-            <button type="button" className="structure-inspector-xtb-table-action" onClick={colorChargesInXyzrender}>
+            <button type="button" className="structure-inspector-xtb-table-action" onClick={colorCharges}>
               Color in xyzr
             </button>
           ) : null}
@@ -2853,6 +2858,15 @@ function xtbArtifactButtonTitle(artifact: XtbArtifact) {
   return info ? `${info.title}: ${info.summary}` : artifact.path;
 }
 
+// Keyed by the exact flags xtb_solvation_flag emits in the backend. The previous
+// list guessed "--cpcm", so a CPCM-X run was reported back as gas phase.
+const XTB_SOLVATION_FLAG_LABELS: Record<string, string> = {
+  "--alpb": "ALPB",
+  "--gbsa": "GBSA",
+  "--cosmo": "COSMO",
+  "--cpcmx": "CPCM-X",
+};
+
 function operationTitle(operation: XtbRunResult["operation"]) {
   switch (operation) {
     case "optimize":
@@ -2883,9 +2897,11 @@ function xtbCommandSummary(command: string[]) {
   const charge = chargeIndex >= 0 ? `charge ${command[chargeIndex + 1] ?? "0"}` : null;
   const uhfIndex = command.indexOf("--uhf");
   const uhf = uhfIndex >= 0 ? `UHF ${command[uhfIndex + 1] ?? "0"}` : null;
-  const solventFlag = command.find((part) => ["--alpb", "--gbsa", "--cosmo", "--cpcm"].includes(part.toLowerCase()));
+  const solventFlag = command.find((part) => XTB_SOLVATION_FLAG_LABELS[part.toLowerCase()]);
   const solventIndex = solventFlag ? command.indexOf(solventFlag) : -1;
-  const solvent = solventFlag ? `${solventFlag.replace("--", "").toUpperCase()} ${command[solventIndex + 1] ?? ""}`.trim() : "gas phase";
+  const solvent = solventFlag
+    ? `${XTB_SOLVATION_FLAG_LABELS[solventFlag.toLowerCase()]} ${command[solventIndex + 1] ?? ""}`.trim()
+    : "gas phase";
   return [method, opt, charge, uhf, solvent].filter(Boolean).join(" · ") || truncateInline(joined, 80);
 }
 

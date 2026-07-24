@@ -133,6 +133,7 @@ const [
   settingControl,
   dockPanel,
   structureInfoPanel,
+  foldingResultsPanel,
   closeIcon,
   shortcutTooltip,
   pageKinds,
@@ -337,6 +338,7 @@ const [
   source('apps/desktop/src/components/settings-panel/setting-control.tsx'),
   source('apps/desktop/src/components/dock-panel.tsx'),
   source('apps/desktop/src/components/structure-info-panel.tsx'),
+  source('apps/desktop/src/components/folding-results-panel.tsx'),
   source('apps/desktop/src/components/close-icon.tsx'),
   source('apps/desktop/src/components/shortcut-tooltip.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/index.ts'),
@@ -2460,6 +2462,18 @@ assert.match(structureInfoPanel, /const xtbBlocked = xtbMissing \|\| oversizedFo
 assert.match(structureInfoPanel, /const crestDisabled = !canRunCrest \|\| oversized \|\| status\?\.crest\.installed === false/);
 assert.match(directChemistryGuard, /export const DIRECT_CHEMISTRY_JOB_ATOM_LIMIT = 300/);
 assert.match(directChemistryGuard, /export function structureAtomCountFromSummary\(summary: StructureCompositionSummary\)/);
+// The backend writes --cpcmx; the old list guessed --cpcm, so a solvated run was
+// reported back as gas phase.
+assert.match(structureInfoPanel, /"--cpcmx": "CPCM-X"/);
+assert.match(structureInfoPanel, /XTB_SOLVATION_FLAG_LABELS\[part\.toLowerCase\(\)\]/);
+// inputLabel exists from the moment a job is queued, so it must be testable
+// without a result - otherwise a running job never matches its own document.
+assert.match(structureInfoPanel, /if \(job\.inputLabel === document\.title\) return true;/);
+assert.match(structureInfoPanel, /const runningXtbJob = latestXtbJob\?\.status === "running" \? latestXtbJob : null/);
+// The panel the "Full PAE" button opens has to actually contain the matrix.
+assert.match(foldingResultsPanel, /<FoldingMatrixHeatmap preview=\{activeModel\.matrixPreview\} size="large" \/>/);
+// A keyboard-generated click reports detail 0; the pointer handlers own the rest.
+assert.match(foldingResultsPanel, /if \(event\.detail !== 0\) return;/);
 // Short mutually exclusive sets are switches, not dropdowns, and the engine's own
 // tokens ("gfnff", "verytight", "ch2cl2") never reach the reader untranslated.
 assert.match(structureInfoPanel, /function InlineSegmentedControl\(\{/);

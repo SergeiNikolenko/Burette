@@ -314,6 +314,15 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
 
       <FoldingModelSelector models={bundle.models} activeModel={activeModel} onSelect={selectModel} />
 
+      {/* This panel is what the "Full PAE" button opens and what its own empty
+          state promises, but the matrix was never rendered here - only the
+          thumbnail in the side card. The large size was already designed for it. */}
+      {activeModel.matrixPreview ? (
+        <FoldingMatrixHeatmap preview={activeModel.matrixPreview} size="large" />
+      ) : (
+        <div className="dock-empty">This model has no PAE matrix.</div>
+      )}
+
       <FoldingSequenceStrip
         sequences={sequences}
         selectedResidues={selectedResidues}
@@ -752,6 +761,15 @@ function FoldingSequenceStrip({
                   data-residue-index={index}
                   aria-label={`Select Chain-${chain.chainId} residue ${residueNumber} ${residue}`}
                   aria-pressed={selected}
+                  // Selection was driven entirely by elementFromPoint inside the
+                  // container's pointer handlers, so these buttons looked focusable
+                  // and did nothing on Enter or Space. A keyboard-generated click
+                  // reports detail 0, which is what keeps this from firing a second
+                  // selection after the pointer handlers have already made one.
+                  onClick={(event) => {
+                    if (event.detail !== 0) return;
+                    onSelectResidue?.(chain, residueNumber, residue, index, { rangeFromAnchor: event.shiftKey });
+                  }}
                 >
                   {residue}
                 </button>
