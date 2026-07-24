@@ -134,6 +134,7 @@ const [
   dockPanel,
   structureInfoPanel,
   foldingResultsPanel,
+  foldingResultsLib,
   closeIcon,
   shortcutTooltip,
   pageKinds,
@@ -339,6 +340,7 @@ const [
   source('apps/desktop/src/components/dock-panel.tsx'),
   source('apps/desktop/src/components/structure-info-panel.tsx'),
   source('apps/desktop/src/components/folding-results-panel.tsx'),
+  source('apps/desktop/src/lib/folding-results.ts'),
   source('apps/desktop/src/components/close-icon.tsx'),
   source('apps/desktop/src/components/shortcut-tooltip.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/index.ts'),
@@ -2471,6 +2473,12 @@ assert.match(structureInfoPanel, /XTB_SOLVATION_FLAG_LABELS\[part\.toLowerCase\(
 assert.match(structureInfoPanel, /if \(job\.inputLabel === document\.title\) return true;/);
 assert.match(structureInfoPanel, /const runningXtbJob = latestXtbJob\?\.status === "running" \? latestXtbJob : null/);
 // The panel the "Full PAE" button opens has to actually contain the matrix.
+// A structure with only a stray metadata sidecar is not a folding result, so the
+// card requires real folding signal rather than "any model or artifact".
+assert.match(foldingResultsLib, /const isFoldingArtifact = \(artifact: \{ kind: string \}\) => artifact\.kind !== "metadata"/);
+assert.match(foldingResultsLib, /model\.metrics\.length > 0/);
+assert.match(foldingResultsLib, /\|\| bundle\.artifacts\.some\(isFoldingArtifact\)/);
+assert.doesNotMatch(foldingResultsLib, /bundle\.models\.length > 0 \|\| bundle\.artifacts\.length > 0/);
 assert.match(foldingResultsPanel, /<FoldingMatrixHeatmap preview=\{activeModel\.matrixPreview\} size="large" \/>/);
 // A keyboard-generated click reports detail 0; the pointer handlers own the rest.
 assert.match(foldingResultsPanel, /if \(event\.detail !== 0\) return;/);

@@ -14,5 +14,17 @@ export async function readFoldingResultBundle(path: string): Promise<FoldingResu
 }
 
 export function hasFoldingResultContent(bundle: FoldingResultBundle | null) {
-  return Boolean(bundle && (bundle.models.length > 0 || bundle.artifacts.length > 0));
+  if (!bundle) return false;
+  // A structure sitting next to a stray JSON sidecar (e.g. an xTB run marker) is
+  // not a folding result. The backend classifies any loose .json as "metadata"
+  // and would otherwise show the whole folder as folding output. Require real
+  // folding signal instead: a confidence profile, a PAE matrix, per-model
+  // metrics, or an artifact that is more than app metadata.
+  const isFoldingArtifact = (artifact: { kind: string }) => artifact.kind !== "metadata";
+  return bundle.models.some((model) =>
+    model.metrics.length > 0
+    || Boolean(model.plddtProfile)
+    || Boolean(model.matrixPreview)
+    || model.artifacts.some(isFoldingArtifact),
+  ) || bundle.artifacts.some(isFoldingArtifact);
 }
