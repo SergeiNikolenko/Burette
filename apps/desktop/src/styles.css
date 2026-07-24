@@ -7406,6 +7406,16 @@ img.settings-open-destination-icon {
 }
 .settings-action-button:hover:not(:disabled) { background: var(--surface-subtle-strong); color: var(--text-primary); }
 .settings-action-button:disabled { opacity: 0.48; }
+.chemical-space-visual-controls {
+  container-type: inline-size;
+}
+
+@container (max-width: 580px) {
+  .chemical-space-visual-controls .chemical-space-control-name {
+    display: none;
+  }
+}
+
 @container settings-panel (max-width: 520px) {
   .settings-card { margin: 0; }
   .settings-control { display: grid; gap: 10px; }

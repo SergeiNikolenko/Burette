@@ -112,7 +112,7 @@ const completedEmbeddings = new Map<string, ChemicalSpaceResult>();
 const GRID_SELECTION_BRIDGE_LIMIT = 100_000;
 const MAX_MOLECULE_PREVIEW_BASE64_BYTES = 350_000;
 const MAX_LASSO_POINTS = 4_096;
-const DEFAULT_TMAP_EDGE_SCALE = 1;
+const DEFAULT_TMAP_LINE_SCALE = 1;
 const CLUSTER_COLORS = [
   "#38bdf8", "#fb7185", "#4ade80", "#facc15", "#f97316",
   "#22d3ee", "#a3e635", "#f472b6", "#60a5fa", "#fbbf24",
@@ -134,7 +134,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [hovered, setHovered] = useState<number | null>(null);
   const [preview, setPreview] = useState<MoleculePreview | null>(null);
   const [pointScale, setPointScale] = useState(1);
-  const [tmapEdgeScale, setTmapEdgeScale] = useState(DEFAULT_TMAP_EDGE_SCALE);
+  const [tmapLineScale, setTmapLineScale] = useState(DEFAULT_TMAP_LINE_SCALE);
   const [tool, setTool] = useState<"navigate" | "lasso">("navigate");
   const [study, setStudy] = useState(DEFAULT_STUDY);
   const [completedStudy, setCompletedStudy] = useState<CompletedStudy | null>(null);
@@ -165,7 +165,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setSelected(new Set());
     setHovered(null);
     setPreview(null);
-    setTmapEdgeScale(DEFAULT_TMAP_EDGE_SCALE);
+    setTmapLineScale(DEFAULT_TMAP_LINE_SCALE);
     setCompletedStudy(null);
     setStudyPosition(0);
     setStudyPlaying(false);
@@ -392,139 +392,156 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   return (
     <TooltipProvider>
       <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-testid="chemical-space-panel">
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-          <NativeSelect
-            size="sm"
-            aria-label="Molecular representation engine"
-            value={draft.representation}
-            onChange={(event) => {
-              const representation = event.currentTarget.value as ChemicalSpaceRepresentation;
-              const next = { ...draft, representation };
-              setDraft(next);
-              commitOptions(next);
-            }}
-          >
-            {CHEMICAL_SPACE_REPRESENTATIONS.map((representation) => (
-              <NativeSelectOption key={representation.value} value={representation.value}>
-                {representation.label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <NativeSelect
-            size="sm"
-            aria-label="Chemical-space method"
-            value={draft.method}
-            onChange={(event) => {
-              const method = event.currentTarget.value as ChemicalSpaceMethod;
-              const next = { ...draft, method };
-              setDraft(next);
-              if (method === "tmap") setStudy(studyDefaults("neighbors"));
-              commitOptions(next);
-            }}
-          >
-            {CHEMICAL_SPACE_METHODS.map((method) => (
-              <NativeSelectOption key={method.value} value={method.value}>{method.label}</NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            spacing={0}
-            value={draft.dimensions.toString()}
-            aria-label="Embedding dimensions"
-            onValueChange={(value) => {
-              if (value !== "2" && value !== "3") return;
-              const dimensions = Number(value) as 2 | 3;
-              const next = { ...draft, dimensions };
-              setDraft(next);
-              commitOptions(next);
-            }}
-          >
-            <ToggleGroupItem value="2" aria-label="2D embedding">2D</ToggleGroupItem>
-            <ToggleGroupItem value="3" aria-label="3D embedding">3D</ToggleGroupItem>
-          </ToggleGroup>
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            spacing={0}
-            value={tool}
-            aria-label="Chemical-space interaction"
-            onValueChange={(value) => {
-              if (value === "navigate" || value === "lasso") setTool(value);
-            }}
+        <div className="flex flex-col gap-2 border-b border-border px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <NativeSelect
+              size="sm"
+              aria-label="Molecular representation engine"
+              value={draft.representation}
+              onChange={(event) => {
+                const representation = event.currentTarget.value as ChemicalSpaceRepresentation;
+                const next = { ...draft, representation };
+                setDraft(next);
+                commitOptions(next);
+              }}
+            >
+              {CHEMICAL_SPACE_REPRESENTATIONS.map((representation) => (
+                <NativeSelectOption key={representation.value} value={representation.value}>
+                  {representation.label}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+            <NativeSelect
+              size="sm"
+              aria-label="Chemical-space method"
+              value={draft.method}
+              onChange={(event) => {
+                const method = event.currentTarget.value as ChemicalSpaceMethod;
+                const next = { ...draft, method };
+                setDraft(next);
+                if (method === "tmap") setStudy(studyDefaults("neighbors"));
+                commitOptions(next);
+              }}
+            >
+              {CHEMICAL_SPACE_METHODS.map((method) => (
+                <NativeSelectOption key={method.value} value={method.value}>{method.label}</NativeSelectOption>
+              ))}
+            </NativeSelect>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              spacing={0}
+              value={draft.dimensions.toString()}
+              aria-label="Embedding dimensions"
+              onValueChange={(value) => {
+                if (value !== "2" && value !== "3") return;
+                const dimensions = Number(value) as 2 | 3;
+                const next = { ...draft, dimensions };
+                setDraft(next);
+                commitOptions(next);
+              }}
+            >
+              <ToggleGroupItem value="2" aria-label="2D embedding">2D</ToggleGroupItem>
+              <ToggleGroupItem value="3" aria-label="3D embedding">3D</ToggleGroupItem>
+            </ToggleGroup>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              spacing={0}
+              value={tool}
+              aria-label="Chemical-space interaction"
+              onValueChange={(value) => {
+                if (value === "navigate" || value === "lasso") setTool(value);
+              }}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <ToggleGroupItem value="navigate">Explore</ToggleGroupItem>
+                </TooltipTrigger>
+                <TooltipContent showArrow={false}>Pan, orbit, zoom, and inspect molecules</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <ToggleGroupItem value="lasso">Lasso</ToggleGroupItem>
+                </TooltipTrigger>
+                <TooltipContent showArrow={false}>Draw a free-form selection linked to Grid</TooltipContent>
+              </Tooltip>
+            </ToggleGroup>
+            {displayedResult ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    className="ml-auto"
+                    variant="outline"
+                    aria-label={resultTimingDescription(displayedResult)}
+                  >
+                    {displayedResult.successfulRecords.toLocaleString()} molecules · Metal
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent showArrow={false}>
+                  {representationLabel(displayedResult.representation)}
+                  {": "}{similarityTimeLabel(displayedResult)}
+                  {" · "}{resultTimingLabel(displayedResult)}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Badge className="ml-auto" variant="outline">
+                {progress ? <Spinner data-icon="inline-start" /> : null}
+                {runningLabel}
+              </Badge>
+            )}
+          </div>
+          <div
+            className="chemical-space-visual-controls flex w-full items-center gap-3"
+            data-testid="chemical-space-visual-controls"
           >
             <Tooltip>
               <TooltipTrigger asChild>
-                <ToggleGroupItem value="navigate">Explore</ToggleGroupItem>
+                <Field orientation="horizontal" className="min-w-0 max-w-44 flex-1 gap-2">
+                  <FieldLabel className="chemical-space-control-name shrink-0 text-xs text-muted-foreground">Size</FieldLabel>
+                  <Slider
+                    className="min-w-10 flex-1"
+                    tone="neutral"
+                    min={0.5}
+                    max={3}
+                    step={0.1}
+                    value={[pointScale]}
+                    aria-label="Point size"
+                    onValueChange={([value]) => setPointScale(value)}
+                  />
+                  <span className="w-9 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
+                    {Math.round(pointScale * 100)}%
+                  </span>
+                </Field>
               </TooltipTrigger>
-              <TooltipContent showArrow={false}>Pan, orbit, zoom, and inspect molecules</TooltipContent>
+              <TooltipContent showArrow={false}>Point size · {Math.round(pointScale * 100)}%</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToggleGroupItem value="lasso">Lasso</ToggleGroupItem>
-              </TooltipTrigger>
-              <TooltipContent showArrow={false}>Draw a free-form selection linked to Grid</TooltipContent>
-            </Tooltip>
-          </ToggleGroup>
-          <Field orientation="horizontal" className="w-44 shrink-0 gap-2">
-            <FieldLabel className="text-xs text-muted-foreground">Size</FieldLabel>
-            <Slider
-              className="w-20"
-              tone="neutral"
-              min={0.5}
-              max={3}
-              step={0.1}
-              value={[pointScale]}
-              aria-label="Point size"
-              onValueChange={([value]) => setPointScale(value)}
-            />
-            <span className="w-9 text-right font-mono text-[10px] text-muted-foreground">
-              {Math.round(pointScale * 100)}%
-            </span>
-          </Field>
-          {draft.method === "tmap" ? (
-            <Field orientation="horizontal" className="w-48 shrink-0 gap-2">
-              <FieldLabel className="text-xs text-muted-foreground">Length</FieldLabel>
-              <Slider
-                className="w-20"
-                tone="neutral"
-                aria-label="TMAP tree edge length"
-                min={0.5}
-                max={3}
-                step={0.1}
-                value={[tmapEdgeScale]}
-                onValueChange={([scale]) => setTmapEdgeScale(scale)}
-              />
-              <span className="w-9 text-right font-mono text-[10px] text-muted-foreground">
-                {Math.round(tmapEdgeScale * 100)}%
-              </span>
-            </Field>
-          ) : null}
-          {displayedResult ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge
-                  className="ml-auto"
-                  variant="outline"
-                  aria-label={resultTimingDescription(displayedResult)}
-                >
-                  {displayedResult.successfulRecords.toLocaleString()} molecules · Metal
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent showArrow={false}>
-                {representationLabel(displayedResult.representation)}
-                {": "}{similarityTimeLabel(displayedResult)}
-                {" · "}{resultTimingLabel(displayedResult)}
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <Badge className="ml-auto" variant="outline">
-              {progress ? <Spinner data-icon="inline-start" /> : null}
-              {runningLabel}
-            </Badge>
-          )}
+            {draft.method === "tmap" ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Field orientation="horizontal" className="min-w-0 max-w-44 flex-1 gap-2">
+                    <FieldLabel className="chemical-space-control-name shrink-0 text-xs text-muted-foreground">Width</FieldLabel>
+                    <Slider
+                      className="min-w-10 flex-1"
+                      tone="neutral"
+                      aria-label="TMAP tree line width"
+                      min={0.5}
+                      max={3}
+                      step={0.1}
+                      value={[tmapLineScale]}
+                      onValueChange={([scale]) => setTmapLineScale(scale)}
+                    />
+                    <span className="w-9 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
+                      {Math.round(tmapLineScale * 100)}%
+                    </span>
+                  </Field>
+                </TooltipTrigger>
+                <TooltipContent showArrow={false}>TMAP line width · {Math.round(tmapLineScale * 100)}%</TooltipContent>
+              </Tooltip>
+            ) : null}
+          </div>
         </div>
 
         <div className="relative min-h-0 flex-1">
@@ -536,7 +553,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               hovered={hovered}
               preview={preview}
               pointScale={pointScale}
-              tmapEdgeScale={tmapEdgeScale}
+              tmapLineScale={tmapLineScale}
               tool={tool}
               onHover={(sourceRecordId) => {
                 setHovered(sourceRecordId);
@@ -619,7 +636,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               <DropdownMenuGroup>
                 <DropdownMenuItem
                   onSelect={() => {
-                    setTmapEdgeScale(DEFAULT_TMAP_EDGE_SCALE);
+                    setTmapLineScale(DEFAULT_TMAP_LINE_SCALE);
                     setDraft((current) => ({
                       ...DEFAULT_OPTIONS,
                       representation: current.representation,
@@ -800,7 +817,7 @@ type ChemicalSpaceCanvasProps = {
   hovered: number | null;
   preview: MoleculePreview | null;
   pointScale: number;
-  tmapEdgeScale: number;
+  tmapLineScale: number;
   tool: "navigate" | "lasso";
   onHover: (sourceRecordId: number | null) => void;
   onSelect: (sourceRecordIds: number[]) => void;
@@ -808,16 +825,8 @@ type ChemicalSpaceCanvasProps = {
 
 function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
   const normalized = useMemo(
-    () => {
-      const positions = normalizeChemicalSpacePositions(props.result.positions);
-      if (props.result.method !== "tmap") return positions;
-      return positions.map(([x, y, z]) => [
-        x * props.tmapEdgeScale,
-        y * props.tmapEdgeScale,
-        z * props.tmapEdgeScale,
-      ] as [number, number, number]);
-    },
-    [props.result.method, props.result.positions, props.tmapEdgeScale],
+    () => normalizeChemicalSpacePositions(props.result.positions),
+    [props.result.positions],
   );
   if (props.result.dimensions === 3) {
     return (
@@ -831,6 +840,7 @@ function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
         hovered={props.hovered}
         preview={props.preview}
         pointScale={props.pointScale}
+        treeLineScale={props.tmapLineScale}
         tool={props.tool}
         methodLabel={methodLabel(props.result.method)}
         onHover={props.onHover}
@@ -848,6 +858,7 @@ function ChemicalSpace2D({
   hovered,
   preview,
   pointScale,
+  tmapLineScale,
   tool,
   onHover,
   onSelect,
@@ -911,7 +922,7 @@ function ChemicalSpace2D({
       }
       context.strokeStyle = pointColor;
       context.globalAlpha = 0.48;
-      context.lineWidth = Math.max(1.5, Math.min(3.5, pointScale * 1.5));
+      context.lineWidth = Math.max(1.5, Math.min(3.5, pointScale * 1.5)) * tmapLineScale;
       context.stroke();
     }
     for (const point of [...projected].sort((left, right) => left.depth - right.depth)) {
@@ -950,7 +961,7 @@ function ChemicalSpace2D({
       context.stroke();
       context.setLineDash([]);
     }
-  }, [camera, clusterBySource, hovered, lasso, normalized, pointScale, result.sourceRecordIds, result.treeEdges, selected, viewport]);
+  }, [camera, clusterBySource, hovered, lasso, normalized, pointScale, result.sourceRecordIds, result.treeEdges, selected, tmapLineScale, viewport]);
 
   const localPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();

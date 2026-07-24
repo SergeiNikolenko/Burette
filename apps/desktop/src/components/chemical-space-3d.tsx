@@ -24,6 +24,7 @@ type ChemicalSpace3DProps = {
   hovered: number | null;
   preview: MoleculePreview | null;
   pointScale: number;
+  treeLineScale: number;
   tool: "navigate" | "lasso";
   methodLabel: string;
   onHover: (sourceRecordId: number | null) => void;
@@ -36,6 +37,7 @@ type ThreeRuntime = {
   updateSelected: (sourceRecordIds: Set<number>) => void;
   updatePreview: (preview: MoleculePreview | null) => void;
   updatePointScale: (pointScale: number) => void;
+  updateTreeLineScale: (treeLineScale: number) => void;
   updateClusters: (clusterIds: Array<number | null>) => void;
 };
 
@@ -53,6 +55,7 @@ export function ChemicalSpace3D({
   hovered,
   preview,
   pointScale,
+  treeLineScale,
   tool,
   methodLabel,
   onHover,
@@ -125,7 +128,7 @@ export function ChemicalSpace3D({
     treeGeometry.setPositions(treePositions(positions));
     const treeMaterial = new LineMaterial({
       color: foregroundColor,
-      linewidth: 2.25,
+      linewidth: 2.25 * treeLineScale,
       opacity: 0.5,
       transparent: true,
     });
@@ -226,6 +229,10 @@ export function ChemicalSpace3D({
       points.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
       selectedPoints.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
       hoveredPoints.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
+      render();
+    };
+    const updateTreeLineScale = (nextTreeLineScale: number) => {
+      treeMaterial.linewidth = 2.25 * nextTreeLineScale;
       render();
     };
     const updateClusters = (nextClusterIds: Array<number | null>) => {
@@ -364,6 +371,7 @@ export function ChemicalSpace3D({
       updateSelected,
       updatePreview,
       updatePointScale,
+      updateTreeLineScale,
       updateClusters,
     };
     updateSelected(selected);
@@ -405,6 +413,7 @@ export function ChemicalSpace3D({
   useEffect(() => runtimeRef.current?.updateHovered(hovered), [hovered]);
   useEffect(() => runtimeRef.current?.updatePreview(preview), [preview]);
   useEffect(() => runtimeRef.current?.updatePointScale(pointScale), [pointScale]);
+  useEffect(() => runtimeRef.current?.updateTreeLineScale(treeLineScale), [treeLineScale]);
   useEffect(() => runtimeRef.current?.updateClusters(clusterIds), [clusterIds]);
 
   useEffect(() => {
