@@ -46,19 +46,23 @@ function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
 }
 
-function rightDockOverlap(workbenchWidth: number) {
+// The overlap floats over the main content, which suits a centered viewer but
+// hides an interactive grid's toolbar and menus, so grids opt out and the dock
+// squeezes them normally instead.
+function rightDockOverlap(workbenchWidth: number, allowOverlap: boolean) {
+  if (!allowOverlap) return 0;
   return Math.round(Math.max(0, workbenchWidth) * RIGHT_DOCK_OVERLAY_RATIO);
 }
 
 // Widest the right dock may get: the room left beside a floored viewer, plus
 // the overlap it is allowed to float over that viewer.
-function rightDockMaxWidth(workbenchWidth: number) {
-  const overlap = rightDockOverlap(workbenchWidth);
+function rightDockMaxWidth(workbenchWidth: number, allowOverlap: boolean) {
+  const overlap = rightDockOverlap(workbenchWidth, allowOverlap);
   return Math.max(0, Math.min(RIGHT_DOCK_MAX_WIDTH + overlap, workbenchWidth - MAIN_MIN_WIDTH + overlap));
 }
 
-function clampRightDockWidth(width: number, workbenchWidth: number) {
-  const maxWidth = rightDockMaxWidth(workbenchWidth);
+function clampRightDockWidth(width: number, workbenchWidth: number, allowOverlap: boolean) {
+  const maxWidth = rightDockMaxWidth(workbenchWidth, allowOverlap);
   const minWidth = Math.min(180, maxWidth);
   return Math.max(minWidth, Math.min(maxWidth, Math.round(width)));
 }
@@ -290,10 +294,13 @@ export function AppLayout({
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = sidebarVisible ? sidebarWidth : 0;
   const workbenchWidth = viewportWidth - sidebarLayoutWidth;
+  // A grid's toolbar must stay clear of the dock, so it keeps the dock from
+  // overlapping; a viewer lets the dock float over its edges.
+  const allowRightDockOverlap = state.activeDocument?.renderer !== "grid2d";
   // The viewer column may be squeezed this far below its floor; the dock covers
   // the difference rather than the content shrinking into it.
-  const mainMinLayoutWidth = Math.max(0, MAIN_MIN_WIDTH - rightDockOverlap(workbenchWidth));
-  const rightDockWidth = clampRightDockWidth(state.rightDockWidth, workbenchWidth);
+  const mainMinLayoutWidth = Math.max(0, MAIN_MIN_WIDTH - rightDockOverlap(workbenchWidth, allowRightDockOverlap));
+  const rightDockWidth = clampRightDockWidth(state.rightDockWidth, workbenchWidth, allowRightDockOverlap);
   const layoutState = sidebarWidth === state.sidebarWidth && rightDockWidth === state.rightDockWidth ? state : { ...state, sidebarWidth, rightDockWidth };
   const compactLeadingChrome = !tauriRuntime || windowFullscreen;
   // How far the leading window controls reach: the tab strip starts past them
@@ -608,7 +615,7 @@ export function AppLayout({
                   collapsedSize="0px"
                   defaultSize={`${initialRightDockSize}px`}
                   minSize="260px"
-                  maxSize={`${rightDockMaxWidth(workbenchWidth)}px`}
+                  maxSize={`${rightDockMaxWidth(workbenchWidth, allowRightDockOverlap)}px`}
                   groupResizeBehavior="preserve-pixel-size"
                 >
                   <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
