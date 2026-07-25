@@ -2773,7 +2773,13 @@ assert.match(structureBrief, /\["cube", "cub"\]/);
 assert.match(styles, /\.structure-brief-card \{/);
 assert.match(styles, /\.structure-brief-actions \{/);
 assert.match(styles, /\.structure-inspector-header \{/);
-assert.doesNotMatch(structureInfoPanel, /structure-inspector-row-action/);
+// Per-row buttons were once removed from the inspector and the removal pinned
+// here. They are back deliberately, and only on the four group rows: the panel
+// lists the same objects as the viewer's scene tree, so it offers the same
+// controls - a colour bar, a visibility toggle and a remove button.
+assert.match(structureInfoPanel, /className="structure-inspector-row-action"/);
+assert.match(styles, /\.structure-inspector-row-action \{/);
+assert.match(structureInfoPanel, /className="structure-inspector-row-bar"/);
 assert.doesNotMatch(structureInfoPanel, /rowActionLabel/);
 assert.doesNotMatch(structureInfoPanel, /selectedEntity\.action\.type === "focus_ligand" \? "Focus" : "Select"/);
 assert.doesNotMatch(structureInfoPanel, /Select residues/);

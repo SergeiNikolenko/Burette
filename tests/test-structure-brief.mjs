@@ -414,11 +414,12 @@ assert.equal(rowValue(miniGro.componentRows, "Polymers"), "1 chain / 1 residue /
 assert.match(rowValue(miniGro.componentRows, "Ions"), /NA 1/);
 assert.equal(miniGro.componentRows.find((row) => row.label === "Ions")?.action?.type, "select_residues");
 assert.equal(miniGro.componentRows.find((row) => row.label === "Ions")?.action?.selector.kind, "ion");
-// Water and its hide/show actions live on the componentRows summary now;
-// solventRows lists only the individual ions behind it.
+// Water sits on the componentRows summary; solventRows lists only the
+// individual ions behind it. Clicking it selects, the way every other group
+// row does - hiding is a visibility control, not what a row click means.
 assert.equal(rowValue(miniGro.componentRows, "Water"), "1 molecule / 2 atoms");
-assert.equal(miniGro.componentRows.find((row) => row.label === "Water")?.action?.type, "hide_waters");
-assert.equal(miniGro.componentRows.find((row) => row.label === "Water")?.secondaryAction?.type, "show_waters");
+assert.equal(miniGro.componentRows.find((row) => row.label === "Water")?.action?.type, "select_residues");
+assert.equal(miniGro.componentRows.find((row) => row.label === "Water")?.action?.selector.kind, "water");
 assert.equal(miniGro.solventRows.find((row) => row.label === "Water"), undefined);
 assert.equal(miniGro.solventRows.find((row) => row.label === "NA")?.action?.selector.kind, "ion");
 
