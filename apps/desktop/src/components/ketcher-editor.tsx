@@ -40,6 +40,7 @@ export type KetcherEditorApi = {
 
 type KetcherReactModule = typeof import("ketcher-react");
 type KetcherReactInstance = Parameters<NonNullable<ComponentProps<KetcherReactModule["Editor"]>["onInit"]>>[0];
+type KetcherButtonsConfig = NonNullable<ComponentProps<KetcherReactModule["Editor"]>["buttons"]>;
 type EveModule = typeof import("eve-raphael");
 type RaphaelModule = typeof import("raphael");
 type KetcherCoreModule = typeof import("ketcher-core");
@@ -81,6 +82,10 @@ type KetcherWithEditorStruct = Ketcher & {
   changeEvent?: KetcherSubscription;
 };
 const KETCHER_INSTANCE_RETRY_DELAYS_MS = [0, 250, 500, 1000, 1500, 2500, 4000, 6000] as const;
+const BURETTE_KETCHER_BUTTONS = {
+  // Ketcher 3.15 supports this runtime key, but omits it from ButtonName.
+  images: { hidden: true },
+} as unknown as KetcherButtonsConfig;
 
 declare global {
   interface Window {
@@ -507,6 +512,7 @@ export function KetcherEditor({
       <Editor
         staticResourcesUrl={import.meta.env.BASE_URL}
         structServiceProvider={structServiceProvider}
+        buttons={BURETTE_KETCHER_BUTTONS}
         onInit={handleInit}
         errorHandler={handleError}
       />
