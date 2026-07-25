@@ -537,7 +537,9 @@ body.burette-mobile-host #buret-scene-tree {
 .buret-viewport-rail {
   position: fixed;
   top: var(--buret-viewport-rail-top, calc(var(--buret-toolbar-safe-top) + 42px));
-  right: var(--buret-viewport-rail-right, var(--buret-control-island-right));
+  /* The top toolbar can be dragged. This rail belongs to the viewport edge,
+     so its horizontal position must respond directly to viewport resizing. */
+  right: var(--buret-control-island-right);
   z-index: 40;
   box-sizing: border-box;
   display: flex;

@@ -4331,9 +4331,6 @@
       ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - railRect.left + FLOATING_LAYOUT_GAP * 2))
       : 70;
     root.style.setProperty('--buret-generate-3d-control-right', generate3DControlRight + 'px');
-    root.style.setProperty('--buret-viewport-rail-right', toolbarRect
-      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - toolbarRect.right)) + 'px'
-      : 'var(--buret-control-island-right)');
     const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row')
       || visibleRect('#buret-selection-bar');
     // The squared-off join only makes sense while the two actually meet; rolled up,

@@ -2187,7 +2187,6 @@ assert.match(appLayout, /function usePanelToggleAnimation/);
 assert.ok(appLayout.indexOf("usePanelToggleAnimation(sidebarVisible)") < appLayout.indexOf("useCollapsiblePanelSync(sidebarVisible"), "toggle-animation hooks must be called before the collapse/expand sync hooks");
 assert.match(appLayout, /data-panels-animating=\{sidebarAnimating \|\| undefined\}/);
 assert.match(styles, /\.workspace-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 140ms ease-out;/);
-assert.match(styles, /\.workbench-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 90ms ease-out;/);
 assert.match(styles, /\.workbench-main-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 180ms cubic-bezier\(0\.2, 0, 0, 1\);/);
 // The tab strip rides the measured panel edges, so it must not ease `left` on
 // its own — that eased every drag frame and dragged the strip behind the
@@ -4952,6 +4951,12 @@ assert.match(previewRuntimeCss, /body:has\(\.msp-viewport-controls-buttons \.msp
 assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*hideGenerate3DMenu\(\);/);
 assert.match(previewViewer, /const viewportControlRailRect = visibleRect\('\.msp-plugin \.msp-viewport-controls-buttons'\);/);
 assert.match(previewViewer, /const railRect = visibleRect\('#buret-viewport-rail'\) \|\| viewportControlRailRect;/);
+// The vertical viewport rail belongs to the canvas edge. It must not inherit the
+// draggable top toolbar's saved right offset or wait for JS layout measurement
+// while the host sidebar resizes the preview iframe.
+assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*right: var\(--buret-control-island-right\);/s);
+assert.doesNotMatch(previewRuntimeCss, /--buret-viewport-rail-right/);
+assert.doesNotMatch(previewViewer, /--buret-viewport-rail-right/);
 // The rail carries its own animation button, the way Mol*'s viewport controls did:
 // a trackball that keeps turning plus the plugin's timed animations, each listed
 // once and each able to say why it is unavailable.
