@@ -307,7 +307,12 @@ assert.match(representativeExport, /table_only_record_count/);
 // a fatal error with a Retry button that could only fail again. Large collections
 // additionally wait for an explicit confirmation instead of embedding hundreds of
 // thousands of molecules just because a tab was opened.
-assert.match(chemicalSpacePanel, /if \(indexing \|\| needsConfirmation\) return;/);
+assert.match(chemicalSpacePanel, /if \(awaitingIndexState \|\| indexing \|\| needsConfirmation\) return;/);
+// An unanswered probe must gate too: indexState is null on first render, so
+// reading unknown as "small and ready" submitted the job the gate exists to hold.
+assert.match(chemicalSpacePanel, /const awaitingIndexState = !indexProbed;/);
+// The dock stays mounted across documents, so the confirmation must not carry over.
+assert.match(chemicalSpacePanel, /setConfirmedLargeRun\(false\);\n  \}, \[documentId\]\);/);
 assert.match(chemicalSpacePanel, /const needsConfirmation = !indexing && recordCount > AUTO_RUN_RECORD_LIMIT && !confirmedLargeRun;/);
 assert.match(chemicalSpacePanel, /requestChemicalSpaceIndexState\(documentId, controller\.signal\)/);
 assert.match(chemicalSpacePanel, /actionLabel="Calculate chemical space"/);

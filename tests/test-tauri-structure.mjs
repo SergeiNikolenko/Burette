@@ -518,7 +518,11 @@ assert.match(gridCommand, /registry\.append_text_with_options/);
 assert.match(previewGridStore, /fn resolve_smiles_columns/);
 assert.match(previewGridStore, /struct GridParseOptions/);
 assert.match(previewGridStore, /struct GridDelimitedColumnChoice/);
-assert.match(previewGridStore, /fn infer_smiles_columns_from_values/);
+// Inference streams the source once, counting per column, instead of taking a
+// pre-built row slice and re-parsing every row for each column.
+assert.match(previewGridStore, /fn infer_smiles_columns_from_source/);
+assert.match(previewGridStore, /const SMILES_INFERENCE_SAMPLE_VALUES: usize = 512/);
+assert.match(previewGridStore, /const SMILES_INFERENCE_MAX_SCANNED_ROWS: usize = 20_000/);
 assert.match(previewGridStore, /fn is_likely_smiles_column/);
 assert.match(previewGridStore, /fn delimited_smiles_column_choices/);
 assert.match(previewGridStore, /value == "smile" \|\| value\.contains\("smiles"\)/);
