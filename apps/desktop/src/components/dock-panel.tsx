@@ -1230,44 +1230,37 @@ function XtbJobList({
                   {job.inputLabel}
                 </span>
               </div>
+              {/* A finished job used to carry Log and Open result side by side
+                  and a running one a lone Cancel, so the row's width changed
+                  with its state. One button and its menu, like a tool row. */}
               {isRunning || job.result ? (
                 <div className="dock-inline-action-row">
-                  {isRunning ? (
-                    <button
-                      type="button"
-                      className="dock-action dock-action-compact"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void actions.cancelXtbJob(job.id);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  ) : null}
-                  {job.result ? (
-                    <button
-                      type="button"
-                      className="dock-action dock-action-compact"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void actions.openTextPaths([job.result!.logPath]);
-                      }}
-                    >
-                      Log
-                    </button>
-                  ) : null}
-                  {primaryOpenPath ? (
-                    <button
-                      type="button"
-                      className="dock-action dock-action-compact"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openJobResult();
-                      }}
-                    >
-                      Open result
-                    </button>
-                  ) : null}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="xs"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (isRunning) void actions.cancelXtbJob(job.id);
+                      else openJobResult();
+                    }}
+                    disabled={!isRunning && !primaryOpenPath}
+                  >
+                    {isRunning ? "Cancel" : "Open"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    className="dock-job-menu-button"
+                    aria-label={`${job.title} actions`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      showJobMenu(event as unknown as React.MouseEvent<HTMLDivElement>);
+                    }}
+                  >
+                    ⌄
+                  </Button>
                 </div>
               ) : null}
             </div>

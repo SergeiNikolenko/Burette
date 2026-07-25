@@ -3757,8 +3757,12 @@ img.radix-menu-item-icon {
   display: flex;
   gap: 4px;
 }
-.structure-inspector-tool-menu-button {
+.structure-inspector-tool-menu-button,
+.dock-job-menu-button {
   padding-inline: 6px;
+}
+.structure-inspector-tool.grid-descriptor-status .grid-descriptor-progress {
+  margin-top: 4px;
 }
 .dock-empty-state {
   gap: 10px;

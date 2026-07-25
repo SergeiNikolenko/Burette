@@ -47,34 +47,45 @@ export function GridDescriptorStatus({ documentId }: { documentId: string }) {
   const done = Math.min(job.processedRows || 0, total);
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
+  // A run of its own card sat between the composition and the engines, so a
+  // descriptor pass pushed the tools down and then vanished. It reads as a
+  // tool row inside Tools instead, where the other running work already is.
   if (job.running) {
     return (
-      <section className="structure-brief-card grid-descriptor-status" data-state="running">
-        <div className="grid-descriptor-status-head">
-          <span className="grid-descriptor-spinner" aria-hidden />
-          <span className="grid-descriptor-status-title">Calculating descriptors</span>
-          {total > 0 ? <span className="grid-descriptor-status-count">{done.toLocaleString()} / {total.toLocaleString()}</span> : null}
-        </div>
-        {total > 0 ? (
+      <div className="structure-inspector-tool grid-descriptor-status" data-state="running">
+        <span className="structure-inspector-tool-rail" aria-hidden="true" />
+        <span className="structure-inspector-tool-main">
+          <span className="structure-inspector-tool-name">
+            RDKit
+            <em>descriptors</em>
+          </span>
+          <span className="structure-inspector-tool-detail">
+            {total > 0 ? `Calculating · ${done.toLocaleString()} of ${total.toLocaleString()}` : "Calculating descriptors"}
+          </span>
           <div className="grid-descriptor-progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-            <span style={{ width: `${pct}%` }} />
+            <span style={{ width: total > 0 ? `${pct}%` : "100%" }} />
           </div>
-        ) : (
-          <div className="grid-descriptor-progress indeterminate" aria-hidden><span /></div>
-        )}
-      </section>
+        </span>
+      </div>
     );
   }
 
   const failed = job.status === "failed";
   const added = job.summary?.descriptorIdCount ?? 0;
   return (
-    <section className="structure-brief-card grid-descriptor-status" data-state={failed ? "failed" : "done"}>
-      <div className="grid-descriptor-status-head">
-        <span className="grid-descriptor-status-title">{failed ? "Descriptor run failed" : "Descriptors calculated"}</span>
-        {!failed && added > 0 ? <span className="grid-descriptor-status-count">{added.toLocaleString()} columns</span> : null}
-      </div>
-      {failed && job.message ? <div className="grid-descriptor-status-message">{job.message}</div> : null}
-    </section>
+    <div className="structure-inspector-tool grid-descriptor-status" data-state={failed ? "missing" : "ready"}>
+      <span className="structure-inspector-tool-rail" aria-hidden="true" />
+      <span className="structure-inspector-tool-main">
+        <span className="structure-inspector-tool-name">
+          RDKit
+          <em>descriptors</em>
+        </span>
+        <span className="structure-inspector-tool-detail">
+          {failed
+            ? job.message || "Descriptor run failed"
+            : added > 0 ? `Added ${added.toLocaleString()} ${added === 1 ? "column" : "columns"}` : "Descriptors calculated"}
+        </span>
+      </span>
+    </div>
   );
 }

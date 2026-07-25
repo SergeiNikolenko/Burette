@@ -370,7 +370,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
       <FoldingResultsPanel state={foldingResult} actions={actions} />
 
       {!hostedMcpWidget && !trajectoryDocument && !virtualScene ? <>
-        {document?.renderer === "grid2d" ? <GridDescriptorStatus documentId={document.id} /> : null}
         {gridFilterModel ? <GridFilterSection model={gridFilterModel} actions={actions} /> : null}
         <InspectorEngineCard
           className="structure-inspector-xtb-card"
@@ -436,6 +435,11 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
             oversizedNotice={oversizedNotice}
             actions={actions}
           />
+          {document.renderer === "grid2d" ? (
+            <div className="structure-inspector-tools">
+              <GridDescriptorStatus documentId={document.id} />
+            </div>
+          ) : null}
           {xtbSettingsOpen ? (
             <XtbInlineSettings
               settings={xtbSettings}
