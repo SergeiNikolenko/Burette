@@ -409,6 +409,7 @@ export default function App() {
     browserDevExplicitFolders,
     browserDevHasExplicitWorkspace: browserDevHasExplicitWorkspaceQuery,
     documents,
+    expandedProjectIds,
     hiddenProjectRoots,
     pinnedProjectRoots,
     pinnedStructurePaths,
@@ -417,7 +418,9 @@ export default function App() {
     pruneRecentStructures,
     pruneSidebarPaths,
     pushErrorStatus,
+    pushStatus,
     recentStructures,
+    sidebarQuery,
   });
 
   const activeTextDocument = useAppActiveTextDocument({ activeTab, textDocuments });
@@ -491,6 +494,7 @@ export default function App() {
     openStructureUrlInMolstar,
     openTextDocuments,
   } = useAppFileOpen({
+    addProjectRoot,
     addBackgroundDocuments,
     addBackgroundTextDocuments,
     addDocuments,
