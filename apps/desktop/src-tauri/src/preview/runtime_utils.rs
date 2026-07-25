@@ -31,6 +31,10 @@ fn percent_encode_path(path: &Path) -> String {
         .collect()
 }
 
+// Test-only since the grid parsers went single-pass: splitting a whole source into
+// an owned Vec<String> is exactly the shape that made ingest quadratic, so no
+// production path should reach for it again.
+#[cfg(test)]
 pub(crate) fn normalized_lines(text: &str) -> Vec<String> {
     text.replace("\r\n", "\n")
         .replace('\r', "\n")

@@ -24,7 +24,8 @@ use super::{
         freeze_grid_scope, plan_grid_scope_snapshot, prepare_grid_scope, FrozenGridSnapshot,
     },
     grid_store::{
-        build_grid_store, replace_descriptor_values_in_database, GridDescriptorValueInput,
+        build_grid_store, open_descriptor_source, replace_descriptor_values_in_database,
+        GridDescriptorValueInput,
     },
     snapshot_fs::{
         PublishedSnapshotRoot, SnapshotPublicationRoot, SnapshotRootEntry, SnapshotStaging,
@@ -272,9 +273,11 @@ fn freezes_shared_descriptor_and_analysis_predicates() {
     };
     drop(connection);
 
+    let mut descriptor_connection =
+        open_descriptor_source(&database_path).expect("open descriptor source");
     for (molecule, descriptor) in molecules.iter().zip([0.5, 2.0, 3.0]) {
         replace_descriptor_values_in_database(
-            &database_path,
+            &mut descriptor_connection,
             molecule.0,
             &[GridDescriptorValueInput {
                 id: "logP".into(),
