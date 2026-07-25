@@ -499,6 +499,11 @@ assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,/s);
 assert.match(previewRuntimeGrid, /"documentId": document_id,/);
 assert.doesNotMatch(previewRuntimeGrid, /"documentId": registry_document_id/);
 assert.match(previewRuntime, /let runtime_document_id = crate::windows::runtime_document_id\(window_label, &document_id\);\s*if let Some\(runtime_path\) = create_grid_runtime_with_options\(\s*app,\s*&document_id,\s*&runtime_document_id,/s);
+assert.match(
+  previewRuntime,
+  /if !is_sdf && !should_use_viewer_for_sdf/,
+  "a single SDF must not be parsed through the Grid runtime twice before its viewer fallback",
+);
 assert.match(documentsCommand, /let document_id = crate::preview::runtime_utils::stable_id\(Path::new\(&path\)\);/);
 assert.match(documentsCommand, /let runtime_document_id = crate::windows::runtime_document_id\(window_label, &document_id\);/);
 assert.match(documentsCommand, /create_grid_runtime_with_options\(\s*app,\s*&document_id,\s*&runtime_document_id,/s);
