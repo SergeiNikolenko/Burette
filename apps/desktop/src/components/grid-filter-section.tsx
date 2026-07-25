@@ -296,6 +296,7 @@ function FilterCard({ column, actions }: { column: GridFilterColumn; actions: Sh
 // command back to it, and the next model it publishes is the confirmation.
 export function GridFilterSection({ model, actions }: { model: GridFilterModel; actions: ShellActions }) {
   const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(true);
   const columns = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return model.columns.filter((column) => !needle || column.label.toLowerCase().includes(needle));
@@ -304,9 +305,19 @@ export function GridFilterSection({ model, actions }: { model: GridFilterModel; 
   const activeCount = model.columns.filter((column) => column.filter).length;
 
   return (
-    <section className="structure-brief-card grid-filter-card-host">
+    // Filters is a section like the rest of the panel: it folds away when the
+    // table is not what you are looking at, and its header says how many
+    // filters are on so the count survives the fold.
+    <section className="structure-brief-card structure-inspector-section grid-filter-card-host" data-collapsed={!open || undefined}>
       <div className="structure-inspector-section-header">
-        <h4>Filters</h4>
+        <button
+          type="button"
+          className="structure-inspector-section-title-button"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          Filters
+        </button>
         {activeCount ? (
           <button type="button" className="grid-filter-clear" onClick={() => actions.clearGridColumnFilters()}>
             Clear all
@@ -315,6 +326,7 @@ export function GridFilterSection({ model, actions }: { model: GridFilterModel; 
           <span>{model.columns.length.toLocaleString()} columns</span>
         )}
       </div>
+      {open ? <>
       <div className="grid-filter-count">
         {model.visible.toLocaleString()} of {model.total.toLocaleString()} molecules
       </div>
@@ -335,6 +347,7 @@ export function GridFilterSection({ model, actions }: { model: GridFilterModel; 
         ) : null}
         {columns.length ? null : <div className="dock-empty">No filterable columns</div>}
       </div>
+      </> : null}
     </section>
   );
 }
