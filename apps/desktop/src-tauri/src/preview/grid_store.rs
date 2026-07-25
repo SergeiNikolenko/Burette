@@ -250,12 +250,20 @@ struct PageSortClause {
 #[derive(Debug)]
 struct ParsedGridBatch {
     records: Vec<GridInputRecord>,
-    // Where the next batch resumes. The unit is the producing parser's own: SDF
-    // resumes at a byte offset, the line-oriented parsers at a line index.
-    // Callers only ever hand it back to the same parser.
-    next_cursor: usize,
+    next_cursor: GridCursor,
     next_index: usize,
     complete: bool,
+}
+
+// Where the next batch resumes. Callers only ever hand it back to the parser
+// that produced it, which is why one type covers formats that need different
+// things: the byte offset lets a parser continue without re-reading the source
+// from the start, and `row` carries the source-row number that the delimited
+// parsers put in each record's "CSV row" property.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct GridCursor {
+    offset: usize,
+    row: usize,
 }
 
 impl GridRuntimeRegistry {
@@ -426,8 +434,14 @@ pub(crate) fn build_grid_store_with_options(
     let connection = open_grid_database(&database_path)?;
     initialize_schema(&connection)?;
     let cancel_token = Arc::new(AtomicBool::new(false));
-    let first_batch =
-        parse_grid_batch_with_options(extension, &text, 0, 0, GRID_INITIAL_ROWS, options)?;
+    let first_batch = parse_grid_batch_with_options(
+        extension,
+        &text,
+        GridCursor::default(),
+        0,
+        GRID_INITIAL_ROWS,
+        options,
+    )?;
     if first_batch.records.is_empty() && first_batch.complete {
         let _ = std::fs::remove_file(&database_path);
         return Ok(None);
@@ -492,7 +506,7 @@ fn append_grid_text(
         .map_err(|error| error.to_string())?;
     let start_index = molecule_count(&transaction)?;
     let mut records_appended = 0usize;
-    let mut next_cursor = 0usize;
+    let mut next_cursor = GridCursor::default();
     let mut next_index = start_index;
     loop {
         let batch = parse_grid_batch_with_options(
@@ -995,7 +1009,7 @@ fn spawn_grid_ingest_worker(
     database_path: PathBuf,
     extension: String,
     text: String,
-    mut next_cursor: usize,
+    mut next_cursor: GridCursor,
     mut next_index: usize,
     smiles_column: Option<String>,
     cancel_token: Arc<AtomicBool>,
@@ -1377,43 +1391,24 @@ fn finish_sdf_record(lines: &[String], has_content: bool, index: usize) -> Optio
 fn parse_grid_batch_with_options(
     extension: &str,
     text: &str,
-    start_line: usize,
+    cursor: GridCursor,
     start_index: usize,
     max_records: usize,
     options: &GridParseOptions,
 ) -> Result<ParsedGridBatch, String> {
     match extension {
-        "csv" => parse_delimited_batch(
-            text,
-            ',',
-            "csv",
-            start_line,
-            start_index,
-            max_records,
-            options,
-        ),
-        "tsv" => parse_delimited_batch(
-            text,
-            '\t',
-            "tsv",
-            start_line,
-            start_index,
-            max_records,
-            options,
-        ),
+        "csv" => parse_delimited_batch(text, ',', "csv", cursor, start_index, max_records, options),
+        "tsv" => {
+            parse_delimited_batch(text, '\t', "tsv", cursor, start_index, max_records, options)
+        }
         "dwar" => Ok(parse_datawarrior_batch(
             text,
-            start_line,
+            cursor,
             start_index,
             max_records,
         )),
-        "smi" | "smiles" => Ok(parse_smiles_batch(
-            text,
-            start_line,
-            start_index,
-            max_records,
-        )),
-        "sdf" | "sd" => Ok(parse_sdf_batch(text, start_line, start_index, max_records)),
+        "smi" | "smiles" => Ok(parse_smiles_batch(text, cursor, start_index, max_records)),
+        "sdf" | "sd" => Ok(parse_sdf_batch(text, cursor, start_index, max_records)),
         _ => Err(format!("unsupported grid extension: {extension}")),
     }
 }
@@ -1424,18 +1419,22 @@ struct DataWarriorColumn {
     special_type: Option<String>,
 }
 
+// Still re-reads the source per batch: a DataWarrior record can span several
+// lines and is located by record number rather than by offset, so making it
+// single-pass is a separate change from the byte-offset parsers above.
 fn parse_datawarrior_batch(
     text: &str,
-    start_record: usize,
+    cursor: GridCursor,
     start_index: usize,
     max_records: usize,
 ) -> ParsedGridBatch {
+    let start_record = cursor.row;
     let lines = normalized_lines(text);
     let columns = datawarrior_column_properties(&lines);
     let Some(table_start) = datawarrior_table_start(&lines) else {
         return ParsedGridBatch {
             records: Vec::new(),
-            next_cursor: 0,
+            next_cursor: GridCursor::default(),
             next_index: start_index,
             complete: true,
         };
@@ -1465,7 +1464,7 @@ fn parse_datawarrior_batch(
     if structure_columns.is_empty() {
         return ParsedGridBatch {
             records: Vec::new(),
-            next_cursor: 0,
+            next_cursor: GridCursor::default(),
             next_index: start_index,
             complete: true,
         };
@@ -1585,7 +1584,10 @@ fn parse_datawarrior_batch(
         }
     }
     ParsedGridBatch {
-        next_cursor: start_record + records.len(),
+        next_cursor: GridCursor {
+            offset: 0,
+            row: start_record + records.len(),
+        },
         next_index: start_index + records.len(),
         records,
         complete,
@@ -1678,19 +1680,20 @@ fn looks_like_datawarrior_section_tag(line: &str) -> bool {
     trimmed.starts_with('<') && trimmed.ends_with('>')
 }
 
+// Resumes from a byte offset, like the SDF parser, so an ingest reads the source
+// once instead of once per batch.
 fn parse_smiles_batch(
     text: &str,
-    start_line: usize,
+    cursor: GridCursor,
     start_index: usize,
     max_records: usize,
 ) -> ParsedGridBatch {
-    let lines = normalized_lines(text);
+    let mut offset = cursor.offset.min(text.len());
     let mut records = Vec::new();
-    let mut next_line = start_line.min(lines.len());
     let mut next_index = start_index;
-    while next_line < lines.len() {
-        let trimmed = lines[next_line].trim();
-        next_line += 1;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
@@ -1721,9 +1724,9 @@ fn parse_smiles_batch(
     }
     ParsedGridBatch {
         records,
-        next_cursor: next_line,
+        next_cursor: GridCursor { offset, row: 0 },
         next_index,
-        complete: next_line >= lines.len(),
+        complete: offset >= text.len(),
     }
 }
 
@@ -1746,17 +1749,52 @@ fn line_at(text: &str, offset: usize) -> Option<(&str, usize)> {
     Some((&rest[..break_at], offset + break_at + width))
 }
 
+// The header of a delimited source, plus where its data starts. Read per batch
+// because the columns are needed to interpret every row, and reading one line is
+// cheap — re-splitting the whole file to get it was not.
+fn first_non_empty_line(text: &str) -> Option<(&str, usize)> {
+    let mut offset = 0usize;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        if !line.trim().is_empty() {
+            return Some((line, offset));
+        }
+    }
+    None
+}
+
+// How many data rows are sampled when guessing which columns hold structures.
+// Scanning every row of every column per batch was the single most expensive
+// thing about ingesting a large CSV; a bounded sample decides the same way for
+// any real table, where the structure column is populated from the top.
+const SMILES_INFERENCE_SAMPLE_ROWS: usize = 512;
+
+fn sample_data_rows(text: &str, start_offset: usize, limit: usize) -> Vec<&str> {
+    let mut rows = Vec::new();
+    let mut offset = start_offset;
+    while rows.len() < limit {
+        let Some((line, next_offset)) = line_at(text, offset) else {
+            break;
+        };
+        offset = next_offset;
+        if !line.trim().is_empty() {
+            rows.push(line);
+        }
+    }
+    rows
+}
+
 // Resumes from a byte offset and walks the source once. Splitting the whole text
 // into a `Vec<String>` here instead made ingest quadratic: a collection indexed
 // in N batches re-copied and re-split the entire file N times, so a 1 GB SDF
 // took tens of minutes and gigabytes of transient allocations.
 fn parse_sdf_batch(
     text: &str,
-    start_offset: usize,
+    cursor: GridCursor,
     start_index: usize,
     max_records: usize,
 ) -> ParsedGridBatch {
-    let mut offset = start_offset.min(text.len());
+    let mut offset = cursor.offset.min(text.len());
     let mut records = Vec::new();
     let mut current = Vec::new();
     let mut current_has_content = false;
@@ -1789,7 +1827,7 @@ fn parse_sdf_batch(
     }
     ParsedGridBatch {
         records,
-        next_cursor: offset,
+        next_cursor: GridCursor { offset, row: 0 },
         next_index,
         complete,
     }
@@ -1799,50 +1837,40 @@ fn parse_delimited_batch(
     text: &str,
     separator: char,
     format: &str,
-    start_line: usize,
+    cursor: GridCursor,
     start_index: usize,
     max_records: usize,
     options: &GridParseOptions,
 ) -> Result<ParsedGridBatch, String> {
-    parse_delimited_table_batch(
-        text,
-        separator,
-        start_line,
-        start_index,
-        max_records,
-        options,
+    parse_delimited_table_batch(text, separator, cursor, start_index, max_records, options).or_else(
+        |error| {
+            if error != "missing smiles column" || options.smiles_column.is_some() {
+                return Err(error);
+            }
+            parse_delimited_rows_as_smiles_batch(
+                text,
+                separator,
+                format,
+                cursor,
+                start_index,
+                max_records,
+            )
+        },
     )
-    .or_else(|error| {
-        if error != "missing smiles column" || options.smiles_column.is_some() {
-            return Err(error);
-        }
-        parse_delimited_rows_as_smiles_batch(
-            text,
-            separator,
-            format,
-            start_line,
-            start_index,
-            max_records,
-        )
-    })
 }
 
 fn parse_delimited_table_batch(
     text: &str,
     separator: char,
-    start_line: usize,
+    cursor: GridCursor,
     start_index: usize,
     max_records: usize,
     options: &GridParseOptions,
 ) -> Result<ParsedGridBatch, String> {
-    let rows: Vec<_> = normalized_lines(text)
-        .into_iter()
-        .filter(|line| !line.trim().is_empty())
-        .collect();
-    let Some(header_line) = rows.first() else {
+    let Some((header_line, after_header)) = first_non_empty_line(text) else {
         return Ok(ParsedGridBatch {
             records: Vec::new(),
-            next_cursor: 0,
+            next_cursor: GridCursor::default(),
             next_index: start_index,
             complete: true,
         });
@@ -1864,8 +1892,11 @@ fn parse_delimited_table_batch(
             }
         })
         .collect();
-    let inferred_smiles_indexes =
-        infer_smiles_columns_from_values(headers.len(), &rows[1..], separator);
+    let inferred_smiles_indexes = infer_smiles_columns_from_values(
+        headers.len(),
+        &sample_data_rows(text, after_header, SMILES_INFERENCE_SAMPLE_ROWS),
+        separator,
+    );
     let first_row_looks_like_data = headers.iter().any(|value| looks_like_smiles(value));
     if !is_likely_delimited_header(&headers)
         && (inferred_smiles_indexes.is_empty() || first_row_looks_like_data)
@@ -1897,11 +1928,22 @@ fn parse_delimited_table_batch(
         .iter()
         .position(|value| matches!(value.as_str(), "molblock" | "molfile"));
     let mut records = Vec::new();
-    let mut next_line = start_line.max(1).min(rows.len());
+    // Row 0 is the header, so a fresh cursor starts at the first data row.
+    let mut offset = if cursor.offset == 0 {
+        after_header
+    } else {
+        cursor.offset.min(text.len())
+    };
+    let mut row_number = cursor.row.max(1);
     let mut next_index = start_index;
-    while next_line < rows.len() {
-        let row_number = next_line;
-        let raw_cells = parse_delimited_line(&rows[next_line], separator);
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let current_row = row_number;
+        row_number += 1;
+        let raw_cells = parse_delimited_line(line, separator);
         let saved_grid_encoding = encoding_index
             .and_then(|index| raw_cells.get(index))
             .is_some_and(|value| value.trim() == "escaped-v1");
@@ -1915,7 +1957,6 @@ fn parse_delimited_table_batch(
                 }
             })
             .collect();
-        next_line += 1;
         let row_smiles: Vec<_> = smiles_indexes
             .iter()
             .filter_map(|smiles_index| {
@@ -1945,7 +1986,7 @@ fn parse_delimited_table_batch(
                 .map(|value| value.trim())
                 .unwrap_or("");
             let base_name = if raw_name.is_empty() {
-                format!("Molecule {}", row_number)
+                format!("Molecule {}", current_row)
             } else {
                 clipped(raw_name, 160)
             };
@@ -1963,7 +2004,7 @@ fn parse_delimited_table_batch(
                     base_name
                 };
             let mut props = BTreeMap::new();
-            props.insert("CSV row".to_string(), row_number.to_string());
+            props.insert("CSV row".to_string(), current_row.to_string());
             if let Some((smiles_index, _)) = source {
                 props.insert(
                     "SMILES column".to_string(),
@@ -2008,9 +2049,12 @@ fn parse_delimited_table_batch(
     }
     Ok(ParsedGridBatch {
         records,
-        next_cursor: next_line,
+        next_cursor: GridCursor {
+            offset,
+            row: row_number,
+        },
         next_index,
-        complete: next_line >= rows.len(),
+        complete: offset >= text.len(),
     })
 }
 
@@ -2018,28 +2062,35 @@ fn parse_delimited_rows_as_smiles_batch(
     text: &str,
     separator: char,
     format: &str,
-    start_line: usize,
+    cursor: GridCursor,
     start_index: usize,
     max_records: usize,
 ) -> Result<ParsedGridBatch, String> {
-    let rows: Vec<_> = normalized_lines(text)
-        .into_iter()
-        .filter(|line| !line.trim().is_empty())
-        .collect();
-    let header_offset = rows
-        .first()
-        .map(|row| is_likely_delimited_header(&parse_delimited_line(row, separator)))
-        .unwrap_or(false) as usize;
+    // A leading header row is skipped, so a fresh cursor starts past it.
+    let first_line = first_non_empty_line(text);
+    let header_end = first_line
+        .filter(|(line, _)| is_likely_delimited_header(&parse_delimited_line(line, separator)))
+        .map(|(_, after)| after)
+        .unwrap_or(0);
     let mut records = Vec::new();
-    let mut next_line = start_line.max(header_offset).min(rows.len());
+    let mut offset = if cursor.offset == 0 {
+        header_end
+    } else {
+        cursor.offset.min(text.len())
+    };
+    let mut row_number = cursor.row;
     let mut next_index = start_index;
-    while next_line < rows.len() {
-        let cells: Vec<_> = parse_delimited_line(&rows[next_line], separator)
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        if line.trim().is_empty() {
+            continue;
+        }
+        row_number += 1;
+        let cells: Vec<_> = parse_delimited_line(line, separator)
             .into_iter()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .collect();
-        next_line += 1;
         let Some(smiles) = cells.first().filter(|value| looks_like_smiles(value)) else {
             continue;
         };
@@ -2068,16 +2119,20 @@ fn parse_delimited_rows_as_smiles_batch(
             break;
         }
     }
-    if records.is_empty() && next_line >= rows.len() && start_index == 0 {
+    let complete = offset >= text.len();
+    if records.is_empty() && complete && start_index == 0 {
         return Err(format!(
             "{format} table does not contain supported molecule records"
         ));
     }
     Ok(ParsedGridBatch {
         records,
-        next_cursor: next_line,
+        next_cursor: GridCursor {
+            offset,
+            row: row_number,
+        },
         next_index,
-        complete: next_line >= rows.len(),
+        complete,
     })
 }
 
@@ -2272,7 +2327,7 @@ fn explicit_smiles_column_index(
 
 fn infer_smiles_columns_from_values(
     column_count: usize,
-    data_rows: &[String],
+    data_rows: &[&str],
     separator: char,
 ) -> Vec<usize> {
     let mut candidates = Vec::new();
@@ -2352,7 +2407,11 @@ pub(crate) fn delimited_smiles_column_choices(
         .filter_map(|(index, value)| is_smiles_column(value).then_some(index))
         .collect();
     let indexes = if named.is_empty() {
-        infer_smiles_columns_from_values(headers.len(), &rows[1..], separator)
+        infer_smiles_columns_from_values(
+            headers.len(),
+            &rows[1..].iter().map(String::as_str).collect::<Vec<_>>(),
+            separator,
+        )
     } else {
         named
     };
@@ -3451,7 +3510,7 @@ mod tests {
         let batch = parse_delimited_table_batch(
             csv,
             ',',
-            0,
+            GridCursor::default(),
             0,
             100,
             &GridParseOptions {
@@ -3480,7 +3539,7 @@ mod tests {
         let batch = parse_delimited_table_batch(
             csv,
             ',',
-            0,
+            GridCursor::default(),
             0,
             100,
             &GridParseOptions {
@@ -3506,8 +3565,15 @@ mod tests {
     fn accepts_molblock_only_rows_beside_multiple_smiles_columns() {
         let csv = "burette_encoding,name,target_smiles,proposal_smiles,molblock\n\
                    escaped-v1,From SDF,,,Molecule\\n  Burette\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n";
-        let batch = parse_delimited_table_batch(csv, ',', 0, 0, 100, &GridParseOptions::default())
-            .expect("parse molblock-only row");
+        let batch = parse_delimited_table_batch(
+            csv,
+            ',',
+            GridCursor::default(),
+            0,
+            100,
+            &GridParseOptions::default(),
+        )
+        .expect("parse molblock-only row");
 
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].name, "From SDF");
@@ -4494,18 +4560,39 @@ mod tests {
         sdf
     }
 
+    // Wide enough rows that re-reading the source per batch dominates the parse.
+    fn synthetic_smiles(records: usize) -> String {
+        let mut smi = String::with_capacity(records * 200);
+        for index in 0..records {
+            let chain = "C".repeat(120);
+            smi.push_str(&format!("{chain} Molecule {index:06}\n"));
+        }
+        smi
+    }
+
+    fn synthetic_csv(records: usize) -> String {
+        let mut csv = String::with_capacity(records * 200);
+        csv.push_str("smiles,name,weight,logp,tpsa\n");
+        for index in 0..records {
+            let chain = "C".repeat(120);
+            csv.push_str(&format!(
+                "{chain},Molecule {index:06},{index}.5,2.{index},45.{index}\n"
+            ));
+        }
+        csv
+    }
+
     // Walks a whole synthetic collection the way the ingest worker does, and
-    // reports how long the parsing alone took.
-    fn time_batched_parse(records: usize) -> std::time::Duration {
-        let sdf = synthetic_sdf(records);
+    // reports how long the parsing alone took plus how many records it saw.
+    fn time_batched_parse(extension: &str, source: &str) -> (std::time::Duration, usize) {
         let options = GridParseOptions::default();
         let started = std::time::Instant::now();
-        let mut cursor = 0usize;
+        let mut cursor = GridCursor::default();
         let mut index = 0usize;
         loop {
             let batch = parse_grid_batch_with_options(
-                "sdf",
-                &sdf,
+                extension,
+                source,
                 cursor,
                 index,
                 GRID_INGEST_BATCH_ROWS,
@@ -4518,24 +4605,106 @@ mod tests {
                 break;
             }
         }
-        let elapsed = started.elapsed();
-        assert_eq!(index, records);
-        elapsed
+        (started.elapsed(), index)
     }
 
     // A batched ingest must read the source once, not once per batch. Re-reading
     // it per batch makes parsing quadratic, so doubling the record count roughly
     // quadruples the time instead of doubling it — the 1 GB / 400k-record SDF
     // that motivated this test needed tens of minutes to index.
-    #[test]
-    fn sdf_batched_parse_scales_linearly_with_record_count() {
-        let base = time_batched_parse(12_000);
-        let doubled = time_batched_parse(24_000);
+    fn assert_parse_scales_linearly(extension: &str, source: impl Fn(usize) -> String) {
+        let (base, base_records) = time_batched_parse(extension, &source(12_000));
+        let (doubled, doubled_records) = time_batched_parse(extension, &source(24_000));
+        assert_eq!(base_records, 12_000);
+        assert_eq!(doubled_records, 24_000);
         let growth = doubled.as_secs_f64() / base.as_secs_f64().max(f64::EPSILON);
+        println!("{extension}: {base:?} -> {doubled:?} ({growth:.2}x)");
         assert!(
             growth < 2.6,
-            "doubling the collection multiplied parse time by {growth:.1}x ({base:?} -> {doubled:?}); the source is being re-read per batch"
+            "doubling the {extension} collection multiplied parse time by {growth:.1}x ({base:?} -> {doubled:?}); the source is being re-read per batch"
         );
+    }
+
+    // Measures wall time, so it needs the machine to itself: run it with
+    // `--ignored --test-threads=1`. Parsing must stay linear in the record count
+    // — re-reading the source per batch makes it quadratic, which is what made a
+    // 1 GB / 400k-record SDF take tens of minutes to index. The correctness half
+    // of that contract is pinned by the always-on `*_batches_tile_the_source`
+    // tests below.
+    #[test]
+    #[ignore = "timing-sensitive; run with --ignored --test-threads=1"]
+    fn batched_parse_scales_linearly_for_every_format() {
+        assert_parse_scales_linearly("sdf", synthetic_sdf);
+        assert_parse_scales_linearly("smi", synthetic_smiles);
+        assert_parse_scales_linearly("csv", synthetic_csv);
+    }
+
+    // Parses a source one record per batch and returns each record's name and
+    // "CSV row" property, so a resumed batch can be compared against a single
+    // pass over the same source.
+    fn records_one_batch_at_a_time(extension: &str, source: &str) -> Vec<(String, Option<String>)> {
+        let options = GridParseOptions::default();
+        let mut cursor = GridCursor::default();
+        let mut index = 0usize;
+        let mut seen = Vec::new();
+        for _ in 0..64 {
+            let batch =
+                parse_grid_batch_with_options(extension, source, cursor, index, 1, &options)
+                    .expect("parse one record");
+            for record in &batch.records {
+                seen.push((record.name.clone(), record.props.get("CSV row").cloned()));
+            }
+            cursor = batch.next_cursor;
+            index = batch.next_index;
+            if batch.complete {
+                break;
+            }
+        }
+        seen
+    }
+
+    fn records_in_one_batch(extension: &str, source: &str) -> Vec<(String, Option<String>)> {
+        let batch = parse_grid_batch_with_options(
+            extension,
+            source,
+            GridCursor::default(),
+            0,
+            1_000,
+            &GridParseOptions::default(),
+        )
+        .expect("parse whole source");
+        assert!(batch.complete);
+        batch
+            .records
+            .iter()
+            .map(|record| (record.name.clone(), record.props.get("CSV row").cloned()))
+            .collect()
+    }
+
+    #[test]
+    fn smiles_batches_tile_the_source_exactly_once() {
+        let smi = "CCO Ethanol\n\n# comment\nc1ccccc1 Benzene\r\nCCC Propane\n";
+        let expected = records_in_one_batch("smi", smi);
+        assert_eq!(expected.len(), 3);
+        assert_eq!(records_one_batch_at_a_time("smi", smi), expected);
+    }
+
+    // The delimited parsers number records by source row, so a resumed batch has
+    // to keep counting rows from where the previous one stopped — blank lines and
+    // the header included.
+    #[test]
+    fn delimited_batches_tile_the_source_and_keep_row_numbers() {
+        let csv = "smiles,name\nCCO,Ethanol\n\nc1ccccc1,Benzene\r\nCCC,Propane\n";
+        let expected = records_in_one_batch("csv", csv);
+        assert_eq!(
+            expected,
+            vec![
+                ("Ethanol".to_string(), Some("1".to_string())),
+                ("Benzene".to_string(), Some("2".to_string())),
+                ("Propane".to_string(), Some("3".to_string())),
+            ]
+        );
+        assert_eq!(records_one_batch_at_a_time("csv", csv), expected);
     }
 
     // The resume cursor must tile the source exactly once: every record appears,
@@ -4547,13 +4716,14 @@ mod tests {
         // the assertions below read as the record order they are checking.
         let sdf = "Mol A\n  Burette\n\nM  END\n$$$$\nMol B\r\n  Burette\r\n\r\nM  END\r\n$$$$\r\nMol C\r  Burette\r\rM  END\r$$$$\n";
         let options = GridParseOptions::default();
-        let single = parse_grid_batch_with_options("sdf", sdf, 0, 0, 100, &options)
-            .expect("parse whole source");
+        let single =
+            parse_grid_batch_with_options("sdf", sdf, GridCursor::default(), 0, 100, &options)
+                .expect("parse whole source");
         assert_eq!(single.records.len(), 3);
         assert!(single.complete);
         assert_eq!(single.records[1].name, "Mol B");
 
-        let mut cursor = 0usize;
+        let mut cursor = GridCursor::default();
         let mut index = 0usize;
         let mut names = Vec::new();
         for _ in 0..10 {
