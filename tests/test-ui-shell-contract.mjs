@@ -4957,6 +4957,14 @@ assert.match(previewViewer, /const railRect = visibleRect\('#buret-viewport-rail
 assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*right: var\(--buret-control-island-right\);/s);
 assert.doesNotMatch(previewRuntimeCss, /--buret-viewport-rail-right/);
 assert.doesNotMatch(previewViewer, /--buret-viewport-rail-right/);
+assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*cursor: grab;[^}]*touch-action: none;/s);
+assert.match(previewRuntimeCss, /\.buret-viewport-rail\.buret-dragging,[\s\S]*cursor: grabbing;/);
+assert.match(previewViewer, /const VIEWPORT_RAIL_POSITION_VERSION = '1';/);
+assert.match(previewViewer, /function initViewportRailDrag\(rail\) \{/);
+assert.match(previewViewer, /right: Math\.round\(window\.innerWidth - rect\.right\)/);
+assert.match(previewViewer, /window\.localStorage && window\.localStorage\.setItem\('buret\.viewportRail\.position'/);
+assert.match(previewViewer, /applyViewportRailPosition\(\s*rail,\s*Number\.parseFloat\(rail\.style\.right\)/s);
+assert.match(previewViewer, /initViewportRailDrag\(rail\);/);
 // The rail carries its own animation button, the way Mol*'s viewport controls did:
 // a trackball that keeps turning plus the plugin's timed animations, each listed
 // once and each able to say why it is unavailable.

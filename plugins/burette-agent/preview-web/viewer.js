@@ -8,6 +8,7 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '13';
   const TOOLBAR_COLLAPSED_VERSION = '5';
+  const VIEWPORT_RAIL_POSITION_VERSION = '1';
   const DOCKING_POSE_POSITION_VERSION = '8';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
@@ -6830,12 +6831,126 @@
     if (changed) updateFloatingLayoutOffsets();
   }
 
+  function applyViewportRailPosition(rail, right, top) {
+    const width = rail.offsetWidth || rail.getBoundingClientRect().width || 36;
+    const height = rail.offsetHeight || rail.getBoundingClientRect().height || 170;
+    const maxRight = Math.max(TOOLBAR_MARGIN, window.innerWidth - width - TOOLBAR_MARGIN);
+    const maxTop = Math.max(TOOLBAR_MARGIN, window.innerHeight - height - TOOLBAR_MARGIN);
+    rail.style.left = 'auto';
+    rail.style.right = Math.round(Math.min(Math.max(TOOLBAR_MARGIN, right), maxRight)) + 'px';
+    rail.style.top = Math.round(Math.min(Math.max(TOOLBAR_MARGIN, top), maxTop)) + 'px';
+  }
+
+  function saveViewportRailPosition(rail) {
+    try {
+      const rect = rail.getBoundingClientRect();
+      window.localStorage && window.localStorage.setItem('buret.viewportRail.position', JSON.stringify({
+        right: Math.round(window.innerWidth - rect.right),
+        top: Math.round(rect.top),
+        mode: 'custom'
+      }));
+      window.localStorage && window.localStorage.setItem('buret.viewportRail.position.version', VIEWPORT_RAIL_POSITION_VERSION);
+    } catch (_) {}
+  }
+
+  function restoreViewportRailPosition(rail) {
+    try {
+      const raw = window.localStorage && window.localStorage.getItem('buret.viewportRail.position');
+      const version = window.localStorage && window.localStorage.getItem('buret.viewportRail.position.version');
+      if (raw && version === VIEWPORT_RAIL_POSITION_VERSION) {
+        const saved = JSON.parse(raw);
+        if (saved.mode === 'custom' && Number.isFinite(saved.right) && Number.isFinite(saved.top)) {
+          rail.dataset.defaultPosition = '0';
+          applyViewportRailPosition(rail, saved.right, saved.top);
+          return;
+        }
+      } else if (raw) {
+        window.localStorage && window.localStorage.removeItem('buret.viewportRail.position');
+      }
+    } catch (_) {}
+    rail.dataset.defaultPosition = '1';
+    rail.style.removeProperty('left');
+    rail.style.removeProperty('right');
+    rail.style.removeProperty('top');
+  }
+
+  function initViewportRailDrag(rail) {
+    restoreViewportRailPosition(rail);
+    let drag = null;
+    let suppressClickUntil = 0;
+    const onPointerDown = event => {
+      if (event.button !== 0) return;
+      const rect = rail.getBoundingClientRect();
+      drag = {
+        pointerId: event.pointerId,
+        dx: event.clientX - rect.left,
+        dy: event.clientY - rect.top,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false
+      };
+      rail.setPointerCapture(event.pointerId);
+      rail.classList.add('buret-dragging');
+      event.preventDefault();
+    };
+    const onPointerMove = event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag.moved) {
+        drag.moved = Math.abs(event.clientX - drag.startX) > 4 || Math.abs(event.clientY - drag.startY) > 4;
+      }
+      if (!drag.moved) return;
+      rail.dataset.defaultPosition = '0';
+      closeViewportMenu();
+      const width = rail.offsetWidth || rail.getBoundingClientRect().width || 36;
+      const left = event.clientX - drag.dx;
+      applyViewportRailPosition(rail, window.innerWidth - left - width, event.clientY - drag.dy);
+      updateFloatingLayoutOffsets();
+      event.preventDefault();
+    };
+    const finishDrag = event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const moved = drag.moved;
+      try { rail.releasePointerCapture(event.pointerId); } catch (_) {}
+      rail.classList.remove('buret-dragging');
+      drag = null;
+      if (!moved) return;
+      suppressClickUntil = Date.now() + 300;
+      saveViewportRailPosition(rail);
+    };
+    const cancelDrag = () => {
+      rail.classList.remove('buret-dragging');
+      drag = null;
+    };
+    rail.addEventListener('pointerdown', onPointerDown);
+    rail.addEventListener('pointermove', onPointerMove);
+    rail.addEventListener('pointerup', finishDrag);
+    rail.addEventListener('pointercancel', cancelDrag);
+    rail.addEventListener('lostpointercapture', cancelDrag);
+    window.addEventListener('pointermove', onPointerMove, true);
+    window.addEventListener('pointerup', finishDrag, true);
+    window.addEventListener('pointercancel', cancelDrag, true);
+    rail.addEventListener('click', event => {
+      if (Date.now() > suppressClickUntil) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+    window.addEventListener('resize', () => {
+      if (rail.dataset.defaultPosition === '1') return;
+      applyViewportRailPosition(
+        rail,
+        Number.parseFloat(rail.style.right) || TOOLBAR_MARGIN,
+        Number.parseFloat(rail.style.top) || TOOLBAR_MARGIN
+      );
+    });
+  }
+
   function initViewportControls(viewer) {
     const rail = document.getElementById('buret-viewport-rail');
     const bar = document.getElementById('buret-selection-bar');
     if (!rail || !bar) return;
     if (rail.dataset.viewportControlsBound !== '1') {
       rail.dataset.viewportControlsBound = '1';
+      initViewportRailDrag(rail);
       const level = bar.querySelector('[data-buret-selection-level]');
       for (const [name, label] of VIEWPORT_GRANULARITIES) {
         const option = document.createElement('option');
