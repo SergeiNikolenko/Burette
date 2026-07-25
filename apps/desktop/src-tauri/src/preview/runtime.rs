@@ -1355,6 +1355,30 @@ mod document_open_tests {
 
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
+    /// Pins HOME to one empty directory for the whole test process.
+    ///
+    /// `app_cache_dir()` is derived from HOME, so every test that opens a
+    /// document writes its viewer cache below it. The fake-xyzrender helpers
+    /// used to point HOME at a temporary tree and delete that tree afterwards,
+    /// which removed the cache directory out from under tests running in
+    /// parallel — they failed with a missing RDKit asset or an unopenable
+    /// collection database, depending on where they happened to be.
+    ///
+    /// The directory deliberately contains no `.local/bin/xyzrender`, so
+    /// `resolve_xyzrender_executable` skips the HOME candidate and falls
+    /// through to PATH, which is where the fake executable is injected. It also
+    /// keeps the tests out of the real user cache.
+    fn isolated_test_home() -> &'static Path {
+        static TEST_HOME: OnceLock<PathBuf> = OnceLock::new();
+        TEST_HOME.get_or_init(|| {
+            let home =
+                std::env::temp_dir().join(format!("burette-test-home-{}", uuid::Uuid::new_v4()));
+            fs::create_dir_all(&home).expect("test home should be created");
+            std::env::set_var("HOME", &home);
+            home
+        })
+    }
+
     fn viewer_preferences() -> ViewerPreferences {
         ViewerPreferences {
             theme: "auto".to_string(),
@@ -1380,6 +1404,7 @@ mod document_open_tests {
     }
 
     fn mock_app_with_grid_registry() -> tauri::App<tauri::test::MockRuntime> {
+        isolated_test_home();
         let app = tauri::test::mock_app();
         app.manage(GridRuntimeRegistry::default());
         app.manage(OpenedSourceRegistry::default());
@@ -1467,30 +1492,28 @@ mod document_open_tests {
             .get_or_init(|| Mutex::new(()))
             .lock()
             .expect("env lock should not be poisoned");
-        let fake_home = prepend_fake_xyzrender_environment(script);
-        let old_home = std::env::var_os("HOME");
+        // HOME stays pinned to the shared test home: the fake executable is
+        // injected through PATH alone, so nothing a parallel test depends on
+        // moves while this test runs.
+        isolated_test_home();
+        let fake_bin_root = prepend_fake_xyzrender_environment(script);
         let old_path = std::env::var_os("PATH");
-        let mut joined_path = vec![fake_home.join(".local").join("bin")];
+        let mut joined_path = vec![fake_bin_root.join(".local").join("bin")];
         if let Some(path) = &old_path {
             joined_path.extend(std::env::split_paths(path));
         }
         let joined_path =
             std::env::join_paths(joined_path).expect("fake xyzrender path should be valid");
 
-        std::env::set_var("HOME", &fake_home);
         std::env::set_var("PATH", &joined_path);
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run));
 
-        match old_home {
-            Some(value) => std::env::set_var("HOME", value),
-            None => std::env::remove_var("HOME"),
-        }
         match old_path {
             Some(value) => std::env::set_var("PATH", value),
             None => std::env::remove_var("PATH"),
         }
-        let _ = fs::remove_dir_all(fake_home);
+        let _ = fs::remove_dir_all(fake_bin_root);
 
         match result {
             Ok(value) => value,
