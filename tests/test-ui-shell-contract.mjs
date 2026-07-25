@@ -1348,8 +1348,13 @@ assert.match(
 );
 assert.match(
   appSidebarProjectsHook,
-  /!previousProjectScanEligibleRootsRef\.current\.has\(root\)[\s\S]*?partialProjectScanResultsRef\.current\.delete\(root\)/,
-  "collapse and expand must explicitly retry partial folder scans",
+  /!previousProjectScanEligibleRootsRef\.current\.has\(root\)[\s\S]*?partialResult\?\.error[\s\S]*?partialProjectScanResultsRef\.current\.delete\(root\)/,
+  "collapse and expand may retry errors without discarding a deterministic truncated prefix",
+);
+assert.match(
+  appSidebarProjectsHook,
+  /Open a smaller subfolder as a separate project to inspect additional files/,
+  "truncated scans must give an actionable path instead of promising cursorless continuation",
 );
 assert.match(
   appSidebarProjectsHook,
