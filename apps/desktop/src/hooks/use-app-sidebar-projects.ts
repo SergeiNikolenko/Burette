@@ -200,12 +200,14 @@ export function useAppSidebarProjects({
 
     const eligibleRoots = projectScanEligibleRootsRef.current;
     for (const root of eligibleRoots) {
+      const partialResult = partialProjectScanResultsRef.current.get(root);
       if (
         !previousProjectScanEligibleRootsRef.current.has(root)
-        && partialProjectScanResultsRef.current.has(root)
+        && partialResult?.error
       ) {
-        // A partial/error scan is useful while the root stays open, but a
-        // collapse→expand is the user's explicit retry gesture.
+        // A collapse→expand retries a transient error. Truncated inventories
+        // stay cached because this API has no cursor: repeating the same scan
+        // would only rediscover the same prefix and waste another full budget.
         partialProjectScanResultsRef.current.delete(root);
       }
     }
@@ -258,7 +260,7 @@ export function useAppSidebarProjects({
           ) {
             projectScanBudgetReportedRef.current = true;
             pushStatus(
-              "Project scanning paused after 20,000 entries to keep Burette responsive. Collapse and expand a project to continue.",
+              "Project scanning paused after 20,000 entries to keep Burette responsive. Open a smaller subfolder as a separate project to inspect additional files.",
             );
           }
           return;
@@ -310,7 +312,7 @@ export function useAppSidebarProjects({
                 `Showing the first ${result.files.length.toLocaleString()} structures from ${projectRootTitle(root)}; `
                 + `the scan stopped after ${result.scannedEntries.toLocaleString()} entries in `
                 + `${result.scannedDirectories.toLocaleString()} folders to keep Burette responsive. `
-                + "Collapse and expand the project to retry.",
+                + "Open a smaller subfolder as a separate project to inspect additional files.",
               );
             }
           }
