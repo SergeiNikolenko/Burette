@@ -443,7 +443,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
           <XtbResultsPanel document={document} job={latestXtbJob} actions={actions} />
         ) : null}
 
-        {structureXtbArtifact ? <XtbArtifactInfoCard artifact={structureXtbArtifact} byteCount={document.byteCount} /> : null}
       </> : null}
 
       {poseControls ? (
@@ -491,6 +490,8 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
       ) : null}
 
       <StructureDetailsSection
+        dockDrops={dockDrops}
+        xtbArtifact={structureXtbArtifact}
         brief={brief}
         compositionSummary={compositionSummary}
         compositionPending={compositionPending}
@@ -499,8 +500,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         hostedMcpWidget={hostedMcpWidget}
         actions={actions}
       />
-
-      <StructureDropSummary dockDrops={dockDrops} />
     </div>
   );
 }
@@ -2862,10 +2861,9 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
     void showNativeContextMenu(xtbArtifactMenuItems(artifact, actions), { x: event.clientX, y: event.clientY }, { forceWeb: true });
   };
   return (
-    <section className="structure-brief-card structure-inspector-xtb-results" onContextMenu={showResultsMenu}>
-      <div className="structure-inspector-xtb-result-header">
+    <InspectorSection className="structure-inspector-xtb-results" title="Results" detail={operationTitle(result.operation)}>
+      <div className="structure-inspector-xtb-result-header" onContextMenu={showResultsMenu}>
         <div>
-          <span className="structure-brief-kicker">{operationTitle(result.operation)}</span>
           <h3>{job.title}</h3>
         </div>
         <span className="structure-inspector-xtb-status" data-status={job.status}>{job.status}</span>
@@ -2959,7 +2957,7 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
           Log
         </Button>
       </div>
-    </section>
+    </InspectorSection>
   );
 }
 
@@ -3678,6 +3676,8 @@ function StructureDetailsSection({
   compositionPending,
   compositionError,
   document,
+  dockDrops,
+  xtbArtifact,
   hostedMcpWidget,
   actions,
 }: {
@@ -3686,6 +3686,8 @@ function StructureDetailsSection({
   compositionPending: boolean;
   compositionError: string | null;
   document: ViewerDocument;
+  dockDrops: ShellViewState["dockDroppedStructures"];
+  xtbArtifact: XtbTextArtifactInfo | null;
   hostedMcpWidget: boolean;
   actions: ShellActions;
 }) {
@@ -3737,6 +3739,19 @@ function StructureDetailsSection({
             Copy path
           </Button>
         </div> : null}
+
+        {xtbArtifact ? (
+          <>
+            <StructureSectionHeader title={xtbArtifact.title} detail={xtbArtifact.kind} />
+            <div className="structure-brief-rows">
+              <StructureBriefRow label="Purpose" value={xtbArtifact.purpose} />
+              <StructureBriefRow label="Use" value={xtbArtifact.use} />
+              <StructureBriefRow label="Run folder" value={xtbArtifact.runName ?? "Outside xTB run"} />
+            </div>
+          </>
+        ) : null}
+
+        <StructureDropSummary dockDrops={dockDrops} inline />
       </div>
     </InspectorSection>
   );
@@ -3809,16 +3824,19 @@ function miniActionLabel(label: string) {
   return first || label;
 }
 
-function StructureDropSummary({ dockDrops }: { dockDrops: ShellViewState["dockDroppedStructures"] }) {
+// Inside the File section this is a plain group; on the empty panel there is no
+// section to sit in, so it keeps a card of its own there.
+function StructureDropSummary({ dockDrops, inline }: { dockDrops: ShellViewState["dockDroppedStructures"]; inline?: boolean }) {
   if (dockDrops.length === 0) return null;
-  return (
-    <section className="structure-brief-card">
-      <h4>Dropped inputs</h4>
+  const rows = (
+    <>
+      <StructureSectionHeader title="Dropped inputs" detail={`${dockDrops.length} ${plural(dockDrops.length, "item")}`} />
       <div className="structure-brief-rows">
         {dockDrops.map((item) => (
           <StructureBriefRow key={item.id} label={item.title} value={item.detail} />
         ))}
       </div>
-    </section>
+    </>
   );
+  return inline ? rows : <section className="structure-brief-card">{rows}</section>;
 }
