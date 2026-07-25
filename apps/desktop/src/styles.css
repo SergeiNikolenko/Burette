@@ -3661,48 +3661,20 @@ img.radix-menu-item-icon {
   border-color: color-mix(in srgb, #f5bc58 28%, var(--line-subtler));
   background: color-mix(in srgb, #f5bc58 6%, var(--surface-card));
 }
+/* This block used to be a <details> whose <summary> carried its own padding, so
+   the card zeroed its own. It is an ordinary section now: without the padding
+   back, its header sat flush against the border while every neighbour was
+   inset by 8px. The summary rules went with the element. */
 .structure-inspector-details {
-  padding: 0;
   overflow: hidden;
-}
-.structure-inspector-details > summary {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: baseline;
-  padding: 9px;
-  cursor: default;
-  list-style: none;
-}
-.structure-inspector-details > summary::-webkit-details-marker {
-  display: none;
-}
-.structure-inspector-details > summary span {
-  min-width: 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-}
-.structure-inspector-details > summary small {
-  min-width: 0;
-  max-width: 190px;
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .structure-inspector-details-body {
   min-width: 0;
   border-top: 1px solid var(--line-subtler);
-  padding: 9px;
+  margin-top: 2px;
+  padding-top: 8px;
   display: grid;
   gap: 8px;
-}
-.structure-inspector-details:not([open]) > .structure-inspector-details-body {
-  display: none;
 }
 .structure-brief-rows {
   min-width: 0;

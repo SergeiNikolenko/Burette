@@ -2690,7 +2690,11 @@ assert.ok(
 );
 assert.match(styles, /\.structure-inspector-style-options \{/);
 assert.match(styles, /\.structure-brief \{[\s\S]*?grid-auto-rows: max-content/);
-assert.match(styles, /\.structure-inspector-details:not\(\[open\]\) > \.structure-inspector-details-body/);
+// The File block is a collapsible section, not a <details>, so its body is
+// hidden by the collapsible rather than an [open] attribute - and the card has
+// to keep the padding the old <summary> used to provide.
+assert.doesNotMatch(styles, /\.structure-inspector-details > summary/);
+assert.match(styles, /\.structure-inspector-details-body \{[^}]*border-top: 1px solid var\(--line-subtler\)/s);
 assert.match(styles, /\.structure-inspector-style-option\[data-selected="true"\]/);
 assert.match(styles, /right: max\(146px, var\(--right-dock-edge, var\(--right-dock-width, 0px\)\)\)/);
 assert.match(styles, /@container \(max-width: 320px\)/);
