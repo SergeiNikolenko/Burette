@@ -1286,7 +1286,7 @@ function ConformerToolRows({
               action: () => void actions.runConformerOperation("crest-generate", document, selectedConformerAction),
             },
             { kind: "separator" },
-            { kind: "item", id: "crest-settings", text: "Settings…", action: () => setSettingsPanel("crest") },
+            { kind: "item", id: "crest-settings", text: "Settings…", action: () => setSettingsPanel((current) => current === "crest" ? null : "crest") },
             { kind: "item", id: "crest-jobs", text: "Run history", action: () => actions.toggleDockTab("bottom", "jobs") },
           ]}
         />
@@ -1307,12 +1307,12 @@ function ConformerToolRows({
               action: () => void actions.runConformerOperation("prism-prune", document),
             },
             { kind: "separator" },
-            { kind: "item", id: "prism-settings", text: "Settings…", action: () => setSettingsPanel("prism") },
+            { kind: "item", id: "prism-settings", text: "Settings…", action: () => setSettingsPanel((current) => current === "prism" ? null : "prism") },
             { kind: "item", id: "prism-jobs", text: "Run history", action: () => actions.toggleDockTab("bottom", "jobs") },
           ]}
         />
       </div>
-      {settingsPanel ? <ConformerInlineSettings panel={settingsPanel} settings={settings} status={status} actions={actions} /> : null}
+      {settingsPanel ? <ConformerInlineSettings panel={settingsPanel} settings={settings} status={status} actions={actions} onClose={() => setSettingsPanel(null)} /> : null}
     </>
   );
 }
@@ -1336,11 +1336,13 @@ function ConformerInlineSettings({
   settings,
   status,
   actions,
+  onClose,
 }: {
   panel: "all" | "crest" | "prism";
   settings: ConformerSettings;
   status: ShellViewState["conformerStatus"];
   actions: ShellActions;
+  onClose: () => void;
 }) {
   const updateSettings = (patch: Partial<ConformerSettings>) => actions.setConformerSettings({ ...settings, ...patch });
   const showCrest = panel === "all" || panel === "crest";
@@ -1349,9 +1351,17 @@ function ConformerInlineSettings({
     <div className="structure-inspector-xtb-settings conformer-inline-settings">
       <div className="structure-inspector-section-header">
         <h4>{panel === "crest" ? "CREST settings" : panel === "prism" ? "PRISM settings" : "Conformer settings"}</h4>
-        <Button type="button" variant="outline" size="xs" onClick={() => void actions.checkConformerStatus()}>
-          Check
-        </Button>
+        <div className="structure-inspector-settings-header-actions">
+          <Button type="button" variant="outline" size="xs" onClick={() => void actions.checkConformerStatus()}>
+            Check
+          </Button>
+          {/* The menu that opens this panel closes on selection, so without a
+              button here the settings could only be dismissed by collapsing the
+              whole section. */}
+          <Button type="button" variant="ghost" size="xs" onClick={onClose}>
+            Close
+          </Button>
+        </div>
       </div>
       <div className="structure-inspector-settings-status">{conformerStatusSummary(status)}</div>
       {showCrest ? (

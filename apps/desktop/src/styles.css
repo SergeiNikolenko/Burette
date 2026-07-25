@@ -2061,6 +2061,19 @@ img.radix-menu-item-icon {
 .dock-panel[data-area="right"] .dock-tab:not([data-active]) span {
   display: none;
 }
+/* A right-dock tab collapses to a 40px icon. On hover the shared rule adds room
+   for the close button, but there is none in 40px, so the cross lands on the
+   icon. A pointed-at icon tab expands like the active one and shows its label. */
+.dock-panel[data-area="right"] .dock-tab-shell:hover .dock-tab,
+.dock-panel[data-area="right"] .dock-tab-shell:focus-within .dock-tab {
+  width: auto;
+  max-width: 170px;
+  justify-content: flex-start;
+}
+.dock-panel[data-area="right"] .dock-tab-shell:hover .dock-tab:not([data-active]) span,
+.dock-panel[data-area="right"] .dock-tab-shell:focus-within .dock-tab:not([data-active]) span {
+  display: block;
+}
 .dock-tab span {
   min-width: 0;
   overflow: hidden;
@@ -3035,6 +3048,11 @@ img.radix-menu-item-icon {
 }
 .conformer-inline-settings {
   gap: 8px;
+}
+.structure-inspector-settings-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .structure-inspector-xtb-summary {
   position: relative;

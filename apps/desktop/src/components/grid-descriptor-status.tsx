@@ -62,9 +62,15 @@ export function GridDescriptorStatus({ documentId }: { documentId: string }) {
           <span className="structure-inspector-tool-detail">
             {total > 0 ? `Calculating · ${done.toLocaleString()} of ${total.toLocaleString()}` : "Calculating descriptors"}
           </span>
-          <div className="grid-descriptor-progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-            <span style={{ width: total > 0 ? `${pct}%` : "100%" }} />
-          </div>
+          {/* An all-molecules run reports no total up front. A full bar would read
+              as finished, so that case sweeps as indeterminate instead. */}
+          {total > 0 ? (
+            <div className="grid-descriptor-progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+              <span style={{ width: `${pct}%` }} />
+            </div>
+          ) : (
+            <div className="grid-descriptor-progress indeterminate" aria-hidden><span /></div>
+          )}
         </span>
       </div>
     );

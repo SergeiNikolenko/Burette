@@ -1219,6 +1219,10 @@ function XtbJobList({
             onClick={primaryOpenPath ? openJobResult : undefined}
             onContextMenu={showJobMenu}
             onKeyDown={primaryOpenPath ? (event) => {
+              // The row and its action buttons are both keyboard targets. Without
+              // this guard, Enter on the menu button bubbles here and opens the
+              // result on top of showing the menu.
+              if (event.target !== event.currentTarget) return;
               if (event.key !== "Enter" && event.key !== " ") return;
               event.preventDefault();
               openJobResult();
@@ -1329,6 +1333,10 @@ function ConformerJobList({
             onClick={primaryOpenPath ? openJobResult : undefined}
             onContextMenu={showJobMenu}
             onKeyDown={primaryOpenPath ? (event) => {
+              // The row and its action buttons are both keyboard targets. Without
+              // this guard, Enter on the menu button bubbles here and opens the
+              // result on top of showing the menu.
+              if (event.target !== event.currentTarget) return;
               if (event.key !== "Enter" && event.key !== " ") return;
               event.preventDefault();
               openJobResult();
