@@ -14,6 +14,7 @@ import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -3834,7 +3835,7 @@ function StructureCompositionCard({
           </div>
         ) : null}
         {groups.length > 2 ? (
-          <input
+          <Input
             className="structure-inspector-composition-search"
             type="search"
             value={query}
@@ -3926,12 +3927,10 @@ function MenuChevronIcon() {
   );
 }
 
+// The scene tree's twisty is this chevron at 11px inside a 16px box; matching
+// both keeps the two lists indented to the same rhythm.
 function TreeDisclosureIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M4.5 2.5 8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <SceneTreeGlyph paths={SCENE_TREE_GLYPH.chevron} size={11} />;
 }
 
 function structureActionRowKey(row: StructureSummaryRow, index: number) {
@@ -4055,7 +4054,7 @@ function StructureActionRow({
   }
 
   return (
-    <div className="structure-brief-action-entry" data-leading={leading ? "true" : undefined} data-selected={selected || undefined} onContextMenu={showContextMenu}>
+    <div className="structure-brief-action-entry" data-leading={leading ? "true" : undefined} data-selected={selected || undefined} data-hidden={hidden ? "true" : undefined} onContextMenu={showContextMenu}>
       {leading}
       <button
         type="button"
@@ -4067,41 +4066,74 @@ function StructureActionRow({
         {content()}
       </button>
       {componentKind ? (
+        // Remove sits ahead of the eye because that is the order the scene tree
+        // puts them in; a row that reads the same in both places has to reach
+        // the same control at the same spot.
         <span className="structure-inspector-row-actions">
-          <button
+          <Button
             type="button"
-            className="structure-inspector-row-action"
-            aria-label={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
-            title={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
-            onClick={() => onToggleHidden?.(componentKind, !hidden)}
-          >
-            {hidden ? <EyeOffIcon /> : <EyeIcon />}
-          </button>
-          <button
-            type="button"
+            variant="ghost"
+            size="icon-2xs"
             className="structure-inspector-row-action"
             aria-label={`Remove ${row.label.toLowerCase()}`}
             title={`Remove ${row.label.toLowerCase()}`}
             onClick={() => runAction({ type: "remove_components", label: `Remove ${row.label.toLowerCase()}`, kind: componentKind })}
           >
             <TrashIcon />
-          </button>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-2xs"
+            className="structure-inspector-row-action"
+            data-hidden={hidden ? "true" : undefined}
+            aria-label={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
+            title={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
+            onClick={() => onToggleHidden?.(componentKind, !hidden)}
+          >
+            {hidden ? <EyeOffIcon /> : <EyeIcon />}
+          </Button>
         </span>
       ) : null}
     </div>
   );
 }
 
-// Same glyph the scene tree uses for the same job, so the two rows read as one
-// control in two places.
-function TrashIcon() {
+// The same marks the viewer's scene tree draws, copied path for path from
+// SCENE_TREE_ICON in PreviewExtension/Web/viewer.js. The tree lives in the Mol*
+// iframe and shares no code with this panel, so the only way a glyph means the
+// same thing in both lists is to keep the geometry identical here. The panel
+// used to draw its own eye on a 16px grid at a lighter stroke, and the two rows
+// never read as the same control.
+const SCENE_TREE_GLYPH = {
+  chevron: ["m9 6 6 6-6 6"],
+  eye: [
+    "M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0",
+    "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
+  ],
+  eyeOff: [
+    "M9.88 9.88a3 3 0 1 0 4.24 4.24",
+    "M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68",
+    "M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61",
+    "m2 2 20 20",
+  ],
+  trash: [
+    "M3 6h18",
+    "M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2",
+    "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6",
+  ],
+} as const;
+
+function SceneTreeGlyph({ paths, size = 13 }: { paths: readonly string[]; size?: number }) {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 6h18" />
-      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
-      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths.map((definition) => <path key={definition} d={definition} />)}
     </svg>
   );
+}
+
+function TrashIcon() {
+  return <SceneTreeGlyph paths={SCENE_TREE_GLYPH.trash} />;
 }
 
 function StructureDetailsSection({
@@ -4311,20 +4343,11 @@ function StructureMiniAction({
 }
 
 function EyeIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
-      <path d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4-6.5-4-6.5-4z" />
-      <circle cx="8" cy="8" r="1.7" />
-    </svg>
-  );
+  return <SceneTreeGlyph paths={SCENE_TREE_GLYPH.eye} />;
 }
 
 function EyeOffIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
-      <path d="M2.5 2.5l11 11M6.3 6.4A2 2 0 008 9.7M4.2 4.6C2.6 5.8 1.5 8 1.5 8s2.4 4 6.5 4c1 0 1.9-.2 2.7-.6M12.3 10c1.4-1.1 2.2-2 2.2-2s-2.4-4-6.5-4c-.4 0-.8 0-1.2.1" />
-    </svg>
-  );
+  return <SceneTreeGlyph paths={SCENE_TREE_GLYPH.eyeOff} />;
 }
 
 // Inside the File section this is a plain group; on the empty panel there is no
