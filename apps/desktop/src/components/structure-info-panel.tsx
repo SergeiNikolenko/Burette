@@ -860,9 +860,16 @@ function TrajectorySmoothingCard({
     return () => window.removeEventListener("burette:trajectory-smoothing-toggle-requested", toggle);
   });
   return (
-    <section className="structure-brief-card trajectory-smoothing-card" data-collapsed={!open || undefined}>
-      <div className="trajectory-smoothing-header">
-        <strong>Smooth motion</strong>
+    <section className="structure-brief-card structure-inspector-section trajectory-smoothing-card" data-collapsed={!open || undefined}>
+      <div className="structure-inspector-section-header trajectory-smoothing-header">
+        <button
+          type="button"
+          className="structure-inspector-section-title-button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          Smooth motion
+        </button>
         <div className="trajectory-smoothing-power" role="group" aria-label="Smooth motion">
           <button type="button" data-selected={view === "original" || !built || undefined} aria-pressed={view === "original" || !built} onClick={() => { if (built) changeView("original"); }}>Off</button>
           <button type="button" data-selected={built && view === "smoothed" || undefined} aria-pressed={built && view === "smoothed"} onClick={() => { if (built) changeView("smoothed"); else void build(); }}>On</button>
@@ -2070,7 +2077,7 @@ function InspectorEngineCard({
     <Collapsible
       open={open}
       onOpenChange={onToggle}
-      className={`structure-brief-card ${className}`}
+      className={`structure-brief-card structure-inspector-section ${className}`}
       data-collapsed={!open || undefined}
     >
       <div className="structure-inspector-section-header">

@@ -150,7 +150,7 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
   };
 
   return (
-    <section className="structure-brief-card folding-results-card" data-collapsed={collapsed || undefined}>
+    <section className="structure-brief-card structure-inspector-section folding-results-card" data-collapsed={collapsed || undefined}>
       <div className="structure-inspector-section-header">
         <button
           type="button"
