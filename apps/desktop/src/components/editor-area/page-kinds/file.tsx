@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { ViewerDocument } from "../../../types";
 import { hasStructureDrag, readStructureDragPayload } from "../../../lib/structure-drag";
 import type { StructureDragPayload } from "../../../lib/structure-drag";
@@ -19,9 +19,9 @@ export const fileKind = definePageKind<"file", FileLocation>({
     return document?.title ?? "Structure";
   },
   description: "Open structure",
-  Component: ({ location, state, actions }) => {
+  Component: ({ location, state, actions, isActive }) => {
     const document = findDocument(location, state.documents);
-    return document ? <ViewerSurface document={document} actions={actions} /> : null;
+    return document ? <ViewerSurface document={document} actions={actions} isActive={isActive} /> : null;
   },
   keepAlive: true,
   fromPayload: (data) => (typeof data.path === "string" ? { kind: "file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path } : null),
@@ -39,28 +39,48 @@ function findDocument(location: FileLocation, documents: ViewerDocument[]) {
 function ViewerSurface({
   document,
   actions,
+  isActive,
 }: {
   document: ViewerDocument;
   actions: ShellActions;
+  isActive: boolean;
 }) {
   if (document.renderer === "spectrum") {
     return <SpectrumViewer document={document} />;
   }
-  return <StructureViewerSurface document={document} actions={actions} />;
+  return <StructureViewerSurface document={document} actions={actions} isActive={isActive} />;
 }
 
 function StructureViewerSurface({
   document,
   actions,
+  isActive,
 }: {
   document: ViewerDocument;
   actions: ShellActions;
+  isActive: boolean;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const stagingIframeRef = useRef<HTMLIFrameElement>(null);
   const sourceEditing = useSourceEditing();
   const sourceSession = sourceEditing?.sessionForDocument(document) ?? null;
   const sheetDropTarget = document.renderer === "xyzrender-external";
   const collectionDropTarget = document.renderer === "grid2d";
+  const postViewerVisibility = useCallback((frame = iframeRef.current, frameActive = true) => {
+    frame?.contentWindow?.postMessage({
+      source: "burette-host",
+      body: {
+        type: "viewerVisibilityChanged",
+        documentId: document.id,
+        visible: isActive && frameActive,
+      },
+    }, "*");
+  }, [document.id, isActive]);
+
+  useEffect(() => {
+    postViewerVisibility(iframeRef.current, true);
+    postViewerVisibility(stagingIframeRef.current, false);
+  }, [postViewerVisibility, sourceSession?.sourcePreview?.activeSlot]);
   const dropTarget = useMemo(() => ({
     kind: "active-viewer" as const,
     documentId: document.id,
@@ -151,7 +171,9 @@ function StructureViewerSurface({
       <ViewerFrame
         document={document}
         iframeRef={iframeRef}
+        stagingIframeRef={stagingIframeRef}
         sourcePreview={sourceSession?.sourcePreview ?? undefined}
+        onViewerLoad={postViewerVisibility}
         onStagingLoad={(identity, frame) => sourceEditing?.stagingLoaded(document, identity, frame)}
       />
     </div>
