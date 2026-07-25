@@ -1311,6 +1311,74 @@ assert.match(app, /hiddenProjectRoots,/);
 assert.match(app, /sidebarProjects/);
 assert.match(appSidebarProjectsHook, /!import\.meta\.env\.DEV \|\| isTauriRuntime\(\) \|\| browserDevHasExplicitWorkspace/);
 assert.match(appSidebarProjectsHook, /list_project_structure_files/);
+assert.match(
+  appSidebarProjectsHook,
+  /type SidebarProjectRootScan = \{[\s\S]*?root: string;[\s\S]*?files: SidebarProjectStructure\[\];[\s\S]*?truncated: boolean;[\s\S]*?scannedEntries: number;[\s\S]*?scannedDirectories: number;[\s\S]*?error: string \| null;/,
+  "sidebar scans must retain per-root progress and truncation metadata",
+);
+assert.match(
+  appSidebarProjectsHook,
+  /completeProjectScanCacheRef/,
+  "only complete folder scans should enter the complete cache",
+);
+assert.match(
+  appSidebarProjectsHook,
+  /partialProjectScanResultsRef/,
+  "partial folder inventories must remain explicitly partial",
+);
+assert.match(
+  appSidebarProjectsHook,
+  /projectScanInFlightRef/,
+  "folder scans must be single-flight per root",
+);
+assert.match(
+  appSidebarProjectsHook,
+  /projectScanQueueRef\.current = projectScanQueueRef\.current[\s\S]*?\.then\(runRequest, runRequest\)/,
+  "root batches must run through one bounded queue instead of starting all backend scans at once",
+);
+assert.match(
+  appSidebarProjectsHook,
+  /projectScanSessionEntriesRef\.current >= projectScanSessionEntryBudget/,
+  "queued batches must share one frontend scan budget",
+);
+assert.match(
+  appSidebarProjectsHook,
+  /\{ paths: activeRequestRoots, maxEntries: remainingEntryBudget \}/,
+  "each backend request must receive only the frontend session budget that remains",
+);
+assert.match(
+  appSidebarProjectsHook,
+  /!previousProjectScanEligibleRootsRef\.current\.has\(root\)[\s\S]*?partialProjectScanResultsRef\.current\.delete\(root\)/,
+  "collapse and expand must explicitly retry partial folder scans",
+);
+assert.match(
+  appSidebarProjectsHook,
+  /!result\.truncated && !result\.error/,
+  "truncated scans must not be treated as complete cache entries",
+);
+assert.match(
+  appSidebarProjectsHook,
+  /Showing the first .* structures[\s\S]*?to keep Burette responsive/,
+  "the app must explain partial folder results to the user",
+);
+assert.match(
+  appSidebarProjectsHook,
+  /expandedProjectIds\.includes\(`project:\$\{root\}`\)/,
+  "collapsed project roots must not be scanned eagerly after a folder drop",
+);
+assert.match(
+  appSidebarProjectsHook,
+  /completeProjectScanCacheRef/,
+  "expanding a previously scanned project root must reuse its cached inventory",
+);
+assert.match(
+  appFileOpenHook,
+  /invoke<ClassifiedOpenPaths>\("classify_open_paths", \{ paths: requestedPaths \}\)/,
+  "native File Open and startup paths must classify directories before routing files",
+);
+assert.match(appFileOpenHook, /for \(const directory of classified\.directories\) addProjectRoot\(directory\);/);
+assert.match(app, /useAppFileOpen\(\{[\s\S]*?addProjectRoot,/);
+assert.match(app, /expandedProjectIds,\s*hiddenProjectRoots,/);
 assert.match(appSidebarProjectsHook, /prunedPersistedPathsRef/);
 assert.match(appSidebarProjectsHook, /pruneSidebarPaths\(existingPaths\)/);
 assert.match(appSidebarProjectsHook, /const checkedDocuments = recentStructures\.map/);
@@ -1491,7 +1559,7 @@ assert.match(fileKind, /export const fileKind = definePageKind/);
 assert.match(fileKind, /keepAlive: true/);
 assert.match(fileKind, /kind: "file"/);
 assert.match(fileKind, /path: location\.path/);
-assert.match(fileKind, /const document = findDocument\(location, state\.documents\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} \/> : null;/);
+assert.match(fileKind, /const document = findDocument\(location, state\.documents\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} isActive=\{isActive\} \/> : null;/);
 assert.doesNotMatch(fileKind, /findDocument\(location, state\.documents\) \?\? state\.activeDocument/);
 assert.match(fileKind, /className="molecule-stage"/);
 assert.match(fileKind, /sourcePreview=\{sourceSession\?\.sourcePreview \?\? undefined\}/);
