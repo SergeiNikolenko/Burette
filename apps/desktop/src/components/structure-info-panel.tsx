@@ -3483,6 +3483,32 @@ type CompositionGroup = {
   children: StructureSummaryRow[];
 };
 
+// Every component row ends in "N atoms", which is the one figure that puts the
+// groups on a common scale - a bar of those shares says what the structure is
+// mostly made of before a single row is read.
+function compositionAtomCount(value: string) {
+  const match = value.match(/(\d[\d,]*)\s+atoms/u);
+  if (!match) return 0;
+  const parsed = Number.parseInt(match[1].replace(/,/g, ""), 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function compositionShares(groups: CompositionGroup[]) {
+  const shares = groups
+    .map((group) => ({ tone: group.tone, label: group.row.label, atoms: compositionAtomCount(group.row.value) }))
+    .filter((share) => share.atoms > 0);
+  const total = shares.reduce((sum, share) => sum + share.atoms, 0);
+  if (total === 0 || shares.length < 2) return [];
+  return shares.map((share) => ({ ...share, percent: (share.atoms / total) * 100 }));
+}
+
+function compositionMatchesQuery(group: CompositionGroup, needle: string) {
+  if (!needle) return { row: true, children: group.children };
+  const inRow = `${group.row.label} ${group.row.value}`.toLowerCase().includes(needle);
+  const children = group.children.filter((child) => `${child.label} ${child.value}`.toLowerCase().includes(needle));
+  return { row: inRow || children.length > 0, children: inRow && children.length === 0 ? group.children : children };
+}
+
 // The parser reports each group twice: once as a summary line and once as the
 // members behind it, and the panel used to render those as separate cards. They
 // are one hierarchy, so they are shown as one.
@@ -3543,13 +3569,42 @@ function StructureCompositionCard({
     if (!next.delete(key)) next.add(key);
     return next;
   });
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    setQuery("");
+  }, [document.id]);
+  const shares = useMemo(() => compositionShares(groups), [groups]);
+  const needle = query.trim().toLowerCase();
+  const visibleGroups = useMemo(() => groups
+    .map((group) => ({ group, match: compositionMatchesQuery(group, needle) }))
+    .filter((entry) => entry.match.row), [groups, needle]);
 
   return (
     <InspectorSection title="Composition" detail={groups.length ? `${groups.length} ${plural(groups.length, "group")}` : undefined}>
-      {summary ? (
+      {summary ? (<>
+        {shares.length > 0 ? (
+          <div className="structure-inspector-composition-bar" role="img" aria-label={shares.map((share) => `${share.label} ${Math.round(share.percent)}%`).join(", ")}>
+            {shares.map((share) => (
+              <i key={share.label} data-tone={share.tone} style={{ width: `${share.percent}%` }} title={`${share.label} · ${share.atoms.toLocaleString()} atoms`} />
+            ))}
+          </div>
+        ) : null}
+        {groups.length > 2 ? (
+          <input
+            className="structure-inspector-composition-search"
+            type="search"
+            value={query}
+            placeholder="Find chain, ligand, residue…"
+            aria-label="Find a component"
+            onChange={(event) => setQuery(event.currentTarget.value)}
+          />
+        ) : null}
+        {visibleGroups.length === 0 ? (
+          <div className="dock-empty">Nothing matches “{query}”.</div>
+        ) : (
         <div className="structure-brief-rows structure-inspector-tree" onKeyDown={structureRowsKeyDown}>
-          {groups.map((group) => {
-            const open = expanded.has(group.key);
+          {visibleGroups.map(({ group, match }) => {
+            const open = needle ? true : expanded.has(group.key);
             return (
               <div className="structure-inspector-tree-group" key={group.key}>
                 <StructureActionRow
@@ -3573,9 +3628,9 @@ function StructureCompositionCard({
                     </button>
                   ) : <span className="structure-inspector-tree-spacer" aria-hidden="true" />}
                 />
-                {open && group.children.length > 0 ? (
+                {open && match.children.length > 0 ? (
                   <div className="structure-inspector-tree-children">
-                    {group.children.map((child, index) => (
+                    {match.children.map((child, index) => (
                       <StructureActionRow
                         key={structureActionRowKey(child, index)}
                         row={child}
@@ -3593,7 +3648,8 @@ function StructureCompositionCard({
             );
           })}
         </div>
-      ) : pending ? (
+        )}
+      </>) : pending ? (
         <div className="structure-inspector-loading" aria-live="polite" aria-busy="true">
           <span className="sr-only">Reading structure text</span>
           <Skeleton className="structure-inspector-loading-row" style={{ width: "88%" }} />

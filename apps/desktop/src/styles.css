@@ -3679,6 +3679,40 @@ img.radix-menu-item-icon {
 }
 /* The tones follow the scene tree's default palette rather than the accent, so
    a chain and its dot read as the same object in both places. */
+.structure-inspector-composition-bar {
+  min-width: 0;
+  display: flex;
+  height: 7px;
+  overflow: hidden;
+  border: 1px solid var(--line-subtler);
+  border-radius: 999px;
+}
+.structure-inspector-composition-bar i {
+  display: block;
+  height: 100%;
+  background: var(--text-faint);
+}
+.structure-inspector-composition-bar i[data-tone="polymer"] { background: #4e79a7; }
+.structure-inspector-composition-bar i[data-tone="ligand"] { background: #59a14f; }
+.structure-inspector-composition-bar i[data-tone="ion"] { background: #e8973a; }
+.structure-inspector-composition-bar i[data-tone="water"] { background: #9aa0a6; }
+.structure-inspector-composition-search {
+  width: 100%;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+  background: var(--surface-input);
+  color: var(--text-primary);
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+.structure-inspector-composition-search::placeholder {
+  color: var(--text-faint);
+}
+.structure-inspector-composition-search:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
+}
 .structure-inspector-row-dot {
   align-self: center;
   width: 8px;
@@ -4385,9 +4419,37 @@ img.radix-menu-item-icon {
   gap: 2px;
   flex: 1 1 auto;
 }
+/* A job is the same kind of thing as a tool run, so it wears the tool row: a
+   state rail on the left, title and detail stacked, actions on the right. */
 .dock-xtb-job-item {
+  position: relative;
   border: 1px solid var(--line-subtler);
+  background: var(--surface-card);
   gap: 0;
+  padding-left: 18px;
+}
+.dock-xtb-job-item::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--text-faint);
+}
+.dock-xtb-job-item[data-status="running"]::before {
+  background: var(--accent);
+}
+.dock-xtb-job-item[data-status="success"]::before {
+  background: color-mix(in srgb, #30d158 72%, var(--text-secondary));
+}
+.dock-xtb-job-item[data-status="failed"]::before {
+  background: color-mix(in srgb, #ff5f57 76%, var(--text-secondary));
+}
+.dock-xtb-job-item[data-status="running"] {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line-subtler));
 }
 .dock-xtb-job-item[data-has-primary-result] {
   cursor: pointer;
