@@ -1012,14 +1012,36 @@
   const resizeState = {
     viewer: null,
     frame: 0,
-    timer: 0
+    timer: 0,
+    // Container size the last resize was performed for. The window event and the
+    // container observer both report the same change, a beat apart, so without
+    // this the viewer redrew about twice per resize step.
+    appliedSize: ''
   };
+
+  function viewerContainerSize(viewer) {
+    const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
+    if (!container) return '';
+    const rect = container.getBoundingClientRect();
+    return `${Math.round(rect.width)}x${Math.round(rect.height)}`;
+  }
   let leftPanelVisibilityGuardInstalled = false;
   let viewportCornerLayoutHandle = 0;
   let molstarStructureDirty = false;
 
+  // A viewer in a hidden tab still has a full-size iframe, so it used to redraw
+  // on every window resize alongside the visible one. A collapsed container has
+  // no pixels to redraw for, and the viewer resizes itself when it comes back.
+  function viewerCanvasIsVisible(viewer) {
+    const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
+    if (!container) return true;
+    const rect = container.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
   function scheduleViewerResize(viewer, delayMs = 80) {
     if (!viewer) return;
+    if (!viewerCanvasIsVisible(viewer)) return;
     resizeState.viewer = viewer;
     if (resizeState.frame) return;
     resizeState.frame = requestAnimationFrame(() => {
@@ -1028,6 +1050,9 @@
       resizeState.timer = setTimeout(() => {
         const target = resizeState.viewer;
         if (!target) return;
+        const size = viewerContainerSize(target);
+        if (size && size === resizeState.appliedSize) return;
+        resizeState.appliedSize = size;
         let handled = false;
         try {
           if (typeof target.handleResize === 'function') {
@@ -1059,7 +1084,11 @@
       const size = rect ? `${Math.round(rect.width)}x${Math.round(rect.height)}` : '';
       if (size === lastSize) return;
       lastSize = size;
-      try { viewer.handleResize?.(); } catch (_) {}
+      // Goes through the shared scheduler rather than resizing straight away:
+      // a window resize reaches the viewer through this observer, the window
+      // handler and the host's BuretteHandleResize at once, which measured at
+      // roughly 2.5 handleResize calls per resize step.
+      scheduleViewerResize(viewer, 40);
     });
     observer.observe(container);
     viewerResizeObserver = { observer, container };
