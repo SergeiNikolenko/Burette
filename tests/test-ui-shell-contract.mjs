@@ -2456,7 +2456,7 @@ assert.match(structureInfoPanel, /actions\.revealDocument\(document\)/);
 assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
 assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\)\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument\(document\.path\)/);
-assert.match(structureInfoPanel, /StructureSectionHeader title="Composition"/);
+assert.match(structureInfoPanel, /<InspectorSection title="Composition"/);
 // Conformers and xTB share one card shell, and a missing binary has to say what
 // it is and how to get it rather than leaving a dead disabled button.
 assert.match(structureInfoPanel, /function InspectorEngineCard\(\{/);
@@ -2566,7 +2566,7 @@ assert.match(structureInfoPanel, /function structurePoseControlsFor\(/);
 assert.match(structureInfoPanel, /sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT/);
 assert.match(structureInfoPanel, /function maestroPreviewEntryCount\(summary: StructureCompositionSummary\)/);
 assert.match(structureInfoPanel, /function SdfContextStyleCard/);
-assert.match(structureInfoPanel, /<StructureSectionHeader title=\{copy\.title\} detail=\{copy\.detail\} \/>/);
+assert.match(structureInfoPanel, /<InspectorSection className="structure-inspector-context-style" title=\{copy\.title\} detail=\{copy\.detail\}>/);
 assert.match(structureInfoPanel, /aria-label=\{copy\.styleAriaLabel\}/);
 assert.match(structureInfoPanel, /const styleOptions = copy\.styleOptions \?\? SDF_CONTEXT_STYLE_OPTIONS/);
 assert.match(structureInfoPanel, /\{styleOptions\.map\(\(option\) => \(/);
@@ -2634,7 +2634,7 @@ assert.match(structureInfoPanel, /onPointerMove=/);
 assert.match(structureInfoPanel, /type: "set_structure_pose"/);
 assert.match(viewer, /type: 'trajectoryFrameChanged'/);
 assert.match(appViewerStateMessagesHook, /burette:trajectory-frame-changed/);
-assert.match(structureInfoPanel, /StructureSectionHeader title=\{controls\.title\} detail=\{controls\.detail\}/);
+assert.match(structureInfoPanel, /<InspectorSection className="structure-inspector-pose-controls" title=\{controls\.title\} detail=\{controls\.detail\}>/);
 assert.match(structureInfoPanel, /actions: Array<StructureViewerAction & \{ type: "set_structure_pose" \}>/);
 assert.match(structureInfoPanel, /type: "set_structure_pose"/);
 assert.doesNotMatch(structureInfoPanel, /if \(document\.dockingRequest\) \{\s*setState\(\{ documentId: document\.id, loading: false, summary: null, error: null \}\);\s*return undefined;\s*\}/);

@@ -1503,8 +1503,7 @@ function StructurePoseControlsCard({
     if (key) setActiveActionKey(key);
   };
   return (
-    <section className="structure-brief-card structure-inspector-pose-controls">
-      <StructureSectionHeader title={controls.title} detail={controls.detail} />
+    <InspectorSection className="structure-inspector-pose-controls" title={controls.title} detail={controls.detail}>
       <div className="structure-inspector-pose-options" role="group" aria-label={`${controls.controlLabel} controls`}>
         {controls.actions.map((action) => {
           const key = selectionActionKey(document, action);
@@ -1524,7 +1523,7 @@ function StructurePoseControlsCard({
           );
         })}
       </div>
-    </section>
+    </InspectorSection>
   );
 }
 
@@ -1588,8 +1587,7 @@ function SdfContextStyleCard({
       ? "line"
       : SDF_CONTEXT_STYLE_DEFAULT;
   return (
-    <section className="structure-brief-card structure-inspector-context-style">
-      <StructureSectionHeader title={copy.title} detail={copy.detail} />
+    <InspectorSection className="structure-inspector-context-style" title={copy.title} detail={copy.detail}>
       <div className="structure-inspector-style-options" role="group" aria-label={copy.styleAriaLabel}>
         {styleOptions.map((option) => (
           <button
@@ -1637,7 +1635,7 @@ function SdfContextStyleCard({
         />
         <strong>{Math.round(opacity * 100)}%</strong>
       </label>
-    </section>
+    </InspectorSection>
   );
 }
 
@@ -2093,6 +2091,44 @@ function InspectorEngineCard({
           </div>
         ) : null}
         {notice}
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// Every block used to be a card of its own, so a protein with a calculation
+// stacked a dozen of them and nothing sat at a predictable height. They are
+// sections of one list now: same header, same disclosure, same count badge, and
+// an order that does not change when a neighbour is absent.
+function InspectorSection({
+  className,
+  title,
+  detail,
+  defaultOpen = true,
+  children,
+}: {
+  className?: string;
+  title: string;
+  detail?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className={`structure-brief-card structure-inspector-section ${className ?? ""}`.trim()}
+      data-collapsed={!open || undefined}
+    >
+      <div className="structure-inspector-section-header">
+        <CollapsibleTrigger className="structure-inspector-section-title-button">
+          {title}
+        </CollapsibleTrigger>
+        {detail ? <span>{detail}</span> : null}
+      </div>
+      <CollapsibleContent className="structure-inspector-engine-body">
         {children}
       </CollapsibleContent>
     </Collapsible>
@@ -3436,8 +3472,7 @@ function StructureCompositionCard({
   });
 
   return (
-    <section className="structure-brief-card">
-      <StructureSectionHeader title="Composition" detail={groups.length ? `${groups.length} ${plural(groups.length, "group")}` : undefined} />
+    <InspectorSection title="Composition" detail={groups.length ? `${groups.length} ${plural(groups.length, "group")}` : undefined}>
       {summary ? (
         <div className="structure-brief-rows structure-inspector-tree" onKeyDown={structureRowsKeyDown}>
           {groups.map((group) => {
@@ -3483,10 +3518,20 @@ function StructureCompositionCard({
             );
           })}
         </div>
+      ) : pending ? (
+        <div className="structure-inspector-loading" aria-live="polite" aria-busy="true">
+          <span className="sr-only">Reading structure text</span>
+          <Skeleton className="structure-inspector-loading-row" style={{ width: "88%" }} />
+          <Skeleton className="structure-inspector-loading-row" style={{ width: "64%" }} />
+          <Skeleton className="structure-inspector-loading-row" style={{ width: "76%" }} />
+          <Skeleton className="structure-inspector-loading-row" style={{ width: "52%" }} />
+        </div>
       ) : (
-        <div className="dock-empty">{pending ? "Reading structure text..." : `Composition unavailable: ${error}`}</div>
+        <Alert className="structure-inspector-engine-notice">
+          <AlertDescription>{`This file could not be parsed for composition: ${error}. The coordinates still open in the viewer.`}</AlertDescription>
+        </Alert>
       )}
-    </section>
+    </InspectorSection>
   );
 }
 
@@ -3645,11 +3690,7 @@ function StructureDetailsSection({
   actions: ShellActions;
 }) {
   return (
-    <details className="structure-brief-card structure-inspector-details">
-      <summary>
-        <span>Details</span>
-        <small>{brief.summary}</small>
-      </summary>
+    <InspectorSection className="structure-inspector-details" title="File" detail={brief.summary} defaultOpen={false}>
       <div className="structure-inspector-details-body">
         <StructureSectionHeader title="Composition metrics" detail="Parsed from coordinate text." />
         {compositionSummary ? (
@@ -3697,7 +3738,7 @@ function StructureDetailsSection({
           </Button>
         </div> : null}
       </div>
-    </details>
+    </InspectorSection>
   );
 }
 

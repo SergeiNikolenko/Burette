@@ -3645,6 +3645,32 @@ img.radix-menu-item-icon {
 .structure-inspector-tree-group + .structure-inspector-tree-group {
   border-top: 1px solid var(--line-subtler);
 }
+/* A collapsed section keeps only its header, so the list reads as a table of
+   contents when everything is folded away. */
+.structure-inspector-section[data-collapsed] {
+  gap: 0;
+}
+.structure-inspector-section .structure-inspector-section-title-button::before {
+  content: "›";
+  display: inline-block;
+  width: 10px;
+  color: var(--text-faint);
+  font-size: 10px;
+  transform: rotate(90deg);
+  transition: transform 140ms ease-out;
+}
+.structure-inspector-section[data-collapsed] .structure-inspector-section-title-button::before {
+  transform: rotate(0deg);
+}
+.structure-inspector-loading {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 3px 1px;
+}
+.structure-inspector-loading-row {
+  height: 10px;
+}
 .structure-inspector-tools {
   min-width: 0;
   display: grid;
