@@ -593,7 +593,7 @@ assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn write_base64_f
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn write_text_file/);
 assert.match(quickLookCommand, /#\[tauri::command\]\s+pub\(crate\) fn reset_quick_look/);
 assert.match(updaterCommand, /#\[tauri::command\]\s+pub\(crate\) async fn install_update/);
-assert.match(updaterCommand, /format_download_message\(0, request\.size, 0\.0\)/);
+assert.match(updaterCommand, /format_download_detail\(0, request\.size, 0\.0\)/);
 assert.match(updaterCommand, /download_asset_with_progress\(/);
 assert.match(updaterCommand, /"--connect-timeout"/);
 assert.match(updaterCommand, /"--speed-limit"/);
