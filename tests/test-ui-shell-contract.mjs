@@ -4951,15 +4951,26 @@ assert.match(previewRuntimeCss, /body:has\(\.msp-viewport-controls-buttons \.msp
 assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*hideGenerate3DMenu\(\);/);
 assert.match(previewViewer, /const viewportControlRailRect = visibleRect\('\.msp-plugin \.msp-viewport-controls-buttons'\);/);
 assert.match(previewViewer, /const railRect = visibleRect\('#buret-viewport-rail'\) \|\| viewportControlRailRect;/);
-// The vertical viewport rail is the second half of the top toolbar group: it
-// keeps the same right edge, follows either drag handle, and rolls up with it.
-assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*right: var\(--buret-viewport-rail-right, var\(--buret-control-island-right\)\);/s);
-assert.match(previewViewer, /root\.style\.setProperty\('--buret-viewport-rail-right', viewportRailRight \+ 'px'\);/);
-assert.match(previewViewer, /const viewportRailTop = selectionToolbarRect[\s\S]*Math\.ceil\(toolbarBottom\)/);
+// The vertical viewport rail is the second half of the toolbar group: it follows
+// either drag handle, flips toward the canvas at each corner, and rolls up with it.
+assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*right: auto;[^}]*left: var\(--buret-viewport-rail-left, auto\);/s);
+assert.match(previewViewer, /const TOOLBAR_CORNER_SNAP_DISTANCE = 64;/);
+assert.match(previewViewer, /const TOOLBAR_CORNER_RELEASE_DISTANCE = 96;/);
+assert.match(previewViewer, /const TOOLBAR_ORIENTATION_HYSTERESIS = 48;/);
+assert.match(previewViewer, /function updateToolbarCornerIntent\(toolbar\) \{/);
+assert.match(previewViewer, /function toolbarCornerWithinSnapDistance\(toolbar\) \{/);
+assert.match(previewViewer, /function positionToolbarAtCorner\(toolbar, corner\) \{/);
+assert.match(previewViewer, /function snapToolbarToCorner\(toolbar\) \{/);
+assert.match(previewViewer, /viewportRail\.dataset\.horizontalPlacement = railHorizontal;/);
+assert.match(previewViewer, /viewportRail\.dataset\.verticalPlacement = railVertical;/);
+assert.match(previewViewer, /root\.style\.setProperty\('--buret-viewport-rail-left', Math\.round\(viewportRailLeft\) \+ 'px'\);/);
+assert.match(previewViewer, /const preferredViewportRailTop = toolbarRect && railVertical === 'above'/);
+assert.match(previewViewer, /corner: isToolbarCorner\(toolbar\.dataset\.dockCorner\) \? toolbar\.dataset\.dockCorner : null/);
 assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*cursor: grab;[^}]*touch-action: none;/s);
 assert.match(previewRuntimeCss, /\.buret-viewport-rail\.buret-dragging,[\s\S]*cursor: grabbing;/);
 assert.match(previewRuntimeCss, /body\.buret-toolbar-collapsed #buret-viewport-rail,[\s\S]*#buret-selection-bar \{\s*display: none !important;/);
 assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*closeViewportMenu\(\);/);
+assert.match(previewViewer, /if \(persist \|\| collapsed\) toolbar\.dataset\.defaultPosition = '1';\s*repositionToolbar\(toolbar\);/);
 assert.doesNotMatch(previewViewer, /VIEWPORT_RAIL_POSITION_VERSION/);
 assert.doesNotMatch(previewViewer, /localStorage\.setItem\('buret\.viewportRail\.position'/);
 assert.match(previewViewer, /function initViewportRailDrag\(rail, toolbar\) \{/);
@@ -4967,6 +4978,8 @@ assert.match(previewViewer, /moveToolbar\(\s*toolbar,\s*drag\.toolbarLeft \+ eve
 assert.match(previewViewer, /saveToolbarPosition\(toolbar\);/);
 assert.match(previewViewer, /initViewportRailDrag\(rail, document\.getElementById\('buret-toolbar'\)\);/);
 assert.match(previewViewer, /function positionOpenViewportMenu\(rail = document\.getElementById\('buret-viewport-rail'\)\) \{/);
+assert.match(previewViewer, /rail\.dataset\.horizontalPlacement === 'right'/);
+assert.match(previewViewer, /rail\.dataset\.verticalPlacement === 'above'/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-viewport-panel-max-height', panelMaxHeight \+ 'px'\);\s*positionOpenViewportMenu\(\);/);
 assert.match(previewViewer, /positionOpenViewportMenu\(trigger\.closest\('#buret-viewport-rail'\)\);/);
 // The rail carries its own animation button, the way Mol*'s viewport controls did:
@@ -5033,7 +5046,7 @@ assert.match(previewRuntimeCss, /#buret-toolbar\.buret-toolbar-docked \{/);
 assert.match(previewRuntimeCss, /width: auto/);
 assert.match(previewRuntimeCss, /max-width: calc\(100vw - 24px\)/);
 assert.match(previewRuntimeCss, /#buret-toolbar \{[\s\S]*flex-wrap: nowrap;[\s\S]*max-width: calc\(100vw - 24px\)/);
-assert.match(previewRuntimeCss, /#buret-toolbar \{[^}]*padding: 3px 0;/s);
+assert.match(previewRuntimeCss, /#buret-toolbar \{[^}]*padding: 3px;/s);
 assert.match(previewRuntimeCss, /#buret-toolbar \.buret-toolbar-content \{/);
 assert.match(previewRuntimeCss, /flex: 0 1 auto/);
 assert.match(previewRuntimeCss, /max-width: calc\(100vw - 72px\)/);

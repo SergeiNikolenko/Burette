@@ -538,7 +538,8 @@ body.burette-mobile-host #buret-scene-tree {
   position: fixed;
   top: var(--buret-viewport-rail-top, calc(var(--buret-toolbar-safe-top) + 42px));
   /* The rail is the vertical part of the draggable toolbar group. */
-  right: var(--buret-viewport-rail-right, var(--buret-control-island-right));
+  right: auto;
+  left: var(--buret-viewport-rail-left, auto);
   z-index: 40;
   box-sizing: border-box;
   display: flex;
@@ -1478,7 +1479,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 }
 #buret-toolbar {
   position: absolute; top: calc(var(--buret-toolbar-safe-top) + var(--buret-viewport-top-inset, 0px)); right: var(--buret-control-island-right); left: auto; z-index: 2147483646;
-  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 3px 0;
+  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 3px;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 12px; color: var(--buret-toolbar-color);
   background: var(--buret-toolbar-background);
