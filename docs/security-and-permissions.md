@@ -9,6 +9,10 @@ native command permissions.
 
 - The desktop app opens files selected by the user, command-palette actions,
   drag-and-drop, recent/project roots, or explicit agent-session commands.
+- Background project enumeration stays inside project roots explicitly selected
+  by the user and does not follow symbolic links. Burette does not enumerate
+  Photos, Music, or other home folders unless the user selects that folder as a
+  project root.
 - Browser-dev filesystem access must be explicit. Use `BURETTE_DEV_FS_ALLOW`
   for extra local roots during browser testing.
 - Quick Look receives a file selected by Finder or a forced preview command. It
@@ -18,6 +22,11 @@ native command permissions.
 
 Do not add recursive directory ingestion, broad home-directory reads, or hidden
 network fetches without an explicit design and validation plan.
+
+Updater cleanup is limited to staged `.app` bundles below Burette's current and
+legacy `Library/Application Support/.../Updates` directories. It must not scan
+or remove applications from the user's home folders, Trash, backups, or
+development worktrees.
 
 ## Compute Data Root
 
