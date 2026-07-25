@@ -3666,6 +3666,19 @@ function structureRowsKeyDown(event: KeyboardEvent<HTMLDivElement>) {
 // places without matching names by eye.
 type CompositionTone = "polymer" | "ligand" | "ion" | "water" | "entry";
 
+// Only the four group rows stand for a Mol* component, so only they can be
+// hidden or removed as a whole. A chain or one ligand instance is a
+// sub-selection inside a component - there is no scene node to take out.
+type CompositionComponentKind = "polymer" | "ligand" | "ion" | "water";
+
+function compositionComponentKind(label: string): CompositionComponentKind | undefined {
+  if (label === "Polymers") return "polymer";
+  if (label === "Ligands") return "ligand";
+  if (label === "Ions") return "ion";
+  if (label === "Water") return "water";
+  return undefined;
+}
+
 function compositionToneFor(label: string): CompositionTone {
   if (label === "Polymers" || label.startsWith("Chain")) return "polymer";
   if (label === "Ligands") return "ligand";
@@ -3826,6 +3839,7 @@ function StructureCompositionCard({
                 <StructureActionRow
                   row={group.row}
                   tone={group.tone}
+                  componentKind={compositionComponentKind(group.row.label)}
                   document={document}
                   actions={actions}
                   activeActionKey={activeActionKey}
@@ -3908,6 +3922,7 @@ function structureActionRowKey(row: StructureSummaryRow, index: number) {
 function StructureActionRow({
   row,
   tone,
+  componentKind,
   document,
   actions,
   activeActionKey,
@@ -3917,6 +3932,7 @@ function StructureActionRow({
 }: {
   row: StructureSummaryRow;
   tone?: CompositionTone;
+  componentKind?: CompositionComponentKind;
   document: ViewerDocument;
   actions: ShellActions;
   activeActionKey: string | null;
@@ -3983,6 +3999,7 @@ function StructureActionRow({
     void showNativeContextMenu(contextMenuItems({
       row,
       document,
+      componentKind,
       primaryAction,
       secondaryAction,
       selected,
@@ -4120,9 +4137,13 @@ function selectionActionKey(document: ViewerDocument, action: StructureViewerAct
   return JSON.stringify([document.id, action.type, action.selector]);
 }
 
+// A component row offers what the viewer's own scene tree offers for the same
+// object - select it, take it out of view, take it out of the scene - so the two
+// places agree instead of the panel being a read-only echo of the tree.
 function contextMenuItems({
   row,
   document,
+  componentKind,
   primaryAction,
   secondaryAction,
   selected,
@@ -4131,6 +4152,7 @@ function contextMenuItems({
 }: {
   row: StructureSummaryRow;
   document: ViewerDocument;
+  componentKind?: CompositionComponentKind;
   primaryAction: StructureViewerAction;
   secondaryAction?: StructureViewerAction;
   selected: boolean;
@@ -4138,11 +4160,12 @@ function contextMenuItems({
   clearSelection: () => void;
 }): MenuItemSpec[] {
   const items: MenuItemSpec[] = [
+    { kind: "label", id: "row-heading", text: row.label },
     {
       kind: "item",
       id: "primary-action",
       text: selected ? "Clear selection" : primaryAction.label,
-      detail: `${row.label}: ${row.value}`,
+      tooltip: `${row.label}: ${row.value}`,
       action: selected ? clearSelection : () => runAction(primaryAction),
     },
   ];
@@ -4151,9 +4174,30 @@ function contextMenuItems({
       kind: "item",
       id: "secondary-action",
       text: secondaryAction.label,
-      detail: `${row.label}: ${row.value}`,
+      tooltip: `${row.label}: ${row.value}`,
       action: () => runAction(secondaryAction),
     });
+  }
+  if (componentKind) {
+    const hideShow: StructureViewerAction[] = componentKind === "water"
+      ? [{ type: "hide_waters", label: "Hide" }, { type: "show_waters", label: "Show" }]
+      : [
+        { type: "hide_components", label: "Hide", kind: componentKind },
+        { type: "show_components", label: "Show", kind: componentKind },
+      ];
+    items.push(
+      { kind: "separator" },
+      { kind: "label", id: "row-visibility", text: "Scene" },
+      { kind: "item", id: "hide-component", text: "Hide", tooltip: `Drop the ${row.label.toLowerCase()} representation`, action: () => runAction(hideShow[0]) },
+      { kind: "item", id: "show-component", text: "Show", tooltip: `Draw the ${row.label.toLowerCase()} again`, action: () => runAction(hideShow[1]) },
+      {
+        kind: "item",
+        id: "remove-component",
+        text: "Remove",
+        tooltip: `Take the ${row.label.toLowerCase()} out of the scene tree`,
+        action: () => runAction({ type: "remove_components", label: `Remove ${row.label.toLowerCase()}`, kind: componentKind }),
+      },
+    );
   }
   items.push(
     { kind: "separator" },
@@ -4168,7 +4212,7 @@ function contextMenuItems({
       kind: "item",
       id: "copy-label",
       text: "Copy label",
-      detail: document.title,
+      tooltip: document.title,
       action: () => void navigator.clipboard?.writeText(`${row.label}: ${row.value}`),
     },
   );

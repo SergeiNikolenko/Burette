@@ -40,9 +40,9 @@ export type StructureViewerAction =
       label: string;
     }
   | {
-      type: "hide_components" | "show_components";
+      type: "hide_components" | "show_components" | "remove_components";
       label: string;
-      kind: "polymer" | "ligand" | "ion";
+      kind: "polymer" | "ligand" | "ion" | "water";
     }
   | {
       type: "clear_selection";
