@@ -523,8 +523,8 @@ case "$ROOT" in *"/.Trash/"*|*"/Library/Mobile Documents/.Trash/"*)
   exit 1;;
 esac
 
-# Prevent accidentally running old v5/v6/v7/v8 folders.
-grep -Eq '"version": "1\.0\.[0-9]+(-[0-9A-Za-z.-]+)?"' package.json || { echo "error: this is not a v1 release package; package.json version is:" >&2; grep '"version"' package.json >&2 || true; exit 1; }
+# Prevent stale or misaligned version metadata from reaching native packaging.
+bun scripts/check-release-version.mjs
 grep -q 'com.local.BuretteV10.Preview' Burette.xcodeproj/project.pbxproj || { echo "error: this Xcode project is not v10." >&2; exit 1; }
 grep -q 'preview-content-type.mjs' scripts/force-preview.sh || { echo "error: force-preview.sh is not using the preview format registry helper." >&2; exit 1; }
 grep -q 'config.*preview-formats.json' scripts/preview-content-type.mjs || { echo "error: preview content type helper is not using the preview format registry." >&2; exit 1; }
