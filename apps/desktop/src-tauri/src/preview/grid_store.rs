@@ -265,6 +265,10 @@ struct ParsedGridBatch {
 struct GridCursor {
     offset: usize,
     row: usize,
+    // DataWarrior only: how many records the row at `offset` already produced, so
+    // a batch that stopped part-way through a multi-structure row resumes inside
+    // it. The other parsers emit one record per row and leave this at zero.
+    row_records: usize,
 }
 
 impl GridRuntimeRegistry {
@@ -1513,8 +1517,10 @@ fn parse_datawarrior_batch(
     } else {
         cursor.offset.min(text.len())
     };
-    let mut skip_in_row = cursor.row;
-    let mut row_offset = 0usize;
+    let mut skip_in_row = cursor.row_records;
+    // The row number is carried across batches: it names records when the file has
+    // no name column, and is published as the "DataWarrior row" property.
+    let mut row_offset = cursor.row;
 
     while let Some((line, next_offset)) = line_at(text, offset) {
         let line_start = offset;
@@ -1605,16 +1611,18 @@ fn parse_datawarrior_batch(
         row_offset += 1;
         if !complete {
             // Stopped inside this row: resume at the row itself, past the records
-            // it already produced.
+            // it already produced, and under its own number.
             offset = line_start;
             skip_in_row = emitted_in_row;
+            row_offset -= 1;
             break;
         }
     }
     ParsedGridBatch {
         next_cursor: GridCursor {
             offset,
-            row: skip_in_row,
+            row: row_offset,
+            row_records: skip_in_row,
         },
         next_index: start_index + records.len(),
         records,
@@ -1771,7 +1779,10 @@ fn parse_smiles_batch(
     }
     ParsedGridBatch {
         records,
-        next_cursor: GridCursor { offset, row: 0 },
+        next_cursor: GridCursor {
+            offset,
+            ..GridCursor::default()
+        },
         next_index,
         complete: offset >= text.len(),
     }
@@ -1874,7 +1885,10 @@ fn parse_sdf_batch(
     }
     ParsedGridBatch {
         records,
-        next_cursor: GridCursor { offset, row: 0 },
+        next_cursor: GridCursor {
+            offset,
+            ..GridCursor::default()
+        },
         next_index,
         complete,
     }
@@ -2099,6 +2113,7 @@ fn parse_delimited_table_batch(
         next_cursor: GridCursor {
             offset,
             row: row_number,
+            ..GridCursor::default()
         },
         next_index,
         complete: offset >= text.len(),
@@ -2177,6 +2192,7 @@ fn parse_delimited_rows_as_smiles_batch(
         next_cursor: GridCursor {
             offset,
             row: row_number,
+            ..GridCursor::default()
         },
         next_index,
         complete,
@@ -4777,6 +4793,31 @@ mod tests {
 
     // A DataWarrior row can carry several structure columns, so a batch can stop
     // part-way through one; the cursor has to resume inside that row.
+    // Without a name column the record name comes from the row number, which must
+    // keep counting across batches rather than restarting at each one.
+    #[test]
+    fn datawarrior_row_numbers_survive_a_resumed_batch() {
+        let dwar = concat!(
+            "<column properties>\n",
+            "<columnName=\"Structure\">\n",
+            "<columnProperty=\"specialType\tidcode\">\n",
+            "</column properties>\n",
+            "Structure\tvalue\n",
+            "aaa\t1\n",
+            "bbb\t2\n",
+            "ccc\t3\n",
+        );
+        let expected = records_in_one_batch("dwar", dwar);
+        assert_eq!(
+            expected
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Molecule 1", "Molecule 2", "Molecule 3"]
+        );
+        assert_eq!(records_one_batch_at_a_time("dwar", dwar), expected);
+    }
+
     #[test]
     fn datawarrior_batches_tile_rows_with_several_structure_columns() {
         let dwar = concat!(
