@@ -1571,6 +1571,86 @@ img.radix-menu-item-icon {
   color: var(--text-faint);
   font-size: 11px;
 }
+/* A long engine menu is a set of named groups, not one run of commands: the
+   heading is what makes "Optimize" and "Metadynamics" findable in the same list. */
+.radix-menu-group-label {
+  color: var(--text-faint);
+  padding: 6px 8px 3px;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+/* Colour belongs to the component the menu was opened on, so it is picked in
+   place rather than behind another dialog. */
+.radix-menu-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 3px 8px 6px;
+}
+.radix-menu-swatch {
+  width: 15px;
+  height: 15px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 50%;
+  padding: 0;
+  cursor: default;
+}
+.radix-menu-swatch[data-active] {
+  box-shadow: 0 0 0 1.5px var(--bg-base), 0 0 0 3px var(--text-primary);
+}
+.radix-menu-swatch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1.5px var(--bg-base), 0 0 0 3px var(--focus-ring);
+}
+/* The parameters a run will use sit in the menu that launches it, so the values
+   are visible at the moment of the decision. */
+.radix-menu-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  font-size: 11.5px;
+}
+.radix-menu-field > span:first-child {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.radix-menu-field select,
+.radix-menu-field input[type="number"] {
+  width: 62px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 6px;
+  background: var(--surface-input);
+  color: var(--text-primary);
+  padding: 2px 5px;
+  font: inherit;
+  font-size: 11px;
+}
+.radix-menu-field select {
+  width: auto;
+  max-width: 116px;
+}
+.radix-menu-field select:focus-visible,
+.radix-menu-field input[type="number"]:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
+}
+.radix-menu-field-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.radix-menu-field-number em {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-style: normal;
+}
 /* The surface itself is the shared shadcn menu; this class only scopes the
    slightly larger app icons and labels that the editor targets need. */
 .open-editor-menu-content .radix-menu-item-body {
@@ -1988,7 +2068,14 @@ img.radix-menu-item-icon {
   display: flex;
   align-items: center;
   gap: 4px;
-  overflow: hidden;
+  /* Tabs used to shrink past their label and slide under one another once the
+     strip ran out of room. They keep their width and the strip scrolls. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.dock-tab-strip::-webkit-scrollbar {
+  display: none;
 }
 .dock-panel[data-area="right"] .dock-tab-strip {
   flex: 0 1 auto;
@@ -1999,7 +2086,7 @@ img.radix-menu-item-icon {
 .dock-tab-shell {
   position: relative;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
 }
 .dock-panel[data-area="right"] .dock-tab-shell {
   flex: 0 0 auto;
@@ -2044,6 +2131,19 @@ img.radix-menu-item-icon {
 .dock-panel[data-area="right"] .dock-tab:not([data-active]) span {
   display: none;
 }
+/* A right-dock tab collapses to a 40px icon. On hover the shared rule adds room
+   for the close button, but there is none in 40px, so the cross lands on the
+   icon. A pointed-at icon tab expands like the active one and shows its label. */
+.dock-panel[data-area="right"] .dock-tab-shell:hover .dock-tab,
+.dock-panel[data-area="right"] .dock-tab-shell:focus-within .dock-tab {
+  width: auto;
+  max-width: 170px;
+  justify-content: flex-start;
+}
+.dock-panel[data-area="right"] .dock-tab-shell:hover .dock-tab:not([data-active]) span,
+.dock-panel[data-area="right"] .dock-tab-shell:focus-within .dock-tab:not([data-active]) span {
+  display: block;
+}
 .dock-tab span {
   min-width: 0;
   overflow: hidden;
@@ -2072,16 +2172,22 @@ img.radix-menu-item-icon {
   display: grid;
   place-items: center;
   padding: 0;
-  opacity: 1;
-  pointer-events: auto;
-  transition: color 120ms ease-out, background 120ms ease-out, box-shadow 120ms ease-out;
+  /* Hidden until the tab is pointed at or focused, so a strip of background
+     tabs is not a row of crosses - but reachable on every one of them. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out, color 120ms ease-out, background 120ms ease-out, box-shadow 120ms ease-out;
 }
 .dock-tab-shell:hover .dock-tab-close,
-.dock-tab-shell:focus-within .dock-tab-close {
+.dock-tab-shell:focus-within .dock-tab-close,
+.dock-tab-shell[data-active] .dock-tab-close {
   opacity: 1;
   pointer-events: auto;
 }
-.dock-tab-shell[data-active] .dock-tab {
+/* The room has to appear with the button, or the label slides under it. */
+.dock-tab-shell[data-active] .dock-tab,
+.dock-tab-shell:hover .dock-tab,
+.dock-tab-shell:focus-within .dock-tab {
   padding-right: 34px;
 }
 .dock-tab-shell[data-active] .dock-tab-close {
@@ -2110,8 +2216,10 @@ img.radix-menu-item-icon {
 
   /* The padding shorthand above also resets the room reserved for the close
      button (which is absolutely positioned at the tab's right edge), so the
-     active tab's label would run underneath it. Restore that room. */
-  .dock-panel[data-area="right"] .dock-tab-shell[data-active] .dock-tab {
+     label would run underneath it. Restore that room wherever it shows. */
+  .dock-panel[data-area="right"] .dock-tab-shell[data-active] .dock-tab,
+  .dock-panel[data-area="right"] .dock-tab-shell:hover .dock-tab,
+  .dock-panel[data-area="right"] .dock-tab-shell:focus-within .dock-tab {
     padding-right: 34px;
   }
 
@@ -2406,7 +2514,63 @@ img.radix-menu-item-icon {
   grid-auto-rows: max-content;
 }
 .structure-inspector-header {
-  background: var(--surface-card);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+/* Sticky over scrolling content needs an opaque base; the card tint alone is
+   translucent and the rows underneath read through it. The extra class outranks
+   .structure-brief-card, which sets the same property further down the file. */
+.structure-brief-card.structure-inspector-header {
+  background-color: var(--bg-base);
+  background-image: linear-gradient(var(--surface-card), var(--surface-card));
+}
+/* The dock scrolls with 12px of padding, so the card sticks 12px below the panel
+   edge and content slides through the gap. Cover it rather than drop the
+   padding, which also sets the card's own inset. */
+.structure-inspector-header::before {
+  content: "";
+  position: absolute;
+  inset: -13px -13px auto;
+  height: 13px;
+  background: var(--bg-base);
+}
+.structure-inspector-header-stats {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+}
+.structure-inspector-header-stats > div {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  padding: 5px 8px;
+}
+.structure-inspector-header-stats > div + div {
+  border-left: 1px solid var(--line-subtler);
+}
+.structure-inspector-header-stats span {
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.structure-inspector-header-stats strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.structure-inspector-header-stat-skeleton {
+  width: 68%;
+  height: 13px;
 }
 .structure-brief-card-header {
   min-width: 0;
@@ -2582,11 +2746,19 @@ img.radix-menu-item-icon {
   gap: 8px;
   align-items: baseline;
 }
-.structure-inspector-section-header span {
+/* The count beside a section title is a chip, not a stray grey word: with a
+   surface behind it the eye reads title and count as one header row.
+   Direct child only - as a descendant rule this also hit the tooltip span
+   inside the title button and clamped it to the chip's width. */
+.structure-inspector-section-header > span {
   min-width: 0;
   max-width: 160px;
-  color: var(--text-muted);
-  font-size: 11px;
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  padding: 3px 7px;
+  font-size: 10.5px;
+  font-weight: 500;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2598,11 +2770,12 @@ img.radix-menu-item-icon {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   padding: 0;
   font: inherit;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   text-align: left;
   cursor: default;
 }
@@ -2955,6 +3128,11 @@ img.radix-menu-item-icon {
 .conformer-inline-settings {
   gap: 8px;
 }
+.structure-inspector-settings-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .structure-inspector-xtb-summary {
   position: relative;
   min-width: 0;
@@ -3000,13 +3178,27 @@ img.radix-menu-item-icon {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+/* Settings belong to the tool row that opened them, so they read as a drawer
+   nested inside the section rather than a slab bolted under it. */
 .structure-inspector-xtb-settings {
   min-width: 0;
-  border-top: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line-subtler));
-  margin-top: 2px;
-  padding-top: 8px;
   display: grid;
   gap: 7px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 9px;
+  background: var(--surface-subtle);
+  margin-top: 2px;
+  padding: 8px;
+}
+/* The section title above is the heading; this one names a drawer inside it and
+   sits a step down, matching the group headings used in menus. */
+.structure-inspector-xtb-settings .structure-inspector-section-header h4 {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 .structure-inspector-xtb-settings-title {
   min-width: 0;
@@ -3169,6 +3361,9 @@ img.radix-menu-item-icon {
   color: var(--text-muted);
   font-size: 11px;
   overflow: hidden;
+  /* text-overflow only ellipsizes a single line; without nowrap the label broke
+     mid-word and the four options ran together as "GFN2GFN1GFN0GFN-F". */
+  white-space: nowrap;
   text-overflow: ellipsis;
   cursor: default;
 }
@@ -3188,6 +3383,37 @@ img.radix-menu-item-icon {
 }
 .structure-inspector-xtb-setting-control .settings-range-control input {
   min-width: 0;
+}
+/* In a narrow dock the label column and a four-option control fought over ~270px
+   and both lost: "Very tight" clipped and the five category tabs shrank to
+   "Solv…", "Pro…", "Dyn…". Below the dock's narrow breakpoint the label takes its
+   own line so the control gets the full width, and the tabs keep their names and
+   scroll instead of truncating. */
+@container (max-width: 360px) {
+  .structure-inspector-xtb-setting-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .structure-inspector-xtb-setting-control {
+    justify-content: flex-start;
+  }
+  .structure-inspector-xtb-setting-control .settings-select,
+  .structure-inspector-xtb-setting-control .settings-range-control,
+  .structure-inspector-xtb-setting-control .structure-inspector-number-control {
+    max-width: none;
+  }
+  .structure-inspector-xtb-category-bar {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .structure-inspector-xtb-category-bar::-webkit-scrollbar {
+    display: none;
+  }
+  .structure-inspector-xtb-category-button {
+    flex: 0 0 auto;
+    padding-inline: 10px;
+  }
 }
 .structure-inspector-settings-status {
   min-width: 0;
@@ -3469,48 +3695,20 @@ img.radix-menu-item-icon {
   border-color: color-mix(in srgb, #f5bc58 28%, var(--line-subtler));
   background: color-mix(in srgb, #f5bc58 6%, var(--surface-card));
 }
+/* This block used to be a <details> whose <summary> carried its own padding, so
+   the card zeroed its own. It is an ordinary section now: without the padding
+   back, its header sat flush against the border while every neighbour was
+   inset by 8px. The summary rules went with the element. */
 .structure-inspector-details {
-  padding: 0;
   overflow: hidden;
-}
-.structure-inspector-details > summary {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: baseline;
-  padding: 9px;
-  cursor: default;
-  list-style: none;
-}
-.structure-inspector-details > summary::-webkit-details-marker {
-  display: none;
-}
-.structure-inspector-details > summary span {
-  min-width: 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-}
-.structure-inspector-details > summary small {
-  min-width: 0;
-  max-width: 190px;
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .structure-inspector-details-body {
   min-width: 0;
   border-top: 1px solid var(--line-subtler);
-  padding: 9px;
+  margin-top: 2px;
+  padding-top: 8px;
   display: grid;
   gap: 8px;
-}
-.structure-inspector-details:not([open]) > .structure-inspector-details-body {
-  display: none;
 }
 .structure-brief-rows {
   min-width: 0;
@@ -3569,13 +3767,281 @@ img.radix-menu-item-icon {
 }
 /* The composition tree stacks each group with its members, so the separator has
    to move from the rows to the groups. */
-.structure-inspector-tree-group + .structure-inspector-tree-group {
-  border-top: 1px solid var(--line-subtler);
+/* A structure with a hundred waters used to push every card below it off the
+   panel. The tree keeps its own scroll instead, so the sections after it stay
+   reachable no matter how long the composition is. */
+.structure-brief-rows.structure-inspector-tree {
+  max-height: 264px;
+  overflow-y: auto;
+}
+/* Indentation already says where a group starts, so the hairlines that made the
+   tree read as a table are gone. Without them the rows can also close up: at the
+   old row height four groups did not fit before the list started scrolling. */
+.structure-brief-rows.structure-inspector-tree .structure-brief-action-entry + .structure-brief-action-entry {
+  border-top: 0;
+}
+.structure-inspector-tree .structure-brief-action-entry {
+  gap: 4px;
+  padding: 0;
+}
+.structure-inspector-tree .structure-brief-action-summary,
+.structure-inspector-tree .structure-brief-action-row {
+  padding: 3px 5px;
+}
+/* A collapsed section keeps only its header, so the list reads as a table of
+   contents when everything is folded away. */
+.structure-inspector-section[data-collapsed] {
+  gap: 0;
+}
+/* The body appearing and disappearing already says whether a section is open,
+   so the title carries the name alone and reads as a heading. */
+/* The tones follow the scene tree's default palette rather than the accent, so
+   a chain and its dot read as the same object in both places. */
+.structure-inspector-composition-bar {
+  min-width: 0;
+  display: flex;
+  height: 7px;
+  overflow: hidden;
+  border: 1px solid var(--line-subtler);
+  border-radius: 999px;
+}
+.structure-inspector-composition-bar i {
+  display: block;
+  height: 100%;
+  background: var(--text-faint);
+}
+.structure-inspector-composition-bar i[data-tone="polymer"] { background: #4e79a7; }
+.structure-inspector-composition-bar i[data-tone="ligand"] { background: #59a14f; }
+.structure-inspector-composition-bar i[data-tone="ion"] { background: #e8973a; }
+.structure-inspector-composition-bar i[data-tone="water"] { background: #9aa0a6; }
+.structure-inspector-composition-search {
+  width: 100%;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+  background: var(--surface-input);
+  color: var(--text-primary);
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 11.5px;
+}
+.structure-inspector-composition-search::placeholder {
+  color: var(--text-faint);
+}
+.structure-inspector-composition-search:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
+}
+.structure-inspector-row-dot {
+  align-self: center;
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.structure-inspector-row-dot[data-tone="polymer"] { background: #4e79a7; }
+.structure-inspector-row-dot[data-tone="ligand"] { background: #59a14f; }
+.structure-inspector-row-dot[data-tone="ion"] { background: #e8973a; }
+.structure-inspector-row-dot[data-tone="water"] { background: #9aa0a6; }
+.structure-brief-mini-action[data-icon="visibility"] {
+  display: inline-grid;
+  place-items: center;
+  padding-inline: 5px;
+}
+.structure-inspector-tool-footer {
+  min-width: 0;
+  color: var(--text-faint);
+  padding: 1px 2px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.structure-inspector-loading {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 3px 1px;
+}
+.structure-inspector-loading-row {
+  height: 10px;
+}
+.structure-inspector-tools {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.structure-inspector-tool {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 9px;
+  padding: 7px 8px;
+}
+.structure-inspector-tool-rail {
+  width: 3px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--text-faint);
+}
+.structure-inspector-tool[data-state="ready"] .structure-inspector-tool-rail {
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.structure-inspector-tool[data-state="running"] {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line-subtler));
+}
+.structure-inspector-tool[data-state="running"] .structure-inspector-tool-rail {
+  background: var(--accent);
+}
+.structure-inspector-tool[data-state="missing"] {
+  opacity: 0.72;
+}
+.structure-inspector-tool-main {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.structure-inspector-tool-name {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.structure-inspector-tool-name em {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 400;
+}
+.structure-inspector-tool-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+.structure-inspector-tool-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+}
+/* A chevron needs a square, not a pill: matching the primary button's height
+   and squaring the width puts the glyph on the row's optical centre. */
+.structure-inspector-tool-menu-button,
+.dock-job-menu-button {
+  width: 24px;
+  flex: 0 0 24px;
+  color: var(--text-muted);
+  padding-inline: 0;
+}
+.structure-inspector-tool-menu-button:hover,
+.dock-job-menu-button:hover {
+  color: var(--text-primary);
+}
+/* Docking poses are told apart by the file each came from, so they are a list
+   of names rather than a grid of numbers; the grid stays for models, which
+   have nothing but an index. */
+.structure-inspector-pose-list {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  max-height: 188px;
+  overflow-y: auto;
+}
+.structure-inspector-pose-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+}
+.structure-inspector-pose-row:hover {
+  background: var(--surface-hover);
+}
+.structure-inspector-pose-row[data-selected] {
+  background: var(--surface-selected);
+}
+.structure-inspector-pose-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
+}
+.structure-inspector-pose-rank {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.structure-inspector-pose-row[data-selected] .structure-inspector-pose-rank {
+  color: var(--text-secondary);
+}
+.structure-inspector-pose-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.structure-inspector-tool.grid-descriptor-status .grid-descriptor-progress {
+  margin-top: 4px;
+}
+.dock-empty-state {
+  gap: 10px;
+  padding: 26px 18px;
+}
+.dock-empty-state [data-slot="empty-title"] {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.dock-empty-state [data-slot="empty-description"] {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.dock-empty-state [data-slot="empty-icon"][data-variant="icon"] {
+  border: 1px solid var(--line-subtler);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+}
+.structure-inspector-empty {
+  border: 1px solid var(--line-subtler);
+  border-radius: var(--control-radius);
+  background: var(--surface-card);
+  gap: 10px;
+  padding: 22px 14px;
+}
+.structure-inspector-empty [data-slot="empty-title"] {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.structure-inspector-empty [data-slot="empty-description"] {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.structure-inspector-empty [data-slot="empty-icon"][data-variant="icon"] {
+  border: 1px solid var(--line-subtler);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
 }
 .structure-inspector-tree-toggle,
 .structure-inspector-tree-spacer {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
 }
 .structure-inspector-tree-toggle {
   display: grid;
@@ -3599,18 +4065,7 @@ img.radix-menu-item-icon {
   transform: rotate(90deg);
 }
 .structure-inspector-tree-children {
-  position: relative;
-  padding: 0 0 2px 22px;
-}
-/* Same guide the sidebar tree uses, so nesting reads the same in both panels. */
-.structure-inspector-tree-children::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 4px;
-  left: 13px;
-  width: 1px;
-  background: var(--line-subtler);
+  padding: 0 0 2px 15px;
 }
 .structure-inspector-tree-children .structure-brief-action-entry + .structure-brief-action-entry {
   border-top: 0;
@@ -3644,6 +4099,35 @@ img.radix-menu-item-icon {
   gap: 8px;
   align-items: baseline;
 }
+/* A tree row is not a two-column table: the label and its figure sit together
+   and the colour dot is pinned to the far edge, next to the row actions. */
+.structure-inspector-row-content[data-tree="true"] {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.structure-inspector-row-content[data-tree="true"] .structure-inspector-row-label {
+  flex: 0 1 auto;
+  color: var(--text-primary);
+}
+/* The figure belongs to the label, not to a column of its own: stretching it
+   parked "2 chains" in the middle of the row, half a panel from the name it
+   counts. */
+.structure-inspector-row-content[data-tree="true"] em {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--text-faint);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-style: normal;
+}
+.structure-inspector-row-content[data-tree="true"] .structure-inspector-row-dot {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
 .structure-brief-action-row span,
 .structure-brief-action-summary span,
 .structure-brief-action-row strong,
@@ -3659,7 +4143,7 @@ img.radix-menu-item-icon {
 }
 .structure-inspector-row-label {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11.5px;
   text-align: left;
 }
 .structure-inspector-row-content strong {
@@ -3742,6 +4226,21 @@ img.radix-menu-item-icon {
   transition: background 120ms ease-out, color 120ms ease-out, transform 120ms ease-out;
 }
 .structure-brief-mini-action:hover {
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+}
+/* In the tree these are row affordances, not form controls: at button size two
+   of them on the water row outweighed every label above it. */
+.structure-inspector-tree .structure-brief-mini-action {
+  min-width: 0;
+  width: 17px;
+  height: 17px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-faint);
+  padding: 0;
+}
+.structure-inspector-tree .structure-brief-mini-action:hover {
   background: var(--surface-subtle);
   color: var(--text-primary);
 }
@@ -3905,7 +4404,7 @@ img.radix-menu-item-icon {
 .trajectory-smoothing-runtime-row strong { color: color-mix(in srgb, #2da66f 76%, var(--text-primary)); font-size: 11px; }
 .trajectory-smoothing-runtime-row small { color: var(--text-muted); font-size: 10px; }
 .trajectory-smoothing-runtime-row button { min-height: 25px; padding: 0 8px; border: 1px solid var(--line-subtler); border-radius: 7px; background: var(--surface-card); color: var(--text-primary); font: inherit; font-size: 10px; font-weight: 650; }
-.trajectory-smoothing-build { width: 100%; }
+.trajectory-smoothing-build { justify-self: start; }
 .trajectory-smoothing-chart {
   overflow: hidden;
   border: 1px solid var(--line-subtler);
@@ -4081,9 +4580,37 @@ img.radix-menu-item-icon {
   gap: 2px;
   flex: 1 1 auto;
 }
+/* A job is the same kind of thing as a tool run, so it wears the tool row: a
+   state rail on the left, title and detail stacked, actions on the right. */
 .dock-xtb-job-item {
+  position: relative;
   border: 1px solid var(--line-subtler);
+  background: var(--surface-card);
   gap: 0;
+  padding-left: 18px;
+}
+.dock-xtb-job-item::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--text-faint);
+}
+.dock-xtb-job-item[data-status="running"]::before {
+  background: var(--accent);
+}
+.dock-xtb-job-item[data-status="success"]::before {
+  background: color-mix(in srgb, #30d158 72%, var(--text-secondary));
+}
+.dock-xtb-job-item[data-status="failed"]::before {
+  background: color-mix(in srgb, #ff5f57 76%, var(--text-secondary));
+}
+.dock-xtb-job-item[data-status="running"] {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line-subtler));
 }
 .dock-xtb-job-item[data-has-primary-result] {
   cursor: pointer;

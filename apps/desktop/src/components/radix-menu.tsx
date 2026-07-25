@@ -2,16 +2,20 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElemen
 import { createRoot, type Root as ReactRoot } from "react-dom/client";
 import {
   ContextMenu,
+  ContextMenuCheckboxItem,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
@@ -124,6 +128,25 @@ function renderDropdownItem(item: MenuItemSpec, index: number) {
   if (item.kind === "separator") {
     return <DropdownMenuSeparator key={`separator-${index}`} />;
   }
+  if (item.kind === "label") {
+    return <DropdownMenuLabel key={item.id} className="radix-menu-group-label">{item.text}</DropdownMenuLabel>;
+  }
+  if (item.kind === "checkbox") {
+    return (
+      <DropdownMenuCheckboxItem
+        key={item.id}
+        checked={item.checked}
+        disabled={item.disabled}
+        onCheckedChange={(checked) => item.action?.(checked === true)}
+      >
+        {renderItemBody(item)}
+        {item.accelerator ? <DropdownMenuShortcut>{item.accelerator}</DropdownMenuShortcut> : null}
+      </DropdownMenuCheckboxItem>
+    );
+  }
+  if (item.kind === "swatches" || item.kind === "select" || item.kind === "number") {
+    return renderControl(item);
+  }
 
   return (
     <DropdownMenuItem
@@ -141,6 +164,25 @@ function renderContextItem(item: MenuItemSpec, index: number) {
   if (item.kind === "separator") {
     return <ContextMenuSeparator key={`separator-${index}`} />;
   }
+  if (item.kind === "label") {
+    return <ContextMenuLabel key={item.id} className="radix-menu-group-label">{item.text}</ContextMenuLabel>;
+  }
+  if (item.kind === "checkbox") {
+    return (
+      <ContextMenuCheckboxItem
+        key={item.id}
+        checked={item.checked}
+        disabled={item.disabled}
+        onCheckedChange={(checked) => item.action?.(checked === true)}
+      >
+        {renderItemBody(item)}
+        {item.accelerator ? <ContextMenuShortcut>{item.accelerator}</ContextMenuShortcut> : null}
+      </ContextMenuCheckboxItem>
+    );
+  }
+  if (item.kind === "swatches" || item.kind === "select" || item.kind === "number") {
+    return renderControl(item);
+  }
 
   return (
     <ContextMenuItem
@@ -154,16 +196,84 @@ function renderContextItem(item: MenuItemSpec, index: number) {
   );
 }
 
+// Controls live outside the menu's roving focus: a select or a number field that
+// closed the menu on every keystroke would make a parameter impossible to set.
+// They stop selection and keypresses from reaching the menu instead.
+function renderControl(item: Extract<MenuItemSpec, { kind: "swatches" | "select" | "number" }>) {
+  const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
+  if (item.kind === "swatches") {
+    return (
+      <div key={item.id} className="radix-menu-swatches" onKeyDown={stop}>
+        {item.colors.map((color) => (
+          <button
+            key={color}
+            type="button"
+            className="radix-menu-swatch"
+            data-active={item.activeColor === color || undefined}
+            style={{ background: color }}
+            aria-label={item.label ? `${item.label}: ${color}` : color}
+            onClick={(event) => { stop(event); item.action?.(color); }}
+          />
+        ))}
+      </div>
+    );
+  }
+  // The menu's items are a snapshot taken when it opened, so a controlled value
+  // would spring back to that snapshot on every keystroke even though the write
+  // succeeded. These seed from the current value and then keep what is typed.
+  if (item.kind === "select") {
+    return (
+      <label key={item.id} className="radix-menu-field" onKeyDown={stop}>
+        <span>{item.label}</span>
+        <select
+          defaultValue={item.value}
+          disabled={item.disabled}
+          onClick={stop}
+          onChange={(event) => item.action?.(event.currentTarget.value)}
+        >
+          {item.options.map((option) => (
+            <option key={option} value={option}>{item.optionLabels?.[option] ?? option}</option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+  return (
+    <label key={item.id} className="radix-menu-field" onKeyDown={stop}>
+      <span>{item.label}</span>
+      <span className="radix-menu-field-number">
+        <input
+          type="number"
+          defaultValue={item.value}
+          min={item.min}
+          max={item.max}
+          step={item.step}
+          disabled={item.disabled}
+          onClick={stop}
+          onChange={(event) => {
+            const next = Number(event.currentTarget.value);
+            if (Number.isFinite(next)) item.action?.(next);
+          }}
+        />
+        {item.unit ? <em>{item.unit}</em> : null}
+      </span>
+    </label>
+  );
+}
+
 // The item's own layout stays local: a menu entry here can carry an icon and a second
 // line of detail, which the shadcn item does not model. It sits inside the shadcn
 // item, so spacing, hover and disabled states still come from the component.
-function renderItemBody(item: Extract<MenuItemSpec, { kind: "item" }>) {
+function renderItemBody(item: Extract<MenuItemSpec, { kind: "item" | "checkbox" }>) {
+  const iconUrl = item.kind === "item" ? item.iconUrl : undefined;
+  const iconText = item.kind === "item" ? item.iconText : undefined;
+  const tooltip = item.kind === "item" ? item.tooltip : undefined;
   return (
-    <span className="radix-menu-item-body">
-      {item.iconUrl ? (
-        <img className="radix-menu-item-icon" src={item.iconUrl} alt="" aria-hidden="true" />
-      ) : item.iconText ? (
-        <span className="radix-menu-item-icon" aria-hidden="true">{item.iconText}</span>
+    <span className="radix-menu-item-body" title={tooltip}>
+      {iconUrl ? (
+        <img className="radix-menu-item-icon" src={iconUrl} alt="" aria-hidden="true" />
+      ) : iconText ? (
+        <span className="radix-menu-item-icon" aria-hidden="true">{iconText}</span>
       ) : null}
       <span className="radix-menu-item-copy">
         <span className="radix-menu-item-label">{item.text}</span>
