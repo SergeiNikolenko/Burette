@@ -118,7 +118,7 @@ impl GridSnapshotLease {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct GridCollectionSummary {
     pub(crate) format: &'static str,
     pub(crate) records_total: usize,
@@ -406,36 +406,25 @@ impl SdfFileReader {
 
         loop {
             ensure_sdf_indexing_active(cancel_token)?;
-            let (available_len, delimiter) = {
-                let available = self.reader.fill_buf().map_err(|error| error.to_string())?;
-                if available.is_empty() {
-                    return Ok(
-                        (!buffer.is_empty()).then(|| String::from_utf8_lossy(buffer).into_owned())
-                    );
-                }
-                (
-                    available.len(),
-                    available
-                        .iter()
-                        .position(|byte| matches!(byte, b'\n' | b'\r')),
-                )
-            };
+            let available = self.reader.fill_buf().map_err(|error| error.to_string())?;
+            if available.is_empty() {
+                return Ok(
+                    (!buffer.is_empty()).then(|| String::from_utf8_lossy(buffer).into_owned())
+                );
+            }
+            let available_len = available.len();
+            let delimiter = available
+                .iter()
+                .position(|byte| matches!(byte, b'\n' | b'\r'));
             let Some(delimiter) = delimiter else {
-                let available = self.reader.fill_buf().map_err(|error| error.to_string())?;
                 append_checked_sdf_line_bytes(buffer, available)?;
                 self.reader.consume(available_len);
                 self.byte_offset += available_len as u64;
                 continue;
             };
 
-            let (delimiter_byte, has_following_line_feed) = {
-                let available = self.reader.fill_buf().map_err(|error| error.to_string())?;
-                (
-                    available[delimiter],
-                    available.get(delimiter + 1) == Some(&b'\n'),
-                )
-            };
-            let available = self.reader.fill_buf().map_err(|error| error.to_string())?;
+            let delimiter_byte = available[delimiter];
+            let has_following_line_feed = available.get(delimiter + 1) == Some(&b'\n');
             append_checked_sdf_line_bytes(buffer, &available[..delimiter])?;
             let bytes_consumed =
                 delimiter + 1 + usize::from(delimiter_byte == b'\r' && has_following_line_feed);
@@ -822,7 +811,7 @@ fn append_grid_text(
         )?;
         if !batch.records.is_empty() {
             records_appended += batch.records.len();
-            insert_records_in_connection(&transaction, &batch.records)?;
+            insert_records_in_connection(&transaction, &batch.records, None)?;
         }
         next_cursor = batch.next_cursor;
         next_index = batch.next_index;
@@ -1582,20 +1571,14 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
              insert or ignore into grid_index_state (id, records_indexed, index_ready) values (1, 0, 0);",
         )
         .map_err(|err| err.to_string())?;
-    ensure_optional_grid_column(connection, "molecules", "source_byte_start", "integer")?;
-    ensure_optional_grid_column(connection, "molecules", "source_byte_end", "integer")?;
-    ensure_optional_grid_column(
-        connection,
-        "grid_index_state",
-        "source_bytes_indexed",
-        "integer",
-    )?;
-    ensure_optional_grid_column(
-        connection,
-        "grid_index_state",
-        "source_bytes_total",
-        "integer",
-    )?;
+    for (table, column) in [
+        ("molecules", "source_byte_start"),
+        ("molecules", "source_byte_end"),
+        ("grid_index_state", "source_bytes_indexed"),
+        ("grid_index_state", "source_bytes_total"),
+    ] {
+        ensure_optional_grid_integer_column(connection, table, column)?;
+    }
     let _ = initialize_fts_table(connection);
     let index_ready = connection
         .query_row(
@@ -1707,11 +1690,10 @@ fn ensure_deferred_fts_triggers_absent(connection: &Connection) -> Result<(), St
     }
 }
 
-fn ensure_optional_grid_column(
+fn ensure_optional_grid_integer_column(
     connection: &Connection,
     table: &str,
     column: &str,
-    definition: &str,
 ) -> Result<(), String> {
     let mut statement = connection
         .prepare(&format!("pragma table_info({table})"))
@@ -1725,9 +1707,7 @@ fn ensure_optional_grid_column(
         return Ok(());
     }
     connection
-        .execute_batch(&format!(
-            "alter table {table} add column {column} {definition};"
-        ))
+        .execute_batch(&format!("alter table {table} add column {column} integer;"))
         .map_err(|error| error.to_string())
 }
 
@@ -2888,19 +2868,12 @@ fn insert_records_cancellable(
     let tx = connection
         .unchecked_transaction()
         .map_err(|err| err.to_string())?;
-    insert_records_in_connection_cancellable(&tx, records, cancel_token)?;
+    insert_records_in_connection(&tx, records, cancel_token)?;
     ensure_sdf_indexing_active(cancel_token)?;
     tx.commit().map_err(|err| err.to_string())
 }
 
 fn insert_records_in_connection(
-    connection: &Connection,
-    records: &[GridInputRecord],
-) -> Result<(), String> {
-    insert_records_in_connection_cancellable(connection, records, None)
-}
-
-fn insert_records_in_connection_cancellable(
     connection: &Connection,
     records: &[GridInputRecord],
     cancel_token: Option<&AtomicBool>,
