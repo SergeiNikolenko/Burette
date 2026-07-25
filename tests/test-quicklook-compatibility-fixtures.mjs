@@ -64,6 +64,18 @@ assert.match(
 assert.match(previewController, /private static let collectionPreviewReadLimit = 8 \* 1024 \* 1024/u);
 assert.match(previewController, /usesBoundedCollectionPreview = structureSize > sizeLimit/u);
 assert.match(previewController, /truncatedToWholeRecords\(/u);
+assert.match(previewController, /guard let end = sdfRecordBoundaryOffset\(in: data\) else \{ return Data\(\) \}/u);
+assert.match(previewController, /isExactSDFRecordBoundaryLine/u);
+assert.match(
+  previewController,
+  /if usesBoundedCollectionPreview && structureData\.isEmpty \{[\s\S]*?throw PreviewError\.fileTooLarge/u,
+  "a prefix without a complete record must render the explicit large-file card",
+);
+assert.doesNotMatch(
+  previewController,
+  /data\.range\(of: terminatorData, options: \.backwards\)/u,
+  "an embedded $$$$ property substring must not be accepted as an SDF record boundary",
+);
 assert.match(previewController, /boundedSample: usesBoundedCollectionPreview/u);
 
 console.log("Quick Look compatibility fixture tests passed");
