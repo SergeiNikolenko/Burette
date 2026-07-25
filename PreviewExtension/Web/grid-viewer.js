@@ -3204,6 +3204,9 @@
     } else {
       summaryParts.push(moleculeCountLabel(visible || total || included));
     }
+    // The host read only a prefix of a file too large to load in full, so these
+    // counts describe the sample and must not read as the whole collection.
+    if (cfg.boundedSample) summaryParts.push('first records of a large file');
     if (state.dirty) summaryParts.push(`unsaved ${state.dirtyReason || 'edits'}`);
     if (state.selected.size) summaryParts.push(`${state.selected.size.toLocaleString()} selected`);
     document.getElementById('summary').textContent = summaryParts.filter(Boolean).join(' · ');

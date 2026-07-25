@@ -41,6 +41,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static let externalArtifactRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
     private static let minimalRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
     private static let maestroPreviewReadLimit = 64 * 1024 * 1024
+    // Enough of a collection to fill several screens of the grid without reading a
+    // multi-gigabyte file into memory for a preview.
+    private static let collectionPreviewReadLimit = 8 * 1024 * 1024
 
     deinit {
         renderTimeoutWorkItem?.cancel()
@@ -467,18 +470,36 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let structureSize = try fileSize(for: url, fileManager: fileManager)
         let sizeLimit = quickLookSizeLimit(for: url)
         let usesBoundedMaestroPreview = structureSize > sizeLimit && isMaestroPreviewExtension(pathExtension)
-        guard structureSize <= sizeLimit || usesBoundedMaestroPreview else {
+        // A molecule collection does not have to be readable in full to be worth
+        // previewing: the first records already say what the file holds. Reading a
+        // bounded prefix is far better than refusing outright, which is what a
+        // 1 GB SDF against the 25 MiB limit used to get.
+        let usesBoundedCollectionPreview = structureSize > sizeLimit
+            && !usesBoundedMaestroPreview
+            && isBoundedCollectionPreviewExtension(pathExtension)
+        guard structureSize <= sizeLimit || usesBoundedMaestroPreview || usesBoundedCollectionPreview else {
             throw PreviewError.fileTooLarge(url.lastPathComponent, structureSize, sizeLimit)
         }
         let fileReadStarted = Date()
-        let structureData = usesBoundedMaestroPreview
-            ? try readFilePrefix(url, maxBytes: maestroPreviewReadLimit)
-            : try Data(contentsOf: url)
+        var structureData: Data
+        if usesBoundedMaestroPreview {
+            structureData = try readFilePrefix(url, maxBytes: maestroPreviewReadLimit)
+        } else if usesBoundedCollectionPreview {
+            structureData = Self.truncatedToWholeRecords(
+                try readFilePrefix(url, maxBytes: collectionPreviewReadLimit),
+                fileExtension: pathExtension
+            )
+        } else {
+            structureData = try Data(contentsOf: url)
+        }
         diag("elapsed.fileReadMs=\(elapsedMs(since: fileReadStarted))")
         guard !structureData.isEmpty else { throw PreviewError.emptyStructureFile(url.lastPathComponent) }
         diag("structureData.bytes=\(structureData.count)")
         if usesBoundedMaestroPreview {
             diag("structureData.boundedMaestroPreview=true originalBytes=\(structureSize) prefixBytes=\(structureData.count)")
+        }
+        if usesBoundedCollectionPreview {
+            diag("structureData.boundedCollectionPreview=true originalBytes=\(structureSize) prefixBytes=\(structureData.count)")
         }
 
         let preferences = PreviewPreferences.load()
@@ -536,6 +557,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             webDirectory: webDirectory,
             preferences: preferences,
             gridFileSupport: gridFileSupport,
+            boundedSample: usesBoundedCollectionPreview,
             fileManager: fileManager,
             diagnostics: &diagnostics
         ) {
@@ -865,6 +887,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         webDirectory: URL,
         preferences: PreviewPreferences,
         gridFileSupport: MoleculeGridFileSupport,
+        boundedSample: Bool,
         fileManager: FileManager,
         diagnostics: inout [String]
     ) throws -> BuildResult? {
@@ -883,7 +906,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             allowSelection: false,
             allowExport: false,
             maxRecords: 750,
-            fileSupport: gridFileSupport
+            fileSupport: gridFileSupport,
+            boundedSample: boundedSample
         ) else {
             return nil
         }
@@ -3578,6 +3602,32 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         default:
             return 20 * mib
         }
+    }
+
+    private static func isBoundedCollectionPreviewExtension(_ fileExtension: String) -> Bool {
+        ["sdf", "sd", "smi", "smiles", "csv", "tsv"].contains(fileExtension.lowercased())
+    }
+
+    // Cuts a prefix back to the last record boundary so the parser never sees a
+    // half-written record: SDF records end at a $$$$ line, the line-oriented
+    // formats at a newline.
+    private static func truncatedToWholeRecords(_ data: Data, fileExtension: String) -> Data {
+        let terminator: String
+        switch fileExtension.lowercased() {
+        case "sdf", "sd":
+            terminator = "$$$$"
+        default:
+            terminator = "\n"
+        }
+        guard let terminatorData = terminator.data(using: .utf8),
+              let lastRange = data.range(of: terminatorData, options: .backwards) else {
+            return data
+        }
+        // Keep the terminator itself, plus the newline that follows it when present.
+        var end = lastRange.upperBound
+        if end < data.endIndex, data[end] == UInt8(ascii: "\r") { end = data.index(after: end) }
+        if end < data.endIndex, data[end] == UInt8(ascii: "\n") { end = data.index(after: end) }
+        return data.subdata(in: data.startIndex..<end)
     }
 
     private static func isMaestroPreviewExtension(_ fileExtension: String) -> Bool {

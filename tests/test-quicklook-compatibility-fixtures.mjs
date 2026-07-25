@@ -58,4 +58,12 @@ assert.match(
   /private static func deservesExplicitPreviewError\(_ error: Error\) -> Bool \{[\s\S]*?case \.fileTooLarge, \.couldNotExtractBoundedMaestroPreview:[\s\S]*?return true/u,
 );
 
+// A collection too large to read in full is previewed from a bounded prefix cut
+// back to the last whole record, and the grid says so rather than presenting the
+// sample as the entire file.
+assert.match(previewController, /private static let collectionPreviewReadLimit = 8 \* 1024 \* 1024/u);
+assert.match(previewController, /usesBoundedCollectionPreview = structureSize > sizeLimit/u);
+assert.match(previewController, /truncatedToWholeRecords\(/u);
+assert.match(previewController, /boundedSample: usesBoundedCollectionPreview/u);
+
 console.log("Quick Look compatibility fixture tests passed");
