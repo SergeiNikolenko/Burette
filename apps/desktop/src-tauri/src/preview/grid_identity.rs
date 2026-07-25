@@ -177,12 +177,17 @@ pub(crate) fn mark_virtual_edit(database_path: &std::path::Path) -> Result<u64, 
     u64::try_from(generation).map_err(|_| "Grid virtual-edit generation is invalid".into())
 }
 
+// Backfills hashes for databases written before `molecule_content_sha256`
+// existed. `insert_record` computes the same hash for every row it writes, so
+// restricting this to rows that still carry the empty default keeps a freshly
+// ingested collection from streaming its entire molblock column through memory
+// only to confirm that nothing changed.
 fn repair_molecule_hashes(connection: &Connection) -> Result<(), String> {
     let rows = {
         let mut statement = connection
             .prepare(
                 "select id, smiles, molblock, idcode, idcoordinates, molecule_content_sha256
-                 from molecules order by source_index asc",
+                 from molecules where molecule_content_sha256 = '' order by source_index asc",
             )
             .map_err(|error| error.to_string())?;
         let rows = statement

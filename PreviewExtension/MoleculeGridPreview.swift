@@ -88,7 +88,10 @@ enum MoleculeGridPreviewBuilder {
         allowSelection: Bool,
         allowExport: Bool,
         maxRecords: Int,
-        fileSupport: MoleculeGridFileSupport = .all
+        fileSupport: MoleculeGridFileSupport = .all,
+        // True when `data` is a prefix of a file too large to read in full, so the
+        // record counts below describe the sample rather than the collection.
+        boundedSample: Bool = false
     ) throws -> MoleculeGridPreview? {
         let ext = fileURL.pathExtension.lowercased()
         guard fileSupport.supports(fileExtension: ext) else { return nil }
@@ -149,7 +152,8 @@ enum MoleculeGridPreviewBuilder {
             "transparentBackground": transparentBackground,
             "recordsTotal": collection.recordsTotal,
             "recordsIncluded": includedRecords.count,
-            "recordsTruncated": collection.recordsTotal > includedRecords.count,
+            "recordsTruncated": collection.recordsTotal > includedRecords.count || boundedSample,
+            "boundedSample": boundedSample,
             "pageSize": 48,
             "capabilities": [
                 "selection": allowSelection,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { showNativeContextMenu } from "./native-context-menu";
 import { formatBytes } from "./format";
@@ -19,13 +19,19 @@ import { DIRECT_CHEMISTRY_JOB_ATOM_LIMIT, structureAtomCountFromSummary } from "
 import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
-import { GridFilterSection } from "./grid-filter-section";
 import { GridDescriptorStatus } from "./grid-descriptor-status";
 import type { GridFilterModel } from "./types";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { getMdsmoothCapabilities, installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
 import { isTauriRuntime } from "../lib/tauri";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings } from "../types";
+
+// The filter charts pull in recharts. This panel is the right dock's default tab
+// and stays mounted even while the dock is closed, so a static import shipped the
+// charting stack in the entry chunk.
+const GridFilterSection = lazy(() => import("./grid-filter-section").then((module) => ({
+  default: module.GridFilterSection,
+})));
 
 type StructureInfoPanelProps = {
   gridFilterModel: GridFilterModel | null;
@@ -380,7 +386,11 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         />
 
         {document?.renderer === "grid2d" ? <GridDescriptorStatus documentId={document.id} /> : null}
-        {gridFilterModel ? <GridFilterSection model={gridFilterModel} actions={actions} /> : null}
+        {gridFilterModel ? (
+          <Suspense fallback={null}>
+            <GridFilterSection model={gridFilterModel} actions={actions} />
+          </Suspense>
+        ) : null}
         <InspectorEngineCard
           className="structure-inspector-xtb-card"
           title="xTB"

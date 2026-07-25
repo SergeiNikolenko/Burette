@@ -74,6 +74,12 @@ type CompletedStudy = {
   results: ChemicalSpaceResult[];
 };
 type ClusteringMethod = "none" | "butina";
+type GridIndexState = {
+  recordsIndexed: number;
+  recordsTotal: number;
+  indexing: boolean;
+  indexReady: boolean;
+};
 type ActivityColumn = { id: string; label: string };
 type ActivityDirection = "higherActive" | "lowerActive";
 type ActivityColoring = { colors: Map<number, string>; min: number; max: number };
@@ -134,6 +140,42 @@ const DEFAULT_STUDY: StudyState = {
   range: [0.02, 0.6],
   frames: 8,
 };
+// Collections at or below this size embed fast enough that opening the panel can
+// just run them. Larger ones wait for an explicit confirmation, because a
+// several-hundred-thousand molecule embedding is a long, heavy job that nobody
+// asked for by merely opening a tab.
+const AUTO_RUN_RECORD_LIMIT = 5_000;
+// Throughput used to estimate how long an embedding will take, refined from the
+// last run that completed on this machine. The seed is deliberately pessimistic;
+// it only has to put the first estimate in the right order of magnitude.
+const SEED_RECORDS_PER_SECOND = 1_200;
+const THROUGHPUT_STORAGE_KEY = "burette.chemicalSpace.recordsPerSecond";
+
+function storedThroughput(): number {
+  const raw = Number(localStorage.getItem(THROUGHPUT_STORAGE_KEY));
+  return Number.isFinite(raw) && raw > 0 ? raw : SEED_RECORDS_PER_SECOND;
+}
+
+function rememberThroughput(records: number, elapsedMs: number) {
+  if (records <= 0 || elapsedMs <= 0) return;
+  const observed = records / (elapsedMs / 1000);
+  if (!Number.isFinite(observed) || observed <= 0) return;
+  // Average with the previous figure so one unusual run cannot swing the estimate.
+  const blended = (storedThroughput() + observed) / 2;
+  localStorage.setItem(THROUGHPUT_STORAGE_KEY, String(Math.round(blended)));
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 45) return "under a minute";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `about ${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.round(minutes / 60);
+  return `about ${hours} hour${hours === 1 ? "" : "s"}`;
+}
+
+function estimatedEmbeddingDuration(records: number): string {
+  return formatDuration(records / storedThroughput());
+}
 
 export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const portalContainer = useThemePortalContainer();
@@ -165,6 +207,12 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [cliffsEnabled, setCliffsEnabled] = useState(false);
   const [cliffMinSimilarity, setCliffMinSimilarity] = useState(0.6);
   const [cliffMinDelta, setCliffMinDelta] = useState(1);
+  const [indexState, setIndexState] = useState<GridIndexState | null>(null);
+  // Whether the index state above has been answered yet. Until it has, the size
+  // of the collection is unknown, and treating unknown as "small and ready" let
+  // the panel submit the job the gate exists to hold back.
+  const [indexProbed, setIndexProbed] = useState(false);
+  const [confirmedLargeRun, setConfirmedLargeRun] = useState(false);
   const workflowControllerRef = useRef<AbortController | null>(null);
   const studyControllerRef = useRef<AbortController | null>(null);
   const hoveredRef = useRef<number | null>(null);
@@ -198,6 +246,44 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setCliffsEnabled(false);
     setCliffMinSimilarity(0.6);
     setCliffMinDelta(1);
+    setConfirmedLargeRun(false);
+  }, [documentId]);
+
+  // Polls the grid runtime while it indexes. Compute is refused until the index
+  // is complete, so the panel has to know that state rather than submitting and
+  // reporting the refusal as a failure.
+  useEffect(() => {
+    if (!documentId) {
+      setIndexState(null);
+      setIndexProbed(true);
+      return;
+    }
+    setIndexState(null);
+    setIndexProbed(false);
+    const controller = new AbortController();
+    let timer = 0;
+    const poll = () => {
+      void requestChemicalSpaceIndexState(documentId, controller.signal)
+        .then((next) => {
+          if (controller.signal.aborted) return;
+          setIndexState(next);
+          setIndexProbed(true);
+          if (next.indexing) timer = window.setTimeout(poll, 800);
+        })
+        .catch(() => {
+          // The runtime may not be listening - browser dev, or a viewer that has
+          // not mounted. Record the attempt so the panel is never gated forever
+          // behind a status that will not arrive.
+          if (controller.signal.aborted) return;
+          setIndexState(null);
+          setIndexProbed(true);
+        });
+    };
+    poll();
+    return () => {
+      controller.abort();
+      if (timer) window.clearTimeout(timer);
+    };
   }, [documentId]);
 
   useEffect(() => {
@@ -244,6 +330,13 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setCliffMinDelta(range > 0 ? Math.round(range * 0.2 * 100) / 100 : 1);
   }, [activityValues]);
 
+  const recordCount = indexState?.recordsTotal ?? 0;
+  const indexing = indexState?.indexing === true;
+  const needsConfirmation = !indexing && recordCount > AUTO_RUN_RECORD_LIMIT && !confirmedLargeRun;
+  // An unanswered probe holds the job back: the collection could be mid-index or
+  // far past the auto-run limit, and both are decided by the answer.
+  const awaitingIndexState = !indexProbed;
+
   useEffect(() => {
     if (!documentId) return;
     const key = embeddingCacheKey(documentId, options);
@@ -254,6 +347,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       setError(null);
       return;
     }
+    // Waiting on the index, or on the user for a collection large enough that the
+    // embedding is a deliberate decision.
+    if (awaitingIndexState || indexing || needsConfirmation) return;
+    const startedAt = Date.now();
     const controller = new AbortController();
     workflowControllerRef.current = controller;
     setResult(null);
@@ -267,6 +364,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       .then((next) => {
         if (controller.signal.aborted) return;
         completedEmbeddings.set(key, next);
+        rememberThroughput(next.sourceRecordIds.length, Date.now() - startedAt);
         setResult(next);
         setProgress(null);
       })
@@ -286,7 +384,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         workflowControllerRef.current = null;
       }
     };
-  }, [documentId, options]);
+  }, [documentId, options, awaitingIndexState, indexing, needsConfirmation]);
 
   useEffect(() => {
     if (!documentId || clusteringMethod === "none") {
@@ -696,6 +794,20 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                   filterToSelection: tool === "lasso",
                 });
               }}
+            />
+          ) : awaitingIndexState ? (
+            <ChemicalSpaceLoading message="Checking the collection…" progress={null} onStop={stopCalculation} />
+          ) : indexing ? (
+            <ChemicalSpaceEmpty
+              message={`Indexing this collection — ${indexState?.recordsIndexed.toLocaleString() ?? "0"} of ${
+                recordCount ? recordCount.toLocaleString() : "?"
+              } molecules so far. Chemical space starts once indexing finishes.`}
+            />
+          ) : needsConfirmation ? (
+            <ChemicalSpaceEmpty
+              message={`This collection has ${recordCount.toLocaleString()} molecules. Embedding it takes ${estimatedEmbeddingDuration(recordCount)} and runs the whole time.`}
+              actionLabel="Calculate chemical space"
+              onAction={() => setConfirmedLargeRun(true)}
             />
           ) : error ? (
             <ChemicalSpaceEmpty message={error} actionLabel="Retry" onAction={() => commitOptions({ ...draft })} />
@@ -1863,6 +1975,26 @@ function requestFromGridViewer<T>(
       retryTimers.push(window.setTimeout(postRequest, delay));
     }
   });
+}
+
+function requestChemicalSpaceIndexState(documentId: string, signal: AbortSignal): Promise<GridIndexState> {
+  const requestId = `chemical-space-index-${crypto.randomUUID()}`;
+  return requestFromGridViewer<GridIndexState>(
+    documentId,
+    { type: "chemicalSpaceRequestIndexState", requestId },
+    (body) => {
+      if (body.type !== "chemicalSpaceIndexState" || body.requestId !== requestId) return null;
+      const recordsIndexed = Number(body.recordsIndexed ?? 0);
+      const recordsTotal = Number(body.recordsTotal ?? 0);
+      return {
+        recordsIndexed: Number.isFinite(recordsIndexed) ? recordsIndexed : 0,
+        recordsTotal: Number.isFinite(recordsTotal) ? recordsTotal : 0,
+        indexing: body.indexing === true,
+        indexReady: body.indexReady !== false,
+      };
+    },
+    signal,
+  );
 }
 
 function requestChemicalSpaceColumns(documentId: string, signal: AbortSignal): Promise<ActivityColumn[]> {

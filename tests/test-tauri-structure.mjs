@@ -518,7 +518,11 @@ assert.match(gridCommand, /registry\.append_text_with_options/);
 assert.match(previewGridStore, /fn resolve_smiles_columns/);
 assert.match(previewGridStore, /struct GridParseOptions/);
 assert.match(previewGridStore, /struct GridDelimitedColumnChoice/);
-assert.match(previewGridStore, /fn infer_smiles_columns_from_values/);
+// Inference streams the source once, counting per column, instead of taking a
+// pre-built row slice and re-parsing every row for each column.
+assert.match(previewGridStore, /fn infer_smiles_columns_from_source/);
+assert.match(previewGridStore, /const SMILES_INFERENCE_SAMPLE_VALUES: usize = 512/);
+assert.match(previewGridStore, /const SMILES_INFERENCE_MAX_SCANNED_ROWS: usize = 20_000/);
 assert.match(previewGridStore, /fn is_likely_smiles_column/);
 assert.match(previewGridStore, /fn delimited_smiles_column_choices/);
 assert.match(previewGridStore, /value == "smile" \|\| value\.contains\("smiles"\)/);
@@ -1514,16 +1518,20 @@ assert.match(previewGridStore, /pub\(crate\) fn append_text/);
 assert.match(previewGridStore, /fn append_grid_text/);
 assert.match(previewGridStore, /fn fetch_page/);
 assert.match(previewGridStore, /query\.limit\.clamp\(1, 240\)/);
-assert.match(previewRuntimeGrid, /use base64::Engine;/);
-assert.match(previewRuntimeGrid, /let rdkit_wasm = runtime\.join\("RDKit_minimal\.wasm"\)/);
-assert.match(previewRuntimeGrid, /fs::copy\(assets\.join\("rdkit"\)\.join\("RDKit_minimal\.wasm"\), &rdkit_wasm\)/);
-assert.match(previewRuntimeGrid, /window\.BuretteRDKitWasmBase64 =/);
-assert.match(previewRuntimeGrid, /let rdkit_wasm_path = asset_url\(&rdkit_wasm\)/);
+// The wasm and its base64 copy come from the shared asset directory, written once
+// per app version by copy_web_assets behind a fingerprint check. Copying and
+// re-encoding them per runtime cost ~16 MiB of writes on every document open.
+assert.doesNotMatch(previewRuntimeGrid, /use base64::Engine;/);
+assert.doesNotMatch(previewRuntimeGrid, /fs::copy\(assets\.join\("rdkit"\)/);
+assert.match(
+  previewRuntimeGrid,
+  /let rdkit_wasm_path = versioned_asset_url\(&assets\.join\("rdkit"\)\.join\("RDKit_minimal\.wasm"\)\)/,
+);
+assert.match(previewRuntimeGrid, /let rdkit_wasm_js = versioned_asset_url\(&assets\.join\("rdkit-wasm-data\.js"\)\)/);
 assert.match(previewRuntimeGrid, /"rdkitWasmPath": rdkit_wasm_path/);
 assert.match(previewRuntimeGrid, /const GRID_RUNTIME_CSP/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
 assert.match(previewRuntimeGrid, /<meta http-equiv="Content-Security-Policy" content="\{GRID_RUNTIME_CSP\}"/);
-assert.match(previewRuntimeGrid, /runtime\.join\("preview-rdkit-wasm\.js"\)/);
 assert.match(previewRuntimeGrid, /<script src="\{rdkit_wasm_js\}"><\/script>/);
 assert.match(previewRuntimeGrid, /assets\.join\("openchemlib"\)\.join\("openchemlib\.js"\)/);
 assert.match(previewRuntimeGrid, /<script src="\{openchemlib_js\}"><\/script>/);

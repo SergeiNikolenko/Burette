@@ -67,27 +67,28 @@ export function rendererLabel(renderer: string) {
 }
 
 export function usefulElements(document: ViewerDocument): StructureBriefRow[] {
-  if (document.dockingRequest?.sceneMode) {
+  const dockingRequest = document.dockingRequest;
+  if (dockingRequest?.sceneMode) {
     return [
-      { label: "Structures", value: String(1 + document.dockingRequest.ligandPaths.length) },
-      { label: "Initial mode", value: document.dockingRequest.sceneMode === "structureAll" ? "All together" : "Individual structures" },
-      { label: "First structure", value: fileName(document.dockingRequest.receptorPath) },
+      { label: "Structures", value: String(1 + dockingRequest.ligandPaths.length) },
+      { label: "Initial mode", value: dockingRequest.sceneMode === "structureAll" ? "All together" : "Individual structures" },
+      { label: "First structure", value: fileName(dockingRequest.receptorPath) },
     ];
   }
-  if (isTrajectoryDocumentRequest(document.dockingRequest)) {
+  if (dockingRequest && isTrajectoryDocumentRequest(dockingRequest)) {
     return [
-      { label: "Topology", value: fileName(document.dockingRequest.receptorPath) },
-      { label: "Segments", value: String(document.dockingRequest.ligandPaths.length) },
-      { label: "Coordinates", value: document.dockingRequest.ligandPaths.length > 1 ? "Combined timeline" : "Single trajectory" },
+      { label: "Topology", value: fileName(dockingRequest.receptorPath) },
+      { label: "Segments", value: String(dockingRequest.ligandPaths.length) },
+      { label: "Coordinates", value: dockingRequest.ligandPaths.length > 1 ? "Combined timeline" : "Single trajectory" },
     ];
   }
-  if (document.dockingRequest) {
+  if (dockingRequest) {
     return [
-      { label: "Receptor", value: fileName(document.dockingRequest.receptorPath) },
-      { label: "Ligands", value: String(document.dockingRequest.ligandPaths.length) },
+      { label: "Receptor", value: fileName(dockingRequest.receptorPath) },
+      { label: "Ligands", value: String(dockingRequest.ligandPaths.length) },
       {
         label: "Active pose",
-        value: document.dockingRequest.activePose == null ? "Default" : String(document.dockingRequest.activePose + 1),
+        value: dockingRequest.activePose == null ? "Default" : String(dockingRequest.activePose + 1),
       },
     ];
   }
