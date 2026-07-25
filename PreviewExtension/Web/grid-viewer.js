@@ -2208,22 +2208,25 @@
     const total = state.remoteMode
       ? (state.recordsTotalHint || state.recordsIndexed || state.totalRows)
       : state.all.length;
+    const indexReady = collectionIndexReady();
     const unavailable = state.clustering
       || state.findingSimilar
-      || !collectionIndexReady()
+      || !indexReady
       || total === 0;
     if (button) {
       button.disabled = unavailable;
       button.setAttribute('aria-busy', state.clustering ? 'true' : 'false');
-      button.title = state.clustering
-        ? 'Clustering is running'
-        : !collectionIndexReady()
-        ? state.indexError
+      if (state.clustering) {
+        button.title = 'Clustering is running';
+      } else if (!indexReady) {
+        button.title = state.indexError
           ? `Indexing failed: ${state.indexError}`
-          : 'Wait for indexing to finish'
-        : state.selected.size
-        ? `Cluster ${state.selected.size.toLocaleString()} selected molecules`
-        : 'Cluster the full collection';
+          : 'Wait for indexing to finish';
+      } else if (state.selected.size) {
+        button.title = `Cluster ${state.selected.size.toLocaleString()} selected molecules`;
+      } else {
+        button.title = 'Cluster the full collection';
+      }
       const label = button.querySelector('[data-buret-grid-cluster-label]');
       if (label) {
         label.textContent = state.clustering
