@@ -2154,11 +2154,17 @@ for (const sourceText of [dockPanel, editorTabs, statusDetailsDialog, settingCon
 }
 assert.doesNotMatch(dockPanel, /aria-label=\{`Close \$\{area\} dock`\}[\s\S]*?>\s*x\s*<\/button>/);
 assert.match(styles, /\.close-glyph \{/);
-assert.match(styles, /\.dock-tab-shell:hover \.dock-tab-close,\s*\.dock-tab-shell:focus-within \.dock-tab-close \{/);
+assert.match(styles, /\.dock-tab-shell:hover \.dock-tab-close,\s*\.dock-tab-shell:focus-within \.dock-tab-close,\s*\.dock-tab-shell\[data-active\] \.dock-tab-close \{/);
+// Closing must not require selecting the tab first, so the button is rendered
+// for every tab and only revealed by hover, focus or being active.
+assert.doesNotMatch(dockPanel, /!readOnly && active && !\(tab\.kind === "xyzrender"/);
 assert.doesNotMatch(styles, /\.dock-tab\[data-active\] \+ \.dock-tab-close/);
-assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab \{\s*padding-right: 34px;/);
+assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab,\s*\.dock-tab-shell:hover \.dock-tab,\s*\.dock-tab-shell:focus-within \.dock-tab \{\s*padding-right: 34px;/);
+// A shrinking tab used to slide under its neighbour once the strip filled up.
+assert.match(styles, /\.dock-tab-strip \{[\s\S]*?overflow-x: auto;/);
+assert.match(styles, /\.dock-tab-shell \{[\s\S]*?flex: 0 0 auto;/);
 assert.match(styles, /\.dock-tab \{[^}]*height: 28px;[^}]*border-radius: 10px;/s);
-assert.match(styles, /\.dock-tab-close \{[^}]*width: 20px;[^}]*height: 20px;[^}]*border-radius: 8px;[^}]*background: transparent;[^}]*opacity: 1;[^}]*pointer-events: auto;/s);
+assert.match(styles, /\.dock-tab-close \{[^}]*width: 20px;[^}]*height: 20px;[^}]*border-radius: 8px;[^}]*background: transparent;[^}]*opacity: 0;[^}]*pointer-events: none;/s);
 assert.match(styles, /\.dock-tab-close:hover \{[^}]*background: var\(--surface-hover\);[^}]*box-shadow: inset 0 0 0 1px var\(--line-subtle\)/s);
 assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab-close \{[^}]*color: var\(--text-secondary\);[^}]*\}/s);
 assert.match(styles, /\.text-file-editor \.cm-gutters \{[^}]*border-right: 0;[^}]*background: transparent;[^}]*color: var\(--text-muted\);[^}]*\}/s);
@@ -2458,7 +2464,7 @@ assert.match(structureInfoPanel, /actions\.revealDocument\(document\)/);
 assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
 assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\)\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument\(document\.path\)/);
-assert.match(structureInfoPanel, /StructureSectionHeader title="Composition"/);
+assert.match(structureInfoPanel, /<InspectorSection title="Composition"/);
 // Conformers and xTB share one card shell, and a missing binary has to say what
 // it is and how to get it rather than leaving a dead disabled button.
 assert.match(structureInfoPanel, /function InspectorEngineCard\(\{/);
@@ -2467,7 +2473,14 @@ assert.match(structureInfoPanel, /const missing = tools\.filter\(\(tool\) => !to
 assert.match(structureInfoPanel, /const xtbMissing = xtbStatus\?\.installed === false/);
 assert.match(structureInfoPanel, /install: \(\) => void actions\.installXtb\(\)/);
 assert.match(structureInfoPanel, /function conformerTools\(status: ShellViewState\["conformerStatus"\]\): EngineTool\[\]/);
-assert.match(structureInfoPanel, /const XTB_MORE_OPERATIONS = \[/);
+// The engine menu names what each run does to the molecule instead of listing
+// seven operations in one flat run, and carries the common parameters with it.
+assert.match(structureInfoPanel, /const XTB_MENU_GROUPS = \[/);
+for (const group of ["Geometry", "Electronic", "Dynamics"]) {
+  assert.match(structureInfoPanel, new RegExp(`\\["${group}", \\[`), `xTB menu should group operations under ${group}`);
+}
+assert.match(structureInfoPanel, /kind: "label", id: "xtb-parameters", text: "Parameters"/);
+assert.match(structureInfoPanel, /id: "xtb-method",[\s\S]*?optionLabels: XTB_METHOD_LABELS/);
 // The runtime refuses a direct job above the atom cap and tells you to select
 // something; the card knows the count already, so it says so before the click.
 assert.match(structureInfoPanel, /structureAtomCountFromSummary\(compositionSummary\)/);
@@ -2568,7 +2581,7 @@ assert.match(structureInfoPanel, /function structurePoseControlsFor\(/);
 assert.match(structureInfoPanel, /sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT/);
 assert.match(structureInfoPanel, /function maestroPreviewEntryCount\(summary: StructureCompositionSummary\)/);
 assert.match(structureInfoPanel, /function SdfContextStyleCard/);
-assert.match(structureInfoPanel, /<StructureSectionHeader title=\{copy\.title\} detail=\{copy\.detail\} \/>/);
+assert.match(structureInfoPanel, /<InspectorSection className="structure-inspector-context-style" title=\{copy\.title\} detail=\{copy\.detail\}>/);
 assert.match(structureInfoPanel, /aria-label=\{copy\.styleAriaLabel\}/);
 assert.match(structureInfoPanel, /const styleOptions = copy\.styleOptions \?\? SDF_CONTEXT_STYLE_OPTIONS/);
 assert.match(structureInfoPanel, /\{styleOptions\.map\(\(option\) => \(/);
@@ -2594,7 +2607,7 @@ assert.match(structureInfoPanel, /function readSdfContextColorPreference\(docume
 assert.match(structureInfoPanel, /function writeSdfContextColorPreference\(document: ViewerDocument, value: SdfContextColor\)/);
 assert.match(structureInfoPanel, /function StructurePoseControlsCard/);
 assert.match(structureInfoPanel, /!hostedMcpWidget && !trajectoryDocument/);
-assert.match(structureInfoPanel, /!trajectoryDocument \? \(\s*<StructurePoseControlsCard/);
+assert.match(structureInfoPanel, /!trajectoryDocument \|\| virtualScene \? \(\s*<StructurePoseControlsCard/);
 assert.match(structureInfoPanel, /trajectory-smoothing-chart-playhead/);
 assert.match(structureInfoPanel, /Playing · /);
 assert.match(structureInfoPanel, /TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO/);
@@ -2650,7 +2663,7 @@ assert.match(structureInfoPanel, /onPointerMove=/);
 assert.match(structureInfoPanel, /type: "set_structure_pose"/);
 assert.match(viewer, /type: 'trajectoryFrameChanged'/);
 assert.match(appViewerStateMessagesHook, /burette:trajectory-frame-changed/);
-assert.match(structureInfoPanel, /StructureSectionHeader title=\{controls\.title\} detail=\{controls\.detail\}/);
+assert.match(structureInfoPanel, /<InspectorSection className="structure-inspector-pose-controls" title=\{controls\.title\} detail=\{controls\.detail\}>/);
 assert.match(structureInfoPanel, /actions: Array<StructureViewerAction & \{ type: "set_structure_pose" \}>/);
 assert.match(structureInfoPanel, /type: "set_structure_pose"/);
 assert.doesNotMatch(structureInfoPanel, /if \(document\.dockingRequest\) \{\s*setState\(\{ documentId: document\.id, loading: false, summary: null, error: null \}\);\s*return undefined;\s*\}/);
@@ -2677,7 +2690,11 @@ assert.ok(
 );
 assert.match(styles, /\.structure-inspector-style-options \{/);
 assert.match(styles, /\.structure-brief \{[\s\S]*?grid-auto-rows: max-content/);
-assert.match(styles, /\.structure-inspector-details:not\(\[open\]\) > \.structure-inspector-details-body/);
+// The File block is a collapsible section, not a <details>, so its body is
+// hidden by the collapsible rather than an [open] attribute - and the card has
+// to keep the padding the old <summary> used to provide.
+assert.doesNotMatch(styles, /\.structure-inspector-details > summary/);
+assert.match(styles, /\.structure-inspector-details-body \{[^}]*border-top: 1px solid var\(--line-subtler\)/s);
 assert.match(styles, /\.structure-inspector-style-option\[data-selected="true"\]/);
 assert.match(styles, /right: max\(146px, var\(--right-dock-edge, var\(--right-dock-width, 0px\)\)\)/);
 assert.match(styles, /@container \(max-width: 320px\)/);
