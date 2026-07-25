@@ -773,7 +773,15 @@ fn expand_open_document_paths(paths: Vec<String>) -> (Vec<PathBuf>, Vec<String>)
 }
 
 #[tauri::command]
-pub(crate) fn list_project_structure_files(
+pub(crate) async fn list_project_structure_files(
+    paths: Vec<String>,
+) -> Result<Vec<ProjectStructureFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || list_project_structure_files_blocking(paths))
+        .await
+        .map_err(|error| format!("Project structure scan task failed: {error}"))?
+}
+
+fn list_project_structure_files_blocking(
     paths: Vec<String>,
 ) -> Result<Vec<ProjectStructureFile>, String> {
     let mut files = BTreeSet::new();
@@ -2989,7 +2997,7 @@ mod tests {
         conformer_python_candidates, conformer_python_runtime_spec,
         conformer_python_status_candidates, copy_file_atomically, expand_open_document_paths,
         expand_open_targets, expand_project_structure_targets, generated_conformer_title,
-        list_project_structure_files, looks_like_supported_structure_file,
+        list_project_structure_files_blocking, looks_like_supported_structure_file,
         normalize_inline_structure_extension, open_text_structure_for_window_label,
         open_with_provisional_claim, open_with_provisional_read_claims, read_sdf_file_with_limit,
         smiles_from_sheet_data, supported_open_target_extensions,
@@ -3508,7 +3516,7 @@ mod tests {
         fs::write(&txt, "ignore\n").unwrap();
 
         let canonical_root = root.canonicalize().unwrap();
-        let files = list_project_structure_files(vec![root.to_string_lossy().to_string()])
+        let files = list_project_structure_files_blocking(vec![root.to_string_lossy().to_string()])
             .expect("project files should be listed");
         assert_eq!(files.len(), 2);
         assert_eq!(
