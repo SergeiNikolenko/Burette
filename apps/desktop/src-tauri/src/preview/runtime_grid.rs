@@ -4,7 +4,10 @@ use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime};
 
 use super::formats::normalize_renderer_mode;
-use super::grid_store::{build_grid_store_with_options, GridParseOptions};
+use super::grid_store::{
+    build_grid_store_from_file_with_options, build_grid_store_with_options,
+    cleanup_grid_runtime_async, GridParseOptions, GridStoreHandle,
+};
 use super::runtime::ViewerPreferences;
 use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
 use super::runtime_viewer::{copy_web_assets, AssetProfile};
@@ -37,13 +40,42 @@ struct GridRecord {
     props: BTreeMap<String, String>,
 }
 
+struct PendingGridStore {
+    store: Option<GridStoreHandle>,
+}
+
+impl PendingGridStore {
+    fn new(store: GridStoreHandle) -> Self {
+        Self { store: Some(store) }
+    }
+
+    fn take(&mut self) -> GridStoreHandle {
+        self.store.take().expect("pending Grid store is present")
+    }
+}
+
+impl Drop for PendingGridStore {
+    fn drop(&mut self) {
+        let Some(mut store) = self.store.take() else {
+            return;
+        };
+        store
+            .cancel_token
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(runtime_dir) = store.database_path.parent() {
+            cleanup_grid_runtime_async(store.ingest_worker.take(), runtime_dir.to_path_buf());
+        }
+    }
+}
+
 pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     app: &tauri::AppHandle<R>,
     document_id: &str,
     registry_document_id: &str,
     file_path: &Path,
     extension: &str,
-    data: &[u8],
+    data: Option<&[u8]>,
+    source_byte_count: u64,
     preferences: &ViewerPreferences,
     options: &GridParseOptions,
 ) -> Result<Option<PathBuf>, String> {
@@ -67,19 +99,17 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         include_single_sdf: options.include_single_sdf
             || normalize_renderer_mode(&preferences.renderer_mode) == "grid2d",
     };
-    let Some(grid_store) = build_grid_store_with_options(&runtime, extension, data, &grid_options)?
-    else {
+    let grid_store = match data {
+        Some(data) => build_grid_store_with_options(&runtime, extension, data, &grid_options)?,
+        None => {
+            build_grid_store_from_file_with_options(&runtime, extension, file_path, &grid_options)?
+        }
+    };
+    let Some(grid_store) = grid_store else {
         return Ok(None);
     };
     let collection = grid_store.summary;
-    app.state::<super::grid_store::GridRuntimeRegistry>()
-        .register(
-            registry_document_id,
-            grid_store.database_path,
-            collection.format,
-            grid_store.cancel_token,
-            grid_store.ingest_worker,
-        )?;
+    let mut pending_store = PendingGridStore::new(grid_store);
     // The shared asset directory already holds the wasm and a base64 copy of it,
     // written once per app version behind a fingerprint check by copy_web_assets.
     // Re-copying and re-encoding it here cost about 16 MiB of disk writes on every
@@ -92,7 +122,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         "documentId": document_id,
         "sourcePath": file_path.to_string_lossy(),
         "label": file_path.file_name().and_then(|value| value.to_str()).unwrap_or("molecule collection"),
-        "byteCount": data.len(),
+        "byteCount": source_byte_count,
         "host": "app",
         "quickLookBuild": "burette-tauri-grid2d",
         "debug": false,
@@ -135,11 +165,20 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
             "grid2d",
             extension,
             document_id,
-            data.len(),
+            source_byte_count as usize,
             0,
             AssetProfile::Grid.name(),
         ),
     )?;
+    let grid_store = pending_store.take();
+    app.state::<super::grid_store::GridRuntimeRegistry>()
+        .register(
+            registry_document_id,
+            grid_store.database_path,
+            collection.format,
+            grid_store.cancel_token,
+            grid_store.ingest_worker,
+        )?;
     Ok(Some(runtime.join("index.html")))
 }
 
