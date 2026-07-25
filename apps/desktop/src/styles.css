@@ -3645,6 +3645,76 @@ img.radix-menu-item-icon {
 .structure-inspector-tree-group + .structure-inspector-tree-group {
   border-top: 1px solid var(--line-subtler);
 }
+.structure-inspector-tools {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.structure-inspector-tool {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 9px;
+  padding: 6px 8px;
+}
+.structure-inspector-tool-rail {
+  width: 3px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--text-faint);
+}
+.structure-inspector-tool[data-state="ready"] .structure-inspector-tool-rail {
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.structure-inspector-tool[data-state="running"] {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line-subtler));
+}
+.structure-inspector-tool[data-state="running"] .structure-inspector-tool-rail {
+  background: var(--accent);
+}
+.structure-inspector-tool[data-state="missing"] {
+  opacity: 0.72;
+}
+.structure-inspector-tool-main {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.structure-inspector-tool-name {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+.structure-inspector-tool-name em {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 400;
+}
+.structure-inspector-tool-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.structure-inspector-tool-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+}
+.structure-inspector-tool-menu-button {
+  padding-inline: 6px;
+}
 .structure-inspector-empty {
   border: 1px solid var(--line-subtler);
   border-radius: var(--control-radius);

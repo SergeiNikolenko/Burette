@@ -258,25 +258,40 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
     setXtbSettingsScope(scope);
     setXtbSettingsOpen(true);
   };
-  const showXtbMoreMenu = (event: MouseEvent<HTMLButtonElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    void showNativeContextMenu(XTB_MORE_OPERATIONS.map(([operation, text]) => ({
+  const xtbToolMenuItems: MenuItemSpec[] = [
+    ...XTB_PRIMARY_OPERATIONS.map(([operation, text]) => ({
       kind: "item" as const,
       id: operation,
       text,
       detail: XTB_ACTION_TOOLTIPS[operation],
+      disabled: xtbBlocked,
       action: () => void actions.runXtbActiveOperation(operation),
-    })), { x: rect.left, y: rect.bottom + 6 }, { forceWeb: true });
-  };
-  const showXtbSettingsFor = (scope: XtbSettingsScope) => (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    openXtbSettingsFor(scope);
-  };
-  const toggleGeneralXtbSettings = () => {
-    setXtbSettingsScope("general");
-    setXtbSettingsOpen((open) => xtbSettingsScope === "general" ? !open : true);
-  };
+    })),
+    { kind: "separator" },
+    ...XTB_MORE_OPERATIONS.map(([operation, text]) => ({
+      kind: "item" as const,
+      id: operation,
+      text,
+      detail: XTB_ACTION_TOOLTIPS[operation],
+      disabled: xtbBlocked,
+      action: () => void actions.runXtbActiveOperation(operation),
+    })),
+    { kind: "separator" },
+    {
+      kind: "item",
+      id: "xtb-settings",
+      text: "Settings…",
+      detail: "Hamiltonian, charge, spin, solvation, accuracy, property, and dynamics parameters.",
+      action: () => openXtbSettingsFor("general"),
+    },
+    {
+      kind: "item",
+      id: "xtb-jobs",
+      text: "Run history",
+      detail: "Energies, properties, trajectories, and output artifacts.",
+      action: () => actions.toggleDockTab("bottom", "jobs"),
+    },
+  ];
   const showFileActionsMenu = (event: MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     void showNativeContextMenu([
@@ -404,25 +419,16 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
             />
           )}
         >
-          <div className="structure-brief-actions structure-brief-actions-grid">
-            <XtbActionButton label="Optimize" tooltip={XTB_ACTION_TOOLTIPS.optimize} disabled={xtbBlocked} onClick={() => void actions.runXtbActiveOperation("optimize")} onContextMenu={showXtbSettingsFor("optimize")} />
-            <XtbActionButton label="Properties" tooltip={XTB_ACTION_TOOLTIPS.properties} disabled={xtbBlocked} onClick={() => void actions.runXtbActiveOperation("properties")} onContextMenu={showXtbSettingsFor("properties")} />
-            <XtbActionButton label="Frequencies" tooltip={XTB_ACTION_TOOLTIPS["optimized-hessian"]} disabled={xtbBlocked} onClick={() => void actions.runXtbActiveOperation("optimized-hessian")} onContextMenu={showXtbSettingsFor("optimized-hessian")} />
-            {/* Four of the seven operations are specialist runs, and giving them the
-                same weight as Optimize made the card read as a wall of buttons. */}
-            <Button type="button" variant="secondary" size="sm" className="structure-inspector-xtb-action w-full" disabled={xtbBlocked} onClick={showXtbMoreMenu}>
-              More
-              <ShortcutTooltip label="IP/EA, Fukui, molecular dynamics, and metadynamics runs." />
-            </Button>
-            <Button type="button" variant="outline" size="sm" className="structure-inspector-xtb-action w-full" aria-expanded={xtbSettingsOpen} onClick={toggleGeneralXtbSettings}>
-              Settings
-              <ShortcutTooltip label="Hamiltonian, charge, spin, solvation, accuracy, property, and dynamics parameters." />
-            </Button>
-            <Button type="button" variant="outline" size="sm" className="structure-inspector-xtb-action w-full" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
-              Jobs
-              <ShortcutTooltip label="xTB calculation history, energies, properties, trajectories, and output artifacts." />
-            </Button>
-          </div>
+          <InspectorToolRow
+            name="xTB"
+            version={shortXtbVersion(xtbStatus?.version)}
+            detail={runningXtbJob ? `${operationTitle(runningXtbJob.operation)} · ${runningXtbJob.inputLabel}` : "Semiempirical quantum chemistry"}
+            state={runningXtbJob ? "running" : xtbMissing ? "missing" : "ready"}
+            primaryLabel="Optimize"
+            primaryDisabled={xtbBlocked}
+            onPrimary={() => void actions.runXtbActiveOperation("optimize")}
+            menu={xtbToolMenuItems}
+          />
           {xtbSettingsOpen ? (
             <XtbInlineSettings
               settings={xtbSettings}
@@ -1229,11 +1235,13 @@ function ConformerWorkflowCard({
   const oversized = oversizedNotice.length > 0;
   const crestDisabled = !canRunCrest || oversized || status?.crest.installed === false;
   const prismDisabled = !canRunPrism || status?.prism.installed === false;
-  const showSettingsFor = (panel: "crest" | "prism") => (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setSettingsPanel((current) => current === panel ? null : panel);
-  };
+  // A disabled button with no reason next to it is a dead end, and the three
+  // reasons CREST refuses a run are not interchangeable.
+  const crestUnavailableDetail = status?.crest.installed === false
+    ? "Not installed"
+    : oversized
+      ? "Selection is too large for a direct run"
+      : "Open or select a single small molecule";
   return (
     <InspectorEngineCard
       className="conformer-inspector-card"
@@ -1251,23 +1259,49 @@ function ConformerWorkflowCard({
         />
       )}
     >
-      <div className="structure-brief-actions structure-brief-actions-grid">
-        <Button type="button" variant="secondary" size="sm" className="structure-inspector-xtb-action w-full" disabled={crestDisabled} onClick={() => void actions.runConformerOperation("crest-generate", document, selectedConformerAction)} onContextMenu={showSettingsFor("crest")}>
-          CREST
-          <ShortcutTooltip label="Sample low-energy conformers with CREST." />
-        </Button>
-        <Button type="button" variant="secondary" size="sm" className="structure-inspector-xtb-action w-full" disabled={prismDisabled} onClick={() => void actions.runConformerOperation("prism-prune", document)} onContextMenu={showSettingsFor("prism")}>
-          PRISM
-          <ShortcutTooltip label="Prune duplicate or redundant conformers." />
-        </Button>
-        <Button type="button" variant="outline" size="sm" className="structure-inspector-xtb-action w-full" aria-expanded={settingsPanel !== null} onClick={() => setSettingsPanel((current) => current === "all" ? null : "all")}>
-          Settings
-          <ShortcutTooltip label="CREST and PRISM run parameters." />
-        </Button>
-        <Button type="button" variant="outline" size="sm" className="structure-inspector-xtb-action w-full" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
-          Jobs
-          <ShortcutTooltip label="Calculation history and output artifacts." />
-        </Button>
+      <div className="structure-inspector-tools">
+        <InspectorToolRow
+          name="CREST"
+          detail={crestDisabled ? crestUnavailableDetail : "Conformer sampling"}
+          state={status?.crest.installed === false ? "missing" : "ready"}
+          primaryLabel="Sample"
+          primaryDisabled={crestDisabled}
+          onPrimary={() => void actions.runConformerOperation("crest-generate", document, selectedConformerAction)}
+          menu={[
+            {
+              kind: "item",
+              id: "crest-generate",
+              text: "Sample conformers",
+              detail: "Sample low-energy conformers with CREST.",
+              disabled: crestDisabled,
+              action: () => void actions.runConformerOperation("crest-generate", document, selectedConformerAction),
+            },
+            { kind: "separator" },
+            { kind: "item", id: "crest-settings", text: "Settings…", action: () => setSettingsPanel("crest") },
+            { kind: "item", id: "crest-jobs", text: "Run history", action: () => actions.toggleDockTab("bottom", "jobs") },
+          ]}
+        />
+        <InspectorToolRow
+          name="PRISM"
+          detail={canRunPrism ? "Ensemble pruning" : "Open an ensemble file to prune it"}
+          state={status?.prism.installed === false ? "missing" : "ready"}
+          primaryLabel="Prune"
+          primaryDisabled={prismDisabled}
+          onPrimary={() => void actions.runConformerOperation("prism-prune", document)}
+          menu={[
+            {
+              kind: "item",
+              id: "prism-prune",
+              text: "Prune ensemble",
+              detail: "Prune duplicate or redundant conformers.",
+              disabled: prismDisabled,
+              action: () => void actions.runConformerOperation("prism-prune", document),
+            },
+            { kind: "separator" },
+            { kind: "item", id: "prism-settings", text: "Settings…", action: () => setSettingsPanel("prism") },
+            { kind: "item", id: "prism-jobs", text: "Run history", action: () => actions.toggleDockTab("bottom", "jobs") },
+          ]}
+        />
       </div>
       {settingsPanel ? <ConformerInlineSettings panel={settingsPanel} settings={settings} status={status} actions={actions} /> : null}
     </InspectorEngineCard>
@@ -1899,6 +1933,12 @@ const XTB_ACTION_TOOLTIPS = {
   metadyn: "Bias the xTB dynamics to explore conformational space beyond local minima.",
 } satisfies Record<string, string>;
 
+const XTB_PRIMARY_OPERATIONS = [
+  ["optimize", "Optimize"],
+  ["properties", "Properties"],
+  ["optimized-hessian", "Frequencies"],
+] as const satisfies readonly (readonly [keyof typeof XTB_ACTION_TOOLTIPS, string])[];
+
 const XTB_MORE_OPERATIONS = [
   ["vipea", "IP/EA"],
   ["vfukui", "Fukui"],
@@ -1996,27 +2036,6 @@ function XtbSettingsCategoryBar({
   );
 }
 
-function XtbActionButton({
-  label,
-  tooltip,
-  disabled,
-  onClick,
-  onContextMenu,
-}: {
-  label: string;
-  tooltip: string;
-  disabled?: boolean;
-  onClick: () => void;
-  onContextMenu: (event: MouseEvent<HTMLButtonElement>) => void;
-}) {
-  return (
-    <Button type="button" variant="secondary" size="sm" className="structure-inspector-xtb-action w-full" disabled={disabled} onClick={onClick} onContextMenu={onContextMenu}>
-      {label}
-      <ShortcutTooltip label={tooltip} />
-    </Button>
-  );
-}
-
 // The conformer and xTB cards were the same card written twice: a collapsible
 // header with a status, a settings summary, a grid of runs and an inline
 // settings body. They now share one.
@@ -2086,6 +2105,62 @@ function InspectorEngineCard({
         {children}
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+// Every engine used to spend a grid of buttons on its operations, so the two
+// cards carried ten of them and the specialist runs hid behind an unnamed
+// "More". A tool is one row now: it says what it is, what state it is in, and
+// keeps the rest of its operations in its own menu.
+function InspectorToolRow({
+  name,
+  version,
+  detail,
+  state,
+  primaryLabel,
+  primaryDisabled,
+  onPrimary,
+  menu,
+}: {
+  name: string;
+  version?: string | null;
+  detail: string;
+  state: "ready" | "running" | "missing";
+  primaryLabel: string;
+  primaryDisabled?: boolean;
+  onPrimary: () => void;
+  menu: MenuItemSpec[];
+}) {
+  const showMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    void showNativeContextMenu(menu, { x: rect.left, y: rect.bottom + 6 }, { forceWeb: true });
+  };
+  return (
+    <div className="structure-inspector-tool" data-state={state}>
+      <span className="structure-inspector-tool-rail" aria-hidden="true" />
+      <span className="structure-inspector-tool-main">
+        <span className="structure-inspector-tool-name">
+          {name}
+          {version ? <em>{version}</em> : null}
+        </span>
+        <span className="structure-inspector-tool-detail" title={detail}>{detail}</span>
+      </span>
+      <span className="structure-inspector-tool-actions">
+        <Button type="button" variant="secondary" size="xs" disabled={primaryDisabled} onClick={onPrimary}>
+          {primaryLabel}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          className="structure-inspector-tool-menu-button"
+          aria-label={`${name} operations`}
+          onClick={showMenu}
+        >
+          ⌄
+        </Button>
+      </span>
+    </div>
   );
 }
 
