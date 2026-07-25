@@ -810,8 +810,10 @@
     // classify() with an empty component - which made ions indistinguishable
     // from ligands and left kind:"ion" and every comp-id selector matching
     // nothing at all.
-    const labelComp = valueAt(atoms.label_comp_id, atomIndex);
-    const authComp = valueAt(atoms.auth_comp_id, atomIndex) || labelComp;
+    // Prefer the atom table and fall back to the residue one, since which table
+    // carries the name depends on the Mol* build.
+    const labelComp = valueAt(atoms.label_comp_id, atomIndex) ?? valueAt(residues.label_comp_id, residueIndex);
+    const authComp = valueAt(atoms.auth_comp_id, atomIndex) ?? valueAt(residues.auth_comp_id, residueIndex) ?? labelComp;
     const entityType = entityTypeFor(model, labelEntity);
     const rec = {
       structureId: String(entry.ref || `structure-${structureIndex}`),
