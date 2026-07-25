@@ -3782,11 +3782,32 @@ img.radix-menu-item-icon {
 }
 .structure-inspector-tree .structure-brief-action-entry {
   gap: 4px;
+  min-height: 24px;
   padding: 0;
+  border-radius: 5px;
 }
 .structure-inspector-tree .structure-brief-action-summary,
 .structure-inspector-tree .structure-brief-action-row {
   padding: 3px 5px;
+}
+/* The generic action row marks its selection with an accent tint and a 3px rail
+   down the left edge. That rail landed right beside this row's colour bar, so a
+   picked chain wore two stripes and none of it matched the viewer, where the
+   same click tints the row a flat grey and weights the name. The scene tree's
+   comment explains the choice: an accent shouts over a panel that is otherwise
+   greyscale.
+   `--surface-selected` is the app's own token for a picked surface and already
+   resolves to 8.53% of the text colour, which is the tree's 9% to within half a
+   percent - so this reads as the same tint without restating the recipe. */
+.structure-inspector-tree .structure-brief-action-entry[data-selected="true"] .structure-brief-action-row,
+.structure-inspector-tree .structure-brief-action-entry[data-selected="true"] .structure-brief-chip-button {
+  border-color: transparent;
+  background: var(--surface-selected);
+  box-shadow: none;
+}
+.structure-inspector-tree .structure-brief-action-entry[data-selected="true"] .structure-inspector-row-label {
+  color: var(--text-primary);
+  font-weight: 590;
 }
 /* A collapsed section keeps only its header, so the list reads as a table of
    contents when everything is folded away. */
@@ -3814,21 +3835,86 @@ img.radix-menu-item-icon {
 .structure-inspector-composition-bar i[data-tone="ligand"] { background: #59a14f; }
 .structure-inspector-composition-bar i[data-tone="ion"] { background: #e8973a; }
 .structure-inspector-composition-bar i[data-tone="water"] { background: #9aa0a6; }
-.structure-inspector-composition-search {
-  width: 100%;
-  border: 1px solid var(--line-subtler);
+/* shadcn's Input, shrunk to the dock's density: the stock control is 32px tall
+   at 14px, which is a form field, and this is a filter above a list. Border,
+   background and disabled handling still come from the component. */
+/* Typed as `input.` so the density wins over `h-8` and `md:text-sm` on
+   specificity instead of on stylesheet order. */
+input.structure-inspector-composition-search {
+  height: auto;
   border-radius: 7px;
-  background: var(--surface-input);
-  color: var(--text-primary);
   padding: 5px 8px;
-  font: inherit;
   font-size: 11.5px;
 }
 .structure-inspector-composition-search::placeholder {
   color: var(--text-faint);
 }
+/* The rest of the panel marks focus with an inset hairline, so the component's
+   3px outer ring is replaced rather than kept. */
 .structure-inspector-composition-search:focus-visible {
   outline: none;
+  border-color: var(--line-subtler);
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
+}
+/* Mirrors the viewer's scene tree row: a 2px colour bar ahead of the name, and
+   the same 20px actions revealed on hover. The two lists show the same objects,
+   so they are built from the same parts. The numbers here are the ones in
+   `.buret-tree-*` in PreviewExtension/Web/viewer-runtime.css; the tree renders in
+   the Mol* iframe and can share no code with this panel, so the pairing is held
+   by test-scene-tree-parity.mjs rather than by a common stylesheet. */
+.structure-inspector-row-bar {
+  flex: 0 0 auto;
+  width: 2px;
+  height: 15px;
+  border-radius: 1px;
+  background: var(--text-faint);
+}
+/* 0.45 is what the tree fades a row to once it is hidden. This bar carried it
+   permanently, which washed out every colour in the list and made the panel
+   disagree with the render even where the two picked the same tone. */
+.structure-brief-action-entry[data-hidden="true"] .structure-inspector-row-bar,
+.structure-brief-action-entry[data-hidden="true"] .structure-brief-action-row {
+  opacity: 0.45;
+}
+.structure-inspector-row-bar[data-tone="polymer"] { background: #4e79a7; }
+.structure-inspector-row-bar[data-tone="ligand"] { background: #59a14f; }
+.structure-inspector-row-bar[data-tone="ion"] { background: #e8973a; }
+.structure-inspector-row-bar[data-tone="water"] { background: #9aa0a6; }
+.structure-inspector-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: 0 0 auto;
+}
+/* The 20px box, the radius and the ghost hover now come from
+   `<Button size="icon-2xs" variant="ghost">`, so what is left here is the part
+   the design system has no opinion on: a row action that stays out of sight
+   until the row is pointed at. */
+.structure-inspector-row-action {
+  color: var(--text-muted);
+  opacity: 0;
+  cursor: default;
+  transition: opacity 110ms ease, color 110ms ease, background 110ms ease;
+}
+/* A hidden row keeps its eye showing - otherwise the one row whose state you
+   changed is the one row that looks untouched. The scene tree does the same. */
+.structure-brief-action-entry:hover .structure-inspector-row-action,
+.structure-brief-action-entry:focus-within .structure-inspector-row-action,
+.structure-inspector-row-action[data-hidden="true"] {
+  opacity: 1;
+}
+/* Outranks shadcn's own hover and focus utilities, which are single-class and
+   would otherwise be settled by stylesheet order. The ring is replaced rather
+   than tuned: a 3px outer glow on a 20px control spills into the row beside it,
+   and the rest of the app marks focus with an inset hairline. */
+.structure-brief-action-entry .structure-inspector-row-action:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.structure-brief-action-entry .structure-inspector-row-action:focus-visible {
+  outline: none;
+  opacity: 1;
+  border-color: transparent;
   box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
 .structure-inspector-row-dot {
@@ -4038,16 +4124,18 @@ img.radix-menu-item-icon {
   background: var(--surface-subtle);
   color: var(--text-muted);
 }
+/* 16px is the scene tree's twisty, and its empty spacer is the same width so a
+   leaf lines up with the rows that can open. */
 .structure-inspector-tree-toggle,
 .structure-inspector-tree-spacer {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 .structure-inspector-tree-toggle {
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text-muted);
   padding: 0;
@@ -4103,12 +4191,17 @@ img.radix-menu-item-icon {
    and the colour dot is pinned to the far edge, next to the row actions. */
 .structure-inspector-row-content[data-tree="true"] {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   align-items: center;
 }
+/* 12px/1.25 is the scene tree's own label. The panel had it a half-point
+   smaller and in the muted ink, which is why the same chain read as a caption
+   here and as a heading there. */
 .structure-inspector-row-content[data-tree="true"] .structure-inspector-row-label {
   flex: 0 1 auto;
   color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.25;
 }
 /* The figure belongs to the label, not to a column of its own: stretching it
    parked "2 chains" in the middle of the row, half a panel from the name it
@@ -4117,7 +4210,7 @@ img.radix-menu-item-icon {
   min-width: 0;
   flex: 0 1 auto;
   overflow: hidden;
-  color: var(--text-faint);
+  color: var(--text-muted);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -12,6 +12,13 @@ function fakeStructure(options = {}) {
   const omitAuthIds = options.omitAuthIds === true;
   const remapAuthIds = options.remapAuthIds === true;
   const omitCompIds = options.omitCompIds === true;
+  // Real Mol* keeps the component name on the atom table; older shapes put it on
+  // residues. Both are exercised so reading it cannot regress to one of them.
+  const compIdsOnAtoms = options.compIdsOnAtoms === true;
+  const atomCompIds = omitCompIds
+    ? [undefined, undefined, undefined, undefined, undefined, undefined]
+    : ['GLY', 'GLY', 'ALA', 'ALA', 'HEM', 'HEM'];
+  const residueCompIds = omitCompIds ? [undefined, undefined, undefined] : ['GLY', 'ALA', 'HEM'];
   const elements = [0, 1, 2, 3, 4, 5];
   const residueIndex = [0, 0, 1, 1, 2, 2];
   const chainIndex = [0, 0, 0, 0, 1, 1];
@@ -25,11 +32,12 @@ function fakeStructure(options = {}) {
         id: col([1, 2, 3, 4, 5, 6]),
         label_atom_id: col(['N', 'CA', 'N', 'CA', 'C1', 'N1']),
         auth_atom_id: col(['N', 'CA', 'N', 'CA', 'C1', 'N1']),
-        type_symbol: col(['N', 'C', 'N', 'C', 'C', 'N'])
+        type_symbol: col(['N', 'C', 'N', 'C', 'C', 'N']),
+        ...(compIdsOnAtoms ? { label_comp_id: col(atomCompIds), auth_comp_id: col(atomCompIds) } : {})
       },
       residues: {
-        label_comp_id: col(omitCompIds ? [undefined, undefined, undefined] : ['GLY', 'ALA', 'HEM']),
-        auth_comp_id: col(omitCompIds ? [undefined, undefined, undefined] : ['GLY', 'ALA', 'HEM']),
+        label_comp_id: col(compIdsOnAtoms ? [undefined, undefined, undefined] : residueCompIds),
+        auth_comp_id: col(compIdsOnAtoms ? [undefined, undefined, undefined] : residueCompIds),
         label_seq_id: col([1, 2, 100]),
         auth_seq_id: col(omitAuthIds ? [undefined, undefined, undefined] : remapAuthIds ? [10, 20, 300] : [1, 2, 100]),
         pdbx_PDB_ins_code: col([undefined, undefined, undefined])
@@ -211,6 +219,19 @@ const ligandViaResidueAddress = await context.window.BuretteAgent.run({ command:
 assert.equal(ligandViaResidueAddress.ok, true);
 assert.equal(ligandViaResidueAddress.result.ligand.auth_asym_id, 'B');
 assert.ok(ligandViaResidueAddress.result.neighborhood.residues.length > 0);
+
+// Real Mol* carries the component name on the atom table and leaves the residue
+// one without it. Read from residues only, every atom reached classify() with an
+// empty name, so ions were filed as ligands and no comp-id selector matched.
+viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure({ compIdsOnAtoms: true });
+context.window.BuretteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-atom-comp-id.pdb', format: 'pdb' } });
+context.window.BuretteAgent.notifyStructureLoaded({ prepared: { label: 'fake-atom-comp-id.pdb', format: 'pdb' } });
+const summaryFromAtomTable = await context.window.BuretteAgent.run({ command: 'summary', args: { includeLigands: true } });
+assert.equal(summaryFromAtomTable.ok, true);
+assert.equal(summaryFromAtomTable.result.structures[0].ligands[0].label_comp_id, 'HEM');
+const ligandFromAtomTable = await context.window.BuretteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM' } } });
+assert.equal(ligandFromAtomTable.ok, true);
+assert.equal(ligandFromAtomTable.result.ligand.auth_seq_id, 100);
 
 viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure();
 context.window.BuretteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake.pdb', format: 'pdb' } });

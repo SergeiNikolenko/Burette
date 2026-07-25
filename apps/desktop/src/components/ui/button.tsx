@@ -27,6 +27,12 @@ const buttonVariants = cva(
         sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
         icon: "size-8",
+        // Dense list rows - the inspector's composition tree, and the viewer's
+        // scene tree it mirrors - carry a 20px action. That size did not exist
+        // here, so those rows were hand-rolled buttons that drifted from the
+        // rest of the system; it lives in the variants now instead.
+        "icon-2xs":
+          "size-5 rounded-[min(var(--radius-sm),4px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-[13px]",
         "icon-xs":
           "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
         "icon-sm":
