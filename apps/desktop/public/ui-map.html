@@ -1,0 +1,1346 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Burette — прототип доков и меню</title>
+<style>
+:root {
+  --page: #f4f4f5;
+  --page-2: #ffffff;
+  --ink: #141416;
+  --ink-2: #45444a;
+  --ink-3: #6d6c72;
+  --ink-4: #98979d;
+  --hair: rgba(20, 20, 22, 0.11);
+  --hair-soft: rgba(20, 20, 22, 0.06);
+  --ok: #1f8f45;
+  --warn: #a86a00;
+  --bad: #c2352b;
+  --shadow: 0 1px 2px rgba(20,20,22,0.05), 0 14px 34px -20px rgba(20,20,22,0.3);
+
+  --bg-base: #ffffff;
+  --fg-base: #0d0d0d;
+  --accent: #af52de;
+  --contrast: 0.2;
+  --text-primary: #0d0d0d;
+  --text-secondary: color-mix(in srgb, black 80%, transparent);
+  --text-muted: color-mix(in srgb, black 54%, transparent);
+  --text-faint: color-mix(in srgb, black 40%, transparent);
+  --line: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
+  --line-subtler: color-mix(in srgb, black calc(var(--contrast) * 15%), transparent);
+  --surface-card: transparent;
+  --control-fill: rgb(244 244 244);
+  --surface-subtle: var(--control-fill);
+  --surface-input: var(--control-fill);
+  --surface-hover: var(--control-fill);
+  --surface-selected: rgb(232 232 234);
+  --control-radius: 10px;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --page: #08080a; --page-2: #101011; --ink: #f6f6f7; --ink-2: #c6c5c9; --ink-3: #9b9aa0; --ink-4: #6c6b71;
+  --hair: rgba(246,246,247,0.13); --hair-soft: rgba(246,246,247,0.07);
+  --ok: #34d158; --warn: #ff9f0a; --bad: #ff5f52;
+  --shadow: 0 1px 2px rgba(0,0,0,0.55), 0 16px 40px -22px rgba(0,0,0,0.9);
+  --bg-base: #111111; --fg-base: #fcfcfc; --contrast: 0.328;
+  --text-primary: #fcfcfc;
+  --text-secondary: color-mix(in srgb, #fcfcfc 80%, transparent);
+  --text-muted: color-mix(in srgb, #fcfcfc 54%, transparent);
+  --text-faint: color-mix(in srgb, #fcfcfc 40%, transparent);
+  --line: color-mix(in srgb, #fcfcfc calc(var(--contrast) * 24%), transparent);
+  --line-subtler: color-mix(in srgb, #fcfcfc calc(var(--contrast) * 15%), transparent);
+  --surface-card: color-mix(in srgb, #fcfcfc calc(var(--contrast) * 16%), transparent);
+  --surface-subtle: color-mix(in srgb, #fcfcfc calc(var(--contrast) * 18%), transparent);
+  --surface-input: color-mix(in srgb, #fcfcfc calc(var(--contrast) * 28%), transparent);
+  --surface-hover: color-mix(in srgb, #fcfcfc calc(var(--contrast) * 26%), transparent);
+  --surface-selected: color-mix(in srgb, #fcfcfc calc(var(--contrast) * 30%), transparent);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+
+/* ---------- панель управления прототипом ---------- */
+
+.bar {
+  position: sticky; top: 0; z-index: 60;
+  background: color-mix(in srgb, var(--page) 88%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--hair);
+  padding: 12px 22px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+}
+.bar h1 { margin: 0; font-size: 15px; font-weight: 640; letter-spacing: -0.01em; margin-right: 6px; }
+.bar .hint { font-size: 12.5px; color: var(--ink-3); flex-basis: 100%; margin: 0; }
+.bar .grp { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.bar .grp > span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-4); font-weight: 600; margin-right: 2px; }
+.mbtn {
+  font: inherit; font-size: 12px; padding: 4px 10px;
+  border: 1px solid var(--hair); border-radius: 999px;
+  background: var(--page-2); color: var(--ink-2); cursor: pointer;
+}
+.mbtn:hover { border-color: var(--ink-4); color: var(--ink); }
+.mbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mbtn[aria-pressed="true"] { background: var(--ink); color: var(--page-2); border-color: var(--ink); }
+
+main { padding: 26px 22px 90px; display: flex; flex-direction: column; gap: 40px; max-width: 1240px; margin: 0 auto; }
+
+.shipped { display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--hair); border-radius: 16px; background: var(--page-2); padding: 22px 24px 24px; }
+.shipped h2 { margin: 0; font-size: 21px; font-weight: 640; letter-spacing: -0.015em; }
+.shipped-lede { margin: 0; font-size: 14px; color: var(--ink-3); max-width: 78ch; }
+.shipped-lede code, .shipped-note code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; background: var(--page); border-radius: 5px; padding: 1px 5px; }
+.shipped-list { margin: 4px 0 0; padding: 0 0 0 22px; display: flex; flex-direction: column; gap: 16px; }
+.shipped-list > li { padding-left: 4px; }
+.shipped-list > li::marker { color: var(--ink-4); font-size: 13px; font-variant-numeric: tabular-nums; }
+.shipped-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.shipped-head h3 { margin: 0; font-size: 15.5px; font-weight: 620; letter-spacing: -0.008em; }
+.shipped-head a { font-size: 12.5px; color: var(--ink); text-decoration: none; border: 1px solid var(--hair); border-radius: 999px; padding: 2px 10px; }
+.shipped-head a:hover { border-color: var(--ink-4); }
+.shipped-head a:focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
+.shipped-list p { margin: 4px 0 0; font-size: 13.5px; color: var(--ink-2); max-width: 84ch; }
+.shipped-list p b, .shipped-note b { font-weight: 620; color: var(--ink); }
+.shipped-note { margin: 6px 0 0; font-size: 13.5px; color: var(--ink-3); max-width: 84ch; border-top: 1px solid var(--hair-soft); padding-top: 14px; }
+
+.strip { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-start; }
+.col { display: flex; flex-direction: column; gap: 9px; }
+.col > h2 { margin: 0; font-size: 15.5px; font-weight: 620; letter-spacing: -0.008em; }
+.col > p { margin: 0; font-size: 12.5px; color: var(--ink-3); max-width: 34ch; }
+.tagline { font-size: 11px; color: var(--ink-4); }
+
+/* ---------- панель приложения ---------- */
+
+.panel { width: 316px; background: var(--bg-base); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); color: var(--text-primary); font-size: 12px; line-height: 1.45; }
+.panel.mid { width: 288px; }
+
+.panel-tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line-subtler); }
+.panel-tabs span { font-size: 11.5px; padding: 4px 9px 6px; color: var(--text-faint); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.panel-tabs span[data-on] { color: var(--text-primary); border-bottom-color: var(--accent); }
+.panel-tabs .plus { margin-left: auto; color: var(--text-faint); padding: 3px 7px; border: 0; background: transparent; font: inherit; cursor: pointer; border-radius: 5px; }
+.panel-tabs .plus:hover { background: var(--surface-hover); color: var(--text-primary); }
+
+.dock { padding: 12px; display: grid; align-content: start; gap: 10px; max-height: 720px; overflow-y: auto; scrollbar-width: thin; }
+.dock.flush { padding: 0; gap: 0; }
+.dock.short { max-height: none; }
+
+.n-head { position: sticky; top: 0; z-index: 2; background: var(--bg-base); border-bottom: 1px solid var(--line-subtler); padding: 10px 12px; display: grid; gap: 8px; }
+.title-row { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 6px; }
+.title-row h3 { margin: 0; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill { border-radius: 7px; background: var(--surface-subtle); color: var(--text-secondary); padding: 3px 7px; font-size: 11px; line-height: 1; }
+.more { width: 26px; height: 24px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-muted); display: inline-grid; place-items: center; padding: 0; font: inherit; font-size: 13px; line-height: 1; cursor: pointer; }
+.more:hover { border-color: var(--line-subtler); background: var(--surface-subtle); color: var(--text-primary); }
+.more:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.n-stats { display: grid; grid-template-columns: repeat(3,1fr); border: 1px solid var(--line-subtler); border-radius: 8px; overflow: hidden; }
+.n-stats div { padding: 5px 8px; display: grid; }
+.n-stats div + div { border-left: 1px solid var(--line-subtler); }
+.n-stats span { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
+.n-stats strong { font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.chip2 { font-size: 10.5px; line-height: 1; padding: 4px 7px; border-radius: 7px; border: 1px solid var(--line-subtler); background: var(--surface-subtle); color: var(--text-secondary); white-space: nowrap; }
+.chip2.run { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 9%, transparent); }
+
+.acc { display: grid; }
+.ai { border-bottom: 1px solid var(--line-subtler); }
+.at { width: 100%; font: inherit; font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: transparent; border: 0; color: var(--text-primary); cursor: pointer; text-align: left; }
+.at:hover { background: var(--surface-hover); }
+.at:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.at .car { font-size: 9px; color: var(--text-faint); transition: transform 150ms ease; width: 8px; }
+.ai[data-open="true"] .car { transform: rotate(90deg); }
+.at .grow { flex: 1; min-width: 0; }
+.ap { padding: 0 12px 12px; display: grid; gap: 9px; }
+.ai[data-open="false"] .ap { display: none; }
+
+.c { min-width: 0; border: 1px solid var(--line-subtler); border-radius: var(--control-radius); padding: 8px; display: grid; gap: 6px; }
+.sec-row { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: baseline; }
+.sec-row > strong { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+.sec-row > span { color: var(--text-muted); font-size: 11px; }
+
+.rows { display: grid; overflow: hidden; border: 1px solid var(--line-subtler); border-radius: 7px; }
+.row { display: grid; grid-template-columns: minmax(84px, 0.45fr) minmax(0,1fr); align-items: baseline; gap: 10px; padding: 6px 8px; font-size: 12px; }
+.row + .row { border-top: 1px solid var(--line-subtler); }
+.row span { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row strong { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fld { display: flex; align-items: center; gap: 10px; justify-content: space-between; font-size: 11.5px; color: var(--text-muted); min-height: 22px; }
+.fld-col { display: grid; gap: 6px; }
+.fld-col > span { font-size: 11.5px; color: var(--text-muted); }
+
+.b { font: inherit; font-size: 11.5px; line-height: 1; padding: 6px 9px; border: 1px solid var(--line-subtler); border-radius: 7px; background: var(--surface-subtle); color: var(--text-primary); cursor: pointer; text-align: center; }
+.b:hover { background: var(--surface-hover); }
+.b.ghost { background: transparent; }
+.b:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btns { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg button { font: inherit; font-size: 11px; line-height: 1; padding: 5px 8px; border: 1px solid var(--line-subtler); border-radius: 7px; background: var(--surface-subtle); color: var(--text-muted); cursor: pointer; }
+.seg button[data-selected] { background: var(--surface-selected); color: var(--text-primary); border-color: var(--line); }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.tpair { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.tpair button { font: inherit; font-size: 11px; padding: 5px 8px; border: 1px solid var(--line-subtler); border-radius: 7px; background: var(--surface-subtle); color: var(--text-muted); cursor: pointer; }
+.tpair button[data-selected] { background: var(--surface-selected); color: var(--text-primary); border-color: var(--line); }
+.tpair button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.sw { width: 30px; height: 18px; border-radius: 999px; border: 1px solid var(--line-subtler); background: var(--surface-subtle); position: relative; cursor: pointer; padding: 0; flex: none; transition: background 140ms ease; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 999px; background: var(--text-muted); transition: transform 140ms ease, background 140ms ease; }
+.sw[aria-checked="true"] { background: var(--accent); border-color: transparent; }
+.sw[aria-checked="true"]::after { transform: translateX(12px); background: #fff; }
+.sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.sld { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.sld-label { grid-column: 1 / -1; font-size: 11.5px; color: var(--text-muted); }
+input[type="range"].pretty { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; margin: 0; background: transparent; cursor: pointer; }
+input[type="range"].pretty::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: linear-gradient(to right, var(--accent) var(--fill,40%), var(--surface-subtle) var(--fill,40%)); border: 1px solid var(--line-subtler); }
+input[type="range"].pretty::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -6px; border-radius: 999px; background: var(--bg-base); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(0,0,0,0.22); transition: transform 120ms ease; }
+input[type="range"].pretty:hover::-webkit-slider-thumb { transform: scale(1.12); }
+input[type="range"].pretty:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sld-val { min-width: 46px; text-align: center; font-size: 11px; font-variant-numeric: tabular-nums; padding: 3px 6px; border: 1px solid var(--line-subtler); border-radius: 7px; background: var(--surface-subtle); }
+
+/* дерево состава */
+.comp-bar { display: flex; height: 7px; border-radius: 999px; overflow: hidden; border: 1px solid var(--line-subtler); }
+.comp-bar i { display: block; height: 100%; }
+.comp-search { width: 100%; font: inherit; font-size: 11.5px; padding: 5px 8px; border: 1px solid var(--line-subtler); border-radius: 7px; background: var(--surface-input); color: var(--text-primary); }
+.comp-search::placeholder { color: var(--text-faint); }
+.comp-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tree { display: grid; gap: 1px; max-height: 190px; overflow-y: auto; scrollbar-width: thin; }
+.tnode { display: grid; gap: 1px; }
+.trow { display: grid; grid-template-columns: 11px 1fr auto; align-items: center; gap: 6px; padding: 3px 5px; border-radius: 7px; min-width: 0; }
+.trow:hover { background: var(--surface-hover); }
+.trow[data-sel] { background: var(--surface-selected); }
+.twisty { font: inherit; font-size: 8px; color: var(--text-faint); background: transparent; border: 0; padding: 0; cursor: pointer; width: 11px; text-align: center; transition: transform 150ms ease; }
+.tnode[data-open="true"] > .trow > .twisty { transform: rotate(90deg); }
+.tlabel { font: inherit; font-size: 11.5px; background: transparent; border: 0; padding: 0; color: var(--text-primary); cursor: pointer; text-align: left; display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.tlabel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tlabel em { font-style: normal; font-size: 10.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; flex: none; }
+.trow[data-sel] .tlabel { font-weight: 500; }
+.tacts { display: flex; align-items: center; gap: 1px; flex: none; }
+.tdot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(127,127,127,0.4); padding: 0; cursor: pointer; margin-right: 2px; transition: transform 110ms cubic-bezier(0.22,1,0.36,1); }
+.tdot:hover { transform: scale(1.25); }
+.tdot:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent); }
+.tact { width: 17px; height: 17px; border: 0; border-radius: 5px; background: transparent; color: var(--text-faint); display: grid; place-items: center; padding: 0; cursor: pointer; opacity: 0; }
+.trow:hover .tact, .trow:focus-within .tact { opacity: 1; }
+.tact:hover { background: var(--surface-hover); color: var(--text-primary); }
+.tkids { display: grid; gap: 1px; padding-left: 15px; }
+.tnode[data-open="false"] > .tkids { display: none; }
+
+/* инструменты */
+.tool-search { width: 100%; font: inherit; font-size: 11.5px; padding: 6px 8px; border: 1px solid var(--line-subtler); border-radius: 8px; background: var(--surface-input); color: var(--text-primary); display: flex; align-items: center; gap: 7px; cursor: pointer; text-align: left; }
+.tool-search span { flex: 1; color: var(--text-faint); }
+.kbd { font-size: 10px; padding: 1px 5px; border: 1px solid var(--line-subtler); border-radius: 5px; background: var(--bg-base); color: var(--text-muted); }
+.tools { display: grid; gap: 4px; }
+.tool { display: grid; grid-template-columns: 3px 1fr auto; align-items: center; gap: 9px; padding: 7px 8px; border: 1px solid var(--line-subtler); border-radius: 9px; min-width: 0; }
+.tool .rail { width: 3px; height: 24px; border-radius: 999px; background: var(--text-faint); }
+.tool[data-state="running"] { border-color: color-mix(in srgb, var(--warn) 40%, var(--line-subtler)); }
+.tool[data-state="running"] .rail { background: var(--warn); }
+.tool[data-state="ready"] .rail { background: var(--ok); }
+.tool[data-state="missing"] { opacity: 0.72; }
+.tool-main { min-width: 0; display: grid; gap: 1px; }
+.tool-name { font-size: 11.5px; font-weight: 500; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tool-name em { font-style: normal; font-size: 10px; color: var(--text-faint); font-weight: 400; }
+.tool-desc { font-size: 10.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.split { display: flex; }
+.split button { font: inherit; font-size: 11px; line-height: 1; padding: 5px 8px; border: 1px solid var(--line-subtler); background: var(--surface-subtle); color: var(--text-primary); cursor: pointer; }
+.split button:first-child { border-radius: 7px 0 0 7px; }
+.split button:last-child { border-radius: 0 7px 7px 0; border-left: 0; padding: 5px 6px; color: var(--text-muted); }
+.split button:only-child { border-radius: 7px; }
+.split button:hover { background: var(--surface-hover); }
+.split button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.split.primary button:first-child { background: var(--accent); border-color: transparent; color: #fff; font-weight: 500; }
+.split.primary button:last-child { background: color-mix(in srgb, var(--accent) 82%, black); border-color: transparent; color: #fff; }
+
+/* позы */
+.pose-list { display: grid; gap: 2px; max-height: 158px; overflow-y: auto; scrollbar-width: thin; }
+.pose-row { width: 100%; font: inherit; display: grid; grid-template-columns: 18px 1fr 46px 16px; align-items: center; gap: 7px; padding: 5px 6px; border: 0; border-radius: 7px; background: transparent; color: var(--text-primary); cursor: pointer; text-align: left; font-size: 11.5px; }
+.pose-row:hover { background: var(--surface-hover); }
+.pose-row[data-sel] { background: var(--surface-selected); }
+.pose-row .rank { font-size: 10.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.pose-row .track { height: 5px; border-radius: 999px; background: var(--surface-subtle); overflow: hidden; }
+.pose-row .track i { display: block; height: 100%; border-radius: 999px; background: var(--text-faint); }
+.pose-row[data-sel] .track i { background: var(--accent); }
+.pose-row .score { font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; color: var(--text-secondary); }
+.pose-row[data-sel] .score { font-weight: 500; color: var(--text-primary); }
+.keb { border: 0; background: transparent; color: var(--text-faint); font: inherit; font-size: 12px; cursor: pointer; padding: 0; border-radius: 4px; opacity: 0; }
+.pose-row:hover .keb, .keb:focus-visible { opacity: 1; }
+
+/* галерея xyzrender */
+.xy-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.xy-tile { border: 1px solid var(--line-subtler); border-radius: 8px; overflow: hidden; background: #fff; cursor: pointer; padding: 0; display: grid; margin: 0; }
+.xy-tile img { display: block; width: 100%; aspect-ratio: 800 / 730; object-fit: cover; }
+.xy-tile figcaption { font-size: 10px; padding: 3px 5px; color: var(--text-muted); background: var(--bg-base); border-top: 1px solid var(--line-subtler); text-align: center; }
+.xy-tile[data-selected] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.xy-tile[data-selected] figcaption { color: var(--text-primary); font-weight: 500; }
+
+/* фильтры — как сейчас, не трогаем */
+.grid-filter-card { border: 1px solid var(--line-subtler); border-radius: var(--control-radius); padding: 8px; display: grid; gap: 6px; }
+.grid-filter-card.active { border-color: color-mix(in srgb, var(--accent) 34%, var(--line-subtler)); }
+.gf-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; }
+.gf-head span { font-weight: 500; color: var(--text-secondary); }
+.gf-head button { font: inherit; font-size: 11px; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; padding: 0; }
+.gf-chart { display: flex; gap: 2px; align-items: flex-end; height: 30px; }
+.gf-chart i { flex: 1; background: var(--surface-selected); border-radius: 2px 2px 0 0; }
+.gf-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.gf-inputs input { font: inherit; font-size: 11px; padding: 3px 6px; border: 1px solid var(--line-subtler); border-radius: 6px; background: var(--surface-input); color: var(--text-primary); width: 100%; }
+
+/* ---------- слой меню ---------- */
+
+#menu-layer { position: fixed; inset: 0; z-index: 100; display: none; }
+#menu-layer[data-open] { display: block; }
+#menu-layer .veil { position: absolute; inset: 0; }
+
+.menu {
+  position: absolute;
+  min-width: 210px;
+  max-width: 268px;
+  max-height: min(78vh, 640px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  border: 1px solid var(--line-subtler);
+  border-radius: 10px;
+  background: var(--bg-base);
+  box-shadow: 0 12px 40px -12px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.16);
+  padding: 4px;
+  display: grid;
+  gap: 1px;
+  color: var(--text-primary);
+  font-size: 12px;
+  animation: pop 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(0.985); } }
+
+.menu .mtitle { font-size: 11px; font-weight: 600; padding: 6px 8px 4px; color: var(--text-primary); }
+.menu .mlabel { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); padding: 6px 8px 3px; }
+.menu .mitem { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; font-size: 11.5px; min-width: 0; border: 0; background: transparent; color: inherit; font-family: inherit; width: 100%; text-align: left; cursor: pointer; }
+.menu .mitem:hover { background: var(--surface-hover); }
+.menu .mitem[disabled] { color: var(--text-faint); cursor: default; }
+.menu .mitem[disabled]:hover { background: transparent; }
+.menu .mtext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.menu .mhint { font-size: 10px; color: var(--text-faint); font-variant-numeric: tabular-nums; flex: none; padding-left: 10px; }
+.menu .mcheck { width: 12px; text-align: center; font-size: 10px; flex: none; color: var(--text-primary); }
+.menu .msep { height: 1px; background: var(--line-subtler); margin: 3px 2px; }
+.menu .mfield { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 11.5px; color: var(--text-muted); }
+.menu .mfield .mtext { flex: 1; }
+.menu .mfield input[type="number"], .menu .mfield select {
+  font: inherit; font-size: 11px; padding: 2px 5px; width: 62px;
+  border: 1px solid var(--line-subtler); border-radius: 6px;
+  background: var(--surface-input); color: var(--text-primary);
+}
+.menu .mfield select { width: auto; max-width: 116px; }
+.menu .mnote { font-size: 10.5px; color: var(--text-faint); padding: 4px 8px 6px; line-height: 1.35; }
+.menu .msearch { font: inherit; font-size: 11px; padding: 5px 7px; margin: 2px; border: 1px solid var(--line-subtler); border-radius: 6px; background: var(--surface-input); color: var(--text-primary); }
+.menu .mswatches { display: flex; flex-wrap: wrap; gap: 5px; padding: 3px 8px 6px; }
+.menu .mswatch { width: 15px; height: 15px; border-radius: 50%; border: 1px solid rgba(127,127,127,0.35); padding: 0; cursor: pointer; }
+.menu .mswatch[aria-pressed="true"] { box-shadow: 0 0 0 1.5px var(--bg-base), 0 0 0 3px var(--text-primary); }
+.menu .mitem:focus-visible, .menu .mswatch:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.pulse { animation: pulse 900ms ease-out 2; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 40% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); } }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <h1>Прототип доков и меню</h1>
+  <button class="mbtn" type="button" id="theme-toggle" aria-pressed="false">Тёмная тема</button>
+  <p class="hint">Каждая кнопка ниже открывает настоящее меню в том месте панели, откуда оно вырастает. Меню также открываются кликом по своим элементам: стрелка инструмента, многоточие позы, точка цвета, правый клик по строке.</p>
+  <div class="grp" id="menu-buttons"><span>Меню</span></div>
+</div>
+
+<main>
+
+  <section class="shipped">
+    <h2>Что уже перенесено в приложение</h2>
+    <p class="shipped-lede">
+      Тринадцать коммитов в <code>structure-info-panel.tsx</code>, <code>dock-panel.tsx</code>,
+      <code>grid-descriptor-status.tsx</code>, <code>lib/dock.ts</code> и <code>styles.css</code>.
+      Каждая ссылка открывает экран, которого касались правки — проверяйте по порядку.
+    </p>
+
+    <ol class="shipped-list">
+      <li>
+        <div class="shipped-head">
+          <h3>Пустой инспектор</h3>
+          <a href="http://localhost:1421/" target="_blank" rel="noreferrer">Открыть</a>
+        </div>
+        <p>Было: заголовок и серая фраза. Стало: иконка, объяснение и кнопка «Open structure», открывающая диалог выбора файла. Нижний док «Files» — такое же состояние со своим текстом.</p>
+      </li>
+      <li>
+        <div class="shipped-head">
+          <h3>Белок — шапка, состав, инструменты</h3>
+          <a href="http://localhost:1421/?devFiles=/Users/nikolenko/Documents/Projects/Burette/.claude/worktrees/command-p-menu-search-c546f6/samples/structures/proteins/1htb.pdb" target="_blank" rel="noreferrer">Открыть 1htb.pdb</a>
+        </div>
+        <p>
+          Шапка закреплена и не уезжает при прокрутке, под именем файла — ATOMS 5 799 / CHAINS 2 / SIZE 479.5 KB
+          (раньше эти числа лежали в свёрнутом блоке в самом низу). У строк состава цветные точки в палитре
+          дерева сцены, скрытие воды — иконка глаза. Дерево прокручивается внутри себя и больше не выталкивает
+          нижние секции. Вместо карточек «Conformers» и «xTB» — одна секция <b>Tools</b> с тремя строками;
+          нажмите стрелку у xTB, там все семь операций по именам вместо «More».
+        </p>
+      </li>
+      <li>
+        <div class="shipped-head">
+          <h3>Сцена докинга — выбор структур</h3>
+          <a href="http://localhost:1421/?devScene=structurePoses&amp;devDocking=/Users/nikolenko/Documents/Projects/Burette/.claude/worktrees/command-p-menu-search-c546f6/samples/structures/proteins/1htb.pdb%0A/Users/nikolenko/Documents/Projects/Burette/.claude/worktrees/command-p-menu-search-c546f6/samples/mini.sdf%0A/Users/nikolenko/Documents/Projects/Burette/.claude/worktrees/command-p-menu-search-c546f6/samples/mini.pdb" target="_blank" rel="noreferrer">Открыть сцену</a>
+        </div>
+        <p>
+          Секция <b>Structures</b> перечисляет файлы по именам вместо безымянных квадратиков с номерами.
+          Попутно закрыта дыра: у виртуальной сцены докинга раньше не показывалось ни сглаживание, ни выбор
+          структур — ветка была недостижима.
+        </p>
+      </li>
+      <li>
+        <div class="shipped-head">
+          <h3>Траектория — сглаживание</h3>
+          <a href="http://localhost:1421/?devFiles=/Users/nikolenko/Documents/Projects/Burette/.claude/worktrees/command-p-menu-search-c546f6/samples/trajectory.xyz" target="_blank" rel="noreferrer">Открыть trajectory.xyz</a>
+        </div>
+        <p>Заголовок «Smooth motion» теперь можно нажать — раньше сворачивание висело только на паре Off/On, а сам заголовок был нерабочей надписью. Шеврон такой же, как у остальных секций.</p>
+      </li>
+      <li>
+        <div class="shipped-head">
+          <h3>Таблица молекул — дескрипторы и фильтры</h3>
+          <a href="http://localhost:1421/?devFiles=/Users/nikolenko/Documents/Projects/Burette/.claude/worktrees/command-p-menu-search-c546f6/samples/collections/tables/compounds.csv" target="_blank" rel="noreferrer">Открыть compounds.csv</a>
+        </div>
+        <p>
+          Запустите расчёт дескрипторов из панели таблицы: прогресс идёт строкой <code>RDKit · descriptors</code>
+          внутри секции Tools. Раньше у него была своя карточка, которая вклинивалась между составом и движками,
+          сдвигала всё вниз и через шесть секунд исчезала. Фильтры оставлены без изменений — по вашему указанию.
+        </p>
+      </li>
+      <li>
+        <div class="shipped-head">
+          <h3>Спектр и xyzr — пустые состояния</h3>
+          <a href="http://localhost:1421/?devFiles=/Users/nikolenko/Documents/Projects/Burette/.claude/worktrees/command-p-menu-search-c546f6/samples/spectra/example.mgf" target="_blank" rel="noreferrer">Спектр</a>
+          <a href="http://localhost:1421/?devFiles=/Users/nikolenko/Documents/Projects/Burette/.claude/worktrees/command-p-menu-search-c546f6/samples/quantum/inputs/caffeine.inp" target="_blank" rel="noreferrer">xyzr</a>
+        </div>
+        <p>Переключите вкладки на те, где ничего не открыто: каждая говорит, для чего она, и предлагает действие вместо одной серой фразы посреди пустого поля.</p>
+      </li>
+      <li>
+        <div class="shipped-head">
+          <h3>Нижний док — задачи, журналы, скрытые вкладки</h3>
+          <a href="http://localhost:1421/" target="_blank" rel="noreferrer">Открыть и нажать «+» в нижнем доке</a>
+        </div>
+        <p>
+          В списке вкладок появились <b>Structure Basket</b>, <b>Compare</b> и <b>Review</b> — они работали и
+          принимали drop, но открыть их из интерфейса было нельзя. <b>Diagnostics</b> из списка ушёл: он слился
+          с <b>Logs</b> в одну вкладку. В <b>Jobs</b> у задачи одна кнопка и меню вместо трёх кнопок,
+          меняющих ширину строки вместе с состоянием.
+        </p>
+      </li>
+    </ol>
+
+    <p class="shipped-note">
+      <b>Не перенесено:</b> блок «All background» остался в инспекторе. Его перенос во вьюер — единственный
+      пункт, который требует правки <code>viewer.js</code> и переноса туда полутора десятков контрактных
+      проверок. Оценок докинга в модели документа нет, поэтому позы перечислены по именам файлов, а не по score.
+    </p>
+  </section>
+
+  <div class="strip">
+
+    <!-- ИНСПЕКТОР -->
+    <div class="col">
+      <h2>Info — правый док</h2>
+      <p>Пять секций вместо двенадцати карточек. All background здесь больше нет.</p>
+      <div class="panel">
+        <div class="panel-tabs">
+          <span data-on>Info</span><span>Text</span><span>Files</span>
+          <button class="plus" type="button" id="anchor-docktabs" data-menu="docktabs" aria-label="Вкладки дока">+</button>
+        </div>
+
+        <div class="n-head">
+          <div class="title-row">
+            <h3>1abc_docked.pdb</h3>
+            <span class="pill">PDB</span>
+            <button class="more" type="button" id="anchor-file" data-menu="file" aria-label="Действия с файлом">⋯</button>
+          </div>
+          <div class="n-stats">
+            <div><span>Atoms</span><strong>3 421</strong></div>
+            <div><span>Chains</span><strong>2</strong></div>
+            <div><span>Size</span><strong>214 KB</strong></div>
+          </div>
+        </div>
+
+        <div class="dock flush">
+          <div class="acc">
+
+            <!-- COMPOSITION -->
+            <div class="ai" data-open="true">
+              <button class="at" type="button" data-acc aria-expanded="true"><span class="car">›</span><span class="grow">Composition</span><span class="chip2">4 groups</span></button>
+              <div class="ap">
+                <div class="comp-bar">
+                  <i style="width:74%;background:#4e79a7"></i><i style="width:3%;background:#59a14f"></i>
+                  <i style="width:2%;background:#e8973a"></i><i style="width:21%;background:#9aa0a6"></i>
+                </div>
+                <input class="comp-search" type="search" placeholder="Find chain, ligand, residue…" aria-label="Найти компонент" />
+                <div class="tree" id="comp-tree">
+
+                  <div class="tnode" data-open="true">
+                    <div class="trow" data-rowmenu>
+                      <button class="twisty" type="button" data-tw aria-label="Свернуть Polymers">›</button>
+                      <button class="tlabel" type="button" data-pick><span>Polymers</span><em>2 chains</em></button>
+                      <span class="tacts">
+                        <button class="tdot" type="button" style="background:#4e79a7" data-menu="row" aria-label="Цвет Polymers"></button>
+                        <button class="tact" type="button" aria-label="Скрыть Polymers"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4-6.5-4-6.5-4z"/><circle cx="8" cy="8" r="1.7"/></svg></button>
+                        <button class="tact" type="button" aria-label="Удалить Polymers"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8h5.8l.6-8"/></svg></button>
+                      </span>
+                    </div>
+                    <div class="tkids">
+                      <div class="tnode"><div class="trow" data-rowmenu><span></span><button class="tlabel" type="button" data-pick><span>Chain A</span><em>214 res</em></button><span class="tacts"><button class="tdot" type="button" style="background:#4e79a7" data-menu="row" aria-label="Цвет Chain A"></button></span></div></div>
+                      <div class="tnode"><div class="trow" data-rowmenu><span></span><button class="tlabel" type="button" data-pick><span>Chain B</span><em>198 res</em></button><span class="tacts"><button class="tdot" type="button" style="background:#e15759" data-menu="row" aria-label="Цвет Chain B"></button></span></div></div>
+                    </div>
+                  </div>
+
+                  <div class="tnode" data-open="true">
+                    <div class="trow" data-sel data-rowmenu>
+                      <button class="twisty" type="button" data-tw aria-label="Свернуть Ligands">›</button>
+                      <button class="tlabel" type="button" data-pick><span>Ligands</span><em>1</em></button>
+                      <span class="tacts"><button class="tdot" type="button" style="background:#59a14f" data-menu="row" aria-label="Цвет Ligands"></button></span>
+                    </div>
+                    <div class="tkids"><div class="tnode"><div class="trow" data-sel data-rowmenu><span></span><button class="tlabel" type="button" data-pick><span>LIG A:401</span><em>28 atoms</em></button><span class="tacts"><button class="tdot" type="button" style="background:#59a14f" data-menu="row" aria-label="Цвет LIG"></button></span></div></div></div>
+                  </div>
+
+                  <div class="tnode" data-open="false">
+                    <div class="trow" data-rowmenu>
+                      <button class="twisty" type="button" data-tw aria-label="Развернуть Ions">›</button>
+                      <button class="tlabel" type="button" data-pick><span>Ions</span><em>6</em></button>
+                      <span class="tacts"><button class="tdot" type="button" style="background:#e8973a" data-menu="row" aria-label="Цвет Ions"></button></span>
+                    </div>
+                    <div class="tkids"><div class="tnode"><div class="trow" data-rowmenu><span></span><button class="tlabel" type="button" data-pick><span>ZN A:501</span><em>1 atom</em></button></div></div></div>
+                  </div>
+
+                  <div class="tnode" data-open="false">
+                    <div class="trow" data-rowmenu>
+                      <button class="twisty" type="button" data-tw aria-label="Развернуть Water">›</button>
+                      <button class="tlabel" type="button" data-pick><span>Water</span><em>84</em></button>
+                      <span class="tacts"><button class="tdot" type="button" style="background:#9aa0a6" data-menu="row" aria-label="Цвет Water"></button></span>
+                    </div>
+                    <div class="tkids"><div class="tnode"><div class="trow" data-rowmenu><span></span><button class="tlabel" type="button" data-pick><span>HOH A:601…</span><em>84 mol</em></button></div></div></div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+            <!-- POSES -->
+            <div class="ai" data-open="true">
+              <button class="at" type="button" data-acc aria-expanded="true"><span class="car">›</span><span class="grow">Poses</span><span class="chip2">9 poses</span></button>
+              <div class="ap">
+                <div class="tpair"><button type="button" data-tg data-selected>One at a time</button><button type="button" data-tg>All at once</button></div>
+                <div class="pose-list">
+                  <div class="pose-row" data-sel><span class="rank">1</span><span class="track"><i style="width:100%"></i></span><span class="score">−9.4</span><button class="keb" type="button" id="anchor-pose" data-menu="pose" aria-label="Меню позы 1">⋯</button></div>
+                  <div class="pose-row"><span class="rank">2</span><span class="track"><i style="width:92%"></i></span><span class="score">−8.7</span><button class="keb" type="button" data-menu="pose" aria-label="Меню позы 2">⋯</button></div>
+                  <div class="pose-row"><span class="rank">3</span><span class="track"><i style="width:88%"></i></span><span class="score">−8.3</span><button class="keb" type="button" data-menu="pose" aria-label="Меню позы 3">⋯</button></div>
+                  <div class="pose-row"><span class="rank">4</span><span class="track"><i style="width:79%"></i></span><span class="score">−7.4</span><button class="keb" type="button" data-menu="pose" aria-label="Меню позы 4">⋯</button></div>
+                  <div class="pose-row"><span class="rank">5</span><span class="track"><i style="width:74%"></i></span><span class="score">−7.0</span><button class="keb" type="button" data-menu="pose" aria-label="Меню позы 5">⋯</button></div>
+                </div>
+                <div class="fld"><span>Score, kcal/mol · lower is better</span></div>
+              </div>
+            </div>
+
+            <!-- TOOLS -->
+            <div class="ai" data-open="true">
+              <button class="at" type="button" data-acc aria-expanded="true"><span class="car">›</span><span class="grow">Tools</span><span class="chip2 run">1 running</span></button>
+              <div class="ap">
+                <button class="tool-search" type="button" id="anchor-palette" data-menu="palette"><span>Run a calculation…</span><span class="kbd">⌘K</span></button>
+                <div class="tools">
+                  <div class="tool" data-state="running">
+                    <span class="rail"></span>
+                    <span class="tool-main"><span class="tool-name">xTB <em>6.7.1</em></span><span class="tool-desc">Optimize · LIG A:401 · 62%</span></span>
+                    <span class="split"><button type="button">Cancel</button><button type="button" id="anchor-xtb" data-menu="xtb" aria-label="Меню xTB">⌄</button></span>
+                  </div>
+                  <div class="tool" data-state="ready">
+                    <span class="rail"></span>
+                    <span class="tool-main"><span class="tool-name">CREST <em>3.0</em></span><span class="tool-desc">Conformer sampling</span></span>
+                    <span class="split primary"><button type="button">Sample</button><button type="button" id="anchor-crest" data-menu="crest" aria-label="Меню CREST">⌄</button></span>
+                  </div>
+                  <div class="tool" data-state="ready">
+                    <span class="rail"></span>
+                    <span class="tool-main"><span class="tool-name">PRISM</span><span class="tool-desc">Ensemble pruning</span></span>
+                    <span class="split"><button type="button">Prune</button><button type="button" id="anchor-prism" data-menu="prism" aria-label="Меню PRISM">⌄</button></span>
+                  </div>
+                  <div class="tool" data-state="ready">
+                    <span class="rail"></span>
+                    <span class="tool-main"><span class="tool-name">Trajectory <em>mdsmooth</em></span><span class="tool-desc">Smooth motion · Balanced</span></span>
+                    <span class="split"><button type="button">Smooth</button><button type="button" id="anchor-smooth" data-menu="smooth" aria-label="Меню сглаживания">⌄</button></span>
+                  </div>
+                  <div class="tool" data-state="missing">
+                    <span class="rail"></span>
+                    <span class="tool-main"><span class="tool-name">Open Babel</span><span class="tool-desc">Not installed</span></span>
+                    <span class="split"><button type="button">Install</button></span>
+                  </div>
+                </div>
+                <div class="fld"><span>Scope · LIG A:401 · 28 atoms</span><button class="b ghost" type="button">Change</button></div>
+              </div>
+            </div>
+
+            <!-- FILTERS: без изменений -->
+            <div class="ai" data-open="false">
+              <button class="at" type="button" data-acc aria-expanded="false"><span class="car">›</span><span class="grow">Filters</span><span class="chip2">без изменений</span></button>
+              <div class="ap">
+                <input class="comp-search" type="search" placeholder="Find a column to filter" aria-label="Найти колонку" />
+                <div class="grid-filter-card active">
+                  <div class="gf-head"><span>MolWt</span><button type="button">Clear</button></div>
+                  <div class="gf-chart"><i style="height:22%"></i><i style="height:48%"></i><i style="height:86%"></i><i style="height:100%"></i><i style="height:64%"></i><i style="height:34%"></i><i style="height:16%"></i></div>
+                  <div class="gf-inputs"><input type="text" value="180" aria-label="Минимум MolWt" /><input type="text" value="520" aria-label="Максимум MolWt" /></div>
+                </div>
+                <div class="grid-filter-card">
+                  <div class="gf-head"><span>cLogP</span><button type="button">Clear</button></div>
+                  <div class="gf-inputs"><input type="text" value="−0.4" aria-label="Минимум cLogP" /><input type="text" value="5.0" aria-label="Максимум cLogP" /></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="ai" data-open="false">
+              <button class="at" type="button" data-acc aria-expanded="false"><span class="car">›</span><span class="grow">Results</span><span class="chip2">Optimization</span></button>
+              <div class="ap">
+                <div class="rows">
+                  <div class="row"><span>Energy</span><strong>−42.117 Eh</strong></div>
+                  <div class="row"><span>HL gap</span><strong>4.21 eV</strong></div>
+                  <div class="row"><span>Dipole</span><strong>2.04 D</strong></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="ai" data-open="false">
+              <button class="at" type="button" data-acc aria-expanded="false"><span class="car">›</span><span class="grow">File</span><span class="chip2">214 KB</span></button>
+              <div class="ap">
+                <div class="rows">
+                  <div class="row"><span>Format</span><strong>PDB</strong></div>
+                  <div class="row"><span>Poses</span><strong>9</strong></div>
+                  <div class="row"><span>Path</span><strong>~/Docking/1abc…</strong></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ВЬЮЕР -->
+    <div class="col">
+      <h2>Панель вьюера</h2>
+      <p>Сюда переехал All background. Все шесть стилей сохранены.</p>
+      <div class="panel mid">
+        <div class="dock short">
+          <div class="sec-row"><strong>Scene</strong><span>1abc_docked.pdb</span></div>
+          <div class="rows"><div class="row"><span>Main structure</span><strong>Cartoon</strong></div></div>
+          <div class="sec-row"><strong>Background structures</strong><span>8 poses</span></div>
+          <div class="seg">
+            <button type="button" data-tg>Line</button><button type="button" data-tg>Ball+Stick</button>
+            <button type="button" data-tg data-selected>Cartoon</button><button type="button" data-tg>Spacefill</button>
+            <button type="button" data-tg>Surface</button><button type="button" data-tg>Match</button>
+          </div>
+          <div class="tpair"><button type="button" data-tg>Gray</button><button type="button" data-tg data-selected>Colored</button></div>
+          <div class="sld">
+            <div class="sld-label">Opacity</div>
+            <input class="pretty" type="range" min="4" max="100" value="40" aria-label="Прозрачность фона" data-out="op" data-suffix="%" />
+            <span class="sld-val" id="s-op">40%</span>
+          </div>
+        </div>
+      </div>
+
+      <h2 style="margin-top:12px">Jobs — нижний док</h2>
+      <div class="panel mid">
+        <div class="panel-tabs"><span>Files</span><span data-on>Jobs</span><span>Logs</span></div>
+        <div class="dock short">
+          <div class="fld"><span>Job history</span><button class="b ghost" type="button">Clear</button></div>
+          <div class="tools">
+            <div class="tool" data-state="running">
+              <span class="rail"></span>
+              <span class="tool-main"><span class="tool-name">Optimize <em>xTB</em></span><span class="tool-desc">LIG A:401 · 12 s</span></span>
+              <span class="split"><button type="button">Cancel</button><button type="button" id="anchor-job" data-menu="job" aria-label="Меню задачи">⌄</button></span>
+            </div>
+            <div class="tool" data-state="ready">
+              <span class="rail"></span>
+              <span class="tool-main"><span class="tool-name">Sample conformers <em>CREST</em></span><span class="tool-desc">Done · 34 conformers</span></span>
+              <span class="split"><button type="button">Open</button><button type="button" data-menu="job" aria-label="Меню задачи 2">⌄</button></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- XYZR + GRID -->
+    <div class="col">
+      <h2>xyzr — превью сохраняются</h2>
+      <p>Настоящие файлы галереи из ресурсов приложения.</p>
+      <div class="panel mid">
+        <div class="panel-tabs"><span>Info</span><span data-on>xyzr</span><span>Files</span></div>
+        <div class="dock short">
+          <div class="sec-row"><strong>Preset</strong><span id="xy-name">Default</span></div>
+          <div class="xy-grid">
+            <figure class="xy-tile" data-xy data-name="Default" data-selected><img src="/xyzrender-gallery/caffeine_default.svg" alt="Default" /><figcaption>Default</figcaption></figure>
+            <figure class="xy-tile" data-xy data-name="Flat"><img src="/xyzrender-gallery/caffeine_flat.svg" alt="Flat" /><figcaption>Flat</figcaption></figure>
+            <figure class="xy-tile" data-xy data-name="Paton"><img src="/xyzrender-gallery/caffeine_paton.svg" alt="Paton" /><figcaption>Paton</figcaption></figure>
+            <figure class="xy-tile" data-xy data-name="Skeletal"><img src="/xyzrender-gallery/caffeine_skeletal.svg" alt="Skeletal" /><figcaption>Skeletal</figcaption></figure>
+            <figure class="xy-tile" data-xy data-name="Bubble"><img src="/xyzrender-gallery/caffeine_bubble.svg" alt="Bubble" /><figcaption>Bubble</figcaption></figure>
+            <figure class="xy-tile" data-xy data-name="Tube"><img src="/xyzrender-gallery/caffeine_tube.svg" alt="Tube" /><figcaption>Tube</figcaption></figure>
+            <figure class="xy-tile" data-xy data-name="MTube"><img src="/xyzrender-gallery/caffeine_mtube.svg" alt="MTube" /><figcaption>MTube</figcaption></figure>
+            <figure class="xy-tile" data-xy data-name="Kekule"><img src="/xyzrender-gallery/caffeine_kekule.svg" alt="Kekule" /><figcaption>Kekule</figcaption></figure>
+            <figure class="xy-tile" data-xy data-name="Graph"><img src="/xyzrender-gallery/caffeine_graph.svg" alt="Graph" /><figcaption>Graph</figcaption></figure>
+          </div>
+          <div class="fld"><span>Van der Waals</span><button class="sw" type="button" role="switch" aria-checked="false" aria-label="Ван-дер-Ваальс" data-sw></button></div>
+        </div>
+      </div>
+
+      <h2 style="margin-top:12px">Таблица молекул</h2>
+      <p>Панель таблицы — источник четырёх меню.</p>
+      <div class="panel mid">
+        <div class="dock short">
+          <div class="btns">
+            <button class="b" type="button" id="anchor-gridcompute" data-menu="gridcompute">Compute ⌄</button>
+            <button class="b" type="button" id="anchor-gridview" data-menu="gridview">View ⌄</button>
+            <button class="b" type="button" id="anchor-gridselection" data-menu="gridselection">Selection ⌄</button>
+            <button class="b" type="button" id="anchor-gridimport" data-menu="gridimport">Import ⌄</button>
+            <button class="b ghost" type="button" id="anchor-descriptors" data-menu="descriptors">Descriptors ⌄</button>
+          </div>
+          <div class="rows">
+            <div class="row"><span>Rows</span><strong>12 480</strong></div>
+            <div class="row"><span>Selected</span><strong>36</strong></div>
+            <div class="row"><span>Columns</span><strong>14</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<div id="menu-layer" role="presentation"><div class="veil" data-close></div></div>
+
+<script>
+const MENUS = {
+  row: {
+    title: "Chain A",
+    items: [
+      { text: "Focus", hint: "⏎" },
+      { text: "Select residues" },
+      { text: "Isolate" },
+      { sep: true },
+      { label: "Colour" },
+      { swatches: ["#4e79a7", "#e15759", "#59a14f", "#e8973a", "#b07aa1", "#9aa0a6"], active: 0 },
+      { text: "By element" },
+      { sep: true },
+      { text: "Hide" },
+      { text: "Remove" },
+      { text: "Copy label", hint: "⌘C" },
+    ],
+  },
+  pose: {
+    title: "Pose 1",
+    items: [
+      { label: "Energies" },
+      { text: "Docking score", hint: "−9.4" },
+      { text: "xTB energy", hint: "−42.117 Eh" },
+      { text: "Ligand strain", hint: "3.1 kcal/mol" },
+      { text: "RMSD to best", hint: "0.00 Å" },
+      { sep: true },
+      { label: "Actions" },
+      { text: "Show this pose", hint: "⏎" },
+      { text: "Add to comparison" },
+      { text: "Re-score with xTB" },
+      { text: "Show interactions" },
+      { sep: true },
+      { text: "Export pose as SDF" },
+      { text: "Copy score", hint: "⌘C" },
+    ],
+  },
+  xtb: {
+    title: "xTB 6.7.1",
+    items: [
+      { label: "Geometry" },
+      { text: "Optimize", hint: "⌘⏎" },
+      { text: "Optimize + frequencies" },
+      { sep: true },
+      { label: "Electronic" },
+      { text: "Properties" },
+      { text: "IP / EA" },
+      { text: "Fukui reactivity" },
+      { sep: true },
+      { label: "Dynamics" },
+      { text: "Molecular dynamics" },
+      { text: "Metadynamics" },
+      { sep: true },
+      { label: "Parameters" },
+      { field: "Hamiltonian", select: ["GFN2", "GFN1", "GFN0", "GFN-FF"] },
+      { field: "Charge", number: 0, min: -8, max: 8 },
+      { field: "Unpaired e⁻", number: 0, min: 0, max: 12 },
+      { field: "Solvation", select: ["gas phase", "ALPB water", "GBSA water"] },
+      { field: "Threads", number: 8, min: 1, max: 16 },
+      { sep: true },
+      { text: "Settings…" },
+      { text: "Run history" },
+    ],
+  },
+  crest: {
+    title: "CREST 3.0",
+    items: [
+      { label: "Sampling" },
+      { text: "Sample conformers", hint: "⌘⏎" },
+      { text: "Quick screen" },
+      { sep: true },
+      { label: "Chemistry" },
+      { text: "Tautomers" },
+      { text: "Protonation states" },
+      { sep: true },
+      { label: "Scope" },
+      { text: "Whole molecule", check: false },
+      { text: "Selected ligand", check: true, hint: "LIG A:401" },
+      { sep: true },
+      { label: "Parameters" },
+      { field: "Method", select: ["GFN2", "GFN-FF"] },
+      { field: "Sampling", select: ["auto", "normal", "quick", "squick", "mquick"] },
+      { field: "Energy window", number: 6, min: 1, max: 60, step: 0.5, unit: "kcal/mol" },
+      { field: "RMSD threshold", number: 0.125, min: 0.01, max: 2, step: 0.005, unit: "Å" },
+      { sep: true },
+      { text: "Settings…" },
+    ],
+  },
+  prism: {
+    title: "PRISM",
+    items: [
+      { text: "Prune ensemble", hint: "⌘⏎" },
+      { text: "Sort by energy", check: true },
+      { sep: true },
+      { field: "Timeout", number: 600, min: 5, max: 86400, unit: "s" },
+      { sep: true },
+      { text: "Run history" },
+    ],
+  },
+  smooth: {
+    title: "Trajectory smoothing",
+    items: [
+      { label: "Strength" },
+      { text: "Light", check: false },
+      { text: "Balanced", check: true },
+      { text: "Strong", check: false },
+      { sep: true },
+      { label: "Analysis method" },
+      { text: "Smooth one motion", check: true, hint: "recommended" },
+      { text: "Tour long-lived shapes", hint: "MSM" },
+      { sep: true },
+      { label: "Signal" },
+      { text: "RMSD", check: true, hint: "safe default" },
+      { text: "PCA", hint: "largest motion" },
+      { text: "tICA", hint: "slowest motion" },
+      { text: "Backbone angles", hint: "loop motion" },
+      { text: "DeepTICA", hint: "nonlinear" },
+      { sep: true },
+      { label: "RMSD filter" },
+      { text: "Number of frames", check: true, hint: "recommended" },
+      { text: "Frequency cutoff", hint: "expert" },
+      { text: "Signal power", hint: "expert" },
+      { field: "Cutoff frequency", number: 0.1, min: 0.0001, max: 0.5, step: 0.001 },
+      { field: "Power retained", number: 0.95, min: 0.5, max: 0.999, step: 0.01 },
+      { field: "Filter order", number: 5, min: 1, max: 12 },
+      { sep: true },
+      { label: "Sampling" },
+      { field: "Target frames", number: 50, min: 2, max: 200 },
+      { text: "Always include first and last", check: true },
+      { sep: true },
+      { label: "Reference" },
+      { field: "Reference frame", number: 1, min: 1, max: 200 },
+      { text: "Align before analysis", check: true },
+      { sep: true },
+      { label: "Kinetic model · MSM" },
+      { field: "States to show", number: 5, min: 2, max: 12 },
+      { field: "Lag, frames", number: 10, min: 1, max: 66 },
+      { sep: true },
+      { label: "Runtime" },
+      { text: "DeepTICA", hint: "Ready ✓", disabled: true },
+      { note: "Все тринадцать научных параметров сохранены: метод, сигнал, режим RMSD-фильтра, частота среза, доля мощности, порядок фильтра, целевое число кадров, концевые кадры, опорный кадр, выравнивание, число состояний MSM, лаг и рантайм DeepTICA." },
+    ],
+  },
+  palette: {
+    title: null,
+    search: "optim",
+    items: [
+      { label: "Suggested" },
+      { text: "Optimize", hint: "xTB" },
+      { text: "Optimize + frequencies", hint: "xTB" },
+      { text: "Optimize geometry", hint: "Grid" },
+      { sep: true },
+      { label: "Also matching" },
+      { text: "Generate 3D conformer", hint: "RDKit" },
+      { text: "Prune ensemble", hint: "PRISM" },
+      { text: "Sample conformers", hint: "CREST" },
+    ],
+  },
+  file: {
+    title: "1abc_docked.pdb",
+    items: [
+      { text: "Show metadata" },
+      { text: "Reveal in Finder", hint: "⇧⌘R" },
+      { text: "Copy path", hint: "⌥⌘C" },
+      { sep: true },
+      { text: "Open in Ketcher" },
+      { text: "Open with…", sub: true },
+      { sep: true },
+      { label: "Export preview" },
+      { text: "PNG" },
+      { text: "SVG" },
+    ],
+  },
+  docktabs: {
+    title: "Right dock",
+    items: [
+      { text: "Info", check: true },
+      { text: "Text", check: true },
+      { text: "Files", check: true },
+      { text: "xyzr", check: false },
+      { text: "Chemical Space", check: false },
+      { text: "Story", check: false },
+      { sep: true },
+      { text: "Reset to defaults" },
+    ],
+  },
+  job: {
+    title: "Optimize · xTB",
+    items: [
+      { text: "Open result", hint: "⏎" },
+      { text: "Open run folder" },
+      { text: "Show log" },
+      { sep: true },
+      { text: "Run again" },
+      { text: "Run again with…", sub: true },
+      { sep: true },
+      { text: "Cancel" },
+      { text: "Remove from history" },
+    ],
+  },
+  gridcompute: {
+    title: null,
+    items: [
+      { label: "Compute · Metal GPU" },
+      { text: "Optimize geometry" },
+      { text: "Align & compare" },
+      { text: "Calculate descriptors", sub: true },
+      { sep: true },
+      { label: "Collection" },
+      { text: "Cluster selected", hint: "36" },
+      { field: "Similarity", select: ["0.70", "0.75", "0.80", "0.85", "0.90"] },
+      { text: "Find similar", disabled: true },
+      { text: "Export representatives", disabled: true },
+    ],
+  },
+  descriptors: {
+    title: null,
+    search: "Search descriptors",
+    items: [
+      { label: "Size" },
+      { text: "Molecular weight", check: true },
+      { text: "Average molecular weight", check: false },
+      { text: "Atoms", check: false },
+      { text: "Heavy atoms", check: true },
+      { text: "Hetero atoms", check: false },
+      { sep: true },
+      { label: "Bonds and shape" },
+      { text: "Bonds", check: false },
+      { text: "Rotatable bonds", check: true },
+      { text: "Single bonds", check: false },
+      { text: "Rings", check: false },
+      { text: "Aromatic atoms", check: false },
+      { text: "Aromatic bonds", check: false },
+      { sep: true },
+      { label: "Physicochemical" },
+      { text: "Topological polar surface area", check: true },
+      { text: "SLogP", check: true },
+      { sep: true },
+      { text: "Calculate 5 selected", hint: "⌘⏎" },
+    ],
+  },
+  gridselection: {
+    title: null,
+    items: [
+      { label: "Selection" },
+      { text: "Select all", hint: "⌘A" },
+      { text: "Clear selection" },
+      { text: "Copy selected", hint: "⌘C" },
+      { sep: true },
+      { label: "File" },
+      { text: "Save As…", hint: "⇧⌘S" },
+      { text: "Undo", hint: "⌘Z" },
+      { sep: true },
+      { label: "Export" },
+      { text: "Export SMILES" },
+      { text: "Export CSV" },
+    ],
+  },
+  gridview: {
+    title: null,
+    items: [
+      { label: "Layout" },
+      { text: "Cards", check: true },
+      { text: "Table", check: false },
+      { sep: true },
+      { label: "Renderer" },
+      { text: "RDKit", check: true },
+      { text: "xyzrender", check: false, sub: true },
+      { sep: true },
+      { label: "Sort" },
+      { text: "File order", check: true },
+      { text: "Name", check: false },
+      { text: "SMILES", check: false },
+      { text: "#", check: false },
+      { text: "Custom JSON", check: false },
+    ],
+  },
+  gridimport: {
+    title: null,
+    items: [
+      { label: "Structure column" },
+      { text: "smiles", hint: "12 480" },
+      { text: "canonical_smiles", hint: "12 480" },
+      { text: "inchi", hint: "9 102" },
+      { sep: true },
+      { text: "Import without structures" },
+    ],
+  },
+};
+
+const MENU_ORDER = [
+  ["row", "Строка состава"],
+  ["pose", "Поза · энергии"],
+  ["xtb", "xTB"],
+  ["crest", "CREST"],
+  ["prism", "PRISM"],
+  ["smooth", "Сглаживание"],
+  ["palette", "Палитра ⌘K"],
+  ["file", "Файл"],
+  ["docktabs", "Вкладки дока"],
+  ["job", "Задача"],
+  ["gridcompute", "Таблица · расчёты"],
+  ["descriptors", "Дескрипторы"],
+  ["gridselection", "Таблица · выделение"],
+  ["gridview", "Таблица · вид"],
+  ["gridimport", "Импорт таблицы"],
+];
+
+const ANCHORS = {
+  row: "#comp-tree .tdot",
+  pose: "#anchor-pose",
+  xtb: "#anchor-xtb",
+  crest: "#anchor-crest",
+  prism: "#anchor-prism",
+  smooth: "#anchor-smooth",
+  palette: "#anchor-palette",
+  file: "#anchor-file",
+  docktabs: "#anchor-docktabs",
+  job: "#anchor-job",
+  gridcompute: "#anchor-gridcompute",
+  descriptors: "#anchor-descriptors",
+  gridselection: "#anchor-gridselection",
+  gridview: "#anchor-gridview",
+  gridimport: "#anchor-gridimport",
+};
+
+const layer = document.getElementById("menu-layer");
+
+function buildMenu(key) {
+  const spec = MENUS[key];
+  const menu = document.createElement("div");
+  menu.className = "menu";
+  menu.setAttribute("role", "menu");
+  menu.dataset.menu = key;
+
+  if (spec.title) {
+    const title = document.createElement("div");
+    title.className = "mtitle";
+    title.textContent = spec.title;
+    menu.appendChild(title);
+    menu.appendChild(Object.assign(document.createElement("div"), { className: "msep" }));
+  }
+  if (spec.search) {
+    const search = document.createElement("input");
+    search.className = "msearch";
+    search.type = "search";
+    search.value = spec.search;
+    search.setAttribute("aria-label", "Поиск");
+    menu.appendChild(search);
+  }
+
+  for (const item of spec.items) {
+    if (item.sep) {
+      menu.appendChild(Object.assign(document.createElement("div"), { className: "msep" }));
+      continue;
+    }
+    if (item.label) {
+      const label = document.createElement("div");
+      label.className = "mlabel";
+      label.textContent = item.label;
+      menu.appendChild(label);
+      continue;
+    }
+    if (item.note) {
+      const note = document.createElement("div");
+      note.className = "mnote";
+      note.textContent = item.note;
+      menu.appendChild(note);
+      continue;
+    }
+    if (item.swatches) {
+      const wrap = document.createElement("div");
+      wrap.className = "mswatches";
+      item.swatches.forEach((colour, index) => {
+        const swatch = document.createElement("button");
+        swatch.type = "button";
+        swatch.className = "mswatch";
+        swatch.style.background = colour;
+        swatch.setAttribute("aria-pressed", String(index === item.active));
+        swatch.setAttribute("aria-label", "Цвет " + colour);
+        swatch.addEventListener("click", (event) => {
+          event.stopPropagation();
+          wrap.querySelectorAll(".mswatch").forEach((other) => other.setAttribute("aria-pressed", String(other === swatch)));
+        });
+        wrap.appendChild(swatch);
+      });
+      menu.appendChild(wrap);
+      continue;
+    }
+    if (item.field) {
+      const row = document.createElement("div");
+      row.className = "mfield";
+      const text = document.createElement("span");
+      text.className = "mtext";
+      text.textContent = item.field;
+      row.appendChild(text);
+      if (item.select) {
+        const select = document.createElement("select");
+        select.setAttribute("aria-label", item.field);
+        for (const option of item.select) select.appendChild(new Option(option, option));
+        row.appendChild(select);
+      } else {
+        const input = document.createElement("input");
+        input.type = "number";
+        input.value = String(item.number);
+        if (item.min !== undefined) input.min = String(item.min);
+        if (item.max !== undefined) input.max = String(item.max);
+        if (item.step !== undefined) input.step = String(item.step);
+        input.setAttribute("aria-label", item.field);
+        row.appendChild(input);
+      }
+      if (item.unit) {
+        const unit = document.createElement("span");
+        unit.className = "mhint";
+        unit.textContent = item.unit;
+        row.appendChild(unit);
+      }
+      row.addEventListener("click", (event) => event.stopPropagation());
+      menu.appendChild(row);
+      continue;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "mitem";
+    button.setAttribute("role", "menuitem");
+    if (item.disabled) button.disabled = true;
+    if (item.check !== undefined) {
+      const check = document.createElement("span");
+      check.className = "mcheck";
+      check.textContent = item.check ? "✓" : "";
+      button.appendChild(check);
+    }
+    const text = document.createElement("span");
+    text.className = "mtext";
+    text.textContent = item.text;
+    button.appendChild(text);
+    if (item.hint) {
+      const hint = document.createElement("span");
+      hint.className = "mhint";
+      hint.textContent = item.hint;
+      button.appendChild(hint);
+    }
+    if (item.sub) {
+      const sub = document.createElement("span");
+      sub.className = "mhint";
+      sub.textContent = "›";
+      button.appendChild(sub);
+    }
+    if (item.check !== undefined) {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const mark = button.querySelector(".mcheck");
+        mark.textContent = mark.textContent ? "" : "✓";
+      });
+    }
+    menu.appendChild(button);
+  }
+  return menu;
+}
+
+let openKey = null;
+
+function closeMenu() {
+  layer.removeAttribute("data-open");
+  layer.querySelectorAll(".menu").forEach((menu) => menu.remove());
+  openKey = null;
+}
+
+function openMenu(key, anchor) {
+  closeMenu();
+  const menu = buildMenu(key);
+  layer.appendChild(menu);
+  layer.setAttribute("data-open", "");
+  openKey = key;
+
+  const rect = anchor.getBoundingClientRect();
+  const room = window.innerHeight - 20;
+  menu.style.maxHeight = room + "px";
+  const size = menu.getBoundingClientRect();
+  const height = Math.min(size.height, room);
+
+  let left = rect.left;
+  if (left + size.width > window.innerWidth - 10) left = window.innerWidth - size.width - 10;
+  if (left < 10) left = 10;
+
+  // Ниже якоря, если помещается; иначе выше; иначе прижать к нижнему краю,
+  // чтобы длинное меню оставалось целиком на экране и прокручивалось внутри себя.
+  let top = rect.bottom + 6;
+  if (top + height > window.innerHeight - 10) {
+    const above = rect.top - height - 6;
+    top = above >= 10 ? above : Math.max(10, window.innerHeight - height - 10);
+  }
+  menu.style.left = left + "px";
+  menu.style.top = top + "px";
+
+  const first = menu.querySelector(".msearch, .mitem:not([disabled])");
+  if (first) first.focus({ preventScroll: true });
+}
+
+// кнопки в верхней панели
+const buttons = document.getElementById("menu-buttons");
+for (const [key, label] of MENU_ORDER) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "mbtn";
+  button.textContent = label;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const anchor = document.querySelector(ANCHORS[key]);
+    if (!anchor) return;
+    anchor.scrollIntoView({ block: "center", behavior: "smooth" });
+    anchor.classList.add("pulse");
+    window.setTimeout(() => anchor.classList.remove("pulse"), 1900);
+    window.setTimeout(() => openMenu(key, anchor), 260);
+  });
+  buttons.appendChild(button);
+}
+
+// якоря внутри панелей
+document.addEventListener("click", (event) => {
+  const trigger = event.target.closest("[data-menu]");
+  if (trigger) {
+    event.preventDefault();
+    event.stopPropagation();
+    const key = trigger.getAttribute("data-menu");
+    if (openKey === key) { closeMenu(); return; }
+    openMenu(key, trigger);
+    return;
+  }
+  if (!event.target.closest(".menu")) closeMenu();
+});
+
+// правый клик по строке состава
+document.addEventListener("contextmenu", (event) => {
+  const row = event.target.closest("[data-rowmenu]");
+  if (!row) return;
+  event.preventDefault();
+  openMenu("row", row);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeMenu();
+});
+
+// аккордеон
+document.querySelectorAll("[data-acc]").forEach((trigger) => {
+  trigger.addEventListener("click", () => {
+    const item = trigger.closest(".ai");
+    const open = item.getAttribute("data-open") === "true";
+    item.setAttribute("data-open", String(!open));
+    trigger.setAttribute("aria-expanded", String(!open));
+  });
+});
+
+document.querySelectorAll("[data-tw]").forEach((twisty) => {
+  twisty.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const node = twisty.closest(".tnode");
+    node.setAttribute("data-open", node.getAttribute("data-open") === "true" ? "false" : "true");
+  });
+});
+
+document.querySelectorAll("[data-pick]").forEach((label) => {
+  label.addEventListener("click", () => {
+    const row = label.closest(".trow");
+    const tree = label.closest(".tree");
+    const wasSelected = row.hasAttribute("data-sel");
+    if (tree) tree.querySelectorAll("[data-sel]").forEach((other) => other.removeAttribute("data-sel"));
+    if (!wasSelected) row.setAttribute("data-sel", "");
+  });
+});
+
+document.querySelectorAll("[data-tg]").forEach((button) => {
+  button.addEventListener("click", () => {
+    button.parentElement.querySelectorAll("[data-tg]").forEach((sibling) => {
+      if (sibling === button) sibling.setAttribute("data-selected", "");
+      else sibling.removeAttribute("data-selected");
+    });
+  });
+});
+
+document.querySelectorAll("[data-sw]").forEach((sw) => {
+  sw.addEventListener("click", () => {
+    sw.setAttribute("aria-checked", sw.getAttribute("aria-checked") === "true" ? "false" : "true");
+  });
+});
+
+document.querySelectorAll(".pose-row").forEach((row) => {
+  row.addEventListener("click", (event) => {
+    if (event.target.closest("[data-menu]")) return;
+    document.querySelectorAll(".pose-row[data-sel]").forEach((other) => other.removeAttribute("data-sel"));
+    row.setAttribute("data-sel", "");
+  });
+});
+
+document.querySelectorAll("[data-xy]").forEach((tile) => {
+  tile.addEventListener("click", () => {
+    tile.parentElement.querySelectorAll("[data-xy]").forEach((sibling) => {
+      if (sibling === tile) sibling.setAttribute("data-selected", "");
+      else sibling.removeAttribute("data-selected");
+    });
+    document.getElementById("xy-name").textContent = tile.getAttribute("data-name");
+  });
+});
+
+document.querySelectorAll("input[type=range].pretty").forEach((slider) => {
+  const sync = () => {
+    const min = Number(slider.min || 0);
+    const max = Number(slider.max || 100);
+    slider.style.setProperty("--fill", ((Number(slider.value) - min) / (max - min)) * 100 + "%");
+  };
+  sync();
+  slider.addEventListener("input", () => {
+    sync();
+    const key = slider.getAttribute("data-out");
+    const box = key && document.getElementById("s-" + key);
+    if (box) box.textContent = slider.value + (slider.getAttribute("data-suffix") || "");
+  });
+});
+
+const themeToggle = document.getElementById("theme-toggle");
+themeToggle.addEventListener("click", () => {
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+  themeToggle.setAttribute("aria-pressed", String(!dark));
+  themeToggle.textContent = dark ? "Тёмная тема" : "Светлая тема";
+});
+</script>
+</body>
+</html>
