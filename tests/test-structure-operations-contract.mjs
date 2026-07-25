@@ -78,6 +78,27 @@ assert.match(viewer, /angle: \{ points: 3, method: 'addAngle'/);
 assert.match(viewer, /dihedral: \{ points: 4, method: 'addDihedral'/);
 assert.match(fn("beginMolstarMeasurement"), /measurement\[spec\.method\]\(\.\.\.points\)/);
 
+// Menu actions that change the scene are undoable through the same stack the
+// structure edits use, so Cmd-Z walks them in the order they were made. Selections
+// and exports stay out: one changes constantly, the other writes files.
+assert.match(fn("captureMolstarSceneUndoSnapshot"), /kind: 'scene'[\s\S]*plugin\.state\.data\.getSnapshot\(\)/);
+assert.match(fn("restoreMolstarSceneUndoSnapshot"), /plugin\.runTask\(plugin\.state\.data\.setSnapshot\(snapshot\.state\)\)/);
+assert.match(fn("captureMolstarAlignUndoSnapshot"), /kind: 'align'[\s\S]*wasAligned/);
+assert.match(fn("restoreMolstarAlignUndoSnapshot"), /control\.isAligned\(\) === snapshot\.wasAligned[\s\S]*control\.toggle\('auto'\)/);
+assert.match(fn("restoreMolstarEditUndoSnapshot"), /kind === 'scene'[\s\S]*kind === 'align'/);
+assert.match(fn("pushMolstarEditUndoSnapshot"), /kind !== 'scene' && snapshot\.kind !== 'align' && !snapshot\.payload\?\.text/);
+const undoLabels = fn("molstarSceneUndoActionLabel");
+for (const undoable of ["colour:", "analyze:interactions", "analyze:label", "represent:surface", "view:hide", "view:isolate"]) {
+  assert.ok(undoLabels.includes(undoable), `scene undo should cover ${undoable}`);
+}
+for (const skipped of ["select:", "extract:", "split:", "save-"]) {
+  assert.ok(!undoLabels.includes(skipped), `scene undo should skip ${skipped}`);
+}
+// A failed action leaves the scene alone, so it must not consume an undo step.
+assert.match(viewer, /if \(sceneUndoSnapshot && !actionFailed\) pushMolstarEditUndoSnapshot\(sceneUndoSnapshot\)/);
+// Measurements land after the last pick, not when the menu item is chosen.
+assert.match(fn("beginMolstarMeasurement"), /captureMolstarSceneUndoSnapshot\(`\$\{spec\.noun\} measurement`\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
+
 // The menu groups have to exist for the new namespaces to render anywhere.
 for (const group of ["selection", "colour", "align"]) {
   assert.match(viewer, new RegExp(`\\{ id: '${group}', title: '[^']+' \\}`), group);

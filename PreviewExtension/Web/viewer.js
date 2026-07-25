@@ -17048,8 +17048,37 @@
     };
   }
 
+  // Deleting an atom rewrites the structure, so its undo carries the whole file.
+  // Colouring, components, and measurements only rearrange Mol*'s state tree, and
+  // that tree snapshots in a millisecond and restores in twenty — it holds no
+  // coordinates. Both kinds share one stack so ⌘Z walks the edits in the order
+  // they were made rather than draining one history before the other.
+  function captureMolstarSceneUndoSnapshot(label) {
+    const plugin = activeMolstarViewer()?.plugin;
+    if (typeof plugin?.state?.data?.getSnapshot !== 'function') return null;
+    try {
+      return {
+        kind: 'scene',
+        label: String(label || 'scene change'),
+        state: plugin.state.data.getSnapshot(),
+        selection: plugin.managers?.structure?.selection?.getSnapshot?.() || null
+      };
+    } catch (error) {
+      debug('scene undo snapshot failed: ' + (error && error.message || String(error)));
+      return null;
+    }
+  }
+
+  // Superposition rewrites coordinates and reloads the scene, so neither snapshot
+  // kind covers it; the alignment control is asked to put itself back instead.
+  function captureMolstarAlignUndoSnapshot(label) {
+    if (!activeStructureAlignmentControl) return null;
+    return { kind: 'align', label: String(label || 'alignment'), wasAligned: activeStructureAlignmentControl.isAligned() };
+  }
+
   function pushMolstarEditUndoSnapshot(snapshot) {
-    if (!snapshot?.payload?.text) return;
+    if (!snapshot) return;
+    if (snapshot.kind !== 'scene' && snapshot.kind !== 'align' && !snapshot.payload?.text) return;
     molstarEditUndoStack.push(snapshot);
     while (molstarEditUndoStack.length > MOLSTAR_EDIT_HISTORY_LIMIT) molstarEditUndoStack.shift();
   }
@@ -17058,7 +17087,26 @@
     molstarEditUndoStack.length = 0;
   }
 
+  async function restoreMolstarSceneUndoSnapshot(snapshot) {
+    const plugin = activeMolstarViewer()?.plugin;
+    if (typeof plugin?.state?.data?.setSnapshot !== 'function') throw new Error('Mol* cannot restore scene state in this runtime.');
+    await plugin.runTask(plugin.state.data.setSnapshot(snapshot.state));
+    if (snapshot.selection) {
+      try { plugin.managers?.structure?.selection?.setSnapshot?.(snapshot.selection); } catch (_) {}
+    }
+    scheduleSceneTreeRender();
+  }
+
+  async function restoreMolstarAlignUndoSnapshot(snapshot) {
+    const control = activeStructureAlignmentControl;
+    if (!control) throw new Error('No structure scene is available to unalign.');
+    if (control.isAligned() === snapshot.wasAligned) return;
+    await control.toggle('auto');
+  }
+
   async function restoreMolstarEditUndoSnapshot(snapshot) {
+    if (snapshot?.kind === 'scene') return restoreMolstarSceneUndoSnapshot(snapshot);
+    if (snapshot?.kind === 'align') return restoreMolstarAlignUndoSnapshot(snapshot);
     if (!activeViewer) throw new Error('Mol* viewer is not ready.');
     const payload = snapshot?.payload || {};
     const text = String(payload.text || '');
@@ -17331,8 +17379,14 @@
       }
       const points = session.points;
       cancelDistanceMeasurement();
+      // The measurement appears once the last point is picked, not when the menu
+      // item was chosen, so its undo entry is taken here.
+      const undoSnapshot = captureMolstarSceneUndoSnapshot(`${spec.noun} measurement`);
       Promise.resolve(measurement[spec.method](...points))
-        .then(() => setStatus(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measured.`))
+        .then(() => {
+          pushMolstarEditUndoSnapshot(undoSnapshot);
+          setStatus(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measured.`);
+        })
         .catch(error => setStatus(`[web] Measure ${spec.noun} failed.\n\n` + (error?.message || String(error)), 'error'));
     });
     molstarMeasureSession = session;
@@ -17402,8 +17456,15 @@
   // Colour from the 3D menu addresses the whole structure. Per-component colouring
   // already lives in the scene tree, and having the two menus mean different scopes
   // is what keeps them worth having separately.
+  //
+  // The pick supplies the structure when there is one, but the mobile sheet and the
+  // programmatic action entry point both run without a pick, and colouring nothing
+  // at all is worse than colouring the only structure on screen.
   function molstarContextStructureRef(target) {
-    return target?.structure?.cell?.transform?.ref || null;
+    const picked = target?.structure?.cell?.transform?.ref;
+    if (picked) return picked;
+    const [first] = molstarCurrentStructures(activeMolstarViewer());
+    return first?.cell?.transform?.ref || null;
   }
 
   // An interactions component draws typed contacts, and its colours are the types.
@@ -17436,7 +17497,7 @@
   // confidence. The preset is only offered when the model actually carries a model
   // -archive quality metric, so picking it never produces a meaningless picture.
   function molstarStructureHasQualityAssessment(target) {
-    const models = target?.structure?.cell?.obj?.data?.models || [];
+    const models = molstarTargetStructureData(target)?.models || [];
     return models.some(model => {
       const categories = model?.sourceData?.data?.frame?.categoryNames;
       return Array.isArray(categories) && categories.some(name => String(name).startsWith('ma_qa_metric'));
@@ -17900,15 +17961,42 @@
     });
   }
 
+  // Which menu actions ⌘Z should walk back. Selections are deliberately absent:
+  // they change constantly, and an undo history full of them would bury the edit
+  // the user actually wants back — Maestro and PyMOL leave selection out too.
+  // Exports write files and change nothing on screen, so they are out as well.
+  function molstarSceneUndoActionLabel(action, target) {
+    const name = String(action || '');
+    // Without a pick the label falls back to the document title, which reads badly
+    // in "Undid colour <file name>"; the structure is what was coloured.
+    const targetLabel = target?.atom ? target.label : 'the structure';
+    if (name.startsWith('colour:')) return `colour ${targetLabel}`;
+    if (name === 'analyze:interactions') return `interactions around ${targetLabel}`;
+    if (name === 'analyze:label') return `label ${targetLabel}`;
+    if (name === 'represent:surface') return `surface on ${targetLabel}`;
+    if (name === 'view:hide') return `hiding ${targetLabel}`;
+    if (name === 'view:isolate') return `isolating ${targetLabel}`;
+    return null;
+  }
+
   async function moleculeContextMenuAction(action, label) {
     const target = molstarContextTarget();
     const targetLabel = target.label;
     let previewAfterAction = null;
+    const sceneUndoLabel = molstarSceneUndoActionLabel(action, target);
+    const sceneUndoSnapshot = sceneUndoLabel ? captureMolstarSceneUndoSnapshot(sceneUndoLabel) : null;
+    let actionFailed = false;
     try {
       if (action === 'align-structures' || action.startsWith('align:')) {
         if (!activeStructureAlignmentControl) throw new Error('No structure scene is available to align.');
         hideMolstarContextMenu();
+        const alignUndo = captureMolstarAlignUndoSnapshot(`aligning to ${activeStructureAlignmentControl.referenceLabel()}`);
         await activeStructureAlignmentControl.toggle(action === 'align-structures' ? 'auto' : action.slice('align:'.length));
+        // The toggle reports its own failures through the status line rather than
+        // throwing, so the entry is only kept when the scene actually moved.
+        if (alignUndo && activeStructureAlignmentControl.isAligned() !== alignUndo.wasAligned) {
+          pushMolstarEditUndoSnapshot(alignUndo);
+        }
         return;
       } else if (action === 'select') {
         const selectionLoci = molstarContextSelectionLoci(target);
@@ -18092,8 +18180,12 @@
         setStatus(`[web] ${label} is unavailable.`);
       }
     } catch (error) {
+      actionFailed = true;
       setStatus(`[web] ${label} failed.\n\n${error?.message || String(error)}`, 'error');
     } finally {
+      // Recorded after the fact: an action that threw left the scene untouched, and
+      // an undo entry for it would spend a ⌘Z on nothing.
+      if (sceneUndoSnapshot && !actionFailed) pushMolstarEditUndoSnapshot(sceneUndoSnapshot);
       if (!(action === 'select-atom' && molstarContextMenuMode === 'atom')) hideMolstarContextMenu();
       if (previewAfterAction) scheduleMolstarSelectedMoleculePreview(previewAfterAction);
     }
