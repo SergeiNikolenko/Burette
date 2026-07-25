@@ -1553,18 +1553,17 @@ function ChemicalSpace2D({
         context.stroke();
       }
     }
-    const renderedSourceRecordIds = new Set(screenIndex.renderPoints.map((point) => point.sourceRecordId));
     const highlightedPoints: ProjectedPoint[] = [];
     for (const sourceRecordId of selected) {
       if (highlightedPoints.length >= MAX_HIGHLIGHT_POINTS) break;
-      if (renderedSourceRecordIds.has(sourceRecordId)) continue;
+      if (screenIndex.bySourceRecordId.has(sourceRecordId)) continue;
       const sourceIndex = sourceIndexById.get(sourceRecordId);
       const basePoint = sourceIndex === undefined ? null : projected[sourceIndex];
       if (basePoint) highlightedPoints.push(screenPointForCamera(basePoint, viewport, camera));
     }
     const hoveredIndex = hovered === null ? undefined : sourceIndexById.get(hovered);
     const hoveredBasePoint = hoveredIndex === undefined ? null : projected[hoveredIndex];
-    if (hoveredBasePoint && !renderedSourceRecordIds.has(hoveredBasePoint.sourceRecordId)) {
+    if (hoveredBasePoint && !screenIndex.bySourceRecordId.has(hoveredBasePoint.sourceRecordId)) {
       highlightedPoints.push(screenPointForCamera(hoveredBasePoint, viewport, camera));
     }
     for (const point of highlightedPoints) {
