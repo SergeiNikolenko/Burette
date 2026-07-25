@@ -3361,6 +3361,9 @@ img.radix-menu-item-icon {
   color: var(--text-muted);
   font-size: 11px;
   overflow: hidden;
+  /* text-overflow only ellipsizes a single line; without nowrap the label broke
+     mid-word and the four options ran together as "GFN2GFN1GFN0GFN-F". */
+  white-space: nowrap;
   text-overflow: ellipsis;
   cursor: default;
 }
@@ -3380,6 +3383,37 @@ img.radix-menu-item-icon {
 }
 .structure-inspector-xtb-setting-control .settings-range-control input {
   min-width: 0;
+}
+/* In a narrow dock the label column and a four-option control fought over ~270px
+   and both lost: "Very tight" clipped and the five category tabs shrank to
+   "Solv…", "Pro…", "Dyn…". Below the dock's narrow breakpoint the label takes its
+   own line so the control gets the full width, and the tabs keep their names and
+   scroll instead of truncating. */
+@container (max-width: 360px) {
+  .structure-inspector-xtb-setting-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .structure-inspector-xtb-setting-control {
+    justify-content: flex-start;
+  }
+  .structure-inspector-xtb-setting-control .settings-select,
+  .structure-inspector-xtb-setting-control .settings-range-control,
+  .structure-inspector-xtb-setting-control .structure-inspector-number-control {
+    max-width: none;
+  }
+  .structure-inspector-xtb-category-bar {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .structure-inspector-xtb-category-bar::-webkit-scrollbar {
+    display: none;
+  }
+  .structure-inspector-xtb-category-button {
+    flex: 0 0 auto;
+    padding-inline: 10px;
+  }
 }
 .structure-inspector-settings-status {
   min-width: 0;
