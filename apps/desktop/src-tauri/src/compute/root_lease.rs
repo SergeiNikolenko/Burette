@@ -1003,9 +1003,25 @@ mod tests {
                 .to_string_lossy()
                 .starts_with(SNAPSHOTS_TEMP_PREFIX)));
 
+        // Every contender clones the lease into its `ComputeRootChildDirectory`,
+        // so the lock is only released if this drop is the last reference. Assert
+        // that rather than trusting it: a leaked clone would otherwise surface as
+        // a confusing "owned by another Burette process" failure below.
+        let lease = Arc::into_inner(lease).expect("the test must hold the last lease reference");
         drop(lease);
         let reopened_lease = Arc::new(
-            ComputeRootLease::acquire(&test.compute_root).expect("reacquire compute root"),
+            ComputeRootLease::acquire(&test.compute_root).unwrap_or_else(|error| {
+                // The owner writes its pid into the lock file, so report it: it
+                // distinguishes a descriptor this process failed to close from a
+                // genuine foreign owner.
+                let owner = fs::read_to_string(test.compute_root.join(LOCK_FILE_NAME))
+                    .unwrap_or_else(|read_error| format!("<unreadable: {read_error}>"));
+                panic!(
+                    "reacquire compute root: {error:?}; this pid: {}; lock diagnostic: {}",
+                    std::process::id(),
+                    owner.trim()
+                )
+            }),
         );
         let reopened = reopened_lease
             .open_or_create_snapshots_directory()
