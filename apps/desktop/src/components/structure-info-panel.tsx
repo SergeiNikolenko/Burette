@@ -393,15 +393,9 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
               </Button>
             </>
           ) : jobScopedToSelection ? "Scope: selected object" : undefined}
+          footer={oversizedNotice[0]?.hint}
           notice={(
             <>
-              {/* The atom cap describes the scope, not an install problem, so it
-                  is a plain alert - it has nothing for "Check again" to recheck. */}
-              {oversizedNotice.map((notice) => (
-                <Alert key={notice.name} className="structure-inspector-engine-notice">
-                  <AlertDescription>{notice.hint}</AlertDescription>
-                </Alert>
-              ))}
               <EngineToolNotice
                 tools={[{
                   name: "xTB",
@@ -417,8 +411,9 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
           <div className="structure-inspector-tools">
             <InspectorToolRow
               name="xTB"
-              version={shortXtbVersion(xtbStatus?.version)}
-              detail={runningXtbJob ? `${operationTitle(runningXtbJob.operation)} · ${runningXtbJob.inputLabel}` : xtbSettingsSummary(xtbSettings)}
+              version={xtbVersionNumber(xtbStatus?.version)}
+              detail={runningXtbJob ? `${operationTitle(runningXtbJob.operation)} · ${runningXtbJob.inputLabel}` : xtbSettingsShort(xtbSettings)}
+              detailTitle={runningXtbJob ? undefined : xtbSettingsSummary(xtbSettings)}
               state={runningXtbJob ? "running" : xtbMissing ? "missing" : "ready"}
               primaryLabel="Optimize"
               primaryDisabled={xtbBlocked}
@@ -1272,7 +1267,8 @@ function ConformerToolRows({
       <div className="structure-inspector-tools">
         <InspectorToolRow
           name="CREST"
-          detail={crestDisabled ? crestUnavailableDetail : conformerSettingsSummary(settings)}
+          detail={crestDisabled ? crestUnavailableDetail : conformerSettingsShort(settings)}
+          detailTitle={crestDisabled ? undefined : conformerSettingsSummary(settings)}
           state={status?.crest.installed === false ? "missing" : "ready"}
           primaryLabel="Sample"
           primaryDisabled={crestDisabled}
@@ -1428,6 +1424,10 @@ function conformerStatusSummary(status: ShellViewState["conformerStatus"]) {
     ? "Open Babel status unavailable"
     : status.openbabel.installed ? "Open Babel ready" : "Open Babel missing";
   return `${crest} · ${prism} · ${openbabel}`;
+}
+
+function conformerSettingsShort(settings: ConformerSettings) {
+  return `${settings.method.toUpperCase()} · ${settings.samplingMode} sampling`;
 }
 
 function conformerSettingsSummary(settings: ConformerSettings) {
@@ -1904,6 +1904,13 @@ function xtbStatusLine(xtbStatus: ShellViewState["xtbStatus"], isBrowserDev: boo
   return "Not installed";
 }
 
+// The tool row already carries the name, so its version badge is the bare
+// number - "xTB xTB 6.7.1" was the name printed twice.
+function xtbVersionNumber(version: string | null | undefined) {
+  const match = String(version ?? "").match(/xtb version\s+([^\s]+)/iu);
+  return match ? match[1] : null;
+}
+
 function shortXtbVersion(version: string | null | undefined) {
   const match = String(version ?? "").match(/xtb version\s+([^\s]+)/iu);
   if (match) return `xTB ${match[1]}`;
@@ -1957,6 +1964,13 @@ function xtbSettingsModified(settings: XtbSettings) {
       settings.properties[key as keyof XtbSettings["properties"]] !== defaultXtbSettings.properties[key as keyof XtbSettings["properties"]]
     ))
     || settings.timeoutSeconds !== defaultXtbSettings.timeoutSeconds;
+}
+
+// A tool row has room for one clause. The full settings line is still one
+// hover away, and every value in it is editable from the row's own menu.
+function xtbSettingsShort(settings: XtbSettings) {
+  const solvent = settings.solvationModel === "none" || settings.solvent === "none" ? "gas phase" : settings.solvent;
+  return `${settings.method.toUpperCase()} · ${settings.optLevel} opt · ${solvent}`;
 }
 
 function xtbSettingsSummary(settings: XtbSettings) {
@@ -2095,6 +2109,7 @@ function InspectorEngineCard({
   onReset,
   notice,
   scope,
+  footer,
   children,
 }: {
   className: string;
@@ -2109,6 +2124,7 @@ function InspectorEngineCard({
   onReset?: () => void;
   notice?: ReactNode;
   scope?: ReactNode;
+  footer?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -2150,6 +2166,9 @@ function InspectorEngineCard({
         ) : null}
         {notice}
         {children}
+        {/* What the run is scoped to belongs under the rows it constrains, said
+            once and quietly - as a banner above them it shouted over the tools. */}
+        {footer ? <div className="structure-inspector-tool-footer">{footer}</div> : null}
       </CollapsibleContent>
     </Collapsible>
   );
@@ -2201,6 +2220,7 @@ function InspectorToolRow({
   name,
   version,
   detail,
+  detailTitle,
   state,
   primaryLabel,
   primaryDisabled,
@@ -2210,6 +2230,7 @@ function InspectorToolRow({
   name: string;
   version?: string | null;
   detail: string;
+  detailTitle?: string;
   state: "ready" | "running" | "missing";
   primaryLabel: string;
   primaryDisabled?: boolean;
@@ -2228,7 +2249,7 @@ function InspectorToolRow({
           {name}
           {version ? <em>{version}</em> : null}
         </span>
-        <span className="structure-inspector-tool-detail" title={detail}>{detail}</span>
+        <span className="structure-inspector-tool-detail" title={detailTitle ?? detail}>{detail}</span>
       </span>
       <span className="structure-inspector-tool-actions">
         <Button type="button" variant="secondary" size="xs" disabled={primaryDisabled} onClick={onPrimary}>
@@ -3502,6 +3523,24 @@ function compositionShares(groups: CompositionGroup[]) {
   return shares.map((share) => ({ ...share, percent: (share.atoms / total) * 100 }));
 }
 
+// The parser spells a group out in full - "2 chains / 748 residues / 5552
+// atoms" - which is more than a tree row can hold and gets cut mid-word. The
+// row keeps the one figure that names the group and hands the rest to the
+// tooltip.
+const COMPOSITION_VALUE_WORDS: Array<[RegExp, string]> = [
+  [/\bresidues\b/u, "res"],
+  [/\bmolecules\b/u, "mol"],
+  [/\binstances\b/u, "inst"],
+];
+
+function compositionShortValue(label: string, value: string) {
+  const segments = value.split(" / ");
+  const preferred = label.startsWith("Chain")
+    ? segments.find((segment) => segment.includes("residues")) ?? segments[0]
+    : segments[0];
+  return COMPOSITION_VALUE_WORDS.reduce((text, [pattern, short]) => text.replace(pattern, short), preferred ?? value);
+}
+
 function compositionMatchesQuery(group: CompositionGroup, needle: string) {
   if (!needle) return { row: true, children: group.children };
   const inRow = `${group.row.label} ${group.row.value}`.toLowerCase().includes(needle);
@@ -3698,9 +3737,17 @@ function StructureActionRow({
   compact: boolean;
   leading?: ReactNode;
 }) {
-  const content = () => (
+  // A tree row reads left to right - what it is, how big it is - and ends in the
+  // colour it wears in the viewer, so the dot lines up with the row actions
+  // rather than pushing the text off centre.
+  const content = () => tone ? (
+    <span className="structure-inspector-row-content" data-tree="true">
+      <span className="structure-inspector-row-label">{row.label}</span>
+      <em title={row.value}>{compositionShortValue(row.label, row.value)}</em>
+      <span className="structure-inspector-row-dot" data-tone={tone} aria-hidden="true" />
+    </span>
+  ) : (
     <span className="structure-inspector-row-content">
-      {tone ? <span className="structure-inspector-row-dot" data-tone={tone} aria-hidden="true" /> : null}
       <span className="structure-inspector-row-label">{row.label}</span>
       <strong title={row.value}>{row.value}</strong>
     </span>

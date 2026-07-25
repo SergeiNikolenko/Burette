@@ -3657,8 +3657,10 @@ img.radix-menu-item-icon {
   max-height: 264px;
   overflow-y: auto;
 }
-.structure-inspector-tree-group + .structure-inspector-tree-group {
-  border-top: 1px solid var(--line-subtler);
+/* Indentation already says where a group starts, so the hairlines that made the
+   tree read as a table are gone. */
+.structure-brief-rows.structure-inspector-tree .structure-brief-action-entry + .structure-brief-action-entry {
+  border-top: 0;
 }
 /* A collapsed section keeps only its header, so the list reads as a table of
    contents when everything is folded away. */
@@ -3729,6 +3731,13 @@ img.radix-menu-item-icon {
   display: inline-grid;
   place-items: center;
   padding-inline: 5px;
+}
+.structure-inspector-tool-footer {
+  min-width: 0;
+  color: var(--text-faint);
+  padding: 1px 2px;
+  font-size: 11px;
+  line-height: 1.35;
 }
 .structure-inspector-loading {
   min-width: 0;
@@ -3976,11 +3985,30 @@ img.radix-menu-item-icon {
   gap: 8px;
   align-items: baseline;
 }
-/* The colour dot is a third track, not a third row: without its own column the
-   grid wraps the label and its value onto separate lines. */
-.structure-inspector-row-content:has(> .structure-inspector-row-dot) {
-  grid-template-columns: auto minmax(58px, 0.42fr) minmax(0, 1fr);
-  gap: 0 8px;
+/* A tree row is not a two-column table: the label and its figure sit together
+   and the colour dot is pinned to the far edge, next to the row actions. */
+.structure-inspector-row-content[data-tree="true"] {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.structure-inspector-row-content[data-tree="true"] .structure-inspector-row-label {
+  flex: 0 1 auto;
+  color: var(--text-primary);
+}
+.structure-inspector-row-content[data-tree="true"] em {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-style: normal;
+}
+.structure-inspector-row-content[data-tree="true"] .structure-inspector-row-dot {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 .structure-brief-action-row span,
 .structure-brief-action-summary span,
