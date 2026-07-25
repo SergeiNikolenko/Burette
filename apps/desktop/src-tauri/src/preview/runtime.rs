@@ -733,7 +733,10 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         }
         return Err(message);
     }
-    if !should_use_viewer_for_sdf {
+    // SDF already took the streaming Grid path above. If it returned `None`,
+    // this is a single molecule and should proceed directly to its viewer
+    // fallback instead of rebuilding and reparsing the same Grid runtime.
+    if !is_sdf && !should_use_viewer_for_sdf {
         let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
         if let Some(runtime_path) = create_grid_runtime_with_options(
             app,
