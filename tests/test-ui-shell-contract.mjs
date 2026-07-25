@@ -3675,12 +3675,11 @@ assert.match(radixMenu, /export function useThemePortalContainer/);
 assert.match(nativeContextMenu, /@tauri-apps\/api\/menu\/menu/);
 assert.match(nativeContextMenu, /@tauri-apps\/api\/menu\/menuItem/);
 assert.match(nativeContextMenu, /@tauri-apps\/api\/menu\/predefinedMenuItem/);
-assert.match(styles, /\.radix-menu \{/);
-assert.match(styles, /\.radix-menu-item/);
-assert.match(styles, /\.radix-menu-separator/);
+assert.match(styles, /\.radix-menu-item-body/);
+assert.match(styles, /\.radix-menu-item-detail/);
 assert.match(styles, /--menu-surface: color-mix\(in srgb, var\(--bg-base\) 96%, var\(--fg-base\) 4%\);/);
-assert.match(styles, /\.radix-menu \{[^}]*background: var\(--menu-surface\);[^}]*backdrop-filter: none;/);
-assert.match(styles, /\.open-editor-menu-content \{[^}]*background: var\(--menu-surface\);/);
+assert.match(styles, /--shadcn-popover: var\(--menu-surface\);/);
+assert.match(styles, /\.open-editor-menu-content \.radix-menu-item-icon \{/);
 assert.match(styles, /\.native-context-menu \{[\s\S]*border: 0;/);
 assert.match(styles, /\.native-context-menu \{[^}]*background: var\(--menu-surface\);[^}]*backdrop-filter: none;/);
 assert.match(styles, /\.ketcher-collection-menu \{[^}]*background: var\(--menu-surface\);/);
@@ -4930,7 +4929,7 @@ assert.match(
   /body\.burette-mobile-host \.msp-plugin \.msp-layout-left,[\s\S]*?background: var\(--buret-menu-background\) !important;[\s\S]*?backdrop-filter: none !important;/,
 );
 assert.match(styles, /\.sidebar\s*\{[^}]*background: transparent;/s);
-assert.match(styles, /\.radix-menu\s*\{[^}]*background: var\(--menu-surface\);[^}]*backdrop-filter: none;/s);
+assert.doesNotMatch(styles, /\.radix-menu(?:-item)?\s*[,{]/);
 assert.match(previewRuntimeCss, /\.buret-molstar-transition-frame \{/);
 assert.match(previewRuntimeCss, /\.buret-molstar-transition-frame\.fade-out \{/);
 assert.match(previewRuntimeCss, /--buret-generate-3d-control-right: 70px;/);

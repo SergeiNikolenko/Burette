@@ -2,11 +2,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [componentsJson, styles, portalContainer, alertDialog, desktopTsconfig, rootTsconfig] = await Promise.all([
+const [componentsJson, styles, portalContainer, alertDialog, dropdownMenu, desktopTsconfig, rootTsconfig] = await Promise.all([
   readFile("apps/desktop/components.json", "utf8"),
   readFile("apps/desktop/src/styles.css", "utf8"),
   readFile("apps/desktop/src/components/ui/portal-container.ts", "utf8"),
   readFile("apps/desktop/src/components/ui/alert-dialog.tsx", "utf8"),
+  readFile("apps/desktop/src/components/ui/dropdown-menu.tsx", "utf8"),
   readFile("apps/desktop/tsconfig.json", "utf8"),
   readFile("tsconfig.json", "utf8"),
 ]);
@@ -34,5 +35,14 @@ assert.match(styles, /--shadcn-disabled-opacity: 0\.48;/);
 assert.match(portalContainer, /document\.querySelector<HTMLElement>\("\.app-shell"\)/);
 assert.match(alertDialog, /useAppShellPortalContainer/);
 assert.match(alertDialog, /container=\{container \?\? appShellContainer\}/);
+
+// Menus hang off icon-sized triggers, so they must size to their content
+// instead of the trigger, or long entries get clipped.
+const dropdownContentClass = dropdownMenu.match(
+  /data-slot="dropdown-menu-content"[\s\S]*?className=\{cn\("([^"]*)"/,
+)?.[1];
+assert.ok(dropdownContentClass, "dropdown menu content class list not found");
+assert.doesNotMatch(dropdownContentClass, /(?:^|\s)w-\(--radix-dropdown-menu-trigger-width\)/);
+assert.match(dropdownContentClass, /min-w-46 max-w-\[min\(320px,calc\(100vw_-_16px\)\)\]/);
 
 console.log("shadcn foundation contract tests passed");
