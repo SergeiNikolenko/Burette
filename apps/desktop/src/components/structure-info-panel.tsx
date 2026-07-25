@@ -282,37 +282,79 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
     setXtbSettingsScope(scope);
     setXtbSettingsOpen(true);
   };
+  const updateXtbSetting = <K extends keyof XtbSettings>(key: K, value: XtbSettings[K]) =>
+    actions.setXtbSettings({ ...xtbSettings, [key]: value });
   const xtbToolMenuItems: MenuItemSpec[] = [
-    ...XTB_PRIMARY_OPERATIONS.map(([operation, text]) => ({
-      kind: "item" as const,
-      id: operation,
-      text,
-      detail: XTB_ACTION_TOOLTIPS[operation],
-      disabled: xtbBlocked,
-      action: () => void actions.runXtbActiveOperation(operation),
-    })),
+    ...XTB_MENU_GROUPS.flatMap(([group, operations], groupIndex): MenuItemSpec[] => [
+      ...(groupIndex > 0 ? [{ kind: "separator" as const }] : []),
+      { kind: "label", id: `xtb-group-${group}`, text: group },
+      ...operations.map((entry) => {
+        const [operation, text] = entry;
+        return {
+          kind: "item" as const,
+          id: operation,
+          text,
+          tooltip: XTB_ACTION_TOOLTIPS[operation],
+          disabled: xtbBlocked,
+          action: () => void actions.runXtbActiveOperation(operation),
+        };
+      }),
+    ]),
     { kind: "separator" },
-    ...XTB_MORE_OPERATIONS.map(([operation, text]) => ({
-      kind: "item" as const,
-      id: operation,
-      text,
-      detail: XTB_ACTION_TOOLTIPS[operation],
-      disabled: xtbBlocked,
-      action: () => void actions.runXtbActiveOperation(operation),
-    })),
+    // The values a run will use belong next to the button that starts it - the
+    // common four are editable here, the rest stay behind Settings.
+    { kind: "label", id: "xtb-parameters", text: "Parameters" },
+    {
+      kind: "select",
+      id: "xtb-method",
+      label: "Hamiltonian",
+      value: xtbSettings.method,
+      options: ["gfn2", "gfn1", "gfn0", "gfnff"],
+      optionLabels: XTB_METHOD_LABELS,
+      action: (value) => updateXtbSetting("method", value as XtbSettings["method"]),
+    },
+    {
+      kind: "number",
+      id: "xtb-charge",
+      label: "Charge",
+      value: xtbSettings.charge,
+      min: -8,
+      max: 8,
+      step: 1,
+      action: (value) => updateXtbSetting("charge", value),
+    },
+    {
+      kind: "number",
+      id: "xtb-uhf",
+      label: "Unpaired e⁻",
+      value: xtbSettings.uhf,
+      min: 0,
+      max: 12,
+      step: 1,
+      action: (value) => updateXtbSetting("uhf", value),
+    },
+    {
+      kind: "select",
+      id: "xtb-solvation",
+      label: "Solvation",
+      value: xtbSettings.solvationModel,
+      options: ["none", "alpb", "gbsa", "cosmo", "cpcmx"],
+      optionLabels: XTB_SOLVATION_LABELS,
+      action: (value) => updateXtbSetting("solvationModel", value as XtbSettings["solvationModel"]),
+    },
     { kind: "separator" },
     {
       kind: "item",
       id: "xtb-settings",
       text: "Settings…",
-      detail: "Hamiltonian, charge, spin, solvation, accuracy, property, and dynamics parameters.",
+      tooltip: "Hamiltonian, charge, spin, solvation, accuracy, property, and dynamics parameters.",
       action: () => openXtbSettingsFor("general"),
     },
     {
       kind: "item",
       id: "xtb-jobs",
       text: "Run history",
-      detail: "Energies, properties, trajectories, and output artifacts.",
+      tooltip: "Energies, properties, trajectories, and output artifacts.",
       action: () => actions.toggleDockTab("bottom", "jobs"),
     },
   ];
@@ -2036,18 +2078,25 @@ const XTB_ACTION_TOOLTIPS = {
   metadyn: "Bias the xTB dynamics to explore conformational space beyond local minima.",
 } satisfies Record<string, string>;
 
-const XTB_PRIMARY_OPERATIONS = [
-  ["optimize", "Optimize"],
-  ["properties", "Properties"],
-  ["optimized-hessian", "Frequencies"],
-] as const satisfies readonly (readonly [keyof typeof XTB_ACTION_TOOLTIPS, string])[];
-
-const XTB_MORE_OPERATIONS = [
-  ["vipea", "IP/EA"],
-  ["vfukui", "Fukui"],
-  ["md", "MD"],
-  ["metadyn", "Metadyn"],
-] as const satisfies readonly (readonly [keyof typeof XTB_ACTION_TOOLTIPS, string])[];
+// Seven operations in one flat run read as a wall. They divide into what the
+// run does to the molecule - move its atoms, probe its electrons, let it move -
+// so the menu names those three groups and spells each operation out instead of
+// abbreviating it to "MD" and "Metadyn".
+const XTB_MENU_GROUPS = [
+  ["Geometry", [
+    ["optimize", "Optimize"],
+    ["optimized-hessian", "Optimize + frequencies"],
+  ]],
+  ["Electronic", [
+    ["properties", "Properties"],
+    ["vipea", "IP / EA"],
+    ["vfukui", "Fukui reactivity"],
+  ]],
+  ["Dynamics", [
+    ["md", "Molecular dynamics"],
+    ["metadyn", "Metadynamics"],
+  ]],
+] as const satisfies readonly (readonly [string, readonly (readonly [keyof typeof XTB_ACTION_TOOLTIPS, string])[]])[];
 
 const XTB_SETTING_TOOLTIPS = {
   method: "Choose the xTB Hamiltonian. GFN2 is the default balanced method; GFNFF is faster for large systems.",

@@ -1571,6 +1571,86 @@ img.radix-menu-item-icon {
   color: var(--text-faint);
   font-size: 11px;
 }
+/* A long engine menu is a set of named groups, not one run of commands: the
+   heading is what makes "Optimize" and "Metadynamics" findable in the same list. */
+.radix-menu-group-label {
+  color: var(--text-faint);
+  padding: 6px 8px 3px;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+/* Colour belongs to the component the menu was opened on, so it is picked in
+   place rather than behind another dialog. */
+.radix-menu-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 3px 8px 6px;
+}
+.radix-menu-swatch {
+  width: 15px;
+  height: 15px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 50%;
+  padding: 0;
+  cursor: default;
+}
+.radix-menu-swatch[data-active] {
+  box-shadow: 0 0 0 1.5px var(--bg-base), 0 0 0 3px var(--text-primary);
+}
+.radix-menu-swatch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1.5px var(--bg-base), 0 0 0 3px var(--focus-ring);
+}
+/* The parameters a run will use sit in the menu that launches it, so the values
+   are visible at the moment of the decision. */
+.radix-menu-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  font-size: 11.5px;
+}
+.radix-menu-field > span:first-child {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.radix-menu-field select,
+.radix-menu-field input[type="number"] {
+  width: 62px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 6px;
+  background: var(--surface-input);
+  color: var(--text-primary);
+  padding: 2px 5px;
+  font: inherit;
+  font-size: 11px;
+}
+.radix-menu-field select {
+  width: auto;
+  max-width: 116px;
+}
+.radix-menu-field select:focus-visible,
+.radix-menu-field input[type="number"]:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
+}
+.radix-menu-field-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.radix-menu-field-number em {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-style: normal;
+}
 /* The surface itself is the shared shadcn menu; this class only scopes the
    slightly larger app icons and labels that the editor targets need. */
 .open-editor-menu-content .radix-menu-item-body {

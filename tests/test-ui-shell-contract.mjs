@@ -2473,7 +2473,14 @@ assert.match(structureInfoPanel, /const missing = tools\.filter\(\(tool\) => !to
 assert.match(structureInfoPanel, /const xtbMissing = xtbStatus\?\.installed === false/);
 assert.match(structureInfoPanel, /install: \(\) => void actions\.installXtb\(\)/);
 assert.match(structureInfoPanel, /function conformerTools\(status: ShellViewState\["conformerStatus"\]\): EngineTool\[\]/);
-assert.match(structureInfoPanel, /const XTB_MORE_OPERATIONS = \[/);
+// The engine menu names what each run does to the molecule instead of listing
+// seven operations in one flat run, and carries the common parameters with it.
+assert.match(structureInfoPanel, /const XTB_MENU_GROUPS = \[/);
+for (const group of ["Geometry", "Electronic", "Dynamics"]) {
+  assert.match(structureInfoPanel, new RegExp(`\\["${group}", \\[`), `xTB menu should group operations under ${group}`);
+}
+assert.match(structureInfoPanel, /kind: "label", id: "xtb-parameters", text: "Parameters"/);
+assert.match(structureInfoPanel, /id: "xtb-method",[\s\S]*?optionLabels: XTB_METHOD_LABELS/);
 // The runtime refuses a direct job above the atom cap and tells you to select
 // something; the card knows the count already, so it says so before the click.
 assert.match(structureInfoPanel, /structureAtomCountFromSummary\(compositionSummary\)/);
