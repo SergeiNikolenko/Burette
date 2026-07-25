@@ -4581,7 +4581,7 @@ assert.match(previewViewController, /let molstarAvailable = rendererPolicy\.mols
 assert.match(previewViewController, /molstarAvailable: structurePreview\.molstarAvailable/);
 assert.match(previewViewController, /private static let maestroPreviewReadLimit = 64 \* 1024 \* 1024/);
 assert.match(previewViewController, /let usesBoundedMaestroPreview = structureSize > sizeLimit && isMaestroPreviewExtension\(pathExtension\)/);
-assert.match(previewViewController, /\? try readFilePrefix\(url, maxBytes: maestroPreviewReadLimit\)/);
+assert.match(previewViewController, /structureData = try readFilePrefix\(url, maxBytes: maestroPreviewReadLimit\)/);
 assert.match(previewViewController, /case "cms", "mae", "maegz":\s*return parseMaestroAtoms\(lines, atomLimit: 20_000\)/);
 assert.match(previewViewController, /case "abi":\s*return parseABINIT\(lines\)/);
 assert.match(previewViewController, /case "fdf":\s*return parseFDF\(lines\)/);
@@ -7465,5 +7465,12 @@ assert.match(
   moleculeStore,
   /normalizeGlobalRecentStructures\(incoming\s*\.filter\(isPersistentViewerDocument\)\s*\.map\(toRecentStructure\)\)/,
 );
+
+// The shell must not re-render for every pixel of a window drag: each render also
+// makes react-resizable-panels rebuild its own ResizeObservers. Measured over ten
+// 2px resize steps, quantising the width took observer rebuilds from 10 to 3.
+assert.match(appLayout, /const VIEWPORT_WIDTH_STEP = 16;/u);
+assert.match(appLayout, /function quantisedViewportWidth\(\)/u);
+assert.doesNotMatch(appLayout, /\}, \[activeGridId, viewportWidth, rightDockOpen\]\);/u);
 
 console.log('ui shell contract tests passed');

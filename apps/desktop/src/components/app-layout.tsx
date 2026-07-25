@@ -167,13 +167,26 @@ function usePanelEdgeVariables(entries: { elementRef: React.RefObject<HTMLDivEle
 // wide the sidebar may get, how wide the right dock may get, how far the viewer
 // may be squeezed before the dock starts covering it — and read straight from
 // `window` those bounds only refreshed when something else happened to
-// re-render, so they kept the width from whichever render ran last. Resize
-// events already arrive at most once a frame; nothing here defers to rAF, which
-// would stall the bounds whenever the window is not painting.
+// re-render, so they kept the width from whichever render ran last.
+//
+// The width is quantised because the bounds do not need pixel resolution: the
+// widest the sidebar may get is 35% of it, so a step here moves that bound by a
+// third of a step. Storing the raw width re-rendered the entire shell for every
+// resize event of a window drag — every panel, both docks and the sidebar tree —
+// and react-resizable-panels rebuilt its own ResizeObservers each time. Repeating
+// the same quantised value is a no-op for React, so a drag now re-renders once
+// per step instead of once per pixel.
+const VIEWPORT_WIDTH_STEP = 16;
+
+function quantisedViewportWidth() {
+  if (typeof window === "undefined") return 1200;
+  return Math.floor(window.innerWidth / VIEWPORT_WIDTH_STEP) * VIEWPORT_WIDTH_STEP;
+}
+
 function useViewportWidth() {
-  const [width, setWidth] = useState(() => (typeof window === "undefined" ? 1200 : window.innerWidth));
+  const [width, setWidth] = useState(quantisedViewportWidth);
   useEffect(() => {
-    const sync = () => setWidth(window.innerWidth);
+    const sync = () => setWidth(quantisedViewportWidth());
     sync();
     window.addEventListener("resize", sync);
     return () => window.removeEventListener("resize", sync);
@@ -270,12 +283,23 @@ export function AppLayout({
       if (!disposed) setWindowFullscreen(fullscreen);
     };
     void syncFullscreen();
-    void appWindow.onResized(() => void syncFullscreen()).then((stop) => {
-      if (disposed) stop();
-      else stopResizeListener = stop;
-    });
+    // Every resize event used to fire its own isFullscreen() IPC round-trip, so a
+    // window drag sent a request per frame to answer a question that only changes
+    // when the user enters or leaves fullscreen. Asking once the drag settles is
+    // enough, and the transition itself ends in a resize too.
+    let settleTimer = 0;
+    void appWindow
+      .onResized(() => {
+        window.clearTimeout(settleTimer);
+        settleTimer = window.setTimeout(() => void syncFullscreen(), 150);
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else stopResizeListener = stop;
+      });
     return () => {
       disposed = true;
+      window.clearTimeout(settleTimer);
       stopResizeListener?.();
     };
   }, [tauriRuntime]);
@@ -378,7 +402,7 @@ export function AppLayout({
       observer?.disconnect();
       window.clearTimeout(timer);
     };
-  }, [activeGridId, viewportWidth, rightDockOpen]);
+  }, [activeGridId, rightDockOpen]);
   const systemThemeMode = useSystemThemeMode();
   // The layout widths seed the chrome before the edge observer's first pass;
   // `--sidebar-edge` / `--right-dock-edge` take over from there.
