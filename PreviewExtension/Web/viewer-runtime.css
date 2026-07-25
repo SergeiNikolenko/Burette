@@ -537,7 +537,9 @@ body.burette-mobile-host #buret-scene-tree {
 .buret-viewport-rail {
   position: fixed;
   top: var(--buret-viewport-rail-top, calc(var(--buret-toolbar-safe-top) + 42px));
-  right: var(--buret-viewport-rail-right, var(--buret-control-island-right));
+  /* The rail is the vertical part of the draggable toolbar group. */
+  right: auto;
+  left: var(--buret-viewport-rail-left, auto);
   z-index: 40;
   box-sizing: border-box;
   display: flex;
@@ -554,10 +556,21 @@ body.burette-mobile-host #buret-scene-tree {
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.buret-viewport-rail.buret-dragging,
+.buret-viewport-rail.buret-dragging .buret-rail-button {
+  cursor: grabbing;
 }
 .buret-viewport-rail.hidden,
 .buret-selection-bar.hidden {
   display: none;
+}
+body.buret-toolbar-collapsed #buret-viewport-rail,
+body.buret-toolbar-collapsed #buret-selection-bar {
+  display: none !important;
 }
 .buret-rail-button {
   position: relative;
@@ -1466,7 +1479,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 }
 #buret-toolbar {
   position: absolute; top: calc(var(--buret-toolbar-safe-top) + var(--buret-viewport-top-inset, 0px)); right: var(--buret-control-island-right); left: auto; z-index: 2147483646;
-  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 3px 0;
+  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 3px;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 12px; color: var(--buret-toolbar-color);
   background: var(--buret-toolbar-background);
