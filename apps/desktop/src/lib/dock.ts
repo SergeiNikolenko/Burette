@@ -91,6 +91,10 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   "chemical-space": "Chemical Space",
 };
 
+// Structure Basket, Compare and Review render and accept drops, but no catalog
+// listed them, so nothing in the interface could open one. Diagnostics is gone
+// from the catalog for the opposite reason: it now shares the Logs tab.
+
 export const RIGHT_DOCK_DEFAULT_TABS: DockTabKind[] = [
   "inspector",
   "text",
@@ -118,6 +122,9 @@ const BOTTOM_DOCK_TAB_CATALOG: DockTabKind[] = [
   "jobs",
   "folding",
   "spectrum",
+  "structure-basket",
+  "compare",
+  "review",
   "logs",
 ];
 
