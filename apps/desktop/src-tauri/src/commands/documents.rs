@@ -2714,18 +2714,8 @@ impl ProjectStructureScan {
                 continue;
             };
             if metadata.file_type().is_symlink() {
-                let Ok(target_metadata) = fs::metadata(&path) else {
-                    continue;
-                };
-                if target_metadata.is_dir() {
-                    let _ = self.collect(&path, supported_extensions);
-                    continue;
-                }
-                if target_metadata.is_file()
-                    && looks_like_supported_structure_file(&path, supported_extensions)
-                {
-                    self.collected.insert(path);
-                }
+                // Project roots are restored and scanned in the background.
+                // Never let a symlink escape the directory the user selected.
                 continue;
             }
             if metadata.is_dir() {
@@ -3628,6 +3618,44 @@ mod tests {
         fs::remove_file(loop_link).unwrap();
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_scan_does_not_follow_directory_symlinks_outside_selected_root() {
+        let root = std::env::temp_dir().join(format!(
+            "burette-project-symlink-boundary-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let selected = root.join("selected");
+        let outside = root.join("outside");
+        let outside_link = selected.join("outside-link");
+        fs::create_dir_all(&selected).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(selected.join("inside.pdb"), "HEADER INSIDE\n").unwrap();
+        fs::write(outside.join("outside.pdb"), "HEADER OUTSIDE\n").unwrap();
+        symlink(&outside, &outside_link).unwrap();
+
+        let files = expand_project_structure_targets(
+            selected.clone(),
+            ProjectStructureScanLimits {
+                max_files: 16,
+                max_directories: 16,
+            },
+        )
+        .expect("selected project root should be scanned");
+
+        assert_eq!(
+            files,
+            vec![selected.canonicalize().unwrap().join("inside.pdb")]
+        );
+
+        fs::remove_file(outside_link).unwrap();
+        fs::remove_file(selected.join("inside.pdb")).unwrap();
+        fs::remove_file(outside.join("outside.pdb")).unwrap();
+        fs::remove_dir(selected).unwrap();
+        fs::remove_dir(outside).unwrap();
         fs::remove_dir(root).unwrap();
     }
 
