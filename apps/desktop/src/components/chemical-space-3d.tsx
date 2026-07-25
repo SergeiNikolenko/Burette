@@ -136,7 +136,7 @@ export function ChemicalSpace3D({
       ]);
     treeGeometry.setPositions(treePositions(positions));
     const treeMaterial = new LineMaterial({
-      color: foregroundColor,
+      color: foregroundColor.getHex(),
       linewidth: 2.25 * treeLineScale,
       opacity: 0.5,
       transparent: true,

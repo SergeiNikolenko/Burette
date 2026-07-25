@@ -41,6 +41,7 @@
     "check:rust:fmt": "cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check",
     "check:rust:clippy": "cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings",
     "check:rust": "bun run check:rust:fmt && bun run check:rust:clippy",
+    "typecheck": "cd apps/desktop && bun run typecheck",
     "check": "bun run check:js && bun run check:vendor-assets && bun run check:formats && bun run check:rust && bun run test:tauri-structure && bun run test:compute-metal",
     "test": "bun run test:agent && bun run test:update && bun run test:ui",
     "test-ui": "bun run test:ui",
