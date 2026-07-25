@@ -531,7 +531,12 @@ assert.match(previewGridStore, /fn infers_smiles_columns_without_smiles_headers/
 assert.match(previewGridStore, /fn uses_explicit_column_for_ambiguous_delimited_table/);
 assert.match(previewGridStore, /fn lists_delimited_structure_column_choices/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn sync_viewer_preferences/);
-assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn list_project_structure_files/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) async fn list_project_structure_files/);
+assert.match(
+  documentsCommand,
+  /spawn_blocking\(move \|\| list_project_structure_files_blocking\(paths\)\)/,
+  "restored project roots must scan off the Tauri command thread",
+);
 assert.match(lib, /commands::documents::list_project_structure_files/);
 assert.match(tauriPermissionSource, /"list_project_structure_files"/);
 assert.match(documentsCommand, /"molstarStyle"/);
