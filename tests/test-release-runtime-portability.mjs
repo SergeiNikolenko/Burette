@@ -33,6 +33,7 @@ assert.ok(
 );
 assert.match(buildScript, /export CARGO_PROFILE_RELEASE_STRIP=false/);
 assert.match(buildScript, /--exclude \.codegraph/);
+assert.match(buildScript, /bun scripts\/check-release-version\.mjs/);
 
 assert.match(conformerCommand, /candidate_errors/);
 assert.match(conformerCommand, /format_conformer_candidate_errors/);
