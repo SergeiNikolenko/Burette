@@ -119,7 +119,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
   const [xtbOpen, setXtbOpen] = useState(true);
   const [xtbSettingsOpen, setXtbSettingsOpen] = useState(false);
   const [xtbSettingsScope, setXtbSettingsScope] = useState<XtbSettingsScope>("general");
-  const [conformerOpen, setConformerOpen] = useState(true);
   const [trajectorySmoothingOpen, setTrajectorySmoothingOpen] = useState(true);
   const [trajectorySmoothingAdvanced, setTrajectorySmoothingAdvanced] = useState(false);
   const [trajectorySmoothingPreset, setTrajectorySmoothingPreset] = useState<"light" | "balanced" | "strong">("balanced");
@@ -371,24 +370,12 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
       <FoldingResultsPanel state={foldingResult} actions={actions} />
 
       {!hostedMcpWidget && !trajectoryDocument && !virtualScene ? <>
-        <ConformerWorkflowCard
-          document={document}
-          selectedEntity={selectedEntity}
-          viewerLigandSelection={viewerLigandSelection}
-          status={conformerStatus}
-          settings={conformerSettings}
-          open={conformerOpen}
-          setOpen={setConformerOpen}
-          oversizedNotice={oversizedNotice}
-          actions={actions}
-        />
-
         {document?.renderer === "grid2d" ? <GridDescriptorStatus documentId={document.id} /> : null}
         {gridFilterModel ? <GridFilterSection model={gridFilterModel} actions={actions} /> : null}
         <InspectorEngineCard
           className="structure-inspector-xtb-card"
-          title="xTB"
-          tooltip="Semiempirical quantum calculations for the current molecular scope."
+          title="Tools"
+          tooltip="Calculation engines available for the current molecular scope."
           status={runningXtbJob ? `Running ${operationTitle(runningXtbJob.operation).toLowerCase()}` : xtbStatusLine(xtbStatus, isBrowserDev)}
           open={xtbOpen}
           onToggle={() => setXtbOpen((open) => !open)}
@@ -419,15 +406,26 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
             />
           )}
         >
-          <InspectorToolRow
-            name="xTB"
-            version={shortXtbVersion(xtbStatus?.version)}
-            detail={runningXtbJob ? `${operationTitle(runningXtbJob.operation)} · ${runningXtbJob.inputLabel}` : "Semiempirical quantum chemistry"}
-            state={runningXtbJob ? "running" : xtbMissing ? "missing" : "ready"}
-            primaryLabel="Optimize"
-            primaryDisabled={xtbBlocked}
-            onPrimary={() => void actions.runXtbActiveOperation("optimize")}
-            menu={xtbToolMenuItems}
+          <div className="structure-inspector-tools">
+            <InspectorToolRow
+              name="xTB"
+              version={shortXtbVersion(xtbStatus?.version)}
+              detail={runningXtbJob ? `${operationTitle(runningXtbJob.operation)} · ${runningXtbJob.inputLabel}` : "Semiempirical quantum chemistry"}
+              state={runningXtbJob ? "running" : xtbMissing ? "missing" : "ready"}
+              primaryLabel="Optimize"
+              primaryDisabled={xtbBlocked}
+              onPrimary={() => void actions.runXtbActiveOperation("optimize")}
+              menu={xtbToolMenuItems}
+            />
+          </div>
+          <ConformerToolRows
+            document={document}
+            selectedEntity={selectedEntity}
+            viewerLigandSelection={viewerLigandSelection}
+            status={conformerStatus}
+            settings={conformerSettings}
+            oversizedNotice={oversizedNotice}
+            actions={actions}
           />
           {xtbSettingsOpen ? (
             <XtbInlineSettings
@@ -1200,14 +1198,15 @@ function numberFromSummaryRows(rows: BriefRow[], label: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function ConformerWorkflowCard({
+// CREST and PRISM are separate tools that happened to share a card called
+// Conformers. They contribute rows to the Tools section instead, next to xTB,
+// and keep their own inline settings underneath.
+function ConformerToolRows({
   document,
   selectedEntity,
   viewerLigandSelection,
   status,
   settings,
-  open,
-  setOpen,
   oversizedNotice,
   actions,
 }: {
@@ -1216,8 +1215,6 @@ function ConformerWorkflowCard({
   viewerLigandSelection: ShellViewState["viewerLigandSelection"];
   status: ShellViewState["conformerStatus"];
   settings: ShellViewState["conformerSettings"];
-  open: boolean;
-  setOpen: (updater: (open: boolean) => boolean) => void;
   oversizedNotice: EngineTool[];
   actions: ShellActions;
 }) {
@@ -1243,22 +1240,13 @@ function ConformerWorkflowCard({
       ? "Selection is too large for a direct run"
       : "Open or select a single small molecule";
   return (
-    <InspectorEngineCard
-      className="conformer-inspector-card"
-      title="Conformers"
-      tooltip="Conformer search and ensemble pruning for small molecules or selected objects."
-      status={conformerStatusSummary(status)}
-      open={open}
-      onToggle={() => setOpen((current) => !current)}
-      summary={conformerSettingsSummary(settings)}
-      scope={selectedConformerAction ? "Scope: selected object" : undefined}
-      notice={(
-        <EngineToolNotice
-          tools={[...oversizedNotice, ...conformerTools(status)]}
-          onCheck={() => void actions.checkConformerStatus()}
-        />
-      )}
-    >
+    <>
+      {/* The atom cap is one fact about the scope, not one per engine, so the
+          section states it once above; each row still says what blocks it. */}
+      <EngineToolNotice
+        tools={conformerTools(status)}
+        onCheck={() => void actions.checkConformerStatus()}
+      />
       <div className="structure-inspector-tools">
         <InspectorToolRow
           name="CREST"
@@ -1303,8 +1291,11 @@ function ConformerWorkflowCard({
           ]}
         />
       </div>
+      <div className="structure-inspector-xtb-summary" data-xtb-tooltip="Method, sampling mode, charge, spin and solvent for CREST runs.">
+        <span>{conformerSettingsSummary(settings)}</span>
+      </div>
       {settingsPanel ? <ConformerInlineSettings panel={settingsPanel} settings={settings} status={status} actions={actions} /> : null}
-    </InspectorEngineCard>
+    </>
   );
 }
 
