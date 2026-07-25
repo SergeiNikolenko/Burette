@@ -822,7 +822,6 @@ export function ProjectItem({
       onContextMenu={handleContextMenu}
       onKeyDown={handleKeyDown}
       aria-label={`${item.relativePath}, ${rendererLabel(item.renderer)}${item.isPinned ? ", pinned" : ""}`}
-      title={item.relativePath}
     >
       <span className="project-icon" data-file-kind={fileKind} aria-hidden="true">
         <FileKindIcon kind={fileKind} />
