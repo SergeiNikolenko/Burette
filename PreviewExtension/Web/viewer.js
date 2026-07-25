@@ -6366,6 +6366,19 @@
     }
   }
 
+  function positionOpenViewportMenu(rail = document.getElementById('buret-viewport-rail')) {
+    const menu = document.getElementById('buret-viewport-menu');
+    const trigger = rail?.querySelector('[aria-expanded="true"]');
+    if (!menu || !trigger) return;
+    const anchor = trigger.getBoundingClientRect();
+    const rect = menu.getBoundingClientRect();
+    // Keep the portalled menu attached to its rail button while the rail moves or
+    // the host resizes the preview viewport.
+    const preferred = anchor.left > window.innerWidth / 2 ? anchor.right - rect.width : anchor.left;
+    menu.style.left = `${Math.round(Math.max(6, Math.min(preferred, window.innerWidth - rect.width - 6)))}px`;
+    menu.style.top = `${Math.round(Math.max(6, Math.min(anchor.bottom + 4, window.innerHeight - rect.height - 6)))}px`;
+  }
+
   function openViewportMenu(trigger, label, build) {
     const wasOpen = trigger.getAttribute('aria-expanded') === 'true';
     closeViewportMenu();
@@ -6378,13 +6391,7 @@
     build(menu);
     document.body.appendChild(menu);
     trigger.setAttribute('aria-expanded', 'true');
-    const anchor = trigger.getBoundingClientRect();
-    const rect = menu.getBoundingClientRect();
-    // The rail lives on the right edge, so its menus open leftwards rather than
-    // running off the window and being clamped back over their own button.
-    const preferred = anchor.left > window.innerWidth / 2 ? anchor.right - rect.width : anchor.left;
-    menu.style.left = `${Math.round(Math.max(6, Math.min(preferred, window.innerWidth - rect.width - 6)))}px`;
-    menu.style.top = `${Math.round(Math.max(6, Math.min(anchor.bottom + 4, window.innerHeight - rect.height - 6)))}px`;
+    positionOpenViewportMenu(trigger.closest('#buret-viewport-rail'));
   }
 
   function viewportMenuItem(menu, label, action, options = {}) {
@@ -6900,11 +6907,11 @@
       }
       if (!drag.moved) return;
       rail.dataset.defaultPosition = '0';
-      closeViewportMenu();
       const width = rail.offsetWidth || rail.getBoundingClientRect().width || 36;
       const left = event.clientX - drag.dx;
       applyViewportRailPosition(rail, window.innerWidth - left - width, event.clientY - drag.dy);
       updateFloatingLayoutOffsets();
+      positionOpenViewportMenu(rail);
       event.preventDefault();
     };
     const finishDrag = event => {
@@ -6935,12 +6942,14 @@
       event.stopImmediatePropagation();
     }, true);
     window.addEventListener('resize', () => {
-      if (rail.dataset.defaultPosition === '1') return;
-      applyViewportRailPosition(
-        rail,
-        Number.parseFloat(rail.style.right) || TOOLBAR_MARGIN,
-        Number.parseFloat(rail.style.top) || TOOLBAR_MARGIN
-      );
+      if (rail.dataset.defaultPosition !== '1') {
+        applyViewportRailPosition(
+          rail,
+          Number.parseFloat(rail.style.right) || TOOLBAR_MARGIN,
+          Number.parseFloat(rail.style.top) || TOOLBAR_MARGIN
+        );
+      }
+      positionOpenViewportMenu(rail);
     });
   }
 

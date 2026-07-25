@@ -4965,6 +4965,11 @@ assert.match(previewViewer, /right: Math\.round\(window\.innerWidth - rect\.righ
 assert.match(previewViewer, /window\.localStorage && window\.localStorage\.setItem\('buret\.viewportRail\.position'/);
 assert.match(previewViewer, /applyViewportRailPosition\(\s*rail,\s*Number\.parseFloat\(rail\.style\.right\)/s);
 assert.match(previewViewer, /initViewportRailDrag\(rail\);/);
+assert.match(previewViewer, /function positionOpenViewportMenu\(rail = document\.getElementById\('buret-viewport-rail'\)\) \{/);
+assert.match(previewViewer, /positionOpenViewportMenu\(rail\);/);
+assert.match(previewViewer, /positionOpenViewportMenu\(trigger\.closest\('#buret-viewport-rail'\)\);/);
+assert.doesNotMatch(previewViewer, /rail\.dataset\.defaultPosition = '0';\s*closeViewportMenu\(\);/);
+assert.match(previewViewer, /applyViewportRailPosition\(rail,[\s\S]*?updateFloatingLayoutOffsets\(\);\s*positionOpenViewportMenu\(rail\);/);
 // The rail carries its own animation button, the way Mol*'s viewport controls did:
 // a trackball that keeps turning plus the plugin's timed animations, each listed
 // once and each able to say why it is unavailable.
