@@ -1162,6 +1162,16 @@ function TextDocumentInfoPanel({ document, actions }: { document: TextFileDocume
   );
 }
 
+// Matches the inspector's tool rows: a drawn chevron rather than the "⌄" glyph,
+// which sits off centre and changes shape with the font.
+function JobMenuChevronIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M2.75 4.5 6 7.75 9.25 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function XtbJobList({
   jobs,
   actions,
@@ -1266,7 +1276,7 @@ function XtbJobList({
                       showJobMenu(event as unknown as React.MouseEvent<HTMLDivElement>);
                     }}
                   >
-                    ⌄
+                    <JobMenuChevronIcon />
                   </Button>
                 </div>
               ) : null}

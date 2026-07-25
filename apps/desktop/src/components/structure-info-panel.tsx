@@ -2422,7 +2422,7 @@ function InspectorToolRow({
           aria-label={`${name} operations`}
           onClick={showMenu}
         >
-          ⌄
+          <MenuChevronIcon />
         </Button>
       </span>
     </div>
@@ -3861,6 +3861,16 @@ function StructureCompositionCard({
         </Alert>
       )}
     </InspectorSection>
+  );
+}
+
+// "⌄" is a text glyph: it sits off the optical centre, changes shape with the
+// font and cannot be stroked to match the icons beside it. A drawn chevron can.
+function MenuChevronIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M2.75 4.5 6 7.75 9.25 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
