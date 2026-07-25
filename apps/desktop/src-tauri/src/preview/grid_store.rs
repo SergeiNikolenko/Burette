@@ -250,7 +250,10 @@ struct PageSortClause {
 #[derive(Debug)]
 struct ParsedGridBatch {
     records: Vec<GridInputRecord>,
-    next_line: usize,
+    // Where the next batch resumes. The unit is the producing parser's own: SDF
+    // resumes at a byte offset, the line-oriented parsers at a line index.
+    // Callers only ever hand it back to the same parser.
+    next_cursor: usize,
     next_index: usize,
     complete: bool,
 }
@@ -453,7 +456,7 @@ pub(crate) fn build_grid_store_with_options(
             database_path.clone(),
             extension.to_string(),
             text,
-            first_batch.next_line,
+            first_batch.next_cursor,
             first_batch.next_index,
             options.smiles_column.clone(),
             cancel_token.clone(),
@@ -489,13 +492,13 @@ fn append_grid_text(
         .map_err(|error| error.to_string())?;
     let start_index = molecule_count(&transaction)?;
     let mut records_appended = 0usize;
-    let mut next_line = 0usize;
+    let mut next_cursor = 0usize;
     let mut next_index = start_index;
     loop {
         let batch = parse_grid_batch_with_options(
             format,
             text,
-            next_line,
+            next_cursor,
             next_index,
             GRID_INGEST_BATCH_ROWS,
             options,
@@ -504,7 +507,7 @@ fn append_grid_text(
             records_appended += batch.records.len();
             insert_records_in_connection(&transaction, &batch.records)?;
         }
-        next_line = batch.next_line;
+        next_cursor = batch.next_cursor;
         next_index = batch.next_index;
         if batch.complete {
             break;
@@ -992,7 +995,7 @@ fn spawn_grid_ingest_worker(
     database_path: PathBuf,
     extension: String,
     text: String,
-    mut next_line: usize,
+    mut next_cursor: usize,
     mut next_index: usize,
     smiles_column: Option<String>,
     cancel_token: Arc<AtomicBool>,
@@ -1012,7 +1015,7 @@ fn spawn_grid_ingest_worker(
             let batch = match parse_grid_batch_with_options(
                 &extension,
                 &text,
-                next_line,
+                next_cursor,
                 next_index,
                 GRID_INGEST_BATCH_ROWS,
                 &options,
@@ -1024,14 +1027,14 @@ fn spawn_grid_ingest_worker(
                 }
             };
             if batch.records.is_empty() && !batch.complete {
-                next_line = batch.next_line;
+                next_cursor = batch.next_cursor;
                 next_index = batch.next_index;
                 continue;
             }
             if insert_records(&connection, &batch.records).is_err() {
                 return;
             }
-            next_line = batch.next_line;
+            next_cursor = batch.next_cursor;
             next_index = batch.next_index;
             let records_total = batch.complete.then_some(next_index);
             if batch.complete && grid_identity::finalize_source_revision(&connection).is_err() {
@@ -1432,7 +1435,7 @@ fn parse_datawarrior_batch(
     let Some(table_start) = datawarrior_table_start(&lines) else {
         return ParsedGridBatch {
             records: Vec::new(),
-            next_line: 0,
+            next_cursor: 0,
             next_index: start_index,
             complete: true,
         };
@@ -1462,7 +1465,7 @@ fn parse_datawarrior_batch(
     if structure_columns.is_empty() {
         return ParsedGridBatch {
             records: Vec::new(),
-            next_line: 0,
+            next_cursor: 0,
             next_index: start_index,
             complete: true,
         };
@@ -1582,7 +1585,7 @@ fn parse_datawarrior_batch(
         }
     }
     ParsedGridBatch {
-        next_line: start_record + records.len(),
+        next_cursor: start_record + records.len(),
         next_index: start_index + records.len(),
         records,
         complete,
@@ -1718,27 +1721,48 @@ fn parse_smiles_batch(
     }
     ParsedGridBatch {
         records,
-        next_line,
+        next_cursor: next_line,
         next_index,
         complete: next_line >= lines.len(),
     }
 }
 
+// Reads the line starting at `offset` and reports where the next one begins.
+// The line breaks recognised here have to match `normalized_lines`, which treats
+// CRLF and a bare CR as breaks too, so classic-Mac SDF still splits correctly.
+fn line_at(text: &str, offset: usize) -> Option<(&str, usize)> {
+    if offset >= text.len() {
+        return None;
+    }
+    let rest = &text[offset..];
+    let Some(break_at) = rest.find(['\r', '\n']) else {
+        return Some((rest, text.len()));
+    };
+    let width = if rest[break_at..].starts_with("\r\n") {
+        2
+    } else {
+        1
+    };
+    Some((&rest[..break_at], offset + break_at + width))
+}
+
+// Resumes from a byte offset and walks the source once. Splitting the whole text
+// into a `Vec<String>` here instead made ingest quadratic: a collection indexed
+// in N batches re-copied and re-split the entire file N times, so a 1 GB SDF
+// took tens of minutes and gigabytes of transient allocations.
 fn parse_sdf_batch(
     text: &str,
-    start_line: usize,
+    start_offset: usize,
     start_index: usize,
     max_records: usize,
 ) -> ParsedGridBatch {
-    let lines = normalized_lines(text);
+    let mut offset = start_offset.min(text.len());
     let mut records = Vec::new();
     let mut current = Vec::new();
     let mut current_has_content = false;
-    let mut next_line = start_line.min(lines.len());
     let mut next_index = start_index;
-    while next_line < lines.len() {
-        let line = lines[next_line].clone();
-        next_line += 1;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
         if line.trim() == "$$$$" {
             if let Some(record) = finish_sdf_record(&current, current_has_content, next_index) {
                 records.push(record);
@@ -1753,10 +1777,11 @@ fn parse_sdf_batch(
             if !line.trim().is_empty() {
                 current_has_content = true;
             }
-            current.push(line);
+            current.push(line.to_string());
         }
     }
-    if next_line >= lines.len() {
+    let complete = offset >= text.len();
+    if complete {
         if let Some(record) = finish_sdf_record(&current, current_has_content, next_index) {
             records.push(record);
             next_index += 1;
@@ -1764,9 +1789,9 @@ fn parse_sdf_batch(
     }
     ParsedGridBatch {
         records,
-        next_line,
+        next_cursor: offset,
         next_index,
-        complete: next_line >= lines.len(),
+        complete,
     }
 }
 
@@ -1817,7 +1842,7 @@ fn parse_delimited_table_batch(
     let Some(header_line) = rows.first() else {
         return Ok(ParsedGridBatch {
             records: Vec::new(),
-            next_line: 0,
+            next_cursor: 0,
             next_index: start_index,
             complete: true,
         });
@@ -1983,7 +2008,7 @@ fn parse_delimited_table_batch(
     }
     Ok(ParsedGridBatch {
         records,
-        next_line,
+        next_cursor: next_line,
         next_index,
         complete: next_line >= rows.len(),
     })
@@ -2050,7 +2075,7 @@ fn parse_delimited_rows_as_smiles_batch(
     }
     Ok(ParsedGridBatch {
         records,
-        next_line,
+        next_cursor: next_line,
         next_index,
         complete: next_line >= rows.len(),
     })
@@ -4452,5 +4477,101 @@ mod tests {
             normalized[3].trim(),
             "6  6  0  0  0  0  0  0  0  0999 V2000"
         );
+    }
+
+    // Roughly 1.5 KiB per record, so a source large enough that re-reading it
+    // per batch dominates the ingest.
+    fn synthetic_sdf(records: usize) -> String {
+        let atoms: String = (0..20)
+            .map(|_| "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n")
+            .collect();
+        let mut sdf = String::with_capacity(records * 1600);
+        for index in 0..records {
+            sdf.push_str(&format!(
+                "Molecule {index}\n  Burette\n\n 20  0  0  0  0  0  0  0  0  0999 V2000\n{atoms}M  END\n> <ID>\n{index}\n\n$$$$\n"
+            ));
+        }
+        sdf
+    }
+
+    // Walks a whole synthetic collection the way the ingest worker does, and
+    // reports how long the parsing alone took.
+    fn time_batched_parse(records: usize) -> std::time::Duration {
+        let sdf = synthetic_sdf(records);
+        let options = GridParseOptions::default();
+        let started = std::time::Instant::now();
+        let mut cursor = 0usize;
+        let mut index = 0usize;
+        loop {
+            let batch = parse_grid_batch_with_options(
+                "sdf",
+                &sdf,
+                cursor,
+                index,
+                GRID_INGEST_BATCH_ROWS,
+                &options,
+            )
+            .expect("parse batch");
+            cursor = batch.next_cursor;
+            index = batch.next_index;
+            if batch.complete {
+                break;
+            }
+        }
+        let elapsed = started.elapsed();
+        assert_eq!(index, records);
+        elapsed
+    }
+
+    // A batched ingest must read the source once, not once per batch. Re-reading
+    // it per batch makes parsing quadratic, so doubling the record count roughly
+    // quadruples the time instead of doubling it — the 1 GB / 400k-record SDF
+    // that motivated this test needed tens of minutes to index.
+    #[test]
+    fn sdf_batched_parse_scales_linearly_with_record_count() {
+        let base = time_batched_parse(12_000);
+        let doubled = time_batched_parse(24_000);
+        let growth = doubled.as_secs_f64() / base.as_secs_f64().max(f64::EPSILON);
+        assert!(
+            growth < 2.6,
+            "doubling the collection multiplied parse time by {growth:.1}x ({base:?} -> {doubled:?}); the source is being re-read per batch"
+        );
+    }
+
+    // The resume cursor must tile the source exactly once: every record appears,
+    // in order, whether the collection arrives in one batch or one record at a
+    // time, and both CRLF and bare-CR line endings resume correctly.
+    #[test]
+    fn sdf_batches_tile_the_source_exactly_once() {
+        // No <ID> property: the record name then comes from the title line, so
+        // the assertions below read as the record order they are checking.
+        let sdf = "Mol A\n  Burette\n\nM  END\n$$$$\nMol B\r\n  Burette\r\n\r\nM  END\r\n$$$$\r\nMol C\r  Burette\r\rM  END\r$$$$\n";
+        let options = GridParseOptions::default();
+        let single = parse_grid_batch_with_options("sdf", sdf, 0, 0, 100, &options)
+            .expect("parse whole source");
+        assert_eq!(single.records.len(), 3);
+        assert!(single.complete);
+        assert_eq!(single.records[1].name, "Mol B");
+
+        let mut cursor = 0usize;
+        let mut index = 0usize;
+        let mut names = Vec::new();
+        for _ in 0..10 {
+            let batch = parse_grid_batch_with_options("sdf", sdf, cursor, index, 1, &options)
+                .expect("parse one record");
+            names.extend(batch.records.iter().map(|record| record.name.clone()));
+            cursor = batch.next_cursor;
+            index = batch.next_index;
+            if batch.complete {
+                break;
+            }
+        }
+        let expected: Vec<String> = single
+            .records
+            .iter()
+            .map(|record| record.name.clone())
+            .collect();
+        assert_eq!(names, expected);
+        assert_eq!(index, 3);
     }
 }
