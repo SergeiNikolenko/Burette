@@ -75,8 +75,8 @@ const duplicate = { index: 1, name: "Base copy", smiles: "CC", props: {} };
     "state",
     `${functionSource("collectionIndexReady")}\nreturn collectionIndexReady;`,
   );
-  assert.equal(collectionIndexReady({ remoteMode: true, indexReady: false, indexing: true })(), false);
-  assert.equal(collectionIndexReady({ remoteMode: true, indexReady: true, indexing: false })(), true);
+  assert.equal(collectionIndexReady({ remoteMode: true, indexStateKnown: true, indexReady: false, indexing: true })(), false);
+  assert.equal(collectionIndexReady({ remoteMode: true, indexStateKnown: true, indexReady: true, indexing: false })(), true);
   assert.equal(collectionIndexReady({ remoteMode: false, indexReady: false, indexing: true })(), true);
 }
 
