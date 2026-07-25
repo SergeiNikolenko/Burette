@@ -3615,6 +3615,7 @@ assert.match(sidebarSurface, /actions\.togglePinnedStructure\(item\.path\)/);
 assert.match(sidebarSurface, /actions\.togglePinnedProjectRoot\(project\.rootPath\)/);
 assert.match(sidebarSurface, /actions\.renameProjectRoot\(project\.rootPath, renameDraft\)/);
 assert.match(sidebarSurface, /actions\.renameProjectFolder\(folderPath, renameDraft\)/);
+assert.doesNotMatch(sidebarSurface, /title=\{item\.relativePath\}/);
 assert.match(sidebarSurface, /const \[renaming, setRenaming\] = useState\(false\)/);
 assert.match(sidebarSurface, /const renameInputRef = useRef<HTMLInputElement \| null>\(null\)/);
 assert.match(sidebarSurface, /const skipRenameCommitRef = useRef\(false\)/);
@@ -4597,7 +4598,7 @@ assert.match(previewViewController, /let molstarAvailable = rendererPolicy\.mols
 assert.match(previewViewController, /molstarAvailable: structurePreview\.molstarAvailable/);
 assert.match(previewViewController, /private static let maestroPreviewReadLimit = 64 \* 1024 \* 1024/);
 assert.match(previewViewController, /let usesBoundedMaestroPreview = structureSize > sizeLimit && isMaestroPreviewExtension\(pathExtension\)/);
-assert.match(previewViewController, /\? try readFilePrefix\(url, maxBytes: maestroPreviewReadLimit\)/);
+assert.match(previewViewController, /structureData = try readFilePrefix\(url, maxBytes: maestroPreviewReadLimit\)/);
 assert.match(previewViewController, /case "cms", "mae", "maegz":\s*return parseMaestroAtoms\(lines, atomLimit: 20_000\)/);
 assert.match(previewViewController, /case "abi":\s*return parseABINIT\(lines\)/);
 assert.match(previewViewController, /case "fdf":\s*return parseFDF\(lines\)/);
@@ -4967,6 +4968,37 @@ assert.match(previewRuntimeCss, /body:has\(\.msp-viewport-controls-buttons \.msp
 assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*hideGenerate3DMenu\(\);/);
 assert.match(previewViewer, /const viewportControlRailRect = visibleRect\('\.msp-plugin \.msp-viewport-controls-buttons'\);/);
 assert.match(previewViewer, /const railRect = visibleRect\('#buret-viewport-rail'\) \|\| viewportControlRailRect;/);
+// The vertical viewport rail is the second half of the toolbar group: it follows
+// either drag handle, flips toward the canvas at each corner, and rolls up with it.
+assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*right: auto;[^}]*left: var\(--buret-viewport-rail-left, auto\);/s);
+assert.match(previewViewer, /const TOOLBAR_CORNER_SNAP_DISTANCE = 64;/);
+assert.match(previewViewer, /const TOOLBAR_CORNER_RELEASE_DISTANCE = 96;/);
+assert.match(previewViewer, /const TOOLBAR_ORIENTATION_HYSTERESIS = 48;/);
+assert.match(previewViewer, /function updateToolbarCornerIntent\(toolbar\) \{/);
+assert.match(previewViewer, /function toolbarCornerWithinSnapDistance\(toolbar\) \{/);
+assert.match(previewViewer, /function positionToolbarAtCorner\(toolbar, corner\) \{/);
+assert.match(previewViewer, /function snapToolbarToCorner\(toolbar\) \{/);
+assert.match(previewViewer, /viewportRail\.dataset\.horizontalPlacement = railHorizontal;/);
+assert.match(previewViewer, /viewportRail\.dataset\.verticalPlacement = railVertical;/);
+assert.match(previewViewer, /root\.style\.setProperty\('--buret-viewport-rail-left', Math\.round\(viewportRailLeft\) \+ 'px'\);/);
+assert.match(previewViewer, /const preferredViewportRailTop = toolbarRect && railVertical === 'above'/);
+assert.match(previewViewer, /corner: isToolbarCorner\(toolbar\.dataset\.dockCorner\) \? toolbar\.dataset\.dockCorner : null/);
+assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*cursor: grab;[^}]*touch-action: none;/s);
+assert.match(previewRuntimeCss, /\.buret-viewport-rail\.buret-dragging,[\s\S]*cursor: grabbing;/);
+assert.match(previewRuntimeCss, /body\.buret-toolbar-collapsed #buret-viewport-rail,[\s\S]*#buret-selection-bar \{\s*display: none !important;/);
+assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*closeViewportMenu\(\);/);
+assert.match(previewViewer, /if \(persist \|\| collapsed\) toolbar\.dataset\.defaultPosition = '1';\s*repositionToolbar\(toolbar\);/);
+assert.doesNotMatch(previewViewer, /VIEWPORT_RAIL_POSITION_VERSION/);
+assert.doesNotMatch(previewViewer, /localStorage\.setItem\('buret\.viewportRail\.position'/);
+assert.match(previewViewer, /function initViewportRailDrag\(rail, toolbar\) \{/);
+assert.match(previewViewer, /moveToolbar\(\s*toolbar,\s*drag\.toolbarLeft \+ event\.clientX - drag\.startX,\s*drag\.toolbarTop \+ event\.clientY - drag\.startY\s*\);/s);
+assert.match(previewViewer, /saveToolbarPosition\(toolbar\);/);
+assert.match(previewViewer, /initViewportRailDrag\(rail, document\.getElementById\('buret-toolbar'\)\);/);
+assert.match(previewViewer, /function positionOpenViewportMenu\(rail = document\.getElementById\('buret-viewport-rail'\)\) \{/);
+assert.match(previewViewer, /rail\.dataset\.horizontalPlacement === 'right'/);
+assert.match(previewViewer, /rail\.dataset\.verticalPlacement === 'above'/);
+assert.match(previewViewer, /root\.style\.setProperty\('--buret-viewport-panel-max-height', panelMaxHeight \+ 'px'\);\s*positionOpenViewportMenu\(\);/);
+assert.match(previewViewer, /positionOpenViewportMenu\(trigger\.closest\('#buret-viewport-rail'\)\);/);
 // The rail carries its own animation button, the way Mol*'s viewport controls did:
 // a trackball that keeps turning plus the plugin's timed animations, each listed
 // once and each able to say why it is unavailable.
@@ -5031,7 +5063,7 @@ assert.match(previewRuntimeCss, /#buret-toolbar\.buret-toolbar-docked \{/);
 assert.match(previewRuntimeCss, /width: auto/);
 assert.match(previewRuntimeCss, /max-width: calc\(100vw - 24px\)/);
 assert.match(previewRuntimeCss, /#buret-toolbar \{[\s\S]*flex-wrap: nowrap;[\s\S]*max-width: calc\(100vw - 24px\)/);
-assert.match(previewRuntimeCss, /#buret-toolbar \{[^}]*padding: 3px 0;/s);
+assert.match(previewRuntimeCss, /#buret-toolbar \{[^}]*padding: 3px;/s);
 assert.match(previewRuntimeCss, /#buret-toolbar \.buret-toolbar-content \{/);
 assert.match(previewRuntimeCss, /flex: 0 1 auto/);
 assert.match(previewRuntimeCss, /max-width: calc\(100vw - 72px\)/);
@@ -7450,5 +7482,12 @@ assert.match(
   moleculeStore,
   /normalizeGlobalRecentStructures\(incoming\s*\.filter\(isPersistentViewerDocument\)\s*\.map\(toRecentStructure\)\)/,
 );
+
+// The shell must not re-render for every pixel of a window drag: each render also
+// makes react-resizable-panels rebuild its own ResizeObservers. Measured over ten
+// 2px resize steps, quantising the width took observer rebuilds from 10 to 3.
+assert.match(appLayout, /const VIEWPORT_WIDTH_STEP = 16;/u);
+assert.match(appLayout, /function quantisedViewportWidth\(\)/u);
+assert.doesNotMatch(appLayout, /\}, \[activeGridId, viewportWidth, rightDockOpen\]\);/u);
 
 console.log('ui shell contract tests passed');

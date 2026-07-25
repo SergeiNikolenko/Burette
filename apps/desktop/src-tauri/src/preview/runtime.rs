@@ -2270,10 +2270,21 @@ f_m_ct {
             .expect("preview config should be written");
         assert!(config.contains(r#""rdkitWasmPath":"asset://localhost/"#));
         assert!(config.contains("RDKit_minimal.wasm"));
-        assert!(runtime_dir.join("RDKit_minimal.wasm").exists());
-        assert!(runtime_dir.join("preview-rdkit-wasm.js").exists());
-        assert!(html.contains("preview-rdkit-wasm.js"));
+        assert!(html.contains("rdkit-wasm-data.js"));
         assert!(html.contains("RDKit_minimal.js"));
+
+        // The wasm and its base64 copy live in the shared asset directory, written
+        // once per app version behind a fingerprint check. Copying and re-encoding
+        // them into every runtime directory cost ~16 MiB of writes per document
+        // open and left that much behind per open document.
+        let assets_dir = runtime_dir
+            .parent()
+            .expect("runtime dir should sit under the viewer cache")
+            .join("assets");
+        assert!(assets_dir.join("rdkit").join("RDKit_minimal.wasm").exists());
+        assert!(assets_dir.join("rdkit-wasm-data.js").exists());
+        assert!(!runtime_dir.join("RDKit_minimal.wasm").exists());
+        assert!(!runtime_dir.join("preview-rdkit-wasm.js").exists());
 
         remove_runtime_artifacts(&document.runtime_path);
         if let Some(parent) = path.parent() {

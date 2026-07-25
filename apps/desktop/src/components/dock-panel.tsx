@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Atom01Icon,
   File02Icon,
@@ -23,12 +23,17 @@ import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { ChemicalSpacePanel } from "./chemical-space-panel";
 import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import type { ConformerJob, TextFileDocument, ViewerDocument, ViewerReloadOptions, XtbJob, XyzrenderControls } from "../types";
+
+// Chemical Space reaches three.js through chemical-space-3d, and this panel is
+// always mounted, so a static import put that whole stack in the entry chunk.
+const ChemicalSpacePanel = lazy(() => import("./chemical-space-panel").then((module) => ({
+  default: module.ChemicalSpacePanel,
+})));
 
 type DockPanelProps = {
   area: DockArea;
@@ -436,7 +441,11 @@ function DockPanelContent({
     );
   }
   if (activeTabKind === "chemical-space") {
-    return <ChemicalSpacePanel document={chemicalSpaceDocument} />;
+    return (
+      <Suspense fallback={null}>
+        <ChemicalSpacePanel document={chemicalSpaceDocument} />
+      </Suspense>
+    );
   }
   if (activeTabKind === "folding") {
     return <FoldingAnalysisPanel document={dockStructureDocument} actions={actions} />;
