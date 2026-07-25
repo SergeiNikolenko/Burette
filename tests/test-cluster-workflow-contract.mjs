@@ -414,6 +414,8 @@ assert.match(
   /recordCount > AUTO_RUN_RECORD_LIMIT[\s\S]*?confirmedLargeRunDocumentKey !== largeRunConfirmationKey/,
 );
 assert.match(chemicalSpacePanel, /requestChemicalSpaceIndexState\(documentId, controller\.signal\)/);
+assert.match(chemicalSpacePanel, /applySourceRevision\(next\.sourceRevision\)/);
+assert.match(chemicalSpacePanel, /sourceRevision: Number\.isSafeInteger\(sourceRevision\)/);
 assert.match(chemicalSpacePanel, /bytesIndexed: Number\.isFinite\(bytesIndexed\) \? bytesIndexed : 0/);
 assert.match(chemicalSpacePanel, /indexingProgressLabel\(indexState\)/);
 assert.match(
@@ -430,13 +432,18 @@ const dirtyHandler = chemicalSpacePanel.slice(
   chemicalSpacePanel.indexOf('data.body.type === "gridDirtyChanged"'),
   chemicalSpacePanel.indexOf('data.body.type === "gridHoverChanged"'),
 );
-assert.match(dirtyHandler, /workflowControllerRef\.current\?\.abort\(\)/u);
-assert.match(dirtyHandler, /studyControllerRef\.current\?\.abort\(\)/u);
+const sourceRevisionHandler = chemicalSpacePanel.slice(
+  chemicalSpacePanel.indexOf("const applySourceRevision = useCallback"),
+  chemicalSpacePanel.indexOf("const commitOptions"),
+);
+assert.match(sourceRevisionHandler, /workflowControllerRef\.current\?\.abort\(\)/u);
+assert.match(sourceRevisionHandler, /studyControllerRef\.current\?\.abort\(\)/u);
 assert.match(dirtyHandler, /recordsTotal = Number\(data\.body\.recordsTotal\)/u);
 assert.match(dirtyHandler, /setIndexState\(\(current\) => current/u);
-assert.match(dirtyHandler, /setConfirmedLargeRunDocumentKey\(null\)/u);
+assert.match(dirtyHandler, /applySourceRevision\(reportedRevision\)/u);
+assert.match(sourceRevisionHandler, /setConfirmedLargeRunDocumentKey\(null\)/u);
 assert.match(
-  dirtyHandler,
+  sourceRevisionHandler,
   /setStudyRunning\(false\)/u,
   "editing a Grid must cancel an in-flight parameter study before stale results can publish",
 );
@@ -456,7 +463,7 @@ assert.match(chemicalSpacePanel, /completedEmbeddings\.size > MAX_COMPLETED_EMBE
 
 const gridViewerSource = source("PreviewExtension/Web/grid-viewer.js");
 assert.match(gridViewerSource, /chemicalSpaceRequestIndexState/);
-assert.match(gridViewerSource, /recordsTotal\s*\n\s*\}\);/);
+assert.match(gridViewerSource, /recordsTotal,\s*sourceRevision: state\.sourceRevision/u);
 const markGridDirtyBlock = gridViewerSource.slice(
   gridViewerSource.indexOf("function markGridDirty(reason)"),
   gridViewerSource.indexOf("function markGridClean()"),
@@ -468,5 +475,7 @@ assert.doesNotMatch(
   "every edit must advance the Grid revision and invalidate Chemical Space caches",
 );
 assert.match(gridViewerSource, /function postChemicalSpaceIndexState\(requestId\)/);
+assert.match(gridViewerSource, /sourceRevision: state\.sourceRevision/u);
+assert.match(gridViewerSource, /state\.sourceRevision \+= 1/u);
 
 console.log("cluster workflow contract tests passed");
