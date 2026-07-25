@@ -203,6 +203,7 @@ pub(crate) struct GridDescriptorSourceRow {
     pub(crate) name: String,
     pub(crate) smiles: Option<String>,
     pub(crate) molblock: Option<String>,
+    pub(crate) source_index: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -1081,7 +1082,6 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                  props_text text not null,
                  search_text text not null
              );
-             create index if not exists molecules_source_index on molecules(source_index);
              create index if not exists molecules_name on molecules(name collate nocase);
              create index if not exists molecules_smiles on molecules(smiles collate nocase);
              create table if not exists grid_index_state (
@@ -1147,25 +1147,35 @@ pub(crate) fn descriptor_source_row_count(database_path: &Path) -> Result<usize,
         })
 }
 
-pub(crate) fn descriptor_source_row_batch(
-    database_path: &Path,
-    offset: usize,
-    limit: usize,
-) -> Result<Vec<GridDescriptorSourceRow>, String> {
+// Opens the collection once for a descriptor run. Every batch used to open the
+// database and run the full schema setup again - about 25,000 times for a 400k
+// collection at 16 rows per batch.
+pub(crate) fn open_descriptor_source(database_path: &Path) -> Result<Connection, String> {
     let connection = open_grid_database(database_path)?;
     initialize_schema(&connection)?;
+    Ok(connection)
+}
+
+// Pages by the last source_index seen rather than by OFFSET: SQLite walks the
+// skipped rows for every OFFSET, so paging a large collection 16 rows at a time
+// cost time quadratic in the row count.
+pub(crate) fn descriptor_source_row_batch(
+    connection: &Connection,
+    after_source_index: i64,
+    limit: usize,
+) -> Result<Vec<GridDescriptorSourceRow>, String> {
     let mut statement = connection
         .prepare(
-            "select id, name, smiles, molblock
+            "select id, name, smiles, molblock, source_index
              from molecules
+             where source_index > ?2
              order by source_index asc
-             limit ?1 offset ?2",
+             limit ?1",
         )
         .map_err(|err| err.to_string())?;
     let limit = i64::try_from(limit).unwrap_or(i64::MAX);
-    let offset = i64::try_from(offset).unwrap_or(i64::MAX);
     let mut rows = statement
-        .query(params![limit, offset])
+        .query(params![limit, after_source_index])
         .map_err(|err| err.to_string())?;
     let mut source_rows = Vec::new();
     while let Some(row) = rows.next().map_err(|err| err.to_string())? {
@@ -1174,6 +1184,7 @@ pub(crate) fn descriptor_source_row_batch(
             name: row.get(1).map_err(|err| err.to_string())?,
             smiles: row.get(2).map_err(|err| err.to_string())?,
             molblock: row.get(3).map_err(|err| err.to_string())?,
+            source_index: row.get(4).map_err(|err| err.to_string())?,
         });
     }
     Ok(source_rows)
@@ -1192,7 +1203,7 @@ pub(crate) fn descriptor_source_rows_by_indices(
         .collect::<Vec<_>>()
         .join(", ");
     let sql = format!(
-        "select id, name, smiles, molblock
+        "select id, name, smiles, molblock, source_index
          from molecules
          where source_index in ({placeholders})
          order by source_index asc"
@@ -1211,6 +1222,7 @@ pub(crate) fn descriptor_source_rows_by_indices(
             name: row.get(1).map_err(|err| err.to_string())?,
             smiles: row.get(2).map_err(|err| err.to_string())?,
             molblock: row.get(3).map_err(|err| err.to_string())?,
+            source_index: row.get(4).map_err(|err| err.to_string())?,
         });
     }
     Ok(source_rows)
@@ -1261,12 +1273,10 @@ pub(crate) fn alignment_source_rows_by_indices(
 }
 
 pub(crate) fn replace_descriptor_values_in_database(
-    database_path: &Path,
+    connection: &mut Connection,
     row_id: i64,
     values: &[GridDescriptorValueInput],
 ) -> Result<(), String> {
-    let mut connection = open_grid_database(database_path)?;
-    initialize_schema(&connection)?;
     let tx = connection.transaction().map_err(|err| err.to_string())?;
     tx.execute(
         "delete from descriptor_values where molecule_id = ?1",
@@ -1428,10 +1438,9 @@ fn parse_datawarrior_batch(
     start_index: usize,
     max_records: usize,
 ) -> ParsedGridBatch {
-    let start_record = cursor.row;
-    let lines = normalized_lines(text);
-    let columns = datawarrior_column_properties(&lines);
-    let Some(table_start) = datawarrior_table_start(&lines) else {
+    // Only the header section is re-read per batch, not the whole file: the
+    // records live after it and are reached from the cursor's byte offset.
+    let Some(header) = datawarrior_header(text) else {
         return ParsedGridBatch {
             records: Vec::new(),
             next_cursor: GridCursor::default(),
@@ -1439,7 +1448,8 @@ fn parse_datawarrior_batch(
             complete: true,
         };
     };
-    let headers: Vec<_> = parse_delimited_line(&lines[table_start], '\t')
+    let columns = datawarrior_column_properties(&header.lines);
+    let headers: Vec<_> = parse_delimited_line(header.table_line, '\t')
         .into_iter()
         .map(|value| value.trim().to_string())
         .collect();
@@ -1494,10 +1504,21 @@ fn parse_datawarrior_batch(
     });
     let multiple_structure_columns = structure_columns.len() > 1;
     let mut records = Vec::new();
-    let mut candidate_index = 0usize;
     let mut complete = true;
+    // A row can hold several structure columns, so a batch may stop mid-row. The
+    // cursor therefore carries the row's own offset plus how many of its records
+    // were already emitted.
+    let mut offset = if cursor.offset == 0 {
+        header.data_offset
+    } else {
+        cursor.offset.min(text.len())
+    };
+    let mut skip_in_row = cursor.row;
+    let mut row_offset = 0usize;
 
-    for (row_offset, line) in lines.iter().skip(table_start + 1).enumerate() {
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        let line_start = offset;
+        offset = next_offset;
         if looks_like_datawarrior_section_tag(line) {
             break;
         }
@@ -1505,6 +1526,7 @@ fn parse_datawarrior_batch(
             continue;
         }
         let cells = parse_delimited_line(line, '\t');
+        let mut emitted_in_row = 0usize;
         for (structure_index, is_idcode) in &structure_columns {
             let value = cells
                 .get(*structure_index)
@@ -1513,8 +1535,8 @@ fn parse_datawarrior_batch(
             if value.is_empty() {
                 continue;
             }
-            if candidate_index < start_record {
-                candidate_index += 1;
+            if emitted_in_row < skip_in_row {
+                emitted_in_row += 1;
                 continue;
             }
             if records.len() >= max_records {
@@ -1577,16 +1599,22 @@ fn parse_datawarrior_batch(
                 idcoordinates: coordinates,
                 props,
             });
-            candidate_index += 1;
+            emitted_in_row += 1;
         }
+        skip_in_row = 0;
+        row_offset += 1;
         if !complete {
+            // Stopped inside this row: resume at the row itself, past the records
+            // it already produced.
+            offset = line_start;
+            skip_in_row = emitted_in_row;
             break;
         }
     }
     ParsedGridBatch {
         next_cursor: GridCursor {
-            offset: 0,
-            row: start_record + records.len(),
+            offset,
+            row: skip_in_row,
         },
         next_index: start_index + records.len(),
         records,
@@ -1594,7 +1622,49 @@ fn parse_datawarrior_batch(
     }
 }
 
-fn datawarrior_column_properties(lines: &[String]) -> HashMap<String, DataWarriorColumn> {
+struct DataWarriorHeader<'a> {
+    lines: Vec<&'a str>,
+    table_line: &'a str,
+    data_offset: usize,
+}
+
+// Reads the DataWarrior preamble - the tagged sections and the table header row -
+// and reports where the data rows begin, so a batch never has to walk the records
+// that came before it.
+fn datawarrior_header(text: &str) -> Option<DataWarriorHeader<'_>> {
+    let mut lines = Vec::new();
+    let mut section: Option<&str> = None;
+    let mut offset = 0usize;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        let trimmed = line.trim();
+        if trimmed.starts_with("</") && trimmed.ends_with('>') {
+            section = None;
+            lines.push(line);
+            continue;
+        }
+        if trimmed.starts_with('<')
+            && trimmed.ends_with('>')
+            && !trimmed.contains('=')
+            && !trimmed.starts_with("</")
+        {
+            section = Some(trimmed);
+            lines.push(line);
+            continue;
+        }
+        if section.is_none() && !trimmed.is_empty() && !trimmed.starts_with('<') {
+            return Some(DataWarriorHeader {
+                lines,
+                table_line: line,
+                data_offset: offset,
+            });
+        }
+        lines.push(line);
+    }
+    None
+}
+
+fn datawarrior_column_properties(lines: &[&str]) -> HashMap<String, DataWarriorColumn> {
     let mut columns = HashMap::new();
     let mut current_name: Option<String> = None;
     let mut in_properties = false;
@@ -1634,29 +1704,6 @@ fn datawarrior_column_properties(lines: &[String]) -> HashMap<String, DataWarrio
         }
     }
     columns
-}
-
-fn datawarrior_table_start(lines: &[String]) -> Option<usize> {
-    let mut section: Option<String> = None;
-    for (index, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("</") && trimmed.ends_with('>') {
-            section = None;
-            continue;
-        }
-        if trimmed.starts_with('<')
-            && trimmed.ends_with('>')
-            && !trimmed.contains('=')
-            && !trimmed.starts_with("</")
-        {
-            section = Some(trimmed.to_string());
-            continue;
-        }
-        if section.is_none() && !trimmed.is_empty() && !trimmed.starts_with('<') {
-            return Some(index);
-        }
-    }
-    None
 }
 
 fn datawarrior_tag_value(line: &str, tag: &str) -> Option<String> {
@@ -3388,8 +3435,10 @@ mod tests {
         )
         .expect("fetch initial page");
 
+        let mut descriptor_connection =
+            open_descriptor_source(&database_path).expect("open descriptor source");
         replace_descriptor_values_in_database(
-            &database_path,
+            &mut descriptor_connection,
             page.rows[0].row_id,
             &[
                 GridDescriptorValueInput {
@@ -3410,7 +3459,7 @@ mod tests {
         )
         .expect("store descriptor values");
         replace_descriptor_values_in_database(
-            &database_path,
+            &mut descriptor_connection,
             page.rows[1].row_id,
             &[GridDescriptorValueInput {
                 id: "error".into(),
@@ -3444,8 +3493,10 @@ mod tests {
             3
         );
 
+        let descriptor_connection =
+            open_descriptor_source(&database_path).expect("open descriptor source");
         let first_batch =
-            descriptor_source_row_batch(&database_path, 0, 2).expect("fetch first batch");
+            descriptor_source_row_batch(&descriptor_connection, -1, 2).expect("fetch first batch");
         assert_eq!(
             first_batch
                 .iter()
@@ -3454,8 +3505,12 @@ mod tests {
             vec!["Ethanol", "Benzene"]
         );
 
-        let second_batch =
-            descriptor_source_row_batch(&database_path, 2, 2).expect("fetch second batch");
+        let resume_from = first_batch
+            .last()
+            .expect("first batch is not empty")
+            .source_index;
+        let second_batch = descriptor_source_row_batch(&descriptor_connection, resume_from, 2)
+            .expect("fetch second batch");
         assert_eq!(
             second_batch
                 .iter()
@@ -4570,6 +4625,18 @@ mod tests {
         smi
     }
 
+    fn synthetic_dwar(records: usize) -> String {
+        let mut dwar = String::with_capacity(records * 200);
+        dwar.push_str("<datawarrior-fileinfo>\n<version=\"3.2\">\n</datawarrior-fileinfo>\n");
+        dwar.push_str("<column properties>\n<columnName=\"Structure\">\n<columnProperty=\"specialType\tidcode\">\n</column properties>\n");
+        dwar.push_str("Structure\tName\tvalue\n");
+        for index in 0..records {
+            let idcode = format!("d{}", "e".repeat(60));
+            dwar.push_str(&format!("{idcode}\tMolecule {index:06}\t{index}.5\n"));
+        }
+        dwar
+    }
+
     fn synthetic_csv(records: usize) -> String {
         let mut csv = String::with_capacity(records * 200);
         csv.push_str("smiles,name,weight,logp,tpsa\n");
@@ -4637,6 +4704,7 @@ mod tests {
         assert_parse_scales_linearly("sdf", synthetic_sdf);
         assert_parse_scales_linearly("smi", synthetic_smiles);
         assert_parse_scales_linearly("csv", synthetic_csv);
+        assert_parse_scales_linearly("dwar", synthetic_dwar);
     }
 
     // Parses a source one record per batch and returns each record's name and
@@ -4705,6 +4773,26 @@ mod tests {
             ]
         );
         assert_eq!(records_one_batch_at_a_time("csv", csv), expected);
+    }
+
+    // A DataWarrior row can carry several structure columns, so a batch can stop
+    // part-way through one; the cursor has to resume inside that row.
+    #[test]
+    fn datawarrior_batches_tile_rows_with_several_structure_columns() {
+        let dwar = concat!(
+            "<column properties>\n",
+            "<columnName=\"Structure\">\n",
+            "<columnProperty=\"specialType\tidcode\">\n",
+            "<columnName=\"Structure 2\">\n",
+            "<columnProperty=\"specialType\tidcode\">\n",
+            "</column properties>\n",
+            "Structure\tStructure 2\tName\n",
+            "aaa\tbbb\tFirst\n",
+            "ccc\tddd\tSecond\n",
+        );
+        let expected = records_in_one_batch("dwar", dwar);
+        assert_eq!(expected.len(), 4);
+        assert_eq!(records_one_batch_at_a_time("dwar", dwar), expected);
     }
 
     // The resume cursor must tile the source exactly once: every record appears,

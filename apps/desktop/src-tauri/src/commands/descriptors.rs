@@ -15,7 +15,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Runtime, State};
 
 use crate::preview::grid_store::{
-    descriptor_source_row_batch, descriptor_source_rows_by_indices,
+    descriptor_source_row_batch, descriptor_source_rows_by_indices, open_descriptor_source,
     replace_descriptor_values_in_database, GridDescriptorRunSummary, GridDescriptorSourceRow,
     GridDescriptorValueInput, GridRuntimeRegistry,
 };
@@ -701,6 +701,19 @@ fn run_descriptor_grid_job(
         });
         return;
     }
+    let mut connection = match open_descriptor_source(&database_path) {
+        Ok(connection) => connection,
+        Err(error) => {
+            job.update(|state| {
+                if state.status == DescriptorGridJobStateKind::Running {
+                    state.status = DescriptorGridJobStateKind::Failed;
+                    state.message = error;
+                    state.finished_at_ms = Some(current_time_millis());
+                }
+            });
+            return;
+        }
+    };
     if let Some(indexes) = row_indexes {
         for chunk in indexes.chunks(DESCRIPTOR_GRID_BATCH_SIZE) {
             if job.cancel.load(Ordering::Relaxed) {
@@ -728,7 +741,7 @@ fn run_descriptor_grid_job(
                 continue;
             }
             if let Err(error) =
-                run_descriptor_grid_batch(&job, &database_path, &batch, &python_path)
+                run_descriptor_grid_batch(&job, &mut connection, &batch, &python_path)
             {
                 job.update(|state| {
                     if state.status == DescriptorGridJobStateKind::Running {
@@ -747,8 +760,10 @@ fn run_descriptor_grid_job(
         });
         return;
     }
-    let mut offset = 0usize;
-    while offset < total_rows {
+    // Resume from the last source_index handled rather than an OFFSET.
+    let mut after_source_index = -1i64;
+    let mut processed = 0usize;
+    while processed < total_rows {
         if job.cancel.load(Ordering::Relaxed) {
             job.update(|state| {
                 state.status = DescriptorGridJobStateKind::Cancelled;
@@ -757,24 +772,30 @@ fn run_descriptor_grid_job(
             });
             return;
         }
-        let batch =
-            match descriptor_source_row_batch(&database_path, offset, DESCRIPTOR_GRID_BATCH_SIZE) {
-                Ok(batch) => batch,
-                Err(error) => {
-                    job.update(|state| {
-                        if state.status == DescriptorGridJobStateKind::Running {
-                            state.status = DescriptorGridJobStateKind::Failed;
-                            state.message = error;
-                            state.finished_at_ms = Some(current_time_millis());
-                        }
-                    });
-                    return;
-                }
-            };
+        let batch = match descriptor_source_row_batch(
+            &connection,
+            after_source_index,
+            DESCRIPTOR_GRID_BATCH_SIZE,
+        ) {
+            Ok(batch) => batch,
+            Err(error) => {
+                job.update(|state| {
+                    if state.status == DescriptorGridJobStateKind::Running {
+                        state.status = DescriptorGridJobStateKind::Failed;
+                        state.message = error;
+                        state.finished_at_ms = Some(current_time_millis());
+                    }
+                });
+                return;
+            }
+        };
         if batch.is_empty() {
             break;
         }
-        if let Err(error) = run_descriptor_grid_batch(&job, &database_path, &batch, &python_path) {
+        if let Some(last) = batch.last() {
+            after_source_index = last.source_index;
+        }
+        if let Err(error) = run_descriptor_grid_batch(&job, &mut connection, &batch, &python_path) {
             job.update(|state| {
                 if state.status == DescriptorGridJobStateKind::Running {
                     state.status = DescriptorGridJobStateKind::Failed;
@@ -784,7 +805,7 @@ fn run_descriptor_grid_job(
             });
             return;
         }
-        offset += batch.len();
+        processed += batch.len();
     }
     job.update(|state| {
         state.status = DescriptorGridJobStateKind::Completed;
@@ -802,7 +823,7 @@ fn normalize_row_indexes(row_indexes: Option<Vec<usize>>) -> Vec<usize> {
 
 fn run_descriptor_grid_batch(
     job: &Arc<DescriptorGridJob>,
-    database_path: &Path,
+    connection: &mut rusqlite::Connection,
     rows: &[GridDescriptorSourceRow],
     python_path: &Path,
 ) -> Result<(), String> {
@@ -818,8 +839,8 @@ fn run_descriptor_grid_batch(
     if payload_len > DESCRIPTOR_GRID_BATCH_INPUT_LIMIT_BYTES {
         if rows.len() > 1 {
             let midpoint = rows.len() / 2;
-            run_descriptor_grid_batch(job, database_path, &rows[..midpoint], python_path)?;
-            run_descriptor_grid_batch(job, database_path, &rows[midpoint..], python_path)?;
+            run_descriptor_grid_batch(job, connection, &rows[..midpoint], python_path)?;
+            run_descriptor_grid_batch(job, connection, &rows[midpoint..], python_path)?;
             return Ok(());
         }
         let row = rows
@@ -827,7 +848,7 @@ fn run_descriptor_grid_batch(
             .ok_or("Descriptor grid batch had no rows after payload size check")?;
         return store_descriptor_grid_values(
             job,
-            database_path,
+            connection,
             row.row_id,
             vec![descriptor_error_value(&format!(
                 "Descriptor source is too large: {payload_len} bytes, batch limit is {DESCRIPTOR_GRID_BATCH_INPUT_LIMIT_BYTES} bytes"
@@ -876,19 +897,19 @@ fn run_descriptor_grid_batch(
                     .unwrap_or("Descriptor calculation failed"),
             )]
         };
-        store_descriptor_grid_values(job, database_path, row_id, values)?;
+        store_descriptor_grid_values(job, connection, row_id, values)?;
     }
     Ok(())
 }
 
 fn store_descriptor_grid_values(
     job: &Arc<DescriptorGridJob>,
-    database_path: &Path,
+    connection: &mut rusqlite::Connection,
     row_id: i64,
     values: Vec<GridDescriptorValueInput>,
 ) -> Result<(), String> {
     let failed = descriptor_row_failed(&values);
-    replace_descriptor_values_in_database(database_path, row_id, &values)
+    replace_descriptor_values_in_database(connection, row_id, &values)
         .map_err(|error| format!("Descriptor storage failed: {error}"))?;
     job.update(|state| {
         state.processed_rows += 1;
