@@ -9,9 +9,13 @@
         "--config",
         "apps/desktop/vite.config.ts",
         "--host",
-        "127.0.0.1"
+        "127.0.0.1",
+        "--port",
+        "1451",
+        "--strictPort",
+        "false"
       ],
-      "port": 1420
+      "port": 1451
     }
   ]
 }
