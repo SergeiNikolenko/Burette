@@ -3799,9 +3799,24 @@ function StructureCompositionCard({
     return next;
   });
   const [query, setQuery] = useState("");
+  // The viewer owns visibility; the panel only remembers what it asked for, so
+  // the eye matches the last instruction the row gave.
+  const [hiddenKinds, setHiddenKinds] = useState<Set<CompositionComponentKind>>(new Set());
   useEffect(() => {
     setQuery("");
+    setHiddenKinds(new Set());
   }, [document.id]);
+  const toggleHidden = (kind: CompositionComponentKind, hide: boolean) => {
+    actions.runStructureViewerAction(document, kind === "water"
+      ? { type: hide ? "hide_waters" : "show_waters", label: hide ? "Hide water" : "Show water" }
+      : { type: hide ? "hide_components" : "show_components", label: hide ? "Hide" : "Show", kind });
+    setHiddenKinds((current) => {
+      const next = new Set(current);
+      if (hide) next.add(kind);
+      else next.delete(kind);
+      return next;
+    });
+  };
   const shares = useMemo(() => compositionShares(groups), [groups]);
   const needle = query.trim().toLowerCase();
   const visibleGroups = useMemo(() => groups
@@ -3840,6 +3855,11 @@ function StructureCompositionCard({
                   row={group.row}
                   tone={group.tone}
                   componentKind={compositionComponentKind(group.row.label)}
+                  hidden={(() => {
+                    const kind = compositionComponentKind(group.row.label);
+                    return kind ? hiddenKinds.has(kind) : undefined;
+                  })()}
+                  onToggleHidden={toggleHidden}
                   document={document}
                   actions={actions}
                   activeActionKey={activeActionKey}
@@ -3923,6 +3943,8 @@ function StructureActionRow({
   row,
   tone,
   componentKind,
+  hidden,
+  onToggleHidden,
   document,
   actions,
   activeActionKey,
@@ -3933,6 +3955,8 @@ function StructureActionRow({
   row: StructureSummaryRow;
   tone?: CompositionTone;
   componentKind?: CompositionComponentKind;
+  hidden?: boolean;
+  onToggleHidden?: (kind: CompositionComponentKind, hide: boolean) => void;
   document: ViewerDocument;
   actions: ShellActions;
   activeActionKey: string | null;
@@ -3943,11 +3967,14 @@ function StructureActionRow({
   // A tree row reads left to right - what it is, how big it is - and ends in the
   // colour it wears in the viewer, so the dot lines up with the row actions
   // rather than pushing the text off centre.
+  // The viewer's scene tree lists the same objects, so a row here is built from
+  // the same parts in the same order - colour bar, name, figure - and differs
+  // only in what the panel knows that the tree does not.
   const content = () => tone ? (
     <span className="structure-inspector-row-content" data-tree="true">
+      <span className="structure-inspector-row-bar" data-tone={tone} aria-hidden="true" />
       <span className="structure-inspector-row-label">{row.label}</span>
       <em title={row.value}>{compositionShortValue(row.label, row.value)}</em>
-      <span className="structure-inspector-row-dot" data-tone={tone} aria-hidden="true" />
     </span>
   ) : (
     <span className="structure-inspector-row-content">
@@ -4039,7 +4066,41 @@ function StructureActionRow({
       >
         {content()}
       </button>
+      {componentKind ? (
+        <span className="structure-inspector-row-actions">
+          <button
+            type="button"
+            className="structure-inspector-row-action"
+            aria-label={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
+            title={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
+            onClick={() => onToggleHidden?.(componentKind, !hidden)}
+          >
+            {hidden ? <EyeOffIcon /> : <EyeIcon />}
+          </button>
+          <button
+            type="button"
+            className="structure-inspector-row-action"
+            aria-label={`Remove ${row.label.toLowerCase()}`}
+            title={`Remove ${row.label.toLowerCase()}`}
+            onClick={() => runAction({ type: "remove_components", label: `Remove ${row.label.toLowerCase()}`, kind: componentKind })}
+          >
+            <TrashIcon />
+          </button>
+        </span>
+      ) : null}
     </div>
+  );
+}
+
+// Same glyph the scene tree uses for the same job, so the two rows read as one
+// control in two places.
+function TrashIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 6h18" />
+      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+    </svg>
   );
 }
 

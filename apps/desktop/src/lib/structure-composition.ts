@@ -424,8 +424,16 @@ function summarizeAtomRecords(records: AtomRecord[], modelCount: number): Struct
     {
       label: "Water",
       value: waterResidues > 0 ? `${waterResidues} ${plural(waterResidues, "molecule")} / ${waterAtoms} atoms` : "None detected",
-      action: waterResidues > 0 ? { type: "hide_waters", label: "Hide water" } : undefined,
-      secondaryAction: waterResidues > 0 ? { type: "show_waters", label: "Show water" } : undefined,
+      // Every other group selects when clicked; water used to hide instead, so
+      // the one row that looked identical behaved differently. Hiding lives with
+      // the other visibility controls now.
+      action: waterResidues > 0 ? {
+        type: "select_residues",
+        label: "Select water",
+        selector: { kind: "water" },
+        granularity: "residue",
+        mode: "replace",
+      } : undefined,
     },
     {
       label: "Ions",

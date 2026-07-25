@@ -3831,6 +3831,54 @@ img.radix-menu-item-icon {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
+/* Mirrors the viewer's scene tree row: a 2px colour bar ahead of the name, and
+   the same 20px actions revealed on hover. The two lists show the same objects,
+   so they are built from the same parts. */
+.structure-inspector-row-bar {
+  flex: 0 0 auto;
+  width: 2px;
+  height: 15px;
+  border-radius: 1px;
+  opacity: 0.45;
+  background: var(--text-faint);
+}
+.structure-inspector-row-bar[data-tone="polymer"] { background: #4e79a7; }
+.structure-inspector-row-bar[data-tone="ligand"] { background: #59a14f; }
+.structure-inspector-row-bar[data-tone="ion"] { background: #e8973a; }
+.structure-inspector-row-bar[data-tone="water"] { background: #9aa0a6; }
+.structure-inspector-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: 0 0 auto;
+}
+.structure-inspector-row-action {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0;
+  opacity: 0;
+  cursor: default;
+  transition: opacity 110ms ease, color 110ms ease, background 110ms ease;
+}
+.structure-brief-action-entry:hover .structure-inspector-row-action,
+.structure-brief-action-entry:focus-within .structure-inspector-row-action {
+  opacity: 1;
+}
+.structure-inspector-row-action:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.structure-inspector-row-action:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
+}
 .structure-inspector-row-dot {
   align-self: center;
   width: 10px;
