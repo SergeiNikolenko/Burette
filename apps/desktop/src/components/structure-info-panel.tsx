@@ -379,7 +379,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
           status={runningXtbJob ? `Running ${operationTitle(runningXtbJob.operation).toLowerCase()}` : xtbStatusLine(xtbStatus, isBrowserDev)}
           open={xtbOpen}
           onToggle={() => setXtbOpen((open) => !open)}
-          summary={xtbSettingsSummary(xtbSettings)}
+          summary={xtbSettingsModified(xtbSettings) ? "xTB settings changed from the defaults" : ""}
           summaryTooltip="Hamiltonian, convergence, charge, spin, solvation, and parallelism for xTB calculations."
           summaryModified={xtbSettingsModified(xtbSettings)}
           onReset={xtbSettingsModified(xtbSettings) ? () => actions.setXtbSettings(defaultXtbSettings) : undefined}
@@ -395,22 +395,31 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
             </>
           ) : jobScopedToSelection ? "Scope: selected object" : undefined}
           notice={(
-            <EngineToolNotice
-              tools={[...oversizedNotice, {
-                name: "xTB",
-                installed: xtbStatus?.installed !== false,
-                hint: xtbStatus?.installHint ?? "",
-                install: () => void actions.installXtb(),
-              }]}
-              onCheck={() => void actions.checkXtbStatus()}
-            />
+            <>
+              {/* The atom cap describes the scope, not an install problem, so it
+                  is a plain alert - it has nothing for "Check again" to recheck. */}
+              {oversizedNotice.map((notice) => (
+                <Alert key={notice.name} className="structure-inspector-engine-notice">
+                  <AlertDescription>{notice.hint}</AlertDescription>
+                </Alert>
+              ))}
+              <EngineToolNotice
+                tools={[{
+                  name: "xTB",
+                  installed: xtbStatus?.installed !== false,
+                  hint: xtbStatus?.installHint ?? "",
+                  install: () => void actions.installXtb(),
+                }]}
+                onCheck={() => void actions.checkXtbStatus()}
+              />
+            </>
           )}
         >
           <div className="structure-inspector-tools">
             <InspectorToolRow
               name="xTB"
               version={shortXtbVersion(xtbStatus?.version)}
-              detail={runningXtbJob ? `${operationTitle(runningXtbJob.operation)} · ${runningXtbJob.inputLabel}` : "Semiempirical quantum chemistry"}
+              detail={runningXtbJob ? `${operationTitle(runningXtbJob.operation)} · ${runningXtbJob.inputLabel}` : xtbSettingsSummary(xtbSettings)}
               state={runningXtbJob ? "running" : xtbMissing ? "missing" : "ready"}
               primaryLabel="Optimize"
               primaryDisabled={xtbBlocked}
@@ -1249,7 +1258,7 @@ function ConformerToolRows({
       <div className="structure-inspector-tools">
         <InspectorToolRow
           name="CREST"
-          detail={crestDisabled ? crestUnavailableDetail : "Conformer sampling"}
+          detail={crestDisabled ? crestUnavailableDetail : conformerSettingsSummary(settings)}
           state={status?.crest.installed === false ? "missing" : "ready"}
           primaryLabel="Sample"
           primaryDisabled={crestDisabled}
@@ -1289,9 +1298,6 @@ function ConformerToolRows({
             { kind: "item", id: "prism-jobs", text: "Run history", action: () => actions.toggleDockTab("bottom", "jobs") },
           ]}
         />
-      </div>
-      <div className="structure-inspector-xtb-summary" data-xtb-tooltip="Method, sampling mode, charge, spin and solvent for CREST runs.">
-        <span>{conformerSettingsSummary(settings)}</span>
       </div>
       {settingsPanel ? <ConformerInlineSettings panel={settingsPanel} settings={settings} status={status} actions={actions} /> : null}
     </>
@@ -2071,19 +2077,23 @@ function InspectorEngineCard({
         <span>{status}</span>
       </div>
       <CollapsibleContent className="structure-inspector-engine-body">
-        <div
-          className="structure-inspector-xtb-summary"
-          data-modified={summaryModified || undefined}
-          data-xtb-tooltip={summaryTooltip}
-        >
-          <span>{summary}</span>
-          {onReset ? (
-            <Button type="button" variant="outline" size="xs" onClick={onReset}>
-              Reset
-              <ShortcutTooltip label="Restore the default settings." />
-            </Button>
-          ) : null}
-        </div>
+        {/* Each tool row already carries its own settings line, so the card only
+            keeps this one when it has something the rows do not say. */}
+        {summary ? (
+          <div
+            className="structure-inspector-xtb-summary"
+            data-modified={summaryModified || undefined}
+            data-xtb-tooltip={summaryTooltip}
+          >
+            <span>{summary}</span>
+            {onReset ? (
+              <Button type="button" variant="outline" size="xs" onClick={onReset}>
+                Reset
+                <ShortcutTooltip label="Restore the default settings." />
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         {scope ? (
           <div className="structure-brief-notes">
             <span>{scope}</span>
