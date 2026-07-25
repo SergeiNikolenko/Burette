@@ -2747,8 +2747,10 @@ img.radix-menu-item-icon {
   align-items: baseline;
 }
 /* The count beside a section title is a chip, not a stray grey word: with a
-   surface behind it the eye reads title and count as one header row. */
-.structure-inspector-section-header span {
+   surface behind it the eye reads title and count as one header row.
+   Direct child only - as a descendant rule this also hit the tooltip span
+   inside the title button and clamped it to the chip's width. */
+.structure-inspector-section-header > span {
   min-width: 0;
   max-width: 160px;
   border-radius: 7px;
@@ -3176,13 +3178,27 @@ img.radix-menu-item-icon {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+/* Settings belong to the tool row that opened them, so they read as a drawer
+   nested inside the section rather than a slab bolted under it. */
 .structure-inspector-xtb-settings {
   min-width: 0;
-  border-top: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line-subtler));
-  margin-top: 2px;
-  padding-top: 8px;
   display: grid;
   gap: 7px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 9px;
+  background: var(--surface-subtle);
+  margin-top: 2px;
+  padding: 8px;
+}
+/* The section title above is the heading; this one names a drawer inside it and
+   sits a step down, matching the group headings used in menus. */
+.structure-inspector-xtb-settings .structure-inspector-section-header h4 {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 .structure-inspector-xtb-settings-title {
   min-width: 0;

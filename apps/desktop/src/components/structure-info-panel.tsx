@@ -3341,59 +3341,64 @@ function xtbCommandSummary(command: string[]) {
 
 function xtbArtifactMenuItems(artifact: XtbArtifact, actions: ShellActions): MenuItemSpec[] {
   return [
+    { kind: "label", id: "artifact-open", text: "Open" },
     {
       kind: "item",
       id: "open-artifact-file",
-      text: "Open as file",
-      detail: artifact.title,
+      text: "As file",
+      tooltip: artifact.title,
       action: () => void actions.openPaths([artifact.path]),
     },
     {
       kind: "item",
       id: "open-artifact-text",
-      text: "Open as text",
-      detail: artifact.title,
+      text: "As text",
+      tooltip: artifact.title,
       action: () => void actions.openTextPaths([artifact.path]),
     },
+    { kind: "separator" },
     {
       kind: "item",
       id: "copy-artifact-path",
       text: "Copy path",
-      detail: artifact.path,
+      tooltip: artifact.path,
       action: () => void actions.copyPath(artifact.path, "xTB artifact"),
     },
     {
       kind: "item",
       id: "reveal-artifact",
       text: "Reveal file",
-      detail: artifact.title,
+      tooltip: artifact.title,
       action: () => void actions.revealPath(artifact.path, "xTB artifact"),
     },
   ];
 }
 
+// Each entry used to print its filename on a second line, which widened the
+// menu to fit a path and buried the three verbs. The filename is the tooltip.
 function xtbResultMenuItems(result: XtbRunResult, actions: ShellActions): MenuItemSpec[] {
   return [
+    { kind: "label", id: "result-open", text: "Open" },
     {
       kind: "item",
       id: "open-primary-result",
-      text: "Open result as file",
-      detail: result.primaryOpenPath?.split(/[\\/]/u).pop() ?? "No primary result",
+      text: "Result as file",
+      tooltip: result.primaryOpenPath?.split(/[\\/]/u).pop() ?? "No primary result",
       disabled: !result.primaryOpenPath,
       action: result.primaryOpenPath ? () => void actions.openPaths([result.primaryOpenPath!]) : undefined,
     },
     {
       kind: "item",
       id: "open-report",
-      text: "Open report",
-      detail: result.reportPath.split(/[\\/]/u).pop() ?? "xtb-report.md",
+      text: "Report",
+      tooltip: result.reportPath.split(/[\\/]/u).pop() ?? "xtb-report.md",
       action: () => void actions.openTextPaths([result.reportPath]),
     },
     {
       kind: "item",
       id: "open-log",
-      text: "Open log",
-      detail: result.logPath.split(/[\\/]/u).pop() ?? "xtb.log",
+      text: "Log",
+      tooltip: result.logPath.split(/[\\/]/u).pop() ?? "xtb.log",
       action: () => void actions.openTextPaths([result.logPath]),
     },
     { kind: "separator" },
@@ -3401,7 +3406,7 @@ function xtbResultMenuItems(result: XtbRunResult, actions: ShellActions): MenuIt
       kind: "item",
       id: "copy-workdir",
       text: "Copy work dir",
-      detail: result.workDir,
+      tooltip: result.workDir,
       action: () => void actions.copyPath(result.workDir, "xTB work dir"),
     },
   ];
