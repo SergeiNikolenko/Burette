@@ -383,10 +383,12 @@ function applyAgentHighlights(root: HTMLElement | null, indexes: number[]) {
 export function KetcherEditor({
   onReady,
   onStatus,
+  onOpenFile,
   onLoadError,
 }: {
   onReady: (api: KetcherEditorApi) => void;
   onStatus: (status: string) => void;
+  onOpenFile: () => void;
   onLoadError?: (error: Error) => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -461,8 +463,16 @@ export function KetcherEditor({
     const root = rootRef.current;
     if (!runtime || !root) return;
 
+    const interceptFileOpen = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target.closest("[data-testid='open-file-button']") : null;
+      if (!target || !root.contains(target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onOpenFile();
+    };
     const suppress = () => suppressFilledKetcherSelectionPaths(root);
     suppress();
+    root.addEventListener("click", interceptFileOpen, true);
 
     const observer = new MutationObserver(suppress);
     observer.observe(root, {
@@ -476,10 +486,11 @@ export function KetcherEditor({
     resizeObserver.observe(root);
 
     return () => {
+      root.removeEventListener("click", interceptFileOpen, true);
       observer.disconnect();
       resizeObserver.disconnect();
     };
-  }, [runtime]);
+  }, [onOpenFile, runtime]);
 
   if (loadError) {
     throw loadError;
