@@ -1522,37 +1522,8 @@ kbd span { margin-left: 2px; }
 }
 .pin-hit:hover,
 .pin-hit.pinned { color: var(--text-muted); }
-.radix-menu {
-  z-index: 1000;
-  min-width: 184px;
-  max-width: min(320px, calc(100vw - 16px));
-  max-height: min(420px, calc(100vh - 16px));
-  overflow: auto;
-  padding: 6px;
-  border: 0;
-  border-radius: 9px;
-  background: var(--menu-surface);
-  color: var(--text-primary);
-  box-shadow: 0 16px 42px rgb(0 0 0 / 0.22);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  font-family: var(--ui-font);
-  font-size: 13px;
-  line-height: 1.2;
-  letter-spacing: 0;
-}
-.radix-menu-item {
-  min-height: 30px;
-  border-radius: 7px;
-  color: inherit;
-  padding: 5px 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  outline: none;
-  user-select: none;
-}
+/* The menu surface, rows and separators come from the shadcn menu components.
+   What stays here is the item's own two-line body, which shadcn does not model. */
 .radix-menu-item-body {
   min-width: 0;
   display: inline-flex;
@@ -1600,39 +1571,8 @@ img.radix-menu-item-icon {
   color: var(--text-faint);
   font-size: 11px;
 }
-.radix-menu-item kbd {
-  flex: 0 0 auto;
-  color: var(--text-faint);
-  font-size: 11px;
-}
-.radix-menu-item[data-highlighted] {
-  background: var(--surface-hover);
-  color: var(--text-primary);
-}
-.radix-menu-item[data-disabled] {
-  color: var(--text-faint);
-  opacity: 0.58;
-}
-.radix-menu-separator {
-  height: 1px;
-  margin: 5px 8px;
-  background: var(--line-subtler);
-}
-.open-editor-menu-content {
-  min-width: 224px;
-  max-width: min(268px, calc(100vw - 16px));
-  padding: 7px;
-  border: 1px solid color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 28%), transparent);
-  border-radius: 14px;
-  background: var(--menu-surface);
-  box-shadow: 0 22px 62px rgb(0 0 0 / 0.36), inset 0 1px 0 rgb(255 255 255 / 0.06);
-}
-.open-editor-menu-content .radix-menu-item {
-  min-height: 36px;
-  border-radius: 9px;
-  padding: 5px 10px;
-  gap: 12px;
-}
+/* The surface itself is the shared shadcn menu; this class only scopes the
+   slightly larger app icons and labels that the editor targets need. */
 .open-editor-menu-content .radix-menu-item-body {
   gap: 10px;
 }
@@ -1656,9 +1596,6 @@ img.radix-menu-item-icon {
 .open-editor-menu-content .radix-menu-item-detail {
   font-size: 11px;
   line-height: 1.1;
-}
-.open-editor-menu-content .radix-menu-separator {
-  margin: 6px 10px;
 }
 .radix-context-menu-trigger {
   position: fixed;

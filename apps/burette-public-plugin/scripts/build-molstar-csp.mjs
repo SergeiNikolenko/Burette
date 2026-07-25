@@ -12,10 +12,12 @@ const SOURCE_ROOT = path.join(
 );
 const OUTPUT_ROOT = path.join(APP_ROOT, "public/burette-viewer");
 
+const MOLSTAR_VERSION = require("molstar/package.json").version;
+
 const EXPECTED_JAVASCRIPT_SHA256 =
-  "aa6ffbbcf6f544755d3703144f8f30c5cf2183216a2162e5fd6349f03d2c57d9";
+  "5567eb19fa8e7a7b3b161d4b96807c4db244cecd2f3e7c87f99c052b8b5b5b30";
 const EXPECTED_CSS_SHA256 =
-  "9269edea08fd43848229b971d8102df163858a76417c6823d987b8e25df127f9";
+  "5b68ceb6d3642549b4e9b2c071e58e41b98a5350ae269180587b39da86925d55";
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -45,14 +47,14 @@ async function main() {
   let javascript = javascriptSource;
   javascript = replaceExactlyOnce(
     javascript,
-    'new Function("body","return function "+T+`() {\n    "use strict";    return body.apply(this, arguments);\n};\n`)(M)',
-    "function(){return M.apply(this,arguments)}",
+    'new Function("body","return function "+P+`() {\n    "use strict";    return body.apply(this, arguments);\n};\n`)(k)',
+    "function(){return k.apply(this,arguments)}",
     "named-function",
   );
   javascript = replaceExactlyOnce(
     javascript,
-    'new Function("dynCall","rawFunction",Be+`};\n`)(W,M)',
-    "function(dynCall,rawFunction){return function(){return dynCall.apply(null,[rawFunction].concat(Array.prototype.slice.call(arguments)))}}(W,M)",
+    'new Function("dynCall","rawFunction",ye+`};\n`)(q,k)',
+    "function(dynCall,rawFunction){return function(){return dynCall.apply(null,[rawFunction].concat(Array.prototype.slice.call(arguments)))}}(q,k)",
     "dynamic-call",
   );
   javascript = replaceExactlyOnce(
@@ -89,7 +91,7 @@ async function main() {
     writeFile(path.join(OUTPUT_ROOT, "molstar.js"), javascript),
     writeFile(path.join(OUTPUT_ROOT, "molstar.css"), css),
   ]);
-  console.log("Generated CSP-compatible Mol* 5.7.0 assets.");
+  console.log(`Generated CSP-compatible Mol* ${MOLSTAR_VERSION} assets.`);
 }
 
 await main();
