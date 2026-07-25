@@ -21,6 +21,8 @@ import { useSourceEditing } from "../lib/source-editing/context";
 import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
+import { Button } from "@/components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { ChemicalSpacePanel } from "./chemical-space-panel";
 import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
@@ -308,9 +310,11 @@ function DockPanelContent({
       );
     }
     return (
-      <div className="dock-content dock-content-empty">
-        <div className="dock-empty dock-empty-large">Open a spectrum to inspect peaks</div>
-      </div>
+      <DockEmptyState
+        title="No spectrum open"
+        description="Open a spectrum file to inspect its peaks here."
+        action={{ label: "Open file", run: () => void actions.chooseFiles() }}
+      />
     );
   }
   if (activeTabKind === "files") {
@@ -346,17 +350,20 @@ function DockPanelContent({
       );
     }
     return (
-      <div className="dock-content dock-content-empty">
-        <div className="dock-empty dock-empty-large">Drop a structure to open it here</div>
-      </div>
+      <DockEmptyState
+        title="No file here yet"
+        description="Drop a structure onto this panel, or open one to view it alongside the active tab."
+        action={{ label: "Open file", run: () => void actions.chooseFiles() }}
+      />
     );
   }
   if (activeTabKind === "text") {
     if (area === "right" && activePageKind === "ketcher") {
       return (
-        <div className="dock-content dock-content-empty">
-          <div className="dock-empty dock-empty-large">Ketcher text is available from the bottom Export panel</div>
-        </div>
+        <DockEmptyState
+          title="Sketch text lives in Export"
+          description="While Ketcher is open, its molfile is available from the Export panel in the bottom dock."
+        />
       );
     }
     if (dockTextDocument) {
@@ -384,18 +391,22 @@ function DockPanelContent({
       return <XyzrenderDockPanel document={xyzrenderDocument} actions={actions} />;
     }
     return (
-      <div className="dock-content dock-content-empty">
-        <div className="dock-empty dock-empty-large">xyzrender controls are available for xyzr previews</div>
-      </div>
+      <DockEmptyState
+        title="No xyzr preview open"
+        description="Open an .inp or .xyzr file to change its presets, van der Waals surface and field settings."
+        action={{ label: "Open file", run: () => void actions.chooseFiles() }}
+      />
     );
   }
   if (activeTabKind === "story") {
     return state.structureStory
       ? <StructureStoryPanel story={state.structureStory} />
       : (
-          <div className="dock-content dock-content-empty">
-            <div className="dock-empty dock-empty-large">Open Story from a structure sequence</div>
-          </div>
+          <DockEmptyState
+            title="No story yet"
+            description="Open a sequence of structures to lay them out as a story."
+            action={{ label: "Open structures", run: () => void actions.chooseFiles() }}
+          />
         );
   }
   if (activeTabKind === "inspector") {
@@ -468,27 +479,24 @@ function DockPanelContent({
       </div>
     );
   }
-  if (activeTabKind === "logs") {
+  // Logs and Diagnostics were two tabs of two lines and one button each, and
+  // Diagnostics could not even be opened from the interface. They are one.
+  if (activeTabKind === "logs" || activeTabKind === "diagnostics") {
     return (
       <div className="dock-content">
         <Metric label="Last status" value={state.status?.message ?? "No status yet"} />
-        <button type="button" className="dock-action" onClick={() => void actions.openLogs()}>
-          Open logs folder
-        </button>
-        <DockDropList items={dockDrops} actions={actions} emptyLabel="No log inputs" />
-      </div>
-    );
-  }
-  if (activeTabKind === "diagnostics") {
-    return (
-      <div className="dock-content dock-content-grid">
         <Metric label="Runtime" value={state.buildInfo.isAgentShell ? "Agent shell" : state.buildInfo.isBrowserDev ? "Browser dev" : "Desktop"} />
         <Metric label="Build" value={state.buildInfo.version} />
         <Metric label="Flavor" value={state.buildInfo.flavor ?? "Release"} />
-        <button type="button" className="dock-action" onClick={() => void actions.exportDiagnostics()}>
-          Export diagnostics
-        </button>
-        <DockDropList items={dockDrops} actions={actions} emptyLabel="No diagnostic inputs" />
+        <div className="dock-action-row">
+          <Button type="button" variant="secondary" size="sm" onClick={() => void actions.openLogs()}>
+            Open logs folder
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void actions.exportDiagnostics()}>
+            Export diagnostics
+          </Button>
+        </div>
+        <DockDropList items={dockDrops} actions={actions} emptyLabel="No log inputs" />
       </div>
     );
   }
@@ -497,6 +505,40 @@ function DockPanelContent({
       <Metric label={area === "right" ? "Review context" : "Review queue"} value={activeDocument?.title ?? "None"} />
       <Metric label="Dropped inputs" value={String(dockDrops.length)} />
       <DockDropList items={dockDrops} actions={actions} emptyLabel="No review inputs" />
+    </div>
+  );
+}
+
+// Every idle tab used to be one grey sentence centred on an empty panel, with
+// nothing to act on and no hint of what the tab is for. One shape covers them
+// all: what it is, why it is empty, and the action that fills it.
+function DockEmptyState({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: { label: string; run: () => void };
+}) {
+  return (
+    <div className="dock-content dock-content-empty">
+      <Empty className="dock-empty-state">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
+              <path d="M3 3.5h10v9H3zM3 6.5h10" />
+            </svg>
+          </EmptyMedia>
+          <EmptyTitle>{title}</EmptyTitle>
+          <EmptyDescription>{description}</EmptyDescription>
+        </EmptyHeader>
+        {action ? (
+          <Button type="button" variant="secondary" size="sm" onClick={action.run}>
+            {action.label}
+          </Button>
+        ) : null}
+      </Empty>
     </div>
   );
 }

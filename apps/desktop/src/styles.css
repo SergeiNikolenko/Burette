@@ -3741,6 +3741,25 @@ img.radix-menu-item-icon {
 .structure-inspector-tool-menu-button {
   padding-inline: 6px;
 }
+.dock-empty-state {
+  gap: 10px;
+  padding: 26px 18px;
+}
+.dock-empty-state [data-slot="empty-title"] {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.dock-empty-state [data-slot="empty-description"] {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.dock-empty-state [data-slot="empty-icon"][data-variant="icon"] {
+  border: 1px solid var(--line-subtler);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+}
 .structure-inspector-empty {
   border: 1px solid var(--line-subtler);
   border-radius: var(--control-radius);
