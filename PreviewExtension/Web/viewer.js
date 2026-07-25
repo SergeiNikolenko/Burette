@@ -558,6 +558,9 @@
     if (type === 'show_components') {
       return window.BuretteSceneActions?.showComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showComponents is unavailable.');
     }
+    if (type === 'remove_components') {
+      return window.BuretteSceneActions?.removeComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.removeComponents is unavailable.');
+    }
     if (type === 'select_residues') {
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
       const result = await window.BuretteAgent.run({
@@ -12119,6 +12122,26 @@
     return { ok: true, command: 'hide_components', result: { kind, componentCount: components.length } };
   }
 
+  // Hiding drops the representations but keeps the component; removing takes the
+  // component out of the scene tree entirely, the way the tree's own bin button
+  // does. Only whole kinds can go: a chain or a single ligand instance is a
+  // sub-selection, not a state cell there is anything to delete.
+  async function removeMolstarComponents(action = {}) {
+    const kind = normalizeSceneComponentKind(action.kind);
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    if (!plugin?.managers?.structure?.hierarchy?.remove) {
+      return sceneActionFailure('remove_components', 'NOT_IMPLEMENTED', 'Mol* structure hierarchy manager is unavailable.');
+    }
+    const components = molstarComponentsByKind(viewer, kind);
+    if (!components.length) {
+      return { ok: true, command: 'remove_components', result: { kind, componentCount: 0, note: `No ${kind} components were found.` } };
+    }
+    await plugin.managers.structure.hierarchy.remove(components);
+    scheduleSceneTreeRender();
+    return { ok: true, command: 'remove_components', result: { kind, componentCount: components.length } };
+  }
+
   async function showMolstarComponents(action = {}) {
     const kind = normalizeSceneComponentKind(action.kind);
     if (kind === 'water') return showMolstarWaters();
@@ -12276,6 +12299,7 @@
   window.BuretteSceneActions = {
     hideComponents: hideMolstarComponents,
     showComponents: showMolstarComponents,
+    removeComponents: removeMolstarComponents,
     hideWaters: hideMolstarWaters,
     showWaters: showMolstarWaters,
     showSurface: showMolstarSurface,
