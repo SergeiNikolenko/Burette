@@ -1334,6 +1334,8 @@ function ConformerToolRows({
     : oversized
       ? "Selection is too large for a direct run"
       : "Open or select a single small molecule";
+  const updateConformerSetting = <K extends keyof ConformerSettings>(key: K, value: ConformerSettings[K]) =>
+    actions.setConformerSettings({ ...settings, [key]: value });
   return (
     <>
       {/* The atom cap is one fact about the scope, not one per engine, so the
@@ -1352,13 +1354,56 @@ function ConformerToolRows({
           primaryDisabled={crestDisabled}
           onPrimary={() => void actions.runConformerOperation("crest-generate", document, selectedConformerAction)}
           menu={[
+            { kind: "label", id: "crest-sampling", text: "Sampling" },
             {
               kind: "item",
               id: "crest-generate",
               text: "Sample conformers",
-              detail: "Sample low-energy conformers with CREST.",
+              tooltip: "Sample low-energy conformers with CREST.",
               disabled: crestDisabled,
               action: () => void actions.runConformerOperation("crest-generate", document, selectedConformerAction),
+            },
+            { kind: "separator" },
+            { kind: "label", id: "crest-parameters", text: "Parameters" },
+            {
+              kind: "select",
+              id: "crest-method",
+              label: "Method",
+              value: settings.method,
+              options: ["gfn2", "gfn1", "gfn0", "gfnff"],
+              optionLabels: XTB_METHOD_LABELS,
+              action: (value) => updateConformerSetting("method", value as ConformerSettings["method"]),
+            },
+            {
+              kind: "select",
+              id: "crest-sampling-mode",
+              label: "Sampling",
+              value: settings.samplingMode,
+              options: ["auto", "normal", "quick", "squick", "mquick"],
+              optionLabels: CONFORMER_SAMPLING_LABELS,
+              action: (value) => updateConformerSetting("samplingMode", value as ConformerSettings["samplingMode"]),
+            },
+            {
+              kind: "number",
+              id: "crest-energy-window",
+              label: "Energy window",
+              value: settings.energyWindowKcalMol,
+              min: 1,
+              max: 60,
+              step: 0.5,
+              unit: "kcal/mol",
+              action: (value) => updateConformerSetting("energyWindowKcalMol", value),
+            },
+            {
+              kind: "number",
+              id: "crest-rmsd",
+              label: "RMSD threshold",
+              value: settings.rmsdThresholdAngstrom,
+              min: 0.01,
+              max: 2,
+              step: 0.005,
+              unit: "Å",
+              action: (value) => updateConformerSetting("rmsdThresholdAngstrom", value),
             },
             { kind: "separator" },
             { kind: "item", id: "crest-settings", text: "Settings…", action: () => setSettingsPanel((current) => current === "crest" ? null : "crest") },
@@ -1377,9 +1422,28 @@ function ConformerToolRows({
               kind: "item",
               id: "prism-prune",
               text: "Prune ensemble",
-              detail: "Prune duplicate or redundant conformers.",
+              tooltip: "Prune duplicate or redundant conformers.",
               disabled: prismDisabled,
               action: () => void actions.runConformerOperation("prism-prune", document),
+            },
+            {
+              kind: "checkbox",
+              id: "prism-energy-sort",
+              text: "Sort by energy",
+              checked: settings.prismEnergySort,
+              action: (checked) => updateConformerSetting("prismEnergySort", checked),
+            },
+            { kind: "separator" },
+            {
+              kind: "number",
+              id: "prism-timeout",
+              label: "Timeout",
+              value: settings.prismTimeoutSeconds,
+              min: 5,
+              max: 86400,
+              step: 5,
+              unit: "s",
+              action: (value) => updateConformerSetting("prismTimeoutSeconds", value),
             },
             { kind: "separator" },
             { kind: "item", id: "prism-settings", text: "Settings…", action: () => setSettingsPanel((current) => current === "prism" ? null : "prism") },
