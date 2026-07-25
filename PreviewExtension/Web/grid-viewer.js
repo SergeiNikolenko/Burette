@@ -498,6 +498,10 @@
         postChemicalSpaceColumns(body.requestId);
         return;
       }
+      if (body.type === 'chemicalSpaceRequestIndexState') {
+        postChemicalSpaceIndexState(body.requestId);
+        return;
+      }
       if (body.type === 'chemicalSpaceRequestColumnValues') {
         postChemicalSpaceColumnValues(body.requestId, body.columnId);
         return;
@@ -4981,6 +4985,19 @@
       columns.push({ id: `prop:${key}`, label: key });
     }
     post('chemicalSpaceColumns', '', { requestId: String(requestId || ''), columns });
+  }
+
+  // Chemical Space needs to know whether the collection is still being indexed:
+  // the backend refuses to run compute until it is complete, and without this the
+  // panel showed that refusal as a fatal error.
+  function postChemicalSpaceIndexState(requestId) {
+    post('chemicalSpaceIndexState', '', {
+      requestId: String(requestId || ''),
+      recordsIndexed: Number(state.recordsIndexed || state.rows.length || 0),
+      recordsTotal: Number(state.recordsTotalHint ?? state.totalRows ?? 0),
+      indexing: state.indexing === true,
+      indexReady: state.indexReady !== false,
+    });
   }
 
   function postChemicalSpaceColumnValues(requestId, columnId) {

@@ -302,4 +302,20 @@ assert.match(representativeExport, /renameat_with\(/);
 assert.match(representativeExport, /RenameFlags::NOREPLACE/);
 assert.match(representativeExport, /table_only_record_count/);
 
+// Chemical Space must not submit compute while the grid is still indexing: the
+// backend refuses those submissions, and the panel used to render that refusal as
+// a fatal error with a Retry button that could only fail again. Large collections
+// additionally wait for an explicit confirmation instead of embedding hundreds of
+// thousands of molecules just because a tab was opened.
+assert.match(chemicalSpacePanel, /if \(indexing \|\| needsConfirmation\) return;/);
+assert.match(chemicalSpacePanel, /const needsConfirmation = !indexing && recordCount > AUTO_RUN_RECORD_LIMIT && !confirmedLargeRun;/);
+assert.match(chemicalSpacePanel, /requestChemicalSpaceIndexState\(documentId, controller\.signal\)/);
+assert.match(chemicalSpacePanel, /actionLabel="Calculate chemical space"/);
+assert.match(chemicalSpacePanel, /estimatedEmbeddingDuration\(recordCount\)/);
+assert.match(chemicalSpacePanel, /rememberThroughput\(next\.sourceRecordIds\.length/);
+
+const gridViewerSource = source("PreviewExtension/Web/grid-viewer.js");
+assert.match(gridViewerSource, /chemicalSpaceRequestIndexState/);
+assert.match(gridViewerSource, /function postChemicalSpaceIndexState\(requestId\)/);
+
 console.log("cluster workflow contract tests passed");
