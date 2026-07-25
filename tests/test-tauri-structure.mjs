@@ -1514,16 +1514,20 @@ assert.match(previewGridStore, /pub\(crate\) fn append_text/);
 assert.match(previewGridStore, /fn append_grid_text/);
 assert.match(previewGridStore, /fn fetch_page/);
 assert.match(previewGridStore, /query\.limit\.clamp\(1, 240\)/);
-assert.match(previewRuntimeGrid, /use base64::Engine;/);
-assert.match(previewRuntimeGrid, /let rdkit_wasm = runtime\.join\("RDKit_minimal\.wasm"\)/);
-assert.match(previewRuntimeGrid, /fs::copy\(assets\.join\("rdkit"\)\.join\("RDKit_minimal\.wasm"\), &rdkit_wasm\)/);
-assert.match(previewRuntimeGrid, /window\.BuretteRDKitWasmBase64 =/);
-assert.match(previewRuntimeGrid, /let rdkit_wasm_path = asset_url\(&rdkit_wasm\)/);
+// The wasm and its base64 copy come from the shared asset directory, written once
+// per app version by copy_web_assets behind a fingerprint check. Copying and
+// re-encoding them per runtime cost ~16 MiB of writes on every document open.
+assert.doesNotMatch(previewRuntimeGrid, /use base64::Engine;/);
+assert.doesNotMatch(previewRuntimeGrid, /fs::copy\(assets\.join\("rdkit"\)/);
+assert.match(
+  previewRuntimeGrid,
+  /let rdkit_wasm_path = versioned_asset_url\(&assets\.join\("rdkit"\)\.join\("RDKit_minimal\.wasm"\)\)/,
+);
+assert.match(previewRuntimeGrid, /let rdkit_wasm_js = versioned_asset_url\(&assets\.join\("rdkit-wasm-data\.js"\)\)/);
 assert.match(previewRuntimeGrid, /"rdkitWasmPath": rdkit_wasm_path/);
 assert.match(previewRuntimeGrid, /const GRID_RUNTIME_CSP/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
 assert.match(previewRuntimeGrid, /<meta http-equiv="Content-Security-Policy" content="\{GRID_RUNTIME_CSP\}"/);
-assert.match(previewRuntimeGrid, /runtime\.join\("preview-rdkit-wasm\.js"\)/);
 assert.match(previewRuntimeGrid, /<script src="\{rdkit_wasm_js\}"><\/script>/);
 assert.match(previewRuntimeGrid, /assets\.join\("openchemlib"\)\.join\("openchemlib\.js"\)/);
 assert.match(previewRuntimeGrid, /<script src="\{openchemlib_js\}"><\/script>/);
