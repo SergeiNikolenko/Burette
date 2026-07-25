@@ -2592,7 +2592,7 @@ assert.match(structureInfoPanel, /function readSdfContextColorPreference\(docume
 assert.match(structureInfoPanel, /function writeSdfContextColorPreference\(document: ViewerDocument, value: SdfContextColor\)/);
 assert.match(structureInfoPanel, /function StructurePoseControlsCard/);
 assert.match(structureInfoPanel, /!hostedMcpWidget && !trajectoryDocument/);
-assert.match(structureInfoPanel, /!trajectoryDocument \? \(\s*<StructurePoseControlsCard/);
+assert.match(structureInfoPanel, /!trajectoryDocument \|\| virtualScene \? \(\s*<StructurePoseControlsCard/);
 assert.match(structureInfoPanel, /trajectory-smoothing-chart-playhead/);
 assert.match(structureInfoPanel, /Playing · /);
 assert.match(structureInfoPanel, /TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO/);

@@ -490,7 +490,10 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
               playback={trajectoryPlayback}
             />
           ) : null}
-          {!trajectoryDocument ? (
+          {/* A docking scene counts as a trajectory because of its ligand list,
+              but the smoothing card is skipped for virtual scenes - which left
+              those scenes with no pose control at all. */}
+          {!trajectoryDocument || virtualScene ? (
             <StructurePoseControlsCard
               document={document}
               controls={poseControls}
@@ -1518,6 +1521,41 @@ function StructurePoseControlsCard({
     actions.runStructureViewerAction(document, action);
     if (key) setActiveActionKey(key);
   };
+  // A docking scene knows which file each pose came from, and that name is the
+  // only thing distinguishing one pose from another; a multi-model file has
+  // nothing but the index, so it keeps the numbered grid.
+  // A scene is the receptor followed by its ligands, so the names line up with
+  // the actions only once the receptor is counted in.
+  const poseNames = document.dockingRequest
+    ? [document.dockingRequest.receptorPath, ...document.dockingRequest.ligandPaths]
+    : [];
+  if (poseNames.length > 0 && poseNames.length === controls.actions.length) {
+    return (
+      <InspectorSection className="structure-inspector-pose-controls" title={controls.title} detail={controls.detail}>
+        <div className="structure-inspector-pose-list" role="group" aria-label={`${controls.controlLabel} controls`}>
+          {controls.actions.map((action, index) => {
+            const key = selectionActionKey(document, action);
+            const selected = key !== null && key === activeActionKey;
+            const name = fileName(poseNames[index]);
+            return (
+              <button
+                key={`${action.type}:${action.index}`}
+                type="button"
+                className="structure-inspector-pose-row"
+                data-selected={selected || undefined}
+                aria-pressed={selected}
+                title={name}
+                onClick={() => runAction(action)}
+              >
+                <span className="structure-inspector-pose-rank">{action.index + 1}</span>
+                <span className="structure-inspector-pose-name">{name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </InspectorSection>
+    );
+  }
   return (
     <InspectorSection className="structure-inspector-pose-controls" title={controls.title} detail={controls.detail}>
       <div className="structure-inspector-pose-options" role="group" aria-label={`${controls.controlLabel} controls`}>

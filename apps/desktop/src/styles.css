@@ -3761,6 +3761,56 @@ img.radix-menu-item-icon {
 .dock-job-menu-button {
   padding-inline: 6px;
 }
+/* Docking poses are told apart by the file each came from, so they are a list
+   of names rather than a grid of numbers; the grid stays for models, which
+   have nothing but an index. */
+.structure-inspector-pose-list {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  max-height: 188px;
+  overflow-y: auto;
+}
+.structure-inspector-pose-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+}
+.structure-inspector-pose-row:hover {
+  background: var(--surface-hover);
+}
+.structure-inspector-pose-row[data-selected] {
+  background: var(--surface-selected);
+}
+.structure-inspector-pose-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
+}
+.structure-inspector-pose-rank {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.structure-inspector-pose-row[data-selected] .structure-inspector-pose-rank {
+  color: var(--text-secondary);
+}
+.structure-inspector-pose-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .structure-inspector-tool.grid-descriptor-status .grid-descriptor-progress {
   margin-top: 4px;
 }
