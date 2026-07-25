@@ -105,6 +105,7 @@ type GridIndexState = {
   indexing: boolean;
   indexReady: boolean;
   indexError: string | null;
+  sourceRevision: number;
 };
 type ActivityColumn = { id: string; label: string };
 type ActivityDirection = "higherActive" | "lowerActive";
@@ -255,6 +256,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [indexProbeAttempt, setIndexProbeAttempt] = useState(0);
   const [confirmedLargeRunDocumentKey, setConfirmedLargeRunDocumentKey] = useState<string | null>(null);
   const [sourceRevision, setSourceRevision] = useState(0);
+  const sourceRevisionRef = useRef(0);
   const workflowControllerRef = useRef<AbortController | null>(null);
   const studyControllerRef = useRef<AbortController | null>(null);
   const hoveredRef = useRef<number | null>(null);
@@ -264,6 +266,28 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     [document],
   );
   hoveredRef.current = hovered;
+  const applySourceRevision = useCallback((nextRevision: number) => {
+    if (
+      !documentId
+      || !Number.isSafeInteger(nextRevision)
+      || nextRevision <= sourceRevisionRef.current
+    ) return;
+    sourceRevisionRef.current = nextRevision;
+    workflowControllerRef.current?.abort();
+    workflowControllerRef.current = null;
+    studyControllerRef.current?.abort();
+    studyControllerRef.current = null;
+    invalidateChemicalSpaceFingerprintCache(documentId);
+    invalidateCompletedEmbeddings(documentId);
+    setProgress(null);
+    setResult(null);
+    setCompletedStudy(null);
+    setStudyRunning(false);
+    setStudyPlaying(false);
+    setClusterResult(null);
+    setConfirmedLargeRunDocumentKey(null);
+    setSourceRevision(nextRevision);
+  }, [documentId]);
   const commitOptions = (next: ChemicalSpaceOptions) => {
     setCompletedStudy(null);
     setStudyPlaying(false);
@@ -293,6 +317,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setCliffMinSimilarity(0.6);
     setCliffMinDelta(1);
     setConfirmedLargeRunDocumentKey(null);
+    sourceRevisionRef.current = 0;
     setSourceRevision(0);
     setIndexProbeError(null);
   }, [documentInstanceKey]);
@@ -317,6 +342,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       void requestChemicalSpaceIndexState(documentId, controller.signal)
         .then((next) => {
           if (controller.signal.aborted) return;
+          applySourceRevision(next.sourceRevision);
           setIndexState(next);
           setIndexStateDocumentKey(documentInstanceKey);
           setIndexProbed(true);
@@ -346,7 +372,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       controller.abort();
       if (timer) window.clearTimeout(timer);
     };
-  }, [documentId, documentInstanceKey, indexProbeAttempt]);
+  }, [applySourceRevision, documentId, documentInstanceKey, indexProbeAttempt]);
 
   useEffect(() => {
     if (!documentId) {
@@ -533,27 +559,19 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           .map(Number)
           .filter((index) => Number.isSafeInteger(index) && index >= 0)));
       }
-      if (data.body.type === "gridDirtyChanged" && data.body.dirty === true) {
+      if (data.body.type === "gridDirtyChanged") {
         const recordsTotal = Number(data.body.recordsTotal);
-        workflowControllerRef.current?.abort();
-        workflowControllerRef.current = null;
-        studyControllerRef.current?.abort();
-        studyControllerRef.current = null;
-        invalidateChemicalSpaceFingerprintCache(documentId);
-        invalidateCompletedEmbeddings(documentId);
-        setProgress(null);
-        setResult(null);
-        setCompletedStudy(null);
-        setStudyRunning(false);
-        setStudyPlaying(false);
-        setClusterResult(null);
-        setConfirmedLargeRunDocumentKey(null);
+        const reportedRevision = Number(data.body.sourceRevision);
+        if (Number.isSafeInteger(reportedRevision) && reportedRevision >= 0) {
+          applySourceRevision(reportedRevision);
+        } else if (data.body.dirty === true) {
+          applySourceRevision(sourceRevisionRef.current + 1);
+        }
         if (Number.isSafeInteger(recordsTotal) && recordsTotal >= 0) {
           setIndexState((current) => current
             ? { ...current, recordsTotal }
             : current);
         }
-        setSourceRevision((revision) => revision + 1);
       }
       if (data.body.type === "gridHoverChanged") {
         const index = Number(data.body.sourceRecordId);
@@ -585,7 +603,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       body: { type: "chemicalSpaceRequestState", documentId },
     }, "*");
     return () => window.removeEventListener("message", onMessage);
-  }, [documentId]);
+  }, [applySourceRevision, documentId]);
 
   const postToGrid = useCallback((body: Record<string, unknown>) => {
     if (!documentId) return;
@@ -2310,6 +2328,7 @@ function requestChemicalSpaceIndexState(documentId: string, signal: AbortSignal)
       const recordsTotal = Number(body.recordsTotal ?? 0);
       const bytesIndexed = Number(body.bytesIndexed ?? 0);
       const bytesTotal = Number(body.bytesTotal ?? 0);
+      const sourceRevision = Number(body.sourceRevision ?? 0);
       return {
         recordsIndexed: Number.isFinite(recordsIndexed) ? recordsIndexed : 0,
         recordsTotal: Number.isFinite(recordsTotal) ? recordsTotal : 0,
@@ -2318,6 +2337,9 @@ function requestChemicalSpaceIndexState(documentId: string, signal: AbortSignal)
         indexing: body.indexing === true,
         indexReady: body.indexReady !== false,
         indexError: body.indexError == null ? null : String(body.indexError),
+        sourceRevision: Number.isSafeInteger(sourceRevision) && sourceRevision >= 0
+          ? sourceRevision
+          : 0,
       };
     },
     signal,
