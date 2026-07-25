@@ -39,6 +39,30 @@ assert.doesNotMatch(
   /state\.rows\.push/u,
   "the index poll must not append rows",
 );
+assert.match(
+  gridViewer,
+  /state\.indexError = result\.indexError == null \? null : String\(result\.indexError\)/u,
+  "backend indexing failures must remain distinct from a successfully ready index",
+);
+assert.match(gridViewer, /state\.bytesIndexed = Number\(result\.bytesIndexed/u);
+assert.match(gridViewer, /state\.bytesTotal = Number\(result\.bytesTotal/u);
+assert.match(
+  gridViewer,
+  /indexError: state\.indexError/u,
+  "Chemical Space must receive the indexing failure instead of submitting compute",
+);
+assert.match(gridViewer, /bytesIndexed: state\.bytesIndexed/u);
+assert.match(gridViewer, /bytesTotal: state\.bytesTotal/u);
+assert.match(
+  gridViewer,
+  /indexStateKnown: false/u,
+  "a bridge Grid must start fail-closed until config or the first page establishes index state",
+);
+assert.match(
+  gridViewer,
+  /state\.indexStateKnown && state\.indexReady && !state\.indexing && !state\.indexError/u,
+  "all full-collection actions must reject an unknown or failed index",
+);
 
 // The demand-driven entry points stay in place.
 for (const marker of [
