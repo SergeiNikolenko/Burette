@@ -4,6 +4,7 @@ set -euo pipefail
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:${PATH:-}"
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+MAX_FORCE_PREVIEW_COPY_BYTES=$((64 * 1024 * 1024))
 PREVIEW_ID="com.local.BuretteV10.Preview"
 DEV_FLAVOR_SLUG=""
 APP_BUNDLE_NAME="Burette.app"
@@ -313,7 +314,14 @@ for file in "$@"; do
     tmp_base="${tmp_base%/}"
     dev_preview_dir="$(mktemp -d "$tmp_base/BurettePreview-${DEV_FLAVOR_SLUG}.XXXXXX")"
     preview_file="$dev_preview_dir/${DEV_FLAVOR_SLUG} $(basename "$abs_file")"
-    ln "$abs_file" "$preview_file" 2>/dev/null || cp -p "$abs_file" "$preview_file"
+    if ! ln "$abs_file" "$preview_file" 2>/dev/null; then
+      file_size="$(stat -f '%z' "$abs_file")"
+      if [[ "$file_size" -le "$MAX_FORCE_PREVIEW_COPY_BYTES" ]]; then
+        cp -p "$abs_file" "$preview_file"
+      else
+        preview_file="$abs_file"
+      fi
+    fi
   fi
   cleanup_preview_dir() {
     [[ -z "$dev_preview_dir" ]] || rm -rf "$dev_preview_dir" 2>/dev/null || true
