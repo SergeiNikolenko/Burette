@@ -3598,6 +3598,7 @@ assert.match(sidebarSurface, /actions\.togglePinnedStructure\(item\.path\)/);
 assert.match(sidebarSurface, /actions\.togglePinnedProjectRoot\(project\.rootPath\)/);
 assert.match(sidebarSurface, /actions\.renameProjectRoot\(project\.rootPath, renameDraft\)/);
 assert.match(sidebarSurface, /actions\.renameProjectFolder\(folderPath, renameDraft\)/);
+assert.doesNotMatch(sidebarSurface, /title=\{item\.relativePath\}/);
 assert.match(sidebarSurface, /const \[renaming, setRenaming\] = useState\(false\)/);
 assert.match(sidebarSurface, /const renameInputRef = useRef<HTMLInputElement \| null>\(null\)/);
 assert.match(sidebarSurface, /const skipRenameCommitRef = useRef\(false\)/);
