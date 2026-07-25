@@ -14,6 +14,7 @@ import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -3666,6 +3667,19 @@ function structureRowsKeyDown(event: KeyboardEvent<HTMLDivElement>) {
 // places without matching names by eye.
 type CompositionTone = "polymer" | "ligand" | "ion" | "water" | "entry";
 
+// Only the four group rows stand for a Mol* component, so only they can be
+// hidden or removed as a whole. A chain or one ligand instance is a
+// sub-selection inside a component - there is no scene node to take out.
+type CompositionComponentKind = "polymer" | "ligand" | "ion" | "water";
+
+function compositionComponentKind(label: string): CompositionComponentKind | undefined {
+  if (label === "Polymers") return "polymer";
+  if (label === "Ligands") return "ligand";
+  if (label === "Ions") return "ion";
+  if (label === "Water") return "water";
+  return undefined;
+}
+
 function compositionToneFor(label: string): CompositionTone {
   if (label === "Polymers" || label.startsWith("Chain")) return "polymer";
   if (label === "Ligands") return "ligand";
@@ -3786,9 +3800,24 @@ function StructureCompositionCard({
     return next;
   });
   const [query, setQuery] = useState("");
+  // The viewer owns visibility; the panel only remembers what it asked for, so
+  // the eye matches the last instruction the row gave.
+  const [hiddenKinds, setHiddenKinds] = useState<Set<CompositionComponentKind>>(new Set());
   useEffect(() => {
     setQuery("");
+    setHiddenKinds(new Set());
   }, [document.id]);
+  const toggleHidden = (kind: CompositionComponentKind, hide: boolean) => {
+    actions.runStructureViewerAction(document, kind === "water"
+      ? { type: hide ? "hide_waters" : "show_waters", label: hide ? "Hide water" : "Show water" }
+      : { type: hide ? "hide_components" : "show_components", label: hide ? "Hide" : "Show", kind });
+    setHiddenKinds((current) => {
+      const next = new Set(current);
+      if (hide) next.add(kind);
+      else next.delete(kind);
+      return next;
+    });
+  };
   const shares = useMemo(() => compositionShares(groups), [groups]);
   const needle = query.trim().toLowerCase();
   const visibleGroups = useMemo(() => groups
@@ -3806,7 +3835,7 @@ function StructureCompositionCard({
           </div>
         ) : null}
         {groups.length > 2 ? (
-          <input
+          <Input
             className="structure-inspector-composition-search"
             type="search"
             value={query}
@@ -3826,6 +3855,12 @@ function StructureCompositionCard({
                 <StructureActionRow
                   row={group.row}
                   tone={group.tone}
+                  componentKind={compositionComponentKind(group.row.label)}
+                  hidden={(() => {
+                    const kind = compositionComponentKind(group.row.label);
+                    return kind ? hiddenKinds.has(kind) : undefined;
+                  })()}
+                  onToggleHidden={toggleHidden}
                   document={document}
                   actions={actions}
                   activeActionKey={activeActionKey}
@@ -3892,12 +3927,10 @@ function MenuChevronIcon() {
   );
 }
 
+// The scene tree's twisty is this chevron at 11px inside a 16px box; matching
+// both keeps the two lists indented to the same rhythm.
 function TreeDisclosureIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M4.5 2.5 8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <SceneTreeGlyph paths={SCENE_TREE_GLYPH.chevron} size={11} />;
 }
 
 function structureActionRowKey(row: StructureSummaryRow, index: number) {
@@ -3908,6 +3941,9 @@ function structureActionRowKey(row: StructureSummaryRow, index: number) {
 function StructureActionRow({
   row,
   tone,
+  componentKind,
+  hidden,
+  onToggleHidden,
   document,
   actions,
   activeActionKey,
@@ -3917,6 +3953,9 @@ function StructureActionRow({
 }: {
   row: StructureSummaryRow;
   tone?: CompositionTone;
+  componentKind?: CompositionComponentKind;
+  hidden?: boolean;
+  onToggleHidden?: (kind: CompositionComponentKind, hide: boolean) => void;
   document: ViewerDocument;
   actions: ShellActions;
   activeActionKey: string | null;
@@ -3927,11 +3966,14 @@ function StructureActionRow({
   // A tree row reads left to right - what it is, how big it is - and ends in the
   // colour it wears in the viewer, so the dot lines up with the row actions
   // rather than pushing the text off centre.
+  // The viewer's scene tree lists the same objects, so a row here is built from
+  // the same parts in the same order - colour bar, name, figure - and differs
+  // only in what the panel knows that the tree does not.
   const content = () => tone ? (
     <span className="structure-inspector-row-content" data-tree="true">
+      <span className="structure-inspector-row-bar" data-tone={tone} aria-hidden="true" />
       <span className="structure-inspector-row-label">{row.label}</span>
       <em title={row.value}>{compositionShortValue(row.label, row.value)}</em>
-      <span className="structure-inspector-row-dot" data-tone={tone} aria-hidden="true" />
     </span>
   ) : (
     <span className="structure-inspector-row-content">
@@ -3983,6 +4025,7 @@ function StructureActionRow({
     void showNativeContextMenu(contextMenuItems({
       row,
       document,
+      componentKind,
       primaryAction,
       secondaryAction,
       selected,
@@ -4011,7 +4054,7 @@ function StructureActionRow({
   }
 
   return (
-    <div className="structure-brief-action-entry" data-leading={leading ? "true" : undefined} data-selected={selected || undefined} onContextMenu={showContextMenu}>
+    <div className="structure-brief-action-entry" data-leading={leading ? "true" : undefined} data-selected={selected || undefined} data-hidden={hidden ? "true" : undefined} onContextMenu={showContextMenu}>
       {leading}
       <button
         type="button"
@@ -4022,8 +4065,75 @@ function StructureActionRow({
       >
         {content()}
       </button>
+      {componentKind ? (
+        // Remove sits ahead of the eye because that is the order the scene tree
+        // puts them in; a row that reads the same in both places has to reach
+        // the same control at the same spot.
+        <span className="structure-inspector-row-actions">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-2xs"
+            className="structure-inspector-row-action"
+            aria-label={`Remove ${row.label.toLowerCase()}`}
+            title={`Remove ${row.label.toLowerCase()}`}
+            onClick={() => runAction({ type: "remove_components", label: `Remove ${row.label.toLowerCase()}`, kind: componentKind })}
+          >
+            <TrashIcon />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-2xs"
+            className="structure-inspector-row-action"
+            data-hidden={hidden ? "true" : undefined}
+            aria-label={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
+            title={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
+            onClick={() => onToggleHidden?.(componentKind, !hidden)}
+          >
+            {hidden ? <EyeOffIcon /> : <EyeIcon />}
+          </Button>
+        </span>
+      ) : null}
     </div>
   );
+}
+
+// The same marks the viewer's scene tree draws, copied path for path from
+// SCENE_TREE_ICON in PreviewExtension/Web/viewer.js. The tree lives in the Mol*
+// iframe and shares no code with this panel, so the only way a glyph means the
+// same thing in both lists is to keep the geometry identical here. The panel
+// used to draw its own eye on a 16px grid at a lighter stroke, and the two rows
+// never read as the same control.
+const SCENE_TREE_GLYPH = {
+  chevron: ["m9 6 6 6-6 6"],
+  eye: [
+    "M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0",
+    "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
+  ],
+  eyeOff: [
+    "M9.88 9.88a3 3 0 1 0 4.24 4.24",
+    "M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68",
+    "M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61",
+    "m2 2 20 20",
+  ],
+  trash: [
+    "M3 6h18",
+    "M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2",
+    "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6",
+  ],
+} as const;
+
+function SceneTreeGlyph({ paths, size = 13 }: { paths: readonly string[]; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths.map((definition) => <path key={definition} d={definition} />)}
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return <SceneTreeGlyph paths={SCENE_TREE_GLYPH.trash} />;
 }
 
 function StructureDetailsSection({
@@ -4120,9 +4230,13 @@ function selectionActionKey(document: ViewerDocument, action: StructureViewerAct
   return JSON.stringify([document.id, action.type, action.selector]);
 }
 
+// A component row offers what the viewer's own scene tree offers for the same
+// object - select it, take it out of view, take it out of the scene - so the two
+// places agree instead of the panel being a read-only echo of the tree.
 function contextMenuItems({
   row,
   document,
+  componentKind,
   primaryAction,
   secondaryAction,
   selected,
@@ -4131,6 +4245,7 @@ function contextMenuItems({
 }: {
   row: StructureSummaryRow;
   document: ViewerDocument;
+  componentKind?: CompositionComponentKind;
   primaryAction: StructureViewerAction;
   secondaryAction?: StructureViewerAction;
   selected: boolean;
@@ -4138,11 +4253,12 @@ function contextMenuItems({
   clearSelection: () => void;
 }): MenuItemSpec[] {
   const items: MenuItemSpec[] = [
+    { kind: "label", id: "row-heading", text: row.label },
     {
       kind: "item",
       id: "primary-action",
       text: selected ? "Clear selection" : primaryAction.label,
-      detail: `${row.label}: ${row.value}`,
+      tooltip: `${row.label}: ${row.value}`,
       action: selected ? clearSelection : () => runAction(primaryAction),
     },
   ];
@@ -4151,9 +4267,30 @@ function contextMenuItems({
       kind: "item",
       id: "secondary-action",
       text: secondaryAction.label,
-      detail: `${row.label}: ${row.value}`,
+      tooltip: `${row.label}: ${row.value}`,
       action: () => runAction(secondaryAction),
     });
+  }
+  if (componentKind) {
+    const hideShow: StructureViewerAction[] = componentKind === "water"
+      ? [{ type: "hide_waters", label: "Hide" }, { type: "show_waters", label: "Show" }]
+      : [
+        { type: "hide_components", label: "Hide", kind: componentKind },
+        { type: "show_components", label: "Show", kind: componentKind },
+      ];
+    items.push(
+      { kind: "separator" },
+      { kind: "label", id: "row-visibility", text: "Scene" },
+      { kind: "item", id: "hide-component", text: "Hide", tooltip: `Drop the ${row.label.toLowerCase()} representation`, action: () => runAction(hideShow[0]) },
+      { kind: "item", id: "show-component", text: "Show", tooltip: `Draw the ${row.label.toLowerCase()} again`, action: () => runAction(hideShow[1]) },
+      {
+        kind: "item",
+        id: "remove-component",
+        text: "Remove",
+        tooltip: `Take the ${row.label.toLowerCase()} out of the scene tree`,
+        action: () => runAction({ type: "remove_components", label: `Remove ${row.label.toLowerCase()}`, kind: componentKind }),
+      },
+    );
   }
   items.push(
     { kind: "separator" },
@@ -4168,7 +4305,7 @@ function contextMenuItems({
       kind: "item",
       id: "copy-label",
       text: "Copy label",
-      detail: document.title,
+      tooltip: document.title,
       action: () => void navigator.clipboard?.writeText(`${row.label}: ${row.value}`),
     },
   );
@@ -4206,20 +4343,11 @@ function StructureMiniAction({
 }
 
 function EyeIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
-      <path d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4-6.5-4-6.5-4z" />
-      <circle cx="8" cy="8" r="1.7" />
-    </svg>
-  );
+  return <SceneTreeGlyph paths={SCENE_TREE_GLYPH.eye} />;
 }
 
 function EyeOffIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
-      <path d="M2.5 2.5l11 11M6.3 6.4A2 2 0 008 9.7M4.2 4.6C2.6 5.8 1.5 8 1.5 8s2.4 4 6.5 4c1 0 1.9-.2 2.7-.6M12.3 10c1.4-1.1 2.2-2 2.2-2s-2.4-4-6.5-4c-.4 0-.8 0-1.2.1" />
-    </svg>
-  );
+  return <SceneTreeGlyph paths={SCENE_TREE_GLYPH.eyeOff} />;
 }
 
 // Inside the File section this is a plain group; on the empty panel there is no
