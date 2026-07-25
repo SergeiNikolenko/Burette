@@ -8,7 +8,7 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '13';
   const TOOLBAR_COLLAPSED_VERSION = '5';
-  const DOCKING_POSE_POSITION_VERSION = '6';
+  const DOCKING_POSE_POSITION_VERSION = '8';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
@@ -113,6 +113,9 @@
   let molstarSelectionPreviewCleanup = null;
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
+  // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
+  // scene-tree menu at the same spot; and the first pick of a two-click distance.
+  let molstarContextMenuLastPoint = null;
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
   let molstarLassoOverlay = null;
@@ -139,7 +142,18 @@
   let molstarMoleculePreviewFrame = 0;
   let molstarMoleculePreviewDrag = null;
   let molstarMoleculePreviewTarget = null;
-  let molstarMoleculePreviewSuppressClickUntil = 0;
+  // The card is destroyed and rebuilt whenever the selection changes, so the size
+  // and the corner the user dragged it to live out here instead of on the element.
+  let molstarMoleculePreviewGeometry = null;
+  let molstarMoleculePreviewSize = 's';
+  // Closing the card (×) leaves the selection alone but parks the card: nothing
+  // re-shows it until the next genuine click. Minimizing tucks it into a chip in
+  // the corner that the same molecule pops back out of.
+  let molstarMoleculePreviewSuppressed = false;
+  let molstarMoleculePreviewMinimized = false;
+  let molstarMoleculePreviewMinimizedTarget = null;
+  let molstarMoleculePreviewChip = null;
+  let molstarPreviewRevealStart = null;
   let molstarSelectionHostSignature = '';
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
@@ -998,6 +1012,7 @@
     timer: 0
   };
   let leftPanelVisibilityGuardInstalled = false;
+  let viewportCornerLayoutHandle = 0;
   let molstarStructureDirty = false;
 
   function scheduleViewerResize(viewer, delayMs = 80) {
@@ -1022,6 +1037,29 @@
         }
       }, delayMs);
     });
+  }
+
+  // Mol* commits a layout change a frame or two after the toggle, so a resize on a
+  // fixed delay measures the container it had *before* the change and is thrown
+  // away; the canvas then catches up on Mol*'s own schedule, well after the panels
+  // have moved. Watching the container fires exactly when it has settled, which is
+  // both earlier and correct, and costs one resize instead of two.
+  let viewerResizeObserver = null;
+  function installViewerResizeObserver(viewer) {
+    const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
+    if (!container || typeof ResizeObserver !== 'function') return;
+    if (viewerResizeObserver?.container === container) return;
+    viewerResizeObserver?.observer.disconnect();
+    let lastSize = '';
+    const observer = new ResizeObserver(entries => {
+      const rect = entries[0]?.contentRect;
+      const size = rect ? `${Math.round(rect.width)}x${Math.round(rect.height)}` : '';
+      if (size === lastSize) return;
+      lastSize = size;
+      try { viewer.handleResize?.(); } catch (_) {}
+    });
+    observer.observe(container);
+    viewerResizeObserver = { observer, container };
   }
 
   const DEFAULT_VIEWER_UI_SCALE = 0.9;
@@ -1925,7 +1963,10 @@
     const margin = 12;
     const gap = 6;
     const anchorRect = anchor.getBoundingClientRect();
-    const controlsRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
+    // Our own rail stands where Mol*'s used to, so the menu keeps clear of whichever
+    // of the two is on screen — the native one is hidden for every host but mobile.
+    const controlsRect = visibleRect('#buret-viewport-rail')
+      || visibleRect('.msp-plugin .msp-viewport-controls-buttons');
     const rightBoundary = controlsRect && controlsRect.left > anchorRect.left
       ? Math.min(anchorRect.right, controlsRect.left - 8)
       : Math.min(anchorRect.right, window.innerWidth - margin);
@@ -2065,6 +2106,13 @@
       if (activeConfig) activeConfig.theme = nextTheme;
       if (window.BuretteConfig) window.BuretteConfig.theme = nextTheme;
       setViewerTheme(nextTheme, activeViewer);
+      return;
+    }
+    // Applied in place so the default-style preference never rebuilds the viewer.
+    // requestMolstarStyle updates the config, the toolbar selector, and re-renders
+    // through the same path the toolbar dropdown uses.
+    if (body.type === 'setViewerStyle') {
+      requestMolstarStyle(body.value);
       return;
     }
     if (body.type === 'setXyzrenderControls') {
@@ -2914,12 +2962,16 @@
     return MOLSTAR_STYLE_OPTIONS.find(option => option.value === value)?.label || value;
   }
 
+  // A structure that has not been focused yet still reports the default camera
+  // (radius 0 at the origin). Restoring that after a reload leaves the scene
+  // empty, so it is treated as "no snapshot" and the caller refocuses instead.
   function captureMolstarCameraSnapshot(viewer) {
     const camera = viewer?.plugin?.canvas3d?.camera;
     if (!camera || typeof camera.getSnapshot !== 'function') return null;
     try {
       const snapshot = camera.getSnapshot();
       if (!snapshot) return null;
+      if (!(Number(snapshot.radius) > 0)) return null;
       return {
         ...snapshot,
         position: snapshot.position?.slice?.() || snapshot.position,
@@ -2941,6 +2993,33 @@
     } catch (_) {}
   }
 
+  // Used when the style switch happens before the structure was ever focused, so
+  // there is no camera worth keeping. The retries reach past the initial delays
+  // because framing needs scene bounds, and a heavy visual such as the molecular
+  // surface only reports them once its geometry is built.
+  const STYLE_SWITCH_FOCUS_DELAYS = [0, 240, 800, 2000, 4000];
+
+  function focusMolstarStructureAfterReload(viewer) {
+    if (molstarAutoFocusEnabled(activeConfig) && !hasMolstarContextFocus(activeConfig)) {
+      scheduleMolstarStructureFocus(viewer, {
+        reason: 'style-switch',
+        durationMs: 0,
+        delays: STYLE_SWITCH_FOCUS_DELAYS
+      });
+      return;
+    }
+    for (const delayMs of STYLE_SWITCH_FOCUS_DELAYS) {
+      window.setTimeout(() => {
+        const canvas3d = viewer?.plugin?.canvas3d;
+        if (!canvas3d || Number(canvas3d.camera?.getSnapshot?.()?.radius) > 0) return;
+        try {
+          canvas3d.requestCameraReset({ durationMs: 0 });
+          canvas3d.requestDraw?.();
+        } catch (_) {}
+      }, delayMs);
+    }
+  }
+
   async function reloadMolstarStyle(viewer, style, serial) {
     const prepared = activeMolstarPrepared;
     if (!prepared) {
@@ -2960,7 +3039,8 @@
     applyLayoutState(viewer);
     scheduleLayoutStateReapply(viewer);
     try { viewer.handleResize(); } catch (_) {}
-    restoreMolstarCameraSnapshot(viewer, cameraSnapshot);
+    if (cameraSnapshot) restoreMolstarCameraSnapshot(viewer, cameraSnapshot);
+    else focusMolstarStructureAfterReload(viewer);
     setStatus(`[web] Applied Mol* ${molstarStyleLabel(style)} style`);
     setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
   }
@@ -3684,6 +3764,11 @@
     restoreToolbarCollapsed(toolbar, viewer);
     installToolbarAutoLayoutTracking(toolbar);
     installMolstarFloatingPanelTracking();
+    initSceneTree(viewer);
+    initViewportControls(viewer);
+    initSequenceResize();
+    installSequenceSelectionMode();
+    installViewerResizeObserver(viewer);
     updateToolbarVisibility();
     updateSdfPoseButton();
     updatePreviewDockButtons();
@@ -4216,23 +4301,48 @@
     const toolbarRect = toolbar && !panelState.open ? toolbar.getBoundingClientRect() : null;
     root.style.setProperty('--buret-toolbar-current-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : '0px');
     root.style.setProperty('--buret-toolbar-current-height', toolbarRect ? Math.ceil(toolbarRect.height) + 'px' : '0px');
-    root.style.setProperty('--buret-selection-controls-left', toolbarRect ? Math.ceil(toolbarRect.left) + 'px' : `${TOOLBAR_MARGIN}px`);
-    root.style.setProperty('--buret-selection-controls-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : 'min(430px, calc(100vw - 24px))');
-    root.style.setProperty('--buret-selection-controls-max-width', toolbarRect ? Math.max(180, Math.floor(window.innerWidth - toolbarRect.left - TOOLBAR_MARGIN)) + 'px' : 'calc(100vw - 24px)');
+    // The selection bar is a control of its own, not a drawer of the toolbar, so it
+    // has to stay usable while the toolbar is rolled up to its grip. Collapsed, it
+    // keeps the toolbar's right edge but takes a width of its own — inheriting the
+    // grip's 42px left it a stub nobody could read.
+    const toolbarCollapsed = document.body?.classList.contains('buret-toolbar-collapsed') === true;
+    const selectionBarWidth = toolbarRect && !toolbarCollapsed
+      ? Math.ceil(toolbarRect.width)
+      : Math.min(430, Math.max(240, window.innerWidth - TOOLBAR_MARGIN * 2));
+    const selectionBarLeft = toolbarRect
+      ? Math.max(TOOLBAR_MARGIN, Math.ceil(toolbarRect.right - selectionBarWidth))
+      : TOOLBAR_MARGIN;
+    root.style.setProperty('--buret-selection-controls-left', `${selectionBarLeft}px`);
+    root.style.setProperty('--buret-selection-controls-width', `${selectionBarWidth}px`);
+    // Measured from where the bar actually starts. Taken from the toolbar's left
+    // edge it collapsed along with the toolbar, capping the bar at 180px — the two
+    // coincide while the toolbar is open, so nothing changes there.
+    root.style.setProperty('--buret-selection-controls-max-width',
+      Math.max(180, Math.floor(window.innerWidth - selectionBarLeft - TOOLBAR_MARGIN)) + 'px');
     root.style.setProperty('--buret-selection-controls-top', toolbarRect ? Math.ceil(toolbarRect.bottom - 1) + 'px' : `calc(var(--buret-toolbar-safe-top) + 48px)`);
     const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
     const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
     const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
     const viewportControlRailRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
-    const generate3DControlRight = viewportControlRailRect
-      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - viewportControlRailRect.left + FLOATING_LAYOUT_GAP * 2))
+    // Our own rail stands where Mol*'s used to; whichever of the two is on screen is
+    // the edge the compute button has to keep clear of.
+    const railRect = visibleRect('#buret-viewport-rail') || viewportControlRailRect;
+    const generate3DControlRight = railRect
+      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - railRect.left + FLOATING_LAYOUT_GAP * 2))
       : 70;
     root.style.setProperty('--buret-generate-3d-control-right', generate3DControlRight + 'px');
-    const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row');
-    document.body?.classList.toggle('buret-selection-toolbar-open', !!selectionToolbarRect && !!toolbarRect);
+    root.style.setProperty('--buret-viewport-rail-right', toolbarRect
+      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - toolbarRect.right)) + 'px'
+      : 'var(--buret-control-island-right)');
+    const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row')
+      || visibleRect('#buret-selection-bar');
+    // The squared-off join only makes sense while the two actually meet; rolled up,
+    // the toolbar is a grip somewhere above and the bar keeps its own rounding.
+    document.body?.classList.toggle('buret-selection-toolbar-open',
+      !!selectionToolbarRect && !!toolbarRect && !toolbarCollapsed);
     const mainRect = visibleRect('.msp-plugin .msp-layout-main');
     const mainTop = mainRect ? mainRect.top : 0;
-    const defaultViewportTop = mainTop + 64;
+    const defaultViewportTop = mainTop + 56;
     const panelOpenTop = selectionToolbarRect
       ? Math.ceil(selectionToolbarRect.bottom + FLOATING_LAYOUT_GAP)
       : defaultViewportTop;
@@ -4248,6 +4358,10 @@
       : defaultViewportTop;
     const viewportControlsTop = Math.max(TOOLBAR_MARGIN, Math.ceil(viewportControlsViewportTop - mainTop));
     root.style.setProperty('--buret-viewport-controls-top', viewportControlsTop + 'px');
+    // The rail is positioned against the window rather than the layout region, so it
+    // takes the unshifted figure — the one that already steps below the toolbar and
+    // the selection bar.
+    root.style.setProperty('--buret-viewport-rail-top', Math.ceil(viewportControlsViewportTop) + 'px');
     repositionDockingPoseControlsForLayout(mainRect);
 
     const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || window.innerHeight;
@@ -4396,9 +4510,11 @@
   }
 
   function toolbarSafeTop() {
-    const raw = window.getComputedStyle(document.documentElement).getPropertyValue('--buret-toolbar-safe-top');
-    const parsed = Number.parseFloat(raw);
-    return Number.isFinite(parsed) ? Math.max(TOOLBAR_MARGIN, parsed) : TOOLBAR_MARGIN;
+    const styles = window.getComputedStyle(document.documentElement);
+    const parsed = Number.parseFloat(styles.getPropertyValue('--buret-toolbar-safe-top'));
+    const inset = Number.parseFloat(styles.getPropertyValue('--buret-viewport-top-inset'));
+    const base = Number.isFinite(parsed) ? Math.max(TOOLBAR_MARGIN, parsed) : TOOLBAR_MARGIN;
+    return base + (Number.isFinite(inset) ? inset : 0);
   }
 
   function saveToolbarPosition(toolbar) {
@@ -4433,9 +4549,16 @@
       root.classList.toggle('msp-layout-hide-bottom', layoutState.bottom === 'hidden');
     }
     syncLeftPanelVisibility();
+    scheduleViewportCornerLayout();
 
     updateToolbarButtons();
-    scheduleViewerResize(viewer, 40);
+    // Setting the region state does not re-render it — Mol* only lays the regions
+    // out when its layout announces an update. Announce it now instead of behind a
+    // timer, and leave the canvas to the container observer, which fires once the
+    // region has actually taken its space rather than guessing when that is.
+    try { viewer?.plugin?.layout?.events?.updated?.next?.(); } catch (error) {
+      debug('layout update notify failed: ' + (error && error.message || String(error)));
+    }
     updateFloatingLayoutOffsets();
     const toolbar = document.getElementById('buret-toolbar');
     if (toolbar?.dataset.defaultPosition === '1') {
@@ -4587,6 +4710,9 @@
     leftPanelVisibilityGuardInstalled = true;
     const observer = new MutationObserver(() => {
       if (layoutState.left === 'hidden') syncLeftPanelVisibility();
+      stripMolstarSequenceTooltips();
+      installSequenceCloseButton();
+      scheduleViewportCornerLayout();
     });
     observer.observe(document.body, {
       attributes: true,
@@ -4604,6 +4730,2352 @@
     toolbar.querySelector('[data-buret-toggle="sequence"]')?.classList.toggle('active', layoutState.top === 'full');
     toolbar.querySelector('[data-buret-toggle="log"]')?.classList.toggle('active', layoutState.bottom === 'full');
   }
+
+  // Scene tree: a Burette-styled stand-in for the Mol* left object tree. It mirrors
+  // the same hierarchy Mol* shows — data, model, assembly, components, their
+  // representations — but as a compact draggable overlay. Rows carry only the two
+  // controls Mol* puts there (visibility, remove); focus and colouring live in the
+  // right-click menu. The Mol* panel itself stays reachable under the `L` button.
+  const SCENE_TREE_SVG_NS = 'http://www.w3.org/2000/svg';
+  // Same left-edge type colours Mol* paints on `.msp-type-class-*` tree rows.
+  const SCENE_TREE_TYPE_COLOR = {
+    Root: '#eeece7',
+    Group: '#e98b39',
+    Data: '#bfc8c9',
+    Object: '#54d98c',
+    Representation3D: '#4aa3df',
+    Behavior: '#b07cc6'
+  };
+  const SCENE_TREE_ICON = {
+    chevron: ['m9 6 6 6-6 6'],
+    eye: ['M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
+    eyeOff: ['M9.88 9.88a3 3 0 1 0 4.24 4.24', 'M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68', 'M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61', 'm2 2 20 20'],
+    trash: ['M3 6h18', 'M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6'],
+    isolate: ['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
+    focus: ['M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0', 'M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5'],
+    restore: ['M3 12a9 9 0 1 0 3-6.7L3 8', 'M3 3v5h5'],
+    collapseAll: ['m7 20 5-5 5 5', 'm7 4 5 5 5-5'],
+    expandAll: ['m7 15 5 5 5-5', 'm7 9 5-5 5 5']
+  };
+  // Apple system colours: the uniform tints offered next to the real colour themes.
+  const SCENE_TREE_UNIFORM_COLORS = [
+    { label: 'Purple', value: 0xaf52de },
+    { label: 'Blue', value: 0x0a84ff },
+    { label: 'Cyan', value: 0x40c8e0 },
+    { label: 'Green', value: 0x32d74b },
+    { label: 'Yellow', value: 0xffd60a },
+    { label: 'Orange', value: 0xff9f0a },
+    { label: 'Red', value: 0xff453a },
+    { label: 'Pink', value: 0xff6482 },
+    { label: 'Grey', value: 0x98989d },
+    { label: 'White', value: 0xf2f2f7 }
+  ];
+  const sceneTreeExpandedRefs = new Set();
+  const sceneTreeKnownRefs = new Set();
+  let sceneTreeStateDisposer = null;
+  let sceneTreeRenderHandle = 0;
+  let sceneTreeHoverRef = '';
+  let sceneTreeMenuRef = '';
+  let sceneTreeSelectedRef = '';
+  let sceneTreeMenuPointerStart = null;
+
+  function sceneTreeIconElement(paths) {
+    const svg = document.createElementNS(SCENE_TREE_SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.8');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    for (const definition of paths) {
+      const path = document.createElementNS(SCENE_TREE_SVG_NS, 'path');
+      path.setAttribute('d', definition);
+      svg.appendChild(path);
+    }
+    return svg;
+  }
+
+  function sceneTreeColorHex(value) {
+    return `#${Number(value).toString(16).padStart(6, '0')}`;
+  }
+
+  function sceneTreeChildRefs(state) {
+    const children = new Map();
+    let rootRef = null;
+    state.cells.forEach((cell, ref) => {
+      const parent = cell?.transform?.parent;
+      if (parent === undefined || parent === ref) {
+        if (rootRef === null) rootRef = ref;
+        return;
+      }
+      if (!children.has(parent)) children.set(parent, []);
+      children.get(parent).push(ref);
+    });
+    return { children, rootRef };
+  }
+
+  // Only structures and their components accept a colour: Mol* applies themes per
+  // component, and a structure row simply forwards the pick to all of its own.
+  function sceneTreeColorTargets(viewer) {
+    const targets = new Map();
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const components = structure?.components || [];
+      const structureRef = structure?.cell?.transform?.ref;
+      if (structureRef) targets.set(structureRef, components);
+      for (const component of components) {
+        const componentRef = component?.cell?.transform?.ref;
+        if (componentRef) targets.set(componentRef, [component]);
+      }
+    }
+    return targets;
+  }
+
+  // Each representation leaf maps back to its owning component and the
+  // representation itself, which is what the per-representation edits need: Mol*
+  // addresses a single representation by its component plus the representation as a
+  // pivot, never by the representation's ref alone.
+  function sceneTreeRepresentationTargets(viewer) {
+    const targets = new Map();
+    for (const structure of molstarCurrentStructures(viewer)) {
+      for (const component of structure?.components || []) {
+        for (const representation of component?.representations || []) {
+          const repRef = representation?.cell?.transform?.ref;
+          if (repRef) targets.set(repRef, { component, representation });
+        }
+      }
+    }
+    return targets;
+  }
+
+  // A row reports a colour theme only when every representation under it agrees;
+  // mixed rows show nothing rather than lying about the scene.
+  // A tint reads back either from a flat uniform theme or from the carbon colour of
+  // an element-symbol theme, which is how atom-level representations are painted.
+  function sceneTreeRepresentationTint(representation) {
+    const theme = representation?.cell?.transform?.params?.colorTheme;
+    if (theme?.name === 'uniform') {
+      return Number.isFinite(theme.params?.value) ? theme.params.value : null;
+    }
+    if (theme?.name === 'element-symbol') {
+      const carbon = theme.params?.carbonColor;
+      return carbon?.name === 'uniform' && Number.isFinite(carbon.params?.value) ? carbon.params.value : null;
+    }
+    return null;
+  }
+
+  function sceneTreeColorState(components) {
+    let theme = null;
+    let value = null;
+    let seen = false;
+    for (const component of components) {
+      for (const representation of component?.representations || []) {
+        const name = representation?.cell?.transform?.params?.colorTheme?.name || '';
+        const tint = sceneTreeRepresentationTint(representation);
+        if (!seen) {
+          theme = name;
+          value = tint;
+          seen = true;
+          continue;
+        }
+        if (theme !== name) theme = '';
+        if (value !== tint) value = null;
+      }
+    }
+    return { theme: theme || '', value };
+  }
+
+  function isSceneTreeDecorator(cell) {
+    return cell?.transform?.transformer?.definition?.isDecorator === true;
+  }
+
+  function sceneTreeNodes(viewer) {
+    const state = viewer?.plugin?.state?.data;
+    if (!state?.cells) return [];
+    const { children, rootRef } = sceneTreeChildRefs(state);
+    if (rootRef === null) return [];
+    const colorTargets = sceneTreeColorTargets(viewer);
+    // Decorators such as custom-model-properties re-wrap their parent under the
+    // same label. Mol* shows one row for the whole chain, and the managers address
+    // the deepest cell, so the chain collapses onto that ref.
+    const decoratorChain = ref => {
+      const chain = [ref];
+      let current = ref;
+      for (;;) {
+        const decorators = (children.get(current) || [])
+          .filter(childRef => isSceneTreeDecorator(state.cells.get(childRef)));
+        if (decorators.length !== 1) break;
+        current = decorators[0];
+        chain.push(current);
+      }
+      return chain;
+    };
+    const build = refs => {
+      const nodes = [];
+      for (const parentRef of refs) {
+        for (const childRef of children.get(parentRef) || []) {
+          const cell = state.cells.get(childRef);
+          if (!cell || isSceneTreeDecorator(cell)) continue;
+          // Mol* hides ghost and pending cells but keeps showing their children.
+          if (cell.state?.isGhost === true || !cell.obj) {
+            nodes.push(...build(decoratorChain(childRef)));
+            continue;
+          }
+          const chain = decoratorChain(childRef);
+          const nodeRef = chain[chain.length - 1];
+          const components = colorTargets.get(nodeRef) || null;
+          nodes.push({
+            ref: nodeRef,
+            label: String(cell.obj.label || 'Node'),
+            note: String(cell.obj.description || ''),
+            typeClass: String(cell.obj.type?.typeClass || 'Object'),
+            hidden: sceneTreeCellHidden(state, nodeRef),
+            colorable: !!components,
+            ...(components ? sceneTreeColorState(components) : { theme: '', value: null }),
+            children: build(chain)
+          });
+        }
+      }
+      return nodes;
+    };
+    return build([rootRef]);
+  }
+
+  // Everything opens on first sight, the way the Mol* tree does; rows are compact
+  // enough that a whole structure still fits without scrolling.
+  function reconcileSceneTreeExpansion(nodes) {
+    const present = new Set();
+    // Gate on the first render where a node actually has children: Mol* builds the
+    // hierarchy in passes, so a node seen while still childless would otherwise be
+    // recorded as "already handled" and never open.
+    const walk = list => {
+      for (const node of list) {
+        present.add(node.ref);
+        if (node.children.length && !sceneTreeKnownRefs.has(node.ref)) {
+          sceneTreeKnownRefs.add(node.ref);
+          sceneTreeExpandedRefs.add(node.ref);
+        }
+        walk(node.children);
+      }
+    };
+    walk(nodes);
+    for (const ref of Array.from(sceneTreeKnownRefs)) {
+      if (!present.has(ref)) sceneTreeKnownRefs.delete(ref);
+    }
+    for (const ref of Array.from(sceneTreeExpandedRefs)) {
+      if (!present.has(ref)) sceneTreeExpandedRefs.delete(ref);
+    }
+    if (sceneTreeMenuRef && !present.has(sceneTreeMenuRef)) closeSceneTreeMenu();
+    if (sceneTreeSelectedRef && !present.has(sceneTreeSelectedRef)) sceneTreeSelectedRef = '';
+  }
+
+  function sceneTreeActionButton(action, label, icon) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `buret-tree-action buret-tree-action-${action}`;
+    button.dataset.sceneTreeAction = action;
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    button.appendChild(sceneTreeIconElement(icon));
+    return button;
+  }
+
+  function sceneTreeNodeElement(node) {
+    const item = document.createElement('div');
+    item.className = 'buret-tree-item';
+    item.dataset.ref = node.ref;
+    const expandable = node.children.length > 0;
+    const open = expandable && sceneTreeExpandedRefs.has(node.ref);
+    if (expandable) item.dataset.open = open ? 'true' : 'false';
+    if (node.hidden) item.dataset.hidden = 'true';
+
+    const row = document.createElement('div');
+    row.className = 'buret-tree-row';
+    row.dataset.ref = node.ref;
+
+    if (expandable) {
+      const twisty = document.createElement('button');
+      twisty.type = 'button';
+      twisty.className = 'buret-tree-twisty';
+      twisty.dataset.sceneTreeAction = 'expand';
+      twisty.setAttribute('aria-expanded', open ? 'true' : 'false');
+      twisty.setAttribute('aria-label', open ? `Collapse ${node.label}` : `Expand ${node.label}`);
+      twisty.appendChild(sceneTreeIconElement(SCENE_TREE_ICON.chevron));
+      row.appendChild(twisty);
+    } else {
+      const spacer = document.createElement('span');
+      spacer.className = 'buret-tree-twisty buret-tree-twisty-empty';
+      row.appendChild(spacer);
+    }
+
+    const bar = document.createElement('span');
+    bar.className = 'buret-tree-bar';
+    bar.style.background = SCENE_TREE_TYPE_COLOR[node.typeClass] || SCENE_TREE_TYPE_COLOR.Object;
+    row.appendChild(bar);
+
+    if (sceneTreeSelectedRef === node.ref) item.dataset.selected = 'true';
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'buret-tree-trigger';
+    // Left click picks the row, the way a tree is expected to behave. The camera
+    // move sits on the double click and in the menu, so browsing the tree does not
+    // fling the view around.
+    trigger.dataset.sceneTreeAction = 'select';
+    const label = document.createElement('span');
+    label.className = 'buret-tree-label';
+    label.textContent = node.label;
+    trigger.appendChild(label);
+    if (node.note) {
+      const note = document.createElement('span');
+      note.className = 'buret-tree-note';
+      note.textContent = node.note;
+      trigger.appendChild(note);
+    }
+    trigger.title = node.note ? `${node.label} — ${node.note}` : node.label;
+    row.appendChild(trigger);
+
+    const actions = document.createElement('span');
+    actions.className = 'buret-tree-actions';
+    if (node.colorable && node.value !== null) {
+      // The tint is the one thing on the row you want to change after seeing it,
+      // so the dot opens the same menu the right click does.
+      const dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = 'buret-tree-dot';
+      dot.dataset.sceneTreeAction = 'menu';
+      dot.style.background = sceneTreeColorHex(node.value);
+      dot.setAttribute('aria-label', `Colour ${node.label}`);
+      dot.title = `Colour ${node.label}`;
+      actions.appendChild(dot);
+    }
+    actions.appendChild(sceneTreeActionButton('remove', `Remove ${node.label}`, SCENE_TREE_ICON.trash));
+    actions.appendChild(sceneTreeActionButton(
+      'visibility',
+      node.hidden ? `Show ${node.label}` : `Hide ${node.label}`,
+      node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
+    ));
+    row.appendChild(actions);
+    item.appendChild(row);
+
+    if (expandable) {
+      const content = document.createElement('div');
+      content.className = 'buret-tree-content';
+      const inner = document.createElement('div');
+      inner.className = 'buret-tree-content-inner';
+      for (const child of node.children) inner.appendChild(sceneTreeNodeElement(child));
+      content.appendChild(inner);
+      item.appendChild(content);
+    }
+    return item;
+  }
+
+  // Coalesced with a timer rather than an animation frame: a preview can be laid out
+  // while its tab is hidden, and requestAnimationFrame never fires there, which
+  // would leave the panel empty until the tab was looked at.
+  function scheduleSceneTreeRender() {
+    if (sceneTreeRenderHandle) return;
+    sceneTreeRenderHandle = window.setTimeout(() => {
+      sceneTreeRenderHandle = 0;
+      renderSceneTree();
+    }, 0);
+  }
+
+  function renderSceneTree() {
+    const toggle = document.getElementById('buret-scene-tree-toggle');
+    const panel = document.getElementById('buret-scene-tree');
+    const body = panel?.querySelector('[data-buret-scene-tree-body]');
+    if (!toggle || !panel || !body) return;
+    const nodes = sceneTreeNodes(activeMolstarViewer());
+    reconcileSceneTreeExpansion(nodes);
+    const available = nodes.length > 0;
+    toggle.classList.toggle('hidden', !available);
+    // The rail and the tree answer the same question — is there a Mol* scene to
+    // control — so they appear and go together.
+    document.getElementById('buret-viewport-rail')?.classList.toggle('hidden', !available);
+    updateSelectionBar();
+    if (!available) {
+      setSceneTreeOpen(false);
+      body.replaceChildren();
+      updateSceneTreeExpandButton();
+      updateViewportCornerLayout();
+      return;
+    }
+    const root = document.createElement('div');
+    root.className = 'buret-tree';
+    const highlight = document.createElement('div');
+    highlight.className = 'buret-tree-highlight';
+    root.appendChild(highlight);
+    for (const node of nodes) root.appendChild(sceneTreeNodeElement(node));
+    body.replaceChildren(root);
+    requestAnimationFrame(() => root.classList.add('buret-tree-animate'));
+    const hovered = sceneTreeHoverRef
+      ? root.querySelector(`.buret-tree-row[data-ref="${CSS.escape(sceneTreeHoverRef)}"]`)
+      : null;
+    moveSceneTreeHighlight(hovered, { instant: true });
+    updateSceneTreeExpandButton();
+  }
+
+  // One block slides between rows instead of every row painting its own hover fill.
+  function moveSceneTreeHighlight(row, options = {}) {
+    const highlight = document.querySelector('#buret-scene-tree .buret-tree-highlight');
+    if (!highlight) return;
+    const root = highlight.parentElement;
+    if (!row || !root) {
+      sceneTreeHoverRef = '';
+      highlight.classList.remove('buret-tree-highlight-active');
+      return;
+    }
+    sceneTreeHoverRef = row.dataset.ref || '';
+    const rootRect = root.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    highlight.classList.toggle('buret-tree-highlight-instant', options.instant === true);
+    highlight.style.width = `${rowRect.width}px`;
+    highlight.style.height = `${rowRect.height}px`;
+    highlight.style.transform = `translate(${rowRect.left - rootRect.left}px, ${rowRect.top - rootRect.top}px)`;
+    highlight.classList.add('buret-tree-highlight-active');
+    if (options.instant === true) {
+      requestAnimationFrame(() => highlight.classList.remove('buret-tree-highlight-instant'));
+    }
+  }
+
+  function setSceneTreeOpen(open) {
+    const toggle = document.getElementById('buret-scene-tree-toggle');
+    const panel = document.getElementById('buret-scene-tree');
+    if (!toggle || !panel) return;
+    panel.classList.toggle('hidden', !open);
+    panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      // Always reopens anchored under the toggle; dragging moves it for as long as
+      // it stays open, it does not become the panel's new home.
+      panel.style.removeProperty('left');
+      panel.style.removeProperty('top');
+    } else {
+      moveSceneTreeHighlight(null);
+      closeSceneTreeMenu();
+    }
+    updateViewportCornerLayout();
+  }
+
+  // Several structures at once make the tree run well past the panel; one control
+  // folds it back to the top level and opens it again.
+  function toggleSceneTreeExpandAll() {
+    if (sceneTreeExpandedRefs.size) {
+      sceneTreeExpandedRefs.clear();
+    } else {
+      const walk = list => {
+        for (const node of list) {
+          if (node.children.length) sceneTreeExpandedRefs.add(node.ref);
+          walk(node.children);
+        }
+      };
+      walk(sceneTreeNodes(activeMolstarViewer()));
+    }
+    renderSceneTree();
+  }
+
+  function updateSceneTreeExpandButton() {
+    const button = document.querySelector('[data-buret-action="scene-tree-expand-all"]');
+    if (!button) return;
+    const collapse = sceneTreeExpandedRefs.size > 0;
+    const label = collapse ? 'Collapse all' : 'Expand all';
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    button.replaceChildren(sceneTreeIconElement(collapse ? SCENE_TREE_ICON.collapseAll : SCENE_TREE_ICON.expandAll));
+  }
+
+  // Flips the row in place rather than re-rendering: a rebuilt node would start at
+  // its final height and the expand transition would never run.
+  function toggleSceneTreeNode(ref) {
+    const open = !sceneTreeExpandedRefs.has(ref);
+    if (open) sceneTreeExpandedRefs.add(ref);
+    else sceneTreeExpandedRefs.delete(ref);
+    const item = document.querySelector(`#buret-scene-tree .buret-tree-item[data-ref="${CSS.escape(ref)}"]`);
+    if (!item) {
+      renderSceneTree();
+      return;
+    }
+    item.dataset.open = open ? 'true' : 'false';
+    const twisty = item.querySelector(':scope > .buret-tree-row > .buret-tree-twisty');
+    const label = item.querySelector(':scope > .buret-tree-row .buret-tree-label')?.textContent || '';
+    twisty?.setAttribute('aria-expanded', open ? 'true' : 'false');
+    twisty?.setAttribute('aria-label', `${open ? 'Collapse' : 'Expand'} ${label}`);
+  }
+
+  // Mol* hides a cell by walking its subtree, so a representation stays hidden
+  // while its component is hidden and comes back with it.
+  function sceneTreeSubtreeRefs(state, ref) {
+    const { children } = sceneTreeChildRefs(state);
+    const refs = [];
+    const stack = [ref];
+    while (stack.length) {
+      const current = stack.pop();
+      refs.push(current);
+      for (const child of children.get(current) || []) stack.push(child);
+    }
+    return refs;
+  }
+
+  function sceneTreeCellHidden(state, ref) {
+    return state?.cells?.get(ref)?.state?.isHidden === true;
+  }
+
+  function toggleSceneTreeVisibility(ref) {
+    const state = activeMolstarViewer()?.plugin?.state?.data;
+    if (typeof state?.updateCellState !== 'function') return;
+    const hidden = !sceneTreeCellHidden(state, ref);
+    for (const target of sceneTreeSubtreeRefs(state, ref)) {
+      state.updateCellState(target, { isHidden: hidden });
+    }
+    scheduleSceneTreeRender();
+  }
+
+  async function removeSceneTreeNode(ref) {
+    const state = activeMolstarViewer()?.plugin?.state?.data;
+    if (typeof state?.build !== 'function') return;
+    try {
+      await state.build().delete(ref).commit();
+    } catch (error) {
+      debug('scene tree remove failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  // Selecting also hands the cell to Mol* as its current object, so the native
+  // panels follow the tree instead of disagreeing with it.
+  function selectSceneTreeNode(ref) {
+    sceneTreeSelectedRef = ref;
+    const panel = document.getElementById('buret-scene-tree');
+    panel?.querySelectorAll('.buret-tree-item[data-selected="true"]').forEach(item => {
+      delete item.dataset.selected;
+    });
+    const item = panel?.querySelector(`.buret-tree-item[data-ref="${CSS.escape(ref)}"]`);
+    if (item) item.dataset.selected = 'true';
+    const state = activeMolstarViewer()?.plugin?.state?.data;
+    try { state?.setCurrent?.(ref); } catch (_) {}
+  }
+
+  function focusSceneTreeNode(ref) {
+    const plugin = activeMolstarViewer()?.plugin;
+    const data = plugin?.state?.data?.cells?.get(ref)?.obj?.data;
+    // A Mol* Structure carries its extent on `boundary`, not `boundingSphere`;
+    // representation cells keep theirs one level down on the structure they draw.
+    const sphere = data?.boundary?.sphere || data?.sourceData?.boundary?.sphere;
+    if (!sphere || typeof plugin?.managers?.camera?.focusSphere !== 'function') return;
+    try {
+      plugin.managers.camera.focusSphere(sphere, { durationMs: 250 });
+    } catch (error) {
+      debug('scene tree focus failed: ' + (error && error.message || String(error)));
+    }
+  }
+
+  // Ribbons and surfaces carry no element detail, so a pick paints them whole.
+  // Everything else keeps its element colours and only the carbons take the pick,
+  // which is what the default Mol* colouring does with its own carbon palette.
+  const SCENE_TREE_FLAT_REPRESENTATIONS = new Set([
+    'cartoon', 'backbone', 'putty', 'molecular-surface', 'gaussian-surface', 'gaussian-volume'
+  ]);
+
+  function sceneTreeTintParams(value) {
+    return (_component, representation) => {
+      const type = String(representation?.cell?.transform?.params?.type?.name || '');
+      return SCENE_TREE_FLAT_REPRESENTATIONS.has(type)
+        ? { color: 'uniform', colorParams: { value } }
+        : { color: 'element-symbol', colorParams: { carbonColor: { name: 'uniform', params: { value } } } };
+    };
+  }
+
+  // The same smart tint, shaped for updateRepresentations rather than
+  // updateRepresentationsTheme: editing one representation goes through the pivot
+  // form, and its params carry the colour theme as { name, params }.
+  function sceneTreeReprTintTheme(type, value) {
+    return SCENE_TREE_FLAT_REPRESENTATIONS.has(type)
+      ? { name: 'uniform', params: { value } }
+      : { name: 'element-symbol', params: { carbonColor: { name: 'uniform', params: { value } } } };
+  }
+
+  async function applySceneTreeColorTheme(ref, theme, value) {
+    const viewer = activeMolstarViewer();
+    const manager = viewer?.plugin?.managers?.structure?.component;
+    const components = sceneTreeColorTargets(viewer).get(ref) || [];
+    if (typeof manager?.updateRepresentationsTheme !== 'function' || !components.length) return;
+    let params;
+    if (theme === 'tint') params = sceneTreeTintParams(value);
+    else if (theme === 'default') params = { color: 'default' };
+    else params = { color: theme };
+    try {
+      await manager.updateRepresentationsTheme(components, params);
+    } catch (error) {
+      debug('scene tree colour failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  // Mol* ships fifty colour themes but most of them need data this structure does
+  // not have — volumes, annotations, quality reports. The registry knows which ones
+  // actually apply, so the menu only offers those.
+  function sceneTreeColorThemes(viewer, components) {
+    const registry = viewer?.plugin?.representation?.structure?.themes?.colorThemeRegistry;
+    if (!registry) return [];
+    let types = registry.types;
+    const structure = components?.[0]?.cell?.obj?.data;
+    if (structure && typeof registry.getApplicableTypes === 'function') {
+      try {
+        types = registry.getApplicableTypes({ structure });
+      } catch (error) {
+        debug('scene tree theme list failed: ' + (error && error.message || String(error)));
+      }
+    }
+    if (!Array.isArray(types)) return [];
+    return types
+      .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
+      .filter(entry => entry.name);
+  }
+
+  // These run on their own defaults, and for a good half of Mol*'s actions the
+  // default is a no-op: an identity matrix, an empty transform list, t = 0, every
+  // strength already at 1. Applying one inserts a state node and changes nothing on
+  // screen, which reads as a menu of dead entries. They are hidden rather than left
+  // to disappoint — each needs a parameter form to mean anything, and there is none.
+  const SCENE_TREE_INERT_ACTIONS = new Set([
+    'Transform Conformation',
+    'Structure Instances',
+    'Custom Structure Properties',
+    'Explode 3D Representation',
+    'Spin 3D Representation',
+    'Unwind Assembly 3D Representation',
+    'Overpaint 3D Representation',
+    'Transparency 3D Representation',
+    'Clipping 3D Representation',
+    'Substance 3D Representation',
+    'Theme Strength 3D Representation'
+  ]);
+
+  function sceneTreeCellActions(viewer, ref) {
+    const state = viewer?.plugin?.state?.data;
+    const cell = state?.cells?.get(ref);
+    if (!cell?.obj || typeof state.actions?.fromCell !== 'function') return [];
+    try {
+      return state.actions.fromCell(cell, viewer.plugin)
+        .map(action => ({ action, label: String(action?.definition?.display?.name || '') }))
+        .filter(entry => entry.label && !SCENE_TREE_INERT_ACTIONS.has(entry.label));
+    } catch (error) {
+      debug('scene tree actions failed: ' + (error && error.message || String(error)));
+      return [];
+    }
+  }
+
+  // Mol* puts a parameter form in front of every action. These run straight on the
+  // action's own defaults, which is what makes the menu usable rather than a form.
+  function sceneTreeActionDefaults(action, viewer, cell) {
+    const definition = action?.definition;
+    const params = typeof definition?.params === 'function'
+      ? definition.params(cell?.obj, viewer?.plugin)
+      : definition?.params;
+    if (!params || typeof params !== 'object') return {};
+    const values = {};
+    for (const [key, entry] of Object.entries(params)) values[key] = entry?.defaultValue;
+    return values;
+  }
+
+  async function applySceneTreeAction(ref, index) {
+    const viewer = activeMolstarViewer();
+    const state = viewer?.plugin?.state?.data;
+    const entry = sceneTreeCellActions(viewer, ref)[index];
+    if (!entry || typeof state?.applyAction !== 'function') return;
+    try {
+      await viewer.plugin.runTask(
+        state.applyAction(entry.action, sceneTreeActionDefaults(entry.action, viewer, state.cells.get(ref)), ref)
+      );
+    } catch (error) {
+      debug('scene tree action failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  function closeSceneTreeMenu() {
+    sceneTreeMenuRef = '';
+    const menu = document.getElementById('buret-scene-tree-menu');
+    // Dismissing the menu mid-hover must not leave the previewed theme behind: the
+    // pointer never reached a row to click, so nothing was chosen.
+    for (const list of menu?.querySelectorAll('[data-scene-tree-picker-list]') || []) {
+      closeSceneTreePicker(list, { restore: true });
+    }
+    menu?.remove();
+  }
+
+  function sceneTreeNodeByRef(nodes, ref) {
+    for (const node of nodes) {
+      if (node.ref === ref) return node;
+      const found = sceneTreeNodeByRef(node.children, ref);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function sceneTreeMenuItem(label, action, options = {}) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'menuitem');
+    button.className = `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
+    button.dataset.sceneTreeAction = action;
+    Object.assign(button.dataset, options.data || {});
+    const icon = document.createElement('span');
+    icon.className = 'buret-tree-menu-icon';
+    if (options.icon) icon.appendChild(sceneTreeIconElement(options.icon));
+    const text = document.createElement('span');
+    text.className = 'buret-tree-menu-label';
+    text.textContent = label;
+    button.append(icon, text);
+    return button;
+  }
+
+  function sceneTreeMenuSection(menu, title) {
+    const divider = document.createElement('div');
+    divider.className = 'buret-tree-menu-divider';
+    menu.appendChild(divider);
+    if (!title) return;
+    const heading = document.createElement('div');
+    heading.className = 'buret-tree-menu-title';
+    heading.textContent = title;
+    menu.appendChild(heading);
+  }
+
+  function sceneTreeMenuSelect(menu, label, select, options, current, placeholder) {
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const control = document.createElement('select');
+    control.className = 'buret-select';
+    control.dataset.sceneTreeSelect = select;
+    if (placeholder) {
+      const item = document.createElement('option');
+      item.value = '';
+      item.textContent = placeholder;
+      control.appendChild(item);
+    }
+    for (const option of options) {
+      const item = document.createElement('option');
+      item.value = option.name;
+      item.textContent = option.label;
+      control.appendChild(item);
+    }
+    // A placeholder select is an action list that always sits back on its prompt;
+    // the others reflect the current value, and an empty selection is honest when
+    // the representations disagree — a structure row with a cartoon and a
+    // ball-and-stick under it has no single type to show.
+    if (placeholder) control.value = '';
+    else if (current && options.some(option => option.name === current)) control.value = current;
+    else control.selectedIndex = -1;
+    row.append(caption, control);
+    menu.appendChild(row);
+  }
+
+  // A native <select> cannot preview: its popup is drawn by the OS, its <option>
+  // elements have no layout box, and no pointer event ever reaches them. Colour
+  // themes are the one list here worth seeing before committing to, so this row is
+  // a list of our own — hovering paints the scene, leaving puts it back.
+  function sceneTreeMenuThemePicker(menu, label, action, options, current) {
+    const row = document.createElement('div');
+    row.className = 'buret-tree-menu-field buret-tree-menu-picker';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'buret-tree-picker-trigger';
+    trigger.dataset.sceneTreePicker = action;
+    trigger.setAttribute('aria-expanded', 'false');
+    const chosen = options.find(option => option.name === current);
+    trigger.textContent = chosen ? chosen.label : 'Mixed';
+    trigger.title = trigger.textContent;
+    row.append(caption, trigger);
+    menu.appendChild(row);
+
+    const list = document.createElement('div');
+    list.className = 'buret-tree-picker-list';
+    list.dataset.sceneTreePickerList = action;
+    list.dataset.current = current || '';
+    list.hidden = true;
+    list.setAttribute('role', 'listbox');
+    for (const option of options) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'buret-tree-picker-item';
+      item.setAttribute('role', 'option');
+      item.dataset.sceneTreePickerValue = option.name;
+      item.setAttribute('aria-selected', option.name === current ? 'true' : 'false');
+      item.textContent = option.label;
+      list.appendChild(item);
+    }
+    menu.appendChild(list);
+  }
+
+  function sceneTreeMenuSlider(menu, label, slider, value) {
+    const row = document.createElement('div');
+    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const control = document.createElement('input');
+    control.type = 'range';
+    control.className = 'buret-tree-menu-range';
+    control.min = '0';
+    control.max = '100';
+    control.step = '1';
+    control.value = String(value);
+    control.dataset.sceneTreeSlider = slider;
+    const readout = document.createElement('span');
+    readout.className = 'buret-tree-menu-slider-value';
+    readout.textContent = `${value}%`;
+    row.append(caption, control, readout);
+    menu.appendChild(row);
+  }
+
+  function sceneTreeRepresentationTypes(viewer, components) {
+    const registry = viewer?.plugin?.representation?.structure?.registry;
+    const structure = components?.[0]?.cell?.obj?.data;
+    if (!registry) return [];
+    let types = registry.types;
+    if (structure && typeof registry.getApplicableTypes === 'function') {
+      try {
+        types = registry.getApplicableTypes(structure);
+      } catch (error) {
+        debug('scene tree representation list failed: ' + (error && error.message || String(error)));
+      }
+    }
+    if (!Array.isArray(types)) return [];
+    return types
+      .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
+      .filter(entry => entry.name);
+  }
+
+  // Adds another representation to a component without disturbing the ones already
+  // there — a ligand can carry its ball-and-stick and a translucent surface at once.
+  async function addSceneTreeRepresentation(ref, type) {
+    const viewer = activeMolstarViewer();
+    const manager = viewer?.plugin?.managers?.structure?.component;
+    const components = sceneTreeColorTargets(viewer).get(ref) || [];
+    if (!type || !components.length || typeof manager?.addRepresentation !== 'function') return;
+    try {
+      await manager.addRepresentation(components, type);
+    } catch (error) {
+      debug('scene tree add representation failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  // Per-representation edits all ride the same pivot update. Returning a fresh params
+  // object from the updater lets one field change while Mol* keeps the rest of the
+  // transform, which is why colour and opacity can be set without clobbering each
+  // other or the size theme.
+  async function updateSceneTreeRepresentation(ref, update) {
+    const viewer = activeMolstarViewer();
+    const manager = viewer?.plugin?.managers?.structure?.component;
+    const target = sceneTreeRepresentationTargets(viewer).get(ref);
+    if (!target || typeof manager?.updateRepresentations !== 'function') return;
+    try {
+      await manager.updateRepresentations([target.component], target.representation, update);
+    } catch (error) {
+      debug('scene tree representation update failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  function applySceneTreeReprType(ref, type) {
+    // A new type brings its own parameter schema, so the params reset to defaults
+    // rather than carrying keys the new type would not understand.
+    return updateSceneTreeRepresentation(ref, old => ({ ...old, type: { name: type, params: {} } }));
+  }
+
+  function applySceneTreeReprAlpha(ref, alpha) {
+    return updateSceneTreeRepresentation(ref, old => ({
+      ...old, type: { ...old.type, params: { ...old.type.params, alpha } }
+    }));
+  }
+
+  function applySceneTreeReprColor(ref, choice, value) {
+    const viewer = activeMolstarViewer();
+    const target = sceneTreeRepresentationTargets(viewer).get(ref);
+    if (!target) return;
+    const type = String(target.representation?.cell?.transform?.params?.type?.name || '');
+    const colorTheme = choice === 'tint'
+      ? sceneTreeReprTintTheme(type, value)
+      : { name: choice, params: {} };
+    return updateSceneTreeRepresentation(ref, old => ({ ...old, colorTheme }));
+  }
+
+  // The opacity slider fires on every pixel of the drag; each apply is a state
+  // commit, so newer moves are folded into the one in flight rather than queued
+  // behind it — the representation follows the thumb and never lags a backlog.
+  let sceneTreeAlphaInFlight = false;
+  let sceneTreePendingAlpha = null;
+  async function streamSceneTreeReprAlpha(ref, alpha) {
+    sceneTreePendingAlpha = { ref, alpha };
+    if (sceneTreeAlphaInFlight) return;
+    sceneTreeAlphaInFlight = true;
+    try {
+      while (sceneTreePendingAlpha) {
+        const next = sceneTreePendingAlpha;
+        sceneTreePendingAlpha = null;
+        await applySceneTreeReprAlpha(next.ref, next.alpha);
+      }
+    } finally {
+      sceneTreeAlphaInFlight = false;
+    }
+  }
+
+  let sceneTreeParamInFlight = false;
+  let sceneTreePendingParam = null;
+  async function streamSceneTreeReprParam(ref, name, value) {
+    sceneTreePendingParam = { ref, name, value };
+    if (sceneTreeParamInFlight) return;
+    sceneTreeParamInFlight = true;
+    try {
+      while (sceneTreePendingParam) {
+        const next = sceneTreePendingParam;
+        sceneTreePendingParam = null;
+        await applySceneTreeReprParam(next.ref, next.name, next.value);
+      }
+    } finally {
+      sceneTreeParamInFlight = false;
+    }
+  }
+
+  // Shows one component and hides its siblings — the quickest way to look at a
+  // ligand or a chain without walking the tree turning eyes off one by one.
+  // Isolate needs an inverse, or hiding everything but one component leaves no way
+  // back short of clicking every eye.
+  function showAllSceneTreeNodes(ref) {
+    const viewer = activeMolstarViewer();
+    const state = viewer?.plugin?.state?.data;
+    if (typeof state?.updateCellState !== 'function') return;
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const components = structure?.components || [];
+      const owns = structure?.cell?.transform?.ref === ref
+        || components.some(component => component?.cell?.transform?.ref === ref);
+      if (!owns) continue;
+      for (const component of components) {
+        const componentRef = component?.cell?.transform?.ref;
+        if (!componentRef) continue;
+        for (const target of sceneTreeSubtreeRefs(state, componentRef)) {
+          state.updateCellState(target, { isHidden: false });
+        }
+      }
+      break;
+    }
+    scheduleSceneTreeRender();
+  }
+
+  function isolateSceneTreeNode(ref) {
+    const viewer = activeMolstarViewer();
+    const state = viewer?.plugin?.state?.data;
+    if (typeof state?.updateCellState !== 'function') return;
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const components = structure?.components || [];
+      if (!components.some(component => component?.cell?.transform?.ref === ref)) continue;
+      for (const component of components) {
+        const componentRef = component?.cell?.transform?.ref;
+        if (!componentRef) continue;
+        const hidden = componentRef !== ref;
+        for (const target of sceneTreeSubtreeRefs(state, componentRef)) {
+          state.updateCellState(target, { isHidden: hidden });
+        }
+      }
+      break;
+    }
+    scheduleSceneTreeRender();
+  }
+
+  function sceneTreeMenuSwatches(menu, label, action, currentValue) {
+    const swatches = document.createElement('div');
+    swatches.className = 'buret-tree-swatches';
+    for (const entry of SCENE_TREE_UNIFORM_COLORS) {
+      const swatch = document.createElement('button');
+      swatch.type = 'button';
+      swatch.className = 'buret-tree-swatch';
+      swatch.dataset.sceneTreeAction = action;
+      swatch.dataset.sceneTreeColor = String(entry.value);
+      swatch.style.background = sceneTreeColorHex(entry.value);
+      swatch.setAttribute('aria-label', `Tint ${label} ${entry.label.toLowerCase()}`);
+      swatch.setAttribute('aria-pressed', currentValue === entry.value ? 'true' : 'false');
+      swatch.title = entry.label;
+      swatches.appendChild(swatch);
+    }
+    menu.appendChild(swatches);
+  }
+
+  // A representation carries 30–55 parameters; all but a handful are renderer
+  // plumbing. These are the ones that change how a drawing reads, named for what
+  // they do rather than for the field behind them. Each is offered only when the
+  // current type actually declares it, so the list shapes itself to the drawing.
+  const SCENE_TREE_ADVANCED_PARAMS = [
+    ['sizeFactor', 'Scale'],
+    ['sizeAspectRatio', 'Bond thickness'],
+    ['probeRadius', 'Probe radius'],
+    ['resolution', 'Detail'],
+    ['aspectRatio', 'Ribbon width'],
+    ['thicknessFactor', 'Ribbon thickness'],
+    ['linearSegments', 'Smoothness'],
+    ['emissive', 'Glow'],
+    ['multipleBonds', 'Multiple bonds'],
+    ['floodfill', 'Fill cavities'],
+    ['quality', 'Quality'],
+    ['xrayShaded', 'X-ray shading'],
+    ['aromaticBonds', 'Aromatic bonds'],
+    ['tubularHelices', 'Helices as tubes'],
+    ['ignoreLight', 'Flat colour'],
+    ['celShaded', 'Cel shading'],
+    ['ignoreHydrogens', 'Hide hydrogens']
+  ];
+
+  function sceneTreeReprParamSchema(viewer, target) {
+    const plugin = viewer?.plugin;
+    const type = String(target?.representation?.cell?.transform?.params?.type?.name || '');
+    const provider = type ? plugin?.representation?.structure?.registry?.get?.(type) : null;
+    const themes = plugin?.representation?.structure?.themes;
+    if (typeof provider?.getParams !== 'function' || !themes) return null;
+    try {
+      return provider.getParams({
+        webgl: plugin.canvas3dContext?.webgl,
+        colorThemeRegistry: themes.colorThemeRegistry,
+        sizeThemeRegistry: themes.sizeThemeRegistry
+      }, target.component?.cell?.obj?.data);
+    } catch (error) {
+      debug('scene tree advanced params failed: ' + (error && error.message || String(error)));
+      return null;
+    }
+  }
+
+  function sceneTreeAdvancedControl(parent, name, label, definition, value) {
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    let control;
+    if (definition.type === 'boolean') {
+      control = document.createElement('input');
+      control.type = 'checkbox';
+      control.className = 'buret-tree-menu-check';
+      control.checked = value === true;
+    } else if (definition.type === 'select') {
+      control = document.createElement('select');
+      control.className = 'buret-select';
+      for (const option of definition.options || []) {
+        const item = document.createElement('option');
+        item.value = String(option[0]);
+        item.textContent = String(option[1] ?? option[0]);
+        control.appendChild(item);
+      }
+      control.value = String(value ?? definition.defaultValue);
+    } else {
+      control = document.createElement('input');
+      control.type = 'range';
+      control.className = 'buret-tree-menu-range';
+      control.min = String(definition.min ?? 0);
+      control.max = String(definition.max ?? 1);
+      control.step = String(definition.step ?? 0.01);
+      control.value = String(Number.isFinite(value) ? value : definition.defaultValue);
+      row.classList.add('buret-tree-menu-slider');
+    }
+    control.dataset.sceneTreeParam = name;
+    control.dataset.sceneTreeParamType = definition.type;
+    row.append(caption, control);
+    if (control.type === 'range') {
+      const readout = document.createElement('span');
+      readout.className = 'buret-tree-menu-slider-value';
+      readout.textContent = control.value;
+      row.appendChild(readout);
+    }
+    parent.appendChild(row);
+  }
+
+  function sceneTreeAdvancedSection(menu, viewer, target) {
+    const schema = sceneTreeReprParamSchema(viewer, target);
+    if (!schema) return;
+    const current = target.representation?.cell?.transform?.params?.type?.params || {};
+    const rows = SCENE_TREE_ADVANCED_PARAMS
+      .filter(([name]) => schema[name] && ['number', 'boolean', 'select'].includes(schema[name].type));
+    const sizeThemes = viewer?.plugin?.representation?.structure?.themes?.sizeThemeRegistry;
+    if (!rows.length && !sizeThemes) return;
+    sceneTreeMenuSection(menu);
+    const disclosure = document.createElement('details');
+    disclosure.className = 'buret-tree-menu-actions buret-tree-menu-advanced';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Advanced';
+    disclosure.appendChild(summary);
+    for (const [name, label] of rows) {
+      sceneTreeAdvancedControl(disclosure, name, label, schema[name], current[name]);
+    }
+    // Size is a theme of its own, alongside colour rather than inside the type.
+    const sizeOptions = sizeThemes?.getApplicableTypes?.({ structure: target.component?.cell?.obj?.data }) || [];
+    if (sizeOptions.length > 1) {
+      const row = document.createElement('label');
+      row.className = 'buret-tree-menu-field';
+      const caption = document.createElement('span');
+      caption.textContent = 'Size by';
+      const control = document.createElement('select');
+      control.className = 'buret-select';
+      control.dataset.sceneTreeSelect = 'representation-size';
+      for (const option of sizeOptions) {
+        const item = document.createElement('option');
+        item.value = String(option[0]);
+        item.textContent = String(option[1] ?? option[0]);
+        control.appendChild(item);
+      }
+      control.value = String(target.representation?.cell?.transform?.params?.sizeTheme?.name || '');
+      row.append(caption, control);
+      disclosure.appendChild(row);
+    }
+    menu.appendChild(disclosure);
+  }
+
+  // Both surface types can draw themselves as a mesh or as bare wireframe. That is
+  // a choice about what the drawing is, not a tuning knob, so it sits beside Type
+  // rather than under Advanced — and it only appears for a type that offers both.
+  function sceneTreeSurfaceFillRow(menu, viewer, target) {
+    const schema = sceneTreeReprParamSchema(viewer, target);
+    const options = (schema?.visuals?.options || []).map(option => String(option[0]));
+    const own = name => !name.startsWith('structure-');
+    const solid = options.find(name => own(name) && name.endsWith('-mesh'));
+    const wireframe = options.find(name => own(name) && name.endsWith('-wireframe'));
+    if (!solid || !wireframe) return;
+    const current = target.representation?.cell?.transform?.params?.type?.params?.visuals;
+    const active = Array.isArray(current) && current.includes(wireframe) ? wireframe : solid;
+    sceneTreeMenuSelect(menu, 'Fill', 'representation-visual', [
+      { name: solid, label: 'Solid' },
+      { name: wireframe, label: 'Wireframe' }
+    ], active);
+  }
+
+  // Painting a whole structure is a state commit, and a pointer crossing a list
+  // asks for one per row. Newer hovers fold into the one in flight, the same way
+  // the opacity drag does, so the scene follows the cursor instead of a backlog.
+  let sceneTreeThemeInFlight = false;
+  let sceneTreePendingTheme = null;
+  async function streamSceneTreeTheme(ref, action, name) {
+    sceneTreePendingTheme = { ref, action, name };
+    if (sceneTreeThemeInFlight) return;
+    sceneTreeThemeInFlight = true;
+    try {
+      while (sceneTreePendingTheme) {
+        const next = sceneTreePendingTheme;
+        sceneTreePendingTheme = null;
+        await (next.action === 'representation-color'
+          ? applySceneTreeReprColor(next.ref, next.name, null)
+          : applySceneTreeColorTheme(next.ref, next.name, null));
+      }
+    } finally {
+      sceneTreeThemeInFlight = false;
+    }
+  }
+
+  function closeSceneTreePicker(list, { restore } = {}) {
+    if (!list || list.hidden) return;
+    const trigger = list.parentElement?.querySelector(`[data-scene-tree-picker="${list.dataset.sceneTreePickerList}"]`);
+    if (restore && list.dataset.current) {
+      const ref = list.closest('[data-ref]')?.dataset.ref;
+      if (ref) streamSceneTreeTheme(ref, list.dataset.sceneTreePickerList, list.dataset.current);
+    }
+    list.hidden = true;
+    trigger?.setAttribute('aria-expanded', 'false');
+  }
+
+  function applySceneTreeReprParam(ref, name, value) {
+    return updateSceneTreeRepresentation(ref, old => ({
+      ...old, type: { ...old.type, params: { ...old.type.params, [name]: value } }
+    }));
+  }
+
+  function applySceneTreeReprSize(ref, name) {
+    return updateSceneTreeRepresentation(ref, old => ({ ...old, sizeTheme: { name, params: {} } }));
+  }
+
+  // The leaf menu edits one representation on its own: what it is, how solid it is,
+  // and how it is coloured. Type and opacity sit together because they describe the
+  // same drawing; colour keeps the structure row's theme picker and swatches.
+  function sceneTreeRepresentationMenu(menu, viewer, node, target) {
+    const params = target.representation?.cell?.transform?.params;
+    const currentType = String(params?.type?.name || '');
+    const alpha = Number.isFinite(params?.type?.params?.alpha) ? params.type.params.alpha : 1;
+
+    const types = sceneTreeRepresentationTypes(viewer, [target.component]);
+    sceneTreeMenuSection(menu, 'Representation');
+    if (types.length) sceneTreeMenuSelect(menu, 'Type', 'representation-type', types, currentType);
+    sceneTreeSurfaceFillRow(menu, viewer, target);
+    sceneTreeMenuSlider(menu, 'Opacity', 'opacity', Math.round(alpha * 100));
+
+    sceneTreeMenuSection(menu, 'Colour');
+    sceneTreeMenuThemePicker(menu, 'Theme', 'representation-color',
+      sceneTreeColorThemes(viewer, [target.component]), String(params?.colorTheme?.name || ''));
+    sceneTreeMenuSwatches(menu, node.label, 'rep-tint-color', sceneTreeRepresentationTint(target.representation));
+
+    sceneTreeAdvancedSection(menu, viewer, target);
+  }
+
+  function openSceneTreeMenu(ref, clientX, clientY) {
+    closeSceneTreeMenu();
+    const viewer = activeMolstarViewer();
+    const node = sceneTreeNodeByRef(sceneTreeNodes(viewer), ref);
+    if (!node) return;
+    sceneTreeMenuRef = ref;
+    const repTarget = sceneTreeRepresentationTargets(viewer).get(ref);
+    const components = sceneTreeColorTargets(viewer).get(ref) || [];
+    const isComponent = components.length === 1 && components[0]?.cell?.transform?.ref === ref;
+
+    const menu = document.createElement('div');
+    menu.id = 'buret-scene-tree-menu';
+    menu.className = 'buret-tree-menu';
+    menu.dataset.ref = ref;
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', `${node.label} actions`);
+
+    const header = document.createElement('div');
+    header.className = 'buret-tree-menu-header';
+    // The menu carries representation, opacity and colour controls, so it is worked in
+    // rather than picked from — and where it lands is wherever the row was clicked,
+    // often over the very structure being edited. Its heading doubles as a drag handle.
+    header.setAttribute('data-buret-panel-handle', '');
+    const heading = document.createElement('span');
+    heading.className = 'buret-tree-menu-heading';
+    heading.textContent = node.label;
+    heading.title = node.label;
+    header.appendChild(heading);
+    if (node.note) {
+      const note = document.createElement('span');
+      note.className = 'buret-tree-menu-note';
+      note.textContent = node.note;
+      header.appendChild(note);
+    }
+    menu.appendChild(header);
+
+    menu.appendChild(sceneTreeMenuItem('Focus', 'focus', { icon: SCENE_TREE_ICON.focus }));
+    menu.appendChild(sceneTreeMenuItem(node.hidden ? 'Show' : 'Hide', 'visibility', {
+      icon: node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
+    }));
+
+    if (repTarget) {
+      sceneTreeRepresentationMenu(menu, viewer, node, repTarget);
+    } else {
+      if (isComponent) {
+        menu.appendChild(sceneTreeMenuItem('Isolate', 'isolate', { icon: SCENE_TREE_ICON.isolate }));
+      }
+      if (components.length) {
+        menu.appendChild(sceneTreeMenuItem('Show all', 'show-all', { icon: SCENE_TREE_ICON.restore }));
+      }
+      // Adding a representation only makes sense on a single component; a structure
+      // row would fan the same type across every component under it.
+      if (isComponent) {
+        const representations = sceneTreeRepresentationTypes(viewer, components);
+        if (representations.length) {
+          sceneTreeMenuSection(menu, 'Representation');
+          sceneTreeMenuSelect(menu, 'Add', 'add-representation', representations, '', 'Representation…');
+        }
+      }
+      if (components.length) {
+        sceneTreeMenuSection(menu, 'Colour');
+        sceneTreeMenuThemePicker(menu, 'Theme', 'color-theme', sceneTreeColorThemes(viewer, components), node.theme);
+        sceneTreeMenuSwatches(menu, node.label, 'tint-color', node.value);
+      }
+    }
+
+    // Mol*'s own actions are many and rarely the reason the menu was opened, so they
+    // stay folded away instead of pushing everything else off the screen.
+    const actions = sceneTreeCellActions(viewer, ref);
+    if (actions.length) {
+      sceneTreeMenuSection(menu);
+      const disclosure = document.createElement('details');
+      disclosure.className = 'buret-tree-menu-actions';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Apply action';
+      disclosure.appendChild(summary);
+      actions.forEach((entry, index) => {
+        disclosure.appendChild(sceneTreeMenuItem(entry.label, 'apply-action', {
+          data: { sceneTreeActionIndex: String(index) }
+        }));
+      });
+      menu.appendChild(disclosure);
+    }
+
+    sceneTreeMenuSection(menu);
+    menu.appendChild(sceneTreeMenuItem('Remove', 'remove', { icon: SCENE_TREE_ICON.trash, destructive: true }));
+
+    document.body.appendChild(menu);
+    const rect = menu.getBoundingClientRect();
+    const left = Math.max(6, Math.min(clientX, window.innerWidth - rect.width - 6));
+    const top = Math.max(6, Math.min(clientY, window.innerHeight - rect.height - 6));
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+    initViewportPanelDrag(menu);
+  }
+
+  function runSceneTreeAction(action, ref, control) {
+    if (action === 'expand') toggleSceneTreeNode(ref);
+    else if (action === 'select') selectSceneTreeNode(ref);
+    else if (action === 'visibility') toggleSceneTreeVisibility(ref);
+    else if (action === 'focus') focusSceneTreeNode(ref);
+    else if (action === 'isolate') isolateSceneTreeNode(ref);
+    else if (action === 'show-all') showAllSceneTreeNodes(ref);
+    else if (action === 'remove') removeSceneTreeNode(ref);
+    else if (action === 'tint-color') {
+      applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
+    } else if (action === 'rep-tint-color') {
+      applySceneTreeReprColor(ref, 'tint', Number(control.dataset.sceneTreeColor));
+    } else if (action === 'apply-action') {
+      applySceneTreeAction(ref, Number(control.dataset.sceneTreeActionIndex));
+    }
+  }
+
+  function onSceneTreeClick(event) {
+    const menu = document.getElementById('buret-scene-tree-menu');
+    const trigger = event.target.closest?.('[data-scene-tree-picker]');
+    if (trigger && menu?.contains(trigger)) {
+      const list = menu.querySelector(`[data-scene-tree-picker-list="${trigger.dataset.sceneTreePicker}"]`);
+      if (!list) return;
+      const opening = list.hidden;
+      // Only one list open at a time, and the one being closed goes back to the
+      // theme it started from — a hover that was never clicked is not a choice.
+      for (const other of menu.querySelectorAll('[data-scene-tree-picker-list]')) {
+        if (other !== list) closeSceneTreePicker(other, { restore: true });
+      }
+      if (opening) {
+        list.hidden = false;
+        trigger.setAttribute('aria-expanded', 'true');
+      } else {
+        closeSceneTreePicker(list, { restore: true });
+      }
+      return;
+    }
+    const picked = event.target.closest?.('[data-scene-tree-picker-value]');
+    if (picked && menu?.contains(picked)) {
+      const list = picked.closest('[data-scene-tree-picker-list]');
+      const ref = picked.closest('[data-ref]')?.dataset.ref;
+      const name = picked.dataset.sceneTreePickerValue;
+      if (list && ref) {
+        list.dataset.current = name;
+        streamSceneTreeTheme(ref, list.dataset.sceneTreePickerList, name);
+        closeSceneTreePicker(list);
+        const owner = menu.querySelector(`[data-scene-tree-picker="${list.dataset.sceneTreePickerList}"]`);
+        if (owner) { owner.textContent = picked.textContent; owner.title = picked.textContent; }
+        for (const item of list.children) {
+          item.setAttribute('aria-selected', item === picked ? 'true' : 'false');
+        }
+      }
+      return;
+    }
+    const control = event.target.closest('[data-scene-tree-action]');
+    if (!control) return;
+    const ref = control.closest('[data-ref]')?.dataset.ref;
+    if (!ref) return;
+    const action = control.dataset.sceneTreeAction;
+    if (action === 'menu') {
+      const rect = control.getBoundingClientRect();
+      openSceneTreeMenu(ref, rect.left, rect.bottom + 4);
+      return;
+    }
+    runSceneTreeAction(action, ref, control);
+    // The swatches let you try colours in place, so a pick keeps the menu open;
+    // everything else is a one-shot and dismisses it.
+    const persistent = action === 'tint-color' || action === 'rep-tint-color';
+    if (control.closest('#buret-scene-tree-menu') && !persistent) closeSceneTreeMenu();
+  }
+
+  function onSceneTreeDoubleClick(event) {
+    const row = event.target.closest('.buret-tree-row');
+    if (!row?.dataset.ref || event.target.closest('.buret-tree-actions, .buret-tree-twisty')) return;
+    focusSceneTreeNode(row.dataset.ref);
+  }
+
+  function onSceneTreeContextMenu(event) {
+    const row = event.target.closest('.buret-tree-row');
+    if (!row?.dataset.ref) return;
+    event.preventDefault();
+    openSceneTreeMenu(row.dataset.ref, event.clientX, event.clientY);
+  }
+
+  // Named apart from moveViewportPanel: that one places Mol*'s own panels and
+  // takes the offsetParent origin, and two declarations of one name in this scope
+  // meant the later hoisted over the earlier and dropped those coordinates.
+  function moveSceneTreePanel(panel, left, top) {
+    const rect = panel.getBoundingClientRect();
+    const maxLeft = Math.max(6, window.innerWidth - rect.width - 6);
+    const maxTop = Math.max(6, window.innerHeight - rect.height - 6);
+    panel.style.left = `${Math.round(Math.max(6, Math.min(left, maxLeft)))}px`;
+    panel.style.top = `${Math.round(Math.max(6, Math.min(top, maxTop)))}px`;
+    updateViewportCornerLayout();
+  }
+
+  // Four things want the top-left corner: the Mol* left panel, our corner buttons,
+  // the panels they open, and the Mol* trajectory/animation controls. They queue up
+  // left to right, and each one that disappears gives its space back.
+  // Mol* re-renders its regions asynchronously after a layout change, so rather than
+  // guessing a delay the measurement is driven by the DOM guard's observer below.
+  // Timers rather than animation frames: a preview can be laid out while its tab is
+  // hidden, where frames never run.
+  function scheduleViewportCornerLayout() {
+    if (viewportCornerLayoutHandle) return;
+    viewportCornerLayoutHandle = window.setTimeout(() => {
+      viewportCornerLayoutHandle = 0;
+      updateViewportCornerLayout();
+    }, 0);
+  }
+
+  function updateViewportCornerLayout() {
+    const style = document.documentElement.style;
+    const corner = document.getElementById('buret-viewport-corner');
+    const sceneTree = document.getElementById('buret-scene-tree');
+
+    const cornerWidth = corner?.getBoundingClientRect().width || 0;
+    document.body?.classList.toggle('buret-viewport-corner-active', cornerWidth > 0);
+
+    // The Mol* sequence strip owns the whole top edge, so everything anchored there
+    // — the corner button, its panel and the toolbar — steps below it.
+    const topRegion = document.querySelector('.msp-layout-region.msp-layout-top');
+    const topRect = topRegion?.offsetParent === null ? null : topRegion?.getBoundingClientRect();
+    document.body?.classList.toggle('buret-sequence-open', !!topRect?.height);
+    const topInset = topRect?.height ? `${Math.round(topRect.height)}px` : '';
+    if (style.getPropertyValue('--buret-viewport-top-inset') !== topInset) {
+      if (topInset) style.setProperty('--buret-viewport-top-inset', topInset);
+      else style.removeProperty('--buret-viewport-top-inset');
+      // The toolbar carries an inline position, so the CSS variable alone cannot
+      // move it; re-place it whenever it still sits where we put it.
+      const toolbar = document.getElementById('buret-toolbar');
+      if (toolbar?.dataset.defaultPosition === '1') applyDefaultToolbarPosition(toolbar);
+    }
+
+    const leftPanel = document.querySelector('.msp-layout-region.msp-layout-left');
+    const leftRect = leftPanel?.offsetParent === null ? null : leftPanel?.getBoundingClientRect();
+    if (leftRect?.width) style.setProperty('--buret-corner-left', `${Math.round(leftRect.right + 12)}px`);
+    else style.removeProperty('--buret-corner-left');
+
+    const controls = document.querySelector('.msp-plugin .msp-viewport-top-left-controls');
+    if (!controls) {
+      style.removeProperty('--buret-corner-inset');
+      return;
+    }
+    let edge = cornerWidth ? corner.getBoundingClientRect().right + 8 : null;
+    if (sceneTree && !sceneTree.classList.contains('hidden')) {
+      const rect = sceneTree.getBoundingClientRect();
+      if (rect.top < 56) edge = Math.max(edge ?? 0, rect.right + 10);
+    }
+    if (edge === null) {
+      style.removeProperty('--buret-corner-inset');
+      return;
+    }
+    // The controls sit inside the Mol* main region, so the offset is measured from
+    // that region rather than from the window.
+    const origin = controls.offsetParent?.getBoundingClientRect().left ?? 0;
+    style.setProperty('--buret-corner-inset', `${Math.round(Math.max(10, edge - origin))}px`);
+  }
+
+  // Mol* hangs a `title` on every sequence control, so hovering the strip fires a
+  // native tooltip over the structure. The controls read clearly without them.
+  function stripMolstarSequenceTooltips() {
+    document.querySelectorAll('.msp-sequence-select [title]').forEach(element => element.removeAttribute('title'));
+  }
+
+  // Mol* rebuilds the strip's header whenever the chain or entity changes, so the
+  // button is re-added rather than bound once.
+  function installSequenceCloseButton() {
+    const strip = document.querySelector('.msp-sequence .msp-sequence-select');
+    if (!strip || strip.querySelector('.buret-sequence-close')) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'buret-sequence-close';
+    button.setAttribute('aria-label', 'Close sequence');
+    button.appendChild(sceneTreeIconElement(['M18 6 6 18M6 6l12 12']));
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleLayoutRegion('sequence', activeMolstarViewer());
+    });
+    strip.appendChild(button);
+  }
+
+  // Mol* reads a plain click on the sequence as "focus", which sets a focus
+  // representation and flies the camera into the residue — picking a stretch of
+  // sequence should just mark it. Its own selection mode makes the same click
+  // select instead, so it is switched on for the length of a sequence interaction
+  // and put back afterwards, leaving clicks on the 3D view to focus as before.
+  function installSequenceSelectionMode() {
+    if (document.body.dataset.buretSequenceSelectBound === '1') return;
+    document.body.dataset.buretSequenceSelectBound = '1';
+    let previousMode = null;
+    const leave = () => {
+      if (previousMode === null) return;
+      const restored = previousMode;
+      previousMode = null;
+      const plugin = activeMolstarViewer()?.plugin;
+      if (plugin) plugin.selectionMode = restored;
+    };
+    // Held for as long as the strip is being worked in, and handed back on the
+    // first press elsewhere. Releasing on pointerup instead looks tidier but is
+    // wrong: Mol* applies a sequence pick twice, a few milliseconds apart, and a
+    // release landing between the two makes the second one wipe the selection the
+    // first just made. The press that ends the run arrives here before Mol* has
+    // acted on it, so the 3D view still gets its usual focus-on-click.
+    const enter = event => {
+      if (!event.target?.closest?.('.msp-sequence')) {
+        leave();
+        return;
+      }
+      if (previousMode !== null) return;
+      const plugin = activeMolstarViewer()?.plugin;
+      if (!plugin) return;
+      previousMode = plugin.selectionMode === true;
+      plugin.selectionMode = true;
+    };
+    document.addEventListener('pointerdown', enter, true);
+    window.addEventListener('blur', leave);
+  }
+
+  // Mol* pins the sequence region to a fixed height; this drags it, in the same
+  // shape as the molecule preview's resize edges.
+  function initSequenceResize() {
+    const grip = document.getElementById('buret-sequence-resize');
+    if (!grip || grip.dataset.bound === '1') return;
+    grip.dataset.bound = '1';
+    let drag = null;
+    const onPointerDown = event => {
+      if (event.button !== 0) return;
+      const region = document.querySelector('.msp-layout-region.msp-layout-top');
+      if (!region) return;
+      drag = { pointerId: event.pointerId, top: region.getBoundingClientRect().top };
+      try { grip.setPointerCapture(event.pointerId); } catch (_) {}
+      grip.classList.add('buret-sequence-resizing');
+      event.preventDefault();
+    };
+    const onPointerMove = event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const height = Math.max(64, Math.min(event.clientY - drag.top + 6, window.innerHeight * 0.6));
+      document.documentElement.style.setProperty('--buret-sequence-height', `${Math.round(height)}px`);
+      updateViewportCornerLayout();
+      event.preventDefault();
+    };
+    const finishResize = event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      try { grip.releasePointerCapture(event.pointerId); } catch (_) {}
+      grip.classList.remove('buret-sequence-resizing');
+      drag = null;
+      scheduleViewerResize(activeMolstarViewer(), 40);
+    };
+    grip.addEventListener('pointerdown', onPointerDown);
+    grip.addEventListener('pointermove', onPointerMove);
+    grip.addEventListener('pointerup', finishResize);
+    grip.addEventListener('pointercancel', finishResize);
+  }
+
+  function initViewportPanelDrag(panel) {
+    const handle = panel.querySelector('[data-buret-panel-handle]');
+    if (!handle) return;
+    let drag = null;
+    const onPointerDown = event => {
+      if (event.button !== 0 || event.target.closest('button, input, select')) return;
+      const rect = panel.getBoundingClientRect();
+      drag = { pointerId: event.pointerId, dx: event.clientX - rect.left, dy: event.clientY - rect.top };
+      try { handle.setPointerCapture(event.pointerId); } catch (_) {}
+      panel.classList.add('buret-viewport-panel-dragging');
+      event.preventDefault();
+    };
+    const onPointerMove = event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      moveSceneTreePanel(panel, event.clientX - drag.dx, event.clientY - drag.dy);
+      event.preventDefault();
+    };
+    const finishDrag = event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      try { handle.releasePointerCapture(event.pointerId); } catch (_) {}
+      panel.classList.remove('buret-viewport-panel-dragging');
+      drag = null;
+    };
+    handle.addEventListener('pointerdown', onPointerDown);
+    handle.addEventListener('pointermove', onPointerMove);
+    handle.addEventListener('pointerup', finishDrag);
+    handle.addEventListener('pointercancel', finishDrag);
+  }
+
+  // Mol*'s viewport rail and selection row are strips of unlabelled icons that all
+  // look alike — the rail hides three camera actions behind a hover box, and the
+  // selection row asks you to tell four near-identical circles apart. Both are
+  // hidden in CSS and rebuilt here as a four-button rail and one labelled bar,
+  // driving the very same managers Mol*'s own controls drive.
+  const VIEWPORT_GRANULARITIES = [
+    ['element', 'Atom'],
+    ['residue', 'Residue'],
+    ['chain', 'Chain'],
+    ['entity', 'Entity'],
+    ['model', 'Model'],
+    ['operator', 'Operator'],
+    ['structure', 'Structure'],
+    ['elementInstances', 'Atom + instances'],
+    ['residueInstances', 'Residue + instances'],
+    ['chainInstances', 'Chain + instances']
+  ];
+  // Mol* names these add/remove/intersect/set; the labels say what they do to the
+  // selection you already have.
+  const SELECTION_MODIFIERS = [
+    ['set', 'Replace'],
+    ['add', 'Add'],
+    ['remove', 'Remove'],
+    ['intersect', 'Keep']
+  ];
+  // Mol* keeps scene motion in the trackball section of its viewport settings, and
+  // the rail replaced that panel — so the camera menu carries it instead. The
+  // speeds are the library's own defaults and bounds for each animation.
+  const VIEWPORT_MOTIONS = [
+    ['off', 'Off'],
+    ['spin', 'Spin'],
+    ['rock', 'Rock']
+  ];
+  // Each animation reads more than a speed - spin needs an axis, rock an axis and
+  // a sweep angle - and a missing one leaves the maths on undefined, which is a
+  // scene that simply never moves. The rest of the payload travels with the speed.
+  // The library's bounds are symmetric (a negative speed reverses direction), which
+  // parks the default just right of centre and hands half the track to reverse
+  // spin nobody reaches for. This is a magnitude slider instead: slow on the left,
+  // fast on the right, floored just above zero so Off stays the only way to stop.
+  const VIEWPORT_MOTION_SPEEDS = {
+    spin: { value: 0.1, min: 0.01, max: 1, step: 0.01, params: { axis: [0, -1, 0] } },
+    rock: { value: 0.3, min: 0.02, max: 1.5, step: 0.02, params: { angle: 10, axis: [0, -1, 0] } }
+  };
+  // The plugin ships timed camera spin and rock too; the Motion switch covers the
+  // same ground without a stopwatch, so they are not listed twice.
+  const VIEWPORT_MOTION_ANIMATIONS = new Set([
+    'built-in.animate-camera-spin',
+    'built-in.animate-camera-rock'
+  ]);
+  const VIEWPORT_ICON = {
+    camera: ['M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z', 'M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'],
+    layFlat: ['M3 8.5 12 4l9 4.5-9 4.5Z', 'm3 15 9 4.5L21 15'],
+    paint: ['M4 8.5A2.5 2.5 0 0 1 6.5 6H16a3 3 0 0 1 3 3v1.5H8.5A2.5 2.5 0 0 0 6 13v1', 'M9 14h4v4a2 2 0 0 1-4 0Z'],
+    cube: ['M12 3 4.5 7v10L12 21l7.5-4V7Z', 'M4.5 7 12 11l7.5-4', 'M12 11v10'],
+    scissors: ['M6.5 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'M6.5 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'm8.7 7.2 10.8 10.6', 'M19.5 6.2 8.7 16.8'],
+    undo: ['M4 9h11a5 5 0 0 1 0 10h-7', 'm8 5-4 4 4 4'],
+    play: ['m8 5 11 7-11 7Z'],
+    stop: ['M6.5 6.5h11v11h-11Z']
+  };
+  let selectionQueryModifier = 'set';
+  let viewportControlsDisposers = [];
+
+  function viewportPlugin() {
+    return activeMolstarViewer()?.plugin || null;
+  }
+
+  function closeViewportMenu() {
+    document.getElementById('buret-viewport-menu')?.remove();
+    for (const trigger of document.querySelectorAll('#buret-viewport-rail [aria-expanded], #buret-selection-bar [aria-expanded]')) {
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function openViewportMenu(trigger, label, build) {
+    const wasOpen = trigger.getAttribute('aria-expanded') === 'true';
+    closeViewportMenu();
+    if (wasOpen) return;
+    const menu = document.createElement('div');
+    menu.id = 'buret-viewport-menu';
+    menu.className = 'buret-tree-menu buret-viewport-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', label);
+    build(menu);
+    document.body.appendChild(menu);
+    trigger.setAttribute('aria-expanded', 'true');
+    const anchor = trigger.getBoundingClientRect();
+    const rect = menu.getBoundingClientRect();
+    // The rail lives on the right edge, so its menus open leftwards rather than
+    // running off the window and being clamped back over their own button.
+    const preferred = anchor.left > window.innerWidth / 2 ? anchor.right - rect.width : anchor.left;
+    menu.style.left = `${Math.round(Math.max(6, Math.min(preferred, window.innerWidth - rect.width - 6)))}px`;
+    menu.style.top = `${Math.round(Math.max(6, Math.min(anchor.bottom + 4, window.innerHeight - rect.height - 6)))}px`;
+  }
+
+  function viewportMenuItem(menu, label, action, options = {}) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'menuitem');
+    button.className = `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
+    button.dataset.buretViewportMenu = action;
+    Object.assign(button.dataset, options.data || {});
+    if (options.disabled) button.disabled = true;
+    if (options.title) button.title = options.title;
+    const icon = document.createElement('span');
+    icon.className = 'buret-tree-menu-icon';
+    if (options.icon) icon.appendChild(sceneTreeIconElement(options.icon));
+    const text = document.createElement('span');
+    text.className = 'buret-tree-menu-label';
+    text.textContent = label;
+    button.append(icon, text);
+    (options.parent || menu).appendChild(button);
+    return button;
+  }
+
+  function viewportMenuSelect(menu, label, name, options, placeholder) {
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const control = document.createElement('select');
+    control.className = 'buret-select';
+    control.dataset.buretViewportSelect = name;
+    const prompt = document.createElement('option');
+    prompt.value = '';
+    prompt.textContent = placeholder;
+    control.appendChild(prompt);
+    for (const option of options) {
+      const item = document.createElement('option');
+      item.value = option.name;
+      item.textContent = option.label;
+      control.appendChild(item);
+    }
+    control.value = '';
+    row.append(caption, control);
+    menu.appendChild(row);
+  }
+
+  function viewportMenuSwatches(menu, action) {
+    const swatches = document.createElement('div');
+    swatches.className = 'buret-tree-swatches';
+    for (const entry of SCENE_TREE_UNIFORM_COLORS) {
+      const swatch = document.createElement('button');
+      swatch.type = 'button';
+      swatch.className = 'buret-tree-swatch';
+      swatch.dataset.buretViewportMenu = action;
+      swatch.dataset.viewportColor = String(entry.value);
+      swatch.style.background = sceneTreeColorHex(entry.value);
+      swatch.setAttribute('aria-label', `Paint the selection ${entry.label.toLowerCase()}`);
+      swatch.title = entry.label;
+      swatches.appendChild(swatch);
+    }
+    menu.appendChild(swatches);
+  }
+
+  function viewportCameraMenu(menu) {
+    viewportMenuItem(menu, 'Reset zoom', 'camera-reset', { icon: SCENE_TREE_ICON.focus });
+    viewportMenuItem(menu, 'Lay flat', 'camera-orient', { icon: VIEWPORT_ICON.layFlat });
+    viewportMenuItem(menu, 'Reset axes', 'camera-axes', { icon: SCENE_TREE_ICON.restore });
+  }
+
+  // Mol*'s own animation button offered both a trackball that keeps turning and
+  // the plugin's timed animations. The rail keeps both, split by how they end:
+  // motion runs until it is switched off, the rest play once and stop themselves.
+  function viewportAnimateMenu(menu) {
+    viewportMotionControls(menu);
+    const plugin = viewportPlugin();
+    const manager = plugin?.managers?.animation;
+    const playing = manager?.state?.animationState === 'playing';
+    const animations = (manager?.animations || [])
+      .map((animation, index) => ({ animation, index }))
+      // Camera spin and rock are the Motion switch above, only on a timer.
+      .filter(entry => !VIEWPORT_MOTION_ANIMATIONS.has(entry.animation?.name))
+      .map(entry => ({ ...entry, applicability: viewportAnimationApplicability(entry.animation, plugin) }))
+      .filter(entry => entry.animation?.display?.name)
+      // A greyed row earns its place by saying why it is greyed. One that cannot
+      // is just an entry you will never be able to use.
+      .filter(entry => entry.applicability.canApply || entry.applicability.reason);
+    if (!animations.length) return;
+    // Stop leads, because the thing you most need from this menu while something
+    // is moving is the way to make it stop.
+    if (playing) {
+      sceneTreeMenuSection(menu, 'Running');
+      viewportMenuItem(menu, 'Stop', 'animation-stop', { icon: VIEWPORT_ICON.stop });
+    }
+    sceneTreeMenuSection(menu, 'Animations');
+    for (const entry of animations) {
+      viewportMenuItem(menu, entry.animation.display.name, 'animation-play', {
+        icon: VIEWPORT_ICON.play,
+        data: { animationIndex: String(entry.index) },
+        disabled: !entry.applicability.canApply,
+        // Mol* explains why an animation does not apply; a greyed row that keeps
+        // its reason to itself is the thing this rail set out to replace.
+        title: entry.applicability.reason || entry.animation.display.description
+      });
+    }
+  }
+
+  // play() with no params leaves each animation on its own defaults, and Mol*
+  // defaults Unwind Assembly to looping - a scene that keeps rebuilding itself
+  // under every click until someone finds the stop button.
+  function viewportAnimationParams(animation, plugin) {
+    const schema = typeof animation.params === 'function' ? animation.params(plugin) : animation.params;
+    const params = {};
+    for (const [key, value] of Object.entries(schema || {})) params[key] = value?.defaultValue;
+    if ('playOnce' in params) params.playOnce = true;
+    return params;
+  }
+
+  function viewportAnimationApplicability(animation, plugin) {
+    if (typeof animation?.canApply !== 'function') return { canApply: true };
+    try {
+      return animation.canApply(plugin) || { canApply: true };
+    } catch (error) {
+      debug('animation applicability failed: ' + (error && error.message || String(error)));
+      return { canApply: false, reason: 'Unavailable for this scene' };
+    }
+  }
+
+  function playViewportAnimation(index) {
+    const plugin = viewportPlugin();
+    const manager = plugin?.managers?.animation;
+    const animation = manager?.animations?.[index];
+    if (!animation) return;
+    Promise.resolve(manager.play(animation, viewportAnimationParams(animation, plugin)))
+      .then(() => updateViewportAnimateState())
+      .catch(error => setStatus(`[web] Animation failed. ${error?.message || error}`, 'error'));
+  }
+
+  // The button carries whatever is moving - a running animation or the trackball -
+  // because a still frame cannot tell you the scene is in motion.
+  function updateViewportAnimateState() {
+    const plugin = viewportPlugin();
+    const playing = plugin?.managers?.animation?.state?.animationState === 'playing';
+    const motion = viewportMotionState().name;
+    document.querySelector('[data-buret-viewport-action="animate"]')
+      ?.setAttribute('data-motion', playing ? 'playing' : motion);
+  }
+
+  function viewportMotionState() {
+    const animate = viewportPlugin()?.canvas3d?.props?.trackball?.animate;
+    const name = VIEWPORT_MOTION_SPEEDS[animate?.name] ? animate.name : 'off';
+    return { name, speed: Number(animate?.params?.speed) };
+  }
+
+  function viewportMotionControls(menu) {
+    const state = viewportMotionState();
+    sceneTreeMenuSection(menu, 'Motion');
+    const segment = document.createElement('div');
+    segment.className = 'buret-viewport-segment';
+    segment.setAttribute('role', 'group');
+    segment.setAttribute('aria-label', 'Scene motion');
+    for (const [name, label] of VIEWPORT_MOTIONS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-viewport-segment-button';
+      button.dataset.buretViewportMenu = 'camera-motion';
+      button.dataset.motion = name;
+      button.setAttribute('aria-pressed', name === state.name ? 'true' : 'false');
+      button.textContent = label;
+      segment.appendChild(button);
+    }
+    menu.appendChild(segment);
+
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
+    row.dataset.buretViewportMotionSpeed = '1';
+    const caption = document.createElement('span');
+    caption.textContent = 'Speed';
+    const control = document.createElement('input');
+    control.type = 'range';
+    control.className = 'buret-tree-menu-range';
+    control.dataset.buretViewportSlider = 'motion-speed';
+    const readout = document.createElement('span');
+    readout.className = 'buret-tree-menu-slider-value';
+    row.append(caption, control, readout);
+    menu.appendChild(row);
+    // The menu is still detached at this point, so the row has to be handed over
+    // rather than looked up in the document.
+    updateViewportMotionSpeed(state, row);
+  }
+
+  // Spin and rock do not share a speed range, so the slider is re-scaled to the
+  // running animation and hidden altogether once motion is off.
+  function updateViewportMotionSpeed(state, target) {
+    const row = target || document.querySelector('[data-buret-viewport-motion-speed]');
+    const limits = VIEWPORT_MOTION_SPEEDS[state.name];
+    if (!row) return;
+    row.hidden = !limits;
+    if (!limits) return;
+    const speed = Number.isFinite(state.speed) ? state.speed : limits.value;
+    const control = row.querySelector('input');
+    control.min = String(limits.min);
+    control.max = String(limits.max);
+    control.step = String(limits.step);
+    control.value = String(speed);
+    row.querySelector('.buret-tree-menu-slider-value').textContent = `${speed.toFixed(2)}/s`;
+  }
+
+  function setViewportMotion(name, speed) {
+    const plugin = viewportPlugin();
+    const trackball = plugin?.canvas3d?.props?.trackball;
+    const limits = VIEWPORT_MOTION_SPEEDS[name];
+    if (!trackball) return;
+    const animate = limits
+      ? { name, params: { ...limits.params, speed: Number.isFinite(speed) ? speed : limits.value } }
+      : { name: 'off', params: {} };
+    plugin.canvas3d.setProps({ trackball: { ...trackball, animate } });
+    updateViewportAnimateState();
+  }
+
+  // The registry ships seventy queries, twenty of which are single amino acids;
+  // anything longer than a screenful is folded away so the useful groups — types,
+  // secondary structure, "around the selection" — stay visible without scrolling.
+  function viewportQueryMenu(menu) {
+    const queries = viewportPlugin()?.query?.structure?.registry?.list || [];
+    sceneTreeMenuSection(menu, 'Mode');
+    const segment = document.createElement('div');
+    segment.className = 'buret-viewport-segment';
+    segment.setAttribute('role', 'group');
+    segment.setAttribute('aria-label', 'Selection mode');
+    for (const [name, label] of SELECTION_MODIFIERS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-viewport-segment-button';
+      button.dataset.buretViewportMenu = 'modifier';
+      button.dataset.modifier = name;
+      button.setAttribute('aria-pressed', name === selectionQueryModifier ? 'true' : 'false');
+      button.textContent = label;
+      segment.appendChild(button);
+    }
+    menu.appendChild(segment);
+
+    // Seventy queries do not fit a menu, and category headings only help if you
+    // already know which category a thing lives in. Typing narrows the whole list
+    // at once, so "lig", "helix" or "surround" get there without the hunt.
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'buret-input buret-viewport-search';
+    search.placeholder = 'Filter…';
+    search.setAttribute('aria-label', 'Filter selections');
+    search.dataset.buretViewportSearch = 'query';
+    menu.appendChild(search);
+
+    const groups = new Map();
+    queries.forEach((query, index) => {
+      if (query?.isHidden || !query?.label) return;
+      const category = String(query.category || 'Common');
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category).push({ label: query.label, index });
+    });
+    for (const [category, entries] of groups) {
+      // Twenty amino acids and seven bases fold away; the groups people actually
+      // reach for — Type, secondary structure, "around the selection" — stay open.
+      if (entries.length > 12) {
+        sceneTreeMenuSection(menu);
+        const disclosure = document.createElement('details');
+        disclosure.className = 'buret-tree-menu-actions';
+        const summary = document.createElement('summary');
+        summary.textContent = category;
+        disclosure.appendChild(summary);
+        for (const entry of entries) {
+          viewportMenuItem(menu, entry.label, 'query', {
+            data: { queryIndex: String(entry.index) }, parent: disclosure
+          });
+        }
+        menu.appendChild(disclosure);
+        continue;
+      }
+      sceneTreeMenuSection(menu, category);
+      for (const entry of entries) {
+        viewportMenuItem(menu, entry.label, 'query', { data: { queryIndex: String(entry.index) } });
+      }
+    }
+  }
+
+  function viewportApplyMenu(menu) {
+    const plugin = viewportPlugin();
+    const empty = !(plugin?.managers?.structure?.selection?.stats?.elementCount > 0);
+    sceneTreeMenuSection(menu, 'Colour');
+    viewportMenuSwatches(menu, 'selection-color');
+    viewportMenuItem(menu, 'Reset colour', 'selection-color-reset', {
+      icon: VIEWPORT_ICON.paint, disabled: empty
+    });
+
+    sceneTreeMenuSection(menu, 'Component');
+    const types = typeof plugin?.managers?.structure?.component?.constructor?.getRepresentationTypes === 'function'
+      ? plugin.managers.structure.component.constructor
+        .getRepresentationTypes(plugin, plugin.managers.structure.hierarchy.current.structures[0])
+        .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
+        .filter(entry => entry.name)
+      : [];
+    if (types.length) viewportMenuSelect(menu, 'Add as', 'component-representation', types, 'Representation…');
+    viewportMenuItem(menu, 'Cut out of components', 'selection-subtract', {
+      icon: VIEWPORT_ICON.scissors, disabled: empty
+    });
+
+    sceneTreeMenuSection(menu);
+    viewportMenuItem(menu, 'Undo', 'undo', {
+      icon: VIEWPORT_ICON.undo, disabled: plugin?.state?.data?.canUndo !== true
+    });
+    viewportMenuItem(menu, 'Clear selection', 'selection-clear', {
+      icon: SCENE_TREE_ICON.trash, destructive: true, disabled: empty
+    });
+  }
+
+  // applyTheme and add both take a selection query rather than a loci, and the one
+  // that stands for "whatever is selected right now" is the registry entry Mol*
+  // registers under that name.
+  function currentSelectionQuery() {
+    const list = viewportPlugin()?.query?.structure?.registry?.list || [];
+    return list.find(query => query?.referencesCurrent && query?.label === 'Current Selection') || null;
+  }
+
+  function paintViewportSelection(color) {
+    const plugin = viewportPlugin();
+    const selection = currentSelectionQuery();
+    const action = color === null ? { name: 'resetColor', params: {} } : { name: 'color', params: { color } };
+    if (!plugin || !selection) return;
+    Promise.resolve(plugin.managers.structure.component.applyTheme({ action, selection }))
+      .catch(error => setStatus(`[web] Colouring the selection failed. ${error?.message || error}`, 'error'));
+  }
+
+  function addViewportSelectionComponent(representation) {
+    const plugin = viewportPlugin();
+    const selection = currentSelectionQuery();
+    if (!plugin || !selection || !representation) return;
+    Promise.resolve(plugin.managers.structure.component.add({
+      selection, representation, options: { label: '', checkExisting: false }
+    })).then(() => scheduleSceneTreeRender())
+      .catch(error => setStatus(`[web] Creating the component failed. ${error?.message || error}`, 'error'));
+  }
+
+  function subtractViewportSelection() {
+    const plugin = viewportPlugin();
+    const structures = plugin?.managers?.structure?.hierarchy?.getStructuresWithSelection?.() || [];
+    const components = structures.flatMap(structure => structure.components || []);
+    if (!components.length) return;
+    Promise.resolve(plugin.managers.structure.component.modifyByCurrentSelection(components, 'subtract'))
+      .then(() => scheduleSceneTreeRender())
+      .catch(error => setStatus(`[web] Cutting the selection out failed. ${error?.message || error}`, 'error'));
+  }
+
+  function runViewportMenuAction(action, control) {
+    const plugin = viewportPlugin();
+    if (!plugin) return false;
+    if (action === 'camera-reset') plugin.canvas3d?.requestCameraReset?.({ durationMs: 250 });
+    else if (action === 'camera-orient') plugin.managers.camera.orientAxes(undefined, 250);
+    else if (action === 'camera-axes') plugin.managers.camera.resetAxes(250);
+    else if (action === 'camera-motion') {
+      setViewportMotion(control.dataset.motion);
+      for (const button of control.parentElement?.children || []) {
+        button.setAttribute('aria-pressed', button === control ? 'true' : 'false');
+      }
+      updateViewportMotionSpeed(viewportMotionState());
+      // Motion is judged by watching it, so the menu stays up to be adjusted.
+      return true;
+    } else if (action === 'animation-play') {
+      playViewportAnimation(Number(control.dataset.animationIndex));
+    } else if (action === 'animation-stop') {
+      plugin.managers.animation.stop();
+      updateViewportAnimateState();
+    } else if (action === 'modifier') {
+      selectionQueryModifier = control.dataset.modifier || 'set';
+      for (const button of control.parentElement?.children || []) {
+        button.setAttribute('aria-pressed', button === control ? 'true' : 'false');
+      }
+      return true;
+    } else if (action === 'query') {
+      const query = plugin.query.structure.registry.list[Number(control.dataset.queryIndex)];
+      // Mol* applies its own query buttons without the picking level, so a "Ligand"
+      // pick stays a ligand instead of being widened to whole chains.
+      if (query) plugin.managers.structure.selection.fromSelectionQuery(selectionQueryModifier, query, false);
+    } else if (action === 'selection-color') {
+      paintViewportSelection(Number(control.dataset.viewportColor));
+      return true;
+    } else if (action === 'selection-color-reset') paintViewportSelection(null);
+    else if (action === 'selection-subtract') subtractViewportSelection();
+    else if (action === 'undo') {
+      // undo() hands back a task rather than running one, the same way Mol*'s own
+      // selection controls take it.
+      const task = plugin.state.data.undo();
+      if (task) plugin.runTask(task);
+    }
+    else if (action === 'selection-clear') plugin.managers.interactivity.lociSelects.deselectAll();
+    return false;
+  }
+
+  function runViewportRailAction(action, control) {
+    const plugin = viewportPlugin();
+    if (!plugin) return;
+    if (action === 'camera') {
+      openViewportMenu(control, 'Camera', viewportCameraMenu);
+    } else if (action === 'animate') {
+      openViewportMenu(control, 'Animate', viewportAnimateMenu);
+    } else if (action === 'screenshot') {
+      Promise.resolve(plugin.helpers.viewportScreenshot?.download())
+        .then(() => setStatus('[web] Screenshot saved.'))
+        .catch(error => setStatus(`[web] Screenshot failed. ${error?.message || error}`, 'error'));
+    } else if (action === 'illumination') {
+      const enabled = plugin.canvas3d?.props?.illumination?.enabled !== true;
+      plugin.canvas3d?.setProps({ illumination: { enabled } });
+      control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    } else if (action === 'select-mode') {
+      plugin.selectionMode = plugin.selectionMode !== true;
+    }
+  }
+
+  function runSelectionBarAction(action, control) {
+    const plugin = viewportPlugin();
+    if (!plugin) return;
+    if (action === 'query') openViewportMenu(control, 'Select', viewportQueryMenu);
+    else if (action === 'apply') openViewportMenu(control, 'Apply', viewportApplyMenu);
+    else if (action === 'exit') plugin.selectionMode = false;
+  }
+
+  function updateSelectionBar() {
+    const bar = document.getElementById('buret-selection-bar');
+    const rail = document.getElementById('buret-viewport-rail');
+    const plugin = viewportPlugin();
+    if (!bar || !rail) return;
+    const active = plugin?.selectionMode === true && !rail.classList.contains('hidden');
+    const changed = bar.classList.contains('hidden') === active;
+    bar.classList.toggle('hidden', !active);
+    rail.querySelector('[data-buret-viewport-action="select-mode"]')
+      ?.setAttribute('aria-pressed', active ? 'true' : 'false');
+    if (!active) closeViewportMenu();
+    const stats = plugin?.managers?.structure?.selection?.stats;
+    const count = document.querySelector('[data-buret-selection-count]');
+    if (count) count.textContent = stats?.elementCount ? stats.label : 'Nothing selected';
+    const level = document.querySelector('[data-buret-selection-level]');
+    const granularity = plugin?.managers?.interactivity?.props?.granularity;
+    if (level && granularity && level.value !== granularity) level.value = granularity;
+    // The bar takes a row out of the viewport, so the rail below it has to be
+    // re-placed — but only when the bar actually came or went. This runs on every
+    // selection change, and a live atom count is no reason to measure the layout.
+    if (changed) updateFloatingLayoutOffsets();
+  }
+
+  function initViewportControls(viewer) {
+    const rail = document.getElementById('buret-viewport-rail');
+    const bar = document.getElementById('buret-selection-bar');
+    if (!rail || !bar) return;
+    if (rail.dataset.viewportControlsBound !== '1') {
+      rail.dataset.viewportControlsBound = '1';
+      const level = bar.querySelector('[data-buret-selection-level]');
+      for (const [name, label] of VIEWPORT_GRANULARITIES) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = label;
+        level?.appendChild(option);
+      }
+      level?.addEventListener('change', () => {
+        viewportPlugin()?.managers?.interactivity?.setProps({ granularity: level.value });
+      });
+      rail.addEventListener('click', event => {
+        const control = event.target.closest('[data-buret-viewport-action]');
+        if (control) runViewportRailAction(control.dataset.buretViewportAction, control);
+      });
+      bar.addEventListener('click', event => {
+        const control = event.target.closest('[data-buret-selection-action]');
+        if (control) runSelectionBarAction(control.dataset.buretSelectionAction, control);
+      });
+      // The menu is portalled to <body> so the bar cannot clip it, which puts both
+      // its clicks and its dismissal on the document.
+      document.addEventListener('click', event => {
+        const menu = document.getElementById('buret-viewport-menu');
+        if (!menu) return;
+        const control = event.target.closest?.('[data-buret-viewport-menu]');
+        if (control && menu.contains(control)) {
+          // Swatches and the mode switch are meant to be tried in place, so they
+          // leave the menu standing; every other item is a one-shot.
+          if (!runViewportMenuAction(control.dataset.buretViewportMenu, control)) closeViewportMenu();
+          return;
+        }
+        if (!menu.contains(event.target) && !event.target.closest?.('[aria-haspopup="menu"]')) closeViewportMenu();
+      });
+      document.addEventListener('change', event => {
+        const select = event.target.closest('[data-buret-viewport-select="component-representation"]');
+        if (!select?.value) return;
+        addViewportSelectionComponent(select.value);
+        closeViewportMenu();
+      });
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && document.getElementById('buret-viewport-menu')) closeViewportMenu();
+      });
+      // While filtering, the headings and the fold-away groups get in the way, so
+      // the menu flattens to just what matched and restores itself when cleared.
+      document.addEventListener('input', event => {
+        const slider = event.target.closest('[data-buret-viewport-slider="motion-speed"]');
+        if (slider) {
+          const speed = Number(slider.value);
+          setViewportMotion(viewportMotionState().name, speed);
+          const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
+          if (readout) readout.textContent = `${speed.toFixed(2)}/s`;
+          return;
+        }
+        const search = event.target.closest('[data-buret-viewport-search]');
+        const menu = search?.closest('#buret-viewport-menu');
+        if (!menu) return;
+        const query = search.value.trim().toLowerCase();
+        menu.dataset.filtering = query ? 'true' : 'false';
+        for (const item of menu.querySelectorAll('[data-buret-viewport-menu="query"]')) {
+          const matches = !query || item.textContent.toLowerCase().includes(query);
+          item.classList.toggle('buret-tree-menu-item-filtered', !matches);
+          const group = matches && query ? item.closest('details') : null;
+          if (group && !group.open) {
+            group.open = true;
+            group.dataset.filterOpened = 'true';
+          }
+        }
+        // A group the filter pulled open belongs closed again once the field is
+        // cleared, or clearing leaves the menu longer than it was to begin with.
+        if (!query) {
+          for (const group of menu.querySelectorAll('details[data-filter-opened]')) {
+            group.open = false;
+            delete group.dataset.filterOpened;
+          }
+        }
+      });
+    }
+    for (const disposer of viewportControlsDisposers) disposer();
+    viewportControlsDisposers = [];
+    const plugin = viewer?.plugin;
+    const subscriptions = [
+      plugin?.behaviors?.interaction?.selectionMode?.subscribe?.(updateSelectionBar),
+      plugin?.managers?.structure?.selection?.events?.changed?.subscribe?.(updateSelectionBar),
+      plugin?.managers?.interactivity?.events?.propsUpdated?.subscribe?.(updateSelectionBar),
+      // Timed animations end on their own, so the button cannot be left holding a
+      // state nobody switched off.
+      plugin?.behaviors?.state?.isAnimating?.subscribe?.(updateViewportAnimateState)
+    ].filter(Boolean);
+    if (subscriptions.length) {
+      viewportControlsDisposers.push(() => subscriptions.forEach(item => item?.unsubscribe?.()));
+    }
+    rail.querySelector('[data-buret-viewport-action="illumination"]')
+      ?.setAttribute('aria-pressed', plugin?.canvas3d?.props?.illumination?.enabled === true ? 'true' : 'false');
+    updateViewportAnimateState();
+    updateSelectionBar();
+  }
+
+  function initSceneTree(viewer) {
+    const toggle = document.getElementById('buret-scene-tree-toggle');
+    const panel = document.getElementById('buret-scene-tree');
+    if (!toggle || !panel) return;
+    if (toggle.dataset.sceneTreeBound !== '1') {
+      toggle.dataset.sceneTreeBound = '1';
+      toggle.addEventListener('click', () => setSceneTreeOpen(panel.classList.contains('hidden')));
+      panel.querySelector('[data-buret-action="scene-tree-close"]')
+        ?.addEventListener('click', () => setSceneTreeOpen(false));
+      panel.querySelector('[data-buret-action="scene-tree-expand-all"]')
+        ?.addEventListener('click', toggleSceneTreeExpandAll);
+      // The context menu is portalled to <body> so the scrolling panel cannot clip
+      // it, which means the click handler has to live on the document.
+      document.addEventListener('click', onSceneTreeClick);
+      panel.addEventListener('contextmenu', onSceneTreeContextMenu);
+      panel.addEventListener('dblclick', onSceneTreeDoubleClick);
+      panel.addEventListener('pointerover', event => {
+        moveSceneTreeHighlight(event.target.closest('.buret-tree-row'));
+      });
+      panel.addEventListener('pointerleave', () => moveSceneTreeHighlight(null));
+      panel.addEventListener('focusin', event => {
+        moveSceneTreeHighlight(event.target.closest('.buret-tree-row'));
+      });
+      initViewportPanelDrag(panel);
+      window.addEventListener('resize', updateViewportCornerLayout);
+      // Any click outside dismisses it, the 3D view included — but rotating the
+      // structure must not. Whether a drag still emits a click is up to Mol*'s
+      // input handling, so the two are told apart here by how far the pointer
+      // travelled, using the same threshold the draggable panels use.
+      document.addEventListener('pointerdown', event => {
+        sceneTreeMenuPointerStart = { x: event.clientX, y: event.clientY };
+      }, true);
+      document.addEventListener('click', event => {
+        const menu = document.getElementById('buret-scene-tree-menu');
+        if (!menu || menu.contains(event.target)) return;
+        const start = sceneTreeMenuPointerStart;
+        const dragged = start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4;
+        if (!dragged) closeSceneTreeMenu();
+      }, true);
+      document.addEventListener('change', event => {
+        const select = event.target.closest('[data-scene-tree-select]');
+        const ref = select?.closest('[data-ref]')?.dataset.ref;
+        if (!select || !ref) return;
+        const kind = select.dataset.sceneTreeSelect;
+        if (kind === 'add-representation') {
+          addSceneTreeRepresentation(ref, select.value);
+          select.value = '';
+        } else if (kind === 'representation-type') {
+          applySceneTreeReprType(ref, select.value);
+        } else if (kind === 'representation-color') {
+          applySceneTreeReprColor(ref, select.value, null);
+        } else if (kind === 'representation-size') {
+          applySceneTreeReprSize(ref, select.value);
+        } else if (kind === 'representation-visual') {
+          applySceneTreeReprParam(ref, 'visuals', [select.value]);
+        } else {
+          applySceneTreeColorTheme(ref, select.value, null);
+        }
+      });
+      // The advanced rows are built from the type's own schema, so one handler
+      // covers every one of them: the control carries its parameter name and how
+      // to read its value.
+      document.addEventListener('change', event => {
+        const control = event.target.closest('[data-scene-tree-param]');
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref || control.dataset.sceneTreeParamType === 'number') return;
+        const value = control.dataset.sceneTreeParamType === 'boolean' ? control.checked : control.value;
+        applySceneTreeReprParam(ref, control.dataset.sceneTreeParam, value);
+      });
+      // The point of the theme list: the scene takes each theme as the pointer
+      // passes over it, and gets its own back when the pointer leaves without
+      // choosing. Bound on the document because the menu is portalled to <body>.
+      document.addEventListener('pointerover', event => {
+        const item = event.target.closest?.('[data-scene-tree-picker-value]');
+        const list = item?.closest('[data-scene-tree-picker-list]');
+        const ref = list?.closest('[data-ref]')?.dataset.ref;
+        if (!list || list.hidden || !ref) return;
+        streamSceneTreeTheme(ref, list.dataset.sceneTreePickerList, item.dataset.sceneTreePickerValue);
+      });
+      document.addEventListener('pointerout', event => {
+        const list = event.target.closest?.('[data-scene-tree-picker-list]');
+        if (!list || list.hidden) return;
+        // Only when the pointer has actually left the list, not on the way between
+        // two of its rows.
+        if (event.relatedTarget && list.contains(event.relatedTarget)) return;
+        const ref = list.closest('[data-ref]')?.dataset.ref;
+        if (ref && list.dataset.current) {
+          streamSceneTreeTheme(ref, list.dataset.sceneTreePickerList, list.dataset.current);
+        }
+      });
+      // Opacity streams as the thumb moves; the slider sits inside the menu, so the
+      // outside-click dismissal never sees these events and the menu stays open.
+      document.addEventListener('input', event => {
+        const slider = event.target.closest('[data-scene-tree-slider="opacity"]');
+        const ref = slider?.closest('[data-ref]')?.dataset.ref;
+        if (!slider || !ref) return;
+        const percent = Number(slider.value);
+        const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
+        if (readout) readout.textContent = `${percent}%`;
+        streamSceneTreeReprAlpha(ref, percent / 100);
+      });
+      // Numeric advanced rows follow the thumb like opacity does. Surfaces rebuild
+      // their mesh on every commit, so these share the same latest-wins queue
+      // rather than piling a rebuild on each pixel of the drag.
+      document.addEventListener('input', event => {
+        const slider = event.target.closest('[data-scene-tree-param]');
+        const ref = slider?.closest('[data-ref]')?.dataset.ref;
+        if (!slider || !ref || slider.dataset.sceneTreeParamType !== 'number') return;
+        const value = Number(slider.value);
+        const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
+        if (readout) readout.textContent = slider.value;
+        streamSceneTreeReprParam(ref, slider.dataset.sceneTreeParam, value);
+      });
+      document.addEventListener('keydown', event => {
+        // Cmd/Ctrl+T opens the tree. The viewer runs in a webview, so the browser
+        // keeps none of its own claim on the combination.
+        if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey
+          && String(event.key).toLowerCase() === 't') {
+          if (toggle.classList.contains('hidden')) return;
+          event.preventDefault();
+          setSceneTreeOpen(panel.classList.contains('hidden'));
+          return;
+        }
+        if (event.key !== 'Escape') return;
+        if (document.getElementById('buret-scene-tree-menu')) closeSceneTreeMenu();
+        else if (!panel.classList.contains('hidden')) setSceneTreeOpen(false);
+      });
+    }
+    sceneTreeStateDisposer?.();
+    sceneTreeStateDisposer = null;
+    const events = viewer?.plugin?.state?.data?.events;
+    const subscriptions = [
+      events?.changed?.subscribe?.(scheduleSceneTreeRender),
+      events?.cell?.stateUpdated?.subscribe?.(scheduleSceneTreeRender)
+    ].filter(Boolean);
+    if (subscriptions.length) {
+      sceneTreeStateDisposer = () => subscriptions.forEach(subscription => subscription?.unsubscribe?.());
+    }
+    scheduleSceneTreeRender();
+  }
+
 
   function updateThemeButton() {
     const button = document.querySelector('#buret-toolbar [data-buret-action="theme"]');
@@ -5266,6 +7738,54 @@
     prepared.structureAlignmentEnabled = false;
   }
 
+  function structureSceneStoryStage(label, index) {
+    const name = String(label || '').toLowerCase();
+    if (/(^|[_\s-])input|start/.test(name)) return 'Starting complex';
+    if (/orient|plusy|\+y/.test(name)) return 'Orientation';
+    if (/minimi[sz]/.test(name)) return 'Energy minimization';
+    if (/nvt/.test(name)) return 'Temperature equilibration';
+    if (/npt/.test(name)) return 'Pressure equilibration';
+    if (/smd.*forward|forward.*smd/.test(name)) return 'Forward steering';
+    if (/reverse|return/.test(name)) return 'Reverse steering';
+    if (/relax/.test(name)) return 'Selected state relaxation';
+    return `Structure ${index + 1}`;
+  }
+
+  function structureSceneStoryComparison(prepared, index) {
+    if (index <= 0) return null;
+    const current = prepared?.poses?.[index];
+    const previous = prepared?.poses?.[index - 1];
+    if (normalizeFormat(current?.format) !== 'pdb' || normalizeFormat(previous?.format) !== 'pdb') return null;
+    const currentChains = pdbAlphaCarbonChains(current.unalignedData || current.data);
+    const previousChains = pdbAlphaCarbonChains(previous.unalignedData || previous.data);
+    const candidates = Array.from(currentChains.entries()).map(([chain, residues]) => {
+      const previousResidues = previousChains.get(chain);
+      const keys = previousResidues ? Array.from(residues.keys()).filter(key => previousResidues.has(key)) : [];
+      return { chain, residues, previousResidues, keys };
+    }).filter(candidate => candidate.keys.length >= 3)
+      .sort((left, right) => right.keys.length - left.keys.length);
+    const candidate = candidates[0];
+    if (!candidate) return null;
+    const alignment = pdbRigidAlignment(
+      candidate.keys.map(key => candidate.residues.get(key)),
+      candidate.keys.map(key => candidate.previousResidues.get(key))
+    );
+    if (!alignment) return null;
+    return {
+      rmsd: alignment.rmsd,
+      residueCount: alignment.count,
+      chain: candidate.chain === '_' ? '(blank)' : candidate.chain
+    };
+  }
+
+  function structureSceneStoryChange(comparison) {
+    if (!comparison) return 'Cα-chain comparison is unavailable for this pair';
+    if (comparison.rmsd < 0.5) return 'Largest shared Cα chain remains closely aligned';
+    if (comparison.rmsd < 2) return 'Largest shared Cα chain shows a small adjustment';
+    if (comparison.rmsd < 5) return 'Largest shared Cα chain shows a noticeable change';
+    return 'Largest shared Cα chain shows a large change';
+  }
+
   function dockingPoseStorageKey(config) {
     const documentId = String(config?.documentId || '').trim();
     if (documentId) return `burette.dockingPose.${documentId}`;
@@ -5473,6 +7993,7 @@
       poseCount,
       nativeTrajectoryControls: prepared?.nativeTrajectoryControls === true,
       trajectoryTimesPs: trajectoryTimesPsForPrepared(prepared),
+      trajectorySegments: Array.isArray(prepared?.trajectorySegments) ? prepared.trajectorySegments : [],
       ligandLabel: prepared?.label || activeConfig?.label || 'Mol* trajectory',
       controlLabel: label,
       sdfPoseOverlayAvailable: prepared?.sdfPoseOverlayAvailable === true,
@@ -5492,14 +8013,48 @@
   }
 
   function dockingTrajectoryPair(entries) {
-    const coordinateEntry = entries.find(isDockingCoordinateTrajectoryEntry);
-    if (!coordinateEntry) return null;
-    const modelEntry = entries.find(entry => entry !== coordinateEntry && dockingTrajectoryModelKind(entry));
+    const coordinateEntries = entries.filter(isDockingCoordinateTrajectoryEntry);
+    if (!coordinateEntries.length) return null;
+    const modelEntry = entries.find(entry => !coordinateEntries.includes(entry) && dockingTrajectoryModelKind(entry));
     if (!modelEntry) return null;
+    let coordinateEntry = coordinateEntries[0];
+    let trajectorySegments = [];
+    if (coordinateEntries.length > 1) {
+      const formats = new Set(coordinateEntries.map(entry => normalizeFormat(entry.format)));
+      if (formats.size !== 1 || !formats.has('xtc')) {
+        throw new Error('Combining trajectory segments currently requires XTC files with one shared topology.');
+      }
+      const concatenate = window.BuretteTrajectorySmoothing?.concatenateXtcSegments;
+      const countXtcFrames = window.BuretteTrajectorySmoothing?.countXtcFrames;
+      if (typeof concatenate !== 'function' || typeof countXtcFrames !== 'function') {
+        throw new Error('XTC trajectory concatenation is unavailable in this viewer runtime.');
+      }
+      let startFrame = 0;
+      trajectorySegments = coordinateEntries.map((entry, index) => {
+        const frameCount = countXtcFrames(entry.data);
+        const segment = {
+          label: entry.label || `Trajectory segment ${index + 1}`,
+          sourcePath: entry.sourcePath || '',
+          frameCount,
+          startFrame,
+          endFrame: startFrame + frameCount - 1
+        };
+        startFrame += frameCount;
+        return segment;
+      });
+      coordinateEntry = {
+        ...coordinateEntry,
+        data: concatenate(coordinateEntries.map(entry => entry.data)),
+        label: `${coordinateEntries.length} XTC trajectory segments`,
+        sourcePaths: coordinateEntries.map(entry => entry.sourcePath).filter(Boolean)
+      };
+    }
     return {
       modelEntry,
       modelKind: dockingTrajectoryModelKind(modelEntry),
-      coordinateEntry
+      coordinateEntry,
+      coordinateEntries,
+      trajectorySegments
     };
   }
 
@@ -5541,7 +8096,8 @@
       entries.push({
         data,
         format,
-        label: source.label || `Ligand ${ligandIndex + 1}`
+        label: source.label || `Ligand ${ligandIndex + 1}`,
+        sourcePath: source.path || ''
       });
       poses.push({
         data,
@@ -5566,7 +8122,8 @@
         receptorEntry,
         poses,
         entries,
-        trajectoryPair
+        trajectoryPair,
+        trajectorySegments: trajectoryPair.trajectorySegments
       };
     }
     const sceneMode = dockingSceneMode(config);
@@ -9589,7 +12146,7 @@
   }
 
   function isDockingTrajectoryPairEntry(entry, pair) {
-    return !!pair && (entry === pair.modelEntry || entry === pair.coordinateEntry);
+    return !!pair && (entry === pair.modelEntry || pair.coordinateEntries?.includes(entry));
   }
 
   async function loadDockingTrajectoryPair(viewer, pair) {
@@ -9833,9 +12390,13 @@
     const margin = TOOLBAR_MARGIN;
     const left = mainRect ? Math.max(margin, Math.ceil(mainRect.left + margin)) : margin;
     const right = mainRect ? Math.min(window.innerWidth - margin, Math.floor(mainRect.right - margin)) : window.innerWidth - margin;
+    // Keep the trajectory toolbar glued to the left edge but clear of the scene-tree
+    // corner toggle, so it sits right next to that button instead of on top of it.
+    const cornerRect = visibleRect('#buret-viewport-corner');
+    const clearedLeft = cornerRect ? Math.max(left, Math.ceil(cornerRect.right + 8)) : left;
     return {
-      left,
-      right: Math.max(left, right),
+      left: clearedLeft,
+      right: Math.max(clearedLeft, right),
       top: margin,
       bottom: window.innerHeight - margin
     };
@@ -9843,7 +12404,14 @@
 
   function moveDockingPoseControls(root, left, top, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     const bounds = dockingPoseControlsBounds(mainRect);
-    root.style.maxWidth = Math.max(180, Math.floor(bounds.right - bounds.left)) + 'px';
+    // The toolbar and the scene tree no longer share a band — the toolbar ends at the
+    // corner button's baseline and the tree starts below it — so clearing that button
+    // is enough and the toolbar can stay at the left edge.
+    const availableWidth = Math.max(180, Math.floor(bounds.right - bounds.left));
+    root.style.maxWidth = availableWidth + 'px';
+    // Too narrow for one row: the controls fold into a fixed two-row grid instead of
+    // wrapping wherever they happen to break.
+    root.classList.toggle('buret-docking-poses-compact', availableWidth < 360);
     const width = root.offsetWidth || root.getBoundingClientRect().width || 180;
     const height = root.offsetHeight || root.getBoundingClientRect().height || 40;
     const maxLeft = Math.max(bounds.left, bounds.right - width);
@@ -9889,7 +12457,7 @@
   function applyDefaultDockingPoseControlsPosition(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     root.dataset.defaultPosition = '1';
     const bounds = dockingPoseControlsBounds(mainRect);
-    moveDockingPoseControls(root, bounds.left, 14, mainRect);
+    moveDockingPoseControls(root, bounds.left, 12, mainRect);
   }
 
   function repositionDockingPoseControls(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
@@ -9911,7 +12479,7 @@
     let drag = null;
     const onPointerDown = (event) => {
       if (event.button !== 0) return;
-      if (event.target.closest('button, input, select, textarea, [contenteditable="true"], .buret-docking-pose-files')) return;
+      if (event.target.closest('button, input, select, textarea, [contenteditable="true"], .buret-docking-pose-files, .buret-docking-pose-story-panel')) return;
       const rect = root.getBoundingClientRect();
       drag = {
         pointerId: event.pointerId,
@@ -10020,19 +12588,26 @@
       const transformerId = String(transform.transformer?.id || transform.transformer?.definition?.name || '');
       if (transformerId && transformerId !== 'model-from-trajectory' && !transformerId.endsWith('.model-from-trajectory')) return;
       const frameCount = nativeTrajectoryFrameCount(plugin, cell);
-      if (expectedCount > 0 && frameCount > 0 && frameCount !== expectedCount) return;
       matches.push({
         plugin,
         ref: transform.ref,
         params,
         frameCount,
-        selected: selectedRefs.has(transform.ref)
+        selected: selectedRefs.has(transform.ref),
+        // Smoothing rebuilds the trajectory with a frame count of its own, and a
+        // segment steps through a slice of the whole. A caller asking with the old
+        // total must still reach the cell it is stepping through, so a mismatch only
+        // deprioritises a candidate — the alternative is no transform at all, which
+        // strands the stepper on Mol*'s own buttons, and our chrome hides those.
+        countMatches: !(expectedCount > 0 && frameCount > 0 && frameCount !== expectedCount)
       });
     });
     if (matches.length) {
-      return matches.find(match => match.selected) ||
-        matches.find(match => match.frameCount > 1) ||
-        matches[0];
+      const exact = matches.filter(match => match.countMatches);
+      const pool = exact.length ? exact : matches;
+      return pool.find(match => match.selected) ||
+        pool.find(match => match.frameCount > 1) ||
+        pool[0];
     }
     if (!selection || selection.structures?.length !== 1) return null;
     const model = selection.structures[0]?.model;
@@ -10076,14 +12651,29 @@
 
   function afterNativeTrajectoryPaint() {
     return new Promise(resolve => {
-      requestAnimationFrame(() => requestAnimationFrame(resolve));
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      // Frame steps are chained through one queue, and rAF never fires while the tab
+      // is hidden — a single step taken in the background would otherwise leave the
+      // queue waiting for a paint that never comes, stalling playback for good even
+      // after the window is focused again.
+      requestAnimationFrame(() => requestAnimationFrame(finish));
+      setTimeout(finish, 250);
     });
   }
 
   async function setNativeTrajectoryPoseDirect(index, poseCount) {
-    const target = Math.max(0, Math.min(poseCount - 1, index));
     const transform = nativeTrajectoryModelTransform(poseCount);
     if (!transform) return false;
+    // Clamp against the frames the cell actually holds: after smoothing the caller's
+    // total and the loaded trajectory can disagree, and asking for a frame past the
+    // end leaves the model on its last one while we report success.
+    const limit = transform.frameCount > 0 ? transform.frameCount : poseCount;
+    const target = Math.max(0, Math.min(limit - 1, index));
     await transform.plugin.state.updateTransform(
       transform.plugin.state.data,
       transform.ref,
@@ -10189,8 +12779,11 @@
     const slider = root.querySelector('.buret-docking-pose-slider');
     const speed = root.querySelector('.buret-docking-pose-speed');
     const stop = root.querySelector('button[aria-label^="Stop "]');
+    const globalFrameIndex = Number(slider?.dataset.globalFrameIndex);
     return {
-      frameIndex: Math.max(0, Math.trunc(Number(slider?.value) || 1) - 1),
+      frameIndex: Number.isFinite(globalFrameIndex)
+        ? Math.max(0, Math.trunc(globalFrameIndex))
+        : Math.max(0, Math.trunc(Number(slider?.value) || 1) - 1),
       fps: String(speed?.value || ''),
       playing: Boolean(stop)
     };
@@ -10234,7 +12827,9 @@
 
   async function applyTrajectorySmoothingFromAction(action = {}) {
     const engine = window.BuretteTrajectorySmoothing;
-    const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
+    const originalPrepared = trajectorySmoothingState?.view === 'smoothed'
+      ? trajectorySmoothingState.originalPrepared
+      : activeMolstarPrepared;
     if (!engine?.smooth || !originalPrepared) {
       return agentActionFailure('apply_trajectory_smoothing', 'NOT_AVAILABLE', 'Trajectory smoothing is unavailable in this viewer runtime.');
     }
@@ -10283,7 +12878,9 @@
   }
 
   async function applyExternalTrajectorySmoothingFromAction(action = {}) {
-    const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
+    const originalPrepared = trajectorySmoothingState?.view === 'smoothed'
+      ? trajectorySmoothingState.originalPrepared
+      : activeMolstarPrepared;
     if (!originalPrepared || !action.sourceUrl) {
       return agentActionFailure('apply_external_trajectory_smoothing', 'NOT_AVAILABLE', 'The smoothed trajectory is unavailable.');
     }
@@ -10292,21 +12889,35 @@
       if (!response.ok) throw new Error(`Could not read smoothed trajectory: ${response.status}`);
       const data = await response.text();
       const frameCount = Math.max(2, Math.trunc(Number(action.frameCount) || 2));
+      // Smoothing keeps the topology whenever the run had one, and then hands back a
+      // multi-model PDB. Reading that as XYZ would throw away the residues and chains
+      // it just preserved, leaving a protein drawn as loose atoms and bonds.
+      const smoothedFormat = String(action.sourceFormat || 'xyz').toLowerCase() === 'pdb' ? 'pdb' : 'xyz';
       const smoothedPrepared = {
         ...originalPrepared,
+        kind: 'trajectory',
         data,
-        format: 'xyz',
+        format: smoothedFormat,
         label: `${originalPrepared.label || 'Trajectory'} - smoothed view`,
         poseCount: frameCount,
-        pdbModelCount: 0,
-        xyzFrameCount: frameCount,
+        pdbModelCount: smoothedFormat === 'pdb' ? frameCount : 0,
+        xyzFrameCount: smoothedFormat === 'xyz' ? frameCount : 0,
         nativeTrajectoryControls: true,
-        controlLabel: 'Frame'
+        controlLabel: 'Frame',
+        dockingSceneMode: false,
+        sdfPoseOverlayAvailable: false,
+        xyzFrameOverlayAvailable: false,
+        pdbModelOverlayAvailable: false,
+        trajectorySegments: [],
+        smoothingSourcePath: String(action.sourcePath || '')
       };
       trajectorySmoothingState = {
         originalPrepared,
         smoothedPrepared,
         result: { frameCount, interpolation: action.interpolation || 'linear' },
+        originalFrameIndex: Math.max(0, Math.trunc(Number(action.originalFrameIndex) || 0)),
+        originalSegmentStartFrame: Math.max(0, Math.trunc(Number(action.originalSegmentStartFrame) || 0)),
+        smoothedFrameIndex: Math.max(0, Math.trunc(Number(action.frameIndex) || 0)),
         view: 'smoothed'
       };
       await replaceTrajectorySmoothingPrepared(smoothedPrepared, {
@@ -10327,8 +12938,24 @@
     }
     const view = action.view === 'original' ? 'original' : 'smoothed';
     try {
+      const currentPlayback = currentTrajectoryPlaybackSnapshot();
+      if (trajectorySmoothingState.view === 'original' && currentPlayback) {
+        trajectorySmoothingState.originalFrameIndex = currentPlayback.frameIndex;
+        trajectorySmoothingState.smoothedFrameIndex = Math.max(
+          0,
+          currentPlayback.frameIndex - trajectorySmoothingState.originalSegmentStartFrame
+        );
+      } else if (trajectorySmoothingState.view === 'smoothed' && currentPlayback) {
+        trajectorySmoothingState.smoothedFrameIndex = currentPlayback.frameIndex;
+      }
       const prepared = view === 'original' ? trajectorySmoothingState.originalPrepared : trajectorySmoothingState.smoothedPrepared;
-      await replaceTrajectorySmoothingPrepared(prepared);
+      const frameIndex = view === 'original'
+        ? trajectorySmoothingState.originalFrameIndex
+        : trajectorySmoothingState.smoothedFrameIndex;
+      await replaceTrajectorySmoothingPrepared(prepared, {
+        frameIndex,
+        playing: Boolean(currentPlayback?.playing)
+      });
       trajectorySmoothingState.view = view;
       updateTrajectorySmoothingButtons();
       postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view });
@@ -10544,6 +13171,11 @@
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
     if (prepared.dockingSceneMode) root.classList.add('buret-docking-poses-structure-scene');
+    const trajectorySegments = Array.isArray(prepared.trajectorySegments)
+      ? prepared.trajectorySegments.filter(segment => Number(segment?.frameCount) > 0)
+      : [];
+    const hasTrajectorySegments = trajectorySegments.length > 1;
+    if (hasTrajectorySegments) root.classList.add('buret-docking-poses-trajectory-segments');
     const controlLabel = String(prepared.controlLabel || 'Pose');
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
@@ -10575,8 +13207,10 @@
     let loopTimer = null;
     let loopActive = Boolean(playbackRestore?.playing);
     let loopBusy = false;
+    let loopEpoch = 0;
     let loopStartedAt = 0;
     let loopStartPose = activePose;
+    let poseUpdateQueue = Promise.resolve();
     let poseRepeatDelayTimer = null;
     let poseRepeatTimer = null;
     let poseRepeatBusy = false;
@@ -10590,9 +13224,12 @@
     mainRow.className = 'buret-docking-pose-main';
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
-    const label = prepared.dockingSceneMode ? document.createElement('button') : document.createElement('span');
-    const currentName = prepared.dockingSceneMode ? document.createElement('span') : null;
-    const currentIndex = prepared.dockingSceneMode ? document.createElement('span') : null;
+    const hasFileList = prepared.dockingSceneMode || hasTrajectorySegments;
+    const listEntries = prepared.dockingSceneMode ? prepared.poses : trajectorySegments;
+    const label = hasFileList ? document.createElement('button') : document.createElement('span');
+    const currentName = hasFileList ? document.createElement('span') : null;
+    const currentNameText = hasFileList ? document.createElement('span') : null;
+    const currentIndex = hasFileList ? document.createElement('span') : null;
     if (currentName && currentIndex) {
       label.type = 'button';
       label.className = 'buret-docking-pose-current';
@@ -10600,28 +13237,52 @@
       label.setAttribute('aria-expanded', 'false');
       currentName.className = 'buret-docking-pose-current-name';
       currentIndex.className = 'buret-docking-pose-current-index';
+      // The name rides in its own element so hovering can slide it with a transform.
+      currentNameText.className = 'buret-docking-pose-current-text';
+      currentName.appendChild(currentNameText);
       label.append(currentName, currentIndex);
+      // How far the name has to travel to show its tail. Measured on enter rather than
+      // on render: it depends on the current segment and on the toolbar's width.
+      const measureNameMarquee = () => {
+        const overflow = Math.max(0, currentNameText.scrollWidth - currentName.clientWidth);
+        currentName.style.setProperty('--buret-marquee-shift', `${overflow}px`);
+        // Constant reading speed rather than a constant duration, so a long tail does
+        // not race past. Slow enough to read, at roughly 34px per second.
+        currentName.style.setProperty('--buret-marquee-duration', `${Math.max(0.45, overflow / 34).toFixed(2)}s`);
+      };
+      label.addEventListener('pointerenter', measureNameMarquee);
+      label.addEventListener('focus', measureNameMarquee);
     }
     label.title = prepared.ligandLabel || '';
-    const fileList = prepared.dockingSceneMode ? document.createElement('div') : null;
+    const fileList = hasFileList ? document.createElement('div') : null;
     const fileButtons = [];
     if (fileList) {
       fileList.className = 'buret-docking-pose-files';
       fileList.setAttribute('role', 'listbox');
-      fileList.setAttribute('aria-label', 'Open structures');
-      prepared.poses.forEach((entry, index) => {
+      fileList.setAttribute('aria-label', hasTrajectorySegments ? 'Trajectory segments' : 'Open structures');
+      listEntries.forEach((entry, index) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'buret-docking-pose-file';
         button.setAttribute('role', 'option');
-        button.title = entry.label || `Structure ${index + 1}`;
+        const fallbackLabel = hasTrajectorySegments ? `Trajectory segment ${index + 1}` : `Structure ${index + 1}`;
+        const entryLabel = entry.label || fallbackLabel;
+        button.title = hasTrajectorySegments
+          ? `${entryLabel} · frames ${entry.startFrame + 1}–${entry.endFrame + 1}`
+          : entryLabel;
         const number = document.createElement('span');
         number.className = 'buret-docking-pose-file-number';
         number.textContent = String(index + 1).padStart(2, '0');
         const name = document.createElement('span');
         name.className = 'buret-docking-pose-file-name';
-        name.textContent = entry.label || `Structure ${index + 1}`;
+        name.textContent = entryLabel;
         button.append(number, name);
+        if (hasTrajectorySegments) {
+          const frameCount = document.createElement('span');
+          frameCount.className = 'buret-docking-pose-file-meta';
+          frameCount.textContent = `${entry.frameCount} frames`;
+          button.append(frameCount);
+        }
         fileButtons.push(button);
         fileList.append(button);
       });
@@ -10630,15 +13291,18 @@
     animation.type = 'button';
     animation.className = 'buret-docking-pose-animation-button';
     animation.textContent = '⏯';
-    animation.setAttribute('aria-label', 'Select Molstar animation');
+    const animationControlLabel = hasTrajectorySegments ? 'Toggle trajectory playback options' : 'Select Molstar animation';
+    animation.setAttribute('aria-label', animationControlLabel);
     animation.setAttribute('aria-expanded', 'false');
-    animation.title = 'Select animation';
+    animation.title = hasTrajectorySegments ? 'Playback options' : 'Select animation';
     const previous = document.createElement('button');
     previous.type = 'button';
+    previous.className = 'buret-docking-pose-previous';
     previous.textContent = 'Prev';
     previous.setAttribute('aria-label', `Previous ${controlLabelLower}`);
     const next = document.createElement('button');
     next.type = 'button';
+    next.className = 'buret-docking-pose-next';
     next.textContent = 'Next';
     next.setAttribute('aria-label', `Next ${controlLabelLower}`);
     const xyzAlignSignature = prepared.xyzFrameOverlayAvailable === true
@@ -10651,6 +13315,62 @@
       ? xyzCandidateFrames
       : null;
     const align = prepared.dockingSceneMode || xyzAlignFrames ? document.createElement('button') : null;
+    const story = prepared.dockingSceneMode ? document.createElement('button') : null;
+    const storyPanel = prepared.dockingSceneMode ? document.createElement('aside') : null;
+    const storyStep = storyPanel ? document.createElement('div') : null;
+    const storyTitle = storyPanel ? document.createElement('div') : null;
+    const storySummary = storyPanel ? document.createElement('div') : null;
+    const storyOpenRight = storyPanel ? document.createElement('button') : null;
+    const storyComparisons = new Map();
+    const storyComparison = (index) => {
+      if (!story) return null;
+      if (!storyComparisons.has(index)) {
+        storyComparisons.set(index, structureSceneStoryComparison(prepared, index));
+      }
+      return storyComparisons.get(index);
+    };
+    const structureStoryPayload = () => {
+      const entry = prepared?.poses?.[activePose];
+      const comparison = storyComparison(activePose);
+      let summary = '';
+      if (comparison) {
+        summary = `Stage inferred from filename · ${structureSceneStoryChange(comparison)} · ${comparison.rmsd.toFixed(2)} Å Cα RMSD vs previous · chain ${comparison.chain} · ${comparison.residueCount} residues`;
+      } else if (activePose === 0) {
+        summary = 'Stage inferred from filename · Reference state for later Cα-chain comparisons';
+      } else {
+        summary = `Stage inferred from filename · ${structureSceneStoryChange(null)}`;
+      }
+      return {
+        stepIndex: activePose,
+        stepCount: prepared.poseCount,
+        fileName: entry?.label || `Structure ${activePose + 1}`,
+        stage: structureSceneStoryStage(entry?.label, activePose),
+        summary,
+        comparison
+      };
+    };
+    if (story && storyPanel && storyStep && storyTitle && storySummary && storyOpenRight) {
+      story.type = 'button';
+      story.className = 'buret-docking-pose-story active';
+      story.textContent = 'Story';
+      story.title = 'Explain the current structure in this sequence';
+      story.setAttribute('aria-controls', 'buret-docking-pose-story-panel');
+      story.setAttribute('aria-expanded', 'true');
+      story.setAttribute('aria-pressed', 'true');
+      storyPanel.id = 'buret-docking-pose-story-panel';
+      storyPanel.className = 'buret-docking-pose-story-panel';
+      storyPanel.setAttribute('aria-label', 'Structure story');
+      storyPanel.setAttribute('aria-live', 'polite');
+      storyStep.className = 'buret-docking-pose-story-step';
+      storyTitle.className = 'buret-docking-pose-story-title';
+      storySummary.className = 'buret-docking-pose-story-summary';
+      storyOpenRight.type = 'button';
+      storyOpenRight.className = 'buret-docking-pose-story-open';
+      storyOpenRight.textContent = '↗';
+      storyOpenRight.title = 'Open Story in right sidebar';
+      storyOpenRight.setAttribute('aria-label', 'Open Story in right sidebar');
+      storyPanel.append(storyStep, storyTitle, storySummary, storyOpenRight);
+    }
     const alignmentSupported = Boolean(align) && (xyzAlignFrames
       ? xyzFramesAlignable(xyzAlignFrames)
       : prepared.poses.every(entry => normalizeFormat(entry?.format) === 'pdb'));
@@ -10715,31 +13435,79 @@
       prepared.kind === 'xyz-frame-overlay' ||
       (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true)
     );
+    const activeTrajectorySegment = (poseIndex) => {
+      if (!hasTrajectorySegments) return { index: -1, segment: null };
+      const index = trajectorySegments.findIndex(segment => (
+        poseIndex >= segment.startFrame && poseIndex <= segment.endFrame
+      ));
+      const resolvedIndex = index >= 0 ? index : trajectorySegments.length - 1;
+      return { index: resolvedIndex, segment: trajectorySegments[resolvedIndex] };
+    };
+    const trajectoryControlBounds = (poseIndex) => {
+      const active = activeTrajectorySegment(poseIndex);
+      if (!active.segment) {
+        return { start: 0, end: prepared.poseCount - 1, count: prepared.poseCount };
+      }
+      return {
+        start: active.segment.startFrame,
+        end: active.segment.endFrame,
+        count: active.segment.frameCount
+      };
+    };
+    // Every frame step relabels the control, but within a segment the name does not
+    // change. Rewriting the text node anyway relaid the line and cut short the hover
+    // slide that walks a long name, so it only lands when the name actually differs.
+    const setCurrentName = (text) => {
+      if (currentNameText.textContent !== text) currentNameText.textContent = text;
+    };
     const applyLabel = (poseIndex) => {
       if (!currentName || !currentIndex) {
         label.textContent = trajectoryPoseLabel(prepared, controlLabel, poseIndex);
         return;
       }
-      currentName.textContent = prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`;
+      if (hasTrajectorySegments) {
+        const current = activeTrajectorySegment(poseIndex);
+        setCurrentName(current.segment?.label || `${controlLabel} ${poseIndex + 1}`);
+        currentIndex.textContent = `${poseIndex - current.segment.startFrame + 1}/${current.segment.frameCount} · ${current.index + 1}/${trajectorySegments.length}`;
+        return;
+      }
+      setCurrentName(prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`);
       currentIndex.textContent = `${poseIndex + 1}/${prepared.poseCount}`;
     };
     const updateControls = () => {
+      const controlBounds = trajectoryControlBounds(activePose);
       applyLabel(activePose);
-      label.title = prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
-      previous.disabled = activePose <= 0;
-      next.disabled = activePose >= prepared.poseCount - 1;
-      slider.value = String(activePose + 1);
+      label.title = hasTrajectorySegments
+        ? activeTrajectorySegment(activePose).segment?.label || prepared.ligandLabel || ''
+        : prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
+      previous.disabled = activePose <= controlBounds.start;
+      next.disabled = activePose >= controlBounds.end;
+      slider.max = String(controlBounds.count);
+      slider.value = String(activePose - controlBounds.start + 1);
+      slider.dataset.globalFrameIndex = String(activePose);
+      const activeSegmentIndex = activeTrajectorySegment(activePose).index;
       fileButtons.forEach((button, index) => {
-        const active = index === activePose;
+        const active = hasTrajectorySegments ? index === activeSegmentIndex : index === activePose;
         button.classList.toggle('active', active);
         button.setAttribute('aria-selected', active ? 'true' : 'false');
       });
+      if (storyStep && storyTitle && storySummary) {
+        const storyPayload = structureStoryPayload();
+        storyStep.textContent = `Step ${storyPayload.stepIndex + 1} of ${storyPayload.stepCount}`;
+        storyTitle.textContent = storyPayload.stage;
+        storySummary.textContent = storyPayload.summary;
+        postHostMessage({ type: 'structureStoryChanged', ...storyPayload });
+      }
       refreshNativeTrajectoryStandalonePreview();
+      const activeSegment = activeTrajectorySegment(activePose);
       postHostMessage({
         type: 'trajectoryFrameChanged',
         documentId: activeConfig?.documentId || '',
-        frameIndex: activePose,
-        frameCount: prepared.poseCount,
+        frameIndex: activePose - controlBounds.start,
+        frameCount: controlBounds.count,
+        globalFrameIndex: activePose,
+        segmentStartFrame: controlBounds.start,
+        sourcePath: activeSegment.segment?.sourcePath || prepared.smoothingSourcePath || '',
         playing: loopActive
       });
     };
@@ -10764,6 +13532,7 @@
     };
     const isAnimationOptionsOpen = () => root.classList.contains('buret-docking-poses-animation-open');
     const setLoopActive = (active) => {
+      loopEpoch += 1;
       loopActive = Boolean(active);
       if (!active && loopTimer) {
         clearTimeout(loopTimer);
@@ -10778,11 +13547,16 @@
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
       if (active) setAnimationOptionsOpen(true);
+      const controlBounds = trajectoryControlBounds(activePose);
+      const activeSegment = activeTrajectorySegment(activePose);
       postHostMessage({
         type: 'trajectoryFrameChanged',
         documentId: activeConfig?.documentId || '',
-        frameIndex: activePose,
-        frameCount: prepared.poseCount,
+        frameIndex: activePose - controlBounds.start,
+        frameCount: controlBounds.count,
+        globalFrameIndex: activePose,
+        segmentStartFrame: controlBounds.start,
+        sourcePath: activeSegment.segment?.sourcePath || prepared.smoothingSourcePath || '',
         playing: loopActive
       });
     };
@@ -10799,7 +13573,8 @@
       const delay = loopDelayMs();
       const elapsed = Math.max(0, loopNow() - loopStartedAt);
       const frameOffset = Math.floor(elapsed / delay);
-      return (loopStartPose + frameOffset) % prepared.poseCount;
+      const loopBounds = trajectoryControlBounds(loopStartPose);
+      return loopBounds.start + ((loopStartPose - loopBounds.start + frameOffset) % loopBounds.count);
     };
     const loopNextDelay = () => {
       const delay = loopDelayMs();
@@ -10807,28 +13582,45 @@
       const untilNextFrame = delay - (elapsed % delay);
       return Math.max(minimumTrajectoryLoopTimerDelay(prepared), Math.min(delay, untilNextFrame));
     };
-    const scheduleLoopStep = (delayMs = loopNextDelay()) => {
+    const scheduleLoopStep = (delayMs = loopNextDelay(), expectedLoopEpoch = loopEpoch) => {
       loopTimer = window.setTimeout(() => {
         loopTimer = null;
-        if (!loopActive) return;
+        if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
         if (loopBusy) {
-          scheduleLoopStep();
+          scheduleLoopStep(undefined, expectedLoopEpoch);
           return;
         }
         const nextIndex = loopTargetIndex();
         if (nextIndex === activePose) {
-          scheduleLoopStep();
+          scheduleLoopStep(undefined, expectedLoopEpoch);
           return;
         }
         loopBusy = true;
-        void setPose(nextIndex, { loopStep: true }).finally(() => {
+        void setPose(nextIndex, { loopStep: true, loopEpoch: expectedLoopEpoch }).finally(() => {
           loopBusy = false;
-          if (!loopActive) return;
-          scheduleLoopStep();
+          if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
+          scheduleLoopStep(undefined, expectedLoopEpoch);
         });
       }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
     };
-    const setPose = async (index, options = {}) => {
+    const setPose = (index, options = {}) => {
+      const requestedIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
+      let queuedOptions = options;
+      if (options.loopStep !== true && loopActive) {
+        loopEpoch += 1;
+        loopStartedAt = loopNow();
+        loopStartPose = requestedIndex;
+        if (loopTimer) {
+          clearTimeout(loopTimer);
+          loopTimer = null;
+        }
+        queuedOptions = { ...options, loopEpoch };
+      }
+      const queued = poseUpdateQueue.then(() => performSetPose(requestedIndex, queuedOptions));
+      poseUpdateQueue = queued.catch(() => {});
+      return queued;
+    };
+    const performSetPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
@@ -10841,14 +13633,14 @@
           if (!switched) throw new Error('Mol* trajectory controls are not available.');
           activePose = readNativeTrajectoryPosition(prepared.poseCount)?.index ?? nextIndex;
           updateControls();
-          if (options.loopStep !== true && loopActive) {
+          if (options.loopStep !== true && loopActive && options.loopEpoch === loopEpoch) {
             loopStartedAt = loopNow();
             loopStartPose = activePose;
             if (loopTimer) {
               clearTimeout(loopTimer);
               loopTimer = null;
             }
-            scheduleLoopStep(loopDelayMs());
+            scheduleLoopStep(loopDelayMs(), loopEpoch);
           }
           if (options.focus === true) {
             scheduleMolstarStructureFocus(viewer, { reason: 'native-trajectory-pose', durationMs: 180 });
@@ -10883,7 +13675,9 @@
         try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
         activePose = previousIndex;
         updateControls();
-        setStatus(`[web] Could not switch ${controlLabelLower}.\n\n${error?.message || String(error)}`, 'error');
+        // Stepping frames is the most repeated action here and a loop retries it on a
+        // timer, so a failed step stays in the console: the label and buttons have
+        // already rolled back to the frame still on screen, which is the honest report.
         // eslint-disable-next-line no-console
         console.error(error);
       }
@@ -10894,12 +13688,17 @@
       });
       fileButtons.forEach((button, index) => {
         button.addEventListener('pointerenter', (event) => {
-          if (event.pointerType === 'touch' || index === activePose) return;
-          scheduleSliderInputPose(index);
+          const targetPose = hasTrajectorySegments ? trajectorySegments[index].startFrame : index;
+          // Segments preview on hover like poses do: every frame is already in the one
+          // trajectory, so jumping to a segment's first frame is a model-index change,
+          // not a reload. Touch has no hover, and it would fire on the way to a tap.
+          if (event.pointerType === 'touch' || targetPose === activePose) return;
+          scheduleSliderInputPose(targetPose);
         });
         button.addEventListener('click', () => {
           setFileListOpen(false);
-          if (index !== activePose) scheduleSliderInputPose(index);
+          const targetPose = hasTrajectorySegments ? trajectorySegments[index].startFrame : index;
+          if (targetPose !== activePose) scheduleSliderInputPose(targetPose);
         });
       });
       const onOutsidePointerDown = (event) => {
@@ -10909,6 +13708,23 @@
       };
       window.addEventListener('pointerdown', onOutsidePointerDown, true);
       fileListDisposer = () => window.removeEventListener('pointerdown', onOutsidePointerDown, true);
+    }
+    if (story && storyPanel) {
+      story.addEventListener('click', () => {
+        const open = root.classList.toggle('buret-docking-poses-story-closed') === false;
+        story.classList.toggle('active', open);
+        story.setAttribute('aria-expanded', open ? 'true' : 'false');
+        story.setAttribute('aria-pressed', open ? 'true' : 'false');
+        window.requestAnimationFrame(() => repositionDockingPoseControls(root));
+      });
+    }
+    if (storyOpenRight) {
+      storyOpenRight.addEventListener('click', () => {
+        const posted = postHostMessage({ type: 'openStructureStory', ...structureStoryPayload() });
+        if (!posted) {
+          setStatus('[web] The Story sidebar is available in the full Burette workspace.', 'error');
+        }
+      });
     }
     if (align && alignmentSupported && xyzAlignFrames) {
       const toggleXyzAlignment = () => {
@@ -11003,11 +13819,12 @@
     };
     const repeatPoseStep = (direction) => {
       if (poseRepeatBusy) return;
+      const controlBounds = trajectoryControlBounds(activePose);
       const nextIndex = activePose + direction;
-      const wrappedIndex = nextIndex < 0
-        ? prepared.poseCount - 1
-        : nextIndex >= prepared.poseCount
-          ? 0
+      const wrappedIndex = nextIndex < controlBounds.start
+        ? controlBounds.end
+        : nextIndex > controlBounds.end
+          ? controlBounds.start
           : nextIndex;
       poseRepeatBusy = true;
       void setPose(wrappedIndex, { userStep: true }).finally(() => {
@@ -11060,7 +13877,8 @@
     };
     const setControlsCollapsed = (collapsed) => {
       root.classList.toggle('buret-docking-poses-collapsed', Boolean(collapsed));
-      animation.title = collapsed ? 'Show playback controls' : 'Select animation';
+      animation.title = collapsed ? 'Show playback controls' : (hasTrajectorySegments ? 'Playback options' : 'Select animation');
+      animation.setAttribute('aria-label', collapsed ? 'Show playback controls' : animationControlLabel);
       if (!collapsed) return;
       setFileListOpen(false);
       setAnimationOptionsOpen(false);
@@ -11077,7 +13895,7 @@
       }
       const open = !isAnimationOptionsOpen();
       setAnimationOptionsOpen(open);
-      if (!open) return;
+      if (!open || hasTrajectorySegments) return;
       const button = nativeAnimationSelectButton();
       if (button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') {
         button.click();
@@ -11115,12 +13933,14 @@
     });
     speed.addEventListener('input', updateSpeedMode);
     slider.addEventListener('input', () => {
-      const previewIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
+      const controlBounds = trajectoryControlBounds(activePose);
+      const previewIndex = controlBounds.start + Math.max(0, Math.min(controlBounds.count - 1, Number(slider.value) - 1));
       applyLabel(previewIndex);
       if (supportsLivePoseInput()) scheduleSliderInputPose(previewIndex);
     });
     slider.addEventListener('change', () => {
-      const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
+      const controlBounds = trajectoryControlBounds(activePose);
+      const nextIndex = controlBounds.start + Math.max(0, Math.min(controlBounds.count - 1, Number(slider.value) - 1));
       if (supportsLivePoseInput()) {
         if (sliderInputTimer) {
           clearTimeout(sliderInputTimer);
@@ -11143,10 +13963,10 @@
       }
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        if (activePose > 0) void setPose(activePose - 1, { userStep: true });
+        if (activePose > trajectoryControlBounds(activePose).start) void setPose(activePose - 1, { userStep: true });
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        if (activePose < prepared.poseCount - 1) void setPose(activePose + 1, { userStep: true });
+        if (activePose < trajectoryControlBounds(activePose).end) void setPose(activePose + 1, { userStep: true });
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -11154,20 +13974,23 @@
     mainRow.append(animation, previous, label, next);
     const smoothAvailable = !xyzAlignFrames
       && (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
-    if (smoothAvailable) mainRow.append(smooth);
     const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
+    if (smoothAvailable && toggleRow) mainRow.append(smooth);
     if (toggleRow) {
       toggleRow.className = 'buret-docking-pose-toggles';
+      if (story) toggleRow.append(story);
       if (align) toggleRow.append(align);
       if (all) toggleRow.append(all);
     } else {
       if (align) mainRow.append(align);
       if (all) mainRow.append(all);
       animationRow.append(speed, loop, slider);
+      if (smoothAvailable) animationRow.append(smooth);
     }
     root.append(mainRow);
     if (toggleRow) root.append(toggleRow);
     if (fileList) root.append(fileList);
+    if (storyPanel) root.append(storyPanel);
     if (!toggleRow) root.append(animationRow);
     document.body.appendChild(root);
     restoreDockingPoseControlsPosition(root);
@@ -12378,11 +15201,16 @@
     return true;
   }
 
-  function beginMolstarEmptyClickSelectionPreserve(event) {
+  // A selection made elsewhere — most often by picking a stretch of sequence —
+  // should outlive a look around the 3D view. A click there focuses rather than
+  // selects, so the selection it drops is collateral. This arms for any left
+  // click on the view, empty space or a molecule alike; the restore below only
+  // fires when the selection was actually wiped, so a click that legitimately
+  // makes a new one is left alone.
+  function beginMolstarSelectionPreserve(event) {
     if (molstarLassoEnabled || molstarLassoStroke || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
     const lociList = molstarCurrentSelectionLociList();
     if (!lociList.length) return;
-    if (molstarContextPickFromEvent(event, molstarContextTouchPickOptions(event))) return;
     molstarSelectionPreserveClick = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -12391,7 +15219,7 @@
     };
   }
 
-  function finishMolstarEmptyClickSelectionPreserve(event) {
+  function finishMolstarSelectionPreserve(event) {
     const preserve = molstarSelectionPreserveClick;
     if (!preserve || event.pointerId !== preserve.pointerId) return;
     molstarSelectionPreserveClick = null;
@@ -13765,6 +16593,164 @@
     return components.filter(component => componentManager.canBeModified(component));
   }
 
+  function molstarSortedIndexOf(sortedElements, value) {
+    let lo = 0;
+    let hi = sortedElements.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const current = sortedElements[mid];
+      if (current === value) return mid;
+      if (current < value) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    return -1;
+  }
+
+  // A click on a bond gives a bond loci, not an element loci; the element-based
+  // helpers below all want atoms, so bonds are unwrapped to their two ends first.
+  function molstarContextElementLoci(loci) {
+    const S = window.molstar?.lib?.structure;
+    if (!S) return null;
+    if (S.StructureElement?.Loci?.is?.(loci)) return loci;
+    if (S.Bond?.isLoci?.(loci)) return S.Bond.toStructureElementLoci(loci);
+    return null;
+  }
+
+  // Which component owns a picked molecule. The scene-tree actions all address a
+  // component by ref, so the 3D right click resolves its pick to the same ref by
+  // finding the component whose sub-structure contains the picked atom.
+  function molstarContextComponentRef(target) {
+    const structRef = target?.structure;
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const loci = molstarContextElementLoci(target?.loci);
+    if (!Array.isArray(structRef?.components) || !loci) return null;
+    const location = StructureElement.Loci.getFirstLocation(loci);
+    if (!location) return null;
+    const modelElement = location.element;
+    const unit = location.unit;
+    for (const component of structRef.components) {
+      const sub = component?.cell?.obj?.data;
+      if (!Array.isArray(sub?.units)) continue;
+      for (const subUnit of sub.units) {
+        if (subUnit.invariantId !== unit.invariantId && subUnit.id !== unit.id) continue;
+        if (molstarSortedIndexOf(subUnit.elements, modelElement) >= 0) {
+          return component.cell?.transform?.ref || null;
+        }
+      }
+    }
+    return null;
+  }
+
+  // Residues within a radius of the pick, as a whole-residue loci. Positions come
+  // from the pick, the neighbour search runs against the full structure's spatial
+  // index, and Mol* rounds the hit atoms out to their residues so the selection
+  // never cuts a side chain in half.
+  function molstarSurroundingsLoci(target, radius) {
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const pickLoci = molstarContextElementLoci(target?.loci);
+    const fullStructure = target?.structure?.cell?.obj?.data;
+    const lookup = fullStructure?.lookup3d;
+    if (!pickLoci || typeof lookup?.find !== 'function') return null;
+    const perUnit = new Map();
+    StructureElement.Loci.forEachLocation(pickLoci, location => {
+      const conformation = location.unit.conformation;
+      const element = location.element;
+      const found = lookup.find(conformation.x(element), conformation.y(element), conformation.z(element), radius);
+      for (let i = 0; i < found.count; i++) {
+        const unit = found.units[i];
+        let entry = perUnit.get(unit.id);
+        if (!entry) {
+          entry = { unit, indices: new Set() };
+          perUnit.set(unit.id, entry);
+        }
+        entry.indices.add(found.indices[i]);
+      }
+    });
+    const elements = [];
+    for (const { unit, indices } of perUnit.values()) {
+      elements.push({ unit, indices: Int32Array.from(indices).sort() });
+    }
+    if (!elements.length) return null;
+    const raw = StructureElement.Loci(fullStructure, elements);
+    return StructureElement.Loci.extendToWholeResidues(raw);
+  }
+
+  // The 3D menu keeps its representation additions to one click; a grey, translucent
+  // surface is the common case (an envelope around a ligand), and the tree menu is
+  // where its type, opacity, and colour are tuned afterwards.
+  async function addGreySurfaceToComponent(componentRef) {
+    const viewer = activeMolstarViewer();
+    const manager = viewer?.plugin?.managers?.structure?.component;
+    const components = sceneTreeColorTargets(viewer).get(componentRef) || [];
+    if (!components.length || typeof manager?.addRepresentation !== 'function') return false;
+    await manager.addRepresentation(components, 'molecular-surface');
+    // addRepresentation rebuilds the hierarchy, so the component captured above no
+    // longer lists the new surface; re-resolve it before reaching for the pivot.
+    const fresh = sceneTreeColorTargets(viewer).get(componentRef) || components;
+    const surface = [...(fresh[0]?.representations || [])].reverse()
+      .find(representation => representation?.cell?.transform?.params?.type?.name === 'molecular-surface');
+    if (surface && typeof manager.updateRepresentations === 'function') {
+      await manager.updateRepresentations(fresh, surface, old => ({
+        ...old,
+        type: { ...old.type, params: { ...old.type.params, alpha: 0.35 } },
+        colorTheme: { name: 'uniform', params: { value: 0x98989d } }
+      }));
+    }
+    scheduleSceneTreeRender();
+    return true;
+  }
+
+  // A distance needs two atoms, and naming them by opening the menu twice reads as
+  // a bug. Choosing the action arms the viewer instead: the next two picks — in
+  // the 3D view or the sequence — become the ends. Selection mode is held for the
+  // duration so each pick marks itself rather than flying the camera at it.
+  let molstarMeasureSession = null;
+  function cancelDistanceMeasurement(message) {
+    const session = molstarMeasureSession;
+    if (!session) return;
+    molstarMeasureSession = null;
+    try { session.subscription?.unsubscribe?.(); } catch (_) {}
+    document.removeEventListener('keydown', session.onKeyDown, true);
+    const plugin = activeMolstarViewer()?.plugin;
+    if (plugin) plugin.selectionMode = session.restoreMode;
+    if (message) setStatus(message);
+  }
+
+  function beginDistanceMeasurement() {
+    const plugin = activeMolstarViewer()?.plugin;
+    const measurement = plugin?.managers?.structure?.measurement;
+    const clicks = plugin?.behaviors?.interaction?.click;
+    if (typeof measurement?.addDistance !== 'function' || typeof clicks?.subscribe !== 'function') return false;
+    cancelDistanceMeasurement();
+    const Loci = window.molstar?.lib?.loci?.Loci;
+    const session = { first: null, restoreMode: plugin.selectionMode === true, subscription: null, onKeyDown: null };
+    session.onKeyDown = event => {
+      if (event.key === 'Escape') cancelDistanceMeasurement('[web] Distance measurement cancelled.');
+    };
+    plugin.selectionMode = true;
+    document.addEventListener('keydown', session.onKeyDown, true);
+    session.subscription = clicks.subscribe(event => {
+      const loci = molstarContextElementLoci(event?.current?.loci);
+      if (!loci || molstarLociIsEmpty(loci)) return;
+      // Mol* hands the same pick over twice a few milliseconds apart; the repeat
+      // carries the same loci, so it is dropped rather than taken for a second end.
+      if (session.first && Loci?.areEqual?.(session.first, loci)) return;
+      if (!session.first) {
+        session.first = loci;
+        setStatus('[web] First point set. Pick the second one, Escape cancels.');
+        return;
+      }
+      const first = session.first;
+      cancelDistanceMeasurement();
+      Promise.resolve(measurement.addDistance(first, loci))
+        .then(() => setStatus('[web] Distance measured.'))
+        .catch(error => setStatus('[web] Measure distance failed.\n\n' + (error?.message || String(error)), 'error'));
+    });
+    molstarMeasureSession = session;
+    setStatus('[web] Pick two atoms to measure the distance. Escape cancels.');
+    return true;
+  }
+
   async function deleteMolstarContextLoci(target, loci, applyGranularity = true) {
     if (!loci || molstarLociIsEmpty(loci)) return false;
     const plugin = activeViewer?.plugin;
@@ -13888,6 +16874,50 @@
     return atom ? `${residue} atom ${atom}` : `${residue} atom`;
   }
 
+  // The molecule menu is rendered in the same shape as the scene tree menu: a few
+  // named actions up top, the bulky export/search/compute lists as titled sections,
+  // and the deletions last where a stray click is least likely to reach them.
+  const MOLECULE_MENU_GROUPS = [
+    { id: 'primary', title: '' },
+    { id: 'view', title: '' },
+    { id: 'represent', title: 'Representation' },
+    { id: 'analyze', title: 'Analyze' },
+    { id: 'export', title: 'Export' },
+    { id: 'search', title: 'Search' },
+    { id: 'compute', title: 'Compute' },
+    { id: 'danger', title: '' }
+  ];
+
+  function moleculeContextActionGroup(action) {
+    const name = String(action || '');
+    if (name.startsWith('remove')) return 'danger';
+    if (name.startsWith('save')) return 'export';
+    if (name.startsWith('pubchem')) return 'search';
+    if (name.startsWith('compute')) return 'compute';
+    if (name.startsWith('view:')) return 'view';
+    if (name.startsWith('represent:')) return 'represent';
+    if (name.startsWith('analyze:')) return 'analyze';
+    return 'primary';
+  }
+
+  function moleculeContextActionIcon(action) {
+    const name = String(action || '');
+    if (name.startsWith('remove')) return SCENE_TREE_ICON.trash;
+    if (name.startsWith('focus')) return SCENE_TREE_ICON.focus;
+    if (name === 'view:hide') return SCENE_TREE_ICON.eye;
+    if (name === 'view:isolate') return SCENE_TREE_ICON.isolate;
+    if (name === 'represent:surface') return ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
+    if (name === 'represent:menu') return ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'];
+    if (name === 'analyze:surroundings') return ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
+    if (name === 'analyze:label') return ['M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z', 'M7 7h.01'];
+    if (name === 'analyze:distance') return ['M21.3 15.3 8.7 2.7a1 1 0 0 0-1.4 0L2.7 7.3a1 1 0 0 0 0 1.4l12.6 12.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4Z', 'M14.5 12.5 12 15', 'M11.5 9.5 9 12', 'M8.5 6.5 6 9', 'M17.5 15.5 15 18'];
+    if (name.startsWith('select')) return ['M20 6 9 17l-5-5'];
+    if (name === 'molstar') {
+      return ['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'];
+    }
+    return null;
+  }
+
   function molstarContextMenuActions(target, mode = 'molecule') {
     if (mode === 'atom' && target?.scope === 'ligand') {
       const actions = [
@@ -13914,6 +16944,23 @@
         : ['align-structures', `Align structures to ${activeStructureAlignmentControl.referenceLabel()}`]);
     }
     if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
+    // The desktop overlay carries the scene-tree powers into the 3D right click.
+    // These stay off the mobile host, which renders its own native sheet.
+    if (document.body?.classList.contains('burette-mobile-host') !== true) {
+      if (molstarContextComponentRef(target)) {
+        actions.push(['view:hide', `Hide ${noun}`]);
+        actions.push(['view:isolate', `Isolate ${noun}`]);
+        actions.push(['represent:surface', 'Add grey surface']);
+        actions.push(['represent:menu', 'Representation & colour…']);
+      }
+      if (target?.atom && target?.loci) {
+        if (target.scope === 'ligand' || target.scope === 'ion' || target.scope === 'residue') {
+          actions.push(['analyze:surroundings', 'Select surroundings (5 Å)']);
+        }
+        actions.push(['analyze:label', `Label ${noun}`]);
+        actions.push(['analyze:distance', 'Measure distance']);
+      }
+    }
     actions.push(['save-modified', 'Save modified structure']);
     actions.push(['save-format:mmcif', 'Save as mmCIF']);
     if (molstarModifiedPdbExportAvailable()) actions.push(['save-format:pdb', 'Save as PDB']);
@@ -14034,6 +17081,41 @@
         const handled = focusMolstarContextPick({ ...target, loci: target.atomLoci }) || await resetMolstarCameraForContext();
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(handled ? `[web] Focused ${molstarContextAtomLabel(target)} in the current Mol* view.` : `[web] ${molstarContextAtomLabel(target)} is already visible in Mol*.`);
+      } else if (action === 'view:hide') {
+        const componentRef = molstarContextComponentRef(target);
+        if (!componentRef) throw new Error('No Mol* component is available to hide.');
+        toggleSceneTreeVisibility(componentRef);
+        setStatus(`[web] Toggled ${targetLabel} visibility.`);
+      } else if (action === 'view:isolate') {
+        const componentRef = molstarContextComponentRef(target);
+        if (!componentRef) throw new Error('No Mol* component is available to isolate.');
+        isolateSceneTreeNode(componentRef);
+        setStatus(`[web] Isolated ${targetLabel}.`);
+      } else if (action === 'represent:surface') {
+        const componentRef = molstarContextComponentRef(target);
+        if (!componentRef || !await addGreySurfaceToComponent(componentRef)) throw new Error('No Mol* component is available for a surface.');
+        setStatus(`[web] Added a translucent surface to ${targetLabel}.`);
+      } else if (action === 'represent:menu') {
+        const componentRef = molstarContextComponentRef(target);
+        if (!componentRef) throw new Error('No Mol* component is available to edit.');
+        const point = molstarContextMenuLastPoint || { x: 80, y: 120 };
+        window.setTimeout(() => openSceneTreeMenu(componentRef, point.x, point.y), 0);
+        setStatus(`[web] Editing ${targetLabel} representation.`);
+      } else if (action === 'analyze:surroundings') {
+        const surroundings = molstarSurroundingsLoci(target, 5);
+        if (!surroundings || !selectMolstarContextPick({ ...target, loci: surroundings }, { applyGranularity: false })) {
+          throw new Error('No residues were found within 5 Å.');
+        }
+        focusMolstarContextPick({ ...target, loci: surroundings });
+        setStatus(`[web] Selected residues within 5 Å of ${targetLabel}.`);
+      } else if (action === 'analyze:label') {
+        const measurement = activeViewer?.plugin?.managers?.structure?.measurement;
+        const loci = molstarContextElementLoci(target.loci);
+        if (typeof measurement?.addLabel !== 'function' || !loci) throw new Error('No Mol* label is available for this pick.');
+        await measurement.addLabel(loci);
+        setStatus(`[web] Labelled ${targetLabel}.`);
+      } else if (action === 'analyze:distance') {
+        if (!beginDistanceMeasurement()) throw new Error('No Mol* measurement manager is available.');
       } else {
         setStatus(`[web] ${label} is unavailable.`);
       }
@@ -14169,6 +17251,132 @@
     ).join('');
   }
 
+  const MOLECULE_PREVIEW_SIZES = {
+    s: { label: 'Small', width: 148, height: 196 },
+    m: { label: 'Medium', width: 208, height: 268 },
+    l: { label: 'Large', width: 288, height: 364 }
+  };
+  const MOLECULE_PREVIEW_ICON = {
+    close: ['M18 6 6 18', 'm6 6 12 12'],
+    minimize: ['M6 17h12'],
+    molecule: ['m12 3 7.5 4.33v8.66L12 20.33 4.5 16V7.33Z'],
+    ketcher: ['M12 3v4.5', 'm12 7.5 3.9 2.25', 'm12 7.5-3.9 2.25', 'M15.9 9.75v4.5L12 16.5l-3.9-2.25v-4.5', 'M4.2 6.75 12 2.25l7.8 4.5v9L12 20.25l-7.8-4.5Z'],
+    copy: ['M9 9h9a1.5 1.5 0 0 1 1.5 1.5V19a1.5 1.5 0 0 1-1.5 1.5H9A1.5 1.5 0 0 1 7.5 19v-8.5A1.5 1.5 0 0 1 9 9Z', 'M4.5 15A1.5 1.5 0 0 1 3 13.5V5a1.5 1.5 0 0 1 1.5-1.5H13A1.5 1.5 0 0 1 14.5 5']
+  };
+
+  function molstarMoleculePreviewIconHTML(paths) {
+    const body = paths.map(definition => `<path d="${definition}" />`).join('');
+    return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+  }
+
+  // Every ligand and ion in the structure, in the order they sit in the model, so
+  // the card can be stepped through instead of only ever showing what was picked.
+  function molstarPreviewLigandEntries() {
+    const entries = [];
+    for (const structureRef of molstarContextStructures()) {
+      const structure = molstarStructureFromRef(structureRef) || structureRef;
+      for (const unit of Array.isArray(structure?.units) ? structure.units : []) {
+        const segments = unit?.model?.atomicHierarchy?.residueAtomSegments;
+        if (!segments || !unit.elements?.length) continue;
+        const residues = new Map();
+        for (let i = 0; i < unit.elements.length; i++) {
+          const residueIndex = segments.index[unit.elements[i]];
+          if (!residues.has(residueIndex)) residues.set(residueIndex, []);
+          residues.get(residueIndex).push(i);
+        }
+        for (const indices of residues.values()) {
+          const loci = { kind: 'element-loci', structure, elements: [{ unit, indices: new Int32Array(indices) }] };
+          const atom = molstarContextAtomFromLoci(loci);
+          const scope = molstarContextScopeForAtom(atom);
+          if (scope !== 'ligand' && scope !== 'ion') continue;
+          entries.push({ structureRef, loci, atom, scope, label: molstarContextResidueLabel(atom) });
+        }
+      }
+    }
+    return entries;
+  }
+
+  function molstarPreviewLigandTarget(entry) {
+    const sourceEntry = molstarContextSourceEntryForActiveConfig();
+    const selectedEntry = sourceEntry ? pdbEntryForResidue(sourceEntry, entry.atom) : null;
+    return {
+      structures: [entry.structureRef],
+      structure: entry.structureRef,
+      loci: entry.loci,
+      atomLoci: entry.loci,
+      atom: entry.atom,
+      selectionBased: true,
+      label: selectedEntry?.label || entry.label,
+      scope: entry.scope,
+      sourceEntry,
+      selectedEntry
+    };
+  }
+
+  // Matched on the residue the card is showing, not on its heading — the heading
+  // may come from the source file's own name for the molecule and would never line
+  // up with the list, leaving every step measured from the first entry.
+  function molstarPreviewLigandIndex(entries) {
+    const atom = molstarMoleculePreviewTarget?.atom;
+    const key = atom ? molstarContextResidueLabel(atom) : '';
+    const index = key ? entries.findIndex(entry => entry.label === key) : -1;
+    return index >= 0 ? index : 0;
+  }
+
+  // Stepping selects and frames the ligand as well as drawing it, so the card acts
+  // as a way to walk the structure rather than a passive readout.
+  function stepMolstarMoleculePreview(delta) {
+    const entries = molstarPreviewLigandEntries();
+    if (entries.length < 2) return;
+    const next = (molstarPreviewLigandIndex(entries) + delta + entries.length) % entries.length;
+    const entry = entries[next];
+    const plugin = activeMolstarViewer()?.plugin;
+    try {
+      plugin?.managers?.structure?.selection?.fromLoci?.('set', entry.loci, false);
+      plugin?.managers?.interactivity?.lociSelects?.select?.({ loci: entry.loci }, false);
+      plugin?.managers?.camera?.focusLoci?.(entry.loci, { durationMs: 250 });
+    } catch (error) {
+      debug('molecule preview step failed: ' + (error && error.message || String(error)));
+    }
+    showMolstarMoleculePreview(molstarPreviewLigandTarget(entry));
+  }
+
+  function molstarMoleculePreviewNavHTML() {
+    const entries = molstarPreviewLigandEntries();
+    if (entries.length < 2) return '';
+    const position = molstarPreviewLigandIndex(entries) + 1;
+    const arrow = (action, path, text) =>
+      `<button type="button" class="buret-molecule-card-step" data-buret-molecule-preview-action="${action}" aria-label="${text}" title="${text}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg></button>`;
+    return `<span class="buret-molecule-card-nav" role="group" aria-label="Browse ligands">
+        ${arrow('prev', 'm14 6-6 6 6 6', 'Previous ligand')}
+        <span class="buret-molecule-card-position">${position} / ${entries.length}</span>
+        ${arrow('next', 'm10 6 6 6-6 6', 'Next ligand')}
+      </span>`;
+  }
+
+  function molstarMoleculePreviewCardHTML(label, subtitle, image) {
+    const sizes = Object.entries(MOLECULE_PREVIEW_SIZES).map(([key, preset]) =>
+      `<button type="button" class="buret-molecule-card-size" data-buret-molecule-preview-action="size" data-size="${key}" aria-pressed="${key === molstarMoleculePreviewSize}" aria-label="${escapeHTML(preset.label)} preview" title="${escapeHTML(preset.label)}">${key.toUpperCase()}</button>`
+    ).join('');
+    return `
+      <div class="buret-molecule-card-header" data-buret-molecule-preview-drag>
+        <span class="buret-molecule-card-heading">
+          <span class="buret-molecule-card-title" title="${escapeHTML(label)}">${escapeHTML(label)}</span>
+          <span class="buret-molecule-card-subtitle">${escapeHTML(subtitle)}</span>
+        </span>
+        ${molstarMoleculePreviewNavHTML()}
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="minimize" aria-label="Minimize preview" title="Minimize preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.minimize)}</button>
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Close preview" title="Close preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
+      </div>
+      <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
+      <div class="buret-molecule-card-footer">
+        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Ketcher</span></button>
+        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
+        <span class="buret-molecule-card-sizes" role="group" aria-label="Preview size">${sizes}</span>
+      </div>
+      ${molstarMoleculePreviewResizeHandlesHTML()}`;
+  }
+
   function openMolstarMoleculePreviewInKetcher(target) {
     const entry = molstarMoleculePreviewEntry(target);
     const text = String(entry?.data || '').trim();
@@ -14188,6 +17396,193 @@
     if (!ok) setStatus('[web] Ketcher is unavailable in this preview host.', 'error');
   }
 
+  function molstarMoleculePreviewClamp(popover) {
+    const margin = 8;
+    const rect = popover.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+    const maxBottom = Math.max(margin, viewportHeight - rect.height - margin);
+    popover.style.left = `${Math.round(Math.max(margin, Math.min(rect.left, maxLeft)))}px`;
+    popover.style.bottom = `${Math.round(Math.max(margin, Math.min(viewportHeight - rect.bottom, maxBottom)))}px`;
+    popover.style.right = 'auto';
+    popover.style.top = 'auto';
+  }
+
+  function rememberMolstarMoleculePreviewGeometry(popover) {
+    const rect = popover.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    molstarMoleculePreviewGeometry = {
+      left: Math.round(rect.left),
+      bottom: Math.round(viewportHeight - rect.bottom),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height)
+    };
+    popover.dataset.compact = rect.width < 190 ? 'true' : 'false';
+    // Dragging an edge lands on a size no preset describes, so S/M/L reflects the
+    // card rather than the last button pressed — none of them is lit for a custom
+    // size instead of one of them claiming it.
+    for (const button of popover.querySelectorAll('[data-buret-molecule-preview-action="size"]')) {
+      const preset = MOLECULE_PREVIEW_SIZES[button.dataset.size];
+      const matches = preset
+        && Math.abs(preset.width - rect.width) < 2
+        && Math.abs(preset.height - rect.height) < 2;
+      button.setAttribute('aria-pressed', matches ? 'true' : 'false');
+    }
+  }
+
+  function applyMolstarMoleculePreviewGeometry(popover) {
+    const geometry = molstarMoleculePreviewGeometry;
+    if (!geometry) return;
+    popover.style.width = `${geometry.width}px`;
+    popover.style.height = `${geometry.height}px`;
+    popover.style.left = `${geometry.left}px`;
+    popover.style.bottom = `${geometry.bottom}px`;
+    popover.style.right = 'auto';
+    popover.style.top = 'auto';
+    molstarMoleculePreviewClamp(popover);
+  }
+
+  function setMolstarMoleculePreviewSize(size) {
+    const preset = MOLECULE_PREVIEW_SIZES[size];
+    const popover = molstarMoleculePreview;
+    if (!preset || !popover) return;
+    molstarMoleculePreviewSize = size;
+    popover.style.width = `${preset.width}px`;
+    popover.style.height = `${preset.height}px`;
+    molstarMoleculePreviewClamp(popover);
+    rememberMolstarMoleculePreviewGeometry(popover);
+  }
+
+  // The status line sits at the far edge of the window, so a copy started from the
+  // card is answered on the card: the button itself reports copied or failed and
+  // settles back after a moment.
+  let molstarMoleculePreviewCopyTimer = 0;
+  function reportMolstarMoleculePreviewCopy(state, label) {
+    const button = molstarMoleculePreview?.querySelector('[data-buret-molecule-preview-action="copy-smiles"]');
+    if (!button) return;
+    const caption = button.querySelector('span');
+    if (caption && !button.dataset.restLabel) button.dataset.restLabel = caption.textContent;
+    if (caption) caption.textContent = label;
+    button.dataset.copyState = state;
+    button.title = label;
+    if (molstarMoleculePreviewCopyTimer) clearTimeout(molstarMoleculePreviewCopyTimer);
+    molstarMoleculePreviewCopyTimer = setTimeout(() => {
+      molstarMoleculePreviewCopyTimer = 0;
+      const current = molstarMoleculePreview?.querySelector('[data-buret-molecule-preview-action="copy-smiles"]');
+      if (!current) return;
+      const text = current.querySelector('span');
+      if (text) text.textContent = current.dataset.restLabel || 'SMILES';
+      delete current.dataset.copyState;
+      current.title = 'Copy SMILES';
+    }, 1800);
+  }
+
+  async function copyMolstarMoleculePreviewSmiles(target) {
+    const entry = molstarMoleculePreviewEntry(target);
+    const molblock = splitSdfRecords(String(entry?.data || ''))[0] || String(entry?.data || '');
+    if (!molblock.trim()) {
+      setStatus('[web] This molecule has no structure to read a SMILES from.', 'error');
+      reportMolstarMoleculePreviewCopy('error', 'No structure');
+      return;
+    }
+    let molecule = null;
+    try {
+      const rdkit = await molstarPreviewInitRDKit();
+      molecule = rdkit.get_mol(molblock);
+      const smiles = String(molecule?.get_smiles?.() || '').trim();
+      if (!smiles) throw new Error('RDKit returned no SMILES.');
+      await writeTextToClipboard(smiles);
+      setStatus(`[web] Copied SMILES: ${smiles}`);
+      reportMolstarMoleculePreviewCopy('done', 'Copied');
+    } catch (error) {
+      setStatus(`[web] Copy SMILES failed. ${error?.message || error}`, 'error');
+      reportMolstarMoleculePreviewCopy('error', 'Failed');
+    } finally {
+      try { molecule?.delete?.(); } catch (_) {}
+    }
+  }
+
+  // The preview runs from a file:// document in the extension host, where the async
+  // clipboard API is not always granted; the textarea path is the fallback that is.
+  async function writeTextToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (error) {
+      debug(`clipboard write failed, using the textarea fallback: ${error?.message || error}`);
+    }
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('aria-hidden', 'true');
+    field.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(field);
+    field.select();
+    const copied = document.execCommand('copy');
+    field.remove();
+    if (!copied) throw new Error('The clipboard is unavailable in this host.');
+  }
+
+  function runMolstarMoleculePreviewAction(action, control) {
+    if (action === 'close') dismissMolstarMoleculePreview();
+    else if (action === 'minimize') minimizeMolstarMoleculePreview();
+    else if (action === 'ketcher') openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
+    else if (action === 'copy-smiles') void copyMolstarMoleculePreviewSmiles(molstarMoleculePreviewTarget);
+    else if (action === 'size') setMolstarMoleculePreviewSize(control.dataset.size);
+    else if (action === 'prev') stepMolstarMoleculePreview(-1);
+    else if (action === 'next') stepMolstarMoleculePreview(1);
+  }
+
+  // × closes the card but leaves the selection standing. A plain hide is not
+  // enough - the next pointer move re-resolves the card from whatever is still
+  // selected - so it also latches "suppressed", which every show path checks. The
+  // latch lifts on the next genuine click (see the reveal handler on pointerup).
+  function dismissMolstarMoleculePreview() {
+    molstarMoleculePreviewSuppressed = true;
+    hideMolstarMoleculePreview({ force: true });
+  }
+
+  // Minimize tucks the card into a small chip in the bottom-left corner. The
+  // selection stays, the card stays out of the way, and the chip is the one way
+  // back - hover will not pop it open again.
+  function minimizeMolstarMoleculePreview() {
+    const label = molstarMoleculePreview?.querySelector('.buret-molecule-card-title')?.textContent
+      || molstarMoleculePreviewTarget?.label || 'Molecule';
+    molstarMoleculePreviewMinimizedTarget = molstarMoleculePreviewTarget;
+    molstarMoleculePreviewMinimized = true;
+    hideMolstarMoleculePreview({ force: true });
+    showMolstarMoleculePreviewChip(label);
+  }
+
+  function restoreMolstarMoleculePreview() {
+    molstarMoleculePreviewMinimized = false;
+    molstarMoleculePreviewSuppressed = false;
+    removeMolstarMoleculePreviewChip();
+    // Prefer whatever is selected now, so restoring after picking a different
+    // ligand shows that one rather than the molecule that was parked.
+    const target = molstarSelectedMoleculePreviewTarget() || molstarMoleculePreviewMinimizedTarget;
+    molstarMoleculePreviewMinimizedTarget = null;
+    if (target) showMolstarMoleculePreview(target);
+    else scheduleMolstarSelectedMoleculePreview();
+  }
+
+  function showMolstarMoleculePreviewChip(label) {
+    removeMolstarMoleculePreviewChip();
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'buret-molecule-preview-chip';
+    chip.setAttribute('aria-label', `Restore ${label} preview`);
+    chip.title = `Restore ${label} preview`;
+    chip.innerHTML = `${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.molecule)}<span class="buret-molecule-preview-chip-label">${escapeHTML(label)}</span>`;
+    chip.addEventListener('click', () => restoreMolstarMoleculePreview());
+    document.body.appendChild(chip);
+    molstarMoleculePreviewChip = chip;
+  }
+
+  function removeMolstarMoleculePreviewChip() {
+    molstarMoleculePreviewChip?.remove();
+    molstarMoleculePreviewChip = null;
+  }
+
   function installMolstarMoleculePreviewResize(popover) {
     if (!popover || popover.dataset.buretResizeInstalled === '1') return;
     popover.dataset.buretResizeInstalled = '1';
@@ -14199,23 +17594,19 @@
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
     const finish = (event) => {
       if (!molstarMoleculePreviewDrag || molstarMoleculePreviewDrag.popover !== popover) return;
-      const drag = molstarMoleculePreviewDrag;
       try { popover.releasePointerCapture?.(molstarMoleculePreviewDrag.pointerId); } catch (_) {}
       popover.classList.remove('buret-molstar-molecule-preview-resizing');
       popover.classList.remove('buret-molstar-molecule-preview-moving');
-      if (drag.moved) {
-        molstarMoleculePreviewSuppressClickUntil = Date.now() + 450;
-      } else if (drag.action === 'move') {
-        molstarMoleculePreviewSuppressClickUntil = Date.now() + 450;
-        openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
-      }
+      rememberMolstarMoleculePreviewGeometry(popover);
       molstarMoleculePreviewDrag = null;
       event?.preventDefault?.();
     };
     popover.addEventListener('pointerdown', event => {
       const handle = event.target instanceof Element ? event.target.closest('[data-buret-molecule-preview-resize]') : null;
-      if (handle && !popover.contains(handle)) return;
       if (event.button !== 0) return;
+      // Only the header and the drawing move the card; the footer buttons and the
+      // title are ordinary controls, so a press there must not start a drag.
+      if (!handle && !event.target.closest?.('[data-buret-molecule-preview-drag]')) return;
       const direction = handle?.getAttribute('data-buret-molecule-preview-resize') || '';
       const rect = popover.getBoundingClientRect();
       const viewportWidth = window.innerWidth || document.documentElement.clientWidth || rect.right + margin;
@@ -14289,15 +17680,15 @@
     popover.addEventListener('pointerup', finish);
     popover.addEventListener('pointercancel', finish);
     popover.addEventListener('click', event => {
-      if (event.target instanceof Element && event.target.closest('[data-buret-molecule-preview-resize]')) return;
-      if (Date.now() < molstarMoleculePreviewSuppressClickUntil) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-      openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
-      event.preventDefault();
+      const control = event.target instanceof Element
+        ? event.target.closest('[data-buret-molecule-preview-action]')
+        : null;
+      // Everything the card does now has a button; a click on the drawing or the
+      // header is only ever the tail of a drag and must stay inert.
       event.stopPropagation();
+      if (!control) return;
+      event.preventDefault();
+      runMolstarMoleculePreviewAction(control.dataset.buretMoleculePreviewAction, control);
     });
   }
 
@@ -14546,27 +17937,38 @@
       hideMolstarMoleculePreview();
       return;
     }
+    // Parked by × or tucked into the chip: stay hidden until the user asks for it
+    // back, not the moment the pointer drifts back over the selected ligand.
+    if (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized) return;
     const key = molstarPreviewKey(entry);
     const image = molstarPreviewSvgCache.get(key) || '';
     const label = target?.label || entry?.label || (target?.scope === 'ion' ? 'Ion' : 'Ligand');
     const subtitle = target?.scope === 'ion' ? 'Ion' : 'Small molecule';
     let popover = molstarMoleculePreview;
     molstarMoleculePreviewTarget = target || null;
+    const created = !popover;
     if (!popover) {
       popover = document.createElement('div');
       popover.className = 'buret-molstar-molecule-preview';
-      popover.setAttribute('role', 'tooltip');
+      popover.setAttribute('role', 'dialog');
       popover.tabIndex = 0;
       installMolstarMoleculePreviewResize(popover);
       document.body.appendChild(popover);
       molstarMoleculePreview = popover;
     }
-    popover.innerHTML = `
-      <div class="buret-molstar-molecule-preview-image">${image || escapeHTML('Rendering 2D preview...')}</div>
-      <div class="buret-molstar-molecule-preview-title">${escapeHTML(label)}</div>
-      <div class="buret-molstar-molecule-preview-subtitle">${escapeHTML(subtitle)}</div>
-      ${molstarMoleculePreviewResizeHandlesHTML()}`;
-    popover.dataset.buretPreviewKey = key;
+    popover.setAttribute('aria-label', `${label} preview`);
+    // Every pointer move over the 3D view asks for this card again. Rewriting the
+    // markup each time destroys the button under the cursor between pointerdown and
+    // click, so nothing in the footer can be pressed and a resize handle grabbed
+    // mid-rebuild belongs to no card. Only redraw when the card would differ.
+    const signature = `${key}\n${label}\n${subtitle}`;
+    if (popover.dataset.buretPreviewSignature !== signature) {
+      popover.innerHTML = molstarMoleculePreviewCardHTML(label, subtitle, image || escapeHTML('Rendering 2D preview...'));
+      popover.dataset.buretPreviewSignature = signature;
+      popover.dataset.buretPreviewKey = key;
+      if (created) applyMolstarMoleculePreviewGeometry(popover);
+      rememberMolstarMoleculePreviewGeometry(popover);
+    }
     void molstarMoleculePreviewRDKitSVG(entry)
       .then(svg => {
         if (!svg || !molstarMoleculePreview || molstarMoleculePreview.dataset.buretPreviewKey !== key) return;
@@ -14648,6 +18050,13 @@
     const hasCandidate = Boolean(molstarSelectedMoleculePreviewTarget() || fallbackTarget);
     if (!hasCandidate) {
       hideMolstarMoleculePreview({ force: true });
+      // Nothing left to preview means nothing left to restore, so the parked chip
+      // goes with it.
+      if (molstarMoleculePreviewMinimized) {
+        molstarMoleculePreviewMinimized = false;
+        molstarMoleculePreviewMinimizedTarget = null;
+        removeMolstarMoleculePreviewChip();
+      }
       return;
     }
     if (showMolstarSelectedMoleculePreview(fallbackTarget)) return;
@@ -14670,6 +18079,10 @@
   }
 
   function clearMolstarPersistentMoleculePreview() {
+    molstarMoleculePreviewSuppressed = false;
+    molstarMoleculePreviewMinimized = false;
+    molstarMoleculePreviewMinimizedTarget = null;
+    removeMolstarMoleculePreviewChip();
     hideMolstarMoleculePreview({ force: true });
   }
 
@@ -14679,6 +18092,7 @@
       molstarMoleculePreviewFrame = 0;
     }
     if (!molstarMoleculePreview) return;
+    rememberMolstarMoleculePreviewGeometry(molstarMoleculePreview);
     molstarMoleculePreview.remove();
     molstarMoleculePreview = null;
     molstarMoleculePreviewTarget = null;
@@ -14724,15 +18138,44 @@
     actionContainer.className = 'buret-molecule-context-menu-actions';
     const renderActions = () => {
       actionContainer.replaceChildren();
-      molstarContextMenuActions(menuTarget, mode).forEach(([action, label]) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.setAttribute('role', 'menuitem');
-        button.dataset.buretMoleculeAction = action;
-        button.textContent = label;
-        button.addEventListener('click', () => { void moleculeContextMenuAction(action, label); });
-        actionContainer.appendChild(button);
+      const grouped = new Map();
+      molstarContextMenuActions(menuTarget, mode).forEach(entry => {
+        const group = moleculeContextActionGroup(entry[0]);
+        if (!grouped.has(group)) grouped.set(group, []);
+        grouped.get(group).push(entry);
       });
+      for (const { id, title } of MOLECULE_MENU_GROUPS) {
+        const entries = grouped.get(id);
+        if (!entries?.length) continue;
+        if (actionContainer.childElementCount) {
+          const divider = document.createElement('div');
+          divider.className = 'buret-tree-menu-divider';
+          actionContainer.appendChild(divider);
+        }
+        if (title) {
+          const heading = document.createElement('div');
+          heading.className = 'buret-tree-menu-title';
+          heading.textContent = title;
+          actionContainer.appendChild(heading);
+        }
+        for (const [action, label] of entries) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.setAttribute('role', 'menuitem');
+          button.className = `buret-tree-menu-item${id === 'danger' ? ' buret-tree-menu-item-destructive' : ''}`;
+          button.dataset.buretMoleculeAction = action;
+          const icon = document.createElement('span');
+          icon.className = 'buret-tree-menu-icon';
+          const paths = moleculeContextActionIcon(action);
+          if (paths) icon.appendChild(sceneTreeIconElement(paths));
+          const text = document.createElement('span');
+          text.className = 'buret-tree-menu-label';
+          text.textContent = label;
+          button.append(icon, text);
+          button.addEventListener('click', () => { void moleculeContextMenuAction(action, label); });
+          actionContainer.appendChild(button);
+        }
+      }
     };
     if (menuTarget.scope === 'ligand' && menuTarget.atomLoci) {
       const modeGroup = document.createElement('div');
@@ -14762,6 +18205,7 @@
     menu.appendChild(actionContainer);
     document.body.appendChild(menu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
+    molstarContextMenuLastPoint = { x: event.clientX, y: event.clientY };
   }
 
   function installMolstarContextMenu(viewer) {
@@ -14837,8 +18281,13 @@
       contextPointer = null;
     };
     const onPointerDown = (event) => {
-      beginMolstarEmptyClickSelectionPreserve(event);
+      beginMolstarSelectionPreserve(event);
       clearTouchContextPointer();
+      // Remember where a left press on the viewport began, so a click (not a drag
+      // to rotate) can lift a × dismissal on release.
+      molstarPreviewRevealStart = event.button === 0 && isMolstarContextMenuTarget(event.target)
+        ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+        : null;
       if (event.button === 2) {
         if (!viewer || !isMolstarContextMenuTarget(event.target)) {
           contextPointer = null;
@@ -14892,6 +18341,14 @@
       }
       const target = event.target;
       if (target instanceof Element && target.closest('.buret-molecule-context-menu')) return;
+      // Pressing the preview card is not a press on the view behind it. The plain
+      // dismissal below re-derives the preview from the current pick, which tears
+      // the card down mid-press and takes its buttons with it.
+      if (target instanceof Element && target.closest('.buret-molstar-molecule-preview')) {
+        contextPointer = null;
+        hideMolstarContextMenu({ keepMoleculePreview: true });
+        return;
+      }
       if (event.button === 0 && menuIsInAtomMode() && isMolstarContextMenuTarget(target)) {
         event.preventDefault();
         event.stopPropagation();
@@ -14919,7 +18376,17 @@
         Math.abs(event.clientY - contextPointer.startY) > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
     };
     const onPointerUp = (event) => {
-      finishMolstarEmptyClickSelectionPreserve(event);
+      finishMolstarSelectionPreserve(event);
+      if (molstarPreviewRevealStart && event.pointerId === molstarPreviewRevealStart.pointerId) {
+        const moved = Math.hypot(event.clientX - molstarPreviewRevealStart.x, event.clientY - molstarPreviewRevealStart.y)
+          > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
+        molstarPreviewRevealStart = null;
+        // A click - not a drag - is the "next click" that a × dismissal waits for.
+        if (!moved && molstarMoleculePreviewSuppressed && !molstarMoleculePreviewMinimized) {
+          molstarMoleculePreviewSuppressed = false;
+          scheduleMolstarSelectedMoleculePreview();
+        }
+      }
       if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) {
         const opened = touchContextPointer.opened;
         clearTouchContextPointer();
@@ -14985,7 +18452,19 @@
       if (event.key === 'Escape') {
         hideMolstarContextMenu();
         clearMolstarPersistentMoleculePreview();
+        return;
       }
+      // Arrows walk the ligands while the card is up. Typing anywhere — a field, the
+      // sequence, a menu — keeps its own arrow behaviour.
+      if (!molstarMoleculePreview) return;
+      const step = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1
+        : event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
+        : 0;
+      if (!step || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.target instanceof Element
+        && event.target.closest('input, select, textarea, [contenteditable="true"], .msp-sequence')) return;
+      event.preventDefault();
+      stepMolstarMoleculePreview(step);
     };
     const onResize = () => {
       hideMolstarContextMenu();

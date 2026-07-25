@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, watch } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +13,10 @@ const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
 const NATIVE_COMPUTE_REQUEST_LIMIT = 12 * 1024 * 1024;
 const NATIVE_COMPUTE_TIMEOUT_MS = 10 * 60 * 1000;
+const MODEL_REQUEST_LIMIT = 36 * 1024 * 1024;
+const MODEL_REQUEST_TIMEOUT_MS = 60 * 60 * 1000;
+const MAX_CHEMICAL_SPACE_KNN_CACHE_ENTRIES = 4;
+const chemicalSpaceKnnCache = new Map();
 const AMBER_NC_PREVIEW_FRAME_LIMIT = 100;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const STRUCTURE_EXTENSIONS = new Set([
@@ -224,11 +230,85 @@ async function handleRequest(req, res) {
     await handleNativeCompute(req, res, method);
     return;
   }
+  if (url.pathname === '/__burette/chemical-space-representation') {
+    await handleChemicalSpaceRepresentation(req, res, method);
+    return;
+  }
   if (url.pathname.startsWith('/__burette/runtime/')) {
     await handleRuntimeAsset(res, method, url);
     return;
   }
   await handleStatic(res, method, url);
+}
+
+async function handleChemicalSpaceRepresentation(req, res, method) {
+  if (method !== 'POST') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  const abortOnClose = () => {
+    if (!res.writableEnded) controller.abort();
+  };
+  req.once('aborted', abort);
+  res.once('close', abortOnClose);
+  try {
+    const python = molecularRepresentationPython();
+    if (!python) {
+      throw new Error('Metal model runtime is not installed. Configure BURETTE_CHEMICAL_SPACE_MODEL_PYTHON.');
+    }
+    const body = await readJsonBody(req, MODEL_REQUEST_LIMIT);
+    const repoRoot = resolve(scriptDir, '..');
+    const script = resolve(repoRoot, 'compute', 'models', 'chemical_space_representations.py');
+    const modelRoot = resolve(homedir(), 'Library', 'Application Support', 'Burette', 'chemical-space-models');
+    res.writeHead(200, {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-cache',
+    });
+    const writeEvent = (event) => {
+      if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
+    };
+    const payload = await runJsonWorker(
+      python,
+      [script],
+      JSON.stringify(body),
+      MODEL_REQUEST_TIMEOUT_MS,
+      {
+        HF_HOME: String(process.env.HF_HOME || '').trim() || resolve(modelRoot, 'huggingface'),
+        PYTORCH_ENABLE_MPS_FALLBACK: '0',
+        UNIMOL_WEIGHT_DIR: String(process.env.UNIMOL_WEIGHT_DIR || '').trim() || resolve(modelRoot, 'unimol'),
+      },
+      controller.signal,
+      (progress) => writeEvent({ type: 'progress', progress }),
+    );
+    if (payload.ok !== true || !payload.result) {
+      throw new Error(typeof payload.error === 'string' ? payload.error : 'Metal model worker failed');
+    }
+    writeEvent({ type: 'result', result: payload.result });
+    res.end();
+  } catch (error) {
+    if (!controller.signal.aborted && !res.destroyed && !res.writableEnded) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (res.headersSent) {
+        res.end(`${JSON.stringify({ type: 'error', error: message })}\n`);
+      } else {
+        sendJson(res, 500, { error: message });
+      }
+    }
+  } finally {
+    req.off('aborted', abort);
+    res.off('close', abortOnClose);
+  }
+}
+
+function molecularRepresentationPython() {
+  const repoRoot = resolve(scriptDir, '..');
+  return [
+    String(process.env.BURETTE_CHEMICAL_SPACE_MODEL_PYTHON || '').trim(),
+    resolve(homedir(), 'Library', 'Application Support', 'Burette', 'model-python', 'bin', 'python'),
+    resolve(repoRoot, '.venv-chemical-space', 'bin', 'python'),
+  ].filter(Boolean).find((candidate) => existsSync(candidate)) || null;
 }
 
 async function handleAgentSession(req, res, method, url) {
@@ -662,7 +742,7 @@ async function handleNativeCompute(req, res, method) {
     sendJson(res, 200, {
       available: Boolean(runtime),
       provider: runtime ? 'nativeMetalDevBridge' : null,
-      operations: runtime ? ['generate3d', 'generateEnsemble', 'optimizeGeometry', 'semiempiricalRm1', 'alignPoses'] : [],
+      operations: runtime ? ['generate3d', 'generateEnsemble', 'optimizeGeometry', 'semiempiricalRm1', 'alignPoses', 'chemicalSpace', 'chemicalSpaceCluster'] : [],
     });
     return;
   }
@@ -673,14 +753,58 @@ async function handleNativeCompute(req, res, method) {
   try {
     if (!runtime) throw new Error('Native Metal dev runtime is unavailable in this Browser shell.');
     const body = await readJsonBody(req, NATIVE_COMPUTE_REQUEST_LIMIT);
-    const input = JSON.stringify(body);
-    if (Buffer.byteLength(input, 'utf8') > NATIVE_COMPUTE_REQUEST_LIMIT) {
+    const originalInput = JSON.stringify(body);
+    if (Buffer.byteLength(originalInput, 'utf8') > NATIVE_COMPUTE_REQUEST_LIMIT) {
       throw new Error('Native compute request exceeds 12 MiB');
     }
-    sendJson(res, 200, await runNativeCompute(runtime, input));
+    const cacheKey = chemicalSpaceCacheKey(body);
+    if (cacheKey) {
+      const cached = chemicalSpaceKnnCache.get(cacheKey);
+      if (cached) {
+        chemicalSpaceKnnCache.delete(cacheKey);
+        chemicalSpaceKnnCache.set(cacheKey, cached);
+        chemicalSpacePayload(body).knnCache = cached;
+      }
+    }
+    const response = await runNativeCompute(runtime, JSON.stringify(body));
+    sendJson(res, 200, cacheChemicalSpaceKnn(response, cacheKey));
   } catch (error) {
     sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
   }
+}
+
+function chemicalSpacePayload(body) {
+  const chemicalSpace = body && typeof body === 'object' ? body.chemicalSpace : null;
+  return chemicalSpace && typeof chemicalSpace === 'object' ? chemicalSpace : {};
+}
+
+function chemicalSpaceCacheKey(body) {
+  if (!body || typeof body !== 'object' || body.operation !== 'chemicalSpace') return null;
+  const payload = chemicalSpacePayload(body);
+  const options = payload.options && typeof payload.options === 'object' ? payload.options : {};
+  const records = Array.isArray(payload.records) ? payload.records : [];
+  const neighbors = Number(options.neighbors);
+  const suppliedKnn = payload.knnCache && typeof payload.knnCache === 'object'
+    ? createHash('sha256').update(JSON.stringify(payload.knnCache)).digest('hex')
+    : 'compute';
+  return records.length > 0 && Number.isSafeInteger(neighbors) && neighbors > 0
+    ? `${createHash('sha256').update(JSON.stringify(records)).digest('hex')}:${neighbors}:${suppliedKnn}`
+    : null;
+}
+
+function cacheChemicalSpaceKnn(response, cacheKey) {
+  if (!cacheKey || !response || typeof response !== 'object') return response;
+  const result = response.result;
+  if (!result || typeof result !== 'object' || result.embedding === undefined || result.knnCache === undefined) {
+    return response;
+  }
+  chemicalSpaceKnnCache.set(cacheKey, result.knnCache);
+  while (chemicalSpaceKnnCache.size > MAX_CHEMICAL_SPACE_KNN_CACHE_ENTRIES) {
+    const oldestKey = chemicalSpaceKnnCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    chemicalSpaceKnnCache.delete(oldestKey);
+  }
+  return { ...response, result: result.embedding };
 }
 
 function nativeComputeRuntime() {
@@ -693,9 +817,11 @@ function nativeComputeRuntime() {
   const runtimeRoot = runtimeRoots.find((candidate) => existsSync(resolve(candidate, 'current.json')));
   if (!runtimeRoot) return null;
   const executables = [
+    String(process.env.BURETTE_DEV_COMPUTE_BACKEND || '').trim(),
+    resolve(dirname(dirname(runtimeRoot)), 'MacOS', 'burette-compute-dev-backend'),
     resolve(repoRoot, 'target', 'debug', 'burette-compute-dev-backend'),
     resolve(repoRoot, 'target', 'release', 'burette-compute-dev-backend'),
-  ];
+  ].filter(Boolean);
   const executable = executables.find((candidate) => existsSync(candidate));
   return executable ? { executable, runtimeRoot } : null;
 }
@@ -733,6 +859,95 @@ function runNativeCompute(runtime, input) {
     });
     child.stdin.end(input);
   });
+}
+
+function runJsonWorker(command, commandArgs, input, timeoutMs, environment = {}, abortSignal, onProgress) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    if (abortSignal?.aborted) {
+      rejectPromise(abortError());
+      return;
+    }
+    const child = spawn(command, commandArgs, {
+      env: { ...process.env, ...environment },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let stderrBuffer = '';
+    let terminationError = null;
+    let forceKillTimeout = null;
+    let settled = false;
+    const terminate = (error) => {
+      if (terminationError || child.exitCode !== null) return;
+      terminationError = error;
+      child.kill('SIGTERM');
+      forceKillTimeout = setTimeout(() => {
+        if (child.exitCode === null) child.kill('SIGKILL');
+      }, 2_000);
+      forceKillTimeout.unref();
+    };
+    const onAbort = () => terminate(abortError());
+    const cleanup = () => {
+      clearTimeout(timeout);
+      if (forceKillTimeout) clearTimeout(forceKillTimeout);
+      abortSignal?.removeEventListener('abort', onAbort);
+    };
+    const timeout = setTimeout(() => {
+      terminate(new Error('Metal model worker timed out'));
+    }, timeoutMs);
+    abortSignal?.addEventListener('abort', onAbort, { once: true });
+    child.stdout.on('data', (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+    child.stderr.on('data', (chunk) => {
+      stderrBuffer += Buffer.from(chunk).toString('utf8');
+      const lines = stderrBuffer.split('\n');
+      stderrBuffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('BURETTE_PROGRESS\t')) {
+          try {
+            onProgress?.(JSON.parse(line.slice('BURETTE_PROGRESS\t'.length)));
+          } catch {
+            stderrChunks.push(Buffer.from(`${line}\n`));
+          }
+        } else {
+          stderrChunks.push(Buffer.from(`${line}\n`));
+        }
+      }
+    });
+    child.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      rejectPromise(error);
+    });
+    child.on('close', (code, signal) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (terminationError) {
+        rejectPromise(terminationError);
+        return;
+      }
+      const stdout = Buffer.concat(stdoutChunks).toString('utf8').trim();
+      if (stderrBuffer) stderrChunks.push(Buffer.from(stderrBuffer));
+      const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
+      if (code !== 0) {
+        rejectPromise(new Error(stderr || `Metal model worker exited with ${signal || code}`));
+        return;
+      }
+      try {
+        resolvePromise(JSON.parse(stdout));
+      } catch (error) {
+        rejectPromise(error);
+      }
+    });
+    child.stdin.end(input);
+  });
+}
+
+function abortError() {
+  const error = new Error('Metal model calculation was cancelled');
+  error.name = 'AbortError';
+  return error;
 }
 
 async function handleRuntimeAsset(res, method, url) {
