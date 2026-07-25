@@ -531,17 +531,55 @@ assert.match(previewGridStore, /fn infers_smiles_columns_without_smiles_headers/
 assert.match(previewGridStore, /fn uses_explicit_column_for_ambiguous_delimited_table/);
 assert.match(previewGridStore, /fn lists_delimited_structure_column_choices/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn sync_viewer_preferences/);
-assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) async fn list_project_structure_files/);
 assert.match(
   documentsCommand,
-  /spawn_blocking\(move \|\| list_project_structure_files_blocking\(paths\)\)/,
-  "restored project roots must scan off the Tauri command thread",
+  /#\[tauri::command\]\s+pub\(crate\) async fn list_project_structure_files[\s\S]*?spawn_blocking/,
+  "project-folder discovery must run off the Tauri command thread",
+);
+assert.match(
+  documentsCommand,
+  /PROJECT_STRUCTURE_SCAN_MAX_ENTRIES/,
+  "one huge directory must not make project discovery unbounded",
+);
+assert.match(
+  documentsCommand,
+  /PROJECT_STRUCTURE_SCAN_MAX_ROOTS/,
+  "one project scan request must cap the number of roots",
+);
+assert.match(
+  documentsCommand,
+  /PROJECT_STRUCTURE_SCAN_REQUEST_MAX_ENTRIES/,
+  "multiple project roots must share one request-wide entry budget",
+);
+assert.match(
+  documentsCommand,
+  /max_entries[\s\S]*?clamp\(1, PROJECT_STRUCTURE_SCAN_REQUEST_MAX_ENTRIES\)/,
+  "the backend must clamp every request to the frontend session budget",
+);
+assert.match(
+  documentsCommand,
+  /struct ProjectStructureRootScan[\s\S]*?files: Vec<ProjectStructureFile>[\s\S]*?truncated: bool[\s\S]*?scanned_entries: usize[\s\S]*?scanned_directories: usize[\s\S]*?error: Option<String>/,
+  "project scans must return per-root inventory and truncation metadata",
+);
+assert.match(
+  documentsCommand,
+  /is_ignored_project_scan_directory/,
+  "project discovery must skip metadata/build trees such as .git and node_modules",
+);
+assert.doesNotMatch(
+  documentsCommand,
+  /Some\([^)]*"target"/,
+  "a scientific folder named target must not be skipped as a generic build directory",
 );
 assert.match(lib, /commands::documents::list_project_structure_files/);
 assert.match(tauriPermissionSource, /"list_project_structure_files"/);
 assert.match(documentsCommand, /"molstarStyle"/);
 assert.match(documentsCommand, /fn expand_open_targets/);
-assert.match(documentsCommand, /fn collect_supported_files/);
+assert.match(
+  documentsCommand,
+  /fn expand_open_targets[\s\S]*?ProjectStructureScan::following_symlinks\(PROJECT_STRUCTURE_SCAN_LIMITS\)/,
+  "directory opens must use the same bounded scanner as sidebar projects",
+);
 assert.match(documentsCommand, /fn looks_like_supported_structure_file/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
 assert.match(runtimeDoctorCommand, /#\[tauri::command\]\s+pub\(crate\) fn external_runtime_doctor/);
@@ -1373,10 +1411,10 @@ assert.match(previewRuntimeGrid, /build_grid_store/);
 assert.match(previewRuntimeGrid, /include_single_sdf: options\.include_single_sdf\s*\|\|\s*normalize_renderer_mode\(&preferences\.renderer_mode\) == "grid2d"/);
 assert.match(previewGridStore, /!options\.include_single_sdf\s*&& \(\(extension == "sdf" \|\| extension == "sd"\) && records_indexed <= 1\)/);
 assert.match(previewRuntimeGrid, /"sourcePath": file_path\.to_string_lossy\(\)/);
-assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*grid_store\.ingest_worker,\s*\)/);
+assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,\s*grid_store\.database_path,\s*collection_format,\s*grid_store\.cancel_token,\s*grid_store\.ingest_worker,\s*\)/);
 assert.match(previewRuntimeGrid, /"gridDataMode": "bridge"/);
-assert.match(previewRuntimeGrid, /"recordsIndexed": collection\.records_indexed/);
-assert.match(previewRuntimeGrid, /"indexReady": collection\.index_ready/);
+assert.match(previewRuntimeGrid, /"recordsIndexed": collection_records_indexed/);
+assert.match(previewRuntimeGrid, /"indexReady": collection_index_ready/);
 assert.match(previewRuntimeGrid, /"recordsIncluded": 0/);
 assert.match(previewRuntimeGrid, /runtime_manifest\(\s*"grid2d"/);
 assert.match(previewRuntimeGrid, /write_json_atomic\(\s*&runtime\.join\("manifest\.json"\)/);

@@ -42,8 +42,15 @@ import type {
 type PushStatus = (message: string, kind?: StatusKind, details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 
+type ClassifiedOpenPaths = {
+  files: string[];
+  directories: string[];
+  errors: string[];
+};
+
 type UseAppFileOpenOptions = {
   preferences: ViewerPreferences;
+  addProjectRoot: (path: string) => void;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   addBackgroundTextDocuments: (documents: TextFileDocument[]) => void;
   addDocuments: (documents: ViewerDocument[]) => void;
@@ -68,6 +75,7 @@ type UseAppFileOpenOptions = {
 
 export function useAppFileOpen({
   preferences,
+  addProjectRoot,
   addBackgroundDocuments,
   addBackgroundTextDocuments,
   addDocuments,
@@ -306,7 +314,29 @@ export function useAppFileOpen({
   );
 
   const openPaths = useCallback(async (paths: string[]) => {
-    const cleanPaths = await expandStructureBundles(Array.from(new Set(paths.filter(Boolean))));
+    const requestedPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
+    if (!requestedPaths.length) return;
+    let filePaths = requestedPaths;
+    if (isTauriRuntime()) {
+      try {
+        const classified = await invoke<ClassifiedOpenPaths>("classify_open_paths", { paths: requestedPaths });
+        for (const directory of classified.directories) addProjectRoot(directory);
+        if (classified.directories.length > 0) {
+          pushStatus(
+            `Added ${classified.directories.length.toLocaleString()} project folder`
+            + (classified.directories.length === 1 ? "" : "s"),
+          );
+        }
+        if (classified.errors.length > 0) {
+          pushStatus(`Some open targets were unavailable. ${summarizeErrors(classified.errors)}`, "error", classified.errors);
+        }
+        filePaths = classified.files;
+      } catch (error) {
+        pushErrorStatus(error, "Open path classification failed");
+        return;
+      }
+    }
+    const cleanPaths = await expandStructureBundles(filePaths);
     if (!cleanPaths.length) return;
 
     const structurePaths: string[] = [];
@@ -377,7 +407,7 @@ export function useAppFileOpen({
     if (preferredStructureDocumentId) {
       setActiveDocument(preferredStructureDocumentId);
     }
-  }, [closeDocument, detectContentSpectrumPaths, expandStructureBundles, openDocuments, openSpectrumDocuments, openTextDocuments, setActiveDocument]);
+  }, [addProjectRoot, closeDocument, detectContentSpectrumPaths, expandStructureBundles, openDocuments, openSpectrumDocuments, openTextDocuments, pushErrorStatus, pushStatus, setActiveDocument]);
 
   const openStructureRecordDocuments = useCallback(async (records: StructureDragRecord[]) => {
     const cleanRecords = records.filter((record) => record.text.trim().length > 0);
