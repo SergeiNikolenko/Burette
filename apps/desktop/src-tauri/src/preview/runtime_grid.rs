@@ -49,10 +49,6 @@ impl PendingGridStore {
         Self { store: Some(store) }
     }
 
-    fn get(&self) -> &GridStoreHandle {
-        self.store.as_ref().expect("pending Grid store is present")
-    }
-
     fn take(&mut self) -> GridStoreHandle {
         self.store.take().expect("pending Grid store is present")
     }
@@ -112,11 +108,8 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     let Some(grid_store) = grid_store else {
         return Ok(None);
     };
+    let collection = grid_store.summary;
     let mut pending_store = PendingGridStore::new(grid_store);
-    let collection_format = pending_store.get().summary.format;
-    let collection_records_total = pending_store.get().summary.records_total;
-    let collection_records_indexed = pending_store.get().summary.records_indexed;
-    let collection_index_ready = pending_store.get().summary.index_ready;
     // The shared asset directory already holds the wasm and a base64 copy of it,
     // written once per app version behind a fingerprint check by copy_web_assets.
     // Re-copying and re-encoding it here cost about 16 MiB of disk writes on every
@@ -124,7 +117,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     let rdkit_wasm_path = versioned_asset_url(&assets.join("rdkit").join("RDKit_minimal.wasm"));
     let config = json!({
         "mode": "grid2d",
-        "format": collection_format,
+        "format": collection.format,
         "renderer": "grid2d",
         "documentId": document_id,
         "sourcePath": file_path.to_string_lossy(),
@@ -142,10 +135,10 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         "canvasBackground": preferences.canvas_background_for_runtime(),
         "overlayOpacity": 0.90,
         "transparentBackground": preferences.resolved_transparent_background(),
-        "recordsTotal": collection_records_total,
-        "recordsIndexed": collection_records_indexed,
-        "indexing": !collection_index_ready,
-        "indexReady": collection_index_ready,
+        "recordsTotal": collection.records_total,
+        "recordsIndexed": collection.records_indexed,
+        "indexing": !collection.index_ready,
+        "indexReady": collection.index_ready,
         "recordsIncluded": 0,
         "recordsTruncated": false,
         "pageSize": 720,
@@ -182,7 +175,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         .register(
             registry_document_id,
             grid_store.database_path,
-            collection_format,
+            collection.format,
             grid_store.cancel_token,
             grid_store.ingest_worker,
         )?;

@@ -266,18 +266,8 @@ export function useAppSidebarProjects({
           return;
         }
         try {
-          const remainingEntryBudget = Math.max(
-            0,
-            projectScanSessionEntryBudget - projectScanSessionEntriesRef.current,
-          );
-          if (remainingEntryBudget === 0) {
-            for (const root of activeRequestRoots) {
-              if (projectScanInFlightRef.current.get(root) !== requestToken) continue;
-              projectScanInFlightRef.current.delete(root);
-              deferredProjectScanRootsRef.current.add(root);
-            }
-            return;
-          }
+          const remainingEntryBudget =
+            projectScanSessionEntryBudget - projectScanSessionEntriesRef.current;
           const results = await invoke<SidebarProjectRootScan[]>(
             "list_project_structure_files",
             { paths: activeRequestRoots, maxEntries: remainingEntryBudget },
