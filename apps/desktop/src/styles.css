@@ -2666,11 +2666,17 @@ img.radix-menu-item-icon {
   gap: 8px;
   align-items: baseline;
 }
+/* The count beside a section title is a chip, not a stray grey word: with a
+   surface behind it the eye reads title and count as one header row. */
 .structure-inspector-section-header span {
   min-width: 0;
   max-width: 160px;
-  color: var(--text-muted);
-  font-size: 11px;
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  padding: 3px 7px;
+  font-size: 10.5px;
+  font-weight: 500;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3723,7 +3729,7 @@ img.radix-menu-item-icon {
   color: var(--text-primary);
   padding: 5px 8px;
   font: inherit;
-  font-size: 12px;
+  font-size: 11.5px;
 }
 .structure-inspector-composition-search::placeholder {
   color: var(--text-faint);
@@ -3734,8 +3740,8 @@ img.radix-menu-item-icon {
 }
 .structure-inspector-row-dot {
   align-self: center;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border: 1px solid rgba(127, 127, 127, 0.4);
   border-radius: 50%;
   background: var(--text-faint);
@@ -3778,7 +3784,7 @@ img.radix-menu-item-icon {
   gap: 9px;
   border: 1px solid var(--line-subtler);
   border-radius: 9px;
-  padding: 6px 8px;
+  padding: 7px 8px;
 }
 .structure-inspector-tool-rail {
   width: 3px;
@@ -3809,7 +3815,7 @@ img.radix-menu-item-icon {
   align-items: baseline;
   gap: 6px;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
 }
 .structure-inspector-tool-name em {
@@ -3825,7 +3831,7 @@ img.radix-menu-item-icon {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 10.5px;
 }
 .structure-inspector-tool-actions {
   flex: 0 0 auto;
@@ -4013,7 +4019,7 @@ img.radix-menu-item-icon {
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 10.5px;
   font-style: normal;
 }
 .structure-inspector-row-content[data-tree="true"] .structure-inspector-row-dot {
@@ -4035,7 +4041,7 @@ img.radix-menu-item-icon {
 }
 .structure-inspector-row-label {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11.5px;
   text-align: left;
 }
 .structure-inspector-row-content strong {
