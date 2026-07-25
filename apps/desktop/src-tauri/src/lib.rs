@@ -31,6 +31,13 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     disable_macos_state_restoration();
 
+    #[cfg(target_os = "macos")]
+    match commands::updater::relocate_legacy_install_on_startup() {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(error) => eprintln!("failed to migrate the legacy app path: {error}"),
+    }
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             if menu::exit_transition_is_active(app) {
