@@ -1,4 +1,10 @@
-export type Point2 = { x: number; y: number };
+import {
+  pointInPolygon,
+  polygonBounds,
+  type LassoPoint,
+} from "./chemical-space-lasso";
+
+export type Point2 = LassoPoint;
 
 export type ProjectionSnapshot = {
   elements: number[];
@@ -168,40 +174,6 @@ function projectPosition(
     y: (-ndcY * 0.5 + 0.5) * snapshot.height,
     depth,
   };
-}
-
-function polygonBounds(polygon: Point2[]) {
-  let minX = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const point of polygon) {
-    minX = Math.min(minX, point.x);
-    maxX = Math.max(maxX, point.x);
-    minY = Math.min(minY, point.y);
-    maxY = Math.max(maxY, point.y);
-  }
-  return { minX, maxX, minY, maxY };
-}
-
-function pointInPolygon(point: Point2, polygon: Point2[]) {
-  let inside = false;
-  for (
-    let index = 0, previous = polygon.length - 1;
-    index < polygon.length;
-    previous = index, index += 1
-  ) {
-    const left = polygon[index];
-    const right = polygon[previous];
-    const crosses = (left.y > point.y) !== (right.y > point.y)
-      && point.x < (
-        ((right.x - left.x) * (point.y - left.y))
-        / (right.y - left.y || Number.EPSILON)
-        + left.x
-      );
-    if (crosses) inside = !inside;
-  }
-  return inside;
 }
 
 function yieldToBrowser() {
