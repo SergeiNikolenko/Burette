@@ -18,6 +18,8 @@ const browserDevSampleFiles = [
 ] as const;
 
 const browserDevGeneratedProjectScanMs = 2500;
+const projectScanRootBatchSize = 16;
+const projectScanSessionEntryBudget = 20_000;
 const browserDevStructureExtensions = new Set([
   "pdb", "ent", "pdbqt", "pqr", "xpdb",
   "cif", "mmcif", "mcif", "bcif", "mmtf",
@@ -26,11 +28,21 @@ const browserDevStructureExtensions = new Set([
   "nc", "ncdf", "netcdf", "ncrst",
 ]);
 
+type SidebarProjectRootScan = {
+  root: string;
+  files: SidebarProjectStructure[];
+  truncated: boolean;
+  scannedEntries: number;
+  scannedDirectories: number;
+  error: string | null;
+};
+
 type UseAppSidebarProjectsArgs = {
   activeDocumentId: string | null;
   browserDevExplicitFolders: string[];
   browserDevHasExplicitWorkspace: boolean;
   documents: ViewerDocument[];
+  expandedProjectIds: string[];
   hiddenProjectRoots: string[];
   pinnedProjectRoots: string[];
   pinnedStructurePaths: string[];
@@ -42,7 +54,9 @@ type UseAppSidebarProjectsArgs = {
   ) => void;
   pruneSidebarPaths: (existingPaths: string[]) => void;
   pushErrorStatus: (error: unknown, prefix?: string, details?: string[]) => void;
+  pushStatus: (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
   recentStructures: RecentStructure[];
+  sidebarQuery: string;
 };
 
 export function useAppSidebarProjects({
@@ -50,6 +64,7 @@ export function useAppSidebarProjects({
   browserDevExplicitFolders,
   browserDevHasExplicitWorkspace,
   documents,
+  expandedProjectIds,
   hiddenProjectRoots,
   pinnedProjectRoots,
   pinnedStructurePaths,
@@ -58,13 +73,27 @@ export function useAppSidebarProjects({
   pruneRecentStructures,
   pruneSidebarPaths,
   pushErrorStatus,
+  pushStatus,
   recentStructures,
+  sidebarQuery,
 }: UseAppSidebarProjectsArgs) {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [projectStructures, setProjectStructures] = useState<SidebarProjectStructure[]>([]);
   const [webDemoRevision, setWebDemoRevision] = useState(0);
   const prunedPersistedPathsRef = useRef(false);
   const lastGeneratedFilesSignatureRef = useRef<string>("");
+  const completeProjectScanCacheRef = useRef(new Map<string, SidebarProjectRootScan>());
+  const partialProjectScanResultsRef = useRef(new Map<string, SidebarProjectRootScan>());
+  const projectScanInFlightRef = useRef(new Map<string, symbol>());
+  const projectScanQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const projectScanEligibleRootsRef = useRef(new Set<string>());
+  const previousProjectScanEligibleRootsRef = useRef(new Set<string>());
+  const projectScanSessionKeyRef = useRef("");
+  const projectScanSessionEntriesRef = useRef(0);
+  const deferredProjectScanRootsRef = useRef(new Set<string>());
+  const projectScanBudgetReportedRef = useRef(false);
+  const activeProjectRootsRef = useRef(new Set(projectRoots));
+  activeProjectRootsRef.current = new Set(projectRoots);
 
   useEffect(() => {
     if (!isWebDemoWorkspace()) return undefined;
@@ -90,6 +119,11 @@ export function useAppSidebarProjects({
     return samples.length > 0 ? [...projectStructures, ...samples] : projectStructures;
   }, [browserDevHasExplicitWorkspace, projectStructures, webDemoRevision]);
   const sidebarRecentStructures = browserDevExplicitFolders.length > 0 ? [] : recentStructures;
+  const projectRootsToScan = useMemo(() => {
+    if (sidebarQuery.trim()) return projectRoots;
+    return projectRoots.filter((root) => expandedProjectIds.includes(`project:${root}`));
+  }, [expandedProjectIds, projectRoots, sidebarQuery]);
+  projectScanEligibleRootsRef.current = new Set(projectRootsToScan);
 
   const sidebarProjects = useMemo(() => buildSidebarProjects({
     documents,
@@ -142,23 +176,167 @@ export function useAppSidebarProjects({
       };
     }
     if (projectRoots.length === 0) {
+      completeProjectScanCacheRef.current.clear();
+      partialProjectScanResultsRef.current.clear();
+      projectScanInFlightRef.current.clear();
+      previousProjectScanEligibleRootsRef.current.clear();
+      deferredProjectScanRootsRef.current.clear();
+      projectScanSessionKeyRef.current = "";
+      projectScanSessionEntriesRef.current = 0;
+      projectScanBudgetReportedRef.current = false;
       setProjectStructures([]);
       return undefined;
     }
-    let cancelled = false;
-    void invoke<SidebarProjectStructure[]>("list_project_structure_files", { paths: projectRoots })
-      .then((files) => {
-        if (!cancelled) setProjectStructures(files);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setProjectStructures([]);
-        pushErrorStatus(error, "Project file scan failed");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [browserDevGeneratedRoot, projectRoots, pushErrorStatus]);
+    const activeRoots = activeProjectRootsRef.current;
+    for (const root of completeProjectScanCacheRef.current.keys()) {
+      if (!activeRoots.has(root)) completeProjectScanCacheRef.current.delete(root);
+    }
+    for (const root of partialProjectScanResultsRef.current.keys()) {
+      if (!activeRoots.has(root)) partialProjectScanResultsRef.current.delete(root);
+    }
+    for (const root of projectScanInFlightRef.current.keys()) {
+      if (!activeRoots.has(root)) projectScanInFlightRef.current.delete(root);
+    }
+
+    const eligibleRoots = projectScanEligibleRootsRef.current;
+    for (const root of eligibleRoots) {
+      if (
+        !previousProjectScanEligibleRootsRef.current.has(root)
+        && partialProjectScanResultsRef.current.has(root)
+      ) {
+        // A partial/error scan is useful while the root stays open, but a
+        // collapse→expand is the user's explicit retry gesture.
+        partialProjectScanResultsRef.current.delete(root);
+      }
+    }
+    previousProjectScanEligibleRootsRef.current = new Set(eligibleRoots);
+    const sessionKey = [...eligibleRoots].sort().join("\u0000");
+    if (sessionKey !== projectScanSessionKeyRef.current) {
+      projectScanSessionKeyRef.current = sessionKey;
+      projectScanSessionEntriesRef.current = 0;
+      deferredProjectScanRootsRef.current.clear();
+      projectScanBudgetReportedRef.current = false;
+    }
+
+    const visibleFiles = projectRoots.flatMap((root) => (
+      completeProjectScanCacheRef.current.get(root)
+      ?? partialProjectScanResultsRef.current.get(root)
+    )?.files ?? []);
+    setProjectStructures(visibleFiles);
+
+    const rootsToScan = projectRootsToScan.filter((root) => (
+      !completeProjectScanCacheRef.current.has(root)
+      && !partialProjectScanResultsRef.current.has(root)
+      && !projectScanInFlightRef.current.has(root)
+      && !deferredProjectScanRootsRef.current.has(root)
+    ));
+    for (let start = 0; start < rootsToScan.length; start += projectScanRootBatchSize) {
+      const requestRoots = rootsToScan.slice(start, start + projectScanRootBatchSize);
+      const requestToken = Symbol("project-scan");
+      for (const root of requestRoots) projectScanInFlightRef.current.set(root, requestToken);
+      const runRequest = async () => {
+        const activeRequestRoots = requestRoots.filter((root) => {
+          if (projectScanInFlightRef.current.get(root) !== requestToken) return false;
+          if (
+            !activeProjectRootsRef.current.has(root)
+            || !projectScanEligibleRootsRef.current.has(root)
+          ) {
+            projectScanInFlightRef.current.delete(root);
+            return false;
+          }
+          if (projectScanSessionEntriesRef.current >= projectScanSessionEntryBudget) {
+            projectScanInFlightRef.current.delete(root);
+            deferredProjectScanRootsRef.current.add(root);
+            return false;
+          }
+          return true;
+        });
+        if (activeRequestRoots.length === 0) {
+          if (
+            deferredProjectScanRootsRef.current.size > 0
+            && !projectScanBudgetReportedRef.current
+          ) {
+            projectScanBudgetReportedRef.current = true;
+            pushStatus(
+              "Project scanning paused after 20,000 entries to keep Burette responsive. Collapse and expand a project to continue.",
+            );
+          }
+          return;
+        }
+        try {
+          const remainingEntryBudget = Math.max(
+            0,
+            projectScanSessionEntryBudget - projectScanSessionEntriesRef.current,
+          );
+          if (remainingEntryBudget === 0) {
+            for (const root of activeRequestRoots) {
+              if (projectScanInFlightRef.current.get(root) !== requestToken) continue;
+              projectScanInFlightRef.current.delete(root);
+              deferredProjectScanRootsRef.current.add(root);
+            }
+            return;
+          }
+          const results = await invoke<SidebarProjectRootScan[]>(
+            "list_project_structure_files",
+            { paths: activeRequestRoots, maxEntries: remainingEntryBudget },
+          );
+          const resultsByRoot = new Map(results.map((result) => [result.root, result]));
+          const partialMessages: string[] = [];
+          projectScanSessionEntriesRef.current += results.reduce(
+            (total, result) => total + Math.max(0, result.scannedEntries),
+            0,
+          );
+          for (const root of activeRequestRoots) {
+            if (projectScanInFlightRef.current.get(root) !== requestToken) continue;
+            projectScanInFlightRef.current.delete(root);
+            if (!activeProjectRootsRef.current.has(root)) continue;
+            const result = resultsByRoot.get(root);
+            if (!result) {
+              pushErrorStatus(new Error(`No scan result was returned for ${root}`), "Project file scan failed");
+              continue;
+            }
+            if (!result.truncated && !result.error) {
+              completeProjectScanCacheRef.current.set(root, result);
+              partialProjectScanResultsRef.current.delete(root);
+            } else {
+              partialProjectScanResultsRef.current.set(root, result);
+              completeProjectScanCacheRef.current.delete(root);
+            }
+            if (result.error) {
+              pushErrorStatus(new Error(result.error), `Project scan failed for ${projectRootTitle(root)}`);
+            }
+            if (result.truncated) {
+              partialMessages.push(
+                `Showing the first ${result.files.length.toLocaleString()} structures from ${projectRootTitle(root)}; `
+                + `the scan stopped after ${result.scannedEntries.toLocaleString()} entries in `
+                + `${result.scannedDirectories.toLocaleString()} folders to keep Burette responsive. `
+                + "Collapse and expand the project to retry.",
+              );
+            }
+          }
+          const currentRoots = activeProjectRootsRef.current;
+          const nextFiles = Array.from(currentRoots).flatMap((root) => (
+            completeProjectScanCacheRef.current.get(root)
+            ?? partialProjectScanResultsRef.current.get(root)
+          )?.files ?? []);
+          setProjectStructures(nextFiles);
+          for (const message of partialMessages) pushStatus(message);
+        } catch (error) {
+          let relevant = false;
+          for (const root of activeRequestRoots) {
+            if (projectScanInFlightRef.current.get(root) !== requestToken) continue;
+            projectScanInFlightRef.current.delete(root);
+            relevant ||= activeProjectRootsRef.current.has(root);
+          }
+          if (relevant) pushErrorStatus(error, "Project file scan failed");
+        }
+      };
+      projectScanQueueRef.current = projectScanQueueRef.current
+        .then(runRequest, runRequest)
+        .catch(() => undefined);
+    }
+    return undefined;
+  }, [browserDevGeneratedRoot, projectRoots, projectRootsToScan, pushErrorStatus, pushStatus]);
 
   useEffect(() => {
     if (prunedPersistedPathsRef.current || !isTauriRuntime()) return;
@@ -212,6 +390,10 @@ function browserDevGeneratedProjectRoot() {
   if (!import.meta.env.DEV || isTauriRuntime()) return null;
   const root = String(import.meta.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT || "").trim().replace(/\/+$/u, "");
   return root || null;
+}
+
+function projectRootTitle(root: string) {
+  return root.replace(/\\/gu, "/").split("/").filter(Boolean).pop() || root;
 }
 
 function appendSidebarProjectRoot(roots: string[], root: string | null) {

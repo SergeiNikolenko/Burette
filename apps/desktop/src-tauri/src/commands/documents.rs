@@ -43,18 +43,32 @@ const FETCHED_PDB_MAX_BYTES: usize = 75 * 1024 * 1024;
 const KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE: u64 = 10 * 1024 * 1024;
 const PROJECT_STRUCTURE_SCAN_MAX_FILES: usize = 2_000;
 const PROJECT_STRUCTURE_SCAN_MAX_DIRECTORIES: usize = 400;
+const PROJECT_STRUCTURE_SCAN_MAX_ENTRIES: usize = 20_000;
+const PROJECT_STRUCTURE_SCAN_MAX_ROOTS: usize = 16;
+const PROJECT_STRUCTURE_SCAN_REQUEST_MAX_FILES: usize = 4_000;
+const PROJECT_STRUCTURE_SCAN_REQUEST_MAX_DIRECTORIES: usize = 800;
+const PROJECT_STRUCTURE_SCAN_REQUEST_MAX_ENTRIES: usize = 20_000;
 const CONFORMER_PYTHON_STATUS_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Copy)]
 struct ProjectStructureScanLimits {
     max_files: usize,
     max_directories: usize,
+    max_entries: usize,
 }
 
 const PROJECT_STRUCTURE_SCAN_LIMITS: ProjectStructureScanLimits = ProjectStructureScanLimits {
     max_files: PROJECT_STRUCTURE_SCAN_MAX_FILES,
     max_directories: PROJECT_STRUCTURE_SCAN_MAX_DIRECTORIES,
+    max_entries: PROJECT_STRUCTURE_SCAN_MAX_ENTRIES,
 };
+
+const PROJECT_STRUCTURE_SCAN_REQUEST_LIMITS: ProjectStructureScanLimits =
+    ProjectStructureScanLimits {
+        max_files: PROJECT_STRUCTURE_SCAN_REQUEST_MAX_FILES,
+        max_directories: PROJECT_STRUCTURE_SCAN_REQUEST_MAX_DIRECTORIES,
+        max_entries: PROJECT_STRUCTURE_SCAN_REQUEST_MAX_ENTRIES,
+    };
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -217,6 +231,17 @@ pub(crate) struct ProjectStructureFile {
     extension: String,
     renderer: String,
     byte_count: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProjectStructureRootScan {
+    root: String,
+    files: Vec<ProjectStructureFile>,
+    truncated: bool,
+    scanned_entries: usize,
+    scanned_directories: usize,
+    error: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -622,7 +647,8 @@ fn open_combined_grid_document<R: Runtime>(
         &runtime_document_id,
         &label_path,
         "sdf",
-        &combined.data,
+        Some(&combined.data),
+        combined.data.len() as u64,
         preferences,
         &GridParseOptions {
             include_single_sdf: true,
@@ -775,74 +801,176 @@ fn expand_open_document_paths(paths: Vec<String>) -> (Vec<PathBuf>, Vec<String>)
 #[tauri::command]
 pub(crate) async fn list_project_structure_files(
     paths: Vec<String>,
-) -> Result<Vec<ProjectStructureFile>, String> {
-    tauri::async_runtime::spawn_blocking(move || list_project_structure_files_blocking(paths))
-        .await
-        .map_err(|error| format!("Project structure scan task failed: {error}"))?
+    max_entries: Option<usize>,
+) -> Result<Vec<ProjectStructureRootScan>, String> {
+    let request_limits = ProjectStructureScanLimits {
+        max_entries: max_entries
+            .unwrap_or(PROJECT_STRUCTURE_SCAN_REQUEST_MAX_ENTRIES)
+            .clamp(1, PROJECT_STRUCTURE_SCAN_REQUEST_MAX_ENTRIES),
+        ..PROJECT_STRUCTURE_SCAN_REQUEST_LIMITS
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        list_project_structure_files_blocking_with_limits(
+            paths,
+            PROJECT_STRUCTURE_SCAN_LIMITS,
+            request_limits,
+            PROJECT_STRUCTURE_SCAN_MAX_ROOTS,
+        )
+    })
+    .await
+    .map_err(|error| format!("Project file scan task failed: {error}"))?
 }
 
+#[cfg(test)]
 fn list_project_structure_files_blocking(
     paths: Vec<String>,
-) -> Result<Vec<ProjectStructureFile>, String> {
-    let mut files = BTreeSet::new();
-    let mut errors = Vec::new();
-    for path in paths {
-        match expand_project_structure_targets(PathBuf::from(&path), PROJECT_STRUCTURE_SCAN_LIMITS)
-        {
-            Ok(expanded) => {
-                files.extend(expanded);
-            }
-            Err(error) => errors.push(error),
-        }
-    }
-    if files.is_empty() && !errors.is_empty() {
-        return Err(errors.join("; "));
-    }
-
-    let mut entries = Vec::new();
-    for path in files {
-        let metadata = match fs::metadata(&path) {
-            Ok(metadata) if metadata.is_file() => metadata,
-            Ok(_) => continue,
-            Err(error) => {
-                errors.push(format!("{}: {error}", path.display()));
-                continue;
-            }
-        };
-        let extension = structure_path_extension(&path);
-        let format = match format_for_extension(&extension) {
-            Ok(format) => format,
-            Err(error) => {
-                errors.push(format!("{}: {error}", path.display()));
-                continue;
-            }
-        };
-        entries.push(ProjectStructureFile {
-            path: path.to_string_lossy().to_string(),
-            title: path
-                .file_name()
-                .and_then(|value| value.to_str())
-                .unwrap_or("structure")
-                .to_string(),
-            extension,
-            renderer: resolve_renderer(&format, "auto"),
-            byte_count: metadata.len(),
-        });
-    }
-    Ok(entries)
+) -> Result<Vec<ProjectStructureRootScan>, String> {
+    list_project_structure_files_blocking_with_limits(
+        paths,
+        PROJECT_STRUCTURE_SCAN_LIMITS,
+        PROJECT_STRUCTURE_SCAN_REQUEST_LIMITS,
+        PROJECT_STRUCTURE_SCAN_MAX_ROOTS,
+    )
 }
 
+fn list_project_structure_files_blocking_with_limits(
+    paths: Vec<String>,
+    per_root_limits: ProjectStructureScanLimits,
+    request_limits: ProjectStructureScanLimits,
+    max_roots: usize,
+) -> Result<Vec<ProjectStructureRootScan>, String> {
+    if paths.len() > max_roots {
+        return Err(format!(
+            "Project file scan accepts at most {max_roots} roots per request"
+        ));
+    }
+    let mut remaining = request_limits;
+    let mut scans = Vec::with_capacity(paths.len());
+    for root in paths {
+        let root = root.trim().to_string();
+        if root.is_empty() {
+            continue;
+        }
+        if remaining.max_files == 0 || remaining.max_directories == 0 || remaining.max_entries == 0
+        {
+            scans.push(ProjectStructureRootScan {
+                root,
+                files: Vec::new(),
+                truncated: true,
+                scanned_entries: 0,
+                scanned_directories: 0,
+                error: Some(
+                    "The shared project scan budget was exhausted before this root".to_string(),
+                ),
+            });
+            continue;
+        }
+        let limits = ProjectStructureScanLimits {
+            max_files: per_root_limits.max_files.min(remaining.max_files),
+            max_directories: per_root_limits
+                .max_directories
+                .min(remaining.max_directories),
+            max_entries: per_root_limits.max_entries.min(remaining.max_entries),
+        };
+        let outcome =
+            match expand_project_structure_targets_with_metadata(PathBuf::from(&root), limits) {
+                Ok(outcome) => outcome,
+                Err(error) => {
+                    scans.push(ProjectStructureRootScan {
+                        root,
+                        files: Vec::new(),
+                        truncated: false,
+                        scanned_entries: 0,
+                        scanned_directories: 0,
+                        error: Some(error),
+                    });
+                    continue;
+                }
+            };
+        remaining.max_files = remaining.max_files.saturating_sub(outcome.paths.len());
+        remaining.max_directories = remaining
+            .max_directories
+            .saturating_sub(outcome.scanned_directories);
+        remaining.max_entries = remaining
+            .max_entries
+            .saturating_sub(outcome.scanned_entries);
+
+        let mut files = Vec::with_capacity(outcome.paths.len());
+        let mut errors = Vec::new();
+        for path in outcome.paths {
+            match project_structure_file(path) {
+                Ok(file) => files.push(file),
+                Err(error) => errors.push(error),
+            }
+        }
+        scans.push(ProjectStructureRootScan {
+            root,
+            files,
+            truncated: outcome.truncated,
+            scanned_entries: outcome.scanned_entries,
+            scanned_directories: outcome.scanned_directories,
+            error: (!errors.is_empty()).then(|| errors.join("; ")),
+        });
+    }
+    Ok(scans)
+}
+
+fn project_structure_file(path: PathBuf) -> Result<ProjectStructureFile, String> {
+    let metadata = match fs::metadata(&path) {
+        Ok(metadata) if metadata.is_file() => metadata,
+        Ok(_) => return Err(format!("{} is not a file", path.display())),
+        Err(error) => return Err(format!("{}: {error}", path.display())),
+    };
+    let extension = structure_path_extension(&path);
+    let format =
+        format_for_extension(&extension).map_err(|error| format!("{}: {error}", path.display()))?;
+    Ok(ProjectStructureFile {
+        path: path.to_string_lossy().to_string(),
+        title: path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("structure")
+            .to_string(),
+        extension,
+        renderer: resolve_renderer(&format, "auto"),
+        byte_count: metadata.len(),
+    })
+}
+
+#[cfg(test)]
 fn expand_project_structure_targets(
     path: PathBuf,
     limits: ProjectStructureScanLimits,
 ) -> Result<Vec<PathBuf>, String> {
+    expand_project_structure_targets_with_metadata(path, limits).map(|outcome| outcome.paths)
+}
+
+struct ProjectStructureScanOutcome {
+    paths: Vec<PathBuf>,
+    truncated: bool,
+    scanned_entries: usize,
+    scanned_directories: usize,
+}
+
+fn expand_project_structure_targets_with_metadata(
+    path: PathBuf,
+    limits: ProjectStructureScanLimits,
+) -> Result<ProjectStructureScanOutcome, String> {
     let canonical = path
         .canonicalize()
         .map_err(|err| format!("{}: {err}", path.display()))?;
     let metadata =
         fs::metadata(&canonical).map_err(|err| format!("{}: {err}", canonical.display()))?;
     if metadata.is_file() {
-        return expand_open_targets(canonical);
+        let mut paths = expand_open_targets(canonical)?;
+        let truncated = paths.len() > limits.max_files;
+        paths.truncate(limits.max_files);
+        return Ok(ProjectStructureScanOutcome {
+            scanned_entries: paths.len(),
+            scanned_directories: 0,
+            paths,
+            truncated,
+        });
     }
     if !metadata.is_dir() {
         return Err(format!(
@@ -854,7 +982,7 @@ fn expand_project_structure_targets(
     let supported_extensions = supported_open_target_extensions()?;
     let mut scan = ProjectStructureScan::new(limits);
     scan.collect(&canonical, &supported_extensions)?;
-    Ok(scan.into_paths())
+    Ok(scan.into_outcome())
 }
 
 #[tauri::command]
@@ -2331,15 +2459,9 @@ fn expand_open_targets(path: PathBuf) -> Result<Vec<PathBuf>, String> {
     }
 
     let supported_extensions = supported_open_target_extensions()?;
-    let mut collected = BTreeSet::new();
-    let mut visited_directories = HashSet::new();
-    collect_supported_files(
-        &canonical,
-        &mut visited_directories,
-        &supported_extensions,
-        &mut collected,
-    )?;
-    Ok(collected.into_iter().collect())
+    let mut scan = ProjectStructureScan::following_symlinks(PROJECT_STRUCTURE_SCAN_LIMITS);
+    scan.collect(&canonical, &supported_extensions)?;
+    Ok(scan.into_paths())
 }
 
 fn merge_collection_files(paths: &[String]) -> Result<(String, String), String> {
@@ -2669,19 +2791,33 @@ fn supported_open_target_extensions() -> Result<BTreeSet<String>, String> {
 
 struct ProjectStructureScan {
     limits: ProjectStructureScanLimits,
+    follow_symlinks: bool,
+    root_boundary: Option<PathBuf>,
     visited_directories: HashSet<PathBuf>,
     collected: BTreeSet<PathBuf>,
     visited_count: usize,
+    visited_entry_count: usize,
     truncated: bool,
 }
 
 impl ProjectStructureScan {
     fn new(limits: ProjectStructureScanLimits) -> Self {
+        Self::with_symlink_policy(limits, false)
+    }
+
+    fn following_symlinks(limits: ProjectStructureScanLimits) -> Self {
+        Self::with_symlink_policy(limits, true)
+    }
+
+    fn with_symlink_policy(limits: ProjectStructureScanLimits, follow_symlinks: bool) -> Self {
         Self {
             limits,
+            follow_symlinks,
+            root_boundary: None,
             visited_directories: HashSet::new(),
             collected: BTreeSet::new(),
             visited_count: 0,
+            visited_entry_count: 0,
             truncated: false,
         }
     }
@@ -2697,7 +2833,14 @@ impl ProjectStructureScan {
         let canonical_directory = directory
             .canonicalize()
             .map_err(|err| format!("{}: {err}", directory.display()))?;
-        if !self.visited_directories.insert(canonical_directory) {
+        if let Some(root) = &self.root_boundary {
+            if !self.follow_symlinks && !canonical_directory.starts_with(root) {
+                return Ok(());
+            }
+        } else {
+            self.root_boundary = Some(canonical_directory.clone());
+        }
+        if !self.visited_directories.insert(canonical_directory.clone()) {
             return Ok(());
         }
         self.visited_count += 1;
@@ -2706,10 +2849,24 @@ impl ProjectStructureScan {
             return Ok(());
         }
 
-        let mut entries = fs::read_dir(directory)
-            .map_err(|err| format!("{}: {err}", directory.display()))?
-            .filter_map(Result::ok)
-            .collect::<Vec<_>>();
+        let mut entries = Vec::new();
+        let read_directory = if self.follow_symlinks {
+            directory
+        } else {
+            canonical_directory.as_path()
+        };
+        for entry in fs::read_dir(read_directory)
+            .map_err(|err| format!("{}: {err}", read_directory.display()))?
+        {
+            if self.visited_entry_count >= self.limits.max_entries {
+                self.truncated = true;
+                break;
+            }
+            self.visited_entry_count += 1;
+            if let Ok(entry) = entry {
+                entries.push(entry);
+            }
+        }
         entries.sort_by_key(|entry| entry.path());
 
         for entry in entries {
@@ -2722,82 +2879,105 @@ impl ProjectStructureScan {
                 continue;
             };
             if metadata.file_type().is_symlink() {
-                // Project roots are restored and scanned in the background.
-                // Never let a symlink escape the directory the user selected.
+                let Ok(canonical_target) = path.canonicalize() else {
+                    continue;
+                };
+                // Restored project roots may follow aliases only while their
+                // canonical target remains inside the selected root. Explicit
+                // directory opens preserve the historical external-alias behavior.
+                if !self.follow_symlinks && !self.is_within_root(&canonical_target) {
+                    continue;
+                }
+                let Ok(target_metadata) = fs::metadata(&canonical_target) else {
+                    continue;
+                };
+                if target_metadata.is_dir() {
+                    if is_ignored_project_scan_directory(&path)
+                        || is_ignored_project_scan_directory(&canonical_target)
+                    {
+                        continue;
+                    }
+                    let recurse_path = if self.follow_symlinks {
+                        path.as_path()
+                    } else {
+                        canonical_target.as_path()
+                    };
+                    let _ = self.collect(recurse_path, supported_extensions);
+                } else if target_metadata.is_file()
+                    && looks_like_supported_structure_file(
+                        if self.follow_symlinks {
+                            path.as_path()
+                        } else {
+                            canonical_target.as_path()
+                        },
+                        supported_extensions,
+                    )
+                {
+                    self.collected.insert(if self.follow_symlinks {
+                        path
+                    } else {
+                        canonical_target
+                    });
+                }
                 continue;
             }
             if metadata.is_dir() {
+                if is_ignored_project_scan_directory(&path) {
+                    continue;
+                }
                 let _ = self.collect(&path, supported_extensions);
                 continue;
             }
             if metadata.is_file()
                 && looks_like_supported_structure_file(&path, supported_extensions)
             {
-                self.collected.insert(path);
+                if self.follow_symlinks {
+                    self.collected.insert(path);
+                } else if let Ok(canonical_file) = path.canonicalize() {
+                    if self.is_within_root(&canonical_file) {
+                        self.collected.insert(canonical_file);
+                    }
+                }
             }
         }
         Ok(())
     }
 
+    fn is_within_root(&self, path: &Path) -> bool {
+        self.root_boundary
+            .as_ref()
+            .is_some_and(|root| path.starts_with(root))
+    }
+
     fn into_paths(self) -> Vec<PathBuf> {
         self.collected.into_iter().collect()
     }
+
+    fn into_outcome(self) -> ProjectStructureScanOutcome {
+        ProjectStructureScanOutcome {
+            paths: self.collected.into_iter().collect(),
+            truncated: self.truncated,
+            scanned_entries: self.visited_entry_count,
+            scanned_directories: self.visited_count.min(self.limits.max_directories),
+        }
+    }
 }
 
-fn collect_supported_files(
-    directory: &Path,
-    visited_directories: &mut HashSet<PathBuf>,
-    supported_extensions: &BTreeSet<String>,
-    collected: &mut BTreeSet<PathBuf>,
-) -> Result<(), String> {
-    let canonical_directory = directory
-        .canonicalize()
-        .map_err(|err| format!("{}: {err}", directory.display()))?;
-    if !visited_directories.insert(canonical_directory.clone()) {
-        return Ok(());
+fn is_ignored_project_scan_directory(path: &Path) -> bool {
+    if matches!(
+        path.file_name().and_then(|value| value.to_str()),
+        Some(".git" | ".hg" | ".svn" | ".venv" | "__pycache__" | "node_modules")
+    ) {
+        return true;
     }
-    for entry in fs::read_dir(directory).map_err(|err| format!("{}: {err}", directory.display()))? {
-        let Ok(entry) = entry else {
-            continue;
-        };
-        let path = entry.path();
-        let Ok(metadata) = fs::symlink_metadata(&path) else {
-            continue;
-        };
-        if metadata.file_type().is_symlink() {
-            let Ok(target_metadata) = fs::metadata(&path) else {
-                continue;
-            };
-            if target_metadata.is_dir() {
-                let _ = collect_supported_files(
-                    &path,
-                    visited_directories,
-                    supported_extensions,
-                    collected,
-                );
-                continue;
-            }
-            if target_metadata.is_file()
-                && looks_like_supported_structure_file(&path, supported_extensions)
-            {
-                collected.insert(path);
-            }
-            continue;
-        }
-        if metadata.is_dir() {
-            let _ = collect_supported_files(
-                &path,
-                visited_directories,
-                supported_extensions,
-                collected,
-            );
-            continue;
-        }
-        if metadata.is_file() && looks_like_supported_structure_file(&path, supported_extensions) {
-            collected.insert(path);
-        }
-    }
-    Ok(())
+    path.extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "app" | "bundle" | "framework" | "plugin" | "kext" | "xcarchive" | "dsym"
+            )
+        })
 }
 
 fn looks_like_supported_structure_file(
@@ -2997,11 +3177,12 @@ mod tests {
         conformer_python_candidates, conformer_python_runtime_spec,
         conformer_python_status_candidates, copy_file_atomically, expand_open_document_paths,
         expand_open_targets, expand_project_structure_targets, generated_conformer_title,
-        list_project_structure_files_blocking, looks_like_supported_structure_file,
-        normalize_inline_structure_extension, open_text_structure_for_window_label,
-        open_with_provisional_claim, open_with_provisional_read_claims, read_sdf_file_with_limit,
-        smiles_from_sheet_data, supported_open_target_extensions,
-        write_collection_with_provisional_claim, write_text_atomically, CollectionWriteTarget,
+        list_project_structure_files_blocking, list_project_structure_files_blocking_with_limits,
+        looks_like_supported_structure_file, normalize_inline_structure_extension,
+        open_text_structure_for_window_label, open_with_provisional_claim,
+        open_with_provisional_read_claims, read_sdf_file_with_limit, smiles_from_sheet_data,
+        supported_open_target_extensions, write_collection_with_provisional_claim,
+        write_text_atomically, CollectionWriteTarget, ProjectStructureScan,
         ProjectStructureScanLimits, TextStructureRequest,
     };
     use crate::menu::OpenDocumentRegistry;
@@ -3516,8 +3697,15 @@ mod tests {
         fs::write(&txt, "ignore\n").unwrap();
 
         let canonical_root = root.canonicalize().unwrap();
-        let files = list_project_structure_files_blocking(vec![root.to_string_lossy().to_string()])
+        let scans = list_project_structure_files_blocking(vec![root.to_string_lossy().to_string()])
             .expect("project files should be listed");
+        assert_eq!(scans.len(), 1);
+        let scan = &scans[0];
+        assert!(!scan.truncated);
+        assert_eq!(scan.scanned_directories, 2);
+        assert_eq!(scan.scanned_entries, 4);
+        assert!(scan.error.is_none());
+        let files = &scan.files;
         assert_eq!(files.len(), 2);
         assert_eq!(
             files[0].path,
@@ -3543,6 +3731,111 @@ mod tests {
     }
 
     #[test]
+    fn project_structure_scan_reports_partial_root_metadata() {
+        let root = std::env::temp_dir().join(format!(
+            "burette-project-partial-metadata-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        for index in 0..4 {
+            fs::write(root.join(format!("{index}.pdb")), "HEADER TEST\n").unwrap();
+        }
+
+        let scans = list_project_structure_files_blocking_with_limits(
+            vec![root.to_string_lossy().to_string()],
+            ProjectStructureScanLimits {
+                max_files: 16,
+                max_directories: 16,
+                max_entries: 2,
+            },
+            ProjectStructureScanLimits {
+                max_files: 16,
+                max_directories: 16,
+                max_entries: 16,
+            },
+            4,
+        )
+        .expect("bounded project scan should report partial metadata");
+
+        assert_eq!(scans.len(), 1);
+        assert!(scans[0].truncated);
+        assert_eq!(scans[0].scanned_directories, 1);
+        assert_eq!(scans[0].scanned_entries, 2);
+        assert_eq!(scans[0].files.len(), 2);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn project_structure_roots_share_one_request_budget() {
+        let root = std::env::temp_dir().join(format!(
+            "burette-project-shared-budget-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let first = root.join("first");
+        let second = root.join("second");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        fs::write(first.join("a.pdb"), "HEADER A\n").unwrap();
+        fs::write(second.join("b.pdb"), "HEADER B\n").unwrap();
+        fs::write(second.join("c.pdb"), "HEADER C\n").unwrap();
+
+        let scans = list_project_structure_files_blocking_with_limits(
+            vec![
+                first.to_string_lossy().to_string(),
+                second.to_string_lossy().to_string(),
+            ],
+            ProjectStructureScanLimits {
+                max_files: 16,
+                max_directories: 16,
+                max_entries: 16,
+            },
+            ProjectStructureScanLimits {
+                max_files: 16,
+                max_directories: 16,
+                max_entries: 2,
+            },
+            4,
+        )
+        .expect("project roots should share the request budget");
+
+        assert_eq!(scans.len(), 2);
+        assert!(!scans[0].truncated);
+        assert!(scans[1].truncated);
+        assert_eq!(
+            scans.iter().map(|scan| scan.scanned_entries).sum::<usize>(),
+            2
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn project_structure_scan_keeps_scientific_target_directories() {
+        let root = std::env::temp_dir().join(format!(
+            "burette-project-target-directory-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let target = root.join("target");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("candidate.sdf"), "candidate\n").unwrap();
+
+        let files = expand_project_structure_targets(
+            root.clone(),
+            ProjectStructureScanLimits {
+                max_files: 16,
+                max_directories: 16,
+                max_entries: 16,
+            },
+        )
+        .expect("scientific target directory should be scanned");
+
+        assert_eq!(
+            files,
+            vec![root.canonicalize().unwrap().join("target/candidate.sdf")]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn project_structure_scan_limits_file_count() {
         let root = std::env::temp_dir().join(format!(
             "burette-project-files-limit-{}",
@@ -3558,6 +3851,7 @@ mod tests {
             ProjectStructureScanLimits {
                 max_files: 2,
                 max_directories: 16,
+                max_entries: 16,
             },
         )
         .expect("bounded project scan should succeed");
@@ -3591,6 +3885,7 @@ mod tests {
             ProjectStructureScanLimits {
                 max_files: 16,
                 max_directories: 2,
+                max_entries: 16,
             },
         )
         .expect("bounded project scan should succeed");
@@ -3605,6 +3900,95 @@ mod tests {
         fs::remove_dir(first).unwrap();
         fs::remove_dir(second).unwrap();
         fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn project_structure_scan_skips_metadata_and_build_trees() {
+        let root = std::env::temp_dir().join(format!(
+            "burette-project-ignored-directories-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let git_objects = root.join(".git").join("objects");
+        let node_modules = root.join("node_modules").join("package");
+        fs::create_dir_all(&git_objects).unwrap();
+        fs::create_dir_all(&node_modules).unwrap();
+        fs::write(root.join("visible.pdb"), "HEADER VISIBLE\n").unwrap();
+        fs::write(git_objects.join("hidden.pdb"), "HEADER HIDDEN\n").unwrap();
+        fs::write(node_modules.join("hidden.cif"), "data_hidden\n").unwrap();
+
+        let files = expand_project_structure_targets(
+            root.clone(),
+            ProjectStructureScanLimits {
+                max_files: 16,
+                max_directories: 16,
+                max_entries: 32,
+            },
+        )
+        .expect("metadata directories should be skipped");
+
+        assert_eq!(
+            files,
+            vec![root.canonicalize().unwrap().join("visible.pdb")]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn project_structure_scan_limits_directory_entries() {
+        let root = std::env::temp_dir().join(format!(
+            "burette-project-entry-limit-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        for index in 0..8 {
+            fs::write(root.join(format!("note-{index}.txt")), "ignore\n").unwrap();
+        }
+        let supported_extensions =
+            supported_open_target_extensions().expect("supported extensions should load");
+        let mut scan = ProjectStructureScan::new(ProjectStructureScanLimits {
+            max_files: 16,
+            max_directories: 16,
+            max_entries: 2,
+        });
+
+        scan.collect(&root, &supported_extensions)
+            .expect("entry-limited scan should complete");
+
+        assert!(scan.truncated);
+        assert_eq!(scan.visited_entry_count, 2);
+        assert!(scan.collected.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn project_structure_scan_skips_platform_package_directories() {
+        let root = std::env::temp_dir().join(format!(
+            "burette-project-package-directories-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let app_contents = root.join("Archived.app").join("Contents");
+        let symbols = root.join("Archived.dSYM").join("Contents");
+        fs::create_dir_all(&app_contents).unwrap();
+        fs::create_dir_all(&symbols).unwrap();
+        fs::write(root.join("visible.pdb"), "HEADER VISIBLE\n").unwrap();
+        fs::write(app_contents.join("hidden.pdb"), "HEADER HIDDEN\n").unwrap();
+        fs::write(symbols.join("hidden.cif"), "data_hidden\n").unwrap();
+
+        let files = expand_project_structure_targets(
+            root.clone(),
+            ProjectStructureScanLimits {
+                max_files: 16,
+                max_directories: 16,
+                max_entries: 32,
+            },
+        )
+        .expect("platform package directories should be skipped");
+
+        assert_eq!(
+            files,
+            vec![root.canonicalize().unwrap().join("visible.pdb")]
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(unix)]
@@ -3650,6 +4034,7 @@ mod tests {
             ProjectStructureScanLimits {
                 max_files: 16,
                 max_directories: 16,
+                max_entries: 32,
             },
         )
         .expect("selected project root should be scanned");
@@ -3664,6 +4049,71 @@ mod tests {
         fs::remove_file(outside.join("outside.pdb")).unwrap();
         fs::remove_dir(selected).unwrap();
         fs::remove_dir(outside).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_scan_rechecks_root_boundary_for_every_canonical_directory() {
+        let root = std::env::temp_dir().join(format!(
+            "burette-project-canonical-boundary-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let selected = root.join("selected");
+        let outside = root.join("outside");
+        fs::create_dir_all(&selected).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(selected.join("inside.pdb"), "HEADER INSIDE\n").unwrap();
+        fs::write(outside.join("outside.pdb"), "HEADER OUTSIDE\n").unwrap();
+        let supported = supported_open_target_extensions().unwrap();
+        let mut scan = ProjectStructureScan::new(ProjectStructureScanLimits {
+            max_files: 16,
+            max_directories: 16,
+            max_entries: 32,
+        });
+
+        scan.collect(&selected, &supported).unwrap();
+        scan.collect(&outside, &supported).unwrap();
+
+        assert_eq!(
+            scan.into_paths(),
+            vec![selected.canonicalize().unwrap().join("inside.pdb")]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_scan_follows_internal_directory_symlinks_without_duplicates() {
+        let root = std::env::temp_dir().join(format!(
+            "burette-project-internal-symlink-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let selected = root.join("selected");
+        let library = selected.join("library");
+        let alias = selected.join("library-alias");
+        fs::create_dir_all(&library).unwrap();
+        fs::write(library.join("inside.pdb"), "HEADER INSIDE\n").unwrap();
+        symlink(&library, &alias).unwrap();
+
+        let files = expand_project_structure_targets(
+            selected.clone(),
+            ProjectStructureScanLimits {
+                max_files: 16,
+                max_directories: 16,
+                max_entries: 32,
+            },
+        )
+        .expect("an internal library alias should remain visible");
+
+        assert_eq!(
+            files,
+            vec![library.canonicalize().unwrap().join("inside.pdb")]
+        );
+        fs::remove_file(alias).unwrap();
+        fs::remove_file(library.join("inside.pdb")).unwrap();
+        fs::remove_dir(library).unwrap();
+        fs::remove_dir(selected).unwrap();
         fs::remove_dir(root).unwrap();
     }
 

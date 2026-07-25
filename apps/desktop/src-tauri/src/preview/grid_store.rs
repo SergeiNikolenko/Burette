@@ -4,12 +4,15 @@ use rusqlite::{
 };
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fs::{File, Metadata};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+    mpsc, Arc, Mutex, OnceLock,
 };
 use std::thread;
+use std::time::SystemTime;
 
 use super::{
     grid_analysis,
@@ -20,6 +23,58 @@ use super::{
 
 const GRID_INITIAL_ROWS: usize = 192;
 const GRID_INGEST_BATCH_ROWS: usize = 1_000;
+const MAX_STREAMED_SDF_LINE_BYTES: usize = 256 * 1024;
+const MAX_STREAMED_SDF_RECORD_BYTES: usize = 512 * 1024;
+const MAX_STREAMED_SDF_BATCH_BYTES: usize = 16 * 1024 * 1024;
+const SDF_INDEXING_CANCELLED: &str = "SDF indexing cancelled";
+
+struct GridRuntimeCleanup {
+    ingest_worker: Option<thread::JoinHandle<()>>,
+    runtime_dir: PathBuf,
+}
+
+impl GridRuntimeCleanup {
+    fn run(mut self) {
+        if let Some(worker) = self.ingest_worker.take() {
+            let _ = worker.join();
+        }
+        let _ = std::fs::remove_dir_all(self.runtime_dir);
+    }
+}
+
+pub(crate) fn cleanup_grid_runtime_async(
+    ingest_worker: Option<thread::JoinHandle<()>>,
+    runtime_dir: PathBuf,
+) {
+    static CLEANUP_SENDER: OnceLock<Option<mpsc::Sender<GridRuntimeCleanup>>> = OnceLock::new();
+    let cleanup = GridRuntimeCleanup {
+        ingest_worker,
+        runtime_dir,
+    };
+    let sender = CLEANUP_SENDER.get_or_init(|| {
+        let (sender, receiver) = mpsc::channel::<GridRuntimeCleanup>();
+        thread::Builder::new()
+            .name("burette-grid-cleanup".to_string())
+            .spawn(move || {
+                while let Ok(cleanup) = receiver.recv() {
+                    cleanup.run();
+                }
+            })
+            .ok()
+            .map(|_| sender)
+    });
+    let cleanup = if let Some(sender) = sender {
+        match sender.send(cleanup) {
+            Ok(()) => return,
+            Err(error) => error.0,
+        }
+    } else {
+        cleanup
+    };
+    // Thread creation can fail under extreme process pressure. At that point
+    // deterministic cleanup is safer than detaching a live SQLite writer.
+    cleanup.run();
+}
 
 #[derive(Default)]
 pub(crate) struct GridRuntimeRegistry {
@@ -36,17 +91,9 @@ struct RegisteredGridRuntime {
 
 impl Drop for RegisteredGridRuntime {
     fn drop(&mut self) {
-        // Signal cancellation, then wait for the ingest worker to stop before
-        // deleting the runtime directory. The worker holds a WAL-mode SQLite
-        // connection, so removing the directory while it is still writing races
-        // its `-wal`/`-shm` files: `remove_dir_all` can lose to a concurrently
-        // re-created file and silently leave the directory behind.
         self.cancel_token.store(true, Ordering::Relaxed);
-        if let Some(worker) = self.ingest_worker.take() {
-            let _ = worker.join();
-        }
         if let Some(runtime_dir) = self.database_path.parent() {
-            let _ = std::fs::remove_dir_all(runtime_dir);
+            cleanup_grid_runtime_async(self.ingest_worker.take(), runtime_dir.to_path_buf());
         }
     }
 }
@@ -98,6 +145,9 @@ pub(crate) struct GridPageResult {
     pub(crate) records_indexed: usize,
     pub(crate) records_total_hint: Option<usize>,
     pub(crate) index_ready: bool,
+    pub(crate) index_error: Option<String>,
+    pub(crate) bytes_indexed: Option<u64>,
+    pub(crate) bytes_total: Option<u64>,
     pub(crate) descriptor_ids: Vec<String>,
     pub(crate) analysis_columns: Vec<GridAnalysisColumn>,
 }
@@ -195,6 +245,8 @@ struct GridInputRecord {
     idcode: Option<String>,
     idcoordinates: Option<String>,
     props: BTreeMap<String, String>,
+    source_byte_start: Option<u64>,
+    source_byte_end: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -234,11 +286,14 @@ pub(crate) struct GridDescriptorRunSummary {
     pub(crate) descriptor_ids: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct GridIndexState {
     records_indexed: usize,
     records_total: Option<usize>,
     index_ready: bool,
+    error: Option<String>,
+    bytes_indexed: Option<u64>,
+    bytes_total: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +309,161 @@ struct ParsedGridBatch {
     next_cursor: GridCursor,
     next_index: usize,
     complete: bool,
+}
+
+/// Keeps a single sequential reader over an SDF collection. The byte offset is
+/// retained with the reader so every completed batch has an exact resume point
+/// without materializing the source file as a `String`.
+#[derive(Debug)]
+struct SdfFileReader {
+    reader: BufReader<File>,
+    source_path: PathBuf,
+    source_identity: SdfSourceIdentity,
+    byte_offset: u64,
+    skip_line_feed_after_carriage_return: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SdfSourceIdentity {
+    len: u64,
+    modified: SystemTime,
+    #[cfg(unix)]
+    device: u64,
+    #[cfg(unix)]
+    inode: u64,
+    #[cfg(unix)]
+    changed_seconds: i64,
+    #[cfg(unix)]
+    changed_nanoseconds: i64,
+}
+
+impl SdfSourceIdentity {
+    fn from_metadata(metadata: &Metadata) -> Result<Self, String> {
+        #[cfg(unix)]
+        use std::os::unix::fs::MetadataExt;
+
+        Ok(Self {
+            len: metadata.len(),
+            modified: metadata.modified().map_err(|error| error.to_string())?,
+            #[cfg(unix)]
+            device: metadata.dev(),
+            #[cfg(unix)]
+            inode: metadata.ino(),
+            #[cfg(unix)]
+            changed_seconds: metadata.ctime(),
+            #[cfg(unix)]
+            changed_nanoseconds: metadata.ctime_nsec(),
+        })
+    }
+}
+
+impl SdfFileReader {
+    fn open(path: &Path) -> Result<Self, String> {
+        let file = File::open(path).map_err(|error| error.to_string())?;
+        let source_identity =
+            SdfSourceIdentity::from_metadata(&file.metadata().map_err(|error| error.to_string())?)?;
+        let source = Self {
+            reader: BufReader::new(file),
+            source_path: path.to_path_buf(),
+            source_identity,
+            byte_offset: 0,
+            skip_line_feed_after_carriage_return: false,
+        };
+        source.verify_unchanged()?;
+        Ok(source)
+    }
+
+    fn verify_unchanged(&self) -> Result<(), String> {
+        let current = std::fs::metadata(&self.source_path)
+            .map_err(|error| format!("SDF source changed while indexing: {error}"))
+            .and_then(|metadata| SdfSourceIdentity::from_metadata(&metadata))?;
+        if current != self.source_identity {
+            return Err("SDF source changed while indexing".to_string());
+        }
+        Ok(())
+    }
+
+    fn read_line(
+        &mut self,
+        buffer: &mut Vec<u8>,
+        cancel_token: Option<&AtomicBool>,
+    ) -> Result<Option<String>, String> {
+        buffer.clear();
+        ensure_sdf_indexing_active(cancel_token)?;
+        if self.skip_line_feed_after_carriage_return {
+            let has_line_feed = self
+                .reader
+                .fill_buf()
+                .map_err(|error| error.to_string())?
+                .first()
+                == Some(&b'\n');
+            if has_line_feed {
+                self.reader.consume(1);
+                self.byte_offset += 1;
+            }
+            self.skip_line_feed_after_carriage_return = false;
+        }
+
+        loop {
+            ensure_sdf_indexing_active(cancel_token)?;
+            let (available_len, delimiter) = {
+                let available = self.reader.fill_buf().map_err(|error| error.to_string())?;
+                if available.is_empty() {
+                    return Ok(
+                        (!buffer.is_empty()).then(|| String::from_utf8_lossy(buffer).into_owned())
+                    );
+                }
+                (
+                    available.len(),
+                    available
+                        .iter()
+                        .position(|byte| matches!(byte, b'\n' | b'\r')),
+                )
+            };
+            let Some(delimiter) = delimiter else {
+                let available = self.reader.fill_buf().map_err(|error| error.to_string())?;
+                append_checked_sdf_line_bytes(buffer, available)?;
+                self.reader.consume(available_len);
+                self.byte_offset += available_len as u64;
+                continue;
+            };
+
+            let (delimiter_byte, has_following_line_feed) = {
+                let available = self.reader.fill_buf().map_err(|error| error.to_string())?;
+                (
+                    available[delimiter],
+                    available.get(delimiter + 1) == Some(&b'\n'),
+                )
+            };
+            let available = self.reader.fill_buf().map_err(|error| error.to_string())?;
+            append_checked_sdf_line_bytes(buffer, &available[..delimiter])?;
+            let bytes_consumed =
+                delimiter + 1 + usize::from(delimiter_byte == b'\r' && has_following_line_feed);
+            self.reader.consume(bytes_consumed);
+            self.byte_offset += bytes_consumed as u64;
+            self.skip_line_feed_after_carriage_return =
+                delimiter_byte == b'\r' && !has_following_line_feed;
+            return Ok(Some(String::from_utf8_lossy(buffer).into_owned()));
+        }
+    }
+}
+
+fn ensure_sdf_indexing_active(cancel_token: Option<&AtomicBool>) -> Result<(), String> {
+    if cancel_token.is_some_and(|token| token.load(Ordering::Relaxed)) {
+        return Err(SDF_INDEXING_CANCELLED.to_string());
+    }
+    Ok(())
+}
+
+fn append_checked_sdf_line_bytes(buffer: &mut Vec<u8>, bytes: &[u8]) -> Result<(), String> {
+    if buffer.len().saturating_add(bytes.len()) > MAX_STREAMED_SDF_LINE_BYTES {
+        return Err(format!(
+            "SDF line exceeds the {} byte indexing limit",
+            MAX_STREAMED_SDF_LINE_BYTES
+        ));
+    }
+    buffer.extend_from_slice(bytes);
+    Ok(())
 }
 
 // Where the next batch resumes. Callers only ever hand it back to the parser
@@ -438,6 +648,7 @@ pub(crate) fn build_grid_store_with_options(
     let database_path = runtime_dir.join("collection.sqlite");
     let connection = open_grid_database(&database_path)?;
     initialize_schema(&connection)?;
+    install_fts_triggers(&connection)?;
     let cancel_token = Arc::new(AtomicBool::new(false));
     let first_batch = parse_grid_batch_with_options(
         extension,
@@ -472,12 +683,94 @@ pub(crate) fn build_grid_store_with_options(
         None
     } else {
         Some(spawn_grid_ingest_worker(
-            database_path.clone(),
+            connection,
             extension.to_string(),
             text,
             first_batch.next_cursor,
             first_batch.next_index,
             options.smiles_column.clone(),
+            cancel_token.clone(),
+        ))
+    };
+    Ok(Some(GridStoreHandle {
+        database_path,
+        cancel_token,
+        ingest_worker,
+        summary: GridCollectionSummary {
+            format,
+            records_total: records_indexed,
+            records_indexed,
+            index_ready: first_batch.complete,
+        },
+    }))
+}
+
+/// Builds an SDF grid directly from its source file. The initial page and the
+/// background ingest worker share one buffered reader, so opening a large SDF
+/// never requires an `fs::read` or a full decoded source string.
+pub(crate) fn build_grid_store_from_file_with_options(
+    runtime_dir: &Path,
+    extension: &str,
+    source_path: &Path,
+    options: &GridParseOptions,
+) -> Result<Option<GridStoreHandle>, String> {
+    if !matches!(extension, "sdf" | "sd") {
+        return Err(format!(
+            "file-backed grid indexing is only supported for SDF sources, not {extension}"
+        ));
+    }
+    let Some(format) = grid_format(extension) else {
+        return Ok(None);
+    };
+    let database_path = runtime_dir.join("collection.sqlite");
+    let connection = open_grid_database(&database_path)?;
+    initialize_schema(&connection)?;
+    prepare_deferred_fts_index(&connection)?;
+    let cancel_token = Arc::new(AtomicBool::new(false));
+    let mut source = SdfFileReader::open(source_path)?;
+    let first_batch = parse_sdf_file_batch(&mut source, 0, GRID_INITIAL_ROWS, None)?;
+    source.verify_unchanged()?;
+    if first_batch.records.is_empty() && first_batch.complete {
+        let _ = std::fs::remove_file(&database_path);
+        return Ok(None);
+    }
+    insert_records(&connection, &first_batch.records)?;
+    // A short source can finish in the initial batch, so it has no background
+    // worker to perform the normal post-write identity check. Do not publish a
+    // ready index if the source changed while SQLite was storing that batch.
+    source.verify_unchanged()?;
+    let records_indexed = first_batch.next_index;
+    update_index_state_with_byte_progress(
+        &connection,
+        records_indexed,
+        first_batch.complete.then_some(records_indexed),
+        false,
+        None,
+        Some(source.byte_offset),
+        Some(source.source_identity.len),
+    )?;
+    if first_batch.complete && !options.include_single_sdf && records_indexed <= 1 {
+        let _ = std::fs::remove_file(&database_path);
+        return Ok(None);
+    }
+    let ingest_worker = if first_batch.complete {
+        rebuild_deferred_fts_index(&connection)?;
+        grid_identity::finalize_source_revision(&connection)?;
+        update_index_state_with_byte_progress(
+            &connection,
+            records_indexed,
+            Some(records_indexed),
+            true,
+            None,
+            Some(source.byte_offset),
+            Some(source.source_identity.len),
+        )?;
+        None
+    } else {
+        Some(spawn_sdf_file_ingest_worker(
+            connection,
+            source,
+            first_batch.next_index,
             cancel_token.clone(),
         ))
     };
@@ -503,6 +796,11 @@ fn append_grid_text(
     let connection = open_grid_database(database_path)?;
     initialize_schema(&connection)?;
     let index_state = read_index_state(&connection)?;
+    if let Some(error) = &index_state.error {
+        return Err(format!(
+            "Cannot append records because grid indexing failed: {error}"
+        ));
+    }
     if !index_state.index_ready {
         return Err("Cannot append records while grid indexing is still in progress".to_string());
     }
@@ -661,6 +959,9 @@ fn fetch_predicate_page(
         records_indexed: index_state.records_indexed,
         records_total_hint: index_state.records_total,
         index_ready: index_state.index_ready,
+        index_error: index_state.error,
+        bytes_indexed: index_state.bytes_indexed,
+        bytes_total: index_state.bytes_total,
         descriptor_ids: descriptor_ids_in_connection(connection)?,
         analysis_columns,
     })
@@ -969,7 +1270,9 @@ fn descriptor_ids_in_connection(connection: &Connection) -> Result<Vec<String>, 
 fn read_index_state(connection: &Connection) -> Result<GridIndexState, String> {
     connection
         .query_row(
-            "select records_indexed, records_total, index_ready from grid_index_state where id = 1",
+            "select records_indexed, records_total, index_ready, error,
+                    source_bytes_indexed, source_bytes_total
+             from grid_index_state where id = 1",
             [],
             |row| {
                 let total: Option<i64> = row.get(1)?;
@@ -977,6 +1280,13 @@ fn read_index_state(connection: &Connection) -> Result<GridIndexState, String> {
                     records_indexed: row.get::<_, i64>(0)? as usize,
                     records_total: total.map(|value| value as usize),
                     index_ready: row.get::<_, i64>(2)? != 0,
+                    error: row.get(3)?,
+                    bytes_indexed: row
+                        .get::<_, Option<i64>>(4)?
+                        .and_then(|value| u64::try_from(value).ok()),
+                    bytes_total: row
+                        .get::<_, Option<i64>>(5)?
+                        .and_then(|value| u64::try_from(value).ok()),
                 })
             },
         )
@@ -990,28 +1300,59 @@ fn update_index_state(
     index_ready: bool,
     error: Option<&str>,
 ) -> Result<(), String> {
+    update_index_state_with_byte_progress(
+        connection,
+        records_indexed,
+        records_total,
+        index_ready,
+        error,
+        None,
+        None,
+    )
+}
+
+fn update_index_state_with_byte_progress(
+    connection: &Connection,
+    records_indexed: usize,
+    records_total: Option<usize>,
+    index_ready: bool,
+    error: Option<&str>,
+    bytes_indexed: Option<u64>,
+    bytes_total: Option<u64>,
+) -> Result<(), String> {
     connection
         .execute(
-            "insert into grid_index_state (id, records_indexed, records_total, index_ready, error)
-             values (1, ?1, ?2, ?3, ?4)
+            "insert into grid_index_state (
+               id, records_indexed, records_total, index_ready, error,
+               source_bytes_indexed, source_bytes_total
+             )
+             values (1, ?1, ?2, ?3, ?4, ?5, ?6)
              on conflict(id) do update set
                records_indexed = excluded.records_indexed,
                records_total = excluded.records_total,
                index_ready = excluded.index_ready,
-               error = excluded.error",
+               error = excluded.error,
+               source_bytes_indexed = excluded.source_bytes_indexed,
+               source_bytes_total = excluded.source_bytes_total",
             params![
                 records_indexed as i64,
                 records_total.map(|value| value as i64),
                 if index_ready { 1 } else { 0 },
                 error,
+                bytes_indexed.map(u64_to_sql_i64),
+                bytes_total.map(u64_to_sql_i64),
             ],
         )
         .map(|_| ())
         .map_err(|err| err.to_string())
 }
 
+fn u64_to_sql_i64(value: u64) -> i64 {
+    i64::try_from(value).unwrap_or(i64::MAX)
+}
+
 fn spawn_grid_ingest_worker(
-    database_path: PathBuf,
+    connection: Connection,
     extension: String,
     text: String,
     mut next_cursor: GridCursor,
@@ -1020,9 +1361,6 @@ fn spawn_grid_ingest_worker(
     cancel_token: Arc<AtomicBool>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
-        let Ok(connection) = open_grid_database(&database_path) else {
-            return;
-        };
         let options = GridParseOptions {
             smiles_column,
             ..GridParseOptions::default()
@@ -1041,7 +1379,7 @@ fn spawn_grid_ingest_worker(
             ) {
                 Ok(batch) => batch,
                 Err(error) => {
-                    let _ = update_index_state(&connection, next_index, None, true, Some(&error));
+                    record_grid_ingest_failure(&connection, next_index, &error);
                     return;
                 }
             };
@@ -1050,14 +1388,26 @@ fn spawn_grid_ingest_worker(
                 next_index = batch.next_index;
                 continue;
             }
-            if insert_records(&connection, &batch.records).is_err() {
+            if let Err(error) = insert_records(&connection, &batch.records) {
+                record_grid_ingest_failure(
+                    &connection,
+                    next_index,
+                    &format!("Failed to store indexed records: {error}"),
+                );
                 return;
             }
             next_cursor = batch.next_cursor;
             next_index = batch.next_index;
             let records_total = batch.complete.then_some(next_index);
-            if batch.complete && grid_identity::finalize_source_revision(&connection).is_err() {
-                return;
+            if batch.complete {
+                if let Err(error) = grid_identity::finalize_source_revision(&connection) {
+                    record_grid_ingest_failure(
+                        &connection,
+                        next_index,
+                        &format!("Failed to finalize the collection index: {error}"),
+                    );
+                    return;
+                }
             }
             let _ =
                 update_index_state(&connection, next_index, records_total, batch.complete, None);
@@ -1066,6 +1416,123 @@ fn spawn_grid_ingest_worker(
             }
         }
     })
+}
+
+fn spawn_sdf_file_ingest_worker(
+    connection: Connection,
+    mut source: SdfFileReader,
+    mut next_index: usize,
+    cancel_token: Arc<AtomicBool>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || loop {
+        if cancel_token.load(Ordering::Relaxed) {
+            return;
+        }
+        if let Err(error) = source.verify_unchanged() {
+            record_sdf_ingest_failure(&connection, next_index, &source, &error);
+            return;
+        }
+        let batch = match parse_sdf_file_batch(
+            &mut source,
+            next_index,
+            GRID_INGEST_BATCH_ROWS,
+            Some(cancel_token.as_ref()),
+        ) {
+            Ok(batch) => batch,
+            Err(error) => {
+                if error != SDF_INDEXING_CANCELLED {
+                    record_sdf_ingest_failure(&connection, next_index, &source, &error);
+                }
+                return;
+            }
+        };
+        if let Err(error) = source.verify_unchanged() {
+            record_sdf_ingest_failure(&connection, next_index, &source, &error);
+            return;
+        }
+        if let Err(error) =
+            insert_records_cancellable(&connection, &batch.records, Some(cancel_token.as_ref()))
+        {
+            if error == SDF_INDEXING_CANCELLED {
+                return;
+            }
+            record_sdf_ingest_failure(
+                &connection,
+                next_index,
+                &source,
+                &format!("Failed to store indexed records: {error}"),
+            );
+            return;
+        }
+        next_index = batch.next_index;
+        let records_total = batch.complete.then_some(next_index);
+        if batch.complete {
+            if let Err(error) = source.verify_unchanged() {
+                record_sdf_ingest_failure(&connection, next_index, &source, &error);
+                return;
+            }
+            let _ = update_index_state_with_byte_progress(
+                &connection,
+                next_index,
+                records_total,
+                false,
+                None,
+                Some(source.byte_offset),
+                Some(source.source_identity.len),
+            );
+            if let Err(error) = rebuild_deferred_fts_index(&connection) {
+                record_sdf_ingest_failure(
+                    &connection,
+                    next_index,
+                    &source,
+                    &format!("Failed to build the collection search index: {error}"),
+                );
+                return;
+            }
+            if let Err(error) = grid_identity::finalize_source_revision(&connection) {
+                record_sdf_ingest_failure(
+                    &connection,
+                    next_index,
+                    &source,
+                    &format!("Failed to finalize the collection index: {error}"),
+                );
+                return;
+            }
+        }
+        let _ = update_index_state_with_byte_progress(
+            &connection,
+            next_index,
+            records_total,
+            batch.complete,
+            None,
+            Some(source.byte_offset),
+            Some(source.source_identity.len),
+        );
+        if batch.complete {
+            return;
+        }
+    })
+}
+
+fn record_grid_ingest_failure(connection: &Connection, records_indexed: usize, error: &str) {
+    let _ = update_index_state(connection, records_indexed, None, true, Some(error));
+}
+
+fn record_sdf_ingest_failure(
+    connection: &Connection,
+    records_indexed: usize,
+    source: &SdfFileReader,
+    error: &str,
+) {
+    let _ = update_index_state_with_byte_progress(
+        connection,
+        records_indexed,
+        None,
+        true,
+        Some(error),
+        Some(source.byte_offset),
+        Some(source.source_identity.len),
+    );
 }
 
 fn initialize_schema(connection: &Connection) -> Result<(), String> {
@@ -1084,7 +1551,9 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                  molecule_content_sha256 text not null,
                  props_json text not null,
                  props_text text not null,
-                 search_text text not null
+                 search_text text not null,
+                 source_byte_start integer,
+                 source_byte_end integer
              );
              create index if not exists molecules_name on molecules(name collate nocase);
              create index if not exists molecules_smiles on molecules(smiles collate nocase);
@@ -1093,7 +1562,9 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                  records_indexed integer not null default 0,
                  records_total integer,
                  index_ready integer not null default 0,
-                 error text
+                 error text,
+                 source_bytes_indexed integer,
+                 source_bytes_total integer
              );
              create table if not exists descriptor_values (
                  molecule_id integer not null references molecules(id) on delete cascade,
@@ -1111,15 +1582,56 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
              insert or ignore into grid_index_state (id, records_indexed, index_ready) values (1, 0, 0);",
         )
         .map_err(|err| err.to_string())?;
-    let _ = connection.execute_batch(
-        "create virtual table if not exists molecules_fts using fts5(
+    ensure_optional_grid_column(connection, "molecules", "source_byte_start", "integer")?;
+    ensure_optional_grid_column(connection, "molecules", "source_byte_end", "integer")?;
+    ensure_optional_grid_column(
+        connection,
+        "grid_index_state",
+        "source_bytes_indexed",
+        "integer",
+    )?;
+    ensure_optional_grid_column(
+        connection,
+        "grid_index_state",
+        "source_bytes_total",
+        "integer",
+    )?;
+    let _ = initialize_fts_table(connection);
+    let index_ready = connection
+        .query_row(
+            "select index_ready from grid_index_state where id = 1",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .unwrap_or(false);
+    if index_ready {
+        let _ = install_fts_triggers(connection);
+    }
+    grid_identity::initialize(connection)?;
+    grid_analysis::initialize(connection)
+}
+
+fn initialize_fts_table(connection: &Connection) -> Result<(), String> {
+    connection
+        .execute_batch(
+            "create virtual table if not exists molecules_fts using fts5(
              name,
              smiles,
              props_text,
              content='molecules',
              content_rowid='id'
-         );
-         create trigger if not exists molecules_ai after insert on molecules begin
+         );",
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn install_fts_triggers(connection: &Connection) -> Result<(), String> {
+    if !fts_table_exists(connection)? {
+        return Ok(());
+    }
+    connection
+        .execute_batch(
+            "create trigger if not exists molecules_ai after insert on molecules begin
              insert into molecules_fts(rowid, name, smiles, props_text)
              values (new.id, new.name, coalesce(new.smiles, ''), new.props_text);
          end;
@@ -1133,9 +1645,90 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
              insert into molecules_fts(rowid, name, smiles, props_text)
              values (new.id, new.name, coalesce(new.smiles, ''), new.props_text);
          end;",
-    );
-    grid_identity::initialize(connection)?;
-    grid_analysis::initialize(connection)
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn prepare_deferred_fts_index(connection: &Connection) -> Result<(), String> {
+    if !fts_table_exists(connection)? {
+        return Ok(());
+    }
+    connection
+        .execute_batch(
+            "drop trigger if exists molecules_ai;
+             drop trigger if exists molecules_ad;
+             drop trigger if exists molecules_au;
+             pragma wal_autocheckpoint = 16384;",
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn rebuild_deferred_fts_index(connection: &Connection) -> Result<(), String> {
+    if !fts_table_exists(connection)? {
+        return Ok(());
+    }
+    ensure_deferred_fts_triggers_absent(connection)?;
+    connection
+        .execute_batch("insert into molecules_fts(molecules_fts) values('rebuild');")
+        .map_err(|error| error.to_string())?;
+    install_fts_triggers(connection)?;
+    connection
+        .execute_batch("pragma wal_autocheckpoint = 1000;")
+        .map_err(|error| error.to_string())
+}
+
+fn fts_table_exists(connection: &Connection) -> Result<bool, String> {
+    connection
+        .query_row(
+            "select exists(
+                 select 1 from sqlite_master
+                 where type = 'table' and name = 'molecules_fts'
+             )",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn ensure_deferred_fts_triggers_absent(connection: &Connection) -> Result<(), String> {
+    let trigger_count = connection
+        .query_row(
+            "select count(*) from sqlite_master
+             where type = 'trigger'
+               and name in ('molecules_ai', 'molecules_ad', 'molecules_au')",
+            [],
+            |row| row.get::<_, usize>(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if trigger_count == 0 {
+        Ok(())
+    } else {
+        Err("FTS triggers were restored before deferred indexing completed".to_string())
+    }
+}
+
+fn ensure_optional_grid_column(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> Result<(), String> {
+    let mut statement = connection
+        .prepare(&format!("pragma table_info({table})"))
+        .map_err(|error| error.to_string())?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    if columns.iter().any(|existing| existing == column) {
+        return Ok(());
+    }
+    connection
+        .execute_batch(&format!(
+            "alter table {table} add column {column} {definition};"
+        ))
+        .map_err(|error| error.to_string())
 }
 
 pub(crate) fn descriptor_source_row_count(database_path: &Path) -> Result<usize, String> {
@@ -1399,6 +1992,8 @@ fn finish_sdf_record(lines: &[String], has_content: bool, index: usize) -> Optio
         idcode: None,
         idcoordinates: None,
         props,
+        source_byte_start: None,
+        source_byte_end: None,
     })
 }
 
@@ -1604,6 +2199,8 @@ fn parse_datawarrior_batch(
                 idcode: is_idcode.then(|| clipped(value, 4096)),
                 idcoordinates: coordinates,
                 props,
+                source_byte_start: None,
+                source_byte_end: None,
             });
             emitted_in_row += 1;
         }
@@ -1771,6 +2368,8 @@ fn parse_smiles_batch(
             idcode: None,
             idcoordinates: None,
             props: BTreeMap::new(),
+            source_byte_start: None,
+            source_byte_end: None,
         });
         next_index += 1;
         if records.len() >= max_records {
@@ -1881,6 +2480,90 @@ fn parse_sdf_batch(
         next_index,
         complete,
     }
+}
+
+fn parse_sdf_file_batch(
+    source: &mut SdfFileReader,
+    start_index: usize,
+    max_records: usize,
+    cancel_token: Option<&AtomicBool>,
+) -> Result<ParsedGridBatch, String> {
+    let mut records = Vec::new();
+    let mut current = Vec::new();
+    let mut current_has_content = false;
+    let batch_start_offset = source.byte_offset;
+    let mut current_record_start = source.byte_offset;
+    let mut current_record_bytes = 0usize;
+    let mut next_index = start_index;
+    let mut line_buffer = Vec::new();
+    loop {
+        ensure_sdf_indexing_active(cancel_token)?;
+        let line_start_offset = source.byte_offset;
+        let Some(line) = source.read_line(&mut line_buffer, cancel_token)? else {
+            break;
+        };
+        let line_bytes = source
+            .byte_offset
+            .saturating_sub(line_start_offset)
+            .min(usize::MAX as u64) as usize;
+        current_record_bytes = current_record_bytes.saturating_add(line_bytes);
+        if current_record_bytes > MAX_STREAMED_SDF_RECORD_BYTES {
+            return Err(format!(
+                "SDF record exceeds the {} byte indexing limit at byte {}",
+                MAX_STREAMED_SDF_RECORD_BYTES, current_record_start
+            ));
+        }
+        if line.trim() == "$$$$" {
+            if let Some(mut record) = finish_sdf_record(&current, current_has_content, next_index) {
+                record.source_byte_start = Some(current_record_start);
+                record.source_byte_end = Some(source.byte_offset);
+                records.push(record);
+                next_index += 1;
+            }
+            current.clear();
+            current_has_content = false;
+            current_record_bytes = 0;
+            current_record_start = source.byte_offset;
+            let batch_bytes = source
+                .byte_offset
+                .saturating_sub(batch_start_offset)
+                .min(usize::MAX as u64) as usize;
+            let batch_budget_reached = batch_bytes
+                >= MAX_STREAMED_SDF_BATCH_BYTES.saturating_sub(MAX_STREAMED_SDF_RECORD_BYTES);
+            if records.len() >= max_records || batch_budget_reached {
+                return Ok(ParsedGridBatch {
+                    records,
+                    next_cursor: GridCursor {
+                        offset: source.byte_offset.min(usize::MAX as u64) as usize,
+                        ..GridCursor::default()
+                    },
+                    next_index,
+                    complete: false,
+                });
+            }
+        } else {
+            if !line.trim().is_empty() {
+                current_has_content = true;
+            }
+            current.push(line);
+        }
+    }
+    ensure_sdf_indexing_active(cancel_token)?;
+    if let Some(mut record) = finish_sdf_record(&current, current_has_content, next_index) {
+        record.source_byte_start = Some(current_record_start);
+        record.source_byte_end = Some(source.byte_offset);
+        records.push(record);
+        next_index += 1;
+    }
+    Ok(ParsedGridBatch {
+        records,
+        next_cursor: GridCursor {
+            offset: source.byte_offset.min(usize::MAX as u64) as usize,
+            ..GridCursor::default()
+        },
+        next_index,
+        complete: true,
+    })
 }
 
 fn parse_delimited_batch(
@@ -2084,6 +2767,8 @@ fn parse_delimited_table_batch(
                 idcode: None,
                 idcoordinates: None,
                 props,
+                source_byte_start: None,
+                source_byte_end: None,
             });
             next_index += 1;
             if records.len() >= max_records {
@@ -2161,6 +2846,8 @@ fn parse_delimited_rows_as_smiles_batch(
             idcode: None,
             idcoordinates: None,
             props,
+            source_byte_start: None,
+            source_byte_end: None,
         });
         next_index += 1;
         if records.len() >= max_records {
@@ -2186,19 +2873,37 @@ fn parse_delimited_rows_as_smiles_batch(
 }
 
 fn insert_records(connection: &Connection, records: &[GridInputRecord]) -> Result<(), String> {
+    insert_records_cancellable(connection, records, None)
+}
+
+fn insert_records_cancellable(
+    connection: &Connection,
+    records: &[GridInputRecord],
+    cancel_token: Option<&AtomicBool>,
+) -> Result<(), String> {
     if records.is_empty() {
         return Ok(());
     }
+    ensure_sdf_indexing_active(cancel_token)?;
     let tx = connection
         .unchecked_transaction()
         .map_err(|err| err.to_string())?;
-    insert_records_in_connection(&tx, records)?;
+    insert_records_in_connection_cancellable(&tx, records, cancel_token)?;
+    ensure_sdf_indexing_active(cancel_token)?;
     tx.commit().map_err(|err| err.to_string())
 }
 
 fn insert_records_in_connection(
     connection: &Connection,
     records: &[GridInputRecord],
+) -> Result<(), String> {
+    insert_records_in_connection_cancellable(connection, records, None)
+}
+
+fn insert_records_in_connection_cancellable(
+    connection: &Connection,
+    records: &[GridInputRecord],
+    cancel_token: Option<&AtomicBool>,
 ) -> Result<(), String> {
     if records.is_empty() {
         return Ok(());
@@ -2207,11 +2912,13 @@ fn insert_records_in_connection(
         .prepare(
             "insert into molecules (
                source_index, name, smiles, molblock, idcode, idcoordinates,
-               molecule_content_sha256, props_json, props_text, search_text
-             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+               molecule_content_sha256, props_json, props_text, search_text,
+               source_byte_start, source_byte_end
+             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         )
         .map_err(|err| err.to_string())?;
     for record in records {
+        ensure_sdf_indexing_active(cancel_token)?;
         insert_record(&mut insert, record)?;
     }
     Ok(())
@@ -2242,6 +2949,8 @@ fn insert_record(
             props_json,
             props_text,
             search_text,
+            record.source_byte_start.map(u64_to_sql_i64),
+            record.source_byte_end.map(u64_to_sql_i64),
         ])
         .map(|_| ())
         .map_err(|err| err.to_string())
@@ -2689,6 +3398,18 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         panic!("grid index did not become ready");
+    }
+
+    fn wait_for_path_removed(path: &Path) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while path.exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{} was not removed by the Grid cleanup worker",
+                path.display()
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
     }
 
     #[test]
@@ -4003,6 +4724,371 @@ mod tests {
     }
 
     #[test]
+    fn fetch_page_exposes_terminal_indexing_error() {
+        let runtime_dir = temp_runtime_dir();
+        let (database_path, _) = build_store(&runtime_dir, "smi", b"CCO Ethanol\nCCN Ethylamine\n");
+        let connection = Connection::open(&database_path).expect("open database");
+        record_grid_ingest_failure(&connection, 2, "source changed while indexing");
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 1,
+            },
+        )
+        .expect("fetch page");
+        assert!(page.index_ready);
+        assert_eq!(
+            page.index_error.as_deref(),
+            Some("source changed while indexing")
+        );
+        let append_error = append_grid_text(
+            &database_path,
+            "smiles",
+            "CCC Propane\n",
+            &GridParseOptions::default(),
+        )
+        .expect_err("a failed index must not accept appended records");
+        assert!(append_error.contains("source changed while indexing"));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn streams_large_sdf_from_file_without_loading_the_collection() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("large.sdf");
+        let mut sdf = String::new();
+        for index in 0..10_000 {
+            sdf.push_str(&format!(
+                "Molecule {index:05}\n  Burette\n\nM  END\n>  <SMILES>\nCC{index}\n\n$$$$\n"
+            ));
+        }
+        std::fs::write(&source_path, sdf).expect("write source SDF");
+
+        let handle = build_grid_store_from_file_with_options(
+            &runtime_dir,
+            "sdf",
+            &source_path,
+            &GridParseOptions::default(),
+        )
+        .expect("build grid store")
+        .expect("collection");
+        assert_eq!(handle.summary.records_indexed, GRID_INITIAL_ROWS);
+        assert!(!handle.summary.index_ready);
+
+        wait_for_index_ready(&handle.database_path);
+        let connection = Connection::open(&handle.database_path).expect("open completed database");
+        let fts_matches = connection
+            .query_row(
+                "select count(*) from molecules_fts
+                 where molecules_fts match '09999'",
+                [],
+                |row| row.get::<_, usize>(0),
+            )
+            .expect("query rebuilt FTS index");
+        let fts_trigger_count = connection
+            .query_row(
+                "select count(*) from sqlite_master
+                 where type = 'trigger'
+                   and name in ('molecules_ai', 'molecules_ad', 'molecules_au')",
+                [],
+                |row| row.get::<_, usize>(0),
+            )
+            .expect("query restored FTS triggers");
+        assert_eq!(fts_matches, 1);
+        assert_eq!(fts_trigger_count, 3);
+        drop(connection);
+        let page = fetch_page(
+            &handle.database_path,
+            &GridQuery {
+                query: "Molecule 09999".to_string(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 1,
+            },
+        )
+        .expect("fetch completed page");
+        assert!(page.index_ready);
+        assert_eq!(page.records_total_hint, Some(10_000));
+        assert_eq!(page.rows[0].name, "Molecule 09999");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn schema_refresh_does_not_restore_fts_triggers_during_deferred_indexing() {
+        let runtime_dir = temp_runtime_dir();
+        let database_path = runtime_dir.join("collection.sqlite");
+        let connection = open_grid_database(&database_path).expect("open grid database");
+        initialize_schema(&connection).expect("initialize schema");
+        prepare_deferred_fts_index(&connection).expect("prepare deferred FTS");
+
+        initialize_schema(&connection).expect("refresh schema while indexing");
+        let trigger_count = || {
+            connection
+                .query_row(
+                    "select count(*) from sqlite_master
+                     where type = 'trigger'
+                       and name in ('molecules_ai', 'molecules_ad', 'molecules_au')",
+                    [],
+                    |row| row.get::<_, usize>(0),
+                )
+                .expect("query FTS triggers")
+        };
+        assert_eq!(trigger_count(), 0);
+
+        update_index_state(&connection, 0, Some(0), true, None).expect("mark indexing ready");
+        initialize_schema(&connection).expect("refresh completed schema");
+        assert_eq!(trigger_count(), 3);
+
+        drop(connection);
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_parser_preserves_crlf_and_carriage_return_record_boundaries() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("mixed-lines.sdf");
+        std::fs::write(
+            &source_path,
+            "Mol A\n  Burette\n\nM  END\n$$$$\nMol B\r\n  Burette\r\n\r\nM  END\r\n$$$$\r\nMol C\r  Burette\r\rM  END\r$$$$\n",
+        )
+        .expect("write source SDF");
+
+        let handle = build_grid_store_from_file_with_options(
+            &runtime_dir,
+            "sdf",
+            &source_path,
+            &GridParseOptions {
+                include_single_sdf: true,
+                ..GridParseOptions::default()
+            },
+        )
+        .expect("build grid store")
+        .expect("collection");
+        let page = fetch_page(
+            &handle.database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 3,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(
+            page.rows
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Mol A", "Mol B", "Mol C"]
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_rejects_oversized_line_without_scanning_the_tail() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("oversized-line.sdf");
+        let oversized = format!(
+            "{}\n{}\n",
+            "X".repeat(MAX_STREAMED_SDF_LINE_BYTES + 1),
+            "tail".repeat(1_000_000)
+        );
+        std::fs::write(&source_path, oversized).expect("write oversized SDF");
+
+        let mut source = SdfFileReader::open(&source_path).expect("open SDF reader");
+        let error = source
+            .read_line(&mut Vec::new(), None)
+            .expect_err("oversized line must fail instead of being silently clipped");
+
+        assert!(error.contains("line exceeds"));
+        assert!(
+            source.byte_offset <= MAX_STREAMED_SDF_LINE_BYTES as u64,
+            "the parser must stop as soon as the line limit is crossed"
+        );
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_rejects_oversized_record_instead_of_truncating_it() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("oversized-record.sdf");
+        let mut sdf = String::from("Oversized\n  Burette\n\nM  END\n");
+        while sdf.len() <= MAX_STREAMED_SDF_RECORD_BYTES + 16_384 {
+            sdf.push_str(&format!("{}\n", "P".repeat(8_192)));
+        }
+        sdf.push_str("$$$$\n");
+        std::fs::write(&source_path, sdf).expect("write oversized SDF record");
+
+        let mut source = SdfFileReader::open(&source_path).expect("open SDF reader");
+        let error = parse_sdf_file_batch(&mut source, 0, GRID_INITIAL_ROWS, None)
+            .expect_err("oversized record must fail instead of being silently clipped");
+
+        assert!(error.contains("record exceeds"));
+        assert!(
+            source.byte_offset
+                <= (MAX_STREAMED_SDF_RECORD_BYTES + MAX_STREAMED_SDF_LINE_BYTES) as u64
+        );
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_batch_is_bounded_by_aggregate_record_bytes() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("batch-budget.sdf");
+        let mut sdf = String::new();
+        for index in 0..48 {
+            sdf.push_str(&format!(
+                "Molecule {index}\n  Burette\n\nM  END\n{}\n{}\n$$$$\n",
+                "A".repeat(220_000),
+                "B".repeat(220_000)
+            ));
+        }
+        std::fs::write(&source_path, sdf).expect("write batch budget SDF");
+
+        let mut source = SdfFileReader::open(&source_path).expect("open SDF reader");
+        let batch = parse_sdf_file_batch(&mut source, 0, GRID_INGEST_BATCH_ROWS, None)
+            .expect("parse bounded SDF batch");
+
+        assert!(!batch.complete);
+        assert!(batch.records.len() < 48);
+        assert!(source.byte_offset <= MAX_STREAMED_SDF_BATCH_BYTES as u64);
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_parser_honors_cancellation_before_reading() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("cancelled.sdf");
+        std::fs::write(&source_path, "Mol\n  Burette\n\nM  END\n$$$$\n")
+            .expect("write cancellable SDF");
+        let mut source = SdfFileReader::open(&source_path).expect("open SDF reader");
+        let cancelled = AtomicBool::new(true);
+
+        let error = parse_sdf_file_batch(&mut source, 0, GRID_INGEST_BATCH_ROWS, Some(&cancelled))
+            .expect_err("cancelled parsing must stop");
+
+        assert_eq!(error, SDF_INDEXING_CANCELLED);
+        assert_eq!(source.byte_offset, 0);
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_detects_source_mutation_between_batches() {
+        use std::io::Write;
+
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("mutable.sdf");
+        std::fs::write(
+            &source_path,
+            "Mol A\n  Burette\n\nM  END\n$$$$\nMol B\n  Burette\n\nM  END\n$$$$\n",
+        )
+        .expect("write mutable SDF");
+        let mut source = SdfFileReader::open(&source_path).expect("open SDF reader");
+        let first = parse_sdf_file_batch(&mut source, 0, 1, None).expect("parse first batch");
+        assert!(!first.complete);
+
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&source_path)
+            .expect("open SDF for append");
+        file.write_all(b"Mol C\n  Burette\n\nM  END\n$$$$\n")
+            .expect("mutate SDF source");
+        file.sync_all().expect("sync mutated SDF");
+
+        let error = source
+            .verify_unchanged()
+            .expect_err("source identity must reject an appended file");
+        assert!(error.contains("changed while indexing"));
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_persists_record_offsets_and_byte_progress() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("offsets.sdf");
+        let first = "Mol A\n  Burette\n\nM  END\n$$$$\n";
+        let second = "Mol B\r\n  Burette\r\n\r\nM  END\r\n$$$$\r\n";
+        let sdf = format!("{first}{second}");
+        std::fs::write(&source_path, &sdf).expect("write offset SDF");
+
+        let handle = build_grid_store_from_file_with_options(
+            &runtime_dir,
+            "sdf",
+            &source_path,
+            &GridParseOptions {
+                include_single_sdf: true,
+                ..GridParseOptions::default()
+            },
+        )
+        .expect("build grid store")
+        .expect("collection");
+        let connection = Connection::open(&handle.database_path).expect("open grid database");
+        let offsets = connection
+            .prepare(
+                "select source_byte_start, source_byte_end
+                 from molecules order by source_index",
+            )
+            .expect("prepare offset query")
+            .query_map([], |row| Ok((row.get::<_, u64>(0)?, row.get::<_, u64>(1)?)))
+            .expect("query offsets")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect offsets");
+        assert_eq!(
+            offsets,
+            vec![
+                (0, first.len() as u64),
+                (first.len() as u64, sdf.len() as u64)
+            ]
+        );
+        let fts_matches = connection
+            .query_row(
+                "select count(*) from molecules_fts where molecules_fts match 'Mol'",
+                [],
+                |row| row.get::<_, usize>(0),
+            )
+            .expect("query rebuilt short-file FTS index");
+        assert_eq!(fts_matches, 2);
+        drop(connection);
+
+        let page = fetch_page(
+            &handle.database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 2,
+            },
+        )
+        .expect("fetch indexed page");
+        assert_eq!(page.bytes_indexed, Some(sdf.len() as u64));
+        assert_eq!(page.bytes_total, Some(sdf.len() as u64));
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
     fn unregister_cancels_and_removes_grid_runtime() {
         let runtime_dir = temp_runtime_dir();
         let mut smiles = String::new();
@@ -4026,7 +5112,7 @@ mod tests {
             .unregister("doc-grid")
             .expect("unregister grid runtime");
         assert!(handle.cancel_token.load(Ordering::Relaxed));
-        assert!(!runtime_dir.exists());
+        wait_for_path_removed(&runtime_dir);
         let missing = registry.fetch_page(
             "doc-grid",
             &GridQuery {
@@ -4041,6 +5127,39 @@ mod tests {
             },
         );
         assert!(missing.is_err());
+    }
+
+    #[test]
+    fn unregister_does_not_wait_for_a_slow_ingest_worker() {
+        let runtime_dir = temp_runtime_dir();
+        let database_path = runtime_dir.join("collection.sqlite");
+        std::fs::write(&database_path, b"pending").expect("write pending database");
+        let cancel_token = Arc::new(AtomicBool::new(false));
+        let slow_worker = thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(600));
+        });
+        let registry = GridRuntimeRegistry::default();
+        registry
+            .register(
+                "doc-slow-grid",
+                database_path,
+                "smi",
+                cancel_token.clone(),
+                Some(slow_worker),
+            )
+            .expect("register slow grid runtime");
+
+        let started = std::time::Instant::now();
+        registry
+            .unregister("doc-slow-grid")
+            .expect("unregister slow grid runtime");
+
+        assert!(cancel_token.load(Ordering::Relaxed));
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(200),
+            "closing a Grid tab waited for its background ingest worker"
+        );
+        wait_for_path_removed(&runtime_dir);
     }
 
     #[test]
@@ -4086,7 +5205,7 @@ mod tests {
         assert!(registry.acquire_snapshot_lease("main:doc-grid").is_err());
         rendezvous.wait();
         worker.join().expect("snapshot lease worker");
-        assert!(!runtime_dir.exists());
+        wait_for_path_removed(&runtime_dir);
     }
 
     #[test]
@@ -4142,7 +5261,7 @@ mod tests {
         );
 
         drop(old_lease);
-        assert!(!old_runtime_dir.exists());
+        wait_for_path_removed(&old_runtime_dir);
         assert!(new_runtime_dir.exists());
         registry
             .unregister("main:doc-grid")
@@ -4150,7 +5269,7 @@ mod tests {
         assert!(new_cancel_token.load(Ordering::Relaxed));
         assert!(new_runtime_dir.exists());
         drop(new_lease);
-        assert!(!new_runtime_dir.exists());
+        wait_for_path_removed(&new_runtime_dir);
     }
 
     #[test]
@@ -4183,7 +5302,7 @@ mod tests {
             .unregister("workspace-a:doc-grid")
             .expect("unregister namespaced grid runtime");
         drop(lease);
-        assert!(!runtime_dir.exists());
+        wait_for_path_removed(&runtime_dir);
     }
 
     #[test]
