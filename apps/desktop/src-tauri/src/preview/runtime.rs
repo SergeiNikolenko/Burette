@@ -585,13 +585,21 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         return Err(format!("{} is not a file", canonical.display()));
     }
     let extension = structure_path_extension(&canonical);
+    let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
+    let is_sdf = matches!(extension.as_str(), "sd" | "sdf");
+    let should_use_viewer_for_sdf = is_sdf
+        && reload_options.is_some()
+        && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external");
     let desktop_limit = preferences.desktop_preview_limit_bytes();
-    if metadata.len() > desktop_limit {
+    if metadata.len() > desktop_limit && (!is_sdf || should_use_viewer_for_sdf) {
         return Err(format!(
             "{} is larger than the {} MiB desktop preview limit",
             canonical.display(),
             preferences.desktop_preview_limit_mib()
         ));
+    }
+    if metadata.len() == 0 {
+        return Err(format!("{} is empty", canonical.display()));
     }
     let desmond_preview_error = match create_desmond_trajectory_preview(app, &canonical, &extension)
     {
@@ -628,17 +636,67 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     }
     let uses_bounded_maestro_preview =
         is_maestro_preview_extension(&extension) && metadata.len() > MAX_STRUCTURE_FILE_SIZE;
+    let document_id = stable_id(&canonical);
+    let title = file_title(&canonical);
+    let mut preloaded_sdf_data = None;
+    if matches!(extension.as_str(), "sd" | "sdf") && !should_use_viewer_for_sdf {
+        // Small SDFs still need the ordinary single-molecule fallback. Feeding
+        // them through the strict streaming collection parser first would make
+        // a valid molecule with a large property block fail the 512 KiB
+        // collection-record guard before we could discover that it is not a
+        // collection. Large sources and sources beyond the configured preview
+        // budget stay file-backed and are never read wholesale.
+        let grid_source =
+            if metadata.len() <= MAX_STRUCTURE_FILE_SIZE && metadata.len() <= desktop_limit {
+                preloaded_sdf_data = Some(fs::read(&canonical).map_err(|error| error.to_string())?);
+                preloaded_sdf_data.as_deref()
+            } else {
+                None
+            };
+        let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
+        if let Some(runtime_path) = create_grid_runtime_with_options(
+            app,
+            &document_id,
+            &runtime_document_id,
+            &canonical,
+            &extension,
+            grid_source,
+            metadata.len(),
+            preferences,
+            grid_options,
+        )? {
+            return Ok(ViewerDocument {
+                id: document_id.clone(),
+                path: canonical.to_string_lossy().to_string(),
+                title,
+                extension,
+                renderer: "grid2d".to_string(),
+                runtime_path: runtime_path.to_string_lossy().to_string(),
+                byte_count: metadata.len(),
+                is_virtual: false,
+                docking_request: None,
+                open_claim_id: None,
+            });
+        }
+        // A single SDF is intentionally a Mol* document unless Grid was
+        // requested explicitly. It is safe to fall back only while the source
+        // still fits the normal preview budget; a giant one-record SDF must not
+        // re-enter the full-file read path.
+        if metadata.len() > desktop_limit {
+            return Err(format!(
+                "{} is larger than the {} MiB desktop preview limit and does not contain a molecule collection",
+                canonical.display(),
+                preferences.desktop_preview_limit_mib()
+            ));
+        }
+    }
     let data = if uses_bounded_maestro_preview {
         read_file_prefix(&canonical, MAESTRO_PREVIEW_READ_LIMIT)?
+    } else if let Some(data) = preloaded_sdf_data {
+        data
     } else {
         fs::read(&canonical).map_err(|err| err.to_string())?
     };
-    if data.is_empty() {
-        return Err(format!("{} is empty", canonical.display()));
-    }
-
-    let document_id = stable_id(&canonical);
-    let title = file_title(&canonical);
     let standalone_lammps_preview_data = if is_lammps_data_extension(&extension) {
         converted_data_from_text(&data, &extension, &title)
     } else {
@@ -653,7 +711,6 @@ fn open_document_with_grid_options_inner<R: Runtime>(
             canonical.display()
         ));
     }
-    let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     let preview_plan = preview_plan_for_extension(&extension, requested_renderer).ok();
     let should_prepare_maestro_preview = is_maestro_preview_extension(&extension)
         && (uses_bounded_maestro_preview
@@ -676,9 +733,6 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         }
         return Err(message);
     }
-    let should_use_viewer_for_sdf = matches!(extension.as_str(), "sd" | "sdf")
-        && reload_options.is_some()
-        && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external");
     if !should_use_viewer_for_sdf {
         let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
         if let Some(runtime_path) = create_grid_runtime_with_options(
@@ -687,7 +741,8 @@ fn open_document_with_grid_options_inner<R: Runtime>(
             &runtime_document_id,
             &canonical,
             &extension,
-            &data,
+            Some(&data),
+            metadata.len(),
             preferences,
             grid_options,
         )? {
@@ -1629,6 +1684,51 @@ mod document_open_tests {
             .expect_err("desktop open should respect configured source limit");
 
         assert!(error.contains("1 MiB desktop preview limit"));
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn opens_sdf_grid_above_desktop_preview_limit_without_source_buffering() {
+        let app = mock_app_with_grid_registry();
+        let mut preferences = viewer_preferences();
+        preferences.desktop_preview_limit_mib = 1;
+        let mut sdf = Vec::new();
+        let mut index = 0usize;
+        while sdf.len() <= 1024 * 1024 {
+            sdf.extend_from_slice(
+                format!("Molecule {index}\n  Burette\n\nM  END\n>  <ID>\n{index}\n\n$$$$\n")
+                    .as_bytes(),
+            );
+            index += 1;
+        }
+        let path = create_temp_file("sdf", &sdf);
+
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
+            .expect("large SDF collection should use the streaming grid runtime");
+
+        assert_eq!(document.renderer, "grid2d");
+        remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn opens_single_sdf_larger_than_stream_record_limit_as_molecule() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let mut sdf = b"Large molecule\n  Burette\n\nM  END\n>  <ANNOTATION>\n".to_vec();
+        sdf.extend(std::iter::repeat_n(b'x', 600 * 1024));
+        sdf.extend_from_slice(b"\n\n$$$$\n");
+        let path = create_temp_file("sdf", &sdf);
+
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
+            .expect("a bounded single-record SDF must retain the molecule viewer fallback");
+
+        assert_ne!(document.renderer, "grid2d");
+        remove_runtime_artifacts(&document.runtime_path);
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
         }
