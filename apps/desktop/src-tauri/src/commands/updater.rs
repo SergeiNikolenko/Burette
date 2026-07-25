@@ -284,14 +284,17 @@ fn download_update(
     remove_path_if_exists(&temporary)?;
     remove_path_if_exists(&archive)?;
 
-    update_progress::show(
+    let title = download_title(&request.tag_name);
+    update_progress::show_with_detail(
         app,
-        format_download_message(0, request.size, 0.0),
+        title.clone(),
+        format_download_detail(0, request.size, 0.0),
         Some(DOWNLOAD_PROGRESS_START),
     );
     download_asset_with_progress(
         app,
         package_version,
+        &title,
         &request.browser_download_url,
         &temporary,
         request.size,
@@ -462,6 +465,7 @@ fn download_asset(package_version: &str, url: &str, target: &Path) -> Result<(),
 fn download_asset_with_progress(
     app: &tauri::AppHandle,
     package_version: &str,
+    title: &str,
     url: &str,
     target: &Path,
     total_size: u64,
@@ -477,7 +481,7 @@ fn download_asset_with_progress(
             .map_err(|err| format!("Could not check curl status: {err}"))?
         {
             Some(status) => {
-                show_download_progress(app, target, total_size, started_at);
+                show_download_progress(app, title, target, total_size, started_at);
                 if status.success() {
                     return Ok(());
                 }
@@ -485,7 +489,7 @@ fn download_asset_with_progress(
             }
             None => {
                 thread::sleep(DOWNLOAD_PROGRESS_POLL_INTERVAL);
-                show_download_progress(app, target, total_size, started_at);
+                show_download_progress(app, title, target, total_size, started_at);
             }
         }
     }
@@ -518,6 +522,7 @@ fn curl_download_command(package_version: &str, url: &str, target: &Path) -> Com
 
 fn show_download_progress(
     app: &tauri::AppHandle,
+    title: &str,
     target: &Path,
     total_size: u64,
     started_at: Instant,
@@ -533,9 +538,10 @@ fn show_download_progress(
         downloaded as f64 / elapsed.as_secs_f64().max(0.001)
     };
 
-    update_progress::show(
+    update_progress::show_with_detail(
         app,
-        format_download_message(downloaded, total_size, speed),
+        title,
+        format_download_detail(downloaded, total_size, speed),
         Some(download_progress_value(downloaded, total_size)),
     );
 }
@@ -549,19 +555,37 @@ fn download_progress_value(downloaded: u64, total_size: u64) -> f64 {
     DOWNLOAD_PROGRESS_START + (DOWNLOAD_PROGRESS_END - DOWNLOAD_PROGRESS_START) * fraction
 }
 
-fn format_download_message(downloaded: u64, total_size: u64, bytes_per_second: f64) -> String {
+fn download_title(tag_name: &str) -> String {
     format!(
-        "Downloading update... {}% at {}",
-        download_percent(downloaded, total_size),
+        "Downloading Burette {}",
+        tag_name.strip_prefix('v').unwrap_or(tag_name)
+    )
+}
+
+fn format_download_detail(downloaded: u64, total_size: u64, bytes_per_second: f64) -> String {
+    format!(
+        "{} of {} · {}",
+        format_download_size(downloaded.min(total_size)),
+        format_download_size(total_size),
         format_download_speed(bytes_per_second)
     )
 }
 
-fn download_percent(downloaded: u64, total_size: u64) -> u64 {
-    if total_size == 0 {
-        return 0;
+fn format_download_size(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+
+    let size = bytes as f64;
+    if size < KIB {
+        format!("{size:.0} B")
+    } else if size < MIB {
+        format_download_unit(size / KIB, "KiB")
+    } else if size < GIB {
+        format_download_unit(size / MIB, "MiB")
+    } else {
+        format_download_unit(size / GIB, "GiB")
     }
-    (((downloaded.min(total_size) as f64 / total_size as f64) * 100.0).floor() as u64).min(100)
 }
 
 fn format_download_speed(bytes_per_second: f64) -> String {
@@ -1702,11 +1726,9 @@ mod tests {
     }
 
     #[test]
-    fn download_percent_reports_floor_clamped_percentage() {
-        assert_eq!(download_percent(0, 203_428_538), 0);
-        assert_eq!(download_percent(16_855_040, 203_428_538), 8);
-        assert_eq!(download_percent(203_428_538, 203_428_538), 100);
-        assert_eq!(download_percent(250_000_000, 203_428_538), 100);
+    fn download_title_drops_the_tag_prefix() {
+        assert_eq!(download_title("v1.0.32"), "Downloading Burette 1.0.32");
+        assert_eq!(download_title("1.0.32"), "Downloading Burette 1.0.32");
     }
 
     #[test]
@@ -1720,14 +1742,18 @@ mod tests {
     }
 
     #[test]
-    fn format_download_message_includes_percent_and_speed() {
+    fn format_download_detail_includes_transferred_size_and_speed() {
         assert_eq!(
-            format_download_message(16_855_040, 203_428_538, 64_204.8),
-            "Downloading update... 8% at 63 KiB/s"
+            format_download_detail(16_855_040, 203_428_538, 64_204.8),
+            "16 MiB of 194 MiB · 63 KiB/s"
         );
         assert_eq!(
-            format_download_message(2_621_440, 203_428_538, 1_310_720.0),
-            "Downloading update... 1% at 1.2 MiB/s"
+            format_download_detail(2_621_440, 203_428_538, 1_310_720.0),
+            "2.5 MiB of 194 MiB · 1.2 MiB/s"
+        );
+        assert_eq!(
+            format_download_detail(250_000_000, 203_428_538, 0.0),
+            "194 MiB of 194 MiB · 0 B/s"
         );
     }
 
