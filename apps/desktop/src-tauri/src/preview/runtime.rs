@@ -639,7 +639,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     let document_id = stable_id(&canonical);
     let title = file_title(&canonical);
     let mut preloaded_sdf_data = None;
-    if matches!(extension.as_str(), "sd" | "sdf") && !should_use_viewer_for_sdf {
+    if is_sdf && !should_use_viewer_for_sdf {
         // Small SDFs still need the ordinary single-molecule fallback. Feeding
         // them through the strict streaming collection parser first would make
         // a valid molecule with a large property block fail the 512 KiB

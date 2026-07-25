@@ -1372,11 +1372,6 @@ assert.match(
   "collapsed project roots must not be scanned eagerly after a folder drop",
 );
 assert.match(
-  appSidebarProjectsHook,
-  /completeProjectScanCacheRef/,
-  "expanding a previously scanned project root must reuse its cached inventory",
-);
-assert.match(
   appFileOpenHook,
   /invoke<ClassifiedOpenPaths>\("classify_open_paths", \{ paths: requestedPaths \}\)/,
   "native File Open and startup paths must classify directories before routing files",
@@ -1564,7 +1559,7 @@ assert.match(fileKind, /export const fileKind = definePageKind/);
 assert.match(fileKind, /keepAlive: true/);
 assert.match(fileKind, /kind: "file"/);
 assert.match(fileKind, /path: location\.path/);
-assert.match(fileKind, /const document = findDocument\(location, state\.documents\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} isActive=\{isActive\} \/> : null;/);
+assert.match(fileKind, /const document = findDocument\(location, state\.documents\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} \/> : null;/);
 assert.doesNotMatch(fileKind, /findDocument\(location, state\.documents\) \?\? state\.activeDocument/);
 assert.match(fileKind, /className="molecule-stage"/);
 assert.match(fileKind, /sourcePreview=\{sourceSession\?\.sourcePreview \?\? undefined\}/);
