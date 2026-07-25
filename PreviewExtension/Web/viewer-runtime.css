@@ -1606,6 +1606,22 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   transform: translate(-50%, -4px) scale(0.98);
   transition-delay: 0s;
 }
+/* This control is pinned to the right edge with the viewport rail beside it, so
+   a tooltip centred on the button runs out under that rail. It hangs from the
+   button's right edge instead, the way the toolbar's tooltips already do. */
+.buret-generate-3d-control > .buret-tooltip {
+  right: 0;
+  left: auto;
+  transform: translateY(-4px) scale(0.98);
+  transform-origin: top right;
+}
+.buret-generate-3d-control:hover > .buret-tooltip,
+.buret-generate-3d-control:focus-visible > .buret-tooltip {
+  transform: translateY(0) scale(1);
+}
+.buret-generate-3d-control[aria-expanded="true"] > .buret-tooltip {
+  transform: translateY(-4px) scale(0.98);
+}
 #buret-toolbar .buret-button:hover > .buret-tooltip,
 #buret-toolbar .buret-button:focus-visible > .buret-tooltip,
 #buret-toolbar .buret-molstar-style-slot:hover > .buret-tooltip,
