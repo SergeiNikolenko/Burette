@@ -1,0 +1,51 @@
+name: Legacy Updater Bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      bridge_version:
+        description: Version offered to legacy Burrete installations
+        required: true
+        default: "1.0.32"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Legacy Updater Bridge
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Burette toolchain
+        uses: ./.github/actions/setup-burette-toolchain
+        with:
+          install-xyzrender: "true"
+
+      - name: Set bridge version
+        run: bun scripts/set-release-version.mjs "${{ inputs.bridge_version }}"
+
+      - name: Validate bridge version
+        run: bun run check:release
+
+      - name: Build current updater under bridge version
+        env:
+          BURETTE_BUILD_MODE: release
+          BURETTE_RELEASE_ALLOW_ADHOC: "1"
+          BURETTE_XCODE_CONFIGURATION: Release
+        run: ./scripts/build.sh
+
+      - name: Package legacy identity
+        run: ./scripts/package-legacy-update-bridge.sh build/Burette.app legacy-bridge
+
+      - name: Upload bridge artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Burrete-${{ inputs.bridge_version }}-update-bridge
+          path: legacy-bridge/*
+          if-no-files-found: error
+          retention-days: 30
