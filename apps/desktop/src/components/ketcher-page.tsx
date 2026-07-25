@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { invoke } from "@tauri-apps/api/core";
 
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily as collectionFamilyForExtension, type CollectionFamily } from "../lib/collection-documents";
@@ -36,6 +37,7 @@ import type { KetcherImportRequest, KetcherSketchTarget, KetcherSource3D, ShellA
 type KetcherEditorComponent = ComponentType<{
   onReady: (api: KetcherEditorApi) => void;
   onStatus: (status: string) => void;
+  onOpenFile: () => void;
   onLoadError?: (error: Error) => void;
 }>;
 type KetcherTextFormat =
@@ -682,6 +684,21 @@ export function KetcherPage({
     selectImportFormat(panelMode?.purpose === "import" ? panelMode.format : DEFAULT_KETCHER_IMPORT_FORMAT);
   }, [ketcher, panelMode, selectImportFormat]);
 
+  const chooseKetcherFiles = useCallback(() => {
+    if (!isTauriRuntime()) {
+      openDefaultImportPanel();
+      return;
+    }
+    void invoke<string[]>("pick_open_targets")
+      .then((selection) => {
+        const paths = Array.isArray(selection) ? selection.filter(Boolean) : [];
+        if (paths.length > 0) actions.openKetcherWithStructures(paths);
+      })
+      .catch((error: unknown) => {
+        setStatus(`Open failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
+  }, [actions, openDefaultImportPanel]);
+
   const showExportFormatMenu = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
     if (!ketcher) return;
     event.preventDefault();
@@ -1306,6 +1323,7 @@ export function KetcherPage({
                   key={editorReloadKey}
                   onReady={handleReady}
                   onStatus={setStatus}
+                  onOpenFile={chooseKetcherFiles}
                   onRetry={retryEditorLoad}
                 />
               </KetcherErrorBoundary>
@@ -1733,10 +1751,12 @@ function KetcherLogo() {
 function KetcherEditorLoader({
   onReady,
   onStatus,
+  onOpenFile,
   onRetry,
 }: {
   onReady: (api: KetcherEditorApi) => void;
   onStatus: (status: string) => void;
+  onOpenFile: () => void;
   onRetry: () => void;
 }) {
   const [EditorComponent, setEditorComponent] = useState<KetcherEditorComponent | null>(null);
@@ -1773,7 +1793,7 @@ function KetcherEditorLoader({
     return <div className="ketcher-loading">Loading editor</div>;
   }
 
-  return <EditorComponent onReady={onReady} onStatus={onStatus} onLoadError={setLoadError} />;
+  return <EditorComponent onReady={onReady} onStatus={onStatus} onOpenFile={onOpenFile} onLoadError={setLoadError} />;
 }
 
 function KetcherErrorPanel({ error, onRetry }: { error: Error; onRetry: () => void }) {
