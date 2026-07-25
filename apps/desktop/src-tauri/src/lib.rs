@@ -38,6 +38,11 @@ pub fn run() {
         Err(error) => eprintln!("failed to migrate the legacy app path: {error}"),
     }
 
+    #[cfg(target_os = "macos")]
+    if let Err(error) = commands::quicklook::maintain_launch_services_on_startup() {
+        eprintln!("failed to maintain LaunchServices registration: {error}");
+    }
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             if menu::exit_transition_is_active(app) {

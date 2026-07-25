@@ -1158,23 +1158,6 @@ if [ "$CURRENT_APP" != "$DEST_APP" ]; then
   /usr/bin/pluginkit -e ignore -i "$LEGACY_EXT_ID" 2>/dev/null || true
 fi
 [ -x "$LSREGISTER" ] && "$LSREGISTER" -f -R "$DEST_APP" || true
-if [ -x /usr/bin/swift ]; then
-  BURETTE_APP_PATH="$DEST_APP" BURETTE_APP_ID="$APP_ID" /usr/bin/swift - <<'SWIFT' >/dev/null 2>&1 || true
-import CoreServices
-import Foundation
-
-let appPath = ProcessInfo.processInfo.environment["BURETTE_APP_PATH"] ?? ""
-let bundleID = (ProcessInfo.processInfo.environment["BURETTE_APP_ID"] ?? "com.local.BuretteV10") as CFString
-let appURL = URL(fileURLWithPath: appPath)
-LSRegisterURL(appURL as CFURL, true)
-let bundle = Bundle(url: appURL)
-let documentTypes = bundle?.object(forInfoDictionaryKey: "CFBundleDocumentTypes") as? [[String: Any]] ?? []
-let contentTypes = Set(documentTypes.flatMap {{ $0["LSItemContentTypes"] as? [String] ?? [] }})
-for contentType in contentTypes {{
-    LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleID)
-}}
-SWIFT
-fi
 [ -d "$APPEX" ] && /usr/bin/pluginkit -a "$APPEX" 2>/dev/null || true
 /usr/bin/pluginkit -e use -i "$EXT_ID" 2>/dev/null || true
 /usr/bin/qlmanage -r >/dev/null 2>&1 || true
@@ -1334,6 +1317,8 @@ print(f"codex plugin synced with cache fallback: {{install_root}}")
 PY
 }}
 sync_burette_codex_plugin
+[ -x "$LSREGISTER" ] && "$LSREGISTER" -u "$NEW_APP" || true
+rm -rf "$NEW_APP"
 /usr/bin/open "$DEST_APP"
 if [ "$CURRENT_APP" != "$DEST_APP" ]; then
   rm -rf "$CURRENT_APP"
@@ -1458,23 +1443,6 @@ rm -rf "$BACKUP_APP"
 
 APPEX="$DEST_APP/Contents/PlugIns/BurettePreview.appex"
 [ -x "$LSREGISTER" ] && "$LSREGISTER" -f -R "$DEST_APP" || true
-if [ -x /usr/bin/swift ]; then
-  BURETTE_APP_PATH="$DEST_APP" BURETTE_APP_ID="$APP_ID" /usr/bin/swift - <<'SWIFT' >/dev/null 2>&1 || true
-import CoreServices
-import Foundation
-
-let appPath = ProcessInfo.processInfo.environment["BURETTE_APP_PATH"] ?? ""
-let bundleID = (ProcessInfo.processInfo.environment["BURETTE_APP_ID"] ?? "com.local.BuretteV10") as CFString
-let appURL = URL(fileURLWithPath: appPath)
-LSRegisterURL(appURL as CFURL, true)
-let bundle = Bundle(url: appURL)
-let documentTypes = bundle?.object(forInfoDictionaryKey: "CFBundleDocumentTypes") as? [[String: Any]] ?? []
-let contentTypes = Set(documentTypes.flatMap {{ $0["LSItemContentTypes"] as? [String] ?? [] }})
-for contentType in contentTypes {{
-    LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleID)
-}}
-SWIFT
-fi
 [ -d "$APPEX" ] && /usr/bin/pluginkit -a "$APPEX" 2>/dev/null || true
 /usr/bin/pluginkit -e use -i "$EXT_ID" 2>/dev/null || true
 /usr/bin/qlmanage -r >/dev/null 2>&1 || true
@@ -2145,6 +2113,9 @@ mod tests {
         assert!(script.contains("DEST_APP='/Applications/Burette.app'"));
         assert!(script.contains("\"$LSREGISTER\" -u \"$CURRENT_APP\""));
         assert!(script.contains("com.local.BurreteV10.Preview"));
+        assert!(script.contains("\"$LSREGISTER\" -u \"$NEW_APP\""));
+        assert!(script.contains("rm -rf \"$NEW_APP\""));
+        assert!(!script.contains("/usr/bin/swift"));
         assert!(script.contains("rm -rf \"$CURRENT_APP\""));
         assert!(script.contains("/usr/bin/open \"$DEST_APP\""));
         assert!(
@@ -2185,7 +2156,7 @@ mod tests {
         assert!(script.contains("\"$LSREGISTER\" -u \"$CURRENT_APP\""));
         assert!(script.contains("/bin/mv \"$CURRENT_APP\" \"$DEST_APP\""));
         assert!(script.contains("\"$LSREGISTER\" -f -R \"$DEST_APP\""));
-        assert!(script.contains("LSSetDefaultRoleHandlerForContentType"));
+        assert!(!script.contains("/usr/bin/swift"));
         assert!(script.contains("/usr/bin/open \"$DEST_APP\""));
     }
 }
