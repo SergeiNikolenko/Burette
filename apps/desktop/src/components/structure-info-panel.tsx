@@ -72,6 +72,9 @@ type TrajectorySmoothingResult = {
 type TrajectoryPlaybackState = {
   frameIndex: number;
   frameCount: number;
+  globalFrameIndex: number;
+  segmentStartFrame: number;
+  sourcePath: string;
   playing: boolean;
 };
 
@@ -131,6 +134,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
   const [trajectorySmoothingSignal, setTrajectorySmoothingSignal] = useState<MdsmoothSignal>("rmsd");
   const [trajectorySmoothingMode, setTrajectorySmoothingMode] = useState<MdsmoothMode>("extrema");
   const [trajectoryPlayback, setTrajectoryPlayback] = useState<TrajectoryPlaybackState | null>(null);
+  const trajectorySmoothingSourcePath = useRef("");
   const foldingResult = useFoldingResult(document);
 
   useEffect(() => {
@@ -139,7 +143,24 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
     setTrajectorySmoothingView("original");
     setTrajectorySmoothingResult(null);
     setTrajectoryPlayback(null);
+    trajectorySmoothingSourcePath.current = "";
   }, [document?.id]);
+
+  useEffect(() => {
+    const playback = trajectoryPlayback;
+    const sourcePath = playback?.sourcePath || "";
+    if (!playback || !sourcePath) return;
+    if (trajectorySmoothingSourcePath.current && trajectorySmoothingSourcePath.current !== sourcePath) {
+      setTrajectorySmoothingBuilt(false);
+      setTrajectorySmoothingView("original");
+      setTrajectorySmoothingResult(null);
+    }
+    setTrajectorySmoothingTargetFrames(Math.max(
+      2,
+      Math.round(playback.frameCount * TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO[trajectorySmoothingPreset]),
+    ));
+    trajectorySmoothingSourcePath.current = sourcePath;
+  }, [trajectoryPlayback?.sourcePath]);
 
   // Closing the molecule card clears the selection inside the viewer, so a row
   // highlighted from a ligand click here has to let go of it too - otherwise the
@@ -157,6 +178,9 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
       setTrajectoryPlayback({
         frameIndex: Math.max(0, Math.min(frameCount - 1, Math.trunc(Number(detail.frameIndex) || 0))),
         frameCount,
+        globalFrameIndex: Math.max(0, Math.trunc(Number(detail.globalFrameIndex) || 0)),
+        segmentStartFrame: Math.max(0, Math.trunc(Number(detail.segmentStartFrame) || 0)),
+        sourcePath: String(detail.sourcePath || ""),
         playing: detail.playing === true,
       });
     };
@@ -169,6 +193,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
       const detail = (event as CustomEvent<Record<string, unknown>>).detail;
       if (String(detail?.documentId || "") !== document?.id) return;
       if (detail.view === "original" || detail.view === "smoothed") setTrajectorySmoothingView(detail.view);
+      if (detail.view === "smoothed") setTrajectorySmoothingBuilt(true);
       if (!Array.isArray(detail.rawSignal) || !Array.isArray(detail.filteredSignal)) return;
       setTrajectorySmoothingBuilt(true);
       setTrajectorySmoothingResult({
@@ -660,7 +685,7 @@ function trajectoryPlaybackControlsFor(document: ViewerDocument, playback: Traje
     actions: Array.from({ length: playback.frameCount }, (_, index) => ({
       type: "set_structure_pose",
       label: `Show frame ${index + 1}`,
-      index,
+      index: playback.segmentStartFrame + index,
     })),
   };
 }
@@ -747,7 +772,7 @@ function TrajectorySmoothingCard({
     setRunning(true);
     setError(null);
     try {
-      const pair = trajectoryPathsFor(document);
+      const pair = trajectoryPathsFor(document, playback);
       const response = await runMdsmooth({
         trajectoryPath: pair.trajectoryPath,
         topologyPath: pair.topologyPath,
@@ -795,9 +820,13 @@ function TrajectorySmoothingCard({
         label: "Show smoothed motion",
         notify: false,
         sourceUrl: trajectoryOutputUrl(response.outputPath),
+        sourceFormat: response.outputFormat ?? "xyz",
         frameCount: response.frameCount,
         interpolation: response.interpolation,
         frameIndex: playback?.frameIndex ?? 0,
+        originalFrameIndex: playback?.globalFrameIndex ?? 0,
+        originalSegmentStartFrame: playback?.segmentStartFrame ?? 0,
+        sourcePath: playback?.sourcePath || "",
         playing: Boolean(playback?.playing),
       });
     } catch (reason) {
@@ -843,7 +872,7 @@ function TrajectorySmoothingCard({
     actions.runStructureViewerAction(document, {
       type: "set_structure_pose",
       label: `Show frame ${index + 1}`,
-      index,
+      index: (view === "smoothed" ? 0 : playback?.segmentStartFrame ?? 0) + index,
     });
   };
   useEffect(() => {
@@ -875,7 +904,9 @@ function TrajectorySmoothingCard({
       </div>
       {open ? (
         <>
-          <p className="trajectory-smoothing-intro">Smooths playback without changing the original trajectory or analysis data.</p>
+          {built ? null : (
+            <p className="trajectory-smoothing-intro">Smooths playback without changing the original trajectory or analysis data.</p>
+          )}
           <div className="trajectory-smoothing-presets" role="group" aria-label="Smoothing strength">
             {(["light", "balanced", "strong"] as const).map((value) => (
               <button
@@ -892,7 +923,7 @@ function TrajectorySmoothingCard({
             ))}
           </div>
           <div className="trajectory-smoothing-strength-copy">
-            {mode === "kinetic" ? `${kineticStates} MSM/PCCA+ macrostates` : <><strong>{preset[0].toUpperCase() + preset.slice(1)}</strong> · {targetFrames} of {frameCount} source frames</>}
+            {mode === "kinetic" ? `${kineticStates} MSM/PCCA+ macrostates` : <>{frameCount} source frames <span aria-hidden="true">→</span> <strong>{targetFrames}</strong> played back</>}
           </div>
           <button type="button" className="trajectory-smoothing-advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
             <span>Scientific settings</span><span aria-hidden="true">{advanced ? "⌃" : "⌄"}</span>
@@ -1087,9 +1118,11 @@ function TrajectorySmoothingChart({
   );
 }
 
-function trajectoryPathsFor(document: ViewerDocument) {
+function trajectoryPathsFor(document: ViewerDocument, playback: TrajectoryPlaybackState | null) {
   const topologyPath = document.dockingRequest?.receptorPath;
-  const trajectoryPath = document.dockingRequest?.ligandPaths[0];
+  const trajectoryPath = document.dockingRequest?.ligandPaths.includes(playback?.sourcePath || "")
+    ? playback?.sourcePath
+    : document.dockingRequest?.ligandPaths[0];
   return trajectoryPath
     ? { trajectoryPath, topologyPath: topologyPath || null }
     : { trajectoryPath: document.path, topologyPath: null };

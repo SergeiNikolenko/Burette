@@ -785,6 +785,12 @@ fn collect_files(root: &Path, depth: usize, files: &mut Vec<FileEntry>) {
         if files.len() >= FOLDING_SCAN_FILE_LIMIT {
             return;
         }
+        // Hidden entries are tooling side-cars, never folding output. A trajectory
+        // leaves `.<name>.xtc_offsets.npz` index caches beside its frames, and those
+        // counted as folding arrays, which showed a plain MD folder as a result bundle.
+        if entry.file_name().to_string_lossy().starts_with('.') {
+            continue;
+        }
         let path = entry.path();
         let Ok(metadata) = entry.metadata() else {
             continue;

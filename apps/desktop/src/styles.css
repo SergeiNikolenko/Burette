@@ -1416,9 +1416,33 @@ kbd span { margin-left: 2px; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--fg-base);
-  opacity: 0.54;
+  /* Hue and alpha are mixed here rather than set as color + opacity so a tinted
+     kind can be louder than an untinted one without a second opacity rule. Every
+     hue is pulled toward the foreground first, which darkens it on the light theme
+     and lightens it on the dark one from a single literal — yellow in particular
+     dies against a light sidebar otherwise. Untinted kinds set the hue to
+     --fg-base, so for them that first mix is an identity. */
+  --file-icon-hue: var(--fg-base);
+  --file-icon-strength: 54%;
+  color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--file-icon-hue) 76%, var(--fg-base)) var(--file-icon-strength),
+    transparent
+  );
 }
+/* Only the kinds that carry science get a hue. Logs, code, configs and plain
+   documents stay neutral, so a project's molecular payload reads at a glance
+   instead of every row shouting. Hues are damped Apple system colours, which
+   the status chips elsewhere in the app already use. Each rule carries its own
+   strength so a tinted kind is named in exactly one place. */
+.project-icon[data-file-kind="protein"] { --file-icon-hue: #5ac8fa; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="crystal"] { --file-icon-hue: #7d7aec; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="molecule"] { --file-icon-hue: #3ecf6a; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="table"] { --file-icon-hue: #e8c249; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="trajectory"] { --file-icon-hue: #ff6482; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="topology"] { --file-icon-hue: #c48af0; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="spectrum"] { --file-icon-hue: #ff9f0a; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="network"] { --file-icon-hue: #3fc7bd; --file-icon-strength: 82%; }
 .project-copy {
   min-width: 0;
   flex: 1;
@@ -1426,6 +1450,35 @@ kbd span { margin-left: 2px; }
   gap: 1px;
 }
 .project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; line-height: 1.15; }
+/* A cut name hides the tail, which is often the only thing telling two files apart.
+   Hovering the row walks the name through its window; the moving part is an inner
+   element driven by transform, so the row never reflows while it travels. The
+   distance comes from MarqueeName, which measures the overflow it has to cover. */
+.marquee-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  vertical-align: bottom;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: transform 200ms ease-out;
+}
+.project:hover .marquee-text,
+.project-folder-row:hover .marquee-text,
+.project:focus-visible .marquee-text,
+.project-folder-row:focus-visible .marquee-text {
+  max-width: none;
+  text-overflow: clip;
+  transform: translateX(calc(var(--marquee-shift, 0px) * -1));
+  /* Eases off the mark rather than snapping to speed, and waits out a pointer that
+     is only passing over the row on its way somewhere else. */
+  transition: transform var(--marquee-duration, 1.6s) cubic-bezier(0.4, 0, 0.2, 1) 120ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-text,
+  .project:hover .marquee-text,
+  .project-folder-row:hover .marquee-text { transition: none; }
+}
 .project-meta { font-size: 12px; color: var(--text-muted); }
 .project-extension {
   display: inline-flex;
@@ -1469,37 +1522,8 @@ kbd span { margin-left: 2px; }
 }
 .pin-hit:hover,
 .pin-hit.pinned { color: var(--text-muted); }
-.radix-menu {
-  z-index: 1000;
-  min-width: 184px;
-  max-width: min(320px, calc(100vw - 16px));
-  max-height: min(420px, calc(100vh - 16px));
-  overflow: auto;
-  padding: 6px;
-  border: 0;
-  border-radius: 9px;
-  background: var(--menu-surface);
-  color: var(--text-primary);
-  box-shadow: 0 16px 42px rgb(0 0 0 / 0.22);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  font-family: var(--ui-font);
-  font-size: 13px;
-  line-height: 1.2;
-  letter-spacing: 0;
-}
-.radix-menu-item {
-  min-height: 30px;
-  border-radius: 7px;
-  color: inherit;
-  padding: 5px 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  outline: none;
-  user-select: none;
-}
+/* The menu surface, rows and separators come from the shadcn menu components.
+   What stays here is the item's own two-line body, which shadcn does not model. */
 .radix-menu-item-body {
   min-width: 0;
   display: inline-flex;
@@ -1547,39 +1571,8 @@ img.radix-menu-item-icon {
   color: var(--text-faint);
   font-size: 11px;
 }
-.radix-menu-item kbd {
-  flex: 0 0 auto;
-  color: var(--text-faint);
-  font-size: 11px;
-}
-.radix-menu-item[data-highlighted] {
-  background: var(--surface-hover);
-  color: var(--text-primary);
-}
-.radix-menu-item[data-disabled] {
-  color: var(--text-faint);
-  opacity: 0.58;
-}
-.radix-menu-separator {
-  height: 1px;
-  margin: 5px 8px;
-  background: var(--line-subtler);
-}
-.open-editor-menu-content {
-  min-width: 224px;
-  max-width: min(268px, calc(100vw - 16px));
-  padding: 7px;
-  border: 1px solid color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 28%), transparent);
-  border-radius: 14px;
-  background: var(--menu-surface);
-  box-shadow: 0 22px 62px rgb(0 0 0 / 0.36), inset 0 1px 0 rgb(255 255 255 / 0.06);
-}
-.open-editor-menu-content .radix-menu-item {
-  min-height: 36px;
-  border-radius: 9px;
-  padding: 5px 10px;
-  gap: 12px;
-}
+/* The surface itself is the shared shadcn menu; this class only scopes the
+   slightly larger app icons and labels that the editor targets need. */
 .open-editor-menu-content .radix-menu-item-body {
   gap: 10px;
 }
@@ -1603,9 +1596,6 @@ img.radix-menu-item-icon {
 .open-editor-menu-content .radix-menu-item-detail {
   font-size: 11px;
   line-height: 1.1;
-}
-.open-editor-menu-content .radix-menu-separator {
-  margin: 6px 10px;
 }
 .radix-context-menu-trigger {
   position: fixed;

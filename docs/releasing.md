@@ -184,6 +184,38 @@ distribution and is not currently consumed by the updater. The DMG uses the
 branded Finder layout from `packaging/dmg/background.png`, with the app and the
 Applications alias positioned by `scripts/create-dmg.sh`.
 
+### Legacy Burrete Update Bridge
+
+Release `v1.0.31` and older builds validate the former repository path,
+`Burrete.app`, and the `com.local.BurreteV10` app and Quick Look identifiers.
+They therefore cannot install a renamed Burette release directly.
+
+The `Legacy Updater Bridge` workflow builds the current updater as version
+`1.0.32`, then packages it with the legacy bundle identity. Publish its ZIP and
+SHA-256 sidecar as release `v1.0.32` in the compatibility repository at
+`SergeiNikolenko/Burrete`. Seed that repository from the current Burette history
+so existing Git remotes do not suddenly resolve to unrelated content, and make
+its description point contributors to `SergeiNikolenko/Burette`. The bridge
+remains on the legacy path long enough for the old updater to install it. After
+restart, the bridge uses the current `SergeiNikolenko/Burette` release endpoint
+and offers the latest Burette release.
+
+The migration is intentionally two-stage for every release with the built-in
+installer (`v0.10.29` through `v1.0.31`):
+
+1. The installed `Burrete` version installs `Burrete 1.0.32` from the
+   compatibility repository.
+2. `Burrete 1.0.32` installs the current `Burette` archive and registers the new
+   app and Quick Look identifiers at `/Applications/Burette.app`. The installer
+   unregisters and removes `/Applications/Burrete.app` after the canonical app
+   launches.
+
+Versions older than `v0.10.29` did not include the in-app installer and require
+a manual download. Do not describe those builds as self-updatable.
+
+Keep the compatibility repository and `v1.0.32` release available while any
+pre-rename installations remain in use.
+
 Before publishing performance-sensitive changes, regenerate the size and perf
 smoke reports described in [Performance architecture](performance.md). The
 release artifact should keep web asset profile membership explainable through

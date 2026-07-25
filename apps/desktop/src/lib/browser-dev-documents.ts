@@ -110,7 +110,7 @@ const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
 const GRID_ASSET_VERSION = "grid-ui-v166";
-const VIEWER_ASSET_VERSION = "viewer-ui-v66";
+const VIEWER_ASSET_VERSION = "viewer-ui-v70";
 const REPO_ROOT = String(import.meta.env.BURETTE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = String(
   (typeof window !== "undefined" ? window.__BURETTE_WEB_ASSETS_BASE__ : "")
@@ -302,11 +302,14 @@ export async function openBrowserDevDockingDocument(
   const ligands = await Promise.all(Array.from(new Set(ligandPaths)).map(readBrowserDevDockingPayload));
   if (ligands.length === 0) throw new Error("Choose at least one ligand or pose file for docking view");
   const hasCoordinateTrajectory = ligands.some(isCoordinateTrajectoryPayload);
+  const isTrajectory = ligands.every(isCoordinateTrajectoryPayload);
   const effectiveSceneMode = hasCoordinateTrajectory ? null : (options.sceneMode ?? null);
   const dockingLigands = ligands;
 
   const id = stableId(`docking:${receptor.path}:${ligands.map((ligand) => ligand.path).join("|")}`);
-  const label = effectiveSceneMode
+  const label = isTrajectory
+    ? `Trajectory: ${receptor.title} + ${ligands.length} segment${ligands.length === 1 ? "" : "s"}`
+    : effectiveSceneMode
     ? `Mol* scene: ${receptor.title} + ${ligands.length} more structure${ligands.length === 1 ? "" : "s"}`
     : `Docking: ${receptor.title} + ${dockingLigands.length} ligand${dockingLigands.length === 1 ? "" : "s"}`;
   const visuals = resolvePreviewVisuals(preferences);

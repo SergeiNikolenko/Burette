@@ -131,6 +131,7 @@ pub(crate) async fn install_update(
     let package_version = app.package_info().version.to_string();
     let app_data_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
     let app_bundle = current_app_bundle()?;
+    let destination_app = canonical_update_destination(&app_bundle);
     let progress_app = app.clone();
     let download_app_data_dir = app_data_dir.clone();
     let release_tag = request.tag_name.clone();
@@ -199,7 +200,13 @@ pub(crate) async fn install_update(
 
             update_progress::show(&app, "Preparing installer...", Some(0.96));
             let launch_result = tauri::async_runtime::spawn_blocking(move || {
-                launch_installer(&app_data_dir, &staged_app, &app_bundle, &release_tag)
+                launch_installer(
+                    &app_data_dir,
+                    &staged_app,
+                    &app_bundle,
+                    &destination_app,
+                    &release_tag,
+                )
             })
             .await;
 
@@ -284,14 +291,17 @@ fn download_update(
     remove_path_if_exists(&temporary)?;
     remove_path_if_exists(&archive)?;
 
-    update_progress::show(
+    let title = download_title(&request.tag_name);
+    update_progress::show_with_detail(
         app,
-        format_download_message(0, request.size, 0.0),
+        title.clone(),
+        format_download_detail(0, request.size, 0.0),
         Some(DOWNLOAD_PROGRESS_START),
     );
     download_asset_with_progress(
         app,
         package_version,
+        &title,
         &request.browser_download_url,
         &temporary,
         request.size,
@@ -462,6 +472,7 @@ fn download_asset(package_version: &str, url: &str, target: &Path) -> Result<(),
 fn download_asset_with_progress(
     app: &tauri::AppHandle,
     package_version: &str,
+    title: &str,
     url: &str,
     target: &Path,
     total_size: u64,
@@ -477,7 +488,7 @@ fn download_asset_with_progress(
             .map_err(|err| format!("Could not check curl status: {err}"))?
         {
             Some(status) => {
-                show_download_progress(app, target, total_size, started_at);
+                show_download_progress(app, title, target, total_size, started_at);
                 if status.success() {
                     return Ok(());
                 }
@@ -485,7 +496,7 @@ fn download_asset_with_progress(
             }
             None => {
                 thread::sleep(DOWNLOAD_PROGRESS_POLL_INTERVAL);
-                show_download_progress(app, target, total_size, started_at);
+                show_download_progress(app, title, target, total_size, started_at);
             }
         }
     }
@@ -518,6 +529,7 @@ fn curl_download_command(package_version: &str, url: &str, target: &Path) -> Com
 
 fn show_download_progress(
     app: &tauri::AppHandle,
+    title: &str,
     target: &Path,
     total_size: u64,
     started_at: Instant,
@@ -533,9 +545,10 @@ fn show_download_progress(
         downloaded as f64 / elapsed.as_secs_f64().max(0.001)
     };
 
-    update_progress::show(
+    update_progress::show_with_detail(
         app,
-        format_download_message(downloaded, total_size, speed),
+        title,
+        format_download_detail(downloaded, total_size, speed),
         Some(download_progress_value(downloaded, total_size)),
     );
 }
@@ -549,19 +562,37 @@ fn download_progress_value(downloaded: u64, total_size: u64) -> f64 {
     DOWNLOAD_PROGRESS_START + (DOWNLOAD_PROGRESS_END - DOWNLOAD_PROGRESS_START) * fraction
 }
 
-fn format_download_message(downloaded: u64, total_size: u64, bytes_per_second: f64) -> String {
+fn download_title(tag_name: &str) -> String {
     format!(
-        "Downloading update... {}% at {}",
-        download_percent(downloaded, total_size),
+        "Downloading Burette {}",
+        tag_name.strip_prefix('v').unwrap_or(tag_name)
+    )
+}
+
+fn format_download_detail(downloaded: u64, total_size: u64, bytes_per_second: f64) -> String {
+    format!(
+        "{} of {} · {}",
+        format_download_size(downloaded.min(total_size)),
+        format_download_size(total_size),
         format_download_speed(bytes_per_second)
     )
 }
 
-fn download_percent(downloaded: u64, total_size: u64) -> u64 {
-    if total_size == 0 {
-        return 0;
+fn format_download_size(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+
+    let size = bytes as f64;
+    if size < KIB {
+        format!("{size:.0} B")
+    } else if size < MIB {
+        format_download_unit(size / KIB, "KiB")
+    } else if size < GIB {
+        format_download_unit(size / MIB, "MiB")
+    } else {
+        format_download_unit(size / GIB, "GiB")
     }
-    (((downloaded.min(total_size) as f64 / total_size as f64) * 100.0).floor() as u64).min(100)
 }
 
 fn format_download_speed(bytes_per_second: f64) -> String {
@@ -1015,13 +1046,20 @@ fn validate_downloaded_app_descriptor(
 fn launch_installer(
     app_data_dir: &Path,
     staged_app: &Path,
+    current_app: &Path,
     destination_app: &Path,
     release_tag: &str,
 ) -> Result<InstallerProcessGuard, String> {
     let updates_dir = update_dir(app_data_dir, release_tag)?;
     let script = updates_dir.join(format!("install-{}.sh", safe_path_component(release_tag)));
     let log = updates_dir.join(format!("install-{}.log", safe_path_component(release_tag)));
-    let body = installer_script(std::process::id(), staged_app, destination_app, &log)?;
+    let body = installer_script(
+        std::process::id(),
+        staged_app,
+        current_app,
+        destination_app,
+        &log,
+    )?;
     fs::write(&script, body).map_err(|err| err.to_string())?;
     let mut permissions = fs::metadata(&script)
         .map_err(|err| err.to_string())?
@@ -1043,6 +1081,7 @@ fn launch_installer(
 fn installer_script(
     app_pid: u32,
     staged_app: &Path,
+    current_app: &Path,
     destination_app: &Path,
     log: &Path,
 ) -> Result<String, String> {
@@ -1052,15 +1091,18 @@ set -euo pipefail
 
 APP_PID={app_pid}
 NEW_APP={new_app}
+CURRENT_APP={current_app}
 DEST_APP={destination_app}
 APP_ID='{APP_ID}'
 EXT_ID='{EXTENSION_ID}'
+LEGACY_EXT_ID='com.local.BurreteV10.Preview'
 LOG_FILE={log}
 
 mkdir -p "$(dirname "$LOG_FILE")"
 exec >>"$LOG_FILE" 2>&1
 echo "== Burette updater $(date) =="
 echo "new app: $NEW_APP"
+echo "current app: $CURRENT_APP"
 echo "destination: $DEST_APP"
 
 for _ in $(seq 1 80); do
@@ -1111,6 +1153,10 @@ rm -rf "$BACKUP_APP"
 
 APPEX="$DEST_APP/Contents/PlugIns/BurettePreview.appex"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+if [ "$CURRENT_APP" != "$DEST_APP" ]; then
+  [ -x "$LSREGISTER" ] && "$LSREGISTER" -u "$CURRENT_APP" || true
+  /usr/bin/pluginkit -e ignore -i "$LEGACY_EXT_ID" 2>/dev/null || true
+fi
 [ -x "$LSREGISTER" ] && "$LSREGISTER" -f -R "$DEST_APP" || true
 if [ -x /usr/bin/swift ]; then
   BURETTE_APP_PATH="$DEST_APP" BURETTE_APP_ID="$APP_ID" /usr/bin/swift - <<'SWIFT' >/dev/null 2>&1 || true
@@ -1289,9 +1335,163 @@ PY
 }}
 sync_burette_codex_plugin
 /usr/bin/open "$DEST_APP"
+if [ "$CURRENT_APP" != "$DEST_APP" ]; then
+  rm -rf "$CURRENT_APP"
+fi
 echo "update installed"
 "#,
         new_app = shell_quote(path_str(staged_app)?),
+        current_app = shell_quote(path_str(current_app)?),
+        destination_app = shell_quote(path_str(destination_app)?),
+        log = shell_quote(path_str(log)?),
+    ))
+}
+
+fn canonical_update_destination(current_app: &Path) -> PathBuf {
+    if current_app
+        .file_name()
+        .is_some_and(|name| name == "Burrete.app")
+    {
+        current_app.with_file_name("Burette.app")
+    } else {
+        current_app.to_path_buf()
+    }
+}
+
+pub(crate) fn relocate_legacy_install_on_startup() -> Result<bool, String> {
+    let current_app = current_app_bundle()?;
+    let destination_app = canonical_update_destination(&current_app);
+    if current_app == destination_app {
+        return Ok(false);
+    }
+
+    let bundle_id = read_plist_value(
+        &current_app.join("Contents/Info.plist"),
+        "CFBundleIdentifier",
+    )?;
+    if !should_relocate_legacy_install(&current_app, &bundle_id) {
+        return Ok(false);
+    }
+
+    let pid = std::process::id();
+    let temporary_dir = std::env::temp_dir();
+    let script = temporary_dir.join(format!("burette-relocate-{pid}.sh"));
+    let log = temporary_dir.join(format!("burette-relocate-{pid}.log"));
+    fs::write(
+        &script,
+        legacy_relocation_script(pid, &current_app, &destination_app, &log)?,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut permissions = fs::metadata(&script)
+        .map_err(|error| error.to_string())?
+        .permissions();
+    use std::os::unix::fs::PermissionsExt;
+    permissions.set_mode(0o755);
+    fs::set_permissions(&script, permissions).map_err(|error| error.to_string())?;
+
+    Command::new("/bin/bash")
+        .arg(&script)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| true)
+        .map_err(|error| format!("Could not launch the app migration helper: {error}"))
+}
+
+fn should_relocate_legacy_install(current_app: &Path, bundle_id: &str) -> bool {
+    canonical_update_destination(current_app) != current_app
+        && bundle_id == APP_ID
+        && !current_app
+            .components()
+            .any(|component| component.as_os_str() == "AppTranslocation")
+}
+
+fn legacy_relocation_script(
+    app_pid: u32,
+    current_app: &Path,
+    destination_app: &Path,
+    log: &Path,
+) -> Result<String, String> {
+    Ok(format!(
+        r#"#!/bin/bash
+set -euo pipefail
+
+APP_PID={app_pid}
+CURRENT_APP={current_app}
+DEST_APP={destination_app}
+APP_ID='{APP_ID}'
+EXT_ID='{EXTENSION_ID}'
+LEGACY_EXT_ID='com.local.BurreteV10.Preview'
+LOG_FILE={log}
+
+exec >>"$LOG_FILE" 2>&1
+echo "== Burette app migration $(date) =="
+
+for _ in $(seq 1 80); do
+  if ! kill -0 "$APP_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 0.25
+done
+if kill -0 "$APP_PID" 2>/dev/null; then
+  echo "error: Burette did not quit in time"
+  exit 1
+fi
+
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+[ -x "$LSREGISTER" ] && "$LSREGISTER" -u "$CURRENT_APP" || true
+/usr/bin/pluginkit -e ignore -i "$LEGACY_EXT_ID" 2>/dev/null || true
+
+BACKUP_APP="${{DEST_APP}}.previous"
+rm -rf "$BACKUP_APP"
+if [ -d "$DEST_APP" ]; then
+  /bin/mv "$DEST_APP" "$BACKUP_APP"
+fi
+if ! /bin/mv "$CURRENT_APP" "$DEST_APP"; then
+  if [ -d "$BACKUP_APP" ]; then
+    /bin/mv "$BACKUP_APP" "$DEST_APP"
+  fi
+  exit 1
+fi
+rm -rf "$BACKUP_APP"
+
+APPEX="$DEST_APP/Contents/PlugIns/BurettePreview.appex"
+[ -x "$LSREGISTER" ] && "$LSREGISTER" -f -R "$DEST_APP" || true
+if [ -x /usr/bin/swift ]; then
+  BURETTE_APP_PATH="$DEST_APP" BURETTE_APP_ID="$APP_ID" /usr/bin/swift - <<'SWIFT' >/dev/null 2>&1 || true
+import CoreServices
+import Foundation
+
+let appPath = ProcessInfo.processInfo.environment["BURETTE_APP_PATH"] ?? ""
+let bundleID = (ProcessInfo.processInfo.environment["BURETTE_APP_ID"] ?? "com.local.BuretteV10") as CFString
+let appURL = URL(fileURLWithPath: appPath)
+LSRegisterURL(appURL as CFURL, true)
+let bundle = Bundle(url: appURL)
+let documentTypes = bundle?.object(forInfoDictionaryKey: "CFBundleDocumentTypes") as? [[String: Any]] ?? []
+let contentTypes = Set(documentTypes.flatMap {{ $0["LSItemContentTypes"] as? [String] ?? [] }})
+for contentType in contentTypes {{
+    LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleID)
+}}
+SWIFT
+fi
+[ -d "$APPEX" ] && /usr/bin/pluginkit -a "$APPEX" 2>/dev/null || true
+/usr/bin/pluginkit -e use -i "$EXT_ID" 2>/dev/null || true
+/usr/bin/qlmanage -r >/dev/null 2>&1 || true
+/usr/bin/qlmanage -r cache >/dev/null 2>&1 || true
+/usr/bin/killall quicklookd >/dev/null 2>&1 || true
+
+PLUGIN_INSTALLER="$DEST_APP/Contents/Resources/plugins/burette-agent/scripts/install-local.mjs"
+JAVASCRIPT_BIN="$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v node || PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v bun || true)"
+if [ -f "$PLUGIN_INSTALLER" ] && [ -n "$JAVASCRIPT_BIN" ]; then
+  BURETTE_APP_BUNDLE="$DEST_APP" PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" "$JAVASCRIPT_BIN" "$PLUGIN_INSTALLER" || true
+fi
+
+/usr/bin/open "$DEST_APP"
+rm -f "$0"
+echo "app migration complete"
+"#,
+        current_app = shell_quote(path_str(current_app)?),
         destination_app = shell_quote(path_str(destination_app)?),
         log = shell_quote(path_str(log)?),
     ))
@@ -1702,11 +1902,9 @@ mod tests {
     }
 
     #[test]
-    fn download_percent_reports_floor_clamped_percentage() {
-        assert_eq!(download_percent(0, 203_428_538), 0);
-        assert_eq!(download_percent(16_855_040, 203_428_538), 8);
-        assert_eq!(download_percent(203_428_538, 203_428_538), 100);
-        assert_eq!(download_percent(250_000_000, 203_428_538), 100);
+    fn download_title_drops_the_tag_prefix() {
+        assert_eq!(download_title("v1.0.32"), "Downloading Burette 1.0.32");
+        assert_eq!(download_title("1.0.32"), "Downloading Burette 1.0.32");
     }
 
     #[test]
@@ -1720,14 +1918,18 @@ mod tests {
     }
 
     #[test]
-    fn format_download_message_includes_percent_and_speed() {
+    fn format_download_detail_includes_transferred_size_and_speed() {
         assert_eq!(
-            format_download_message(16_855_040, 203_428_538, 64_204.8),
-            "Downloading update... 8% at 63 KiB/s"
+            format_download_detail(16_855_040, 203_428_538, 64_204.8),
+            "16 MiB of 194 MiB · 63 KiB/s"
         );
         assert_eq!(
-            format_download_message(2_621_440, 203_428_538, 1_310_720.0),
-            "Downloading update... 1% at 1.2 MiB/s"
+            format_download_detail(2_621_440, 203_428_538, 1_310_720.0),
+            "2.5 MiB of 194 MiB · 1.2 MiB/s"
+        );
+        assert_eq!(
+            format_download_detail(250_000_000, 203_428_538, 0.0),
+            "194 MiB of 194 MiB · 0 B/s"
         );
     }
 
@@ -1914,5 +2116,76 @@ mod tests {
         child.wait().expect("wait for completed helper");
 
         terminate_installer_helper(&mut child).expect("reap completed helper");
+    }
+
+    #[test]
+    fn legacy_bundle_name_updates_to_the_canonical_app_path() {
+        assert_eq!(
+            canonical_update_destination(Path::new("/Applications/Burrete.app")),
+            PathBuf::from("/Applications/Burette.app")
+        );
+        assert_eq!(
+            canonical_update_destination(Path::new("/Applications/Burette.app")),
+            PathBuf::from("/Applications/Burette.app")
+        );
+    }
+
+    #[test]
+    fn installer_unregisters_and_removes_the_legacy_bundle() {
+        let script = installer_script(
+            42,
+            Path::new("/tmp/staged/Burette.app"),
+            Path::new("/Applications/Burrete.app"),
+            Path::new("/Applications/Burette.app"),
+            Path::new("/tmp/install.log"),
+        )
+        .expect("render installer");
+
+        assert!(script.contains("CURRENT_APP='/Applications/Burrete.app'"));
+        assert!(script.contains("DEST_APP='/Applications/Burette.app'"));
+        assert!(script.contains("\"$LSREGISTER\" -u \"$CURRENT_APP\""));
+        assert!(script.contains("com.local.BurreteV10.Preview"));
+        assert!(script.contains("rm -rf \"$CURRENT_APP\""));
+        assert!(script.contains("/usr/bin/open \"$DEST_APP\""));
+        assert!(
+            script.find("/usr/bin/open \"$DEST_APP\"") < script.find("rm -rf \"$CURRENT_APP\"")
+        );
+    }
+
+    #[test]
+    fn startup_relocation_only_moves_new_identity_from_the_legacy_path() {
+        assert!(should_relocate_legacy_install(
+            Path::new("/Applications/Burrete.app"),
+            APP_ID
+        ));
+        assert!(!should_relocate_legacy_install(
+            Path::new("/Applications/Burrete.app"),
+            "com.local.BurreteV10"
+        ));
+        assert!(!should_relocate_legacy_install(
+            Path::new("/Applications/Burette.app"),
+            APP_ID
+        ));
+        assert!(!should_relocate_legacy_install(
+            Path::new("/private/var/folders/example/AppTranslocation/ABC/d/Burrete.app"),
+            APP_ID
+        ));
+    }
+
+    #[test]
+    fn startup_relocation_replaces_the_path_and_reregisters_the_app() {
+        let script = legacy_relocation_script(
+            42,
+            Path::new("/Applications/Burrete.app"),
+            Path::new("/Applications/Burette.app"),
+            Path::new("/tmp/relocate.log"),
+        )
+        .expect("render relocation helper");
+
+        assert!(script.contains("\"$LSREGISTER\" -u \"$CURRENT_APP\""));
+        assert!(script.contains("/bin/mv \"$CURRENT_APP\" \"$DEST_APP\""));
+        assert!(script.contains("\"$LSREGISTER\" -f -R \"$DEST_APP\""));
+        assert!(script.contains("LSSetDefaultRoleHandlerForContentType"));
+        assert!(script.contains("/usr/bin/open \"$DEST_APP\""));
     }
 }
