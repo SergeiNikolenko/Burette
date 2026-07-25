@@ -124,6 +124,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 do {
                     result = try Self.buildInlinePreviewHTML(for: url, requestID: requestID.uuidString)
                 } catch {
+                    // A file that exceeds the preview limit is a definite answer, not
+                    // a build failure to paper over. Falling back to the raw text
+                    // preview showed the first megabyte of atom lines with nothing to
+                    // say the molecular preview had been skipped, which reads as a
+                    // broken preview. Let the outer handler render the real reason.
+                    if Self.deservesExplicitPreviewError(error) { throw error }
                     result = try Self.buildTextFallbackPreviewResult(for: url, requestID: requestID.uuidString, originalError: error)
                 }
                 DispatchQueue.main.async { [weak self] in
@@ -3624,6 +3630,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return previewPlan.capabilities.canOpenInVesta
         }
         return ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
+    }
+
+    // Errors that describe the file itself rather than a failure to build the
+    // preview. These must reach the user as stated, never as a raw-text preview.
+    private static func deservesExplicitPreviewError(_ error: Error) -> Bool {
+        guard let previewError = error as? PreviewError else { return false }
+        switch previewError {
+        case .fileTooLarge, .couldNotExtractBoundedMaestroPreview:
+            return true
+        default:
+            return false
+        }
     }
 
     private static func shouldAllowSystemFallback(for error: Error, fileExtension: String) -> Bool {

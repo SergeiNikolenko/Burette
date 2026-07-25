@@ -48,4 +48,14 @@ for (const fixture of manifest.cases) {
 assert.match(previewController, /case "mol", "mdl":/);
 assert.match(previewController, /"autoFocusStructure": true/);
 
+// A file that exceeds the Quick Look size limit must say so. It used to fall into
+// the raw-text fallback, which rendered the first megabyte of atom lines as if
+// that were the preview - the reported symptom for a 1 GB SDF against a 25 MiB
+// limit.
+assert.match(previewController, /if Self\.deservesExplicitPreviewError\(error\) \{ throw error \}/);
+assert.match(
+  previewController,
+  /private static func deservesExplicitPreviewError\(_ error: Error\) -> Bool \{[\s\S]*?case \.fileTooLarge, \.couldNotExtractBoundedMaestroPreview:[\s\S]*?return true/u,
+);
+
 console.log("Quick Look compatibility fixture tests passed");
