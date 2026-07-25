@@ -200,11 +200,18 @@ remains on the legacy path long enough for the old updater to install it. After
 restart, the bridge uses the current `SergeiNikolenko/Burette` release endpoint
 and offers the latest Burette release.
 
-The migration is intentionally two-stage:
+The migration is intentionally two-stage for every release with the built-in
+installer (`v0.10.29` through `v1.0.31`):
 
-1. `Burrete 1.0.31` installs `Burrete 1.0.32` from the compatibility repository.
+1. The installed `Burrete` version installs `Burrete 1.0.32` from the
+   compatibility repository.
 2. `Burrete 1.0.32` installs the current `Burette` archive and registers the new
-   app and Quick Look identifiers.
+   app and Quick Look identifiers at `/Applications/Burette.app`. The installer
+   unregisters and removes `/Applications/Burrete.app` after the canonical app
+   launches.
+
+Versions older than `v0.10.29` did not include the in-app installer and require
+a manual download. Do not describe those builds as self-updatable.
 
 Keep the compatibility repository and `v1.0.32` release available while any
 pre-rename installations remain in use.
