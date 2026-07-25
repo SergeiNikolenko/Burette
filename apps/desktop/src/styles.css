@@ -4288,7 +4288,7 @@ img.radix-menu-item-icon {
 .trajectory-smoothing-runtime-row strong { color: color-mix(in srgb, #2da66f 76%, var(--text-primary)); font-size: 11px; }
 .trajectory-smoothing-runtime-row small { color: var(--text-muted); font-size: 10px; }
 .trajectory-smoothing-runtime-row button { min-height: 25px; padding: 0 8px; border: 1px solid var(--line-subtler); border-radius: 7px; background: var(--surface-card); color: var(--text-primary); font: inherit; font-size: 10px; font-weight: 650; }
-.trajectory-smoothing-build { width: 100%; }
+.trajectory-smoothing-build { justify-self: start; }
 .trajectory-smoothing-chart {
   overflow: hidden;
   border: 1px solid var(--line-subtler);

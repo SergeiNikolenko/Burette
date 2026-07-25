@@ -983,9 +983,12 @@ function TrajectorySmoothingCard({
           {result ? <TrajectorySmoothingChart result={result} playback={playback} preset={result.preset ?? preset} setFrame={setFrame} /> : null}
           {result?.spectrum ? <TrajectorySpectrum spectrum={result.spectrum} cutoffFrequency={result.cutoffFrequency ?? null} /> : null}
           {error ? <div className="trajectory-smoothing-error" role="alert">{error}</div> : null}
-          {!built || error ? <button type="button" className="dock-action trajectory-smoothing-build" disabled={running} onClick={() => void build()}>
+          {/* Full width and an input-coloured face made this read as a text
+              field; it is the section's one action, so it looks like the
+              buttons every other section uses. */}
+          {!built || error ? <Button type="button" variant="secondary" size="sm" className="trajectory-smoothing-build" disabled={running} onClick={() => void build()}>
             {running ? "Enabling smoothing…" : error ? "Try again" : "Enable smoothing"}
-          </button> : null}
+          </Button> : null}
         </>
       ) : null}
     </section>
