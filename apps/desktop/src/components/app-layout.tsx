@@ -402,7 +402,11 @@ export function AppLayout({
       observer?.disconnect();
       window.clearTimeout(timer);
     };
-  }, [activeGridId, rightDockOpen]);
+    // viewportWidth belongs here: when the dock overlaps a floored grid, a window
+    // resize moves the dock without changing its size, so the dock's own observer
+    // stays silent while `cover` has in fact changed. The width is quantised, so
+    // this re-runs once per resize step rather than once per pixel.
+  }, [activeGridId, rightDockOpen, viewportWidth]);
   const systemThemeMode = useSystemThemeMode();
   // The layout widths seed the chrome before the edge observer's first pass;
   // `--sidebar-edge` / `--right-dock-edge` take over from there.

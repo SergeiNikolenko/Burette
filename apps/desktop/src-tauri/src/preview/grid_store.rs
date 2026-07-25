@@ -15,7 +15,7 @@ use super::{
     grid_analysis,
     grid_database::open_grid_database,
     grid_identity, grid_predicate,
-    runtime_utils::{clipped, decode_text, normalized_lines},
+    runtime_utils::{clipped, decode_text},
 };
 
 const GRID_INITIAL_ROWS: usize = 192;
@@ -1821,26 +1821,15 @@ fn first_non_empty_line(text: &str) -> Option<(&str, usize)> {
     None
 }
 
-// How many data rows are sampled when guessing which columns hold structures.
-// Scanning every row of every column per batch was the single most expensive
-// thing about ingesting a large CSV; a bounded sample decides the same way for
-// any real table, where the structure column is populated from the top.
-const SMILES_INFERENCE_SAMPLE_ROWS: usize = 512;
+// How many non-empty values per column the inference wants before it decides.
+// Scanning every row of every column per batch was the single most expensive part
+// of ingesting a large CSV.
+const SMILES_INFERENCE_SAMPLE_VALUES: usize = 512;
 
-fn sample_data_rows(text: &str, start_offset: usize, limit: usize) -> Vec<&str> {
-    let mut rows = Vec::new();
-    let mut offset = start_offset;
-    while rows.len() < limit {
-        let Some((line, next_offset)) = line_at(text, offset) else {
-            break;
-        };
-        offset = next_offset;
-        if !line.trim().is_empty() {
-            rows.push(line);
-        }
-    }
-    rows
-}
+// Ceiling on rows read while looking for those values. A structure column can sit
+// empty for a long stretch before it starts carrying data, so the scan continues
+// past a blank prefix - but never walks more of the file than this.
+const SMILES_INFERENCE_MAX_SCANNED_ROWS: usize = 20_000;
 
 // Resumes from a byte offset and walks the source once. Splitting the whole text
 // into a `Vec<String>` here instead made ingest quadratic: a collection indexed
@@ -1953,11 +1942,8 @@ fn parse_delimited_table_batch(
             }
         })
         .collect();
-    let inferred_smiles_indexes = infer_smiles_columns_from_values(
-        headers.len(),
-        &sample_data_rows(text, after_header, SMILES_INFERENCE_SAMPLE_ROWS),
-        separator,
-    );
+    let inferred_smiles_indexes =
+        infer_smiles_columns_from_source(text, after_header, headers.len(), separator);
     let first_row_looks_like_data = headers.iter().any(|value| looks_like_smiles(value));
     if !is_likely_delimited_header(&headers)
         && (inferred_smiles_indexes.is_empty() || first_row_looks_like_data)
@@ -2388,17 +2374,31 @@ fn explicit_smiles_column_index(
     Err(format!("unknown structure column: {column}"))
 }
 
-fn infer_smiles_columns_from_values(
+// Walks the data rows once, counting per column, and stops as soon as every
+// column has seen enough values (or the scan ceiling is reached). Parsing each row
+// once - rather than once per column, as the previous shape did - is what makes
+// this affordable per batch.
+fn infer_smiles_columns_from_source(
+    text: &str,
+    start_offset: usize,
     column_count: usize,
-    data_rows: &[&str],
     separator: char,
 ) -> Vec<usize> {
-    let mut candidates = Vec::new();
-    for column_index in 0..column_count {
-        let mut values = 0usize;
-        let mut smiles_values = 0usize;
-        for row in data_rows {
-            let cells = parse_delimited_line(row, separator);
+    let mut values = vec![0usize; column_count];
+    let mut smiles_values = vec![0usize; column_count];
+    let mut offset = start_offset;
+    let mut scanned = 0usize;
+    while scanned < SMILES_INFERENCE_MAX_SCANNED_ROWS {
+        let Some((line, next_offset)) = line_at(text, offset) else {
+            break;
+        };
+        offset = next_offset;
+        if line.trim().is_empty() {
+            continue;
+        }
+        scanned += 1;
+        let cells = parse_delimited_line(line, separator);
+        for column_index in 0..column_count {
             let value = cells
                 .get(column_index)
                 .map(|cell| cell.trim())
@@ -2406,16 +2406,21 @@ fn infer_smiles_columns_from_values(
             if value.is_empty() {
                 continue;
             }
-            values += 1;
+            values[column_index] += 1;
             if looks_like_smiles(value) {
-                smiles_values += 1;
+                smiles_values[column_index] += 1;
             }
         }
-        if is_likely_smiles_column(values, smiles_values) {
-            candidates.push(column_index);
+        if values
+            .iter()
+            .all(|count| *count >= SMILES_INFERENCE_SAMPLE_VALUES)
+        {
+            break;
         }
     }
-    candidates
+    (0..column_count)
+        .filter(|index| is_likely_smiles_column(values[*index], smiles_values[*index]))
+        .collect()
 }
 
 fn is_likely_smiles_column(non_empty: usize, valid: usize) -> bool {
@@ -2446,11 +2451,7 @@ pub(crate) fn delimited_smiles_column_choices(
         "tsv" => '\t',
         _ => return Err(format!("Unsupported delimited extension: {extension}")),
     };
-    let rows: Vec<_> = normalized_lines(text)
-        .into_iter()
-        .filter(|line| !line.trim().is_empty())
-        .collect();
-    let Some(header_line) = rows.first() else {
+    let Some((header_line, after_header)) = first_non_empty_line(text) else {
         return Ok(Vec::new());
     };
     let headers: Vec<_> = parse_delimited_line(header_line, separator)
@@ -2470,11 +2471,7 @@ pub(crate) fn delimited_smiles_column_choices(
         .filter_map(|(index, value)| is_smiles_column(value).then_some(index))
         .collect();
     let indexes = if named.is_empty() {
-        infer_smiles_columns_from_values(
-            headers.len(),
-            &rows[1..].iter().map(String::as_str).collect::<Vec<_>>(),
-            separator,
-        )
+        infer_smiles_columns_from_source(text, after_header, headers.len(), separator)
     } else {
         named
     };
@@ -4795,6 +4792,31 @@ mod tests {
     // part-way through one; the cursor has to resume inside that row.
     // Without a name column the record name comes from the row number, which must
     // keep counting across batches rather than restarting at each one.
+    // A structure column that only starts carrying values well into the file must
+    // still be detected. A fixed row prefix misses it and the table falls through
+    // to the headerless fallback, which reads the wrong column or rejects the file.
+    #[test]
+    fn delimited_inference_finds_a_sparse_structure_column() {
+        let mut csv = String::from("id,note,structure\n");
+        for index in 0..900 {
+            csv.push_str(&format!("{index},blank,\n"));
+        }
+        for index in 900..930 {
+            csv.push_str(&format!("{index},filled,CCO\n"));
+        }
+        let batch = parse_grid_batch_with_options(
+            "csv",
+            &csv,
+            GridCursor::default(),
+            0,
+            1_000,
+            &GridParseOptions::default(),
+        )
+        .expect("sparse structure column should be inferred");
+        assert_eq!(batch.records.len(), 30);
+        assert_eq!(batch.records[0].smiles.as_deref(), Some("CCO"));
+    }
+
     #[test]
     fn datawarrior_row_numbers_survive_a_resumed_batch() {
         let dwar = concat!(

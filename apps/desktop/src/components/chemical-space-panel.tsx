@@ -208,6 +208,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [cliffMinSimilarity, setCliffMinSimilarity] = useState(0.6);
   const [cliffMinDelta, setCliffMinDelta] = useState(1);
   const [indexState, setIndexState] = useState<GridIndexState | null>(null);
+  // Whether the index state above has been answered yet. Until it has, the size
+  // of the collection is unknown, and treating unknown as "small and ready" let
+  // the panel submit the job the gate exists to hold back.
+  const [indexProbed, setIndexProbed] = useState(false);
   const [confirmedLargeRun, setConfirmedLargeRun] = useState(false);
   const workflowControllerRef = useRef<AbortController | null>(null);
   const studyControllerRef = useRef<AbortController | null>(null);
@@ -242,6 +246,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setCliffsEnabled(false);
     setCliffMinSimilarity(0.6);
     setCliffMinDelta(1);
+    setConfirmedLargeRun(false);
   }, [documentId]);
 
   // Polls the grid runtime while it indexes. Compute is refused until the index
@@ -250,8 +255,11 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   useEffect(() => {
     if (!documentId) {
       setIndexState(null);
+      setIndexProbed(true);
       return;
     }
+    setIndexState(null);
+    setIndexProbed(false);
     const controller = new AbortController();
     let timer = 0;
     const poll = () => {
@@ -259,12 +267,16 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         .then((next) => {
           if (controller.signal.aborted) return;
           setIndexState(next);
+          setIndexProbed(true);
           if (next.indexing) timer = window.setTimeout(poll, 800);
         })
         .catch(() => {
-          // The runtime may not be listening yet; treat it as ready so a healthy
-          // collection is never gated behind a status we could not read.
-          if (!controller.signal.aborted) setIndexState(null);
+          // The runtime may not be listening - browser dev, or a viewer that has
+          // not mounted. Record the attempt so the panel is never gated forever
+          // behind a status that will not arrive.
+          if (controller.signal.aborted) return;
+          setIndexState(null);
+          setIndexProbed(true);
         });
     };
     poll();
@@ -321,6 +333,9 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const recordCount = indexState?.recordsTotal ?? 0;
   const indexing = indexState?.indexing === true;
   const needsConfirmation = !indexing && recordCount > AUTO_RUN_RECORD_LIMIT && !confirmedLargeRun;
+  // An unanswered probe holds the job back: the collection could be mid-index or
+  // far past the auto-run limit, and both are decided by the answer.
+  const awaitingIndexState = !indexProbed;
 
   useEffect(() => {
     if (!documentId) return;
@@ -334,7 +349,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     }
     // Waiting on the index, or on the user for a collection large enough that the
     // embedding is a deliberate decision.
-    if (indexing || needsConfirmation) return;
+    if (awaitingIndexState || indexing || needsConfirmation) return;
     const startedAt = Date.now();
     const controller = new AbortController();
     workflowControllerRef.current = controller;
@@ -369,7 +384,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         workflowControllerRef.current = null;
       }
     };
-  }, [documentId, options, indexing, needsConfirmation]);
+  }, [documentId, options, awaitingIndexState, indexing, needsConfirmation]);
 
   useEffect(() => {
     if (!documentId || clusteringMethod === "none") {
@@ -780,6 +795,8 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                 });
               }}
             />
+          ) : awaitingIndexState ? (
+            <ChemicalSpaceLoading message="Checking the collection…" progress={null} onStop={stopCalculation} />
           ) : indexing ? (
             <ChemicalSpaceEmpty
               message={`Indexing this collection — ${indexState?.recordsIndexed.toLocaleString() ?? "0"} of ${
