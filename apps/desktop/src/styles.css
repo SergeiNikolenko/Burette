@@ -3658,9 +3658,18 @@ img.radix-menu-item-icon {
   overflow-y: auto;
 }
 /* Indentation already says where a group starts, so the hairlines that made the
-   tree read as a table are gone. */
+   tree read as a table are gone. Without them the rows can also close up: at the
+   old row height four groups did not fit before the list started scrolling. */
 .structure-brief-rows.structure-inspector-tree .structure-brief-action-entry + .structure-brief-action-entry {
   border-top: 0;
+}
+.structure-inspector-tree .structure-brief-action-entry {
+  gap: 4px;
+  padding: 0;
+}
+.structure-inspector-tree .structure-brief-action-summary,
+.structure-inspector-tree .structure-brief-action-row {
+  padding: 3px 5px;
 }
 /* A collapsed section keeps only its header, so the list reads as a table of
    contents when everything is folded away. */
@@ -3915,8 +3924,8 @@ img.radix-menu-item-icon {
 }
 .structure-inspector-tree-toggle,
 .structure-inspector-tree-spacer {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
 }
 .structure-inspector-tree-toggle {
   display: grid;
@@ -3940,18 +3949,7 @@ img.radix-menu-item-icon {
   transform: rotate(90deg);
 }
 .structure-inspector-tree-children {
-  position: relative;
-  padding: 0 0 2px 22px;
-}
-/* Same guide the sidebar tree uses, so nesting reads the same in both panels. */
-.structure-inspector-tree-children::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 4px;
-  left: 13px;
-  width: 1px;
-  background: var(--line-subtler);
+  padding: 0 0 2px 15px;
 }
 .structure-inspector-tree-children .structure-brief-action-entry + .structure-brief-action-entry {
   border-top: 0;
@@ -3996,11 +3994,15 @@ img.radix-menu-item-icon {
   flex: 0 1 auto;
   color: var(--text-primary);
 }
+/* The figure belongs to the label, not to a column of its own: stretching it
+   parked "2 chains" in the middle of the row, half a panel from the name it
+   counts. */
 .structure-inspector-row-content[data-tree="true"] em {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   overflow: hidden;
   color: var(--text-faint);
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
@@ -4108,6 +4110,21 @@ img.radix-menu-item-icon {
   transition: background 120ms ease-out, color 120ms ease-out, transform 120ms ease-out;
 }
 .structure-brief-mini-action:hover {
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+}
+/* In the tree these are row affordances, not form controls: at button size two
+   of them on the water row outweighed every label above it. */
+.structure-inspector-tree .structure-brief-mini-action {
+  min-width: 0;
+  width: 17px;
+  height: 17px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-faint);
+  padding: 0;
+}
+.structure-inspector-tree .structure-brief-mini-action:hover {
   background: var(--surface-subtle);
   color: var(--text-primary);
 }
