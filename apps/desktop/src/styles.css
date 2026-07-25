@@ -3662,6 +3662,25 @@ img.radix-menu-item-icon {
 .structure-inspector-section[data-collapsed] .structure-inspector-section-title-button::before {
   transform: rotate(0deg);
 }
+/* The tones follow the scene tree's default palette rather than the accent, so
+   a chain and its dot read as the same object in both places. */
+.structure-inspector-row-dot {
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.structure-inspector-row-dot[data-tone="polymer"] { background: #4e79a7; }
+.structure-inspector-row-dot[data-tone="ligand"] { background: #59a14f; }
+.structure-inspector-row-dot[data-tone="ion"] { background: #e8973a; }
+.structure-inspector-row-dot[data-tone="water"] { background: #9aa0a6; }
+.structure-brief-mini-action[data-icon="visibility"] {
+  display: inline-grid;
+  place-items: center;
+  padding-inline: 5px;
+}
 .structure-inspector-loading {
   min-width: 0;
   display: grid;
@@ -3853,6 +3872,12 @@ img.radix-menu-item-icon {
   grid-template-columns: minmax(68px, 0.42fr) minmax(0, 1fr);
   gap: 8px;
   align-items: baseline;
+}
+/* The colour dot is a third track, not a third row: without its own column the
+   grid wraps the label and its value onto separate lines. */
+.structure-inspector-row-content:has(> .structure-inspector-row-dot) {
+  grid-template-columns: auto minmax(58px, 0.42fr) minmax(0, 1fr);
+  gap: 0 8px;
 }
 .structure-brief-action-row span,
 .structure-brief-action-summary span,

@@ -3404,9 +3404,23 @@ function structureRowsKeyDown(event: KeyboardEvent<HTMLDivElement>) {
   buttons[nextIndex].click();
 }
 
+// The scene tree marks every row with a dot in the colour the object is drawn
+// in, so the panel does the same: a chain reads as the same thing in both
+// places without matching names by eye.
+type CompositionTone = "polymer" | "ligand" | "ion" | "water" | "entry";
+
+function compositionToneFor(label: string): CompositionTone {
+  if (label === "Polymers" || label.startsWith("Chain")) return "polymer";
+  if (label === "Ligands") return "ligand";
+  if (label === "Ions") return "ion";
+  if (label === "Water") return "water";
+  return "entry";
+}
+
 type CompositionGroup = {
   key: string;
   row: StructureSummaryRow;
+  tone: CompositionTone;
   children: StructureSummaryRow[];
 };
 
@@ -3417,6 +3431,7 @@ function compositionGroups(summary: StructureCompositionSummary): CompositionGro
   const groups = visibleComponentRows(summary.componentRows).map((row) => ({
     key: `component:${row.label}`,
     row,
+    tone: compositionToneFor(row.label),
     children: row.label === "Polymers" ? summary.polymerRows
       : row.label === "Ligands" ? summary.ligandRows
       : row.label === "Ions" ? summary.solventRows
@@ -3427,6 +3442,7 @@ function compositionGroups(summary: StructureCompositionSummary): CompositionGro
   return [...groups, {
     key: "maestro",
     row: { label: "Maestro entries", value: `${maestroRows.length} CT ${plural(maestroRows.length, "block")}` },
+    tone: "entry" as CompositionTone,
     children: maestroRows,
   }];
 }
@@ -3479,6 +3495,7 @@ function StructureCompositionCard({
               <div className="structure-inspector-tree-group" key={group.key}>
                 <StructureActionRow
                   row={group.row}
+                  tone={group.tone}
                   document={document}
                   actions={actions}
                   activeActionKey={activeActionKey}
@@ -3503,6 +3520,7 @@ function StructureCompositionCard({
                       <StructureActionRow
                         key={structureActionRowKey(child, index)}
                         row={child}
+                        tone={group.tone}
                         document={document}
                         actions={actions}
                         activeActionKey={activeActionKey}
@@ -3548,6 +3566,7 @@ function structureActionRowKey(row: StructureSummaryRow, index: number) {
 
 function StructureActionRow({
   row,
+  tone,
   document,
   actions,
   activeActionKey,
@@ -3556,6 +3575,7 @@ function StructureActionRow({
   leading,
 }: {
   row: StructureSummaryRow;
+  tone?: CompositionTone;
   document: ViewerDocument;
   actions: ShellActions;
   activeActionKey: string | null;
@@ -3565,6 +3585,7 @@ function StructureActionRow({
 }) {
   const content = () => (
     <span className="structure-inspector-row-content">
+      {tone ? <span className="structure-inspector-row-dot" data-tone={tone} aria-hidden="true" /> : null}
       <span className="structure-inspector-row-label">{row.label}</span>
       <strong title={row.value}>{row.value}</strong>
     </span>
@@ -3634,22 +3655,8 @@ function StructureActionRow({
         >
           {content()}
         </div>
-        <button
-          type="button"
-          className="structure-brief-mini-action"
-          onClick={() => runAction(primaryAction)}
-          title={primaryAction.label}
-        >
-          {miniActionLabel(primaryAction.label)}
-        </button>
-        <button
-          type="button"
-          className="structure-brief-mini-action"
-          onClick={() => runAction(secondaryAction)}
-          title={secondaryAction.label}
-        >
-          {miniActionLabel(secondaryAction.label)}
-        </button>
+        <StructureMiniAction action={primaryAction} run={runAction} />
+        <StructureMiniAction action={secondaryAction} run={runAction} />
       </div>
     );
   }
@@ -3822,6 +3829,48 @@ function contextMenuItems({
 function miniActionLabel(label: string) {
   const [first] = label.split(/\s+/u);
   return first || label;
+}
+
+// Hiding and showing are the two actions the scene tree spends an icon on, so
+// they read as icons here too; anything else keeps its word.
+function StructureMiniAction({
+  action,
+  run,
+}: {
+  action: StructureViewerAction;
+  run: (action: StructureViewerAction) => void;
+}) {
+  const hides = action.type === "hide_waters" || action.type === "hide_components";
+  const shows = action.type === "show_waters" || action.type === "show_components";
+  return (
+    <button
+      type="button"
+      className="structure-brief-mini-action"
+      data-icon={hides || shows ? "visibility" : undefined}
+      onClick={() => run(action)}
+      title={action.label}
+      aria-label={hides || shows ? action.label : undefined}
+    >
+      {hides ? <EyeIcon /> : shows ? <EyeOffIcon /> : miniActionLabel(action.label)}
+    </button>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <path d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4-6.5-4-6.5-4z" />
+      <circle cx="8" cy="8" r="1.7" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
+      <path d="M2.5 2.5l11 11M6.3 6.4A2 2 0 008 9.7M4.2 4.6C2.6 5.8 1.5 8 1.5 8s2.4 4 6.5 4c1 0 1.9-.2 2.7-.6M12.3 10c1.4-1.1 2.2-2 2.2-2s-2.4-4-6.5-4c-.4 0-.8 0-1.2.1" />
+    </svg>
+  );
 }
 
 // Inside the File section this is a plain group; on the empty panel there is no
