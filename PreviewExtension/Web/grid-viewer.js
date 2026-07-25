@@ -935,8 +935,38 @@
     if (!state.remoteMode || !state.indexing || state.indexPollTimer) return;
     state.indexPollTimer = window.setTimeout(() => {
       state.indexPollTimer = null;
-      if (state.indexing) void loadMoreRemote(cfg);
+      if (state.indexing) void pollIndexProgress(cfg);
     }, 500);
+  }
+
+  // While the backend indexes, the grid only needs the counters: how many records
+  // exist so far and whether indexing finished. This used to call loadMoreRemote,
+  // which appended every row indexed so far and re-armed itself, so an unattended
+  // window pulled the entire collection — 400k rows with their molblocks — into
+  // memory without anyone scrolling. Rows are now fetched on demand only.
+  async function pollIndexProgress(cfg) {
+    if (!state.remoteMode) return;
+    const token = state.token;
+    try {
+      const result = await hostRequest('gridFetchPage', gridFetchPayload({
+        query: state.query || '',
+        sort: state.sort || 'index',
+        offset: 0,
+        limit: 1
+      }));
+      if (token !== state.token) return;
+      const wasIndexing = state.indexing;
+      applyGridPageState(result);
+      updateChrome(cfg);
+      if (state.indexing) {
+        scheduleIndexPoll(cfg);
+      } else if (wasIndexing) {
+        // The collection is complete now; top up only if the viewport wants more.
+        maybeLoadMore(cfg);
+      }
+    } catch (error) {
+      setStatus(error?.message || String(error), 'error');
+    }
   }
 
   async function initRDKit() {
@@ -2880,8 +2910,11 @@
       if (nextRows.length) invalidateTableColumnCatalog();
       state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
       await renderVirtualWindow(cfg, state.token, { force: true });
+      // No self-chaining here: renderVirtualWindow drains state.pendingLoad and
+      // calls maybeLoadMore, so the next page is fetched when the viewport (or a
+      // rail jump) actually needs it. Chaining unconditionally loaded the whole
+      // collection into the iframe heap.
       if (!nextRows.length && state.indexing) scheduleIndexPoll(cfg);
-      else if (hasMoreRows()) window.setTimeout(() => loadMoreRemote(cfg), 0);
     } catch (error) {
       setStatus(error?.message || String(error), 'error');
     } finally {
