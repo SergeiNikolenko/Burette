@@ -13,11 +13,11 @@ plugins/burette-agent/preview-web/openchemlib/openchemlib.js
 plugins/burette-agent/preview-web/rdkit-conformer/Burette_rdkit_conformer.wasm
 plugins/burette-agent/browser-shell-dist/assets/Burette_rdkit_conformer-BA7plZBF.wasm
 plugins/burette-agent/browser-shell-dist/assets/RDKit_minimal-tnscgqxm.wasm
-plugins/burette-agent/browser-shell-dist/assets/dist-DVxyF8vO.js
-plugins/burette-agent/browser-shell-dist/assets/index.modern-B8R3H35x.js
-plugins/burette-agent/browser-shell-dist/assets/index.modern-Dzbj4hy0.js
+plugins/burette-agent/browser-shell-dist/assets/dist-CQl48rOZ.js
+plugins/burette-agent/browser-shell-dist/assets/index.modern-C1laRYbs.js
+plugins/burette-agent/browser-shell-dist/assets/index.modern-CTbRksHc.js
 plugins/burette-agent/browser-shell-dist/assets/indigo-ketcher-1.43.0-uUo-NEHL.wasm
-plugins/burette-agent/browser-shell-dist/assets/plotly-basic.min-Bnn6fGOk.js
+plugins/burette-agent/browser-shell-dist/assets/plotly-basic.min-BGGwveDV.js
 plugins/burette-agent/browser-shell-dist/index.js
 tests/test-ui-shell-contract.mjs
 docs/public/burette-quick-look-preview.png
