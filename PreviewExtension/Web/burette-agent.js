@@ -804,8 +804,14 @@
     const residues = ah.residues || {};
     const chains = ah.chains || {};
     const labelEntity = valueAt(chains.label_entity_id, chainIndex);
-    const labelComp = valueAt(residues.label_comp_id, residueIndex);
-    const authComp = valueAt(residues.auth_comp_id, residueIndex) || labelComp;
+    // The component name lives on the atom table, not the residue one: Mol*'s
+    // residues table carries only group_PDB, the seq ids and the insertion code.
+    // Read from residues it was always undefined, so every atom reached
+    // classify() with an empty component - which made ions indistinguishable
+    // from ligands and left kind:"ion" and every comp-id selector matching
+    // nothing at all.
+    const labelComp = valueAt(atoms.label_comp_id, atomIndex);
+    const authComp = valueAt(atoms.auth_comp_id, atomIndex) || labelComp;
     const entityType = entityTypeFor(model, labelEntity);
     const rec = {
       structureId: String(entry.ref || `structure-${structureIndex}`),
