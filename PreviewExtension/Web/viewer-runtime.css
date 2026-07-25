@@ -537,9 +537,8 @@ body.burette-mobile-host #buret-scene-tree {
 .buret-viewport-rail {
   position: fixed;
   top: var(--buret-viewport-rail-top, calc(var(--buret-toolbar-safe-top) + 42px));
-  /* The top toolbar can be dragged. This rail belongs to the viewport edge,
-     so its horizontal position must respond directly to viewport resizing. */
-  right: var(--buret-control-island-right);
+  /* The rail is the vertical part of the draggable toolbar group. */
+  right: var(--buret-viewport-rail-right, var(--buret-control-island-right));
   z-index: 40;
   box-sizing: border-box;
   display: flex;
@@ -567,6 +566,10 @@ body.burette-mobile-host #buret-scene-tree {
 .buret-viewport-rail.hidden,
 .buret-selection-bar.hidden {
   display: none;
+}
+body.buret-toolbar-collapsed #buret-viewport-rail,
+body.buret-toolbar-collapsed #buret-selection-bar {
+  display: none !important;
 }
 .buret-rail-button {
   position: relative;

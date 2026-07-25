@@ -4951,25 +4951,24 @@ assert.match(previewRuntimeCss, /body:has\(\.msp-viewport-controls-buttons \.msp
 assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*hideGenerate3DMenu\(\);/);
 assert.match(previewViewer, /const viewportControlRailRect = visibleRect\('\.msp-plugin \.msp-viewport-controls-buttons'\);/);
 assert.match(previewViewer, /const railRect = visibleRect\('#buret-viewport-rail'\) \|\| viewportControlRailRect;/);
-// The vertical viewport rail belongs to the canvas edge. It must not inherit the
-// draggable top toolbar's saved right offset or wait for JS layout measurement
-// while the host sidebar resizes the preview iframe.
-assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*right: var\(--buret-control-island-right\);/s);
-assert.doesNotMatch(previewRuntimeCss, /--buret-viewport-rail-right/);
-assert.doesNotMatch(previewViewer, /--buret-viewport-rail-right/);
+// The vertical viewport rail is the second half of the top toolbar group: it
+// keeps the same right edge, follows either drag handle, and rolls up with it.
+assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*right: var\(--buret-viewport-rail-right, var\(--buret-control-island-right\)\);/s);
+assert.match(previewViewer, /root\.style\.setProperty\('--buret-viewport-rail-right', viewportRailRight \+ 'px'\);/);
+assert.match(previewViewer, /const viewportRailTop = selectionToolbarRect[\s\S]*Math\.ceil\(toolbarBottom\)/);
 assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*cursor: grab;[^}]*touch-action: none;/s);
 assert.match(previewRuntimeCss, /\.buret-viewport-rail\.buret-dragging,[\s\S]*cursor: grabbing;/);
-assert.match(previewViewer, /const VIEWPORT_RAIL_POSITION_VERSION = '1';/);
-assert.match(previewViewer, /function initViewportRailDrag\(rail\) \{/);
-assert.match(previewViewer, /right: Math\.round\(window\.innerWidth - rect\.right\)/);
-assert.match(previewViewer, /window\.localStorage && window\.localStorage\.setItem\('buret\.viewportRail\.position'/);
-assert.match(previewViewer, /applyViewportRailPosition\(\s*rail,\s*Number\.parseFloat\(rail\.style\.right\)/s);
-assert.match(previewViewer, /initViewportRailDrag\(rail\);/);
+assert.match(previewRuntimeCss, /body\.buret-toolbar-collapsed #buret-viewport-rail,[\s\S]*#buret-selection-bar \{\s*display: none !important;/);
+assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*closeViewportMenu\(\);/);
+assert.doesNotMatch(previewViewer, /VIEWPORT_RAIL_POSITION_VERSION/);
+assert.doesNotMatch(previewViewer, /localStorage\.setItem\('buret\.viewportRail\.position'/);
+assert.match(previewViewer, /function initViewportRailDrag\(rail, toolbar\) \{/);
+assert.match(previewViewer, /moveToolbar\(\s*toolbar,\s*drag\.toolbarLeft \+ event\.clientX - drag\.startX,\s*drag\.toolbarTop \+ event\.clientY - drag\.startY\s*\);/s);
+assert.match(previewViewer, /saveToolbarPosition\(toolbar\);/);
+assert.match(previewViewer, /initViewportRailDrag\(rail, document\.getElementById\('buret-toolbar'\)\);/);
 assert.match(previewViewer, /function positionOpenViewportMenu\(rail = document\.getElementById\('buret-viewport-rail'\)\) \{/);
-assert.match(previewViewer, /positionOpenViewportMenu\(rail\);/);
+assert.match(previewViewer, /root\.style\.setProperty\('--buret-viewport-panel-max-height', panelMaxHeight \+ 'px'\);\s*positionOpenViewportMenu\(\);/);
 assert.match(previewViewer, /positionOpenViewportMenu\(trigger\.closest\('#buret-viewport-rail'\)\);/);
-assert.doesNotMatch(previewViewer, /rail\.dataset\.defaultPosition = '0';\s*closeViewportMenu\(\);/);
-assert.match(previewViewer, /applyViewportRailPosition\(rail,[\s\S]*?updateFloatingLayoutOffsets\(\);\s*positionOpenViewportMenu\(rail\);/);
 // The rail carries its own animation button, the way Mol*'s viewport controls did:
 // a trackball that keeps turning plus the plugin's timed animations, each listed
 // once and each able to say why it is unavailable.

@@ -8,7 +8,6 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '13';
   const TOOLBAR_COLLAPSED_VERSION = '5';
-  const VIEWPORT_RAIL_POSITION_VERSION = '1';
   const DOCKING_POSE_POSITION_VERSION = '8';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
@@ -4075,6 +4074,7 @@
     if (collapsed) {
       setXyzrenderPopoverVisibility(toolbar, false);
       hideGenerate3DMenu();
+      closeViewportMenu();
     }
     toolbar.classList.toggle('collapsed', collapsed);
     document.body?.classList.toggle('buret-toolbar-collapsed', collapsed);
@@ -4322,6 +4322,10 @@
       Math.max(180, Math.floor(window.innerWidth - selectionBarLeft - TOOLBAR_MARGIN)) + 'px');
     root.style.setProperty('--buret-selection-controls-top', toolbarRect ? Math.ceil(toolbarRect.bottom - 1) + 'px' : `calc(var(--buret-toolbar-safe-top) + 48px)`);
     const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
+    const viewportRailRight = toolbarRect
+      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - toolbarRect.right))
+      : TOOLBAR_MARGIN;
+    root.style.setProperty('--buret-viewport-rail-right', viewportRailRight + 'px');
     const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
     const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
     const viewportControlRailRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
@@ -4356,15 +4360,16 @@
       : defaultViewportTop;
     const viewportControlsTop = Math.max(TOOLBAR_MARGIN, Math.ceil(viewportControlsViewportTop - mainTop));
     root.style.setProperty('--buret-viewport-controls-top', viewportControlsTop + 'px');
-    // The rail is positioned against the window rather than the layout region, so it
-    // takes the unshifted figure — the one that already steps below the toolbar and
-    // the selection bar.
-    root.style.setProperty('--buret-viewport-rail-top', Math.ceil(viewportControlsViewportTop) + 'px');
+    const viewportRailTop = selectionToolbarRect
+      ? Math.max(defaultViewportTop, Math.ceil(selectionToolbarRect.bottom + FLOATING_LAYOUT_GAP))
+      : Math.max(defaultViewportTop, Math.ceil(toolbarBottom));
+    root.style.setProperty('--buret-viewport-rail-top', viewportRailTop + 'px');
     repositionDockingPoseControlsForLayout(mainRect);
 
     const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || window.innerHeight;
     const panelMaxHeight = Math.max(160, Math.floor(bottomLimit - viewportControlsViewportTop - FLOATING_LAYOUT_GAP));
     root.style.setProperty('--buret-viewport-panel-max-height', panelMaxHeight + 'px');
+    positionOpenViewportMenu();
   }
 
   function visibleRectTop(selector) {
@@ -6838,62 +6843,23 @@
     if (changed) updateFloatingLayoutOffsets();
   }
 
-  function applyViewportRailPosition(rail, right, top) {
-    const width = rail.offsetWidth || rail.getBoundingClientRect().width || 36;
-    const height = rail.offsetHeight || rail.getBoundingClientRect().height || 170;
-    const maxRight = Math.max(TOOLBAR_MARGIN, window.innerWidth - width - TOOLBAR_MARGIN);
-    const maxTop = Math.max(TOOLBAR_MARGIN, window.innerHeight - height - TOOLBAR_MARGIN);
-    rail.style.left = 'auto';
-    rail.style.right = Math.round(Math.min(Math.max(TOOLBAR_MARGIN, right), maxRight)) + 'px';
-    rail.style.top = Math.round(Math.min(Math.max(TOOLBAR_MARGIN, top), maxTop)) + 'px';
-  }
-
-  function saveViewportRailPosition(rail) {
+  function initViewportRailDrag(rail, toolbar) {
+    if (!toolbar) return;
     try {
-      const rect = rail.getBoundingClientRect();
-      window.localStorage && window.localStorage.setItem('buret.viewportRail.position', JSON.stringify({
-        right: Math.round(window.innerWidth - rect.right),
-        top: Math.round(rect.top),
-        mode: 'custom'
-      }));
-      window.localStorage && window.localStorage.setItem('buret.viewportRail.position.version', VIEWPORT_RAIL_POSITION_VERSION);
+      window.localStorage && window.localStorage.removeItem('buret.viewportRail.position');
+      window.localStorage && window.localStorage.removeItem('buret.viewportRail.position.version');
     } catch (_) {}
-  }
-
-  function restoreViewportRailPosition(rail) {
-    try {
-      const raw = window.localStorage && window.localStorage.getItem('buret.viewportRail.position');
-      const version = window.localStorage && window.localStorage.getItem('buret.viewportRail.position.version');
-      if (raw && version === VIEWPORT_RAIL_POSITION_VERSION) {
-        const saved = JSON.parse(raw);
-        if (saved.mode === 'custom' && Number.isFinite(saved.right) && Number.isFinite(saved.top)) {
-          rail.dataset.defaultPosition = '0';
-          applyViewportRailPosition(rail, saved.right, saved.top);
-          return;
-        }
-      } else if (raw) {
-        window.localStorage && window.localStorage.removeItem('buret.viewportRail.position');
-      }
-    } catch (_) {}
-    rail.dataset.defaultPosition = '1';
-    rail.style.removeProperty('left');
-    rail.style.removeProperty('right');
-    rail.style.removeProperty('top');
-  }
-
-  function initViewportRailDrag(rail) {
-    restoreViewportRailPosition(rail);
     let drag = null;
     let suppressClickUntil = 0;
     const onPointerDown = event => {
       if (event.button !== 0) return;
-      const rect = rail.getBoundingClientRect();
+      const toolbarRect = toolbar.getBoundingClientRect();
       drag = {
         pointerId: event.pointerId,
-        dx: event.clientX - rect.left,
-        dy: event.clientY - rect.top,
         startX: event.clientX,
         startY: event.clientY,
+        toolbarLeft: toolbarRect.left,
+        toolbarTop: toolbarRect.top,
         moved: false
       };
       rail.setPointerCapture(event.pointerId);
@@ -6906,12 +6872,15 @@
         drag.moved = Math.abs(event.clientX - drag.startX) > 4 || Math.abs(event.clientY - drag.startY) > 4;
       }
       if (!drag.moved) return;
-      rail.dataset.defaultPosition = '0';
-      const width = rail.offsetWidth || rail.getBoundingClientRect().width || 36;
-      const left = event.clientX - drag.dx;
-      applyViewportRailPosition(rail, window.innerWidth - left - width, event.clientY - drag.dy);
-      updateFloatingLayoutOffsets();
-      positionOpenViewportMenu(rail);
+      if (toolbar.dataset.defaultPosition === '1') {
+        toolbar.dataset.defaultPosition = '0';
+        undockToolbar(toolbar);
+      }
+      moveToolbar(
+        toolbar,
+        drag.toolbarLeft + event.clientX - drag.startX,
+        drag.toolbarTop + event.clientY - drag.startY
+      );
       event.preventDefault();
     };
     const finishDrag = event => {
@@ -6922,7 +6891,7 @@
       drag = null;
       if (!moved) return;
       suppressClickUntil = Date.now() + 300;
-      saveViewportRailPosition(rail);
+      saveToolbarPosition(toolbar);
     };
     const cancelDrag = () => {
       rail.classList.remove('buret-dragging');
@@ -6941,16 +6910,6 @@
       event.preventDefault();
       event.stopImmediatePropagation();
     }, true);
-    window.addEventListener('resize', () => {
-      if (rail.dataset.defaultPosition !== '1') {
-        applyViewportRailPosition(
-          rail,
-          Number.parseFloat(rail.style.right) || TOOLBAR_MARGIN,
-          Number.parseFloat(rail.style.top) || TOOLBAR_MARGIN
-        );
-      }
-      positionOpenViewportMenu(rail);
-    });
   }
 
   function initViewportControls(viewer) {
@@ -6959,7 +6918,7 @@
     if (!rail || !bar) return;
     if (rail.dataset.viewportControlsBound !== '1') {
       rail.dataset.viewportControlsBound = '1';
-      initViewportRailDrag(rail);
+      initViewportRailDrag(rail, document.getElementById('buret-toolbar'));
       const level = bar.querySelector('[data-buret-selection-level]');
       for (const [name, label] of VIEWPORT_GRANULARITIES) {
         const option = document.createElement('option');
