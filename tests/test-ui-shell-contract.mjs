@@ -2187,6 +2187,7 @@ assert.match(appLayout, /function usePanelToggleAnimation/);
 assert.ok(appLayout.indexOf("usePanelToggleAnimation(sidebarVisible)") < appLayout.indexOf("useCollapsiblePanelSync(sidebarVisible"), "toggle-animation hooks must be called before the collapse/expand sync hooks");
 assert.match(appLayout, /data-panels-animating=\{sidebarAnimating \|\| undefined\}/);
 assert.match(styles, /\.workspace-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 140ms ease-out;/);
+assert.match(styles, /\.workbench-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 90ms ease-out;/);
 assert.match(styles, /\.workbench-main-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 180ms cubic-bezier\(0\.2, 0, 0, 1\);/);
 // The tab strip rides the measured panel edges, so it must not ease `left` on
 // its own — that eased every drag frame and dragged the strip behind the
