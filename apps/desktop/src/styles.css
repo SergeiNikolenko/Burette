@@ -1998,7 +1998,14 @@ img.radix-menu-item-icon {
   display: flex;
   align-items: center;
   gap: 4px;
-  overflow: hidden;
+  /* Tabs used to shrink past their label and slide under one another once the
+     strip ran out of room. They keep their width and the strip scrolls. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.dock-tab-strip::-webkit-scrollbar {
+  display: none;
 }
 .dock-panel[data-area="right"] .dock-tab-strip {
   flex: 0 1 auto;
@@ -2009,7 +2016,7 @@ img.radix-menu-item-icon {
 .dock-tab-shell {
   position: relative;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
 }
 .dock-panel[data-area="right"] .dock-tab-shell {
   flex: 0 0 auto;
@@ -2082,16 +2089,22 @@ img.radix-menu-item-icon {
   display: grid;
   place-items: center;
   padding: 0;
-  opacity: 1;
-  pointer-events: auto;
-  transition: color 120ms ease-out, background 120ms ease-out, box-shadow 120ms ease-out;
+  /* Hidden until the tab is pointed at or focused, so a strip of background
+     tabs is not a row of crosses - but reachable on every one of them. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out, color 120ms ease-out, background 120ms ease-out, box-shadow 120ms ease-out;
 }
 .dock-tab-shell:hover .dock-tab-close,
-.dock-tab-shell:focus-within .dock-tab-close {
+.dock-tab-shell:focus-within .dock-tab-close,
+.dock-tab-shell[data-active] .dock-tab-close {
   opacity: 1;
   pointer-events: auto;
 }
-.dock-tab-shell[data-active] .dock-tab {
+/* The room has to appear with the button, or the label slides under it. */
+.dock-tab-shell[data-active] .dock-tab,
+.dock-tab-shell:hover .dock-tab,
+.dock-tab-shell:focus-within .dock-tab {
   padding-right: 34px;
 }
 .dock-tab-shell[data-active] .dock-tab-close {
@@ -2120,8 +2133,10 @@ img.radix-menu-item-icon {
 
   /* The padding shorthand above also resets the room reserved for the close
      button (which is absolutely positioned at the tab's right edge), so the
-     active tab's label would run underneath it. Restore that room. */
-  .dock-panel[data-area="right"] .dock-tab-shell[data-active] .dock-tab {
+     label would run underneath it. Restore that room wherever it shows. */
+  .dock-panel[data-area="right"] .dock-tab-shell[data-active] .dock-tab,
+  .dock-panel[data-area="right"] .dock-tab-shell:hover .dock-tab,
+  .dock-panel[data-area="right"] .dock-tab-shell:focus-within .dock-tab {
     padding-right: 34px;
   }
 

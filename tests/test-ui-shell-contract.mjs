@@ -2152,11 +2152,17 @@ for (const sourceText of [dockPanel, editorTabs, statusDetailsDialog, settingCon
 }
 assert.doesNotMatch(dockPanel, /aria-label=\{`Close \$\{area\} dock`\}[\s\S]*?>\s*x\s*<\/button>/);
 assert.match(styles, /\.close-glyph \{/);
-assert.match(styles, /\.dock-tab-shell:hover \.dock-tab-close,\s*\.dock-tab-shell:focus-within \.dock-tab-close \{/);
+assert.match(styles, /\.dock-tab-shell:hover \.dock-tab-close,\s*\.dock-tab-shell:focus-within \.dock-tab-close,\s*\.dock-tab-shell\[data-active\] \.dock-tab-close \{/);
+// Closing must not require selecting the tab first, so the button is rendered
+// for every tab and only revealed by hover, focus or being active.
+assert.doesNotMatch(dockPanel, /!readOnly && active && !\(tab\.kind === "xyzrender"/);
 assert.doesNotMatch(styles, /\.dock-tab\[data-active\] \+ \.dock-tab-close/);
-assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab \{\s*padding-right: 34px;/);
+assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab,\s*\.dock-tab-shell:hover \.dock-tab,\s*\.dock-tab-shell:focus-within \.dock-tab \{\s*padding-right: 34px;/);
+// A shrinking tab used to slide under its neighbour once the strip filled up.
+assert.match(styles, /\.dock-tab-strip \{[\s\S]*?overflow-x: auto;/);
+assert.match(styles, /\.dock-tab-shell \{[\s\S]*?flex: 0 0 auto;/);
 assert.match(styles, /\.dock-tab \{[^}]*height: 28px;[^}]*border-radius: 10px;/s);
-assert.match(styles, /\.dock-tab-close \{[^}]*width: 20px;[^}]*height: 20px;[^}]*border-radius: 8px;[^}]*background: transparent;[^}]*opacity: 1;[^}]*pointer-events: auto;/s);
+assert.match(styles, /\.dock-tab-close \{[^}]*width: 20px;[^}]*height: 20px;[^}]*border-radius: 8px;[^}]*background: transparent;[^}]*opacity: 0;[^}]*pointer-events: none;/s);
 assert.match(styles, /\.dock-tab-close:hover \{[^}]*background: var\(--surface-hover\);[^}]*box-shadow: inset 0 0 0 1px var\(--line-subtle\)/s);
 assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab-close \{[^}]*color: var\(--text-secondary\);[^}]*\}/s);
 assert.match(styles, /\.text-file-editor \.cm-gutters \{[^}]*border-right: 0;[^}]*background: transparent;[^}]*color: var\(--text-muted\);[^}]*\}/s);

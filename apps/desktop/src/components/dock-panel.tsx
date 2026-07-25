@@ -231,7 +231,10 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
                     <HugeiconsIcon icon={Icon} size={16} color="currentColor" strokeWidth={2} />
                     <span>{DOCK_TAB_LABELS[tab.kind]}</span>
                   </button>
-                  {!readOnly && active && !(tab.kind === "xyzrender" && !rawTabs.some((rawTab) => rawTab.kind === "xyzrender")) && (
+                  {/* Closing used to be reachable on the active tab only, so
+                      getting rid of a background tab meant selecting it first.
+                      Every tab carries the button; CSS reveals it on hover. */}
+                  {!readOnly && !(tab.kind === "xyzrender" && !rawTabs.some((rawTab) => rawTab.kind === "xyzrender")) && (
                     <button
                       type="button"
                       className="dock-tab-close"
