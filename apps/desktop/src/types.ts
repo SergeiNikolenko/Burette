@@ -83,6 +83,8 @@ export type DockingDocumentRequest = {
   activePose?: number | null;
   sceneMode?: DockingSceneMode | null;
   poseMode?: DockingPoseMode | null;
+  /** Set when receptorPath is a topology Burette derived from the trajectory. */
+  syntheticTopology?: boolean;
 };
 
 export type FepSetupRequest = {

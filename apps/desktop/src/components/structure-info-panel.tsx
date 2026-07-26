@@ -536,6 +536,9 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
 
       {poseControls ? (
         <>
+          {trajectoryDocument && document.dockingRequest?.syntheticTopology ? (
+            <DerivedTopologyCard document={document} isBrowserDev={isBrowserDev} actions={actions} />
+          ) : null}
           {trajectoryDocument && !virtualScene ? (
             <TrajectorySmoothingCard
               document={document}
@@ -1171,6 +1174,108 @@ function TrajectorySmoothingChart({
       </svg>
       <div className="trajectory-smoothing-chart-legend"><span>Raw</span><span>{result.mode === "kinetic" ? "State coordinate" : `${preset[0].toUpperCase() + preset.slice(1)} filtered`}</span><span>{result.keyframeCount} key frames</span></div>
     </div>
+  );
+}
+
+// Every topology format Mol* can build a model from. A trajectory only pairs
+// with a topology describing the same atoms, so nothing else is worth offering.
+const ATTACHABLE_TOPOLOGY_EXTENSIONS = [
+  "pdb", "ent", "pdbqt", "pqr", "xpdb", "gro", "cif", "mmcif", "mcif", "psf", "prmtop", "top", "tpr",
+];
+
+// Shown when the displayed model was derived from the trajectory. The pairing
+// this offers is the same one dragging a topology onto a trajectory produces;
+// the button exists because that gesture is undiscoverable when all the user has
+// is a lone trajectory file.
+function DerivedTopologyCard({ document, isBrowserDev, actions }: {
+  document: ViewerDocument;
+  isBrowserDev: boolean;
+  actions: ShellActions;
+}) {
+  const [attaching, setAttaching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [devCandidates, setDevCandidates] = useState<string[] | null>(null);
+  const trajectoryPath = document.dockingRequest?.ligandPaths[0] || document.path;
+
+  const pair = async (topologyPath: string) => {
+    // Pairing failures are reported through the shell status; a null result
+    // means the two files could not be paired at all.
+    const paired = await actions.openDockingDocument(topologyPath, [trajectoryPath]);
+    if (!paired) setError("That file could not be paired with this trajectory.");
+  };
+
+  // Browser dev has no native file picker, so offer the topologies the dev
+  // server already exposes rather than hiding the action entirely.
+  const attachInBrowserDev = async () => {
+    const response = await fetch("/__burette/dev-files", { cache: "no-store" });
+    if (!response.ok) throw new Error(`Could not list files: ${response.status}`);
+    const payload = await response.json() as { files?: string[] };
+    const candidates = (payload.files ?? []).filter((path) =>
+      ATTACHABLE_TOPOLOGY_EXTENSIONS.includes(extensionForDocking(path)));
+    if (candidates.length === 0) {
+      setError("No topology files are visible to the dev server.");
+      return;
+    }
+    if (candidates.length === 1) {
+      await pair(candidates[0]);
+      return;
+    }
+    setDevCandidates(candidates);
+  };
+
+  const attach = async () => {
+    setAttaching(true);
+    setError(null);
+    try {
+      if (isBrowserDev) {
+        await attachInBrowserDev();
+        return;
+      }
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selection = await open({
+        multiple: false,
+        filters: [{ name: "Topology", extensions: ATTACHABLE_TOPOLOGY_EXTENSIONS }],
+      });
+      const topologyPath = Array.isArray(selection) ? selection[0] : selection;
+      if (topologyPath) await pair(topologyPath);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setAttaching(false);
+    }
+  };
+
+  return (
+    <Alert className="structure-inspector-engine-notice">
+      <AlertDescription>
+        This trajectory arrived without a topology, so the atoms shown were derived from it:
+        positions only, with no elements, residues or bonds. Attach the matching topology to see
+        the real chemistry.
+      </AlertDescription>
+      {error ? <AlertDescription role="alert">{error}</AlertDescription> : null}
+      {devCandidates ? (
+        <AlertDescription>
+          {devCandidates.map((path) => (
+            <Button
+              key={path}
+              type="button"
+              variant="outline"
+              size="xs"
+              className="justify-self-start"
+              onClick={() => { setDevCandidates(null); void pair(path); }}
+            >
+              {path.split("/").pop()}
+            </Button>
+          ))}
+        </AlertDescription>
+      ) : (
+        <AlertAction>
+          <Button type="button" variant="outline" size="xs" disabled={attaching} onClick={() => void attach()}>
+            {attaching ? "Attaching…" : "Attach topology…"}
+          </Button>
+        </AlertAction>
+      )}
+    </Alert>
   );
 }
 

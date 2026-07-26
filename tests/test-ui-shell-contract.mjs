@@ -805,7 +805,10 @@ assert.match(viteConfig, /const BROWSER_DEV_GENERATED_FILES_ROOT = process\.env\
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "Burette Generated Files"\)/);
 assert.match(viteConfig, /const BROWSER_DEV_XTB_JOBS_ROOT = join\(BROWSER_DEV_GENERATED_FILES_ROOT, "xTB Jobs"\);/);
 assert.match(viteConfig, /const BROWSER_DEV_CONFORMER_JOBS_ROOT = join\(BROWSER_DEV_GENERATED_FILES_ROOT, "Conformer Jobs"\);/);
-assert.match(viteConfig, /const browserDevGeneratedFileRoots = \[BROWSER_DEV_GENERATED_FILES_ROOT\];/);
+// Derived topologies are generated files too: browser dev writes them and the
+// inspector reads them back, so they belong on the same allow list.
+assert.match(viteConfig, /const BROWSER_DEV_DERIVED_TOPOLOGY_ROOT = join\(tmpdir\(\), "burette-browser-dev-derived-topology"\);/);
+assert.match(viteConfig, /const browserDevGeneratedFileRoots = \[BROWSER_DEV_GENERATED_FILES_ROOT, BROWSER_DEV_DERIVED_TOPOLOGY_ROOT\];/);
 assert.match(viteConfig, /const devFsAllowRoots = \[repoRoot, \.\.\.defaultFsAllow, \.\.\.browserDevGeneratedFileRoots, \.\.\.extraFsAllow\]\.map\(\(path\) => resolve\(path\)\);/);
 assert.match(viteConfig, /"import\.meta\.env\.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT": JSON\.stringify\(BROWSER_DEV_GENERATED_FILES_ROOT\)/);
 assert.match(viteConfig, /registerBrowserDevRuntimeDoctorRoute\(server,/);
@@ -5271,7 +5274,10 @@ assert.match(previewViewer, /showBoundingBox: showMolstarBoundingBox/);
 assert.match(previewViewer, /entry\.representation === 'unitcell' \|\| entry\.representation === 'box-lines'/);
 assert.match(previewViewer, /cellColor: 0x2f6f66/);
 assert.doesNotMatch(previewViewer, /visuals: \['intra-bond', 'element-point'\]/);
-assert.match(previewViewer, /await applyMolstarStyle\(viewer, configuredMolstarStyle\(activeConfig\)\);\s*await applyMolstarWaterLineRepresentation\(viewer\);/);
+// The configured style still runs right before the water pass, but a derived
+// topology skips it: that style assumes chemistry the trajectory never carried,
+// and it would overwrite the points loadDockingTrajectoryPair just applied.
+assert.match(previewViewer, /if \(!prepared\.trajectoryPair\?\.synthetic\) \{\s*await applyMolstarStyle\(viewer, configuredMolstarStyle\(activeConfig\)\);\s*\}\s*await applyMolstarWaterLineRepresentation\(viewer\);/);
 assert.match(previewViewer, /plugin\.managers\.structure\.component\.setOptions\(\{\s*\.\.\.plugin\.managers\.structure\.component\.state\.options,\s*ignoreLight: true\s*\}\)/s);
 assert.match(previewViewer, /postprocessing:\s*\{\s*outline:/s);
 assert.match(previewViewer, /async function reportBuretteAgentState\(\)/);

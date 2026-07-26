@@ -98,7 +98,11 @@ const BROWSER_DEV_GENERATED_FILES_ROOT = process.env.BURETTE_BROWSER_DEV_GENERAT
   : join(homedir(), "Desktop", "Burette Generated Files");
 const BROWSER_DEV_XTB_JOBS_ROOT = join(BROWSER_DEV_GENERATED_FILES_ROOT, "xTB Jobs");
 const BROWSER_DEV_CONFORMER_JOBS_ROOT = join(BROWSER_DEV_GENERATED_FILES_ROOT, "Conformer Jobs");
-const browserDevGeneratedFileRoots = [BROWSER_DEV_GENERATED_FILES_ROOT];
+// Topologies derived from bare trajectories land here, and the inspector reads
+// them back to describe the composition, so browser dev has to be allowed to
+// read it the same way it reads its other generated files.
+const BROWSER_DEV_DERIVED_TOPOLOGY_ROOT = join(tmpdir(), "burette-browser-dev-derived-topology");
+const browserDevGeneratedFileRoots = [BROWSER_DEV_GENERATED_FILES_ROOT, BROWSER_DEV_DERIVED_TOPOLOGY_ROOT];
 const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...browserDevGeneratedFileRoots, ...extraFsAllow].map((path) => resolve(path));
 const BROWSER_DEV_CCD_CACHE_ROOT = join(homedir(), ".cache", "burette", "ccd-ligands");
 const BROWSER_DEV_CHEMISTRY_PREP_PROJECT = join(repoRoot, "tools", "chemistry-prep");

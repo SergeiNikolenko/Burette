@@ -8312,7 +8312,8 @@
       modelKind: dockingTrajectoryModelKind(modelEntry),
       coordinateEntry,
       coordinateEntries,
-      trajectorySegments
+      trajectorySegments,
+      synthetic: modelEntry.synthetic === true
     };
   }
 
@@ -8328,7 +8329,8 @@
       data: dockingPayloadData(receptor, payloads.receptor),
       format: normalizeFormat(receptor.format),
       label: receptor.label || 'Receptor',
-      sourcePath: receptor.path || ''
+      sourcePath: receptor.path || '',
+      synthetic: receptor.synthetic === true
     };
     const entries = [receptorEntry];
     ligandSources.forEach((source, ligandIndex) => {
@@ -12447,6 +12449,28 @@
       coordinatesLabel: pair.coordinateEntry.label,
       preset: 'default'
     });
+    // A derived topology records no bonds, so the default preset would draw ones
+    // Mol* inferred from interatomic distances: chemistry the trajectory never
+    // stated, and a hairball across a solvated box. Points show only what the
+    // coordinates actually say. The scene tree still offers the bonded styles.
+    if (pair.synthetic) {
+      await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
+    }
+  }
+
+  // Every atom is the same unknown carbon, so element colouring would only
+  // suggest chemistry the trajectory never recorded.
+  function molstarDerivedTopologyRepresentation() {
+    return {
+      type: 'point',
+      typeParams: { alpha: 1, sizeFactor: 1, pointSizeAttenuation: true, pointStyle: 'circle' },
+      color: 'uniform',
+      colorParams: { value: 0x8aa4c8 },
+      size: 'uniform',
+      // Small enough that a solvated box reads as separate atoms rather than
+      // one merged mass.
+      sizeParams: { value: 0.2 }
+    };
   }
 
   async function applyDockingTrajectoryPairFrameCount(prepared) {
@@ -12597,7 +12621,13 @@
       if (isDockingTrajectoryPairEntry(entry, prepared.trajectoryPair)) continue;
       await loadMolstarEntry(viewer, entry);
     }
-    await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+    // The configured style assumes real chemistry to colour and shape. A derived
+    // topology has none, so loadDockingTrajectoryPair has already put honest
+    // points in place and this pass would only overwrite them. The toolbar style
+    // control still applies on demand.
+    if (!prepared.trajectoryPair?.synthetic) {
+      await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+    }
     await applyMolstarWaterLineRepresentation(viewer);
     installDockingPoseControls(viewer, prepared);
   }
