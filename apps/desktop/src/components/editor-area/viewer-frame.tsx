@@ -27,6 +27,7 @@ export function ViewerFrame({
   iframeRef,
   stagingIframeRef,
   sourcePreview,
+  onViewerLoad,
   onStagingLoad,
   className = "viewer-iframe",
   readOnly = false,
@@ -35,6 +36,7 @@ export function ViewerFrame({
   iframeRef?: Ref<HTMLIFrameElement>;
   stagingIframeRef?: Ref<HTMLIFrameElement>;
   sourcePreview?: SourcePreviewFrameSnapshot;
+  onViewerLoad?: (frame: HTMLIFrameElement, active: boolean) => void;
   onStagingLoad?: (identity: SourcePreviewIdentity, frame: HTMLIFrameElement) => void;
   className?: string;
   readOnly?: boolean;
@@ -73,6 +75,7 @@ export function ViewerFrame({
     active: boolean,
     identity?: SourcePreviewIdentity,
   ) => {
+    onViewerLoad?.(event.currentTarget, active);
     if (document.renderer === "grid2d") {
       if (readOnly) {
         event.currentTarget.contentWindow?.postMessage({
@@ -110,7 +113,7 @@ export function ViewerFrame({
       "data-source-preview-role": active ? "active" : "staging",
       "data-source-preview-request-id": identity?.requestId,
       "data-source-preview-revision": identity?.revision,
-      onLoad: document.renderer === "grid2d" || (!active && identity)
+      onLoad: document.renderer === "grid2d" || onViewerLoad || (!active && identity)
         ? (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, active, identity)
         : undefined,
       style: active ? undefined : {
@@ -144,7 +147,7 @@ export function ViewerFrame({
       "data-renderer": document.renderer,
       "data-read-only": readOnly ? "true" : undefined,
       name: readOnly ? "burette-read-only" : "burette-editable",
-      onLoad: document.renderer === "grid2d"
+      onLoad: document.renderer === "grid2d" || onViewerLoad
         ? (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, true)
         : undefined,
     };

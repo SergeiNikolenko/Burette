@@ -45,6 +45,10 @@ assert.match(smoke, /tmp_base="\$\{TMPDIR:-\/tmp\}"/);
 assert.match(smoke, /tmp_base="\$\{tmp_base%\/*\}"/);
 assert.match(smoke, /mktemp -d "\$tmp_base\/BurettePreview-\$\{DEV_FLAVOR_SLUG\}\.XXXXXX"/);
 assert.match(smoke, /preview_file="\$dev_preview_dir\/\$\{DEV_FLAVOR_SLUG\} \$\(basename "\$abs_file"\)"/);
+assert.match(smoke, /MAX_FORCE_PREVIEW_COPY_BYTES=\$\(\(64 \* 1024 \* 1024\)\)/);
+assert.match(smoke, /if ! ln "\$abs_file" "\$preview_file"/);
+assert.match(smoke, /\[\[ "\$file_size" -le "\$MAX_FORCE_PREVIEW_COPY_BYTES" \]\]/);
+assert.match(smoke, /preview_file="\$abs_file"/);
 assert.match(smoke, /run_preview\(\)/);
 assert.match(smoke, /qlmanage -p -c "\$type" "\$preview_file"/);
 assert.doesNotMatch(smoke, /scripts\/force-preview\.sh/);
@@ -57,6 +61,10 @@ assert.doesNotMatch(smoke, /killall quicklookd/);
 assert.match(forcePreview, /native Finder Quick Look for public CSV\/TSV is owned by the system table generator/);
 assert.match(forcePreview, /Use browser-dev or the desktop app to verify Burette grid rendering/);
 assert.match(forcePreview, /qlmanage -p -c "\$TYPE" "\$PREVIEW_FILE"/);
+assert.match(forcePreview, /MAX_FORCE_PREVIEW_COPY_BYTES=\$\(\(64 \* 1024 \* 1024\)\)/);
+assert.match(forcePreview, /if ! ln "\$FILE" "\$PREVIEW_FILE"/);
+assert.match(forcePreview, /\[\[ "\$FILE_SIZE" -le "\$MAX_FORCE_PREVIEW_COPY_BYTES" \]\]/);
+assert.match(forcePreview, /PREVIEW_FILE="\$FILE"/);
 assert.doesNotMatch(forcePreview, /Normal Quick Look resolves XYZ/);
 
 assert.match(
