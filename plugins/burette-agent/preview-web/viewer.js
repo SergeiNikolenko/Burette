@@ -561,6 +561,9 @@
     if (type === 'remove_components') {
       return window.BuretteSceneActions?.removeComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.removeComponents is unavailable.');
     }
+    if (type === 'create_component') {
+      return window.BuretteSceneActions?.createComponent?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.createComponent is unavailable.');
+    }
     if (type === 'select_residues') {
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
       const result = await window.BuretteAgent.run({
@@ -1019,8 +1022,10 @@
     // Container size the last resize was performed for. The window event and the
     // container observer both report the same change, a beat apart, so without
     // this the viewer redrew about twice per resize step.
-    appliedSize: ''
+    appliedSize: '',
+    appliedViewer: null
   };
+  let hostViewerVisible = true;
 
   function viewerContainerSize(viewer) {
     const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
@@ -1036,10 +1041,18 @@
   // on every window resize alongside the visible one. A collapsed container has
   // no pixels to redraw for, and the viewer resizes itself when it comes back.
   function viewerCanvasIsVisible(viewer) {
+    if (!hostViewerVisible) return false;
     const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
     if (!container) return true;
     const rect = container.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
+    if (rect.width <= 0 || rect.height <= 0) return false;
+    for (let node = container; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') {
+        return false;
+      }
+    }
+    return true;
   }
 
   function scheduleViewerResize(viewer, delayMs = 80) {
@@ -1053,8 +1066,10 @@
       resizeState.timer = setTimeout(() => {
         const target = resizeState.viewer;
         if (!target) return;
+        if (!viewerCanvasIsVisible(target)) return;
         const size = viewerContainerSize(target);
-        if (size && size === resizeState.appliedSize) return;
+        if (target === resizeState.appliedViewer && size && size === resizeState.appliedSize) return;
+        resizeState.appliedViewer = target;
         resizeState.appliedSize = size;
         let handled = false;
         try {
@@ -2130,6 +2145,11 @@
     const data = event.data || {};
     const body = data.source === 'burette-host' ? data.body : null;
     if (!body) return;
+    if (body.type === 'viewerVisibilityChanged') {
+      hostViewerVisible = body.visible !== false;
+      if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer, 0);
+      return;
+    }
     if (body.type === 'workspaceHistoryCommand') {
       void handleWorkspaceHistoryCommand(body, event.source);
       return;
@@ -12142,6 +12162,68 @@
     return { ok: true, command: 'remove_components', result: { kind, componentCount: components.length } };
   }
 
+  // The inspector lists chains and ligand instances that Mol* has no object for -
+  // they are selectors read out of the file, and only the four standard components
+  // exist in the scene. Turning one into a component is what gives it a row in the
+  // scene tree, and with it every control the tree already offers: colour theme,
+  // tint, representation, isolate, remove.
+  //
+  // The query arrives in PyMOL syntax. That is forced: this Mol* build does not
+  // expose MolScriptBuilder, and its mol-script reader silently returns an empty
+  // selection for the keyword-argument form `atom-groups` needs. See
+  // apps/desktop/src/lib/molstar-selection-query.ts, which writes the query.
+  async function createMolstarComponentFromQuery(action = {}) {
+    const query = String(action.query || '').trim();
+    if (!query) {
+      return sceneActionFailure('create_component', 'INVALID_ARGUMENT', 'No selection query was supplied.');
+    }
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    if (!plugin?.builders?.structure?.tryCreateComponent) {
+      return sceneActionFailure('create_component', 'NOT_IMPLEMENTED', 'Mol* component builder is unavailable.');
+    }
+    const label = String(action.componentLabel || action.label || 'Selection').trim() || 'Selection';
+    const structures = molstarCurrentStructures(viewer);
+    if (!structures.length) {
+      return sceneActionFailure('create_component', 'SELECTION_EMPTY', 'No structure is loaded.');
+    }
+    const representation = representationForSceneComponentKind(normalizeSceneComponentKind(action.kind));
+    // A component key that repeats for the same row means asking twice reuses the
+    // component instead of stacking duplicates on top of each other.
+    const key = `burette-selection-${query.replace(/[^A-Za-z0-9]+/g, '-')}`;
+    let created = 0;
+    let atoms = 0;
+    for (const structure of structures) {
+      let component = null;
+      try {
+        component = await plugin.builders.structure.tryCreateComponent(structure.cell, {
+          type: { name: 'script', params: { language: 'pymol', expression: query } },
+          nullIfEmpty: true,
+          label
+        }, key, 'burette-selection');
+      } catch (error) {
+        debug('Mol* selection component creation failed: ' + (error && error.message || String(error)));
+      }
+      // nullIfEmpty means a query that matches nothing yields null rather than an
+      // empty row, so an unmatched selector leaves the scene untouched.
+      if (!component) continue;
+      created += 1;
+      atoms += Number(component.obj?.data?.elementCount) || 0;
+      try {
+        // representationForSceneComponentKind already returns the full parameter
+        // object - type, colour and size - so it is passed straight through.
+        await plugin.builders.structure.representation.addRepresentation(component, representation, { tag: 'burette-selection' });
+      } catch (error) {
+        debug('Mol* selection representation failed: ' + (error && error.message || String(error)));
+      }
+    }
+    if (!created) {
+      return sceneActionFailure('create_component', 'SELECTION_EMPTY', `Nothing in the scene matched ${query}.`);
+    }
+    scheduleSceneTreeRender();
+    return { ok: true, command: 'create_component', result: { label, query, componentCount: created, atoms } };
+  }
+
   async function showMolstarComponents(action = {}) {
     const kind = normalizeSceneComponentKind(action.kind);
     if (kind === 'water') return showMolstarWaters();
@@ -12300,6 +12382,7 @@
     hideComponents: hideMolstarComponents,
     showComponents: showMolstarComponents,
     removeComponents: removeMolstarComponents,
+    createComponent: createMolstarComponentFromQuery,
     hideWaters: hideMolstarWaters,
     showWaters: showMolstarWaters,
     showSurface: showMolstarSurface,
