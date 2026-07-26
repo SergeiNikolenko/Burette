@@ -44,6 +44,16 @@ export type StructureViewerAction =
       label: string;
       kind: "polymer" | "ligand" | "ion" | "water";
     }
+  // Makes a scene object out of a row that had none, so the viewer's own scene
+  // tree can then colour, restyle or isolate it like any other component. The
+  // query is PyMOL syntax; see molstar-selection-query.ts for why.
+  | {
+      type: "create_component";
+      label: string;
+      query: string;
+      componentLabel: string;
+      kind?: "polymer" | "ligand" | "ion" | "water";
+    }
   | {
       type: "clear_selection";
       label: string;
