@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,11 +55,25 @@ import {
   runBrowserDevChemicalSpaceStudy,
 } from "../lib/browser-dev-compute";
 import { normalizeChemicalSpacePositions } from "../lib/chemical-space-normalization";
+import {
+  buildCameraScreenPointIndex,
+  buildSpatialPointIndex,
+  nearestScreenPoint,
+  sourceRecordIdsInSpatialPolygon,
+  type ScreenPointIndex,
+  type SpatialPointIndex,
+} from "../lib/chemical-space-screen-index";
+import {
+  simplifyLassoPolygon,
+} from "../lib/chemical-space-lasso";
 import { isTauriRuntime } from "../lib/tauri";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
-import { ChemicalSpace3D } from "./chemical-space-3d";
 import { useThemePortalContainer } from "./radix-menu";
+
+const ChemicalSpace3D = lazy(() => import("./chemical-space-3d").then((module) => ({
+  default: module.ChemicalSpace3D,
+})));
 
 type ChemicalSpacePanelProps = {
   document: ViewerDocument | null;
@@ -77,8 +100,11 @@ type ClusteringMethod = "none" | "butina";
 type GridIndexState = {
   recordsIndexed: number;
   recordsTotal: number;
+  bytesIndexed: number;
+  bytesTotal: number;
   indexing: boolean;
   indexReady: boolean;
+  indexError: string | null;
 };
 type ActivityColumn = { id: string; label: string };
 type ActivityDirection = "higherActive" | "lowerActive";
@@ -127,9 +153,14 @@ const CHEMICAL_SPACE_METHODS: Array<{ value: ChemicalSpaceMethod; label: string 
   { value: "mmae", label: "MMAE" },
 ];
 const completedEmbeddings = new Map<string, ChemicalSpaceResult>();
+let completedEmbeddingRecordCount = 0;
+const MAX_COMPLETED_EMBEDDING_CACHE_ENTRIES = 6;
+const MAX_COMPLETED_EMBEDDING_CACHE_RECORDS = 500_000;
 const GRID_SELECTION_BRIDGE_LIMIT = 100_000;
 const MAX_MOLECULE_PREVIEW_BASE64_BYTES = 350_000;
-const MAX_LASSO_POINTS = 4_096;
+const MAX_LASSO_POINTS = 1_024;
+const MAX_HIGHLIGHT_POINTS = 4_096;
+const MAX_VISIBLE_EDGES = 30_000;
 const DEFAULT_TMAP_LINE_SCALE = 1;
 const CLUSTER_COLORS = [
   "#38bdf8", "#fb7185", "#4ade80", "#facc15", "#f97316",
@@ -177,6 +208,13 @@ function estimatedEmbeddingDuration(records: number): string {
   return formatDuration(records / storedThroughput());
 }
 
+function indexingProgressLabel(state: GridIndexState | null) {
+  const records = state?.recordsIndexed.toLocaleString() ?? "0";
+  if (!state || state.bytesTotal <= 0) return `${records} molecules indexed`;
+  const percent = Math.min(99, Math.max(0, Math.floor((state.bytesIndexed / state.bytesTotal) * 100)));
+  return `${percent}% · ${records} molecules indexed`;
+}
+
 export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const portalContainer = useThemePortalContainer();
   const [draft, setDraft] = useState(DEFAULT_OPTIONS);
@@ -208,15 +246,23 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [cliffMinSimilarity, setCliffMinSimilarity] = useState(0.6);
   const [cliffMinDelta, setCliffMinDelta] = useState(1);
   const [indexState, setIndexState] = useState<GridIndexState | null>(null);
+  const [indexStateDocumentKey, setIndexStateDocumentKey] = useState<string | null>(null);
   // Whether the index state above has been answered yet. Until it has, the size
   // of the collection is unknown, and treating unknown as "small and ready" let
   // the panel submit the job the gate exists to hold back.
   const [indexProbed, setIndexProbed] = useState(false);
-  const [confirmedLargeRun, setConfirmedLargeRun] = useState(false);
+  const [indexProbeError, setIndexProbeError] = useState<string | null>(null);
+  const [indexProbeAttempt, setIndexProbeAttempt] = useState(0);
+  const [confirmedLargeRunDocumentKey, setConfirmedLargeRunDocumentKey] = useState<string | null>(null);
+  const [sourceRevision, setSourceRevision] = useState(0);
   const workflowControllerRef = useRef<AbortController | null>(null);
   const studyControllerRef = useRef<AbortController | null>(null);
   const hoveredRef = useRef<number | null>(null);
   const documentId = document?.renderer === "grid2d" ? document.id : null;
+  const documentInstanceKey = useMemo(
+    () => document?.renderer === "grid2d" ? gridDocumentInstanceKey(document) : null,
+    [document],
+  );
   hoveredRef.current = hovered;
   const commitOptions = (next: ChemicalSpaceOptions) => {
     setCompletedStudy(null);
@@ -246,8 +292,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setCliffsEnabled(false);
     setCliffMinSimilarity(0.6);
     setCliffMinDelta(1);
-    setConfirmedLargeRun(false);
-  }, [documentId]);
+    setConfirmedLargeRunDocumentKey(null);
+    setSourceRevision(0);
+    setIndexProbeError(null);
+  }, [documentInstanceKey]);
 
   // Polls the grid runtime while it indexes. Compute is refused until the index
   // is complete, so the panel has to know that state rather than submitting and
@@ -255,11 +303,14 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   useEffect(() => {
     if (!documentId) {
       setIndexState(null);
+      setIndexStateDocumentKey(null);
       setIndexProbed(true);
       return;
     }
     setIndexState(null);
+    setIndexStateDocumentKey(documentInstanceKey);
     setIndexProbed(false);
+    setIndexProbeError(null);
     const controller = new AbortController();
     let timer = 0;
     const poll = () => {
@@ -267,15 +318,26 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         .then((next) => {
           if (controller.signal.aborted) return;
           setIndexState(next);
+          setIndexStateDocumentKey(documentInstanceKey);
           setIndexProbed(true);
-          if (next.indexing) timer = window.setTimeout(poll, 800);
+          setIndexProbeError(null);
+          if (!next.indexError && (!next.indexReady || next.indexing)) {
+            timer = window.setTimeout(poll, 800);
+          }
         })
         .catch(() => {
-          // The runtime may not be listening - browser dev, or a viewer that has
-          // not mounted. Record the attempt so the panel is never gated forever
-          // behind a status that will not arrive.
           if (controller.signal.aborted) return;
+          if (isTauriRuntime()) {
+            setIndexState(null);
+            setIndexStateDocumentKey(documentInstanceKey);
+            setIndexProbed(true);
+            setIndexProbeError("Could not verify the collection index. No calculation was started.");
+            return;
+          }
+          // Browser-dev has no native Grid index contract, so retain its existing
+          // fail-open fallback after the probe has timed out.
           setIndexState(null);
+          setIndexStateDocumentKey(documentInstanceKey);
           setIndexProbed(true);
         });
     };
@@ -284,7 +346,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       controller.abort();
       if (timer) window.clearTimeout(timer);
     };
-  }, [documentId]);
+  }, [documentId, documentInstanceKey, indexProbeAttempt]);
 
   useEffect(() => {
     if (!documentId) {
@@ -300,7 +362,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         if (!controller.signal.aborted) setActivityColumns([]);
       });
     return () => controller.abort();
-  }, [documentId]);
+  }, [documentId, documentInstanceKey, sourceRevision]);
 
   useEffect(() => {
     if (!documentId || !activityColumnId) {
@@ -316,7 +378,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         if (!controller.signal.aborted) setActivityValues(new Map());
       });
     return () => controller.abort();
-  }, [documentId, activityColumnId]);
+  }, [documentId, documentInstanceKey, sourceRevision, activityColumnId]);
 
   useEffect(() => {
     if (activityValues.size === 0) return;
@@ -330,26 +392,42 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setCliffMinDelta(range > 0 ? Math.round(range * 0.2 * 100) / 100 : 1);
   }, [activityValues]);
 
-  const recordCount = indexState?.recordsTotal ?? 0;
-  const indexing = indexState?.indexing === true;
-  const needsConfirmation = !indexing && recordCount > AUTO_RUN_RECORD_LIMIT && !confirmedLargeRun;
+  const indexStateMatchesDocument = indexStateDocumentKey === documentInstanceKey;
+  const recordCount = indexStateMatchesDocument ? indexState?.recordsTotal ?? 0 : 0;
+  const indexing = indexStateMatchesDocument && indexState?.indexing === true;
+  const indexReady = !isTauriRuntime()
+    || (indexStateMatchesDocument && indexState?.indexReady === true && indexState?.indexError === null);
+  const largeRunConfirmationKey = documentInstanceKey === null
+    ? null
+    : `${documentInstanceKey}:${sourceRevision}`;
+  const needsConfirmation = indexReady
+    && !indexing
+    && recordCount > AUTO_RUN_RECORD_LIMIT
+    && confirmedLargeRunDocumentKey !== largeRunConfirmationKey;
   // An unanswered probe holds the job back: the collection could be mid-index or
   // far past the auto-run limit, and both are decided by the answer.
-  const awaitingIndexState = !indexProbed;
+  const awaitingIndexState = indexStateDocumentKey !== documentInstanceKey || !indexProbed;
+  const computeBlockedByIndex = awaitingIndexState || indexProbeError !== null || !indexReady || indexing;
 
   useEffect(() => {
-    if (!documentId) return;
-    const key = embeddingCacheKey(documentId, options);
-    const cached = completedEmbeddings.get(key);
+    if (!documentId || !documentInstanceKey) return;
+    // A cached embedding is still a compute result and therefore must obey the
+    // same source-index and explicit-large-run gates as a fresh submission.
+    // Otherwise reopening a changed source at the same path could display a
+    // stale map while the replacement source is still being indexed.
+    if (computeBlockedByIndex || needsConfirmation) {
+      setResult(null);
+      setProgress(null);
+      return;
+    }
+    const key = embeddingCacheKey(documentId, documentInstanceKey, sourceRevision, options);
+    const cached = cachedCompletedEmbedding(key);
     if (cached) {
       setResult(cached);
       setProgress(null);
       setError(null);
       return;
     }
-    // Waiting on the index, or on the user for a collection large enough that the
-    // embedding is a deliberate decision.
-    if (awaitingIndexState || indexing || needsConfirmation) return;
     const startedAt = Date.now();
     const controller = new AbortController();
     workflowControllerRef.current = controller;
@@ -363,7 +441,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     void workflow
       .then((next) => {
         if (controller.signal.aborted) return;
-        completedEmbeddings.set(key, next);
+        cacheCompletedEmbedding(key, next);
         rememberThroughput(next.sourceRecordIds.length, Date.now() - startedAt);
         setResult(next);
         setProgress(null);
@@ -384,10 +462,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         workflowControllerRef.current = null;
       }
     };
-  }, [documentId, options, awaitingIndexState, indexing, needsConfirmation]);
+  }, [computeBlockedByIndex, documentId, documentInstanceKey, needsConfirmation, options, sourceRevision]);
 
   useEffect(() => {
-    if (!documentId || clusteringMethod === "none") {
+    if (!documentId || clusteringMethod === "none" || computeBlockedByIndex || needsConfirmation) {
       setClusterResult(null);
       setClusterError(null);
       setClusterRunning(false);
@@ -418,7 +496,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         if (!controller.signal.aborted) setClusterRunning(false);
       });
     return () => controller.abort();
-  }, [clusterCutoff, clusteringMethod, documentId]);
+  }, [clusterCutoff, clusteringMethod, computeBlockedByIndex, documentId, needsConfirmation, sourceRevision]);
 
   useEffect(() => {
     if (!studyPlaying || !completedStudy) return;
@@ -456,8 +534,26 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           .filter((index) => Number.isSafeInteger(index) && index >= 0)));
       }
       if (data.body.type === "gridDirtyChanged" && data.body.dirty === true) {
+        const recordsTotal = Number(data.body.recordsTotal);
+        workflowControllerRef.current?.abort();
+        workflowControllerRef.current = null;
+        studyControllerRef.current?.abort();
+        studyControllerRef.current = null;
         invalidateChemicalSpaceFingerprintCache(documentId);
         invalidateCompletedEmbeddings(documentId);
+        setProgress(null);
+        setResult(null);
+        setCompletedStudy(null);
+        setStudyRunning(false);
+        setStudyPlaying(false);
+        setClusterResult(null);
+        setConfirmedLargeRunDocumentKey(null);
+        if (Number.isSafeInteger(recordsTotal) && recordsTotal >= 0) {
+          setIndexState((current) => current
+            ? { ...current, recordsTotal }
+            : current);
+        }
+        setSourceRevision((revision) => revision + 1);
       }
       if (data.body.type === "gridHoverChanged") {
         const index = Number(data.body.sourceRecordId);
@@ -511,6 +607,13 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setProgress(null);
     setStudyRunning(false);
   }, []);
+  const retryIndexCheck = () => {
+    setIndexState(null);
+    setIndexStateDocumentKey(documentInstanceKey);
+    setIndexProbed(false);
+    setIndexProbeError(null);
+    setIndexProbeAttempt((attempt) => attempt + 1);
+  };
 
   if (!documentId) {
     return <ChemicalSpaceEmpty message="Open a molecular Grid to build its chemical-space map." />;
@@ -520,6 +623,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     ? interpolateStudyResult(completedStudy.results, studyPosition)
     : result;
   const runStudy = async () => {
+    if (computeBlockedByIndex || needsConfirmation) return;
     studyControllerRef.current?.abort();
     const controller = new AbortController();
     studyControllerRef.current = controller;
@@ -796,18 +900,28 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               }}
             />
           ) : awaitingIndexState ? (
-            <ChemicalSpaceLoading message="Checking the collection…" progress={null} onStop={stopCalculation} />
+            <ChemicalSpaceChecking message="Checking the collection…" />
+          ) : indexProbeError ? (
+            <ChemicalSpaceEmpty message={indexProbeError} actionLabel="Retry index check" onAction={retryIndexCheck} />
+          ) : indexState?.indexError ? (
+            <ChemicalSpaceEmpty
+              message={`Collection indexing failed: ${indexState.indexError}. Close and reopen the collection after fixing the source file.`}
+            />
           ) : indexing ? (
             <ChemicalSpaceEmpty
-              message={`Indexing this collection — ${indexState?.recordsIndexed.toLocaleString() ?? "0"} of ${
-                recordCount ? recordCount.toLocaleString() : "?"
-              } molecules so far. Chemical space starts once indexing finishes.`}
+              message={`Indexing this collection — ${indexingProgressLabel(indexState)}. Chemical space starts once indexing finishes.`}
+            />
+          ) : !indexReady ? (
+            <ChemicalSpaceEmpty
+              message="Waiting for the collection index before starting chemical space."
+              actionLabel="Retry index check"
+              onAction={retryIndexCheck}
             />
           ) : needsConfirmation ? (
             <ChemicalSpaceEmpty
               message={`This collection has ${recordCount.toLocaleString()} molecules. Embedding it takes ${estimatedEmbeddingDuration(recordCount)} and runs the whole time.`}
               actionLabel="Calculate chemical space"
-              onAction={() => setConfirmedLargeRun(true)}
+              onAction={() => setConfirmedLargeRunDocumentKey(largeRunConfirmationKey)}
             />
           ) : error ? (
             <ChemicalSpaceEmpty message={error} actionLabel="Retry" onAction={() => commitOptions({ ...draft })} />
@@ -1185,28 +1299,44 @@ function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
     () => normalizeChemicalSpacePositions(props.result.positions),
     [props.result.positions],
   );
+  const aligned3DClusterIds = useMemo(
+    () => alignedClusterIds(props.result.sourceRecordIds, props.clusters),
+    [props.clusters, props.result.sourceRecordIds],
+  );
+  const pointColors3D = useMemo(
+    () => props.activityColors
+      ? props.result.sourceRecordIds.map(
+        (sourceRecordId) => props.activityColors?.get(sourceRecordId) ?? null,
+      )
+      : null,
+    [props.activityColors, props.result.sourceRecordIds],
+  );
+  const cliffEdges3D = useMemo(
+    () => props.cliffs.map((cliff) => [cliff.indexA, cliff.indexB] as [number, number]),
+    [props.cliffs],
+  );
   if (props.result.dimensions === 3) {
     return (
-      <ChemicalSpace3D
-        positions={normalized}
-        treeEdges={props.result.treeEdges}
-        sourceRecordIds={props.result.sourceRecordIds}
-        clusterIds={alignedClusterIds(props.result.sourceRecordIds, props.clusters)}
-        clusterColors={CLUSTER_COLORS}
-        pointColors={props.activityColors
-          ? props.result.sourceRecordIds.map((sourceRecordId) => props.activityColors?.get(sourceRecordId) ?? null)
-          : null}
-        cliffEdges={props.cliffs.map((cliff) => [cliff.indexA, cliff.indexB] as [number, number])}
-        selected={props.selected}
-        hovered={props.hovered}
-        preview={props.preview}
-        pointScale={props.pointScale}
-        treeLineScale={props.tmapLineScale}
-        tool={props.tool}
-        methodLabel={methodLabel(props.result.method)}
-        onHover={props.onHover}
-        onSelect={props.onSelect}
-      />
+      <Suspense fallback={<ChemicalSpaceChecking message="Loading the 3D renderer…" />}>
+        <ChemicalSpace3D
+          positions={normalized}
+          treeEdges={props.result.treeEdges}
+          sourceRecordIds={props.result.sourceRecordIds}
+          clusterIds={aligned3DClusterIds}
+          clusterColors={CLUSTER_COLORS}
+          pointColors={pointColors3D}
+          cliffEdges={cliffEdges3D}
+          selected={props.selected}
+          hovered={props.hovered}
+          preview={props.preview}
+          pointScale={props.pointScale}
+          treeLineScale={props.tmapLineScale}
+          tool={props.tool}
+          methodLabel={methodLabel(props.result.method)}
+          onHover={props.onHover}
+          onSelect={props.onSelect}
+        />
+      </Suspense>
     );
   }
   return <ChemicalSpace2D {...props} normalized={normalized} />;
@@ -1228,9 +1358,11 @@ function ChemicalSpace2D({
   normalized,
 }: ChemicalSpaceCanvasProps & { normalized: Array<[number, number, number]> }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const projectedRef = useRef<ProjectedPoint[]>([]);
+  const spatialIndexRef = useRef<SpatialPointIndex | null>(null);
+  const screenIndexRef = useRef<ScreenPointIndex | null>(null);
   const pointerRef = useRef<{ start: Point2; last: Point2; moved: boolean } | null>(null);
   const lassoRef = useRef<Point2[]>([]);
+  const lassoPaintFrameRef = useRef(0);
   const hoverRef = useRef<number | null>(null);
   const [viewport, setViewport] = useState({ width: 1, height: 1, pixelRatio: 1 });
   const [camera, setCamera] = useState({ yaw: -0.45, pitch: 0.35, zoom: 1, panX: 0, panY: 0 });
@@ -1244,17 +1376,78 @@ function ChemicalSpace2D({
     () => new Map(result.sourceRecordIds.map((sourceRecordId, index) => [sourceRecordId, clusterIds[index]])),
     [clusterIds, result.sourceRecordIds],
   );
+  const sourceIndexById = useMemo(
+    () => new Map(result.sourceRecordIds.map((sourceRecordId, index) => [sourceRecordId, index])),
+    [result.sourceRecordIds],
+  );
+  const projected = useMemo(
+    () => projectPositions(
+      normalized,
+      result.sourceRecordIds,
+      viewport,
+      { ...camera, zoom: 1, panX: 0, panY: 0 },
+      2,
+    ),
+    [camera.pitch, camera.yaw, normalized, result.sourceRecordIds, viewport],
+  );
+  const spatialIndex = useMemo(
+    () => buildSpatialPointIndex(projected),
+    [projected],
+  );
+  const screenIndex = useMemo(
+    () => buildCameraScreenPointIndex(spatialIndex, viewport, camera),
+    [camera, spatialIndex, viewport],
+  );
+
+  useEffect(() => {
+    spatialIndexRef.current = spatialIndex;
+    screenIndexRef.current = screenIndex;
+  }, [screenIndex, spatialIndex]);
+
+  useEffect(() => () => {
+    if (lassoPaintFrameRef.current) {
+      cancelAnimationFrame(lassoPaintFrameRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    let resizeTimer = 0;
+    let measured = false;
+    let pendingViewport = { width: 1, height: 1, pixelRatio: 1 };
+    const commitViewport = () => {
+      resizeTimer = 0;
+      const next = pendingViewport;
+      setViewport((current) => (
+        current.width === next.width
+        && current.height === next.height
+        && current.pixelRatio === next.pixelRatio
+          ? current
+          : next
+      ));
+    };
     const observer = new ResizeObserver(([entry]) => {
-      const width = Math.max(1, entry.contentRect.width);
-      const height = Math.max(1, entry.contentRect.height);
-      setViewport({ width, height, pixelRatio: Math.min(2, window.devicePixelRatio || 1) });
+      pendingViewport = {
+        width: Math.max(1, entry.contentRect.width),
+        height: Math.max(1, entry.contentRect.height),
+        pixelRatio: Math.min(2, window.devicePixelRatio || 1),
+      };
+      if (!measured) {
+        measured = true;
+        commitViewport();
+        return;
+      }
+      if (resizeTimer) window.clearTimeout(resizeTimer);
+      // Reprojecting and rebuilding the quadtree is O(N). Let CSS stretch the
+      // existing canvas while the window moves, then rebuild once at rest.
+      resizeTimer = window.setTimeout(commitViewport, 90);
     });
     observer.observe(canvas);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (resizeTimer) window.clearTimeout(resizeTimer);
+    };
   }, []);
 
   useEffect(() => {
@@ -1267,8 +1460,6 @@ function ChemicalSpace2D({
     context.setTransform(viewport.pixelRatio, 0, 0, viewport.pixelRatio, 0, 0);
     const styles = getComputedStyle(canvas);
     context.clearRect(0, 0, viewport.width, viewport.height);
-    const projected = projectPositions(normalized, result.sourceRecordIds, viewport, camera, 2);
-    projectedRef.current = projected;
     const selectedColor = styles.getPropertyValue("--primary").trim() || "#af52de";
     const pointColor = styles.color || "#f5f5f7";
     const ringColor = pointColor;
@@ -1276,10 +1467,14 @@ function ChemicalSpace2D({
     const basePointOpacity = adaptivePointOpacity(result.successfulRecords);
     if (result.treeEdges.length > 0) {
       context.beginPath();
-      for (const [leftIndex, rightIndex] of result.treeEdges) {
-        const left = projected[leftIndex];
-        const right = projected[rightIndex];
-        if (!left || !right) continue;
+      const edgeStep = Math.max(1, Math.ceil(result.treeEdges.length / MAX_VISIBLE_EDGES));
+      for (let edgeIndex = 0; edgeIndex < result.treeEdges.length; edgeIndex += edgeStep) {
+        const [leftIndex, rightIndex] = result.treeEdges[edgeIndex];
+        const leftBase = projected[leftIndex];
+        const rightBase = projected[rightIndex];
+        if (!leftBase || !rightBase) continue;
+        const left = screenPointForCamera(leftBase, viewport, camera);
+        const right = screenPointForCamera(rightBase, viewport, camera);
         context.moveTo(left.x, left.y);
         context.lineTo(right.x, right.y);
       }
@@ -1290,10 +1485,14 @@ function ChemicalSpace2D({
     }
     if (cliffs.length > 0) {
       const maxSali = cliffs[0]?.sali || 1;
-      for (const cliff of cliffs) {
-        const left = projected[cliff.indexA];
-        const right = projected[cliff.indexB];
-        if (!left || !right) continue;
+      const cliffStep = Math.max(1, Math.ceil(cliffs.length / MAX_VISIBLE_EDGES));
+      for (let cliffIndex = 0; cliffIndex < cliffs.length; cliffIndex += cliffStep) {
+        const cliff = cliffs[cliffIndex];
+        const leftBase = projected[cliff.indexA];
+        const rightBase = projected[cliff.indexB];
+        if (!leftBase || !rightBase) continue;
+        const left = screenPointForCamera(leftBase, viewport, camera);
+        const right = screenPointForCamera(rightBase, viewport, camera);
         const intensity = Math.max(0.25, Math.min(1, cliff.sali / maxSali));
         context.beginPath();
         context.moveTo(left.x, left.y);
@@ -1305,14 +1504,17 @@ function ChemicalSpace2D({
       }
       context.globalAlpha = 1;
     }
-    for (const point of [...projected].sort((left, right) => left.depth - right.depth)) {
+    for (const point of screenIndex.renderPoints) {
+      if (point.x < 0 || point.x > viewport.width || point.y < 0 || point.y > viewport.height) continue;
       const active = selected.has(point.sourceRecordId);
       const hot = hovered === point.sourceRecordId;
+      const aggregateCount = screenIndex.renderPointCounts.get(point.sourceRecordId) ?? 1;
+      const aggregateScale = 1 + Math.min(0.7, Math.log2(aggregateCount) * 0.12);
       context.beginPath();
       context.arc(
         point.x,
         point.y,
-        basePointRadius * pointScale,
+        basePointRadius * pointScale * aggregateScale,
         0,
         Math.PI * 2,
       );
@@ -1325,7 +1527,34 @@ function ChemicalSpace2D({
           : clusterId === null
             ? pointColor
             : CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
-      context.globalAlpha = active || hot ? 1 : basePointOpacity;
+      context.globalAlpha = active || hot ? 1 : Math.min(1, basePointOpacity * (1 + Math.log2(aggregateCount) * 0.08));
+      context.fill();
+      if (hot) {
+        context.lineWidth = 1.5;
+        context.strokeStyle = ringColor;
+        context.stroke();
+      }
+    }
+    const renderedSourceRecordIds = new Set(screenIndex.renderPoints.map((point) => point.sourceRecordId));
+    const highlightedPoints: ProjectedPoint[] = [];
+    for (const sourceRecordId of selected) {
+      if (highlightedPoints.length >= MAX_HIGHLIGHT_POINTS) break;
+      if (renderedSourceRecordIds.has(sourceRecordId)) continue;
+      const sourceIndex = sourceIndexById.get(sourceRecordId);
+      const basePoint = sourceIndex === undefined ? null : projected[sourceIndex];
+      if (basePoint) highlightedPoints.push(screenPointForCamera(basePoint, viewport, camera));
+    }
+    const hoveredIndex = hovered === null ? undefined : sourceIndexById.get(hovered);
+    const hoveredBasePoint = hoveredIndex === undefined ? null : projected[hoveredIndex];
+    if (hoveredBasePoint && !renderedSourceRecordIds.has(hoveredBasePoint.sourceRecordId)) {
+      highlightedPoints.push(screenPointForCamera(hoveredBasePoint, viewport, camera));
+    }
+    for (const point of highlightedPoints) {
+      const hot = hovered === point.sourceRecordId;
+      context.beginPath();
+      context.arc(point.x, point.y, basePointRadius * pointScale, 0, Math.PI * 2);
+      context.fillStyle = selectedColor;
+      context.globalAlpha = hot ? 1 : 0.9;
       context.fill();
       if (hot) {
         context.lineWidth = 1.5;
@@ -1344,7 +1573,7 @@ function ChemicalSpace2D({
       context.stroke();
       context.setLineDash([]);
     }
-  }, [activityColors, camera, cliffs, clusterBySource, hovered, lasso, normalized, pointScale, result.sourceRecordIds, result.treeEdges, selected, tmapLineScale, viewport]);
+  }, [activityColors, camera, cliffs, clusterBySource, hovered, lasso, pointScale, projected, result.successfulRecords, result.treeEdges, screenIndex, selected, sourceIndexById, tmapLineScale, viewport]);
 
   const localPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1352,15 +1581,11 @@ function ChemicalSpace2D({
   };
 
   const hoverNearest = (point: Point2) => {
-    let nearest: ProjectedPoint | null = null;
-    let distanceSquared = Math.max(4, adaptivePointRadius(result.successfulRecords) * pointScale + 3) ** 2;
-    for (const candidate of projectedRef.current) {
-      const nextDistance = (candidate.x - point.x) ** 2 + (candidate.y - point.y) ** 2;
-      if (nextDistance < distanceSquared) {
-        nearest = candidate;
-        distanceSquared = nextDistance;
-      }
-    }
+    const nearest = nearestScreenPoint(
+      screenIndexRef.current,
+      point,
+      Math.max(4, adaptivePointRadius(result.successfulRecords) * pointScale + 3),
+    );
     const sourceRecordId = nearest?.sourceRecordId ?? null;
     if (sourceRecordId === hoverRef.current) return;
     hoverRef.current = sourceRecordId;
@@ -1433,8 +1658,13 @@ function ChemicalSpace2D({
               lassoRef.current.length < MAX_LASSO_POINTS
               && (!previous || Math.hypot(previous.x - point.x, previous.y - point.y) >= 2)
             ) {
-              lassoRef.current = [...lassoRef.current, point];
-              setLasso(lassoRef.current);
+              lassoRef.current.push(point);
+              if (!lassoPaintFrameRef.current) {
+                lassoPaintFrameRef.current = requestAnimationFrame(() => {
+                  lassoPaintFrameRef.current = 0;
+                  setLasso(lassoRef.current.slice());
+                });
+              }
             }
           } else {
             setCamera((value) => ({ ...value, panX: value.panX + dx, panY: value.panY + dy }));
@@ -1444,11 +1674,20 @@ function ChemicalSpace2D({
           const pointer = pointerRef.current;
           pointerRef.current = null;
           if (tool === "lasso") {
-            const polygon = lassoRef.current;
+            const polygon = simplifyLassoPolygon(lassoRef.current);
+            const basePolygon = polygon.map((point) => screenPointFromCamera(point, viewport, camera));
             const sourceRecordIds = polygon.length >= 3
-              ? projectedRef.current.filter((point) => pointInPolygon(point, polygon)).map((point) => point.sourceRecordId)
+              ? sourceRecordIdsInSpatialPolygon(
+                  spatialIndexRef.current,
+                  basePolygon,
+                  GRID_SELECTION_BRIDGE_LIMIT,
+                )
               : [];
             lassoRef.current = [];
+            if (lassoPaintFrameRef.current) {
+              cancelAnimationFrame(lassoPaintFrameRef.current);
+              lassoPaintFrameRef.current = 0;
+            }
             setLasso([]);
             onSelect(sourceRecordIds);
           } else if (pointer && !pointer.moved) {
@@ -1459,6 +1698,10 @@ function ChemicalSpace2D({
         onPointerCancel={() => {
           pointerRef.current = null;
           lassoRef.current = [];
+          if (lassoPaintFrameRef.current) {
+            cancelAnimationFrame(lassoPaintFrameRef.current);
+            lassoPaintFrameRef.current = 0;
+          }
           setLasso([]);
         }}
         onPointerLeave={() => {
@@ -1562,6 +1805,18 @@ function ChemicalSpaceEmpty({ message, actionLabel, onAction }: { message: strin
   );
 }
 
+function ChemicalSpaceChecking({ message }: { message: string }) {
+  return (
+    <Empty className="h-full min-h-40">
+      <EmptyHeader>
+        <EmptyMedia variant="icon"><Spinner /></EmptyMedia>
+        <EmptyTitle>Checking collection</EmptyTitle>
+        <EmptyDescription>{message}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
+  );
+}
+
 function ChemicalSpaceLoading({
   message,
   progress,
@@ -1602,14 +1857,66 @@ function ChemicalSpaceLoading({
   );
 }
 
-function embeddingCacheKey(documentId: string, options: ChemicalSpaceOptions) {
-  return `${documentId}:${JSON.stringify(options)}`;
+function gridDocumentInstanceKey(document: ViewerDocument) {
+  // Native Grid runtimes live in a fresh UUID directory for each open. Keep
+  // only a bounded suffix here because browser-dev may carry generated HTML in
+  // runtimePath; its length plus tail still distinguish rebuilt runtimes
+  // without retaining another unbounded copy in every cache key.
+  const runtimeTail = document.runtimePath.slice(-192);
+  return `${document.id}:${document.byteCount}:${document.runtimePath.length}:${runtimeTail}`;
+}
+
+function embeddingCacheKey(
+  documentId: string,
+  documentInstanceKey: string,
+  sourceRevision: number,
+  options: ChemicalSpaceOptions,
+) {
+  return `${documentId}:${documentInstanceKey}:${sourceRevision}:${JSON.stringify(options)}`;
+}
+
+function cachedCompletedEmbedding(key: string) {
+  const cached = completedEmbeddings.get(key);
+  if (!cached) return null;
+  completedEmbeddings.delete(key);
+  completedEmbeddings.set(key, cached);
+  return cached;
+}
+
+function cacheCompletedEmbedding(key: string, result: ChemicalSpaceResult) {
+  const previous = completedEmbeddings.get(key);
+  if (previous) {
+    completedEmbeddingRecordCount -= previous.sourceRecordIds.length;
+    completedEmbeddings.delete(key);
+  }
+  const recordCount = result.sourceRecordIds.length;
+  if (recordCount > MAX_COMPLETED_EMBEDDING_CACHE_RECORDS) return;
+  completedEmbeddings.set(key, result);
+  completedEmbeddingRecordCount += recordCount;
+  while (
+    completedEmbeddings.size > MAX_COMPLETED_EMBEDDING_CACHE_ENTRIES
+    || completedEmbeddingRecordCount > MAX_COMPLETED_EMBEDDING_CACHE_RECORDS
+  ) {
+    const oldestKey = completedEmbeddings.keys().next().value;
+    if (typeof oldestKey !== "string") break;
+    deleteCompletedEmbedding(oldestKey);
+  }
+}
+
+function deleteCompletedEmbedding(key: string) {
+  const cached = completedEmbeddings.get(key);
+  if (!cached) return;
+  completedEmbeddingRecordCount = Math.max(
+    0,
+    completedEmbeddingRecordCount - cached.sourceRecordIds.length,
+  );
+  completedEmbeddings.delete(key);
 }
 
 function invalidateCompletedEmbeddings(documentId: string) {
   const prefix = `${documentId}:`;
   for (const key of completedEmbeddings.keys()) {
-    if (key.startsWith(prefix)) completedEmbeddings.delete(key);
+    if (key.startsWith(prefix)) deleteCompletedEmbedding(key);
   }
 }
 
@@ -1715,16 +2022,31 @@ function projectPositions(
   });
 }
 
-function pointInPolygon(point: Point2, polygon: Point2[]) {
-  let inside = false;
-  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
-    const left = polygon[index];
-    const right = polygon[previous];
-    const crosses = (left.y > point.y) !== (right.y > point.y)
-      && point.x < ((right.x - left.x) * (point.y - left.y)) / (right.y - left.y || Number.EPSILON) + left.x;
-    if (crosses) inside = !inside;
-  }
-  return inside;
+function screenPointForCamera(
+  point: ProjectedPoint,
+  viewport: { width: number; height: number },
+  camera: { zoom: number; panX: number; panY: number },
+): ProjectedPoint {
+  const centerX = viewport.width / 2;
+  const centerY = viewport.height / 2;
+  return {
+    ...point,
+    x: centerX + camera.panX + (point.x - centerX) * camera.zoom,
+    y: centerY + camera.panY + (point.y - centerY) * camera.zoom,
+  };
+}
+
+function screenPointFromCamera(
+  point: Point2,
+  viewport: { width: number; height: number },
+  camera: { zoom: number; panX: number; panY: number },
+): Point2 {
+  const centerX = viewport.width / 2;
+  const centerY = viewport.height / 2;
+  return {
+    x: centerX + (point.x - centerX - camera.panX) / camera.zoom,
+    y: centerY + (point.y - centerY - camera.panY) / camera.zoom,
+  };
 }
 
 function studyDefaults(parameter: StudyParameter): StudyState {
@@ -1986,11 +2308,16 @@ function requestChemicalSpaceIndexState(documentId: string, signal: AbortSignal)
       if (body.type !== "chemicalSpaceIndexState" || body.requestId !== requestId) return null;
       const recordsIndexed = Number(body.recordsIndexed ?? 0);
       const recordsTotal = Number(body.recordsTotal ?? 0);
+      const bytesIndexed = Number(body.bytesIndexed ?? 0);
+      const bytesTotal = Number(body.bytesTotal ?? 0);
       return {
         recordsIndexed: Number.isFinite(recordsIndexed) ? recordsIndexed : 0,
         recordsTotal: Number.isFinite(recordsTotal) ? recordsTotal : 0,
+        bytesIndexed: Number.isFinite(bytesIndexed) ? bytesIndexed : 0,
+        bytesTotal: Number.isFinite(bytesTotal) ? bytesTotal : 0,
         indexing: body.indexing === true,
         indexReady: body.indexReady !== false,
+        indexError: body.indexError == null ? null : String(body.indexError),
       };
     },
     signal,

@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { normalizeChemicalSpacePositions } from "../apps/desktop/src/lib/chemical-space-normalization.ts";
+import {
+  MAX_SCREEN_RENDER_POINTS,
+  buildScreenPointIndex,
+  nearestScreenPoint,
+} from "../apps/desktop/src/lib/chemical-space-screen-index.ts";
 
 const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -72,9 +77,34 @@ assert.match(chemicalSpacePanel, /Tanimoto cutoff/);
 assert.match(chemicalSpacePanel, /clusterMembersForSource/);
 assert.match(chemicalSpace3d, /vertexColors: true/);
 assert.match(chemicalSpacePanel, /isKnownViewerMessageSource\(event\.source, documentId\)/);
-assert.match(chemicalSpacePanel, /MAX_LASSO_POINTS = 4_096/);
+assert.match(chemicalSpacePanel, /MAX_LASSO_POINTS = 1_024/);
 assert.match(chemicalSpacePanel, /GRID_SELECTION_BRIDGE_LIMIT = 100_000/);
 assert.match(chemicalSpacePanel, /normalizeChemicalSpacePositions/);
+assert.match(chemicalSpacePanel, /buildSpatialPointIndex\(projected\)/);
+assert.match(chemicalSpacePanel, /buildCameraScreenPointIndex\(spatialIndex, viewport, camera\)/);
+assert.match(chemicalSpacePanel, /nearestScreenPoint\(\s*screenIndexRef\.current,\s*point,/);
+assert.match(
+  chemicalSpacePanel,
+  /projectPositions\([\s\S]*?zoom: 1,[\s\S]*?panX: 0,[\s\S]*?panY: 0/,
+  "camera pan and zoom must query the base spatial index instead of reprojecting every molecule",
+);
+const resizeObserverBlock = chemicalSpacePanel.slice(
+  chemicalSpacePanel.indexOf("const observer = new ResizeObserver"),
+  chemicalSpacePanel.indexOf("observer.observe(canvas);"),
+);
+assert.match(
+  resizeObserverBlock,
+  /window\.setTimeout\(commitViewport, 90\)/u,
+  "2D Chemical Space must rebuild its O(N) projection only after resize settles",
+);
+assert.doesNotMatch(
+  resizeObserverBlock,
+  /setViewport\(\{ width, height,/u,
+  "ResizeObserver must not rebuild the spatial index on every resize callback",
+);
+assert.match(chemicalSpacePanel, /screenPointForCamera/);
+assert.match(chemicalSpacePanel, /screenPointFromCamera/);
+assert.doesNotMatch(chemicalSpacePanel, /\[\.\.\.projected\]\.sort\(/);
 assert.match(normalization, /BULK_RADIUS_QUANTILE = 0\.9/);
 assert.match(normalization, /MAX_NORMALIZED_RADIUS = 1\.45/);
 assert.match(normalization, /Math\.log1p\(radius - 1\)/);
@@ -121,6 +151,39 @@ const normalizedRadii = normalizedPositions
   .sort((left, right) => left - right);
 assert.ok(normalizedPositions.flat().every(Number.isFinite));
 assert.ok(normalizedRadii[80] > 0.7, "the central chemical-space structure should fill the viewport");
+
+const screenIndex = buildScreenPointIndex(
+  Array.from({ length: 250_000 }, (_, sourceRecordId) => ({
+    sourceRecordId,
+    x: sourceRecordId % 1_000,
+    y: Math.floor(sourceRecordId / 1_000),
+    depth: 0,
+  })),
+  { width: 1_000, height: 700 },
+);
+assert.ok(screenIndex.renderPoints.length <= MAX_SCREEN_RENDER_POINTS);
+assert.ok(screenIndex.hoverBuckets.size <= 1_000 * 700);
+assert.equal([...screenIndex.renderPointCounts.values()].reduce((sum, count) => sum + count, 0), 250_000);
+assert.ok(
+  [...screenIndex.hoverBuckets.values()].reduce((sum, candidates) => sum + candidates.length, 0)
+    <= MAX_SCREEN_RENDER_POINTS,
+  "hover lookup must stay bounded to visible LOD representatives",
+);
+assert.ok(screenIndex.bySourceRecordId.size <= MAX_SCREEN_RENDER_POINTS);
+const sparseScreenIndex = buildScreenPointIndex([
+  { sourceRecordId: 1, x: 12, y: 3, depth: 0 },
+  { sourceRecordId: 2, x: 300, y: 300, depth: 0 },
+], { width: 1_000, height: 700 });
+assert.equal(nearestScreenPoint(sparseScreenIndex, { x: 12, y: 3 }, 8)?.sourceRecordId, 1);
+const collidingHoverIndex = buildScreenPointIndex([
+  { sourceRecordId: 3, x: 1, y: 1, depth: 0 },
+  { sourceRecordId: 4, x: 14, y: 14, depth: 0 },
+], { width: 100, height: 100 });
+assert.equal(
+  nearestScreenPoint(collidingHoverIndex, { x: 1, y: 1 }, 8)?.sourceRecordId,
+  3,
+  "hover indexing must retain all candidates that share a screen bucket",
+);
 assert.ok(normalizedRadii.at(-1) > 1, "outliers should remain distinguishable from the bulk");
 assert.ok(normalizedRadii.at(-1) <= 1.45, "outliers should remain within the visible scene");
 assert.doesNotMatch(chemicalSpacePanel, /MOLECULE_PREVIEW_HOVER_DELAY_MS/);
@@ -307,20 +370,103 @@ assert.match(representativeExport, /table_only_record_count/);
 // a fatal error with a Retry button that could only fail again. Large collections
 // additionally wait for an explicit confirmation instead of embedding hundreds of
 // thousands of molecules just because a tab was opened.
-assert.match(chemicalSpacePanel, /if \(awaitingIndexState \|\| indexing \|\| needsConfirmation\) return;/);
+assert.match(chemicalSpacePanel, /if \(computeBlockedByIndex \|\| needsConfirmation\) return;/);
+assert.match(
+  chemicalSpacePanel,
+  /clusteringMethod === "none" \|\| computeBlockedByIndex \|\| needsConfirmation/,
+  "large-collection confirmation must gate clustering as well as embedding",
+);
 // An unanswered probe must gate too: indexState is null on first render, so
 // reading unknown as "small and ready" submitted the job the gate exists to hold.
-assert.match(chemicalSpacePanel, /const awaitingIndexState = !indexProbed;/);
+assert.match(
+  chemicalSpacePanel,
+  /const awaitingIndexState = indexStateDocumentKey !== documentInstanceKey \|\| !indexProbed;/,
+);
+assert.match(
+  chemicalSpacePanel,
+  /indexState\?\.indexReady === true && indexState\?\.indexError === null/,
+  "a terminal indexing error must not be treated as a ready collection",
+);
+assert.match(chemicalSpacePanel, /indexState\?\.indexError/);
+assert.match(chemicalSpacePanel, /const computeBlockedByIndex = awaitingIndexState \|\| indexProbeError !== null \|\| !indexReady \|\| indexing;/);
+assert.match(chemicalSpacePanel, /Retry index check/);
+assert.match(
+  chemicalSpacePanel,
+  /awaitingIndexState \? \(\s*<ChemicalSpaceChecking/,
+  "index probing must not look like a running calculation with a Stop button",
+);
+assert.match(
+  chemicalSpacePanel,
+  /indexState\?\.indexError \? \(\s*<ChemicalSpaceEmpty[\s\S]*?Collection indexing failed/,
+  "a terminal backend indexing failure needs a distinct non-retry state",
+);
+assert.ok(
+  chemicalSpacePanel.indexOf(") : indexing ? (") < chemicalSpacePanel.indexOf(") : !indexReady ? ("),
+  "live indexing progress must render before the generic not-ready fallback",
+);
 // The dock stays mounted across documents, so the confirmation must not carry over.
-assert.match(chemicalSpacePanel, /setConfirmedLargeRun\(false\);\n  \}, \[documentId\]\);/);
-assert.match(chemicalSpacePanel, /const needsConfirmation = !indexing && recordCount > AUTO_RUN_RECORD_LIMIT && !confirmedLargeRun;/);
+assert.match(
+  chemicalSpacePanel,
+  /setConfirmedLargeRunDocumentKey\(null\);[\s\S]*?\}, \[documentInstanceKey\]\);/,
+);
+assert.match(
+  chemicalSpacePanel,
+  /recordCount > AUTO_RUN_RECORD_LIMIT[\s\S]*?confirmedLargeRunDocumentKey !== largeRunConfirmationKey/,
+);
 assert.match(chemicalSpacePanel, /requestChemicalSpaceIndexState\(documentId, controller\.signal\)/);
+assert.match(chemicalSpacePanel, /bytesIndexed: Number\.isFinite\(bytesIndexed\) \? bytesIndexed : 0/);
+assert.match(chemicalSpacePanel, /indexingProgressLabel\(indexState\)/);
+assert.match(
+  chemicalSpacePanel,
+  /indexStateDocumentKey !== documentInstanceKey/,
+  "index readiness from the previous Grid document must not unlock a new document",
+);
+assert.match(
+  chemicalSpacePanel,
+  /confirmedLargeRunDocumentKey !== largeRunConfirmationKey/,
+  "large-run confirmation must be scoped to the exact Grid source revision",
+);
+const dirtyHandler = chemicalSpacePanel.slice(
+  chemicalSpacePanel.indexOf('data.body.type === "gridDirtyChanged"'),
+  chemicalSpacePanel.indexOf('data.body.type === "gridHoverChanged"'),
+);
+assert.match(dirtyHandler, /workflowControllerRef\.current\?\.abort\(\)/u);
+assert.match(dirtyHandler, /studyControllerRef\.current\?\.abort\(\)/u);
+assert.match(dirtyHandler, /recordsTotal = Number\(data\.body\.recordsTotal\)/u);
+assert.match(dirtyHandler, /setIndexState\(\(current\) => current/u);
+assert.match(dirtyHandler, /setConfirmedLargeRunDocumentKey\(null\)/u);
+assert.match(
+  dirtyHandler,
+  /setStudyRunning\(false\)/u,
+  "editing a Grid must cancel an in-flight parameter study before stale results can publish",
+);
+assert.match(chemicalSpacePanel, /`\$\{documentInstanceKey\}:\$\{sourceRevision\}`/);
+assert.ok(
+  chemicalSpacePanel.indexOf("if (computeBlockedByIndex || needsConfirmation) {")
+    < chemicalSpacePanel.indexOf("completedEmbeddings.get(key)"),
+  "cached embeddings must not bypass index readiness or explicit large-run confirmation",
+);
+assert.match(chemicalSpacePanel, /gridDocumentInstanceKey\(document\)/);
 assert.match(chemicalSpacePanel, /actionLabel="Calculate chemical space"/);
 assert.match(chemicalSpacePanel, /estimatedEmbeddingDuration\(recordCount\)/);
 assert.match(chemicalSpacePanel, /rememberThroughput\(next\.sourceRecordIds\.length/);
+assert.match(chemicalSpacePanel, /MAX_COMPLETED_EMBEDDING_CACHE_ENTRIES = 6/);
+assert.match(chemicalSpacePanel, /MAX_COMPLETED_EMBEDDING_CACHE_RECORDS = 500_000/);
+assert.match(chemicalSpacePanel, /completedEmbeddings\.size > MAX_COMPLETED_EMBEDDING_CACHE_ENTRIES/);
 
 const gridViewerSource = source("PreviewExtension/Web/grid-viewer.js");
 assert.match(gridViewerSource, /chemicalSpaceRequestIndexState/);
+assert.match(gridViewerSource, /recordsTotal\s*\n\s*\}\);/);
+const markGridDirtyBlock = gridViewerSource.slice(
+  gridViewerSource.indexOf("function markGridDirty(reason)"),
+  gridViewerSource.indexOf("function markGridClean()"),
+);
+assert.match(markGridDirtyBlock, /notifyGridDirty\(true\)/);
+assert.doesNotMatch(
+  markGridDirtyBlock,
+  /if \(!wasDirty\)/,
+  "every edit must advance the Grid revision and invalidate Chemical Space caches",
+);
 assert.match(gridViewerSource, /function postChemicalSpaceIndexState\(requestId\)/);
 
 console.log("cluster workflow contract tests passed");
