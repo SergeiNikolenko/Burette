@@ -90,4 +90,21 @@ assert.match(viewer, /addRepresentation\(component, representation, \{ tag: 'bur
 // nullIfEmpty is what stops an unmatched selector leaving an empty row behind.
 assert.match(viewer, /nullIfEmpty: true,\s*\n\s*label\s*\n?\s*\}, key, 'burette-selection'\)/);
 
+// The same act is offered on the viewer's own right click, for whatever is
+// selected there rather than only for a row in the panel. Same wording, because
+// it is the same thing.
+assert.match(viewer, /\['represent:component', 'Add to scene as component'\]/);
+assert.match(viewer, /action === 'represent:component'/);
+// It sits outside the componentRef check on purpose: the item exists for targets
+// that have no component yet.
+assert.doesNotMatch(
+  viewer,
+  /if \(molstarContextComponentRef\(target\)\) \{[^}]*represent:component/
+);
+// Two presses do make two components - "Current Selection" is a referencesCurrent
+// query and Mol* will not fold two of those together, which was measured rather
+// than assumed. So the label has to carry something that tells them apart.
+assert.match(viewer, /`Selection · \$\{atoms\.toLocaleString\(\)\} \$\{atoms === 1 \? 'atom' : 'atoms'\}`/);
+assert.match(viewer, /options: \{ label: componentLabel, checkExisting: true \}/);
+
 console.log("molstar selection query contract ok");

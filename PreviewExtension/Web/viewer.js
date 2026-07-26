@@ -17253,6 +17253,8 @@
     if (name === 'view:isolate') return SCENE_TREE_ICON.isolate;
     if (name === 'represent:surface') return ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
     if (name === 'represent:menu') return ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'];
+    // A box with a plus: the selection becomes a new object in the scene.
+    if (name === 'represent:component') return ['M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z', 'M12 11v6', 'M9 14h6'];
     if (name === 'analyze:surroundings') return ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
     if (name === 'analyze:label') return ['M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z', 'M7 7h.01'];
     if (name === 'analyze:distance') return ['M21.3 15.3 8.7 2.7a1 1 0 0 0-1.4 0L2.7 7.3a1 1 0 0 0 0 1.4l12.6 12.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4Z', 'M14.5 12.5 12 15', 'M11.5 9.5 9 12', 'M8.5 6.5 6 9', 'M17.5 15.5 15 18'];
@@ -17298,6 +17300,10 @@
         actions.push(['represent:surface', 'Add grey surface']);
         actions.push(['represent:menu', 'Representation & colour…']);
       }
+      // Deliberately outside the componentRef check: this is the item for things
+      // that have no component yet, which is exactly when it is worth offering.
+      // The Info panel's rows carry the same wording for the same act.
+      actions.push(['represent:component', 'Add to scene as component']);
       if (target?.atom && target?.loci) {
         if (target.scope === 'ligand' || target.scope === 'ion' || target.scope === 'residue') {
           actions.push(['analyze:surroundings', 'Select surroundings (5 Å)']);
@@ -17446,6 +17452,48 @@
         const point = molstarContextMenuLastPoint || { x: 80, y: 120 };
         window.setTimeout(() => openSceneTreeMenu(componentRef, point.x, point.y), 0);
         setStatus(`[web] Editing ${targetLabel} representation.`);
+      } else if (action === 'represent:component') {
+        // "Whatever is selected" means the live selection when there is one, and
+        // the thing under the cursor when there is not - so the item works on a
+        // right click alone and does not first demand that something be selected.
+        const plugin = viewportPlugin();
+        if (!plugin) throw new Error('The viewer is not ready.');
+        const selected = Number(plugin.managers?.structure?.selection?.stats?.elementCount) > 0;
+        if (!selected) {
+          const selectionLoci = molstarContextSelectionLoci(target);
+          if (!selectMolstarContextPick({ ...target, loci: selectionLoci }, { applyGranularity: false })) {
+            throw new Error('There is nothing selected to make a component from.');
+          }
+        }
+        const selection = currentSelectionQuery();
+        if (!selection) throw new Error('Mol* does not expose the current selection as a query.');
+        // Ball-and-stick draws every kind of selection. Cartoon would be lighter
+        // for a whole chain but shows nothing at all for a handful of atoms, and a
+        // component you cannot see is the worse failure. The representation is the
+        // first thing the scene tree menu can change once the component exists.
+        // A picked residue or ligand names itself; a free selection does not. Mol*
+        // would call every one of them "Custom Selection", and since two presses do
+        // make two rows, the tree would fill with names that cannot be told apart.
+        // The atom count is what the eye actually uses to tell one from another.
+        const atoms = Number(plugin.managers?.structure?.selection?.stats?.elementCount) || 0;
+        const componentLabel = target?.scope === 'selection'
+          ? `Selection · ${atoms.toLocaleString()} ${atoms === 1 ? 'atom' : 'atoms'}`
+          : (targetLabel || '');
+        //
+        // checkExisting is asked for but does not bite here: "Current Selection" is
+        // a referencesCurrent query, and Mol* will not treat two of those as the
+        // same component, so pressing the item twice does make two rows. Measured,
+        // not assumed. It is left on because it costs nothing and does take effect
+        // for a named target, and it never reused an unrelated component in
+        // testing - a 12-atom selection made its own row rather than joining an
+        // 88-atom one. Telling the two apart is the label's job, below.
+        await plugin.managers.structure.component.add({
+          selection,
+          representation: 'ball-and-stick',
+          options: { label: componentLabel, checkExisting: true }
+        });
+        scheduleSceneTreeRender();
+        setStatus(`[web] Added ${targetLabel} to the scene as a component.`);
       } else if (action === 'analyze:surroundings') {
         const surroundings = molstarSurroundingsLoci(target, 5);
         if (!surroundings || !selectMolstarContextPick({ ...target, loci: surroundings }, { applyGranularity: false })) {
