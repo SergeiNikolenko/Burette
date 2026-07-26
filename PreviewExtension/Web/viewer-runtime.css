@@ -2704,7 +2704,8 @@ body.burette-mobile-host .buret-docking-poses button {
   min-width: 58px;
 }
 .buret-docking-poses-structure-scene {
-  width: min(340px, calc(100vw - 24px));
+  width: fit-content;
+  border-radius: 0;
 }
 .buret-docking-poses-trajectory-segments {
   width: min(392px, calc(100vw - 24px));
@@ -2725,12 +2726,14 @@ body.burette-mobile-host .buret-docking-poses button {
   width: auto;
 }
 .buret-docking-poses-structure-scene .buret-docking-pose-main {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
 }
 .buret-docking-poses-structure-scene .buret-docking-pose-current {
   min-width: 0;
-  flex: 1 1 0;
-  width: auto;
+  flex: 0 1 auto;
+  width: fit-content;
+  max-width: min(180px, 42vw);
 }
 .buret-docking-pose-story-panel {
   position: relative;
