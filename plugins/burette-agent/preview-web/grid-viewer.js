@@ -70,7 +70,11 @@
     totalRows: 0,
     recordsIndexed: 0,
     recordsTotalHint: null,
-    indexReady: true,
+    bytesIndexed: 0,
+    bytesTotal: 0,
+    indexReady: false,
+    indexError: null,
+    indexStateKnown: false,
     indexing: false,
     visibleCount: 0,
     renderedCount: 0,
@@ -134,6 +138,7 @@
     closeTransitionActive: false,
     dirty: false,
     dirtyReason: '',
+    sourceRevision: 0,
     undoStack: [],
     redoStack: [],
     rowPatches: new Map(),
@@ -519,6 +524,7 @@
       }
       if (body.type === 'gridRecordsAppended') {
         if (!capabilities(config()).editing) return;
+        const recordsAppended = Math.max(0, Number(body.recordsAppended || 0));
         state.hiddenRows.clear();
         state.selected.clear();
         state.chemicalSpaceFilterActive = false;
@@ -526,8 +532,14 @@
         state.redoStack = [];
         state.svgCache.clear();
         state.xyzrenderCardCache.clear();
+        state.totalRows += recordsAppended;
+        state.recordsIndexed += recordsAppended;
+        const previousTotalHint = Number(state.recordsTotalHint);
+        state.recordsTotalHint = Number.isFinite(previousTotalHint)
+          ? previousTotalHint + recordsAppended
+          : state.totalRows;
         markGridDirty('appended molecules');
-        setStatus(`[grid] Added ${Number(body.recordsAppended || 0).toLocaleString()} molecule${Number(body.recordsAppended || 0) === 1 ? '' : 's'}.`);
+        setStatus(`[grid] Added ${recordsAppended.toLocaleString()} molecule${recordsAppended === 1 ? '' : 's'}.`);
         void refreshRemote(config());
         return;
       }
@@ -927,12 +939,38 @@
     state.totalRows = Number(result.totalRows || 0);
     state.recordsIndexed = Number(result.recordsIndexed || state.totalRows || 0);
     state.recordsTotalHint = result.recordsTotalHint == null ? null : Number(result.recordsTotalHint || 0);
+    state.bytesIndexed = Number(result.bytesIndexed || 0);
+    state.bytesTotal = Number(result.bytesTotal || 0);
     state.indexReady = result.indexReady !== false;
+    state.indexError = result.indexError == null ? null : String(result.indexError);
+    state.indexStateKnown = true;
     state.indexing = result.indexing === true || !state.indexReady;
     state.remoteDescriptorIds = Array.isArray(result.descriptorIds) ? result.descriptorIds.map(String) : [];
     state.remoteAnalysisColumns = Array.isArray(result.analysisColumns)
       ? result.analysisColumns.filter(column => column && typeof column === 'object')
       : [];
+  }
+
+  function applyInitialGridIndexState(cfg) {
+    if (!state.remoteMode) {
+      state.indexStateKnown = true;
+      state.indexReady = true;
+      state.indexError = null;
+      state.indexing = false;
+      state.bytesIndexed = 0;
+      state.bytesTotal = 0;
+      return;
+    }
+    state.indexStateKnown = typeof cfg.indexReady === 'boolean';
+    state.indexReady = cfg.indexReady === true;
+    state.indexError = null;
+    state.indexing = !state.indexStateKnown || cfg.indexing === true || !state.indexReady;
+    state.recordsIndexed = Number(cfg.recordsIndexed || 0);
+    state.bytesIndexed = 0;
+    state.bytesTotal = Number(cfg.byteCount || 0);
+    state.recordsTotalHint = state.indexReady && Number.isFinite(Number(cfg.recordsTotal))
+      ? Number(cfg.recordsTotal)
+      : null;
   }
 
   function scheduleIndexPoll(cfg) {
@@ -962,7 +1000,9 @@
       const wasIndexing = state.indexing;
       applyGridPageState(result);
       updateChrome(cfg);
-      if (state.indexing) {
+      if (state.indexError) {
+        setStatus(`[grid] Indexing failed: ${state.indexError}`, 'error');
+      } else if (state.indexing) {
         scheduleIndexPoll(cfg);
       } else if (wasIndexing) {
         // The collection is complete now; top up only if the viewport wants more.
@@ -2060,10 +2100,7 @@
       return;
     }
     if (state.findingSimilar) return;
-    if (!state.indexReady) {
-      setStatus('[grid] Wait for indexing to finish before clustering.', 'error');
-      return;
-    }
+    if (!requireCollectionIndexReady('clustering')) return;
     const sourceIndexes = [...state.selected]
       .map(Number)
       .filter(index => Number.isSafeInteger(index) && index >= 0)
@@ -2104,10 +2141,7 @@
 
   function requestSimilaritySearch(cfg) {
     if (state.clustering || state.findingSimilar) return;
-    if (!state.indexReady) {
-      setStatus('[grid] Wait for indexing to finish before searching for similar molecules.', 'error');
-      return;
-    }
+    if (!requireCollectionIndexReady('searching for similar molecules')) return;
     if (state.selected.size !== 1) {
       setStatus('[grid] Select exactly one query molecule before similarity search.', 'error');
       return;
@@ -2175,17 +2209,25 @@
     const total = state.remoteMode
       ? (state.recordsTotalHint || state.recordsIndexed || state.totalRows)
       : state.all.length;
-    const unavailable = state.clustering || state.findingSimilar || state.indexing || total === 0;
+    const indexReady = collectionIndexReady();
+    const unavailable = state.clustering
+      || state.findingSimilar
+      || !indexReady
+      || total === 0;
     if (button) {
       button.disabled = unavailable;
       button.setAttribute('aria-busy', state.clustering ? 'true' : 'false');
-      button.title = state.clustering
-        ? 'Clustering is running'
-        : state.indexing
-        ? 'Wait for indexing to finish'
-        : state.selected.size
-        ? `Cluster ${state.selected.size.toLocaleString()} selected molecules`
-        : 'Cluster the full collection';
+      if (state.clustering) {
+        button.title = 'Clustering is running';
+      } else if (!indexReady) {
+        button.title = state.indexError
+          ? `Indexing failed: ${state.indexError}`
+          : 'Wait for indexing to finish';
+      } else if (state.selected.size) {
+        button.title = `Cluster ${state.selected.size.toLocaleString()} selected molecules`;
+      } else {
+        button.title = 'Cluster the full collection';
+      }
       const label = button.querySelector('[data-buret-grid-cluster-label]');
       if (label) {
         label.textContent = state.clustering
@@ -3197,7 +3239,9 @@
     const visible = state.remoteMode ? state.totalRows : state.rows.length;
     const scrollable = Math.min(state.visibleCount, state.rows.length);
     const summaryParts = [];
-    if (state.indexing) {
+    if (state.indexError) {
+      summaryParts.push(`Indexing failed after ${moleculeCountLabel(included)}`);
+    } else if (state.indexing) {
       summaryParts.push(`Indexing ${moleculeCountLabel(included)}${total ? ` of ${total.toLocaleString()}` : ''}`);
     } else if (total > 0 && visible !== total) {
       summaryParts.push(`${visible.toLocaleString()} of ${moleculeCountLabel(total)}`);
@@ -3215,7 +3259,9 @@
     }
     const loadStatus = document.getElementById('load-status');
     if (loadStatus) {
-      loadStatus.textContent = state.indexing
+      loadStatus.textContent = state.indexError
+        ? `Indexing failed: ${state.indexError}`
+        : state.indexing
         ? `Indexing ${included.toLocaleString()}${state.recordsTotalHint ? ` / ${state.recordsTotalHint.toLocaleString()}` : ''} molecules`
         : hasMoreRows()
         ? 'More rows available'
@@ -3249,6 +3295,8 @@
     let footerText;
     if (state.smartsError) {
       footerText = `SMARTS error: ${state.smartsError}`;
+    } else if (state.indexError) {
+      footerText = `Collection indexing failed: ${state.indexError}`;
     } else if (state.dirty) {
       footerText = `Unsaved changes. Use Save to overwrite the source file, Save As to write a new file, or Undo to revert the last edit.`;
     } else if (state.indexing) {
@@ -4770,6 +4818,12 @@
     else insertAfterRow(state.all, index, duplicate);
     invalidateTableColumnCatalog();
     state.totalRows += 1;
+    if (state.remoteMode) {
+      const previousTotalHint = Number(state.recordsTotalHint);
+      state.recordsTotalHint = Number.isFinite(previousTotalHint)
+        ? previousTotalHint + 1
+        : state.totalRows;
+    }
     markGridDirty('row edits');
     void render(cfg);
     return true;
@@ -4994,12 +5048,19 @@
   // the backend refuses to run compute until it is complete, and without this the
   // panel showed that refusal as a fatal error.
   function postChemicalSpaceIndexState(requestId) {
+    const indexStateKnown = !state.remoteMode || state.indexStateKnown;
     post('chemicalSpaceIndexState', '', {
       requestId: String(requestId || ''),
       recordsIndexed: Number(state.recordsIndexed || state.rows.length || 0),
       recordsTotal: Number(state.recordsTotalHint ?? state.totalRows ?? 0),
-      indexing: state.indexing === true,
-      indexReady: state.indexReady !== false,
+      indexing: state.remoteMode && (!indexStateKnown || state.indexing === true),
+      indexReady: !state.remoteMode
+        || (indexStateKnown && state.indexReady === true && !state.indexError),
+      indexError: state.indexError,
+      bytesIndexed: state.bytesIndexed,
+      bytesTotal: state.bytesTotal,
+      indexStateKnown,
+      sourceRevision: state.sourceRevision,
     });
   }
 
@@ -5194,15 +5255,23 @@
     state.rows = state.rows.filter(candidate => Number(candidate.index) !== index);
     invalidateTableColumnCatalog();
     state.totalRows = Math.max(0, state.totalRows - 1);
+    if (state.remoteMode) {
+      const previousTotalHint = Number(state.recordsTotalHint);
+      state.recordsTotalHint = Number.isFinite(previousTotalHint)
+        ? Math.max(0, previousTotalHint - 1)
+        : state.totalRows;
+    }
     markGridDirty('row edits');
     return true;
   }
 
   function markGridDirty(reason) {
-    const wasDirty = state.dirty;
     state.dirty = true;
     state.dirtyReason = reason || state.dirtyReason || 'edits';
-    if (!wasDirty) notifyGridDirty(true);
+    state.sourceRevision += 1;
+    // Every edit advances the native Grid source revision and invalidates
+    // Chemical Space caches, even when the document was already dirty.
+    notifyGridDirty(true);
     syncGridEditControls();
     const cfg = safeConfig();
     if (cfg) notifyGridMenuState(cfg);
@@ -5222,10 +5291,15 @@
 
   function notifyGridDirty(dirty) {
     const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
+    const recordsTotal = state.remoteMode
+      ? Number(state.recordsTotalHint ?? state.totalRows ?? 0)
+      : state.all.length;
     post('gridDirtyChanged', dirty ? '[grid] Unsaved changes.' : '[grid] Saved changes.', {
       documentId: cfg.documentId || null,
       dirty,
-      dirtyReason: dirty ? state.dirtyReason : ''
+      dirtyReason: dirty ? state.dirtyReason : '',
+      recordsTotal,
+      sourceRevision: state.sourceRevision
     });
   }
 
@@ -5234,6 +5308,7 @@
       rows: state.rows.slice(),
       all: state.all.slice(),
       totalRows: state.totalRows,
+      recordsTotalHint: state.recordsTotalHint,
       hiddenRows: new Set(state.hiddenRows),
       selected: new Set(state.selected),
       rowPatches: new Map(state.rowPatches),
@@ -5247,12 +5322,14 @@
     state.rows = snapshot.rows.slice();
     state.all = snapshot.all.slice();
     state.totalRows = snapshot.totalRows;
+    state.recordsTotalHint = snapshot.recordsTotalHint;
     state.hiddenRows = new Set(snapshot.hiddenRows);
     state.selected = new Set(snapshot.selected);
     state.rowPatches = new Map(snapshot.rowPatches);
     state.insertedRows = snapshot.insertedRows.slice();
     state.dirty = snapshot.dirty;
     state.dirtyReason = snapshot.dirtyReason;
+    state.sourceRevision += 1;
     invalidateTableColumnCatalog();
     state.svgCache.clear();
     state.xyzrenderCardCache.clear();
@@ -6320,6 +6397,7 @@
     state.exportingClusterRepresentatives = false;
     state.dirty = false;
     state.dirtyReason = '';
+    state.sourceRevision = 0;
     state.undoStack = [];
     state.redoStack = [];
     state.editingText = false;
@@ -6772,12 +6850,20 @@
   }
 
   function collectionIndexReady() {
-    return !state.remoteMode || (state.indexReady && !state.indexing);
+    return Boolean(
+      !state.remoteMode
+      || (state.indexStateKnown && state.indexReady && !state.indexing && !state.indexError)
+    );
   }
 
   function requireCollectionIndexReady(action) {
     if (collectionIndexReady()) return true;
-    setStatus(`[grid] Wait for collection indexing to finish before ${action}.`, 'error');
+    setStatus(
+      state.indexError
+        ? `[grid] Cannot continue because collection indexing failed: ${state.indexError}`
+        : `[grid] Wait for collection indexing to finish before ${action}.`,
+      'error',
+    );
     return false;
   }
 
@@ -7095,6 +7181,7 @@
       const cfg = config();
       resetDocumentRuntimeState();
       state.remoteMode = isRemoteMode(cfg);
+      applyInitialGridIndexState(cfg);
       if (!state.remoteMode) state.all = await hydrateDataWarriorRows(state.all, cfg);
       state.totalRows = state.remoteMode ? 0 : state.all.length;
       applyTheme(cfg);
