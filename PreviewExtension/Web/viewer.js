@@ -2425,13 +2425,12 @@
     const sceneMode = dockingSceneMode(config);
     if (sceneMode) {
       const storageKey = poseModeStorageKey(config);
-      const defaultMode = sceneMode === 'structureAll' ? 'all' : 'single';
       try {
         const stored = window.localStorage?.getItem(storageKey);
         if (stored === 'all' || stored === 'single') return stored;
-        return defaultMode;
+        return 'single';
       } catch (_) {
-        return defaultMode;
+        return 'single';
       }
     }
     const format = normalizeFormat(config?.molstarFormat || config?.format);
@@ -8010,6 +8009,14 @@
     if (/reverse|return/.test(name)) return 'Reverse steering';
     if (/relax/.test(name)) return 'Selected state relaxation';
     return `Structure ${index + 1}`;
+  }
+
+  function structureSceneStoryAvailable(prepared) {
+    if (!prepared?.dockingSceneMode || !Array.isArray(prepared.poses)) return false;
+    const recognizedStages = prepared.poses
+      .map((entry, index) => structureSceneStoryStage(entry?.label, index))
+      .filter((stage, index) => stage !== `Structure ${index + 1}`);
+    return new Set(recognizedStages).size >= 2;
   }
 
   function structureSceneStoryComparison(prepared, index) {
@@ -13660,8 +13667,9 @@
       ? xyzCandidateFrames
       : null;
     const align = prepared.dockingSceneMode || xyzAlignFrames ? document.createElement('button') : null;
-    const story = prepared.dockingSceneMode ? document.createElement('button') : null;
-    const storyPanel = prepared.dockingSceneMode ? document.createElement('aside') : null;
+    const storyAvailable = structureSceneStoryAvailable(prepared);
+    const story = storyAvailable ? document.createElement('button') : null;
+    const storyPanel = storyAvailable ? document.createElement('aside') : null;
     const storyStep = storyPanel ? document.createElement('div') : null;
     const storyTitle = storyPanel ? document.createElement('div') : null;
     const storySummary = storyPanel ? document.createElement('div') : null;

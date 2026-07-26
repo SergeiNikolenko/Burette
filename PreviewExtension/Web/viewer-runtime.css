@@ -2704,7 +2704,7 @@ body.burette-mobile-host .buret-docking-poses button {
   min-width: 58px;
 }
 .buret-docking-poses-structure-scene {
-  width: min(420px, calc(100vw - 24px));
+  width: min(340px, calc(100vw - 24px));
 }
 .buret-docking-poses-trajectory-segments {
   width: min(392px, calc(100vw - 24px));
