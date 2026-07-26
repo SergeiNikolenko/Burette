@@ -1,9 +1,18 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
+import {
+  boundedEdgePositions,
+  cameraAwarePointIndices,
+  positionsForIndices,
+  representativePointIndices,
+  sourceRecordIdsInProjectedPolygon,
+  type ProjectionSnapshot,
+} from "../lib/chemical-space-3d-lod";
+import { simplifyLassoPolygon } from "../lib/chemical-space-lasso";
 
 type Point2 = { x: number; y: number };
 type ProjectedPoint = Point2 & { sourceRecordId: number; depth: number };
@@ -42,11 +51,21 @@ type ThreeRuntime = {
   updateTreeLineScale: (treeLineScale: number) => void;
   updateClusters: (clusterIds: Array<number | null>) => void;
   updateCliffs: (cliffEdges: Array<[number, number]>) => void;
+  cancelSelection: () => void;
+  selectPolygon: (polygon: Point2[]) => Promise<number[]>;
 };
 
-const MAX_LASSO_POINTS = 4_096;
+const MAX_LASSO_POINTS = 1_024;
+const MAX_3D_RENDER_POINTS = 40_000;
+const MAX_3D_RENDER_EDGES = 40_000;
+const MAX_3D_RENDER_CLIFFS = 20_000;
+const MAX_3D_OVERLAY_POINTS = 20_000;
+const MAX_3D_SELECTION_POINTS = 100_000;
+const CAMERA_LOD_SETTLE_MS = 90;
 const BASE_POINT_SIZE = 0.055;
 const POINT_HIT_RADIUS_PX = 6;
+const PROJECTED_HOVER_CELL_SIZE = 8;
+const MAX_PROJECTED_POINTS_PER_CELL = 8;
 
 export function ChemicalSpace3D({
   positions,
@@ -69,8 +88,9 @@ export function ChemicalSpace3D({
   const hostRef = useRef<HTMLDivElement>(null);
   const lassoCanvasRef = useRef<HTMLCanvasElement>(null);
   const runtimeRef = useRef<ThreeRuntime | null>(null);
-  const projectedRef = useRef<ProjectedPoint[]>([]);
   const lassoRef = useRef<Point2[]>([]);
+  const lassoPaintFrameRef = useRef(0);
+  const lassoSelectionGenerationRef = useRef(0);
   const onHoverRef = useRef(onHover);
   const onSelectRef = useRef(onSelect);
   const previewRef = useRef(preview);
@@ -81,6 +101,7 @@ export function ChemicalSpace3D({
   const pointColorsRef = useRef<Array<string | null>>(pointColors ?? []);
   const cliffEdgesRef = useRef(cliffEdges);
   const [lasso, setLasso] = useState<Point2[]>([]);
+  const [selecting, setSelecting] = useState(false);
   const [previewAnchor, setPreviewAnchor] = useState<Point2 | null>(null);
 
   onHoverRef.current = onHover;
@@ -92,7 +113,17 @@ export function ChemicalSpace3D({
   clusterIdsRef.current = clusterIds;
   pointColorsRef.current = pointColors ?? [];
   cliffEdgesRef.current = cliffEdges;
-  const sourceRecordIdsKey = sourceRecordIds.join(",");
+  const hasClusters = useMemo(
+    () => clusterIds.some((clusterId) => clusterId !== null),
+    [clusterIds],
+  );
+
+  useEffect(() => () => {
+    lassoSelectionGenerationRef.current += 1;
+    if (lassoPaintFrameRef.current) {
+      window.cancelAnimationFrame(lassoPaintFrameRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -125,15 +156,19 @@ export function ChemicalSpace3D({
     const pointTexture = circleTexture();
     const densityScale = adaptivePointScale(sourceRecordIds.length);
     const pointOpacity = adaptivePointOpacity(sourceRecordIds.length);
+    let displayedIndices = representativePointIndices(
+      sourceRecordIds.length,
+      MAX_3D_RENDER_POINTS,
+    );
 
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions.flat(), 3));
+    geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(positionsForIndices(positions, displayedIndices), 3),
+    );
     const treeGeometry = new LineSegmentsGeometry();
     const treePositions = (nextPositions: Array<[number, number, number]>) =>
-      treeEdges.flatMap(([leftIndex, rightIndex]) => [
-        ...(nextPositions[leftIndex] ?? []),
-        ...(nextPositions[rightIndex] ?? []),
-      ]);
+      boundedEdgePositions(nextPositions, treeEdges, MAX_3D_RENDER_EDGES);
     treeGeometry.setPositions(treePositions(positions));
     const treeMaterial = new LineMaterial({
       color: foregroundColor.getHex(),
@@ -150,11 +185,7 @@ export function ChemicalSpace3D({
     const cliffPositions = (
       nextPositions: Array<[number, number, number]>,
       edges: Array<[number, number]>,
-    ) =>
-      edges.flatMap(([leftIndex, rightIndex]) => [
-        ...(nextPositions[leftIndex] ?? []),
-        ...(nextPositions[rightIndex] ?? []),
-      ]);
+    ) => boundedEdgePositions(nextPositions, edges, MAX_3D_RENDER_CLIFFS);
     const cliffGeometry = new LineSegmentsGeometry();
     cliffGeometry.setPositions(cliffPositions(positions, cliffEdgesRef.current));
     const cliffMaterial = new LineMaterial({
@@ -166,15 +197,17 @@ export function ChemicalSpace3D({
     const cliffLines = new LineSegments2(cliffGeometry, cliffMaterial);
     cliffLines.computeLineDistances();
     scene.add(cliffLines);
-    const clusterColorValues = (ids: Array<number | null>) => ids.flatMap((clusterId, index) => {
-      const override = pointColorsRef.current[index] ?? null;
-      const color = override
-        ? new THREE.Color(override)
-        : clusterId === null
-          ? pointColor
-          : new THREE.Color(clusterColors[clusterId % clusterColors.length]);
-      return [color.r, color.g, color.b];
-    });
+    const clusterColorValues = (ids: Array<number | null>) =>
+      displayedIndices.flatMap((index) => {
+        const clusterId = ids[index] ?? null;
+        const override = pointColorsRef.current[index] ?? null;
+        const color = override
+          ? new THREE.Color(override)
+          : clusterId === null
+            ? pointColor
+            : new THREE.Color(clusterColors[clusterId % clusterColors.length]);
+        return [color.r, color.g, color.b];
+      });
     geometry.setAttribute(
       "color",
       new THREE.Float32BufferAttribute(clusterColorValues(clusterIdsRef.current), 3),
@@ -205,46 +238,127 @@ export function ChemicalSpace3D({
     axes.position.set(-1.05, -1.07, -1.05);
     scene.add(axes);
 
-    const indexById = new Map(sourceRecordIds.map((sourceRecordId, index) => [sourceRecordId, index]));
+    const indexById = new Map<number, number>();
+    for (let index = 0; index < sourceRecordIds.length; index += 1) {
+      indexById.set(sourceRecordIds[index], index);
+    }
     let pointerDown: Point2 | null = null;
     let pointerMoved = false;
+    let projectedBuckets = new Map<string, ProjectedPoint[]>();
+    let viewRenderFrame = 0;
+    let lodSettleTimer = 0;
+    let lodGeneration = 0;
+    let selectionGeneration = 0;
+    const projectedVector = new THREE.Vector3();
 
-    const projectPoints = () => {
+    const draw = () => {
+      renderer.render(scene, camera);
+    };
+    const projectionSnapshot = (): ProjectionSnapshot => {
+      camera.updateMatrixWorld();
+      const viewProjection = camera.projectionMatrix.clone().multiply(camera.matrixWorldInverse);
+      return {
+        elements: viewProjection.elements.slice(),
+        width: Math.max(1, host.clientWidth),
+        height: Math.max(1, host.clientHeight),
+      };
+    };
+    const rebuildProjectedIndex = () => {
       const width = Math.max(1, host.clientWidth);
       const height = Math.max(1, host.clientHeight);
-      projectedRef.current = positionsRef.current.flatMap((position, index) => {
-        const projected = new THREE.Vector3(...position).project(camera);
-        if (projected.z < -1 || projected.z > 1) return [];
-        return [{
-          x: (projected.x * 0.5 + 0.5) * width,
-          y: (-projected.y * 0.5 + 0.5) * height,
-          depth: projected.z,
-          sourceRecordId: sourceRecordIds[index],
-        }];
-      });
+      const nextBuckets = new Map<string, ProjectedPoint[]>();
+      for (const sourceIndex of displayedIndices) {
+        const position = positionsRef.current[sourceIndex];
+        const sourceRecordId = sourceRecordIds[sourceIndex];
+        if (!position || sourceRecordId === undefined) continue;
+        projectedVector.set(position[0], position[1], position[2]).project(camera);
+        if (projectedVector.z < -1 || projectedVector.z > 1) continue;
+        const candidate = {
+          x: (projectedVector.x * 0.5 + 0.5) * width,
+          y: (-projectedVector.y * 0.5 + 0.5) * height,
+          depth: projectedVector.z,
+          sourceRecordId,
+        };
+        if (
+          candidate.x < -POINT_HIT_RADIUS_PX
+          || candidate.x > width + POINT_HIT_RADIUS_PX
+          || candidate.y < -POINT_HIT_RADIUS_PX
+          || candidate.y > height + POINT_HIT_RADIUS_PX
+        ) continue;
+        addProjectedCandidate(nextBuckets, candidate);
+      }
+      projectedBuckets = nextBuckets;
     };
-
-    const render = () => {
-      renderer.render(scene, camera);
-      projectPoints();
+    const renderView = () => {
+      draw();
+      rebuildProjectedIndex();
+    };
+    const scheduleViewRender = () => {
+      if (viewRenderFrame) return;
+      viewRenderFrame = window.requestAnimationFrame(() => {
+        viewRenderFrame = 0;
+        renderView();
+      });
+      scheduleLodRefinement();
+    };
+    const applyDisplayedIndices = (nextIndices: number[]) => {
+      displayedIndices = nextIndices;
+      geometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(
+          positionsForIndices(positionsRef.current, displayedIndices),
+          3,
+        ),
+      );
+      geometry.setAttribute(
+        "color",
+        new THREE.Float32BufferAttribute(clusterColorValues(clusterIdsRef.current), 3),
+      );
+      geometry.computeBoundingSphere();
+      renderView();
+    };
+    const refineCameraLod = async (generation: number) => {
+      const nextIndices = await cameraAwarePointIndices(
+        positionsRef.current,
+        projectionSnapshot(),
+        MAX_3D_RENDER_POINTS,
+        () => generation !== lodGeneration,
+      );
+      if (generation !== lodGeneration) return;
+      applyDisplayedIndices(nextIndices);
+    };
+    const scheduleLodRefinement = (delay = CAMERA_LOD_SETTLE_MS) => {
+      lodGeneration += 1;
+      const generation = lodGeneration;
+      if (lodSettleTimer) window.clearTimeout(lodSettleTimer);
+      lodSettleTimer = window.setTimeout(() => {
+        lodSettleTimer = 0;
+        void refineCameraLod(generation);
+      }, delay);
     };
 
     const updateSelected = (sourceRecordIds: Set<number>, shouldRender = true) => {
+      const selectedIndices = [...sourceRecordIds]
+        .map((sourceRecordId) => indexById.get(sourceRecordId))
+        .filter((index): index is number => index !== undefined);
       updateOverlayGeometry(
         selectedPoints.geometry,
-        [...sourceRecordIds].map((sourceRecordId) => indexById.get(sourceRecordId)).filter((index): index is number => index !== undefined),
+        boundedSubset(selectedIndices, MAX_3D_OVERLAY_POINTS),
         positionsRef.current,
       );
-      if (shouldRender) render();
+      if (shouldRender) draw();
     };
     const updateHovered = (sourceRecordId: number | null, shouldRender = true) => {
       const index = sourceRecordId === null ? undefined : indexById.get(sourceRecordId);
       updateOverlayGeometry(hoveredPoints.geometry, index === undefined ? [] : [index], positionsRef.current);
-      if (shouldRender) render();
+      if (shouldRender) draw();
     };
     const updatePositions = (nextPositions: Array<[number, number, number]>) => {
       positionsRef.current = nextPositions;
-      geometry.setAttribute("position", new THREE.Float32BufferAttribute(nextPositions.flat(), 3));
+      geometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(positionsForIndices(nextPositions, displayedIndices), 3),
+      );
       geometry.computeBoundingSphere();
       treeGeometry.setPositions(treePositions(nextPositions));
       treeGeometry.computeBoundingSphere();
@@ -253,7 +367,8 @@ export function ChemicalSpace3D({
       cliffLines.computeLineDistances();
       updateSelected(selectedRef.current, false);
       updateHovered(hoveredRef.current, false);
-      render();
+      renderView();
+      scheduleLodRefinement(0);
     };
     const updatePreview = (nextPreview: MoleculePreview | null) => {
       previewRef.current = nextPreview;
@@ -262,11 +377,11 @@ export function ChemicalSpace3D({
       points.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
       selectedPoints.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
       hoveredPoints.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
-      render();
+      draw();
     };
     const updateTreeLineScale = (nextTreeLineScale: number) => {
       treeMaterial.linewidth = 2.25 * nextTreeLineScale;
-      render();
+      draw();
     };
     const updateClusters = (nextClusterIds: Array<number | null>) => {
       clusterIdsRef.current = nextClusterIds;
@@ -274,13 +389,28 @@ export function ChemicalSpace3D({
         "color",
         new THREE.Float32BufferAttribute(clusterColorValues(nextClusterIds), 3),
       );
-      render();
+      draw();
     };
     const updateCliffs = (nextCliffEdges: Array<[number, number]>) => {
       cliffEdgesRef.current = nextCliffEdges;
       cliffGeometry.setPositions(cliffPositions(positionsRef.current, nextCliffEdges));
       cliffLines.computeLineDistances();
-      render();
+      draw();
+    };
+    const cancelSelection = () => {
+      selectionGeneration += 1;
+    };
+    const selectPolygon = async (polygon: Point2[]) => {
+      selectionGeneration += 1;
+      const generation = selectionGeneration;
+      return sourceRecordIdsInProjectedPolygon(
+        positionsRef.current,
+        sourceRecordIds,
+        projectionSnapshot(),
+        polygon,
+        MAX_3D_SELECTION_POINTS,
+        () => generation !== selectionGeneration,
+      );
     };
 
     const localPoint = (event: PointerEvent): Point2 => {
@@ -290,20 +420,31 @@ export function ChemicalSpace3D({
     const nearestProjectedPoint = (point: Point2) => {
       let nearest: ProjectedPoint | null = null;
       let distanceSquared = POINT_HIT_RADIUS_PX ** 2;
-      for (const candidate of projectedRef.current) {
-        const nextDistance = (candidate.x - point.x) ** 2 + (candidate.y - point.y) ** 2;
-        if (
-          nextDistance < distanceSquared
-          || (nextDistance === distanceSquared && nearest !== null && candidate.depth < nearest.depth)
-        ) {
-          nearest = candidate;
-          distanceSquared = nextDistance;
+      const centerX = Math.floor(point.x / PROJECTED_HOVER_CELL_SIZE);
+      const centerY = Math.floor(point.y / PROJECTED_HOVER_CELL_SIZE);
+      const cellRange = Math.ceil(POINT_HIT_RADIUS_PX / PROJECTED_HOVER_CELL_SIZE);
+      for (let cellY = centerY - cellRange; cellY <= centerY + cellRange; cellY += 1) {
+        for (let cellX = centerX - cellRange; cellX <= centerX + cellRange; cellX += 1) {
+          const candidates = projectedBuckets.get(`${cellX}:${cellY}`);
+          if (!candidates) continue;
+          for (const candidate of candidates) {
+            const nextDistance = (candidate.x - point.x) ** 2 + (candidate.y - point.y) ** 2;
+            if (
+              nextDistance < distanceSquared
+              || (nextDistance === distanceSquared && (nearest === null || candidate.depth < nearest.depth))
+            ) {
+              nearest = candidate;
+              distanceSquared = nextDistance;
+            }
+          }
         }
       }
       return nearest;
     };
     const hoverNearest = (event: PointerEvent) => {
       const sourceRecordId = nearestProjectedPoint(localPoint(event))?.sourceRecordId ?? null;
+      if (sourceRecordId === hoveredRef.current) return sourceRecordId;
+      hoveredRef.current = sourceRecordId;
       onHoverRef.current(sourceRecordId);
       return sourceRecordId;
     };
@@ -330,12 +471,15 @@ export function ChemicalSpace3D({
       camera.position.sub(anchor).multiplyScalar(ratio).add(anchor);
       controls.target.sub(anchor).multiplyScalar(ratio).add(anchor);
       controls.update();
-      render();
+      scheduleViewRender();
     };
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return;
       renderer.domElement.focus({ preventScroll: true });
-      onHoverRef.current(null);
+      if (hoveredRef.current !== null) {
+        hoveredRef.current = null;
+        onHoverRef.current(null);
+      }
       pointerDown = localPoint(event);
       pointerMoved = false;
     };
@@ -360,7 +504,10 @@ export function ChemicalSpace3D({
     const onPointerLeave = () => {
       pointerDown = null;
       setPreviewAnchor(null);
-      onHoverRef.current(null);
+      if (hoveredRef.current !== null) {
+        hoveredRef.current = null;
+        onHoverRef.current(null);
+      }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
@@ -379,9 +526,10 @@ export function ChemicalSpace3D({
       if (key === "d") delta.addScaledVector(right, step);
       camera.position.add(delta);
       controls.target.add(delta);
-      render();
+      scheduleViewRender();
     };
     const onContextMenu = (event: MouseEvent) => event.preventDefault();
+    const onControlsEnd = () => scheduleLodRefinement(0);
 
     renderer.domElement.tabIndex = 0;
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
@@ -391,7 +539,8 @@ export function ChemicalSpace3D({
     renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
     renderer.domElement.addEventListener("keydown", onKeyDown);
     renderer.domElement.addEventListener("contextmenu", onContextMenu);
-    controls.addEventListener("change", render);
+    controls.addEventListener("change", scheduleViewRender);
+    controls.addEventListener("end", onControlsEnd);
 
     const resizeObserver = new ResizeObserver(() => {
       const width = Math.max(1, host.clientWidth);
@@ -401,7 +550,7 @@ export function ChemicalSpace3D({
       cliffMaterial.resolution.set(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      render();
+      scheduleViewRender();
     });
     resizeObserver.observe(host);
 
@@ -414,15 +563,23 @@ export function ChemicalSpace3D({
       updateTreeLineScale,
       updateClusters,
       updateCliffs,
+      cancelSelection,
+      selectPolygon,
     };
-    updateSelected(selected);
-    updateHovered(hovered);
-    render();
+    updateSelected(selected, false);
+    updateHovered(hovered, false);
+    renderView();
+    scheduleLodRefinement(0);
 
     return () => {
       runtimeRef.current = null;
+      lodGeneration += 1;
+      selectionGeneration += 1;
       resizeObserver.disconnect();
-      controls.removeEventListener("change", render);
+      controls.removeEventListener("change", scheduleViewRender);
+      controls.removeEventListener("end", onControlsEnd);
+      if (viewRenderFrame) window.cancelAnimationFrame(viewRenderFrame);
+      if (lodSettleTimer) window.clearTimeout(lodSettleTimer);
       controls.dispose();
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
@@ -449,7 +606,7 @@ export function ChemicalSpace3D({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [methodLabel, sourceRecordIdsKey, treeEdges]);
+  }, [methodLabel, sourceRecordIds, treeEdges]);
 
   useEffect(() => runtimeRef.current?.updatePositions(positions), [positions]);
   useEffect(() => runtimeRef.current?.updateSelected(selected), [selected]);
@@ -492,6 +649,9 @@ export function ChemicalSpace3D({
         onPointerDown={(event) => {
           if (tool !== "lasso") return;
           event.currentTarget.setPointerCapture(event.pointerId);
+          lassoSelectionGenerationRef.current += 1;
+          runtimeRef.current?.cancelSelection();
+          setSelecting(false);
           const point = localCanvasPoint(event);
           lassoRef.current = [point];
           setLasso([point]);
@@ -504,22 +664,47 @@ export function ChemicalSpace3D({
             lassoRef.current.length < MAX_LASSO_POINTS
             && (!previous || Math.hypot(previous.x - point.x, previous.y - point.y) >= 2)
           ) {
-            lassoRef.current = [...lassoRef.current, point];
-            setLasso(lassoRef.current);
+            lassoRef.current.push(point);
+            if (!lassoPaintFrameRef.current) {
+              lassoPaintFrameRef.current = window.requestAnimationFrame(() => {
+                lassoPaintFrameRef.current = 0;
+                setLasso(lassoRef.current.slice());
+              });
+            }
           }
         }}
         onPointerUp={() => {
-          const polygon = lassoRef.current;
-          const sourceRecordIds = polygon.length >= 3
-            ? projectedRef.current.filter((point) => pointInPolygon(point, polygon)).map((point) => point.sourceRecordId)
-            : [];
+          const polygon = simplifyLassoPolygon(lassoRef.current);
           lassoRef.current = [];
+          if (lassoPaintFrameRef.current) {
+            window.cancelAnimationFrame(lassoPaintFrameRef.current);
+            lassoPaintFrameRef.current = 0;
+          }
           setLasso([]);
-          onSelect(sourceRecordIds);
+          if (polygon.length < 3 || !runtimeRef.current) {
+            setSelecting(false);
+            onSelectRef.current([]);
+            return;
+          }
+          const generation = lassoSelectionGenerationRef.current + 1;
+          lassoSelectionGenerationRef.current = generation;
+          setSelecting(true);
+          void runtimeRef.current.selectPolygon(polygon).then((sourceRecordIds) => {
+            if (generation !== lassoSelectionGenerationRef.current) return;
+            setSelecting(false);
+            onSelectRef.current(sourceRecordIds);
+          });
         }}
         onPointerCancel={() => {
+          lassoSelectionGenerationRef.current += 1;
+          runtimeRef.current?.cancelSelection();
           lassoRef.current = [];
+          if (lassoPaintFrameRef.current) {
+            window.cancelAnimationFrame(lassoPaintFrameRef.current);
+            lassoPaintFrameRef.current = 0;
+          }
           setLasso([]);
+          setSelecting(false);
         }}
       />
       {preview && hovered === preview.sourceRecordId && previewAnchor ? (
@@ -536,9 +721,10 @@ export function ChemicalSpace3D({
         </div>
       ) : null}
       <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
-        {selected.size.toLocaleString()} selected · drag to orbit · WASD to pan · wheel to zoom
+        {selecting ? "Selecting molecules…" : `${selected.size.toLocaleString()} selected`}
+        {" · drag to orbit · WASD to pan · wheel to zoom"}
       </div>
-      {clusterIds.some((clusterId) => clusterId !== null) ? (
+      {hasClusters ? (
         <div className="pointer-events-none absolute right-2 top-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
           Colored by Butina cluster
         </div>
@@ -559,6 +745,34 @@ function overlayPoints(color: THREE.Color, texture: THREE.Texture, size: number)
       transparent: true,
     }),
   );
+}
+
+function addProjectedCandidate(
+  buckets: Map<string, ProjectedPoint[]>,
+  candidate: ProjectedPoint,
+) {
+  const key = `${
+    Math.floor(candidate.x / PROJECTED_HOVER_CELL_SIZE)
+  }:${Math.floor(candidate.y / PROJECTED_HOVER_CELL_SIZE)}`;
+  const bucket = buckets.get(key);
+  if (!bucket) {
+    buckets.set(key, [candidate]);
+    return;
+  }
+  if (bucket.length < MAX_PROJECTED_POINTS_PER_CELL) {
+    bucket.push(candidate);
+    return;
+  }
+  let farthestIndex = 0;
+  for (let index = 1; index < bucket.length; index += 1) {
+    if (bucket[index].depth > bucket[farthestIndex].depth) farthestIndex = index;
+  }
+  if (candidate.depth < bucket[farthestIndex].depth) bucket[farthestIndex] = candidate;
+}
+
+function boundedSubset(indices: number[], limit: number) {
+  if (indices.length <= limit) return indices;
+  return representativePointIndices(indices.length, limit).map((index) => indices[index]);
 }
 
 function adaptivePointScale(recordCount: number) {
@@ -623,16 +837,4 @@ function circleTexture() {
 function localCanvasPoint(event: ReactPointerEvent<HTMLCanvasElement>) {
   const rect = event.currentTarget.getBoundingClientRect();
   return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-}
-
-function pointInPolygon(point: Point2, polygon: Point2[]) {
-  let inside = false;
-  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
-    const left = polygon[index];
-    const right = polygon[previous];
-    const crosses = (left.y > point.y) !== (right.y > point.y)
-      && point.x < ((right.x - left.x) * (point.y - left.y)) / (right.y - left.y || Number.EPSILON) + left.x;
-    if (crosses) inside = !inside;
-  }
-  return inside;
 }

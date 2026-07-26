@@ -138,6 +138,7 @@
     closeTransitionActive: false,
     dirty: false,
     dirtyReason: '',
+    sourceRevision: 0,
     undoStack: [],
     redoStack: [],
     rowPatches: new Map(),
@@ -5059,6 +5060,7 @@
       bytesIndexed: state.bytesIndexed,
       bytesTotal: state.bytesTotal,
       indexStateKnown,
+      sourceRevision: state.sourceRevision,
     });
   }
 
@@ -5266,6 +5268,7 @@
   function markGridDirty(reason) {
     state.dirty = true;
     state.dirtyReason = reason || state.dirtyReason || 'edits';
+    state.sourceRevision += 1;
     // Every edit advances the native Grid source revision and invalidates
     // Chemical Space caches, even when the document was already dirty.
     notifyGridDirty(true);
@@ -5295,7 +5298,8 @@
       documentId: cfg.documentId || null,
       dirty,
       dirtyReason: dirty ? state.dirtyReason : '',
-      recordsTotal
+      recordsTotal,
+      sourceRevision: state.sourceRevision
     });
   }
 
@@ -5325,6 +5329,7 @@
     state.insertedRows = snapshot.insertedRows.slice();
     state.dirty = snapshot.dirty;
     state.dirtyReason = snapshot.dirtyReason;
+    state.sourceRevision += 1;
     invalidateTableColumnCatalog();
     state.svgCache.clear();
     state.xyzrenderCardCache.clear();
@@ -6392,6 +6397,7 @@
     state.exportingClusterRepresentatives = false;
     state.dirty = false;
     state.dirtyReason = '';
+    state.sourceRevision = 0;
     state.undoStack = [];
     state.redoStack = [];
     state.editingText = false;
