@@ -1019,8 +1019,10 @@
     // Container size the last resize was performed for. The window event and the
     // container observer both report the same change, a beat apart, so without
     // this the viewer redrew about twice per resize step.
-    appliedSize: ''
+    appliedSize: '',
+    appliedViewer: null
   };
+  let hostViewerVisible = true;
 
   function viewerContainerSize(viewer) {
     const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
@@ -1036,10 +1038,18 @@
   // on every window resize alongside the visible one. A collapsed container has
   // no pixels to redraw for, and the viewer resizes itself when it comes back.
   function viewerCanvasIsVisible(viewer) {
+    if (!hostViewerVisible) return false;
     const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
     if (!container) return true;
     const rect = container.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
+    if (rect.width <= 0 || rect.height <= 0) return false;
+    for (let node = container; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') {
+        return false;
+      }
+    }
+    return true;
   }
 
   function scheduleViewerResize(viewer, delayMs = 80) {
@@ -1053,8 +1063,10 @@
       resizeState.timer = setTimeout(() => {
         const target = resizeState.viewer;
         if (!target) return;
+        if (!viewerCanvasIsVisible(target)) return;
         const size = viewerContainerSize(target);
-        if (size && size === resizeState.appliedSize) return;
+        if (target === resizeState.appliedViewer && size && size === resizeState.appliedSize) return;
+        resizeState.appliedViewer = target;
         resizeState.appliedSize = size;
         let handled = false;
         try {
@@ -2130,6 +2142,11 @@
     const data = event.data || {};
     const body = data.source === 'burette-host' ? data.body : null;
     if (!body) return;
+    if (body.type === 'viewerVisibilityChanged') {
+      hostViewerVisible = body.visible !== false;
+      if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer, 0);
+      return;
+    }
     if (body.type === 'workspaceHistoryCommand') {
       void handleWorkspaceHistoryCommand(body, event.source);
       return;

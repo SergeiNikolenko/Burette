@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+MAX_FORCE_PREVIEW_COPY_BYTES=$((64 * 1024 * 1024))
 DEV_FLAVOR_SLUG=""
 if [[ -n "${BURETTE_DEV_FLAVOR:-}" ]]; then
   command -v bun >/dev/null 2>&1 || { echo "error: BURETTE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
@@ -21,7 +22,17 @@ trap cleanup_dev_preview_dir EXIT
 if [[ -n "$DEV_FLAVOR_SLUG" ]]; then
   DEV_PREVIEW_DIR="$(mktemp -d "${TMPDIR:-/tmp}/BurettePreview-${DEV_FLAVOR_SLUG}.XXXXXX")"
   PREVIEW_FILE="$DEV_PREVIEW_DIR/${DEV_FLAVOR_SLUG} $(basename "$FILE")"
-  ln "$FILE" "$PREVIEW_FILE" 2>/dev/null || cp -p "$FILE" "$PREVIEW_FILE"
+  if ! ln "$FILE" "$PREVIEW_FILE" 2>/dev/null; then
+    FILE_SIZE="$(stat -f '%z' "$FILE")"
+    if [[ "$FILE_SIZE" -le "$MAX_FORCE_PREVIEW_COPY_BYTES" ]]; then
+      cp -p "$FILE" "$PREVIEW_FILE"
+    else
+      # A cross-volume hard link is expected to fail. Copying a multi-GB source
+      # into TMPDIR makes the smoke helper itself look hung, while qlmanage can
+      # preview the original path with the same forced development UTI.
+      PREVIEW_FILE="$FILE"
+    fi
+  fi
 fi
 set +e
 TYPE="$("$ROOT/scripts/preview-content-type.mjs" --reject-table "$FILE" 2>/dev/null)"

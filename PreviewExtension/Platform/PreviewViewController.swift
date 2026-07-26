@@ -493,6 +493,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             structureData = try Data(contentsOf: url)
         }
         diag("elapsed.fileReadMs=\(elapsedMs(since: fileReadStarted))")
+        if usesBoundedCollectionPreview && structureData.isEmpty {
+            // No complete record was present in the bounded prefix. Parsing or
+            // text-fallback of that prefix would present a corrupt partial
+            // molecule as a preview, so show the explicit large-file card.
+            throw PreviewError.fileTooLarge(url.lastPathComponent, structureSize, sizeLimit)
+        }
         guard !structureData.isEmpty else { throw PreviewError.emptyStructureFile(url.lastPathComponent) }
         diag("structureData.bytes=\(structureData.count)")
         if usesBoundedMaestroPreview {
@@ -3612,22 +3618,62 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     // half-written record: SDF records end at a $$$$ line, the line-oriented
     // formats at a newline.
     private static func truncatedToWholeRecords(_ data: Data, fileExtension: String) -> Data {
-        let terminator: String
         switch fileExtension.lowercased() {
         case "sdf", "sd":
-            terminator = "$$$$"
+            guard let end = sdfRecordBoundaryOffset(in: data) else { return Data() }
+            return data.subdata(in: data.startIndex..<end)
         default:
-            terminator = "\n"
+            guard let lastRange = data.range(
+                of: Data([UInt8(ascii: "\n")]),
+                options: .backwards
+            ) else {
+                return Data()
+            }
+            return data.subdata(in: data.startIndex..<lastRange.upperBound)
         }
-        guard let terminatorData = terminator.data(using: .utf8),
-              let lastRange = data.range(of: terminatorData, options: .backwards) else {
-            return data
+    }
+
+    private static func sdfRecordBoundaryOffset(in data: Data) -> Data.Index? {
+        guard !data.isEmpty else { return nil }
+        var lineStart = data.startIndex
+        var cursor = data.startIndex
+        var lastBoundaryEnd: Data.Index?
+        while cursor < data.endIndex {
+            let byte = data[cursor]
+            guard byte == UInt8(ascii: "\r") || byte == UInt8(ascii: "\n") else {
+                cursor = data.index(after: cursor)
+                continue
+            }
+            var nextLineStart = data.index(after: cursor)
+            if byte == UInt8(ascii: "\r"),
+               nextLineStart < data.endIndex,
+               data[nextLineStart] == UInt8(ascii: "\n") {
+                nextLineStart = data.index(after: nextLineStart)
+            }
+            if isExactSDFRecordBoundaryLine(data, start: lineStart, end: cursor) {
+                lastBoundaryEnd = nextLineStart
+            }
+            lineStart = nextLineStart
+            cursor = nextLineStart
         }
-        // Keep the terminator itself, plus the newline that follows it when present.
-        var end = lastRange.upperBound
-        if end < data.endIndex, data[end] == UInt8(ascii: "\r") { end = data.index(after: end) }
-        if end < data.endIndex, data[end] == UInt8(ascii: "\n") { end = data.index(after: end) }
-        return data.subdata(in: data.startIndex..<end)
+        if isExactSDFRecordBoundaryLine(data, start: lineStart, end: data.endIndex) {
+            lastBoundaryEnd = data.endIndex
+        }
+        return lastBoundaryEnd
+    }
+
+    private static func isExactSDFRecordBoundaryLine(
+        _ data: Data,
+        start: Data.Index,
+        end: Data.Index
+    ) -> Bool {
+        guard data.distance(from: start, to: end) == 4 else { return false }
+        var cursor = start
+        for _ in 0..<4 {
+            guard data[cursor] == UInt8(ascii: "$") else { return false }
+            cursor = data.index(after: cursor)
+        }
+        return true
     }
 
     private static func isMaestroPreviewExtension(_ fileExtension: String) -> Bool {
