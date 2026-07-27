@@ -16064,33 +16064,36 @@
   }
 
   // A selection made elsewhere — most often by picking a stretch of sequence —
-  // should outlive a look around the 3D view. A click there focuses rather than
-  // selects, so the selection it drops is collateral. This arms for any left
-  // click on the view, empty space or a molecule alike; the restore below only
-  // fires when the selection was actually wiped, so a click that legitimately
-  // makes a new one is left alone.
+  // should outlive an empty-space click in the 3D view. Clicking the selected
+  // structure itself is a toggle, though, and deliberately clears the selection.
   function beginMolstarSelectionPreserve(event) {
     if (molstarLassoEnabled || molstarLassoStroke || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
     const lociList = molstarCurrentSelectionLociList();
     if (!lociList.length) return;
+    const pick = molstarContextPickFromEvent(event);
     molstarSelectionPreserveClick = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      lociList
+      lociList,
+      pickedAtStart: !!pick
     };
   }
 
   function finishMolstarSelectionPreserve(event) {
     const preserve = molstarSelectionPreserveClick;
-    if (!preserve || event.pointerId !== preserve.pointerId) return;
+    if (!preserve || event.pointerId !== preserve.pointerId) return false;
     molstarSelectionPreserveClick = null;
     const moved = Math.hypot(event.clientX - preserve.startX, event.clientY - preserve.startY) > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
-    if (moved) return;
+    if (moved) return false;
+    // Mol* owns selection toggles and replacements on structure picks. Restoring
+    // here would immediately undo a deliberate change to the selected scope.
+    if (preserve.pickedAtStart) return false;
     setTimeout(() => {
       if (molstarCurrentSelectionLociList().length) return;
       restoreMolstarSelectionLociList(preserve.lociList);
     }, 0);
+    return false;
   }
 
   function molstarContextStructures() {
@@ -20225,7 +20228,11 @@
         Math.abs(event.clientY - contextPointer.startY) > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
     };
     const onPointerUp = (event) => {
-      finishMolstarSelectionPreserve(event);
+      if (finishMolstarSelectionPreserve(event)) {
+        molstarPreviewRevealStart = null;
+        hideMolstarContextMenu();
+        return;
+      }
       if (molstarPreviewRevealStart && event.pointerId === molstarPreviewRevealStart.pointerId) {
         const moved = Math.hypot(event.clientX - molstarPreviewRevealStart.x, event.clientY - molstarPreviewRevealStart.y)
           > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;

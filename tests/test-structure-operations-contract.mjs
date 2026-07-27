@@ -178,6 +178,10 @@ assert.match(fn("showMolstarContextMenu"), /menu\.appendChild\(pickingLevel\);\s
 assert.doesNotMatch(fn("molstarContextMenuActions"), /actions\.push\(\[`colour:/);
 assert.match(fn("installMolstarContextMenu"), /document\.addEventListener\('mousedown', suppressSecondaryMouseEvent, true\)/);
 assert.match(fn("installMolstarContextMenu"), /document\.addEventListener\('auxclick', suppressSecondaryMouseEvent, true\)/);
+// A plain left click toggles an already-selected structure off, while an
+// empty-space click still preserves a selection made elsewhere.
+assert.match(fn("beginMolstarSelectionPreserve"), /const pick = molstarContextPickFromEvent\(event\)/);
+assert.match(fn("finishMolstarSelectionPreserve"), /if \(preserve\.pickedAtStart\) return false;[\s\S]*restoreMolstarSelectionLociList\(preserve\.lociList\)/);
 const group = fn("moleculeContextActionGroup");
 assert.match(group, /name\.startsWith\('colour:'\)\) return 'colour'/);
 assert.match(group, /name\.startsWith\('select:'\)\) return 'selection'/);
