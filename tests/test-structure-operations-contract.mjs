@@ -63,16 +63,20 @@ assert.match(viewer, /applyMolstarSelectionQuery\('inverse'\)/);
 assert.match(viewer, /const MOLSTAR_SELECTION_LEVELS = \[\['element', 'Atom'\], \['residue', 'Residue'\], \['chain', 'Chain'\]\]/);
 assert.match(fn("setMolstarSelectionLevel"), /interactivity\.setProps\(\{ granularity: level \}\)/);
 assert.match(fn("molstarContextSelectionLoci"), /const pickingLevel = target\?\.pickingLevel \|\| molstarContextMenuMode/);
-assert.match(fn("molstarContextSelectionLoci"), /const granularity = pickingLevel === 'atom' \? 'element' : pickingLevel/);
-assert.match(fn("molstarContextSelectionLoci"), /molstarContextNormalizeLoci\(pickedLoci, granularity \|\| 'residue'\)/);
+assert.match(fn("molstarContextSelectionLoci"), /molstarContextPickingLevelLoci\(target, pickingLevel\)/);
+assert.match(fn("molstarContextPickingLevelLoci"), /level === 'residue'[\s\S]*molstarContextResidueAtomLociForStructure/);
+assert.match(fn("molstarContextPickingLevelLoci"), /level === 'chain'[\s\S]*molstarContextChainLociFromPick/);
 assert.match(fn("moleculePickingLevelSubmenu"), /for \(const \[level, levelLabel\] of VIEWPORT_GRANULARITIES\)/);
 assert.match(fn("moleculePickingLevelSubmenu"), /setAttribute\('role', 'menuitemradio'\)/);
 assert.match(fn("moleculePickingLevelSubmenu"), /setAttribute\('aria-checked', checked \? 'true' : 'false'\)/);
 assert.match(fn("molstarContextResolvedLoci"), /molstarContextMenuMode === 'molecule' \|\| !pickedAtom/);
 assert.match(fn("modifyMolstarContextVisibility"), /modifyByCurrentSelection\(components, operation\)/);
 assert.match(fn("modifyMolstarContextVisibility"), /selection\.fromLoci\('set', loci, false\)/);
+assert.match(fn("modifyMolstarContextVisibility"), /operation === 'intersect'[\s\S]*molstarComponentIntersectsLoci/);
+assert.match(fn("modifyMolstarContextVisibility"), /state\?\.updateCellState\?\.\(ref, \{ isHidden: true \}\)/);
 assert.match(fn("moleculeContextMenuAction"), /modifyMolstarContextVisibility\(target, 'subtract'\)/);
 assert.match(fn("moleculeContextMenuAction"), /modifyMolstarContextVisibility\(target, 'intersect'\)/);
+assert.match(fn("moleculeContextMenuAction"), /action === 'view:isolate'[\s\S]*focusMolstarContextPick\(\{ \.\.\.target, loci: isolateLoci \}\)/);
 assert.match(fn("addMolstarContextScopeComponent"), /const loci = molstarContextSelectionLoci\(target\)/);
 assert.match(fn("addMolstarContextScopeComponent"), /manager\.add\(\{[\s\S]*selection: selectionQuery[\s\S]*representation/);
 assert.match(fn("molstarContextTargetComponents"), /molstarCurrentStructures\(activeMolstarViewer\(\)\)[\s\S]*find\(structure => structure\?\.cell\?\.transform\?\.ref === targetRef\)/);
@@ -97,7 +101,18 @@ assert.match(fn("molstarColourPresetsForTarget"), /name === 'plddt-confidence' &
 assert.match(viewer, /distance: \{ points: 2, method: 'addDistance'/);
 assert.match(viewer, /angle: \{ points: 3, method: 'addAngle'/);
 assert.match(viewer, /dihedral: \{ points: 4, method: 'addDihedral'/);
-assert.match(fn("beginMolstarMeasurement"), /measurement\[spec\.method\]\(\.\.\.points\)/);
+const measurement = fn("beginMolstarMeasurement");
+assert.match(measurement, /const session = \{\s*\n\s*points: \[\]/);
+assert.match(measurement, /clicks\.subscribe\(event =>/);
+assert.match(measurement, /acceptPicksAt: performance\.now\(\) \+ 180/);
+assert.match(measurement, /pickAt < session\.acceptPicksAt/);
+assert.match(measurement, /pickAt - session\.lastPickAt < 120/);
+assert.match(measurement, /session\.points\.push\(loci\)/);
+assert.match(measurement, /session\.points\.length < spec\.points/);
+assert.match(measurement, /showMolstarMeasureToast\(molstarMeasurePrompt\(kind, session\.points\.length\)\)/);
+assert.match(measurement, /measurement\[spec\.method\]\(\.\.\.points\)/);
+assert.match(fn("molstarMeasurePrompt"), /\$\{picked\}\/\$\{spec\.points\} points selected/);
+assert.match(fn("showMolstarMeasureToast"), /visible: true/);
 
 // Menu actions that change the scene are undoable through the same stack the
 // structure edits use, so Cmd-Z walks them in the order they were made. Selections
@@ -143,6 +158,7 @@ assert.match(fn("moleculeMenuSubmenu"), /aria-haspopup[\s\S]*buret-tree-menu-sub
 assert.match(fn("moleculeMenuActionButton"), /pickingLevel: options\.pickingLevel \|\| options\.target\.pickingLevel/);
 assert.match(fn("moleculeMenuActionButton"), /moleculeContextMenuAction\(action, label, target\)/);
 assert.match(fn("moleculeContextMenuAction"), /const target = targetOverride \|\| molstarContextTarget\(\)/);
+assert.match(fn("moleculeContextMenuAction"), /action === 'select'[\s\S]*activeViewer\.plugin\.selectionMode = true/);
 assert.match(fn("installMoleculeMenuKeyboard"), /ArrowLeft[\s\S]*stopPropagation/);
 assert.match(viewer, /menu\._buretPreviousFocus = document\.activeElement/);
 assert.match(viewer, /renderActions\(\);\s*\n\s*const point = molstarContextMenuLastPoint[\s\S]*positionMolstarContextMenu/);
@@ -152,10 +168,16 @@ assert.doesNotMatch(fn("molstarContextMenuActions"), /select:level:/);
 assert.match(fn("showMolstarContextMenu"), /let mode = molstarSelectionLevel\(\)/);
 assert.match(fn("showMolstarContextMenu"), /moleculePickingLevelSubmenu\(menu, mode/);
 assert.match(fn("showMolstarContextMenu"), /proteinScope \? 'Protein actions' : 'Molecule actions'/);
-assert.match(fn("showMolstarContextMenu"), /setMolstarSelectionLevel\(mode\)[\s\S]*molstarContextNormalizeLoci\(pickedLoci, mode\)/);
+assert.match(fn("showMolstarContextMenu"), /setMolstarSelectionLevel\(mode\)[\s\S]*molstarContextPickingLevelLoci\(menuTarget, mode\)/);
+assert.match(fn("showMolstarContextMenu"), /activeViewer\.plugin\.selectionMode = true/);
 assert.match(fn("showMolstarContextMenu"), /menuTarget\.selectionBased = false/);
 assert.match(fn("showMolstarContextMenu"), /selectMolstarContextPick\(\{ \.\.\.menuTarget, loci: scopedLoci \}, \{ applyGranularity: false \}\)/);
-assert.match(fn("showMolstarContextMenu"), /menu\.appendChild\(pickingLevel\);\s*\n\s*applyModeSelection\(/);
+// Opening the menu is observational: only an explicit picking-level change or
+// Select command may change the live selection.
+assert.match(fn("showMolstarContextMenu"), /menu\.appendChild\(pickingLevel\);\s*\n\s*renderActions\(\)/);
+assert.doesNotMatch(fn("molstarContextMenuActions"), /actions\.push\(\[`colour:/);
+assert.match(fn("installMolstarContextMenu"), /document\.addEventListener\('mousedown', suppressSecondaryMouseEvent, true\)/);
+assert.match(fn("installMolstarContextMenu"), /document\.addEventListener\('auxclick', suppressSecondaryMouseEvent, true\)/);
 const group = fn("moleculeContextActionGroup");
 assert.match(group, /name\.startsWith\('colour:'\)\) return 'colour'/);
 assert.match(group, /name\.startsWith\('select:'\)\) return 'selection'/);

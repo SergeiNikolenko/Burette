@@ -5642,9 +5642,9 @@ assert.match(previewViewer, /function molstarContextResidueAtomLociForStructure\
 assert.match(previewViewer, /if \(current\?\.residueIndex === atom\.residueIndex\) indices\.push\(i\);/);
 assert.match(previewViewer, /function molstarContextSelectionLoci\(target\)/);
 assert.match(previewViewer, /const pickingLevel = target\?\.pickingLevel \|\| molstarContextMenuMode;/);
-assert.match(previewViewer, /const granularity = pickingLevel === 'atom' \? 'element' : pickingLevel;/);
-assert.match(previewViewer, /const pickedLoci = target\?\.atomLoci \|\| target\?\.loci \|\| molstarContextMenuPick\?\.loci;/);
-assert.match(previewViewer, /return molstarContextNormalizeLoci\(pickedLoci, granularity \|\| 'residue'\) \|\| pickedLoci;/);
+assert.match(previewViewer, /return molstarContextPickingLevelLoci\(target, pickingLevel\);/);
+assert.match(previewViewer, /function molstarContextPickingLevelLoci\(target, pickingLevel\)/);
+assert.match(previewViewer, /level === 'chain'[\s\S]*molstarContextChainLociFromPick/);
 assert.match(previewViewer, /function molstarContextLociContainsAtom\(loci, atom\)/);
 assert.match(previewViewer, /function molstarContextOrderedSetSome\(indices, predicate\)/);
 assert.match(previewViewer, /molstarContextOrderedSetSome\(element\.indices, index => molstarContextLociIndexMatchesAtom\(element\.unit, index, atom\)\)/);
@@ -5718,7 +5718,7 @@ assert.match(previewViewer, /const proteinScope = menuTarget\.scope === 'residue
 assert.match(previewViewer, /molstarContextMenuMode = mode;/);
 assert.match(previewViewer, /let mode = molstarSelectionLevel\(\)/);
 assert.match(previewViewer, /setMolstarSelectionLevel\(mode\)/);
-assert.match(previewViewer, /const scopedLoci = molstarContextNormalizeLoci\(pickedLoci, mode\) \|\| pickedLoci;/);
+assert.match(previewViewer, /const scopedLoci = molstarContextPickingLevelLoci\(menuTarget, mode\);/);
 assert.match(previewViewer, /menuTarget\.selectionBased = false;/);
 assert.match(previewViewer, /selectMolstarContextPick\(\{ \.\.\.menuTarget, loci: scopedLoci \}, \{ applyGranularity: false \}\)/);
 assert.match(previewViewer, /const actionTarget = \{ \.\.\.menuTarget, pickingLevel: mode \}/);

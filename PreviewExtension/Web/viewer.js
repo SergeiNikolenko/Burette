@@ -117,7 +117,7 @@
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
   // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
-  // scene-tree menu at the same spot; and the first pick of a two-click distance.
+  // scene-tree menu at the same spot.
   let molstarContextMenuLastPoint = null;
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
@@ -393,12 +393,24 @@
       .slice(0, 80) || fallback;
   }
 
-  function setStatus(message, kind = 'info') {
+  let statusHideTimer = null;
+  function setStatus(message, kind = 'info', options = {}) {
     const text = String(message || '');
     if (status) {
+      if (statusHideTimer) {
+        window.clearTimeout(statusHideTimer);
+        statusHideTimer = null;
+      }
       setStatusText(text);
       status.classList.toggle('error', kind === 'error');
-      status.classList.toggle('hidden', kind !== 'error' && !window.BuretteDebug);
+      const visible = kind === 'error' || window.BuretteDebug || options.visible === true;
+      status.classList.toggle('hidden', !visible);
+      if (visible && kind !== 'error' && Number(options.timeoutMs) > 0) {
+        statusHideTimer = window.setTimeout(() => {
+          status.classList.add('hidden');
+          statusHideTimer = null;
+        }, Number(options.timeoutMs));
+      }
     }
     if (shouldReportStatus(text, kind)) {
       post(kind === 'error' ? 'error' : 'status', text);
@@ -4928,6 +4940,7 @@
     chevron: ['m9 6 6 6-6 6'],
     eye: ['M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
     eyeOff: ['M9.88 9.88a3 3 0 1 0 4.24 4.24', 'M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68', 'M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61', 'm2 2 20 20'],
+    plus: ['M12 5v14', 'M5 12h14'],
     trash: ['M3 6h18', 'M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6'],
     isolate: ['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
     focus: ['M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0', 'M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5'],
@@ -5124,16 +5137,21 @@
           }
           const chain = decoratorChain(childRef);
           const nodeRef = chain[chain.length - 1];
+          const nodeCell = state.cells.get(nodeRef) || cell;
           const components = colorTargets.get(nodeRef) || null;
           const measurementEditable = sceneTreeMeasurementTargets(viewer, nodeRef).length > 0;
+          const label = String(cell.obj.label || 'Node');
           nodes.push({
             ref: nodeRef,
-            label: String(cell.obj.label || 'Node'),
+            label,
             note: String(cell.obj.description || ''),
             typeClass: String(cell.obj.type?.typeClass || 'Object'),
             hidden: sceneTreeCellHidden(state, nodeRef),
             colorable: !!components,
             measurementEditable,
+            focusSaveable: label.startsWith('[Focus]')
+              && Array.isArray(nodeCell?.obj?.data?.units)
+              && nodeCell.obj.data.units.length > 0,
             ...(components ? sceneTreeColorState(components) : { theme: '', value: null }),
             children: build(chain)
           });
@@ -5253,6 +5271,9 @@
       actions.appendChild(dot);
     } else if (node.measurementEditable) {
       actions.appendChild(sceneTreeActionButton('menu', `Settings for ${node.label}`, SCENE_TREE_ICON.settings));
+    }
+    if (node.focusSaveable) {
+      actions.appendChild(sceneTreeActionButton('save-focus', `Save ${node.label}`, SCENE_TREE_ICON.plus));
     }
     actions.appendChild(sceneTreeActionButton('remove', `Remove ${node.label}`, SCENE_TREE_ICON.trash));
     actions.appendChild(sceneTreeActionButton(
@@ -5443,6 +5464,58 @@
       await state.build().delete(ref).commit();
     } catch (error) {
       debug('scene tree remove failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  async function saveSceneTreeFocusNode(ref) {
+    const viewer = activeMolstarViewer();
+    const state = viewer?.plugin?.state?.data;
+    const cell = state?.cells?.get(ref);
+    const focusStructure = cell?.obj?.data;
+    const structureRef = molstarCurrentStructures(viewer).find(structure => {
+      const data = molstarStructureFromRef(structure);
+      return data === focusStructure || data?.root === focusStructure?.root;
+    });
+    if (!structureRef || !Array.isArray(focusStructure?.units) || !focusStructure.units.length) {
+      setStatus('[web] This focus target cannot be saved.', 'error');
+      return;
+    }
+    const loci = {
+      kind: 'element-loci',
+      structure: focusStructure,
+      elements: focusStructure.units.map(unit => ({
+        unit,
+        indices: Int32Array.from({ length: unit.elements.length }, (_, index) => index)
+      }))
+    };
+    const previousSelection = molstarCurrentSelectionLociList();
+    const representation = sceneTreeSubtreeRefs(state, ref)
+      .map(targetRef => state.cells.get(targetRef)?.transform?.params?.type?.name)
+      .find(Boolean) || 'ball-and-stick';
+    const detail = String(cell.obj.description || '').trim();
+    const sourceLabel = String(cell.obj.label || 'Focus')
+      .replace(/^\[Focus\]\s*/i, '')
+      .trim()
+      .toLowerCase();
+    const label = `Saved ${sourceLabel || 'focus'}`;
+    try {
+      const created = await addMolstarContextScopeComponent(
+        { selectionBased: true, loci, structure: structureRef, label },
+        representation,
+        label
+      );
+      if (!created) throw new Error('Mol* could not create a persistent component.');
+      if (!restoreMolstarSelectionLociList(previousSelection)) {
+        viewer?.plugin?.managers?.interactivity?.lociSelects?.deselectAll?.();
+        viewer?.plugin?.managers?.structure?.selection?.clear?.();
+      }
+      setStatus(`[web] Saved ${detail || 'focus target'} as a scene component.`, 'info', {
+        visible: true,
+        timeoutMs: 3200
+      });
+    } catch (error) {
+      setStatus(`[web] Save focus failed.\n\n${error?.message || String(error)}`, 'error');
     }
     scheduleSceneTreeRender();
   }
@@ -6377,6 +6450,7 @@
     else if (action === 'focus') focusSceneTreeNode(ref);
     else if (action === 'isolate') isolateSceneTreeNode(ref);
     else if (action === 'show-all') showAllSceneTreeNodes(ref);
+    else if (action === 'save-focus') saveSceneTreeFocusNode(ref);
     else if (action === 'remove') removeSceneTreeNode(ref);
     else if (action === 'tint-color') {
       applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
@@ -16283,6 +16357,20 @@
     return elements.length ? { kind: 'element-loci', structure, elements } : null;
   }
 
+  function molstarContextPickingLevelLoci(target, pickingLevel) {
+    const level = pickingLevel === 'element' ? 'atom' : pickingLevel;
+    const pickedLoci = target?.atomLoci || target?.loci || molstarContextMenuPick?.loci;
+    if (level === 'atom') return target?.atomLoci || pickedLoci;
+    if (level === 'residue' && target?.atom) {
+      const structure = molstarStructureFromRef(target.structure) || pickedLoci?.structure;
+      return molstarContextResidueAtomLociForStructure(structure, target.atom) || pickedLoci;
+    }
+    if (level === 'chain' && target?.atom) {
+      return molstarContextChainLociFromPick({ ...target, loci: pickedLoci }) || pickedLoci;
+    }
+    return molstarContextNormalizeLoci(pickedLoci, level || 'residue') || pickedLoci;
+  }
+
   function molstarContextSelectionLoci(target) {
     if (target?.selectionBased) return target?.loci || molstarContextMenuPick?.loci;
     const scope = target?.scope;
@@ -16292,9 +16380,7 @@
       const residueLoci = molstarContextResidueAtomLociForStructure(structure, target.atom);
       if (pickingLevel === 'molecule') return residueLoci || target?.loci || molstarContextMenuPick?.loci;
     }
-    const granularity = pickingLevel === 'atom' ? 'element' : pickingLevel;
-    const pickedLoci = target?.atomLoci || target?.loci || molstarContextMenuPick?.loci;
-    return molstarContextNormalizeLoci(pickedLoci, granularity || 'residue') || pickedLoci;
+    return molstarContextPickingLevelLoci(target, pickingLevel);
   }
 
   function molstarContextLociIndexMatchesAtom(unit, index, atom) {
@@ -17639,7 +17725,11 @@
   };
 
   let molstarMeasureSession = null;
-  function cancelDistanceMeasurement(message) {
+  function showMolstarMeasureToast(message, timeoutMs = 0) {
+    setStatus(message, 'info', { visible: true, timeoutMs });
+  }
+
+  function cancelMolstarMeasurement(message) {
     const session = molstarMeasureSession;
     if (!session) return;
     molstarMeasureSession = null;
@@ -17647,14 +17737,16 @@
     document.removeEventListener('keydown', session.onKeyDown, true);
     const plugin = activeMolstarViewer()?.plugin;
     if (plugin) plugin.selectionMode = session.restoreMode;
-    if (message) setStatus(message);
+    if (message) showMolstarMeasureToast(message, 3200);
   }
 
   function molstarMeasurePrompt(kind, picked) {
     const spec = MOLSTAR_MEASURE_KINDS[kind];
     const remaining = spec.points - picked;
-    if (!picked) return `[web] Pick ${spec.points} atoms to measure the ${spec.noun}. Escape cancels.`;
-    return `[web] Point ${picked} of ${spec.points} set. ${remaining} to go, Escape cancels.`;
+    const title = spec.noun[0].toUpperCase() + spec.noun.slice(1);
+    if (!picked) return `[web] ${title}: click ${spec.points} atoms. Esc cancels.`;
+    const suffix = remaining === 1 ? 'point' : 'points';
+    return `[web] ${title}: ${picked}/${spec.points} points selected. Click ${remaining} more ${suffix}. Esc cancels.`;
   }
 
   function beginMolstarMeasurement(kind = 'distance') {
@@ -17664,40 +17756,55 @@
     const measurement = plugin?.managers?.structure?.measurement;
     const clicks = plugin?.behaviors?.interaction?.click;
     if (typeof measurement?.[spec.method] !== 'function' || typeof clicks?.subscribe !== 'function') return false;
-    cancelDistanceMeasurement();
+    cancelMolstarMeasurement();
     const Loci = window.molstar?.lib?.loci?.Loci;
-    const session = { points: [], restoreMode: plugin.selectionMode === true, subscription: null, onKeyDown: null };
+    const session = {
+      points: [],
+      acceptPicksAt: performance.now() + 180,
+      lastPickAt: -Infinity,
+      restoreMode: plugin.selectionMode === true,
+      subscription: null,
+      onKeyDown: null
+    };
     session.onKeyDown = event => {
-      if (event.key === 'Escape') cancelDistanceMeasurement(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measurement cancelled.`);
+      if (event.key === 'Escape') cancelMolstarMeasurement(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measurement cancelled.`);
     };
     plugin.selectionMode = true;
     document.addEventListener('keydown', session.onKeyDown, true);
     session.subscription = clicks.subscribe(event => {
       const loci = molstarContextElementLoci(event?.current?.loci);
-      if (!loci || molstarLociIsEmpty(loci)) return;
-      // Mol* hands the same pick over twice a few milliseconds apart; the repeat
-      // carries the same loci, so it is dropped rather than taken for a new point.
+      if (!loci || molstarLociIsEmpty(loci)) {
+        showMolstarMeasureToast(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)}: no atom at that point. Click directly on an atom. Esc cancels.`);
+        return;
+      }
+      // One physical click can arrive through two overlapping representations.
+      // Their loci are not necessarily equal, so coalesce the event burst before
+      // comparing atoms; a measurement must advance once per user click.
+      const pickAt = performance.now();
+      if (pickAt < session.acceptPicksAt) return;
+      if (pickAt - session.lastPickAt < 120) return;
+      session.lastPickAt = pickAt;
       const previous = session.points[session.points.length - 1];
       if (previous && Loci?.areEqual?.(previous, loci)) return;
       session.points.push(loci);
       if (session.points.length < spec.points) {
-        setStatus(molstarMeasurePrompt(kind, session.points.length));
+        showMolstarMeasureToast(molstarMeasurePrompt(kind, session.points.length));
         return;
       }
       const points = session.points;
-      cancelDistanceMeasurement();
+      cancelMolstarMeasurement();
       // The measurement appears once the last point is picked, not when the menu
       // item was chosen, so its undo entry is taken here.
       const undoSnapshot = captureMolstarSceneUndoSnapshot(`${spec.noun} measurement`);
       Promise.resolve(measurement[spec.method](...points))
         .then(() => {
           pushMolstarEditUndoSnapshot(undoSnapshot);
-          setStatus(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measured.`);
+          showMolstarMeasureToast(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measured.`, 3200);
         })
         .catch(error => setStatus(`[web] Measure ${spec.noun} failed.\n\n` + (error?.message || String(error)), 'error'));
     });
     molstarMeasureSession = session;
-    setStatus(molstarMeasurePrompt(kind, 0));
+    showMolstarMeasureToast(molstarMeasurePrompt(kind, 0));
     return true;
   }
 
@@ -17999,6 +18106,23 @@
     return true;
   }
 
+  function molstarComponentIntersectsLoci(component, loci) {
+    const componentStructure = component?.cell?.obj?.data;
+    if (!Array.isArray(componentStructure?.units) || !Array.isArray(loci?.elements)) return false;
+    for (const element of loci.elements) {
+      const sourceUnit = element?.unit;
+      if (!sourceUnit?.elements) continue;
+      for (const componentUnit of componentStructure.units) {
+        if (componentUnit.invariantId !== sourceUnit.invariantId && componentUnit.id !== sourceUnit.id) continue;
+        if (molstarContextOrderedSetSome(element.indices, index => {
+          const modelElement = sourceUnit.elements[index] ?? index;
+          return molstarSortedIndexOf(componentUnit.elements, modelElement) >= 0;
+        })) return true;
+      }
+    }
+    return false;
+  }
+
   async function modifyMolstarContextVisibility(target, operation) {
     const loci = molstarContextSelectionLoci(target);
     if (!loci || molstarLociIsEmpty(loci)) return false;
@@ -18016,7 +18140,19 @@
     selection.clear?.();
     try {
       selection.fromLoci('set', loci, false);
-      await componentManager.modifyByCurrentSelection(components, operation);
+      if (operation === 'intersect') {
+        const selectedComponents = components.filter(component => molstarComponentIntersectsLoci(component, loci));
+        if (!selectedComponents.length) return false;
+        await componentManager.modifyByCurrentSelection(selectedComponents, operation);
+        const state = plugin.state?.data;
+        for (const component of components) {
+          if (selectedComponents.includes(component)) continue;
+          const ref = component?.cell?.transform?.ref;
+          if (ref) state?.updateCellState?.(ref, { isHidden: true });
+        }
+      } else {
+        await componentManager.modifyByCurrentSelection(components, operation);
+      }
     } finally {
       selection.clear?.();
     }
@@ -18259,9 +18395,6 @@
         actions.push(['analyze:angle', 'Measure angle']);
         actions.push(['analyze:dihedral', 'Measure dihedral']);
       }
-      for (const [theme, themeLabel] of molstarColourPresetsForTarget(target)) {
-        actions.push([`colour:${theme}`, themeLabel]);
-      }
     }
     if (molstarModifiedPdbExportAvailable()) {
       if (molstarContextChainId(target?.atom)) {
@@ -18357,6 +18490,7 @@
       } else if (action === 'select') {
         const selectionLoci = molstarContextSelectionLoci(target);
         if (!selectMolstarContextPick({ ...target, loci: selectionLoci }, { applyGranularity: false })) throw new Error('No Mol* residue or ligand is available to select.');
+        activeViewer.plugin.selectionMode = true;
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(`[web] Selected ${targetLabel}.`);
       } else if (action === 'remove') {
@@ -18429,9 +18563,11 @@
         }
         setStatus(`[web] Hid ${targetLabel}.`);
       } else if (action === 'view:isolate') {
+        const isolateLoci = molstarContextSelectionLoci(target);
         if (!await modifyMolstarContextVisibility(target, 'intersect')) {
           throw new Error('No Mol* residue or chain is available to isolate.');
         }
+        focusMolstarContextPick({ ...target, loci: isolateLoci });
         setStatus(`[web] Isolated ${targetLabel}.`);
       } else if (action === 'represent:surface') {
         if (!await addGreySurfaceForContext(target)) throw new Error('No Mol* selection or target is available for a surface.');
@@ -19878,8 +20014,8 @@
     };
     const applyModeSelection = levelLabel => {
       setMolstarSelectionLevel(mode);
-      const pickedLoci = menuTarget.atomLoci || menuTarget.loci || molstarContextMenuPick?.loci;
-      const scopedLoci = molstarContextNormalizeLoci(pickedLoci, mode) || pickedLoci;
+      activeViewer.plugin.selectionMode = true;
+      const scopedLoci = molstarContextPickingLevelLoci(menuTarget, mode);
       if (scopedLoci) {
         menuTarget.selectionBased = false;
         menuTarget.loci = scopedLoci;
@@ -19900,7 +20036,6 @@
       positionMolstarContextMenu(menu, point.x, point.y);
     });
     menu.appendChild(pickingLevel);
-    applyModeSelection(VIEWPORT_GRANULARITIES.find(([value]) => value === mode)?.[1]);
     renderActions();
     menu.appendChild(actionContainer);
     menu._buretPreviousFocus = document.activeElement;
@@ -19965,8 +20100,17 @@
       }
       event.preventDefault();
       event.stopPropagation();
+      clearMolstarHoverHighlights();
       showMolstarContextMenu(event, contextPick);
       return true;
+    };
+    const suppressSecondaryMouseEvent = (event) => {
+      if (event.button !== 2) return;
+      if (!contextPointer && !isMolstarContextMenuTarget(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      clearMolstarHoverHighlights();
     };
     const onContextMenu = (event) => {
       if (menuIsOpen() && !contextPointer) {
@@ -20183,6 +20327,10 @@
     document.addEventListener('pointermove', onPointerMove, true);
     document.addEventListener('pointerup', onPointerUp, true);
     document.addEventListener('pointercancel', onPointerCancel, true);
+    document.addEventListener('mousedown', suppressSecondaryMouseEvent, true);
+    document.addEventListener('mouseup', suppressSecondaryMouseEvent, true);
+    document.addEventListener('click', suppressSecondaryMouseEvent, true);
+    document.addEventListener('auxclick', suppressSecondaryMouseEvent, true);
     document.addEventListener('pointermove', suppressAtomModeHover, true);
     document.addEventListener('pointermove', updateMoleculePreviewFromEvent, true);
     document.addEventListener('pointerleave', hideMoleculePreviewFromEvent, true);
@@ -20196,6 +20344,10 @@
       document.removeEventListener('pointermove', onPointerMove, true);
       document.removeEventListener('pointerup', onPointerUp, true);
       document.removeEventListener('pointercancel', onPointerCancel, true);
+      document.removeEventListener('mousedown', suppressSecondaryMouseEvent, true);
+      document.removeEventListener('mouseup', suppressSecondaryMouseEvent, true);
+      document.removeEventListener('click', suppressSecondaryMouseEvent, true);
+      document.removeEventListener('auxclick', suppressSecondaryMouseEvent, true);
       document.removeEventListener('pointermove', suppressAtomModeHover, true);
       document.removeEventListener('pointermove', updateMoleculePreviewFromEvent, true);
       document.removeEventListener('pointerleave', hideMoleculePreviewFromEvent, true);
