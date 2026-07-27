@@ -21,6 +21,10 @@ const align = fn("alignStructureSceneEntries");
 assert.match(align, /const requested = mode === 'auto' \? 'atoms' : mode/);
 assert.match(align, /if \(!candidates\.length && mode === 'auto'\)[\s\S]*resolvedMode = 'sequence'/);
 assert.match(align, /requested === 'binding-site'[\s\S]*bindingSiteFilteredCandidate/);
+// Sequence/pocket matching follows the best chain sequence even when otherwise
+// identical files use different author-assigned chain IDs.
+assert.match(fn("structureAlignmentChainCandidates"), /sameChainOnly[\s\S]*for \(const movingResidues of chains\.values\(\)\)/);
+assert.match(align, /sameChainOnly: requested === 'atoms'/);
 
 // Needleman-Wunsch keeps its guard rail and only anchors on identical residues; a
 // mismatched pair that the matrix walked through would drag the fit.
@@ -84,7 +88,8 @@ assert.match(fn("beginMolstarMeasurement"), /measurement\[spec\.method\]\(\.\.\.
 assert.match(fn("captureMolstarSceneUndoSnapshot"), /kind: 'scene'[\s\S]*plugin\.state\.data\.getSnapshot\(\)/);
 assert.match(fn("restoreMolstarSceneUndoSnapshot"), /plugin\.runTask\(plugin\.state\.data\.setSnapshot\(snapshot\.state\)\)/);
 assert.match(fn("captureMolstarAlignUndoSnapshot"), /kind: 'align'[\s\S]*wasAligned/);
-assert.match(fn("restoreMolstarAlignUndoSnapshot"), /control\.isAligned\(\) === snapshot\.wasAligned[\s\S]*control\.toggle\('auto'\)/);
+assert.match(fn("captureMolstarAlignUndoSnapshot"), /mode: activeStructureAlignmentControl\.mode/);
+assert.match(fn("restoreMolstarAlignUndoSnapshot"), /mode === snapshot\.mode[\s\S]*control\.toggle\(snapshot\.mode \|\| 'auto'\)/);
 assert.match(fn("restoreMolstarEditUndoSnapshot"), /kind === 'scene'[\s\S]*kind === 'align'/);
 assert.match(fn("pushMolstarEditUndoSnapshot"), /kind !== 'scene' && snapshot\.kind !== 'align' && !snapshot\.payload\?\.text/);
 const undoLabels = fn("molstarSceneUndoActionLabel");
@@ -99,10 +104,18 @@ assert.match(viewer, /if \(sceneUndoSnapshot && !actionFailed\) pushMolstarEditU
 // Measurements land after the last pick, not when the menu item is chosen.
 assert.match(fn("beginMolstarMeasurement"), /captureMolstarSceneUndoSnapshot\(`\$\{spec\.noun\} measurement`\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
 
-// The menu groups have to exist for the new namespaces to render anywhere.
-for (const group of ["selection", "colour", "align"]) {
-  assert.match(viewer, new RegExp(`\\{ id: '${group}', title: '[^']+' \\}`), group);
-}
+// The first level stays compact: common target actions are direct, the long
+// Maestro/PyMOL toolsets open as submenus, and appearance combines visibility,
+// representation, and colour into labelled blocks.
+assert.match(viewer, /\{ id: 'primary', title: 'Target', direct: true \}/);
+assert.match(viewer, /\{ id: 'selection', title: 'Selection', rootLabel: 'Tools', breakBefore: true \}/);
+assert.match(viewer, /\{ id: 'appearance', title: 'Appearance', groups: \['view', 'represent', 'colour'\] \}/);
+assert.match(viewer, /\{ id: 'align', title: 'Superposition' \}/);
+assert.match(viewer, /\{ id: 'danger', title: 'Delete', destructive: true, breakBefore: true \}/);
+assert.match(fn("moleculeMenuSubmenu"), /aria-haspopup[\s\S]*buret-tree-menu-sub-trigger[\s\S]*buret-molecule-context-submenu/);
+assert.match(fn("installMoleculeMenuKeyboard"), /ArrowLeft[\s\S]*stopPropagation/);
+assert.match(viewer, /menu\._buretPreviousFocus = document\.activeElement/);
+assert.match(viewer, /renderActions\(\);\s*\n\s*const point = molstarContextMenuLastPoint[\s\S]*positionMolstarContextMenu/);
 const group = fn("moleculeContextActionGroup");
 assert.match(group, /name\.startsWith\('colour:'\)\) return 'colour'/);
 assert.match(group, /name\.startsWith\('select:'\)\) return 'selection'/);

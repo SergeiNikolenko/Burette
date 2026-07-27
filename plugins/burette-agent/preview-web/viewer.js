@@ -7782,6 +7782,134 @@
     return chains;
   }
 
+  // The Cα map above is keyed by residue number, which only pairs structures that
+  // number their residues the same way. Sequence alignment needs the residues in
+  // file order with their names, so it gets its own pass over the same records.
+  function pdbAlphaCarbonResidues(data) {
+    const chains = new Map();
+    for (const line of String(data || '').split(/\r?\n/)) {
+      if (!line.startsWith('ATOM  ') || line.slice(12, 16).trim() !== 'CA') continue;
+      const altLoc = line.slice(16, 17);
+      if (altLoc && altLoc !== ' ' && altLoc !== 'A') continue;
+      const x = Number(line.slice(30, 38));
+      const y = Number(line.slice(38, 46));
+      const z = Number(line.slice(46, 54));
+      if (![x, y, z].every(Number.isFinite)) continue;
+      const chain = line.slice(21, 22).trim() || '_';
+      const key = `${line.slice(22, 26).trim()}:${line.slice(26, 27).trim()}`;
+      if (!chains.has(chain)) chains.set(chain, { keys: new Set(), residues: [] });
+      const entry = chains.get(chain);
+      if (entry.keys.has(key)) continue;
+      entry.keys.add(key);
+      entry.residues.push({ key, name: line.slice(17, 20).trim(), point: [x, y, z] });
+    }
+    return new Map([...chains].map(([chain, entry]) => [chain, entry.residues]));
+  }
+
+  // Needleman–Wunsch over residue names. Identity scoring is enough here: the job
+  // is pairing the same protein numbered differently, or a close homologue, not
+  // detecting remote relationships — for that the pairs would need a substitution
+  // matrix and this would be the wrong place to put one.
+  const SEQUENCE_ALIGNMENT_MATCH = 2;
+  const SEQUENCE_ALIGNMENT_MISMATCH = -1;
+  const SEQUENCE_ALIGNMENT_GAP = -2;
+  const SEQUENCE_ALIGNMENT_MAX_CELLS = 4e6;
+
+  function alignResidueSequences(referenceResidues, movingResidues) {
+    const rows = referenceResidues.length;
+    const columns = movingResidues.length;
+    if (!rows || !columns) return [];
+    // A pair of 2000-residue chains is four million cells; past that the matrix
+    // costs more than the alignment is worth, and residue numbering is the better
+    // tool anyway on structures that large.
+    if (rows * columns > SEQUENCE_ALIGNMENT_MAX_CELLS) {
+      throw new Error('Sequence alignment is limited to chains of about 2000 residues.');
+    }
+    const width = columns + 1;
+    const scores = new Float32Array((rows + 1) * width);
+    // 0 = diagonal, 1 = up (gap in moving), 2 = left (gap in reference).
+    const moves = new Uint8Array((rows + 1) * width);
+    for (let row = 1; row <= rows; row += 1) {
+      scores[row * width] = row * SEQUENCE_ALIGNMENT_GAP;
+      moves[row * width] = 1;
+    }
+    for (let column = 1; column <= columns; column += 1) {
+      scores[column] = column * SEQUENCE_ALIGNMENT_GAP;
+      moves[column] = 2;
+    }
+    for (let row = 1; row <= rows; row += 1) {
+      const referenceName = referenceResidues[row - 1].name;
+      for (let column = 1; column <= columns; column += 1) {
+        const index = row * width + column;
+        const substitution = referenceName === movingResidues[column - 1].name
+          ? SEQUENCE_ALIGNMENT_MATCH
+          : SEQUENCE_ALIGNMENT_MISMATCH;
+        const diagonal = scores[index - width - 1] + substitution;
+        const up = scores[index - width] + SEQUENCE_ALIGNMENT_GAP;
+        const left = scores[index - 1] + SEQUENCE_ALIGNMENT_GAP;
+        let best = diagonal;
+        let move = 0;
+        if (up > best) { best = up; move = 1; }
+        if (left > best) { best = left; move = 2; }
+        scores[index] = best;
+        moves[index] = move;
+      }
+    }
+    const pairs = [];
+    let row = rows;
+    let column = columns;
+    while (row > 0 && column > 0) {
+      const move = moves[row * width + column];
+      if (move === 0) {
+        // Only identical residues become anchor points; a mismatch aligned by the
+        // matrix still marks a position, but pairing it would drag the fit.
+        if (referenceResidues[row - 1].name === movingResidues[column - 1].name) {
+          pairs.push([row - 1, column - 1]);
+        }
+        row -= 1;
+        column -= 1;
+      } else if (move === 1) {
+        row -= 1;
+      } else {
+        column -= 1;
+      }
+    }
+    return pairs.reverse();
+  }
+
+  // Residues lining the reference structure's binding site. This is what "align on
+  // the pocket" means in Maestro: the fit is driven by the site being compared
+  // instead of by the bulk of a protein that may differ far from it.
+  const BINDING_SITE_ALIGNMENT_RADIUS = 10;
+  const BINDING_SITE_IGNORED_RESIDUES = new Set(['HOH', 'WAT', 'DOD', 'SO4', 'PO4', 'GOL', 'EDO', 'PEG', 'MPD', 'ACT', 'CL', 'NA', 'K', 'MG', 'CA', 'ZN', 'MN', 'FE', 'CU', 'NI', 'CD', 'BR', 'IOD']);
+
+  function pdbLigandHeavyAtoms(data) {
+    const points = [];
+    for (const line of String(data || '').split(/\r?\n/)) {
+      if (!line.startsWith('HETATM')) continue;
+      const residueName = line.slice(17, 20).trim().toUpperCase();
+      if (BINDING_SITE_IGNORED_RESIDUES.has(residueName)) continue;
+      if (line.slice(76, 78).trim().toUpperCase() === 'H') continue;
+      const x = Number(line.slice(30, 38));
+      const y = Number(line.slice(38, 46));
+      const z = Number(line.slice(46, 54));
+      if (![x, y, z].every(Number.isFinite)) continue;
+      points.push([x, y, z]);
+    }
+    return points;
+  }
+
+  function residueIsNearAnyPoint(point, targets, radius) {
+    const squared = radius * radius;
+    for (const target of targets) {
+      const dx = point[0] - target[0];
+      const dy = point[1] - target[1];
+      const dz = point[2] - target[2];
+      if (dx * dx + dy * dy + dz * dz <= squared) return true;
+    }
+    return false;
+  }
+
   function largestEigenvectorSymmetric4(matrix) {
     const values = matrix.map(row => row.slice());
     const vectors = Array.from({ length: 4 }, (_, row) => (
@@ -7887,7 +8015,70 @@
     }).join('\n');
   }
 
-  function alignStructureSceneEntries(prepared) {
+  // Pairs Cα atoms by residue number. Cheap and exact when the structures are the
+  // same protein numbered the same way — two states of one model, a redocked
+  // receptor — and empty the moment the numbering diverges.
+  function alphaCarbonPairsByResidueNumber(referenceResidues, movingResidues) {
+    const movingByKey = new Map(movingResidues.map(residue => [residue.key, residue]));
+    const pairs = [];
+    for (const residue of referenceResidues) {
+      const moving = movingByKey.get(residue.key);
+      if (moving) pairs.push([residue, moving]);
+    }
+    return pairs;
+  }
+
+  function alphaCarbonPairsBySequence(referenceResidues, movingResidues) {
+    return alignResidueSequences(referenceResidues, movingResidues)
+      .map(([referenceIndex, movingIndex]) => [referenceResidues[referenceIndex], movingResidues[movingIndex]]);
+  }
+
+  const STRUCTURE_ALIGNMENT_MIN_PAIRS = 3;
+
+  function structureAlignmentChainCandidates(referenceChains, movingChainsByPose, pairsFor, options = {}) {
+    const sameChainOnly = options.sameChainOnly === true;
+    return Array.from(referenceChains.entries()).map(([chain, residues]) => {
+      const pairsByPose = movingChainsByPose.map(chains => {
+        if (sameChainOnly) {
+          const movingResidues = chains.get(chain);
+          return movingResidues ? pairsFor(residues, movingResidues) : [];
+        }
+        // Sequence and pocket superposition describe chemistry, not author-chosen
+        // chain labels. A protein called chain A in one file may be chain B in the
+        // next, so take the best sequence match in each moving structure.
+        let best = [];
+        for (const movingResidues of chains.values()) {
+          const pairs = pairsFor(residues, movingResidues);
+          if (pairs.length > best.length) best = pairs;
+        }
+        return best;
+      });
+      return { chain, pairsByPose, minimumMatches: Math.min(...pairsByPose.map(pairs => pairs.length)) };
+    }).filter(candidate => candidate.minimumMatches >= STRUCTURE_ALIGNMENT_MIN_PAIRS)
+      .sort((left, right) => right.minimumMatches - left.minimumMatches);
+  }
+
+  function bindingSiteFilteredCandidate(candidate, referenceLigandPoints) {
+    if (!referenceLigandPoints.length) {
+      throw new Error('The reference structure has no ligand to define a binding site.');
+    }
+    const pairsByPose = candidate.pairsByPose.map(pairs => pairs.filter(([reference]) => (
+      residueIsNearAnyPoint(reference.point, referenceLigandPoints, BINDING_SITE_ALIGNMENT_RADIUS)
+    )));
+    return { ...candidate, pairsByPose, minimumMatches: Math.min(...pairsByPose.map(pairs => pairs.length)) };
+  }
+
+  const STRUCTURE_ALIGNMENT_MODE_LABELS = {
+    atoms: 'residue numbers',
+    sequence: 'sequence alignment',
+    'binding-site': `binding site (${BINDING_SITE_ALIGNMENT_RADIUS} Å)`
+  };
+
+  // `mode` mirrors what Maestro and PyMOL separate: pair by numbering (PyMOL's
+  // `align` on identical numbering), pair by sequence (`align`/`super`), or pair
+  // only what lines the pocket (Maestro's binding-site alignment). `auto` is the
+  // toolbar button: numbering when it works, sequence when it does not.
+  function alignStructureSceneEntries(prepared, mode = 'auto') {
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
     if (poses.length < 2 || poses.some(entry => normalizeFormat(entry?.format) !== 'pdb')) {
       throw new Error('One-click alignment currently requires two or more PDB structures.');
@@ -7896,28 +8087,37 @@
       if (typeof entry.unalignedData !== 'string') entry.unalignedData = entry.data;
     }
     const reference = poses[0];
-    const referenceChains = pdbAlphaCarbonChains(reference.unalignedData);
-    const movingChainsByPose = poses.slice(1).map(entry => pdbAlphaCarbonChains(entry.unalignedData));
-    const sharedChains = Array.from(referenceChains.entries()).map(([chain, residues]) => {
-      const keysByPose = movingChainsByPose.map(chains => {
-        const movingResidues = chains.get(chain);
-        return movingResidues ? Array.from(residues.keys()).filter(key => movingResidues.has(key)) : [];
-      });
-      return { chain, residues, keysByPose, minimumMatches: Math.min(...keysByPose.map(keys => keys.length)) };
-    }).filter(candidate => candidate.minimumMatches >= 3)
-      .sort((left, right) => right.minimumMatches - left.minimumMatches);
-    const sharedChain = sharedChains[0];
-    if (!sharedChain) throw new Error('No Cα chain with at least three common residues exists across every structure.');
+    const referenceChains = pdbAlphaCarbonResidues(reference.unalignedData);
+    const movingChainsByPose = poses.slice(1).map(entry => pdbAlphaCarbonResidues(entry.unalignedData));
+    const requested = mode === 'auto' ? 'atoms' : mode;
+    const pairsFor = requested === 'atoms' ? alphaCarbonPairsByResidueNumber : alphaCarbonPairsBySequence;
+    let resolvedMode = requested;
+    let candidates = structureAlignmentChainCandidates(referenceChains, movingChainsByPose, pairsFor, {
+      sameChainOnly: requested === 'atoms'
+    });
+    if (!candidates.length && mode === 'auto') {
+      resolvedMode = 'sequence';
+      candidates = structureAlignmentChainCandidates(referenceChains, movingChainsByPose, alphaCarbonPairsBySequence);
+    }
+    let sharedChain = candidates[0];
+    if (sharedChain && requested === 'binding-site') {
+      sharedChain = bindingSiteFilteredCandidate(sharedChain, pdbLigandHeavyAtoms(reference.unalignedData));
+      if (sharedChain.minimumMatches < STRUCTURE_ALIGNMENT_MIN_PAIRS) {
+        throw new Error(`Fewer than ${STRUCTURE_ALIGNMENT_MIN_PAIRS} residues line the reference binding site in every structure.`);
+      }
+    }
+    if (!sharedChain) {
+      throw new Error(mode === 'atoms'
+        ? 'No Cα chain with at least three common residue numbers exists across every structure.'
+        : 'No Cα chain with at least three alignable residues exists across every structure.');
+    }
     let alignedCount = 0;
     let matchedCount = 0;
     let rmsdTotal = 0;
     for (let poseIndex = 1; poseIndex < poses.length; poseIndex += 1) {
       const entry = poses[poseIndex];
-      const movingResidues = movingChainsByPose[poseIndex - 1].get(sharedChain.chain);
-      const keys = sharedChain.keysByPose[poseIndex - 1];
-      const movingPoints = keys.map(key => movingResidues.get(key));
-      const referencePoints = keys.map(key => sharedChain.residues.get(key));
-      const alignment = pdbRigidAlignment(movingPoints, referencePoints);
+      const pairs = sharedChain.pairsByPose[poseIndex - 1];
+      const alignment = pdbRigidAlignment(pairs.map(pair => pair[1].point), pairs.map(pair => pair[0].point));
       if (!alignment) throw new Error(`Not enough Cα atoms could align ${entry.label || `structure ${poseIndex + 1}`}.`);
       entry.data = transformPdbCoordinates(entry.unalignedData, alignment.apply);
       alignedCount += 1;
@@ -7926,7 +8126,10 @@
     }
     reference.data = reference.unalignedData;
     prepared.structureAlignmentEnabled = true;
+    prepared.structureAlignmentMode = resolvedMode;
     return {
+      mode: resolvedMode,
+      modeLabel: STRUCTURE_ALIGNMENT_MODE_LABELS[resolvedMode] || resolvedMode,
       alignedCount,
       chain: sharedChain.chain === '_' ? '(blank)' : sharedChain.chain,
       averageMatches: Math.round(matchedCount / Math.max(alignedCount, 1)),
@@ -7997,6 +8200,7 @@
       if (typeof entry.unalignedData === 'string') entry.data = entry.unalignedData;
     }
     prepared.structureAlignmentEnabled = false;
+    prepared.structureAlignmentMode = null;
   }
 
   function structureSceneStoryStage(label, index) {
@@ -14108,20 +14312,35 @@
       };
       align.addEventListener('click', () => { void toggleXyzAlignment(); });
     } else if (align && alignmentSupported) {
-      const toggleAlignment = () => {
+      // A failed alignment rolls the coordinates back, so the button has to follow
+      // the scene rather than the attempt — otherwise it keeps reading "Aligned"
+      // over structures that are no longer aligned.
+      const syncAlignButton = () => {
+        const aligned = prepared.structureAlignmentEnabled === true;
+        align.textContent = aligned ? 'Aligned' : 'Align';
+        align.classList.toggle('active', aligned);
+        align.setAttribute('aria-pressed', aligned ? 'true' : 'false');
+        return aligned;
+      };
+      // `mode` is passed through from the 3D menu, which offers the pairing rules by
+      // name; the toolbar button leaves it at `auto`. Re-running with a different
+      // mode re-aligns rather than toggling off, so switching rules is one click.
+      const toggleAlignment = (mode = 'auto') => {
         align.disabled = true;
-        const enabling = prepared.structureAlignmentEnabled !== true;
+        const enabling = prepared.structureAlignmentEnabled !== true || mode !== 'auto';
         try {
           let result = null;
-          if (enabling) result = alignStructureSceneEntries(prepared);
-          else restoreStructureSceneEntries(prepared);
+          if (enabling) {
+            if (prepared.structureAlignmentEnabled === true) restoreStructureSceneEntries(prepared);
+            result = alignStructureSceneEntries(prepared, mode);
+          } else {
+            restoreStructureSceneEntries(prepared);
+          }
           return applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: true }).then(() => {
-            align.textContent = enabling ? 'Aligned' : 'Align';
-            align.classList.toggle('active', enabling);
-            align.setAttribute('aria-pressed', enabling ? 'true' : 'false');
+            syncAlignButton();
             if (result) {
-              align.title = `Aligned to ${result.referenceLabel} using chain ${result.chain} Cα · ${result.averageMatches} matched atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
-              setStatus(`[web] Aligned ${result.alignedCount + 1} structures to ${result.referenceLabel} using chain ${result.chain} Cα (${result.averageMatches} matched atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
+              align.title = `Aligned to ${result.referenceLabel} by ${result.modeLabel} · chain ${result.chain} Cα · ${result.averageMatches} matched atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
+              setStatus(`[web] Aligned ${result.alignedCount + 1} structures to ${result.referenceLabel} by ${result.modeLabel} (chain ${result.chain} Cα, ${result.averageMatches} matched atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
             } else {
               align.title = 'Align every structure to the first file using Cα atoms from the largest common chain';
               setStatus('[web] Restored original structure coordinates.');
@@ -14129,18 +14348,26 @@
             setTimeout(hideStatus, 2200);
           }).catch(error => {
             if (enabling) restoreStructureSceneEntries(prepared);
+            syncAlignButton();
             setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
           }).finally(() => { align.disabled = false; });
         } catch (error) {
+          // The rollback restores coordinates the scene is still drawing from a
+          // previous alignment, so the scene is rebuilt before the button settles.
+          const rolledBack = enabling && prepared.structureAlignmentEnabled === true;
           if (enabling) restoreStructureSceneEntries(prepared);
-          align.disabled = false;
+          syncAlignButton();
           setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
-          return Promise.resolve();
+          const settled = rolledBack
+            ? applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false }).catch(() => {})
+            : Promise.resolve();
+          return settled.finally(() => { align.disabled = false; });
         }
       };
       activeStructureAlignmentControl = {
         toggle: toggleAlignment,
         isAligned: () => prepared.structureAlignmentEnabled === true,
+        mode: () => prepared.structureAlignmentMode || null,
         referenceLabel: () => prepared.poses?.[0]?.label || 'the first structure'
       };
       align.addEventListener('click', () => { void toggleAlignment(); });
@@ -15964,8 +16191,12 @@
     return [comp, chain, seq].filter(value => String(value).trim()).join(' ') || 'Ligand';
   }
 
+  function molstarContextChainId(atom) {
+    return String(atom?.auth_asym_id || atom?.label_asym_id || atom?.label_entity_id || '').trim();
+  }
+
   function molstarContextChainLabel(atom) {
-    const chain = String(atom?.auth_asym_id || atom?.label_asym_id || atom?.label_entity_id || '').trim();
+    const chain = molstarContextChainId(atom);
     return chain ? `chain ${chain}` : 'chain';
   }
 
@@ -16619,25 +16850,33 @@
     }).filter(Boolean);
   }
 
-  function molstarStructureAtomIndices(structure) {
-    const indices = new Set();
-    for (const unit of structure?.units || []) {
-      const elements = unit?.elements;
-      if (!elements) continue;
-      for (let i = 0; i < elements.length; i++) {
-        const atomIndex = molstarContextNumberOrUndefined(elements[i]);
-        if (atomIndex != null) indices.add(atomIndex);
+  // PDB export used to pair the n-th ATOM/HETATM line with the n-th atom Mol* built.
+  // Those two run out of step — 1htb alone has a line Mol* does not turn into an
+  // atom — which quietly shifted a subset export by a few records. The atom serial
+  // is the one key both sides agree on, so every subset is addressed by serial.
+  function molstarStructureAtomSerials(structure) {
+    const StructureProperties = window.molstar?.lib?.structure?.StructureProperties;
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const serials = new Set();
+    if (!structure || !StructureProperties || typeof StructureElement?.Location?.create !== 'function') return serials;
+    const location = StructureElement.Location.create(structure);
+    for (const unit of structure.units || []) {
+      location.unit = unit;
+      for (let i = 0; i < unit.elements.length; i++) {
+        location.element = unit.elements[i];
+        const serial = molstarContextNumberOrUndefined(StructureProperties.atom.id(location));
+        if (serial != null) serials.add(serial);
       }
     }
-    return indices;
+    return serials;
   }
 
-  function molstarCurrentAtomIndicesForExport() {
-    const indices = new Set();
+  function molstarCurrentAtomSerialsForExport() {
+    const serials = new Set();
     for (const entry of molstarCurrentStructuresForExport()) {
-      for (const atomIndex of molstarStructureAtomIndices(entry.structure)) indices.add(atomIndex);
+      for (const serial of molstarStructureAtomSerials(entry.structure)) serials.add(serial);
     }
-    return indices;
+    return serials;
   }
 
   function pdbSerialFromLine(line) {
@@ -16658,24 +16897,29 @@
   }
 
   function molstarModifiedPdbExportPayload() {
+    const includedSerials = molstarCurrentAtomSerialsForExport();
+    if (!includedSerials.size) throw new Error('No modified Mol* atoms are available to save.');
+    return molstarPdbExportPayloadForAtomSerials(includedSerials, molstarExportFileName('pdb'));
+  }
+
+  // Writing a subset of the source file rather than re-encoding the Mol* structure
+  // keeps every header, ANISOU, and CONECT record the original carried, which is
+  // what makes an extracted chain still load like the file it came from.
+  function molstarPdbExportPayloadForAtomSerials(requestedSerials, fileName) {
     const sourceEntry = molstarContextSourceEntryForActiveConfig();
     if (!sourceEntry) throw new Error('PDB fallback export is unavailable for this structure.');
-    const includedAtomIndices = molstarCurrentAtomIndicesForExport();
-    if (!includedAtomIndices.size) throw new Error('No modified Mol* atoms are available to save.');
+    if (!requestedSerials?.size) throw new Error('No atoms were selected for export.');
     const lines = sourceEntry.data.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const output = [];
     const conectLines = [];
     const includedSerials = new Set();
-    let atomIndex = 0;
     let wroteAtomSinceTer = false;
     for (const line of lines) {
       if (/^(ATOM  |HETATM)/.test(line)) {
-        const include = includedAtomIndices.has(atomIndex);
-        atomIndex++;
-        if (!include) continue;
-        output.push(line);
         const serial = pdbSerialFromLine(line);
-        if (serial != null) includedSerials.add(serial);
+        if (serial == null || !requestedSerials.has(serial)) continue;
+        output.push(line);
+        includedSerials.add(serial);
         wroteAtomSinceTer = true;
       } else if (/^ANISOU/.test(line)) {
         const serial = pdbSerialFromLine(line);
@@ -16697,7 +16941,7 @@
     }
     output.push('END');
     return {
-      name: molstarExportFileName('pdb'),
+      name: fileName || molstarExportFileName('pdb'),
       mimeType: 'chemical/x-pdb',
       text: `${output.join('\n')}\n`,
       count: 1
@@ -16821,8 +17065,42 @@
     };
   }
 
+  // Deleting an atom rewrites the structure, so its undo carries the whole file.
+  // Colouring, components, and measurements only rearrange Mol*'s state tree, and
+  // that tree snapshots in a millisecond and restores in twenty — it holds no
+  // coordinates. Both kinds share one stack so ⌘Z walks the edits in the order
+  // they were made rather than draining one history before the other.
+  function captureMolstarSceneUndoSnapshot(label) {
+    const plugin = activeMolstarViewer()?.plugin;
+    if (typeof plugin?.state?.data?.getSnapshot !== 'function') return null;
+    try {
+      return {
+        kind: 'scene',
+        label: String(label || 'scene change'),
+        state: plugin.state.data.getSnapshot(),
+        selection: plugin.managers?.structure?.selection?.getSnapshot?.() || null
+      };
+    } catch (error) {
+      debug('scene undo snapshot failed: ' + (error && error.message || String(error)));
+      return null;
+    }
+  }
+
+  // Superposition rewrites coordinates and reloads the scene, so neither snapshot
+  // kind covers it; the alignment control is asked to put itself back instead.
+  function captureMolstarAlignUndoSnapshot(label) {
+    if (!activeStructureAlignmentControl) return null;
+    return {
+      kind: 'align',
+      label: String(label || 'alignment'),
+      wasAligned: activeStructureAlignmentControl.isAligned(),
+      mode: activeStructureAlignmentControl.mode?.() || null
+    };
+  }
+
   function pushMolstarEditUndoSnapshot(snapshot) {
-    if (!snapshot?.payload?.text) return;
+    if (!snapshot) return;
+    if (snapshot.kind !== 'scene' && snapshot.kind !== 'align' && !snapshot.payload?.text) return;
     molstarEditUndoStack.push(snapshot);
     while (molstarEditUndoStack.length > MOLSTAR_EDIT_HISTORY_LIMIT) molstarEditUndoStack.shift();
   }
@@ -16831,7 +17109,32 @@
     molstarEditUndoStack.length = 0;
   }
 
+  async function restoreMolstarSceneUndoSnapshot(snapshot) {
+    const plugin = activeMolstarViewer()?.plugin;
+    if (typeof plugin?.state?.data?.setSnapshot !== 'function') throw new Error('Mol* cannot restore scene state in this runtime.');
+    await plugin.runTask(plugin.state.data.setSnapshot(snapshot.state));
+    if (snapshot.selection) {
+      try { plugin.managers?.structure?.selection?.setSnapshot?.(snapshot.selection); } catch (_) {}
+    }
+    scheduleSceneTreeRender();
+  }
+
+  async function restoreMolstarAlignUndoSnapshot(snapshot) {
+    const control = activeStructureAlignmentControl;
+    if (!control) throw new Error('No structure scene is available to unalign.');
+    const aligned = control.isAligned();
+    const mode = control.mode?.() || null;
+    if (aligned === snapshot.wasAligned && (!aligned || mode === snapshot.mode)) return;
+    if (snapshot.wasAligned) {
+      await control.toggle(snapshot.mode || 'auto');
+    } else if (aligned) {
+      await control.toggle('auto');
+    }
+  }
+
   async function restoreMolstarEditUndoSnapshot(snapshot) {
+    if (snapshot?.kind === 'scene') return restoreMolstarSceneUndoSnapshot(snapshot);
+    if (snapshot?.kind === 'align') return restoreMolstarAlignUndoSnapshot(snapshot);
     if (!activeViewer) throw new Error('Mol* viewer is not ready.');
     const payload = snapshot?.payload || {};
     const text = String(payload.text || '');
@@ -17045,10 +17348,17 @@
     return true;
   }
 
-  // A distance needs two atoms, and naming them by opening the menu twice reads as
-  // a bug. Choosing the action arms the viewer instead: the next two picks — in
-  // the 3D view or the sequence — become the ends. Selection mode is held for the
-  // duration so each pick marks itself rather than flying the camera at it.
+  // A measurement needs two to four atoms, and naming them by opening the menu once
+  // per atom reads as a bug. Choosing the action arms the viewer instead: the next
+  // picks — in the 3D view or the sequence — become the points. Selection mode is
+  // held for the duration so each pick marks itself rather than flying the camera
+  // at it.
+  const MOLSTAR_MEASURE_KINDS = {
+    distance: { points: 2, method: 'addDistance', noun: 'distance' },
+    angle: { points: 3, method: 'addAngle', noun: 'angle' },
+    dihedral: { points: 4, method: 'addDihedral', noun: 'dihedral' }
+  };
+
   let molstarMeasureSession = null;
   function cancelDistanceMeasurement(message) {
     const session = molstarMeasureSession;
@@ -17061,16 +17371,25 @@
     if (message) setStatus(message);
   }
 
-  function beginDistanceMeasurement() {
+  function molstarMeasurePrompt(kind, picked) {
+    const spec = MOLSTAR_MEASURE_KINDS[kind];
+    const remaining = spec.points - picked;
+    if (!picked) return `[web] Pick ${spec.points} atoms to measure the ${spec.noun}. Escape cancels.`;
+    return `[web] Point ${picked} of ${spec.points} set. ${remaining} to go, Escape cancels.`;
+  }
+
+  function beginMolstarMeasurement(kind = 'distance') {
+    const spec = MOLSTAR_MEASURE_KINDS[kind];
+    if (!spec) return false;
     const plugin = activeMolstarViewer()?.plugin;
     const measurement = plugin?.managers?.structure?.measurement;
     const clicks = plugin?.behaviors?.interaction?.click;
-    if (typeof measurement?.addDistance !== 'function' || typeof clicks?.subscribe !== 'function') return false;
+    if (typeof measurement?.[spec.method] !== 'function' || typeof clicks?.subscribe !== 'function') return false;
     cancelDistanceMeasurement();
     const Loci = window.molstar?.lib?.loci?.Loci;
-    const session = { first: null, restoreMode: plugin.selectionMode === true, subscription: null, onKeyDown: null };
+    const session = { points: [], restoreMode: plugin.selectionMode === true, subscription: null, onKeyDown: null };
     session.onKeyDown = event => {
-      if (event.key === 'Escape') cancelDistanceMeasurement('[web] Distance measurement cancelled.');
+      if (event.key === 'Escape') cancelDistanceMeasurement(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measurement cancelled.`);
     };
     plugin.selectionMode = true;
     document.addEventListener('keydown', session.onKeyDown, true);
@@ -17078,22 +17397,298 @@
       const loci = molstarContextElementLoci(event?.current?.loci);
       if (!loci || molstarLociIsEmpty(loci)) return;
       // Mol* hands the same pick over twice a few milliseconds apart; the repeat
-      // carries the same loci, so it is dropped rather than taken for a second end.
-      if (session.first && Loci?.areEqual?.(session.first, loci)) return;
-      if (!session.first) {
-        session.first = loci;
-        setStatus('[web] First point set. Pick the second one, Escape cancels.');
+      // carries the same loci, so it is dropped rather than taken for a new point.
+      const previous = session.points[session.points.length - 1];
+      if (previous && Loci?.areEqual?.(previous, loci)) return;
+      session.points.push(loci);
+      if (session.points.length < spec.points) {
+        setStatus(molstarMeasurePrompt(kind, session.points.length));
         return;
       }
-      const first = session.first;
+      const points = session.points;
       cancelDistanceMeasurement();
-      Promise.resolve(measurement.addDistance(first, loci))
-        .then(() => setStatus('[web] Distance measured.'))
-        .catch(error => setStatus('[web] Measure distance failed.\n\n' + (error?.message || String(error)), 'error'));
+      // The measurement appears once the last point is picked, not when the menu
+      // item was chosen, so its undo entry is taken here.
+      const undoSnapshot = captureMolstarSceneUndoSnapshot(`${spec.noun} measurement`);
+      Promise.resolve(measurement[spec.method](...points))
+        .then(() => {
+          pushMolstarEditUndoSnapshot(undoSnapshot);
+          setStatus(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measured.`);
+        })
+        .catch(error => setStatus(`[web] Measure ${spec.noun} failed.\n\n` + (error?.message || String(error)), 'error'));
     });
     molstarMeasureSession = session;
-    setStatus('[web] Pick two atoms to measure the distance. Escape cancels.');
+    setStatus(molstarMeasurePrompt(kind, 0));
     return true;
+  }
+
+  // Mol* already registers the whole PyMOL-style selection vocabulary — grow,
+  // invert, whole residues, sidechain, backbone — as structure queries, but only
+  // its own React panel ever offered them. Registry entries carry no stable id, so
+  // they are addressed by a distinctive fragment of their label.
+  function molstarSelectionQuery(labelFragment) {
+    const registry = activeMolstarViewer()?.plugin?.query?.structure?.registry;
+    const entries = Array.isArray(registry?.list) ? registry.list : [];
+    const needle = String(labelFragment || '').toLowerCase();
+    if (!needle) return null;
+    return entries.find(entry => String(entry?.label || '').toLowerCase().includes(needle)) || null;
+  }
+
+  async function applyMolstarSelectionQuery(labelFragment, modifier = 'set') {
+    const selection = activeMolstarViewer()?.plugin?.managers?.structure?.selection;
+    const query = molstarSelectionQuery(labelFragment);
+    if (!query || typeof selection?.fromSelectionQuery !== 'function') return false;
+    await selection.fromSelectionQuery(modifier, query);
+    return true;
+  }
+
+  // Maestro and PyMOL both pick at a level, not at an atom: clicking a side chain
+  // with residue level on takes the residue. Mol* keeps the same idea in the
+  // interactivity manager, where it was previously only reachable from its own UI.
+  const MOLSTAR_SELECTION_LEVELS = [['element', 'Atom'], ['residue', 'Residue'], ['chain', 'Chain']];
+
+  function molstarSelectionLevel() {
+    return String(activeMolstarViewer()?.plugin?.managers?.interactivity?.props?.granularity || 'residue');
+  }
+
+  function setMolstarSelectionLevel(level) {
+    const interactivity = activeMolstarViewer()?.plugin?.managers?.interactivity;
+    if (typeof interactivity?.setProps !== 'function') return false;
+    interactivity.setProps({ granularity: level });
+    return true;
+  }
+
+  function molstarHasSelection() {
+    const viewer = activeMolstarViewer();
+    for (const structure of molstarCurrentStructures(viewer)) {
+      if (molstarContextSelectionLociForStructure(structure)) return true;
+    }
+    return false;
+  }
+
+  // The colourings Maestro and PyMOL keep one click away. Mol* has all of them
+  // registered, so the offered list is filtered against what its registry says
+  // applies to this structure rather than guessed — pLDDT only shows up on a
+  // predicted model, secondary structure only on a polymer.
+  const MOLSTAR_COLOUR_PRESETS = [
+    ['chain-id', 'Chain'],
+    ['secondary-structure', 'Secondary structure'],
+    ['uncertainty', 'B-factor'],
+    ['plddt-confidence', 'pLDDT confidence'],
+    ['hydrophobicity', 'Hydrophobicity'],
+    ['sequence-id', 'Rainbow (N→C)'],
+    ['molecule-type', 'Molecule type'],
+    ['element-symbol', 'Element']
+  ];
+
+  // Colour from the 3D menu addresses the whole structure. Per-component colouring
+  // already lives in the scene tree, and having the two menus mean different scopes
+  // is what keeps them worth having separately.
+  //
+  // The pick supplies the structure when there is one, but the mobile sheet and the
+  // programmatic action entry point both run without a pick, and colouring nothing
+  // at all is worse than colouring the only structure on screen.
+  function molstarContextStructureRef(target) {
+    const picked = target?.structure?.cell?.transform?.ref;
+    if (picked) return picked;
+    const [first] = molstarCurrentStructures(activeMolstarViewer());
+    return first?.cell?.transform?.ref || null;
+  }
+
+  // An interactions component draws typed contacts, and its colours are the types.
+  // A structure-wide colouring would repaint hydrogen bonds and pi-stacking the same
+  // shade as the protein, so those components sit out of the preset.
+  function molstarComponentDrawsInteractions(component) {
+    const representations = component?.representations || [];
+    return representations.length > 0
+      && representations.every(entry => entry?.cell?.transform?.params?.type?.name === 'interactions');
+  }
+
+  function molstarColourPresetComponents(target) {
+    const viewer = activeMolstarViewer();
+    const ref = molstarContextStructureRef(target);
+    if (!ref) return [];
+    return (sceneTreeColorTargets(viewer).get(ref) || []).filter(component => !molstarComponentDrawsInteractions(component));
+  }
+
+  async function applyMolstarColourPreset(target, theme) {
+    const manager = activeMolstarViewer()?.plugin?.managers?.structure?.component;
+    const components = molstarColourPresetComponents(target);
+    if (!components.length || typeof manager?.updateRepresentationsTheme !== 'function') return false;
+    await manager.updateRepresentationsTheme(components, { color: theme });
+    scheduleSceneTreeRender();
+    return true;
+  }
+
+  // Mol* reports `plddt-confidence` as applicable to any structure because it falls
+  // back to the B-factor column, which on a crystal structure means the opposite of
+  // confidence. The preset is only offered when the model actually carries a model
+  // -archive quality metric, so picking it never produces a meaningless picture.
+  function molstarStructureHasQualityAssessment(target) {
+    const models = molstarTargetStructureData(target)?.models || [];
+    return models.some(model => {
+      const categories = model?.sourceData?.data?.frame?.categoryNames;
+      return Array.isArray(categories) && categories.some(name => String(name).startsWith('ma_qa_metric'));
+    });
+  }
+
+  function molstarColourPresetsForTarget(target) {
+    const components = molstarColourPresetComponents(target);
+    if (!components.length) return [];
+    const applicable = new Set(sceneTreeColorThemes(activeMolstarViewer(), components).map(entry => entry.name));
+    const hasQuality = molstarStructureHasQualityAssessment(target);
+    return MOLSTAR_COLOUR_PRESETS.filter(([name]) => {
+      if (name === 'plddt-confidence' && !hasQuality) return false;
+      return applicable.has(name);
+    });
+  }
+
+  // Maestro's ligand interaction view, in one action: a component holding the pick
+  // plus everything within 5 Å, drawn with Mol*'s interactions representation. That
+  // representation is the part worth reaching for — it types the contacts (hydrogen
+  // bonds, ionic, pi-stacking, cation-pi, halogen, hydrophobic, metal coordination)
+  // instead of drawing every neighbour within a cutoff.
+  async function addMolstarInteractionsForTarget(target) {
+    const plugin = activeMolstarViewer()?.plugin;
+    const selection = plugin?.managers?.structure?.selection;
+    const componentManager = plugin?.managers?.structure?.component;
+    const loci = molstarContextElementLoci(target?.loci);
+    if (!loci || typeof selection?.fromLoci !== 'function' || typeof componentManager?.add !== 'function') return false;
+    const currentSelection = molstarSelectionQuery('current selection');
+    if (!currentSelection) return false;
+    await selection.fromLoci('set', loci);
+    // The pick alone has nothing to interact with, so the environment is unioned in
+    // before the component is cut; without it the representation comes back empty.
+    if (!await applyMolstarSelectionQuery('surrounding residues', 'add')) return false;
+    await componentManager.add({
+      selection: currentSelection,
+      options: { checkExisting: false, label: `Interactions · ${target?.label || 'selection'}` },
+      representation: 'interactions'
+    });
+    scheduleSceneTreeRender();
+    return true;
+  }
+
+  function molstarAtomSerialsFromLoci(loci) {
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const StructureProperties = window.molstar?.lib?.structure?.StructureProperties;
+    const serials = new Set();
+    const elementLoci = molstarContextElementLoci(loci);
+    if (!elementLoci || !StructureProperties || typeof StructureElement?.Loci?.forEachLocation !== 'function') return serials;
+    StructureElement.Loci.forEachLocation(elementLoci, location => {
+      const serial = molstarContextNumberOrUndefined(StructureProperties.atom.id(location));
+      if (serial != null) serials.add(serial);
+    });
+    return serials;
+  }
+
+  function molstarChainAtomSerials(structure, chainId) {
+    const StructureProperties = window.molstar?.lib?.structure?.StructureProperties;
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const serials = new Set();
+    if (!structure || !StructureProperties || typeof StructureElement?.Location?.create !== 'function') return serials;
+    const location = StructureElement.Location.create(structure);
+    for (const unit of structure.units || []) {
+      location.unit = unit;
+      for (let i = 0; i < unit.elements.length; i++) {
+        location.element = unit.elements[i];
+        if (String(StructureProperties.chain.auth_asym_id(location)) !== String(chainId)) continue;
+        const serial = molstarContextNumberOrUndefined(StructureProperties.atom.id(location));
+        if (serial != null) serials.add(serial);
+      }
+    }
+    return serials;
+  }
+
+  function molstarStructureChainIds(structure) {
+    const StructureProperties = window.molstar?.lib?.structure?.StructureProperties;
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const chains = [];
+    if (!structure || !StructureProperties || typeof StructureElement?.Location?.create !== 'function') return chains;
+    const seen = new Set();
+    const location = StructureElement.Location.create(structure);
+    for (const unit of structure.units || []) {
+      location.unit = unit;
+      for (let i = 0; i < unit.elements.length; i++) {
+        location.element = unit.elements[i];
+        const chainId = String(StructureProperties.chain.auth_asym_id(location) || '');
+        if (!chainId || seen.has(chainId)) continue;
+        seen.add(chainId);
+        chains.push(chainId);
+      }
+    }
+    return chains;
+  }
+
+  // A pick carries its own structure, but these actions are also reachable without
+  // one — from the mobile sheet, or from a right click that landed on empty space.
+  // The scene's first structure is the only sensible subject in that case.
+  function molstarTargetStructureData(target) {
+    const picked = target?.structure?.cell?.obj?.data;
+    if (picked) return picked;
+    const [first] = molstarCurrentStructures(activeMolstarViewer());
+    return first?.cell?.obj?.data || null;
+  }
+
+  // An extracted chain is a cut of the original, not an edit of it, so it drops the
+  // `.modified` marker the save-as names carry.
+  function molstarExportBaseName() {
+    const name = String(molstarExportFileName('pdb') || 'structure.pdb');
+    return name.replace(/\.[^./]+$/u, '').replace(/\.modified$/u, '') || 'structure';
+  }
+
+  // `split_chains` in PyMOL, "Split into chains" in Maestro. Each chain leaves as
+  // its own file through the same export bridge a manual save uses, so the host
+  // decides where the files land.
+  function splitMolstarStructureIntoChains(target) {
+    const structure = molstarTargetStructureData(target);
+    const chains = molstarStructureChainIds(structure);
+    if (!chains.length) throw new Error('No chains were found in this structure.');
+    const base = molstarExportBaseName();
+    const written = [];
+    for (const chainId of chains) {
+      const serials = molstarChainAtomSerials(structure, chainId);
+      if (!serials.size) continue;
+      postMolstarModifiedStructureExport(molstarPdbExportPayloadForAtomSerials(serials, `${base}_chain_${chainId}.pdb`));
+      written.push(chainId);
+    }
+    if (!written.length) throw new Error('No chain could be written from this structure.');
+    return written;
+  }
+
+  function extractMolstarChainToFile(target) {
+    const structure = molstarTargetStructureData(target);
+    const chainId = molstarContextChainId(target?.atom);
+    if (!chainId) throw new Error('No chain is available for this pick.');
+    const serials = molstarChainAtomSerials(structure, chainId);
+    if (!serials.size) throw new Error(`Chain ${chainId} has no atoms to extract.`);
+    return {
+      chainId,
+      payload: postMolstarModifiedStructureExport(
+        molstarPdbExportPayloadForAtomSerials(serials, `${molstarExportBaseName()}_chain_${chainId}.pdb`)
+      )
+    };
+  }
+
+  function extractMolstarSelectionToFile(target) {
+    const serials = new Set();
+    // The selection can span structures, and the pick's own structure is not always
+    // the one holding it, so every structure in the scene contributes its part.
+    for (const structure of molstarCurrentStructures(activeMolstarViewer())) {
+      for (const serial of molstarAtomSerialsFromLoci(molstarContextSelectionLociForStructure(structure))) {
+        serials.add(serial);
+      }
+    }
+    if (!serials.size) {
+      for (const serial of molstarAtomSerialsFromLoci(target?.loci)) serials.add(serial);
+    }
+    if (!serials.size) throw new Error('Nothing is selected to extract.');
+    return {
+      atomCount: serials.size,
+      payload: postMolstarModifiedStructureExport(
+        molstarPdbExportPayloadForAtomSerials(serials, `${molstarExportBaseName()}_selection.pdb`)
+      )
+    };
   }
 
   async function deleteMolstarContextLoci(target, loci, applyGranularity = true) {
@@ -17219,29 +17814,53 @@
     return atom ? `${residue} atom ${atom}` : `${residue} atom`;
   }
 
-  // The molecule menu is rendered in the same shape as the scene tree menu: a few
-  // named actions up top, the bulky export/search/compute lists as titled sections,
-  // and the deletions last where a stray click is least likely to reach them.
+  // Keep the first level short enough to scan without scrolling. The common target
+  // actions stay one click away; the longer Maestro/PyMOL toolsets live in Base
+  // UI-style submenus, grouped the way a desktop chemistry menu is read.
   const MOLECULE_MENU_GROUPS = [
-    { id: 'primary', title: '' },
-    { id: 'view', title: '' },
-    { id: 'represent', title: 'Representation' },
+    { id: 'primary', title: 'Target', direct: true },
+    { id: 'selection', title: 'Selection', rootLabel: 'Tools', breakBefore: true },
+    { id: 'appearance', title: 'Appearance', groups: ['view', 'represent', 'colour'] },
     { id: 'analyze', title: 'Analyze' },
+    { id: 'align', title: 'Superposition' },
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
     { id: 'compute', title: 'Compute' },
-    { id: 'danger', title: '' }
+    { id: 'danger', title: 'Delete', destructive: true, breakBefore: true }
   ];
+
+  const MOLECULE_MENU_GROUP_TITLES = {
+    view: 'Visibility',
+    represent: 'Representation',
+    colour: 'Colour'
+  };
+
+  const MOLECULE_MENU_GROUP_ICONS = {
+    selection: ['M20 6 9 17l-5-5'],
+    appearance: ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'],
+    analyze: ['M3 3v18h18', 'M7 15l3-3 3 2 4-6'],
+    align: ['M3 6h18', 'M3 12h18', 'M3 18h18', 'M8 3v18'],
+    export: ['M12 3v12', 'm7-5 5 5 5-5', 'M5 21h14'],
+    search: ['M21 21l-4.35-4.35', 'M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z'],
+    compute: ['M9 3h6', 'M10 3v5l-5.5 9.5A2.3 2.3 0 0 0 6.5 21h11a2.3 2.3 0 0 0 2-3.5L14 8V3', 'M8 15h8'],
+    danger: SCENE_TREE_ICON.trash
+  };
 
   function moleculeContextActionGroup(action) {
     const name = String(action || '');
     if (name.startsWith('remove')) return 'danger';
-    if (name.startsWith('save')) return 'export';
+    if (name.startsWith('save') || name.startsWith('extract:') || name.startsWith('split:')) return 'export';
     if (name.startsWith('pubchem')) return 'search';
     if (name.startsWith('compute')) return 'compute';
     if (name.startsWith('view:')) return 'view';
+    if (name === 'represent:component') return 'primary';
     if (name.startsWith('represent:')) return 'represent';
+    if (name.startsWith('colour:')) return 'colour';
     if (name.startsWith('analyze:')) return 'analyze';
+    if (name.startsWith('align:') || name === 'align-structures') return 'align';
+    // `select-atom` is the atom-mode pick and belongs with the primary actions; the
+    // `select:` namespace is the selection toolkit, which gets its own section.
+    if (name.startsWith('select:')) return 'selection';
     return 'primary';
   }
 
@@ -17258,6 +17877,12 @@
     if (name === 'analyze:surroundings') return ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
     if (name === 'analyze:label') return ['M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z', 'M7 7h.01'];
     if (name === 'analyze:distance') return ['M21.3 15.3 8.7 2.7a1 1 0 0 0-1.4 0L2.7 7.3a1 1 0 0 0 0 1.4l12.6 12.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4Z', 'M14.5 12.5 12 15', 'M11.5 9.5 9 12', 'M8.5 6.5 6 9', 'M17.5 15.5 15 18'];
+    if (name === 'analyze:interactions') return ['M6 6h.01', 'M18 18h.01', 'M18 6h.01', 'M6 18h.01', 'M7.5 7.5 16.5 16.5', 'M16.5 7.5 7.5 16.5'];
+    if (name === 'analyze:angle') return ['M4 20h16', 'M4 20 14 4', 'M9 20a6 6 0 0 0 1.6-4'];
+    if (name === 'analyze:dihedral') return ['M3 17h6l6-10h6', 'M9 17v4', 'M15 7V3'];
+    if (name.startsWith('align')) return ['M3 6h18', 'M3 12h18', 'M3 18h18', 'M8 3v18'];
+    if (name.startsWith('colour:')) return ['M12 3a9 9 0 1 0 0 18h1.5a2.5 2.5 0 0 0 0-5H12a2 2 0 0 1 0-4h4a5 5 0 0 0 5-5 4 4 0 0 0-4-4Z', 'M7.5 11h.01'];
+    if (name.startsWith('extract:') || name.startsWith('split:')) return ['M12 3v18', 'M5 8 3 12l2 4', 'M19 8l2 4-2 4'];
     if (name.startsWith('select')) return ['M20 6 9 17l-5-5'];
     if (name === 'molstar') {
       return ['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'];
@@ -17286,9 +17911,11 @@
     if (molstarContextCanBulkDelete(target)) actions.push(['remove-type', `Delete ${molstarContextBulkDeleteLabel(target)}`]);
     if (target?.scope === 'residue') actions.push(['remove-chain', 'Delete chain']);
     if (activeStructureAlignmentControl) {
-      actions.push(activeStructureAlignmentControl.isAligned()
-        ? ['align-structures', 'Reset structure alignment']
-        : ['align-structures', `Align structures to ${activeStructureAlignmentControl.referenceLabel()}`]);
+      const reference = activeStructureAlignmentControl.referenceLabel();
+      actions.push(['align:atoms', `Align to ${reference} by residue numbers`]);
+      actions.push(['align:sequence', `Align to ${reference} by sequence`]);
+      actions.push(['align:binding-site', `Align to ${reference} by binding site`]);
+      if (activeStructureAlignmentControl.isAligned()) actions.push(['align-structures', 'Reset structure alignment']);
     }
     if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
     // The desktop overlay carries the scene-tree powers into the 3D right click.
@@ -17307,10 +17934,34 @@
       if (target?.atom && target?.loci) {
         if (target.scope === 'ligand' || target.scope === 'ion' || target.scope === 'residue') {
           actions.push(['analyze:surroundings', 'Select surroundings (5 Å)']);
+          actions.push(['analyze:interactions', 'Show interactions (5 Å)']);
         }
         actions.push(['analyze:label', `Label ${noun}`]);
         actions.push(['analyze:distance', 'Measure distance']);
+        actions.push(['analyze:angle', 'Measure angle']);
+        actions.push(['analyze:dihedral', 'Measure dihedral']);
       }
+      const selectionLevel = molstarSelectionLevel();
+      for (const [level, levelLabel] of MOLSTAR_SELECTION_LEVELS) {
+        if (level === selectionLevel) continue;
+        actions.push([`select:level:${level}`, `Pick at ${levelLabel.toLowerCase()} level`]);
+      }
+      if (molstarHasSelection()) {
+        actions.push(['select:whole-residues', 'Expand to whole residues']);
+        actions.push(['select:grow', 'Grow by surroundings (5 Å)']);
+        actions.push(['select:invert', 'Invert selection']);
+        actions.push(['select:clear', 'Clear selection']);
+      }
+      for (const [theme, themeLabel] of molstarColourPresetsForTarget(target)) {
+        actions.push([`colour:${theme}`, themeLabel]);
+      }
+    }
+    if (molstarModifiedPdbExportAvailable()) {
+      if (molstarContextChainId(target?.atom)) {
+        actions.push(['extract:chain', `Extract ${molstarContextChainLabel(target.atom)} as PDB`]);
+      }
+      if (molstarHasSelection()) actions.push(['extract:selection', 'Extract selection as PDB']);
+      actions.push(['split:chains', 'Split into chains']);
     }
     actions.push(['save-modified', 'Save modified structure']);
     actions.push(['save-format:mmcif', 'Save as mmCIF']);
@@ -17354,15 +18005,47 @@
     });
   }
 
+  // Which menu actions ⌘Z should walk back. Selections are deliberately absent:
+  // they change constantly, and an undo history full of them would bury the edit
+  // the user actually wants back — Maestro and PyMOL leave selection out too.
+  // Exports write files and change nothing on screen, so they are out as well.
+  function molstarSceneUndoActionLabel(action, target) {
+    const name = String(action || '');
+    // Without a pick the label falls back to the document title, which reads badly
+    // in "Undid colour <file name>"; the structure is what was coloured.
+    const targetLabel = target?.atom ? target.label : 'the structure';
+    if (name.startsWith('colour:')) return `colour ${targetLabel}`;
+    if (name === 'analyze:interactions') return `interactions around ${targetLabel}`;
+    if (name === 'analyze:label') return `label ${targetLabel}`;
+    if (name === 'represent:surface') return `surface on ${targetLabel}`;
+    if (name === 'view:hide') return `hiding ${targetLabel}`;
+    if (name === 'view:isolate') return `isolating ${targetLabel}`;
+    return null;
+  }
+
   async function moleculeContextMenuAction(action, label) {
     const target = molstarContextTarget();
     const targetLabel = target.label;
     let previewAfterAction = null;
+    const sceneUndoLabel = molstarSceneUndoActionLabel(action, target);
+    const sceneUndoSnapshot = sceneUndoLabel ? captureMolstarSceneUndoSnapshot(sceneUndoLabel) : null;
+    let actionFailed = false;
     try {
-      if (action === 'align-structures') {
+      if (action === 'align-structures' || action.startsWith('align:')) {
         if (!activeStructureAlignmentControl) throw new Error('No structure scene is available to align.');
         hideMolstarContextMenu();
-        await activeStructureAlignmentControl.toggle();
+        const alignUndo = captureMolstarAlignUndoSnapshot(`aligning to ${activeStructureAlignmentControl.referenceLabel()}`);
+        await activeStructureAlignmentControl.toggle(action === 'align-structures' ? 'auto' : action.slice('align:'.length));
+        // The toggle reports its own failures through the status line rather than
+        // throwing, so the entry is only kept when the scene actually moved.
+        const alignmentChanged = alignUndo && (
+          activeStructureAlignmentControl.isAligned() !== alignUndo.wasAligned
+          || (activeStructureAlignmentControl.isAligned()
+            && activeStructureAlignmentControl.mode?.() !== alignUndo.mode)
+        );
+        if (alignmentChanged) {
+          pushMolstarEditUndoSnapshot(alignUndo);
+        }
         return;
       } else if (action === 'select') {
         const selectionLoci = molstarContextSelectionLoci(target);
@@ -17507,14 +18190,51 @@
         if (typeof measurement?.addLabel !== 'function' || !loci) throw new Error('No Mol* label is available for this pick.');
         await measurement.addLabel(loci);
         setStatus(`[web] Labelled ${targetLabel}.`);
-      } else if (action === 'analyze:distance') {
-        if (!beginDistanceMeasurement()) throw new Error('No Mol* measurement manager is available.');
+      } else if (action === 'analyze:distance' || action === 'analyze:angle' || action === 'analyze:dihedral') {
+        const kind = action.slice('analyze:'.length);
+        if (!beginMolstarMeasurement(kind)) throw new Error('No Mol* measurement manager is available.');
+      } else if (action === 'analyze:interactions') {
+        if (!await addMolstarInteractionsForTarget(target)) throw new Error('Mol* could not build an interactions component for this pick.');
+        setStatus(`[web] Added typed interactions around ${targetLabel}.`);
+      } else if (action.startsWith('select:level:')) {
+        const level = action.slice('select:level:'.length);
+        if (!setMolstarSelectionLevel(level)) throw new Error('Mol* selection level is unavailable.');
+        setStatus(`[web] Picking at ${level === 'element' ? 'atom' : level} level.`);
+      } else if (action === 'select:whole-residues') {
+        if (!await applyMolstarSelectionQuery('whole residues')) throw new Error('Mol* has no whole-residue query registered.');
+        setStatus('[web] Expanded the selection to whole residues.');
+      } else if (action === 'select:grow') {
+        if (!await applyMolstarSelectionQuery('surrounding residues', 'add')) throw new Error('Mol* has no surroundings query registered.');
+        setStatus('[web] Grew the selection by residues within 5 Å.');
+      } else if (action === 'select:invert') {
+        if (!await applyMolstarSelectionQuery('inverse')) throw new Error('Mol* has no inverse query registered.');
+        setStatus('[web] Inverted the selection.');
+      } else if (action === 'select:clear') {
+        activeViewer?.plugin?.managers?.structure?.selection?.clear?.();
+        setStatus('[web] Cleared the selection.');
+      } else if (action.startsWith('colour:')) {
+        const theme = action.slice('colour:'.length);
+        if (!await applyMolstarColourPreset(target, theme)) throw new Error('No Mol* structure is available to colour.');
+        setStatus(`[web] Coloured by ${label.toLowerCase()}.`);
+      } else if (action === 'extract:chain') {
+        const extracted = extractMolstarChainToFile(target);
+        setStatus(`[web] Extracting chain ${extracted.chainId} as ${extracted.payload.name}.`);
+      } else if (action === 'extract:selection') {
+        const extracted = extractMolstarSelectionToFile(target);
+        setStatus(`[web] Extracting ${extracted.atomCount} selected atoms as ${extracted.payload.name}.`);
+      } else if (action === 'split:chains') {
+        const written = splitMolstarStructureIntoChains(target);
+        setStatus(`[web] Split into ${written.length} chain file${written.length === 1 ? '' : 's'} (${written.join(', ')}).`);
       } else {
         setStatus(`[web] ${label} is unavailable.`);
       }
     } catch (error) {
+      actionFailed = true;
       setStatus(`[web] ${label} failed.\n\n${error?.message || String(error)}`, 'error');
     } finally {
+      // Recorded after the fact: an action that threw left the scene untouched, and
+      // an undo entry for it would spend a ⌘Z on nothing.
+      if (sceneUndoSnapshot && !actionFailed) pushMolstarEditUndoSnapshot(sceneUndoSnapshot);
       if (!(action === 'select-atom' && molstarContextMenuMode === 'atom')) hideMolstarContextMenu();
       if (previewAfterAction) scheduleMolstarSelectedMoleculePreview(previewAfterAction);
     }
@@ -18492,10 +19212,190 @@
   }
 
   function hideMolstarContextMenu(options = {}) {
-    document.querySelector('.buret-molecule-context-menu:not(.buret-xyzrender-context-menu)')?.remove();
+    const menu = document.querySelector('.buret-molecule-context-menu:not(.buret-xyzrender-context-menu)');
+    const previousFocus = menu?._buretPreviousFocus;
+    const restoreFocus = !!menu && menu.contains(document.activeElement);
+    menu?.remove();
+    if (restoreFocus && previousFocus?.isConnected && typeof previousFocus.focus === 'function') {
+      previousFocus.focus({ preventScroll: true });
+    }
     molstarContextMenuPick = null;
     if (options.keepMoleculePreview) return;
     scheduleMolstarSelectedMoleculePreview();
+  }
+
+  function moleculeMenuIcon(paths) {
+    const icon = document.createElement('span');
+    icon.className = 'buret-tree-menu-icon';
+    if (paths) icon.appendChild(sceneTreeIconElement(paths));
+    return icon;
+  }
+
+  function moleculeMenuActionButton(action, label, options = {}) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'menuitem');
+    button.className = `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
+    button.dataset.buretMoleculeAction = action;
+    const text = document.createElement('span');
+    text.className = 'buret-tree-menu-label';
+    text.textContent = label;
+    button.append(moleculeMenuIcon(moleculeContextActionIcon(action)), text);
+    button.addEventListener('click', () => { void moleculeContextMenuAction(action, label); });
+    return button;
+  }
+
+  function moleculeMenuSectionEntries(grouped, section) {
+    const groupIds = section.groups || [section.id];
+    return groupIds.flatMap(group => grouped.get(group) || []);
+  }
+
+  function moleculeMenuCloseSubmenus(menu, except = null) {
+    menu.querySelectorAll('.buret-molecule-context-submenu[data-open="true"]').forEach(submenu => {
+      if (submenu === except) return;
+      submenu.dataset.open = 'false';
+      submenu.hidden = true;
+      submenu._buretTrigger?.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function moleculeMenuPositionSubmenu(submenu, trigger) {
+    submenu.hidden = false;
+    submenu.style.visibility = 'hidden';
+    const triggerRect = trigger.getBoundingClientRect();
+    const submenuRect = submenu.getBoundingClientRect();
+    const gap = 4;
+    const roomRight = window.innerWidth - triggerRect.right - gap;
+    const left = roomRight >= submenuRect.width
+      ? triggerRect.right + gap
+      : Math.max(8, triggerRect.left - submenuRect.width - gap);
+    const top = Math.max(8, Math.min(triggerRect.top - 4, window.innerHeight - submenuRect.height - 8));
+    submenu.style.left = `${Math.round(left)}px`;
+    submenu.style.top = `${Math.round(top)}px`;
+    submenu.style.visibility = '';
+  }
+
+  function moleculeMenuOpenSubmenu(menu, submenu, trigger, options = {}) {
+    moleculeMenuCloseSubmenus(menu, submenu);
+    submenu.hidden = false;
+    submenu.dataset.open = 'true';
+    trigger.setAttribute('aria-expanded', 'true');
+    moleculeMenuPositionSubmenu(submenu, trigger);
+    if (options.focusFirst) {
+      submenu.querySelector('.buret-tree-menu-item')?.focus();
+    }
+  }
+
+  function moleculeMenuSubmenu(section, grouped, menu) {
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.setAttribute('role', 'menuitem');
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.className = `buret-tree-menu-item buret-tree-menu-sub-trigger${section.destructive ? ' buret-tree-menu-sub-trigger-destructive' : ''}`;
+    const label = document.createElement('span');
+    label.className = 'buret-tree-menu-label';
+    label.textContent = section.title;
+    const chevron = document.createElement('span');
+    chevron.className = 'buret-tree-menu-chevron';
+    chevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
+    trigger.append(moleculeMenuIcon(MOLECULE_MENU_GROUP_ICONS[section.id]), label, chevron);
+
+    const submenu = document.createElement('div');
+    submenu.className = 'buret-molecule-context-submenu';
+    submenu.setAttribute('role', 'menu');
+    submenu.setAttribute('aria-label', section.title);
+    submenu.dataset.open = 'false';
+    submenu.hidden = true;
+    submenu._buretTrigger = trigger;
+
+    const groupIds = section.groups || [section.id];
+    groupIds.forEach((groupId, groupIndex) => {
+      const entries = grouped.get(groupId) || [];
+      if (!entries.length) return;
+      if (submenu.childElementCount) {
+        const separator = document.createElement('div');
+        separator.className = 'buret-tree-menu-divider';
+        separator.setAttribute('role', 'separator');
+        submenu.appendChild(separator);
+      }
+      const group = document.createElement('div');
+      group.className = 'buret-molecule-context-menu-group';
+      group.setAttribute('role', 'group');
+      if (groupIds.length > 1) {
+        const heading = document.createElement('div');
+        heading.className = 'buret-tree-menu-title';
+        heading.textContent = MOLECULE_MENU_GROUP_TITLES[groupId] || section.title;
+        group.appendChild(heading);
+      }
+      for (const [action, actionLabel] of entries) {
+        group.appendChild(moleculeMenuActionButton(action, actionLabel, { destructive: section.destructive }));
+      }
+      submenu.appendChild(group);
+    });
+
+    const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
+    trigger.addEventListener('pointerenter', () => open(false));
+    trigger.addEventListener('focus', () => open(false));
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      if (submenu.hidden) open(true);
+      else moleculeMenuCloseSubmenus(menu);
+    });
+    trigger.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      event.stopPropagation();
+      open(true);
+    });
+    submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
+    menu.appendChild(submenu);
+    return trigger;
+  }
+
+  function installMoleculeMenuKeyboard(menu) {
+    menu.addEventListener('keydown', event => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const currentMenu = target.closest('.buret-molecule-context-submenu, .buret-molecule-context-menu');
+      if (!currentMenu) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (currentMenu.classList.contains('buret-molecule-context-submenu')) {
+          currentMenu.hidden = true;
+          currentMenu.dataset.open = 'false';
+          currentMenu._buretTrigger?.setAttribute('aria-expanded', 'false');
+          currentMenu._buretTrigger?.focus();
+        } else {
+          hideMolstarContextMenu();
+        }
+        return;
+      }
+      if (event.key === 'ArrowLeft' && currentMenu.classList.contains('buret-molecule-context-submenu')) {
+        event.preventDefault();
+        event.stopPropagation();
+        currentMenu.hidden = true;
+        currentMenu.dataset.open = 'false';
+        currentMenu._buretTrigger?.setAttribute('aria-expanded', 'false');
+        currentMenu._buretTrigger?.focus();
+        return;
+      }
+      if (event.key === 'Tab') {
+        event.stopPropagation();
+        hideMolstarContextMenu();
+        return;
+      }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      const items = [...currentMenu.querySelectorAll('.buret-tree-menu-item')]
+        .filter(item => item.closest('.buret-molecule-context-submenu, .buret-molecule-context-menu') === currentMenu);
+      if (!items.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const current = items.indexOf(target);
+      const delta = event.key === 'ArrowDown' ? 1 : -1;
+      items[(current + delta + items.length) % items.length].focus();
+    });
   }
 
   function showMolstarContextMenu(event, pick) {
@@ -18531,42 +19431,41 @@
     actionContainer.className = 'buret-molecule-context-menu-actions';
     const renderActions = () => {
       actionContainer.replaceChildren();
+      menu.querySelectorAll('.buret-molecule-context-submenu').forEach(submenu => submenu.remove());
       const grouped = new Map();
       molstarContextMenuActions(menuTarget, mode).forEach(entry => {
         const group = moleculeContextActionGroup(entry[0]);
         if (!grouped.has(group)) grouped.set(group, []);
         grouped.get(group).push(entry);
       });
-      for (const { id, title } of MOLECULE_MENU_GROUPS) {
-        const entries = grouped.get(id);
+      for (const section of MOLECULE_MENU_GROUPS) {
+        const entries = moleculeMenuSectionEntries(grouped, section);
         if (!entries?.length) continue;
-        if (actionContainer.childElementCount) {
+        if (actionContainer.childElementCount && section.breakBefore) {
           const divider = document.createElement('div');
           divider.className = 'buret-tree-menu-divider';
+          divider.setAttribute('role', 'separator');
           actionContainer.appendChild(divider);
         }
-        if (title) {
+        if (section.rootLabel) {
           const heading = document.createElement('div');
           heading.className = 'buret-tree-menu-title';
-          heading.textContent = title;
+          heading.textContent = section.rootLabel;
           actionContainer.appendChild(heading);
         }
-        for (const [action, label] of entries) {
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.setAttribute('role', 'menuitem');
-          button.className = `buret-tree-menu-item${id === 'danger' ? ' buret-tree-menu-item-destructive' : ''}`;
-          button.dataset.buretMoleculeAction = action;
-          const icon = document.createElement('span');
-          icon.className = 'buret-tree-menu-icon';
-          const paths = moleculeContextActionIcon(action);
-          if (paths) icon.appendChild(sceneTreeIconElement(paths));
-          const text = document.createElement('span');
-          text.className = 'buret-tree-menu-label';
-          text.textContent = label;
-          button.append(icon, text);
-          button.addEventListener('click', () => { void moleculeContextMenuAction(action, label); });
-          actionContainer.appendChild(button);
+        if (section.direct) {
+          const heading = document.createElement('div');
+          heading.className = 'buret-tree-menu-title';
+          heading.textContent = section.title;
+          actionContainer.appendChild(heading);
+          for (const [action, label] of entries) {
+            const item = moleculeMenuActionButton(action, label);
+            item.addEventListener('pointerenter', () => moleculeMenuCloseSubmenus(menu));
+            item.addEventListener('focus', () => moleculeMenuCloseSubmenus(menu));
+            actionContainer.appendChild(item);
+          }
+        } else {
+          actionContainer.appendChild(moleculeMenuSubmenu(section, grouped, menu));
         }
       }
     };
@@ -18589,6 +19488,11 @@
           modeGroup.dataset.mode = mode;
           modeGroup.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', item.dataset.buretContextMode === mode ? 'true' : 'false'));
           renderActions();
+          const point = molstarContextMenuLastPoint || {
+            x: Number.parseFloat(menu.style.left) || 8,
+            y: Number.parseFloat(menu.style.top) || 8
+          };
+          positionMolstarContextMenu(menu, point.x, point.y);
         });
         modeGroup.appendChild(button);
       });
@@ -18596,9 +19500,14 @@
     }
     renderActions();
     menu.appendChild(actionContainer);
+    menu._buretPreviousFocus = document.activeElement;
     document.body.appendChild(menu);
+    installMoleculeMenuKeyboard(menu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
     molstarContextMenuLastPoint = { x: event.clientX, y: event.clientY };
+    window.requestAnimationFrame(() => {
+      if (menu.isConnected) menu.querySelector('.buret-tree-menu-item')?.focus({ preventScroll: true });
+    });
   }
 
   function installMolstarContextMenu(viewer) {
@@ -18842,6 +19751,9 @@
       scheduleMolstarSelectedMoleculePreview();
     };
     const onKeyDown = (event) => {
+      if (event.defaultPrevented || (event.target instanceof Element && event.target.closest('.buret-molecule-context-menu'))) {
+        return;
+      }
       if (event.key === 'Escape') {
         hideMolstarContextMenu();
         clearMolstarPersistentMoleculePreview();

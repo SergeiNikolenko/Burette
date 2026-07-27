@@ -5780,7 +5780,9 @@ assert.match(previewViewer, /const hasCandidate = Boolean\(molstarSelectedMolecu
 assert.match(previewViewer, /hideMolstarMoleculePreview\(\{ force: true \}\)/);
 assert.match(previewViewer, /if \(handled\) scheduleMolstarSelectedMoleculePreview\(target\);/);
 assert.match(previewViewer, /function hideMolstarContextMenu\(options = \{\}\)/);
-assert.match(previewViewer, /querySelector\('\.buret-molecule-context-menu:not\(\.buret-xyzrender-context-menu\)'\)\?\.remove\(\)/);
+assert.match(previewViewer, /const menu = document\.querySelector\('\.buret-molecule-context-menu:not\(\.buret-xyzrender-context-menu\)'\)/);
+assert.match(previewViewer, /const previousFocus = menu\?\._buretPreviousFocus/);
+assert.match(previewViewer, /menu\?\.remove\(\)/);
 assert.match(previewViewer, /if \(options\.keepMoleculePreview\) return;/);
 assert.match(previewViewer, /showMolstarContextMenu\(event, pick\)[\s\S]*?hideMolstarContextMenu\(\{ keepMoleculePreview: true \}\);/);
 assert.match(previewViewer, /const hideMoleculePreviewFromEvent = \(event\) => \{[\s\S]*?scheduleMolstarSelectedMoleculePreview\(\);/);

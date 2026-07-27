@@ -8035,11 +8035,23 @@
 
   const STRUCTURE_ALIGNMENT_MIN_PAIRS = 3;
 
-  function structureAlignmentChainCandidates(referenceChains, movingChainsByPose, pairsFor) {
+  function structureAlignmentChainCandidates(referenceChains, movingChainsByPose, pairsFor, options = {}) {
+    const sameChainOnly = options.sameChainOnly === true;
     return Array.from(referenceChains.entries()).map(([chain, residues]) => {
       const pairsByPose = movingChainsByPose.map(chains => {
-        const movingResidues = chains.get(chain);
-        return movingResidues ? pairsFor(residues, movingResidues) : [];
+        if (sameChainOnly) {
+          const movingResidues = chains.get(chain);
+          return movingResidues ? pairsFor(residues, movingResidues) : [];
+        }
+        // Sequence and pocket superposition describe chemistry, not author-chosen
+        // chain labels. A protein called chain A in one file may be chain B in the
+        // next, so take the best sequence match in each moving structure.
+        let best = [];
+        for (const movingResidues of chains.values()) {
+          const pairs = pairsFor(residues, movingResidues);
+          if (pairs.length > best.length) best = pairs;
+        }
+        return best;
       });
       return { chain, pairsByPose, minimumMatches: Math.min(...pairsByPose.map(pairs => pairs.length)) };
     }).filter(candidate => candidate.minimumMatches >= STRUCTURE_ALIGNMENT_MIN_PAIRS)
@@ -8080,7 +8092,9 @@
     const requested = mode === 'auto' ? 'atoms' : mode;
     const pairsFor = requested === 'atoms' ? alphaCarbonPairsByResidueNumber : alphaCarbonPairsBySequence;
     let resolvedMode = requested;
-    let candidates = structureAlignmentChainCandidates(referenceChains, movingChainsByPose, pairsFor);
+    let candidates = structureAlignmentChainCandidates(referenceChains, movingChainsByPose, pairsFor, {
+      sameChainOnly: requested === 'atoms'
+    });
     if (!candidates.length && mode === 'auto') {
       resolvedMode = 'sequence';
       candidates = structureAlignmentChainCandidates(referenceChains, movingChainsByPose, alphaCarbonPairsBySequence);
@@ -8112,6 +8126,7 @@
     }
     reference.data = reference.unalignedData;
     prepared.structureAlignmentEnabled = true;
+    prepared.structureAlignmentMode = resolvedMode;
     return {
       mode: resolvedMode,
       modeLabel: STRUCTURE_ALIGNMENT_MODE_LABELS[resolvedMode] || resolvedMode,
@@ -8185,6 +8200,7 @@
       if (typeof entry.unalignedData === 'string') entry.data = entry.unalignedData;
     }
     prepared.structureAlignmentEnabled = false;
+    prepared.structureAlignmentMode = null;
   }
 
   function structureSceneStoryStage(label, index) {
@@ -14351,6 +14367,7 @@
       activeStructureAlignmentControl = {
         toggle: toggleAlignment,
         isAligned: () => prepared.structureAlignmentEnabled === true,
+        mode: () => prepared.structureAlignmentMode || null,
         referenceLabel: () => prepared.poses?.[0]?.label || 'the first structure'
       };
       align.addEventListener('click', () => { void toggleAlignment(); });
@@ -17073,7 +17090,12 @@
   // kind covers it; the alignment control is asked to put itself back instead.
   function captureMolstarAlignUndoSnapshot(label) {
     if (!activeStructureAlignmentControl) return null;
-    return { kind: 'align', label: String(label || 'alignment'), wasAligned: activeStructureAlignmentControl.isAligned() };
+    return {
+      kind: 'align',
+      label: String(label || 'alignment'),
+      wasAligned: activeStructureAlignmentControl.isAligned(),
+      mode: activeStructureAlignmentControl.mode?.() || null
+    };
   }
 
   function pushMolstarEditUndoSnapshot(snapshot) {
@@ -17100,8 +17122,14 @@
   async function restoreMolstarAlignUndoSnapshot(snapshot) {
     const control = activeStructureAlignmentControl;
     if (!control) throw new Error('No structure scene is available to unalign.');
-    if (control.isAligned() === snapshot.wasAligned) return;
-    await control.toggle('auto');
+    const aligned = control.isAligned();
+    const mode = control.mode?.() || null;
+    if (aligned === snapshot.wasAligned && (!aligned || mode === snapshot.mode)) return;
+    if (snapshot.wasAligned) {
+      await control.toggle(snapshot.mode || 'auto');
+    } else if (aligned) {
+      await control.toggle('auto');
+    }
   }
 
   async function restoreMolstarEditUndoSnapshot(snapshot) {
@@ -17786,22 +17814,37 @@
     return atom ? `${residue} atom ${atom}` : `${residue} atom`;
   }
 
-  // The molecule menu is rendered in the same shape as the scene tree menu: a few
-  // named actions up top, the bulky export/search/compute lists as titled sections,
-  // and the deletions last where a stray click is least likely to reach them.
+  // Keep the first level short enough to scan without scrolling. The common target
+  // actions stay one click away; the longer Maestro/PyMOL toolsets live in Base
+  // UI-style submenus, grouped the way a desktop chemistry menu is read.
   const MOLECULE_MENU_GROUPS = [
-    { id: 'primary', title: '' },
-    { id: 'view', title: '' },
-    { id: 'selection', title: 'Selection' },
-    { id: 'represent', title: 'Representation' },
-    { id: 'colour', title: 'Colour' },
+    { id: 'primary', title: 'Target', direct: true },
+    { id: 'selection', title: 'Selection', rootLabel: 'Tools', breakBefore: true },
+    { id: 'appearance', title: 'Appearance', groups: ['view', 'represent', 'colour'] },
     { id: 'analyze', title: 'Analyze' },
     { id: 'align', title: 'Superposition' },
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
     { id: 'compute', title: 'Compute' },
-    { id: 'danger', title: '' }
+    { id: 'danger', title: 'Delete', destructive: true, breakBefore: true }
   ];
+
+  const MOLECULE_MENU_GROUP_TITLES = {
+    view: 'Visibility',
+    represent: 'Representation',
+    colour: 'Colour'
+  };
+
+  const MOLECULE_MENU_GROUP_ICONS = {
+    selection: ['M20 6 9 17l-5-5'],
+    appearance: ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'],
+    analyze: ['M3 3v18h18', 'M7 15l3-3 3 2 4-6'],
+    align: ['M3 6h18', 'M3 12h18', 'M3 18h18', 'M8 3v18'],
+    export: ['M12 3v12', 'm7-5 5 5 5-5', 'M5 21h14'],
+    search: ['M21 21l-4.35-4.35', 'M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z'],
+    compute: ['M9 3h6', 'M10 3v5l-5.5 9.5A2.3 2.3 0 0 0 6.5 21h11a2.3 2.3 0 0 0 2-3.5L14 8V3', 'M8 15h8'],
+    danger: SCENE_TREE_ICON.trash
+  };
 
   function moleculeContextActionGroup(action) {
     const name = String(action || '');
@@ -17810,6 +17853,7 @@
     if (name.startsWith('pubchem')) return 'search';
     if (name.startsWith('compute')) return 'compute';
     if (name.startsWith('view:')) return 'view';
+    if (name === 'represent:component') return 'primary';
     if (name.startsWith('represent:')) return 'represent';
     if (name.startsWith('colour:')) return 'colour';
     if (name.startsWith('analyze:')) return 'analyze';
@@ -17994,7 +18038,12 @@
         await activeStructureAlignmentControl.toggle(action === 'align-structures' ? 'auto' : action.slice('align:'.length));
         // The toggle reports its own failures through the status line rather than
         // throwing, so the entry is only kept when the scene actually moved.
-        if (alignUndo && activeStructureAlignmentControl.isAligned() !== alignUndo.wasAligned) {
+        const alignmentChanged = alignUndo && (
+          activeStructureAlignmentControl.isAligned() !== alignUndo.wasAligned
+          || (activeStructureAlignmentControl.isAligned()
+            && activeStructureAlignmentControl.mode?.() !== alignUndo.mode)
+        );
+        if (alignmentChanged) {
           pushMolstarEditUndoSnapshot(alignUndo);
         }
         return;
@@ -19163,10 +19212,190 @@
   }
 
   function hideMolstarContextMenu(options = {}) {
-    document.querySelector('.buret-molecule-context-menu:not(.buret-xyzrender-context-menu)')?.remove();
+    const menu = document.querySelector('.buret-molecule-context-menu:not(.buret-xyzrender-context-menu)');
+    const previousFocus = menu?._buretPreviousFocus;
+    const restoreFocus = !!menu && menu.contains(document.activeElement);
+    menu?.remove();
+    if (restoreFocus && previousFocus?.isConnected && typeof previousFocus.focus === 'function') {
+      previousFocus.focus({ preventScroll: true });
+    }
     molstarContextMenuPick = null;
     if (options.keepMoleculePreview) return;
     scheduleMolstarSelectedMoleculePreview();
+  }
+
+  function moleculeMenuIcon(paths) {
+    const icon = document.createElement('span');
+    icon.className = 'buret-tree-menu-icon';
+    if (paths) icon.appendChild(sceneTreeIconElement(paths));
+    return icon;
+  }
+
+  function moleculeMenuActionButton(action, label, options = {}) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'menuitem');
+    button.className = `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
+    button.dataset.buretMoleculeAction = action;
+    const text = document.createElement('span');
+    text.className = 'buret-tree-menu-label';
+    text.textContent = label;
+    button.append(moleculeMenuIcon(moleculeContextActionIcon(action)), text);
+    button.addEventListener('click', () => { void moleculeContextMenuAction(action, label); });
+    return button;
+  }
+
+  function moleculeMenuSectionEntries(grouped, section) {
+    const groupIds = section.groups || [section.id];
+    return groupIds.flatMap(group => grouped.get(group) || []);
+  }
+
+  function moleculeMenuCloseSubmenus(menu, except = null) {
+    menu.querySelectorAll('.buret-molecule-context-submenu[data-open="true"]').forEach(submenu => {
+      if (submenu === except) return;
+      submenu.dataset.open = 'false';
+      submenu.hidden = true;
+      submenu._buretTrigger?.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function moleculeMenuPositionSubmenu(submenu, trigger) {
+    submenu.hidden = false;
+    submenu.style.visibility = 'hidden';
+    const triggerRect = trigger.getBoundingClientRect();
+    const submenuRect = submenu.getBoundingClientRect();
+    const gap = 4;
+    const roomRight = window.innerWidth - triggerRect.right - gap;
+    const left = roomRight >= submenuRect.width
+      ? triggerRect.right + gap
+      : Math.max(8, triggerRect.left - submenuRect.width - gap);
+    const top = Math.max(8, Math.min(triggerRect.top - 4, window.innerHeight - submenuRect.height - 8));
+    submenu.style.left = `${Math.round(left)}px`;
+    submenu.style.top = `${Math.round(top)}px`;
+    submenu.style.visibility = '';
+  }
+
+  function moleculeMenuOpenSubmenu(menu, submenu, trigger, options = {}) {
+    moleculeMenuCloseSubmenus(menu, submenu);
+    submenu.hidden = false;
+    submenu.dataset.open = 'true';
+    trigger.setAttribute('aria-expanded', 'true');
+    moleculeMenuPositionSubmenu(submenu, trigger);
+    if (options.focusFirst) {
+      submenu.querySelector('.buret-tree-menu-item')?.focus();
+    }
+  }
+
+  function moleculeMenuSubmenu(section, grouped, menu) {
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.setAttribute('role', 'menuitem');
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.className = `buret-tree-menu-item buret-tree-menu-sub-trigger${section.destructive ? ' buret-tree-menu-sub-trigger-destructive' : ''}`;
+    const label = document.createElement('span');
+    label.className = 'buret-tree-menu-label';
+    label.textContent = section.title;
+    const chevron = document.createElement('span');
+    chevron.className = 'buret-tree-menu-chevron';
+    chevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
+    trigger.append(moleculeMenuIcon(MOLECULE_MENU_GROUP_ICONS[section.id]), label, chevron);
+
+    const submenu = document.createElement('div');
+    submenu.className = 'buret-molecule-context-submenu';
+    submenu.setAttribute('role', 'menu');
+    submenu.setAttribute('aria-label', section.title);
+    submenu.dataset.open = 'false';
+    submenu.hidden = true;
+    submenu._buretTrigger = trigger;
+
+    const groupIds = section.groups || [section.id];
+    groupIds.forEach((groupId, groupIndex) => {
+      const entries = grouped.get(groupId) || [];
+      if (!entries.length) return;
+      if (submenu.childElementCount) {
+        const separator = document.createElement('div');
+        separator.className = 'buret-tree-menu-divider';
+        separator.setAttribute('role', 'separator');
+        submenu.appendChild(separator);
+      }
+      const group = document.createElement('div');
+      group.className = 'buret-molecule-context-menu-group';
+      group.setAttribute('role', 'group');
+      if (groupIds.length > 1) {
+        const heading = document.createElement('div');
+        heading.className = 'buret-tree-menu-title';
+        heading.textContent = MOLECULE_MENU_GROUP_TITLES[groupId] || section.title;
+        group.appendChild(heading);
+      }
+      for (const [action, actionLabel] of entries) {
+        group.appendChild(moleculeMenuActionButton(action, actionLabel, { destructive: section.destructive }));
+      }
+      submenu.appendChild(group);
+    });
+
+    const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
+    trigger.addEventListener('pointerenter', () => open(false));
+    trigger.addEventListener('focus', () => open(false));
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      if (submenu.hidden) open(true);
+      else moleculeMenuCloseSubmenus(menu);
+    });
+    trigger.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      event.stopPropagation();
+      open(true);
+    });
+    submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
+    menu.appendChild(submenu);
+    return trigger;
+  }
+
+  function installMoleculeMenuKeyboard(menu) {
+    menu.addEventListener('keydown', event => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const currentMenu = target.closest('.buret-molecule-context-submenu, .buret-molecule-context-menu');
+      if (!currentMenu) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (currentMenu.classList.contains('buret-molecule-context-submenu')) {
+          currentMenu.hidden = true;
+          currentMenu.dataset.open = 'false';
+          currentMenu._buretTrigger?.setAttribute('aria-expanded', 'false');
+          currentMenu._buretTrigger?.focus();
+        } else {
+          hideMolstarContextMenu();
+        }
+        return;
+      }
+      if (event.key === 'ArrowLeft' && currentMenu.classList.contains('buret-molecule-context-submenu')) {
+        event.preventDefault();
+        event.stopPropagation();
+        currentMenu.hidden = true;
+        currentMenu.dataset.open = 'false';
+        currentMenu._buretTrigger?.setAttribute('aria-expanded', 'false');
+        currentMenu._buretTrigger?.focus();
+        return;
+      }
+      if (event.key === 'Tab') {
+        event.stopPropagation();
+        hideMolstarContextMenu();
+        return;
+      }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      const items = [...currentMenu.querySelectorAll('.buret-tree-menu-item')]
+        .filter(item => item.closest('.buret-molecule-context-submenu, .buret-molecule-context-menu') === currentMenu);
+      if (!items.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const current = items.indexOf(target);
+      const delta = event.key === 'ArrowDown' ? 1 : -1;
+      items[(current + delta + items.length) % items.length].focus();
+    });
   }
 
   function showMolstarContextMenu(event, pick) {
@@ -19202,42 +19431,41 @@
     actionContainer.className = 'buret-molecule-context-menu-actions';
     const renderActions = () => {
       actionContainer.replaceChildren();
+      menu.querySelectorAll('.buret-molecule-context-submenu').forEach(submenu => submenu.remove());
       const grouped = new Map();
       molstarContextMenuActions(menuTarget, mode).forEach(entry => {
         const group = moleculeContextActionGroup(entry[0]);
         if (!grouped.has(group)) grouped.set(group, []);
         grouped.get(group).push(entry);
       });
-      for (const { id, title } of MOLECULE_MENU_GROUPS) {
-        const entries = grouped.get(id);
+      for (const section of MOLECULE_MENU_GROUPS) {
+        const entries = moleculeMenuSectionEntries(grouped, section);
         if (!entries?.length) continue;
-        if (actionContainer.childElementCount) {
+        if (actionContainer.childElementCount && section.breakBefore) {
           const divider = document.createElement('div');
           divider.className = 'buret-tree-menu-divider';
+          divider.setAttribute('role', 'separator');
           actionContainer.appendChild(divider);
         }
-        if (title) {
+        if (section.rootLabel) {
           const heading = document.createElement('div');
           heading.className = 'buret-tree-menu-title';
-          heading.textContent = title;
+          heading.textContent = section.rootLabel;
           actionContainer.appendChild(heading);
         }
-        for (const [action, label] of entries) {
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.setAttribute('role', 'menuitem');
-          button.className = `buret-tree-menu-item${id === 'danger' ? ' buret-tree-menu-item-destructive' : ''}`;
-          button.dataset.buretMoleculeAction = action;
-          const icon = document.createElement('span');
-          icon.className = 'buret-tree-menu-icon';
-          const paths = moleculeContextActionIcon(action);
-          if (paths) icon.appendChild(sceneTreeIconElement(paths));
-          const text = document.createElement('span');
-          text.className = 'buret-tree-menu-label';
-          text.textContent = label;
-          button.append(icon, text);
-          button.addEventListener('click', () => { void moleculeContextMenuAction(action, label); });
-          actionContainer.appendChild(button);
+        if (section.direct) {
+          const heading = document.createElement('div');
+          heading.className = 'buret-tree-menu-title';
+          heading.textContent = section.title;
+          actionContainer.appendChild(heading);
+          for (const [action, label] of entries) {
+            const item = moleculeMenuActionButton(action, label);
+            item.addEventListener('pointerenter', () => moleculeMenuCloseSubmenus(menu));
+            item.addEventListener('focus', () => moleculeMenuCloseSubmenus(menu));
+            actionContainer.appendChild(item);
+          }
+        } else {
+          actionContainer.appendChild(moleculeMenuSubmenu(section, grouped, menu));
         }
       }
     };
@@ -19260,6 +19488,11 @@
           modeGroup.dataset.mode = mode;
           modeGroup.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', item.dataset.buretContextMode === mode ? 'true' : 'false'));
           renderActions();
+          const point = molstarContextMenuLastPoint || {
+            x: Number.parseFloat(menu.style.left) || 8,
+            y: Number.parseFloat(menu.style.top) || 8
+          };
+          positionMolstarContextMenu(menu, point.x, point.y);
         });
         modeGroup.appendChild(button);
       });
@@ -19267,9 +19500,14 @@
     }
     renderActions();
     menu.appendChild(actionContainer);
+    menu._buretPreviousFocus = document.activeElement;
     document.body.appendChild(menu);
+    installMoleculeMenuKeyboard(menu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
     molstarContextMenuLastPoint = { x: event.clientX, y: event.clientY };
+    window.requestAnimationFrame(() => {
+      if (menu.isConnected) menu.querySelector('.buret-tree-menu-item')?.focus({ preventScroll: true });
+    });
   }
 
   function installMolstarContextMenu(viewer) {
@@ -19513,6 +19751,9 @@
       scheduleMolstarSelectedMoleculePreview();
     };
     const onKeyDown = (event) => {
+      if (event.defaultPrevented || (event.target instanceof Element && event.target.closest('.buret-molecule-context-menu'))) {
+        return;
+      }
       if (event.key === 'Escape') {
         hideMolstarContextMenu();
         clearMolstarPersistentMoleculePreview();

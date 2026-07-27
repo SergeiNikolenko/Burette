@@ -4120,11 +4120,9 @@ body .msp-plugin .msp-sequence .msp-sequence-select {
    read as one thing. Scoped away from the mobile host, which keeps its own
    touch-sized treatment defined earlier in this file. */
 body:not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender-context-menu) {
-  min-width: 224px;
-  max-width: 300px;
-  max-height: min(70vh, 460px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  min-width: 232px;
+  max-width: 292px;
+  overflow: visible;
   user-select: none;
   padding: 4px;
   border: 1px solid var(--buret-molstar-border);
@@ -4157,6 +4155,70 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-ite
 body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:hover,
 body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:hover > .buret-tree-menu-icon {
   color: #ff6b5e;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-sub-trigger-destructive {
+  color: #ff6b5e;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-chevron {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  place-items: center;
+  color: var(--buret-molstar-muted-text);
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-chevron svg {
+  width: 12px;
+  height: 12px;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 224px;
+  max-width: min(310px, calc(100vw - 16px));
+  max-height: min(70vh, 460px);
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: var(--buret-molstar-panel-radius);
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-panel-background);
+  box-shadow: 0 18px 44px var(--buret-molstar-shadow);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  transform-origin: left top;
+  animation: buret-molecule-submenu-in 100ms ease-out;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu[hidden] {
+  display: none;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-title {
+  padding: 5px 8px 3px;
+  color: var(--buret-molstar-muted-text);
+  font-size: 10px;
+  font-weight: 590;
+  letter-spacing: 0.01em;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-item {
+  min-height: 27px;
+  padding: 0 8px;
+  gap: 8px;
+  border-radius: 6px;
+  font: inherit;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-item:hover,
+body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-item:focus {
+  outline: none;
+  background: var(--buret-molstar-hover-background);
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-item-destructive {
+  color: #ff6b5e;
+}
+@keyframes buret-molecule-submenu-in {
+  from { opacity: 0; transform: translateX(-2px) scale(0.98); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
 }
 /* Segmented Molecule / Atom switch, in the shape the app uses elsewhere. */
 body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-mode {
