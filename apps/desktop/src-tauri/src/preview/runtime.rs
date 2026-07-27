@@ -1231,7 +1231,8 @@ pub(crate) fn open_docking_document<R: Runtime>(
     request: DockingDocumentRequest,
     preferences: &ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
-    let receptor = read_docking_source(&request.receptor_path)?;
+    let receptor_path = renderable_docking_receptor_path(&request.receptor_path);
+    let receptor = read_docking_source(&receptor_path)?;
     let ligands = request
         .ligand_paths
         .iter()
@@ -1319,6 +1320,18 @@ fn is_coordinate_trajectory_format(format: &str) -> bool {
     )
 }
 
+fn renderable_docking_receptor_path(path: &str) -> String {
+    let requested = PathBuf::from(path);
+    let canonical = requested.canonicalize().unwrap_or(requested);
+    let extension = structure_path_extension(&canonical);
+    if extension == "tpr" {
+        if let Some(companion) = visual_coordinate_companion_for_topology(&canonical, &extension) {
+            return companion.to_string_lossy().to_string();
+        }
+    }
+    canonical.to_string_lossy().to_string()
+}
+
 fn normalized_docking_scene_mode(value: Option<&str>) -> Option<&'static str> {
     match value {
         Some("structureAll") => Some("structureAll"),
@@ -1396,8 +1409,9 @@ mod document_open_tests {
         default_dark_accent, default_dark_background, default_dark_contrast,
         default_dark_foreground, default_dark_translucent, default_light_accent,
         default_light_background, default_light_contrast, default_light_foreground,
-        default_light_translucent, default_system_font, open_document, resolve_desmond_file_bundle,
-        ViewerPreferences, ViewerReloadOptions,
+        default_light_translucent, default_system_font, open_docking_document, open_document,
+        resolve_desmond_file_bundle, DockingDocumentRequest, ViewerPreferences,
+        ViewerReloadOptions,
     };
     use crate::commands::documents::open_documents_for_window_label;
     use crate::commands::source_editing::OpenedSourceRegistry;
@@ -1768,6 +1782,47 @@ mod document_open_tests {
             .iter()
             .any(|error| error.contains("does not contain standalone molecular coordinates")));
         remove_runtime_artifacts(&result.documents[0].runtime_path);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn tpr_trajectory_docking_uses_same_stem_gro_for_rendering() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let directory = create_temp_directory();
+        let tpr = directory.join("em_free.tpr");
+        let gro = directory.join("em_free.gro");
+        let trr = directory.join("em_free.trr");
+        fs::write(&tpr, b"\0\0\0\x0f\0\0\0\x0eVERSION 2026.1")
+            .expect("TPR fixture should be written");
+        fs::write(
+            &gro,
+            b"Protein\n1\n    1MET      N    1   0.000   0.000   0.000\n   1.00000   1.00000   1.00000\n",
+        )
+        .expect("GRO companion should be written");
+        fs::write(&trr, b"\0TRR").expect("TRR fixture should be written");
+
+        let document = open_docking_document(
+            app.handle(),
+            DockingDocumentRequest {
+                receptor_path: tpr.to_string_lossy().to_string(),
+                ligand_paths: vec![trr.to_string_lossy().to_string()],
+                active_pose: None,
+                scene_mode: None,
+            },
+            &preferences,
+        )
+        .expect("TPR trajectory pair should use its GRO companion");
+        let runtime_dir = Path::new(&document.runtime_path)
+            .parent()
+            .expect("runtime should have a parent");
+        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+            .expect("preview config should be written");
+
+        assert!(config.contains("\"format\":\"gro\""));
+        assert!(config.contains(&gro.to_string_lossy().to_string()));
+        assert!(!config.contains("\"format\":\"tpr\""));
+        remove_runtime_artifacts(&document.runtime_path);
         let _ = fs::remove_dir_all(directory);
     }
 
