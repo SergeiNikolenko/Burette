@@ -4932,6 +4932,7 @@
     isolate: ['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
     focus: ['M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0', 'M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5'],
     restore: ['M3 12a9 9 0 1 0 3-6.7L3 8', 'M3 3v5h5'],
+    settings: ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'],
     collapseAll: ['m7 20 5-5 5 5', 'm7 4 5 5 5-5'],
     expandAll: ['m7 15 5 5 5-5', 'm7 9 5-5 5 5']
   };
@@ -5026,6 +5027,28 @@
     return targets;
   }
 
+  // Measurements are generic Shape.Representation3D cells rather than structure
+  // components, so the structure representation manager cannot edit them. Their
+  // own transform params are nevertheless fully updateable. Resolving descendants
+  // makes the same inspector work on Measurements, a Distance/Angle/Dihedral group,
+  // and the representation leaf itself.
+  const SCENE_TREE_MEASUREMENT_PARAM_KEYS = new Set([
+    'customText', 'textColor', 'textSize', 'linesColor', 'linesSize',
+    'dashLength', 'color', 'arcScale', 'sectorOpacity', 'borderWidth'
+  ]);
+
+  function sceneTreeMeasurementTargets(viewer, ref) {
+    const state = viewer?.plugin?.state?.data;
+    if (!state?.cells?.has(ref)) return [];
+    return sceneTreeSubtreeRefs(state, ref)
+      .map(targetRef => state.cells.get(targetRef))
+      .filter(cell => {
+        const params = cell?.transform?.params;
+        return params && Object.keys(params).some(key => SCENE_TREE_MEASUREMENT_PARAM_KEYS.has(key))
+          && ['Distance', 'Angle', 'Dihedral', 'Label'].includes(String(cell?.obj?.label || ''));
+      });
+  }
+
   // A row reports a colour theme only when every representation under it agrees;
   // mixed rows show nothing rather than lying about the scene.
   // A tint reads back either from a flat uniform theme or from the carbon colour of
@@ -5102,6 +5125,7 @@
           const chain = decoratorChain(childRef);
           const nodeRef = chain[chain.length - 1];
           const components = colorTargets.get(nodeRef) || null;
+          const measurementEditable = sceneTreeMeasurementTargets(viewer, nodeRef).length > 0;
           nodes.push({
             ref: nodeRef,
             label: String(cell.obj.label || 'Node'),
@@ -5109,6 +5133,7 @@
             typeClass: String(cell.obj.type?.typeClass || 'Object'),
             hidden: sceneTreeCellHidden(state, nodeRef),
             colorable: !!components,
+            measurementEditable,
             ...(components ? sceneTreeColorState(components) : { theme: '', value: null }),
             children: build(chain)
           });
@@ -5226,6 +5251,8 @@
       dot.setAttribute('aria-label', `Colour ${node.label}`);
       dot.title = `Colour ${node.label}`;
       actions.appendChild(dot);
+    } else if (node.measurementEditable) {
+      actions.appendChild(sceneTreeActionButton('menu', `Settings for ${node.label}`, SCENE_TREE_ICON.settings));
     }
     actions.appendChild(sceneTreeActionButton('remove', `Remove ${node.label}`, SCENE_TREE_ICON.trash));
     actions.appendChild(sceneTreeActionButton(
@@ -5710,6 +5737,159 @@
     menu.appendChild(row);
   }
 
+  const SCENE_TREE_MEASUREMENT_FIELDS = {
+    'geometry-color': { keys: ['linesColor', 'color'], label: 'Geometry' },
+    'text-color': { keys: ['textColor'], label: 'Text' },
+    'line-size': { keys: ['linesSize'], label: 'Thickness', min: 0.01, max: 5, step: 0.01 },
+    'dash-length': { keys: ['dashLength'], label: 'Dash length', min: 0.01, max: 0.2, step: 0.01 },
+    'arc-scale': { keys: ['arcScale'], label: 'Arc radius', min: 0.01, max: 1, step: 0.01 },
+    'text-size': { keys: ['textSize'], label: 'Text size', min: 0.1, max: 10, step: 0.1 },
+    'sector-opacity': { keys: ['sectorOpacity'], label: 'Sector opacity', min: 0, max: 1, step: 0.01 },
+    'border-width': { keys: ['borderWidth'], label: 'Text border', min: 0, max: 0.5, step: 0.01 },
+    'custom-text': { keys: ['customText'], label: 'Custom text' }
+  };
+
+  function sceneTreeMeasurementParam(target, field) {
+    const params = target?.transform?.params || {};
+    const definition = SCENE_TREE_MEASUREMENT_FIELDS[field];
+    const key = definition?.keys.find(candidate => Object.hasOwn(params, candidate));
+    return key ? { key, value: params[key] } : null;
+  }
+
+  function sceneTreeMeasurementValue(targets, field) {
+    const values = targets.map(target => sceneTreeMeasurementParam(target, field))
+      .filter(Boolean)
+      .map(entry => entry.value);
+    if (!values.length) return undefined;
+    return values.every(value => Object.is(value, values[0])) ? values[0] : null;
+  }
+
+  async function applySceneTreeMeasurementParam(ref, field, value) {
+    const viewer = activeMolstarViewer();
+    const state = viewer?.plugin?.state?.data;
+    const targets = sceneTreeMeasurementTargets(viewer, ref);
+    if (typeof state?.build !== 'function' || !targets.length) return;
+    const update = state.build();
+    let changed = false;
+    for (const target of targets) {
+      const entry = sceneTreeMeasurementParam(target, field);
+      const targetRef = target?.transform?.ref;
+      if (!entry || !targetRef) continue;
+      update.to(targetRef).update(old => ({ ...old, [entry.key]: value }));
+      changed = true;
+    }
+    if (!changed) return;
+    try {
+      await update.commit();
+    } catch (error) {
+      debug('scene tree measurement update failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  let sceneTreeMeasurementInFlight = false;
+  let sceneTreePendingMeasurement = null;
+  async function streamSceneTreeMeasurementParam(ref, field, value) {
+    sceneTreePendingMeasurement = { ref, field, value };
+    if (sceneTreeMeasurementInFlight) return;
+    sceneTreeMeasurementInFlight = true;
+    try {
+      while (sceneTreePendingMeasurement) {
+        const next = sceneTreePendingMeasurement;
+        sceneTreePendingMeasurement = null;
+        await applySceneTreeMeasurementParam(next.ref, next.field, next.value);
+      }
+    } finally {
+      sceneTreeMeasurementInFlight = false;
+    }
+  }
+
+  function sceneTreeMeasurementSwatches(menu, targets, field) {
+    const definition = SCENE_TREE_MEASUREMENT_FIELDS[field];
+    if (!targets.some(target => sceneTreeMeasurementParam(target, field))) return;
+    const current = sceneTreeMeasurementValue(targets, field);
+    const row = document.createElement('div');
+    row.className = 'buret-tree-menu-field buret-tree-menu-colour-field';
+    const caption = document.createElement('span');
+    caption.textContent = definition.label;
+    const swatches = document.createElement('div');
+    swatches.className = 'buret-tree-swatches buret-tree-swatches-inline';
+    for (const entry of SCENE_TREE_UNIFORM_COLORS) {
+      const swatch = document.createElement('button');
+      swatch.type = 'button';
+      swatch.className = 'buret-tree-swatch';
+      swatch.dataset.sceneTreeAction = 'measurement-color';
+      swatch.dataset.sceneTreeMeasurementColor = field;
+      swatch.dataset.sceneTreeColor = String(entry.value);
+      swatch.style.background = sceneTreeColorHex(entry.value);
+      swatch.setAttribute('aria-label', `${definition.label} ${entry.label.toLowerCase()}`);
+      swatch.setAttribute('aria-pressed', current === entry.value ? 'true' : 'false');
+      swatch.title = entry.label;
+      swatches.appendChild(swatch);
+    }
+    row.append(caption, swatches);
+    menu.appendChild(row);
+  }
+
+  function sceneTreeMeasurementSlider(menu, targets, field) {
+    const definition = SCENE_TREE_MEASUREMENT_FIELDS[field];
+    if (!targets.some(target => sceneTreeMeasurementParam(target, field))) return;
+    const current = sceneTreeMeasurementValue(targets, field);
+    const fallback = targets.map(target => sceneTreeMeasurementParam(target, field)?.value)
+      .find(Number.isFinite);
+    const value = Number.isFinite(current) ? current : fallback;
+    if (!Number.isFinite(value)) return;
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
+    const caption = document.createElement('span');
+    caption.textContent = definition.label;
+    const control = document.createElement('input');
+    control.type = 'range';
+    control.className = 'buret-tree-menu-range';
+    control.min = String(definition.min);
+    control.max = String(definition.max);
+    control.step = String(definition.step);
+    control.value = String(value);
+    control.dataset.sceneTreeMeasurementParam = field;
+    const readout = document.createElement('span');
+    readout.className = 'buret-tree-menu-slider-value';
+    readout.textContent = current === null ? 'Mixed' : String(value);
+    row.append(caption, control, readout);
+    menu.appendChild(row);
+  }
+
+  function sceneTreeMeasurementText(menu, targets) {
+    const field = 'custom-text';
+    if (!targets.some(target => sceneTreeMeasurementParam(target, field))) return;
+    const current = sceneTreeMeasurementValue(targets, field);
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field';
+    const caption = document.createElement('span');
+    caption.textContent = SCENE_TREE_MEASUREMENT_FIELDS[field].label;
+    const control = document.createElement('input');
+    control.type = 'text';
+    control.className = 'buret-input buret-tree-menu-text';
+    control.value = typeof current === 'string' ? current : '';
+    control.placeholder = current === null ? 'Mixed' : 'Automatic value';
+    control.dataset.sceneTreeMeasurementParam = field;
+    row.append(caption, control);
+    menu.appendChild(row);
+  }
+
+  function sceneTreeMeasurementMenu(menu, targets) {
+    sceneTreeMenuSection(menu, 'Measurement');
+    sceneTreeMeasurementSwatches(menu, targets, 'geometry-color');
+    for (const field of ['line-size', 'dash-length', 'arc-scale', 'sector-opacity']) {
+      sceneTreeMeasurementSlider(menu, targets, field);
+    }
+    sceneTreeMenuSection(menu, 'Label');
+    sceneTreeMeasurementText(menu, targets);
+    sceneTreeMeasurementSwatches(menu, targets, 'text-color');
+    for (const field of ['text-size', 'border-width']) {
+      sceneTreeMeasurementSlider(menu, targets, field);
+    }
+  }
+
   function sceneTreeRepresentationTypes(viewer, components) {
     const registry = viewer?.plugin?.representation?.structure?.registry;
     const structure = components?.[0]?.cell?.obj?.data;
@@ -6099,6 +6279,7 @@
     sceneTreeMenuRef = ref;
     const repTarget = sceneTreeRepresentationTargets(viewer).get(ref);
     const components = sceneTreeColorTargets(viewer).get(ref) || [];
+    const measurementTargets = sceneTreeMeasurementTargets(viewer, ref);
     const isComponent = components.length === 1 && components[0]?.cell?.transform?.ref === ref;
 
     const menu = document.createElement('div');
@@ -6132,7 +6313,9 @@
       icon: node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
     }));
 
-    if (repTarget) {
+    if (measurementTargets.length) {
+      sceneTreeMeasurementMenu(menu, measurementTargets);
+    } else if (repTarget) {
       sceneTreeRepresentationMenu(menu, viewer, node, repTarget);
     } else {
       if (isComponent) {
@@ -6199,6 +6382,12 @@
       applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
     } else if (action === 'rep-tint-color') {
       applySceneTreeReprColor(ref, 'tint', Number(control.dataset.sceneTreeColor));
+    } else if (action === 'measurement-color') {
+      applySceneTreeMeasurementParam(
+        ref,
+        control.dataset.sceneTreeMeasurementColor,
+        Number(control.dataset.sceneTreeColor)
+      );
     } else if (action === 'apply-action') {
       applySceneTreeAction(ref, Number(control.dataset.sceneTreeActionIndex));
     }
@@ -6254,7 +6443,7 @@
     runSceneTreeAction(action, ref, control);
     // The swatches let you try colours in place, so a pick keeps the menu open;
     // everything else is a one-shot and dismisses it.
-    const persistent = action === 'tint-color' || action === 'rep-tint-color';
+    const persistent = action === 'tint-color' || action === 'rep-tint-color' || action === 'measurement-color';
     if (control.closest('#buret-scene-tree-menu') && !persistent) closeSceneTreeMenu();
   }
 
@@ -7273,6 +7462,12 @@
         const value = control.dataset.sceneTreeParamType === 'boolean' ? control.checked : control.value;
         applySceneTreeReprParam(ref, control.dataset.sceneTreeParam, value);
       });
+      document.addEventListener('change', event => {
+        const control = event.target.closest('[data-scene-tree-measurement-param]');
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref || control.type === 'range') return;
+        applySceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementParam, control.value);
+      });
       // The point of the theme list: the scene takes each theme as the pointer
       // passes over it, and gets its own back when the pointer leaves without
       // choosing. Bound on the document because the menu is portalled to <body>.
@@ -7316,6 +7511,19 @@
         const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
         if (readout) readout.textContent = slider.value;
         streamSceneTreeReprParam(ref, slider.dataset.sceneTreeParam, value);
+      });
+      document.addEventListener('input', event => {
+        const control = event.target.closest('[data-scene-tree-measurement-param]');
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref) return;
+        if (control.type === 'range') {
+          const value = Number(control.value);
+          const readout = control.parentElement?.querySelector('.buret-tree-menu-slider-value');
+          if (readout) readout.textContent = control.value;
+          streamSceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementParam, value);
+          return;
+        }
+        streamSceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementParam, control.value);
       });
       document.addEventListener('keydown', event => {
         // Cmd/Ctrl+T opens the tree. The viewer runs in a webview, so the browser
@@ -16078,12 +16286,13 @@
   function molstarContextSelectionLoci(target) {
     if (target?.selectionBased) return target?.loci || molstarContextMenuPick?.loci;
     const scope = target?.scope;
+    const pickingLevel = target?.pickingLevel || molstarContextMenuMode;
     if ((scope === 'ligand' || scope === 'water' || scope === 'ion') && target?.atom) {
       const structure = molstarStructureFromRef(target.structure) || target?.loci?.structure;
       const residueLoci = molstarContextResidueAtomLociForStructure(structure, target.atom);
-      if (molstarContextMenuMode === 'molecule') return residueLoci || target?.loci || molstarContextMenuPick?.loci;
+      if (pickingLevel === 'molecule') return residueLoci || target?.loci || molstarContextMenuPick?.loci;
     }
-    const granularity = molstarContextMenuMode === 'atom' ? 'element' : molstarContextMenuMode;
+    const granularity = pickingLevel === 'atom' ? 'element' : pickingLevel;
     const pickedLoci = target?.atomLoci || target?.loci || molstarContextMenuPick?.loci;
     return molstarContextNormalizeLoci(pickedLoci, granularity || 'residue') || pickedLoci;
   }
@@ -17919,12 +18128,13 @@
     return atom ? `${residue} atom ${atom}` : `${residue} atom`;
   }
 
-  // Keep the first level short enough to scan without scrolling. The common target
-  // actions stay one click away; the longer Maestro/PyMOL toolsets live in Base
-  // UI-style submenus, grouped the way a desktop chemistry menu is read.
+  // Visibility and representation are short, frequent blocks and stay directly on
+  // the first level. Longer Maestro/PyMOL toolsets keep their Base UI-style
+  // submenus, so the common path is one click without turning the menu into a wall.
   const MOLECULE_MENU_GROUPS = [
     { id: 'primary', title: 'Target', direct: true },
-    { id: 'appearance', title: 'Appearance', groups: ['view', 'represent', 'colour'], rootLabel: 'Tools', breakBefore: true },
+    { id: 'view', title: 'Visibility', direct: true, rootLabel: 'Tools', breakBefore: true },
+    { id: 'represent', title: 'Representation', direct: true, breakBefore: true },
     { id: 'analyze', title: 'Analyze' },
     { id: 'align', title: 'Superposition' },
     { id: 'export', title: 'Export' },
@@ -19340,7 +19550,10 @@
     text.textContent = label;
     button.append(moleculeMenuIcon(moleculeContextActionIcon(action)), text);
     button.addEventListener('click', () => {
-      void moleculeContextMenuAction(action, label, options.target || null);
+      const target = options.target
+        ? { ...options.target, pickingLevel: options.pickingLevel || options.target.pickingLevel }
+        : null;
+      void moleculeContextMenuAction(action, label, target);
     });
     return button;
   }
@@ -19431,7 +19644,8 @@
       for (const [action, actionLabel] of entries) {
         group.appendChild(moleculeMenuActionButton(action, actionLabel, {
           destructive: section.destructive,
-          target
+          target,
+          pickingLevel: target?.pickingLevel
         }));
       }
       submenu.appendChild(group);
@@ -19619,7 +19833,8 @@
       menu.querySelectorAll('.buret-molecule-context-submenu:not([data-buret-picking-level-menu])')
         .forEach(submenu => submenu.remove());
       const grouped = new Map();
-      molstarContextMenuActions(menuTarget, mode).forEach(entry => {
+      const actionTarget = { ...menuTarget, pickingLevel: mode };
+      molstarContextMenuActions(actionTarget, mode).forEach(entry => {
         const group = moleculeContextActionGroup(entry[0]);
         if (!grouped.has(group)) grouped.set(group, []);
         grouped.get(group).push(entry);
@@ -19649,14 +19864,15 @@
           for (const [action, label] of entries) {
             const item = moleculeMenuActionButton(action, label, {
               destructive: section.destructive,
-              target: menuTarget
+              target: actionTarget,
+              pickingLevel: mode
             });
             item.addEventListener('pointerenter', () => moleculeMenuCloseSubmenus(menu));
             item.addEventListener('focus', () => moleculeMenuCloseSubmenus(menu));
             actionContainer.appendChild(item);
           }
         } else {
-          actionContainer.appendChild(moleculeMenuSubmenu(section, grouped, menu, menuTarget));
+          actionContainer.appendChild(moleculeMenuSubmenu(section, grouped, menu, actionTarget));
         }
       }
     };

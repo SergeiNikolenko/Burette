@@ -62,7 +62,8 @@ assert.match(viewer, /applyMolstarSelectionQuery\('surrounding residues', 'add'\
 assert.match(viewer, /applyMolstarSelectionQuery\('inverse'\)/);
 assert.match(viewer, /const MOLSTAR_SELECTION_LEVELS = \[\['element', 'Atom'\], \['residue', 'Residue'\], \['chain', 'Chain'\]\]/);
 assert.match(fn("setMolstarSelectionLevel"), /interactivity\.setProps\(\{ granularity: level \}\)/);
-assert.match(fn("molstarContextSelectionLoci"), /const granularity = molstarContextMenuMode === 'atom' \? 'element' : molstarContextMenuMode/);
+assert.match(fn("molstarContextSelectionLoci"), /const pickingLevel = target\?\.pickingLevel \|\| molstarContextMenuMode/);
+assert.match(fn("molstarContextSelectionLoci"), /const granularity = pickingLevel === 'atom' \? 'element' : pickingLevel/);
 assert.match(fn("molstarContextSelectionLoci"), /molstarContextNormalizeLoci\(pickedLoci, granularity \|\| 'residue'\)/);
 assert.match(fn("moleculePickingLevelSubmenu"), /for \(const \[level, levelLabel\] of VIEWPORT_GRANULARITIES\)/);
 assert.match(fn("moleculePickingLevelSubmenu"), /setAttribute\('role', 'menuitemradio'\)/);
@@ -119,18 +120,28 @@ for (const skipped of ["select:", "extract:", "split:", "save-"]) {
 assert.match(viewer, /if \(sceneUndoSnapshot && !actionFailed\) pushMolstarEditUndoSnapshot\(sceneUndoSnapshot\)/);
 // Measurements land after the last pick, not when the menu item is chosen.
 assert.match(fn("beginMolstarMeasurement"), /captureMolstarSceneUndoSnapshot\(`\$\{spec\.noun\} measurement`\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
+assert.match(viewer, /const SCENE_TREE_MEASUREMENT_PARAM_KEYS = new Set/);
+assert.match(fn("sceneTreeMeasurementTargets"), /sceneTreeSubtreeRefs\(state, ref\)/);
+assert.match(fn("sceneTreeMeasurementTargets"), /\['Distance', 'Angle', 'Dihedral', 'Label'\]/);
+assert.match(fn("applySceneTreeMeasurementParam"), /update\.to\(targetRef\)\.update\(old => \(\{ \.\.\.old, \[entry\.key\]: value \}\)\)/);
+assert.match(fn("sceneTreeMeasurementMenu"), /'geometry-color'[\s\S]*'line-size'[\s\S]*sceneTreeMeasurementText\(menu, targets\)[\s\S]*'text-color'[\s\S]*'text-size'/);
+assert.match(fn("sceneTreeMeasurementText"), /const field = 'custom-text'/);
 
 // The first level stays compact: common target actions are direct, the long
-// Maestro/PyMOL toolsets open as submenus, and appearance combines visibility,
-// representation, and colour into labelled blocks.
+// Maestro/PyMOL toolsets open as submenus, while the short visibility and
+// representation blocks stay one click away on the first level.
 assert.match(viewer, /\{ id: 'primary', title: 'Target', direct: true \}/);
 assert.doesNotMatch(viewer, /\{ id: 'selection', title: 'Selection'/);
-assert.match(viewer, /\{ id: 'appearance', title: 'Appearance', groups: \['view', 'represent', 'colour'\], rootLabel: 'Tools', breakBefore: true \}/);
+assert.match(viewer, /\{ id: 'view', title: 'Visibility', direct: true, rootLabel: 'Tools', breakBefore: true \}/);
+assert.match(viewer, /\{ id: 'represent', title: 'Representation', direct: true, breakBefore: true \}/);
+assert.doesNotMatch(viewer, /\{ id: 'appearance', title: 'Appearance'/);
 assert.match(viewer, /\{ id: 'align', title: 'Superposition' \}/);
 assert.match(viewer, /\{ id: 'danger', title: 'Delete', direct: true, destructive: true, hideTitle: true, breakBefore: true \}/);
-assert.match(fn("showMolstarContextMenu"), /if \(!section\.hideTitle\)[\s\S]*moleculeMenuActionButton\(action, label, \{[\s\S]*target: menuTarget/);
+assert.match(fn("showMolstarContextMenu"), /const actionTarget = \{ \.\.\.menuTarget, pickingLevel: mode \}/);
+assert.match(fn("showMolstarContextMenu"), /if \(!section\.hideTitle\)[\s\S]*moleculeMenuActionButton\(action, label, \{[\s\S]*target: actionTarget/);
 assert.match(fn("moleculeMenuSubmenu"), /aria-haspopup[\s\S]*buret-tree-menu-sub-trigger[\s\S]*buret-molecule-context-submenu/);
-assert.match(fn("moleculeMenuActionButton"), /moleculeContextMenuAction\(action, label, options\.target \|\| null\)/);
+assert.match(fn("moleculeMenuActionButton"), /pickingLevel: options\.pickingLevel \|\| options\.target\.pickingLevel/);
+assert.match(fn("moleculeMenuActionButton"), /moleculeContextMenuAction\(action, label, target\)/);
 assert.match(fn("moleculeContextMenuAction"), /const target = targetOverride \|\| molstarContextTarget\(\)/);
 assert.match(fn("installMoleculeMenuKeyboard"), /ArrowLeft[\s\S]*stopPropagation/);
 assert.match(viewer, /menu\._buretPreviousFocus = document\.activeElement/);
