@@ -321,99 +321,104 @@ pub(crate) fn classify_open_paths(paths: Vec<String>) -> ClassifiedOpenPaths {
 }
 
 #[tauri::command]
-pub(crate) fn open_documents<R: Runtime>(
+pub(crate) async fn open_documents<R: Runtime>(
     app: tauri::AppHandle<R>,
     window: tauri::WebviewWindow<R>,
-    registry: tauri::State<'_, OpenDocumentRegistry>,
     paths: Vec<String>,
     preferences: ViewerPreferences,
     reload_options: Option<ViewerReloadOptions>,
     mode: Option<OpenDocumentsMode>,
     open_state_revision: u64,
 ) -> Result<OpenDocumentsResult, String> {
-    if matches!(
-        mode,
-        Some(OpenDocumentsMode::CombinePoses | OpenDocumentsMode::CombineGrid)
-    ) {
+    let window_label = window.label().to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let registry = app.state::<OpenDocumentRegistry>();
+        if matches!(
+            mode,
+            Some(OpenDocumentsMode::CombinePoses | OpenDocumentsMode::CombineGrid)
+        ) {
+            let mut documents = Vec::new();
+            let (document_paths, mut errors) = expand_open_document_paths(paths);
+            let claimed_paths = document_paths.clone();
+            let result = match mode {
+                Some(OpenDocumentsMode::CombinePoses) => open_with_provisional_read_claims(
+                    &registry,
+                    &window_label,
+                    &claimed_paths,
+                    open_state_revision,
+                    || open_combined_pose_document(&app, document_paths, &preferences, &mut errors),
+                ),
+                Some(OpenDocumentsMode::CombineGrid) => open_with_provisional_read_claims(
+                    &registry,
+                    &window_label,
+                    &claimed_paths,
+                    open_state_revision,
+                    || {
+                        open_combined_grid_document(
+                            &app,
+                            &window_label,
+                            document_paths,
+                            &preferences,
+                            &mut errors,
+                        )
+                    },
+                ),
+                _ => unreachable!("combined modes are handled above"),
+            };
+            match result {
+                Ok(document) => documents.push(document),
+                Err(error) => errors.push(error),
+            }
+            if documents.is_empty() && !errors.is_empty() {
+                return Err(errors.join("; "));
+            }
+            return Ok(OpenDocumentsResult { documents, errors });
+        }
+
         let mut documents = Vec::new();
         let (document_paths, mut errors) = expand_open_document_paths(paths);
-        let claimed_paths = document_paths.clone();
-        let result = match mode {
-            Some(OpenDocumentsMode::CombinePoses) => open_with_provisional_read_claims(
+        for path in document_paths {
+            let source_path = path.canonicalize().ok();
+            let claimed_path = path.clone();
+            match open_with_provisional_claim(
                 &registry,
-                window.label(),
-                &claimed_paths,
-                open_state_revision,
-                || open_combined_pose_document(&app, document_paths, &preferences, &mut errors),
-            ),
-            Some(OpenDocumentsMode::CombineGrid) => open_with_provisional_read_claims(
-                &registry,
-                window.label(),
-                &claimed_paths,
+                &window_label,
+                &claimed_path,
                 open_state_revision,
                 || {
-                    open_combined_grid_document(
+                    open_document_for_window(
                         &app,
-                        window.label(),
-                        document_paths,
+                        &window_label,
+                        path,
                         &preferences,
-                        &mut errors,
+                        reload_options.as_ref(),
                     )
                 },
-            ),
-            _ => unreachable!("combined modes are handled above"),
-        };
-        match result {
-            Ok(document) => documents.push(document),
-            Err(error) => errors.push(error),
+            ) {
+                Ok(document) => {
+                    if let Some(source_path) = source_path {
+                        let document_id = crate::preview::runtime_utils::stable_id(&source_path);
+                        if let Err(error) = app.state::<OpenedSourceRegistry>().register(
+                            document_id,
+                            window_label.clone(),
+                            source_path,
+                            "structure",
+                        ) {
+                            errors.push(error);
+                        }
+                    }
+                    documents.push(document)
+                }
+                Err(error) => errors.push(error),
+            }
         }
         if documents.is_empty() && !errors.is_empty() {
             return Err(errors.join("; "));
         }
-        return Ok(OpenDocumentsResult { documents, errors });
-    }
-
-    let mut documents = Vec::new();
-    let (document_paths, mut errors) = expand_open_document_paths(paths);
-    for path in document_paths {
-        let source_path = path.canonicalize().ok();
-        let claimed_path = path.clone();
-        match open_with_provisional_claim(
-            &registry,
-            window.label(),
-            &claimed_path,
-            open_state_revision,
-            || {
-                open_document_for_window(
-                    &app,
-                    window.label(),
-                    path,
-                    &preferences,
-                    reload_options.as_ref(),
-                )
-            },
-        ) {
-            Ok(document) => {
-                if let Some(source_path) = source_path {
-                    let document_id = crate::preview::runtime_utils::stable_id(&source_path);
-                    if let Err(error) = app.state::<OpenedSourceRegistry>().register(
-                        document_id,
-                        window.label().to_string(),
-                        source_path,
-                        "structure",
-                    ) {
-                        errors.push(error);
-                    }
-                }
-                documents.push(document)
-            }
-            Err(error) => errors.push(error),
-        }
-    }
-    if documents.is_empty() && !errors.is_empty() {
-        return Err(errors.join("; "));
-    }
-    Ok(OpenDocumentsResult { documents, errors })
+        Ok(OpenDocumentsResult { documents, errors })
+    })
+    .await
+    .map_err(|error| format!("Document loading task failed: {error}"))?
 }
 
 fn open_with_provisional_claim(
