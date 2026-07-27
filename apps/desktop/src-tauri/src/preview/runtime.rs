@@ -73,6 +73,9 @@ const MOLSTAR_MD_COORDINATE_EXTENSIONS: &[&str] = &[
     "ncrst",
     "lammpstrj",
 ];
+const TOPOLOGY_REQUIRED_TRAJECTORY_EXTENSIONS: &[&str] = &[
+    "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst",
+];
 const MOLSTAR_MD_MODEL_EXTENSIONS: &[&str] = &[
     "pdb", "ent", "pdbqt", "pqr", "xpdb", "gro", "cif", "mmcif", "mcif", "psf", "prmtop", "top",
     "tpr",
@@ -634,6 +637,12 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     };
     if let Some(bundle) = resolve_molstar_md_file_bundle(&canonical, &extension) {
         return open_md_trajectory_document(app, bundle, preferences);
+    }
+    if TOPOLOGY_REQUIRED_TRAJECTORY_EXTENSIONS.contains(&extension.as_str()) {
+        return Err(format!(
+            "{} is a coordinate trajectory and requires a topology file. Add a supported same-stem topology or topology.pdb, topol.pdb, or reference.pdb beside it",
+            canonical.display()
+        ));
     }
     let uses_bounded_maestro_preview =
         is_maestro_preview_extension(&extension) && metadata.len() > MAX_STRUCTURE_FILE_SIZE;
@@ -1631,6 +1640,21 @@ mod document_open_tests {
             .expect_err("standalone PSF topology should not create a Molstar document");
 
         assert!(error.contains("does not contain standalone molecular coordinates"));
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn standalone_xtc_reports_that_topology_is_required() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let path = create_temp_file("xtc", &[0x0f, 0x00, 0x00, 0x01, b'X', b'T', b'C']);
+
+        let error = open_document(app.handle(), path.clone(), &preferences, None)
+            .expect_err("standalone XTC should not create an empty Molstar document");
+
+        assert!(error.contains("requires a topology"));
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
         }
