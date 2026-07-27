@@ -25,7 +25,7 @@ use crate::preview::formats::{
     format_for_extension, preview_plan_for_extension, structure_path_extension,
     supported_structure_extensions,
 };
-use crate::preview::grid_store::GridParseOptions;
+use crate::preview::grid_store::{delimited_smiles_column_choices, GridParseOptions};
 use crate::preview::runtime::{
     companion_paths_for_open_path, open_docking_document as open_docking_document_runtime,
     open_document_for_window, open_document_with_grid_options, DockingDocumentRequest,
@@ -43,6 +43,7 @@ const FETCHED_PDB_MAX_BYTES: usize = 75 * 1024 * 1024;
 const KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE: u64 = 10 * 1024 * 1024;
 const PROJECT_STRUCTURE_SCAN_MAX_FILES: usize = 2_000;
 const PROJECT_STRUCTURE_SCAN_MAX_DIRECTORIES: usize = 400;
+const PROJECT_DELIMITED_CLASSIFICATION_MAX_BYTES: u64 = 512 * 1024;
 const PROJECT_STRUCTURE_SCAN_MAX_ENTRIES: usize = 20_000;
 const PROJECT_STRUCTURE_SCAN_MAX_ROOTS: usize = 16;
 const PROJECT_STRUCTURE_SCAN_REQUEST_MAX_FILES: usize = 4_000;
@@ -899,7 +900,8 @@ fn list_project_structure_files_blocking_with_limits(
         let mut errors = Vec::new();
         for path in outcome.paths {
             match project_structure_file(path) {
-                Ok(file) => files.push(file),
+                Ok(Some(file)) => files.push(file),
+                Ok(None) => {}
                 Err(error) => errors.push(error),
             }
         }
@@ -915,16 +917,21 @@ fn list_project_structure_files_blocking_with_limits(
     Ok(scans)
 }
 
-fn project_structure_file(path: PathBuf) -> Result<ProjectStructureFile, String> {
+fn project_structure_file(path: PathBuf) -> Result<Option<ProjectStructureFile>, String> {
     let metadata = match fs::metadata(&path) {
         Ok(metadata) if metadata.is_file() => metadata,
         Ok(_) => return Err(format!("{} is not a file", path.display())),
         Err(error) => return Err(format!("{}: {error}", path.display())),
     };
     let extension = structure_path_extension(&path);
+    if matches!(extension.as_str(), "csv" | "tsv")
+        && !project_delimited_file_has_structure_column(&path, &extension)?
+    {
+        return Ok(None);
+    }
     let plan = preview_plan_for_extension(&extension, "auto")
         .map_err(|error| format!("{}: {error}", path.display()))?;
-    Ok(ProjectStructureFile {
+    Ok(Some(ProjectStructureFile {
         path: path.to_string_lossy().to_string(),
         title: path
             .file_name()
@@ -934,7 +941,23 @@ fn project_structure_file(path: PathBuf) -> Result<ProjectStructureFile, String>
         extension,
         renderer: plan.renderer,
         byte_count: metadata.len(),
-    })
+    }))
+}
+
+fn project_delimited_file_has_structure_column(
+    path: &PathBuf,
+    extension: &str,
+) -> Result<bool, String> {
+    let mut data = Vec::with_capacity(PROJECT_DELIMITED_CLASSIFICATION_MAX_BYTES as usize);
+    fs::File::open(path)
+        .map_err(|error| format!("{}: {error}", path.display()))?
+        .take(PROJECT_DELIMITED_CLASSIFICATION_MAX_BYTES)
+        .read_to_end(&mut data)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let text = String::from_utf8_lossy(&data);
+    Ok(delimited_smiles_column_choices(extension, &text)
+        .map(|choices| !choices.is_empty())
+        .unwrap_or(false))
 }
 
 #[cfg(test)]
@@ -3691,10 +3714,12 @@ mod tests {
         fs::create_dir_all(&nested).unwrap();
         let pdb = root.join("mini.pdb");
         let csv = root.join("molecules.csv");
+        let state_csv = root.join("state.csv");
         let cif = nested.join("mini.cif");
         let txt = nested.join("notes.txt");
         fs::write(&pdb, "HEADER TEST\n").unwrap();
         fs::write(&csv, "smiles,name\nCC,ethane\n").unwrap();
+        fs::write(&state_csv, "step,energy\n1,-2.5\n").unwrap();
         fs::write(&cif, "data_test\n").unwrap();
         fs::write(&txt, "ignore\n").unwrap();
 
@@ -3705,10 +3730,11 @@ mod tests {
         let scan = &scans[0];
         assert!(!scan.truncated);
         assert_eq!(scan.scanned_directories, 2);
-        assert_eq!(scan.scanned_entries, 5);
+        assert_eq!(scan.scanned_entries, 6);
         assert!(scan.error.is_none());
         let files = &scan.files;
         assert_eq!(files.len(), 3);
+        assert!(!files.iter().any(|file| file.title == "state.csv"));
         let pdb_file = files.iter().find(|file| file.extension == "pdb").unwrap();
         assert_eq!(
             pdb_file.path,
@@ -3735,6 +3761,7 @@ mod tests {
 
         fs::remove_file(txt).unwrap();
         fs::remove_file(cif).unwrap();
+        fs::remove_file(state_csv).unwrap();
         fs::remove_file(csv).unwrap();
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
