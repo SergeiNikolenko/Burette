@@ -159,7 +159,8 @@ assert.match(fn("moleculeMenuSubmenu"), /aria-haspopup[\s\S]*buret-tree-menu-sub
 assert.match(fn("moleculeMenuActionButton"), /pickingLevel: options\.pickingLevel \|\| options\.target\.pickingLevel/);
 assert.match(fn("moleculeMenuActionButton"), /moleculeContextMenuAction\(action, label, target\)/);
 assert.match(fn("moleculeContextMenuAction"), /const target = targetOverride \|\| molstarContextTarget\(\)/);
-assert.match(fn("moleculeContextMenuAction"), /action === 'select'[\s\S]*activeViewer\.plugin\.selectionMode = true/);
+assert.doesNotMatch(fn("moleculeContextMenuAction"), /action === 'select'[\s\S]*activeViewer\.plugin\.selectionMode = true/);
+assert.doesNotMatch(fn("moleculeContextMenuAction"), /action === 'select'[\s\S]*activeViewer\.plugin\.selectionMode = false/);
 assert.match(fn("installMoleculeMenuKeyboard"), /ArrowLeft[\s\S]*stopPropagation/);
 assert.match(viewer, /menu\._buretPreviousFocus = document\.activeElement/);
 assert.match(viewer, /renderActions\(\);\s*\n\s*const point = molstarContextMenuLastPoint[\s\S]*positionMolstarContextMenu/);

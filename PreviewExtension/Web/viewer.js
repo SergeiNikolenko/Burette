@@ -7251,7 +7251,9 @@
       plugin.canvas3d?.setProps({ illumination: { enabled } });
       control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
     } else if (action === 'select-mode') {
-      plugin.selectionMode = plugin.selectionMode !== true;
+      plugin.selectionMode = false;
+      control.classList.add('hidden');
+      setStatus('[web] Selection mode is controlled from the context menu.');
     } else if (action === 'clear-selection') {
       plugin.managers?.interactivity?.lociSelects?.deselectAll?.();
       plugin.managers?.structure?.selection?.clear?.();
@@ -7275,8 +7277,8 @@
     const plugin = viewportPlugin();
     if (!bar || !rail) return;
     const active = plugin?.selectionMode === true && !rail.classList.contains('hidden');
-    const changed = bar.classList.contains('hidden') === active;
-    bar.classList.toggle('hidden', !active);
+    const changed = !bar.classList.contains('hidden');
+    bar.classList.add('hidden');
     rail.querySelector('[data-buret-viewport-action="select-mode"]')
       ?.setAttribute('aria-pressed', active ? 'true' : 'false');
     if (!active) closeViewportMenu();
@@ -7289,9 +7291,8 @@
     const level = document.querySelector('[data-buret-selection-level]');
     const granularity = plugin?.managers?.interactivity?.props?.granularity;
     if (level && granularity && level.value !== granularity) level.value = granularity;
-    // The bar takes a row out of the viewport, so the rail below it has to be
-    // re-placed — but only when the bar actually came or went. This runs on every
-    // selection change, and a live atom count is no reason to measure the layout.
+    // The old selection toolbar stays out of the viewport; only a stale visible
+    // instance has to release its layout reservation.
     if (changed) updateFloatingLayoutOffsets();
   }
 
@@ -18491,7 +18492,6 @@
       } else if (action === 'select') {
         const selectionLoci = molstarContextSelectionLoci(target);
         if (!selectMolstarContextPick({ ...target, loci: selectionLoci }, { applyGranularity: false })) throw new Error('No Mol* residue or ligand is available to select.');
-        activeViewer.plugin.selectionMode = true;
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(`[web] Selected ${targetLabel}.`);
       } else if (action === 'remove') {
