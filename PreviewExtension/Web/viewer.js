@@ -7255,6 +7255,7 @@
     } else if (action === 'clear-selection') {
       plugin.managers?.interactivity?.lociSelects?.deselectAll?.();
       plugin.managers?.structure?.selection?.clear?.();
+      control.classList.add('hidden');
       hideMolstarContextMenu();
       setStatus('[web] Cleared the selection.');
     }

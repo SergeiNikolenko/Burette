@@ -5078,10 +5078,15 @@ assert.match(previewViewer, /positionOpenViewportMenu\(trigger\.closest\('#buret
 // once and each able to say why it is unavailable.
 assert.match(viewerShell, /data-buret-viewport-action="animate"/);
 assert.match(viewerShell, /data-buret-viewport-action="clear-selection" aria-label="Clear selection"/);
+assert.match(viewerShell, /buret-rail-button buret-clear-selection hidden/);
 assert.match(previewViewer, /openViewportMenu\(control, 'Animate', viewportAnimateMenu\)/);
 assert.match(previewViewer, /action === 'clear-selection'[\s\S]*lociSelects\?\.deselectAll\?\.\(\)[\s\S]*selection\?\.clear\?\.\(\)/);
+assert.match(previewViewer, /action === 'clear-selection'[\s\S]*control\.classList\.add\('hidden'\)/);
 assert.match(previewViewer, /data-buret-viewport-action="clear-selection"[\s\S]*classList\.toggle\('hidden', !hasSelection\)/);
-assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection \{[\s\S]*color: #ff6b5e/);
+assert.match(previewRuntimeCss, /\.buret-rail-button \{[\s\S]*border: 1px solid transparent/);
+assert.match(previewRuntimeCss, /\.buret-viewport-rail\.hidden,\s*\.buret-rail-button\.hidden,\s*\.buret-selection-bar\.hidden \{\s*display: none;/);
+assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection \{[\s\S]*color: #ff6b5e;[\s\S]*border-color: rgba\(255, 107, 94, 0\.72\);/);
+assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection:hover \{[\s\S]*color: #fff;[\s\S]*background: rgba\(255, 107, 94, 0\.88\);/);
 assert.match(previewViewer, /function viewportAnimateMenu\(menu\) \{/);
 // Closing the molecule card drops the selection, and the host has to be told
 // directly because clearing this way does not reach the selection manager events.
