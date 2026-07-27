@@ -77,6 +77,7 @@ const MOLSTAR_MD_MODEL_EXTENSIONS: &[&str] = &[
     "pdb", "ent", "pdbqt", "pqr", "xpdb", "gro", "cif", "mmcif", "mcif", "psf", "prmtop", "top",
     "tpr",
 ];
+const CONVENTIONAL_MD_TOPOLOGY_STEMS: &[&str] = &["topology", "topol", "reference"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum StructureAttachmentRole {
@@ -1069,7 +1070,8 @@ fn resolve_md_file_bundle(path: &Path, extension: &str) -> Option<StructureFileB
         let topology = MD_TOPOLOGY_EXTENSIONS
             .iter()
             .map(|candidate| base.with_extension(candidate))
-            .find(|candidate| candidate.is_file())?;
+            .find(|candidate| candidate.is_file())
+            .or_else(|| conventional_md_topology_companion(path))?;
         return Some(StructureFileBundle {
             kind: StructureBundleKind::Md,
             primary_path: topology.clone(),
@@ -1108,6 +1110,16 @@ fn resolve_md_file_bundle(path: &Path, extension: &str) -> Option<StructureFileB
         });
     }
     None
+}
+
+fn conventional_md_topology_companion(path: &Path) -> Option<PathBuf> {
+    let parent = path.parent()?;
+    CONVENTIONAL_MD_TOPOLOGY_STEMS.iter().find_map(|stem| {
+        MD_TOPOLOGY_EXTENSIONS
+            .iter()
+            .map(|extension| parent.join(format!("{stem}.{extension}")))
+            .find(|candidate| candidate.is_file())
+    })
 }
 
 fn resolve_molstar_md_file_bundle(path: &Path, extension: &str) -> Option<StructureFileBundle> {
@@ -1685,6 +1697,58 @@ mod document_open_tests {
         assert!(config.contains("\"format\":\"pdb\""));
         assert!(config.contains("\"format\":\"xtc\""));
         assert!(payload.contains("window.BuretteDockingPayloads = "));
+
+        remove_runtime_artifacts(&document.runtime_path);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn opens_xtc_with_conventional_topology_pdb_as_native_trajectory_pair() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let directory = create_temp_directory();
+        let trajectory = directory.join("nvt.xtc");
+        let topology = directory.join("topology.pdb");
+        fs::write(&trajectory, [0x0f, 0x00, 0x00, 0x01, b'X', b'T', b'C'])
+            .expect("XTC fixture should be written");
+        fs::write(
+            &topology,
+            b"ATOM      1  CA  ALA A   1       0.000   0.000   0.000  1.00 20.00           C\nEND\n",
+        )
+        .expect("PDB topology should be written");
+
+        let result = open_documents_for_window_label(
+            app.handle(),
+            crate::windows::MAIN_WINDOW_LABEL,
+            vec![trajectory.to_string_lossy().to_string()],
+            preferences,
+            None,
+            None,
+        )
+        .expect("XTC should use a conventional topology.pdb companion");
+        assert!(result.errors.is_empty());
+        assert_eq!(result.documents.len(), 1);
+        let document = &result.documents[0];
+        let docking_request = document
+            .docking_request
+            .as_ref()
+            .expect("native trajectory document should retain its topology and coordinates");
+
+        assert_eq!(
+            docking_request.receptor_path,
+            topology
+                .canonicalize()
+                .expect("PDB topology should canonicalize")
+                .to_string_lossy()
+        );
+        assert_eq!(
+            docking_request.ligand_paths,
+            vec![trajectory
+                .canonicalize()
+                .expect("XTC fixture should canonicalize")
+                .to_string_lossy()
+                .to_string()]
+        );
 
         remove_runtime_artifacts(&document.runtime_path);
         let _ = fs::remove_dir_all(directory);
