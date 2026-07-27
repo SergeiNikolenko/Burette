@@ -5078,13 +5078,17 @@ assert.match(previewViewer, /positionOpenViewportMenu\(trigger\.closest\('#buret
 // a trackball that keeps turning plus the plugin's timed animations, each listed
 // once and each able to say why it is unavailable.
 assert.match(viewerShell, /data-buret-viewport-action="animate"/);
-assert.match(viewerShell, /buret-rail-button hidden" type="button" data-buret-viewport-action="select-mode"/);
+assert.match(viewerShell, /buret-rail-button" type="button" data-buret-viewport-action="select-mode" aria-pressed="false" aria-label="Selection mode"/);
 assert.match(viewerShell, /data-buret-viewport-action="clear-selection" aria-label="Clear selection"/);
 assert.match(viewerShell, /buret-rail-button buret-clear-selection hidden/);
 assert.match(previewViewer, /openViewportMenu\(control, 'Animate', viewportAnimateMenu\)/);
-assert.match(previewViewer, /action === 'select-mode'[\s\S]*plugin\.selectionMode = false[\s\S]*control\.classList\.add\('hidden'\)/);
-assert.match(previewViewer, /action === 'clear-selection'[\s\S]*lociSelects\?\.deselectAll\?\.\(\)[\s\S]*selection\?\.clear\?\.\(\)/);
+assert.match(previewViewer, /action === 'select-mode'[\s\S]*const enabled = plugin\.selectionMode !== true;[\s\S]*plugin\.selectionMode = enabled/);
+assert.doesNotMatch(previewViewer, /function viewportPickingLevelMenu\(menu\)/);
+assert.doesNotMatch(previewViewer, /action === 'picking-level'/);
+assert.match(previewViewer, /action === 'clear-selection'[\s\S]*clearMolstarPersistentMoleculePreview\(\)[\s\S]*Promise\.resolve\(clearMolstarSelection\(\)\)/);
 assert.match(previewViewer, /action === 'clear-selection'[\s\S]*control\.classList\.add\('hidden'\)/);
+assert.match(previewViewer, /action === 'clear-selection'[\s\S]*updateSelectionBar\(\)/);
+assert.match(previewViewer, /async function clearMolstarSelection\(\) \{[\s\S]*lociHighlights\?\.clearHighlights\?\.\(\)[\s\S]*canvas3d\?\.requestDraw\?\.\(\)/);
 assert.match(previewViewer, /const active = plugin\?\.selectionMode === true && !rail\.classList\.contains\('hidden'\);[\s\S]*const changed = !bar\.classList\.contains\('hidden'\);[\s\S]*bar\.classList\.add\('hidden'\);/);
 assert.doesNotMatch(previewViewer, /bar\.classList\.toggle\('hidden', !active\)/);
 assert.match(previewViewer, /data-buret-viewport-action="clear-selection"[\s\S]*classList\.toggle\('hidden', !hasSelection\)/);

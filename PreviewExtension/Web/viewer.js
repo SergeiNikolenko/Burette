@@ -7251,15 +7251,22 @@
       plugin.canvas3d?.setProps({ illumination: { enabled } });
       control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
     } else if (action === 'select-mode') {
-      plugin.selectionMode = false;
-      control.classList.add('hidden');
-      setStatus('[web] Selection mode is controlled from the context menu.');
+      const enabled = plugin.selectionMode !== true;
+      plugin.selectionMode = enabled;
+      control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      closeViewportMenu();
+      setStatus(`[web] Selection mode ${enabled ? 'enabled' : 'disabled'}.`);
     } else if (action === 'clear-selection') {
-      plugin.managers?.interactivity?.lociSelects?.deselectAll?.();
-      plugin.managers?.structure?.selection?.clear?.();
-      control.classList.add('hidden');
-      hideMolstarContextMenu();
-      setStatus('[web] Cleared the selection.');
+      clearMolstarPersistentMoleculePreview();
+      Promise.resolve(clearMolstarSelection())
+        .then(() => {
+          control.classList.add('hidden');
+          hideMolstarContextMenu();
+          closeViewportMenu();
+          updateSelectionBar();
+          setStatus('[web] Cleared the selection.');
+        })
+        .catch(error => setStatus(`[web] Clear selection failed. ${error?.message || error}`, 'error'));
     }
   }
 
@@ -12590,22 +12597,30 @@
     return { ok: true, command: 'show_waters', result: { componentCount: count || 0, representation: 'line' } };
   }
 
-  function clearMolstarSelection() {
+  async function awaitMolstarMaybeTask(plugin, value) {
+    if (!value) return;
+    if (typeof value.then === 'function') return value;
+    if (typeof plugin?.runTask === 'function' && typeof value.run === 'function') return plugin.runTask(value);
+  }
+
+  async function clearMolstarSelection() {
     const viewer = activeMolstarViewer();
     const plugin = viewer?.plugin;
     let cleared = false;
+    const pending = [];
     try {
-      viewer?.structureInteractivity?.({ action: 'select' });
-      viewer?.structureInteractivity?.({ action: 'highlight' });
-      viewer?.structureInteractivity?.({ action: 'focus' });
+      pending.push(awaitMolstarMaybeTask(plugin, viewer?.structureInteractivity?.({ action: 'select' })));
+      pending.push(awaitMolstarMaybeTask(plugin, viewer?.structureInteractivity?.({ action: 'highlight' })));
+      pending.push(awaitMolstarMaybeTask(plugin, viewer?.structureInteractivity?.({ action: 'focus' })));
       cleared = true;
     } catch (error) {
       debug('Mol* structureInteractivity clear failed: ' + (error && error.message || String(error)));
     }
     try {
-      plugin?.managers?.interactivity?.lociSelects?.deselectAll?.();
-      plugin?.managers?.structure?.selection?.clear?.();
-      plugin?.managers?.structure?.focus?.clear?.();
+      pending.push(awaitMolstarMaybeTask(plugin, plugin?.managers?.interactivity?.lociSelects?.deselectAll?.()));
+      pending.push(awaitMolstarMaybeTask(plugin, plugin?.managers?.structure?.selection?.clear?.()));
+      pending.push(awaitMolstarMaybeTask(plugin, plugin?.managers?.structure?.focus?.clear?.()));
+      plugin?.managers?.interactivity?.lociHighlights?.clearHighlights?.();
       cleared = true;
     } catch (error) {
       debug('Mol* manager selection clear failed: ' + (error && error.message || String(error)));
@@ -12616,6 +12631,8 @@
     molstarLassoSelectionAtoms.clear();
     molstarLassoSelectionAtomKeys.clear();
     molstarLassoSelectionResidueKeys.clear();
+    await Promise.allSettled(pending.filter(Boolean));
+    plugin?.canvas3d?.requestDraw?.();
     window.__mqlPost?.('selectionChanged', '', {
       selection: { source: 'viewer', cleared: true, atoms: 0, residues: [], atomIdentities: [] }
     });

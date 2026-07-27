@@ -155,7 +155,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.8 3.9v4.3h-4.3"/><path d="m10.4 9.2 4.8 2.8-4.8 2.8Z"/></svg>
           <span class="buret-tooltip" role="tooltip">Animate the scene</span>
         </button>
-        <button class="buret-rail-button hidden" type="button" data-buret-viewport-action="select-mode" aria-pressed="false" aria-label="Selection mode" title="Selection mode">
+        <button class="buret-rail-button" type="button" data-buret-viewport-action="select-mode" aria-pressed="false" aria-label="Selection mode" title="Selection mode">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 7.2-6 1.6-1.6 6L5 3Z"/></svg>
           <span class="buret-tooltip" role="tooltip">Selection mode</span>
         </button>
