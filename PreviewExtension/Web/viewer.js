@@ -395,12 +395,11 @@
 
   function setStatus(message, kind = 'info') {
     const text = String(message || '');
-    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
     if (status) {
       setStatusText(text);
       status.classList.toggle('error', kind === 'error');
       status.classList.toggle('hidden', kind !== 'error' && !window.BuretteDebug);
-      if (kind === 'error' && !window.BuretteDebug && cfg.appViewer === true) status.classList.add('hidden');
+      if (kind === 'error' && activeConfig?.appViewer === true) status.classList.add('hidden');
     }
     if (shouldReportStatus(text, kind)) {
       post(kind === 'error' ? 'error' : 'status', text);

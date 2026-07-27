@@ -5533,7 +5533,7 @@ assert.match(previewViewer, /if \(prepared\.dockingSceneMode\) \{\s*await applyD
 assert.match(previewViewer, /function installDockingPoseControls\(viewer, prepared\)/);
 assert.match(previewViewer, /className = 'buret-docking-poses'/);
 assert.match(previewViewer, /document\.body\.classList\.add\('buret-docking-pose-controls-active'\)/);
-assert.match(previewViewer, /if \(kind === 'error' && !window\.BuretteDebug && cfg\.appViewer === true\) status\.classList\.add\('hidden'\);/);
+assert.match(previewViewer, /if \(kind === 'error' && activeConfig\?\.appViewer === true\) status\.classList\.add\('hidden'\);/);
 assert.match(previewViewer, /function structureSceneStoryStage\(label, index\)/);
 assert.match(previewViewer, /function structureSceneStoryAvailable\(prepared\)/);
 assert.match(previewViewer, /return new Set\(recognizedStages\)\.size >= 2/);
