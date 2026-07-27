@@ -2185,6 +2185,7 @@ assert.match(styles, /\.workspace-sidebar-handle::before \{[^}]*box-shadow: -12p
 assert.match(appLayout, /className="workspace-sidebar-handle"/);
 assert.match(styles, /\.app-shell\[data-settings-mode="true"\] \.workbench \{[^}]*border-radius: 0;[^}]*box-shadow: none;[^}]*\}/s);
 assert.match(styles, /\.app-shell\[data-hosted-mcp-widget="true"\] \.workbench \{[^}]*border-radius: 0;[^}]*box-shadow: none;[^}]*\}/s);
+assert.match(styles, /\.app-shell\[data-runtime="browser"\] \.workbench \{\s*border-radius: 0;\s*\}/s);
 assert.doesNotMatch(styles, /\.main-stage \{[^}]*border-radius: 20px 0 0 20px;/s);
 assert.match(styles, /\.app-shell\[data-theme="auto"\] \{[^}]*color-scheme: light dark/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
