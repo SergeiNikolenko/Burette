@@ -5082,15 +5082,15 @@ assert.match(viewerShell, /buret-rail-button" type="button" data-buret-viewport-
 assert.match(viewerShell, /data-buret-viewport-action="clear-selection" aria-label="Clear selection"/);
 assert.match(viewerShell, /buret-rail-button buret-clear-selection hidden/);
 assert.match(previewViewer, /openViewportMenu\(control, 'Animate', viewportAnimateMenu\)/);
-assert.match(previewViewer, /action === 'select-mode'[\s\S]*const enabled = plugin\.selectionMode !== true;[\s\S]*plugin\.selectionMode = enabled/);
+assert.match(previewViewer, /action === 'select-mode'[\s\S]*const enabled = plugin\.selectionMode !== true;[\s\S]*plugin\.selectionMode = enabled[\s\S]*updateSelectionBar\(\)/);
 assert.doesNotMatch(previewViewer, /function viewportPickingLevelMenu\(menu\)/);
 assert.doesNotMatch(previewViewer, /action === 'picking-level'/);
 assert.match(previewViewer, /action === 'clear-selection'[\s\S]*clearMolstarPersistentMoleculePreview\(\)[\s\S]*Promise\.resolve\(clearMolstarSelection\(\)\)/);
 assert.match(previewViewer, /action === 'clear-selection'[\s\S]*control\.classList\.add\('hidden'\)/);
 assert.match(previewViewer, /action === 'clear-selection'[\s\S]*updateSelectionBar\(\)/);
 assert.match(previewViewer, /async function clearMolstarSelection\(\) \{[\s\S]*lociHighlights\?\.clearHighlights\?\.\(\)[\s\S]*canvas3d\?\.requestDraw\?\.\(\)/);
-assert.match(previewViewer, /const active = plugin\?\.selectionMode === true && !rail\.classList\.contains\('hidden'\);[\s\S]*const changed = !bar\.classList\.contains\('hidden'\);[\s\S]*bar\.classList\.add\('hidden'\);/);
-assert.doesNotMatch(previewViewer, /bar\.classList\.toggle\('hidden', !active\)/);
+assert.match(previewViewer, /const active = plugin\?\.selectionMode === true && !rail\.classList\.contains\('hidden'\);[\s\S]*const wasHidden = bar\.classList\.contains\('hidden'\);[\s\S]*bar\.classList\.toggle\('hidden', !active\);[\s\S]*const changed = wasHidden !== bar\.classList\.contains\('hidden'\);/);
+assert.doesNotMatch(previewViewer, /bar\.classList\.add\('hidden'\)/);
 assert.match(previewViewer, /data-buret-viewport-action="clear-selection"[\s\S]*classList\.toggle\('hidden', !hasSelection\)/);
 assert.match(previewRuntimeCss, /\.buret-rail-button \{[\s\S]*border: 1px solid transparent/);
 assert.match(previewRuntimeCss, /\.buret-viewport-rail\.hidden,\s*\.buret-rail-button\.hidden,\s*\.buret-selection-bar\.hidden \{\s*display: none;/);

@@ -7255,6 +7255,7 @@
       plugin.selectionMode = enabled;
       control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
       closeViewportMenu();
+      updateSelectionBar();
       setStatus(`[web] Selection mode ${enabled ? 'enabled' : 'disabled'}.`);
     } else if (action === 'clear-selection') {
       clearMolstarPersistentMoleculePreview();
@@ -7275,7 +7276,10 @@
     if (!plugin) return;
     if (action === 'query') openViewportMenu(control, 'Select', viewportQueryMenu);
     else if (action === 'apply') openViewportMenu(control, 'Apply', viewportApplyMenu);
-    else if (action === 'exit') plugin.selectionMode = false;
+    else if (action === 'exit') {
+      plugin.selectionMode = false;
+      updateSelectionBar();
+    }
   }
 
   function updateSelectionBar() {
@@ -7284,8 +7288,9 @@
     const plugin = viewportPlugin();
     if (!bar || !rail) return;
     const active = plugin?.selectionMode === true && !rail.classList.contains('hidden');
-    const changed = !bar.classList.contains('hidden');
-    bar.classList.add('hidden');
+    const wasHidden = bar.classList.contains('hidden');
+    bar.classList.toggle('hidden', !active);
+    const changed = wasHidden !== bar.classList.contains('hidden');
     rail.querySelector('[data-buret-viewport-action="select-mode"]')
       ?.setAttribute('aria-pressed', active ? 'true' : 'false');
     if (!active) closeViewportMenu();
@@ -7298,8 +7303,6 @@
     const level = document.querySelector('[data-buret-selection-level]');
     const granularity = plugin?.managers?.interactivity?.props?.granularity;
     if (level && granularity && level.value !== granularity) level.value = granularity;
-    // The old selection toolbar stays out of the viewport; only a stale visible
-    // instance has to release its layout reservation.
     if (changed) updateFloatingLayoutOffsets();
   }
 
