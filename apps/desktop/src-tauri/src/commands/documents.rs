@@ -22,7 +22,7 @@ use tauri_plugin_dialog::DialogExt;
 use crate::commands::source_editing::OpenedSourceRegistry;
 use crate::menu::OpenDocumentRegistry;
 use crate::preview::formats::{
-    format_for_extension, resolve_renderer, structure_path_extension,
+    format_for_extension, preview_plan_for_extension, structure_path_extension,
     supported_structure_extensions,
 };
 use crate::preview::grid_store::GridParseOptions;
@@ -922,8 +922,8 @@ fn project_structure_file(path: PathBuf) -> Result<ProjectStructureFile, String>
         Err(error) => return Err(format!("{}: {error}", path.display())),
     };
     let extension = structure_path_extension(&path);
-    let format =
-        format_for_extension(&extension).map_err(|error| format!("{}: {error}", path.display()))?;
+    let plan = preview_plan_for_extension(&extension, "auto")
+        .map_err(|error| format!("{}: {error}", path.display()))?;
     Ok(ProjectStructureFile {
         path: path.to_string_lossy().to_string(),
         title: path
@@ -932,7 +932,7 @@ fn project_structure_file(path: PathBuf) -> Result<ProjectStructureFile, String>
             .unwrap_or("structure")
             .to_string(),
         extension,
-        renderer: resolve_renderer(&format, "auto"),
+        renderer: plan.renderer,
         byte_count: metadata.len(),
     })
 }
@@ -3690,9 +3690,11 @@ mod tests {
         let nested = root.join("nested");
         fs::create_dir_all(&nested).unwrap();
         let pdb = root.join("mini.pdb");
+        let csv = root.join("molecules.csv");
         let cif = nested.join("mini.cif");
         let txt = nested.join("notes.txt");
         fs::write(&pdb, "HEADER TEST\n").unwrap();
+        fs::write(&csv, "smiles,name\nCC,ethane\n").unwrap();
         fs::write(&cif, "data_test\n").unwrap();
         fs::write(&txt, "ignore\n").unwrap();
 
@@ -3703,20 +3705,28 @@ mod tests {
         let scan = &scans[0];
         assert!(!scan.truncated);
         assert_eq!(scan.scanned_directories, 2);
-        assert_eq!(scan.scanned_entries, 4);
+        assert_eq!(scan.scanned_entries, 5);
         assert!(scan.error.is_none());
         let files = &scan.files;
-        assert_eq!(files.len(), 2);
+        assert_eq!(files.len(), 3);
+        let pdb_file = files.iter().find(|file| file.extension == "pdb").unwrap();
         assert_eq!(
-            files[0].path,
+            pdb_file.path,
             canonical_root.join("mini.pdb").to_string_lossy()
         );
-        assert_eq!(files[0].title, "mini.pdb");
-        assert_eq!(files[0].extension, "pdb");
-        assert_eq!(files[0].renderer, "molstar");
-        assert_eq!(files[0].byte_count, "HEADER TEST\n".len() as u64);
+        assert_eq!(pdb_file.title, "mini.pdb");
+        assert_eq!(pdb_file.renderer, "molstar");
+        assert_eq!(pdb_file.byte_count, "HEADER TEST\n".len() as u64);
+        let csv_file = files.iter().find(|file| file.extension == "csv").unwrap();
         assert_eq!(
-            files[1].path,
+            csv_file.path,
+            canonical_root.join("molecules.csv").to_string_lossy()
+        );
+        assert_eq!(csv_file.title, "molecules.csv");
+        assert_eq!(csv_file.renderer, "grid2d");
+        let cif_file = files.iter().find(|file| file.extension == "cif").unwrap();
+        assert_eq!(
+            cif_file.path,
             canonical_root
                 .join("nested")
                 .join("mini.cif")
@@ -3725,6 +3735,7 @@ mod tests {
 
         fs::remove_file(txt).unwrap();
         fs::remove_file(cif).unwrap();
+        fs::remove_file(csv).unwrap();
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
         fs::remove_dir(root).unwrap();

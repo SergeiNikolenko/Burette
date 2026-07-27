@@ -5066,6 +5066,10 @@ assert.match(previewViewer, /if \(persist \|\| collapsed\) toolbar\.dataset\.def
 assert.doesNotMatch(previewViewer, /VIEWPORT_RAIL_POSITION_VERSION/);
 assert.doesNotMatch(previewViewer, /localStorage\.setItem\('buret\.viewportRail\.position'/);
 assert.match(previewViewer, /function initViewportRailDrag\(rail, toolbar\) \{/);
+assert.match(
+  previewViewer,
+  /const onPointerDown = event => \{\s*if \(event\.button !== 0 \|\| event\.target\.closest\('\[data-buret-viewport-action\]'\)\) return;/,
+);
 assert.match(previewViewer, /moveToolbar\(\s*toolbar,\s*drag\.toolbarLeft \+ event\.clientX - drag\.startX,\s*drag\.toolbarTop \+ event\.clientY - drag\.startY\s*\);/s);
 assert.match(previewViewer, /saveToolbarPosition\(toolbar\);/);
 assert.match(previewViewer, /initViewportRailDrag\(rail, document\.getElementById\('buret-toolbar'\)\);/);
@@ -5409,7 +5413,7 @@ assert.match(previewViewer, /const saved = saveMolstarModifiedStructure\(\);[\s\
 assert.match(previewViewer, /installToolbarAutoLayoutTracking\(toolbar\);/);
 assert.match(previewViewer, /function installToolbarAutoLayoutTracking\(toolbar\)/);
 assert.match(previewViewer, /const observer = new ResizeObserver\(handleSizeChange\);/);
-assert.match(previewViewer, /if \(toolbar\.dataset\.defaultPosition === '1'\) \{\s*applyDefaultToolbarPosition\(toolbar\);\s*\} else \{\s*fitToolbarToViewport\(toolbar\);\s*updateFloatingLayoutOffsets\(\);\s*\}/s);
+assert.match(previewViewer, /if \(toolbar\.dataset\.defaultPosition === '1'\) \{\s*applyDefaultToolbarPosition\(toolbar\);\s*\} else \{\s*repositionToolbar\(toolbar\);\s*\}/s);
 assert.match(previewViewer, /const presetSlot = toolbar\.querySelector\('\[data-buret-xyzrender-preset-slot\]'\)/);
 assert.match(previewViewer, /presetSlot\?\.classList\.toggle\('visible', renderer === 'xyzrender-external'\)/);
 assert.match(previewViewer, /toolbar\.classList\.add\('buret-dragging'\)/);
