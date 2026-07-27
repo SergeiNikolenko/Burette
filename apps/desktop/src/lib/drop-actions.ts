@@ -279,8 +279,12 @@ function dockingActionChoices(
     )];
   }
   return candidates.map((request, index) => choice(
-    candidates.length === 1 ? "open-docking" : `open-docking-${index}`,
-    candidates.length === 1 ? "Open docking view" : `Dock with ${fileName(request.receptorPath)}`,
+    request.sceneMode
+      ? "open-structure-scene"
+      : candidates.length === 1 ? "open-docking" : `open-docking-${index}`,
+    request.sceneMode
+      ? "Compare structures"
+      : candidates.length === 1 ? "Open docking view" : `Dock with ${fileName(request.receptorPath)}`,
     index === 0 ? "default" : "alternative",
     {
       kind: "open-docking",
