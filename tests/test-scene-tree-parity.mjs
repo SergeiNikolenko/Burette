@@ -133,6 +133,13 @@ assert.ok(
   viewerJs.indexOf("sceneTreeActionButton('remove'") < viewerJs.indexOf("sceneTreeActionButton(\n      'visibility'"),
   "the scene tree no longer puts remove before visibility"
 );
+assert.match(viewerJs, /focusSaveable: label\.startsWith\('\[Focus\]'\)/);
+assert.match(viewerJs, /sceneTreeActionButton\('save-focus', `Save \$\{node\.label\}`, SCENE_TREE_ICON\.plus\)/);
+assert.ok(
+  viewerJs.indexOf("sceneTreeActionButton('save-focus'") < viewerJs.indexOf("sceneTreeActionButton('remove'"),
+  "the focus save button is not immediately available before remove"
+);
+assert.match(viewerJs, /else if \(action === 'save-focus'\) saveSceneTreeFocusNode\(ref\)/);
 
 // Picking a row tints it flat grey and weights the name. The generic action row
 // marks selection with an accent tint and a 3px rail, which landed beside this
