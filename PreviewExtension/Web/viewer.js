@@ -7239,6 +7239,8 @@
     const plugin = viewportPlugin();
     if (!plugin) return;
     if (action === 'camera') {
+      plugin.canvas3d?.requestCameraReset?.({ durationMs: 250 });
+      setStatus('[web] Camera reset.');
       openViewportMenu(control, 'Camera', viewportCameraMenu);
     } else if (action === 'animate') {
       openViewportMenu(control, 'Animate', viewportAnimateMenu);
@@ -20120,6 +20122,8 @@
     };
     const suppressSecondaryMouseEvent = (event) => {
       if (event.button !== 2) return;
+      if (event.type === 'mousedown') return;
+      if (contextPointer?.moved) return;
       if (!contextPointer && !isMolstarContextMenuTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -20135,7 +20139,11 @@
       if (contextPointer) {
         event.preventDefault();
         event.stopPropagation();
-        if (!contextPointer.moved) return;
+        if (!contextPointer.moved) {
+          openFromEvent(event, contextPointer.pick);
+          contextPointer = null;
+          return;
+        }
         hideMolstarContextMenu();
         contextPointer = null;
         return;
@@ -20163,8 +20171,6 @@
           hideMolstarContextMenu();
           return;
         }
-        event.preventDefault();
-        event.stopPropagation();
         contextPointer = {
           pointerId: event.pointerId,
           startX: event.clientX,

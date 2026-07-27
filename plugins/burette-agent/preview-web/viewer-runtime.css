@@ -565,6 +565,7 @@ body.burette-mobile-host #buret-scene-tree {
   cursor: grabbing;
 }
 .buret-viewport-rail.hidden,
+.buret-rail-button.hidden,
 .buret-selection-bar.hidden {
   display: none;
 }
@@ -579,13 +580,13 @@ body.buret-toolbar-collapsed #buret-selection-bar {
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 8px;
   padding: 0;
   color: var(--buret-toolbar-color);
   background: transparent;
   cursor: pointer;
-  transition: background 140ms ease, color 140ms ease;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 .buret-rail-button > svg {
   width: 16px;
@@ -612,9 +613,13 @@ body.buret-toolbar-collapsed #buret-selection-bar {
 }
 .buret-rail-button.buret-clear-selection {
   color: #ff6b5e;
+  border-color: rgba(255, 107, 94, 0.72);
+  background: rgba(255, 107, 94, 0.08);
 }
 .buret-rail-button.buret-clear-selection:hover {
-  color: #ff887d;
+  color: #fff;
+  border-color: #ff6b5e;
+  background: rgba(255, 107, 94, 0.88);
 }
 .buret-selection-bar {
   position: fixed;
@@ -3786,6 +3791,21 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
 .buret-tree-menu-field > .buret-select {
   flex: 1 1 auto;
   min-width: 0;
+}
+.buret-tree-menu-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+.buret-tree-menu-colour-field {
+  align-items: flex-start;
+}
+.buret-tree-swatches-inline {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
 }
 .buret-tree-picker-trigger {
   display: flex;

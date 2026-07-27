@@ -117,7 +117,7 @@
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
   // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
-  // scene-tree menu at the same spot; and the first pick of a two-click distance.
+  // scene-tree menu at the same spot.
   let molstarContextMenuLastPoint = null;
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
@@ -393,12 +393,24 @@
       .slice(0, 80) || fallback;
   }
 
-  function setStatus(message, kind = 'info') {
+  let statusHideTimer = null;
+  function setStatus(message, kind = 'info', options = {}) {
     const text = String(message || '');
     if (status) {
+      if (statusHideTimer) {
+        window.clearTimeout(statusHideTimer);
+        statusHideTimer = null;
+      }
       setStatusText(text);
       status.classList.toggle('error', kind === 'error');
-      status.classList.toggle('hidden', kind !== 'error' && !window.BuretteDebug);
+      const visible = kind === 'error' || window.BuretteDebug || options.visible === true;
+      status.classList.toggle('hidden', !visible);
+      if (visible && kind !== 'error' && Number(options.timeoutMs) > 0) {
+        statusHideTimer = window.setTimeout(() => {
+          status.classList.add('hidden');
+          statusHideTimer = null;
+        }, Number(options.timeoutMs));
+      }
     }
     if (shouldReportStatus(text, kind)) {
       post(kind === 'error' ? 'error' : 'status', text);
@@ -4928,10 +4940,12 @@
     chevron: ['m9 6 6 6-6 6'],
     eye: ['M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
     eyeOff: ['M9.88 9.88a3 3 0 1 0 4.24 4.24', 'M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68', 'M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61', 'm2 2 20 20'],
+    plus: ['M12 5v14', 'M5 12h14'],
     trash: ['M3 6h18', 'M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6'],
     isolate: ['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
     focus: ['M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0', 'M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5'],
     restore: ['M3 12a9 9 0 1 0 3-6.7L3 8', 'M3 3v5h5'],
+    settings: ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'],
     collapseAll: ['m7 20 5-5 5 5', 'm7 4 5 5 5-5'],
     expandAll: ['m7 15 5 5 5-5', 'm7 9 5-5 5 5']
   };
@@ -5026,6 +5040,28 @@
     return targets;
   }
 
+  // Measurements are generic Shape.Representation3D cells rather than structure
+  // components, so the structure representation manager cannot edit them. Their
+  // own transform params are nevertheless fully updateable. Resolving descendants
+  // makes the same inspector work on Measurements, a Distance/Angle/Dihedral group,
+  // and the representation leaf itself.
+  const SCENE_TREE_MEASUREMENT_PARAM_KEYS = new Set([
+    'customText', 'textColor', 'textSize', 'linesColor', 'linesSize',
+    'dashLength', 'color', 'arcScale', 'sectorOpacity', 'borderWidth'
+  ]);
+
+  function sceneTreeMeasurementTargets(viewer, ref) {
+    const state = viewer?.plugin?.state?.data;
+    if (!state?.cells?.has(ref)) return [];
+    return sceneTreeSubtreeRefs(state, ref)
+      .map(targetRef => state.cells.get(targetRef))
+      .filter(cell => {
+        const params = cell?.transform?.params;
+        return params && Object.keys(params).some(key => SCENE_TREE_MEASUREMENT_PARAM_KEYS.has(key))
+          && ['Distance', 'Angle', 'Dihedral', 'Label'].includes(String(cell?.obj?.label || ''));
+      });
+  }
+
   // A row reports a colour theme only when every representation under it agrees;
   // mixed rows show nothing rather than lying about the scene.
   // A tint reads back either from a flat uniform theme or from the carbon colour of
@@ -5101,14 +5137,21 @@
           }
           const chain = decoratorChain(childRef);
           const nodeRef = chain[chain.length - 1];
+          const nodeCell = state.cells.get(nodeRef) || cell;
           const components = colorTargets.get(nodeRef) || null;
+          const measurementEditable = sceneTreeMeasurementTargets(viewer, nodeRef).length > 0;
+          const label = String(cell.obj.label || 'Node');
           nodes.push({
             ref: nodeRef,
-            label: String(cell.obj.label || 'Node'),
+            label,
             note: String(cell.obj.description || ''),
             typeClass: String(cell.obj.type?.typeClass || 'Object'),
             hidden: sceneTreeCellHidden(state, nodeRef),
             colorable: !!components,
+            measurementEditable,
+            focusSaveable: label.startsWith('[Focus]')
+              && Array.isArray(nodeCell?.obj?.data?.units)
+              && nodeCell.obj.data.units.length > 0,
             ...(components ? sceneTreeColorState(components) : { theme: '', value: null }),
             children: build(chain)
           });
@@ -5226,6 +5269,11 @@
       dot.setAttribute('aria-label', `Colour ${node.label}`);
       dot.title = `Colour ${node.label}`;
       actions.appendChild(dot);
+    } else if (node.measurementEditable) {
+      actions.appendChild(sceneTreeActionButton('menu', `Settings for ${node.label}`, SCENE_TREE_ICON.settings));
+    }
+    if (node.focusSaveable) {
+      actions.appendChild(sceneTreeActionButton('save-focus', `Save ${node.label}`, SCENE_TREE_ICON.plus));
     }
     actions.appendChild(sceneTreeActionButton('remove', `Remove ${node.label}`, SCENE_TREE_ICON.trash));
     actions.appendChild(sceneTreeActionButton(
@@ -5416,6 +5464,58 @@
       await state.build().delete(ref).commit();
     } catch (error) {
       debug('scene tree remove failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  async function saveSceneTreeFocusNode(ref) {
+    const viewer = activeMolstarViewer();
+    const state = viewer?.plugin?.state?.data;
+    const cell = state?.cells?.get(ref);
+    const focusStructure = cell?.obj?.data;
+    const structureRef = molstarCurrentStructures(viewer).find(structure => {
+      const data = molstarStructureFromRef(structure);
+      return data === focusStructure || data?.root === focusStructure?.root;
+    });
+    if (!structureRef || !Array.isArray(focusStructure?.units) || !focusStructure.units.length) {
+      setStatus('[web] This focus target cannot be saved.', 'error');
+      return;
+    }
+    const loci = {
+      kind: 'element-loci',
+      structure: focusStructure,
+      elements: focusStructure.units.map(unit => ({
+        unit,
+        indices: Int32Array.from({ length: unit.elements.length }, (_, index) => index)
+      }))
+    };
+    const previousSelection = molstarCurrentSelectionLociList();
+    const representation = sceneTreeSubtreeRefs(state, ref)
+      .map(targetRef => state.cells.get(targetRef)?.transform?.params?.type?.name)
+      .find(Boolean) || 'ball-and-stick';
+    const detail = String(cell.obj.description || '').trim();
+    const sourceLabel = String(cell.obj.label || 'Focus')
+      .replace(/^\[Focus\]\s*/i, '')
+      .trim()
+      .toLowerCase();
+    const label = `Saved ${sourceLabel || 'focus'}`;
+    try {
+      const created = await addMolstarContextScopeComponent(
+        { selectionBased: true, loci, structure: structureRef, label },
+        representation,
+        label
+      );
+      if (!created) throw new Error('Mol* could not create a persistent component.');
+      if (!restoreMolstarSelectionLociList(previousSelection)) {
+        viewer?.plugin?.managers?.interactivity?.lociSelects?.deselectAll?.();
+        viewer?.plugin?.managers?.structure?.selection?.clear?.();
+      }
+      setStatus(`[web] Saved ${detail || 'focus target'} as a scene component.`, 'info', {
+        visible: true,
+        timeoutMs: 3200
+      });
+    } catch (error) {
+      setStatus(`[web] Save focus failed.\n\n${error?.message || String(error)}`, 'error');
     }
     scheduleSceneTreeRender();
   }
@@ -5708,6 +5808,159 @@
     readout.textContent = `${value}%`;
     row.append(caption, control, readout);
     menu.appendChild(row);
+  }
+
+  const SCENE_TREE_MEASUREMENT_FIELDS = {
+    'geometry-color': { keys: ['linesColor', 'color'], label: 'Geometry' },
+    'text-color': { keys: ['textColor'], label: 'Text' },
+    'line-size': { keys: ['linesSize'], label: 'Thickness', min: 0.01, max: 5, step: 0.01 },
+    'dash-length': { keys: ['dashLength'], label: 'Dash length', min: 0.01, max: 0.2, step: 0.01 },
+    'arc-scale': { keys: ['arcScale'], label: 'Arc radius', min: 0.01, max: 1, step: 0.01 },
+    'text-size': { keys: ['textSize'], label: 'Text size', min: 0.1, max: 10, step: 0.1 },
+    'sector-opacity': { keys: ['sectorOpacity'], label: 'Sector opacity', min: 0, max: 1, step: 0.01 },
+    'border-width': { keys: ['borderWidth'], label: 'Text border', min: 0, max: 0.5, step: 0.01 },
+    'custom-text': { keys: ['customText'], label: 'Custom text' }
+  };
+
+  function sceneTreeMeasurementParam(target, field) {
+    const params = target?.transform?.params || {};
+    const definition = SCENE_TREE_MEASUREMENT_FIELDS[field];
+    const key = definition?.keys.find(candidate => Object.hasOwn(params, candidate));
+    return key ? { key, value: params[key] } : null;
+  }
+
+  function sceneTreeMeasurementValue(targets, field) {
+    const values = targets.map(target => sceneTreeMeasurementParam(target, field))
+      .filter(Boolean)
+      .map(entry => entry.value);
+    if (!values.length) return undefined;
+    return values.every(value => Object.is(value, values[0])) ? values[0] : null;
+  }
+
+  async function applySceneTreeMeasurementParam(ref, field, value) {
+    const viewer = activeMolstarViewer();
+    const state = viewer?.plugin?.state?.data;
+    const targets = sceneTreeMeasurementTargets(viewer, ref);
+    if (typeof state?.build !== 'function' || !targets.length) return;
+    const update = state.build();
+    let changed = false;
+    for (const target of targets) {
+      const entry = sceneTreeMeasurementParam(target, field);
+      const targetRef = target?.transform?.ref;
+      if (!entry || !targetRef) continue;
+      update.to(targetRef).update(old => ({ ...old, [entry.key]: value }));
+      changed = true;
+    }
+    if (!changed) return;
+    try {
+      await update.commit();
+    } catch (error) {
+      debug('scene tree measurement update failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  let sceneTreeMeasurementInFlight = false;
+  let sceneTreePendingMeasurement = null;
+  async function streamSceneTreeMeasurementParam(ref, field, value) {
+    sceneTreePendingMeasurement = { ref, field, value };
+    if (sceneTreeMeasurementInFlight) return;
+    sceneTreeMeasurementInFlight = true;
+    try {
+      while (sceneTreePendingMeasurement) {
+        const next = sceneTreePendingMeasurement;
+        sceneTreePendingMeasurement = null;
+        await applySceneTreeMeasurementParam(next.ref, next.field, next.value);
+      }
+    } finally {
+      sceneTreeMeasurementInFlight = false;
+    }
+  }
+
+  function sceneTreeMeasurementSwatches(menu, targets, field) {
+    const definition = SCENE_TREE_MEASUREMENT_FIELDS[field];
+    if (!targets.some(target => sceneTreeMeasurementParam(target, field))) return;
+    const current = sceneTreeMeasurementValue(targets, field);
+    const row = document.createElement('div');
+    row.className = 'buret-tree-menu-field buret-tree-menu-colour-field';
+    const caption = document.createElement('span');
+    caption.textContent = definition.label;
+    const swatches = document.createElement('div');
+    swatches.className = 'buret-tree-swatches buret-tree-swatches-inline';
+    for (const entry of SCENE_TREE_UNIFORM_COLORS) {
+      const swatch = document.createElement('button');
+      swatch.type = 'button';
+      swatch.className = 'buret-tree-swatch';
+      swatch.dataset.sceneTreeAction = 'measurement-color';
+      swatch.dataset.sceneTreeMeasurementColor = field;
+      swatch.dataset.sceneTreeColor = String(entry.value);
+      swatch.style.background = sceneTreeColorHex(entry.value);
+      swatch.setAttribute('aria-label', `${definition.label} ${entry.label.toLowerCase()}`);
+      swatch.setAttribute('aria-pressed', current === entry.value ? 'true' : 'false');
+      swatch.title = entry.label;
+      swatches.appendChild(swatch);
+    }
+    row.append(caption, swatches);
+    menu.appendChild(row);
+  }
+
+  function sceneTreeMeasurementSlider(menu, targets, field) {
+    const definition = SCENE_TREE_MEASUREMENT_FIELDS[field];
+    if (!targets.some(target => sceneTreeMeasurementParam(target, field))) return;
+    const current = sceneTreeMeasurementValue(targets, field);
+    const fallback = targets.map(target => sceneTreeMeasurementParam(target, field)?.value)
+      .find(Number.isFinite);
+    const value = Number.isFinite(current) ? current : fallback;
+    if (!Number.isFinite(value)) return;
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
+    const caption = document.createElement('span');
+    caption.textContent = definition.label;
+    const control = document.createElement('input');
+    control.type = 'range';
+    control.className = 'buret-tree-menu-range';
+    control.min = String(definition.min);
+    control.max = String(definition.max);
+    control.step = String(definition.step);
+    control.value = String(value);
+    control.dataset.sceneTreeMeasurementParam = field;
+    const readout = document.createElement('span');
+    readout.className = 'buret-tree-menu-slider-value';
+    readout.textContent = current === null ? 'Mixed' : String(value);
+    row.append(caption, control, readout);
+    menu.appendChild(row);
+  }
+
+  function sceneTreeMeasurementText(menu, targets) {
+    const field = 'custom-text';
+    if (!targets.some(target => sceneTreeMeasurementParam(target, field))) return;
+    const current = sceneTreeMeasurementValue(targets, field);
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field';
+    const caption = document.createElement('span');
+    caption.textContent = SCENE_TREE_MEASUREMENT_FIELDS[field].label;
+    const control = document.createElement('input');
+    control.type = 'text';
+    control.className = 'buret-input buret-tree-menu-text';
+    control.value = typeof current === 'string' ? current : '';
+    control.placeholder = current === null ? 'Mixed' : 'Automatic value';
+    control.dataset.sceneTreeMeasurementParam = field;
+    row.append(caption, control);
+    menu.appendChild(row);
+  }
+
+  function sceneTreeMeasurementMenu(menu, targets) {
+    sceneTreeMenuSection(menu, 'Measurement');
+    sceneTreeMeasurementSwatches(menu, targets, 'geometry-color');
+    for (const field of ['line-size', 'dash-length', 'arc-scale', 'sector-opacity']) {
+      sceneTreeMeasurementSlider(menu, targets, field);
+    }
+    sceneTreeMenuSection(menu, 'Label');
+    sceneTreeMeasurementText(menu, targets);
+    sceneTreeMeasurementSwatches(menu, targets, 'text-color');
+    for (const field of ['text-size', 'border-width']) {
+      sceneTreeMeasurementSlider(menu, targets, field);
+    }
   }
 
   function sceneTreeRepresentationTypes(viewer, components) {
@@ -6099,6 +6352,7 @@
     sceneTreeMenuRef = ref;
     const repTarget = sceneTreeRepresentationTargets(viewer).get(ref);
     const components = sceneTreeColorTargets(viewer).get(ref) || [];
+    const measurementTargets = sceneTreeMeasurementTargets(viewer, ref);
     const isComponent = components.length === 1 && components[0]?.cell?.transform?.ref === ref;
 
     const menu = document.createElement('div');
@@ -6132,7 +6386,9 @@
       icon: node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
     }));
 
-    if (repTarget) {
+    if (measurementTargets.length) {
+      sceneTreeMeasurementMenu(menu, measurementTargets);
+    } else if (repTarget) {
       sceneTreeRepresentationMenu(menu, viewer, node, repTarget);
     } else {
       if (isComponent) {
@@ -6194,11 +6450,18 @@
     else if (action === 'focus') focusSceneTreeNode(ref);
     else if (action === 'isolate') isolateSceneTreeNode(ref);
     else if (action === 'show-all') showAllSceneTreeNodes(ref);
+    else if (action === 'save-focus') saveSceneTreeFocusNode(ref);
     else if (action === 'remove') removeSceneTreeNode(ref);
     else if (action === 'tint-color') {
       applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
     } else if (action === 'rep-tint-color') {
       applySceneTreeReprColor(ref, 'tint', Number(control.dataset.sceneTreeColor));
+    } else if (action === 'measurement-color') {
+      applySceneTreeMeasurementParam(
+        ref,
+        control.dataset.sceneTreeMeasurementColor,
+        Number(control.dataset.sceneTreeColor)
+      );
     } else if (action === 'apply-action') {
       applySceneTreeAction(ref, Number(control.dataset.sceneTreeActionIndex));
     }
@@ -6254,7 +6517,7 @@
     runSceneTreeAction(action, ref, control);
     // The swatches let you try colours in place, so a pick keeps the menu open;
     // everything else is a one-shot and dismisses it.
-    const persistent = action === 'tint-color' || action === 'rep-tint-color';
+    const persistent = action === 'tint-color' || action === 'rep-tint-color' || action === 'measurement-color';
     if (control.closest('#buret-scene-tree-menu') && !persistent) closeSceneTreeMenu();
   }
 
@@ -6976,6 +7239,8 @@
     const plugin = viewportPlugin();
     if (!plugin) return;
     if (action === 'camera') {
+      plugin.canvas3d?.requestCameraReset?.({ durationMs: 250 });
+      setStatus('[web] Camera reset.');
       openViewportMenu(control, 'Camera', viewportCameraMenu);
     } else if (action === 'animate') {
       openViewportMenu(control, 'Animate', viewportAnimateMenu);
@@ -6988,12 +7253,23 @@
       plugin.canvas3d?.setProps({ illumination: { enabled } });
       control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
     } else if (action === 'select-mode') {
-      plugin.selectionMode = plugin.selectionMode !== true;
+      const enabled = plugin.selectionMode !== true;
+      plugin.selectionMode = enabled;
+      control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      closeViewportMenu();
+      updateSelectionBar();
+      setStatus(`[web] Selection mode ${enabled ? 'enabled' : 'disabled'}.`);
     } else if (action === 'clear-selection') {
-      plugin.managers?.interactivity?.lociSelects?.deselectAll?.();
-      plugin.managers?.structure?.selection?.clear?.();
-      hideMolstarContextMenu();
-      setStatus('[web] Cleared the selection.');
+      clearMolstarPersistentMoleculePreview();
+      Promise.resolve(clearMolstarSelection())
+        .then(() => {
+          control.classList.add('hidden');
+          hideMolstarContextMenu();
+          closeViewportMenu();
+          updateSelectionBar();
+          setStatus('[web] Cleared the selection.');
+        })
+        .catch(error => setStatus(`[web] Clear selection failed. ${error?.message || error}`, 'error'));
     }
   }
 
@@ -7002,7 +7278,10 @@
     if (!plugin) return;
     if (action === 'query') openViewportMenu(control, 'Select', viewportQueryMenu);
     else if (action === 'apply') openViewportMenu(control, 'Apply', viewportApplyMenu);
-    else if (action === 'exit') plugin.selectionMode = false;
+    else if (action === 'exit') {
+      plugin.selectionMode = false;
+      updateSelectionBar();
+    }
   }
 
   function updateSelectionBar() {
@@ -7011,8 +7290,9 @@
     const plugin = viewportPlugin();
     if (!bar || !rail) return;
     const active = plugin?.selectionMode === true && !rail.classList.contains('hidden');
-    const changed = bar.classList.contains('hidden') === active;
+    const wasHidden = bar.classList.contains('hidden');
     bar.classList.toggle('hidden', !active);
+    const changed = wasHidden !== bar.classList.contains('hidden');
     rail.querySelector('[data-buret-viewport-action="select-mode"]')
       ?.setAttribute('aria-pressed', active ? 'true' : 'false');
     if (!active) closeViewportMenu();
@@ -7025,9 +7305,6 @@
     const level = document.querySelector('[data-buret-selection-level]');
     const granularity = plugin?.managers?.interactivity?.props?.granularity;
     if (level && granularity && level.value !== granularity) level.value = granularity;
-    // The bar takes a row out of the viewport, so the rail below it has to be
-    // re-placed — but only when the bar actually came or went. This runs on every
-    // selection change, and a live atom count is no reason to measure the layout.
     if (changed) updateFloatingLayoutOffsets();
   }
 
@@ -7273,6 +7550,12 @@
         const value = control.dataset.sceneTreeParamType === 'boolean' ? control.checked : control.value;
         applySceneTreeReprParam(ref, control.dataset.sceneTreeParam, value);
       });
+      document.addEventListener('change', event => {
+        const control = event.target.closest('[data-scene-tree-measurement-param]');
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref || control.type === 'range') return;
+        applySceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementParam, control.value);
+      });
       // The point of the theme list: the scene takes each theme as the pointer
       // passes over it, and gets its own back when the pointer leaves without
       // choosing. Bound on the document because the menu is portalled to <body>.
@@ -7316,6 +7599,19 @@
         const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
         if (readout) readout.textContent = slider.value;
         streamSceneTreeReprParam(ref, slider.dataset.sceneTreeParam, value);
+      });
+      document.addEventListener('input', event => {
+        const control = event.target.closest('[data-scene-tree-measurement-param]');
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref) return;
+        if (control.type === 'range') {
+          const value = Number(control.value);
+          const readout = control.parentElement?.querySelector('.buret-tree-menu-slider-value');
+          if (readout) readout.textContent = control.value;
+          streamSceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementParam, value);
+          return;
+        }
+        streamSceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementParam, control.value);
       });
       document.addEventListener('keydown', event => {
         // Cmd/Ctrl+T opens the tree. The viewer runs in a webview, so the browser
@@ -12306,22 +12602,30 @@
     return { ok: true, command: 'show_waters', result: { componentCount: count || 0, representation: 'line' } };
   }
 
-  function clearMolstarSelection() {
+  async function awaitMolstarMaybeTask(plugin, value) {
+    if (!value) return;
+    if (typeof value.then === 'function') return value;
+    if (typeof plugin?.runTask === 'function' && typeof value.run === 'function') return plugin.runTask(value);
+  }
+
+  async function clearMolstarSelection() {
     const viewer = activeMolstarViewer();
     const plugin = viewer?.plugin;
     let cleared = false;
+    const pending = [];
     try {
-      viewer?.structureInteractivity?.({ action: 'select' });
-      viewer?.structureInteractivity?.({ action: 'highlight' });
-      viewer?.structureInteractivity?.({ action: 'focus' });
+      pending.push(awaitMolstarMaybeTask(plugin, viewer?.structureInteractivity?.({ action: 'select' })));
+      pending.push(awaitMolstarMaybeTask(plugin, viewer?.structureInteractivity?.({ action: 'highlight' })));
+      pending.push(awaitMolstarMaybeTask(plugin, viewer?.structureInteractivity?.({ action: 'focus' })));
       cleared = true;
     } catch (error) {
       debug('Mol* structureInteractivity clear failed: ' + (error && error.message || String(error)));
     }
     try {
-      plugin?.managers?.interactivity?.lociSelects?.deselectAll?.();
-      plugin?.managers?.structure?.selection?.clear?.();
-      plugin?.managers?.structure?.focus?.clear?.();
+      pending.push(awaitMolstarMaybeTask(plugin, plugin?.managers?.interactivity?.lociSelects?.deselectAll?.()));
+      pending.push(awaitMolstarMaybeTask(plugin, plugin?.managers?.structure?.selection?.clear?.()));
+      pending.push(awaitMolstarMaybeTask(plugin, plugin?.managers?.structure?.focus?.clear?.()));
+      plugin?.managers?.interactivity?.lociHighlights?.clearHighlights?.();
       cleared = true;
     } catch (error) {
       debug('Mol* manager selection clear failed: ' + (error && error.message || String(error)));
@@ -12332,6 +12636,8 @@
     molstarLassoSelectionAtoms.clear();
     molstarLassoSelectionAtomKeys.clear();
     molstarLassoSelectionResidueKeys.clear();
+    await Promise.allSettled(pending.filter(Boolean));
+    plugin?.canvas3d?.requestDraw?.();
     window.__mqlPost?.('selectionChanged', '', {
       selection: { source: 'viewer', cleared: true, atoms: 0, residues: [], atomIdentities: [] }
     });
@@ -16075,17 +16381,30 @@
     return elements.length ? { kind: 'element-loci', structure, elements } : null;
   }
 
+  function molstarContextPickingLevelLoci(target, pickingLevel) {
+    const level = pickingLevel === 'element' ? 'atom' : pickingLevel;
+    const pickedLoci = target?.atomLoci || target?.loci || molstarContextMenuPick?.loci;
+    if (level === 'atom') return target?.atomLoci || pickedLoci;
+    if (level === 'residue' && target?.atom) {
+      const structure = molstarStructureFromRef(target.structure) || pickedLoci?.structure;
+      return molstarContextResidueAtomLociForStructure(structure, target.atom) || pickedLoci;
+    }
+    if (level === 'chain' && target?.atom) {
+      return molstarContextChainLociFromPick({ ...target, loci: pickedLoci }) || pickedLoci;
+    }
+    return molstarContextNormalizeLoci(pickedLoci, level || 'residue') || pickedLoci;
+  }
+
   function molstarContextSelectionLoci(target) {
     if (target?.selectionBased) return target?.loci || molstarContextMenuPick?.loci;
     const scope = target?.scope;
+    const pickingLevel = target?.pickingLevel || molstarContextMenuMode;
     if ((scope === 'ligand' || scope === 'water' || scope === 'ion') && target?.atom) {
       const structure = molstarStructureFromRef(target.structure) || target?.loci?.structure;
       const residueLoci = molstarContextResidueAtomLociForStructure(structure, target.atom);
-      if (molstarContextMenuMode === 'molecule') return residueLoci || target?.loci || molstarContextMenuPick?.loci;
+      if (pickingLevel === 'molecule') return residueLoci || target?.loci || molstarContextMenuPick?.loci;
     }
-    const granularity = molstarContextMenuMode === 'atom' ? 'element' : molstarContextMenuMode;
-    const pickedLoci = target?.atomLoci || target?.loci || molstarContextMenuPick?.loci;
-    return molstarContextNormalizeLoci(pickedLoci, granularity || 'residue') || pickedLoci;
+    return molstarContextPickingLevelLoci(target, pickingLevel);
   }
 
   function molstarContextLociIndexMatchesAtom(unit, index, atom) {
@@ -17430,7 +17749,11 @@
   };
 
   let molstarMeasureSession = null;
-  function cancelDistanceMeasurement(message) {
+  function showMolstarMeasureToast(message, timeoutMs = 0) {
+    setStatus(message, 'info', { visible: true, timeoutMs });
+  }
+
+  function cancelMolstarMeasurement(message) {
     const session = molstarMeasureSession;
     if (!session) return;
     molstarMeasureSession = null;
@@ -17438,14 +17761,16 @@
     document.removeEventListener('keydown', session.onKeyDown, true);
     const plugin = activeMolstarViewer()?.plugin;
     if (plugin) plugin.selectionMode = session.restoreMode;
-    if (message) setStatus(message);
+    if (message) showMolstarMeasureToast(message, 3200);
   }
 
   function molstarMeasurePrompt(kind, picked) {
     const spec = MOLSTAR_MEASURE_KINDS[kind];
     const remaining = spec.points - picked;
-    if (!picked) return `[web] Pick ${spec.points} atoms to measure the ${spec.noun}. Escape cancels.`;
-    return `[web] Point ${picked} of ${spec.points} set. ${remaining} to go, Escape cancels.`;
+    const title = spec.noun[0].toUpperCase() + spec.noun.slice(1);
+    if (!picked) return `[web] ${title}: click ${spec.points} atoms. Esc cancels.`;
+    const suffix = remaining === 1 ? 'point' : 'points';
+    return `[web] ${title}: ${picked}/${spec.points} points selected. Click ${remaining} more ${suffix}. Esc cancels.`;
   }
 
   function beginMolstarMeasurement(kind = 'distance') {
@@ -17455,40 +17780,55 @@
     const measurement = plugin?.managers?.structure?.measurement;
     const clicks = plugin?.behaviors?.interaction?.click;
     if (typeof measurement?.[spec.method] !== 'function' || typeof clicks?.subscribe !== 'function') return false;
-    cancelDistanceMeasurement();
+    cancelMolstarMeasurement();
     const Loci = window.molstar?.lib?.loci?.Loci;
-    const session = { points: [], restoreMode: plugin.selectionMode === true, subscription: null, onKeyDown: null };
+    const session = {
+      points: [],
+      acceptPicksAt: performance.now() + 180,
+      lastPickAt: -Infinity,
+      restoreMode: plugin.selectionMode === true,
+      subscription: null,
+      onKeyDown: null
+    };
     session.onKeyDown = event => {
-      if (event.key === 'Escape') cancelDistanceMeasurement(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measurement cancelled.`);
+      if (event.key === 'Escape') cancelMolstarMeasurement(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measurement cancelled.`);
     };
     plugin.selectionMode = true;
     document.addEventListener('keydown', session.onKeyDown, true);
     session.subscription = clicks.subscribe(event => {
       const loci = molstarContextElementLoci(event?.current?.loci);
-      if (!loci || molstarLociIsEmpty(loci)) return;
-      // Mol* hands the same pick over twice a few milliseconds apart; the repeat
-      // carries the same loci, so it is dropped rather than taken for a new point.
+      if (!loci || molstarLociIsEmpty(loci)) {
+        showMolstarMeasureToast(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)}: no atom at that point. Click directly on an atom. Esc cancels.`);
+        return;
+      }
+      // One physical click can arrive through two overlapping representations.
+      // Their loci are not necessarily equal, so coalesce the event burst before
+      // comparing atoms; a measurement must advance once per user click.
+      const pickAt = performance.now();
+      if (pickAt < session.acceptPicksAt) return;
+      if (pickAt - session.lastPickAt < 120) return;
+      session.lastPickAt = pickAt;
       const previous = session.points[session.points.length - 1];
       if (previous && Loci?.areEqual?.(previous, loci)) return;
       session.points.push(loci);
       if (session.points.length < spec.points) {
-        setStatus(molstarMeasurePrompt(kind, session.points.length));
+        showMolstarMeasureToast(molstarMeasurePrompt(kind, session.points.length));
         return;
       }
       const points = session.points;
-      cancelDistanceMeasurement();
+      cancelMolstarMeasurement();
       // The measurement appears once the last point is picked, not when the menu
       // item was chosen, so its undo entry is taken here.
       const undoSnapshot = captureMolstarSceneUndoSnapshot(`${spec.noun} measurement`);
       Promise.resolve(measurement[spec.method](...points))
         .then(() => {
           pushMolstarEditUndoSnapshot(undoSnapshot);
-          setStatus(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measured.`);
+          showMolstarMeasureToast(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measured.`, 3200);
         })
         .catch(error => setStatus(`[web] Measure ${spec.noun} failed.\n\n` + (error?.message || String(error)), 'error'));
     });
     molstarMeasureSession = session;
-    setStatus(molstarMeasurePrompt(kind, 0));
+    showMolstarMeasureToast(molstarMeasurePrompt(kind, 0));
     return true;
   }
 
@@ -17790,6 +18130,23 @@
     return true;
   }
 
+  function molstarComponentIntersectsLoci(component, loci) {
+    const componentStructure = component?.cell?.obj?.data;
+    if (!Array.isArray(componentStructure?.units) || !Array.isArray(loci?.elements)) return false;
+    for (const element of loci.elements) {
+      const sourceUnit = element?.unit;
+      if (!sourceUnit?.elements) continue;
+      for (const componentUnit of componentStructure.units) {
+        if (componentUnit.invariantId !== sourceUnit.invariantId && componentUnit.id !== sourceUnit.id) continue;
+        if (molstarContextOrderedSetSome(element.indices, index => {
+          const modelElement = sourceUnit.elements[index] ?? index;
+          return molstarSortedIndexOf(componentUnit.elements, modelElement) >= 0;
+        })) return true;
+      }
+    }
+    return false;
+  }
+
   async function modifyMolstarContextVisibility(target, operation) {
     const loci = molstarContextSelectionLoci(target);
     if (!loci || molstarLociIsEmpty(loci)) return false;
@@ -17807,7 +18164,19 @@
     selection.clear?.();
     try {
       selection.fromLoci('set', loci, false);
-      await componentManager.modifyByCurrentSelection(components, operation);
+      if (operation === 'intersect') {
+        const selectedComponents = components.filter(component => molstarComponentIntersectsLoci(component, loci));
+        if (!selectedComponents.length) return false;
+        await componentManager.modifyByCurrentSelection(selectedComponents, operation);
+        const state = plugin.state?.data;
+        for (const component of components) {
+          if (selectedComponents.includes(component)) continue;
+          const ref = component?.cell?.transform?.ref;
+          if (ref) state?.updateCellState?.(ref, { isHidden: true });
+        }
+      } else {
+        await componentManager.modifyByCurrentSelection(components, operation);
+      }
     } finally {
       selection.clear?.();
     }
@@ -17919,13 +18288,14 @@
     return atom ? `${residue} atom ${atom}` : `${residue} atom`;
   }
 
-  // Keep the first level short enough to scan without scrolling. The common target
-  // actions stay one click away; the longer Maestro/PyMOL toolsets live in Base
-  // UI-style submenus, grouped the way a desktop chemistry menu is read.
+  // Visibility and representation are short, frequent blocks and stay directly on
+  // the first level. The Tools heading starts at Analyze, where the longer
+  // Maestro/PyMOL toolsets continue as Base UI-style submenus.
   const MOLECULE_MENU_GROUPS = [
     { id: 'primary', title: 'Target', direct: true },
-    { id: 'appearance', title: 'Appearance', groups: ['view', 'represent', 'colour'], rootLabel: 'Tools', breakBefore: true },
-    { id: 'analyze', title: 'Analyze' },
+    { id: 'view', title: 'Visibility', direct: true, breakBefore: true },
+    { id: 'represent', title: 'Representation', direct: true, breakBefore: true },
+    { id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true },
     { id: 'align', title: 'Superposition' },
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
@@ -18048,9 +18418,6 @@
         actions.push(['analyze:distance', 'Measure distance']);
         actions.push(['analyze:angle', 'Measure angle']);
         actions.push(['analyze:dihedral', 'Measure dihedral']);
-      }
-      for (const [theme, themeLabel] of molstarColourPresetsForTarget(target)) {
-        actions.push([`colour:${theme}`, themeLabel]);
       }
     }
     if (molstarModifiedPdbExportAvailable()) {
@@ -18219,9 +18586,11 @@
         }
         setStatus(`[web] Hid ${targetLabel}.`);
       } else if (action === 'view:isolate') {
+        const isolateLoci = molstarContextSelectionLoci(target);
         if (!await modifyMolstarContextVisibility(target, 'intersect')) {
           throw new Error('No Mol* residue or chain is available to isolate.');
         }
+        focusMolstarContextPick({ ...target, loci: isolateLoci });
         setStatus(`[web] Isolated ${targetLabel}.`);
       } else if (action === 'represent:surface') {
         if (!await addGreySurfaceForContext(target)) throw new Error('No Mol* selection or target is available for a surface.');
@@ -19340,7 +19709,10 @@
     text.textContent = label;
     button.append(moleculeMenuIcon(moleculeContextActionIcon(action)), text);
     button.addEventListener('click', () => {
-      void moleculeContextMenuAction(action, label, options.target || null);
+      const target = options.target
+        ? { ...options.target, pickingLevel: options.pickingLevel || options.target.pickingLevel }
+        : null;
+      void moleculeContextMenuAction(action, label, target);
     });
     return button;
   }
@@ -19431,7 +19803,8 @@
       for (const [action, actionLabel] of entries) {
         group.appendChild(moleculeMenuActionButton(action, actionLabel, {
           destructive: section.destructive,
-          target
+          target,
+          pickingLevel: target?.pickingLevel
         }));
       }
       submenu.appendChild(group);
@@ -19619,7 +19992,8 @@
       menu.querySelectorAll('.buret-molecule-context-submenu:not([data-buret-picking-level-menu])')
         .forEach(submenu => submenu.remove());
       const grouped = new Map();
-      molstarContextMenuActions(menuTarget, mode).forEach(entry => {
+      const actionTarget = { ...menuTarget, pickingLevel: mode };
+      molstarContextMenuActions(actionTarget, mode).forEach(entry => {
         const group = moleculeContextActionGroup(entry[0]);
         if (!grouped.has(group)) grouped.set(group, []);
         grouped.get(group).push(entry);
@@ -19649,33 +20023,27 @@
           for (const [action, label] of entries) {
             const item = moleculeMenuActionButton(action, label, {
               destructive: section.destructive,
-              target: menuTarget
+              target: actionTarget,
+              pickingLevel: mode
             });
             item.addEventListener('pointerenter', () => moleculeMenuCloseSubmenus(menu));
             item.addEventListener('focus', () => moleculeMenuCloseSubmenus(menu));
             actionContainer.appendChild(item);
           }
         } else {
-          actionContainer.appendChild(moleculeMenuSubmenu(section, grouped, menu, menuTarget));
+          actionContainer.appendChild(moleculeMenuSubmenu(section, grouped, menu, actionTarget));
         }
       }
     };
-    const applyModeSelection = levelLabel => {
+    const applyPickingLevel = levelLabel => {
       setMolstarSelectionLevel(mode);
-      const pickedLoci = menuTarget.atomLoci || menuTarget.loci || molstarContextMenuPick?.loci;
-      const scopedLoci = molstarContextNormalizeLoci(pickedLoci, mode) || pickedLoci;
-      if (scopedLoci) {
-        menuTarget.selectionBased = false;
-        menuTarget.loci = scopedLoci;
-        selectMolstarContextPick({ ...menuTarget, loci: scopedLoci }, { applyGranularity: false });
-      }
       subtitle.textContent = mode === 'chain' ? molstarContextChainLabel(menuTarget.atom) : menuTarget.label;
-      setStatus(`[web] Selected at ${String(levelLabel || mode).toLowerCase()} level.`);
+      setStatus(`[web] Picking level set to ${String(levelLabel || mode).toLowerCase()}.`);
     };
     const pickingLevel = moleculePickingLevelSubmenu(menu, mode, (level, levelLabel) => {
       mode = level;
       molstarContextMenuMode = mode;
-      applyModeSelection(levelLabel);
+      applyPickingLevel(levelLabel);
       renderActions();
       const point = molstarContextMenuLastPoint || {
         x: Number.parseFloat(menu.style.left) || 8,
@@ -19684,7 +20052,6 @@
       positionMolstarContextMenu(menu, point.x, point.y);
     });
     menu.appendChild(pickingLevel);
-    applyModeSelection(VIEWPORT_GRANULARITIES.find(([value]) => value === mode)?.[1]);
     renderActions();
     menu.appendChild(actionContainer);
     menu._buretPreviousFocus = document.activeElement;
@@ -19749,8 +20116,19 @@
       }
       event.preventDefault();
       event.stopPropagation();
+      clearMolstarHoverHighlights();
       showMolstarContextMenu(event, contextPick);
       return true;
+    };
+    const suppressSecondaryMouseEvent = (event) => {
+      if (event.button !== 2) return;
+      if (event.type === 'mousedown') return;
+      if (contextPointer?.moved) return;
+      if (!contextPointer && !isMolstarContextMenuTarget(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      clearMolstarHoverHighlights();
     };
     const onContextMenu = (event) => {
       if (menuIsOpen() && !contextPointer) {
@@ -19761,7 +20139,11 @@
       if (contextPointer) {
         event.preventDefault();
         event.stopPropagation();
-        if (!contextPointer.moved) return;
+        if (!contextPointer.moved) {
+          openFromEvent(event, contextPointer.pick);
+          contextPointer = null;
+          return;
+        }
         hideMolstarContextMenu();
         contextPointer = null;
         return;
@@ -19789,8 +20171,6 @@
           hideMolstarContextMenu();
           return;
         }
-        event.preventDefault();
-        event.stopPropagation();
         contextPointer = {
           pointerId: event.pointerId,
           startX: event.clientX,
@@ -19967,6 +20347,10 @@
     document.addEventListener('pointermove', onPointerMove, true);
     document.addEventListener('pointerup', onPointerUp, true);
     document.addEventListener('pointercancel', onPointerCancel, true);
+    document.addEventListener('mousedown', suppressSecondaryMouseEvent, true);
+    document.addEventListener('mouseup', suppressSecondaryMouseEvent, true);
+    document.addEventListener('click', suppressSecondaryMouseEvent, true);
+    document.addEventListener('auxclick', suppressSecondaryMouseEvent, true);
     document.addEventListener('pointermove', suppressAtomModeHover, true);
     document.addEventListener('pointermove', updateMoleculePreviewFromEvent, true);
     document.addEventListener('pointerleave', hideMoleculePreviewFromEvent, true);
@@ -19980,6 +20364,10 @@
       document.removeEventListener('pointermove', onPointerMove, true);
       document.removeEventListener('pointerup', onPointerUp, true);
       document.removeEventListener('pointercancel', onPointerCancel, true);
+      document.removeEventListener('mousedown', suppressSecondaryMouseEvent, true);
+      document.removeEventListener('mouseup', suppressSecondaryMouseEvent, true);
+      document.removeEventListener('click', suppressSecondaryMouseEvent, true);
+      document.removeEventListener('auxclick', suppressSecondaryMouseEvent, true);
       document.removeEventListener('pointermove', suppressAtomModeHover, true);
       document.removeEventListener('pointermove', updateMoleculePreviewFromEvent, true);
       document.removeEventListener('pointerleave', hideMoleculePreviewFromEvent, true);

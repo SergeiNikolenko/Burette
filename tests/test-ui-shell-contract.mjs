@@ -5082,6 +5082,7 @@ assert.match(viewerShell, /buret-rail-button" type="button" data-buret-viewport-
 assert.match(viewerShell, /data-buret-viewport-action="clear-selection" aria-label="Clear selection"/);
 assert.match(viewerShell, /buret-rail-button buret-clear-selection hidden/);
 assert.match(previewViewer, /openViewportMenu\(control, 'Animate', viewportAnimateMenu\)/);
+assert.match(previewViewer, /action === 'camera'[\s\S]*requestCameraReset\?\.\(\{ durationMs: 250 \}\)[\s\S]*openViewportMenu\(control, 'Camera', viewportCameraMenu\)/);
 assert.match(previewViewer, /action === 'select-mode'[\s\S]*const enabled = plugin\.selectionMode !== true;[\s\S]*plugin\.selectionMode = enabled[\s\S]*updateSelectionBar\(\)/);
 assert.doesNotMatch(previewViewer, /function viewportPickingLevelMenu\(menu\)/);
 assert.doesNotMatch(previewViewer, /action === 'picking-level'/);
@@ -5576,13 +5577,14 @@ assert.match(previewViewer, /if \(!viewer \|\| \(!picked && !isMolstarContextMen
 assert.match(previewViewer, /const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;/);
 assert.match(previewViewer, /let contextPointer = null;/);
 assert.match(previewViewer, /if \(event\.button === 2\) \{[\s\S]*?contextPointer = \{/);
-assert.match(previewViewer, /const contextPick = molstarContextPickFromEvent\(event\);[\s\S]*?event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{[\s\S]*?pick: contextPick/);
-assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{/);
+assert.match(previewViewer, /const suppressSecondaryMouseEvent = \(event\) => \{[\s\S]*?if \(event\.type === 'mousedown'\) return;[\s\S]*?if \(contextPointer\?\.moved\) return;/);
+assert.doesNotMatch(previewViewer, /const contextPick = molstarContextPickFromEvent\(event\);[\s\S]*?event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{/);
+assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{[\s\S]*?event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{/);
 assert.doesNotMatch(previewViewer, /actionContainer\.querySelector\('button'\)\?\.focus\(\)/);
 assert.doesNotMatch(previewViewer, /menu\.querySelector\('button'\)\?\.focus\(\)/);
 assert.match(previewViewer, /const onPointerUp = \(event\) => \{[\s\S]*?if \(contextPointer\.moved\) \{[\s\S]*?hideMolstarContextMenu\(\);[\s\S]*?contextPointer = null;[\s\S]*?return;[\s\S]*?\}[\s\S]*?openFromEvent\(event, contextPointer\.pick\);[\s\S]*?contextPointer = null;/);
 assert.match(previewViewer, /document\.addEventListener\('pointerup', onPointerUp, true\)/);
-assert.match(previewViewer, /if \(contextPointer\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*if \(!contextPointer\.moved\) return;\s*hideMolstarContextMenu\(\);\s*contextPointer = null;\s*return;/);
+assert.match(previewViewer, /if \(contextPointer\) \{[\s\S]*?if \(!contextPointer\.moved\) \{[\s\S]*?openFromEvent\(event, contextPointer\.pick\);[\s\S]*?contextPointer = null;[\s\S]*?return;[\s\S]*?\}[\s\S]*?hideMolstarContextMenu\(\);[\s\S]*?contextPointer = null;[\s\S]*?return;/);
 assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{\s*openFromEvent\(event\);\s*return;/);
 assert.match(previewViewer, /function isMolstarContextMenuTarget\(target\)/);
 assert.match(previewViewer, /function molstarContextPickFromEvent\(event, options = \{\}\)/);
