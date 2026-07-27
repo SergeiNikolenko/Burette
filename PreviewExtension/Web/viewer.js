@@ -103,6 +103,8 @@
   const DOCKING_COORDINATE_TRAJECTORY_FORMATS = new Set(['xtc', 'trr', 'dcd', 'nctraj', 'nc', 'ncdf', 'netcdf', 'ncrst', 'lammpstrj']);
   const DOCKING_MODEL_TRAJECTORY_FORMATS = new Set(['pdb', 'pdbqt', 'mmcif', 'gro']);
   const DOCKING_TOPOLOGY_TRAJECTORY_FORMATS = new Set(['top', 'psf', 'prmtop', 'tpr']);
+  const DEFERRED_WATER_ATOM_THRESHOLD = 50000;
+  const GRO_WATER_RESIDUE_NAMES = new Set(['HOH', 'WAT', 'H2O', 'DOD', 'SOL', 'TIP3', 'TIP3P', 'SPC', 'SPCE', 'TIP4P']);
   const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   const MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS = 'buret-molstar-viewport-panel-open';
   let xyzrenderControlsApplyTimer = 0;
@@ -403,7 +405,8 @@
       }
       setStatusText(text);
       status.classList.toggle('error', kind === 'error');
-      const visible = kind === 'error' || window.BuretteDebug || options.visible === true;
+      const visible = (kind === 'error' && activeConfig?.appViewer !== true) ||
+        window.BuretteDebug || options.visible === true;
       status.classList.toggle('hidden', !visible);
       if (visible && kind !== 'error' && Number(options.timeoutMs) > 0) {
         statusHideTimer = window.setTimeout(() => {
@@ -1148,6 +1151,7 @@
   let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
+  let molstarWaterRepresentationEpoch = 0;
   let latestXyzrenderOrientationRef = null;
   let orientationTrackingCleanup = null;
   let externalArtifactInteractionsCleanup = null;
@@ -2437,13 +2441,12 @@
     const sceneMode = dockingSceneMode(config);
     if (sceneMode) {
       const storageKey = poseModeStorageKey(config);
-      const defaultMode = sceneMode === 'structureAll' ? 'all' : 'single';
       try {
         const stored = window.localStorage?.getItem(storageKey);
         if (stored === 'all' || stored === 'single') return stored;
-        return defaultMode;
+        return 'single';
       } catch (_) {
-        return defaultMode;
+        return 'single';
       }
     }
     const format = normalizeFormat(config?.molstarFormat || config?.format);
@@ -8520,6 +8523,14 @@
     return `Structure ${index + 1}`;
   }
 
+  function structureSceneStoryAvailable(prepared) {
+    if (!prepared?.dockingSceneMode || !Array.isArray(prepared.poses)) return false;
+    const recognizedStages = prepared.poses
+      .map((entry, index) => structureSceneStoryStage(entry?.label, index))
+      .filter((stage, index) => stage !== `Structure ${index + 1}`);
+    return new Set(recognizedStages).size >= 2;
+  }
+
   function structureSceneStoryComparison(prepared, index) {
     if (index <= 0) return null;
     const current = prepared?.poses?.[index];
@@ -12550,6 +12561,68 @@
     return waterComponents.length;
   }
 
+  function countGroWaterAtoms(data, stopAfter = Number.POSITIVE_INFINITY) {
+    const text = typeof data === 'string' ? data : '';
+    if (!text) return 0;
+    let lineIndex = 0;
+    let lineStart = 0;
+    let waterAtomCount = 0;
+    while (lineStart < text.length) {
+      const newlineIndex = text.indexOf('\n', lineStart);
+      const lineEnd = newlineIndex >= 0 ? newlineIndex : text.length;
+      if (lineIndex >= 2 && lineEnd - lineStart >= 10) {
+        const residueName = text.slice(lineStart + 5, lineStart + 10).trim().toUpperCase();
+        if (GRO_WATER_RESIDUE_NAMES.has(residueName)) {
+          waterAtomCount += 1;
+          if (waterAtomCount >= stopAfter) return waterAtomCount;
+        }
+      }
+      if (newlineIndex < 0) break;
+      lineStart = newlineIndex + 1;
+      lineIndex += 1;
+    }
+    return waterAtomCount;
+  }
+
+  function shouldDeferDockingTrajectoryWater(pair) {
+    if (normalizeFormat(pair?.modelEntry?.format) !== 'gro') return false;
+    return countGroWaterAtoms(pair.modelEntry.data, DEFERRED_WATER_ATOM_THRESHOLD) >= DEFERRED_WATER_ATOM_THRESHOLD;
+  }
+
+  function molstarStyleSupportsDeferredWater(style) {
+    return ['default', 'illustrative', 'illustrative-surface', 'cartoon', 'polymer-ligand'].includes(normalizeMolstarStyle(style));
+  }
+
+  function cancelScheduledMolstarWaterRepresentation() {
+    molstarWaterRepresentationEpoch += 1;
+  }
+
+  function scheduleMolstarWaterLineRepresentation(viewer) {
+    const epoch = ++molstarWaterRepresentationEpoch;
+    const apply = async () => {
+      if (epoch !== molstarWaterRepresentationEpoch || viewer !== activeMolstarViewer()) return;
+      await waitForAnimationFrame();
+      if (epoch !== molstarWaterRepresentationEpoch || viewer !== activeMolstarViewer()) return;
+      try {
+        await applyMolstarWaterLineRepresentation(viewer);
+        if (epoch !== molstarWaterRepresentationEpoch || viewer !== activeMolstarViewer()) return;
+        applyLayoutState(viewer);
+        scheduleLayoutStateReapply(viewer);
+        try { viewer.handleResize(); } catch (_) {}
+      } catch (error) {
+        debug('Deferred Mol* water representation failed: ' + (error && error.message || String(error)));
+      }
+    };
+    window.setTimeout(() => {
+      if (epoch !== molstarWaterRepresentationEpoch || viewer !== activeMolstarViewer()) return;
+      if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(() => { void apply(); }, { timeout: 1500 });
+      } else {
+        void apply();
+      }
+    }, 750);
+  }
+
   function activeMolstarViewer() {
     return activeViewer || window.BuretteViewer || window.BuretteViewer || null;
   }
@@ -12584,6 +12657,7 @@
   }
 
   async function hideMolstarWaters() {
+    cancelScheduledMolstarWaterRepresentation();
     const viewer = activeMolstarViewer();
     const plugin = viewer?.plugin;
     if (!plugin?.managers?.structure?.component?.removeRepresentations) {
@@ -12598,6 +12672,7 @@
   }
 
   async function showMolstarWaters() {
+    cancelScheduledMolstarWaterRepresentation();
     const count = await applyMolstarWaterLineRepresentation(activeMolstarViewer());
     return { ok: true, command: 'show_waters', result: { componentCount: count || 0, representation: 'line' } };
   }
@@ -12909,6 +12984,7 @@
   };
 
   async function loadPreparedStructure(viewer, prepared) {
+    cancelScheduledMolstarWaterRepresentation();
     activeMolstarPrepared = prepared;
     updateSdfPoseButton(prepared);
     notifyStructureOverlayModeChanged(prepared);
@@ -13012,9 +13088,41 @@
     return !!pair && (entry === pair.modelEntry || pair.coordinateEntries?.includes(entry));
   }
 
-  async function loadDockingTrajectoryPair(viewer, pair) {
+  async function loadDockingTrajectoryPair(viewer, pair, options = {}) {
     if (typeof viewer.loadTrajectory !== 'function') {
       throw new Error('Mol* trajectory pairing is unavailable in this viewer runtime.');
+    }
+    const representationPreset = options.representationPreset;
+    const trajectoryTransform = window.molstar?.lib?.plugin?.StateTransforms?.Model?.TrajectoryFromModelAndCoordinates;
+    if (representationPreset && trajectoryTransform) {
+      const plugin = viewer.plugin;
+      let model;
+      const modelData = await plugin.builders.data.rawData({
+        data: pair.modelEntry.data,
+        label: pair.modelEntry.label
+      });
+      if (pair.modelKind === 'model-data') {
+        const modelTrajectory = await plugin.builders.structure.parseTrajectory(modelData, normalizeFormat(pair.modelEntry.format));
+        model = await plugin.builders.structure.createModel(modelTrajectory);
+      } else {
+        const modelProvider = plugin.dataFormats.get(normalizeFormat(pair.modelEntry.format));
+        const parsedModel = await modelProvider.parse(plugin, modelData);
+        model = parsedModel.topology;
+      }
+      const coordinateData = await plugin.builders.data.rawData({
+        data: pair.coordinateEntry.data,
+        label: pair.coordinateEntry.label
+      });
+      const coordinateProvider = plugin.dataFormats.get(normalizeFormat(pair.coordinateEntry.format));
+      const parsedCoordinates = await coordinateProvider.parse(plugin, coordinateData);
+      const trajectory = await plugin.build().toRoot()
+        .apply(trajectoryTransform, {
+          modelRef: model.ref,
+          coordinatesRef: parsedCoordinates.ref
+        }, { dependsOn: [model.ref, parsedCoordinates.ref] })
+        .commit();
+      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset });
+      return true;
     }
     await viewer.loadTrajectory({
       model: {
@@ -13031,6 +13139,7 @@
       coordinatesLabel: pair.coordinateEntry.label,
       preset: 'default'
     });
+    return false;
   }
 
   async function applyDockingTrajectoryPairFrameCount(prepared) {
@@ -13173,17 +13282,33 @@
       resetDockingSceneVisibilityState(viewer);
       await plugin.clear();
     }
+    const style = configuredMolstarStyle(activeConfig);
+    const deferWaterRepresentation = shouldDeferDockingTrajectoryWater(prepared.trajectoryPair)
+      && molstarStyleSupportsDeferredWater(style);
+    let waterExcludedFromInitialPreset = false;
     if (prepared.trajectoryPair) {
-      await loadDockingTrajectoryPair(viewer, prepared.trajectoryPair);
+      waterExcludedFromInitialPreset = await loadDockingTrajectoryPair(
+        viewer,
+        prepared.trajectoryPair,
+        deferWaterRepresentation ? { representationPreset: 'empty' } : undefined
+      );
       await applyDockingTrajectoryPairFrameCount(prepared);
     }
     for (const entry of prepared.entries) {
       if (isDockingTrajectoryPairEntry(entry, prepared.trajectoryPair)) continue;
       await loadMolstarEntry(viewer, entry);
     }
-    await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
-    await applyMolstarWaterLineRepresentation(viewer);
+    if (waterExcludedFromInitialPreset) {
+      await applyMolstarPolymerLigandRepresentation(
+        viewer,
+        { type: 'cartoon', color: 'chain-id' },
+        { type: 'ball-and-stick', typeParams: { sizeFactor: 0.16 }, color: 'element-symbol' }
+      );
+    }
+    await applyMolstarStyle(viewer, style);
     installDockingPoseControls(viewer, prepared);
+    prepared.deferredWaterRepresentation = waterExcludedFromInitialPreset;
+    if (!waterExcludedFromInitialPreset) await applyMolstarWaterLineRepresentation(viewer);
   }
 
   let dockingPoseKeydownDisposer = null;
@@ -14178,8 +14303,9 @@
       ? xyzCandidateFrames
       : null;
     const align = prepared.dockingSceneMode || xyzAlignFrames ? document.createElement('button') : null;
-    const story = prepared.dockingSceneMode ? document.createElement('button') : null;
-    const storyPanel = prepared.dockingSceneMode ? document.createElement('aside') : null;
+    const storyAvailable = structureSceneStoryAvailable(prepared);
+    const story = storyAvailable ? document.createElement('button') : null;
+    const storyPanel = storyAvailable ? document.createElement('aside') : null;
     const storyStep = storyPanel ? document.createElement('div') : null;
     const storyTitle = storyPanel ? document.createElement('div') : null;
     const storySummary = storyPanel ? document.createElement('div') : null;
@@ -20563,6 +20689,7 @@
   }
 
   function disposeActiveMolstarViewer() {
+    cancelScheduledMolstarWaterRepresentation();
     notifyMolstarSelectionChanged(null);
     molstarSelectionHostSignature = '';
     setMolstarStructureDirty(false);
@@ -20698,6 +20825,9 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     {
       const poseCount = Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || prepared?.xyzFrameCount || config?.trajectoryFrameCount || 0);
       setStatus(`[web] Rendered ${config.label || 'structure'}`);
+      if (prepared?.deferredWaterRepresentation === true) {
+        scheduleMolstarWaterLineRepresentation(viewer);
+      }
       setTimeout(() => hideStatus(molstarReadyPayload(config, prepared, {
         molstarStructureCount: currentMolstarStructureCount(viewer),
         poseCount,
