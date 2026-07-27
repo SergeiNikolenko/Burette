@@ -565,6 +565,7 @@ body.burette-mobile-host #buret-scene-tree {
   cursor: grabbing;
 }
 .buret-viewport-rail.hidden,
+.buret-rail-button.hidden,
 .buret-selection-bar.hidden {
   display: none;
 }
@@ -579,13 +580,13 @@ body.buret-toolbar-collapsed #buret-selection-bar {
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 8px;
   padding: 0;
   color: var(--buret-toolbar-color);
   background: transparent;
   cursor: pointer;
-  transition: background 140ms ease, color 140ms ease;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 .buret-rail-button > svg {
   width: 16px;
@@ -609,6 +610,16 @@ body.buret-toolbar-collapsed #buret-selection-bar {
 .buret-rail-button[data-motion="rock"],
 .buret-rail-button[data-motion="playing"] {
   color: var(--buret-molstar-accent);
+}
+.buret-rail-button.buret-clear-selection {
+  color: #ff6b5e;
+  border-color: rgba(255, 107, 94, 0.72);
+  background: rgba(255, 107, 94, 0.08);
+}
+.buret-rail-button.buret-clear-selection:hover {
+  color: #fff;
+  border-color: #ff6b5e;
+  background: rgba(255, 107, 94, 0.88);
 }
 .buret-selection-bar {
   position: fixed;
@@ -3784,6 +3795,21 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   flex: 1 1 auto;
   min-width: 0;
 }
+.buret-tree-menu-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+.buret-tree-menu-colour-field {
+  align-items: flex-start;
+}
+.buret-tree-swatches-inline {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
+}
 .buret-tree-picker-trigger {
   display: flex;
   align-items: center;
@@ -4123,11 +4149,11 @@ body .msp-plugin .msp-sequence .msp-sequence-select {
    read as one thing. Scoped away from the mobile host, which keeps its own
    touch-sized treatment defined earlier in this file. */
 body:not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender-context-menu) {
-  min-width: 224px;
-  max-width: 300px;
-  max-height: min(70vh, 460px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  --buret-menu-destructive: #ff6b5e;
+  --buret-menu-destructive-focus: color-mix(in srgb, var(--buret-menu-destructive) 12%, transparent);
+  min-width: 232px;
+  max-width: 292px;
+  overflow: visible;
   user-select: none;
   padding: 4px;
   border: 1px solid var(--buret-molstar-border);
@@ -4157,29 +4183,92 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-ite
 body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item:focus {
   background: var(--buret-molstar-hover-background);
 }
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive,
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive > .buret-tree-menu-icon {
+  color: var(--buret-menu-destructive);
+}
 body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:hover,
-body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:hover > .buret-tree-menu-icon {
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:focus,
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:hover > .buret-tree-menu-icon,
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:focus > .buret-tree-menu-icon {
+  color: var(--buret-menu-destructive);
+  background: var(--buret-menu-destructive-focus);
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-chevron {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  place-items: center;
+  color: var(--buret-molstar-muted-text);
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-chevron svg {
+  width: 12px;
+  height: 12px;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 224px;
+  max-width: min(310px, calc(100vw - 16px));
+  max-height: min(70vh, 460px);
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: var(--buret-molstar-panel-radius);
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-panel-background);
+  box-shadow: 0 18px 44px var(--buret-molstar-shadow);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  transform-origin: left top;
+  animation: buret-molecule-submenu-in 100ms ease-out;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu[hidden] {
+  display: none;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-title {
+  padding: 5px 8px 3px;
+  color: var(--buret-molstar-muted-text);
+  font-size: 10px;
+  font-weight: 590;
+  letter-spacing: 0.01em;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-item {
+  min-height: 27px;
+  padding: 0 8px;
+  gap: 8px;
+  border-radius: 6px;
+  font: inherit;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-item:hover,
+body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-item:focus {
+  outline: none;
+  background: var(--buret-molstar-hover-background);
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-item-destructive {
   color: #ff6b5e;
 }
-/* Segmented Molecule / Atom switch, in the shape the app uses elsewhere. */
-body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-mode {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 2px;
-  margin: 0 6px 4px;
-  border-radius: 7px;
-  padding: 2px;
-  background: var(--buret-molstar-row-background);
+@keyframes buret-molecule-submenu-in {
+  from { opacity: 0; transform: translateX(-2px) scale(0.98); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
 }
-body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-mode-button {
-  min-height: 22px;
-  border-radius: 5px;
+/* Picking uses the same radio-submenu pattern as the shadcn/Base UI menu. */
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level-trigger {
+  width: calc(100% - 8px);
+  margin: 0 4px 4px;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level-value {
+  margin-left: auto;
   color: var(--buret-molstar-muted-text);
-  font-size: 11px;
+  font-size: 10px;
 }
-body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
-  color: var(--buret-molstar-text);
-  background: var(--buret-molstar-hover-background);
-  font-weight: 590;
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level-radio .buret-picking-level-check {
+  opacity: 0;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level-radio[data-checked="true"] .buret-picking-level-check {
+  opacity: 1;
+  color: var(--buret-accent, #5da9ff);
 }
