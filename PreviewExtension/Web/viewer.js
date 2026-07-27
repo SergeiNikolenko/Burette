@@ -18114,8 +18114,8 @@
     return null;
   }
 
-  async function moleculeContextMenuAction(action, label) {
-    const target = molstarContextTarget();
+  async function moleculeContextMenuAction(action, label, targetOverride = null) {
+    const target = targetOverride || molstarContextTarget();
     const targetLabel = target.label;
     let previewAfterAction = null;
     const sceneUndoLabel = molstarSceneUndoActionLabel(action, target);
@@ -19333,7 +19333,9 @@
     text.className = 'buret-tree-menu-label';
     text.textContent = label;
     button.append(moleculeMenuIcon(moleculeContextActionIcon(action)), text);
-    button.addEventListener('click', () => { void moleculeContextMenuAction(action, label); });
+    button.addEventListener('click', () => {
+      void moleculeContextMenuAction(action, label, options.target || null);
+    });
     return button;
   }
 
@@ -19378,7 +19380,7 @@
     }
   }
 
-  function moleculeMenuSubmenu(section, grouped, menu) {
+  function moleculeMenuSubmenu(section, grouped, menu, target) {
     const trigger = document.createElement('button');
     trigger.type = 'button';
     trigger.setAttribute('role', 'menuitem');
@@ -19421,7 +19423,10 @@
         group.appendChild(heading);
       }
       for (const [action, actionLabel] of entries) {
-        group.appendChild(moleculeMenuActionButton(action, actionLabel, { destructive: section.destructive }));
+        group.appendChild(moleculeMenuActionButton(action, actionLabel, {
+          destructive: section.destructive,
+          target
+        }));
       }
       submenu.appendChild(group);
     });
@@ -19636,13 +19641,16 @@
             actionContainer.appendChild(heading);
           }
           for (const [action, label] of entries) {
-            const item = moleculeMenuActionButton(action, label, { destructive: section.destructive });
+            const item = moleculeMenuActionButton(action, label, {
+              destructive: section.destructive,
+              target: menuTarget
+            });
             item.addEventListener('pointerenter', () => moleculeMenuCloseSubmenus(menu));
             item.addEventListener('focus', () => moleculeMenuCloseSubmenus(menu));
             actionContainer.appendChild(item);
           }
         } else {
-          actionContainer.appendChild(moleculeMenuSubmenu(section, grouped, menu));
+          actionContainer.appendChild(moleculeMenuSubmenu(section, grouped, menu, menuTarget));
         }
       }
     };
