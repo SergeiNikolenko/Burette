@@ -74,6 +74,7 @@ assert.match(fn("moleculeContextMenuAction"), /modifyMolstarContextVisibility\(t
 assert.match(fn("moleculeContextMenuAction"), /modifyMolstarContextVisibility\(target, 'intersect'\)/);
 assert.match(fn("addMolstarContextScopeComponent"), /const loci = molstarContextSelectionLoci\(target\)/);
 assert.match(fn("addMolstarContextScopeComponent"), /manager\.add\(\{[\s\S]*selection: selectionQuery[\s\S]*representation/);
+assert.match(fn("molstarContextTargetComponents"), /molstarCurrentStructures\(activeMolstarViewer\(\)\)[\s\S]*find\(structure => structure\?\.cell\?\.transform\?\.ref === targetRef\)/);
 assert.match(fn("applyMolstarColourPreset"), /addMolstarContextScopeComponent\([\s\S]*updateRepresentationsTheme\(\[component\]/);
 assert.match(fn("moleculeContextMenuAction"), /focusMolstarContextPick\(\{ \.\.\.target, loci \}\)/);
 assert.match(fn("moleculeContextMenuAction"), /molstarSurroundingsLoci\(\{ \.\.\.target, loci \}, 5\)/);

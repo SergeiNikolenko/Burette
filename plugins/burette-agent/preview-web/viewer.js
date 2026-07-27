@@ -17254,7 +17254,13 @@
   }
 
   function molstarContextTargetComponents(target) {
-    const components = Array.isArray(target?.structure?.components) ? target.structure.components : [];
+    const targetRef = target?.structure?.cell?.transform?.ref;
+    const currentStructure = targetRef
+      ? molstarCurrentStructures(activeMolstarViewer())
+        .find(structure => structure?.cell?.transform?.ref === targetRef)
+      : null;
+    const structure = currentStructure || target?.structure;
+    const components = Array.isArray(structure?.components) ? structure.components : [];
     const componentManager = activeViewer?.plugin?.managers?.structure?.component;
     if (typeof componentManager?.canBeModified !== 'function') return components;
     return components.filter(component => componentManager.canBeModified(component));
