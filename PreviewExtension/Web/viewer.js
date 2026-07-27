@@ -6989,6 +6989,11 @@
       control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
     } else if (action === 'select-mode') {
       plugin.selectionMode = plugin.selectionMode !== true;
+    } else if (action === 'clear-selection') {
+      plugin.managers?.interactivity?.lociSelects?.deselectAll?.();
+      plugin.managers?.structure?.selection?.clear?.();
+      hideMolstarContextMenu();
+      setStatus('[web] Cleared the selection.');
     }
   }
 
@@ -7012,6 +7017,9 @@
       ?.setAttribute('aria-pressed', active ? 'true' : 'false');
     if (!active) closeViewportMenu();
     const stats = plugin?.managers?.structure?.selection?.stats;
+    const hasSelection = Number(stats?.elementCount) > 0;
+    rail.querySelector('[data-buret-viewport-action="clear-selection"]')
+      ?.classList.toggle('hidden', !hasSelection);
     const count = document.querySelector('[data-buret-selection-count]');
     if (count) count.textContent = stats?.elementCount ? stats.label : 'Nothing selected';
     const level = document.querySelector('[data-buret-selection-level]');
@@ -16068,12 +16076,16 @@
   }
 
   function molstarContextSelectionLoci(target) {
+    if (target?.selectionBased) return target?.loci || molstarContextMenuPick?.loci;
     const scope = target?.scope;
     if ((scope === 'ligand' || scope === 'water' || scope === 'ion') && target?.atom) {
       const structure = molstarStructureFromRef(target.structure) || target?.loci?.structure;
-      return molstarContextResidueAtomLociForStructure(structure, target.atom) || target?.loci || molstarContextMenuPick?.loci;
+      const residueLoci = molstarContextResidueAtomLociForStructure(structure, target.atom);
+      if (molstarContextMenuMode === 'molecule') return residueLoci || target?.loci || molstarContextMenuPick?.loci;
     }
-    return target?.loci || molstarContextMenuPick?.loci;
+    const granularity = molstarContextMenuMode === 'atom' ? 'element' : molstarContextMenuMode;
+    const pickedLoci = target?.atomLoci || target?.loci || molstarContextMenuPick?.loci;
+    return molstarContextNormalizeLoci(pickedLoci, granularity || 'residue') || pickedLoci;
   }
 
   function molstarContextLociIndexMatchesAtom(unit, index, atom) {
@@ -16156,7 +16168,8 @@
     const pickedAtom = molstarContextAtomFromLoci(pickedLoci);
     const selectionLoci = molstarContextSelectionLociForStructure(targetStructure);
     const selectedAtom = molstarContextAtomFromLoci(selectionLoci);
-    if ((molstarContextMenuMode !== 'atom' || !pickedAtom) && selectedAtom && (!pickedAtom || molstarContextLociContainsAtom(selectionLoci, pickedAtom))) return {
+    const canReuseSelection = molstarContextMenuMode === 'molecule' || !pickedAtom;
+    if (canReuseSelection && selectedAtom && (!pickedAtom || molstarContextLociContainsAtom(selectionLoci, pickedAtom))) return {
       loci: selectionLoci,
       atomLoci: pickedAtom
         ? molstarContextAtomLociForStructure(structure || selectionLoci?.structure, pickedAtom)
@@ -16384,7 +16397,13 @@
     const resolved = molstarContextResolvedLoci(targetStructure);
     const pickedAtom = resolved.atom;
     const pickedScope = resolved.selectionBased ? 'selection' : (pickedAtom ? molstarContextScopeForAtom(pickedAtom) : 'selection');
-    const pickedLabel = resolved.selectionBased ? 'selection' : (pickedAtom ? molstarContextResidueLabel(pickedAtom) : molstarContextTargetLabel(targetStructures));
+    const pickedLabel = resolved.selectionBased
+      ? 'selection'
+      : (pickedAtom
+        ? (pickedScope === 'residue' && molstarContextMenuMode === 'chain'
+          ? molstarContextChainLabel(pickedAtom)
+          : molstarContextResidueLabel(pickedAtom))
+        : molstarContextTargetLabel(targetStructures));
     if (activeConfig?.docking && activeDockingPrepared) {
       if (pickedAtom && pickedScope === 'ligand') {
         const ligand = pdbEntryForResidue(activeDockingPrepared.receptorEntry, pickedAtom);
@@ -17323,28 +17342,73 @@
     return StructureElement.Loci.extendToWholeResidues(raw);
   }
 
-  // The 3D menu keeps its representation additions to one click; a grey, translucent
-  // surface is the common case (an envelope around a ligand), and the tree menu is
-  // where its type, opacity, and colour are tuned afterwards.
-  async function addGreySurfaceToComponent(componentRef) {
-    const viewer = activeMolstarViewer();
-    const manager = viewer?.plugin?.managers?.structure?.component;
-    const components = sceneTreeColorTargets(viewer).get(componentRef) || [];
-    if (!components.length || typeof manager?.addRepresentation !== 'function') return false;
-    await manager.addRepresentation(components, 'molecular-surface');
-    // addRepresentation rebuilds the hierarchy, so the component captured above no
-    // longer lists the new surface; re-resolve it before reaching for the pivot.
-    const fresh = sceneTreeColorTargets(viewer).get(componentRef) || components;
-    const surface = [...(fresh[0]?.representations || [])].reverse()
-      .find(representation => representation?.cell?.transform?.params?.type?.name === 'molecular-surface');
-    if (surface && typeof manager.updateRepresentations === 'function') {
-      await manager.updateRepresentations(fresh, surface, old => ({
+  async function addMolstarContextScopeComponent(target, representation, label) {
+    const plugin = activeMolstarViewer()?.plugin;
+    const selection = plugin?.managers?.structure?.selection;
+    const manager = plugin?.managers?.structure?.component;
+    const selectionQuery = currentSelectionQuery();
+    const loci = molstarContextSelectionLoci(target);
+    const structures = target?.structure ? [target.structure] : undefined;
+    if (
+      !loci
+      || !selectionQuery
+      || typeof selection?.fromLoci !== 'function'
+      || typeof manager?.add !== 'function'
+    ) {
+      return null;
+    }
+    const before = new Set(
+      molstarContextTargetComponents(target)
+        .map(component => component?.cell?.transform?.ref)
+        .filter(Boolean)
+    );
+    selection.clear?.();
+    selection.fromLoci('set', loci, false);
+    await manager.add({
+      selection: selectionQuery,
+      representation,
+      options: { label, checkExisting: false }
+    }, structures);
+    const components = molstarContextTargetComponents(target);
+    const created = [...components].reverse().find(component => {
+      const ref = component?.cell?.transform?.ref;
+      return ref && !before.has(ref);
+    }) || null;
+    scheduleSceneTreeRender();
+    return created;
+  }
+
+  async function addGreySurfaceForContext(target) {
+    const component = await addMolstarContextScopeComponent(
+      target,
+      'molecular-surface',
+      `Surface · ${target?.label || 'selection'}`
+    );
+    const manager = activeMolstarViewer()?.plugin?.managers?.structure?.component;
+    const surface = component?.representations?.find(
+      representation => representation?.cell?.transform?.params?.type?.name === 'molecular-surface'
+    );
+    if (component && surface && typeof manager?.updateRepresentations === 'function') {
+      await manager.updateRepresentations([component], surface, old => ({
         ...old,
         type: { ...old.type, params: { ...old.type.params, alpha: 0.35 } },
         colorTheme: { name: 'uniform', params: { value: 0x98989d } }
       }));
     }
-    scheduleSceneTreeRender();
+    return !!component;
+  }
+
+  async function openMolstarContextScopeComponentMenu(target) {
+    const representation = molstarContextModeUsesPolymerRepresentation() ? 'cartoon' : 'ball-and-stick';
+    const component = await addMolstarContextScopeComponent(
+      target,
+      representation,
+      target?.label || 'Selection'
+    );
+    const componentRef = component?.cell?.transform?.ref;
+    if (!componentRef) return false;
+    const point = molstarContextMenuLastPoint || { x: 80, y: 120 };
+    window.setTimeout(() => openSceneTreeMenu(componentRef, point.x, point.y), 0);
     return true;
   }
 
@@ -17447,6 +17511,10 @@
   // interactivity manager, where it was previously only reachable from its own UI.
   const MOLSTAR_SELECTION_LEVELS = [['element', 'Atom'], ['residue', 'Residue'], ['chain', 'Chain']];
 
+  function molstarContextModeUsesPolymerRepresentation(mode = molstarContextMenuMode) {
+    return ['chain', 'entity', 'model', 'operator', 'structure', 'chainInstances'].includes(mode);
+  }
+
   function molstarSelectionLevel() {
     return String(activeMolstarViewer()?.plugin?.managers?.interactivity?.props?.granularity || 'residue');
   }
@@ -17513,9 +17581,15 @@
 
   async function applyMolstarColourPreset(target, theme) {
     const manager = activeMolstarViewer()?.plugin?.managers?.structure?.component;
-    const components = molstarColourPresetComponents(target);
-    if (!components.length || typeof manager?.updateRepresentationsTheme !== 'function') return false;
-    await manager.updateRepresentationsTheme(components, { color: theme });
+    if (typeof manager?.updateRepresentationsTheme !== 'function') return false;
+    const representation = molstarContextModeUsesPolymerRepresentation() ? 'cartoon' : 'ball-and-stick';
+    const component = await addMolstarContextScopeComponent(
+      target,
+      representation,
+      `Colour · ${target?.label || 'selection'}`
+    );
+    if (!component) return false;
+    await manager.updateRepresentationsTheme([component], { color: theme });
     scheduleSceneTreeRender();
     return true;
   }
@@ -17710,9 +17784,34 @@
     return true;
   }
 
+  async function modifyMolstarContextVisibility(target, operation) {
+    const loci = molstarContextSelectionLoci(target);
+    if (!loci || molstarLociIsEmpty(loci)) return false;
+    const plugin = activeViewer?.plugin;
+    const selection = plugin?.managers?.structure?.selection;
+    const componentManager = plugin?.managers?.structure?.component;
+    const components = molstarContextTargetComponents(target);
+    if (
+      !components.length
+      || typeof selection?.fromLoci !== 'function'
+      || typeof componentManager?.modifyByCurrentSelection !== 'function'
+    ) {
+      return false;
+    }
+    selection.clear?.();
+    try {
+      selection.fromLoci('set', loci, false);
+      await componentManager.modifyByCurrentSelection(components, operation);
+    } finally {
+      selection.clear?.();
+    }
+    scheduleSceneTreeRender();
+    return true;
+  }
+
   async function deleteMolstarContextPick(target) {
-    const loci = target?.loci || molstarContextMenuPick?.loci;
-    return deleteMolstarContextLoci(target, loci, !target?.selectionBased);
+    const loci = molstarContextSelectionLoci(target);
+    return deleteMolstarContextLoci(target, loci, false);
   }
 
   function molstarContextChainLociFromPick(target) {
@@ -17819,8 +17918,7 @@
   // UI-style submenus, grouped the way a desktop chemistry menu is read.
   const MOLECULE_MENU_GROUPS = [
     { id: 'primary', title: 'Target', direct: true },
-    { id: 'selection', title: 'Selection', rootLabel: 'Tools', breakBefore: true },
-    { id: 'appearance', title: 'Appearance', groups: ['view', 'represent', 'colour'] },
+    { id: 'appearance', title: 'Appearance', groups: ['view', 'represent', 'colour'], rootLabel: 'Tools', breakBefore: true },
     { id: 'analyze', title: 'Analyze' },
     { id: 'align', title: 'Superposition' },
     { id: 'export', title: 'Export' },
@@ -17903,13 +18001,17 @@
       actions.push(['focus-atom', 'Focus atom in current view']);
       return actions;
     }
-    const noun = molstarContextTargetNoun(target);
+    const levelLabel = VIEWPORT_GRANULARITIES.find(([value]) => value === mode)?.[1];
+    const noun = target?.selectionBased
+      ? 'selection'
+      : (levelLabel
+        ? levelLabel.toLowerCase().replace(' + instances', ' instances')
+        : molstarContextTargetNoun(target));
     const actions = [
       ['select', `Select ${noun}`],
       ['remove', molstarContextCanBulkDelete(target) ? `Delete selected ${noun}` : `Delete ${noun}`]
     ];
     if (molstarContextCanBulkDelete(target)) actions.push(['remove-type', `Delete ${molstarContextBulkDeleteLabel(target)}`]);
-    if (target?.scope === 'residue') actions.push(['remove-chain', 'Delete chain']);
     if (activeStructureAlignmentControl) {
       const reference = activeStructureAlignmentControl.referenceLabel();
       actions.push(['align:atoms', `Align to ${reference} by residue numbers`]);
@@ -17940,17 +18042,6 @@
         actions.push(['analyze:distance', 'Measure distance']);
         actions.push(['analyze:angle', 'Measure angle']);
         actions.push(['analyze:dihedral', 'Measure dihedral']);
-      }
-      const selectionLevel = molstarSelectionLevel();
-      for (const [level, levelLabel] of MOLSTAR_SELECTION_LEVELS) {
-        if (level === selectionLevel) continue;
-        actions.push([`select:level:${level}`, `Pick at ${levelLabel.toLowerCase()} level`]);
-      }
-      if (molstarHasSelection()) {
-        actions.push(['select:whole-residues', 'Expand to whole residues']);
-        actions.push(['select:grow', 'Grow by surroundings (5 Å)']);
-        actions.push(['select:invert', 'Invert selection']);
-        actions.push(['select:clear', 'Clear selection']);
       }
       for (const [theme, themeLabel] of molstarColourPresetsForTarget(target)) {
         actions.push([`colour:${theme}`, themeLabel]);
@@ -18108,7 +18199,8 @@
       } else if (action.startsWith('compute:')) {
         requestMolecularCompute(action.slice('compute:'.length));
       } else if (action === 'focus') {
-        const handled = focusMolstarContextPick(target) || await resetMolstarCameraForContext();
+        const loci = molstarContextSelectionLoci(target);
+        const handled = focusMolstarContextPick({ ...target, loci }) || await resetMolstarCameraForContext();
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(handled ? `[web] Focused ${targetLabel} in the current Mol* view.` : `[web] ${targetLabel} is already visible in Mol*.`);
       } else if (action === 'focus-atom') {
@@ -18116,24 +18208,22 @@
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(handled ? `[web] Focused ${molstarContextAtomLabel(target)} in the current Mol* view.` : `[web] ${molstarContextAtomLabel(target)} is already visible in Mol*.`);
       } else if (action === 'view:hide') {
-        const componentRef = molstarContextComponentRef(target);
-        if (!componentRef) throw new Error('No Mol* component is available to hide.');
-        toggleSceneTreeVisibility(componentRef);
-        setStatus(`[web] Toggled ${targetLabel} visibility.`);
+        if (!await modifyMolstarContextVisibility(target, 'subtract')) {
+          throw new Error('No Mol* residue or chain is available to hide.');
+        }
+        setStatus(`[web] Hid ${targetLabel}.`);
       } else if (action === 'view:isolate') {
-        const componentRef = molstarContextComponentRef(target);
-        if (!componentRef) throw new Error('No Mol* component is available to isolate.');
-        isolateSceneTreeNode(componentRef);
+        if (!await modifyMolstarContextVisibility(target, 'intersect')) {
+          throw new Error('No Mol* residue or chain is available to isolate.');
+        }
         setStatus(`[web] Isolated ${targetLabel}.`);
       } else if (action === 'represent:surface') {
-        const componentRef = molstarContextComponentRef(target);
-        if (!componentRef || !await addGreySurfaceToComponent(componentRef)) throw new Error('No Mol* component is available for a surface.');
+        if (!await addGreySurfaceForContext(target)) throw new Error('No Mol* selection or target is available for a surface.');
         setStatus(`[web] Added a translucent surface to ${targetLabel}.`);
       } else if (action === 'represent:menu') {
-        const componentRef = molstarContextComponentRef(target);
-        if (!componentRef) throw new Error('No Mol* component is available to edit.');
-        const point = molstarContextMenuLastPoint || { x: 80, y: 120 };
-        window.setTimeout(() => openSceneTreeMenu(componentRef, point.x, point.y), 0);
+        if (!await openMolstarContextScopeComponentMenu(target)) {
+          throw new Error('No Mol* selection or target is available to edit.');
+        }
         setStatus(`[web] Editing ${targetLabel} representation.`);
       } else if (action === 'represent:component') {
         // "Whatever is selected" means the live selection when there is one, and
@@ -18178,7 +18268,8 @@
         scheduleSceneTreeRender();
         setStatus(`[web] Added ${targetLabel} to the scene as a component.`);
       } else if (action === 'analyze:surroundings') {
-        const surroundings = molstarSurroundingsLoci(target, 5);
+        const loci = molstarContextSelectionLoci(target);
+        const surroundings = molstarSurroundingsLoci({ ...target, loci }, 5);
         if (!surroundings || !selectMolstarContextPick({ ...target, loci: surroundings }, { applyGranularity: false })) {
           throw new Error('No residues were found within 5 Å.');
         }
@@ -18186,7 +18277,7 @@
         setStatus(`[web] Selected residues within 5 Å of ${targetLabel}.`);
       } else if (action === 'analyze:label') {
         const measurement = activeViewer?.plugin?.managers?.structure?.measurement;
-        const loci = molstarContextElementLoci(target.loci);
+        const loci = molstarContextElementLoci(molstarContextSelectionLoci(target));
         if (typeof measurement?.addLabel !== 'function' || !loci) throw new Error('No Mol* label is available for this pick.');
         await measurement.addLabel(loci);
         setStatus(`[web] Labelled ${targetLabel}.`);
@@ -18194,7 +18285,8 @@
         const kind = action.slice('analyze:'.length);
         if (!beginMolstarMeasurement(kind)) throw new Error('No Mol* measurement manager is available.');
       } else if (action === 'analyze:interactions') {
-        if (!await addMolstarInteractionsForTarget(target)) throw new Error('Mol* could not build an interactions component for this pick.');
+        const loci = molstarContextSelectionLoci(target);
+        if (!await addMolstarInteractionsForTarget({ ...target, loci })) throw new Error('Mol* could not build an interactions component for this pick.');
         setStatus(`[web] Added typed interactions around ${targetLabel}.`);
       } else if (action.startsWith('select:level:')) {
         const level = action.slice('select:level:'.length);
@@ -19398,6 +19490,85 @@
     });
   }
 
+  function moleculePickingLevelSubmenu(menu, currentLevel, onSelect) {
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'buret-tree-menu-item buret-tree-menu-sub-trigger buret-picking-level-trigger';
+    trigger.setAttribute('role', 'menuitem');
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    const label = document.createElement('span');
+    label.className = 'buret-tree-menu-label';
+    label.textContent = 'Picking level';
+    const value = document.createElement('span');
+    value.className = 'buret-picking-level-value';
+    const chevron = document.createElement('span');
+    chevron.className = 'buret-tree-menu-chevron';
+    chevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
+    trigger.append(moleculeMenuIcon(['m5 3 14 7.2-6 1.6-1.6 6L5 3Z']), label, value, chevron);
+
+    const submenu = document.createElement('div');
+    submenu.className = 'buret-molecule-context-submenu';
+    submenu.dataset.buretPickingLevelMenu = '1';
+    submenu.dataset.open = 'false';
+    submenu.hidden = true;
+    submenu.setAttribute('role', 'menu');
+    submenu.setAttribute('aria-label', 'Picking level');
+    submenu._buretTrigger = trigger;
+
+    const items = new Map();
+    const update = level => {
+      const selectedLabel = VIEWPORT_GRANULARITIES.find(([name]) => name === level)?.[1] || 'Residue';
+      value.textContent = selectedLabel;
+      for (const [name, item] of items) {
+        const checked = name === level;
+        item.setAttribute('aria-checked', checked ? 'true' : 'false');
+        item.dataset.checked = checked ? 'true' : 'false';
+      }
+    };
+    for (const [level, levelLabel] of VIEWPORT_GRANULARITIES) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'buret-tree-menu-item buret-picking-level-radio';
+      item.setAttribute('role', 'menuitemradio');
+      item.dataset.buretPickingLevel = level;
+      const check = moleculeMenuIcon(['M20 6 9 17l-5-5']);
+      check.classList.add('buret-picking-level-check');
+      const text = document.createElement('span');
+      text.className = 'buret-tree-menu-label';
+      text.textContent = levelLabel;
+      item.append(check, text);
+      item.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect(level, levelLabel);
+        update(level);
+        moleculeMenuCloseSubmenus(menu);
+        trigger.focus();
+      });
+      items.set(level, item);
+      submenu.appendChild(item);
+    }
+    update(currentLevel);
+    const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
+    trigger.addEventListener('pointerenter', () => open(false));
+    trigger.addEventListener('focus', () => open(false));
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      if (submenu.hidden) open(true);
+      else moleculeMenuCloseSubmenus(menu);
+    });
+    trigger.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      event.stopPropagation();
+      open(true);
+    });
+    submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
+    menu.appendChild(submenu);
+    return trigger;
+  }
+
   function showMolstarContextMenu(event, pick) {
     hideMolstarContextMenu({ keepMoleculePreview: true });
     molstarContextMenuPick = pick || null;
@@ -19411,7 +19582,10 @@
       label: menuTarget.label || '',
       scope: menuTarget.scope || ''
     });
-    let mode = menuTarget.scope === 'ligand' && menuTarget.atomLoci && molstarContextMenuMode === 'atom' ? 'atom' : 'molecule';
+    const proteinScope = menuTarget.scope === 'residue' && !!menuTarget.atom;
+    let mode = molstarSelectionLevel();
+    if (!VIEWPORT_GRANULARITIES.some(([value]) => value === mode)) mode = 'residue';
+    molstarContextMenuMode = mode;
     if (showNativeMolstarContextMenu(menuTarget, mode)) {
       molstarContextMenuMode = mode;
       return;
@@ -19419,10 +19593,10 @@
     const menu = document.createElement('div');
     menu.className = 'buret-molecule-context-menu';
     menu.setAttribute('role', 'menu');
-    menu.setAttribute('aria-label', 'Molecule actions');
+    menu.setAttribute('aria-label', proteinScope ? 'Protein actions' : 'Molecule actions');
     const title = document.createElement('div');
     title.className = 'buret-molecule-context-menu-title';
-    title.textContent = 'Molecule actions';
+    title.textContent = proteinScope ? 'Protein actions' : 'Molecule actions';
     const subtitle = document.createElement('div');
     subtitle.className = 'buret-molecule-context-menu-subtitle';
     subtitle.textContent = menuTarget.label;
@@ -19431,7 +19605,8 @@
     actionContainer.className = 'buret-molecule-context-menu-actions';
     const renderActions = () => {
       actionContainer.replaceChildren();
-      menu.querySelectorAll('.buret-molecule-context-submenu').forEach(submenu => submenu.remove());
+      menu.querySelectorAll('.buret-molecule-context-submenu:not([data-buret-picking-level-menu])')
+        .forEach(submenu => submenu.remove());
       const grouped = new Map();
       molstarContextMenuActions(menuTarget, mode).forEach(entry => {
         const group = moleculeContextActionGroup(entry[0]);
@@ -19469,35 +19644,31 @@
         }
       }
     };
-    if (menuTarget.scope === 'ligand' && menuTarget.atomLoci) {
-      const modeGroup = document.createElement('div');
-      modeGroup.className = 'buret-molecule-context-mode';
-      modeGroup.dataset.mode = mode;
-      modeGroup.setAttribute('role', 'group');
-      modeGroup.setAttribute('aria-label', 'Ligand selection scope');
-      [['molecule', 'Molecule'], ['atom', 'Atom']].forEach(([value, label]) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'buret-molecule-context-mode-button';
-        button.dataset.buretContextMode = value;
-        button.textContent = label;
-        button.setAttribute('aria-pressed', value === mode ? 'true' : 'false');
-        button.addEventListener('click', () => {
-          mode = value;
-          molstarContextMenuMode = mode;
-          modeGroup.dataset.mode = mode;
-          modeGroup.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', item.dataset.buretContextMode === mode ? 'true' : 'false'));
-          renderActions();
-          const point = molstarContextMenuLastPoint || {
-            x: Number.parseFloat(menu.style.left) || 8,
-            y: Number.parseFloat(menu.style.top) || 8
-          };
-          positionMolstarContextMenu(menu, point.x, point.y);
-        });
-        modeGroup.appendChild(button);
-      });
-      menu.appendChild(modeGroup);
-    }
+    const applyModeSelection = levelLabel => {
+      setMolstarSelectionLevel(mode);
+      const pickedLoci = menuTarget.atomLoci || menuTarget.loci || molstarContextMenuPick?.loci;
+      const scopedLoci = molstarContextNormalizeLoci(pickedLoci, mode) || pickedLoci;
+      if (scopedLoci) {
+        menuTarget.selectionBased = false;
+        menuTarget.loci = scopedLoci;
+        selectMolstarContextPick({ ...menuTarget, loci: scopedLoci }, { applyGranularity: false });
+      }
+      subtitle.textContent = mode === 'chain' ? molstarContextChainLabel(menuTarget.atom) : menuTarget.label;
+      setStatus(`[web] Selected at ${String(levelLabel || mode).toLowerCase()} level.`);
+    };
+    const pickingLevel = moleculePickingLevelSubmenu(menu, mode, (level, levelLabel) => {
+      mode = level;
+      molstarContextMenuMode = mode;
+      applyModeSelection(levelLabel);
+      renderActions();
+      const point = molstarContextMenuLastPoint || {
+        x: Number.parseFloat(menu.style.left) || 8,
+        y: Number.parseFloat(menu.style.top) || 8
+      };
+      positionMolstarContextMenu(menu, point.x, point.y);
+    });
+    menu.appendChild(pickingLevel);
+    applyModeSelection(VIEWPORT_GRANULARITIES.find(([value]) => value === mode)?.[1]);
     renderActions();
     menu.appendChild(actionContainer);
     menu._buretPreviousFocus = document.activeElement;
@@ -19522,7 +19693,7 @@
     let contextPointer = null;
     let touchContextPointer = null;
     const menuIsOpen = () => !!document.querySelector('.buret-molecule-context-menu');
-    const menuIsInAtomMode = () => menuIsOpen() && molstarContextMenuMode === 'atom';
+    const menuIsInAtomMode = () => menuIsOpen() && ['atom', 'element'].includes(molstarContextMenuMode);
     const clearMolstarHoverHighlights = () => {
       try { activeViewer?.plugin?.managers?.interactivity?.lociHighlights?.clearHighlights?.(); } catch (_) {}
     };

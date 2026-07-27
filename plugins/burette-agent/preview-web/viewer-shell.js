@@ -159,6 +159,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 7.2-6 1.6-1.6 6L5 3Z"/></svg>
           <span class="buret-tooltip" role="tooltip">Selection mode</span>
         </button>
+        <button class="buret-rail-button buret-clear-selection hidden" type="button" data-buret-viewport-action="clear-selection" aria-label="Clear selection" title="Clear selection">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <span class="buret-tooltip" role="tooltip">Clear selection</span>
+        </button>
       </div>
       <div id="buret-selection-bar" class="buret-selection-bar hidden" role="toolbar" aria-label="Selection controls">
         <select class="buret-select buret-selection-level" data-buret-selection-level aria-label="Picking level" title="What one click picks"></select>

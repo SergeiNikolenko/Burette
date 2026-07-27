@@ -54,14 +54,29 @@ assert.match(fn("splitMolstarStructureIntoChains"), /molstarTargetStructureData\
 assert.match(fn("extractMolstarChainToFile"), /molstarTargetStructureData\(target\)/);
 assert.match(fn("extractMolstarSelectionToFile"), /for \(const structure of molstarCurrentStructures\(activeMolstarViewer\(\)\)\)/);
 
-// Selection tooling is Mol*'s own query registry, addressed by label because the
-// registry entries carry no stable id.
+// Selection tooling remains available to other surfaces, while the context menu
+// uses its top segmented control for the target scope.
 assert.match(fn("molstarSelectionQuery"), /plugin\?\.query\?\.structure\?\.registry[\s\S]*label[\s\S]*includes\(needle\)/);
 assert.match(viewer, /applyMolstarSelectionQuery\('whole residues'\)/);
 assert.match(viewer, /applyMolstarSelectionQuery\('surrounding residues', 'add'\)/);
 assert.match(viewer, /applyMolstarSelectionQuery\('inverse'\)/);
 assert.match(viewer, /const MOLSTAR_SELECTION_LEVELS = \[\['element', 'Atom'\], \['residue', 'Residue'\], \['chain', 'Chain'\]\]/);
 assert.match(fn("setMolstarSelectionLevel"), /interactivity\.setProps\(\{ granularity: level \}\)/);
+assert.match(fn("molstarContextSelectionLoci"), /const granularity = molstarContextMenuMode === 'atom' \? 'element' : molstarContextMenuMode/);
+assert.match(fn("molstarContextSelectionLoci"), /molstarContextNormalizeLoci\(pickedLoci, granularity \|\| 'residue'\)/);
+assert.match(fn("moleculePickingLevelSubmenu"), /for \(const \[level, levelLabel\] of VIEWPORT_GRANULARITIES\)/);
+assert.match(fn("moleculePickingLevelSubmenu"), /setAttribute\('role', 'menuitemradio'\)/);
+assert.match(fn("moleculePickingLevelSubmenu"), /setAttribute\('aria-checked', checked \? 'true' : 'false'\)/);
+assert.match(fn("molstarContextResolvedLoci"), /molstarContextMenuMode === 'molecule' \|\| !pickedAtom/);
+assert.match(fn("modifyMolstarContextVisibility"), /modifyByCurrentSelection\(components, operation\)/);
+assert.match(fn("modifyMolstarContextVisibility"), /selection\.fromLoci\('set', loci, false\)/);
+assert.match(fn("moleculeContextMenuAction"), /modifyMolstarContextVisibility\(target, 'subtract'\)/);
+assert.match(fn("moleculeContextMenuAction"), /modifyMolstarContextVisibility\(target, 'intersect'\)/);
+assert.match(fn("addMolstarContextScopeComponent"), /const loci = molstarContextSelectionLoci\(target\)/);
+assert.match(fn("addMolstarContextScopeComponent"), /manager\.add\(\{[\s\S]*selection: selectionQuery[\s\S]*representation/);
+assert.match(fn("applyMolstarColourPreset"), /addMolstarContextScopeComponent\([\s\S]*updateRepresentationsTheme\(\[component\]/);
+assert.match(fn("moleculeContextMenuAction"), /focusMolstarContextPick\(\{ \.\.\.target, loci \}\)/);
+assert.match(fn("moleculeContextMenuAction"), /molstarSurroundingsLoci\(\{ \.\.\.target, loci \}, 5\)/);
 
 // Typed contacts come from Mol*'s interactions representation, not from a distance
 // cutoff, and the component includes the environment or it renders nothing.
@@ -108,14 +123,24 @@ assert.match(fn("beginMolstarMeasurement"), /captureMolstarSceneUndoSnapshot\(`\
 // Maestro/PyMOL toolsets open as submenus, and appearance combines visibility,
 // representation, and colour into labelled blocks.
 assert.match(viewer, /\{ id: 'primary', title: 'Target', direct: true \}/);
-assert.match(viewer, /\{ id: 'selection', title: 'Selection', rootLabel: 'Tools', breakBefore: true \}/);
-assert.match(viewer, /\{ id: 'appearance', title: 'Appearance', groups: \['view', 'represent', 'colour'\] \}/);
+assert.doesNotMatch(viewer, /\{ id: 'selection', title: 'Selection'/);
+assert.match(viewer, /\{ id: 'appearance', title: 'Appearance', groups: \['view', 'represent', 'colour'\], rootLabel: 'Tools', breakBefore: true \}/);
 assert.match(viewer, /\{ id: 'align', title: 'Superposition' \}/);
 assert.match(viewer, /\{ id: 'danger', title: 'Delete', destructive: true, breakBefore: true \}/);
 assert.match(fn("moleculeMenuSubmenu"), /aria-haspopup[\s\S]*buret-tree-menu-sub-trigger[\s\S]*buret-molecule-context-submenu/);
 assert.match(fn("installMoleculeMenuKeyboard"), /ArrowLeft[\s\S]*stopPropagation/);
 assert.match(viewer, /menu\._buretPreviousFocus = document\.activeElement/);
 assert.match(viewer, /renderActions\(\);\s*\n\s*const point = molstarContextMenuLastPoint[\s\S]*positionMolstarContextMenu/);
+assert.match(fn("molstarContextMenuActions"), /VIEWPORT_GRANULARITIES\.find\(\(\[value\]\) => value === mode\)/);
+assert.match(fn("molstarContextMenuActions"), /\['remove', molstarContextCanBulkDelete\(target\)/);
+assert.doesNotMatch(fn("molstarContextMenuActions"), /select:level:/);
+assert.match(fn("showMolstarContextMenu"), /let mode = molstarSelectionLevel\(\)/);
+assert.match(fn("showMolstarContextMenu"), /moleculePickingLevelSubmenu\(menu, mode/);
+assert.match(fn("showMolstarContextMenu"), /proteinScope \? 'Protein actions' : 'Molecule actions'/);
+assert.match(fn("showMolstarContextMenu"), /setMolstarSelectionLevel\(mode\)[\s\S]*molstarContextNormalizeLoci\(pickedLoci, mode\)/);
+assert.match(fn("showMolstarContextMenu"), /menuTarget\.selectionBased = false/);
+assert.match(fn("showMolstarContextMenu"), /selectMolstarContextPick\(\{ \.\.\.menuTarget, loci: scopedLoci \}, \{ applyGranularity: false \}\)/);
+assert.match(fn("showMolstarContextMenu"), /menu\.appendChild\(pickingLevel\);\s*\n\s*applyModeSelection\(/);
 const group = fn("moleculeContextActionGroup");
 assert.match(group, /name\.startsWith\('colour:'\)\) return 'colour'/);
 assert.match(group, /name\.startsWith\('select:'\)\) return 'selection'/);
