@@ -5903,6 +5903,8 @@ assert.match(previewRuntimeCss, /\.buret-molecule-context-menu-section-label \{/
 assert.match(previewRuntimeCss, /\.buret-picking-level-trigger \{/);
 assert.match(previewRuntimeCss, /\.buret-picking-level-value \{/);
 assert.match(previewRuntimeCss, /\.buret-picking-level-radio\[data-checked="true"\] \.buret-picking-level-check \{/);
+assert.match(previewRuntimeCss, /--buret-menu-destructive-focus: color-mix\(in srgb, var\(--buret-menu-destructive\) 12%, transparent\)/);
+assert.match(previewRuntimeCss, /\.buret-tree-menu-item-destructive:focus[\s\S]*background: var\(--buret-menu-destructive-focus\)/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu button \{[^}]*border: 0;/);
 assert.match(previewRuntimeCss, /body\.burette-mobile-host \.buret-molecule-context-menu \.buret-molecule-context-mode-button \+ \.buret-molecule-context-mode-button \{[^}]*margin-top: 0;/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu button:hover,/);

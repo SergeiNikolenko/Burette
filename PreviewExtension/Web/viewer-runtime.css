@@ -4126,6 +4126,8 @@ body .msp-plugin .msp-sequence .msp-sequence-select {
    read as one thing. Scoped away from the mobile host, which keeps its own
    touch-sized treatment defined earlier in this file. */
 body:not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender-context-menu) {
+  --buret-menu-destructive: #ff6b5e;
+  --buret-menu-destructive-focus: color-mix(in srgb, var(--buret-menu-destructive) 12%, transparent);
   min-width: 232px;
   max-width: 292px;
   overflow: visible;
@@ -4158,16 +4160,16 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-ite
 body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item:focus {
   background: var(--buret-molstar-hover-background);
 }
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive,
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive > .buret-tree-menu-icon {
+  color: var(--buret-menu-destructive);
+}
 body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:hover,
-body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:hover > .buret-tree-menu-icon {
-  color: #ff6b5e;
-}
-body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-sub-trigger-destructive {
-  color: #ff6b5e;
-}
-body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-sub-trigger-destructive > .buret-tree-menu-icon,
-body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-sub-trigger-destructive > .buret-tree-menu-chevron {
-  color: #ff6b5e;
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:focus,
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:hover > .buret-tree-menu-icon,
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:focus > .buret-tree-menu-icon {
+  color: var(--buret-menu-destructive);
+  background: var(--buret-menu-destructive-focus);
 }
 body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-chevron {
   display: grid;

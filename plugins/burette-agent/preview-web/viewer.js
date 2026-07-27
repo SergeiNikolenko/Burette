@@ -17924,7 +17924,7 @@
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
     { id: 'compute', title: 'Compute' },
-    { id: 'danger', title: 'Delete', destructive: true, breakBefore: true }
+    { id: 'danger', title: 'Delete', direct: true, destructive: true, hideTitle: true, breakBefore: true }
   ];
 
   const MOLECULE_MENU_GROUP_TITLES = {
@@ -19629,12 +19629,14 @@
           actionContainer.appendChild(heading);
         }
         if (section.direct) {
-          const heading = document.createElement('div');
-          heading.className = 'buret-tree-menu-title';
-          heading.textContent = section.title;
-          actionContainer.appendChild(heading);
+          if (!section.hideTitle) {
+            const heading = document.createElement('div');
+            heading.className = 'buret-tree-menu-title';
+            heading.textContent = section.title;
+            actionContainer.appendChild(heading);
+          }
           for (const [action, label] of entries) {
-            const item = moleculeMenuActionButton(action, label);
+            const item = moleculeMenuActionButton(action, label, { destructive: section.destructive });
             item.addEventListener('pointerenter', () => moleculeMenuCloseSubmenus(menu));
             item.addEventListener('focus', () => moleculeMenuCloseSubmenus(menu));
             actionContainer.appendChild(item);
