@@ -147,8 +147,9 @@ assert.match(fn("sceneTreeMeasurementText"), /const field = 'custom-text'/);
 // representation blocks stay one click away on the first level.
 assert.match(viewer, /\{ id: 'primary', title: 'Target', direct: true \}/);
 assert.doesNotMatch(viewer, /\{ id: 'selection', title: 'Selection'/);
-assert.match(viewer, /\{ id: 'view', title: 'Visibility', direct: true, rootLabel: 'Tools', breakBefore: true \}/);
+assert.match(viewer, /\{ id: 'view', title: 'Visibility', direct: true, breakBefore: true \}/);
 assert.match(viewer, /\{ id: 'represent', title: 'Representation', direct: true, breakBefore: true \}/);
+assert.match(viewer, /\{ id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true \}/);
 assert.doesNotMatch(viewer, /\{ id: 'appearance', title: 'Appearance'/);
 assert.match(viewer, /\{ id: 'align', title: 'Superposition' \}/);
 assert.match(viewer, /\{ id: 'danger', title: 'Delete', direct: true, destructive: true, hideTitle: true, breakBefore: true \}/);
@@ -168,20 +169,21 @@ assert.doesNotMatch(fn("molstarContextMenuActions"), /select:level:/);
 assert.match(fn("showMolstarContextMenu"), /let mode = molstarSelectionLevel\(\)/);
 assert.match(fn("showMolstarContextMenu"), /moleculePickingLevelSubmenu\(menu, mode/);
 assert.match(fn("showMolstarContextMenu"), /proteinScope \? 'Protein actions' : 'Molecule actions'/);
-assert.match(fn("showMolstarContextMenu"), /setMolstarSelectionLevel\(mode\)[\s\S]*molstarContextPickingLevelLoci\(menuTarget, mode\)/);
-assert.match(fn("showMolstarContextMenu"), /activeViewer\.plugin\.selectionMode = true/);
-assert.match(fn("showMolstarContextMenu"), /menuTarget\.selectionBased = false/);
-assert.match(fn("showMolstarContextMenu"), /selectMolstarContextPick\(\{ \.\.\.menuTarget, loci: scopedLoci \}, \{ applyGranularity: false \}\)/);
-// Opening the menu is observational: only an explicit picking-level change or
-// Select command may change the live selection.
+assert.match(fn("showMolstarContextMenu"), /const applyPickingLevel = levelLabel => \{\s*setMolstarSelectionLevel\(mode\)/);
+assert.match(fn("showMolstarContextMenu"), /Picking level set to \$\{String\(levelLabel \|\| mode\)\.toLowerCase\(\)\}/);
+assert.doesNotMatch(fn("showMolstarContextMenu"), /activeViewer\.plugin\.selectionMode = true/);
+assert.doesNotMatch(fn("showMolstarContextMenu"), /selectMolstarContextPick/);
+// Opening the menu and changing its radio group are observational. Only the
+// explicit Select command may change the live selection.
 assert.match(fn("showMolstarContextMenu"), /menu\.appendChild\(pickingLevel\);\s*\n\s*renderActions\(\)/);
 assert.doesNotMatch(fn("molstarContextMenuActions"), /actions\.push\(\[`colour:/);
 assert.match(fn("installMolstarContextMenu"), /document\.addEventListener\('mousedown', suppressSecondaryMouseEvent, true\)/);
 assert.match(fn("installMolstarContextMenu"), /document\.addEventListener\('auxclick', suppressSecondaryMouseEvent, true\)/);
-// A plain left click toggles an already-selected structure off, while an
-// empty-space click still preserves a selection made elsewhere.
-assert.match(fn("beginMolstarSelectionPreserve"), /const pick = molstarContextPickFromEvent\(event\)/);
-assert.match(fn("finishMolstarSelectionPreserve"), /if \(preserve\.pickedAtStart\) return false;[\s\S]*restoreMolstarSelectionLociList\(preserve\.lociList\)/);
+// Plain left-click behavior remains untouched by the context-menu selection
+// contract; the existing sequence-selection preservation path is unchanged.
+assert.doesNotMatch(fn("beginMolstarSelectionPreserve"), /molstarContextPickFromEvent/);
+assert.match(fn("finishMolstarSelectionPreserve"), /restoreMolstarSelectionLociList\(preserve\.lociList\)/);
+assert.match(fn("installMolstarContextMenu"), /const onPointerUp = \(event\) => \{\s*finishMolstarSelectionPreserve\(event\)/);
 const group = fn("moleculeContextActionGroup");
 assert.match(group, /name\.startsWith\('colour:'\)\) return 'colour'/);
 assert.match(group, /name\.startsWith\('select:'\)\) return 'selection'/);

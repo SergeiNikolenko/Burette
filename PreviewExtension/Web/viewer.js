@@ -16064,36 +16064,33 @@
   }
 
   // A selection made elsewhere — most often by picking a stretch of sequence —
-  // should outlive an empty-space click in the 3D view. Clicking the selected
-  // structure itself is a toggle, though, and deliberately clears the selection.
+  // should outlive a look around the 3D view. A click there focuses rather than
+  // selects, so the selection it drops is collateral. This arms for any left
+  // click on the view, empty space or a molecule alike; the restore below only
+  // fires when the selection was actually wiped, so a click that legitimately
+  // makes a new one is left alone.
   function beginMolstarSelectionPreserve(event) {
     if (molstarLassoEnabled || molstarLassoStroke || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
     const lociList = molstarCurrentSelectionLociList();
     if (!lociList.length) return;
-    const pick = molstarContextPickFromEvent(event);
     molstarSelectionPreserveClick = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      lociList,
-      pickedAtStart: !!pick
+      lociList
     };
   }
 
   function finishMolstarSelectionPreserve(event) {
     const preserve = molstarSelectionPreserveClick;
-    if (!preserve || event.pointerId !== preserve.pointerId) return false;
+    if (!preserve || event.pointerId !== preserve.pointerId) return;
     molstarSelectionPreserveClick = null;
     const moved = Math.hypot(event.clientX - preserve.startX, event.clientY - preserve.startY) > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
-    if (moved) return false;
-    // Mol* owns selection toggles and replacements on structure picks. Restoring
-    // here would immediately undo a deliberate change to the selected scope.
-    if (preserve.pickedAtStart) return false;
+    if (moved) return;
     setTimeout(() => {
       if (molstarCurrentSelectionLociList().length) return;
       restoreMolstarSelectionLociList(preserve.lociList);
     }, 0);
-    return false;
   }
 
   function molstarContextStructures() {
@@ -18268,13 +18265,13 @@
   }
 
   // Visibility and representation are short, frequent blocks and stay directly on
-  // the first level. Longer Maestro/PyMOL toolsets keep their Base UI-style
-  // submenus, so the common path is one click without turning the menu into a wall.
+  // the first level. The Tools heading starts at Analyze, where the longer
+  // Maestro/PyMOL toolsets continue as Base UI-style submenus.
   const MOLECULE_MENU_GROUPS = [
     { id: 'primary', title: 'Target', direct: true },
-    { id: 'view', title: 'Visibility', direct: true, rootLabel: 'Tools', breakBefore: true },
+    { id: 'view', title: 'Visibility', direct: true, breakBefore: true },
     { id: 'represent', title: 'Representation', direct: true, breakBefore: true },
-    { id: 'analyze', title: 'Analyze' },
+    { id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true },
     { id: 'align', title: 'Superposition' },
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
@@ -20015,22 +20012,15 @@
         }
       }
     };
-    const applyModeSelection = levelLabel => {
+    const applyPickingLevel = levelLabel => {
       setMolstarSelectionLevel(mode);
-      activeViewer.plugin.selectionMode = true;
-      const scopedLoci = molstarContextPickingLevelLoci(menuTarget, mode);
-      if (scopedLoci) {
-        menuTarget.selectionBased = false;
-        menuTarget.loci = scopedLoci;
-        selectMolstarContextPick({ ...menuTarget, loci: scopedLoci }, { applyGranularity: false });
-      }
       subtitle.textContent = mode === 'chain' ? molstarContextChainLabel(menuTarget.atom) : menuTarget.label;
-      setStatus(`[web] Selected at ${String(levelLabel || mode).toLowerCase()} level.`);
+      setStatus(`[web] Picking level set to ${String(levelLabel || mode).toLowerCase()}.`);
     };
     const pickingLevel = moleculePickingLevelSubmenu(menu, mode, (level, levelLabel) => {
       mode = level;
       molstarContextMenuMode = mode;
-      applyModeSelection(levelLabel);
+      applyPickingLevel(levelLabel);
       renderActions();
       const point = molstarContextMenuLastPoint || {
         x: Number.parseFloat(menu.style.left) || 8,
@@ -20228,11 +20218,7 @@
         Math.abs(event.clientY - contextPointer.startY) > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
     };
     const onPointerUp = (event) => {
-      if (finishMolstarSelectionPreserve(event)) {
-        molstarPreviewRevealStart = null;
-        hideMolstarContextMenu();
-        return;
-      }
+      finishMolstarSelectionPreserve(event);
       if (molstarPreviewRevealStart && event.pointerId === molstarPreviewRevealStart.pointerId) {
         const moved = Math.hypot(event.clientX - molstarPreviewRevealStart.x, event.clientY - molstarPreviewRevealStart.y)
           > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;

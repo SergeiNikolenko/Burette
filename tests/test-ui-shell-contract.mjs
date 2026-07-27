@@ -5718,9 +5718,9 @@ assert.match(previewViewer, /const proteinScope = menuTarget\.scope === 'residue
 assert.match(previewViewer, /molstarContextMenuMode = mode;/);
 assert.match(previewViewer, /let mode = molstarSelectionLevel\(\)/);
 assert.match(previewViewer, /setMolstarSelectionLevel\(mode\)/);
-assert.match(previewViewer, /const scopedLoci = molstarContextPickingLevelLoci\(menuTarget, mode\);/);
-assert.match(previewViewer, /menuTarget\.selectionBased = false;/);
-assert.match(previewViewer, /selectMolstarContextPick\(\{ \.\.\.menuTarget, loci: scopedLoci \}, \{ applyGranularity: false \}\)/);
+assert.match(previewViewer, /const applyPickingLevel = levelLabel => \{/);
+assert.match(previewViewer, /Picking level set to \$\{String\(levelLabel \|\| mode\)\.toLowerCase\(\)\}/);
+assert.doesNotMatch(previewViewer, /const applyModeSelection = levelLabel => \{/);
 assert.match(previewViewer, /const actionTarget = \{ \.\.\.menuTarget, pickingLevel: mode \}/);
 assert.match(previewViewer, /molstarContextMenuActions\(actionTarget, mode\)/);
 assert.match(previewViewer, /const menuIsInAtomMode = \(\) => menuIsOpen\(\) && \['atom', 'element'\]\.includes\(molstarContextMenuMode\);/);
