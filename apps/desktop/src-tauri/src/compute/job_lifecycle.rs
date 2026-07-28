@@ -1,6 +1,6 @@
 use burette_compute_protocol::{
     AttemptSnapshot, AttemptState, ComputeErrorCode, ComputeFailure, JobOutcomeSummary,
-    JobSnapshot, JobState, ResultPackRef, StageState,
+    JobSnapshot, JobState, ResultPackRef, StageKind, StageSnapshot, StageState,
 };
 use uuid::Uuid;
 
@@ -17,6 +17,21 @@ pub(crate) struct StageFinishMetrics {
     pub(crate) host_time_ms: f64,
     pub(crate) gpu_time_ms: Option<f64>,
     pub(crate) transferred_bytes: u64,
+}
+
+pub(crate) fn queued_stage_job_state(stage: &StageSnapshot) -> ComputeResult<JobState> {
+    if stage.state != StageState::Queued {
+        return Err(ComputeCoordinatorError::Protocol(
+            "next compute stage is not queued".into(),
+        ));
+    }
+    Ok(match stage.kind {
+        StageKind::Materialize | StageKind::ChemistrySemantics => JobState::Preparing,
+        StageKind::NumericCompute if stage.effective_backend.is_gpu() => JobState::WaitingGpu,
+        StageKind::NumericCompute | StageKind::WorkflowSemantics => JobState::Running,
+        StageKind::Validation => JobState::Validating,
+        StageKind::ArtifactIo => JobState::Publishing,
+    })
 }
 
 pub(crate) fn start_stage(
@@ -397,7 +412,23 @@ fn bounded_message(message: &str) -> ComputeResult<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compute::store::test_support::queued_snapshot;
+    use crate::compute::store::test_support::{boundary_snapshot, queued_snapshot};
+    use burette_compute_protocol::BackendPolicy;
+
+    #[test]
+    fn keeps_a_queued_gpu_stage_at_the_waiting_gpu_boundary() {
+        let waiting = boundary_snapshot(BackendPolicy::GpuRequired, 2, JobState::WaitingGpu);
+        assert_eq!(
+            queued_stage_job_state(&waiting.stages[2]).expect("classify queued GPU stage"),
+            JobState::WaitingGpu,
+        );
+
+        let running = boundary_snapshot(BackendPolicy::ReferenceCpu, 2, JobState::Running);
+        assert_eq!(
+            queued_stage_job_state(&running.stages[2]).expect("classify queued CPU stage"),
+            JobState::Running,
+        );
+    }
 
     #[test]
     fn emits_one_valid_successor_per_durable_stage_boundary() {

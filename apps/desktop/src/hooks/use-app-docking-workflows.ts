@@ -78,20 +78,28 @@ export function useAppDockingWorkflows({
     if (!request) return null;
     if (request.ligandPaths.length === 0) return null;
     request.activePose = options.activePose ?? null;
-    request.sceneMode = options.sceneMode ?? null;
-    request.poseMode = options.sceneMode === "structureAll" ? "all" : "single";
+    request.sceneMode = options.sceneMode ?? request.sceneMode ?? null;
+    request.poseMode = request.sceneMode === "structureAll" ? "all" : "single";
     const isTrajectory = isTrajectoryDocumentRequest(request);
-    pushStatus(isTrajectory ? "Opening Molstar trajectory..." : "Opening Molstar docking view...");
+    const isStructureScene = Boolean(request.sceneMode);
+    pushStatus(isTrajectory
+      ? "Opening Molstar trajectory..."
+      : isStructureScene ? "Opening Molstar structure comparison..." : "Opening Molstar docking view...");
     try {
       const document = isTauriRuntime()
         ? await invoke<ViewerDocument>("open_docking_document", { request, preferences })
-        : await openBrowserDevDockingDocument(request.receptorPath, request.ligandPaths, preferences, options);
+        : await openBrowserDevDockingDocument(request.receptorPath, request.ligandPaths, preferences, {
+            ...options,
+            sceneMode: request.sceneMode,
+          });
       addDocuments([document]);
       rememberRecentStructures([document]);
       setStructureDragActive(false);
       pushStatus(isTrajectory
         ? `Opened trajectory with ${request.ligandPaths.length} segment${request.ligandPaths.length === 1 ? "" : "s"}`
-        : `Opened docking view with ${request.ligandPaths.length} ligand${request.ligandPaths.length === 1 ? "" : "s"}`);
+        : isStructureScene
+          ? `Opened comparison with ${request.ligandPaths.length + 1} structures`
+          : `Opened docking view with ${request.ligandPaths.length} ligand${request.ligandPaths.length === 1 ? "" : "s"}`);
       return document;
     } catch (error) {
       setStructureDragActive(false);

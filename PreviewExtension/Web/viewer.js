@@ -3927,8 +3927,7 @@
         if (toolbar.dataset.defaultPosition === '1') {
           applyDefaultToolbarPosition(toolbar);
         } else {
-          fitToolbarToViewport(toolbar);
-          updateFloatingLayoutOffsets();
+          repositionToolbar(toolbar);
         }
       });
     };
@@ -7320,7 +7319,7 @@
     let drag = null;
     let suppressClickUntil = 0;
     const onPointerDown = event => {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || event.target.closest('[data-buret-viewport-action]')) return;
       const toolbarRect = toolbar.getBoundingClientRect();
       drag = {
         pointerId: event.pointerId,

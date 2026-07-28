@@ -69,7 +69,9 @@ function runShellDropAction(
     return;
   }
   if (action.kind === "open-docking") {
-    void actions.openDockingDocument(action.request.receptorPath, action.request.ligandPaths);
+    void actions.openDockingDocument(action.request.receptorPath, action.request.ligandPaths, {
+      sceneMode: action.request.sceneMode ?? null,
+    });
     return;
   }
   if (action.kind === "open-docking-with-records") {

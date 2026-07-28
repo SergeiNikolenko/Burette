@@ -250,6 +250,7 @@ assert.ok(defaultCapability.permissions.includes('core:menu:allow-popup'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-close'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-set-enabled'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-is-enabled'));
+assert.ok(defaultCapability.permissions.includes('core:window:allow-is-fullscreen'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-internal-toggle-maximize'));
 assert.deepEqual(defaultCapability.windows, ['main', 'workspace-*']);
 assert.equal(defaultCapability.webviews, undefined);
@@ -452,7 +453,11 @@ assert.match(startupSource, /arg == "--burette-launch-mode"/);
 assert.match(startupSource, /file_args_from_argv/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn pick_open_targets/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn classify_open_paths/);
-assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_documents/);
+assert.match(
+  documentsCommand,
+  /#\[tauri::command\]\s+pub\(crate\) async fn open_documents[\s\S]*?spawn_blocking/,
+  'native document loading must not block the WebKit UI thread',
+);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_delimited_grid_document/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) async fn fetch_pdb_structure/);
