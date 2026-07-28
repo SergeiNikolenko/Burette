@@ -135,7 +135,7 @@ pub(crate) fn insert_prepared_fixture(store: &ComputeStore, owner: &str, snapsho
         .expect("insert prepared job");
 }
 
-pub(super) fn boundary_snapshot(
+pub(crate) fn boundary_snapshot(
     backend_policy: BackendPolicy,
     stage_index: usize,
     state: JobState,

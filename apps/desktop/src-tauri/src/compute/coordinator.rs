@@ -70,8 +70,8 @@ use crate::compute::{
         QueuedAnalysisV1JobInput, QueuedClusterV1JobInput, QueuedConformerV1JobInput,
     },
     job_lifecycle::{
-        fail_stage, finish_cancellation, finish_publish_stage, finish_stage, start_stage,
-        StageFinishMetrics, StageStartEvidence,
+        fail_stage, finish_cancellation, finish_publish_stage, finish_stage,
+        queued_stage_job_state, start_stage, StageFinishMetrics, StageStartEvidence,
     },
     representative_export::{export_cluster_representatives, ClusterRepresentativeExportResult},
     semiempirical_workflow::{
@@ -1542,11 +1542,7 @@ impl ComputeCoordinator {
                 .payload_bytes()
                 .map_err(|error| ComputeCoordinatorError::Protocol(error.to_string()))?
         };
-        let numeric_state = if constraints_running.stages[2].effective_backend.is_gpu() {
-            JobState::WaitingGpu
-        } else {
-            JobState::Running
-        };
+        let numeric_state = queued_stage_job_state(&constraints_running.stages[2])?;
         let constraints_succeeded = finish_stage(
             &constraints_running,
             1,
@@ -1654,10 +1650,11 @@ impl ComputeCoordinator {
             .iter()
             .filter(|error| error.is_some())
             .count();
+        let stereo_state = queued_stage_job_state(&distance_running.stages[3])?;
         let distance_succeeded = finish_stage(
             &distance_running,
             2,
-            JobState::Running,
+            stereo_state,
             now_ms(),
             if input_geometry {
                 "MMFF-optimized input geometries ready for final validation"
