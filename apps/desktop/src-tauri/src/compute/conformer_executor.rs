@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use super::{
     conformer_plan::ConformerMoleculeIdentity,
+    conformer_reference_validator::validate_etk_energy_batch,
     error::{ComputeCoordinatorError, ComputeResult},
     service::ComputeServiceClient,
 };
@@ -33,6 +34,7 @@ pub(crate) struct ConformerDistanceComputation {
     pub(crate) embedding_attempt_counts: Vec<u16>,
     pub(crate) embedding_energies: Vec<f32>,
     pub(crate) embedding_statuses: Vec<u8>,
+    pub(crate) etk_cpu_reference_validated: bool,
     pub(crate) etk_energies: Vec<f32>,
     pub(crate) etk_statuses: Vec<u8>,
     pub(crate) mmff_energies: Vec<f32>,
@@ -332,6 +334,12 @@ pub(crate) fn execute_conformer_distance_geometry_with_service(
                 {
                     return Err(protocol("conformer ETK result arrays are inconsistent"));
                 }
+                validate_etk_energy_batch(
+                    &refinement.positions,
+                    molecule.atomic_numbers.len(),
+                    &refinement.energies,
+                    etk.as_terms(),
+                )?;
                 let mmff_refinement = refine_mmff(
                     distance_backend,
                     metal,
@@ -435,6 +443,7 @@ pub(crate) fn execute_conformer_distance_geometry_with_service(
     output.gpu_time_ms = (distance_backend == Backend::NativeMetal
         || stereo_backend == Backend::NativeMetal)
         .then_some(total_gpu_time);
+    output.etk_cpu_reference_validated = true;
     output.validate(schedule.conformer_count)?;
     Ok(output)
 }
@@ -510,6 +519,7 @@ fn optimize_input_geometries(
             .push(output.positions.len() as u64);
     }
     output.gpu_time_ms = (backend == Backend::NativeMetal).then_some(gpu_time_ms);
+    output.etk_cpu_reference_validated = true;
     output.validate(output.conformer_count() as u64)?;
     Ok(output)
 }
@@ -1044,6 +1054,7 @@ impl ConformerDistanceComputation {
             embedding_attempt_counts: Vec::new(),
             embedding_energies: Vec::new(),
             embedding_statuses: Vec::new(),
+            etk_cpu_reference_validated: false,
             etk_energies: Vec::new(),
             etk_statuses: Vec::new(),
             mmff_energies: Vec::new(),

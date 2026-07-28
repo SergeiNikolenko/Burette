@@ -24,5 +24,15 @@ assert.match(
   /struct PendingGridStore[\s\S]*?impl Drop for PendingGridStore/,
   "an uncommitted store needs a cleanup guard when artifact generation fails",
 );
+assert.match(
+  source,
+  /const body = \{\{ type: type, message: String\(message \|\| ''\), \.\.\.\(payload \|\| \{\{\}\}\) \}\};/,
+  "the native Grid bridge must shape its message body before posting it",
+);
+assert.match(
+  source,
+  /window\.BuretteConfig && window\.BuretteConfig\.documentId[\s\S]*?body\.documentId = String\(window\.BuretteConfig\.documentId\)/,
+  "the native Grid bridge must attach the active document id to Chemical Space replies",
+);
 
 console.log("grid runtime lifecycle contract OK");

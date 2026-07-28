@@ -572,6 +572,26 @@ assert.deepEqual(ligandOnDocking, {
   },
 });
 
+const twoProteinComparison = resolveDropActionChoices(payload(["/tmp/protein-b.pdb"]), {
+  kind: "active-viewer",
+  documentPath: "/tmp/protein-a.pdb",
+  renderer: "molstar",
+});
+assert.deepEqual(twoProteinComparison[0], {
+  id: "open-structure-scene",
+  label: "Compare structures",
+  confidence: "default",
+  action: {
+    kind: "open-docking",
+    request: {
+      receptorPath: "/tmp/protein-a.pdb",
+      ligandPaths: ["/tmp/protein-b.pdb"],
+      sceneMode: "structureAll",
+      poseMode: "all",
+    },
+  },
+});
+
 assert.deepEqual(resolveDropAction(payload([], [{ path: "new-grid-ligand.smi", inputExtension: "smi", text: "CCO ethanol\n" }]), {
   kind: "active-viewer",
   documentPath: "burette-docking://active",
@@ -661,6 +681,8 @@ assert.deepEqual(resolveDropAction(payload(["/tmp/receptor-b.cif"]), {
   request: {
     receptorPath: "/tmp/receptor-a.pdb",
     ligandPaths: ["/tmp/receptor-b.cif"],
+    sceneMode: "structureAll",
+    poseMode: "all",
   },
 });
 
@@ -827,6 +849,8 @@ const dragDropMatrix = [
       request: {
         receptorPath: "/tmp/receptor-a.pdb",
         ligandPaths: ["/tmp/receptor-b.cif"],
+        sceneMode: "structureAll",
+        poseMode: "all",
       },
     },
   },
