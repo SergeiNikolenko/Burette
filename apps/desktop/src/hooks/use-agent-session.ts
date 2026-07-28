@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ViewerDocument } from "../types";
+import type { DockingSceneMode, ViewerDocument } from "../types";
 import type { OpenTextFilesResult } from "../types";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import type { DockArea } from "../lib/dock";
@@ -21,6 +21,11 @@ function loadKetcherAgentModule() {
 
 type OpenPaths = (paths: string[]) => void | Promise<void>;
 type OpenKetcherTab = () => void | Promise<void>;
+type OpenDockingDocument = (
+  receptorPath: string,
+  ligandPaths: string[],
+  options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null },
+) => void | Promise<ViewerDocument | null>;
 type OpenTextDocuments = (
   paths: string[],
   options?: { inActiveTab?: boolean; background?: boolean },
@@ -83,6 +88,7 @@ type UseAgentSessionArgs = {
   activeDocument: ViewerDocument | null | undefined;
   activeTabId: string | null | undefined;
   activeTabKind: string | null | undefined;
+  openDockingDocument: OpenDockingDocument;
   openKetcherTab: OpenKetcherTab;
   documents: ViewerDocument[];
   openTextDocuments: OpenTextDocuments;
@@ -95,6 +101,7 @@ export function useAgentSession({
   activeDocument,
   activeTabId,
   activeTabKind,
+  openDockingDocument,
   openKetcherTab,
   documents,
   openTextDocuments,
@@ -108,6 +115,7 @@ export function useAgentSession({
   const activeTabKindRef = useRef<string | null | undefined>(activeTabKind);
   const documentsRef = useRef<ViewerDocument[]>(documents);
   const openPathsRef = useRef(openPaths);
+  const openDockingDocumentRef = useRef(openDockingDocument);
   const openKetcherTabRef = useRef(openKetcherTab);
   const openTextDocumentsRef = useRef(openTextDocuments);
   const pushErrorStatusRef = useRef(pushErrorStatus);
@@ -127,11 +135,12 @@ export function useAgentSession({
 
   useEffect(() => {
     openPathsRef.current = openPaths;
+    openDockingDocumentRef.current = openDockingDocument;
     openKetcherTabRef.current = openKetcherTab;
     openTextDocumentsRef.current = openTextDocuments;
     pushErrorStatusRef.current = pushErrorStatus;
     setDockDocumentRef.current = setDockDocument;
-  }, [openKetcherTab, openPaths, openTextDocuments, pushErrorStatus, setDockDocument]);
+  }, [openDockingDocument, openKetcherTab, openPaths, openTextDocuments, pushErrorStatus, setDockDocument]);
 
   const activateSession = useCallback((sessionDir: string | null | undefined) => {
     const cleanSessionDir = typeof sessionDir === "string" ? sessionDir.trim() : "";
@@ -224,6 +233,7 @@ export function useAgentSession({
       void pollAgentActions(
         sessionDir,
         openPathsRef.current,
+        openDockingDocumentRef.current,
         openKetcherTabRef.current,
         openTextDocumentsRef.current,
         setDockDocumentRef.current,
@@ -337,6 +347,7 @@ async function writeObserve(
 async function pollAgentActions(
   sessionDir: string,
   openPaths: OpenPaths,
+  openDockingDocument: OpenDockingDocument,
   openKetcherTab: OpenKetcherTab,
   openTextDocuments: OpenTextDocuments,
   setDockDocument: (area: DockArea, documentId: string | null) => void,
@@ -359,6 +370,7 @@ async function pollAgentActions(
   const result = await executeDesktopAgentAction(
     nextAction,
     openPaths,
+    openDockingDocument,
     openKetcherTab,
     openTextDocuments,
     setDockDocument,
@@ -379,6 +391,7 @@ async function pollAgentActions(
 async function executeDesktopAgentAction(
   item: AgentActionItem,
   openPaths: OpenPaths,
+  openDockingDocument: OpenDockingDocument,
   openKetcherTab: OpenKetcherTab,
   openTextDocuments: OpenTextDocuments,
   setDockDocument: (area: DockArea, documentId: string | null) => void,
@@ -413,6 +426,40 @@ async function executeDesktopAgentAction(
     }
     await openPaths(paths);
     return { ok: true, command: "open_files", result: { pathCount: paths.length } };
+  }
+  if (type === "open_docking_view") {
+    const receptorPath = typeof item.action.receptorPath === "string" ? item.action.receptorPath.trim() : "";
+    const ligandPaths = Array.isArray(item.action.ligandPaths)
+      ? item.action.ligandPaths.filter((path): path is string => typeof path === "string" && path.trim().length > 0)
+      : [];
+    if (!receptorPath || ligandPaths.length === 0) {
+      return agentFailure(type, "INVALID_ARGS", "open_docking_view requires a receptorPath and at least one ligand path.");
+    }
+    const activePose = item.action.activePose;
+    if (activePose !== undefined && (!Number.isInteger(activePose) || Number(activePose) < 0)) {
+      return agentFailure(type, "INVALID_ARGS", "open_docking_view activePose must be a non-negative integer.");
+    }
+    const sceneMode = item.action.sceneMode;
+    if (sceneMode !== undefined && sceneMode !== "structureAll" && sceneMode !== "structurePoses") {
+      return agentFailure(type, "INVALID_ARGS", "open_docking_view sceneMode must be structureAll or structurePoses.");
+    }
+    const document = await openDockingDocument(receptorPath, ligandPaths, {
+      activePose: activePose === undefined ? null : Number(activePose),
+      sceneMode: sceneMode === undefined ? null : sceneMode,
+    });
+    if (!document) {
+      return agentFailure(type, "OPEN_FAILED", "The docking or trajectory view could not be opened.");
+    }
+    return {
+      ok: true,
+      command: type,
+      result: {
+        documentId: document.id,
+        path: document.path,
+        title: document.title,
+        ligandCount: ligandPaths.length,
+      },
+    };
   }
   if (type === "render_panel") {
     return renderPanel(item.action, openTextDocuments, setDockDocument, workspacePanels);

@@ -22,10 +22,10 @@ use tauri_plugin_dialog::DialogExt;
 use crate::commands::source_editing::OpenedSourceRegistry;
 use crate::menu::OpenDocumentRegistry;
 use crate::preview::formats::{
-    format_for_extension, resolve_renderer, structure_path_extension,
+    format_for_extension, preview_plan_for_extension, structure_path_extension,
     supported_structure_extensions,
 };
-use crate::preview::grid_store::GridParseOptions;
+use crate::preview::grid_store::{delimited_smiles_column_choices, GridParseOptions};
 use crate::preview::runtime::{
     companion_paths_for_open_path, open_docking_document as open_docking_document_runtime,
     open_document_for_window, open_document_with_grid_options, DockingDocumentRequest,
@@ -43,6 +43,7 @@ const FETCHED_PDB_MAX_BYTES: usize = 75 * 1024 * 1024;
 const KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE: u64 = 10 * 1024 * 1024;
 const PROJECT_STRUCTURE_SCAN_MAX_FILES: usize = 2_000;
 const PROJECT_STRUCTURE_SCAN_MAX_DIRECTORIES: usize = 400;
+const PROJECT_DELIMITED_CLASSIFICATION_MAX_BYTES: u64 = 512 * 1024;
 const PROJECT_STRUCTURE_SCAN_MAX_ENTRIES: usize = 20_000;
 const PROJECT_STRUCTURE_SCAN_MAX_ROOTS: usize = 16;
 const PROJECT_STRUCTURE_SCAN_REQUEST_MAX_FILES: usize = 4_000;
@@ -320,99 +321,104 @@ pub(crate) fn classify_open_paths(paths: Vec<String>) -> ClassifiedOpenPaths {
 }
 
 #[tauri::command]
-pub(crate) fn open_documents<R: Runtime>(
+pub(crate) async fn open_documents<R: Runtime>(
     app: tauri::AppHandle<R>,
     window: tauri::WebviewWindow<R>,
-    registry: tauri::State<'_, OpenDocumentRegistry>,
     paths: Vec<String>,
     preferences: ViewerPreferences,
     reload_options: Option<ViewerReloadOptions>,
     mode: Option<OpenDocumentsMode>,
     open_state_revision: u64,
 ) -> Result<OpenDocumentsResult, String> {
-    if matches!(
-        mode,
-        Some(OpenDocumentsMode::CombinePoses | OpenDocumentsMode::CombineGrid)
-    ) {
+    let window_label = window.label().to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let registry = app.state::<OpenDocumentRegistry>();
+        if matches!(
+            mode,
+            Some(OpenDocumentsMode::CombinePoses | OpenDocumentsMode::CombineGrid)
+        ) {
+            let mut documents = Vec::new();
+            let (document_paths, mut errors) = expand_open_document_paths(paths);
+            let claimed_paths = document_paths.clone();
+            let result = match mode {
+                Some(OpenDocumentsMode::CombinePoses) => open_with_provisional_read_claims(
+                    &registry,
+                    &window_label,
+                    &claimed_paths,
+                    open_state_revision,
+                    || open_combined_pose_document(&app, document_paths, &preferences, &mut errors),
+                ),
+                Some(OpenDocumentsMode::CombineGrid) => open_with_provisional_read_claims(
+                    &registry,
+                    &window_label,
+                    &claimed_paths,
+                    open_state_revision,
+                    || {
+                        open_combined_grid_document(
+                            &app,
+                            &window_label,
+                            document_paths,
+                            &preferences,
+                            &mut errors,
+                        )
+                    },
+                ),
+                _ => unreachable!("combined modes are handled above"),
+            };
+            match result {
+                Ok(document) => documents.push(document),
+                Err(error) => errors.push(error),
+            }
+            if documents.is_empty() && !errors.is_empty() {
+                return Err(errors.join("; "));
+            }
+            return Ok(OpenDocumentsResult { documents, errors });
+        }
+
         let mut documents = Vec::new();
         let (document_paths, mut errors) = expand_open_document_paths(paths);
-        let claimed_paths = document_paths.clone();
-        let result = match mode {
-            Some(OpenDocumentsMode::CombinePoses) => open_with_provisional_read_claims(
+        for path in document_paths {
+            let source_path = path.canonicalize().ok();
+            let claimed_path = path.clone();
+            match open_with_provisional_claim(
                 &registry,
-                window.label(),
-                &claimed_paths,
-                open_state_revision,
-                || open_combined_pose_document(&app, document_paths, &preferences, &mut errors),
-            ),
-            Some(OpenDocumentsMode::CombineGrid) => open_with_provisional_read_claims(
-                &registry,
-                window.label(),
-                &claimed_paths,
+                &window_label,
+                &claimed_path,
                 open_state_revision,
                 || {
-                    open_combined_grid_document(
+                    open_document_for_window(
                         &app,
-                        window.label(),
-                        document_paths,
+                        &window_label,
+                        path,
                         &preferences,
-                        &mut errors,
+                        reload_options.as_ref(),
                     )
                 },
-            ),
-            _ => unreachable!("combined modes are handled above"),
-        };
-        match result {
-            Ok(document) => documents.push(document),
-            Err(error) => errors.push(error),
+            ) {
+                Ok(document) => {
+                    if let Some(source_path) = source_path {
+                        let document_id = crate::preview::runtime_utils::stable_id(&source_path);
+                        if let Err(error) = app.state::<OpenedSourceRegistry>().register(
+                            document_id,
+                            window_label.clone(),
+                            source_path,
+                            "structure",
+                        ) {
+                            errors.push(error);
+                        }
+                    }
+                    documents.push(document)
+                }
+                Err(error) => errors.push(error),
+            }
         }
         if documents.is_empty() && !errors.is_empty() {
             return Err(errors.join("; "));
         }
-        return Ok(OpenDocumentsResult { documents, errors });
-    }
-
-    let mut documents = Vec::new();
-    let (document_paths, mut errors) = expand_open_document_paths(paths);
-    for path in document_paths {
-        let source_path = path.canonicalize().ok();
-        let claimed_path = path.clone();
-        match open_with_provisional_claim(
-            &registry,
-            window.label(),
-            &claimed_path,
-            open_state_revision,
-            || {
-                open_document_for_window(
-                    &app,
-                    window.label(),
-                    path,
-                    &preferences,
-                    reload_options.as_ref(),
-                )
-            },
-        ) {
-            Ok(document) => {
-                if let Some(source_path) = source_path {
-                    let document_id = crate::preview::runtime_utils::stable_id(&source_path);
-                    if let Err(error) = app.state::<OpenedSourceRegistry>().register(
-                        document_id,
-                        window.label().to_string(),
-                        source_path,
-                        "structure",
-                    ) {
-                        errors.push(error);
-                    }
-                }
-                documents.push(document)
-            }
-            Err(error) => errors.push(error),
-        }
-    }
-    if documents.is_empty() && !errors.is_empty() {
-        return Err(errors.join("; "));
-    }
-    Ok(OpenDocumentsResult { documents, errors })
+        Ok(OpenDocumentsResult { documents, errors })
+    })
+    .await
+    .map_err(|error| format!("Document loading task failed: {error}"))?
 }
 
 fn open_with_provisional_claim(
@@ -899,7 +905,8 @@ fn list_project_structure_files_blocking_with_limits(
         let mut errors = Vec::new();
         for path in outcome.paths {
             match project_structure_file(path) {
-                Ok(file) => files.push(file),
+                Ok(Some(file)) => files.push(file),
+                Ok(None) => {}
                 Err(error) => errors.push(error),
             }
         }
@@ -915,16 +922,21 @@ fn list_project_structure_files_blocking_with_limits(
     Ok(scans)
 }
 
-fn project_structure_file(path: PathBuf) -> Result<ProjectStructureFile, String> {
+fn project_structure_file(path: PathBuf) -> Result<Option<ProjectStructureFile>, String> {
     let metadata = match fs::metadata(&path) {
         Ok(metadata) if metadata.is_file() => metadata,
         Ok(_) => return Err(format!("{} is not a file", path.display())),
         Err(error) => return Err(format!("{}: {error}", path.display())),
     };
     let extension = structure_path_extension(&path);
-    let format =
-        format_for_extension(&extension).map_err(|error| format!("{}: {error}", path.display()))?;
-    Ok(ProjectStructureFile {
+    if matches!(extension.as_str(), "csv" | "tsv")
+        && !project_delimited_file_has_structure_column(&path, &extension)?
+    {
+        return Ok(None);
+    }
+    let plan = preview_plan_for_extension(&extension, "auto")
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    Ok(Some(ProjectStructureFile {
         path: path.to_string_lossy().to_string(),
         title: path
             .file_name()
@@ -932,9 +944,25 @@ fn project_structure_file(path: PathBuf) -> Result<ProjectStructureFile, String>
             .unwrap_or("structure")
             .to_string(),
         extension,
-        renderer: resolve_renderer(&format, "auto"),
+        renderer: plan.renderer,
         byte_count: metadata.len(),
-    })
+    }))
+}
+
+fn project_delimited_file_has_structure_column(
+    path: &PathBuf,
+    extension: &str,
+) -> Result<bool, String> {
+    let mut data = Vec::with_capacity(PROJECT_DELIMITED_CLASSIFICATION_MAX_BYTES as usize);
+    fs::File::open(path)
+        .map_err(|error| format!("{}: {error}", path.display()))?
+        .take(PROJECT_DELIMITED_CLASSIFICATION_MAX_BYTES)
+        .read_to_end(&mut data)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let text = String::from_utf8_lossy(&data);
+    Ok(delimited_smiles_column_choices(extension, &text)
+        .map(|choices| !choices.is_empty())
+        .unwrap_or(false))
 }
 
 #[cfg(test)]
@@ -3690,9 +3718,13 @@ mod tests {
         let nested = root.join("nested");
         fs::create_dir_all(&nested).unwrap();
         let pdb = root.join("mini.pdb");
+        let csv = root.join("molecules.csv");
+        let state_csv = root.join("state.csv");
         let cif = nested.join("mini.cif");
         let txt = nested.join("notes.txt");
         fs::write(&pdb, "HEADER TEST\n").unwrap();
+        fs::write(&csv, "smiles,name\nCC,ethane\n").unwrap();
+        fs::write(&state_csv, "step,energy\n1,-2.5\n").unwrap();
         fs::write(&cif, "data_test\n").unwrap();
         fs::write(&txt, "ignore\n").unwrap();
 
@@ -3703,20 +3735,29 @@ mod tests {
         let scan = &scans[0];
         assert!(!scan.truncated);
         assert_eq!(scan.scanned_directories, 2);
-        assert_eq!(scan.scanned_entries, 4);
+        assert_eq!(scan.scanned_entries, 6);
         assert!(scan.error.is_none());
         let files = &scan.files;
-        assert_eq!(files.len(), 2);
+        assert_eq!(files.len(), 3);
+        assert!(!files.iter().any(|file| file.title == "state.csv"));
+        let pdb_file = files.iter().find(|file| file.extension == "pdb").unwrap();
         assert_eq!(
-            files[0].path,
+            pdb_file.path,
             canonical_root.join("mini.pdb").to_string_lossy()
         );
-        assert_eq!(files[0].title, "mini.pdb");
-        assert_eq!(files[0].extension, "pdb");
-        assert_eq!(files[0].renderer, "molstar");
-        assert_eq!(files[0].byte_count, "HEADER TEST\n".len() as u64);
+        assert_eq!(pdb_file.title, "mini.pdb");
+        assert_eq!(pdb_file.renderer, "molstar");
+        assert_eq!(pdb_file.byte_count, "HEADER TEST\n".len() as u64);
+        let csv_file = files.iter().find(|file| file.extension == "csv").unwrap();
         assert_eq!(
-            files[1].path,
+            csv_file.path,
+            canonical_root.join("molecules.csv").to_string_lossy()
+        );
+        assert_eq!(csv_file.title, "molecules.csv");
+        assert_eq!(csv_file.renderer, "grid2d");
+        let cif_file = files.iter().find(|file| file.extension == "cif").unwrap();
+        assert_eq!(
+            cif_file.path,
             canonical_root
                 .join("nested")
                 .join("mini.cif")
@@ -3725,6 +3766,8 @@ mod tests {
 
         fs::remove_file(txt).unwrap();
         fs::remove_file(cif).unwrap();
+        fs::remove_file(state_csv).unwrap();
+        fs::remove_file(csv).unwrap();
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
         fs::remove_dir(root).unwrap();
