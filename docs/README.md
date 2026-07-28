@@ -24,6 +24,10 @@ contains only documents that describe the active project.
   diagnostics, and security reporting.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   Ketcher editing scope, artifacts, and checks.
+- [Mesoscale viewer implementation plan](mesoscale-viewer-implementation-plan.md):
+  desktop-first Mol* Mesoscale Explorer integration, runtime and format
+  boundaries, staged gates, scientific validation, performance budgets, and
+  separate Quick Look/iPhone acceptance.
 - [Performance architecture](performance.md): runtime profiles, caches, binary
   payloads, grid search, and no-regression guardrails.
 - [Native GPU Compute Layer](superpowers/specs/2026-07-15-gpu-compute-platform-design.md):
