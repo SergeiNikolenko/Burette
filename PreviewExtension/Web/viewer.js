@@ -1143,6 +1143,7 @@
   let activeMolstarPrepared = null;
   let trajectorySmoothingState = null;
   let pendingTrajectoryPlaybackRestore = null;
+  let viewportTrajectoryAnimationEpoch = 0;
   let activeSdfPoseMode = 'single';
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
@@ -7146,6 +7147,12 @@
   }
 
   function viewportAnimationApplicability(animation, plugin) {
+    if (animation?.name === 'built-in.animate-model-index'
+      && activeTrajectoryPlaybackControl
+      && !trajectorySmoothingState
+      && !activeTrajectoryPlaybackControl.canInterpolate()) {
+      return { canApply: false, reason: 'Build a smoothed trajectory before animating this format' };
+    }
     if (typeof animation?.canApply !== 'function') return { canApply: true };
     try {
       return animation.canApply(plugin) || { canApply: true };
@@ -7161,20 +7168,28 @@
     return Math.min(600, Math.max(60, (count - 1) * 8 + 1));
   }
 
+  function cancelViewportTrajectoryAnimation() {
+    viewportTrajectoryAnimationEpoch += 1;
+  }
+
   async function playViewportTrajectoryAnimation() {
+    const animationEpoch = ++viewportTrajectoryAnimationEpoch;
+    const viewer = activeViewer;
     let playback = activeTrajectoryPlaybackControl;
     if (!playback) throw new Error('Trajectory playback controls are unavailable for this scene.');
     playback.stop();
     if (trajectorySmoothingState?.view === 'original') {
       const restored = await setTrajectorySmoothingViewFromAction({ view: 'smoothed' });
       if (!restored.ok) throw new Error(restored.error?.message || 'The smoothed trajectory could not be restored.');
-    } else if (!trajectorySmoothingState && playback.canInterpolate()) {
+    } else if (!trajectorySmoothingState) {
+      if (!playback.canInterpolate()) throw new Error('Build a smoothed trajectory before animating this format.');
       const smoothed = await applyTrajectorySmoothingFromAction({
         preset: 'balanced',
         outputFrames: interpolatedTrajectoryFrameCount(playback.frameCount())
       });
       if (!smoothed.ok) throw new Error(smoothed.error?.message || 'The trajectory could not be interpolated.');
     }
+    if (animationEpoch !== viewportTrajectoryAnimationEpoch || activeViewer !== viewer) return;
     playback = activeTrajectoryPlaybackControl;
     if (!playback) throw new Error('Trajectory playback controls were lost while preparing the animation.');
     playback.play();
@@ -7191,6 +7206,7 @@
         .catch(error => setStatus(`[web] Trajectory animation failed. ${error?.message || error}`, 'error'));
       return;
     }
+    cancelViewportTrajectoryAnimation();
     Promise.resolve(manager.play(animation, viewportAnimationParams(animation, plugin)))
       .then(() => updateViewportAnimateState())
       .catch(error => setStatus(`[web] Animation failed. ${error?.message || error}`, 'error'));
@@ -7429,6 +7445,7 @@
     } else if (action === 'animation-play') {
       playViewportAnimation(Number(control.dataset.animationIndex));
     } else if (action === 'animation-stop') {
+      cancelViewportTrajectoryAnimation();
       plugin.managers.animation.stop();
       activeTrajectoryPlaybackControl?.stop();
       updateViewportAnimateState();
@@ -20935,6 +20952,7 @@
   }
 
   function disposeActiveMolstarViewer() {
+    cancelViewportTrajectoryAnimation();
     cancelScheduledMolstarWaterRepresentation();
     notifyMolstarSelectionChanged(null);
     molstarSelectionHostSignature = '';

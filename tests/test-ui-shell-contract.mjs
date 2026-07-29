@@ -5142,6 +5142,12 @@ assert.match(previewViewer, /applyTrajectorySmoothingFromAction\(\{[\s\S]*output
 assert.match(previewViewer, /playback = activeTrajectoryPlaybackControl;[\s\S]*playback\.play\(\);/);
 assert.match(previewViewer, /activeTrajectoryPlaybackControl\?\.stop\(\)/);
 assert.match(previewViewer, /prepared\.kind === 'trajectory' \|\| prepared\.kind === 'xyz-frame-overlay'/);
+assert.match(previewViewer, /const animationEpoch = \+\+viewportTrajectoryAnimationEpoch;/);
+assert.match(previewViewer, /if \(animationEpoch !== viewportTrajectoryAnimationEpoch \|\| activeViewer !== viewer\) return;/);
+assert.match(previewViewer, /action === 'animation-stop'[\s\S]*cancelViewportTrajectoryAnimation\(\);/);
+assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*cancelViewportTrajectoryAnimation\(\);/);
+assert.match(previewViewer, /Build a smoothed trajectory before animating this format/);
+assert.match(previewViewer, /!activeTrajectoryPlaybackControl\.canInterpolate\(\)/);
 assert.match(previewViewer, /plugin\?\.behaviors\?\.state\?\.isAnimating\?\.subscribe\?\.\(updateViewportAnimateState\)/);
 // Mol*'s Procedural Animation panel is carried into the same Animate menu with
 // all three upstream actions: a uniform dynamics wiggle, uncertainty-weighted
@@ -5535,7 +5541,7 @@ assert.match(previewViewer, /function embeddedStructureDataByteLength\(\)/);
 assert.match(previewViewer, /async function ensureBrowserDevStructureData\(config, cb\)/);
 assert.match(previewViewer, /window\.BuretteDataBytes = null;\s*window\.BuretteDataBase64 = null;\s*await loadStructureData\(config, cb\);/);
 assert.match(previewViewer, /function disposeActiveMolstarViewer\(\)/);
-assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*cancelScheduledMolstarWaterRepresentation\(\);\s*notifyMolstarSelectionChanged\(null\);\s*molstarSelectionHostSignature = '';\s*setMolstarStructureDirty\(false\);/);
+assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*cancelViewportTrajectoryAnimation\(\);\s*cancelScheduledMolstarWaterRepresentation\(\);\s*notifyMolstarSelectionChanged\(null\);\s*molstarSelectionHostSignature = '';\s*setMolstarStructureDirty\(false\);/);
 assert.match(previewViewer, /function startMolstar\(config, cb\)/);
 assert.match(previewViewer, /if \(toolbar\.dataset\.panelTogglesBound !== '1'\)/);
 assert.match(previewViewer, /if \(toolbar\.dataset\.dragBound === '1'\) return;/);
