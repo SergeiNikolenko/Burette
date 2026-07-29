@@ -1575,7 +1575,6 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   display: grid; place-items: center;
 }
 .buret-molstar-preset-slot,
-.buret-molstar-style-slot,
 .buret-xyzrender-preset-slot {
   position: relative;
 }
@@ -1618,8 +1617,6 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 .buret-generate-3d-control:focus-visible > .buret-tooltip,
 .buret-molstar-preset-slot:hover > .buret-tooltip,
 .buret-molstar-preset-slot:focus-within > .buret-tooltip,
-.buret-molstar-style-slot:hover > .buret-tooltip,
-.buret-molstar-style-slot:focus-within > .buret-tooltip,
 .buret-xyzrender-preset-slot:hover > .buret-tooltip,
 .buret-xyzrender-preset-slot:focus-within > .buret-tooltip {
   opacity: 1;
@@ -1653,8 +1650,6 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 #buret-toolbar .buret-button:focus-visible > .buret-tooltip,
 #buret-toolbar .buret-molstar-preset-slot:hover > .buret-tooltip,
 #buret-toolbar .buret-molstar-preset-slot:focus-within > .buret-tooltip,
-#buret-toolbar .buret-molstar-style-slot:hover > .buret-tooltip,
-#buret-toolbar .buret-molstar-style-slot:focus-within > .buret-tooltip,
 #buret-toolbar .buret-xyzrender-preset-slot:hover > .buret-tooltip,
 #buret-toolbar .buret-xyzrender-preset-slot:focus-within > .buret-tooltip {
   transform: translateY(0) scale(1);
@@ -2005,8 +2000,6 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
 .buret-renderer-choice { min-width: 38px; }
 .buret-molstar-preset-slot { display: none; align-items: center; }
 .buret-molstar-preset-slot.visible { display: flex; }
-.buret-molstar-style-slot { display: none; align-items: center; }
-.buret-molstar-style-slot.visible { display: flex; }
 .buret-xyzrender-preset-slot { display: none; align-items: center; }
 .buret-xyzrender-preset-slot.visible { display: flex; }
 .buret-xyzrender-tune.hidden { display: none; }

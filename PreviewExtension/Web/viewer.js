@@ -56,6 +56,11 @@
   ];
   const MOLSTAR_PRESET_OPTIONS = [
     { value: 'automatic', label: 'Automatic', provider: 'preset-structure-representation-auto' },
+    { value: 'cartoon-lines', label: 'Cartoon + Ligand Lines', group: 'Burette', legacyStyle: 'cartoon' },
+    { value: 'ball-and-stick', label: 'Ball & Stick', group: 'Burette', legacyStyle: 'ball-and-stick' },
+    { value: 'spacefill', label: 'Spacefill by Element', group: 'Burette', legacyStyle: 'spacefill' },
+    { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line', defaultAppearance: 'default' },
+    { value: 'illustrative-surface', label: 'Ghost Surface', group: 'Burette', legacyStyle: 'illustrative-surface' },
     { value: 'atomic-detail', label: 'Atomic Detail', group: 'Basic', provider: 'preset-structure-representation-atomic-detail' },
     { value: 'polymer-cartoon', label: 'Polymer Cartoon', group: 'Basic', provider: 'preset-structure-representation-polymer-cartoon' },
     { value: 'polymer-ligand', label: 'Polymer & Ligand', group: 'Basic', provider: 'preset-structure-representation-polymer-and-ligand' },
@@ -64,12 +69,7 @@
     { value: 'illustrative', label: 'Illustrative', group: 'Miscellaneous', provider: 'preset-structure-representation-illustrative' },
     { value: 'molecular-surface', label: 'Molecular Surface', group: 'Miscellaneous', provider: 'preset-structure-representation-molecular-surface' },
     { value: 'automatic-detail', label: 'Automatic Detail', group: 'Miscellaneous', provider: 'preset-structure-representation-auto-lod' },
-    { value: 'mesoscale', label: 'Mesoscale', group: 'Miscellaneous', provider: 'preset-structure-representation-mesoscale' },
-    { value: 'cartoon-lines', label: 'Cartoon + Ligand Lines', group: 'Burette', legacyStyle: 'cartoon' },
-    { value: 'ball-and-stick', label: 'Ball & Stick', group: 'Burette', legacyStyle: 'ball-and-stick' },
-    { value: 'spacefill', label: 'Spacefill by Element', group: 'Burette', legacyStyle: 'spacefill' },
-    { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line' },
-    { value: 'illustrative-surface', label: 'Ghost Surface', group: 'Burette', legacyStyle: 'illustrative-surface' }
+    { value: 'mesoscale', label: 'Mesoscale', group: 'Miscellaneous', provider: 'preset-structure-representation-mesoscale' }
   ];
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
@@ -1677,19 +1677,11 @@
     control.classList.toggle('visible', canSwitchRenderer);
     const molstarPresetSlot = toolbar.querySelector('[data-buret-molstar-preset-slot]');
     const molstarPresetTrigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
-    const molstarStyleSlot = toolbar.querySelector('[data-buret-molstar-style-slot]');
-    const molstarStyleSelect = toolbar.querySelector('[data-buret-molstar-style]');
     molstarPresetSlot?.classList.toggle('visible', renderer === 'molstar');
     if (renderer !== 'molstar') hideMolstarPresetMenu();
     if (molstarPresetTrigger) {
       molstarPresetTrigger.disabled = renderer !== 'molstar';
       updateMolstarPresetControl(toolbar, configuredMolstarPreset(config));
-    }
-    molstarStyleSlot?.classList.toggle('visible', renderer === 'molstar');
-    if (molstarStyleSelect) {
-      populateMolstarStyleSelect(molstarStyleSelect);
-      molstarStyleSelect.value = configuredMolstarAppearance(config);
-      molstarStyleSelect.disabled = renderer !== 'molstar';
     }
     const lassoAvailable = renderer === 'molstar' || renderer === 'xyzrender-external';
     lassoButton?.classList.toggle('hidden', !lassoAvailable);
@@ -2247,11 +2239,12 @@
       setViewerTheme(nextTheme, activeViewer);
       return;
     }
-    // Applied in place so the default-style preference never rebuilds the viewer.
-    // requestMolstarStyle updates the config, the toolbar selector, and re-renders
-    // through the same path the toolbar dropdown uses.
+    // Settings own the default Mol* appearance. Applying that preference in place
+    // preserves the component preset selected in the preview toolbar.
     if (body.type === 'setViewerStyle') {
-      requestMolstarStyle(body.value);
+      const style = normalizeMolstarStyle(body.value);
+      if (style === 'default' || style === 'illustrative') void requestMolstarAppearance(style);
+      else requestMolstarStyle(style);
       return;
     }
     if (body.type === 'setXyzrenderControls') {
@@ -2780,8 +2773,6 @@
     const preset = toolbar.querySelector('[data-buret-xyzrender-preset]');
     const molstarPresetSlot = toolbar.querySelector('[data-buret-molstar-preset-slot]');
     const molstarPresetTrigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
-    const molstarStyleSlot = toolbar.querySelector('[data-buret-molstar-style-slot]');
-    const molstarStyleSelect = toolbar.querySelector('[data-buret-molstar-style]');
     const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
     const lassoButton = toolbar.querySelector('[data-buret-action="molstar-lasso"]');
@@ -2789,8 +2780,6 @@
     molstarPresetSlot?.classList.toggle('visible', !external);
     if (external) hideMolstarPresetMenu();
     if (molstarPresetTrigger) molstarPresetTrigger.disabled = external;
-    molstarStyleSlot?.classList.toggle('visible', !external);
-    if (molstarStyleSelect) molstarStyleSelect.disabled = external;
     const lassoAvailable = normalized === 'molstar' || external;
     lassoButton?.classList.toggle('hidden', !lassoAvailable);
     if (lassoButton) {
@@ -2806,14 +2795,6 @@
       tuneButton?.removeAttribute('data-open');
       popover?.classList.add('hidden');
     }
-  }
-
-  function populateMolstarStyleSelect(select) {
-    if (!select || select.dataset.populated === '1') return;
-    select.innerHTML = MOLSTAR_APPEARANCE_OPTIONS
-      .map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
-      .join('');
-    select.dataset.populated = '1';
   }
 
   function populateMolstarPresetMenu(menu) {
@@ -3176,8 +3157,6 @@
     }
     window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
     const toolbar = document.getElementById('buret-toolbar');
-    const select = toolbar?.querySelector('[data-buret-molstar-style]');
-    if (select) select.value = appearance;
     updateMolstarPresetControl(toolbar, preset);
     if (!activeViewer) {
       setStatus('Mol* style can be changed after the viewer loads.', 'error');
@@ -3222,8 +3201,6 @@
       activeMolstarPrepared = { ...activeMolstarPrepared, molstarStyleOverride: legacyStyle };
     }
     const toolbar = document.getElementById('buret-toolbar');
-    const select = toolbar?.querySelector('[data-buret-molstar-style]');
-    if (select) select.value = appearance;
     updateMolstarPresetControl(toolbar, preset);
   }
 
@@ -3252,7 +3229,7 @@
   async function requestMolstarPreset(preset) {
     const value = normalizeMolstarPreset(preset);
     const option = molstarPresetOption(value);
-    const appearance = configuredMolstarAppearance(activeConfig || window.BuretteConfig || {});
+    const appearance = option.defaultAppearance || configuredMolstarAppearance(activeConfig || window.BuretteConfig || {});
     const legacyStyle = option.legacyStyle || appearance;
     updateMolstarPresentationConfig(value, appearance, legacyStyle);
     if (!activeViewer) {
@@ -4207,15 +4184,9 @@
 
   function bindMolstarStyleControls(toolbar) {
     if (!toolbar || toolbar.dataset.molstarStyleBound === '1') return;
-    const select = toolbar.querySelector('[data-buret-molstar-style]');
     const trigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
     const menu = document.querySelector('[data-buret-molstar-preset-menu]');
-    populateMolstarStyleSelect(select);
     populateMolstarPresetMenu(menu);
-    if (select) {
-      select.value = configuredMolstarAppearance(activeConfig || window.BuretteConfig || {});
-      select.addEventListener('change', () => requestMolstarAppearance(select.value));
-    }
     if (trigger && menu) {
       updateMolstarPresetControl(toolbar, configuredMolstarPreset(activeConfig || window.BuretteConfig || {}));
       trigger.addEventListener('click', event => {
