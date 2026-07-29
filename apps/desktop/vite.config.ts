@@ -88,6 +88,7 @@ const BROWSER_DEV_APP_ICONS: Record<string, string> = {
   vesta: "/Applications/VESTA.app/Contents/Resources/VESTA.icns",
 };
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
+const MESOSCALE_DEV_FILE_SIZE_LIMIT = 512 * 1024 * 1024;
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB = 24;
 const RDKIT_WASM_PATH = join(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal.wasm");
@@ -3573,6 +3574,7 @@ export function browserDevXyzrenderPlugin() {
         collectDevFiles,
         devFileExtensions: DEV_FILE_EXTENSIONS,
         devFileSizeLimit: DEV_FILE_SIZE_LIMIT,
+        devFileSizeLimitForPath,
         fileExtension,
         fileTitle,
         isDevFileReadAllowed,
@@ -3681,10 +3683,18 @@ async function collectDevFiles(path: string, files: string[]) {
     }
     return;
   }
-  if (!info.isFile() || info.size > DEV_FILE_SIZE_LIMIT) return;
+  if (!info.isFile() || info.size > devFileSizeLimitForPath(path)) return;
   if (!DEV_FILE_EXTENSIONS.has(fileExtension(path))) return;
   if (path.endsWith("/no-molecule-column.csv")) return;
   files.push(path);
+}
+
+function devFileSizeLimitForPath(path: string) {
+  const extension = fileExtension(path);
+  const name = pathBasename(path).toLowerCase();
+  return extension === "molj" || extension === "molx" || extension === "mesozip" || name.startsWith("mesoscale-")
+    ? MESOSCALE_DEV_FILE_SIZE_LIMIT
+    : DEV_FILE_SIZE_LIMIT;
 }
 
 function isDevFileReadAllowed(path: string) {

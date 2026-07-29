@@ -9,6 +9,7 @@ type BrowserDevFileRoutesOptions = {
   collectDevFiles: (path: string, files: string[]) => Promise<void>;
   devFileExtensions: Set<string>;
   devFileSizeLimit: number;
+  devFileSizeLimitForPath?: (path: string) => number;
   fileExtension: (path: string) => string;
   fileTitle: (path: string) => string;
   isDevFileReadAllowed: (path: string) => boolean | string;
@@ -95,7 +96,8 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
         return;
       }
       const info = await stat(filePath);
-      if (!info.isFile() || info.size > options.devFileSizeLimit || !options.devFileExtensions.has(options.fileExtension(filePath))) {
+      const sizeLimit = options.devFileSizeLimitForPath?.(filePath) ?? options.devFileSizeLimit;
+      if (!info.isFile() || info.size > sizeLimit || !options.devFileExtensions.has(options.fileExtension(filePath))) {
         sendJson(res, 400, { error: "Unsupported file" });
         return;
       }
