@@ -380,6 +380,7 @@
   }
 
   function effectiveMolecularGrid(cfg) {
+    if (typeof cfg?.molecularGrid === 'boolean') return cfg.molecularGrid;
     if (state.remoteMode) return true;
     return state.all.some(rowHasMolecule);
   }
@@ -1325,7 +1326,7 @@
     root.innerHTML = `
       <section class="buret-grid-shell">
         <div id="grid-controls"></div>
-        <nav class="buret-grid-rail" data-buret-grid-rail aria-label="Molecule navigation">
+        <nav class="buret-grid-rail" data-buret-grid-rail aria-label="${effectiveMolecularGrid(cfg) ? 'Molecule navigation' : 'Row navigation'}">
           <span class="buret-grid-rail-active-marker" data-buret-grid-rail-active aria-hidden="true"></span>
           <div class="buret-grid-rail-ticks" data-buret-grid-rail-ticks></div>
           <div class="buret-grid-rail-popover" data-buret-grid-rail-popover hidden>
@@ -1454,6 +1455,8 @@
         render(cfg);
       }
     });
+    const search = document.getElementById('search');
+    if (search) search.setAttribute('aria-label', effectiveMolecularGrid(cfg) ? 'Search molecules and SMARTS' : 'Search table rows');
     bindGridEditControlHandlers(cfg);
     applyGridToolbarInset();
   }
@@ -1594,11 +1597,13 @@
   }
 
   function propertyOptionList(cfg) {
-    const options = [
-      { value: 'index', label: 'File order' },
-      { value: 'name', label: 'Name' },
-      { value: 'smiles', label: 'SMILES' }
-    ];
+    const options = [{ value: 'index', label: 'File order' }];
+    if (effectiveMolecularGrid(cfg)) {
+      options.push(
+        { value: 'name', label: 'Name' },
+        { value: 'smiles', label: 'SMILES' }
+      );
+    }
     if (isRemoteMode(cfg)) return options;
     const keys = new Set();
     for (const row of state.all) {
@@ -1816,9 +1821,11 @@
   }
 
   function syncGridViewModeSwitch() {
+    const molecularGrid = effectiveMolecularGrid(safeConfig());
     document.body.dataset.buretGridViewMode = state.viewMode;
     root.querySelectorAll('[data-buret-grid-view-mode]').forEach(button => {
       const active = button.getAttribute('data-buret-grid-view-mode') === state.viewMode;
+      button.hidden = !molecularGrid && !active;
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
@@ -3262,7 +3269,7 @@
       loadStatus.textContent = state.indexError
         ? `Indexing failed: ${state.indexError}`
         : state.indexing
-        ? `Indexing ${included.toLocaleString()}${state.recordsTotalHint ? ` / ${state.recordsTotalHint.toLocaleString()}` : ''} molecules`
+        ? `Indexing ${included.toLocaleString()}${state.recordsTotalHint ? ` / ${state.recordsTotalHint.toLocaleString()}` : ''} ${effectiveMolecularGrid(cfg) ? 'molecules' : 'rows'}`
         : hasMoreRows()
         ? 'More rows available'
         : '';
@@ -3304,11 +3311,13 @@
     } else if (total > included && !state.remoteMode) {
       footerText = `Showing first ${included.toLocaleString()} of ${total.toLocaleString()} records.`;
     } else if (hasMoreRows()) {
-      footerText = `Scroll to load more. ${scrollable.toLocaleString()} of ${visible.toLocaleString()} visible molecules are scrollable.`;
+      footerText = `Scroll to load more. ${scrollable.toLocaleString()} of ${visible.toLocaleString()} visible ${effectiveMolecularGrid(cfg) ? 'molecules' : 'rows'} are scrollable.`;
     } else if (state.remoteMode) {
       footerText = 'Desktop grid runtime loads rows on demand and keeps only the active window mounted.';
     } else {
-      footerText = state.cardRenderer === 'xyzrender'
+      footerText = !effectiveMolecularGrid(cfg)
+        ? 'Tabular data preview with search, sort, columns, and filters.'
+        : state.cardRenderer === 'xyzrender'
         ? 'External xyzrender card rendering.'
         : 'Offline RDKit.js rendering with windowed cards. No network access required.';
     }
@@ -3319,6 +3328,9 @@
 
   function moleculeCountLabel(count) {
     const numeric = Math.max(0, Number(count || 0));
+    if (!effectiveMolecularGrid(safeConfig())) {
+      return `${numeric.toLocaleString()} ${numeric === 1 ? 'row' : 'rows'}`;
+    }
     return `${numeric.toLocaleString()} ${numeric === 1 ? 'molecule' : 'molecules'}`;
   }
 
@@ -3436,7 +3448,7 @@
     const indexNode = popover.querySelector('[data-buret-grid-rail-popover-index]');
     const nameNode = popover.querySelector('[data-buret-grid-rail-popover-name]');
     if (indexNode) indexNode.textContent = `${(target + 1).toLocaleString()} / ${total.toLocaleString()}`;
-    if (nameNode) nameNode.textContent = row?.name || `Molecule ${target + 1}`;
+    if (nameNode) nameNode.textContent = row?.name || `${effectiveMolecularGrid(safeConfig()) ? 'Molecule' : 'Row'} ${target + 1}`;
     const rect = ticks.getBoundingClientRect();
     const y = Math.max(rect.top, Math.min(clientY, rect.bottom));
     popover.style.setProperty('--buret-grid-rail-popover-offset', `${(y - rect.top - rect.height / 2).toFixed(2)}px`);
@@ -3796,7 +3808,7 @@
     const wrapper = document.createElement('div');
     wrapper.className = 'buret-grid-table-wrap';
     wrapper.tabIndex = 0;
-    wrapper.setAttribute('aria-label', 'Molecule table');
+    wrapper.setAttribute('aria-label', effectiveMolecularGrid(cfg) ? 'Molecule table' : 'Data table');
     wrapper.innerHTML = `
       ${state.tableColumnPanelOpen ? tableColumnPanelHTML(catalog, allColumns) : ''}
       <table class="buret-grid-table">
@@ -3848,9 +3860,13 @@
     }
     const columns = [
       { id: 'index', label: '#', type: 'number', fixed: true, get: row => String(Number(row.index) + 1) },
-      { id: 'molecule', label: 'Mol', type: 'none', fixed: true, html: (row, cfg) => `<div class="buret-grid-table-molecule" data-buret-molecule-picture>${draw(row, cfg)}</div>` },
-      { id: 'name', label: 'Name', type: 'text', fixed: true, get: row => row.name || `Molecule ${Number(row.index) + 1}` },
-      { id: 'smiles', label: 'SMILES', type: 'text', fixed: true, get: row => rowSmiles(row) }
+      ...(effectiveMolecularGrid(safeConfig())
+        ? [
+            { id: 'molecule', label: 'Mol', type: 'none', fixed: true, html: (row, cfg) => `<div class="buret-grid-table-molecule" data-buret-molecule-picture>${draw(row, cfg)}</div>` },
+            { id: 'name', label: 'Name', type: 'text', fixed: true, get: row => row.name || `Molecule ${Number(row.index) + 1}` },
+            { id: 'smiles', label: 'SMILES', type: 'text', fixed: true, get: row => rowSmiles(row) }
+          ]
+        : [{ id: 'name', label: 'Row', type: 'text', fixed: true, get: row => row.name || `Row ${Number(row.index) + 1}` }])
     ];
     const descriptorColumns = new Map();
     const analysisColumns = new Map();
@@ -4067,7 +4083,7 @@
     }).filter(Boolean);
     return `
       <div class="buret-grid-table-totals" role="status">
-        <span class="buret-grid-table-totals-count">${rows.length.toLocaleString()} ${rows.length === 1 ? 'molecule' : 'molecules'}</span>
+        <span class="buret-grid-table-totals-count">${moleculeCountLabel(rows.length)}</span>
         ${means.join('')}
       </div>`;
   }

@@ -121,6 +121,7 @@ impl GridSnapshotLease {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GridCollectionSummary {
     pub(crate) format: &'static str,
+    pub(crate) has_molecules: bool,
     pub(crate) records_total: usize,
     pub(crate) records_indexed: usize,
     pub(crate) index_ready: bool,
@@ -634,6 +635,11 @@ pub(crate) fn build_grid_store_with_options(
         return Ok(None);
     };
     let text = decode_text(data);
+    let has_molecules = match extension {
+        "csv" => options.smiles_column.is_some() || !is_generic_delimited_table(&text, ','),
+        "tsv" => options.smiles_column.is_some() || !is_generic_delimited_table(&text, '\t'),
+        _ => true,
+    };
     let database_path = runtime_dir.join("collection.sqlite");
     let connection = open_grid_database(&database_path)?;
     initialize_schema(&connection)?;
@@ -687,6 +693,7 @@ pub(crate) fn build_grid_store_with_options(
         ingest_worker,
         summary: GridCollectionSummary {
             format,
+            has_molecules,
             records_total: records_indexed,
             records_indexed,
             index_ready: first_batch.complete,
@@ -769,6 +776,7 @@ pub(crate) fn build_grid_store_from_file_with_options(
         ingest_worker,
         summary: GridCollectionSummary {
             format,
+            has_molecules: true,
             records_total: records_indexed,
             records_indexed,
             index_ready: first_batch.complete,
@@ -2555,6 +2563,15 @@ fn parse_delimited_batch(
     max_records: usize,
     options: &GridParseOptions,
 ) -> Result<ParsedGridBatch, String> {
+    if options.smiles_column.is_none() && is_generic_delimited_table(text, separator) {
+        return Ok(parse_generic_delimited_table_batch(
+            text,
+            separator,
+            cursor,
+            start_index,
+            max_records,
+        ));
+    }
     parse_delimited_table_batch(text, separator, cursor, start_index, max_records, options).or_else(
         |error| {
             if error != "missing smiles column" || options.smiles_column.is_some() {
@@ -2570,6 +2587,120 @@ fn parse_delimited_batch(
             )
         },
     )
+}
+
+fn is_generic_delimited_table(text: &str, separator: char) -> bool {
+    let Some((header_line, after_header)) = first_non_empty_line(text) else {
+        return false;
+    };
+    let headers: Vec<_> = parse_delimited_line(header_line, separator)
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .collect();
+    if headers.len() < 2 || !headers.iter().any(|value| !value.is_empty()) {
+        return false;
+    }
+    let has_named_structure_column = headers
+        .iter()
+        .map(|value| normalize_column_name(value))
+        .any(|value| is_smiles_column(&value) || matches!(value.as_str(), "molblock" | "molfile"));
+    !has_named_structure_column
+        && infer_smiles_columns_from_source(text, after_header, headers.len(), separator).is_empty()
+}
+
+fn parse_generic_delimited_table_batch(
+    text: &str,
+    separator: char,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+) -> ParsedGridBatch {
+    let Some((header_line, after_header)) = first_non_empty_line(text) else {
+        return ParsedGridBatch {
+            records: Vec::new(),
+            next_cursor: GridCursor::default(),
+            next_index: start_index,
+            complete: true,
+        };
+    };
+    let headers: Vec<_> = parse_delimited_line(header_line, separator)
+        .into_iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let value = value.trim();
+            if value.is_empty() {
+                format!("Column {}", index + 1)
+            } else {
+                clipped(value, 80)
+            }
+        })
+        .collect();
+    let name_index = headers.iter().position(|header| {
+        matches!(
+            normalize_column_name(header).as_str(),
+            "compound_id" | "id" | "name" | "title" | "compound"
+        )
+    });
+    let mut records = Vec::new();
+    let mut offset = if cursor.offset == 0 {
+        after_header
+    } else {
+        cursor.offset.min(text.len())
+    };
+    let mut row_number = cursor.row;
+    let mut next_index = start_index;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        if line.trim().is_empty() {
+            continue;
+        }
+        row_number += 1;
+        let cells = parse_delimited_line(line, separator);
+        if !cells.iter().any(|value| !value.trim().is_empty()) {
+            continue;
+        }
+        let raw_name = name_index
+            .and_then(|index| cells.get(index))
+            .map(|value| value.trim())
+            .unwrap_or("");
+        let name = if raw_name.is_empty() {
+            format!("Row {row_number}")
+        } else {
+            clipped(raw_name, 160)
+        };
+        let mut props = BTreeMap::new();
+        for (index, header) in headers.iter().enumerate().take(64) {
+            let value = cells.get(index).map(|value| value.trim()).unwrap_or("");
+            if !value.is_empty() {
+                props.insert(header.clone(), clipped(value, 500));
+            }
+        }
+        records.push(GridInputRecord {
+            index: next_index,
+            name,
+            smiles: None,
+            molblock: None,
+            idcode: None,
+            idcoordinates: None,
+            props,
+            source_byte_start: None,
+            source_byte_end: None,
+        });
+        next_index += 1;
+        if records.len() >= max_records {
+            break;
+        }
+    }
+    ParsedGridBatch {
+        records,
+        next_cursor: GridCursor {
+            offset,
+            row: row_number,
+            ..GridCursor::default()
+        },
+        next_index,
+        complete: offset >= text.len(),
+    }
 }
 
 fn parse_delimited_table_batch(
@@ -4387,6 +4518,56 @@ mod tests {
         );
         assert!(!page.rows[0].props.contains_key("proposal_smiles"));
         assert!(!page.rows[1].props.contains_key("target_smiles"));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn ingests_generic_csv_as_table_rows() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "coordinate_nm,pmf_kj_mol\n0.0,0.0\n0.1,1.25\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.format, "csv");
+        assert!(!summary.has_molecules);
+        assert_eq!(summary.records_total, 2);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch generic table page");
+        assert_eq!(page.total_rows, 2);
+        assert_eq!(page.rows[0].name, "Row 1");
+        assert_eq!(page.rows[0].smiles, None);
+        assert_eq!(
+            page.rows[1].props.get("pmf_kj_mol").map(String::as_str),
+            Some("1.25")
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn keeps_molecular_csv_controls_when_smiles_start_after_the_initial_page() {
+        let runtime_dir = temp_runtime_dir();
+        let mut csv = String::from("smiles,name\n");
+        for index in 0..GRID_INITIAL_ROWS {
+            csv.push_str(&format!(",blank-{index}\n"));
+        }
+        csv.push_str("CC,ethane\n");
+
+        let (_, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert!(summary.has_molecules);
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }

@@ -136,6 +136,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         "overlayOpacity": 0.90,
         "transparentBackground": preferences.resolved_transparent_background(),
         "recordsTotal": collection.records_total,
+        "molecularGrid": collection.has_molecules,
         "recordsIndexed": collection.records_indexed,
         "indexing": !collection.index_ready,
         "indexReady": collection.index_ready,
