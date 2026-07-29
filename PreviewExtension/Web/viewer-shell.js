@@ -19,9 +19,16 @@
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L<span class="buret-tooltip" role="tooltip">Toggle Mol* left object tree</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R<span class="buret-tooltip" role="tooltip">Toggle Mol* right properties panel</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq<span class="buret-tooltip" role="tooltip">Toggle sequence panel</span></button>
+          <div class="buret-molstar-preset-slot" data-buret-molstar-preset-slot>
+            <button id="buret-molstar-preset-trigger" class="buret-button buret-molstar-preset-trigger" type="button" data-buret-molstar-preset-trigger aria-label="Mol* representation preset" aria-haspopup="menu" aria-controls="buret-molstar-preset-menu" aria-expanded="false" title="Mol* representation preset">
+              <span data-buret-molstar-preset-label>Automatic</span>
+              <span class="buret-molstar-preset-chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="buret-tooltip" role="tooltip">Choose component and representation preset</span>
+            </button>
+          </div>
           <div class="buret-molstar-style-slot" data-buret-molstar-style-slot>
-            <select class="buret-select" data-buret-molstar-style aria-label="Mol* preview style" title="Mol* preview style"></select>
-            <span class="buret-tooltip" role="tooltip">Choose Mol* representation style</span>
+            <select class="buret-select" data-buret-molstar-style aria-label="Mol* appearance" title="Mol* appearance"></select>
+            <span class="buret-tooltip" role="tooltip">Choose lighting and outline appearance</span>
           </div>
           <button class="buret-button buret-molstar-lasso" type="button" data-buret-action="molstar-lasso" aria-label="Lasso select" aria-pressed="false" title="Lasso select">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.2 5.6c2.3-2 6.6-2.4 10.2-.8 3.5 1.6 5.4 4.6 4.5 7.3-.8 2.5-3.7 4.2-7.3 4.2-1.5 0-3-.3-4.3-.9l-2.6 3.2c-.4.5-1.2.2-1.2-.4l.2-4.1C2.5 12 2.6 7.8 5.2 5.6Zm1.3 1.5c-1.8 1.5-1.7 4.4.2 5.8.2.1.3.4.3.7l-.1 1.8 1.6-1.9c.3-.3.7-.4 1-.2 1 .6 2 .9 3.1.9 2.8 0 4.9-1.2 5.4-2.7.5-1.6-.8-3.6-3.5-4.8-2.9-1.3-6.4-1.1-8 .4Z" fill="currentColor"/></svg>
@@ -132,6 +139,7 @@
           </details>
         </div>
       </div>
+      <div id="buret-molstar-preset-menu" class="buret-molstar-preset-menu hidden" data-buret-molstar-preset-menu role="menu" aria-labelledby="buret-molstar-preset-trigger" aria-orientation="vertical"></div>
       <div id="buret-viewport-corner" class="buret-viewport-corner">
         <button id="buret-scene-tree-toggle" class="buret-corner-toggle hidden" type="button" data-buret-action="scene-tree" aria-label="Toggle scene tree" aria-haspopup="dialog" aria-controls="buret-scene-tree" aria-expanded="false" title="Scene tree (⌘T)">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>

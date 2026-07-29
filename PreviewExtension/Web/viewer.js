@@ -37,6 +37,8 @@
   const MAX_STRUCTURE_OVERLAY_FRAME_COUNT = 50;
   const XYZ_FRAME_BACKGROUND_MIN_ALPHA = 0.0001;
   const DEFAULT_MOLSTAR_STYLE = 'illustrative';
+  const DEFAULT_MOLSTAR_PRESET = 'automatic';
+  const DEFAULT_MOLSTAR_APPEARANCE = 'illustrative';
   const MOLSTAR_STYLE_OPTIONS = [
     { value: 'default', label: 'Default' },
     { value: 'illustrative', label: 'Illustrative' },
@@ -47,6 +49,27 @@
     { value: 'spacefill', label: 'Spacefill' },
     { value: 'line', label: 'Line' },
     { value: 'molecular-surface', label: 'Surface' }
+  ];
+  const MOLSTAR_APPEARANCE_OPTIONS = [
+    { value: 'default', label: 'Default' },
+    { value: 'illustrative', label: 'Illustrative' }
+  ];
+  const MOLSTAR_PRESET_OPTIONS = [
+    { value: 'automatic', label: 'Automatic', provider: 'preset-structure-representation-auto' },
+    { value: 'atomic-detail', label: 'Atomic Detail', group: 'Basic', provider: 'preset-structure-representation-atomic-detail' },
+    { value: 'polymer-cartoon', label: 'Polymer Cartoon', group: 'Basic', provider: 'preset-structure-representation-polymer-cartoon' },
+    { value: 'polymer-ligand', label: 'Polymer & Ligand', group: 'Basic', provider: 'preset-structure-representation-polymer-and-ligand' },
+    { value: 'protein-nucleic', label: 'Protein & Nucleic', group: 'Basic', provider: 'preset-structure-representation-protein-and-nucleic' },
+    { value: 'coarse-surface', label: 'Coarse Surface', group: 'Basic', provider: 'preset-structure-representation-coarse-surface' },
+    { value: 'illustrative', label: 'Illustrative', group: 'Miscellaneous', provider: 'preset-structure-representation-illustrative' },
+    { value: 'molecular-surface', label: 'Molecular Surface', group: 'Miscellaneous', provider: 'preset-structure-representation-molecular-surface' },
+    { value: 'automatic-detail', label: 'Automatic Detail', group: 'Miscellaneous', provider: 'preset-structure-representation-auto-lod' },
+    { value: 'mesoscale', label: 'Mesoscale', group: 'Miscellaneous', provider: 'preset-structure-representation-mesoscale' },
+    { value: 'cartoon-lines', label: 'Cartoon + Ligand Lines', group: 'Burette', legacyStyle: 'cartoon' },
+    { value: 'ball-and-stick', label: 'Ball & Stick', group: 'Burette', legacyStyle: 'ball-and-stick' },
+    { value: 'spacefill', label: 'Spacefill by Element', group: 'Burette', legacyStyle: 'spacefill' },
+    { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line' },
+    { value: 'illustrative-surface', label: 'Ghost Surface', group: 'Burette', legacyStyle: 'illustrative-surface' }
   ];
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
@@ -1224,6 +1247,43 @@
     return normalizeMolstarStyle(config && config.molstarStyle);
   }
 
+  function normalizeMolstarPreset(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return MOLSTAR_PRESET_OPTIONS.some(option => option.value === normalized) ? normalized : DEFAULT_MOLSTAR_PRESET;
+  }
+
+  function molstarPresetForLegacyStyle(style) {
+    const normalized = normalizeMolstarStyle(style);
+    if (normalized === 'polymer-ligand') return 'polymer-ligand';
+    if (normalized === 'cartoon') return 'cartoon-lines';
+    if (['ball-and-stick', 'spacefill', 'line', 'illustrative-surface'].includes(normalized)) return normalized;
+    if (normalized === 'molecular-surface') return 'molecular-surface';
+    return DEFAULT_MOLSTAR_PRESET;
+  }
+
+  function configuredMolstarPreset(config) {
+    if (config?.molstarPreset != null) return normalizeMolstarPreset(config.molstarPreset);
+    return molstarPresetForLegacyStyle(config?.molstarStyle);
+  }
+
+  function normalizeMolstarAppearance(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return MOLSTAR_APPEARANCE_OPTIONS.some(option => option.value === normalized)
+      ? normalized
+      : DEFAULT_MOLSTAR_APPEARANCE;
+  }
+
+  function configuredMolstarAppearance(config) {
+    if (config?.molstarAppearance != null) return normalizeMolstarAppearance(config.molstarAppearance);
+    const style = normalizeMolstarStyle(config?.molstarStyle);
+    return style === 'illustrative' || style === 'illustrative-surface' ? 'illustrative' : 'default';
+  }
+
+  function molstarPresetOption(value) {
+    const normalized = normalizeMolstarPreset(value);
+    return MOLSTAR_PRESET_OPTIONS.find(option => option.value === normalized) || MOLSTAR_PRESET_OPTIONS[0];
+  }
+
   function normalizeSdfCollectionContextStyle(value) {
     const normalized = String(value || '').trim().toLowerCase();
     if (['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'match'].includes(normalized)) return normalized;
@@ -1615,12 +1675,20 @@
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
     const lassoButton = toolbar.querySelector('[data-buret-action="molstar-lasso"]');
     control.classList.toggle('visible', canSwitchRenderer);
+    const molstarPresetSlot = toolbar.querySelector('[data-buret-molstar-preset-slot]');
+    const molstarPresetTrigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
     const molstarStyleSlot = toolbar.querySelector('[data-buret-molstar-style-slot]');
     const molstarStyleSelect = toolbar.querySelector('[data-buret-molstar-style]');
+    molstarPresetSlot?.classList.toggle('visible', renderer === 'molstar');
+    if (renderer !== 'molstar') hideMolstarPresetMenu();
+    if (molstarPresetTrigger) {
+      molstarPresetTrigger.disabled = renderer !== 'molstar';
+      updateMolstarPresetControl(toolbar, configuredMolstarPreset(config));
+    }
     molstarStyleSlot?.classList.toggle('visible', renderer === 'molstar');
     if (molstarStyleSelect) {
       populateMolstarStyleSelect(molstarStyleSelect);
-      molstarStyleSelect.value = configuredMolstarStyle(config);
+      molstarStyleSelect.value = configuredMolstarAppearance(config);
       molstarStyleSelect.disabled = renderer !== 'molstar';
     }
     const lassoAvailable = renderer === 'molstar' || renderer === 'xyzrender-external';
@@ -2710,12 +2778,17 @@
     });
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     const preset = toolbar.querySelector('[data-buret-xyzrender-preset]');
+    const molstarPresetSlot = toolbar.querySelector('[data-buret-molstar-preset-slot]');
+    const molstarPresetTrigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
     const molstarStyleSlot = toolbar.querySelector('[data-buret-molstar-style-slot]');
     const molstarStyleSelect = toolbar.querySelector('[data-buret-molstar-style]');
     const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
     const lassoButton = toolbar.querySelector('[data-buret-action="molstar-lasso"]');
     const external = normalized === 'xyzrender-external';
+    molstarPresetSlot?.classList.toggle('visible', !external);
+    if (external) hideMolstarPresetMenu();
+    if (molstarPresetTrigger) molstarPresetTrigger.disabled = external;
     molstarStyleSlot?.classList.toggle('visible', !external);
     if (molstarStyleSelect) molstarStyleSelect.disabled = external;
     const lassoAvailable = normalized === 'molstar' || external;
@@ -2737,10 +2810,95 @@
 
   function populateMolstarStyleSelect(select) {
     if (!select || select.dataset.populated === '1') return;
-    select.innerHTML = MOLSTAR_STYLE_OPTIONS
+    select.innerHTML = MOLSTAR_APPEARANCE_OPTIONS
       .map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
       .join('');
     select.dataset.populated = '1';
+  }
+
+  function populateMolstarPresetMenu(menu) {
+    if (!menu || menu.dataset.populated === '1') return;
+    let currentGroup = null;
+    for (const option of MOLSTAR_PRESET_OPTIONS) {
+      if (option.group && option.group !== currentGroup) {
+        const heading = document.createElement('div');
+        heading.className = 'buret-molstar-preset-menu-section';
+        heading.textContent = option.group;
+        menu.appendChild(heading);
+        currentGroup = option.group;
+      }
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-tree-menu-item';
+      button.dataset.buretMolstarPreset = option.value;
+      button.setAttribute('role', 'menuitemradio');
+      button.setAttribute('aria-checked', 'false');
+      const label = document.createElement('span');
+      label.className = 'buret-tree-menu-label';
+      label.textContent = option.label;
+      const current = document.createElement('span');
+      current.className = 'buret-molstar-preset-current';
+      current.textContent = 'Current';
+      button.append(label, current);
+      menu.appendChild(button);
+    }
+    menu.dataset.populated = '1';
+  }
+
+  function updateMolstarPresetControl(toolbar, preset) {
+    if (!toolbar) return;
+    const option = molstarPresetOption(preset);
+    const trigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
+    const label = trigger?.querySelector('[data-buret-molstar-preset-label]');
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    populateMolstarPresetMenu(menu);
+    if (label) label.textContent = option.label;
+    if (trigger) trigger.title = `Mol* preset: ${option.label}`;
+    menu?.querySelectorAll('[data-buret-molstar-preset]').forEach(button => {
+      button.setAttribute('aria-checked', button.dataset.buretMolstarPreset === option.value ? 'true' : 'false');
+    });
+  }
+
+  function positionMolstarPresetMenu(anchor = document.querySelector('[data-buret-molstar-preset-trigger]')) {
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    if (!menu || menu.classList.contains('hidden') || !anchor) return;
+    const margin = 12;
+    const gap = 6;
+    const anchorRect = anchor.getBoundingClientRect();
+    const menuWidth = menu.offsetWidth;
+    const left = Math.max(margin, Math.min(anchorRect.left, window.innerWidth - margin - menuWidth));
+    const belowTop = anchorRect.bottom + gap;
+    const spaceBelow = window.innerHeight - margin - belowTop;
+    const spaceAbove = anchorRect.top - gap - margin;
+    const openAbove = spaceBelow < Math.min(menu.scrollHeight, 260) && spaceAbove > spaceBelow;
+    const availableHeight = Math.max(120, openAbove ? spaceAbove : spaceBelow);
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(openAbove
+      ? Math.max(margin, anchorRect.top - gap - Math.min(menu.scrollHeight, availableHeight))
+      : belowTop)}px`;
+    menu.style.maxHeight = `${Math.floor(availableHeight)}px`;
+    menu.dataset.placement = openAbove ? 'top' : 'bottom';
+  }
+
+  function hideMolstarPresetMenu({ restoreFocus = false } = {}) {
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    const trigger = document.querySelector('[data-buret-molstar-preset-trigger]');
+    menu?.classList.add('hidden');
+    trigger?.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) trigger?.focus?.();
+  }
+
+  function showMolstarPresetMenu(anchor) {
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    if (!menu || !anchor || anchor.disabled) return;
+    hideGenerate3DMenu();
+    populateMolstarPresetMenu(menu);
+    updateMolstarPresetControl(document.getElementById('buret-toolbar'), configuredMolstarPreset(activeConfig || window.BuretteConfig || {}));
+    menu.classList.remove('hidden');
+    anchor.setAttribute('aria-expanded', 'true');
+    positionMolstarPresetMenu(anchor);
+    const selected = menu.querySelector('[aria-checked="true"]');
+    (selected || menu.querySelector('[role="menuitemradio"]'))?.focus?.();
   }
 
   function escapeHtml(value) {
@@ -3002,9 +3160,13 @@
 
   function requestMolstarStyle(style) {
     const value = normalizeMolstarStyle(style);
+    const preset = molstarPresetForLegacyStyle(value);
+    const appearance = value === 'illustrative' || value === 'illustrative-surface' ? 'illustrative' : 'default';
     activeConfig = {
       ...(activeConfig || window.BuretteConfig || {}),
-      molstarStyle: value
+      molstarStyle: value,
+      molstarPreset: preset,
+      molstarAppearance: appearance
     };
     if (activeMolstarPrepared?.molstarStyleOverride) {
       activeMolstarPrepared = {
@@ -3015,7 +3177,8 @@
     window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
     const toolbar = document.getElementById('buret-toolbar');
     const select = toolbar?.querySelector('[data-buret-molstar-style]');
-    if (select) select.value = value;
+    if (select) select.value = appearance;
+    updateMolstarPresetControl(toolbar, preset);
     if (!activeViewer) {
       setStatus('Mol* style can be changed after the viewer loads.', 'error');
       return;
@@ -3030,6 +3193,95 @@
 
   function molstarStyleLabel(value) {
     return MOLSTAR_STYLE_OPTIONS.find(option => option.value === value)?.label || value;
+  }
+
+  async function applyMolstarAppearance(viewer, appearance) {
+    const normalized = normalizeMolstarAppearance(appearance);
+    if (normalized === 'illustrative') await applyMolstarIllustrativePostprocessing(viewer);
+    else await applyMolstarNonIllustrativePostprocessing(viewer);
+  }
+
+  async function applyMolstarProviderPreset(viewer, option) {
+    const plugin = viewer?.plugin;
+    const provider = option?.provider && plugin?.builders?.structure?.representation?.resolveProvider?.(option.provider);
+    const structures = plugin?.managers?.structure?.hierarchy?.selection?.structures || [];
+    if (!provider) throw new Error(`Mol* preset provider is unavailable: ${option?.provider || option?.value || 'unknown'}.`);
+    if (!structures.length) throw new Error('No Mol* structure is available for the preset.');
+    await plugin.managers.structure.component.applyPreset(structures, provider);
+  }
+
+  function updateMolstarPresentationConfig(preset, appearance, legacyStyle) {
+    activeConfig = {
+      ...(activeConfig || window.BuretteConfig || {}),
+      molstarPreset: preset,
+      molstarAppearance: appearance,
+      molstarStyle: legacyStyle
+    };
+    window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
+    if (activeMolstarPrepared?.molstarStyleOverride) {
+      activeMolstarPrepared = { ...activeMolstarPrepared, molstarStyleOverride: legacyStyle };
+    }
+    const toolbar = document.getElementById('buret-toolbar');
+    const select = toolbar?.querySelector('[data-buret-molstar-style]');
+    if (select) select.value = appearance;
+    updateMolstarPresetControl(toolbar, preset);
+  }
+
+  async function requestMolstarAppearance(appearance) {
+    const value = normalizeMolstarAppearance(appearance);
+    const preset = configuredMolstarPreset(activeConfig || window.BuretteConfig || {});
+    const option = molstarPresetOption(preset);
+    updateMolstarPresentationConfig(preset, value, option.legacyStyle || value);
+    if (!activeViewer) {
+      setStatus('Mol* appearance can be changed after the viewer loads.', 'error');
+      return;
+    }
+    const serial = ++molstarStyleApplySerial;
+    setStatus(`[web] Applying Mol* ${value} appearance…`);
+    try {
+      await applyMolstarAppearance(activeViewer, value);
+      if (serial !== molstarStyleApplySerial) return;
+      setStatus(`[web] Applied Mol* ${value} appearance`);
+      setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+    } catch (error) {
+      if (serial !== molstarStyleApplySerial) return;
+      setStatus(`Mol* appearance switch failed.\n\n${error?.message || String(error)}`, 'error');
+    }
+  }
+
+  async function requestMolstarPreset(preset) {
+    const value = normalizeMolstarPreset(preset);
+    const option = molstarPresetOption(value);
+    const appearance = configuredMolstarAppearance(activeConfig || window.BuretteConfig || {});
+    const legacyStyle = option.legacyStyle || appearance;
+    updateMolstarPresentationConfig(value, appearance, legacyStyle);
+    if (!activeViewer) {
+      setStatus('Mol* presets can be changed after the viewer loads.', 'error');
+      return;
+    }
+    const serial = ++molstarStyleApplySerial;
+    setStatus(`[web] Applying Mol* ${option.label} preset…`);
+    try {
+      if (option.provider) await applyMolstarProviderPreset(activeViewer, option);
+      else await reloadMolstarStyle(activeViewer, legacyStyle, serial);
+      if (serial !== molstarStyleApplySerial) return;
+      await applyMolstarAppearance(activeViewer, appearance);
+      if (serial !== molstarStyleApplySerial) return;
+      setStatus(`[web] Applied Mol* ${option.label} preset`);
+      setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+    } catch (error) {
+      if (serial !== molstarStyleApplySerial) return;
+      setStatus(`Mol* preset switch failed.\n\n${error?.message || String(error)}`, 'error');
+    }
+  }
+
+  async function applyConfiguredMolstarPreset(viewer, config) {
+    const value = configuredMolstarPreset(config);
+    const option = molstarPresetOption(value);
+    const explicitlyConfigured = config?.molstarPreset != null;
+    if (!option.provider || (!explicitlyConfigured && value === DEFAULT_MOLSTAR_PRESET)) return;
+    await applyMolstarProviderPreset(viewer, option);
+    await applyMolstarAppearance(viewer, configuredMolstarAppearance(config));
   }
 
   // A structure that has not been focused yet still reports the default camera
@@ -3956,13 +4208,65 @@
   function bindMolstarStyleControls(toolbar) {
     if (!toolbar || toolbar.dataset.molstarStyleBound === '1') return;
     const select = toolbar.querySelector('[data-buret-molstar-style]');
+    const trigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
     populateMolstarStyleSelect(select);
+    populateMolstarPresetMenu(menu);
     if (select) {
-      select.value = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
-      select.addEventListener('change', () => requestMolstarStyle(select.value));
+      select.value = configuredMolstarAppearance(activeConfig || window.BuretteConfig || {});
+      select.addEventListener('change', () => requestMolstarAppearance(select.value));
+    }
+    if (trigger && menu) {
+      updateMolstarPresetControl(toolbar, configuredMolstarPreset(activeConfig || window.BuretteConfig || {}));
+      trigger.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (menu.classList.contains('hidden')) showMolstarPresetMenu(trigger);
+        else hideMolstarPresetMenu({ restoreFocus: true });
+      });
+      trigger.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowDown') return;
+        event.preventDefault();
+        showMolstarPresetMenu(trigger);
+      });
+      menu.addEventListener('click', event => {
+        const button = event.target?.closest?.('[data-buret-molstar-preset]');
+        if (!button || !menu.contains(button)) return;
+        event.preventDefault();
+        const preset = button.dataset.buretMolstarPreset;
+        hideMolstarPresetMenu({ restoreFocus: true });
+        void requestMolstarPreset(preset);
+      });
     }
     toolbar.dataset.molstarStyleBound = '1';
   }
+
+  document.addEventListener('pointerdown', event => {
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    if (!menu || menu.classList.contains('hidden')) return;
+    if (menu.contains(event.target) || event.target?.closest?.('[data-buret-molstar-preset-trigger]')) return;
+    hideMolstarPresetMenu();
+  });
+  document.addEventListener('keydown', event => {
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    if (!menu || menu.classList.contains('hidden')) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      hideMolstarPresetMenu({ restoreFocus: true });
+      return;
+    }
+    const items = Array.from(menu.querySelectorAll('[role="menuitemradio"]'));
+    const currentIndex = items.indexOf(document.activeElement);
+    let nextIndex = -1;
+    if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;
+    if (event.key === 'ArrowUp') nextIndex = currentIndex < 0 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = items.length - 1;
+    if (nextIndex >= 0 && items[nextIndex]) {
+      event.preventDefault();
+      items[nextIndex].focus();
+    }
+  });
 
   function bindMolstarLassoButton(toolbar) {
     const button = toolbar?.querySelector('[data-buret-action="molstar-lasso"]');
@@ -4142,6 +4446,7 @@
   function setToolbarCollapsed(toolbar, collapsed, viewer, persist = true) {
     if (collapsed) {
       setXyzrenderPopoverVisibility(toolbar, false);
+      hideMolstarPresetMenu();
       hideGenerate3DMenu();
       closeViewportMenu();
     }
@@ -4614,7 +4919,10 @@
       molstarViewportPanelOpen = panelOpen;
       molstarSelectionControlsOpen = selectionOpen;
       const suppressToolbar = panelOpen;
-      if (panelOpen) hideGenerate3DMenu();
+      if (panelOpen) {
+        hideGenerate3DMenu();
+        hideMolstarPresetMenu();
+      }
       document.body?.classList.toggle(MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS, panelOpen);
       document.body?.classList.toggle('buret-molstar-selection-controls-open', selectionOpen);
       const toolbar = document.getElementById('buret-toolbar');
@@ -20820,6 +21128,11 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
           throw error;
         }
       }
+    }
+    try {
+      await applyConfiguredMolstarPreset(viewer, activeConfig || config);
+    } catch (error) {
+      debug('Configured Mol* preset failed: ' + (error?.message || String(error)));
     }
     {
       const poseCount = Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || prepared?.xyzFrameCount || config?.trajectoryFrameCount || 0);

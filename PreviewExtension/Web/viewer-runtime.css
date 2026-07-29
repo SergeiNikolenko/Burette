@@ -1574,6 +1574,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   color: inherit; background: transparent; font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   display: grid; place-items: center;
 }
+.buret-molstar-preset-slot,
 .buret-molstar-style-slot,
 .buret-xyzrender-preset-slot {
   position: relative;
@@ -1615,6 +1616,8 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 .buret-button:focus-visible > .buret-tooltip,
 .buret-generate-3d-control:hover > .buret-tooltip,
 .buret-generate-3d-control:focus-visible > .buret-tooltip,
+.buret-molstar-preset-slot:hover > .buret-tooltip,
+.buret-molstar-preset-slot:focus-within > .buret-tooltip,
 .buret-molstar-style-slot:hover > .buret-tooltip,
 .buret-molstar-style-slot:focus-within > .buret-tooltip,
 .buret-xyzrender-preset-slot:hover > .buret-tooltip,
@@ -1648,6 +1651,8 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 }
 #buret-toolbar .buret-button:hover > .buret-tooltip,
 #buret-toolbar .buret-button:focus-visible > .buret-tooltip,
+#buret-toolbar .buret-molstar-preset-slot:hover > .buret-tooltip,
+#buret-toolbar .buret-molstar-preset-slot:focus-within > .buret-tooltip,
 #buret-toolbar .buret-molstar-style-slot:hover > .buret-tooltip,
 #buret-toolbar .buret-molstar-style-slot:focus-within > .buret-tooltip,
 #buret-toolbar .buret-xyzrender-preset-slot:hover > .buret-tooltip,
@@ -1998,6 +2003,8 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
 }
 .buret-renderer-control.visible { display: flex; }
 .buret-renderer-choice { min-width: 38px; }
+.buret-molstar-preset-slot { display: none; align-items: center; }
+.buret-molstar-preset-slot.visible { display: flex; }
 .buret-molstar-style-slot { display: none; align-items: center; }
 .buret-molstar-style-slot.visible { display: flex; }
 .buret-xyzrender-preset-slot { display: none; align-items: center; }
@@ -2008,6 +2015,88 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   color: inherit; background: transparent; font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 .buret-select:hover, .buret-select:focus { background: var(--buret-toolbar-hover); outline: none; }
+.buret-molstar-preset-trigger {
+  display: grid;
+  min-width: 82px;
+  max-width: 146px;
+  grid-auto-flow: column;
+  grid-template-columns: minmax(0, 1fr) 14px;
+  gap: 4px;
+  justify-content: start;
+  padding: 0 7px 0 9px;
+}
+.buret-molstar-preset-trigger > [data-buret-molstar-preset-label] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-molstar-preset-chevron {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  color: var(--buret-molstar-muted-text);
+  transform: rotate(90deg);
+  transition: transform 120ms ease;
+}
+.buret-molstar-preset-chevron svg { width: 12px; height: 12px; }
+.buret-molstar-preset-trigger[aria-expanded="true"] .buret-molstar-preset-chevron { transform: rotate(-90deg); }
+.buret-molstar-preset-trigger[aria-expanded="true"] + .buret-tooltip { display: none; }
+.buret-molstar-preset-menu {
+  position: fixed;
+  z-index: 2147483646;
+  box-sizing: border-box;
+  width: min(264px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: min(70vh, 470px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: var(--buret-molstar-panel-radius);
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-panel-background);
+  box-shadow: 0 18px 44px var(--buret-molstar-shadow);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-molstar-preset-menu.hidden { display: none; }
+.buret-molstar-preset-menu-section {
+  margin: 7px 2px 3px;
+  padding: 0 6px;
+  color: var(--buret-molstar-muted-text);
+  font: 600 10px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-molstar-preset-menu .buret-tree-menu-item {
+  width: 100%;
+  min-height: 28px;
+  gap: 8px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 8px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+.buret-molstar-preset-menu .buret-tree-menu-item:hover,
+.buret-molstar-preset-menu .buret-tree-menu-item:focus-visible {
+  background: var(--buret-molstar-hover-background);
+  outline: none;
+}
+.buret-molstar-preset-menu .buret-tree-menu-item[aria-checked="true"] {
+  background: color-mix(in srgb, var(--buret-accent, #b45cff) 18%, var(--buret-molstar-row-background));
+}
+.buret-molstar-preset-current {
+  display: none;
+  margin-left: auto;
+  color: var(--buret-molstar-muted-text);
+  font-size: 10px;
+}
+.buret-molstar-preset-menu .buret-tree-menu-item[aria-checked="true"] .buret-molstar-preset-current { display: inline; }
+body.buret-toolbar-collapsed .buret-molstar-preset-menu,
+body.buret-molstar-viewport-panel-open .buret-molstar-preset-menu { display: none; }
 .buret-xyzrender-popover {
   position: absolute; top: calc(100% + 6px); right: 0; left: auto;
   width: min(216px, calc(100vw - 20px));
