@@ -20,6 +20,7 @@ type BrowserDevFileRoutesOptions = {
   fileTitle: (path: string) => string;
   isDevFileReadAllowed: (path: string) => boolean | string;
   isNumpyArtifactExtension: (extension: string) => boolean;
+  imageMimeTypeForExtension: (extension: string) => string | null;
   languageForTextExtension: (extension: string) => string;
   looksBinary: (bytes: Buffer) => boolean;
   molecularBinaryArtifactSummary: (path: string, byteCount: number) => string;
@@ -29,6 +30,8 @@ type BrowserDevFileRoutesOptions = {
   resolveStructureFileBundle: (path: string) => unknown;
   textFileReadLimit: (value: string | null) => number;
 };
+
+const IMAGE_PREVIEW_READ_LIMIT = 24 * 1024 * 1024;
 
 export function registerBrowserDevFileDiscoveryRoute(server: ViteDevServer, options: BrowserDevFileRoutesOptions) {
   server.middlewares.use("/__burette/dev-files", async (req, res) => {
@@ -136,6 +139,7 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
       const url = new URL(req.url || "", "http://127.0.0.1");
       const path = url.searchParams.get("path");
       const maxBytes = options.textFileReadLimit(url.searchParams.get("maxBytes"));
+      const maxImageBytes = imagePreviewReadLimit(url.searchParams.get("maxImageBytes"));
       if (!path) {
         sendJson(res, 400, { error: "Missing path" });
         return;
@@ -150,8 +154,23 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
         sendJson(res, 400, { error: "Unsupported file" });
         return;
       }
-      const bytes = await readFile(filePath);
       const extension = options.fileExtension(filePath);
+      const imageMimeType = options.imageMimeTypeForExtension(extension);
+      if (imageMimeType && info.size > maxImageBytes) {
+        sendJson(res, 200, {
+          id: `browser-dev-${filePath}-${info.mtimeMs}`,
+          path: filePath,
+          title: options.fileTitle(filePath),
+          extension,
+          language: "image",
+          byteCount: info.size,
+          content: "",
+          truncated: true,
+          modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
+        }, "no-cache");
+        return;
+      }
+      const bytes = await readFile(filePath);
       if (options.isNumpyArtifactExtension(extension)) {
         sendJson(res, 200, {
           id: `browser-dev-${filePath}-${info.mtimeMs}`,
@@ -161,6 +180,20 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
           language: "markdown",
           byteCount: info.size,
           content: options.numpyArtifactTextSummary(filePath, bytes, info.size),
+          truncated: false,
+          modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
+        }, "no-cache");
+        return;
+      }
+      if (imageMimeType) {
+        sendJson(res, 200, {
+          id: `browser-dev-${filePath}-${info.mtimeMs}`,
+          path: filePath,
+          title: options.fileTitle(filePath),
+          extension,
+          language: "image",
+          byteCount: info.size,
+          content: `data:${imageMimeType};base64,${bytes.toString("base64")}`,
           truncated: false,
           modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
         }, "no-cache");
@@ -182,7 +215,17 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
           }, "no-cache");
           return;
         }
-        sendJson(res, 400, { error: `${filePath} is not a text file` });
+        sendJson(res, 200, {
+          id: `browser-dev-${filePath}-${info.mtimeMs}`,
+          path: filePath,
+          title: options.fileTitle(filePath),
+          extension,
+          language: "binary metadata",
+          byteCount: info.size,
+          content: binaryFileSummary(filePath, info.size, extension),
+          truncated: false,
+          modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
+        }, "no-cache");
         return;
       }
       const truncated = textBytes.length > maxBytes;
@@ -275,6 +318,18 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
       sendJsonError(res, 500, error);
     }
   });
+}
+
+function binaryFileSummary(path: string, byteCount: number, extension: string) {
+  const format = extension ? `.${extension}` : "unknown";
+  return `Binary file\n\nFile: ${path}\nSize: ${byteCount} bytes\nFormat: ${format}\n\nBurette does not have an inline renderer for this binary format yet. The file remains available in the project and can be opened with its default application.\n`;
+}
+
+function imagePreviewReadLimit(value: string | null) {
+  if (value === null) return IMAGE_PREVIEW_READ_LIMIT;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return IMAGE_PREVIEW_READ_LIMIT;
+  return Math.max(0, Math.min(IMAGE_PREVIEW_READ_LIMIT, Math.trunc(parsed)));
 }
 
 function positiveScanLimit(value: string | null) {
