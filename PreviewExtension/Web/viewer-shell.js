@@ -141,7 +141,9 @@
           <span data-buret-molstar-preset-preview-label>Preset preview</span>
           <span class="buret-molstar-preset-preview-caption">Current structure</span>
         </div>
-        <div class="buret-molstar-preset-preview-canvas" data-buret-molstar-preset-preview-canvas></div>
+        <div class="buret-molstar-preset-preview-canvas" data-buret-molstar-preset-preview-canvas>
+          <div class="buret-molstar-preset-preview-stage" data-buret-molstar-preset-preview-stage></div>
+        </div>
         <div class="buret-molstar-preset-preview-state" data-buret-molstar-preset-preview-state>Rendering preview…</div>
       </div>
       <div id="buret-viewport-corner" class="buret-viewport-corner">
