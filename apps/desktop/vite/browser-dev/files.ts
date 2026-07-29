@@ -265,6 +265,7 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
 const TRAJECTORY_COORDINATE_FORMATS = new Set(["xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj"]);
 const TRAJECTORY_MODEL_FORMATS = new Set(["pdb", "ent", "pdbqt", "pqr", "xpdb", "mmcif", "cif", "mcif", "gro"]);
 const TRAJECTORY_TOPOLOGY_FORMATS = new Set(["top", "psf", "prmtop", "tpr"]);
+const CONVENTIONAL_TRAJECTORY_TOPOLOGY_STEMS = new Set(["topology", "topol", "reference"]);
 const TRAJECTORY_PAIR_FORMATS = new Set([
   ...TRAJECTORY_COORDINATE_FORMATS,
   ...TRAJECTORY_MODEL_FORMATS,
@@ -335,7 +336,9 @@ async function browserDevTrajectoryPairPayload(filePath: string, options: Browse
 const DERIVED_TOPOLOGY_FORMATS = new Set(["xtc", "trr", "dcd", "nc", "ncdf", "netcdf", "nctraj"]);
 const derivedTopologyRoot = join(tmpdir(), "burette-browser-dev-derived-topology");
 const HEADER_READ_BYTES = 64 * 1024;
-const MAX_DERIVED_ATOMS = 100_000_000;
+// Each generated atom line is about 45 bytes. Match the native payload bound
+// so a corrupt header cannot allocate a multi-gigabyte placeholder topology.
+const MAX_DERIVED_ATOMS = 1_700_000;
 
 function derivedTopologyPath(trajectory: string) {
   return join(derivedTopologyRoot, `${createHash("sha1").update(trajectory).digest("hex").slice(0, 16)}.gro`);
@@ -453,9 +456,15 @@ function preferredTrajectoryCandidate(
   const matches = candidates.filter((candidate) => formats.has(options.fileExtension(candidate)));
   if (!matches.length) return null;
   const sourceStem = trajectoryStem(sourcePath);
-  return matches
+  const best = matches
     .map((candidate) => ({ candidate, score: trajectoryCandidateScore(candidate, sourceStem, options) }))
     .sort((left, right) => right.score - left.score || left.candidate.localeCompare(right.candidate))[0]?.candidate ?? null;
+  if (!best) return null;
+  const bestStem = trajectoryStem(best);
+  const relatedStem = bestStem === sourceStem || sourceStem.startsWith(bestStem) || bestStem.startsWith(sourceStem);
+  const conventionalTopology = (formats === TRAJECTORY_MODEL_FORMATS || formats === TRAJECTORY_TOPOLOGY_FORMATS)
+    && CONVENTIONAL_TRAJECTORY_TOPOLOGY_STEMS.has(bestStem);
+  return relatedStem || conventionalTopology ? best : null;
 }
 
 function trajectoryCandidateScore(path: string, sourceStem: string, options: BrowserDevFileRoutesOptions) {

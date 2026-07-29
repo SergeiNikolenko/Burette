@@ -20,6 +20,19 @@ const MOLSTAR_DIRECT_VIEWER_EXTENSIONS = new Set(
     .filter((format) => Boolean(format.viewer) && format.viewer?.externalOnly !== true)
     .flatMap((format) => format.extensions.map((extension) => extension === "mae.gz" ? "maegz" : extension)),
 );
+const STRUCTURE_COMPARISON_EXTENSIONS = new Set([
+  "bcif",
+  "cif",
+  "cms",
+  "ent",
+  "gro",
+  "mae",
+  "maegz",
+  "mcif",
+  "mmcif",
+  "pdb",
+  "pqr",
+]);
 const MOLSTAR_COMBINE_EXTENSIONS = new Set([
   ...previewFormatRegistry.formats
     .filter((format) => Boolean(format.viewer))
@@ -48,6 +61,10 @@ export function isMolstarViewerExtension(extension: string) {
 
 export function isMolstarCoordinateTrajectorySource(path: string) {
   return MOLSTAR_COORDINATE_TRAJECTORY_EXTENSIONS.has(extensionForDocking(path));
+}
+
+export function isStructureComparisonSource(path: string) {
+  return STRUCTURE_COMPARISON_EXTENSIONS.has(extensionForDocking(path));
 }
 
 export function isTrajectoryDocumentRequest(request: DockingDocumentRequest | null | undefined) {
@@ -93,9 +110,23 @@ export function dockingCandidatesForDrop(
       receptorPath: existingDockingRequest.receptorPath,
       ligandPaths: combineDockingPaths([...existingDockingRequest.ligandPaths, ...addedLigands])
         .filter((path) => path !== existingDockingRequest.receptorPath),
+      ...(existingDockingRequest.sceneMode
+        ? {
+            sceneMode: existingDockingRequest.sceneMode,
+            poseMode: existingDockingRequest.sceneMode === "structureAll" ? "all" as const : "single" as const,
+          }
+        : {}),
     }];
   }
   const paths = combineDockingPaths([targetPath, ...droppedPaths]);
+  if (paths.length >= 2 && paths.every(isStructureComparisonSource)) {
+    return [{
+      receptorPath: paths[0],
+      ligandPaths: paths.slice(1),
+      sceneMode: "structureAll",
+      poseMode: "all",
+    }];
+  }
   const receptorPaths = paths.filter(isProteinLikeDockingSource);
   const modelOrTopologyPaths = paths.filter((path) => !isMolstarCoordinateTrajectorySource(path));
   const anchorPaths = receptorPaths.length > 0

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { DragDropEvent } from "@tauri-apps/api/window";
-import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsMode, ViewerDocument } from "../types";
+import type { DockingDocumentRequest, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, ViewerDocument } from "../types";
 import { resolveDropActionChoices } from "../lib/drop-actions";
 import type { DropSourceContext, DropTargetContext } from "../lib/drop-actions";
 import type { DropAction, DropActionChoice } from "../lib/drop-actions";
@@ -24,7 +24,7 @@ type OpenTextDocuments = (paths: string[]) => unknown;
 type OpenDockingDocument = (
   receptorPath: string,
   ligandPaths: string[],
-  options?: { activePose?: number | null },
+  options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null },
 ) => void | Promise<ViewerDocument | null>;
 type OpenDockingStructureRecords = (receptorPath: string, ligandPaths: string[], records: StructureDragRecord[]) => void | Promise<void>;
 type OpenStructureRecords = (records: StructureDragRecord[]) => void | Promise<void>;
@@ -263,7 +263,9 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     }
     if (action.kind === "open-docking") {
       if (openDockingDocument) {
-        void openDockingDocument(action.request.receptorPath, action.request.ligandPaths);
+        void openDockingDocument(action.request.receptorPath, action.request.ligandPaths, {
+          sceneMode: action.request.sceneMode ?? null,
+        });
         return;
       }
       void openDocuments(payload.paths);

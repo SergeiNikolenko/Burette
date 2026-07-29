@@ -9,6 +9,7 @@ import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState, StructureOverlayMode, StructureViewerAction } from "./types";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
+import { pymolQueryForSelector } from "../lib/molstar-selection-query";
 import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerWorkflow } from "../lib/conformer-ensemble";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -251,9 +252,13 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
   }
 
   const brief = structureBriefForDocument(document, formatBytes(document.byteCount));
-  const compositionSummary = composition.documentId === document.id ? composition.summary : null;
-  const compositionPending = composition.documentId === document.id && composition.loading;
-  const rawCompositionError = composition.documentId === document.id ? composition.error : null;
+  const derivedTopology = document.dockingRequest?.syntheticTopology === true;
+  // Placeholder atoms have no chemical identity, so a parsed composition would
+  // mislabel atom count as residues/ligands and must stay hidden until the user
+  // attaches the matching topology.
+  const compositionSummary = !derivedTopology && composition.documentId === document.id ? composition.summary : null;
+  const compositionPending = !derivedTopology && composition.documentId === document.id && composition.loading;
+  const rawCompositionError = !derivedTopology && composition.documentId === document.id ? composition.error : null;
   const virtualScene = isVirtualMolstarScene(document);
   const compositionError = virtualScene ? null : rawCompositionError;
   const selectedEntity = selectedStructureRow(document, compositionSummary, activeActionKey);
@@ -443,7 +448,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
 
       <FoldingResultsPanel state={foldingResult} actions={actions} />
 
-      {!hostedMcpWidget && !trajectoryDocument && !virtualScene ? <>
+      {!hostedMcpWidget && !trajectoryDocument && !derivedTopology && !virtualScene ? <>
         {/* The conformer card and the standalone descriptor card are gone: both
             are tool rows inside Tools now. GridFilterSection is lazy upstream,
             so it keeps the Suspense boundary main gave it. */}
@@ -534,11 +539,12 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
 
       </> : null}
 
+      {derivedTopology ? (
+        <DerivedTopologyCard document={document} isBrowserDev={isBrowserDev} actions={actions} />
+      ) : null}
+
       {poseControls ? (
         <>
-          {trajectoryDocument && document.dockingRequest?.syntheticTopology ? (
-            <DerivedTopologyCard document={document} isBrowserDev={isBrowserDev} actions={actions} />
-          ) : null}
           {trajectoryDocument && !virtualScene ? (
             <TrajectorySmoothingCard
               document={document}
@@ -3785,6 +3791,15 @@ function compositionComponentKind(label: string): CompositionComponentKind | und
   return undefined;
 }
 
+// The group rows are named after their kind, but a chain or a ligand instance is
+// not - it is named after itself. Its selector still says which kind it belongs
+// to, which is what decides how a new component made from it gets drawn.
+function compositionComponentKindFromSelector(selector: unknown): CompositionComponentKind | undefined {
+  if (!selector || typeof selector !== "object") return undefined;
+  const kind = (selector as { kind?: unknown }).kind;
+  return kind === "polymer" || kind === "ligand" || kind === "ion" || kind === "water" ? kind : undefined;
+}
+
 function compositionToneFor(label: string): CompositionTone {
   if (label === "Polymers" || label.startsWith("Chain")) return "polymer";
   if (label === "Ligands") return "ligand";
@@ -4394,6 +4409,35 @@ function contextMenuItems({
         text: "Remove",
         tooltip: `Take the ${row.label.toLowerCase()} out of the scene tree`,
         action: () => runAction({ type: "remove_components", label: `Remove ${row.label.toLowerCase()}`, kind: componentKind }),
+      },
+    );
+  }
+  // A chain or a ligand instance is a selector, not a scene object, so the tree's
+  // colour and representation controls have nothing to address. Making a component
+  // out of it gives it a row in the scene tree, and every one of those controls
+  // comes with it. The item is absent when the query cannot be written exactly:
+  // a component wider than the row it came from would be a lie.
+  const componentSelector = "selector" in primaryAction ? primaryAction.selector : undefined;
+  const componentQuery = pymolQueryForSelector(componentSelector);
+  // The row's own kind decides how the new component is drawn - a chain wants a
+  // cartoon, a ligand ball-and-stick. `componentKind` only exists on the four
+  // group rows, so a chain row has to read it off the selector it already carries.
+  const componentQueryKind = componentKind ?? compositionComponentKindFromSelector(componentSelector);
+  if (componentQuery) {
+    items.push(
+      { kind: "separator" },
+      {
+        kind: "item",
+        id: "create-component",
+        text: "Add to scene as component",
+        tooltip: `Give ${row.label} its own row in the scene tree, with the colour and representation controls that come with one`,
+        action: () => runAction({
+          type: "create_component",
+          label: `Add ${row.label} to the scene`,
+          query: componentQuery,
+          componentLabel: row.label,
+          kind: componentQueryKind,
+        }),
       },
     );
   }

@@ -10,8 +10,8 @@ Release identity is Burette-specific:
 
 ## Version Discipline
 
-Feature PRs do not need a version bump. Before a release, keep these versions
-aligned:
+Every merged PR creates a release, so each PR must advance the version beyond
+`main`. Keep these versions aligned:
 
 - root `package.json`
 - root `bun.lock`

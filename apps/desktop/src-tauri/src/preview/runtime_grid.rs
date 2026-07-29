@@ -224,7 +224,11 @@ fn grid_html(
   <script>
     window.__mqlPost = function (type, message, payload) {{
       try {{
-        window.parent && window.parent.postMessage({{ source: 'burette-grid', body: {{ type: type, message: String(message || ''), ...(payload || {{}}) }} }}, '*');
+        const body = {{ type: type, message: String(message || ''), ...(payload || {{}}) }};
+        if (window.BuretteConfig && window.BuretteConfig.documentId) {{
+          body.documentId = String(window.BuretteConfig.documentId);
+        }}
+        window.parent && window.parent.postMessage({{ source: 'burette-grid', body: body }}, '*');
       }} catch (_) {{}}
     }};
     window.BuretteInlineMode = true;

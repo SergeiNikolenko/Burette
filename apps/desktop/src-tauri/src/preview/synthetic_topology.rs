@@ -31,8 +31,9 @@ pub(crate) const SYNTHETIC_TOPOLOGY_EXTENSIONS: &[&str] =
 /// Enough for the longest header walk (DCD titles), and bounded so a corrupt
 /// file cannot pull an unreasonable amount into memory.
 const HEADER_READ_BYTES: usize = 64 * 1024;
-/// Guards against a corrupt header producing an absurd allocation.
-const MAX_SYNTHETIC_ATOMS: i64 = 100_000_000;
+/// Keeps the generated GRO below the desktop's bounded structure payload. Each
+/// atom line is about 45 bytes, so this leaves headroom under the 75 MiB limit.
+const MAX_SYNTHETIC_ATOMS: i64 = 1_700_000;
 
 /// Builds (or reuses) the synthetic topology paired with `trajectory`.
 ///

@@ -78,6 +78,18 @@ assert.deepEqual(
   {
     receptorPath: "/tmp/receptor-a.pdb",
     ligandPaths: ["/tmp/receptor-b.cif"],
+    sceneMode: "structureAll",
+    poseMode: "all",
+  },
+);
+
+assert.deepEqual(
+  dockingRequestForDrop("/tmp/protein-a.pdb", ["/tmp/protein-b.pdb"]),
+  {
+    receptorPath: "/tmp/protein-a.pdb",
+    ligandPaths: ["/tmp/protein-b.pdb"],
+    sceneMode: "structureAll",
+    poseMode: "all",
   },
 );
 
