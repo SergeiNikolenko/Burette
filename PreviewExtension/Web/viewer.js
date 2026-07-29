@@ -23,8 +23,7 @@
   const MOLSTAR_LASSO_MIN_POINTS = 4;
   const MOLSTAR_LASSO_MIN_DISTANCE_PX = 3;
   const MOLSTAR_LASSO_SAMPLE_STEP_PX = 8;
-  const MOLSTAR_LASSO_SAMPLE_LIMIT = 1400;
-  const MOLSTAR_LASSO_YIELD_INTERVAL = 96;
+  const MOLSTAR_LASSO_PROJECTION_YIELD_INTERVAL = 4096;
   const MOLSTAR_LASSO_PREVIEW_ATOM_LIMIT = 128;
   const MOLSTAR_LASSO_COMPONENT_KEY = 'burette-lasso-selection';
   const MOLSTAR_LASSO_COMPONENT_TAG = 'burette-lasso-selection-object';
@@ -6495,6 +6494,7 @@
     const components = sceneTreeColorTargets(viewer).get(ref) || [];
     const measurementTargets = sceneTreeMeasurementTargets(viewer, ref);
     const isComponent = components.length === 1 && components[0]?.cell?.transform?.ref === ref;
+    const isLassoSelection = isMolstarLassoSceneRef(viewer, ref);
 
     const menu = document.createElement('div');
     menu.id = 'buret-scene-tree-menu';
@@ -6556,7 +6556,7 @@
 
     // Mol*'s own actions are many and rarely the reason the menu was opened, so they
     // stay folded away instead of pushing everything else off the screen.
-    const actions = sceneTreeCellActions(viewer, ref);
+    const actions = isLassoSelection ? [] : sceneTreeCellActions(viewer, ref);
     if (actions.length) {
       sceneTreeMenuSection(menu);
       const disclosure = document.createElement('details');
@@ -6572,8 +6572,17 @@
       menu.appendChild(disclosure);
     }
 
-    sceneTreeMenuSection(menu);
-    menu.appendChild(sceneTreeMenuItem('Remove', 'remove', { icon: SCENE_TREE_ICON.trash, destructive: true }));
+    sceneTreeMenuSection(menu, isLassoSelection ? 'Selection' : '');
+    if (isLassoSelection) {
+      menu.appendChild(sceneTreeMenuItem('Delete selected atoms', 'delete-lasso-atoms', {
+        icon: SCENE_TREE_ICON.trash,
+        destructive: true
+      }));
+    }
+    menu.appendChild(sceneTreeMenuItem(isLassoSelection ? 'Remove selection object' : 'Remove', 'remove', {
+      icon: SCENE_TREE_ICON.trash,
+      destructive: !isLassoSelection
+    }));
 
     document.body.appendChild(menu);
     const rect = menu.getBoundingClientRect();
@@ -6592,6 +6601,7 @@
     else if (action === 'isolate') isolateSceneTreeNode(ref);
     else if (action === 'show-all') showAllSceneTreeNodes(ref);
     else if (action === 'save-focus') saveSceneTreeFocusNode(ref);
+    else if (action === 'delete-lasso-atoms') deleteMolstarLassoAtoms(ref);
     else if (action === 'remove') removeSceneTreeNode(ref);
     else if (action === 'tint-color') {
       applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
@@ -15774,15 +15784,15 @@
       return;
     }
     molstarLassoBusy = true;
-    setStatus('[web] Selecting visible atoms…');
+    setStatus('[web] Selecting every atom inside the lasso…');
     try {
       await molstarLassoYield();
-      const picks = await molstarLassoPicks(stroke);
-      if (!picks.length) {
-        setStatus('[web] No visible atoms inside lasso.');
+      const lociList = await molstarLassoProjectedLoci(stroke);
+      if (!lociList.length) {
+        setStatus('[web] No atom centres inside lasso.');
         return;
       }
-      const selected = await applyMolstarLassoPicks(picks, stroke.additive);
+      const selected = await applyMolstarLassoLoci(lociList, stroke.additive);
       setStatus(selected.totalAtoms > 0
         ? `[web] Lasso selection · ${selected.totalAtoms.toLocaleString()} atom${selected.totalAtoms === 1 ? '' : 's'}.`
         : '[web] Lasso selection did not match selectable atoms.');
@@ -15820,78 +15830,96 @@
     return inside;
   }
 
-  function molstarLassoPickKey(pick, fallback) {
-    const atom = molstarContextAtomFromLoci(pick?.loci);
-    if (atom) {
-      return [
-        atom.model?.id || atom.model?.entryId || 'model',
-        atom.label_entity_id || '',
-        atom.label_asym_id || atom.auth_asym_id || '',
-        atom.label_seq_id ?? atom.auth_seq_id ?? '',
-        atom.label_comp_id || atom.auth_comp_id || '',
-        atom.atomIndex ?? ''
-      ].join(':');
-    }
-    return `${pick?.loci?.kind || 'loci'}:${fallback}`;
-  }
-
-  async function molstarLassoPicks(stroke) {
-    const bounds = molstarLassoBounds(stroke.points);
-    const picks = [];
+  function molstarLassoProjectionSources(viewer, structureRef) {
+    const componentManager = viewer?.plugin?.managers?.structure?.component;
+    const sources = [];
     const seen = new Set();
-    let sampled = 0;
-    let nextYieldAt = MOLSTAR_LASSO_YIELD_INTERVAL;
-    // A large on-screen polygon must not turn into thousands of synchronous GPU
-    // reads. Small lassos keep the precise 8 px grid; larger ones spread the same
-    // bounded budget across their area and periodically return control to the UI.
-    const boundarySamples = Math.min(stroke.points.length, Math.floor(MOLSTAR_LASSO_SAMPLE_LIMIT / 4));
-    const gridBudget = Math.max(1, MOLSTAR_LASSO_SAMPLE_LIMIT - boundarySamples);
-    const adaptiveStep = Math.ceil(Math.sqrt((bounds.width * bounds.height) / gridBudget));
-    const sampleStep = Math.max(MOLSTAR_LASSO_SAMPLE_STEP_PX, adaptiveStep);
-    const addPick = (x, y) => {
-      if (sampled >= MOLSTAR_LASSO_SAMPLE_LIMIT) return false;
-      sampled += 1;
-      const pick = molstarPickFromCanvasPoint(stroke.canvas, x, y);
-      if (!pick?.loci) return true;
-      const key = molstarLassoPickKey(pick, `${Math.round(x)}:${Math.round(y)}`);
-      if (seen.has(key)) return true;
-      seen.add(key);
-      picks.push(pick);
-      return true;
-    };
-    const boundaryStride = Math.max(1, Math.ceil(stroke.points.length / Math.max(1, boundarySamples)));
-    for (let index = 0; index < stroke.points.length && sampled < MOLSTAR_LASSO_SAMPLE_LIMIT; index += boundaryStride) {
-      const point = stroke.points[index];
-      addPick(point.x, point.y);
-      if (sampled >= nextYieldAt) {
-        nextYieldAt += MOLSTAR_LASSO_YIELD_INTERVAL;
-        await molstarLassoYield();
+    for (const component of structureRef?.components || []) {
+      const componentData = component?.cell?.obj?.data;
+      if (
+        !componentData
+        || component?.cell?.state?.isHidden === true
+        || component?.cell?.transform?.tags?.includes(MOLSTAR_LASSO_COMPONENT_TAG)
+        || componentManager?.canBeModified?.(component) === false
+      ) continue;
+      if (!seen.has(componentData)) {
+        seen.add(componentData);
+        sources.push(componentData);
       }
     }
-    sampleGrid:
-    for (let y = bounds.top; y <= bounds.bottom; y += sampleStep) {
-      for (let x = bounds.left; x <= bounds.right; x += sampleStep) {
-        if (sampled >= MOLSTAR_LASSO_SAMPLE_LIMIT) break sampleGrid;
-        if (molstarPointInPolygon({ x, y }, stroke.points)) addPick(x, y);
-        if (sampled >= nextYieldAt) {
-          nextYieldAt += MOLSTAR_LASSO_YIELD_INTERVAL;
-          await molstarLassoYield();
-        }
-      }
-    }
-    return picks;
+    return sources;
   }
 
-  async function applyMolstarLassoPicks(picks, additive) {
+  async function molstarLassoProjectedLoci(stroke) {
+    const viewer = activeMolstarViewer();
+    const camera = viewer?.plugin?.canvas3d?.camera;
+    const canvasRect = stroke.canvas?.getBoundingClientRect?.();
+    const viewport = camera?.viewport;
+    const lociList = [];
+    if (!camera?.project || !canvasRect?.width || !canvasRect?.height || !viewport?.width || !viewport?.height) return lociList;
+    const bounds = molstarLassoBounds(stroke.points);
+    const world = new Float64Array(3);
+    const projected = new Float64Array(4);
+    const StructureElement = molstarStructureRuntime().StructureElement;
+    if (
+      typeof StructureElement?.Loci?.remap !== 'function'
+      || typeof StructureElement?.Loci?.union !== 'function'
+    ) return lociList;
+    let scanned = 0;
+    // The polygon is extruded through the view depth: every atom centre whose
+    // screen projection lies inside it is selected, including atoms hidden behind
+    // a surface. User-hidden components and non-component root data stay out of
+    // the selection so the count matches the molecular objects the action edits.
+    for (const structureRef of molstarCurrentStructures(viewer)) {
+      const structure = molstarStructureFromRef(structureRef);
+      if (!structure) continue;
+      let structureLoci = null;
+      const sources = molstarLassoProjectionSources(viewer, structureRef);
+      for (const source of sources) {
+        const elements = [];
+        for (const unit of source.units || []) {
+          const indices = [];
+          for (let index = 0; index < unit.elements.length; index++) {
+            unit.conformation.position(unit.elements[index], world);
+            camera.project(projected, world);
+            const clientX = canvasRect.left + ((projected[0] - viewport.x) / viewport.width) * canvasRect.width;
+            const clientY = canvasRect.top + (1 - (projected[1] - viewport.y) / viewport.height) * canvasRect.height;
+            if (
+              projected[3] > 0
+              && projected[2] >= 0
+              && projected[2] <= 1
+              && clientX >= bounds.left
+              && clientX <= bounds.right
+              && clientY >= bounds.top
+              && clientY <= bounds.bottom
+              && molstarPointInPolygon({ x: clientX, y: clientY }, stroke.points)
+            ) {
+              indices.push(index);
+            }
+            scanned += 1;
+            if (scanned % MOLSTAR_LASSO_PROJECTION_YIELD_INTERVAL === 0) await molstarLassoYield();
+          }
+          if (indices.length) elements.push({ unit, indices: Int32Array.from(indices) });
+        }
+        if (!elements.length) continue;
+        const sourceLoci = { kind: 'element-loci', structure: source, elements };
+        const remapped = StructureElement.Loci.remap(sourceLoci, structure);
+        structureLoci = structureLoci ? StructureElement.Loci.union(structureLoci, remapped) : remapped;
+      }
+      if (structureLoci?.elements?.length) lociList.push(structureLoci);
+    }
+    return lociList;
+  }
+
+  async function applyMolstarLassoLoci(lociList, additive) {
     const viewer = activeMolstarViewer();
     const plugin = viewer?.plugin;
     const selects = plugin?.managers?.interactivity?.lociSelects;
     const selection = plugin?.managers?.structure?.selection;
-    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const StructureElement = molstarStructureRuntime().StructureElement;
     const canSelect = typeof selects?.select === 'function';
     const canSelectStructure = typeof selection?.fromLoci === 'function';
-    const canMerge = typeof StructureElement?.Loci?.union === 'function';
-    if ((!canSelect && !canSelectStructure) || !canMerge) return { batchAtoms: 0, totalAtoms: 0, visibleTargets: 0 };
+    if (!canSelect && !canSelectStructure) return { batchAtoms: 0, totalAtoms: 0 };
     const lassoApplyGranularity = false;
     if (!additive) {
       selects?.deselectAll?.();
@@ -15900,17 +15928,8 @@
       molstarLassoSelectionAtomKeys.clear();
       molstarLassoSelectionResidueKeys.clear();
     }
-    // Mol* redraws the whole marked selection on every select call. Union the
-    // picked atom loci first so the common one-structure case emits one update.
-    const mergedByStructure = new Map();
-    for (const pick of picks) {
-      const loci = molstarContextNormalizeLoci(pick?.loci, 'element');
-      if (!loci || molstarLociIsEmpty(loci)) continue;
-      const previous = mergedByStructure.get(loci.structure);
-      mergedByStructure.set(loci.structure, previous ? StructureElement.Loci.union(previous, loci) : loci);
-    }
     let batchAtoms = 0;
-    for (const loci of mergedByStructure.values()) {
+    for (const loci of lociList) {
       if (canSelect) selects.select({ loci }, lassoApplyGranularity);
       else if (canSelectStructure) selection.fromLoci('add', loci, lassoApplyGranularity);
       batchAtoms += Number(StructureElement.Loci.size?.(loci)) || 0;
@@ -15919,11 +15938,11 @@
       const totalAtoms = Math.max(batchAtoms, Number(selection?.stats?.elementCount) || 0);
       if (totalAtoms <= MOLSTAR_LASSO_PREVIEW_ATOM_LIMIT) scheduleMolstarSelectedMoleculePreview();
       else hideMolstarMoleculePreview({ force: true });
-      notifyMolstarLassoSelection(picks, batchAtoms, totalAtoms);
+      notifyMolstarLassoSelection(lociList, batchAtoms, totalAtoms);
       await upsertMolstarLassoSceneObject(totalAtoms);
-      return { batchAtoms, totalAtoms, visibleTargets: picks.length };
+      return { batchAtoms, totalAtoms };
     }
-    return { batchAtoms: 0, totalAtoms: 0, visibleTargets: picks.length };
+    return { batchAtoms: 0, totalAtoms: 0 };
   }
 
   async function removeMolstarLassoSceneObjects(plugin = activeMolstarViewer()?.plugin, keepParentRefs = null) {
@@ -15966,19 +15985,95 @@
     scheduleSceneTreeRender();
   }
 
-  function notifyMolstarLassoSelection(picks, batchAtoms, totalAtoms) {
-    for (const pick of picks) {
-      const atom = molstarContextAtomFromLoci(pick?.loci);
-      if (!atom) continue;
-      const chain = String(atom.auth_asym_id || atom.label_asym_id || '').trim();
-      const sequence = atom.auth_seq_id ?? atom.label_seq_id ?? null;
-      const compId = String(atom.auth_comp_id || atom.label_comp_id || '').trim();
-      const atomName = String(atom.auth_atom_id || atom.label_atom_id || '').trim();
-      const atomKey = `${chain}:${sequence ?? ''}:${compId}:${atomName}:${atom.atomIndex ?? ''}`;
-      molstarLassoSelectionAtomKeys.add(atomKey);
-      molstarLassoSelectionResidueKeys.add(`${chain}:${sequence ?? ''}:${compId}`);
-      if (!molstarLassoSelectionAtoms.has(atomKey) && molstarLassoSelectionAtoms.size < 96) {
-        molstarLassoSelectionAtoms.set(atomKey, { chain, sequence, compId, atomName });
+  function isMolstarLassoSceneRef(viewer, ref) {
+    return viewer?.plugin?.state?.data?.cells?.get(ref)?.transform?.tags?.includes(MOLSTAR_LASSO_COMPONENT_TAG) === true;
+  }
+
+  function molstarLassoSceneComponent(viewer, ref) {
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const component = (structure?.components || [])
+        .find(candidate => candidate?.cell?.transform?.ref === ref);
+      if (component) return component;
+    }
+    return null;
+  }
+
+  async function deleteMolstarLassoAtoms(ref) {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    const component = molstarLassoSceneComponent(viewer, ref);
+    const parent = component?.structure?.cell?.obj?.data;
+    const selected = component?.cell?.obj?.data;
+    const structureLib = molstarStructureRuntime();
+    const Structure = structureLib.Structure;
+    const StructureElement = structureLib.StructureElement;
+    const selection = plugin?.managers?.structure?.selection;
+    const componentManager = plugin?.managers?.structure?.component;
+    if (
+      !isMolstarLassoSceneRef(viewer, ref)
+      || !parent
+      || !selected
+      || typeof Structure?.toSubStructureElementLoci !== 'function'
+      || typeof StructureElement?.Loci?.size !== 'function'
+      || typeof selection?.fromLoci !== 'function'
+      || typeof componentManager?.modifyByCurrentSelection !== 'function'
+    ) {
+      setStatus('[web] Delete selected atoms failed. The lasso selection is no longer available.', 'error');
+      return false;
+    }
+    const loci = Structure.toSubStructureElementLoci(parent, selected);
+    const atomCount = Number(StructureElement.Loci.size(loci)) || 0;
+    const components = (component.structure?.components || []).filter(candidate => (
+      candidate?.cell?.transform?.ref !== ref
+      && !candidate?.cell?.transform?.tags?.includes(MOLSTAR_LASSO_COMPONENT_TAG)
+      && componentManager.canBeModified?.(candidate) !== false
+    ));
+    if (!atomCount || !components.length) {
+      setStatus('[web] Delete selected atoms failed. No editable atoms were found.', 'error');
+      return false;
+    }
+    try {
+      // The lasso component already encodes the exact structure subset in the
+      // Mol* state tree. Snapshot that tree directly: exporting a huge
+      // biological assembly just to create undo is both slow and unavailable
+      // for some mmCIF assemblies.
+      const undoSnapshot = captureMolstarSceneUndoSnapshot(`delete ${atomCount} lasso-selected atoms`);
+      selection.clear?.();
+      selection.fromLoci('set', loci, false);
+      await componentManager.modifyByCurrentSelection(components, 'subtract');
+      await clearMolstarSelection();
+      pushMolstarEditUndoSnapshot(undoSnapshot);
+      setMolstarStructureDirty(true);
+      scheduleSceneTreeRender();
+      setStatus(`[web] Deleted ${atomCount.toLocaleString()} lasso-selected atom${atomCount === 1 ? '' : 's'}.`);
+      return true;
+    } catch (error) {
+      debug('delete lasso-selected atoms failed: ' + (error?.message || String(error)));
+      setStatus(`[web] Delete selected atoms failed. ${error?.message || error}`, 'error');
+      return false;
+    }
+  }
+
+  function notifyMolstarLassoSelection(lociList, batchAtoms, totalAtoms) {
+    sampleAtoms:
+    for (const loci of lociList) {
+      for (const element of loci.elements || []) {
+        for (const index of element.indices || []) {
+          const atomIndex = element.unit?.elements?.[index];
+          const atom = molstarContextAtomFromModelIndex(element.unit?.model, atomIndex);
+          if (!atom) continue;
+          const chain = String(atom.auth_asym_id || atom.label_asym_id || '').trim();
+          const sequence = atom.auth_seq_id ?? atom.label_seq_id ?? null;
+          const compId = String(atom.auth_comp_id || atom.label_comp_id || '').trim();
+          const atomName = String(atom.auth_atom_id || atom.label_atom_id || '').trim();
+          const atomKey = `${chain}:${sequence ?? ''}:${compId}:${atomName}:${atom.atomIndex ?? ''}`;
+          molstarLassoSelectionAtomKeys.add(atomKey);
+          molstarLassoSelectionResidueKeys.add(`${chain}:${sequence ?? ''}:${compId}`);
+          if (!molstarLassoSelectionAtoms.has(atomKey) && molstarLassoSelectionAtoms.size < 96) {
+            molstarLassoSelectionAtoms.set(atomKey, { chain, sequence, compId, atomName });
+          }
+          if (molstarLassoSelectionAtoms.size >= 96) break sampleAtoms;
+        }
       }
     }
     const atoms = Array.from(molstarLassoSelectionAtoms.values());
@@ -15993,7 +16088,7 @@
     window.__mqlPost?.('selectionChanged', '', {
       selection: {
         source: 'lasso',
-        label: `Lasso selection: ${totalAtoms} visible atom${totalAtoms === 1 ? '' : 's'} across ${molstarLassoSelectionResidueKeys.size} residue${molstarLassoSelectionResidueKeys.size === 1 ? '' : 's'}`,
+        label: `Lasso selection: ${totalAtoms} atom${totalAtoms === 1 ? '' : 's'} inside the outlined screen area`,
         atoms: totalAtoms,
         residueCount: molstarLassoSelectionResidueKeys.size,
         visibleTargets: batchAtoms,
@@ -17775,6 +17870,11 @@
   function molstarExportLib() {
     const runtime = molstarRuntime();
     return runtime?.lib || runtime || {};
+  }
+
+  function molstarStructureRuntime() {
+    const lib = molstarExportLib();
+    return lib?.structure || lib || {};
   }
 
   function molstarExportToMmCif() {
