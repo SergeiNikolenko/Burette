@@ -6917,8 +6917,10 @@
   function viewportAnimateMenu(menu) {
     viewportMotionControls(menu);
     const plugin = viewportPlugin();
+    viewportWiggleControls(menu, plugin);
     const manager = plugin?.managers?.animation;
-    const playing = manager?.state?.animationState === 'playing';
+    const playing = manager?.state?.animationState === 'playing'
+      || activeTrajectoryPlaybackControl?.isPlaying() === true;
     const animations = (manager?.animations || [])
       .map((animation, index) => ({ animation, index }))
       // Camera spin and rock are the Motion switch above, only on a timer.
@@ -6946,7 +6948,6 @@
         title: entry.applicability.reason || entry.animation.display.description
       });
     }
-    viewportWiggleControls(menu, plugin);
   }
 
   function viewportWiggleTransform() {
@@ -7154,11 +7155,42 @@
     }
   }
 
+  function interpolatedTrajectoryFrameCount(sourceFrameCount) {
+    const count = Math.max(2, Math.trunc(Number(sourceFrameCount) || 2));
+    if (count >= 60) return count;
+    return Math.min(600, Math.max(60, (count - 1) * 8 + 1));
+  }
+
+  async function playViewportTrajectoryAnimation() {
+    let playback = activeTrajectoryPlaybackControl;
+    if (!playback) throw new Error('Trajectory playback controls are unavailable for this scene.');
+    playback.stop();
+    if (trajectorySmoothingState?.view === 'original') {
+      const restored = await setTrajectorySmoothingViewFromAction({ view: 'smoothed' });
+      if (!restored.ok) throw new Error(restored.error?.message || 'The smoothed trajectory could not be restored.');
+    } else if (!trajectorySmoothingState && playback.canInterpolate()) {
+      const smoothed = await applyTrajectorySmoothingFromAction({
+        preset: 'balanced',
+        outputFrames: interpolatedTrajectoryFrameCount(playback.frameCount())
+      });
+      if (!smoothed.ok) throw new Error(smoothed.error?.message || 'The trajectory could not be interpolated.');
+    }
+    playback = activeTrajectoryPlaybackControl;
+    if (!playback) throw new Error('Trajectory playback controls were lost while preparing the animation.');
+    playback.play();
+    updateViewportAnimateState();
+  }
+
   function playViewportAnimation(index) {
     const plugin = viewportPlugin();
     const manager = plugin?.managers?.animation;
     const animation = manager?.animations?.[index];
     if (!animation) return;
+    if (animation.name === 'built-in.animate-model-index' && activeTrajectoryPlaybackControl) {
+      Promise.resolve(playViewportTrajectoryAnimation())
+        .catch(error => setStatus(`[web] Trajectory animation failed. ${error?.message || error}`, 'error'));
+      return;
+    }
     Promise.resolve(manager.play(animation, viewportAnimationParams(animation, plugin)))
       .then(() => updateViewportAnimateState())
       .catch(error => setStatus(`[web] Animation failed. ${error?.message || error}`, 'error'));
@@ -7168,7 +7200,8 @@
   // because a still frame cannot tell you the scene is in motion.
   function updateViewportAnimateState() {
     const plugin = viewportPlugin();
-    const playing = plugin?.managers?.animation?.state?.animationState === 'playing';
+    const playing = plugin?.managers?.animation?.state?.animationState === 'playing'
+      || activeTrajectoryPlaybackControl?.isPlaying() === true;
     const motion = viewportMotionState().name;
     const state = playing ? 'playing' : (motion !== 'off' ? motion : (viewportWiggleMode(plugin) === 'clear' ? 'off' : 'wiggle'));
     document.querySelector('[data-buret-viewport-action="animate"]')
@@ -7397,6 +7430,7 @@
       playViewportAnimation(Number(control.dataset.animationIndex));
     } else if (action === 'animation-stop') {
       plugin.managers.animation.stop();
+      activeTrajectoryPlaybackControl?.stop();
       updateViewportAnimateState();
     } else if (action === 'wiggle') {
       runViewportWiggle(control.dataset.wiggle, control);
@@ -13507,6 +13541,7 @@
   let activeSdfCollectionPoseSetter = null;
   let activeStructurePoseSetter = null;
   let activeStructureAlignmentControl = null;
+  let activeTrajectoryPlaybackControl = null;
 
   function isDockingPoseKeyboardTarget(target) {
     const element = target instanceof Element ? target : null;
@@ -14018,6 +14053,7 @@
         format: originalPrepared.format,
         preset: action.preset,
         targetFrames: action.targetFrames,
+        outputFrames: action.outputFrames,
         referenceFrame: action.referenceFrame,
         align: action.align !== false
       });
@@ -14341,6 +14377,7 @@
     activeSdfCollectionPoseSetter = null;
     activeStructurePoseSetter = null;
     activeStructureAlignmentControl = null;
+    activeTrajectoryPlaybackControl = null;
     document.body.classList.remove('buret-docking-pose-controls-active');
     if (!prepared) return;
     const overlayAvailable = structureOverlayAvailable(prepared);
@@ -14690,6 +14727,7 @@
         sourcePath: activeSegment.segment?.sourcePath || prepared.smoothingSourcePath || '',
         playing: loopActive
       });
+      updateViewportAnimateState();
     };
     const setFileListOpen = (open) => {
       if (!fileList) return;
@@ -14739,6 +14777,7 @@
         sourcePath: activeSegment.segment?.sourcePath || prepared.smoothingSourcePath || '',
         playing: loopActive
       });
+      updateViewportAnimateState();
     };
     updateControls();
     updateSpeedMode();
@@ -14783,6 +14822,21 @@
         });
       }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
     };
+    const trajectoryPlaybackControl = {
+      play: () => {
+        if (loopActive) return;
+        setLoopActive(true);
+        scheduleLoopStep();
+      },
+      stop: () => {
+        if (loopActive) setLoopActive(false);
+      },
+      isPlaying: () => loopActive,
+      frameCount: () => prepared.poseCount,
+      canInterpolate: () => (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay')
+        && (normalizeFormat(activeMolstarPrepared?.format) === 'pdb' || normalizeFormat(activeMolstarPrepared?.format) === 'xyz')
+    };
+    activeTrajectoryPlaybackControl = trajectoryPlaybackControl;
     const setPose = (index, options = {}) => {
       const requestedIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       let queuedOptions = options;
@@ -15242,6 +15296,7 @@
       document.body.classList.remove('buret-docking-pose-controls-active');
       if (activeStructurePoseSetter === setPose) activeStructurePoseSetter = null;
       if (activeSdfCollectionPoseSetter === setPose) activeSdfCollectionPoseSetter = null;
+      if (activeTrajectoryPlaybackControl === trajectoryPlaybackControl) activeTrajectoryPlaybackControl = null;
     };
   }
 

@@ -5106,6 +5106,12 @@ assert.match(previewRuntimeCss, /\.buret-viewport-rail\.hidden,\s*\.buret-rail-b
 assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection \{[\s\S]*color: #ff6b5e;[\s\S]*border-color: rgba\(255, 107, 94, 0\.72\);/);
 assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection:hover \{[\s\S]*color: #fff;[\s\S]*background: rgba\(255, 107, 94, 0\.88\);/);
 assert.match(previewViewer, /function viewportAnimateMenu\(menu\) \{/);
+const animateMenuSource = previewViewer.slice(
+  previewViewer.indexOf('function viewportAnimateMenu(menu)'),
+  previewViewer.indexOf('function viewportWiggleTransform()'),
+);
+assert.ok(animateMenuSource.indexOf('viewportMotionControls(menu)') < animateMenuSource.indexOf('viewportWiggleControls(menu, plugin)'));
+assert.ok(animateMenuSource.indexOf('viewportWiggleControls(menu, plugin)') < animateMenuSource.indexOf("sceneTreeMenuSection(menu, 'Animations')"));
 // Closing the molecule card drops the selection, and the host has to be told
 // directly because clearing this way does not reach the selection manager events.
 // × parks the card without touching the selection: it latches "suppressed" and
@@ -5131,6 +5137,11 @@ assert.match(previewViewer, /spin: \{ value: 0\.1, min: 0\.01, max: 1, step: 0\.
 // to be told to finish.
 assert.match(previewViewer, /if \('playOnce' in params\) params\.playOnce = true;/);
 assert.match(previewViewer, /manager\.play\(animation, viewportAnimationParams\(animation, plugin\)\)/);
+assert.match(previewViewer, /animation\.name === 'built-in\.animate-model-index' && activeTrajectoryPlaybackControl/);
+assert.match(previewViewer, /applyTrajectorySmoothingFromAction\(\{[\s\S]*outputFrames: interpolatedTrajectoryFrameCount\(playback\.frameCount\(\)\)/);
+assert.match(previewViewer, /playback = activeTrajectoryPlaybackControl;[\s\S]*playback\.play\(\);/);
+assert.match(previewViewer, /activeTrajectoryPlaybackControl\?\.stop\(\)/);
+assert.match(previewViewer, /prepared\.kind === 'trajectory' \|\| prepared\.kind === 'xyz-frame-overlay'/);
 assert.match(previewViewer, /plugin\?\.behaviors\?\.state\?\.isAnimating\?\.subscribe\?\.\(updateViewportAnimateState\)/);
 // Mol*'s Procedural Animation panel is carried into the same Animate menu with
 // all three upstream actions: a uniform dynamics wiggle, uncertainty-weighted
