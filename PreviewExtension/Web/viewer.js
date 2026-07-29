@@ -2837,39 +2837,53 @@
       button.append(label, current);
       menu.appendChild(button);
       if (option.value === 'automatic') {
-        const appearance = document.createElement('button');
-        appearance.type = 'button';
-        appearance.className = 'buret-molstar-appearance-item';
-        appearance.dataset.buretMolstarIllustrative = '1';
-        appearance.setAttribute('role', 'menuitemcheckbox');
-        appearance.setAttribute('aria-checked', 'false');
-        appearance.setAttribute('aria-label', 'Illustrative appearance');
-        const appearanceLabel = document.createElement('span');
-        appearanceLabel.className = 'buret-tree-menu-label';
-        appearanceLabel.textContent = 'Illustrative';
-        const track = document.createElement('span');
-        track.className = 'buret-molstar-appearance-switch';
-        track.setAttribute('aria-hidden', 'true');
-        const thumb = document.createElement('span');
-        thumb.className = 'buret-molstar-appearance-switch-thumb';
-        track.appendChild(thumb);
-        appearance.append(appearanceLabel, track);
-        menu.appendChild(appearance);
-        const separator = document.createElement('div');
-        separator.className = 'buret-molstar-preset-menu-separator';
-        separator.setAttribute('role', 'separator');
-        menu.appendChild(separator);
+        const before = document.createElement('div');
+        before.className = 'buret-molstar-preset-menu-separator';
+        before.setAttribute('role', 'separator');
+        menu.appendChild(before);
+        const appearanceLabel = document.createElement('div');
+        appearanceLabel.className = 'buret-molstar-preset-menu-section';
+        appearanceLabel.textContent = 'Appearance';
+        menu.appendChild(appearanceLabel);
+        const appearanceGroup = document.createElement('div');
+        appearanceGroup.className = 'buret-molstar-appearance-group';
+        appearanceGroup.dataset.buretMolstarAppearanceGroup = '1';
+        appearanceGroup.setAttribute('role', 'group');
+        appearanceGroup.setAttribute('aria-label', 'Appearance');
+        for (const appearanceOption of MOLSTAR_APPEARANCE_OPTIONS) {
+          const appearance = document.createElement('button');
+          appearance.type = 'button';
+          appearance.className = 'buret-molstar-appearance-item';
+          appearance.dataset.buretMolstarAppearance = appearanceOption.value;
+          appearance.setAttribute('role', 'menuitemradio');
+          appearance.setAttribute('aria-checked', 'false');
+          const itemLabel = document.createElement('span');
+          itemLabel.className = 'buret-tree-menu-label';
+          itemLabel.textContent = appearanceOption.label;
+          const indicator = document.createElement('span');
+          indicator.className = 'buret-molstar-appearance-indicator';
+          indicator.setAttribute('aria-hidden', 'true');
+          indicator.textContent = '✓';
+          appearance.append(itemLabel, indicator);
+          appearanceGroup.appendChild(appearance);
+        }
+        menu.appendChild(appearanceGroup);
+        const after = document.createElement('div');
+        after.className = 'buret-molstar-preset-menu-separator';
+        after.setAttribute('role', 'separator');
+        menu.appendChild(after);
       }
     }
     menu.dataset.populated = '1';
   }
 
   function updateMolstarAppearanceControl(menu, appearance) {
-    const toggle = menu?.querySelector('[data-buret-molstar-illustrative]');
-    if (!toggle) return;
-    const checked = normalizeMolstarAppearance(appearance) === 'illustrative';
-    toggle.setAttribute('aria-checked', checked ? 'true' : 'false');
-    toggle.dataset.state = checked ? 'checked' : 'unchecked';
+    const value = normalizeMolstarAppearance(appearance);
+    menu?.querySelectorAll('[data-buret-molstar-appearance]').forEach(item => {
+      const checked = item.dataset.buretMolstarAppearance === value;
+      item.setAttribute('aria-checked', checked ? 'true' : 'false');
+      item.dataset.state = checked ? 'checked' : 'unchecked';
+    });
   }
 
   function updateMolstarPresetControl(toolbar, preset) {
@@ -4474,12 +4488,13 @@
         showMolstarPresetMenu(trigger);
       });
       menu.addEventListener('click', event => {
-        const appearanceToggle = event.target?.closest?.('[data-buret-molstar-illustrative]');
-        if (appearanceToggle && menu.contains(appearanceToggle)) {
+        const appearanceItem = event.target?.closest?.('[data-buret-molstar-appearance]');
+        if (appearanceItem && menu.contains(appearanceItem)) {
           event.preventDefault();
           event.stopPropagation();
           hideMolstarPresetPreview();
-          const appearance = appearanceToggle.getAttribute('aria-checked') === 'true' ? 'default' : 'illustrative';
+          const appearance = appearanceItem.dataset.buretMolstarAppearance;
+          hideMolstarPresetMenu({ restoreFocus: true });
           void requestMolstarAppearance(appearance);
           return;
         }
@@ -4517,7 +4532,7 @@
       hideMolstarPresetMenu({ restoreFocus: true });
       return;
     }
-    const items = Array.from(menu.querySelectorAll('[role="menuitemradio"], [role="menuitemcheckbox"]'));
+    const items = Array.from(menu.querySelectorAll('[role="menuitemradio"]'));
     const currentIndex = items.indexOf(document.activeElement);
     let nextIndex = -1;
     if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;

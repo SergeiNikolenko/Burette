@@ -2088,16 +2088,20 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   font-size: 10px;
 }
 .buret-molstar-preset-menu .buret-tree-menu-item[aria-checked="true"] .buret-molstar-preset-current { display: inline; }
+.buret-molstar-appearance-group {
+  display: grid;
+  gap: 1px;
+}
 .buret-molstar-appearance-item {
   display: flex;
   width: 100%;
-  min-height: 34px;
+  min-height: 28px;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin: 2px 0;
   border: 0;
-  padding: 4px 8px;
+  border-radius: 6px;
+  padding: 0 8px;
   color: inherit;
   background: transparent;
   font: inherit;
@@ -2108,40 +2112,23 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   background: var(--buret-molstar-hover-background);
   outline: none;
 }
+.buret-molstar-appearance-item[aria-checked="true"] {
+  background: color-mix(in srgb, var(--buret-accent, #b45cff) 18%, var(--buret-molstar-row-background));
+}
 .buret-molstar-preset-menu-separator {
   height: 1px;
-  margin: 4px 2px 6px;
+  margin: 5px 2px;
   background: var(--buret-molstar-border);
 }
-.buret-molstar-appearance-switch {
-  position: relative;
-  display: inline-flex;
+.buret-molstar-appearance-indicator {
   flex: 0 0 auto;
-  width: 32px;
-  height: 18px;
-  align-items: center;
-  border: 1px solid var(--buret-molstar-border);
-  border-radius: 999px;
-  background: var(--buret-molstar-field-background);
-  transition: background 150ms ease, border-color 150ms ease;
+  color: var(--buret-molstar-accent);
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0;
 }
-.buret-molstar-appearance-switch-thumb {
-  display: block;
-  width: 14px;
-  height: 14px;
-  margin-left: 1px;
-  border-radius: 50%;
-  background: var(--buret-molstar-text);
-  box-shadow: 0 1px 3px var(--buret-molstar-shadow);
-  transform: translateX(0);
-  transition: transform 150ms ease;
-}
-.buret-molstar-appearance-item[aria-checked="true"] .buret-molstar-appearance-switch {
-  border-color: var(--buret-molstar-accent);
-  background: var(--buret-molstar-accent);
-}
-.buret-molstar-appearance-item[aria-checked="true"] .buret-molstar-appearance-switch-thumb {
-  transform: translateX(14px);
+.buret-molstar-appearance-item[aria-checked="true"] .buret-molstar-appearance-indicator {
+  opacity: 1;
 }
 .buret-molstar-preset-preview {
   position: fixed;
