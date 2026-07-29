@@ -1289,6 +1289,12 @@
     return MOLSTAR_PRESET_OPTIONS.find(option => option.value === normalized) || MOLSTAR_PRESET_OPTIONS[0];
   }
 
+  function molstarPresetAppearance(option, config) {
+    if (option?.defaultAppearance) return normalizeMolstarAppearance(option.defaultAppearance);
+    if (option?.provider) return option.value === 'illustrative' ? 'illustrative' : 'default';
+    return configuredMolstarAppearance(config);
+  }
+
   function normalizeSdfCollectionContextStyle(value) {
     const normalized = String(value || '').trim().toLowerCase();
     if (['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'match'].includes(normalized)) return normalized;
@@ -2978,7 +2984,7 @@
       if (serial !== molstarPresetPreviewSerial) return;
       if (option.provider) await applyMolstarProviderPreset(viewer, option);
       else await applyMolstarStyle(viewer, option.legacyStyle);
-      const appearance = option.defaultAppearance || configuredMolstarAppearance(activeConfig || window.BuretteConfig || {});
+      const appearance = molstarPresetAppearance(option, activeConfig || window.BuretteConfig || {});
       await applyMolstarAppearance(viewer, appearance);
       if (serial !== molstarPresetPreviewSerial) return;
       try { viewer.handleResize(); } catch (_) {}
@@ -2990,7 +2996,7 @@
       requestMolstarStructureFocus(viewer, {
         reason: 'preset-preview',
         durationMs: 0,
-        radiusScale: 0.72,
+        radiusScale: 0.52,
         up: sourceCamera?.up,
         direction: sourceDirection
       });
@@ -3390,7 +3396,7 @@
   async function requestMolstarPreset(preset) {
     const value = normalizeMolstarPreset(preset);
     const option = molstarPresetOption(value);
-    const appearance = option.defaultAppearance || configuredMolstarAppearance(activeConfig || window.BuretteConfig || {});
+    const appearance = molstarPresetAppearance(option, activeConfig || window.BuretteConfig || {});
     const legacyStyle = option.legacyStyle || appearance;
     updateMolstarPresentationConfig(value, appearance, legacyStyle);
     if (!activeViewer) {
@@ -3419,7 +3425,7 @@
     const explicitlyConfigured = config?.molstarPreset != null;
     if (!option.provider || (!explicitlyConfigured && value === DEFAULT_MOLSTAR_PRESET)) return;
     await applyMolstarProviderPreset(viewer, option);
-    await applyMolstarAppearance(viewer, configuredMolstarAppearance(config));
+    await applyMolstarAppearance(viewer, molstarPresetAppearance(option, config));
   }
 
   // A structure that has not been focused yet still reports the default camera
