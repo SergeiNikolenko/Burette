@@ -38,6 +38,9 @@ pub(crate) struct DockingRuntimeSource {
     pub(crate) binary: bool,
     pub(crate) data: Vec<u8>,
     pub(crate) byte_count: usize,
+    /// True when this model was derived from the trajectory itself rather than
+    /// read from a topology the user supplied.
+    pub(crate) synthetic: bool,
 }
 
 pub(crate) fn create_runtime<R: Runtime>(
@@ -520,7 +523,8 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
             "extension": source.extension,
             "format": source.format,
             "binary": source.binary,
-            "byteCount": source.byte_count
+            "byteCount": source.byte_count,
+            "synthetic": source.synthetic
         })
     };
     let sdf_grid_path = ligands
