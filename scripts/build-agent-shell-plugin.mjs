@@ -24,6 +24,8 @@ const requiredPreviewAssets = [
   'trajectory-smoothing.js',
   'molstar.js',
   'molstar.css',
+  'mesoscale.js',
+  'mesoscale.css',
   'burette-agent.js',
   'grid-viewer.js',
   'grid-ui.js',
