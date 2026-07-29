@@ -7,8 +7,8 @@
   "packages": {
     "molstar": {
       "packageName": "molstar",
-      "version": "5.10.1",
-      "integrity": "sha512-eKff0Z/6UCRAb+O6rLyAtquIuXvn9Tge0SLdDL2TBm3X2pVFEX0a5atunNSL01zhQb2sNIm3XgmvDec6WBPvjg=="
+      "version": "5.11.0",
+      "integrity": "sha512-Jv2oHkKoCpzrhqLmGlknepm0pfRsoTDebsGRkvXpbUFb6p+JIAkhLyM3uqV2twC6VR83ZbXtdswOtouPhozpuQ=="
     },
     "@rdkit/rdkit": {
       "packageName": "@rdkit/rdkit",
@@ -25,8 +25,8 @@
     {
       "path": "PreviewExtension/Web/molstar.js",
       "package": "molstar",
-      "bytes": 4954434,
-      "sha256": "sha256-VWfrGfqOens7Fh1LloB8TbJEzs0vPnyH+ZwFK4tbWzA="
+      "bytes": 5027864,
+      "sha256": "sha256-f61VYcdLyQCTD7V9arAo0ar92oIiOpAb+TKxCY6E8fM="
     },
     {
       "path": "PreviewExtension/Web/molstar.css",
