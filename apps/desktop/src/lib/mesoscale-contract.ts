@@ -131,6 +131,23 @@ export type MesoscalePreviewMessage = {
   ref: string | null;
 };
 
+export type MesoscaleControlPlacement = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  visible: boolean;
+};
+
+// Burette positions Mol*'s native viewport rail beside the draggable host
+// toolbar. This is transient chrome state, not part of the scene revision.
+export type MesoscaleChromeMessage = {
+  source: "burette-mesoscale-chrome";
+  apiVersion: typeof MESOSCALE_API_VERSION;
+  documentId: string;
+  placement: MesoscaleControlPlacement;
+};
+
 export type MesoscaleFailure = {
   kind: "failure";
   code: string;

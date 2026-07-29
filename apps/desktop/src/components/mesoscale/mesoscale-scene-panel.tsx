@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Box, Camera, ChevronDown, ChevronRight, Download, Eye, EyeOff, Focus, Layers, Plus, Trash2 } from "lucide-react";
+import { Camera, ChevronDown, ChevronRight, Download, Eye, EyeOff, Focus, Plus, Trash2 } from "lucide-react";
 import type { ViewerDocument } from "../../types";
 import { loadMesoscaleHierarchy, previewMesoscaleObject, requestMesoscale, setMesoscaleVisibilityOptimistic, useMesoscaleStore } from "../../stores/mesoscale-store";
 import type { MesoscaleHierarchyObject } from "../../lib/mesoscale-contract";
@@ -14,6 +14,7 @@ export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) 
   const [snapshotName, setSnapshotName] = useState("");
   const [styleColor, setStyleColor] = useState("#b9a4ff");
   const [styleOpacity, setStyleOpacity] = useState(1);
+  const [styleDirty, setStyleDirty] = useState(false);
   const [collapsedRefs, setCollapsedRefs] = useState<Set<string>>(() => new Set());
   const selected = session?.hierarchy.find((item) => item.selected) ?? null;
   const tree = useMemo(() => sceneTree(session?.hierarchy ?? []), [session?.hierarchy]);
@@ -27,6 +28,7 @@ export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) 
   }, [document.id, filter, session?.status === "loading", session?.status === "disposed"]);
 
   useEffect(() => () => previewMesoscaleObject(document.id, null), [document.id]);
+  useEffect(() => setStyleDirty(false), [selected?.ref]);
 
   const run = (action: Parameters<typeof requestMesoscale>[1]) => requestMesoscale(document.id, action).catch(() => undefined);
   return (
@@ -65,9 +67,9 @@ export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) 
           {selected ? (
             <section className="mesoscale-style-editor">
               <div className="mesoscale-section-title">Appearance · {selected.label}</div>
-              <label>Color <input type="color" value={styleColor} onChange={(event) => setStyleColor(event.target.value)} /></label>
-              <label>Opacity <input type="range" min="0" max="1" step="0.05" value={styleOpacity} onChange={(event) => setStyleOpacity(Number(event.target.value))} /><output>{Math.round(styleOpacity * 100)}%</output></label>
-              <button type="button" className="mesoscale-primary-button" onClick={() => void run({ type: "setStyle", ref: selected.ref, color: Number.parseInt(styleColor.slice(1), 16), opacity: styleOpacity })}>Apply appearance</button>
+              <label>Color <input type="color" value={styleColor} onChange={(event) => { setStyleColor(event.target.value); setStyleDirty(true); }} /></label>
+              <label>Opacity <input type="range" min="0" max="1" step="0.05" value={styleOpacity} onChange={(event) => { setStyleOpacity(Number(event.target.value)); setStyleDirty(true); }} /><output>{Math.round(styleOpacity * 100)}%</output></label>
+              <button type="button" className="mesoscale-primary-button" disabled={!styleDirty} onClick={() => { void run({ type: "setStyle", ref: selected.ref, color: Number.parseInt(styleColor.slice(1), 16), opacity: styleOpacity }); setStyleDirty(false); }}>Apply appearance</button>
             </section>
           ) : null}
         </>
@@ -150,18 +152,18 @@ function SceneObjectBranch({
     previewMesoscaleObject(documentId, item.ref);
     void showNativeContextMenu([
       { kind: "label", id: "mesoscale-object-label", text: item.label },
-      { kind: "item", id: "mesoscale-select", text: "Select", action: () => run({ type: "setSelection", ref: item.ref, mode: "replace" }) },
-      { kind: "item", id: "mesoscale-add-selection", text: "Add to Selection", action: () => run({ type: "setSelection", ref: item.ref, mode: "extend" }) },
-      { kind: "item", id: "mesoscale-toggle-selection", text: item.selected ? "Remove from Selection" : "Toggle Selection", action: () => run({ type: "setSelection", ref: item.ref, mode: "toggle" }) },
+      { kind: "item", id: "mesoscale-select", text: "Select", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "replace" }) },
+      { kind: "item", id: "mesoscale-add-selection", text: "Add to Selection", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "extend" }) },
+      { kind: "item", id: "mesoscale-toggle-selection", text: item.selected ? "Remove from Selection" : "Toggle Selection", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "toggle" }) },
       { kind: "separator" },
-      { kind: "item", id: "mesoscale-focus", text: "Focus", action: () => run({ type: "focusObject", ref: item.ref }) },
+      { kind: "item", id: "mesoscale-focus", text: "Focus", disabled: item.kind === "mesh", action: () => run({ type: "focusObject", ref: item.ref }) },
       { kind: "item", id: "mesoscale-isolate", text: "Isolate", action: () => run({ type: "isolateObjects", refs: [item.ref] }) },
       { kind: "item", id: "mesoscale-visibility", text: item.hidden ? "Show" : "Hide", action: () => setVisible(item.hidden) },
       ...(item.selected ? [
         { kind: "separator" as const },
         { kind: "item" as const, id: "mesoscale-clear-selection", text: "Clear Selection", action: () => run({ type: "setSelection", mode: "clear" }) },
       ] : []),
-    ], { x: event.clientX, y: event.clientY });
+    ], { x: event.clientX, y: event.clientY }, { forceWeb: true });
   };
   return (
     <div
@@ -186,15 +188,17 @@ function SceneObjectBranch({
           type="button"
           className="mesoscale-object-main"
           aria-label={`${item.label}, ${detail}`}
+          disabled={item.kind === "mesh"}
           onClick={() => run({ type: "setSelection", ref: item.ref, mode: "replace" })}
           onDoubleClick={() => run({ type: "focusObject", ref: item.ref })}
           onFocus={() => previewMesoscaleObject(documentId, item.ref)}
           onBlur={() => previewMesoscaleObject(documentId, null)}
         >
-          {item.kind === "group" ? <Layers size={14} /> : <Box size={14} />}
-          <span><strong>{item.label}</strong><small>{detail}</small></span>
+          <span className="mesoscale-tree-bar" data-kind={item.kind} aria-hidden="true" />
+          <strong>{item.label}</strong>
+          <small>{detail}</small>
         </button>
-        <button className="mesoscale-tree-action" type="button" aria-label={`Focus ${item.label}`} title="Focus" onClick={() => run({ type: "focusObject", ref: item.ref })}><Focus size={14} /></button>
+        <button className="mesoscale-tree-action" type="button" disabled={item.kind === "mesh"} aria-label={`Focus ${item.label}`} title="Focus" onClick={() => run({ type: "focusObject", ref: item.ref })}><Focus size={14} /></button>
         <button
           className="mesoscale-tree-action"
           type="button"

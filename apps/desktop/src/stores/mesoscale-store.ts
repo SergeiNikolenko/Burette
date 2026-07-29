@@ -3,6 +3,8 @@ import {
   MESOSCALE_API_VERSION,
   isMesoscaleResponse,
   type MesoscaleAction,
+  type MesoscaleChromeMessage,
+  type MesoscaleControlPlacement,
   type MesoscaleFailure,
   type MesoscaleHierarchyPage,
   type MesoscalePreviewMessage,
@@ -279,6 +281,18 @@ export function previewMesoscaleObject(documentId: string, ref: string | null) {
     if (!frame) return;
     postMesoscalePreview(frame, documentId, pendingPreviewRefs.get(documentId) ?? null);
   }));
+}
+
+export function positionMesoscaleControls(documentId: string, placement: MesoscaleControlPlacement) {
+  const frame = frames.get(documentId);
+  if (!frame) return;
+  const message: MesoscaleChromeMessage = {
+    source: "burette-mesoscale-chrome",
+    apiVersion: MESOSCALE_API_VERSION,
+    documentId,
+    placement,
+  };
+  frame.postMessage(message, "*");
 }
 
 export function setMesoscaleSceneOpen(documentId: string, open: boolean) {

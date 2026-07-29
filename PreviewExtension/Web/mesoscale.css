@@ -223,6 +223,10 @@ body .msp-plugin .msp-highlight-info-additional {
   color: var(--buret-meso-muted) !important;
 }
 
+body .msp-plugin .burette-mesoscale-controls-hidden {
+  display: none !important;
+}
+
 body .msp-plugin .msp-highlight-markdown-row { padding: 0; }
 body .msp-plugin .msp-highlight-markdown-row p { margin: 0; padding: 0; color: var(--buret-meso-muted) !important; }
 body .msp-plugin .msp-highlight-markdown-row p + p { margin-top: 6px; }

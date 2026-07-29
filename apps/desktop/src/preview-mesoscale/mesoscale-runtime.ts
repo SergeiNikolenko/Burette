@@ -1,5 +1,5 @@
 import { MesoscaleExplorer } from "molstar/lib/apps/mesoscale-explorer/app.js";
-import { MesoscaleState, getAllEntities, getAllGroups, getEntityDescription, getEntityLabel, getRoots, setGraphicsCanvas3DProps } from "molstar/lib/apps/mesoscale-explorer/data/state.js";
+import { MesoscaleState, getAllEntities, getAllGroups, getEntities, getEntityDescription, getEntityLabel, getRoots, setGraphicsCanvas3DProps } from "molstar/lib/apps/mesoscale-explorer/data/state.js";
 import { LoadModel, openState } from "molstar/lib/apps/mesoscale-explorer/ui/states.js";
 import { PluginCommands } from "molstar/lib/mol-plugin/commands.js";
 import { Structure } from "molstar/lib/mol-model/structure.js";
@@ -15,6 +15,8 @@ import {
   MESOSCALE_API_VERSION,
   MESOSCALE_HIERARCHY_PAGE_LIMIT,
   type MesoscaleAction,
+  type MesoscaleChromeMessage,
+  type MesoscaleControlPlacement,
   type MesoscaleGraphicsMode,
   type MesoscaleHierarchyObject,
   type MesoscaleLayoutRegion,
@@ -130,12 +132,12 @@ function uniqueCells<T>(cells: T[]) {
   });
 }
 
-function entitySummary(plugin: MesoscaleExplorer["plugin"], cell: any) {
+function entitySummary(plugin: MesoscaleExplorer["plugin"], cell: any, parentRef?: string | null) {
   const source = cell?.obj?.data?.sourceData;
   const isStructure = source instanceof Structure;
   return {
     ref: String(cell?.transform?.ref || ""),
-    parentRef: String(cell?.transform?.parent || "") || null,
+    parentRef: parentRef === undefined ? String(cell?.transform?.parent || "") || null : parentRef,
     label: getEntityLabel(plugin, cell),
     description: getEntityDescription(plugin, cell),
     hidden: Boolean(cell?.state?.isHidden),
@@ -143,6 +145,18 @@ function entitySummary(plugin: MesoscaleExplorer["plugin"], cell: any) {
     elementCount: isStructure ? Number(source.elementCount || 0) : 0,
     instanceCount: isStructure ? Math.max(1, Number(source.units?.length || 1)) : Number(cell?.obj?.data?.repr?.renderObjects?.length || 1),
   };
+}
+
+function entityGroupParentRef(plugin: MesoscaleExplorer["plugin"], cell: any, groups: any[]) {
+  const entityRef = String(cell?.transform?.ref || "");
+  for (const group of groups) {
+    const tag = String(group?.params?.values?.tag || "");
+    if (!tag) continue;
+    if (uniqueCells(getEntities(plugin, tag)).some((candidate: any) => String(candidate?.transform?.ref || "") === entityRef)) {
+      return String(group?.transform?.ref || "") || null;
+    }
+  }
+  return null;
 }
 
 async function sha256(bytes: Uint8Array) {
@@ -188,7 +202,7 @@ class MesoscaleRuntimeApi {
     const groups = allGroups.slice(0, MAX_OBSERVED_ITEMS);
     const entities = allEntities.slice(0, MAX_OBSERVED_ITEMS);
     const state = MesoscaleState.has(this.plugin) ? MesoscaleState.get(this.plugin) : null;
-    const entitySummaries = entities.map((cell: any) => entitySummary(this.plugin, cell));
+    const entitySummaries = entities.map((cell: any) => entitySummary(this.plugin, cell, entityGroupParentRef(this.plugin, cell, allGroups)));
     const snapshots = Array.from(this.plugin.managers.snapshot.state.entries).slice(0, MAX_OBSERVED_ITEMS);
     return {
       apiVersion: API_VERSION,
@@ -266,8 +280,9 @@ class MesoscaleRuntimeApi {
         instanceCount: 0,
       };
     });
+    const allGroups = uniqueCells(getAllGroups(this.plugin));
     const entities: MesoscaleHierarchyObject[] = uniqueCells(getAllEntities(this.plugin)).map((cell: any) => {
-      const summary = entitySummary(this.plugin, cell);
+      const summary = entitySummary(this.plugin, cell, entityGroupParentRef(this.plugin, cell, allGroups));
       return {
         ...summary,
         hidden: this.visibilityOverrides.get(summary.ref) ?? summary.hidden,
@@ -329,6 +344,16 @@ class MesoscaleRuntimeApi {
     const entity = uniqueCells(getAllEntities(this.plugin)).find((cell: any) => cell?.transform?.ref === ref);
     if (!entity) throw new Error(`Mesoscale entity not found: ${ref}`);
     return entity;
+  }
+
+  private objectEntities(ref: string) {
+    const entity = uniqueCells(getAllEntities(this.plugin)).find((cell: any) => cell?.transform?.ref === ref);
+    if (entity) return [entity];
+    const group = uniqueCells(getAllGroups(this.plugin)).find((cell: any) => cell?.transform?.ref === ref) as any;
+    if (!group) throw new Error(`Mesoscale object not found: ${ref}`);
+    const entities = uniqueCells(getAllEntities(this.plugin, String(group?.params?.values?.tag || "")));
+    if (entities.length === 0) throw new Error(`Mesoscale group has no entities: ${ref}`);
+    return entities;
   }
 
   highlightObject(ref: string | null, sequence: number) {
@@ -411,14 +436,15 @@ class MesoscaleRuntimeApi {
   }
 
   async selectEntity(ref: string, mode: "replace" | "extend" | "toggle" = "replace") {
-    const cell: any = this.entity(ref);
-    const source = cell?.obj?.data?.sourceData;
-    if (!(source instanceof Structure)) throw new Error(`Entity is not selectable as a molecular structure: ${ref}`);
-    const loci = Structure.toStructureElementLoci(source);
+    const cells = this.objectEntities(ref).filter((cell: any) => cell?.obj?.data?.sourceData instanceof Structure) as any[];
+    if (cells.length === 0) throw new Error(`Object is not selectable as a molecular structure: ${ref}`);
     const selection = this.plugin.managers.interactivity.lociSelects;
-    if (mode === "replace") selection.selectOnly({ loci }, false);
-    else if (mode === "extend") selection.selectJoin({ loci }, false);
-    else selection.toggle({ loci }, false);
+    if (mode === "replace") selection.deselectAll();
+    for (const cell of cells) {
+      const loci = Structure.toStructureElementLoci(cell.obj.data.sourceData);
+      if (mode === "toggle") selection.toggle({ loci }, false);
+      else selection.selectJoin({ loci }, false);
+    }
     if (mode === "replace") {
       this.selectedRefs.clear();
       this.selectedRefs.add(ref);
@@ -441,38 +467,45 @@ class MesoscaleRuntimeApi {
   }
 
   async focusEntity(ref: string) {
-    const cell: any = this.entity(ref);
-    const source = cell?.obj?.data?.sourceData;
-    if (!(source instanceof Structure)) throw new Error(`Entity has no molecular focus target: ${ref}`);
-    const loci = Structure.toStructureElementLoci(source);
-    const sphere = Loci.getBoundingSphere(loci) || Sphere3D();
+    const cells = this.objectEntities(ref).filter((cell: any) => cell?.obj?.data?.sourceData instanceof Structure) as any[];
+    if (cells.length === 0) throw new Error(`Object has no molecular focus target: ${ref}`);
+    let sphere = Sphere3D();
+    let hasSphere = false;
+    for (const cell of cells) {
+      const loci = Structure.toStructureElementLoci(cell.obj.data.sourceData);
+      const next = Loci.getBoundingSphere(loci);
+      if (!next) continue;
+      sphere = hasSphere ? Sphere3D.expandBySphere(Sphere3D(), sphere, next) : Sphere3D.clone(next);
+      hasSphere = true;
+    }
+    if (!hasSphere) throw new Error(`Object has no molecular focus target: ${ref}`);
     this.plugin.managers.camera.focusSphere(sphere, { durationMs: 250 });
-    await MesoscaleState.set(this.plugin, { focusInfo: getEntityDescription(this.plugin, cell) });
+    await MesoscaleState.set(this.plugin, { focusInfo: cells.length === 1 ? getEntityDescription(this.plugin, cells[0]) : `${cells.length} entities` });
     this.changed();
     return this.observe();
   }
 
   async styleEntity(ref: string, values: Record<string, unknown>) {
-    const cell: any = this.entity(ref);
+    const cells = this.objectEntities(ref);
     const opacity = values.opacity === undefined ? undefined : Math.min(1, Math.max(0, Number(values.opacity)));
     const emissive = values.emissive === undefined ? undefined : Math.min(1, Math.max(0, Number(values.emissive)));
     const color = values.color === undefined ? undefined : Number(values.color);
     const clipObjects = Array.isArray(values.clipObjects) ? values.clipObjects.slice(0, 6) : undefined;
-    await this.plugin.state.data.build().to(cell).update((old: any) => {
-      const params = old.type ? old.type.params : old;
-      if (opacity !== undefined && Number.isFinite(opacity)) {
-        params.alpha = opacity;
-        params.xrayShaded = opacity < 1 ? (old.type ? "inverted" : true) : false;
-      }
-      if (emissive !== undefined && Number.isFinite(emissive)) params.emissive = emissive;
-      if (color !== undefined && Number.isInteger(color) && color >= 0 && color <= 0xffffff) {
-        if (old.colorTheme?.params) old.colorTheme.params.value = color;
-        if (old.coloring?.params) old.coloring.params.color = color;
-      }
-      if (clipObjects) {
-        params.clip = { ...(params.clip || {}), objects: clipObjects };
-      }
-    }).commit();
+    for (const cell of cells) {
+      await this.plugin.state.data.build().to(cell).update((old: any) => {
+        const params = old.type ? old.type.params : old;
+        if (opacity !== undefined && Number.isFinite(opacity)) {
+          params.alpha = opacity;
+          params.xrayShaded = opacity < 1 ? (old.type ? "inverted" : true) : false;
+        }
+        if (emissive !== undefined && Number.isFinite(emissive)) params.emissive = emissive;
+        if (color !== undefined && Number.isInteger(color) && color >= 0 && color <= 0xffffff) {
+          if (old.colorTheme?.params) old.colorTheme.params.value = color;
+          if (old.coloring?.params) old.coloring.params.color = color;
+        }
+        if (clipObjects) params.clip = { ...(params.clip || {}), objects: clipObjects };
+      }).commit();
+    }
     await MesoscaleState.set(this.plugin, { graphics: "custom" });
     this.changed();
     return this.observe();
@@ -682,9 +715,34 @@ function applyHostedUi(hosted: boolean) {
   document.head.appendChild(style);
 }
 
+function applyControlPlacement(placement: MesoscaleControlPlacement) {
+  const controls = document.querySelector<HTMLElement>(".msp-viewport-controls");
+  if (!controls) return;
+  controls.classList.toggle("burette-mesoscale-controls-hidden", !placement.visible);
+  if (!placement.visible) return;
+  const bounds = controls.getBoundingClientRect();
+  const width = bounds.width || 36;
+  const height = bounds.height || 240;
+  const alignRight = placement.left + placement.width / 2 >= window.innerWidth / 2;
+  const preferredLeft = alignRight ? placement.left + placement.width - width : placement.left;
+  const below = placement.top + placement.height + 4;
+  const preferredTop = below + height + 8 <= window.innerHeight ? below : placement.top - height - 4;
+  controls.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, preferredLeft))}px`;
+  controls.style.right = "auto";
+  controls.style.top = `${Math.max(8, Math.min(window.innerHeight - height - 8, preferredTop))}px`;
+}
+
 function installActionBridge(runtime: MesoscaleRuntimeApi) {
   window.addEventListener("message", (event) => {
     const envelope = event.data;
+    if (envelope?.source === "burette-mesoscale-chrome") {
+      const chrome = envelope as MesoscaleChromeMessage;
+      const expectedDocumentId = window.BuretteConfig?.documentId;
+      if (event.source === window.parent && chrome.apiVersion === MESOSCALE_API_VERSION && chrome.documentId === expectedDocumentId) {
+        applyControlPlacement(chrome.placement);
+      }
+      return;
+    }
     if (envelope?.source === "burette-mesoscale-preview") {
       const preview = envelope as MesoscalePreviewMessage;
       const expectedDocumentId = window.BuretteConfig?.documentId;
@@ -759,7 +817,7 @@ async function start() {
     viewportShowControls: true,
     viewportShowSettings: true,
     viewportShowSelectionMode: true,
-    viewportShowAnimation: true,
+    viewportShowAnimation: false,
     viewportShowTrajectoryControls: false,
   });
   const runtime = new MesoscaleRuntimeApi(explorer);
