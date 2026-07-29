@@ -248,6 +248,13 @@ const DEV_FILE_EXTENSIONS = new Set([
   "css",
   "csv",
   "tsv",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "bmp",
+  "",
 ]);
 const MD_COORDINATE_EXTENSIONS = [
   "xtc", "trr", "dcd", "nctraj", "tng", "h5md", "gsd", "trz", "coor", "namdbin",
@@ -3594,6 +3601,7 @@ export function browserDevXyzrenderPlugin() {
         fileTitle,
         isDevFileReadAllowed,
         isNumpyArtifactExtension,
+        imageMimeTypeForExtension,
         languageForTextExtension,
         looksBinary,
         molecularBinaryArtifactSummary,
@@ -3769,6 +3777,15 @@ function languageForTextExtension(extension: string) {
   if (extension === "xml") return "xml";
   if (extension === "mae" || extension === "maegz" || extension === "cms") return "maestro";
   return "text";
+}
+
+function imageMimeTypeForExtension(extension: string) {
+  if (extension === "png") return "image/png";
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "gif") return "image/gif";
+  if (extension === "webp") return "image/webp";
+  if (extension === "bmp") return "image/bmp";
+  return null;
 }
 
 function candidateDesmondBaseNames(stem: string) {
