@@ -136,6 +136,14 @@
         </div>
       </div>
       <div id="buret-molstar-preset-menu" class="buret-molstar-preset-menu hidden" data-buret-molstar-preset-menu role="menu" aria-labelledby="buret-molstar-preset-trigger" aria-orientation="vertical"></div>
+      <div class="buret-molstar-preset-preview hidden" data-buret-molstar-preset-preview role="status" aria-live="polite">
+        <div class="buret-molstar-preset-preview-header">
+          <span data-buret-molstar-preset-preview-label>Preset preview</span>
+          <span class="buret-molstar-preset-preview-caption">Current structure</span>
+        </div>
+        <div class="buret-molstar-preset-preview-canvas" data-buret-molstar-preset-preview-canvas></div>
+        <div class="buret-molstar-preset-preview-state" data-buret-molstar-preset-preview-state>Rendering preview…</div>
+      </div>
       <div id="buret-viewport-corner" class="buret-viewport-corner">
         <button id="buret-scene-tree-toggle" class="buret-corner-toggle hidden" type="button" data-buret-action="scene-tree" aria-label="Toggle scene tree" aria-haspopup="dialog" aria-controls="buret-scene-tree" aria-expanded="false" title="Scene tree (⌘T)">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
