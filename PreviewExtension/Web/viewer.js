@@ -5146,6 +5146,7 @@
   let sceneTreeSelectedRef = '';
   let sceneTreeMenuPointerStart = null;
   const sceneTreePickerUndoSnapshots = new WeakMap();
+  const sceneTreeControlUndoSnapshots = new WeakMap();
 
   function sceneTreeIconElement(paths) {
     const svg = document.createElementNS(SCENE_TREE_SVG_NS, 'svg');
@@ -6733,6 +6734,21 @@
     return null;
   }
 
+  function beginSceneTreeControlUndo(control, ref, description) {
+    if (sceneTreeControlUndoSnapshots.has(control)) return;
+    const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+    const label = `${description} of ${node?.label || 'scene object'}`;
+    sceneTreeControlUndoSnapshots.set(control, captureMolstarSceneUndoSnapshot(label));
+  }
+
+  function commitSceneTreeControlUndo(control) {
+    if (!sceneTreeControlUndoSnapshots.has(control)) return false;
+    const snapshot = sceneTreeControlUndoSnapshots.get(control) || null;
+    sceneTreeControlUndoSnapshots.delete(control);
+    pushMolstarEditUndoSnapshot(snapshot);
+    return true;
+  }
+
   async function runSceneTreeSelectAction(kind, ref, value) {
     if (kind === 'add-representation') {
       await addSceneTreeRepresentation(ref, value);
@@ -8097,7 +8113,11 @@
       document.addEventListener('change', event => {
         const control = event.target.closest('[data-scene-tree-param]');
         const ref = control?.closest('[data-ref]')?.dataset.ref;
-        if (!control || !ref || control.dataset.sceneTreeParamType === 'number') return;
+        if (!control || !ref) return;
+        if (control.dataset.sceneTreeParamType === 'number') {
+          commitSceneTreeControlUndo(control);
+          return;
+        }
         const value = control.dataset.sceneTreeParamType === 'boolean' ? control.checked : control.value;
         const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
         const sceneUndoLabel = `${control.dataset.sceneTreeParam} of ${node?.label || 'representation'}`;
@@ -8108,7 +8128,9 @@
       document.addEventListener('change', event => {
         const control = event.target.closest('[data-scene-tree-measurement-param]');
         const ref = control?.closest('[data-ref]')?.dataset.ref;
-        if (!control || !ref || control.type === 'range') return;
+        if (!control || !ref) return;
+        if (commitSceneTreeControlUndo(control)) return;
+        if (control.type === 'range') return;
         const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
         const sceneUndoLabel = `${control.dataset.sceneTreeMeasurementParam} of ${node?.label || 'measurement'}`;
         void runMolstarSceneEdit(sceneUndoLabel, () => (
@@ -8157,10 +8179,15 @@
         const slider = event.target.closest('[data-scene-tree-slider="opacity"]');
         const ref = slider?.closest('[data-ref]')?.dataset.ref;
         if (!slider || !ref) return;
+        beginSceneTreeControlUndo(slider, ref, 'opacity');
         const percent = Number(slider.value);
         const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
         if (readout) readout.textContent = `${percent}%`;
         streamSceneTreeReprAlpha(ref, percent / 100);
+      });
+      document.addEventListener('change', event => {
+        const slider = event.target.closest('[data-scene-tree-slider="opacity"]');
+        if (slider) commitSceneTreeControlUndo(slider);
       });
       // Numeric advanced rows follow the thumb like opacity does. Surfaces rebuild
       // their mesh on every commit, so these share the same latest-wins queue
@@ -8169,6 +8196,7 @@
         const slider = event.target.closest('[data-scene-tree-param]');
         const ref = slider?.closest('[data-ref]')?.dataset.ref;
         if (!slider || !ref || slider.dataset.sceneTreeParamType !== 'number') return;
+        beginSceneTreeControlUndo(slider, ref, slider.dataset.sceneTreeParam);
         const value = Number(slider.value);
         const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
         if (readout) readout.textContent = slider.value;
@@ -8178,6 +8206,7 @@
         const control = event.target.closest('[data-scene-tree-measurement-param]');
         const ref = control?.closest('[data-ref]')?.dataset.ref;
         if (!control || !ref) return;
+        beginSceneTreeControlUndo(control, ref, control.dataset.sceneTreeMeasurementParam);
         if (control.type === 'range') {
           const value = Number(control.value);
           const readout = control.parentElement?.querySelector('.buret-tree-menu-slider-value');

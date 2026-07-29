@@ -5818,8 +5818,12 @@ assert.match(previewViewer, /function molstarSceneMenuUndoLabel\(action, ref, co
 assert.match(previewViewer, /runMolstarSceneEdit\(sceneUndoLabel, \(\) => runSceneTreeAction/);
 assert.match(previewViewer, /runMolstarSceneEdit\(sceneUndoLabel, \(\) => runSceneTreeSelectAction/);
 assert.match(previewViewer, /const sceneTreePickerUndoSnapshots = new WeakMap\(\)/);
+assert.match(previewViewer, /const sceneTreeControlUndoSnapshots = new WeakMap\(\)/);
 assert.match(previewViewer, /sceneTreePickerUndoSnapshots\.set\(list, captureMolstarSceneUndoSnapshot\(sceneUndoLabel\)\)/);
 assert.match(previewViewer, /if \(changed\) pushMolstarEditUndoSnapshot\(sceneUndoSnapshot\)/);
+assert.match(previewViewer, /function beginSceneTreeControlUndo\(control, ref, description\)/);
+assert.match(previewViewer, /function commitSceneTreeControlUndo\(control\)/);
+assert.match(previewViewer, /beginSceneTreeControlUndo\(slider, ref, 'opacity'\)/);
 assert.match(previewViewer, /function molstarContextSceneMutationLabel\(action, target\)/);
 assert.match(previewViewer, /name === 'represent:component'/);
 assert.match(previewViewer, /name === 'select' \|\| name === 'select-atom'/);
