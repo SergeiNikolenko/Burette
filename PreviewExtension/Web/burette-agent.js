@@ -624,7 +624,7 @@
             params: format === 'png' ? {} : { quality: Math.max(0, Math.min(1, Number(args.quality) || 0.9)) }
           },
           transparent: args.transparent == null ? previousValues?.transparent : args.transparent === true,
-          axes: args.axes || previousValues?.axes,
+          axes: screenshotAxes(args.axes, previousValues?.axes),
           illumination: args.illumination || previousValues?.illumination
         };
         helper.behaviors?.values?.next(nextValues);
@@ -666,6 +666,42 @@
       cropped: !!args.crop || args.autoCrop === true,
       note: 'Native/MCP bridge should decode this data URI and write it to an allowlisted local path when a file path is required.'
     };
+  }
+
+  const SCREENSHOT_AXES_DEFAULTS = {
+    alpha: 0.51,
+    colorX: 0xff0000,
+    colorY: 0x008000,
+    colorZ: 0x0000ff,
+    scale: 0.33,
+    location: 'bottom-left',
+    locationOffsetX: 0,
+    locationOffsetY: 0,
+    originColor: 0x808080,
+    radiusScale: 0.075,
+    showPlanes: true,
+    planeColorXY: 0x808080,
+    planeColorXZ: 0x808080,
+    planeColorYZ: 0x808080,
+    showLabels: false,
+    labelX: 'X',
+    labelY: 'Y',
+    labelZ: 'Z',
+    labelColorX: 0x808080,
+    labelColorY: 0x808080,
+    labelColorZ: 0x808080,
+    labelOpacity: 1,
+    labelScale: 0.25
+  };
+
+  function screenshotAxes(value, previous) {
+    if (value == null) return previous;
+    if (value === false || value === 'off' || value?.name === 'off') return { name: 'off', params: {} };
+    if (value === true || value === 'on') return { name: 'on', params: { ...SCREENSHOT_AXES_DEFAULTS } };
+    if (value?.name === 'on') {
+      return { name: 'on', params: { ...SCREENSHOT_AXES_DEFAULTS, ...(value.params || {}) } };
+    }
+    return previous;
   }
 
   function stateActionDefaults(action, cell) {

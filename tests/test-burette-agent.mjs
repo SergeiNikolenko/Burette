@@ -341,13 +341,14 @@ assert.equal(measurementLabels[0].options.reprTags[0], 'burette-agent-label');
 
 const shot = await context.window.BuretteAgent.run({
   command: 'screenshot',
-  args: { width: 640, height: 360, format: 'jpeg', quality: 0.8, transparent: true, autoCrop: false }
+  args: { width: 640, height: 360, format: 'jpeg', quality: 0.8, transparent: true, autoCrop: false, axes: true }
 });
 assert.equal(shot.ok, true);
 assert.equal(shot.result.dataUri, 'data:image/jpeg;base64,from-helper');
 assert.equal(shot.result.mimeType, 'image/jpeg');
 assert.equal(shot.result.width, 640);
 assert.equal(shot.result.height, 360);
+assert.equal(shot.result.transparent, true);
 assert.equal(screenshotValues.value.format.name, 'png');
 
 const symmetry = await context.window.BuretteAgent.run({ command: 'showAssemblySymmetry' });
