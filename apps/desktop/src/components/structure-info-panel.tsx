@@ -446,11 +446,11 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         <AssemblySymmetryCard
           shown={assemblySymmetry.shown}
           pending={assemblySymmetryPending}
-          onShow={() => {
+          onToggle={() => {
             setAssemblySymmetryPending(true);
             actions.runStructureViewerAction(document, {
-              type: "show_assembly_symmetry",
-              label: "Show assembly symmetry",
+              type: assemblySymmetry.shown ? "hide_assembly_symmetry" : "show_assembly_symmetry",
+              label: assemblySymmetry.shown ? "Hide assembly symmetry" : "Show assembly symmetry",
               notify: false,
             });
           }}
@@ -708,11 +708,11 @@ function InspectorHeaderStats({
 function AssemblySymmetryCard({
   shown,
   pending,
-  onShow,
+  onToggle,
 }: {
   shown: boolean;
   pending: boolean;
-  onShow: () => void;
+  onToggle: () => void;
 }) {
   return (
     <section className="structure-brief-card structure-inspector-symmetry-card" aria-label="Assembly symmetry">
@@ -720,8 +720,8 @@ function AssemblySymmetryCard({
         <h4>Assembly symmetry</h4>
         <p>{shown ? "Axes and cage are visible in the scene." : "Available for this biological assembly."}</p>
       </div>
-      <Button type="button" size="sm" variant={shown ? "outline" : "default"} disabled={shown || pending} onClick={onShow}>
-        {shown ? "Shown" : pending ? "Adding…" : "Show axes"}
+      <Button type="button" size="sm" variant={shown ? "outline" : "default"} disabled={pending} onClick={onToggle}>
+        {pending ? (shown ? "Hiding…" : "Adding…") : shown ? "Hide axes" : "Show axes"}
       </Button>
     </section>
   );

@@ -70,7 +70,7 @@ export type StructureViewerAction =
       index: number;
     }
   | {
-      type: "show_assembly_symmetry";
+      type: "show_assembly_symmetry" | "hide_assembly_symmetry";
       label: string;
       notify?: boolean;
     }

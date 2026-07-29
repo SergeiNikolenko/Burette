@@ -171,6 +171,9 @@
   let generate3dPending = false;
   let generate3dPendingMode = 'single';
   let molstarStructureFocusSerial = 0;
+  let assemblySymmetryAvailable = false;
+  let assemblySymmetryShown = false;
+  let assemblySymmetryPending = false;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message, payload = {}) {
@@ -205,17 +208,33 @@
   }
 
   async function reportMolstarCapabilities() {
-    if (!window.BuretteAgent?.run) return;
+    if (!window.BuretteAgent?.run) {
+      assemblySymmetryPending = false;
+      updateAssemblySymmetryButton();
+      return false;
+    }
     try {
       const response = await window.BuretteAgent.run({ command: 'capabilities', args: {} });
-      if (!response?.ok) return;
+      if (!response?.ok) {
+        assemblySymmetryPending = false;
+        updateAssemblySymmetryButton();
+        return false;
+      }
+      assemblySymmetryAvailable = response.result?.hasAssemblySymmetry === true;
+      assemblySymmetryShown = response.result?.hasAssemblySymmetryRepresentation === true;
+      assemblySymmetryPending = false;
+      updateAssemblySymmetryButton();
       postHostMessage({
         type: 'molstarCapabilitiesChanged',
-        hasAssemblySymmetry: response.result?.hasAssemblySymmetry === true,
-        assemblySymmetryShown: response.result?.hasAssemblySymmetryRepresentation === true
+        hasAssemblySymmetry: assemblySymmetryAvailable,
+        assemblySymmetryShown
       });
+      return true;
     } catch (error) {
+      assemblySymmetryPending = false;
+      updateAssemblySymmetryButton();
       debug('Mol* capability report failed: ' + (error && error.message || String(error)));
+      return false;
     }
   }
 
@@ -665,6 +684,9 @@
         args: { params: action.params || {}, serverUrl: action.serverUrl }
       });
     }
+    if (type === 'hide_assembly_symmetry') {
+      return window.BuretteAgent.run({ command: 'hideAssemblySymmetry', args: {} });
+    }
     if (type === 'show_water_bridges') {
       return window.BuretteAgent.run({ command: 'showWaterBridges', args: action.args || action });
     }
@@ -861,7 +883,9 @@
         const actionType = String(body.action?.type || 'unknown');
         result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
       }
-      if (body.action?.type === 'show_assembly_symmetry') await reportMolstarCapabilities();
+      if (body.action?.type === 'show_assembly_symmetry' || body.action?.type === 'hide_assembly_symmetry') {
+        await reportMolstarCapabilities();
+      }
       event.source?.postMessage({
         source: 'burette-agent-viewer',
         body: {
@@ -1696,6 +1720,7 @@
       lassoButton.setAttribute('aria-hidden', lassoAvailable ? 'false' : 'true');
     }
     updateMolstarLassoButton();
+    updateAssemblySymmetryButton();
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     presetSlot?.classList.remove('visible');
     const canOpenSdfGrid = canOpenSdfGridFromConfig(config);
@@ -3883,6 +3908,7 @@
     bindSaveModifiedStructureButton(toolbar);
     installMolstarEditUndoShortcuts();
     bindMolstarStyleControls(toolbar);
+    bindAssemblySymmetryButton(toolbar);
     bindMolstarLassoButton(toolbar);
     bindMolstarLassoKeyboardButton(toolbar);
     installMolstarLassoSelection();
@@ -4028,6 +4054,48 @@
       select.addEventListener('change', () => requestMolstarStyle(select.value));
     }
     toolbar.dataset.molstarStyleBound = '1';
+  }
+
+  function bindAssemblySymmetryButton(toolbar) {
+    const button = toolbar?.querySelector('[data-buret-action="assembly-symmetry"]');
+    if (!button || button.dataset.bound === '1') return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', async () => {
+      if (assemblySymmetryPending || !assemblySymmetryAvailable) return;
+      assemblySymmetryPending = true;
+      updateAssemblySymmetryButton();
+      try {
+        const command = assemblySymmetryShown ? 'hideAssemblySymmetry' : 'showAssemblySymmetry';
+        const response = await window.BuretteAgent?.run?.({ command, args: {} });
+        if (!response?.ok) throw new Error(response?.error?.message || 'Assembly symmetry action failed.');
+        await reportMolstarCapabilities();
+      } catch (error) {
+        assemblySymmetryPending = false;
+        updateAssemblySymmetryButton();
+        setStatus('[web] Assembly symmetry could not be updated.', 'error');
+        debug('Assembly symmetry toolbar action failed: ' + (error && error.message || String(error)));
+      }
+    });
+    updateAssemblySymmetryButton();
+  }
+
+  function updateAssemblySymmetryButton() {
+    const button = document.querySelector('#buret-toolbar [data-buret-action="assembly-symmetry"]');
+    if (!button) return;
+    const renderer = normalizeRenderer((activeConfig || window.BuretteConfig || {}).renderer);
+    const visible = assemblySymmetryAvailable && renderer === 'molstar';
+    button.classList.toggle('hidden', !visible);
+    button.classList.toggle('active', assemblySymmetryShown);
+    button.disabled = !visible || assemblySymmetryPending;
+    button.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    button.setAttribute('aria-pressed', assemblySymmetryShown ? 'true' : 'false');
+    button.setAttribute('aria-busy', assemblySymmetryPending ? 'true' : 'false');
+    const label = assemblySymmetryPending
+      ? 'Updating assembly symmetry'
+      : assemblySymmetryShown ? 'Hide assembly symmetry axes' : 'Show assembly symmetry axes';
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    setTooltipLabel(button, label);
   }
 
   function bindMolstarLassoButton(toolbar) {

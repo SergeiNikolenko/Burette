@@ -172,6 +172,13 @@ const viewer = {
       data: {
         cells: stateCells,
         actions: { fromCell: cell => cell === structureCell ? [assemblyAction] : [] },
+        build: () => {
+          const refs = [];
+          return {
+            delete(ref) { refs.push(ref); return this; },
+            async commit() { for (const ref of refs) stateCells.delete(ref); }
+          };
+        },
         applyAction: (action, params, ref) => async () => {
           assert.equal(action, assemblyAction);
           stateCells.set('symmetry', {
@@ -359,6 +366,11 @@ assert.equal(symmetry.result.objects[0].label, 'Global Symmetry');
 assert.equal(symmetry.result.objects[0].description, 'Icosahedral (I)');
 const capabilitiesWithSymmetry = await context.window.BuretteAgent.run({ command: 'capabilities' });
 assert.equal(capabilitiesWithSymmetry.result.hasAssemblySymmetryRepresentation, true);
+const hiddenSymmetry = await context.window.BuretteAgent.run({ command: 'hideAssemblySymmetry' });
+assert.equal(hiddenSymmetry.ok, true);
+assert.equal(hiddenSymmetry.result.removedCount, 1);
+const capabilitiesWithoutSymmetry = await context.window.BuretteAgent.run({ command: 'capabilities' });
+assert.equal(capabilitiesWithoutSymmetry.result.hasAssemblySymmetryRepresentation, false);
 
 viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure();
 const scalar = await context.window.BuretteAgent.run({
