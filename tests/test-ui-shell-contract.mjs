@@ -890,7 +890,7 @@ assert.match(previewRuntimeSource, /for candidate_base in candidate_desmond_base
 assert.doesNotMatch(previewRuntimeSource, /casebook|source_files|mnt__/);
 assert.match(viteConfig, /function isDevFileReadAllowed\(path: string\)/);
 assert.match(viteConfig, /async function collectDefaultDevFiles\(\)/);
-assert.match(viteConfig, /includeFile: \(path: string\) => !path\.endsWith\("\/no-molecule-column\.csv"\)/);
+assert.doesNotMatch(viteConfig, /no-molecule-column\.csv/);
 assert.match(viteConfig, /function normalizeXyzrenderInputExtension\(value: string \| null\)/);
 assert.match(viteConfig, /registerBrowserDevXyzrenderRoute\(server,/);
 assert.match(browserDevXyzrender, /server\.middlewares\.use\("\/__burette\/xyzrender"/);
@@ -2022,7 +2022,7 @@ assert.doesNotMatch(gridViewer, /gridRailOpen/);
 assert.doesNotMatch(gridViewer, /data-buret-grid-rail-position="\$\{position\}"\$\{indexAttr\} title="\$\{title\}"/);
 assert.doesNotMatch(gridViewer, /railOutsideHandler/);
 assert.doesNotMatch(gridViewer, /railHoverIndex/);
-assert.match(gridViewer, /<nav class="buret-grid-rail" data-buret-grid-rail aria-label="Molecule navigation">/);
+assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Molecule navigation' : 'Row navigation'/);
 assert.match(gridViewer, /function initGridRail\(cfg\)/);
 assert.match(gridCss, /\.buret-grid-rail \{/);
 assert.match(styles, /\.app-shell\[data-runtime="browser"\]\s*\{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/s);
@@ -4486,7 +4486,7 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v166"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v168"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v70"/);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
 assert.match(viteConfig, /registerBrowserDevAgentSessionRoute\(server\)/);
@@ -5114,6 +5114,12 @@ assert.match(previewRuntimeCss, /\.buret-viewport-rail\.hidden,\s*\.buret-rail-b
 assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection \{[\s\S]*color: #ff6b5e;[\s\S]*border-color: rgba\(255, 107, 94, 0\.72\);/);
 assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection:hover \{[\s\S]*color: #fff;[\s\S]*background: rgba\(255, 107, 94, 0\.88\);/);
 assert.match(previewViewer, /function viewportAnimateMenu\(menu\) \{/);
+const animateMenuSource = previewViewer.slice(
+  previewViewer.indexOf('function viewportAnimateMenu(menu)'),
+  previewViewer.indexOf('function viewportWiggleTransform()'),
+);
+assert.ok(animateMenuSource.indexOf('viewportMotionControls(menu)') < animateMenuSource.indexOf('viewportWiggleControls(menu, plugin)'));
+assert.ok(animateMenuSource.indexOf('viewportWiggleControls(menu, plugin)') < animateMenuSource.indexOf("sceneTreeMenuSection(menu, 'Animations')"));
 // Closing the molecule card drops the selection, and the host has to be told
 // directly because clearing this way does not reach the selection manager events.
 // × parks the card without touching the selection: it latches "suppressed" and
@@ -5139,7 +5145,33 @@ assert.match(previewViewer, /spin: \{ value: 0\.1, min: 0\.01, max: 1, step: 0\.
 // to be told to finish.
 assert.match(previewViewer, /if \('playOnce' in params\) params\.playOnce = true;/);
 assert.match(previewViewer, /manager\.play\(animation, viewportAnimationParams\(animation, plugin\)\)/);
+assert.match(previewViewer, /animation\.name === 'built-in\.animate-model-index' && activeTrajectoryPlaybackControl/);
+assert.match(previewViewer, /applyTrajectorySmoothingFromAction\(\{[\s\S]*outputFrames: interpolatedTrajectoryFrameCount\(playback\.frameCount\(\)\)/);
+assert.match(previewViewer, /playback = activeTrajectoryPlaybackControl;[\s\S]*playback\.play\(\);/);
+assert.match(previewViewer, /activeTrajectoryPlaybackControl\?\.stop\(\)/);
+assert.match(previewViewer, /prepared\.kind === 'trajectory' \|\| prepared\.kind === 'xyz-frame-overlay'/);
+assert.match(previewViewer, /const animationEpoch = \+\+viewportTrajectoryAnimationEpoch;/);
+assert.match(previewViewer, /if \(animationEpoch !== viewportTrajectoryAnimationEpoch \|\| activeViewer !== viewer\) return;/);
+assert.match(previewViewer, /action === 'animation-stop'[\s\S]*cancelViewportTrajectoryAnimation\(\);/);
+assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*cancelViewportTrajectoryAnimation\(\);/);
+assert.match(previewViewer, /Build a smoothed trajectory before animating this format/);
+assert.match(previewViewer, /!activeTrajectoryPlaybackControl\.canInterpolate\(\)/);
 assert.match(previewViewer, /plugin\?\.behaviors\?\.state\?\.isAnimating\?\.subscribe\?\.\(updateViewportAnimateState\)/);
+// Mol*'s Procedural Animation panel is carried into the same Animate menu with
+// all three upstream actions: a uniform dynamics wiggle, uncertainty-weighted
+// B-factor/RMSF wiggle, and a clear state.
+assert.match(previewViewer, /sceneTreeMenuSection\(menu, 'Apply Wiggle'\)/);
+assert.match(previewViewer, /\['dynamics', 'Dynamics', 'Apply procedural molecular motion'\]/);
+assert.match(previewViewer, /\['uncertainty', 'Uncertainty', 'Scale motion by B-factor or RMSF uncertainty'\]/);
+assert.match(previewViewer, /\['clear', 'Clear', 'Remove procedural molecular motion'\]/);
+assert.match(previewViewer, /wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0\.2/);
+assert.match(previewViewer, /wiggleAmplitude: 0, tumbleAmplitude: 0/);
+assert.match(previewViewer, /WiggleStructureRepresentation3DFromBundle/);
+assert.match(previewViewer, /B_iso_or_equiv\.value\(element\)/);
+assert.match(previewViewer, /coarseConformation\.spheres\.rmsf\[element\]/);
+assert.match(previewViewer, /action === 'wiggle'[\s\S]*runViewportWiggle\(control\.dataset\.wiggle, control\)/);
+assert.match(previewViewer, /data-motion', state/);
+assert.match(previewRuntimeCss, /\.buret-rail-button\[data-motion="wiggle"\]/);
 // Motion lives on the animate button now, so the camera menu must not offer it too.
 assert.doesNotMatch(
   previewViewer.slice(previewViewer.indexOf("function viewportCameraMenu"), previewViewer.indexOf("function viewportAnimateMenu")),
@@ -5520,7 +5552,7 @@ assert.match(previewViewer, /function embeddedStructureDataByteLength\(\)/);
 assert.match(previewViewer, /async function ensureBrowserDevStructureData\(config, cb\)/);
 assert.match(previewViewer, /window\.BuretteDataBytes = null;\s*window\.BuretteDataBase64 = null;\s*await loadStructureData\(config, cb\);/);
 assert.match(previewViewer, /function disposeActiveMolstarViewer\(\)/);
-assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*cancelScheduledMolstarWaterRepresentation\(\);\s*notifyMolstarSelectionChanged\(null\);\s*molstarSelectionHostSignature = '';\s*setMolstarStructureDirty\(false\);/);
+assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*cancelViewportTrajectoryAnimation\(\);\s*cancelScheduledMolstarWaterRepresentation\(\);\s*notifyMolstarSelectionChanged\(null\);\s*molstarSelectionHostSignature = '';\s*setMolstarStructureDirty\(false\);/);
 assert.match(previewViewer, /function startMolstar\(config, cb\)/);
 assert.match(previewViewer, /if \(toolbar\.dataset\.panelTogglesBound !== '1'\)/);
 assert.match(previewViewer, /if \(toolbar\.dataset\.dragBound === '1'\) return;/);
@@ -7178,6 +7210,11 @@ assert.match(gridUi, /id="open-selected-ketcher"/);
 assert.match(gridViewer, /onOpenKetcher\(\) \{ requestSelectedKetcherDocument\(cfg\); \}/);
 assert.match(browserDevDocuments, /const hasMoleculeRecords = records\.some/);
 assert.match(browserDevDocuments, /rendererSwitch: hasMoleculeRecords/);
+assert.match(browserDevDocuments, /molecularGrid: hasMoleculeRecords/);
+assert.match(gridViewer, /typeof cfg\?\.molecularGrid === 'boolean'/);
+assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Molecule table' : 'Data table'/);
+assert.match(gridViewer, /numeric === 1 \? 'row' : 'rows'/);
+assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Search molecules and SMARTS' : 'Search table rows'/);
 assert.doesNotMatch(gridViewer, /data-buret-grid-renderer="xyzrender-external">xyzrender/);
 assert.match(gridViewer, /function requestSdfPoseDocument\(cfg\)/);
 assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Molstar\.', 'error'\)/);

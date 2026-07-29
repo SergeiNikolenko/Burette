@@ -246,6 +246,8 @@ const DEV_FILE_EXTENSIONS = new Set([
   "toml",
   "html",
   "css",
+  "csv",
+  "tsv",
 ]);
 const MD_COORDINATE_EXTENSIONS = [
   "xtc", "trr", "dcd", "nctraj", "tng", "h5md", "gsd", "trz", "coor", "namdbin",
@@ -3701,7 +3703,6 @@ function browserDevFileScanOptions() {
   return {
     allowedExtensions: DEV_FILE_EXTENSIONS,
     fileExtension,
-    includeFile: (path: string) => !path.endsWith("/no-molecule-column.csv"),
     maxDirectories: DEV_FILE_SCAN_MAX_DIRECTORIES,
     maxEntries: DEV_FILE_SCAN_MAX_ENTRIES,
     maxFileBytes: DEV_FILE_SIZE_LIMIT,
@@ -3752,6 +3753,8 @@ function molecularBinaryArtifactSummary(path: string, byteCount: number) {
 }
 
 function languageForTextExtension(extension: string) {
+  if (extension === "csv") return "csv";
+  if (extension === "tsv") return "tsv";
   if (extension === "md" || extension === "markdown" || extension === "mdx") return "markdown";
   if (extension === "sh" || extension === "bash" || extension === "zsh") return "shell";
   if (extension === "js" || extension === "jsx" || extension === "mjs" || extension === "cjs") return "javascript";
