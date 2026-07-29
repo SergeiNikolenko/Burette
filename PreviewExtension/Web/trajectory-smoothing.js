@@ -137,17 +137,19 @@
     return Array.from({ length: target }, (_, index) => frames[Math.round(index * (frames.length - 1) / (target - 1))]);
   }
 
-  function interpolateFrames(source, keyframes) {
-    const output = new Array(source.length);
-    for (let segment = 1; segment < keyframes.length; segment += 1) {
+  function interpolateFrames(source, keyframes, outputFrameCount = source.length) {
+    const count = Math.max(2, Math.trunc(finiteNumber(outputFrameCount, source.length)));
+    const output = new Array(count);
+    let segment = 1;
+    for (let frameIndex = 0; frameIndex < count; frameIndex += 1) {
+      const sourcePosition = frameIndex * (source.length - 1) / (count - 1);
+      while (segment < keyframes.length - 1 && sourcePosition > keyframes[segment]) segment += 1;
       const start = keyframes[segment - 1];
       const end = keyframes[segment];
-      for (let frameIndex = start; frameIndex <= end; frameIndex += 1) {
-        const t = end === start ? 0 : (frameIndex - start) / (end - start);
-        output[frameIndex] = source[start].map((point, atom) => point.map((value, axis) => (
-          value + (source[end][atom][axis] - value) * t
-        )));
-      }
+      const t = end === start ? 0 : Math.max(0, Math.min(1, (sourcePosition - start) / (end - start)));
+      output[frameIndex] = source[start].map((point, atom) => point.map((value, axis) => (
+        value + (source[end][atom][axis] - value) * t
+      )));
     }
     return output;
   }
@@ -186,7 +188,11 @@
     const rawSignal = rmsdSeries(parsed.frames, referenceIndex, input.align !== false);
     const filteredSignal = smoothSeries(rawSignal, radius, preset.passes);
     const keyframes = thinKeyframes(extrema(filteredSignal), targetFrames);
-    const frames = interpolateFrames(parsed.frames, keyframes);
+    const outputFrameCount = Math.max(
+      parsed.frames.length,
+      Math.min(600, Math.trunc(finiteNumber(input.outputFrames, parsed.frames.length)))
+    );
+    const frames = interpolateFrames(parsed.frames, keyframes, outputFrameCount);
     return {
       data: parsed.format === 'pdb' ? formatPdb(parsed, frames) : formatXyz(parsed, frames),
       format: parsed.format,
@@ -195,6 +201,7 @@
       rawSignal,
       filteredSignal,
       targetFrames,
+      sourceFrameCount: parsed.frames.length,
       interpolation: 'linear'
     };
   }
