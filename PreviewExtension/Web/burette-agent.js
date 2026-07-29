@@ -8,6 +8,7 @@
   const MAX_SCHEMA_RESIDUES = 256;
   const MAX_CONTACT_SOURCE_ATOMS = 5000;
   const MAX_CONTACT_TARGET_ATOMS = 250000;
+  const MAX_INLINE_SESSION_BYTES = 2 * 1024 * 1024;
 
   const STANDARD_AA = new Set([
     'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLN', 'GLU', 'GLY', 'HIS', 'ILE',
@@ -821,7 +822,8 @@
     if (!query || typeof component?.applyTheme !== 'function') {
       throw coded('NOT_IMPLEMENTED', 'Mol* current-selection overpaint API is unavailable.');
     }
-    const maxAbs = Math.max(...values.map(Math.abs), Number.EPSILON);
+    let maxAbs = Number.EPSILON;
+    for (const value of values) maxAbs = Math.max(maxAbs, Math.abs(value));
     const bins = SCALAR_COLORS.map((color, index) => ({ color, index, atomIndices: [] }));
     for (let index = 0; index < values.length; index += 1) {
       const normalized = Math.max(-1, Math.min(1, values[index] / maxAbs));
@@ -909,11 +911,23 @@
     if (typeof manager?.serialize !== 'function') throw coded('NOT_IMPLEMENTED', 'Mol* session serialization is unavailable.');
     const type = ['molx', 'molj', 'json'].includes(args.type) ? args.type : 'molx';
     const blob = await manager.serialize({ type, params: args.params });
+    const requestedMaxBytes = Number(args.maxBytes);
+    const maxBytes = Number.isFinite(requestedMaxBytes) && requestedMaxBytes > 0
+      ? Math.min(MAX_INLINE_SESSION_BYTES, Math.floor(requestedMaxBytes))
+      : MAX_INLINE_SESSION_BYTES;
+    if (blob.size > maxBytes) {
+      throw coded('PAYLOAD_TOO_LARGE', `Mol* session is ${blob.size} bytes; inline export is limited to ${maxBytes} bytes.`, {
+        byteLength: blob.size,
+        maxByteLength: maxBytes,
+        type
+      });
+    }
     const bytes = new Uint8Array(await blob.arrayBuffer());
     return {
       type,
       mimeType: blob.type || (type === 'molx' ? 'application/zip' : 'application/json'),
       byteLength: bytes.byteLength,
+      maxByteLength: maxBytes,
       dataBase64: bytesToBase64(bytes),
       story: storySummary()
     };

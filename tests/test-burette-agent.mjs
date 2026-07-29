@@ -377,7 +377,13 @@ assert.equal(storyNext.result.currentIndex, 1);
 const session = await context.window.BuretteAgent.run({ command: 'exportSession', args: { type: 'molx' } });
 assert.equal(session.ok, true);
 assert.equal(session.result.mimeType, 'application/zip');
+assert.equal(session.result.maxByteLength, 2 * 1024 * 1024);
 assert.equal(Buffer.from(session.result.dataBase64, 'base64').toString(), 'molx-session');
+snapshotManager.serialize = async () => new Blob([new Uint8Array(2 * 1024 * 1024 + 1)], { type: 'application/zip' });
+const oversizedSession = await context.window.BuretteAgent.run({ command: 'exportSession', args: { type: 'molx' } });
+assert.equal(oversizedSession.ok, false);
+assert.equal(oversizedSession.error.code, 'PAYLOAD_TOO_LARGE');
+assert.equal(oversizedSession.error.details.maxByteLength, 2 * 1024 * 1024);
 
 const mvs = await context.window.BuretteAgent.run({
   command: 'loadMVS',
