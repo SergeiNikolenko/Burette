@@ -23,7 +23,11 @@
   const MOLSTAR_LASSO_MIN_POINTS = 4;
   const MOLSTAR_LASSO_MIN_DISTANCE_PX = 3;
   const MOLSTAR_LASSO_SAMPLE_STEP_PX = 8;
-  const MOLSTAR_LASSO_SAMPLE_LIMIT = 4500;
+  const MOLSTAR_LASSO_SAMPLE_LIMIT = 1400;
+  const MOLSTAR_LASSO_YIELD_INTERVAL = 96;
+  const MOLSTAR_LASSO_PREVIEW_ATOM_LIMIT = 128;
+  const MOLSTAR_LASSO_COMPONENT_KEY = 'burette-lasso-selection';
+  const MOLSTAR_LASSO_COMPONENT_TAG = 'burette-lasso-selection-object';
   const MOLSTAR_PREVIEW_RDKIT_SVG_SIZE = 260;
   const MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS = 300;
   const MOLSTAR_EDIT_HISTORY_LIMIT = 20;
@@ -124,6 +128,7 @@
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
   let molstarLassoOverlay = null;
+  let molstarLassoBusy = false;
   const molstarLassoSelectionAtoms = new Map();
   const molstarLassoSelectionAtomKeys = new Set();
   const molstarLassoSelectionResidueKeys = new Set();
@@ -13115,6 +13120,7 @@
     molstarLassoSelectionAtomKeys.clear();
     molstarLassoSelectionResidueKeys.clear();
     await Promise.allSettled(pending.filter(Boolean));
+    await removeMolstarLassoSceneObjects(plugin);
     plugin?.canvas3d?.requestDraw?.();
     window.__mqlPost?.('selectionChanged', '', {
       selection: { source: 'viewer', cleared: true, atoms: 0, residues: [], atomIdentities: [] }
@@ -15665,7 +15671,7 @@
   }
 
   function onMolstarLassoPointerDown(event) {
-    if (!molstarLassoEnabled || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
+    if (molstarLassoBusy || !molstarLassoEnabled || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
     const canvas = molstarContextCanvasFromEvent(event);
     if (!canvas) return;
     hideMolstarContextMenu();
@@ -15714,7 +15720,7 @@
     if (Math.hypot(event.clientX - stroke.points[0].x, event.clientY - stroke.points[0].y) >= MOLSTAR_LASSO_MIN_DISTANCE_PX) {
       stroke.points.push({ x: event.clientX, y: event.clientY });
     }
-    finishMolstarLassoStroke(stroke);
+    void finishMolstarLassoStroke(stroke);
     try { stroke.canvas.releasePointerCapture?.(event.pointerId); } catch (_) {}
     event.preventDefault();
     event.stopPropagation();
@@ -15759,7 +15765,7 @@
     removeMolstarLassoOverlay();
   }
 
-  function finishMolstarLassoStroke(stroke) {
+  async function finishMolstarLassoStroke(stroke) {
     molstarLassoStroke = null;
     removeMolstarLassoOverlay();
     const bounds = molstarLassoBounds(stroke.points);
@@ -15767,15 +15773,29 @@
       setStatus('[web] Lasso selection was too small.');
       return;
     }
-    const picks = molstarLassoPicks(stroke);
-    if (!picks.length) {
-      setStatus('[web] No visible atoms inside lasso.');
-      return;
+    molstarLassoBusy = true;
+    setStatus('[web] Selecting visible atoms…');
+    try {
+      await molstarLassoYield();
+      const picks = await molstarLassoPicks(stroke);
+      if (!picks.length) {
+        setStatus('[web] No visible atoms inside lasso.');
+        return;
+      }
+      const selected = await applyMolstarLassoPicks(picks, stroke.additive);
+      setStatus(selected.totalAtoms > 0
+        ? `[web] Lasso selection · ${selected.totalAtoms.toLocaleString()} atom${selected.totalAtoms === 1 ? '' : 's'}.`
+        : '[web] Lasso selection did not match selectable atoms.');
+    } catch (error) {
+      debug('Mol* lasso selection failed: ' + (error?.message || String(error)));
+      setStatus(`[web] Lasso selection failed. ${error?.message || error}`, 'error');
+    } finally {
+      molstarLassoBusy = false;
     }
-    const selected = applyMolstarLassoPicks(picks, stroke.additive);
-    setStatus(selected > 0
-      ? `[web] Selected ${selected} visible target${selected === 1 ? '' : 's'} with lasso.`
-      : '[web] Lasso selection did not match selectable atoms.');
+  }
+
+  function molstarLassoYield() {
+    return new Promise(resolve => window.setTimeout(resolve, 0));
   }
 
   function molstarLassoBounds(points) {
@@ -15815,38 +15835,63 @@
     return `${pick?.loci?.kind || 'loci'}:${fallback}`;
   }
 
-  function molstarLassoPicks(stroke) {
+  async function molstarLassoPicks(stroke) {
     const bounds = molstarLassoBounds(stroke.points);
     const picks = [];
     const seen = new Set();
     let sampled = 0;
+    let nextYieldAt = MOLSTAR_LASSO_YIELD_INTERVAL;
+    // A large on-screen polygon must not turn into thousands of synchronous GPU
+    // reads. Small lassos keep the precise 8 px grid; larger ones spread the same
+    // bounded budget across their area and periodically return control to the UI.
+    const boundarySamples = Math.min(stroke.points.length, Math.floor(MOLSTAR_LASSO_SAMPLE_LIMIT / 4));
+    const gridBudget = Math.max(1, MOLSTAR_LASSO_SAMPLE_LIMIT - boundarySamples);
+    const adaptiveStep = Math.ceil(Math.sqrt((bounds.width * bounds.height) / gridBudget));
+    const sampleStep = Math.max(MOLSTAR_LASSO_SAMPLE_STEP_PX, adaptiveStep);
     const addPick = (x, y) => {
-      if (sampled >= MOLSTAR_LASSO_SAMPLE_LIMIT) return;
+      if (sampled >= MOLSTAR_LASSO_SAMPLE_LIMIT) return false;
       sampled += 1;
       const pick = molstarPickFromCanvasPoint(stroke.canvas, x, y);
-      if (!pick?.loci) return;
+      if (!pick?.loci) return true;
       const key = molstarLassoPickKey(pick, `${Math.round(x)}:${Math.round(y)}`);
-      if (seen.has(key)) return;
+      if (seen.has(key)) return true;
       seen.add(key);
       picks.push(pick);
+      return true;
     };
-    for (const point of stroke.points) {
+    const boundaryStride = Math.max(1, Math.ceil(stroke.points.length / Math.max(1, boundarySamples)));
+    for (let index = 0; index < stroke.points.length && sampled < MOLSTAR_LASSO_SAMPLE_LIMIT; index += boundaryStride) {
+      const point = stroke.points[index];
       addPick(point.x, point.y);
+      if (sampled >= nextYieldAt) {
+        nextYieldAt += MOLSTAR_LASSO_YIELD_INTERVAL;
+        await molstarLassoYield();
+      }
     }
-    for (let y = bounds.top; y <= bounds.bottom; y += MOLSTAR_LASSO_SAMPLE_STEP_PX) {
-      for (let x = bounds.left; x <= bounds.right; x += MOLSTAR_LASSO_SAMPLE_STEP_PX) {
+    sampleGrid:
+    for (let y = bounds.top; y <= bounds.bottom; y += sampleStep) {
+      for (let x = bounds.left; x <= bounds.right; x += sampleStep) {
+        if (sampled >= MOLSTAR_LASSO_SAMPLE_LIMIT) break sampleGrid;
         if (molstarPointInPolygon({ x, y }, stroke.points)) addPick(x, y);
+        if (sampled >= nextYieldAt) {
+          nextYieldAt += MOLSTAR_LASSO_YIELD_INTERVAL;
+          await molstarLassoYield();
+        }
       }
     }
     return picks;
   }
 
-  function applyMolstarLassoPicks(picks, additive) {
-    const selects = activeViewer?.plugin?.managers?.interactivity?.lociSelects;
-    const selection = activeViewer?.plugin?.managers?.structure?.selection;
+  async function applyMolstarLassoPicks(picks, additive) {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    const selects = plugin?.managers?.interactivity?.lociSelects;
+    const selection = plugin?.managers?.structure?.selection;
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
     const canSelect = typeof selects?.select === 'function';
     const canSelectStructure = typeof selection?.fromLoci === 'function';
-    if (!canSelect && !canSelectStructure) return 0;
+    const canMerge = typeof StructureElement?.Loci?.union === 'function';
+    if ((!canSelect && !canSelectStructure) || !canMerge) return { batchAtoms: 0, totalAtoms: 0, visibleTargets: 0 };
     const lassoApplyGranularity = false;
     if (!additive) {
       selects?.deselectAll?.();
@@ -15855,22 +15900,73 @@
       molstarLassoSelectionAtomKeys.clear();
       molstarLassoSelectionResidueKeys.clear();
     }
-    let selected = 0;
+    // Mol* redraws the whole marked selection on every select call. Union the
+    // picked atom loci first so the common one-structure case emits one update.
+    const mergedByStructure = new Map();
     for (const pick of picks) {
       const loci = molstarContextNormalizeLoci(pick?.loci, 'element');
       if (!loci || molstarLociIsEmpty(loci)) continue;
+      const previous = mergedByStructure.get(loci.structure);
+      mergedByStructure.set(loci.structure, previous ? StructureElement.Loci.union(previous, loci) : loci);
+    }
+    let batchAtoms = 0;
+    for (const loci of mergedByStructure.values()) {
       if (canSelect) selects.select({ loci }, lassoApplyGranularity);
-      if (canSelectStructure) selection.fromLoci('add', loci, lassoApplyGranularity);
-      selected += 1;
+      else if (canSelectStructure) selection.fromLoci('add', loci, lassoApplyGranularity);
+      batchAtoms += Number(StructureElement.Loci.size?.(loci)) || 0;
     }
-    if (selected > 0) {
-      scheduleMolstarSelectedMoleculePreview();
-      notifyMolstarLassoSelection(picks, selected);
+    if (batchAtoms > 0) {
+      const totalAtoms = Math.max(batchAtoms, Number(selection?.stats?.elementCount) || 0);
+      if (totalAtoms <= MOLSTAR_LASSO_PREVIEW_ATOM_LIMIT) scheduleMolstarSelectedMoleculePreview();
+      else hideMolstarMoleculePreview({ force: true });
+      notifyMolstarLassoSelection(picks, batchAtoms, totalAtoms);
+      await upsertMolstarLassoSceneObject(totalAtoms);
+      return { batchAtoms, totalAtoms, visibleTargets: picks.length };
     }
-    return selected;
+    return { batchAtoms: 0, totalAtoms: 0, visibleTargets: picks.length };
   }
 
-  function notifyMolstarLassoSelection(picks, selected) {
+  async function removeMolstarLassoSceneObjects(plugin = activeMolstarViewer()?.plugin, keepParentRefs = null) {
+    const state = plugin?.state?.data;
+    if (typeof state?.build !== 'function' || !state?.cells) return;
+    const refs = [];
+    for (const [ref, cell] of state.cells) {
+      if (!cell?.transform?.tags?.includes(MOLSTAR_LASSO_COMPONENT_TAG)) continue;
+      if (keepParentRefs?.has(cell.transform.parent)) continue;
+      refs.push(ref);
+    }
+    if (!refs.length) return;
+    const update = state.build();
+    for (const ref of refs) update.delete(ref);
+    await update.commit();
+    scheduleSceneTreeRender();
+  }
+
+  async function upsertMolstarLassoSceneObject(atomCount) {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    const selection = currentSelectionQuery();
+    const structures = plugin?.managers?.structure?.hierarchy?.getStructuresWithSelection?.() || [];
+    const builder = plugin?.builders?.structure;
+    if (!plugin || !selection || typeof builder?.tryCreateComponentFromSelection !== 'function' || !structures.length) {
+      await removeMolstarLassoSceneObjects(plugin);
+      return;
+    }
+    const parentRefs = new Set(structures.map(structure => structure?.cell?.transform?.ref).filter(Boolean));
+    await removeMolstarLassoSceneObjects(plugin, parentRefs);
+    const label = `Lasso selection · ${atomCount.toLocaleString()} ${atomCount === 1 ? 'atom' : 'atoms'}`;
+    // The stable key makes repeated and additive lassos update the same component
+    // row instead of appending one state object per interaction.
+    await Promise.all(structures.map(structure => builder.tryCreateComponentFromSelection(
+      structure.cell,
+      selection,
+      MOLSTAR_LASSO_COMPONENT_KEY,
+      { label, tags: [MOLSTAR_LASSO_COMPONENT_TAG] }
+    )));
+    scheduleSceneTreeRender();
+  }
+
+  function notifyMolstarLassoSelection(picks, batchAtoms, totalAtoms) {
     for (const pick of picks) {
       const atom = molstarContextAtomFromLoci(pick?.loci);
       if (!atom) continue;
@@ -15897,10 +15993,10 @@
     window.__mqlPost?.('selectionChanged', '', {
       selection: {
         source: 'lasso',
-        label: `Lasso selection: ${molstarLassoSelectionAtomKeys.size} visible atom${molstarLassoSelectionAtomKeys.size === 1 ? '' : 's'} across ${molstarLassoSelectionResidueKeys.size} residue${molstarLassoSelectionResidueKeys.size === 1 ? '' : 's'}`,
-        atoms: molstarLassoSelectionAtomKeys.size,
+        label: `Lasso selection: ${totalAtoms} visible atom${totalAtoms === 1 ? '' : 's'} across ${molstarLassoSelectionResidueKeys.size} residue${molstarLassoSelectionResidueKeys.size === 1 ? '' : 's'}`,
+        atoms: totalAtoms,
         residueCount: molstarLassoSelectionResidueKeys.size,
-        visibleTargets: selected,
+        visibleTargets: batchAtoms,
         residues: Array.from(residues.values()),
         atomIdentities: atoms
       }
