@@ -4933,6 +4933,7 @@ assert.match(previewShell, /data-buret-molstar-preset-trigger[^>]*aria-haspopup=
 assert.match(previewShell, /data-buret-molstar-preset-menu role="menu"/);
 assert.match(previewShell, /data-buret-molstar-preset-preview role="status" aria-live="polite"/);
 assert.match(previewShell, /data-buret-molstar-preset-preview-canvas/);
+assert.match(previewShell, /data-buret-molstar-preset-preview-stage/);
 assert.match(previewShell, /data-buret-renderer="molstar"[\s\S]*data-buret-renderer="xyzrender-external"/);
 assert.doesNotMatch(previewShell, /data-buret-renderer="xyz-fast"/);
 assert.doesNotMatch(previewShell, /id="buret-open-in-app"/);
@@ -5152,7 +5153,8 @@ assert.match(previewRuntimeCss, /\.buret-molstar-preset-slot \{ display: none; a
 assert.match(previewRuntimeCss, /\.buret-molstar-preset-slot\.visible \{ display: flex; \}/);
 assert.match(previewRuntimeCss, /\.buret-molstar-preset-menu \{[\s\S]*position: fixed;[\s\S]*overflow-y: auto;/);
 assert.match(previewRuntimeCss, /\.buret-molstar-preset-preview \{[\s\S]*position: fixed;[\s\S]*pointer-events: none;/);
-assert.match(previewRuntimeCss, /\.buret-molstar-preset-preview-canvas > \.msp-plugin/);
+assert.match(previewRuntimeCss, /\.buret-molstar-preset-preview-stage \{[\s\S]*transform-origin: 0 0;/);
+assert.match(previewRuntimeCss, /\.buret-molstar-preset-preview-stage > \.msp-plugin/);
 assert.match(previewRuntimeCss, /body:not\(\.buret-preview-docks-enabled\) \.buret-preview-dock-toggle/);
 assert.match(previewRuntimeCss, /\.buret-preview-dock-right \{/);
 assert.match(previewRuntimeCss, /\.buret-preview-dock-bottom \{/);
@@ -5266,10 +5268,11 @@ assert.match(previewViewer, /function molstarPresetAppearance\(option, config\)/
 assert.match(previewViewer, /option\.value === 'illustrative' \? 'illustrative' : 'default'/);
 assert.match(previewViewer, /function sizeMolstarPresetPreview\(preview\)/);
 assert.match(previewViewer, /previewWidth \* sourceHeight \/ sourceWidth/);
+assert.match(previewViewer, /stage\.style\.transform = `scale\(\$\{previewWidth \/ sourceWidth\}\)`/);
 assert.match(previewViewer, /showMolstarPresetPreviewShell\(item, molstarPresetOption\(preset\)\);/);
 assert.match(previewViewer, /sourcePlugin\.state\.data\.getSnapshot\(\)/);
 assert.match(previewViewer, /viewer\.plugin\.runTask\(viewer\.plugin\.state\.data\.setSnapshot\(snapshot\)\)/);
-assert.match(previewViewer, /window\.molstar\.Viewer\.create\(canvas, \{/);
+assert.match(previewViewer, /window\.molstar\.Viewer\.create\(stage, \{/);
 assert.match(previewViewer, /menu\.addEventListener\('pointerover'/);
 assert.match(previewViewer, /menu\.addEventListener\('focusin'/);
 assert.match(previewViewer, /if \(sourceCamera\) restoreMolstarCameraSnapshot\(viewer, sourceCamera\)/);

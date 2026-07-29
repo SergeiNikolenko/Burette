@@ -2881,6 +2881,7 @@
     return {
       preview,
       canvas: preview?.querySelector('[data-buret-molstar-preset-preview-canvas]'),
+      stage: preview?.querySelector('[data-buret-molstar-preset-preview-stage]'),
       label: preview?.querySelector('[data-buret-molstar-preset-preview-label]'),
       state: preview?.querySelector('[data-buret-molstar-preset-preview-state]')
     };
@@ -2908,6 +2909,7 @@
 
   function sizeMolstarPresetPreview(preview) {
     if (!preview) return;
+    const { canvas, stage } = molstarPresetPreviewElements();
     const sourceCanvas = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas || document.querySelector('#app canvas');
     const sourceRect = sourceCanvas?.getBoundingClientRect?.();
     const sourceWidth = Number(sourceRect?.width);
@@ -2916,10 +2918,16 @@
       preview.style.height = '';
       return;
     }
-    const previewWidth = preview.offsetWidth || Math.min(240, Math.max(1, window.innerWidth - 24));
+    const previewWidth = canvas?.clientWidth || preview.clientWidth || Math.min(240, Math.max(1, window.innerWidth - 24));
     const availableCanvasHeight = Math.max(120, window.innerHeight - 52);
     const canvasHeight = Math.min(availableCanvasHeight, Math.max(120, previewWidth * sourceHeight / sourceWidth));
     preview.style.height = `${Math.round(28 + canvasHeight)}px`;
+    if (stage) {
+      stage.style.width = `${Math.round(sourceWidth)}px`;
+      stage.style.height = `${Math.round(sourceHeight)}px`;
+      stage.style.transform = `scale(${previewWidth / sourceWidth})`;
+    }
+    try { molstarPresetPreviewViewer?.handleResize?.(); } catch (_) {}
   }
 
   function showMolstarPresetPreviewShell(item, option) {
@@ -2947,16 +2955,16 @@
     try { viewer?.dispose?.(); } catch (_) {
       try { viewer?.plugin?.dispose?.(); } catch (_) {}
     }
-    const { canvas } = molstarPresetPreviewElements();
-    if (canvas) canvas.innerHTML = '';
+    const { stage } = molstarPresetPreviewElements();
+    if (stage) stage.innerHTML = '';
   }
 
   async function ensureMolstarPresetPreviewViewer() {
     if (molstarPresetPreviewViewer) return molstarPresetPreviewViewer;
     if (molstarPresetPreviewInit) return molstarPresetPreviewInit;
-    const { canvas } = molstarPresetPreviewElements();
-    if (!canvas || !window.molstar?.Viewer) throw new Error('Mol* preview renderer is unavailable.');
-    molstarPresetPreviewInit = withTimeout(window.molstar.Viewer.create(canvas, {
+    const { stage } = molstarPresetPreviewElements();
+    if (!stage || !window.molstar?.Viewer) throw new Error('Mol* preview renderer is unavailable.');
+    molstarPresetPreviewInit = withTimeout(window.molstar.Viewer.create(stage, {
       layoutIsExpanded: false,
       layoutShowControls: false,
       layoutShowRemoteState: false,

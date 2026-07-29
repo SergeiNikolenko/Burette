@@ -2127,10 +2127,17 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   overflow: hidden;
   background: var(--buret-canvas-background, #111);
 }
-.buret-molstar-preset-preview-canvas > .msp-plugin,
-.buret-molstar-preset-preview-canvas .msp-plugin-content,
-.buret-molstar-preset-preview-canvas .msp-layout-standard,
-.buret-molstar-preset-preview-canvas .msp-layout-main {
+.buret-molstar-preset-preview-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+.buret-molstar-preset-preview-stage > .msp-plugin,
+.buret-molstar-preset-preview-stage .msp-plugin-content,
+.buret-molstar-preset-preview-stage .msp-layout-standard,
+.buret-molstar-preset-preview-stage .msp-layout-main {
   position: absolute !important;
   inset: 0 !important;
   width: 100% !important;
