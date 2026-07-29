@@ -2088,8 +2088,71 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   font-size: 10px;
 }
 .buret-molstar-preset-menu .buret-tree-menu-item[aria-checked="true"] .buret-molstar-preset-current { display: inline; }
+.buret-molstar-preset-preview {
+  position: fixed;
+  z-index: 2147483645;
+  box-sizing: border-box;
+  width: min(240px, calc(100vw - 24px));
+  height: 202px;
+  overflow: hidden;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: var(--buret-molstar-panel-radius);
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-panel-background);
+  box-shadow: 0 18px 44px var(--buret-molstar-shadow);
+  pointer-events: none;
+}
+.buret-molstar-preset-preview.hidden { display: none; }
+.buret-molstar-preset-preview-header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px;
+  border-bottom: 1px solid var(--buret-molstar-border);
+  background: var(--buret-molstar-panel-background);
+  font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-molstar-preset-preview-caption {
+  color: var(--buret-molstar-muted-text);
+  font-size: 9px;
+  font-weight: 500;
+}
+.buret-molstar-preset-preview-canvas {
+  position: absolute;
+  inset: 28px 0 0;
+  overflow: hidden;
+  background: var(--buret-canvas-background, #111);
+}
+.buret-molstar-preset-preview-canvas > .msp-plugin,
+.buret-molstar-preset-preview-canvas .msp-plugin-content,
+.buret-molstar-preset-preview-canvas .msp-layout-standard,
+.buret-molstar-preset-preview-canvas .msp-layout-main {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+.buret-molstar-preset-preview-state {
+  position: absolute;
+  z-index: 3;
+  inset: 28px 0 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: var(--buret-molstar-muted-text);
+  background: color-mix(in srgb, var(--buret-molstar-panel-background) 86%, transparent);
+  font: 500 10px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-align: center;
+}
+.buret-molstar-preset-preview.ready .buret-molstar-preset-preview-state { display: none; }
 body.buret-toolbar-collapsed .buret-molstar-preset-menu,
-body.buret-molstar-viewport-panel-open .buret-molstar-preset-menu { display: none; }
+body.buret-molstar-viewport-panel-open .buret-molstar-preset-menu,
+body.buret-toolbar-collapsed .buret-molstar-preset-preview,
+body.buret-molstar-viewport-panel-open .buret-molstar-preset-preview { display: none; }
 .buret-xyzrender-popover {
   position: absolute; top: calc(100% + 6px); right: 0; left: auto;
   width: min(216px, calc(100vw - 20px));
