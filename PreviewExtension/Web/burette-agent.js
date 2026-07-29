@@ -74,6 +74,15 @@
     return bytes;
   }
 
+  function bytesToBase64(bytes) {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    }
+    return btoa(binary);
+  }
+
   function mvsCommandPayload(args = {}) {
     const format = args.format || (args.dataBase64 ? 'mvsx' : 'mvsj');
     if (args.dataBase64) {
@@ -164,7 +173,10 @@
   function commands() {
     return [
       'capabilities', 'summary', 'select', 'selectResidues', 'focusSelection', 'colorSelection',
-      'labelSelection', 'showLigands', 'focusLigand', 'contacts', 'resetCamera', 'screenshot', 'loadMVS', 'exportMVS'
+      'labelSelection', 'showLigands', 'focusLigand', 'contacts', 'resetCamera', 'screenshot',
+      'showAssemblySymmetry', 'showWaterBridges', 'applyMesoscalePreset', 'colorScalarField',
+      'loadMVS', 'observeStory', 'controlStory',
+      'exportSession', 'exportMVS'
     ];
   }
 
@@ -184,11 +196,14 @@
       hasStructureInteractivity: typeof viewer?.structureInteractivity === 'function',
       hasViewportScreenshot: typeof plugin?.helpers?.viewportScreenshot?.getImageDataUri === 'function',
       hasLoadMvsData: typeof viewer?.loadMvsData === 'function',
+      hasAssemblySymmetry: findApplicableStateAction('Assembly Symmetry') != null,
+      hasStoryManager: !!plugin?.managers?.snapshot,
+      hasSessionExport: typeof plugin?.managers?.snapshot?.serialize === 'function',
       hasCameraManager: !!plugin?.managers?.camera,
       hasHierarchy: !!plugin?.managers?.structure?.hierarchy,
       notes: [
         'Selections use Mol* Viewer.structureInteractivity with StructureElement.Schema when available.',
-        'colorSelection is implemented as a stable selection/highlight fallback unless an overpaint bridge is added later.',
+        'colorScalarField applies persistent Mol* overpaint with a signed, colorblind-safe diverging scale.',
         'contacts is a lightweight distance-neighborhood calculation, not full interaction chemistry.'
       ]
     };
@@ -284,7 +299,14 @@
     if (command === 'contacts') return commandContacts(args, warnings);
     if (command === 'resetCamera') return commandResetCamera(args, warnings);
     if (command === 'screenshot') return commandScreenshot(args, warnings);
+    if (command === 'showAssemblySymmetry') return commandShowAssemblySymmetry(args, warnings);
+    if (command === 'showWaterBridges') return commandShowWaterBridges(args, warnings);
+    if (command === 'applyMesoscalePreset') return commandApplyMesoscalePreset(args);
+    if (command === 'colorScalarField') return commandColorScalarField(args, warnings);
     if (command === 'loadMVS') return commandLoadMVS(args, warnings);
+    if (command === 'observeStory') return commandObserveStory();
+    if (command === 'controlStory') return commandControlStory(args);
+    if (command === 'exportSession') return commandExportSession(args);
     if (command === 'exportMVS') return commandExportMVS(args, warnings);
     const error = new Error(`Unsupported BuretteAgent command: ${command}`);
     error.code = 'NOT_IMPLEMENTED';
@@ -583,8 +605,47 @@
   async function commandScreenshot(args = {}, warnings) {
     const helper = state.plugin?.helpers?.viewportScreenshot;
     let dataUri = null;
+    let size = null;
     if (typeof helper?.getImageDataUri === 'function') {
-      dataUri = await helper.getImageDataUri();
+      const previousValues = helper.behaviors?.values?.value;
+      const previousCropParams = helper.behaviors?.cropParams?.value;
+      const previousCrop = helper.behaviors?.relativeCrop?.value;
+      try {
+        const width = Number(args.width);
+        const height = Number(args.height);
+        const format = ['png', 'jpeg', 'webp'].includes(args.format) ? args.format : 'png';
+        const nextValues = {
+          ...previousValues,
+          resolution: Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
+            ? { name: 'custom', params: { width: Math.round(width), height: Math.round(height) } }
+            : previousValues?.resolution,
+          format: {
+            name: format,
+            params: format === 'png' ? {} : { quality: Math.max(0, Math.min(1, Number(args.quality) || 0.9)) }
+          },
+          transparent: args.transparent == null ? previousValues?.transparent : args.transparent === true,
+          axes: args.axes || previousValues?.axes,
+          illumination: args.illumination || previousValues?.illumination
+        };
+        helper.behaviors?.values?.next(nextValues);
+        if (args.crop && typeof args.crop === 'object') {
+          helper.behaviors?.cropParams?.next({ ...previousCropParams, auto: false });
+          helper.behaviors?.relativeCrop?.next({
+            x: Math.max(0, Math.min(1, Number(args.crop.x) || 0)),
+            y: Math.max(0, Math.min(1, Number(args.crop.y) || 0)),
+            width: Math.max(0, Math.min(1, Number(args.crop.width) || 1)),
+            height: Math.max(0, Math.min(1, Number(args.crop.height) || 1))
+          });
+        } else if (args.autoCrop != null) {
+          helper.behaviors?.cropParams?.next({ ...previousCropParams, auto: args.autoCrop === true });
+        }
+        dataUri = await helper.getImageDataUri();
+        size = typeof helper.getSizeAndViewport === 'function' ? helper.getSizeAndViewport().viewport : null;
+      } finally {
+        if (previousValues) helper.behaviors?.values?.next(previousValues);
+        if (previousCropParams) helper.behaviors?.cropParams?.next(previousCropParams);
+        if (previousCrop) helper.behaviors?.relativeCrop?.next(previousCrop);
+      }
     }
     if (!dataUri) {
       try {
@@ -595,12 +656,156 @@
       }
     }
     if (!dataUri) throw coded('NOT_IMPLEMENTED', 'No screenshot API is available in this runtime.');
+    const mimeType = /^data:([^;,]+)/.exec(dataUri)?.[1] || 'image/png';
     return {
       dataUri,
-      mimeType: 'image/png',
-      width: Number(args.width) || undefined,
-      height: Number(args.height) || undefined,
+      mimeType,
+      width: size?.width || undefined,
+      height: size?.height || undefined,
+      transparent: args.transparent === true,
+      cropped: !!args.crop || args.autoCrop === true,
       note: 'Native/MCP bridge should decode this data URI and write it to an allowlisted local path when a file path is required.'
+    };
+  }
+
+  function stateActionDefaults(action, cell) {
+    const params = typeof action?.definition?.params === 'function'
+      ? action.definition.params(cell?.obj, state.plugin)
+      : action?.definition?.params;
+    const values = {};
+    for (const [key, entry] of Object.entries(params || {})) values[key] = entry?.defaultValue;
+    return values;
+  }
+
+  function findApplicableStateAction(name) {
+    const data = state.plugin?.state?.data;
+    if (typeof data?.actions?.fromCell !== 'function') return null;
+    for (const structure of data.cells?.values?.() || []) {
+      if (!structure?.obj) continue;
+      const action = data.actions.fromCell(structure, state.plugin)
+        .find(item => item?.definition?.display?.name === name);
+      if (action) return { action, cell: structure, ref: structure.transform?.ref || structure.ref };
+    }
+    return null;
+  }
+
+  async function commandShowAssemblySymmetry(args = {}, warnings) {
+    const found = findApplicableStateAction('Assembly Symmetry');
+    if (!found) {
+      throw coded('NOT_APPLICABLE', 'Assembly Symmetry is unavailable for the current structure. Load an assembly with PDB metadata, such as 1RB8 assembly 1.');
+    }
+    const data = state.plugin.state.data;
+    const params = { ...stateActionDefaults(found.action, found.cell), ...(args.params || {}) };
+    if (args.serverUrl) params.serverUrl = String(args.serverUrl);
+    await state.plugin.runTask(data.applyAction(found.action, params, found.ref));
+    const created = Array.from(data.cells?.values?.() || [])
+      .filter(cell => cell?.obj?.label === 'Global Symmetry' || cell?.obj?.description?.includes?.('Symmetry'))
+      .map(cell => ({
+        ref: cell.transform?.ref || cell.ref,
+        label: cell.obj?.label,
+        description: cell.obj?.description
+      }));
+    if (!created.length) warnings.push('Mol* completed the action but did not expose a non-C1 symmetry representation; inspect provider logs and assembly metadata.');
+    state.sceneVersion++;
+    return { applied: true, provider: params.serverUrl || 'Mol* configured provider', objects: created };
+  }
+
+  async function commandShowWaterBridges(args = {}, warnings) {
+    const plugin = state.plugin;
+    const structures = plugin?.managers?.structure?.hierarchy?.current?.structures || [];
+    if (!structures.length) throw coded('NO_STRUCTURE', 'No structure is available for water-bridge analysis.');
+    let representationCount = 0;
+    for (const structure of structures) {
+      const ref = structure?.cell || structure;
+      const component = await plugin.builders.structure.tryCreateComponentStatic(ref, 'all', {
+        label: String(args.label || 'Water-bridge candidates')
+      });
+      if (!component) continue;
+      await plugin.builders.structure.representation.addRepresentation(component.cell || component, {
+        type: 'interactions',
+        typeParams: {
+          bridges: { 'water-bridges': { name: 'on', params: {} } }
+        },
+        color: 'interaction-type'
+      }, { tag: 'burette-water-bridge-candidates' });
+      representationCount += 1;
+    }
+    if (!representationCount) throw coded('NOT_APPLICABLE', 'Mol* could not create an interaction component for this structure.');
+    warnings.push('Water bridges are geometry-derived candidates. Confirm explicit waters, altloc/occupancy, donor/acceptor assignments, and cutoffs before scientific interpretation.');
+    state.sceneVersion++;
+    return {
+      representationCount,
+      label: 'Water-bridge candidates',
+      validationRequired: true,
+      provider: 'Mol* interactions water-bridges'
+    };
+  }
+
+  async function commandApplyMesoscalePreset(args = {}) {
+    const plugin = state.plugin;
+    const structures = plugin?.managers?.structure?.hierarchy?.current?.structures || [];
+    if (!structures.length) throw coded('NO_STRUCTURE', 'No structure is available for the mesoscale preset.');
+    const graphics = ['quality', 'balanced', 'performance', 'ultra'].includes(args.graphics) ? args.graphics : 'performance';
+    let applied = 0;
+    for (const structure of structures) {
+      const ref = structure?.cell || structure;
+      const result = await plugin.builders.structure.representation.applyPreset(ref, 'mesoscale', { graphics });
+      if (result) applied += 1;
+    }
+    state.sceneVersion++;
+    return {
+      applied,
+      graphics,
+      preset: 'preset-structure-representation-mesoscale',
+      properties: ['spacefill', 'instance-granularity', 'level-of-detail']
+    };
+  }
+
+  const SCALAR_COLORS = [
+    0x0072B2, 0x2C86BD, 0x58A0C9, 0x85BBD5, 0xB3D6E2,
+    0xF2F2F2,
+    0xF2D2B2, 0xEDB97E, 0xEAA04D, 0xE78625, 0xE69F00
+  ];
+
+  async function commandColorScalarField(args = {}, warnings) {
+    const values = Array.from(args.values || [], Number);
+    const atoms = collectAtoms(null, { includePositions: false, maxAtoms: 250000 });
+    if (!values.length) throw coded('INVALID_ARGS', 'colorScalarField requires a non-empty numeric values array.');
+    if (values.some(value => !Number.isFinite(value))) throw coded('INVALID_ARGS', 'colorScalarField values must all be finite numbers.');
+    if (values.length !== atoms.length) {
+      throw coded('ATOM_MAPPING_MISMATCH', `Scalar field contains ${values.length} values for ${atoms.length} displayed atoms.`, {
+        values: values.length,
+        atoms: atoms.length,
+        mapping: 'Mol* atomic unit traversal order'
+      });
+    }
+    const query = (state.plugin?.query?.structure?.registry?.list || [])
+      .find(item => item?.referencesCurrent && item?.label === 'Current Selection');
+    const component = state.plugin?.managers?.structure?.component;
+    if (!query || typeof component?.applyTheme !== 'function') {
+      throw coded('NOT_IMPLEMENTED', 'Mol* current-selection overpaint API is unavailable.');
+    }
+    const maxAbs = Math.max(...values.map(Math.abs), Number.EPSILON);
+    const bins = SCALAR_COLORS.map((color, index) => ({ color, index, atomIndices: [] }));
+    for (let index = 0; index < values.length; index += 1) {
+      const normalized = Math.max(-1, Math.min(1, values[index] / maxAbs));
+      const binIndex = Math.max(0, Math.min(bins.length - 1, Math.round(((normalized + 1) / 2) * (bins.length - 1))));
+      bins[binIndex].atomIndices.push(atoms[index].atom_index);
+    }
+    for (const bin of bins) {
+      if (!bin.atomIndices.length) continue;
+      applyMolstarInteractivity({ atom_index: bin.atomIndices }, 'select', { mode: 'replace', granularity: 'atom', warnings });
+      await component.applyTheme({ action: { name: 'color', params: { color: bin.color } }, selection: query });
+    }
+    try { state.plugin?.managers?.structure?.selection?.clear?.(); } catch (_) {}
+    state.sceneVersion++;
+    return {
+      applied: true,
+      mode: String(args.mode || 'scalar'),
+      atomCount: atoms.length,
+      mapping: 'Mol* atomic unit traversal order',
+      scale: { kind: 'diverging', min: -maxAbs, center: 0, max: maxAbs, colors: SCALAR_COLORS.map(color => `#${color.toString(16).padStart(6, '0')}`) },
+      provenance: cloneJson(args.provenance || {})
     };
   }
 
@@ -613,6 +818,69 @@
     state.sceneVersion++;
     warnings.push('MVS loading is delegated directly to Mol* viewer.loadMvsData.');
     return { format, loaded: true };
+  }
+
+  function storySummary() {
+    const manager = state.plugin?.managers?.snapshot;
+    if (!manager) throw coded('NOT_IMPLEMENTED', 'Mol* snapshot/story manager is unavailable.');
+    const entries = Array.from(manager.state?.entries || []).map((entry, index) => ({
+      index,
+      id: entry.snapshot?.id,
+      key: entry.key,
+      name: entry.name,
+      description: entry.description,
+      current: entry.snapshot?.id === manager.state?.current
+    }));
+    return {
+      count: entries.length,
+      currentId: manager.state?.current || null,
+      currentIndex: entries.findIndex(entry => entry.current),
+      isPlaying: manager.state?.isPlaying === true,
+      nextSnapshotDelayInMs: manager.state?.nextSnapshotDelayInMs,
+      entries
+    };
+  }
+
+  function commandObserveStory() {
+    return storySummary();
+  }
+
+  async function commandControlStory(args = {}) {
+    const manager = state.plugin?.managers?.snapshot;
+    if (!manager) throw coded('NOT_IMPLEMENTED', 'Mol* snapshot/story manager is unavailable.');
+    const action = String(args.action || 'next');
+    if (action === 'next') await manager.applyNext(1);
+    else if (action === 'previous') await manager.applyNext(-1);
+    else if (action === 'play') await manager.play({ restart: args.restart === true });
+    else if (action === 'pause' || action === 'stop') await manager.stop();
+    else if (action === 'goto') {
+      const entries = Array.from(manager.state?.entries || []);
+      const entry = args.id
+        ? entries.find(item => item.snapshot?.id === args.id || item.key === args.id)
+        : entries[Number(args.index)];
+      if (!entry) throw coded('INVALID_ARGS', 'controlStory goto requires a valid index or snapshot id/key.');
+      const snapshot = manager.setCurrent(entry.snapshot.id);
+      if (snapshot) await state.plugin.state.setSnapshot(snapshot);
+    } else {
+      throw coded('INVALID_ARGS', `Unsupported story action: ${action}.`);
+    }
+    state.sceneVersion++;
+    return { action, ...storySummary() };
+  }
+
+  async function commandExportSession(args = {}) {
+    const manager = state.plugin?.managers?.snapshot;
+    if (typeof manager?.serialize !== 'function') throw coded('NOT_IMPLEMENTED', 'Mol* session serialization is unavailable.');
+    const type = ['molx', 'molj', 'json'].includes(args.type) ? args.type : 'molx';
+    const blob = await manager.serialize({ type, params: args.params });
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    return {
+      type,
+      mimeType: blob.type || (type === 'molx' ? 'application/zip' : 'application/json'),
+      byteLength: bytes.byteLength,
+      dataBase64: bytesToBase64(bytes),
+      story: storySummary()
+    };
   }
 
   function commandExportMVS(args = {}, warnings) {
@@ -1109,7 +1377,9 @@
     }
     const focusOptions = {
       durationMs: Number(options.durationMs) || 250,
-      extraRadius: Number(options.extraRadius) || undefined
+      extraRadius: Number(options.extraRadius) || undefined,
+      optimizeDirection: options.optimizeDirection !== false,
+      zoomOut: options.zoomOut !== false
     };
     for (const schema of schemas) {
       try {

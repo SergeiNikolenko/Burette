@@ -640,6 +640,42 @@
         }
       });
     }
+    if (type === 'show_assembly_symmetry') {
+      return window.BuretteAgent.run({
+        command: 'showAssemblySymmetry',
+        args: { params: action.params || {}, serverUrl: action.serverUrl }
+      });
+    }
+    if (type === 'show_water_bridges') {
+      return window.BuretteAgent.run({ command: 'showWaterBridges', args: action.args || action });
+    }
+    if (type === 'apply_mesoscale_preset') {
+      return window.BuretteAgent.run({ command: 'applyMesoscalePreset', args: action.args || action });
+    }
+    if (type === 'color_xtb_charges') {
+      return window.BuretteAgent.run({
+        command: 'colorScalarField',
+        args: {
+          mode: 'partial-charge',
+          values: action.charges || action.values || [],
+          provenance: {
+            source: 'xTB partial charges',
+            chargeFilePath: action.chargeFilePath,
+            ...(action.provenance || {})
+          }
+        }
+      });
+    }
+    if (type === 'color_xtb_fukui') {
+      return window.BuretteAgent.run({
+        command: 'colorScalarField',
+        args: {
+          mode: `fukui-${action.mode || 'fzero'}`,
+          values: action.values || [],
+          provenance: { source: 'xTB Fukui indices', convention: 'signed', ...(action.provenance || {}) }
+        }
+      });
+    }
     if (type === 'label_selection') {
       return window.BuretteAgent.run({
         command: 'labelSelection',
@@ -697,6 +733,15 @@
           options: action.options || {}
         }
       });
+    }
+    if (type === 'observe_story') {
+      return window.BuretteAgent.run({ command: 'observeStory', args: {} });
+    }
+    if (type === 'control_story') {
+      return window.BuretteAgent.run({ command: 'controlStory', args: action.args || action });
+    }
+    if (type === 'export_session') {
+      return window.BuretteAgent.run({ command: 'exportSession', args: action.args || action });
     }
     if (type === 'screenshot' || type === 'export_image') {
       return window.BuretteAgent.run({ command: 'screenshot', args: action.args || {} });

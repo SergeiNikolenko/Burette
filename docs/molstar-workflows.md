@@ -1,0 +1,42 @@
+# Molstar workflows
+
+This document records Molstar capabilities that Burette exposes as product or
+agent workflows. It separates upstream availability from a Burette contract and
+from scientific validation.
+
+## Adopted in Molstar 5.11
+
+| Workflow | Burette action or command | Result contract | Validation boundary |
+| --- | --- | --- | --- |
+| Assembly symmetry | `show_assembly_symmetry` / `showAssemblySymmetry` | Adds the upstream `Global Symmetry` axes-and-cage state object. The result reports its label and point-group description. | Requires assembly metadata and the RCSB provider at `https://data.rcsb.org`. Absence of a non-C1 object is reported as a warning. |
+| xTB charges and Fukui indices | `color_xtb_charges`, `color_xtb_fukui` / `colorScalarField` | Persistent atom overpaint with an 11-bin signed blue-white-orange scale, strict one-value-per-displayed-atom mapping, and provenance echo. | Fukui values remain signed. Atom-count mismatch fails instead of applying a shifted map. Method, charge, multiplicity, and solvent belong in provenance. |
+| Water bridges | `show_water_bridges` / `showWaterBridges` | Creates a tagged Molstar interactions representation with the water-bridge provider enabled. | These are candidates. Confirm explicit waters, donor/acceptor chemistry, occupancy, alternate locations, and geometry before interpretation. |
+| Large assemblies | `apply_mesoscale_preset` / `applyMesoscalePreset` | Applies Molstar's mesoscale spacefill preset with instance granularity and level of detail. | The result identifies the graphics mode. Compare assembly instance counts before and after applying the preset. |
+| Image export | `screenshot` / `export_image` | Applies requested resolution, PNG/JPEG/WebP format, quality, alpha, axes, illumination, and relative crop; reports the encoded MIME type and actual output dimensions. | Consumers must decode the data URI and verify dimensions/hash on the written artifact. |
+| Stories | `observe_story`, `control_story` | Reports all snapshot ids/names/current index/playback state and controls next, previous, goto, play, and pause. | A Story is a multi-snapshot state. Loading one frame does not prove the sequence. |
+| Native Molstar session | `export_session` / `exportSession` | Returns a real Molstar `.molx` or `.molj` serialization, including managed assets, as bounded base64 with byte count. | This is not called MVS. Arbitrary Molstar state cannot be losslessly claimed as MolViewSpec. |
+| Ligand MCCS superposition | Molstar Controls → Superposition → Ligands | Molstar 5.11 uses atom-name matching for identical compounds and maximum common connected subgraph otherwise, then selects the lowest-RMSD pose among compatible mappings. | Record matched-heavy-atom coverage, RMSD, truncation/time budget, aromaticity, bond-order, formal-charge, stereochemistry, and hydrogen policy. This remains an interactive Molstar workflow, not a typed Burette agent action. |
+
+## Assembly symmetry object
+
+`Global Symmetry Icosahedral (I)` is not part of the polymer surface. Molstar's
+Assembly Symmetry extension sends the loaded assembly identity to the configured
+RCSB or PDBe symmetry provider, attaches the returned symmetry property, and
+creates a separate shape representation containing axes and a polyhedral cage.
+Burette registers the same upstream extension and invokes its applicable state
+action, so its object appears in the same state tree and can be hidden or removed
+independently.
+
+Only the RCSB GraphQL origin is added to the Molstar runtime `connect-src`
+allowlist. Other preview runtimes retain their local-only policy.
+
+## Not conflated
+
+- `exportMVS` remains the bounded Burette command-log export for compatibility.
+  Use `export_session` for a real `.molx` scene/session.
+- Water-bridge rendering is not a scientific assertion that a bridge exists.
+- The mesoscale preset changes representation and level of detail, not assembly
+  identity or coordinates.
+- A successful state action or JSON response is insufficient proof for a visual
+  workflow; browser or native-surface evidence is still required.
+
