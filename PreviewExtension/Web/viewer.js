@@ -6787,6 +6787,7 @@
     'built-in.animate-camera-spin',
     'built-in.animate-camera-rock'
   ]);
+  const VIEWPORT_WIGGLE_TAG = 'wiggle-controls';
   const VIEWPORT_ICON = {
     camera: ['M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z', 'M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'],
     layFlat: ['M3 8.5 12 4l9 4.5-9 4.5Z', 'm3 15 9 4.5L21 15'],
@@ -6945,6 +6946,191 @@
         title: entry.applicability.reason || entry.animation.display.description
       });
     }
+    viewportWiggleControls(menu, plugin);
+  }
+
+  function viewportWiggleTransform() {
+    return window.molstar?.lib?.plugin?.StateTransforms?.Representation
+      ?.WiggleStructureRepresentation3DFromBundle || null;
+  }
+
+  function viewportWiggleCells(plugin) {
+    const transform = viewportWiggleTransform();
+    const cells = [];
+    if (!transform) return cells;
+    plugin?.state?.data?.cells?.forEach?.(cell => {
+      const tags = cell?.transform?.tags;
+      const tagged = Array.isArray(tags)
+        ? tags.includes(VIEWPORT_WIGGLE_TAG)
+        : tags?.has?.(VIEWPORT_WIGGLE_TAG) === true;
+      const transformer = cell?.transform?.transformer;
+      if (tagged && (transformer === transform || transformer?.id === transform.id)) cells.push(cell);
+    });
+    return cells;
+  }
+
+  function viewportWiggleMode(plugin = viewportPlugin()) {
+    const amplitude = Number(plugin?.managers?.structure?.component?.state?.options?.animation?.wiggleAmplitude);
+    if (amplitude > 0) return 'dynamics';
+    return viewportWiggleCells(plugin).length ? 'uncertainty' : 'clear';
+  }
+
+  function viewportWiggleControls(menu, plugin) {
+    sceneTreeMenuSection(menu, 'Apply Wiggle');
+    const segment = document.createElement('div');
+    segment.className = 'buret-viewport-segment';
+    segment.setAttribute('role', 'group');
+    segment.setAttribute('aria-label', 'Apply wiggle');
+    const active = viewportWiggleMode(plugin);
+    const actions = [
+      ['dynamics', 'Dynamics', 'Apply procedural molecular motion'],
+      ['uncertainty', 'Uncertainty', 'Scale motion by B-factor or RMSF uncertainty'],
+      ['clear', 'Clear', 'Remove procedural molecular motion']
+    ];
+    for (const [name, label, title] of actions) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-viewport-segment-button';
+      button.dataset.buretViewportMenu = 'wiggle';
+      button.dataset.wiggle = name;
+      button.setAttribute('aria-pressed', name === active ? 'true' : 'false');
+      button.title = title;
+      button.textContent = label;
+      segment.appendChild(button);
+    }
+    menu.appendChild(segment);
+  }
+
+  async function clearViewportWiggleLayers(plugin) {
+    const cells = viewportWiggleCells(plugin);
+    if (!cells.length) return;
+    const update = plugin.state.data.build();
+    for (const cell of cells) update.delete(cell.transform.ref);
+    await update.commit({ doNotUpdateCurrent: true });
+  }
+
+  function viewportUncertaintyValue(unit, element, Unit) {
+    if (Unit.isAtomic(unit)) return unit.model.atomicConformation.B_iso_or_equiv.value(element);
+    if (Unit.isSpheres(unit)) return unit.model.coarseConformation.spheres.rmsf[element];
+    return 0;
+  }
+
+  function viewportUncertaintyLayers(structure, StructureElement, Unit) {
+    const root = structure.root;
+    let min = Infinity;
+    let max = -Infinity;
+    for (const unit of root.units) {
+      for (const element of unit.elements) {
+        const value = viewportUncertaintyValue(unit, element, Unit);
+        if (value < min) min = value;
+        if (value > max) max = value;
+      }
+    }
+    const range = max - min;
+    if (!Number.isFinite(range) || range <= 0) return [];
+
+    const buckets = new Map();
+    for (const unit of root.units) {
+      const unitBuckets = new Map();
+      for (let index = 0; index < unit.elements.length; index += 1) {
+        const value = viewportUncertaintyValue(unit, unit.elements[index], Unit);
+        const bucket = Math.min(255, Math.round(((value - min) / range) * 255));
+        if (!unitBuckets.has(bucket)) unitBuckets.set(bucket, []);
+        unitBuckets.get(bucket).push(index);
+      }
+      for (const [bucket, indices] of unitBuckets) {
+        if (!buckets.has(bucket)) buckets.set(bucket, []);
+        buckets.get(bucket).push({ unit, indices });
+      }
+    }
+
+    const layers = [];
+    for (const [bucket, unitIndices] of buckets) {
+      const elements = unitIndices.map(({ unit, indices }) => ({
+        unit,
+        indices: new Int32Array(indices)
+      }));
+      let loci = StructureElement.Loci(root, elements);
+      loci = StructureElement.Loci.remap(loci, structure);
+      if (StructureElement.Loci.isEmpty(loci)) continue;
+      loci = StructureElement.Loci.remap(loci, root);
+      layers.push({
+        bundle: StructureElement.Bundle.fromLoci(loci),
+        value: bucket / 255
+      });
+    }
+    return layers;
+  }
+
+  async function applyViewportUncertaintyWiggle(plugin) {
+    const transform = viewportWiggleTransform();
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const Unit = window.molstar?.lib?.structure?.Unit;
+    if (!transform || !StructureElement || !Unit) throw new Error('Mol* wiggle helpers are unavailable');
+
+    const components = plugin.managers.structure.hierarchy.selection.structures
+      .flatMap(structure => structure.components || []);
+    const update = plugin.state.data.build();
+    const layerCache = new Map();
+    let applied = 0;
+    for (const component of components) {
+      for (const representation of component.representations || []) {
+        const structure = representation.cell?.obj?.data?.sourceData;
+        if (!structure) continue;
+        let layers = layerCache.get(structure);
+        if (!layers) {
+          layers = viewportUncertaintyLayers(structure, StructureElement, Unit);
+          layerCache.set(structure, layers);
+        }
+        if (!layers.length) continue;
+        update.to(representation.cell.transform.ref).apply(
+          transform,
+          { kind: 'element-loci', layers },
+          { tags: VIEWPORT_WIGGLE_TAG }
+        );
+        applied += 1;
+      }
+    }
+    if (applied) await update.commit({ doNotUpdateCurrent: true });
+    return applied;
+  }
+
+  async function setViewportWiggle(mode) {
+    const plugin = viewportPlugin();
+    const manager = plugin?.managers?.structure?.component;
+    if (!plugin || !manager) return false;
+    const options = manager.state.options;
+    const animation = mode === 'dynamics'
+      ? { ...options.animation, wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0.2 }
+      : { ...options.animation, wiggleAmplitude: 0, tumbleAmplitude: 0 };
+    await manager.setOptions({ ...options, animation });
+    await clearViewportWiggleLayers(plugin);
+    if (mode === 'uncertainty') {
+      const applied = await applyViewportUncertaintyWiggle(plugin);
+      if (!applied) {
+        setStatus('[web] This structure has no varying B-factor or RMSF uncertainty data.', 'info', {
+          visible: true, timeoutMs: 3500
+        });
+        updateViewportAnimateState();
+        return false;
+      }
+    }
+    updateViewportAnimateState();
+    return true;
+  }
+
+  function runViewportWiggle(mode, control) {
+    const buttons = Array.from(control.parentElement?.querySelectorAll('[data-wiggle]') || []);
+    for (const button of buttons) button.disabled = true;
+    Promise.resolve(setViewportWiggle(mode))
+      .then(applied => {
+        const active = applied ? mode : viewportWiggleMode();
+        for (const button of buttons) button.setAttribute('aria-pressed', button.dataset.wiggle === active ? 'true' : 'false');
+      })
+      .catch(error => setStatus(`[web] Applying wiggle failed. ${error?.message || error}`, 'error'))
+      .finally(() => {
+        for (const button of buttons) button.disabled = false;
+      });
   }
 
   // play() with no params leaves each animation on its own defaults, and Mol*
@@ -6984,8 +7170,9 @@
     const plugin = viewportPlugin();
     const playing = plugin?.managers?.animation?.state?.animationState === 'playing';
     const motion = viewportMotionState().name;
+    const state = playing ? 'playing' : (motion !== 'off' ? motion : (viewportWiggleMode(plugin) === 'clear' ? 'off' : 'wiggle'));
     document.querySelector('[data-buret-viewport-action="animate"]')
-      ?.setAttribute('data-motion', playing ? 'playing' : motion);
+      ?.setAttribute('data-motion', state);
   }
 
   function viewportMotionState() {
@@ -7211,6 +7398,9 @@
     } else if (action === 'animation-stop') {
       plugin.managers.animation.stop();
       updateViewportAnimateState();
+    } else if (action === 'wiggle') {
+      runViewportWiggle(control.dataset.wiggle, control);
+      return true;
     } else if (action === 'modifier') {
       selectionQueryModifier = control.dataset.modifier || 'set';
       for (const button of control.parentElement?.children || []) {
@@ -7470,6 +7660,8 @@
       plugin?.behaviors?.interaction?.selectionMode?.subscribe?.(updateSelectionBar),
       plugin?.managers?.structure?.selection?.events?.changed?.subscribe?.(updateSelectionBar),
       plugin?.managers?.interactivity?.events?.propsUpdated?.subscribe?.(updateSelectionBar),
+      plugin?.managers?.structure?.component?.events?.optionsUpdated?.subscribe?.(updateViewportAnimateState),
+      plugin?.state?.data?.events?.changed?.subscribe?.(updateViewportAnimateState),
       // Timed animations end on their own, so the button cannot be left holding a
       // state nobody switched off.
       plugin?.behaviors?.state?.isAnimating?.subscribe?.(updateViewportAnimateState)

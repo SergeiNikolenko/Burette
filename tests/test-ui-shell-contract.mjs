@@ -5132,6 +5132,21 @@ assert.match(previewViewer, /spin: \{ value: 0\.1, min: 0\.01, max: 1, step: 0\.
 assert.match(previewViewer, /if \('playOnce' in params\) params\.playOnce = true;/);
 assert.match(previewViewer, /manager\.play\(animation, viewportAnimationParams\(animation, plugin\)\)/);
 assert.match(previewViewer, /plugin\?\.behaviors\?\.state\?\.isAnimating\?\.subscribe\?\.\(updateViewportAnimateState\)/);
+// Mol*'s Procedural Animation panel is carried into the same Animate menu with
+// all three upstream actions: a uniform dynamics wiggle, uncertainty-weighted
+// B-factor/RMSF wiggle, and a clear state.
+assert.match(previewViewer, /sceneTreeMenuSection\(menu, 'Apply Wiggle'\)/);
+assert.match(previewViewer, /\['dynamics', 'Dynamics', 'Apply procedural molecular motion'\]/);
+assert.match(previewViewer, /\['uncertainty', 'Uncertainty', 'Scale motion by B-factor or RMSF uncertainty'\]/);
+assert.match(previewViewer, /\['clear', 'Clear', 'Remove procedural molecular motion'\]/);
+assert.match(previewViewer, /wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0\.2/);
+assert.match(previewViewer, /wiggleAmplitude: 0, tumbleAmplitude: 0/);
+assert.match(previewViewer, /WiggleStructureRepresentation3DFromBundle/);
+assert.match(previewViewer, /B_iso_or_equiv\.value\(element\)/);
+assert.match(previewViewer, /coarseConformation\.spheres\.rmsf\[element\]/);
+assert.match(previewViewer, /action === 'wiggle'[\s\S]*runViewportWiggle\(control\.dataset\.wiggle, control\)/);
+assert.match(previewViewer, /data-motion', state/);
+assert.match(previewRuntimeCss, /\.buret-rail-button\[data-motion="wiggle"\]/);
 // Motion lives on the animate button now, so the camera menu must not offer it too.
 assert.doesNotMatch(
   previewViewer.slice(previewViewer.indexOf("function viewportCameraMenu"), previewViewer.indexOf("function viewportAnimateMenu")),
