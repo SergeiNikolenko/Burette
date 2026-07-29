@@ -274,9 +274,8 @@ async function browserDevTrajectoryPairPayload(filePath: string, options: Browse
   if (!TRAJECTORY_PAIR_FORMATS.has(extension)) return null;
   const files: string[] = [];
   await options.collectDevFiles(dirname(filePath), files);
-  const candidates = Array.from(new Set([filePath, ...files]))
-    .filter((candidate) => options.isDevFileReadAllowed(candidate))
-    .filter((candidate) => TRAJECTORY_PAIR_FORMATS.has(options.fileExtension(candidate)));
+  const candidates = localTrajectoryPairCandidates(filePath, files, options.fileExtension)
+    .filter((candidate) => options.isDevFileReadAllowed(candidate));
   const coordinatePath = TRAJECTORY_COORDINATE_FORMATS.has(extension)
     ? filePath
     : preferredTrajectoryCandidate(candidates, TRAJECTORY_COORDINATE_FORMATS, filePath, options);
@@ -317,6 +316,17 @@ async function browserDevTrajectoryPairPayload(filePath: string, options: Browse
       ligands: [{ dataBase64: coordinate.dataBase64 }],
     },
   };
+}
+
+export function localTrajectoryPairCandidates(
+  filePath: string,
+  discoveredPaths: string[],
+  fileExtension: (path: string) => string,
+) {
+  const sourceDirectory = dirname(filePath);
+  return Array.from(new Set([filePath, ...discoveredPaths]))
+    .filter((candidate) => dirname(candidate) === sourceDirectory)
+    .filter((candidate) => TRAJECTORY_PAIR_FORMATS.has(fileExtension(candidate)));
 }
 
 function preferredTrajectoryCandidate(
