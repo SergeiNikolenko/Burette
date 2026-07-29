@@ -3677,7 +3677,8 @@ mod tests {
                     .join("nested")
                     .join("MassSpecGymID0075191.ms"),
                 canonical_root.join("nested").join("caffeine.com"),
-                canonical_root.join("nested").join("mini.cif")
+                canonical_root.join("nested").join("mini.cif"),
+                canonical_root.join("nested").join("notes.txt")
             ]
         );
 
@@ -4026,7 +4027,7 @@ mod tests {
         ));
         fs::create_dir_all(&root).unwrap();
         for index in 0..8 {
-            fs::write(root.join(format!("note-{index}.txt")), "ignore\n").unwrap();
+            fs::write(root.join(format!("note-{index}.unsupported")), "ignore\n").unwrap();
         }
         let supported_extensions =
             supported_open_target_extensions().expect("supported extensions should load");
