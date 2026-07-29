@@ -66,7 +66,7 @@
     { value: 'polymer-ligand', label: 'Polymer & Ligand', group: 'Basic', provider: 'preset-structure-representation-polymer-and-ligand' },
     { value: 'protein-nucleic', label: 'Protein & Nucleic', group: 'Basic', provider: 'preset-structure-representation-protein-and-nucleic' },
     { value: 'coarse-surface', label: 'Coarse Surface', group: 'Basic', provider: 'preset-structure-representation-coarse-surface' },
-    { value: 'illustrative', label: 'Illustrative', group: 'Miscellaneous', provider: 'preset-structure-representation-illustrative' },
+    { value: 'illustrative', label: 'Illustrative', group: 'Miscellaneous', provider: 'preset-structure-representation-illustrative', defaultAppearance: 'illustrative' },
     { value: 'molecular-surface', label: 'Molecular Surface', group: 'Miscellaneous', provider: 'preset-structure-representation-molecular-surface' },
     { value: 'automatic-detail', label: 'Automatic Detail', group: 'Miscellaneous', provider: 'preset-structure-representation-auto-lod' },
     { value: 'mesoscale', label: 'Mesoscale', group: 'Miscellaneous', provider: 'preset-structure-representation-mesoscale' }
@@ -1291,7 +1291,6 @@
 
   function molstarPresetAppearance(option, config) {
     if (option?.defaultAppearance) return normalizeMolstarAppearance(option.defaultAppearance);
-    if (option?.provider) return option.value === 'illustrative' ? 'illustrative' : 'default';
     return configuredMolstarAppearance(config);
   }
 
@@ -2837,8 +2836,40 @@
       current.textContent = 'Current';
       button.append(label, current);
       menu.appendChild(button);
+      if (option.value === 'automatic') {
+        const appearance = document.createElement('button');
+        appearance.type = 'button';
+        appearance.className = 'buret-molstar-appearance-item';
+        appearance.dataset.buretMolstarIllustrative = '1';
+        appearance.setAttribute('role', 'menuitemcheckbox');
+        appearance.setAttribute('aria-checked', 'false');
+        appearance.setAttribute('aria-label', 'Illustrative appearance');
+        const appearanceLabel = document.createElement('span');
+        appearanceLabel.className = 'buret-tree-menu-label';
+        appearanceLabel.textContent = 'Illustrative';
+        const track = document.createElement('span');
+        track.className = 'buret-molstar-appearance-switch';
+        track.setAttribute('aria-hidden', 'true');
+        const thumb = document.createElement('span');
+        thumb.className = 'buret-molstar-appearance-switch-thumb';
+        track.appendChild(thumb);
+        appearance.append(appearanceLabel, track);
+        menu.appendChild(appearance);
+        const separator = document.createElement('div');
+        separator.className = 'buret-molstar-preset-menu-separator';
+        separator.setAttribute('role', 'separator');
+        menu.appendChild(separator);
+      }
     }
     menu.dataset.populated = '1';
+  }
+
+  function updateMolstarAppearanceControl(menu, appearance) {
+    const toggle = menu?.querySelector('[data-buret-molstar-illustrative]');
+    if (!toggle) return;
+    const checked = normalizeMolstarAppearance(appearance) === 'illustrative';
+    toggle.setAttribute('aria-checked', checked ? 'true' : 'false');
+    toggle.dataset.state = checked ? 'checked' : 'unchecked';
   }
 
   function updateMolstarPresetControl(toolbar, preset) {
@@ -2853,6 +2884,7 @@
     menu?.querySelectorAll('[data-buret-molstar-preset]').forEach(button => {
       button.setAttribute('aria-checked', button.dataset.buretMolstarPreset === option.value ? 'true' : 'false');
     });
+    updateMolstarAppearanceControl(menu, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
   }
 
   function positionMolstarPresetMenu(anchor = document.querySelector('[data-buret-molstar-preset-trigger]')) {
@@ -4442,6 +4474,15 @@
         showMolstarPresetMenu(trigger);
       });
       menu.addEventListener('click', event => {
+        const appearanceToggle = event.target?.closest?.('[data-buret-molstar-illustrative]');
+        if (appearanceToggle && menu.contains(appearanceToggle)) {
+          event.preventDefault();
+          event.stopPropagation();
+          hideMolstarPresetPreview();
+          const appearance = appearanceToggle.getAttribute('aria-checked') === 'true' ? 'default' : 'illustrative';
+          void requestMolstarAppearance(appearance);
+          return;
+        }
         const button = event.target?.closest?.('[data-buret-molstar-preset]');
         if (!button || !menu.contains(button)) return;
         event.preventDefault();
@@ -4476,7 +4517,7 @@
       hideMolstarPresetMenu({ restoreFocus: true });
       return;
     }
-    const items = Array.from(menu.querySelectorAll('[role="menuitemradio"]'));
+    const items = Array.from(menu.querySelectorAll('[role="menuitemradio"], [role="menuitemcheckbox"]'));
     const currentIndex = items.indexOf(document.activeElement);
     let nextIndex = -1;
     if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;
