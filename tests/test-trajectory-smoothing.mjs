@@ -46,11 +46,21 @@ assert.throws(() => countXtcFrames(truncatedXtc), /truncated/);
 const xyz = [0, 1, 3, 1, 0].map((x, index) => `2\nframe ${index + 1}\nC ${x} 0 0\nO ${x + 1} 0 0`).join("\n");
 const result = smooth({ data: xyz, format: "xyz", preset: "balanced", targetFrames: 3, referenceFrame: 1, align: false });
 assert.equal(result.frameCount, 5);
+assert.equal(result.sourceFrameCount, 5);
 assert.equal(result.rawSignal.length, 5);
 assert.equal(result.filteredSignal.length, 5);
 assert.equal(result.keyframes[0], 0);
 assert.equal(result.keyframes.at(-1), 4);
 assert.match(result.data, /Smoothed motion frame 5/);
+
+const interpolated = smooth({ data: xyz, format: "xyz", targetFrames: 3, outputFrames: 17, align: false });
+assert.equal(interpolated.frameCount, 17);
+assert.equal(interpolated.sourceFrameCount, 5);
+assert.match(interpolated.data, /Smoothed motion frame 17/);
+
+const twoFrameXyz = "1\nstart\nC 0 0 0\n1\nend\nC 1 0 0";
+const tweened = smooth({ data: twoFrameXyz, format: "xyz", targetFrames: 2, outputFrames: 5, align: false });
+assert.match(tweened.data, /Smoothed motion frame 3\nC 0\.500000 0\.000000 0\.000000/);
 
 assert.throws(
   () => smooth({ data: "", format: "xtc" }),

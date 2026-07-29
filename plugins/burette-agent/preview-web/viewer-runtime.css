@@ -608,7 +608,8 @@ body.buret-toolbar-collapsed #buret-selection-bar {
    the state while its menu is closed. */
 .buret-rail-button[data-motion="spin"],
 .buret-rail-button[data-motion="rock"],
-.buret-rail-button[data-motion="playing"] {
+.buret-rail-button[data-motion="playing"],
+.buret-rail-button[data-motion="wiggle"] {
   color: var(--buret-molstar-accent);
 }
 .buret-rail-button.buret-clear-selection {
