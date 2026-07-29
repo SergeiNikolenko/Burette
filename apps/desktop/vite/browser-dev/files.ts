@@ -4,11 +4,16 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import type { ViteDevServer } from "vite";
 
+import type { BrowserDevFileScan, BrowserDevFileScanLimits } from "./file-discovery";
 import { readJsonBody, sendJson, sendJsonError } from "./http";
 
 type BrowserDevFileRoutesOptions = {
   collectDefaultDevFiles: () => Promise<string[]>;
-  collectDevFiles: (path: string, files: string[]) => Promise<void>;
+  collectDevFiles: (
+    path: string,
+    files: string[],
+    limits?: Partial<BrowserDevFileScanLimits>,
+  ) => Promise<BrowserDevFileScan>;
   devFileExtensions: Set<string>;
   devFileSizeLimit: number;
   fileExtension: (path: string) => string;
@@ -31,6 +36,7 @@ export function registerBrowserDevFileDiscoveryRoute(server: ViteDevServer, opti
       const url = new URL(req.url || "", "http://127.0.0.1");
       const root = url.searchParams.get("root");
       let files: string[];
+      let scan: BrowserDevFileScan | null = null;
       if (root) {
         const rootPath = resolve(root);
         if (!options.isDevFileReadAllowed(rootPath)) {
@@ -38,12 +44,21 @@ export function registerBrowserDevFileDiscoveryRoute(server: ViteDevServer, opti
           return;
         }
         files = [];
-        await options.collectDevFiles(rootPath, files);
+        scan = await options.collectDevFiles(rootPath, files, {
+          maxDirectories: positiveScanLimit(url.searchParams.get("maxDirectories")),
+          maxEntries: positiveScanLimit(url.searchParams.get("maxEntries")),
+          maxFiles: positiveScanLimit(url.searchParams.get("maxFiles")),
+        });
         files = Array.from(new Set(files)).sort((left, right) => left.localeCompare(right));
       } else {
         files = await options.collectDefaultDevFiles();
       }
-      sendJson(res, 200, { files });
+      sendJson(res, 200, {
+        files,
+        truncated: scan?.truncated ?? false,
+        scannedEntries: scan?.scannedEntries ?? files.length,
+        scannedDirectories: scan?.scannedDirectories ?? 0,
+      });
     } catch (error) {
       sendJsonError(res, 500, error);
     }
@@ -260,6 +275,12 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
       sendJsonError(res, 500, error);
     }
   });
+}
+
+function positiveScanLimit(value: string | null) {
+  if (value === null) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : undefined;
 }
 
 const TRAJECTORY_COORDINATE_FORMATS = new Set(["xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj"]);
