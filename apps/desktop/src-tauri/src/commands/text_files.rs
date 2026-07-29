@@ -459,7 +459,7 @@ mod tests {
     #[test]
     fn failed_text_open_releases_its_provisional_claim() {
         let path = temp_path("broken.mae.gz");
-        fs::write(&path, [b'n', b'o', b't', b'-', b'g', b'z']).expect("fixture should write");
+        fs::write(&path, b"not-gz").expect("fixture should write");
         let path = canonical_text_file_path(&path).expect("fixture should canonicalize");
         let registry = OpenDocumentRegistry::default();
 
