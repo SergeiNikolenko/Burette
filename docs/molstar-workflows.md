@@ -38,6 +38,9 @@ show the row.
 The Molstar canvas toolbar exposes the same contextual `Symmetry` toggle next
 to the representation style. It is hidden when the action is not applicable or
 when another renderer is active, and stays synchronized with Molecular Inspector.
+After the `Global Symmetry` object is created, its Scene Tree context menu can
+switch between `Axes + Cage`, `Axes only`, and `Cage only`, and adjust the
+upstream representation scale from 0.1 to 5 without recreating the assembly.
 
 Only the RCSB GraphQL origin is added to the Molstar runtime `connect-src`
 allowlist. Other preview runtimes retain their local-only policy.

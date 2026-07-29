@@ -4471,13 +4471,30 @@
     saveToolbarPosition(toolbar);
   }
 
+  function toolbarViewportBounds() {
+    const viewport = document.querySelector('.msp-layout-region.msp-layout-main, .msp-layout-main, .msp-viewport');
+    const rect = viewport?.getBoundingClientRect?.();
+    if (rect && rect.width > 0 && rect.height > 0) {
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height
+      };
+    }
+    return { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight, width: window.innerWidth, height: window.innerHeight };
+  }
+
   function applyDefaultToolbarPosition(toolbar) {
     dockToolbar(toolbar);
     fitToolbarToViewport(toolbar);
-    const top = defaultToolbarTop();
+    const bounds = toolbarViewportBounds();
+    const top = Math.max(defaultToolbarTop(), bounds.top + TOOLBAR_MARGIN);
     const width = toolbar.offsetWidth || toolbar.getBoundingClientRect().width || 320;
-    const rightEdge = window.innerWidth;
-    const left = Math.max(TOOLBAR_MARGIN, Math.round(rightEdge - width - TOOLBAR_MARGIN));
+    const rightEdge = bounds.right;
+    const left = Math.max(bounds.left + TOOLBAR_MARGIN, Math.round(rightEdge - width - TOOLBAR_MARGIN));
     delete toolbar.dataset.dockCorner;
     toolbar.dataset.defaultPosition = '1';
     toolbar.style.left = left + 'px';
@@ -4492,14 +4509,16 @@
 
   function toolbarCornerWithinDistance(toolbar, distance) {
     const rect = toolbar.getBoundingClientRect();
-    const horizontal = rect.left <= distance
+    const bounds = toolbarViewportBounds();
+    const horizontal = rect.left - bounds.left <= distance
       ? 'left'
-      : window.innerWidth - rect.right <= distance
+      : bounds.right - rect.right <= distance
       ? 'right'
       : '';
-    const vertical = rect.top - toolbarSafeTop() <= distance
+    const safeTop = Math.max(toolbarSafeTop(), bounds.top + TOOLBAR_MARGIN);
+    const vertical = rect.top - safeTop <= distance
       ? 'top'
-      : window.innerHeight - rect.bottom <= distance
+      : bounds.bottom - rect.bottom <= distance
       ? 'bottom'
       : '';
     return horizontal && vertical ? `${vertical}-${horizontal}` : '';
@@ -4521,16 +4540,18 @@
 
   function positionToolbarAtCorner(toolbar, corner) {
     fitToolbarToViewport(toolbar);
+    const bounds = toolbarViewportBounds();
     const width = toolbar.offsetWidth || toolbar.getBoundingClientRect().width || 320;
     const height = toolbar.offsetHeight || toolbar.getBoundingClientRect().height || 36;
     const horizontal = corner.endsWith('left') ? 'left' : 'right';
     const vertical = corner.startsWith('bottom') ? 'bottom' : 'top';
     const left = horizontal === 'left'
-      ? TOOLBAR_MARGIN
-      : Math.max(TOOLBAR_MARGIN, window.innerWidth - width - TOOLBAR_MARGIN);
+      ? bounds.left + TOOLBAR_MARGIN
+      : Math.max(bounds.left + TOOLBAR_MARGIN, bounds.right - width - TOOLBAR_MARGIN);
+    const safeTop = Math.max(toolbarSafeTop(), bounds.top + TOOLBAR_MARGIN);
     const top = vertical === 'top'
-      ? toolbarSafeTop()
-      : Math.max(toolbarSafeTop(), window.innerHeight - height - TOOLBAR_MARGIN);
+      ? safeTop
+      : Math.max(safeTop, bounds.bottom - height - TOOLBAR_MARGIN);
     toolbar.style.left = Math.round(left) + 'px';
     toolbar.style.top = Math.round(top) + 'px';
     toolbar.style.right = 'auto';
@@ -4552,10 +4573,12 @@
   function moveToolbar(toolbar, left, top) {
     fitToolbarToViewport(toolbar);
     const margin = TOOLBAR_MARGIN;
-    const safeTop = toolbarSafeTop();
-    const maxLeft = Math.max(margin, window.innerWidth - toolbar.offsetWidth - margin);
-    const maxTop = Math.max(safeTop, window.innerHeight - toolbar.offsetHeight - margin);
-    toolbar.style.left = Math.min(Math.max(margin, left), maxLeft) + 'px';
+    const bounds = toolbarViewportBounds();
+    const minLeft = bounds.left + margin;
+    const safeTop = Math.max(toolbarSafeTop(), bounds.top + margin);
+    const maxLeft = Math.max(minLeft, bounds.right - toolbar.offsetWidth - margin);
+    const maxTop = Math.max(safeTop, bounds.bottom - toolbar.offsetHeight - margin);
+    toolbar.style.left = Math.min(Math.max(minLeft, left), maxLeft) + 'px';
     toolbar.style.top = Math.min(Math.max(safeTop, top), maxTop) + 'px';
     toolbar.style.right = 'auto';
     updateToolbarCornerIntent(toolbar);
@@ -4571,7 +4594,7 @@
   }
 
   function fitToolbarToViewport(toolbar) {
-    const availableWidth = window.innerWidth;
+    const availableWidth = toolbarViewportBounds().width;
     toolbar.style.maxWidth = Math.max(180, availableWidth - TOOLBAR_MARGIN * 2) + 'px';
     const content = toolbar.querySelector('[data-buret-toolbar-content]');
     if (content) {
@@ -5891,6 +5914,56 @@
     menu.appendChild(row);
   }
 
+  async function updateSceneTreeAssemblySymmetry(ref, patch) {
+    const state = activeMolstarViewer()?.plugin?.state?.data;
+    const cell = state?.cells?.get(ref);
+    if (typeof state?.build !== 'function' || cell?.obj?.label !== 'Global Symmetry') return false;
+    try {
+      const update = state.build();
+      update.to(ref).update(old => ({ ...old, ...patch }));
+      await update.commit();
+      scheduleSceneTreeRender();
+      return true;
+    } catch (error) {
+      debug('assembly symmetry representation update failed: ' + (error?.message || String(error)));
+      setStatus(`[web] Symmetry settings failed. ${error?.message || error}`, 'error');
+      return false;
+    }
+  }
+
+  function sceneTreeAssemblySymmetryMenu(menu, viewer, ref) {
+    const params = viewer?.plugin?.state?.data?.cells?.get(ref)?.transform?.params || {};
+    const visuals = Array.isArray(params.visuals) ? params.visuals : ['axes', 'cage'];
+    const mode = visuals.includes('axes') && visuals.includes('cage')
+      ? 'both'
+      : visuals.includes('cage') ? 'cage' : 'axes';
+    sceneTreeMenuSection(menu, 'Symmetry');
+    sceneTreeMenuSelect(menu, 'Visual', 'assembly-symmetry-visuals', [
+      { name: 'both', label: 'Axes + Cage' },
+      { name: 'axes', label: 'Axes only' },
+      { name: 'cage', label: 'Cage only' }
+    ], mode);
+
+    const row = document.createElement('div');
+    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
+    const caption = document.createElement('span');
+    caption.textContent = 'Scale';
+    const control = document.createElement('input');
+    control.type = 'range';
+    control.className = 'buret-tree-menu-range';
+    control.min = '0.1';
+    control.max = '5';
+    control.step = '0.1';
+    control.value = String(Number.isFinite(params.scale) ? params.scale : 2);
+    control.dataset.sceneTreeSymmetryScale = '1';
+    control.setAttribute('aria-label', 'Symmetry scale');
+    const readout = document.createElement('span');
+    readout.className = 'buret-tree-menu-slider-value';
+    readout.textContent = control.value;
+    row.append(caption, control, readout);
+    menu.appendChild(row);
+  }
+
   // A native <select> cannot preview: its popup is drawn by the OS, its <option>
   // elements have no layout box, and no pointer event ever reaches them. Colour
   // themes are the one list here worth seeing before committing to, so this row is
@@ -6495,6 +6568,7 @@
     const measurementTargets = sceneTreeMeasurementTargets(viewer, ref);
     const isComponent = components.length === 1 && components[0]?.cell?.transform?.ref === ref;
     const isLassoSelection = isMolstarLassoSceneRef(viewer, ref);
+    const isAssemblySymmetry = viewer?.plugin?.state?.data?.cells?.get(ref)?.obj?.label === 'Global Symmetry';
 
     const menu = document.createElement('div');
     menu.id = 'buret-scene-tree-menu';
@@ -6527,7 +6601,9 @@
       icon: node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
     }));
 
-    if (measurementTargets.length) {
+    if (isAssemblySymmetry) {
+      sceneTreeAssemblySymmetryMenu(menu, viewer, ref);
+    } else if (measurementTargets.length) {
       sceneTreeMeasurementMenu(menu, measurementTargets);
     } else if (repTarget) {
       sceneTreeRepresentationMenu(menu, viewer, node, repTarget);
@@ -7929,6 +8005,9 @@
           applySceneTreeReprSize(ref, select.value);
         } else if (kind === 'representation-visual') {
           applySceneTreeReprParam(ref, 'visuals', [select.value]);
+        } else if (kind === 'assembly-symmetry-visuals') {
+          const visuals = select.value === 'axes' ? ['axes'] : select.value === 'cage' ? ['cage'] : ['axes', 'cage'];
+          updateSceneTreeAssemblySymmetry(ref, { visuals });
         } else {
           applySceneTreeColorTheme(ref, select.value, null);
         }
@@ -7972,6 +8051,18 @@
       });
       // Opacity streams as the thumb moves; the slider sits inside the menu, so the
       // outside-click dismissal never sees these events and the menu stays open.
+      document.addEventListener('input', event => {
+        const control = event.target.closest('[data-scene-tree-symmetry-scale]');
+        if (!control) return;
+        const readout = control.parentElement?.querySelector('.buret-tree-menu-slider-value');
+        if (readout) readout.textContent = control.value;
+      });
+      document.addEventListener('change', event => {
+        const control = event.target.closest('[data-scene-tree-symmetry-scale]');
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref) return;
+        updateSceneTreeAssemblySymmetry(ref, { scale: Number(control.value) });
+      });
       document.addEventListener('input', event => {
         const slider = event.target.closest('[data-scene-tree-slider="opacity"]');
         const ref = slider?.closest('[data-ref]')?.dataset.ref;
@@ -17288,13 +17379,40 @@
     ));
   }
 
+  function molstarContextHasLassoSelection(structureRef, selectionLoci) {
+    if (!selectionLoci || molstarLociIsEmpty(selectionLoci)) return false;
+    const structure = molstarCurrentStructures(activeMolstarViewer())
+      .find(candidate => candidate?.cell?.transform?.ref === structureRef?.cell?.transform?.ref) || structureRef;
+    const Structure = molstarStructureRuntime().Structure;
+    const StructureElement = molstarStructureRuntime().StructureElement;
+    if (
+      !Array.isArray(structure?.components)
+      || typeof Structure?.toSubStructureElementLoci !== 'function'
+      || typeof StructureElement?.Loci?.size !== 'function'
+    ) return false;
+    const selectionSize = Number(StructureElement.Loci.size(selectionLoci)) || 0;
+    if (!selectionSize) return false;
+    return structure.components.some(component => {
+      if (!component?.cell?.transform?.tags?.includes(MOLSTAR_LASSO_COMPONENT_TAG)) return false;
+      const parent = component?.structure?.cell?.obj?.data;
+      const selected = component?.cell?.obj?.data;
+      if (!parent || !selected) return false;
+      try {
+        const lassoLoci = Structure.toSubStructureElementLoci(parent, selected);
+        return Number(StructureElement.Loci.size(lassoLoci)) === selectionSize;
+      } catch (_) {
+        return false;
+      }
+    });
+  }
+
   function molstarContextResolvedLoci(targetStructure) {
     const structure = molstarStructureFromRef(targetStructure) || targetStructure;
     const pickedLoci = molstarContextMenuPick?.loci || null;
     const pickedAtom = molstarContextAtomFromLoci(pickedLoci);
     const selectionLoci = molstarContextSelectionLociForStructure(targetStructure);
     const selectedAtom = molstarContextAtomFromLoci(selectionLoci);
-    const canReuseSelection = molstarContextMenuMode === 'molecule' || !pickedAtom;
+    const canReuseSelection = molstarContextHasLassoSelection(targetStructure, selectionLoci) || molstarContextMenuMode === 'molecule' || !pickedAtom;
     if (canReuseSelection && selectedAtom && (!pickedAtom || molstarContextLociContainsAtom(selectionLoci, pickedAtom))) return {
       loci: selectionLoci,
       atomLoci: pickedAtom
@@ -18391,7 +18509,8 @@
         .find(structure => structure?.cell?.transform?.ref === targetRef)
       : null;
     const structure = currentStructure || target?.structure;
-    const components = Array.isArray(structure?.components) ? structure.components : [];
+    const components = (Array.isArray(structure?.components) ? structure.components : [])
+      .filter(component => !component?.cell?.transform?.tags?.includes(MOLSTAR_LASSO_COMPONENT_TAG));
     const componentManager = activeViewer?.plugin?.managers?.structure?.component;
     if (typeof componentManager?.canBeModified !== 'function') return components;
     return components.filter(component => componentManager.canBeModified(component));
