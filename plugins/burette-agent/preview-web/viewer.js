@@ -16058,10 +16058,10 @@
     sampleAtoms:
     for (const loci of lociList) {
       for (const element of loci.elements || []) {
-        for (const index of element.indices || []) {
+        molstarContextOrderedSetForEach(element.indices, index => {
           const atomIndex = element.unit?.elements?.[index];
           const atom = molstarContextAtomFromModelIndex(element.unit?.model, atomIndex);
-          if (!atom) continue;
+          if (!atom) return true;
           const chain = String(atom.auth_asym_id || atom.label_asym_id || '').trim();
           const sequence = atom.auth_seq_id ?? atom.label_seq_id ?? null;
           const compId = String(atom.auth_comp_id || atom.label_comp_id || '').trim();
@@ -16072,8 +16072,9 @@
           if (!molstarLassoSelectionAtoms.has(atomKey) && molstarLassoSelectionAtoms.size < 96) {
             molstarLassoSelectionAtoms.set(atomKey, { chain, sequence, compId, atomName });
           }
-          if (molstarLassoSelectionAtoms.size >= 96) break sampleAtoms;
-        }
+          return molstarLassoSelectionAtoms.size < 96;
+        });
+        if (molstarLassoSelectionAtoms.size >= 96) break sampleAtoms;
       }
     }
     const atoms = Array.from(molstarLassoSelectionAtoms.values());
@@ -17196,50 +17197,73 @@
     return atomIndex === atom.atomIndex;
   }
 
-  function molstarContextOrderedSetSome(indices, predicate) {
-    if (indices == null || typeof predicate !== 'function') return false;
-    const single = molstarContextNumberOrUndefined(indices);
-    if (single != null) return predicate(single);
-    if (Array.isArray(indices)) return indices.some(index => predicate(index));
+  function molstarContextOrderedSetForEach(indices, callback) {
+    if (indices == null || typeof callback !== 'function') return;
+    let stopped = false;
+    const visit = value => {
+      const index = molstarContextNumberOrUndefined(value);
+      if (!Number.isInteger(index) || stopped) return;
+      if (callback(index) === false) stopped = true;
+    };
     const orderedSet = molstarExportLib()?.OrderedSet || molstarRuntime()?.OrderedSet;
     if (typeof orderedSet?.forEach === 'function') {
-      let found = false;
       try {
-        orderedSet.forEach(indices, index => {
-          if (!found && predicate(index)) found = true;
-        });
-        if (found) return true;
+        orderedSet.forEach(indices, value => visit(value));
+        return;
       } catch (_) {}
     }
     if (typeof orderedSet?.size === 'function' && typeof orderedSet?.getAt === 'function') {
       try {
         const size = orderedSet.size(indices);
-        for (let i = 0; i < size; i++) {
-          if (predicate(orderedSet.getAt(indices, i))) return true;
-        }
+        for (let offset = 0; offset < size && !stopped; offset++) visit(orderedSet.getAt(indices, offset));
+        return;
       } catch (_) {}
     }
-    if (ArrayBuffer.isView(indices)) {
-      for (const index of indices) {
-        if (predicate(index)) return true;
+    if (Array.isArray(indices) || ArrayBuffer.isView(indices)) {
+      for (const value of indices) {
+        visit(value);
+        if (stopped) break;
       }
-      return false;
+      return;
+    }
+    if (typeof indices === 'number' && Number.isFinite(indices)) {
+      if (Number.isInteger(indices) && indices !== 0) {
+        visit(indices);
+        return;
+      }
+      try {
+        const buffer = new ArrayBuffer(8);
+        const view = new DataView(buffer);
+        view.setFloat64(0, indices, true);
+        const start = view.getInt32(0, true);
+        const end = view.getInt32(4, true);
+        if (start >= 0 && end >= start) {
+          for (let index = start; index < end && !stopped; index++) visit(index);
+        }
+      } catch (_) {}
+      return;
     }
     if (typeof indices?.[Symbol.iterator] === 'function') {
-      for (const index of indices) {
-        if (predicate(index)) return true;
+      for (const value of indices) {
+        visit(value);
+        if (stopped) break;
       }
-      return false;
+      return;
     }
     if (indices.array) {
       const start = Number.isInteger(indices.start) ? indices.start : 0;
       const end = Number.isInteger(indices.end) ? indices.end : indices.array.length;
-      for (let i = start; i < end; i++) {
-        if (predicate(indices.array[i])) return true;
-      }
-      return false;
+      for (let offset = start; offset < end && !stopped; offset++) visit(indices.array[offset]);
     }
-    return false;
+  }
+
+  function molstarContextOrderedSetSome(indices, predicate) {
+    let found = false;
+    molstarContextOrderedSetForEach(indices, index => {
+      found = predicate(index) === true;
+      return !found;
+    });
+    return found;
   }
 
   function molstarContextLociContainsAtom(loci, atom) {
@@ -19305,8 +19329,11 @@
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(`[web] Selected ${targetLabel}.`);
       } else if (action === 'remove') {
-        const undoSnapshot = captureMolstarEditUndoSnapshot(`delete ${targetLabel}`);
+        const undoSnapshot = target?.selectionBased
+          ? captureMolstarSceneUndoSnapshot(`delete ${targetLabel}`)
+          : captureMolstarEditUndoSnapshot(`delete ${targetLabel}`);
         if (!await deleteMolstarContextPick(target)) throw new Error('No editable Mol* residue or ligand is available to delete.');
+        if (target?.selectionBased) await clearMolstarSelection();
         pushMolstarEditUndoSnapshot(undoSnapshot);
         setMolstarStructureDirty(true);
         setStatus(`[web] Deleted ${targetLabel}.`);
