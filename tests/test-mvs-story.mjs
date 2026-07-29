@@ -13,6 +13,7 @@ import {
   validateMvsStoryFile,
   writeMvsStoryFile,
 } from "../scripts/mvs-story.mjs";
+import { instantiateMvsStoryTemplate, listMvsStoryTemplates } from "../scripts/mvs-story-templates.mjs";
 
 const root = {
   kind: "root",
@@ -78,6 +79,32 @@ const uriStory = buildMvsStory({
 assert.equal(validateMvsStory(uriStory, { resourceNames: [], requireBundledResources: true }).issues.some(issue => issue.code === "MISSING_RESOURCE"), true);
 assert.equal(validateMvsStory(uriStory, { resourceNames: ["annotations/primitives.json"], requireBundledResources: true }).ok, true);
 
+const templates = await listMvsStoryTemplates();
+assert.deepEqual(templates.map(template => template.id), [
+  "aligned-structure-comparison",
+  "binding-site-tour",
+  "docking-pose-comparison",
+  "structure-overview",
+]);
+for (const template of templates) {
+  assert.equal(template.caveats.length > 0, true);
+  assert.equal(template.storyboard.length > 0, true);
+  const variables = Object.fromEntries(template.variables
+    .filter(variable => variable.required)
+    .map(variable => [variable.name, variable.example]));
+  const instantiated = await instantiateMvsStoryTemplate(template.id, variables, { now: new Date("2026-07-29T00:00:00.000Z") });
+  assert.equal(instantiated.summary.stepCount, template.storyboard.length);
+  assert.equal(validateMvsStory(instantiated.story).ok, true, template.id);
+}
+await assert.rejects(
+  instantiateMvsStoryTemplate("binding-site-tour", { protein_url: "protein.pdb" }),
+  error => error.code === "MISSING_TEMPLATE_VARIABLE" && error.details.variable === "ligand_url",
+);
+await assert.rejects(
+  instantiateMvsStoryTemplate("binding-site-tour", { protein_url: "protein.pdb", ligand_url: "ligand.sdf", surprise: "value" }),
+  error => error.code === "UNKNOWN_TEMPLATE_VARIABLE",
+);
+
 const missingSidecars = spawnSync(process.execPath, [
   "scripts/burette-agent.mjs",
   "open",
@@ -93,6 +120,28 @@ try {
   const mvsj = path.join(temp, "protein-tour.mvsj");
   const mvsx = path.join(temp, "protein-tour.mvsx");
   const asset = path.resolve("samples/mini.pdb");
+
+  const templateList = spawnSync(process.execPath, ["scripts/burette-agent.mjs", "story-template-list"], { encoding: "utf8" });
+  assert.equal(templateList.status, 0, templateList.stderr);
+  assert.equal(JSON.parse(templateList.stdout).result.count, 4);
+
+  const templatedMvsx = path.join(temp, "binding-site-tour.mvsx");
+  const templateCreate = spawnSync(process.execPath, [
+    "scripts/burette-agent.mjs",
+    "story-template-create",
+    "--template", "binding-site-tour",
+    "--output", templatedMvsx,
+    "--var", "protein_url=protein.pdb",
+    "--var", "ligand_url=ligand.sdf",
+    "--var", "complex_label=Template smoke",
+    "--asset", `protein.pdb=${asset}`,
+    "--asset", `ligand.sdf=${path.resolve("samples/mini.sdf")}`,
+  ], { encoding: "utf8" });
+  assert.equal(templateCreate.status, 0, templateCreate.stderr);
+  assert.equal(JSON.parse(templateCreate.stdout).result.template.id, "binding-site-tour");
+  const validatedTemplate = await validateMvsStoryFile(templatedMvsx);
+  assert.equal(validatedTemplate.ok, true, JSON.stringify(validatedTemplate.issues));
+  assert.equal(validatedTemplate.summary.stepCount, 3);
 
   const singleMvsj = path.join(temp, "single.mvsj");
   const singleDocument = JSON.parse(await readFile("tests/fixtures/file-kinds/scene.mvsj", "utf8"));

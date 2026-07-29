@@ -54,17 +54,16 @@ export function MarkdownRichViewer({
   openPaths?: MarkdownOpenPaths;
 }) {
   const parentRef = useRef<HTMLDivElement | null>(null);
-  const viewRef = useRef<EditorView | null>(null);
-  const disposedRef = useRef(false);
 
   useEffect(() => {
     const parent = parentRef.current;
     if (!parent) return undefined;
 
-    disposedRef.current = false;
+    let disposed = false;
+    let view: EditorView | null = null;
     void loadCodeLanguages().then((languages) => {
-      if (disposedRef.current) return;
-      const view = new EditorView({
+      if (disposed) return;
+      view = new EditorView({
         parent,
         state: EditorState.create({
           doc: document.content,
@@ -73,7 +72,7 @@ export function MarkdownRichViewer({
               codeLanguages: languages,
               extensions: [GFM, prosemarkMarkdownSyntaxExtensions, htmlBlockParserExtension],
             }),
-            markdownLinkNavigation(() => document.path, () => disposedRef.current, openPaths),
+            markdownLinkNavigation(() => document.path, () => disposed, openPaths),
             prosemarkBasicSetup(),
             drawSelection(),
             prosemarkBaseThemeSetup(),
@@ -89,14 +88,13 @@ export function MarkdownRichViewer({
         }),
       });
 
-      viewRef.current = view;
-      advanceViewportParse(view, () => disposedRef.current);
+      advanceViewportParse(view, () => disposed);
     });
 
     return () => {
-      disposedRef.current = true;
-      viewRef.current?.destroy();
-      viewRef.current = null;
+      disposed = true;
+      view?.destroy();
+      view = null;
     };
   }, [document, openPaths]);
 

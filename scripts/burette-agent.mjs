@@ -8,6 +8,7 @@ import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { delimiter, dirname, resolve } from 'node:path';
 import { validateMvsDocumentFile, validateMvsStoryFile, writeMvsStoryFile } from './mvs-story.mjs';
+import { instantiateMvsStoryTemplate, listMvsStoryTemplates } from './mvs-story-templates.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -35,6 +36,8 @@ function usage() {
   node scripts/burette-agent.mjs render-panel --session-dir <desktop-agent-session> --kind markdown --file /tmp/notes.md [--area right]
   node scripts/burette-agent.mjs story-create --spec /tmp/story.json --output /tmp/story.mvsx [--asset protein.pdb=/path/protein.pdb]
   node scripts/burette-agent.mjs story-validate --file /tmp/story.mvsx
+  node scripts/burette-agent.mjs story-template-list
+  node scripts/burette-agent.mjs story-template-create --template binding-site-tour --output /tmp/story.mvsx --var protein_url=protein.pdb --var ligand_url=ligand.sdf [--asset protein.pdb=/path/protein.pdb]
 
 The CLI is the readable Burette agent contract. Auto mode starts the full
 browser-agent-shell when available and falls back to browser-preview when the
@@ -45,7 +48,7 @@ the app at launch.`);
 }
 
 function parseOptions(args) {
-  const out = { rest: [], assets: [] };
+  const out = { rest: [], assets: [], variables: [] };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === '--mode') {
@@ -100,6 +103,16 @@ function parseOptions(args) {
     }
     if (arg === '--output') {
       out.output = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--template') {
+      out.template = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--var') {
+      out.variables.push(requireValue(args, index, arg));
       index += 1;
       continue;
     }
@@ -181,6 +194,14 @@ async function main() {
     await storyValidate(options);
     return;
   }
+  if (command === 'story-template-list') {
+    await storyTemplateList();
+    return;
+  }
+  if (command === 'story-template-create') {
+    await storyTemplateCreate(options);
+    return;
+  }
   fail('UNKNOWN_COMMAND', `Unknown command: ${command}.`, 2);
 }
 
@@ -193,16 +214,7 @@ async function storyCreate(options) {
   } catch (error) {
     fail('INVALID_STORY_SPEC', `Could not read Story spec: ${error?.message || String(error)}.`, 2);
   }
-  const assets = {};
-  for (const value of options.assets) {
-    const separator = value.indexOf('=');
-    if (separator <= 0 || separator === value.length - 1) fail('INVALID_ARGS', '--asset must use archive/path=local/path.', 2);
-    const archivePath = value.slice(0, separator).trim();
-    const sourcePath = value.slice(separator + 1).trim();
-    if (!archivePath || !sourcePath) fail('INVALID_ARGS', '--asset must use archive/path=local/path.', 2);
-    if (Object.hasOwn(assets, archivePath)) fail('INVALID_ARGS', `Duplicate Story asset path: ${archivePath}.`, 2);
-    assets[archivePath] = resolve(sourcePath);
-  }
+  const assets = parseAssignments(options.assets, '--asset', { resolveValues: true, valueLabel: 'local/path' });
   try {
     const result = await writeMvsStoryFile({
       story,
@@ -214,6 +226,56 @@ async function storyCreate(options) {
   } catch (error) {
     fail(error?.code || 'STORY_CREATE_FAILED', error?.message || String(error), 1, error?.details || null);
   }
+}
+
+async function storyTemplateList() {
+  try {
+    const templates = await listMvsStoryTemplates();
+    console.log(JSON.stringify({ ok: true, apiVersion, result: { templates, count: templates.length } }, null, 2));
+  } catch (error) {
+    fail(error?.code || 'STORY_TEMPLATE_LIST_FAILED', error?.message || String(error), 1, error?.details || null);
+  }
+}
+
+async function storyTemplateCreate(options) {
+  if (!options.template) fail('INVALID_ARGS', 'story-template-create requires --template.', 2);
+  if (!options.output) fail('INVALID_ARGS', 'story-template-create requires --output.', 2);
+  const variables = parseAssignments(options.variables, '--var', { valueLabel: 'value' });
+  const assets = parseAssignments(options.assets, '--asset', { resolveValues: true, valueLabel: 'local/path' });
+  try {
+    const instantiated = await instantiateMvsStoryTemplate(options.template, variables);
+    const written = await writeMvsStoryFile({
+      story: instantiated.story,
+      outputPath: resolve(options.output),
+      assets,
+      overwrite: options.overwrite === true,
+    });
+    console.log(JSON.stringify({
+      ok: true,
+      apiVersion,
+      result: {
+        template: instantiated.template,
+        variables: instantiated.variables,
+        ...written,
+      },
+    }, null, 2));
+  } catch (error) {
+    fail(error?.code || 'STORY_TEMPLATE_CREATE_FAILED', error?.message || String(error), 1, error?.details || null);
+  }
+}
+
+function parseAssignments(values, flag, { resolveValues = false, valueLabel = 'value' } = {}) {
+  const result = {};
+  for (const value of values) {
+    const separator = value.indexOf('=');
+    if (separator <= 0 || separator === value.length - 1) fail('INVALID_ARGS', `${flag} must use name=${valueLabel}.`, 2);
+    const name = value.slice(0, separator).trim();
+    const assignedValue = value.slice(separator + 1).trim();
+    if (!name || !assignedValue) fail('INVALID_ARGS', `${flag} must use name=${valueLabel}.`, 2);
+    if (Object.hasOwn(result, name)) fail('INVALID_ARGS', `Duplicate ${flag} name: ${name}.`, 2);
+    result[name] = resolveValues ? resolve(assignedValue) : assignedValue;
+  }
+  return result;
 }
 
 async function storyValidate(options) {

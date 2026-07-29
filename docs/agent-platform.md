@@ -61,7 +61,7 @@ result back to the user.
 | Workspace observer | `bun scripts/burette-agent.mjs observe` | Reads typed state from a session directory. |
 | Workspace action | `bun scripts/burette-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
 | Ketcher surface | `burette.open_ketcher` / `burette.control_ketcher` | Opens and controls the active chemical editor with bounded, revision-checked actions. |
-| MolViewSpec Story | `story-create` / `story-validate`; `burette.create_story` / `burette.validate_story` / `burette.observe_story` / `burette.control_story` | Authors schema-valid multi-state MVSJ/MVSX, verifies resources, and exposes typed Story state and playback. |
+| MolViewSpec Story | `story-template-list` / `story-template-create` / `story-create` / `story-validate`; `burette.list_story_templates` / `burette.create_story_from_template` / `burette.create_story` / `burette.validate_story` / `burette.observe_story` / `burette.control_story` | Lists reusable scientific scaffolds, authors schema-valid multi-state MVSJ/MVSX, verifies resources, and exposes typed Story state and playback. |
 | Panel renderer | `bun scripts/burette-agent.mjs render-panel` | Opens bounded markdown/table/chart output in a docked panel. |
 | Tokenized preview | `bun scripts/agent-preview.mjs` | Starts typed browser preview sessions for direct observe/act checks. |
 | Router skill | `plugins/burette-agent/skills/index/SKILL.md` | Routes molecular workspace requests to the right focused skill. |
@@ -122,6 +122,15 @@ beside the document; opening fails early when a local sidecar is missing.
 Mol*'s standard `./assets/...` paths are normalized safely. `file:` URLs and
 absolute filesystem paths are rejected rather than leaking host paths into a
 browser scene.
+
+`story-template-list` exposes the installed catalog with declared inputs,
+step-by-step scientific purpose, evidence expectations, and caveats.
+`story-template-create` performs bounded string substitution, rejects missing
+or unknown variables, then follows the same validation and safe-write path as
+`story-create`. The source descriptors live in `templates/mvs-story/` and are
+packaged under `assets/mvs-story-templates/`. They are starting points, not
+analysis engines: contacts, scores, alignment metrics, and biological claims
+must be supplied from explicit calculations or observations.
 
 After opening, `observe_story` reports the current snapshot and ordered bounded
 metadata from Mol*'s snapshot manager. `control_story` supports next, previous,

@@ -210,7 +210,9 @@ async function testMcpRegistrations(tempRoot) {
     "burette.control_story",
     "burette.control_viewer",
     "burette.create_story",
+    "burette.create_story_from_template",
     "burette.get_context",
+    "burette.list_story_templates",
     "burette.observe_story",
     "burette.observe_workspace",
     "burette.open_ketcher",
@@ -233,6 +235,8 @@ async function testMcpRegistrations(tempRoot) {
     "validate_trajectory_review_artifact",
   ]);
   assert.equal(server.tools.get("burette.create_story").config.annotations.destructiveHint, true);
+  assert.equal(server.tools.get("burette.create_story_from_template").config.annotations.destructiveHint, true);
+  assert.equal(server.tools.get("burette.list_story_templates").config.annotations.readOnlyHint, true);
 }
 
 async function testValidationHandlers(tempRoot) {
@@ -305,6 +309,22 @@ async function testFetchAndWorkspaceHandlers(tempRoot) {
     assert.equal(JSON.stringify(ligandHeavySummary.structuredContent.summary).length <= 256 * 1024, true);
 
     const storyPath = path.join(tempRoot, "mcp-created-story.mvsj");
+    const listedTemplates = await server.tools.get("burette.list_story_templates").handler({});
+    assert.equal(listedTemplates.structuredContent.ok, true);
+    assert.equal(listedTemplates.structuredContent.result.count, 4);
+    assert.equal(listedTemplates.structuredContent.result.templates.some(template => template.id === "binding-site-tour"), true);
+
+    const templatedStoryPath = path.join(tempRoot, "mcp-templated-story.mvsx");
+    const templatedStory = await server.tools.get("burette.create_story_from_template").handler({
+      templateId: "binding-site-tour",
+      variables: { protein_url: "protein.pdb", ligand_url: "ligand.sdf", complex_label: "MCP template" },
+      outputPath: templatedStoryPath,
+      resources: { "protein.pdb": sampleMini, "ligand.sdf": path.resolve("samples/mini.sdf") },
+    });
+    assert.equal(templatedStory.structuredContent.ok, true);
+    assert.equal(templatedStory.structuredContent.result.template.id, "binding-site-tour");
+    assert.equal(templatedStory.structuredContent.result.summary.stepCount, 3);
+
     const relativeStory = await server.tools.get("burette.create_story").handler({
       story: { title: "Relative", steps: [{ key: "one", title: "One", root: { kind: "root" } }] },
       outputPath: "relative-story.mvsj",

@@ -126,6 +126,15 @@ assert.match(installScript, /"preview-web\/viewer\.js"/);
 assert.match(installScript, /"browser-shell-dist\/index\.js"/);
 assert.match(installScript, /"scripts\/agent-preview\.mjs"/);
 assert.match(installScript, /"scripts\/agent-shell-server\.mjs"/);
+assert.match(installScript, /"scripts\/mvs-story-templates\.mjs"/);
+for (const template of [
+  "aligned-structure-comparison",
+  "binding-site-tour",
+  "docking-pose-comparison",
+  "structure-overview",
+]) {
+  assert.equal(installScript.includes(`"assets/mvs-story-templates/${template}.json"`), true);
+}
 for (const asset of requiredPreviewRuntimeAssets) {
   assert.equal(installScript.includes(`"preview-web/${asset}"`), true, `installer does not require ${asset}`);
 }
@@ -293,7 +302,12 @@ for (const asset of [
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
   "scripts/burette-agent.mjs",
+  "scripts/mvs-story-templates.mjs",
   "scripts/install-local.mjs",
+  "assets/mvs-story-templates/aligned-structure-comparison.json",
+  "assets/mvs-story-templates/binding-site-tour.json",
+  "assets/mvs-story-templates/docking-pose-comparison.json",
+  "assets/mvs-story-templates/structure-overview.json",
 ]) {
   assert.equal(packedFiles.has(asset), true, `npm package is missing ${asset}`);
 }

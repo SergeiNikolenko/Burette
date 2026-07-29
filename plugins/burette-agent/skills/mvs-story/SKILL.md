@@ -13,25 +13,44 @@ scene tree per snapshot.
 
 ## Workflow
 
-1. Write a short storyboard before generating JSON. Give every step one
-   scientific purpose and one user-facing conclusion.
-2. Build a complete `root` scene for every snapshot. Keep selectors,
+1. Call `burette.list_story_templates`. Reuse the closest installed scaffold
+   when its scientific purpose matches; otherwise write a short storyboard
+   before generating JSON. Give every step one scientific purpose and one
+   user-facing conclusion.
+2. For a matching scaffold, call `burette.create_story_from_template` with all
+   required variables and local resources. Treat the result as a starting
+   point: replace generic prose with observed evidence and preserve its
+   scientific caveats.
+3. Build or customize a complete `root` scene for every snapshot. Keep selectors,
    representations, colors, labels, primitives, and camera settings inside the
    snapshot so any step can be loaded independently.
-3. Give every snapshot a unique stable `key`, concise `title`, markdown
+4. Give every snapshot a unique stable `key`, concise `title`, markdown
    `description`, `linger_duration_ms`, and `transition_duration_ms`.
-4. Call `burette.create_story` with the Story and an output ending in `.mvsj`
+5. When authoring without a template, call `burette.create_story` with the Story and an output ending in `.mvsj`
    or `.mvsx`. For local or relative resources, pass a `resources` mapping and
    use `.mvsx`; do not hand off a broken standalone `.mvsj`.
-5. Call `burette.validate_story` on the resulting file.
-6. Open it with `burette.open_workspace`, open the returned Browser URL when
+6. Call `burette.validate_story` on the resulting file.
+7. Open it with `burette.open_workspace`, open the returned Browser URL when
    required, and wait for workspace readiness.
-7. Call `burette.observe_story`. Confirm the title, step count, current key,
+8. Call `burette.observe_story`. Confirm the title, step count, current key,
    description, and playback state.
-8. Exercise `burette.control_story` with at least `next` and `previous`; use
+9. Exercise `burette.control_story` with at least `next` and `previous`; use
    `goto`, `play`, and `pause` when the user asked for them.
-9. Run Browser visual QA on the first step and one transitioned step. A valid
+10. Run Browser visual QA on the first step and one transitioned step. A valid
    JSON file alone does not prove that structures, labels, or resources render.
+
+## Installed Templates
+
+- `structure-overview`: global fold to ligand context.
+- `binding-site-tour`: overview, pocket focus, and evidence-qualified interpretation.
+- `docking-pose-comparison`: receptor, two poses, and a consistently encoded overlay.
+- `aligned-structure-comparison`: reference, candidate, and overlay; inputs must
+  already share a coordinate frame.
+
+The template catalog declares variables, storyboard purpose/evidence, and
+caveats. Templates do not compute contacts, docking confidence, affinity,
+alignment, RMSD, or trajectory metrics. Add those claims only after a named
+calculation and include method status, units, and uncertainty in the step text.
 
 ## Authoring Shape
 

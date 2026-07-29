@@ -17,6 +17,36 @@ const STORY_TOTAL_STRING_LIMIT = 64 * 1024;
 const STORY_NODE_LIMIT = 2000;
 
 export function registerMvsStory(server) {
+  registerAppTool(server, "burette.list_story_templates", {
+    title: "List MolViewSpec Story Templates",
+    description: "List installed, reusable MolViewSpec Story templates with required variables, storyboard purposes, and scientific caveats.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _meta: { ui: { visibility: ["model"] } },
+  }, async () => cliStoryResult("burette.list_story_templates", await runBuretteAgent(["story-template-list"])));
+
+  registerAppTool(server, "burette.create_story_from_template", {
+    title: "Create MolViewSpec Story From Template",
+    description: "Instantiate an installed Story template with explicit variables and write a validated MVSJ or self-contained MVSX archive.",
+    inputSchema: {
+      templateId: z.string().trim(),
+      variables: z.record(z.string()).optional(),
+      outputPath: z.string().trim(),
+      resources: z.record(z.string()).optional(),
+      overwrite: z.boolean().optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    _meta: { ui: { visibility: ["model"] } },
+  }, async input => {
+    const pathError = validateNativeStoryPaths(input.outputPath, input.resources || {});
+    if (pathError) return storyFailure("burette.create_story_from_template", pathError);
+    const args = ["story-template-create", "--template", input.templateId, "--output", input.outputPath];
+    for (const [name, value] of Object.entries(input.variables || {})) args.push("--var", `${name}=${value}`);
+    for (const [archivePath, sourcePath] of Object.entries(input.resources || {})) args.push("--asset", `${archivePath}=${sourcePath}`);
+    if (input.overwrite === true) args.push("--overwrite");
+    return cliStoryResult("burette.create_story_from_template", await runBuretteAgent(args));
+  });
+
   registerAppTool(server, "burette.create_story", {
     title: "Create MolViewSpec Story",
     description: "Validate and write a multi-step MolViewSpec Story as MVSJ or a self-contained MVSX archive without overwriting an existing file by default.",
