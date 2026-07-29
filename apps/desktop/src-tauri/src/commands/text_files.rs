@@ -1,4 +1,5 @@
 use super::numpy_artifact::{is_numpy_artifact_extension, numpy_artifact_text_summary};
+use base64::Engine;
 use flate2::read::GzDecoder;
 use serde::Serialize;
 use std::fs;
@@ -9,6 +10,8 @@ use tauri::Runtime;
 use crate::menu::OpenDocumentRegistry;
 
 const TEXT_FILE_READ_LIMIT: usize = 12 * 1024 * 1024;
+const IMAGE_PREVIEW_READ_LIMIT: u64 = 24 * 1024 * 1024;
+const IMAGE_PREVIEW_BATCH_READ_LIMIT: u64 = 48 * 1024 * 1024;
 const OPENMM_BINARY_ARTIFACT_EXTENSIONS: &[&str] = &["chk", "checkpoint"];
 const MOLECULAR_BINARY_METADATA_EXTENSIONS: &[&str] = &[
     "chk",
@@ -72,6 +75,7 @@ pub(crate) fn open_text_files<R: Runtime>(
 ) -> Result<OpenTextFilesResult, String> {
     let mut documents = Vec::new();
     let mut errors = Vec::new();
+    let mut remaining_image_preview_bytes = IMAGE_PREVIEW_BATCH_READ_LIMIT;
     for path in paths {
         let path = PathBuf::from(&path);
         let path = match canonical_text_file_path(&path) {
@@ -86,8 +90,15 @@ pub(crate) fn open_text_files<R: Runtime>(
             window.label(),
             path,
             open_state_revision,
+            remaining_image_preview_bytes,
         ) {
-            Ok(document) => documents.push(document),
+            Ok(document) => {
+                if document.language == "image" && !document.content.is_empty() {
+                    remaining_image_preview_bytes =
+                        remaining_image_preview_bytes.saturating_sub(document.byte_count);
+                }
+                documents.push(document);
+            }
             Err(error) => errors.push(error),
         }
     }
@@ -107,9 +118,10 @@ fn open_text_file_with_provisional_claim(
     window_label: &str,
     path: PathBuf,
     baseline_revision: u64,
+    image_preview_limit: u64,
 ) -> Result<TextFileDocument, String> {
     let claim_id = registry.begin_provisional_open(window_label, &path, baseline_revision)?;
-    match read_text_file_impl(path, None) {
+    match read_text_file_impl_with_image_limit(path, None, image_preview_limit) {
         Ok(mut document) => {
             document.open_claim_id = claim_id;
             Ok(document)
@@ -126,6 +138,14 @@ fn open_text_file_with_provisional_claim(
 fn read_text_file_impl(
     path: PathBuf,
     max_bytes: Option<usize>,
+) -> Result<TextFileDocument, String> {
+    read_text_file_impl_with_image_limit(path, max_bytes, IMAGE_PREVIEW_READ_LIMIT)
+}
+
+fn read_text_file_impl_with_image_limit(
+    path: PathBuf,
+    max_bytes: Option<usize>,
+    image_preview_limit: u64,
 ) -> Result<TextFileDocument, String> {
     let metadata = fs::metadata(&path).map_err(|err| format!("{}: {err}", path.display()))?;
     if !metadata.is_file() {
@@ -152,6 +172,33 @@ fn read_text_file_impl(
             open_claim_id: None,
         });
     }
+    if let Some(mime_type) = image_mime_type(&extension) {
+        let preview_limit = image_preview_limit.min(IMAGE_PREVIEW_READ_LIMIT);
+        let (content, truncated) = if metadata.len() <= preview_limit {
+            let bytes = fs::read(&path).map_err(|err| format!("{}: {err}", path.display()))?;
+            (
+                format!(
+                    "data:{mime_type};base64,{}",
+                    base64::engine::general_purpose::STANDARD.encode(bytes)
+                ),
+                false,
+            )
+        } else {
+            (String::new(), true)
+        };
+        return Ok(TextFileDocument {
+            id: uuid::Uuid::new_v4().to_string(),
+            path: path.to_string_lossy().to_string(),
+            title: file_title(&path),
+            extension,
+            language: "image".to_string(),
+            byte_count: metadata.len(),
+            content,
+            truncated,
+            modified_at,
+            open_claim_id: None,
+        });
+    }
     let read_limit = read_limit(max_bytes);
     let text_bytes = readable_text_bytes(&path, &extension, read_limit + 1)?;
     if looks_binary(&text_bytes) {
@@ -169,7 +216,18 @@ fn read_text_file_impl(
                 open_claim_id: None,
             });
         }
-        return Err(format!("{} is not a text file", path.display()));
+        return Ok(TextFileDocument {
+            id: uuid::Uuid::new_v4().to_string(),
+            path: path.to_string_lossy().to_string(),
+            title: file_title(&path),
+            extension: extension.clone(),
+            language: "binary metadata".to_string(),
+            byte_count: metadata.len(),
+            content: binary_file_summary(&path, metadata.len(), &extension),
+            truncated: false,
+            modified_at,
+            open_claim_id: None,
+        });
     }
 
     let truncated = text_bytes.len() > read_limit;
@@ -217,6 +275,31 @@ fn molecular_binary_artifact_summary(path: &Path, byte_count: u64) -> String {
         byte_count,
         extension
     )
+}
+
+fn binary_file_summary(path: &Path, byte_count: u64, extension: &str) -> String {
+    format!(
+        "Binary file\n\nFile: {}\nSize: {} bytes\nFormat: {}\n\nBurette does not have an inline renderer for this binary format yet. The file remains available in the project and can be opened with its default application.\n",
+        path.display(),
+        byte_count,
+        if extension.is_empty() {
+            "unknown".to_string()
+        } else {
+            format!(".{extension}")
+        }
+    )
+}
+
+fn image_mime_type(extension: &str) -> Option<&'static str> {
+    match extension {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        "svg" => Some("image/svg+xml"),
+        _ => None,
+    }
 }
 
 fn looks_binary(bytes: &[u8]) -> bool {
@@ -272,6 +355,8 @@ fn readable_text_bytes(path: &Path, extension: &str, limit: usize) -> Result<Vec
 
 fn language_for_extension(extension: &str) -> &'static str {
     match extension {
+        "csv" => "csv",
+        "tsv" => "tsv",
         "md" | "markdown" | "mdx" => "markdown",
         "sh" | "bash" | "zsh" => "shell",
         "js" | "jsx" | "mjs" | "cjs" => "javascript",
@@ -294,7 +379,7 @@ fn language_for_extension(extension: &str) -> &'static str {
 mod tests {
     use super::{
         canonical_text_file_path, open_text_file_with_provisional_claim, read_text_file_impl,
-        TEXT_FILE_READ_LIMIT,
+        read_text_file_impl_with_image_limit, IMAGE_PREVIEW_READ_LIMIT, TEXT_FILE_READ_LIMIT,
     };
     use crate::menu::OpenDocumentRegistry;
     use flate2::write::GzEncoder;
@@ -356,9 +441,14 @@ mod tests {
         let canonical = canonical_text_file_path(&path).expect("fixture should canonicalize");
         let registry = OpenDocumentRegistry::default();
 
-        let document =
-            open_text_file_with_provisional_claim(&registry, "main", canonical.clone(), 7)
-                .expect("relative text file should open");
+        let document = open_text_file_with_provisional_claim(
+            &registry,
+            "main",
+            canonical.clone(),
+            7,
+            IMAGE_PREVIEW_READ_LIMIT,
+        )
+        .expect("relative text file should open");
 
         assert!(canonical.is_absolute());
         assert_eq!(document.path, canonical.to_string_lossy());
@@ -368,14 +458,20 @@ mod tests {
 
     #[test]
     fn failed_text_open_releases_its_provisional_claim() {
-        let path = temp_path("data.bin");
-        fs::write(&path, [b'a', 0, b'b']).expect("fixture should write");
+        let path = temp_path("broken.mae.gz");
+        fs::write(&path, [b'n', b'o', b't', b'-', b'g', b'z']).expect("fixture should write");
         let path = canonical_text_file_path(&path).expect("fixture should canonicalize");
         let registry = OpenDocumentRegistry::default();
 
-        let error = open_text_file_with_provisional_claim(&registry, "main", path.clone(), 7)
-            .expect_err("binary file should fail");
-        assert!(error.contains("is not a text file"));
+        let error = open_text_file_with_provisional_claim(
+            &registry,
+            "main",
+            path.clone(),
+            7,
+            IMAGE_PREVIEW_READ_LIMIT,
+        )
+        .expect_err("binary file should fail");
+        assert!(error.contains("failed to decompress MAEGZ text"));
 
         registry
             .with_write_permit("workspace", &path, None, || Ok(()))
@@ -384,11 +480,38 @@ mod tests {
     }
 
     #[test]
-    fn rejects_binary_file() {
+    fn shows_metadata_for_unknown_binary_file() {
         let path = temp_path("data.bin");
         fs::write(&path, [b'a', 0, b'b']).expect("fixture should write");
-        let error = read_text_file_impl(path.clone(), None).expect_err("binary file should fail");
-        assert!(error.contains("is not a text file"));
+        let document =
+            read_text_file_impl(path.clone(), None).expect("binary metadata should read");
+        assert_eq!(document.language, "binary metadata");
+        assert!(document
+            .content
+            .contains("Burette does not have an inline renderer"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn reads_png_as_inline_image_preview() {
+        let path = temp_path("plot.png");
+        fs::write(&path, [0x89, b'P', b'N', b'G']).expect("fixture should write");
+        let document = read_text_file_impl(path.clone(), None).expect("image should read");
+        assert_eq!(document.language, "image");
+        assert!(document.content.starts_with("data:image/png;base64,"));
+        assert!(!document.truncated);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn omits_image_content_when_the_remaining_batch_budget_is_too_small() {
+        let path = temp_path("bounded-plot.png");
+        fs::write(&path, [0x89, b'P', b'N', b'G']).expect("fixture should write");
+        let document = read_text_file_impl_with_image_limit(path.clone(), None, 3)
+            .expect("image metadata should still read");
+        assert_eq!(document.language, "image");
+        assert!(document.content.is_empty());
+        assert!(document.truncated);
         let _ = fs::remove_file(path);
     }
 

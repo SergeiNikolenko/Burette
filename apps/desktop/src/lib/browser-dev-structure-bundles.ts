@@ -7,17 +7,6 @@ export async function expandBrowserDevStructureBundles(paths: string[]) {
   const expanded: string[] = [];
   const seen = new Set<string>();
   const addPath = (path: string) => {
-    const extension = pathExtension(path);
-    if (
-      !extension ||
-      (!structureExtensions.has(extension) &&
-        !isXtbOptimizationTrajectoryLogPath(path) &&
-        !isSpectrumPath(path, extension) &&
-        !structureAndTextExtensions.has(extension) &&
-        !preferredTextExtensions.has(extension))
-    ) {
-      return;
-    }
     if (!seen.has(path)) {
       seen.add(path);
       expanded.push(path);
@@ -25,6 +14,7 @@ export async function expandBrowserDevStructureBundles(paths: string[]) {
   };
   for (const path of paths) {
     addPath(path);
+    if (!isStructureBundleCandidate(path)) continue;
     try {
       const response = await fetch(`/__burette/file-bundle?path=${encodeURIComponent(path)}`, { cache: "no-store" });
       if (!response.ok) continue;
@@ -43,6 +33,17 @@ export async function expandBrowserDevStructureBundles(paths: string[]) {
     }
   }
   return expanded;
+}
+
+function isStructureBundleCandidate(path: string) {
+  const extension = pathExtension(path);
+  return Boolean(extension) && (
+    structureExtensions.has(extension)
+    || isXtbOptimizationTrajectoryLogPath(path)
+    || isSpectrumPath(path, extension)
+    || structureAndTextExtensions.has(extension)
+    || preferredTextExtensions.has(extension)
+  );
 }
 
 export function isXtbOptimizationTrajectoryLogPath(path: string) {
