@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(path, "utf8");
-const [filePage, dock, toolbar, scene, overlay, info, store, documentTypes, rustRuntime] = await Promise.all([
+const [filePage, dock, toolbar, rail, scene, overlay, info, store, documentTypes, rustRuntime] = await Promise.all([
   read("apps/desktop/src/components/editor-area/page-kinds/file.tsx"),
   read("apps/desktop/src/components/dock-panel.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-toolbar.tsx"),
+  read("apps/desktop/src/components/mesoscale/mesoscale-viewport-rail.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-scene-panel.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-scene-overlay.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-info-panel.tsx"),
@@ -53,11 +54,23 @@ assert.match(scene, /onContextMenu/);
 assert.match(scene, /showNativeContextMenu/);
 assert.match(scene, /forceWeb: true/);
 assert.match(scene, /mesoscale-tree-bar/);
+assert.match(scene, /mesoscale-tree-color/);
+assert.match(scene, /kind: "swatches"/);
+assert.match(scene, /styleQueues/);
+assert.match(scene, /queueStyleChange/);
+assert.doesNotMatch(scene, /mesoscale-style-editor/);
 assert.match(toolbar, /setPreference\("theme"/);
-assert.match(toolbar, /aria-label="Viewer theme"/);
-assert.doesNotMatch(toolbar, /option value="auto"/);
+assert.match(toolbar, /Switch to \$\{nextTheme\} theme/);
+assert.doesNotMatch(toolbar, /SunMoon/);
+assert.doesNotMatch(toolbar, /<select[^>]*aria-label="Viewer theme"/);
+assert.match(toolbar, /M8 5h2v2H8V5/);
+for (const action of ["resetCamera", "orientAxes", "resetAxes", "exportPng", "setIllumination", "setMotion", "setSelectionMode"]) {
+  assert.ok(rail.includes(`type: "${action}"`), `Burette viewport rail must expose ${action}`);
+}
+assert.match(rail, /Burette viewport controls/);
 assert.match(toolbar, /setPointerCapture/);
 assert.match(toolbar, /TOOLBAR_POSITION_KEY/);
+assert.match(toolbar, /railFootprint/);
 assert.match(toolbar, /positionMesoscaleControls/);
 
 console.log("mesoscale UI ownership contract passed");

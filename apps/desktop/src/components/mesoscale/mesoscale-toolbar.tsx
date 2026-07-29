@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { ChevronDown, GripVertical, SunMoon } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { ViewerDocument, ViewerPreferences } from "../../types";
 import type { ShellActions } from "../types";
 import { positionMesoscaleControls, requestMesoscale, useMesoscaleStore } from "../../stores/mesoscale-store";
 import type { MesoscaleGraphicsMode } from "../../lib/mesoscale-contract";
 import { resolveThemeMode, useSystemThemeMode } from "../../lib/theme";
+import { MesoscaleViewportRail } from "./mesoscale-viewport-rail";
 
 const GRAPHICS: Array<{ value: MesoscaleGraphicsMode; label: string }> = [
   { value: "ultra", label: "Ultra" },
@@ -45,6 +46,8 @@ function toolbarBounds(toolbar: HTMLElement) {
   if (!stage) return null;
   const stageRect = stage.getBoundingClientRect();
   const toolbarRect = toolbar.getBoundingClientRect();
+  const railRect = toolbar.querySelector<HTMLElement>(".mesoscale-viewport-rail:not(.hidden)")?.getBoundingClientRect();
+  const railFootprint = railRect?.height ? railRect.height + 6 : 0;
   const styles = getComputedStyle(stage);
   const canvasLeft = Number.parseFloat(styles.getPropertyValue("--mesoscale-canvas-left")) || 0;
   const canvasRight = Number.parseFloat(styles.getPropertyValue("--mesoscale-canvas-right")) || 0;
@@ -55,7 +58,7 @@ function toolbarBounds(toolbar: HTMLElement) {
     minLeft: canvasLeft + TOOLBAR_MARGIN,
     maxLeft: Math.max(canvasLeft + TOOLBAR_MARGIN, stageRect.width - canvasRight - toolbarRect.width - TOOLBAR_MARGIN),
     minTop: TOOLBAR_MARGIN,
-    maxTop: Math.max(TOOLBAR_MARGIN, stageRect.height - toolbarRect.height - TOOLBAR_MARGIN),
+    maxTop: Math.max(TOOLBAR_MARGIN, stageRect.height - toolbarRect.height - railFootprint - TOOLBAR_MARGIN),
   };
 }
 
@@ -78,6 +81,7 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
   const [position, setPosition] = useState<ToolbarPosition | null>(readToolbarPosition);
   const systemTheme = useSystemThemeMode();
   const effectiveTheme = resolveThemeMode(preferences.theme, systemTheme);
+  const nextTheme = effectiveTheme === "dark" ? "light" : "dark";
   const disabled = !session || session.status === "loading" || session.status === "disposed";
   const run = (action: Parameters<typeof requestMesoscale>[1]) => void requestMesoscale(document.id, action).catch(() => undefined);
   const toggleRegion = (region: "left" | "right") => run({
@@ -125,7 +129,7 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
       observer.disconnect();
       window.removeEventListener("resize", update);
     };
-  }, [collapsed, document.id, position, session?.status, session?.summary?.layout.left, session?.summary?.layout.right]);
+  }, [collapsed, document.id, position, session?.status, session?.summary?.layout.left, session?.summary?.layout.right, session?.summary?.selectedRefs.length]);
 
   const onGripPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
@@ -226,15 +230,13 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
           </select>
           <ChevronDown size={13} aria-hidden="true" />
         </label>
-        <label className="mesoscale-toolbar-select mesoscale-toolbar-theme" title="Viewer theme">
-          <SunMoon size={13} aria-hidden="true" />
-          <span className="sr-only">Viewer theme</span>
-          <select value={effectiveTheme} aria-label="Viewer theme" onChange={(event) => actions.setPreference("theme", event.target.value as "light" | "dark")}>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-          <ChevronDown size={13} aria-hidden="true" />
-        </label>
+        <button
+          type="button"
+          className="mesoscale-toolbar-theme"
+          aria-label={`Switch to ${nextTheme} theme`}
+          title={`Switch to ${nextTheme} theme`}
+          onClick={() => actions.setPreference("theme", nextTheme)}
+        >{nextTheme[0].toUpperCase() + nextTheme.slice(1)}</button>
       </div>
       <button
         type="button"
@@ -248,8 +250,9 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
         onPointerCancel={cancelGripDrag}
         onClick={toggleCollapsed}
       >
-        <GripVertical size={15} />
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor" /></svg>
       </button>
+      <MesoscaleViewportRail document={document} hidden={collapsed} />
     </div>
   );
 }

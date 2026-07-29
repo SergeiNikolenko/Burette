@@ -221,6 +221,7 @@ body .msp-plugin .msp-highlight-info-additional {
   color: var(--buret-meso-muted) !important;
 }
 
+body.burette-mesoscale-owned-chrome .msp-plugin .msp-viewport-controls,
 body .msp-plugin .burette-mesoscale-controls-hidden {
   display: none !important;
 }

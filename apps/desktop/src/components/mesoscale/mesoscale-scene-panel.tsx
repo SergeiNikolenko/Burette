@@ -4,19 +4,35 @@ import type { ViewerDocument } from "../../types";
 import { loadMesoscaleHierarchy, previewMesoscaleObject, requestMesoscale, setMesoscaleVisibilityOptimistic, useMesoscaleStore } from "../../stores/mesoscale-store";
 import type { MesoscaleHierarchyObject } from "../../lib/mesoscale-contract";
 import { showNativeContextMenu } from "../native-context-menu";
+import type { MenuItemSpec } from "../menu-types";
 
 type SceneSection = "objects" | "snapshots" | "export";
+type SetStyleAction = Extract<Parameters<typeof requestMesoscale>[1], { type: "setStyle" }>;
+
+const MESOSCALE_COLORS = ["#af52de", "#0a84ff", "#40c8e0", "#32d74b", "#ffd60a", "#ff9f0a", "#ff453a", "#ff6482", "#98989d", "#f2f2f7"];
+const styleQueues = new Map<string, Promise<void>>();
+
+function colorHex(color: number | null) {
+  return color === null ? null : `#${color.toString(16).padStart(6, "0")}`;
+}
+
+function queueStyleChange(documentId: string, action: SetStyleAction) {
+  const previous = styleQueues.get(documentId) ?? Promise.resolve();
+  const next = previous
+    .then(() => requestMesoscale(documentId, action))
+    .then(() => undefined, () => undefined);
+  styleQueues.set(documentId, next);
+  void next.then(() => {
+    if (styleQueues.get(documentId) === next) styleQueues.delete(documentId);
+  });
+}
 
 export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) {
   const session = useMesoscaleStore((state) => state.sessions[document.id]);
   const [section, setSection] = useState<SceneSection>("objects");
   const [filter, setFilter] = useState("");
   const [snapshotName, setSnapshotName] = useState("");
-  const [styleColor, setStyleColor] = useState("#b9a4ff");
-  const [styleOpacity, setStyleOpacity] = useState(1);
-  const [styleDirty, setStyleDirty] = useState(false);
   const [collapsedRefs, setCollapsedRefs] = useState<Set<string>>(() => new Set());
-  const selected = session?.hierarchy.find((item) => item.selected) ?? null;
   const tree = useMemo(() => sceneTree(session?.hierarchy ?? []), [session?.hierarchy]);
 
   useEffect(() => {
@@ -28,7 +44,6 @@ export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) 
   }, [document.id, filter, session?.status === "loading", session?.status === "disposed"]);
 
   useEffect(() => () => previewMesoscaleObject(document.id, null), [document.id]);
-  useEffect(() => setStyleDirty(false), [selected?.ref]);
 
   const run = (action: Parameters<typeof requestMesoscale>[1]) => requestMesoscale(document.id, action).catch(() => undefined);
   return (
@@ -64,14 +79,6 @@ export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) 
               <button className="mesoscale-load-more" type="button" onClick={() => void loadMesoscaleHierarchy(document.id, filter, session.hierarchyNextCursor ?? 0).catch(() => undefined)}>Show more</button>
             ) : null}
           </div>
-          {selected ? (
-            <section className="mesoscale-style-editor">
-              <div className="mesoscale-section-title">Appearance · {selected.label}</div>
-              <label>Color <input type="color" value={styleColor} onChange={(event) => { setStyleColor(event.target.value); setStyleDirty(true); }} /></label>
-              <label>Opacity <input type="range" min="0" max="1" step="0.05" value={styleOpacity} onChange={(event) => { setStyleOpacity(Number(event.target.value)); setStyleDirty(true); }} /><output>{Math.round(styleOpacity * 100)}%</output></label>
-              <button type="button" className="mesoscale-primary-button" disabled={!styleDirty} onClick={() => { void run({ type: "setStyle", ref: selected.ref, color: Number.parseInt(styleColor.slice(1), 16), opacity: styleOpacity }); setStyleDirty(false); }}>Apply appearance</button>
-            </section>
-          ) : null}
         </>
       ) : null}
       {section === "snapshots" ? (
@@ -125,6 +132,16 @@ function sceneObjectDetail(item: MesoscaleHierarchyObject, childCount: number) {
   return description && description.toLocaleLowerCase() !== item.label.toLocaleLowerCase() ? description : item.kind;
 }
 
+function appearanceMenu(item: MesoscaleHierarchyObject, run: (action: SetStyleAction) => void): MenuItemSpec[] {
+  const activeColor = colorHex(item.color) ?? undefined;
+  return [
+    { kind: "label", id: "mesoscale-appearance-label", text: `Appearance · ${item.label}` },
+    { kind: "swatches", id: "mesoscale-colors", colors: MESOSCALE_COLORS, activeColor, label: "Color", action: (color) => run({ type: "setStyle", ref: item.ref, color: Number.parseInt(color.slice(1), 16) }) },
+    { kind: "number", id: "mesoscale-opacity", label: "Opacity", value: item.opacity ?? 1, min: 0, max: 1, step: 0.05, action: (opacity) => run({ type: "setStyle", ref: item.ref, opacity }) },
+    { kind: "number", id: "mesoscale-emissive", label: "Emissive", value: item.emissive ?? 0, min: 0, max: 1, step: 0.05, action: (emissive) => run({ type: "setStyle", ref: item.ref, emissive }) },
+  ];
+}
+
 function SceneObjectBranch({
   documentId,
   node,
@@ -139,6 +156,7 @@ function SceneObjectBranch({
   const { item, children } = node;
   const hovered = useMesoscaleStore((state) => state.sessions[documentId]?.hoveredRef === item.ref);
   const run = (action: Parameters<typeof requestMesoscale>[1]) => void requestMesoscale(documentId, action).catch(() => undefined);
+  const runStyle = (action: SetStyleAction) => queueStyleChange(documentId, action);
   const collapsed = collapsedRefs.has(item.ref);
   const detail = sceneObjectDetail(item, children.length);
   const setVisible = (visible: boolean) => {
@@ -152,6 +170,8 @@ function SceneObjectBranch({
     previewMesoscaleObject(documentId, item.ref);
     void showNativeContextMenu([
       { kind: "label", id: "mesoscale-object-label", text: item.label },
+      ...appearanceMenu(item, runStyle),
+      { kind: "separator" },
       { kind: "item", id: "mesoscale-select", text: "Select", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "replace" }) },
       { kind: "item", id: "mesoscale-add-selection", text: "Add to Selection", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "extend" }) },
       { kind: "item", id: "mesoscale-toggle-selection", text: item.selected ? "Remove from Selection" : "Toggle Selection", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "toggle" }) },
@@ -165,6 +185,13 @@ function SceneObjectBranch({
       ] : []),
     ], { x: event.clientX, y: event.clientY }, { forceWeb: true });
   };
+  const openAppearanceMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    void showNativeContextMenu(appearanceMenu(item, runStyle), { x: rect.right + 6, y: rect.top }, { forceWeb: true });
+  };
+  const actualColor = colorHex(item.color);
   return (
     <div
       className="mesoscale-tree-branch"
@@ -194,10 +221,11 @@ function SceneObjectBranch({
           onFocus={() => previewMesoscaleObject(documentId, item.ref)}
           onBlur={() => previewMesoscaleObject(documentId, null)}
         >
-          <span className="mesoscale-tree-bar" data-kind={item.kind} aria-hidden="true" />
+          <span className="mesoscale-tree-bar" data-kind={item.kind} style={actualColor ? { backgroundColor: actualColor } : undefined} aria-hidden="true" />
           <strong>{item.label}</strong>
           <small>{detail}</small>
         </button>
+        <button className="mesoscale-tree-color" type="button" aria-label={`Color ${item.label}`} title={`Color ${item.label}`} style={actualColor ? { backgroundColor: actualColor } : undefined} onClick={openAppearanceMenu} />
         <button className="mesoscale-tree-action" type="button" disabled={item.kind === "mesh"} aria-label={`Focus ${item.label}`} title="Focus" onClick={() => run({ type: "focusObject", ref: item.ref })}><Focus size={14} /></button>
         <button
           className="mesoscale-tree-action"

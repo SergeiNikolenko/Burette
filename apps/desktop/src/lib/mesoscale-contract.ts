@@ -61,6 +61,9 @@ export type MesoscaleHierarchyObject = {
   selected: boolean;
   elementCount: number;
   instanceCount: number;
+  color: number | null;
+  opacity: number | null;
+  emissive: number | null;
 };
 
 export type MesoscaleHierarchyPage = {
@@ -104,6 +107,8 @@ export type MesoscaleAction =
   | { type: "isolateObjects"; refs: string[] }
   | { type: "setStyle"; ref: string; color?: number; opacity?: number; emissive?: number; clipObjects?: unknown[] }
   | { type: "resetCamera" }
+  | { type: "orientAxes" }
+  | { type: "resetAxes" }
   | { type: "createSnapshot"; name: string; description?: string }
   | { type: "applySnapshot"; id: string }
   | { type: "deleteSnapshot"; id: string }

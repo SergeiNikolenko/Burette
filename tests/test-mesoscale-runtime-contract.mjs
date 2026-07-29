@@ -40,6 +40,7 @@ assert.doesNotMatch(runtime, /burette-mesoscale-hosted \.msp-viewport-controls/)
 assert.match(runtime, /burette-mesoscale-chrome/);
 assert.match(runtime, /applyControlPlacement/);
 assert.match(runtime, /burette-mesoscale-controls-hidden/);
+assert.match(runtime, /burette-mesoscale-owned-chrome/);
 assert.match(runtime, /burette-mesoscale-preview/);
 assert.match(runtime, /MarkerAction\.Highlight/);
 assert.match(runtime, /body\?\.type === "setViewerTheme"/);
@@ -69,7 +70,7 @@ const contract = await read("apps/desktop/src/lib/mesoscale-contract.ts");
 assert.match(contract, /burette-mesoscale\/v2/);
 assert.match(contract, /MESOSCALE_HIERARCHY_PAGE_LIMIT = 128/);
 assert.match(contract, /MesoscaleChromeMessage/);
-for (const action of ["getSummary", "getHierarchyPage", "setSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "setVisibility", "isolateObjects", "setStyle", "exportState"]) {
+for (const action of ["getSummary", "getHierarchyPage", "setSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "exportState"]) {
   assert.ok(contract.includes(`type: "${action}"`), `Mesoscale v2 contract must expose ${action}`);
 }
 assert.match(runtime, /setLayoutRegion\(region/);

@@ -135,6 +135,12 @@ function uniqueCells<T>(cells: T[]) {
 function entitySummary(plugin: MesoscaleExplorer["plugin"], cell: any, parentRef?: string | null) {
   const source = cell?.obj?.data?.sourceData;
   const isStructure = source instanceof Structure;
+  const params = cell?.transform?.params || {};
+  const typeParams = params.type?.params || params;
+  const colorTheme = params.colorTheme;
+  const color = colorTheme?.name === "illustrative"
+    ? colorTheme?.params?.style?.params?.value
+    : colorTheme?.params?.value ?? params.coloring?.params?.color;
   return {
     ref: String(cell?.transform?.ref || ""),
     parentRef: parentRef === undefined ? String(cell?.transform?.parent || "") || null : parentRef,
@@ -144,6 +150,9 @@ function entitySummary(plugin: MesoscaleExplorer["plugin"], cell: any, parentRef
     kind: (isStructure ? "structure" : "mesh") as "structure" | "mesh",
     elementCount: isStructure ? Number(source.elementCount || 0) : 0,
     instanceCount: isStructure ? Math.max(1, Number(source.units?.length || 1)) : Number(cell?.obj?.data?.repr?.renderObjects?.length || 1),
+    color: Number.isInteger(color) ? Number(color) : null,
+    opacity: Number.isFinite(typeParams.alpha) ? Number(typeParams.alpha) : 1,
+    emissive: Number.isFinite(typeParams.emissive) ? Number(typeParams.emissive) : 0,
   };
 }
 
@@ -241,6 +250,9 @@ class MesoscaleRuntimeApi {
         selected: this.selectedRefs.has(item.ref),
         elementCount: 0,
         instanceCount: 0,
+        color: null,
+        opacity: null,
+        emissive: null,
       })),
       ...observed.entities.map((item: ReturnType<typeof entitySummary>) => ({
         ...item,
@@ -278,6 +290,9 @@ class MesoscaleRuntimeApi {
         selected: this.selectedRefs.has(summary.ref),
         elementCount: 0,
         instanceCount: 0,
+        color: null,
+        opacity: null,
+        emissive: null,
       };
     });
     const allGroups = uniqueCells(getAllGroups(this.plugin));
@@ -311,6 +326,18 @@ class MesoscaleRuntimeApi {
 
   async resetCamera() {
     this.plugin.managers.camera.reset(undefined, 250);
+    this.changed();
+    return this.observe();
+  }
+
+  async orientAxes() {
+    this.plugin.managers.camera.orientAxes(undefined, 250);
+    this.changed();
+    return this.observe();
+  }
+
+  async resetAxes() {
+    this.plugin.managers.camera.resetAxes(250);
     this.changed();
     return this.observe();
   }
@@ -638,6 +665,8 @@ class MesoscaleRuntimeApi {
       case "isolateObjects": await this.isolateObjects(action.refs); return this.sceneSummary();
       case "setStyle": await this.styleEntity(action.ref, action); return this.sceneSummary();
       case "resetCamera": await this.resetCamera(); return this.sceneSummary();
+      case "orientAxes": await this.orientAxes(); return this.sceneSummary();
+      case "resetAxes": await this.resetAxes(); return this.sceneSummary();
       case "createSnapshot": await this.createSnapshot(action.name, action.description ?? ""); return this.sceneSummary();
       case "applySnapshot": await this.applySnapshot(action.id); return this.sceneSummary();
       case "deleteSnapshot": await this.deleteSnapshot(action.id); return this.sceneSummary();
@@ -652,7 +681,7 @@ class MesoscaleRuntimeApi {
       case "getCapabilities": return {
         kind: "capabilities",
         apiVersion: MESOSCALE_API_VERSION,
-        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
+        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
         graphicsModes: ["ultra", "quality", "balanced", "performance", "custom"],
         hierarchyPageLimit: MESOSCALE_HIERARCHY_PAGE_LIMIT,
       };
@@ -716,20 +745,11 @@ function applyHostedUi(hosted: boolean) {
 }
 
 function applyControlPlacement(placement: MesoscaleControlPlacement) {
+  document.body?.classList.add("burette-mesoscale-owned-chrome");
   const controls = document.querySelector<HTMLElement>(".msp-viewport-controls");
   if (!controls) return;
-  controls.classList.toggle("burette-mesoscale-controls-hidden", !placement.visible);
-  if (!placement.visible) return;
-  const bounds = controls.getBoundingClientRect();
-  const width = bounds.width || 36;
-  const height = bounds.height || 240;
-  const alignRight = placement.left + placement.width / 2 >= window.innerWidth / 2;
-  const preferredLeft = alignRight ? placement.left + placement.width - width : placement.left;
-  const below = placement.top + placement.height + 4;
-  const preferredTop = below + height + 8 <= window.innerHeight ? below : placement.top - height - 4;
-  controls.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, preferredLeft))}px`;
-  controls.style.right = "auto";
-  controls.style.top = `${Math.max(8, Math.min(window.innerHeight - height - 8, preferredTop))}px`;
+  controls.classList.add("burette-mesoscale-controls-hidden");
+  controls.dataset.buretteHostVisible = placement.visible ? "1" : "0";
 }
 
 function installActionBridge(runtime: MesoscaleRuntimeApi) {

@@ -6232,10 +6232,10 @@ input.structure-inspector-composition-search {
   align-items: center;
   gap: 2px;
   max-width: calc(100% - 32px);
-  min-height: 34px;
-  padding: 4px;
+  min-height: 36px;
+  padding: 3px;
   border: 1px solid var(--line-subtle);
-  border-radius: 10px;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--bg-base) 82%, transparent);
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.16);
   backdrop-filter: blur(18px);
@@ -6243,33 +6243,63 @@ input.structure-inspector-composition-search {
   user-select: none;
 }
 .mesoscale-toolbar.dragging { transition: none; }
-.mesoscale-toolbar-content { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; }
+.mesoscale-toolbar-content { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
 .mesoscale-toolbar.collapsed .mesoscale-toolbar-content { display: none; }
 .mesoscale-toolbar.collapsed { min-height: 36px; padding: 0; border-color: transparent; background: transparent; box-shadow: none; backdrop-filter: none; }
-.mesoscale-toolbar button,
+.mesoscale-toolbar-content button,
+.mesoscale-toolbar > .mesoscale-toolbar-grip,
 .mesoscale-toolbar-select {
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
+  height: 28px;
+  display: grid;
+  place-items: center;
   gap: 6px;
   padding: 0 8px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   color: var(--text-secondary);
   background: transparent;
 }
-.mesoscale-toolbar button:hover:not(:disabled),
+.mesoscale-toolbar-content button:hover:not(:disabled),
+.mesoscale-toolbar > .mesoscale-toolbar-grip:hover:not(:disabled),
 .mesoscale-toolbar-select:hover { background: var(--surface-hover); color: var(--text-primary); }
-.mesoscale-toolbar button.active { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 20%, var(--surface-subtle)); }
+.mesoscale-toolbar-content button.active { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 20%, var(--surface-subtle)); }
 .mesoscale-toolbar button:disabled { opacity: 0.45; }
+.mesoscale-toolbar-select { display: flex; align-items: center; }
 .mesoscale-toolbar-select select { width: 82px; border: 0; outline: 0; color: inherit; background: transparent; appearance: none; }
 .mesoscale-toolbar-select svg { flex: 0 0 auto; pointer-events: none; }
-.mesoscale-toolbar .mesoscale-toolbar-letter { width: 26px; padding: 0; font-size: 11px; font-weight: 650; }
-.mesoscale-toolbar .mesoscale-toolbar-theme { min-width: 0; padding-inline: 6px 4px; font-size: 11px; }
-.mesoscale-toolbar .mesoscale-toolbar-theme select { width: 46px; }
-.mesoscale-toolbar .mesoscale-toolbar-grip { width: 24px; padding: 0; cursor: grab; touch-action: none; }
+.mesoscale-toolbar .mesoscale-toolbar-letter { display: grid; width: 28px; height: 28px; place-items: center; padding: 0; font-size: 12px; font-weight: 400; line-height: 1; }
+.mesoscale-toolbar .mesoscale-toolbar-theme { min-width: 28px; padding-inline: 7px; font-size: 12px; font-weight: 400; white-space: nowrap; }
+.mesoscale-toolbar .mesoscale-toolbar-grip { width: 28px; padding: 0; cursor: grab; touch-action: none; color: currentColor; opacity: 0.66; }
+.mesoscale-toolbar .mesoscale-toolbar-grip svg { width: 17px; height: 17px; display: block; }
 .mesoscale-toolbar.dragging .mesoscale-toolbar-grip { cursor: grabbing; }
-.mesoscale-toolbar.collapsed .mesoscale-toolbar-grip { width: 36px; height: 36px; border: 1px solid var(--line-subtle); border-radius: 12px; background: color-mix(in srgb, var(--bg-base) 82%, transparent); box-shadow: 0 8px 28px rgb(0 0 0 / 0.16); backdrop-filter: blur(18px); }
+.mesoscale-toolbar.collapsed .mesoscale-toolbar-grip { width: 36px; height: 36px; border: 1px solid var(--line-subtle); border-radius: 12px; background: color-mix(in srgb, var(--bg-base) 82%, transparent); box-shadow: 0 8px 28px rgb(0 0 0 / 0.16); opacity: 1; backdrop-filter: blur(18px); }
+
+.mesoscale-viewport-rail {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 36px;
+  padding: 3px;
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-base) 92%, transparent);
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.22), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  backdrop-filter: blur(10px);
+}
+.mesoscale-viewport-rail.hidden { display: none; }
+.mesoscale-rail-button { display: grid; width: 28px; min-width: 28px; height: 28px; min-height: 28px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 8px; color: inherit; background: transparent; }
+.mesoscale-rail-button svg { width: 16px; height: 16px; }
+.mesoscale-rail-button:hover:not(:disabled) { background: var(--surface-hover); }
+.mesoscale-rail-button:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: -1px; }
+.mesoscale-rail-button[aria-pressed="true"],
+.mesoscale-rail-button[data-motion="spin"],
+.mesoscale-rail-button[data-motion="rock"] { color: var(--accent); background: var(--surface-hover); }
+.mesoscale-rail-button:disabled { opacity: 0.45; }
+.mesoscale-clear-selection { color: #ff6961; border-color: color-mix(in srgb, #ff6961 72%, transparent); background: color-mix(in srgb, #ff6961 8%, transparent); }
 
 .mesoscale-scene-toggle {
   position: absolute;
@@ -6340,6 +6370,8 @@ input.structure-inspector-composition-search {
 .mesoscale-object-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mesoscale-object-main strong { flex: 0 1 auto; color: var(--text-primary); font-size: 12px; line-height: 1.25; }
 .mesoscale-object-main small { flex: 1 1 auto; min-width: 0; color: var(--text-muted); font-size: 10.5px; line-height: 1.25; }
+.mesoscale-tree-color { flex: 0 0 20px; width: 20px; height: 20px; padding: 0; border: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent) !important; border-radius: 5px; background: var(--surface-subtle-strong); box-shadow: inset -3px 0 0 color-mix(in srgb, #fff 28%, transparent); }
+.mesoscale-tree-color:hover { outline: 1px solid var(--focus-border); outline-offset: -1px; }
 .mesoscale-tree-action { flex: 0 0 20px; width: 20px; height: 20px; padding: 0; border-radius: 4px; opacity: 0; transition: opacity 90ms ease; }
 .mesoscale-object-row:hover .mesoscale-tree-action,
 .mesoscale-object-row:focus-within .mesoscale-tree-action,
