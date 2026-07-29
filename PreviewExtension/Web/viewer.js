@@ -640,6 +640,42 @@
         }
       });
     }
+    if (type === 'show_assembly_symmetry') {
+      return window.BuretteAgent.run({
+        command: 'showAssemblySymmetry',
+        args: { params: action.params || {}, serverUrl: action.serverUrl }
+      });
+    }
+    if (type === 'show_water_bridges') {
+      return window.BuretteAgent.run({ command: 'showWaterBridges', args: action.args || action });
+    }
+    if (type === 'apply_mesoscale_preset') {
+      return window.BuretteAgent.run({ command: 'applyMesoscalePreset', args: action.args || action });
+    }
+    if (type === 'color_xtb_charges') {
+      return window.BuretteAgent.run({
+        command: 'colorScalarField',
+        args: {
+          mode: 'partial-charge',
+          values: action.charges || action.values || [],
+          provenance: {
+            source: 'xTB partial charges',
+            chargeFilePath: action.chargeFilePath,
+            ...(action.provenance || {})
+          }
+        }
+      });
+    }
+    if (type === 'color_xtb_fukui') {
+      return window.BuretteAgent.run({
+        command: 'colorScalarField',
+        args: {
+          mode: `fukui-${action.mode || 'fzero'}`,
+          values: action.values || [],
+          provenance: { source: 'xTB Fukui indices', convention: 'signed', ...(action.provenance || {}) }
+        }
+      });
+    }
     if (type === 'label_selection') {
       return window.BuretteAgent.run({
         command: 'labelSelection',
@@ -697,6 +733,15 @@
           options: action.options || {}
         }
       });
+    }
+    if (type === 'observe_story') {
+      return window.BuretteAgent.run({ command: 'observeStory', args: {} });
+    }
+    if (type === 'control_story') {
+      return window.BuretteAgent.run({ command: 'controlStory', args: action.args || action });
+    }
+    if (type === 'export_session') {
+      return window.BuretteAgent.run({ command: 'exportSession', args: action.args || action });
     }
     if (type === 'screenshot' || type === 'export_image') {
       return window.BuretteAgent.run({ command: 'screenshot', args: action.args || {} });
@@ -8226,6 +8271,7 @@
     if (value === 'cifcore' || value === 'corecif' || value === 'core-cif') return 'cifCore';
     if (value === 'cif' || value === 'mmcif' || value === 'mcif') return 'mmcif';
     if (value === 'bcif' || value === 'binarycif') return 'mmcif';
+    if (value === 'mrc' || value === 'map') return 'ccp4';
     if (value === 'sd') return 'sdf';
     if (value === 'xyzr') return 'xyz';
     if (value === 'nc' || value === 'ncdf' || value === 'netcdf' || value === 'ncrst') return 'nctraj';
@@ -9228,6 +9274,25 @@
         label: config.label || 'MolViewSpec scene'
       };
     }
+    if (normalized === 'ccp4' || normalized === 'mtz') {
+      return {
+        kind: 'volume',
+        data: rawStructureData({ ...config, binary: true }),
+        format: normalized,
+        label: config.label || 'density map'
+      };
+    }
+    if (normalized === 'mmcif' && config.binary !== true) {
+      const cifData = rawStructureData({ ...config, binary: false });
+      if (looksLikeStructureFactorsCif(cifData)) {
+        return {
+          kind: 'volume',
+          data: cifData,
+          format: 'sfcif',
+          label: config.label || 'structure factors'
+        };
+      }
+    }
     if (normalized === 'cifCore') {
       const pdb = coreCifToPdb(rawStructureData({ ...config, binary: false }));
       return {
@@ -9252,6 +9317,12 @@
       format: normalized,
       label: config.label || 'structure'
     };
+  }
+
+  function looksLikeStructureFactorsCif(data) {
+    const text = String(data || '');
+    return /(?:^|\n)_refln\.pdbx_FWT\b/mu.test(text)
+      && /(?:^|\n)_refln\.pdbx_PHWT\b/mu.test(text);
   }
 
   const PDB_SCENE_BACKBONE_ATOM_NAMES = new Set(['N', 'CA', 'C', 'O']);
@@ -13244,6 +13315,19 @@
       await viewer.loadMvsData(prepared.data, prepared.format, { replaceExisting: true });
       installDockingPoseControls(viewer, null);
       return;
+    }
+    if (prepared.kind === 'volume') {
+      activeDockingPrepared = null;
+      const plugin = viewer.plugin;
+      const provider = plugin.dataFormats.get(prepared.format);
+      if (!provider || typeof provider.parse !== 'function') {
+        throw new Error(`Mol* volume provider is unavailable for ${prepared.format}.`);
+      }
+      const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
+      const parsed = await provider.parse(plugin, data, { entryId: prepared.entryId });
+      const visuals = typeof provider.visuals === 'function' ? await provider.visuals(plugin, parsed) : [];
+      installDockingPoseControls(viewer, null);
+      return { parsed, visuals };
     }
     activeDockingPrepared = null;
     if (prepared.format === 'mol' && typeof viewer.loadStructureFromData === 'function') {

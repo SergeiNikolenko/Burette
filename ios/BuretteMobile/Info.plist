@@ -36,6 +36,7 @@
 				<string>abi</string>
 				<string>arc</string>
 				<string>bcif</string>
+				<string>ccp4</string>
 				<string>cfg</string>
 				<string>cif</string>
 				<string>cms</string>
@@ -76,6 +77,7 @@
 				<string>mae.gz</string>
 				<string>maegz</string>
 				<string>magma</string>
+				<string>map</string>
 				<string>mcif</string>
 				<string>mdcrd</string>
 				<string>mgf</string>
@@ -85,9 +87,11 @@
 					<string>mdl</string>
 					<string>json</string>
 					<string>mol2</string>
+					<string>mrc</string>
 					<string>msj</string>
 					<string>ms</string>
 				<string>msp</string>
+				<string>mtz</string>
 				<string>mvsj</string>
 				<string>mvsx</string>
 				<string>mzml</string>
@@ -159,6 +163,8 @@
 				<string>com.local.burette10.mmcif</string>
 				<string>com.local.burette10.bcif</string>
 				<string>com.local.burette10.mmtf</string>
+				<string>com.local.burette10.volume-map</string>
+				<string>com.local.burette10.mtz</string>
 				<string>com.local.burette10.sdf</string>
 				<string>com.local.burette10.smiles</string>
 				<string>com.local.burette10.csv</string>
@@ -862,6 +868,50 @@
 				<array>
 					<string>text/plain</string>
 					<string>application/xml</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>CCP4, MRC, or MAP electron-density volume</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.volume-map</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ccp4</string>
+					<string>mrc</string>
+					<string>map</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/octet-stream</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>CCP4 MTZ reflection data with map coefficients</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.mtz</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mtz</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/octet-stream</string>
 				</array>
 			</dict>
 		</dict>

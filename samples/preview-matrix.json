@@ -139,6 +139,14 @@
       "extensions": ["mmtf"],
       "reason": "Need a compact MMTF fixture."
     },
+    "volume-map": {
+      "extensions": ["ccp4", "map", "mrc"],
+      "reason": "Binary density maps need a compact redistributable fixture with reviewed unit-cell and axis metadata."
+    },
+    "reflection-data": {
+      "extensions": ["mtz"],
+      "reason": "MTZ coverage needs a compact redistributable reflection fixture with reviewed amplitude and phase columns."
+    },
     "xyzrender-input": {
       "extensions": ["fhiaims", "gms", "log", "out", "xyzr"],
       "reason": "Quantum/input alias coverage has representative xyzrender-compatible fixtures but not every alias."

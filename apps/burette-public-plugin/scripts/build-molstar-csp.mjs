@@ -15,7 +15,7 @@ const OUTPUT_ROOT = path.join(APP_ROOT, "public/burette-viewer");
 const MOLSTAR_VERSION = require("molstar/package.json").version;
 
 const EXPECTED_JAVASCRIPT_SHA256 =
-  "5567eb19fa8e7a7b3b161d4b96807c4db244cecd2f3e7c87f99c052b8b5b5b30";
+  "7fad5561c74bc900930fb57d6ab028d1aafdda82223a901bf932b1098e84f1f3";
 const EXPECTED_CSS_SHA256 =
   "5b68ceb6d3642549b4e9b2c071e58e41b98a5350ae269180587b39da86925d55";
 
@@ -47,14 +47,14 @@ async function main() {
   let javascript = javascriptSource;
   javascript = replaceExactlyOnce(
     javascript,
-    'new Function("body","return function "+P+`() {\n    "use strict";    return body.apply(this, arguments);\n};\n`)(k)',
-    "function(){return k.apply(this,arguments)}",
+    'new Function("body","return function "+P+`() {\n    "use strict";    return body.apply(this, arguments);\n};\n`)(V)',
+    "function(){return V.apply(this,arguments)}",
     "named-function",
   );
   javascript = replaceExactlyOnce(
     javascript,
-    'new Function("dynCall","rawFunction",ye+`};\n`)(q,k)',
-    "function(dynCall,rawFunction){return function(){return dynCall.apply(null,[rawFunction].concat(Array.prototype.slice.call(arguments)))}}(q,k)",
+    'new Function("dynCall","rawFunction",xe+`};\n`)(Z,V)',
+    "function(dynCall,rawFunction){return function(){return dynCall.apply(null,[rawFunction].concat(Array.prototype.slice.call(arguments)))}}(Z,V)",
     "dynamic-call",
   );
   javascript = replaceExactlyOnce(
