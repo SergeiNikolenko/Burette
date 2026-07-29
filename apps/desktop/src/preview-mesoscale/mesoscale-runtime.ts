@@ -663,8 +663,8 @@ function resolveViewerTheme(theme: MesoscaleConfig["theme"]) {
 function applyViewerTheme(runtime: MesoscaleRuntimeApi, theme: MesoscaleConfig["theme"]) {
   const resolved = resolveViewerTheme(theme);
   document.documentElement.dataset.buretteTheme = resolved;
-  document.body?.classList.toggle("burette-light-theme", resolved === "light");
-  document.body?.classList.toggle("burette-dark-theme", resolved === "dark");
+  document.body?.classList.toggle("buret-theme-light", resolved === "light");
+  document.body?.classList.toggle("buret-theme-dark", resolved === "dark");
   document.body?.style.setProperty("background-color", resolved === "light" ? "#f5f5f7" : "#101010");
   runtime.plugin.canvas3d?.setProps({
     transparentBackground: false,

@@ -42,6 +42,7 @@ function emptySession(documentId: string): MesoscaleSessionState {
     hierarchyTotal: 0,
     hoveredRef: null,
     sceneOpen: false,
+    layoutPreference: { left: false, right: false },
     pendingCount: 0,
     error: null,
   };
@@ -150,6 +151,10 @@ function installBridge() {
     const response = event.data;
     if (frames.get(response.documentId) !== event.source) return;
     handleResult(response.documentId, response.result);
+    if (!response.requestId && response.result.kind === "summary") {
+      const layout = useMesoscaleStore.getState().sessions[response.documentId]?.layoutPreference;
+      if (layout) void restoreMesoscaleLayout(response.documentId, event.source as Window, layout);
+    }
     if (!response.requestId) return;
     const request = pending.get(response.requestId);
     if (!request || request.documentId !== response.documentId) return;
@@ -169,9 +174,19 @@ export function bindMesoscaleFrame(documentId: string, frame: Window) {
   frames.set(documentId, frame);
   previewMesoscaleObject(documentId, null);
   updateSession(documentId, (session) => session.status === "disposed"
-    ? { ...emptySession(documentId), sceneOpen: session.sceneOpen }
+    ? { ...emptySession(documentId), sceneOpen: session.sceneOpen, layoutPreference: session.layoutPreference }
     : session);
   void requestMesoscale(documentId, { type: "getSummary" }).catch(() => undefined);
+}
+
+async function restoreMesoscaleLayout(documentId: string, frame: Window, layout: { left: boolean; right: boolean }) {
+  try {
+    if (layout.left) await requestMesoscale(documentId, { type: "setLayoutRegion", region: "left", visible: true });
+    if (frames.get(documentId) !== frame) return;
+    if (layout.right) await requestMesoscale(documentId, { type: "setLayoutRegion", region: "right", visible: true });
+  } catch {
+    // The load/error surface owns runtime failures; restoring UI chrome is best-effort.
+  }
 }
 
 export function releaseMesoscaleFrame(documentId: string, frame?: Window | null) {
@@ -216,6 +231,9 @@ export function requestMesoscale(documentId: string, action: MesoscaleAction, ti
   };
   updateSession(documentId, (current) => ({
     ...current,
+    ...(action.type === "setLayoutRegion"
+      ? { layoutPreference: { ...current.layoutPreference, [action.region]: action.visible } }
+      : {}),
     status: "busy",
     pendingCount: current.pendingCount + 1,
     error: null,

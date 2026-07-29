@@ -164,6 +164,7 @@ export type MesoscaleSessionState = {
   hierarchyTotal: number;
   hoveredRef: string | null;
   sceneOpen: boolean;
+  layoutPreference: Record<MesoscaleLayoutRegion, boolean>;
   pendingCount: number;
   error: MesoscaleFailure | null;
 };

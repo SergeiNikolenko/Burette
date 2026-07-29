@@ -75,6 +75,8 @@ function StructureViewerSurface({
   const sourceSession = sourceEditing?.sessionForDocument(document) ?? null;
   const mesoscale = isMesoscaleViewerDocument(document);
   const mesoscaleSceneOpen = useMesoscaleStore((store) => store.sessions[document.id]?.sceneOpen ?? false);
+  const mesoscaleLeftPanelOpen = useMesoscaleStore((store) => store.sessions[document.id]?.summary?.layout.left ?? false);
+  const mesoscaleRightPanelOpen = useMesoscaleStore((store) => store.sessions[document.id]?.summary?.layout.right ?? false);
   const sheetDropTarget = document.renderer === "xyzrender-external";
   const collectionDropTarget = document.renderer === "grid2d";
   const postViewerVisibility = useCallback((frame = iframeRef.current, frameActive = true) => {
@@ -177,7 +179,7 @@ function StructureViewerSurface({
 
   return (
     <div
-      className="molecule-stage"
+      className={`molecule-stage${mesoscaleLeftPanelOpen ? " mesoscale-left-panel-open" : ""}${mesoscaleRightPanelOpen ? " mesoscale-right-panel-open" : ""}`}
       data-drop-document-path={document.path}
       data-drop-document-id={document.id}
       data-drop-document-renderer={document.renderer}

@@ -23,6 +23,7 @@ for (const [id, extension, binary] of [
 }
 
 const runtime = await read("apps/desktop/src/preview-mesoscale/mesoscale-runtime.ts");
+const theme = await read("apps/desktop/src/preview-mesoscale/mesoscale-burette-theme.css");
 assert.match(runtime, /MesoscaleExplorer\.create/);
 assert.match(runtime, /LoadModel/);
 assert.match(runtime, /openState/);
@@ -38,6 +39,11 @@ assert.match(runtime, /burette-mesoscale-hosted \.msp-viewport-controls/);
 assert.match(runtime, /burette-mesoscale-preview/);
 assert.match(runtime, /MarkerAction\.Highlight/);
 assert.match(runtime, /body\?\.type === "setViewerTheme"/);
+assert.match(runtime, /buret-theme-light/);
+assert.match(runtime, /buret-theme-dark/);
+assert.match(theme, /--buret-meso-panel/);
+assert.match(theme, /body\.buret-theme-light/);
+assert.match(theme, /body \.msp-plugin \.msp-layout-left/);
 assert.match(runtime, /config\.uiMode \?\? "diagnostic"/);
 assert.doesNotMatch(runtime, /layoutShowControls: true/);
 assert.doesNotMatch(runtime, /layoutShowLog: true/);
@@ -80,6 +86,10 @@ assert.match(mobile, /mesoscaleInlineHTML/);
 const sourceBundle = await readFile("PreviewExtension/Web/mesoscale.js");
 const pluginBundle = await readFile("plugins/burette-agent/preview-web/mesoscale.js");
 assert.deepEqual(pluginBundle, sourceBundle, "packaged plugin must mirror the Mesoscale bundle");
+const sourceStyle = await readFile("PreviewExtension/Web/mesoscale.css");
+const pluginStyle = await readFile("plugins/burette-agent/preview-web/mesoscale.css");
+assert.deepEqual(pluginStyle, sourceStyle, "packaged plugin must mirror the themed Mesoscale stylesheet");
+assert.match(sourceStyle.toString("utf8"), /--buret-meso-panel/);
 
 const fixtureListing = execFileSync("unzip", ["-Z1", "tests/fixtures/mesoscale/basic.mesozip"], { encoding: "utf8" });
 assert.deepEqual(fixtureListing.trim().split("\n").sort(), ["manifest.json", "mini.pdb"]);

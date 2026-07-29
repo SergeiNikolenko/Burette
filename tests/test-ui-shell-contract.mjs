@@ -1561,7 +1561,7 @@ assert.match(fileKind, /kind: "file"/);
 assert.match(fileKind, /path: location\.path/);
 assert.match(fileKind, /const document = findDocument\(location, state\.documents\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} preferences=\{state\.preferences\} isActive=\{isActive\} \/> : null;/);
 assert.doesNotMatch(fileKind, /findDocument\(location, state\.documents\) \?\? state\.activeDocument/);
-assert.match(fileKind, /className="molecule-stage"/);
+assert.match(fileKind, /className=\{`molecule-stage/);
 assert.match(fileKind, /sourcePreview=\{sourceSession\?\.sourcePreview \?\? undefined\}/);
 assert.match(fileKind, /onStagingLoad=\{\(identity, frame\) => sourceEditing\?\.stagingLoaded\(document, identity, frame\)\}/);
 assert.match(viewerFrame, /export function ViewerFrame/);
