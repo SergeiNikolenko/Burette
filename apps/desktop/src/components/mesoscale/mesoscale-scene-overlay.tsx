@@ -29,3 +29,19 @@ export function MesoscaleSceneOverlay({ document, onClose }: { document: ViewerD
     </aside>
   );
 }
+
+export function MesoscaleSceneToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className={`mesoscale-scene-toggle${open ? " active" : ""}`}
+      aria-label={open ? "Close scene" : "Open scene"}
+      title={open ? "Close scene" : "Open scene"}
+      aria-pressed={open}
+      onClick={onToggle}
+    >
+      <Layers3 size={16} />
+    </Button>
+  );
+}

@@ -55,9 +55,14 @@ assert.match(browser, /uiMode: "hosted"/);
 const contract = await read("apps/desktop/src/lib/mesoscale-contract.ts");
 assert.match(contract, /burette-mesoscale\/v2/);
 assert.match(contract, /MESOSCALE_HIERARCHY_PAGE_LIMIT = 128/);
-for (const action of ["getSummary", "getHierarchyPage", "setSelection", "setSelectionMode", "setIllumination", "setVisibility", "isolateObjects", "setStyle", "exportState"]) {
+for (const action of ["getSummary", "getHierarchyPage", "setSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "setVisibility", "isolateObjects", "setStyle", "exportState"]) {
   assert.ok(contract.includes(`type: "${action}"`), `Mesoscale v2 contract must expose ${action}`);
 }
+assert.match(runtime, /setLayoutRegion\(region/);
+assert.match(runtime, /PluginCommands\.Layout\.Update/);
+assert.match(runtime, /showControls/);
+assert.match(runtime, /regionState/);
+assert.match(runtime, /setMotion\(motion/);
 
 const tauri = await read("apps/desktop/src-tauri/src/preview/runtime_viewer.rs");
 assert.match(tauri, /AssetProfile::Mesoscale/);

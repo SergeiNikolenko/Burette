@@ -12,7 +12,8 @@ import { useSourceEditing } from "../../../lib/source-editing/context";
 import { isMesoscaleViewerDocument } from "../../../lib/mesoscale-documents";
 import { bindMesoscaleFrame, releaseMesoscaleFrame, setMesoscaleSceneOpen, useMesoscaleStore } from "../../../stores/mesoscale-store";
 import { MesoscaleToolbar } from "../../mesoscale/mesoscale-toolbar";
-import { MesoscaleSceneOverlay } from "../../mesoscale/mesoscale-scene-overlay";
+import { MesoscaleSceneOverlay, MesoscaleSceneToggle } from "../../mesoscale/mesoscale-scene-overlay";
+import { MesoscaleViewportControls } from "../../mesoscale/mesoscale-viewport-controls";
 
 export type FileLocation = { kind: "file"; documentId?: string; path: string };
 
@@ -194,14 +195,19 @@ function StructureViewerSurface({
       />
       {mesoscale && mesoscaleSceneOpen ? <MesoscaleSceneOverlay document={document} onClose={() => setMesoscaleSceneOpen(document.id, false)} /> : null}
       {mesoscale ? (
+        <MesoscaleSceneToggle
+          open={mesoscaleSceneOpen}
+          onToggle={() => setMesoscaleSceneOpen(document.id, !mesoscaleSceneOpen)}
+        />
+      ) : null}
+      {mesoscale ? (
         <MesoscaleToolbar
           document={document}
           actions={actions}
           preferences={preferences}
-          sceneOpen={mesoscaleSceneOpen}
-          onToggleScene={() => setMesoscaleSceneOpen(document.id, !mesoscaleSceneOpen)}
         />
       ) : null}
+      {mesoscale ? <MesoscaleViewportControls document={document} /> : null}
     </div>
   );
 }

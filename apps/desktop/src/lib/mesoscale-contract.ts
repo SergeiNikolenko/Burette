@@ -2,6 +2,8 @@ export const MESOSCALE_API_VERSION = "burette-mesoscale/v2" as const;
 export const MESOSCALE_HIERARCHY_PAGE_LIMIT = 128;
 
 export type MesoscaleGraphicsMode = "ultra" | "quality" | "balanced" | "performance" | "custom";
+export type MesoscaleLayoutRegion = "left" | "right";
+export type MesoscaleMotion = "off" | "spin" | "rock";
 
 export type MesoscaleCounts = {
   roots: number;
@@ -41,6 +43,8 @@ export type MesoscaleSceneSummary = {
   selectedRefs: string[];
   selectionMode: boolean;
   illumination: boolean;
+  layout: Record<MesoscaleLayoutRegion, boolean>;
+  motion: MesoscaleMotion;
   snapshots: MesoscaleSnapshot[];
   hierarchyPreview: MesoscaleHierarchyObject[];
   hierarchyTotal: number;
@@ -93,6 +97,8 @@ export type MesoscaleAction =
   | { type: "setSelection"; ref?: string; mode?: "replace" | "extend" | "toggle" | "clear" }
   | { type: "setSelectionMode"; enabled: boolean }
   | { type: "setIllumination"; enabled: boolean }
+  | { type: "setLayoutRegion"; region: MesoscaleLayoutRegion; visible: boolean }
+  | { type: "setMotion"; motion: MesoscaleMotion }
   | { type: "focusObject"; ref: string }
   | { type: "setVisibility"; ref: string; visible: boolean }
   | { type: "isolateObjects"; refs: string[] }

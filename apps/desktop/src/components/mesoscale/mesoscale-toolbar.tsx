@@ -1,4 +1,5 @@
-import { Camera, Gauge, Lightbulb, Moon, MousePointer2, PanelRightOpen, RotateCcw, Sun } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, GripVertical } from "lucide-react";
 import type { ViewerDocument, ViewerPreferences } from "../../types";
 import type { ShellActions } from "../types";
 import { requestMesoscale, useMesoscaleStore } from "../../stores/mesoscale-store";
@@ -12,78 +13,70 @@ const GRAPHICS: Array<{ value: MesoscaleGraphicsMode; label: string }> = [
   { value: "performance", label: "Performance" },
 ];
 
-export function MesoscaleToolbar({ document, actions, preferences, sceneOpen, onToggleScene }: { document: ViewerDocument; actions: ShellActions; preferences: ViewerPreferences; sceneOpen: boolean; onToggleScene: () => void }) {
+export function MesoscaleToolbar({ document, actions, preferences }: { document: ViewerDocument; actions: ShellActions; preferences: ViewerPreferences }) {
   const session = useMesoscaleStore((state) => state.sessions[document.id]);
+  const [collapsed, setCollapsed] = useState(false);
   const systemTheme = useSystemThemeMode();
   const effectiveTheme = resolveThemeMode(preferences.theme, systemTheme);
   const disabled = !session || session.status === "loading" || session.status === "disposed";
   const run = (action: Parameters<typeof requestMesoscale>[1]) => void requestMesoscale(document.id, action).catch(() => undefined);
+  const toggleRegion = (region: "left" | "right") => run({
+    type: "setLayoutRegion",
+    region,
+    visible: !(session?.summary?.layout[region] ?? false),
+  });
 
   return (
-    <div className="mesoscale-toolbar" role="toolbar" aria-label="Mesoscale preview controls">
-      <div className="mesoscale-toolbar-title" title={document.title}>
-        <span className="mesoscale-toolbar-dot" aria-hidden="true" />
-        <span>Mesoscale</span>
-        <span className="mesoscale-toolbar-count">{session?.summary?.counts.instances.toLocaleString() ?? "…"} instances</span>
-      </div>
-      <button type="button" className="mesoscale-toolbar-letter" onClick={actions.toggleSidebar} title="Toggle left sidebar" aria-label="Toggle left sidebar">L</button>
-      <button type="button" className="mesoscale-toolbar-letter" onClick={() => actions.toggleDock("right")} title="Toggle right sidebar" aria-label="Toggle right sidebar">R</button>
-      <label className="mesoscale-toolbar-select">
-        <Gauge size={14} aria-hidden="true" />
-        <span className="sr-only">Graphics quality</span>
-        <select
-          value={session?.summary?.graphics ?? "balanced"}
+    <div className={`mesoscale-toolbar${collapsed ? " collapsed" : ""}`} role="toolbar" aria-label="Mesoscale preview controls">
+      <div className="mesoscale-toolbar-content">
+        <button
+          type="button"
+          className={`mesoscale-toolbar-letter${session?.summary?.layout.left ? " active" : ""}`}
           disabled={disabled}
-          onChange={(event) => run({ type: "setGraphics", graphics: event.target.value as MesoscaleGraphicsMode })}
+          aria-pressed={session?.summary?.layout.left ?? false}
+          onClick={() => toggleRegion("left")}
+          title="Toggle Mol* left object tree"
+          aria-label="Toggle Mol* left object tree"
+        >L</button>
+        <button
+          type="button"
+          className={`mesoscale-toolbar-letter${session?.summary?.layout.right ? " active" : ""}`}
+          disabled={disabled}
+          aria-pressed={session?.summary?.layout.right ?? false}
+          onClick={() => toggleRegion("right")}
+          title="Toggle Mol* right properties panel"
+          aria-label="Toggle Mol* right properties panel"
+        >R</button>
+        <label className="mesoscale-toolbar-select">
+          <span className="sr-only">Graphics quality</span>
+          <select
+            value={session?.summary?.graphics ?? "balanced"}
+            disabled={disabled}
+            onChange={(event) => run({ type: "setGraphics", graphics: event.target.value as MesoscaleGraphicsMode })}
+          >
+            {GRAPHICS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </select>
+          <ChevronDown size={13} aria-hidden="true" />
+        </label>
+        <button
+          type="button"
+          className="mesoscale-toolbar-theme"
+          onClick={() => actions.setPreference("theme", effectiveTheme === "dark" ? "light" : "dark")}
+          title={`Switch to ${effectiveTheme === "dark" ? "light" : "dark"} theme`}
+          aria-label={`Switch to ${effectiveTheme === "dark" ? "light" : "dark"} theme`}
         >
-          {GRAPHICS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-        </select>
-      </label>
-      <button type="button" disabled={disabled} onClick={() => run({ type: "resetCamera" })} title="Reset camera" aria-label="Reset camera">
-        <RotateCcw size={15} />
-      </button>
-      <button type="button" disabled={disabled} onClick={() => run({ type: "exportPng" })} title="Save PNG" aria-label="Save PNG">
-        <Camera size={15} />
-      </button>
-      <span className="mesoscale-toolbar-divider" aria-hidden="true" />
+          {effectiveTheme === "dark" ? "Light" : "Dark"}
+        </button>
+      </div>
       <button
         type="button"
-        className={session?.summary?.illumination ? "active" : ""}
-        disabled={disabled}
-        aria-pressed={session?.summary?.illumination ?? false}
-        onClick={() => run({ type: "setIllumination", enabled: !session?.summary?.illumination })}
-        title="Realistic lighting"
-        aria-label="Realistic lighting"
+        className="mesoscale-toolbar-grip"
+        aria-label={collapsed ? "Expand viewer toolbar" : "Collapse viewer toolbar"}
+        title={collapsed ? "Expand viewer toolbar" : "Collapse viewer toolbar"}
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed((value) => !value)}
       >
-        <Lightbulb size={15} />
-      </button>
-      <button
-        type="button"
-        className={session?.summary?.selectionMode ? "active" : ""}
-        disabled={disabled}
-        aria-pressed={session?.summary?.selectionMode ?? false}
-        onClick={() => run({ type: "setSelectionMode", enabled: !session?.summary?.selectionMode })}
-        title="Selection mode"
-        aria-label="Selection mode"
-      >
-        <MousePointer2 size={15} />
-      </button>
-      <button
-        type="button"
-        onClick={() => actions.setPreference("theme", effectiveTheme === "dark" ? "light" : "dark")}
-        title={`Switch to ${effectiveTheme === "dark" ? "light" : "dark"} theme`}
-        aria-label={`Switch to ${effectiveTheme === "dark" ? "light" : "dark"} theme`}
-      >
-        {effectiveTheme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-      </button>
-      <button
-        type="button"
-        className={`mesoscale-toolbar-scene${sceneOpen ? " active" : ""}`}
-        aria-pressed={sceneOpen}
-        onClick={onToggleScene}
-      >
-        <PanelRightOpen size={15} />
-        Scene
+        <GripVertical size={15} />
       </button>
     </div>
   );

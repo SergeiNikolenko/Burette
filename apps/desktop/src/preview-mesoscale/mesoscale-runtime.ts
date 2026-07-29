@@ -17,6 +17,8 @@ import {
   type MesoscaleAction,
   type MesoscaleGraphicsMode,
   type MesoscaleHierarchyObject,
+  type MesoscaleLayoutRegion,
+  type MesoscaleMotion,
   type MesoscalePreviewMessage,
   type MesoscaleRequest,
   type MesoscaleResult,
@@ -168,6 +170,8 @@ class MesoscaleRuntimeApi {
   revision = 0;
   readonly selectedRefs = new Set<string>();
   readonly visibilityOverrides = new Map<string, boolean>();
+  readonly layoutRegions: Record<MesoscaleLayoutRegion, boolean> = { left: false, right: false };
+  motion: MesoscaleMotion = "off";
   previewSequence = 0;
 
   constructor(explorer: MesoscaleExplorer) {
@@ -239,6 +243,8 @@ class MesoscaleRuntimeApi {
       selectedRefs: Array.from(this.selectedRefs).slice(0, MAX_OBSERVED_ITEMS),
       selectionMode: Boolean(this.plugin.selectionMode),
       illumination: Boolean(this.plugin.canvas3d?.props.illumination.enabled),
+      layout: { ...this.layoutRegions },
+      motion: this.motion,
       snapshots: observed.snapshots,
       hierarchyPreview,
       hierarchyTotal: observed.counts.groups + observed.counts.entities,
@@ -350,6 +356,43 @@ class MesoscaleRuntimeApi {
   setIllumination(enabled: boolean) {
     this.plugin.canvas3d?.setProps({ illumination: { enabled } });
     this.plugin.canvas3d?.requestDraw();
+    this.changed();
+    return this.observe();
+  }
+
+  async setLayoutRegion(region: MesoscaleLayoutRegion, visible: boolean) {
+    if (region !== "left" && region !== "right") throw new Error(`Unsupported Mesoscale layout region: ${String(region)}`);
+    const nextRegions = { ...this.layoutRegions, [region]: visible };
+    const showControls = nextRegions.left || nextRegions.right;
+    await PluginCommands.Layout.Update(this.plugin, {
+      state: {
+        showControls,
+        regionState: {
+          ...this.plugin.layout.state.regionState,
+          left: nextRegions.left ? "full" : "hidden",
+          right: nextRegions.right ? "full" : "hidden",
+          top: "hidden",
+          bottom: "hidden",
+        },
+      },
+    });
+    this.layoutRegions.left = nextRegions.left;
+    this.layoutRegions.right = nextRegions.right;
+    this.changed();
+    return this.observe();
+  }
+
+  setMotion(motion: MesoscaleMotion) {
+    if (motion !== "off" && motion !== "spin" && motion !== "rock") throw new Error(`Unsupported Mesoscale motion: ${String(motion)}`);
+    const trackball = this.plugin.canvas3d?.props.trackball;
+    if (!trackball) throw new Error("Mesoscale camera controls are unavailable");
+    const animate = motion === "spin"
+      ? { name: "spin" as const, params: { speed: 0.1, axis: [0, -1, 0] as [number, number, number] } }
+      : motion === "rock"
+        ? { name: "rock" as const, params: { speed: 0.3, angle: 10, axis: [0, -1, 0] as [number, number, number] } }
+        : { name: "off" as const, params: {} };
+    this.plugin.canvas3d?.setProps({ trackball: { ...trackball, animate } });
+    this.motion = motion;
     this.changed();
     return this.observe();
   }
@@ -555,6 +598,8 @@ class MesoscaleRuntimeApi {
         return this.sceneSummary();
       case "setSelectionMode": this.setSelectionMode(action.enabled); return this.sceneSummary();
       case "setIllumination": this.setIllumination(action.enabled); return this.sceneSummary();
+      case "setLayoutRegion": await this.setLayoutRegion(action.region, action.visible); return this.sceneSummary();
+      case "setMotion": this.setMotion(action.motion); return this.sceneSummary();
       case "focusObject": await this.focusEntity(action.ref); return this.sceneSummary();
       case "setVisibility": await this.setVisibility(action.ref, action.visible); return this.sceneSummary();
       case "isolateObjects": await this.isolateObjects(action.refs); return this.sceneSummary();
@@ -574,7 +619,7 @@ class MesoscaleRuntimeApi {
       case "getCapabilities": return {
         kind: "capabilities",
         apiVersion: MESOSCALE_API_VERSION,
-        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionMode", "setIllumination", "focusObject", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
+        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
         graphicsModes: ["ultra", "quality", "balanced", "performance", "custom"],
         hierarchyPageLimit: MESOSCALE_HIERARCHY_PAGE_LIMIT,
       };
