@@ -12,7 +12,7 @@ const GRAPHICS: Array<{ value: MesoscaleGraphicsMode; label: string }> = [
   { value: "performance", label: "Performance" },
 ];
 
-export function MesoscaleToolbar({ document, actions, preferences }: { document: ViewerDocument; actions: ShellActions; preferences: ViewerPreferences }) {
+export function MesoscaleToolbar({ document, actions, preferences, sceneOpen, onToggleScene }: { document: ViewerDocument; actions: ShellActions; preferences: ViewerPreferences; sceneOpen: boolean; onToggleScene: () => void }) {
   const session = useMesoscaleStore((state) => state.sessions[document.id]);
   const systemTheme = useSystemThemeMode();
   const effectiveTheme = resolveThemeMode(preferences.theme, systemTheme);
@@ -26,6 +26,8 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
         <span>Mesoscale</span>
         <span className="mesoscale-toolbar-count">{session?.summary?.counts.instances.toLocaleString() ?? "…"} instances</span>
       </div>
+      <button type="button" className="mesoscale-toolbar-letter" onClick={actions.toggleSidebar} title="Toggle left sidebar" aria-label="Toggle left sidebar">L</button>
+      <button type="button" className="mesoscale-toolbar-letter" onClick={() => actions.toggleDock("right")} title="Toggle right sidebar" aria-label="Toggle right sidebar">R</button>
       <label className="mesoscale-toolbar-select">
         <Gauge size={14} aria-hidden="true" />
         <span className="sr-only">Graphics quality</span>
@@ -76,12 +78,9 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
       </button>
       <button
         type="button"
-        className="mesoscale-toolbar-scene"
-        onClick={() => {
-          actions.setDockDocument("right", document.id);
-          actions.setDockOpen("right", true);
-          actions.openDockTab("right", "scene");
-        }}
+        className={`mesoscale-toolbar-scene${sceneOpen ? " active" : ""}`}
+        aria-pressed={sceneOpen}
+        onClick={onToggleScene}
       >
         <PanelRightOpen size={15} />
         Scene
