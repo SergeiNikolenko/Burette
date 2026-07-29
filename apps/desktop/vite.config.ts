@@ -29,6 +29,13 @@ import {
   registerBrowserDevFileDiscoveryRoute,
 } from "./vite/browser-dev/files";
 import {
+  canonicalExistingPath,
+  collectBrowserDevFiles,
+  emptyBrowserDevFileScan,
+  isBrowserDevPathAllowed,
+  type BrowserDevFileScanLimits,
+} from "./vite/browser-dev/file-discovery";
+import {
   isNumpyArtifactExtension,
   numpyArtifactTextSummary,
   registerBrowserDevFoldingResultRoute,
@@ -88,6 +95,9 @@ const BROWSER_DEV_APP_ICONS: Record<string, string> = {
   vesta: "/Applications/VESTA.app/Contents/Resources/VESTA.icns",
 };
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
+const DEV_FILE_SCAN_MAX_FILES = 2_000;
+const DEV_FILE_SCAN_MAX_DIRECTORIES = 400;
+const DEV_FILE_SCAN_MAX_ENTRIES = 20_000;
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB = 24;
 const RDKIT_WASM_PATH = join(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal.wasm");
@@ -99,7 +109,8 @@ const BROWSER_DEV_GENERATED_FILES_ROOT = process.env.BURETTE_BROWSER_DEV_GENERAT
 const BROWSER_DEV_XTB_JOBS_ROOT = join(BROWSER_DEV_GENERATED_FILES_ROOT, "xTB Jobs");
 const BROWSER_DEV_CONFORMER_JOBS_ROOT = join(BROWSER_DEV_GENERATED_FILES_ROOT, "Conformer Jobs");
 const browserDevGeneratedFileRoots = [BROWSER_DEV_GENERATED_FILES_ROOT];
-const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...browserDevGeneratedFileRoots, ...extraFsAllow].map((path) => resolve(path));
+const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...browserDevGeneratedFileRoots, ...extraFsAllow]
+  .map(canonicalExistingPath);
 const BROWSER_DEV_CCD_CACHE_ROOT = join(homedir(), ".cache", "burette", "ccd-ligands");
 const BROWSER_DEV_CHEMISTRY_PREP_PROJECT = join(repoRoot, "tools", "chemistry-prep");
 const BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR = process.env.BURETTE_DESCRIPTOR_RUNTIME_DIR
@@ -3656,8 +3667,9 @@ export function browserDevXyzrenderPlugin() {
 
 async function collectDefaultDevFiles() {
   const files: string[] = [];
+  const scan = emptyBrowserDevFileScan();
   for (const source of defaultDevFileSources) {
-    await collectDevFiles(source, files);
+    await collectBrowserDevFiles(source, files, browserDevFileScanOptions(), scan);
   }
   return Array.from(new Set(files)).sort((left, right) => {
     const leftLarge = left.includes("/samples/large/");
@@ -3667,31 +3679,34 @@ async function collectDefaultDevFiles() {
   });
 }
 
-async function collectDevFiles(path: string, files: string[]) {
-  let info;
-  try {
-    info = await stat(path);
-  } catch (_) {
-    return;
-  }
-  if (info.isDirectory()) {
-    const entries = await readdir(path, { withFileTypes: true });
-    for (const entry of entries) {
-      await collectDevFiles(join(path, entry.name), files);
-    }
-    return;
-  }
-  if (!info.isFile() || info.size > DEV_FILE_SIZE_LIMIT) return;
-  if (!DEV_FILE_EXTENSIONS.has(fileExtension(path))) return;
-  if (path.endsWith("/no-molecule-column.csv")) return;
-  files.push(path);
+async function collectDevFiles(
+  path: string,
+  files: string[],
+  limits: Partial<BrowserDevFileScanLimits> = {},
+) {
+  const options = browserDevFileScanOptions();
+  return collectBrowserDevFiles(path, files, {
+    ...options,
+    maxDirectories: Math.min(options.maxDirectories, limits.maxDirectories ?? options.maxDirectories),
+    maxEntries: Math.min(options.maxEntries, limits.maxEntries ?? options.maxEntries),
+    maxFiles: Math.min(options.maxFiles, limits.maxFiles ?? options.maxFiles),
+  });
+}
+
+function browserDevFileScanOptions() {
+  return {
+    allowedExtensions: DEV_FILE_EXTENSIONS,
+    fileExtension,
+    includeFile: (path: string) => !path.endsWith("/no-molecule-column.csv"),
+    maxDirectories: DEV_FILE_SCAN_MAX_DIRECTORIES,
+    maxEntries: DEV_FILE_SCAN_MAX_ENTRIES,
+    maxFileBytes: DEV_FILE_SIZE_LIMIT,
+    maxFiles: DEV_FILE_SCAN_MAX_FILES,
+  };
 }
 
 function isDevFileReadAllowed(path: string) {
-  return devFsAllowRoots.some((root) => {
-    const relation = relative(root, path);
-    return relation === "" || (relation && !relation.startsWith("..") && !relation.startsWith("/"));
-  });
+  return isBrowserDevPathAllowed(path, devFsAllowRoots);
 }
 
 function fileExtension(path: string) {
