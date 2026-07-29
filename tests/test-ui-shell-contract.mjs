@@ -806,7 +806,7 @@ assert.match(viteConfig, /join\(homedir\(\), "Desktop", "Burette Generated Files
 assert.match(viteConfig, /const BROWSER_DEV_XTB_JOBS_ROOT = join\(BROWSER_DEV_GENERATED_FILES_ROOT, "xTB Jobs"\);/);
 assert.match(viteConfig, /const BROWSER_DEV_CONFORMER_JOBS_ROOT = join\(BROWSER_DEV_GENERATED_FILES_ROOT, "Conformer Jobs"\);/);
 assert.match(viteConfig, /const browserDevGeneratedFileRoots = \[BROWSER_DEV_GENERATED_FILES_ROOT\];/);
-assert.match(viteConfig, /const devFsAllowRoots = \[repoRoot, \.\.\.defaultFsAllow, \.\.\.browserDevGeneratedFileRoots, \.\.\.extraFsAllow\]\.map\(\(path\) => resolve\(path\)\);/);
+assert.match(viteConfig, /const devFsAllowRoots = \[repoRoot, \.\.\.defaultFsAllow, \.\.\.browserDevGeneratedFileRoots, \.\.\.extraFsAllow\][\s\S]*\.map\(canonicalExistingPath\);/);
 assert.match(viteConfig, /"import\.meta\.env\.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT": JSON\.stringify\(BROWSER_DEV_GENERATED_FILES_ROOT\)/);
 assert.match(viteConfig, /registerBrowserDevRuntimeDoctorRoute\(server,/);
 assert.match(viteConfig, /xyzrenderStatus: browserDevXyzrenderStatus/);
@@ -887,7 +887,7 @@ assert.match(previewRuntimeSource, /for candidate_base in candidate_desmond_base
 assert.doesNotMatch(previewRuntimeSource, /casebook|source_files|mnt__/);
 assert.match(viteConfig, /function isDevFileReadAllowed\(path: string\)/);
 assert.match(viteConfig, /async function collectDefaultDevFiles\(\)/);
-assert.match(viteConfig, /if \(path\.endsWith\("\/no-molecule-column\.csv"\)\) return;/);
+assert.match(viteConfig, /includeFile: \(path: string\) => !path\.endsWith\("\/no-molecule-column\.csv"\)/);
 assert.match(viteConfig, /function normalizeXyzrenderInputExtension\(value: string \| null\)/);
 assert.match(viteConfig, /registerBrowserDevXyzrenderRoute\(server,/);
 assert.match(browserDevXyzrender, /server\.middlewares\.use\("\/__burette\/xyzrender"/);
@@ -1004,6 +1004,8 @@ assert.match(browserDevStructureBundles, /!isSpectrumPath\(path, extension\) &&\
 assert.match(browserDevStartup, /export function browserDevFolderFromLocation\(\)/);
 assert.match(browserDevStartup, /export function browserDevFoldersFromLocation\(\)/);
 assert.match(browserDevStartup, /params\.getAll\("devFolder"\)/);
+assert.match(browserDevStartup, /export async function scanBrowserDevFolders/);
+assert.match(browserDevStartup, /maxFiles: String\(remainingFiles\)/);
 assert.match(browserDevStartup, /return browserDevFoldersFromLocation\(\)\[0\] \?\? null;/);
 assert.ok(browserDevStartup.includes('return trimmed ? trimmed.replace(/\\\\/g, "/").replace(/\\/+$/u, "") : null;'));
 assert.match(browserDevStartup, /export function browserDevHasExplicitWorkspace\(\)/);
