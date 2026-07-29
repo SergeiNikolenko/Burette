@@ -65,6 +65,8 @@ bun scripts/burette-agent.mjs story-create --spec story.json --output story.mvsx
 bun scripts/burette-agent.mjs story-validate --file story.mvsx
 bun scripts/burette-agent.mjs story-template-list
 bun scripts/burette-agent.mjs story-template-create --template binding-site-tour --output story.mvsx --var protein_url=protein.pdb --var ligand_url=ligand.sdf --asset protein.pdb=/path/protein.pdb --asset ligand.sdf=/path/ligand.sdf
+bun scripts/burette-agent.mjs story-schema --schema scene
+bun scripts/burette-agent.mjs story-schema --schema scene --node component
 ```
 
 MCP tools wrap this CLI instead of reimplementing the app control layer.
@@ -78,6 +80,7 @@ burette.open_ketcher
 burette.observe_workspace
 burette.control_viewer
 burette.control_ketcher
+burette.get_mvs_authoring_reference
 burette.list_story_templates
 burette.create_story_from_template
 burette.create_story
@@ -142,7 +145,7 @@ public PDB entry in the real sandboxed Burette browser workspace. The hosted
 target does not open arbitrary local files or control the desktop application.
 
 MolViewSpec Story authoring and the bundled Browser transports are self-contained
-in plugin `0.2.1`. Native `desktop-app` Story observation and control require
+in plugin `0.2.2`. Native `desktop-app` Story observation and control require
 Burette `2.2.0` or newer; older app releases are intentionally excluded by
 `compatibility.json`.
 
@@ -211,6 +214,11 @@ There are two execution paths:
   transforms/instances, volumes, and animations.
 
 For an explanation that should unfold step by step, use a MolViewSpec Story:
+`burette.get_mvs_authoring_reference` returns the installed MolViewSpec version,
+official documentation map, supported scene or animation nodes, and the exact
+parent/parameter contract for one requested node. Use it before unfamiliar
+selectors, annotations, cameras, primitives, volumes, or animations instead of
+guessing syntax from memory.
 `burette.list_story_templates` returns reusable structure-overview,
 binding-site, docking-comparison, and aligned-structure scaffolds with declared
 inputs, storyboard purposes, and scientific caveats.

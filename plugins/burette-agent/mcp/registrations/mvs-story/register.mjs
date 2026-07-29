@@ -13,10 +13,26 @@ const storyControlOperation = z.enum(["next", "previous", "goto", "play", "pause
 const STORY_OUTPUT_LIMIT = 256 * 1024;
 const STORY_ARRAY_LIMIT = 256;
 const STORY_STRING_LIMIT = 4096;
+const STORY_REFERENCE_STRING_LIMIT = 48 * 1024;
 const STORY_TOTAL_STRING_LIMIT = 64 * 1024;
 const STORY_NODE_LIMIT = 2000;
 
 export function registerMvsStory(server) {
+  registerAppTool(server, "burette.get_mvs_authoring_reference", {
+    title: "Get MolViewSpec Authoring Reference",
+    description: "Return the installed Mol* version, supported scene or animation node kinds, official documentation links, and optionally the exact parent and parameter contract for one node.",
+    inputSchema: {
+      schema: z.enum(["scene", "animation"]).optional(),
+      nodeKind: z.string().trim().optional(),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _meta: { ui: { visibility: ["model"] } },
+  }, async input => {
+    const args = ["story-schema", "--schema", input.schema || "scene"];
+    if (input.nodeKind) args.push("--node", input.nodeKind);
+    return cliStoryResult("burette.get_mvs_authoring_reference", await runBuretteAgent(args));
+  });
+
   registerAppTool(server, "burette.list_story_templates", {
     title: "List MolViewSpec Story Templates",
     description: "List installed, reusable MolViewSpec Story templates with required variables, storyboard purposes, and scientific caveats.",
@@ -204,7 +220,8 @@ function boundedStoryOutput(value) {
 function boundStoryValue(value, budget, path) {
   if (value === null || typeof value === "boolean" || typeof value === "number") return value;
   if (typeof value === "string") {
-    const allowed = Math.max(0, Math.min(STORY_STRING_LIMIT, budget.stringsRemaining));
+    const stringLimit = path.endsWith(".markdown") ? STORY_REFERENCE_STRING_LIMIT : STORY_STRING_LIMIT;
+    const allowed = Math.max(0, Math.min(stringLimit, budget.stringsRemaining));
     const result = value.length > allowed ? `${value.slice(0, Math.max(0, allowed - 1))}…` : value;
     budget.stringsRemaining -= Math.min(value.length, allowed);
     if (result !== value) budget.truncated[path] = { total: value.length, returned: result.length, truncated: true };

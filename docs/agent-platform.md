@@ -61,7 +61,7 @@ result back to the user.
 | Workspace observer | `bun scripts/burette-agent.mjs observe` | Reads typed state from a session directory. |
 | Workspace action | `bun scripts/burette-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
 | Ketcher surface | `burette.open_ketcher` / `burette.control_ketcher` | Opens and controls the active chemical editor with bounded, revision-checked actions. |
-| MolViewSpec Story | `story-template-list` / `story-template-create` / `story-create` / `story-validate`; `burette.list_story_templates` / `burette.create_story_from_template` / `burette.create_story` / `burette.validate_story` / `burette.observe_story` / `burette.control_story` | Lists reusable scientific scaffolds, authors schema-valid multi-state MVSJ/MVSX, verifies resources, and exposes typed Story state and playback. |
+| MolViewSpec Story | `story-schema` / `story-template-list` / `story-template-create` / `story-create` / `story-validate`; `burette.get_mvs_authoring_reference` / `burette.list_story_templates` / `burette.create_story_from_template` / `burette.create_story` / `burette.validate_story` / `burette.observe_story` / `burette.control_story` | Discovers the version-matched MVS schema, lists reusable scientific scaffolds, authors schema-valid multi-state MVSJ/MVSX, verifies resources, and exposes typed Story state and playback. |
 | Panel renderer | `bun scripts/burette-agent.mjs render-panel` | Opens bounded markdown/table/chart output in a docked panel. |
 | Tokenized preview | `bun scripts/agent-preview.mjs` | Starts typed browser preview sessions for direct observe/act checks. |
 | Router skill | `plugins/burette-agent/skills/index/SKILL.md` | Routes molecular workspace requests to the right focused skill. |
@@ -131,6 +131,15 @@ or unknown variables, then follows the same validation and safe-write path as
 packaged under `assets/mvs-story-templates/`. They are starting points, not
 analysis engines: contacts, scores, alignment metrics, and biological claims
 must be supplied from explicit calculations or observations.
+
+`story-schema` exposes progressive MolViewSpec authoring help from the same
+installed Mol* runtime used by Story validation. Without `--node` it returns a
+bounded scene or animation overview, supported node kinds, the MVS spec version,
+and official documentation links. With `--node`, it adds that node's exact
+parents, parameters, types, defaults, and descriptions. MCP exposes the same
+contract as `burette.get_mvs_authoring_reference`. This avoids injecting a full
+upstream documentation snapshot into every prompt while preventing agents from
+guessing version-sensitive syntax.
 
 After opening, `observe_story` reports the current snapshot and ordered bounded
 metadata from Mol*'s snapshot manager. `control_story` supports next, previous,

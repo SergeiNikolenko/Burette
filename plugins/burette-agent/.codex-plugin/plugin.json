@@ -1,6 +1,6 @@
 {
   "name": "burette",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Operate Burette as an agent-accessible molecular workspace for structures, Mol* scenes and Stories, molecule collections, trajectories, and workflow result artifacts.",
   "author": {
     "name": "Burette contributors",

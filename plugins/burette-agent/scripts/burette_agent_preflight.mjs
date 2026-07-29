@@ -190,6 +190,7 @@ const payload = {
         "load complete MolViewSpec scenes",
       ],
       mvsStory: [
+        "discover installed MolViewSpec scene and animation node contracts",
         "author and validate multi-state MolViewSpec Stories",
         "package local resources in MVSX",
         "observe the current Story step",
@@ -225,6 +226,7 @@ const payload = {
       load_mvs: "supported_for_complete_mvs_payloads",
       full_mvs_scene: "supported_via_load_mvs",
       story_create: "supported_with_official_mvs_schema_validation",
+      story_authoring_reference: "supported_from_installed_molstar_schema",
       story_observe: "supported",
       story_control: "supported",
     },

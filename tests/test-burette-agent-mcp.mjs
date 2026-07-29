@@ -212,6 +212,7 @@ async function testMcpRegistrations(tempRoot) {
     "burette.create_story",
     "burette.create_story_from_template",
     "burette.get_context",
+    "burette.get_mvs_authoring_reference",
     "burette.list_story_templates",
     "burette.observe_story",
     "burette.observe_workspace",
@@ -236,7 +237,20 @@ async function testMcpRegistrations(tempRoot) {
   ]);
   assert.equal(server.tools.get("burette.create_story").config.annotations.destructiveHint, true);
   assert.equal(server.tools.get("burette.create_story_from_template").config.annotations.destructiveHint, true);
+  assert.equal(server.tools.get("burette.get_mvs_authoring_reference").config.annotations.readOnlyHint, true);
   assert.equal(server.tools.get("burette.list_story_templates").config.annotations.readOnlyHint, true);
+
+  const overview = await server.tools.get("burette.get_mvs_authoring_reference").handler({ schema: "scene" });
+  assert.equal(overview.structuredContent.ok, true);
+  assert.equal(overview.structuredContent.result.specVersion, "1");
+  assert.equal(overview.structuredContent.result.nodeKinds.includes("primitive"), true);
+  const component = await server.tools.get("burette.get_mvs_authoring_reference").handler({ schema: "scene", nodeKind: "component" });
+  assert.equal(component.structuredContent.ok, true);
+  assert.match(component.structuredContent.result.markdown, /Parent: `structure`/);
+  const primitive = await server.tools.get("burette.get_mvs_authoring_reference").handler({ schema: "scene", nodeKind: "primitive" });
+  assert.equal(primitive.structuredContent.ok, true);
+  assert.equal(primitive.structuredContent.result.markdown.length > 30000, true);
+  assert.equal(primitive.structuredContent.bounds, undefined);
 }
 
 async function testValidationHandlers(tempRoot) {

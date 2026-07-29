@@ -14,6 +14,7 @@ import {
   writeMvsStoryFile,
 } from "../scripts/mvs-story.mjs";
 import { instantiateMvsStoryTemplate, listMvsStoryTemplates } from "../scripts/mvs-story-templates.mjs";
+import { getOfficialMvsAuthoringReference } from "../scripts/mvs-schema-validator.mjs";
 
 const root = {
   kind: "root",
@@ -79,6 +80,24 @@ const uriStory = buildMvsStory({
 assert.equal(validateMvsStory(uriStory, { resourceNames: [], requireBundledResources: true }).issues.some(issue => issue.code === "MISSING_RESOURCE"), true);
 assert.equal(validateMvsStory(uriStory, { resourceNames: ["annotations/primitives.json"], requireBundledResources: true }).ok, true);
 
+const sceneReference = getOfficialMvsAuthoringReference();
+assert.equal(sceneReference.schemaKind, "scene");
+assert.equal(sceneReference.specVersion, "1");
+assert.equal(sceneReference.nodeKinds.length, 30);
+assert.equal(sceneReference.nodeKinds.includes("volume_representation"), true);
+assert.equal(sceneReference.officialDocs.animations, "https://molstar.org/mol-view-spec-docs/animations/");
+const componentReference = getOfficialMvsAuthoringReference({ nodeKind: "component" });
+assert.match(componentReference.markdown, /## `component`/);
+assert.match(componentReference.markdown, /Parent: `structure`/);
+assert.match(componentReference.markdown, /selector/);
+const animationReference = getOfficialMvsAuthoringReference({ schema: "animation", nodeKind: "interpolate" });
+assert.deepEqual(animationReference.nodeKinds, ["animation", "interpolate"]);
+assert.match(animationReference.markdown, /## `interpolate`/);
+assert.throws(
+  () => getOfficialMvsAuthoringReference({ nodeKind: "unknown_node" }),
+  error => error.code === "MVS_NODE_NOT_FOUND" && error.details.availableNodeKinds.includes("component"),
+);
+
 const templates = await listMvsStoryTemplates();
 assert.deepEqual(templates.map(template => template.id), [
   "aligned-structure-comparison",
@@ -124,6 +143,16 @@ try {
   const templateList = spawnSync(process.execPath, ["scripts/burette-agent.mjs", "story-template-list"], { encoding: "utf8" });
   assert.equal(templateList.status, 0, templateList.stderr);
   assert.equal(JSON.parse(templateList.stdout).result.count, 4);
+
+  const schemaOverview = spawnSync(process.execPath, ["scripts/burette-agent.mjs", "story-schema", "--schema", "scene"], { encoding: "utf8" });
+  assert.equal(schemaOverview.status, 0, schemaOverview.stderr);
+  assert.equal(JSON.parse(schemaOverview.stdout).result.nodeKinds.includes("primitive"), true);
+  const schemaNode = spawnSync(process.execPath, ["scripts/burette-agent.mjs", "story-schema", "--schema", "scene", "--node", "camera"], { encoding: "utf8" });
+  assert.equal(schemaNode.status, 0, schemaNode.stderr);
+  assert.match(JSON.parse(schemaNode.stdout).result.markdown, /position/);
+  const missingSchemaNode = spawnSync(process.execPath, ["scripts/burette-agent.mjs", "story-schema", "--node", "missing"], { encoding: "utf8" });
+  assert.equal(missingSchemaNode.status, 1);
+  assert.equal(JSON.parse(missingSchemaNode.stderr).error.code, "MVS_NODE_NOT_FOUND");
 
   const templatedMvsx = path.join(temp, "binding-site-tour.mvsx");
   const templateCreate = spawnSync(process.execPath, [

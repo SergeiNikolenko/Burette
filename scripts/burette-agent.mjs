@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { delimiter, dirname, resolve } from 'node:path';
 import { validateMvsDocumentFile, validateMvsStoryFile, writeMvsStoryFile } from './mvs-story.mjs';
 import { instantiateMvsStoryTemplate, listMvsStoryTemplates } from './mvs-story-templates.mjs';
+import { getOfficialMvsAuthoringReference } from './mvs-schema-validator.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -38,6 +39,7 @@ function usage() {
   node scripts/burette-agent.mjs story-validate --file /tmp/story.mvsx
   node scripts/burette-agent.mjs story-template-list
   node scripts/burette-agent.mjs story-template-create --template binding-site-tour --output /tmp/story.mvsx --var protein_url=protein.pdb --var ligand_url=ligand.sdf [--asset protein.pdb=/path/protein.pdb]
+  node scripts/burette-agent.mjs story-schema [--schema scene|animation] [--node component]
 
 The CLI is the readable Burette agent contract. Auto mode starts the full
 browser-agent-shell when available and falls back to browser-preview when the
@@ -108,6 +110,16 @@ function parseOptions(args) {
     }
     if (arg === '--template') {
       out.template = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--schema') {
+      out.schema = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--node') {
+      out.node = requireValue(args, index, arg);
       index += 1;
       continue;
     }
@@ -202,6 +214,10 @@ async function main() {
     await storyTemplateCreate(options);
     return;
   }
+  if (command === 'story-schema') {
+    storySchema(options);
+    return;
+  }
   fail('UNKNOWN_COMMAND', `Unknown command: ${command}.`, 2);
 }
 
@@ -261,6 +277,18 @@ async function storyTemplateCreate(options) {
     }, null, 2));
   } catch (error) {
     fail(error?.code || 'STORY_TEMPLATE_CREATE_FAILED', error?.message || String(error), 1, error?.details || null);
+  }
+}
+
+function storySchema(options) {
+  try {
+    const result = getOfficialMvsAuthoringReference({
+      schema: options.schema || 'scene',
+      nodeKind: options.node,
+    });
+    console.log(JSON.stringify({ ok: true, apiVersion, result }, null, 2));
+  } catch (error) {
+    fail(error?.code || 'MVS_REFERENCE_FAILED', error?.message || String(error), 1, error?.details || null);
   }
 }
 

@@ -21,23 +21,37 @@ scene tree per snapshot.
    required variables and local resources. Treat the result as a starting
    point: replace generic prose with observed evidence and preserve its
    scientific caveats.
-3. Build or customize a complete `root` scene for every snapshot. Keep selectors,
+3. For nodes or features not already demonstrated by the template, read
+   [the bundled authoring reference](references/molviewspec-authoring.md), then
+   call `burette.get_mvs_authoring_reference` for the scene or animation
+   overview and each unfamiliar node. This returns the exact contract from the
+   Mol* version installed with Burette instead of relying on recalled syntax.
+4. Build or customize a complete `root` scene for every snapshot. Keep selectors,
    representations, colors, labels, primitives, and camera settings inside the
    snapshot so any step can be loaded independently.
-4. Give every snapshot a unique stable `key`, concise `title`, markdown
+5. Give every snapshot a unique stable `key`, concise `title`, markdown
    `description`, `linger_duration_ms`, and `transition_duration_ms`.
-5. When authoring without a template, call `burette.create_story` with the Story and an output ending in `.mvsj`
+6. When authoring without a template, call `burette.create_story` with the Story and an output ending in `.mvsj`
    or `.mvsx`. For local or relative resources, pass a `resources` mapping and
    use `.mvsx`; do not hand off a broken standalone `.mvsj`.
-6. Call `burette.validate_story` on the resulting file.
-7. Open it with `burette.open_workspace`, open the returned Browser URL when
+7. Call `burette.validate_story` on the resulting file.
+8. Open it with `burette.open_workspace`, open the returned Browser URL when
    required, and wait for workspace readiness.
-8. Call `burette.observe_story`. Confirm the title, step count, current key,
+9. Call `burette.observe_story`. Confirm the title, step count, current key,
    description, and playback state.
-9. Exercise `burette.control_story` with at least `next` and `previous`; use
+10. Exercise `burette.control_story` with at least `next` and `previous`; use
    `goto`, `play`, and `pause` when the user asked for them.
-10. Run Browser visual QA on the first step and one transitioned step. A valid
+11. Run Browser visual QA on the first step and one transitioned step. A valid
    JSON file alone does not prove that structures, labels, or resources render.
+
+## Documentation boundary
+
+The bundled reference covers every main upstream MolViewSpec documentation
+area and links to the official pages. The reference tool is the version-matched
+source of truth for supported nodes and parameters. Upstream tutorials and
+demos remain external and should be consulted only when the task needs their
+prose or runnable examples; do not inject the full website into every agent
+turn.
 
 ## Installed Templates
 
