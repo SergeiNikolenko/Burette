@@ -28,6 +28,12 @@ Burette registers the same upstream extension and invokes its applicable state
 action, so its object appears in the same state tree and can be hidden or removed
 independently.
 
+The desktop Molecular Inspector exposes a contextual `Assembly symmetry` row
+directly below the structure summary when Molstar reports the action as
+applicable. `Show axes` creates the upstream object and changes the row to a
+visible `Shown` state. Structures without applicable biological-assembly
+metadata do not show the row.
+
 Only the RCSB GraphQL origin is added to the Molstar runtime `connect-src`
 allowlist. Other preview runtimes retain their local-only policy.
 

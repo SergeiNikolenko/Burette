@@ -91,6 +91,11 @@ export function useAppViewerStateMessages({
       return true;
     }
 
+    if (sourceName === "burette-viewer" && body?.type === "molstarCapabilitiesChanged") {
+      window.dispatchEvent(new CustomEvent("burette:molstar-capabilities-changed", { detail: body }));
+      return true;
+    }
+
     if (
       sourceName === "burette-viewer"
       && (body?.type === "structureStoryChanged" || body?.type === "openStructureStory")

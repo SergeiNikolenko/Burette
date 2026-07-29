@@ -204,6 +204,25 @@
     }
   }
 
+  async function reportMolstarCapabilities() {
+    if (!window.BuretteAgent?.run) return;
+    try {
+      const response = await window.BuretteAgent.run({ command: 'capabilities', args: {} });
+      if (!response?.ok) return;
+      postHostMessage({
+        type: 'molstarCapabilitiesChanged',
+        hasAssemblySymmetry: response.result?.hasAssemblySymmetry === true,
+        assemblySymmetryShown: response.result?.hasAssemblySymmetryRepresentation === true
+      });
+    } catch (error) {
+      debug('Mol* capability report failed: ' + (error && error.message || String(error)));
+    }
+  }
+
+  window.addEventListener('burette-agent-ready', () => {
+    void reportMolstarCapabilities();
+  });
+
   function isEditableShortcutTarget(target) {
     const tagName = target?.tagName?.toLowerCase();
     return target?.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select';
@@ -842,6 +861,7 @@
         const actionType = String(body.action?.type || 'unknown');
         result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
       }
+      if (body.action?.type === 'show_assembly_symmetry') await reportMolstarCapabilities();
       event.source?.postMessage({
         source: 'burette-agent-viewer',
         body: {

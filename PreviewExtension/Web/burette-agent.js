@@ -198,6 +198,7 @@
       hasViewportScreenshot: typeof plugin?.helpers?.viewportScreenshot?.getImageDataUri === 'function',
       hasLoadMvsData: typeof viewer?.loadMvsData === 'function',
       hasAssemblySymmetry: findApplicableStateAction('Assembly Symmetry') != null,
+      hasAssemblySymmetryRepresentation: hasAssemblySymmetryRepresentation(),
       hasStoryManager: !!plugin?.managers?.snapshot,
       hasSessionExport: typeof plugin?.managers?.snapshot?.serialize === 'function',
       hasCameraManager: !!plugin?.managers?.camera,
@@ -724,6 +725,14 @@
       if (action) return { action, cell: structure, ref: structure.transform?.ref || structure.ref };
     }
     return null;
+  }
+
+  function hasAssemblySymmetryRepresentation() {
+    const cells = state.plugin?.state?.data?.cells?.values?.() || [];
+    for (const cell of cells) {
+      if (cell?.obj?.label === 'Global Symmetry') return true;
+    }
+    return false;
   }
 
   async function commandShowAssemblySymmetry(args = {}, warnings) {

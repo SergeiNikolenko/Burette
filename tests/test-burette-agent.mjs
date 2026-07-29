@@ -227,6 +227,8 @@ const capabilities = await context.window.BuretteAgent.run({ command: 'capabilit
 assert.equal(capabilities.ok, true);
 assert.equal(capabilities.result.hasViewer, true);
 assert.equal(capabilities.result.hasStructureInteractivity, true);
+assert.equal(capabilities.result.hasAssemblySymmetry, true);
+assert.equal(capabilities.result.hasAssemblySymmetryRepresentation, false);
 
 const summary = await context.window.BuretteAgent.run({ command: 'summary', args: { includeLigands: true } });
 assert.equal(summary.ok, true);
@@ -355,6 +357,8 @@ const symmetry = await context.window.BuretteAgent.run({ command: 'showAssemblyS
 assert.equal(symmetry.ok, true);
 assert.equal(symmetry.result.objects[0].label, 'Global Symmetry');
 assert.equal(symmetry.result.objects[0].description, 'Icosahedral (I)');
+const capabilitiesWithSymmetry = await context.window.BuretteAgent.run({ command: 'capabilities' });
+assert.equal(capabilitiesWithSymmetry.result.hasAssemblySymmetryRepresentation, true);
 
 viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure();
 const scalar = await context.window.BuretteAgent.run({
