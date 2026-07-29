@@ -2309,7 +2309,8 @@ assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, filesTa
 assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, item\.payload\)/);
 assert.match(dockPanel, /const dockStructureDocument = dockDocument \?\? activeDocument/);
 assert.match(dockPanel, /const xyzrenderDockDocument = area === "right" && activeStructureDocument\?\.renderer === "xyzrender-external"/);
-assert.match(dockPanel, /const runtimeTabs = xyzrenderDockDocument && !tabs\.some\(\(tab\) => tab\.kind === "xyzrender"\)/);
+assert.match(dockPanel, /const mesoscaleTabs = mesoscaleDockDocument && !tabs\.some\(\(tab\) => tab\.kind === "scene"\)/);
+assert.match(dockPanel, /const runtimeTabs = xyzrenderDockDocument && !mesoscaleTabs\.some\(\(tab\) => tab\.kind === "xyzrender"\)/);
 assert.match(dockPanel, /actions\.openDockTab\("right", "xyzrender"\)/);
 assert.match(dockPanel, /const xyzrenderDocument = area === "right" && dockStructureDocument\?\.renderer === "xyzrender-external"/);
 assert.match(dockPanel, /if \(kind === "xyzrender"\) return Boolean\(xyzrenderDockDocument\)/);

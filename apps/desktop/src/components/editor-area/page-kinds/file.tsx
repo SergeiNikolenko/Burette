@@ -9,6 +9,9 @@ import { showNativeContextMenu } from "../../native-context-menu";
 import { definePageKind } from "./types";
 import { SpectrumViewer } from "../../spectrum-viewer";
 import { useSourceEditing } from "../../../lib/source-editing/context";
+import { isMesoscaleViewerDocument } from "../../../lib/mesoscale-documents";
+import { bindMesoscaleFrame, releaseMesoscaleFrame } from "../../../stores/mesoscale-store";
+import { MesoscaleToolbar } from "../../mesoscale/mesoscale-toolbar";
 
 export type FileLocation = { kind: "file"; documentId?: string; path: string };
 
@@ -64,6 +67,7 @@ function StructureViewerSurface({
   const stagingIframeRef = useRef<HTMLIFrameElement>(null);
   const sourceEditing = useSourceEditing();
   const sourceSession = sourceEditing?.sessionForDocument(document) ?? null;
+  const mesoscale = isMesoscaleViewerDocument(document);
   const sheetDropTarget = document.renderer === "xyzrender-external";
   const collectionDropTarget = document.renderer === "grid2d";
   const postViewerVisibility = useCallback((frame = iframeRef.current, frameActive = true) => {
@@ -81,6 +85,12 @@ function StructureViewerSurface({
     postViewerVisibility(iframeRef.current, true);
     postViewerVisibility(stagingIframeRef.current, false);
   }, [postViewerVisibility, sourceSession?.sourcePreview?.activeSlot]);
+  useEffect(() => () => releaseMesoscaleFrame(document.id, iframeRef.current?.contentWindow), [document.id]);
+
+  const handleViewerLoad = useCallback((frame: HTMLIFrameElement, active: boolean) => {
+    postViewerVisibility(frame, active);
+    if (mesoscale && active && frame.contentWindow) bindMesoscaleFrame(document.id, frame.contentWindow);
+  }, [document.id, mesoscale, postViewerVisibility]);
   const dropTarget = useMemo(() => ({
     kind: "active-viewer" as const,
     documentId: document.id,
@@ -173,9 +183,10 @@ function StructureViewerSurface({
         iframeRef={iframeRef}
         stagingIframeRef={stagingIframeRef}
         sourcePreview={sourceSession?.sourcePreview ?? undefined}
-        onViewerLoad={postViewerVisibility}
+        onViewerLoad={handleViewerLoad}
         onStagingLoad={(identity, frame) => sourceEditing?.stagingLoaded(document, identity, frame)}
       />
+      {mesoscale ? <MesoscaleToolbar document={document} actions={actions} /> : null}
     </div>
   );
 }

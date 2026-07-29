@@ -133,6 +133,9 @@ const FILE_KIND_BY_EXTENSION: Record<string, FileKind> = {
 
   mvsj: "scene",
   mvsx: "scene",
+  molj: "scene",
+  molx: "scene",
+  mesozip: "scene",
 
   fasta: "sequence",
 

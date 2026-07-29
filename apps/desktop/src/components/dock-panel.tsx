@@ -28,6 +28,9 @@ import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spe
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import type { ConformerJob, TextFileDocument, ViewerDocument, ViewerReloadOptions, XtbJob, XyzrenderControls } from "../types";
+import { isMesoscaleViewerDocument } from "../lib/mesoscale-documents";
+import { MesoscaleScenePanel } from "./mesoscale/mesoscale-scene-panel";
+import { MesoscaleInfoPanel } from "./mesoscale/mesoscale-info-panel";
 
 // Chemical Space reaches three.js through chemical-space-3d, and this panel is
 // always mounted, so a static import put that whole stack in the entry chunk.
@@ -43,6 +46,7 @@ type DockPanelProps = {
 };
 
 const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
+  scene: Atom01Icon,
   xyzrender: Atom01Icon,
   files: Folder01Icon,
   spectrum: Atom01Icon,
@@ -114,10 +118,19 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const xyzrenderDockDocument = area === "right" && activeStructureDocument?.renderer === "xyzrender-external"
     ? activeStructureDocument
     : null;
-  const runtimeTabs = xyzrenderDockDocument && !tabs.some((tab) => tab.kind === "xyzrender")
-    ? [createDockTab("xyzrender"), ...tabs]
+  const mesoscaleDockDocument = area === "right" && isMesoscaleViewerDocument(activeStructureDocument)
+    ? activeStructureDocument
+    : null;
+  const mesoscaleTabs = mesoscaleDockDocument && !tabs.some((tab) => tab.kind === "scene")
+    ? [createDockTab("scene"), ...tabs]
     : tabs;
-  const visibleTabs = xyzrenderDockDocument ? runtimeTabs : runtimeTabs.filter((tab) => tab.kind !== "xyzrender");
+  const runtimeTabs = xyzrenderDockDocument && !mesoscaleTabs.some((tab) => tab.kind === "xyzrender")
+    ? [createDockTab("xyzrender"), ...mesoscaleTabs]
+    : mesoscaleTabs;
+  const visibleTabs = runtimeTabs.filter((tab) => (
+    (tab.kind !== "xyzrender" || Boolean(xyzrenderDockDocument))
+    && (tab.kind !== "scene" || Boolean(mesoscaleDockDocument))
+  ));
   const activeTab = visibleTabs.find((tab) => tab.kind === activeTabKind) ?? visibleTabs[0] ?? tabs[0];
   const filesTabDragPayload = dockFilesDragPayload(dockDocument, dockTextDocument, dockTool);
   const dockDrops = useMemo(
@@ -145,6 +158,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
         if (kind === "xyzrender") return Boolean(xyzrenderDockDocument);
+        if (kind === "scene") return Boolean(mesoscaleDockDocument);
         if (kind === "chemical-space") return chemicalSpaceDockAvailable;
         if (kind === "story") return Boolean(state.structureStory);
         return true;
@@ -308,6 +322,11 @@ function DockPanelContent({
       })
     : [];
   const activeFileEntryKey = activeDockFileEntryKey(dockDocument, dockTextDocument, dockTool);
+  if (activeTabKind === "scene") {
+    return isMesoscaleViewerDocument(dockStructureDocument)
+      ? <MesoscaleScenePanel document={dockStructureDocument} />
+      : <DockEmptyState title="No mesoscale model open" description="Open a CellPack, PetWorld, .molx, .molj, or .mesozip model to inspect its scene." />;
+  }
   if (activeTabKind === "spectrum") {
     const spectrumDocument = dockStructureDocument?.renderer === "spectrum" ? dockStructureDocument : null;
     if (area === "bottom" && spectrumDocument) {
@@ -421,6 +440,7 @@ function DockPanelContent({
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
     if (dockTextDocument) return <TextDocumentInfoPanel document={dockTextDocument} actions={actions} />;
     if (dockStructureDocument?.renderer === "spectrum") return <SpectrumInfoPanel document={dockStructureDocument} />;
+    if (isMesoscaleViewerDocument(dockStructureDocument)) return <MesoscaleInfoPanel document={dockStructureDocument} />;
     return (
       <StructureInfoPanel
         document={dockStructureDocument}
