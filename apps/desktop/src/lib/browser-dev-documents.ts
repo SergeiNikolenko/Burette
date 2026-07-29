@@ -101,6 +101,7 @@ type MaestroPdbBlock = {
 };
 
 const MAX_STRUCTURE_FILE_SIZE = 75 * 1024 * 1024;
+const MAX_MESOSCALE_FILE_SIZE = 512 * 1024 * 1024;
 const MAESTRO_PREVIEW_READ_LIMIT = 64 * 1024 * 1024;
 const MAESTRO_PREVIEW_ATOM_LIMIT = 3000;
 const MAESTRO_PDB_PREVIEW_ATOM_LIMIT = 99999;
@@ -111,6 +112,7 @@ const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
 const GRID_ASSET_VERSION = "grid-ui-v166";
 const VIEWER_ASSET_VERSION = "viewer-ui-v70";
+const MESOSCALE_ASSET_VERSION = "mesoscale-ui-v1";
 const REPO_ROOT = String(import.meta.env.BURETTE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = String(
   (typeof window !== "undefined" ? window.__BURETTE_WEB_ASSETS_BASE__ : "")
@@ -132,6 +134,7 @@ const TRAJECTORY_PAIR_EXTENSIONS = new Set([
   "top", "psf", "prmtop", "tpr",
 ]);
 const browserDevVirtualTextDocuments = new Map<string, string>();
+const MESOSCALE_EXTENSIONS = new Set(["molj", "molx", "mesozip"]);
 
 type ResolvedPreviewVisuals = {
   theme: ViewerPreferences["theme"];
@@ -708,8 +711,9 @@ async function openBrowserDevDocument(
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.length === 0) throw new Error(`${path} is empty`);
-  if (bytes.length > MAX_STRUCTURE_FILE_SIZE && !useBoundedMaestroPreview) {
-    throw new Error(`${path} is larger than the 75 MB preview limit`);
+  const maxFileSize = isMesoscaleDocument(path, extension, bytes) ? MAX_MESOSCALE_FILE_SIZE : MAX_STRUCTURE_FILE_SIZE;
+  if (bytes.length > maxFileSize && !useBoundedMaestroPreview) {
+    throw new Error(`${path} is larger than the ${Math.round(maxFileSize / (1024 * 1024))} MB preview limit`);
   }
 
   const sourceByteCount = browserDevSourceByteCount(response, bytes.length);
@@ -847,6 +851,31 @@ async function openBrowserDevDocumentFromBytes(
   reloadOptions?: ViewerReloadOptions,
   documentId?: string,
 ): Promise<ViewerDocument> {
+  if (isMesoscaleDocument(path, extension, bytes)) {
+    const format = formatForExtension(extension);
+    const html = viewerHtml(
+      path,
+      format,
+      "molstar",
+      bytes,
+      sourceByteCount,
+      preferences,
+      false,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "",
+      undefined,
+      0,
+      null,
+      undefined,
+      reloadOptions,
+      documentId,
+    );
+    return browserDocument(path, extension, "molstar", html, sourceByteCount, documentId);
+  }
   const text = await decodeStructureText(bytes, extension);
   const grid = gridPayload(path, extension, text);
   const sdfRecordCount = isSdfExtension(extension) ? parseSdfCollectionRecords(text).length : 0;
@@ -1170,6 +1199,17 @@ function browserDevMolstarContextFocus(context: Record<string, unknown> | undefi
   return focus && typeof focus === "object" ? focus : undefined;
 }
 
+function isMesoscaleDocument(path: string, extension: string, bytes: Uint8Array) {
+  if (MESOSCALE_EXTENSIONS.has(extension)) return true;
+  const normalizedPath = path.toLowerCase();
+  if (extension === "bcif") {
+    return normalizedPath.includes("cellpack") || normalizedPath.includes("petworld") || normalizedPath.includes("mesoscale");
+  }
+  if (!["cif", "mmcif", "mcif"].includes(extension)) return false;
+  const header = new TextDecoder("utf-8", { fatal: false }).decode(bytes.subarray(0, Math.min(bytes.length, 256 * 1024))).toUpperCase();
+  return header.includes("CELLPACK") || header.includes("_PDBX_MODEL.") || header.includes("_PDBX_MODEL ");
+}
+
 function normalizeContextMolstarFormat(format: string | undefined) {
   const value = String(format || "pdb").toLowerCase();
   if (value === "cif" || value === "mmcif" || value === "mcif") return "mmcif";
@@ -1207,6 +1247,7 @@ function viewerHtml(
   const label = fileTitle(path);
   const extension = fileExtension(path);
   const visuals = resolvePreviewVisuals(preferences);
+  const mesoscale = configOverride?.viewerProfile === "mesoscale" || isMesoscaleDocument(path, extension, bytes);
   const config = configOverride ?? {
     format: format.molstarFormat,
     molstarFormat: format.molstarFormat,
@@ -1220,6 +1261,8 @@ function viewerHtml(
     dataPath: renderer === "xyzrender-external" ? browserDevReadUrl(path, extension) : undefined,
     sourcePath: path,
     sourceExtension: extension,
+    viewerProfile: mesoscale ? "mesoscale" : "structure",
+    ...(mesoscale ? { graphicsMode: "balanced" } : {}),
     quickLookBuild: "burette-browser-dev",
     debug: false,
     theme: visuals.theme,
@@ -1262,6 +1305,9 @@ function viewerHtml(
       : {}),
     ...(externalRendererStatus ? { externalRendererStatus } : {}),
   };
+  if (mesoscale) {
+    return mesoscaleViewerHtml(label, bytes, config, visuals.transparentBackground);
+  }
   const hostedMcpBootstrap = config.hostedMcpWidgetBootstrap === true;
   const viewerAsset = (name: string) => hostedMcpBootstrap
     ? `${WEB_ASSETS_BASE.replace(/\/$/u, "")}/${name}`
@@ -1300,6 +1346,33 @@ function viewerHtml(
   <script src="${viewerAsset("burette-agent.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("trajectory-smoothing.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("viewer.js")}?v=${runtimeAssetVersion}"></script>
+</body>
+</html>`;
+}
+
+function mesoscaleViewerHtml(
+  label: string,
+  bytes: Uint8Array,
+  config: Record<string, unknown>,
+  transparentBackground: boolean,
+) {
+  const version = `${MESOSCALE_ASSET_VERSION}-${Date.now()}`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <base href="${WEB_ASSETS_BASE}" />
+  <title>Burette Mesoscale - ${escapeHtml(label)}</title>
+  <link rel="stylesheet" href="mesoscale.css?v=${version}" />
+  <style>html,body,#app{width:100%;height:100%;margin:0;overflow:hidden}#status{position:fixed;left:16px;bottom:16px;z-index:10000;padding:10px 12px;border-radius:8px;background:#17191f;color:#fff;font:13px -apple-system,BlinkMacSystemFont,sans-serif}.hidden{display:none}</style>
+</head>
+<body class="${transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
+  <div id="app"></div>
+  <div id="status" class="hidden">Loading ${escapeHtml(label)}...</div>
+  <script>${viewerBridgeJs()}</script>
+  <script>window.BuretteConfig=${serializeInlineJson(config)};window.BuretteDataBase64="${bytesToBase64(bytes)}";</script>
+  <script src="mesoscale.js?v=${version}"></script>
 </body>
 </html>`;
 }

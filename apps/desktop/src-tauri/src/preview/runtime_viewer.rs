@@ -163,7 +163,12 @@ pub(crate) fn create_runtime<R: Runtime>(
             Err(error) => return Err(error),
         }
     }
-    let asset_profile = AssetProfile::for_viewer_renderer(&renderer);
+    let mesoscale = renderer == "molstar" && is_mesoscale_document(file_path, extension, data);
+    let asset_profile = if mesoscale {
+        AssetProfile::Mesoscale
+    } else {
+        AssetProfile::for_viewer_renderer(&renderer)
+    };
     copy_web_assets(app, &assets, asset_profile)?;
 
     let payload = if renderer == "molstar" {
@@ -230,6 +235,10 @@ pub(crate) fn create_runtime<R: Runtime>(
         "showPanelControls": true,
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
+    config["viewerProfile"] = json!(if mesoscale { "mesoscale" } else { "structure" });
+    if mesoscale {
+        config["graphicsMode"] = json!("balanced");
+    }
     if let Some(input_data) = xyzrender_input_data {
         config["xyzrenderInputDataBase64"] =
             json!(base64::engine::general_purpose::STANDARD.encode(input_data));
@@ -300,14 +309,24 @@ pub(crate) fn create_runtime<R: Runtime>(
     let include_data_script = should_embed_preview_data_script(payload.data.len());
     write_bytes_atomic(
         &runtime.join("index.html"),
-        viewer_html(
-            file_path,
-            &runtime,
-            &assets,
-            &renderer,
-            preferences,
-            include_data_script,
-        )
+        if mesoscale {
+            mesoscale_viewer_html(
+                file_path,
+                &runtime,
+                &assets,
+                preferences,
+                include_data_script,
+            )
+        } else {
+            viewer_html(
+                file_path,
+                &runtime,
+                &assets,
+                &renderer,
+                preferences,
+                include_data_script,
+            )
+        }
         .as_bytes(),
     )?;
     write_bytes_atomic(
@@ -806,6 +825,12 @@ mod tests {
             AssetProfile::ExternalXyzrender
         );
         assert!(AssetProfile::Molstar.copies_rdkit());
+        assert_eq!(AssetProfile::Mesoscale.name(), "desktop-mesoscale");
+        assert_eq!(
+            AssetProfile::Mesoscale.files(),
+            ["mesoscale.js", "mesoscale.css"]
+        );
+        assert!(!AssetProfile::Mesoscale.copies_rdkit());
         assert!(AssetProfile::Grid.copies_rdkit());
         assert!(!AssetProfile::Molstar.files().contains(&"grid-viewer.js"));
         assert!(!AssetProfile::Molstar.files().contains(&"xyz-fast.js"));
@@ -925,6 +950,7 @@ mod tests {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AssetProfile {
     Molstar,
+    Mesoscale,
     Grid,
     ExternalXyzrender,
 }
@@ -933,6 +959,7 @@ impl AssetProfile {
     pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Molstar => "desktop-molstar",
+            Self::Mesoscale => "desktop-mesoscale",
             Self::Grid => "desktop-grid",
             Self::ExternalXyzrender => "external-artifact",
         }
@@ -949,6 +976,7 @@ impl AssetProfile {
                 "trajectory-smoothing.js",
                 "viewer.js",
             ],
+            Self::Mesoscale => &["mesoscale.js", "mesoscale.css"],
             Self::Grid => &["grid-ui.js", "grid-viewer.js", "grid.css"],
             Self::ExternalXyzrender => &[
                 "molstar.css",
@@ -1178,6 +1206,83 @@ fn viewer_html(
 </body>
 </html>"#
     )
+}
+
+fn mesoscale_viewer_html(
+    file_path: &Path,
+    runtime: &Path,
+    assets: &Path,
+    preferences: &ViewerPreferences,
+    include_data_script: bool,
+) -> String {
+    let title = escape_html(
+        file_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("mesoscale model"),
+    );
+    let background_class = if preferences.canvas_background == "transparent" {
+        "burette-transparent-background"
+    } else {
+        "burette-opaque-background"
+    };
+    let bridge_js = asset_url(&runtime.join("viewer-bridge.js"));
+    let config_js = asset_url(&runtime.join("preview-config.js"));
+    let data_js = asset_url(&runtime.join("preview-data.js"));
+    let data_url = asset_url(&runtime.join("preview-data.bin"));
+    let mesoscale_css = asset_url(&assets.join("mesoscale.css"));
+    let mesoscale_js = asset_url(&assets.join("mesoscale.js"));
+    let data_script = if include_data_script {
+        format!(r#"<script src="{data_js}"></script>"#)
+    } else {
+        String::new()
+    };
+    format!(
+        r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="{VIEWER_MOLSTAR_CSP}" />
+  <title>Burette Mesoscale - {title}</title>
+  <link rel="stylesheet" href="{mesoscale_css}" />
+  <style>html,body,#app{{width:100%;height:100%;margin:0;overflow:hidden}}#status{{position:fixed;left:16px;bottom:16px;z-index:10000;padding:10px 12px;border-radius:8px;background:#17191f;color:#fff;font:13px -apple-system,BlinkMacSystemFont,sans-serif}}.hidden{{display:none}}</style>
+  <script src="{bridge_js}"></script>
+  <script>window.BuretteDataURL = {data_url:?};</script>
+</head>
+<body class="{background_class}">
+  <div id="app"></div>
+  <div id="status" class="hidden">Loading {title}...</div>
+  <script src="{config_js}"></script>
+  {data_script}
+  <script src="{mesoscale_js}"></script>
+</body>
+</html>"#
+    )
+}
+
+fn is_mesoscale_document(file_path: &Path, extension: &str, data: &[u8]) -> bool {
+    if matches!(extension, "molj" | "molx" | "mesozip") {
+        return true;
+    }
+    let name = file_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if extension == "bcif" {
+        return name.contains("cellpack")
+            || name.contains("petworld")
+            || name.contains("mesoscale");
+    }
+    if !matches!(extension, "cif" | "mmcif" | "mcif") {
+        return false;
+    }
+    let header_len = data.len().min(256 * 1024);
+    let header = String::from_utf8_lossy(&data[..header_len]).to_ascii_uppercase();
+    header.contains("CELLPACK")
+        || header.contains("_PDBX_MODEL.")
+        || header.contains("_PDBX_MODEL ")
 }
 
 fn not_renderable_html(file_path: &Path, message: &str) -> String {
