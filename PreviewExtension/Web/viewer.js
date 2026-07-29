@@ -1176,8 +1176,8 @@
   let molstarStyleApplySerial = 0;
   let molstarPresetPreviewViewer = null;
   let molstarPresetPreviewInit = null;
-  let molstarPresetPreviewTimer = 0;
   let molstarPresetPreviewSerial = 0;
+  let molstarPresetPreviewPreset = '';
   let molstarPresetPreviewRender = Promise.resolve();
   let molstarWaterRepresentationEpoch = 0;
   let latestXyzrenderOrientationRef = null;
@@ -2475,8 +2475,12 @@
       const radiusScale = Number.isFinite(configuredScale) && configuredScale > 0
         ? configuredScale
         : (document.body?.classList.contains('burette-mobile-host') ? 0.58 : 0.88);
+      const up = Array.isArray(options.up) && options.up.length >= 3 ? options.up : [0, 1, 0];
+      const direction = Array.isArray(options.direction) && options.direction.length >= 3
+        ? options.direction
+        : [0.85, -0.38, 0.92];
       const snapshot = typeof camera.getFocus === 'function'
-        ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), [0, 1, 0], [0.85, -0.38, 0.92])
+        ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), up, direction)
         : null;
       if (snapshot) snapshot.mode = 'perspective';
       canvas3d.requestCameraReset({
@@ -2906,9 +2910,8 @@
   }
 
   function hideMolstarPresetPreview() {
-    window.clearTimeout(molstarPresetPreviewTimer);
-    molstarPresetPreviewTimer = 0;
     molstarPresetPreviewSerial += 1;
+    molstarPresetPreviewPreset = '';
     molstarPresetPreviewElements().preview?.classList.add('hidden');
   }
 
@@ -2965,7 +2968,6 @@
 
   async function renderMolstarPresetPreview(item, preset, serial) {
     const option = molstarPresetOption(preset);
-    showMolstarPresetPreviewShell(item, option);
     try {
       const sourcePlugin = activeViewer?.plugin;
       if (typeof sourcePlugin?.state?.data?.getSnapshot !== 'function') throw new Error('Current Mol* scene cannot be copied.');
@@ -2979,10 +2981,19 @@
       const appearance = option.defaultAppearance || configuredMolstarAppearance(activeConfig || window.BuretteConfig || {});
       await applyMolstarAppearance(viewer, appearance);
       if (serial !== molstarPresetPreviewSerial) return;
-      const camera = captureMolstarCameraSnapshot(activeViewer);
-      if (camera) restoreMolstarCameraSnapshot(viewer, camera);
-      else viewer.plugin?.canvas3d?.requestCameraReset?.({ durationMs: 0 });
       try { viewer.handleResize(); } catch (_) {}
+      await waitForAnimationFrame();
+      const sourceCamera = captureMolstarCameraSnapshot(activeViewer);
+      const sourceDirection = sourceCamera?.position && sourceCamera?.target
+        ? sourceCamera.position.map((value, index) => value - sourceCamera.target[index])
+        : undefined;
+      requestMolstarStructureFocus(viewer, {
+        reason: 'preset-preview',
+        durationMs: 0,
+        radiusScale: 0.72,
+        up: sourceCamera?.up,
+        direction: sourceDirection
+      });
       try { viewer.plugin?.canvas3d?.requestDraw?.(); } catch (_) {}
       await waitForAnimationFrame();
       if (serial !== molstarPresetPreviewSerial) return;
@@ -2999,16 +3010,15 @@
   function scheduleMolstarPresetPreview(item) {
     const preset = item?.dataset?.buretMolstarPreset;
     if (!preset || !activeViewer) return;
-    window.clearTimeout(molstarPresetPreviewTimer);
+    if (preset === molstarPresetPreviewPreset) return;
+    molstarPresetPreviewPreset = preset;
+    showMolstarPresetPreviewShell(item, molstarPresetOption(preset));
     const serial = ++molstarPresetPreviewSerial;
-    molstarPresetPreviewTimer = window.setTimeout(() => {
-      molstarPresetPreviewTimer = 0;
-      molstarPresetPreviewRender = molstarPresetPreviewRender
-        .catch(() => {})
-        .then(() => serial === molstarPresetPreviewSerial
-          ? renderMolstarPresetPreview(item, preset, serial)
-          : undefined);
-    }, 320);
+    molstarPresetPreviewRender = molstarPresetPreviewRender
+      .catch(() => {})
+      .then(() => serial === molstarPresetPreviewSerial
+        ? renderMolstarPresetPreview(item, preset, serial)
+        : undefined);
   }
 
   function hideMolstarPresetMenu({ restoreFocus = false } = {}) {
