@@ -2906,12 +2906,29 @@
     preview.style.top = `${Math.round(top)}px`;
   }
 
+  function sizeMolstarPresetPreview(preview) {
+    if (!preview) return;
+    const sourceCanvas = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas || document.querySelector('#app canvas');
+    const sourceRect = sourceCanvas?.getBoundingClientRect?.();
+    const sourceWidth = Number(sourceRect?.width);
+    const sourceHeight = Number(sourceRect?.height);
+    if (!(sourceWidth > 0) || !(sourceHeight > 0)) {
+      preview.style.height = '';
+      return;
+    }
+    const previewWidth = preview.offsetWidth || Math.min(240, Math.max(1, window.innerWidth - 24));
+    const availableCanvasHeight = Math.max(120, window.innerHeight - 52);
+    const canvasHeight = Math.min(availableCanvasHeight, Math.max(120, previewWidth * sourceHeight / sourceWidth));
+    preview.style.height = `${Math.round(28 + canvasHeight)}px`;
+  }
+
   function showMolstarPresetPreviewShell(item, option) {
     const { preview, label, state } = molstarPresetPreviewElements();
     if (!preview) return;
     if (label) label.textContent = option.label;
     if (state) state.textContent = 'Rendering preview…';
     preview.classList.remove('hidden', 'ready', 'error');
+    sizeMolstarPresetPreview(preview);
     positionMolstarPresetPreview(item);
   }
 
@@ -2976,6 +2993,7 @@
     const option = molstarPresetOption(preset);
     try {
       const sourcePlugin = activeViewer?.plugin;
+      const sourceCamera = captureMolstarCameraSnapshot(activeViewer);
       if (typeof sourcePlugin?.state?.data?.getSnapshot !== 'function') throw new Error('Current Mol* scene cannot be copied.');
       const viewer = await ensureMolstarPresetPreviewViewer();
       if (serial !== molstarPresetPreviewSerial) return;
@@ -2989,17 +3007,8 @@
       if (serial !== molstarPresetPreviewSerial) return;
       try { viewer.handleResize(); } catch (_) {}
       await waitForAnimationFrame();
-      const sourceCamera = captureMolstarCameraSnapshot(activeViewer);
-      const sourceDirection = sourceCamera?.position && sourceCamera?.target
-        ? sourceCamera.position.map((value, index) => value - sourceCamera.target[index])
-        : undefined;
-      requestMolstarStructureFocus(viewer, {
-        reason: 'preset-preview',
-        durationMs: 0,
-        radiusScale: 0.52,
-        up: sourceCamera?.up,
-        direction: sourceDirection
-      });
+      if (sourceCamera) restoreMolstarCameraSnapshot(viewer, sourceCamera);
+      else viewer.plugin?.canvas3d?.requestCameraReset?.({ durationMs: 0 });
       try { viewer.plugin?.canvas3d?.requestDraw?.(); } catch (_) {}
       await waitForAnimationFrame();
       if (serial !== molstarPresetPreviewSerial) return;
