@@ -782,6 +782,8 @@ assert.match(previewFormatRegistrySource, /"id": "mol-view-spec-json"/);
 assert.match(previewFormatRegistrySource, /"extensions": \["mvsj"\]/);
 assert.match(previewFormatRegistrySource, /"id": "mol-view-spec-archive"/);
 assert.match(previewFormatRegistrySource, /"extensions": \["mvsx"\]/);
+assert.match(quickLookPreviewController, /case "mvsj":\s*self = Self\(molstarFormat: "mvsj", isBinary: false\)/);
+assert.match(quickLookPreviewController, /case "mvsx":\s*self = Self\(molstarFormat: "mvsx", isBinary: true\)/);
 assert.ok(tauriConfig.bundle.fileAssociations?.[0]?.ext?.includes('mvsj'));
 assert.ok(tauriConfig.bundle.fileAssociations?.[0]?.ext?.includes('mvsx'));
 assert.match(rendererPolicySource, /enum BuretteCoreBridge/);

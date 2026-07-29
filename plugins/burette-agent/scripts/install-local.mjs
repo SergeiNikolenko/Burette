@@ -46,6 +46,8 @@ const requiredBundleFiles = [
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
   "scripts/burette-agent.mjs",
+  "scripts/mvs-story.mjs",
+  "scripts/mvs-schema-validator.mjs",
   "mcp/lib/server-bundle.mjs",
 ];
 

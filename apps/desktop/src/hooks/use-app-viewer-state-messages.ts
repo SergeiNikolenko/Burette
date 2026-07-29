@@ -91,14 +91,15 @@ export function useAppViewerStateMessages({
       return true;
     }
 
-    if (
-      sourceName === "burette-viewer"
-      && (body?.type === "structureStoryChanged" || body?.type === "openStructureStory")
-    ) {
+    if (sourceName === "burette-viewer" && (
+      body?.type === "structureStoryChanged"
+      || body?.type === "openStructureStory"
+      || body?.type === "mvsStoryChanged"
+    )) {
       const story = structureStoryFromViewerMessage(body);
       if (!story) return true;
       setStructureStories((previous) => ({ ...previous, [story.documentId]: story }));
-      if (body.type === "openStructureStory") openDockTab("right", "story");
+      if (body.type === "openStructureStory" || body.type === "mvsStoryChanged") openDockTab("right", "story");
       return true;
     }
 

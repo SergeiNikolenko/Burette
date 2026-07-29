@@ -27,6 +27,14 @@ export type StructureViewerAction =
       label: string;
       mode: "fplus" | "fminus" | "fzero";
       values: number[];
+    }
+  | {
+      type: "story_control";
+      label: string;
+      operation: "next" | "previous" | "goto" | "play" | "pause";
+      index?: number;
+      key?: string;
+      notify?: boolean;
     };
 
 export type StatusNotice = {

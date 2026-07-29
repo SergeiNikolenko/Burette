@@ -2,11 +2,12 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, open as openFile, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open as openFile, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { delimiter, dirname, resolve } from 'node:path';
+import { validateMvsDocumentFile, validateMvsStoryFile, writeMvsStoryFile } from './mvs-story.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -32,6 +33,8 @@ function usage() {
   node scripts/burette-agent.mjs act --url <tokenized-preview-url> '<json-action>' [--wait-ms 5000]
   node scripts/burette-agent.mjs act --session-dir <desktop-agent-session> '<json-action>' [--wait-ms 5000]
   node scripts/burette-agent.mjs render-panel --session-dir <desktop-agent-session> --kind markdown --file /tmp/notes.md [--area right]
+  node scripts/burette-agent.mjs story-create --spec /tmp/story.json --output /tmp/story.mvsx [--asset protein.pdb=/path/protein.pdb]
+  node scripts/burette-agent.mjs story-validate --file /tmp/story.mvsx
 
 The CLI is the readable Burette agent contract. Auto mode starts the full
 browser-agent-shell when available and falls back to browser-preview when the
@@ -42,7 +45,7 @@ the app at launch.`);
 }
 
 function parseOptions(args) {
-  const out = { rest: [] };
+  const out = { rest: [], assets: [] };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === '--mode') {
@@ -88,6 +91,25 @@ function parseOptions(args) {
     if (arg === '--file') {
       out.file = requireValue(args, index, arg);
       index += 1;
+      continue;
+    }
+    if (arg === '--spec') {
+      out.spec = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--output') {
+      out.output = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--asset') {
+      out.assets.push(requireValue(args, index, arg));
+      index += 1;
+      continue;
+    }
+    if (arg === '--overwrite') {
+      out.overwrite = true;
       continue;
     }
     if (arg === '--area') {
@@ -151,7 +173,88 @@ async function main() {
     await renderPanel(options);
     return;
   }
+  if (command === 'story-create') {
+    await storyCreate(options);
+    return;
+  }
+  if (command === 'story-validate') {
+    await storyValidate(options);
+    return;
+  }
   fail('UNKNOWN_COMMAND', `Unknown command: ${command}.`, 2);
+}
+
+async function storyCreate(options) {
+  if (!options.spec) fail('INVALID_ARGS', 'story-create requires --spec.', 2);
+  if (!options.output) fail('INVALID_ARGS', 'story-create requires --output.', 2);
+  let story;
+  try {
+    story = JSON.parse(await readFile(resolve(options.spec), 'utf8'));
+  } catch (error) {
+    fail('INVALID_STORY_SPEC', `Could not read Story spec: ${error?.message || String(error)}.`, 2);
+  }
+  const assets = {};
+  for (const value of options.assets) {
+    const separator = value.indexOf('=');
+    if (separator <= 0 || separator === value.length - 1) fail('INVALID_ARGS', '--asset must use archive/path=local/path.', 2);
+    const archivePath = value.slice(0, separator).trim();
+    const sourcePath = value.slice(separator + 1).trim();
+    if (!archivePath || !sourcePath) fail('INVALID_ARGS', '--asset must use archive/path=local/path.', 2);
+    if (Object.hasOwn(assets, archivePath)) fail('INVALID_ARGS', `Duplicate Story asset path: ${archivePath}.`, 2);
+    assets[archivePath] = resolve(sourcePath);
+  }
+  try {
+    const result = await writeMvsStoryFile({
+      story,
+      outputPath: resolve(options.output),
+      assets,
+      overwrite: options.overwrite === true,
+    });
+    console.log(JSON.stringify({ ok: true, apiVersion, result }, null, 2));
+  } catch (error) {
+    fail(error?.code || 'STORY_CREATE_FAILED', error?.message || String(error), 1, error?.details || null);
+  }
+}
+
+async function storyValidate(options) {
+  if (!options.file) fail('INVALID_ARGS', 'story-validate requires --file.', 2);
+  const result = await validateMvsStoryFile(resolve(options.file));
+  const boundedResult = boundedStoryValidationResult(result);
+  if (!result.ok) fail('STORY_INVALID', 'MolViewSpec Story validation failed.', 1, boundedResult);
+  console.log(JSON.stringify({ ok: true, apiVersion, result: boundedResult }, null, 2));
+}
+
+async function validateStoryBeforeOpen(file) {
+  const path = resolve(file);
+  const extension = path.toLowerCase().endsWith('.mvsj') ? 'mvsj' : path.toLowerCase().endsWith('.mvsx') ? 'mvsx' : null;
+  if (!extension) return;
+  const result = await validateMvsDocumentFile(path);
+  if (!result.ok) fail('STORY_INVALID', `MolViewSpec Story validation failed for ${path}.`, 1, boundedStoryValidationResult(result));
+  if (extension !== 'mvsj') return;
+  const missing = result.warnings
+    .filter(issue => issue.code === 'MISSING_RESOURCE' && typeof issue.details?.resource === 'string')
+    .map(issue => issue.details.resource)
+    .filter(resource => !existsSync(resolve(dirname(path), resource)));
+  if (missing.length > 0) {
+    fail('STORY_RESOURCE_MISSING', `MolViewSpec Story references ${missing.length} missing local resource${missing.length === 1 ? '' : 's'}. Package local assets as MVSX or place them beside the MVSJ.`, 1, { path, missing });
+  }
+}
+
+function boundedStoryValidationResult(result) {
+  const { story: _story, ...rest } = result || {};
+  const boundList = (value, limit) => Array.isArray(value) ? value.slice(0, limit) : [];
+  return {
+    ...rest,
+    issues: boundList(rest.issues, 50),
+    warnings: boundList(rest.warnings, 50),
+    resourceNames: boundList(rest.resourceNames, 50),
+    bounds: {
+      ...(rest.bounds || {}),
+      issues: { total: rest.issues?.length || 0, returned: Math.min(rest.issues?.length || 0, 50), truncated: (rest.issues?.length || 0) > 50 },
+      warnings: { total: rest.warnings?.length || 0, returned: Math.min(rest.warnings?.length || 0, 50), truncated: (rest.warnings?.length || 0) > 50 },
+      resourceNames: { total: rest.resourceNames?.length || 0, returned: Math.min(rest.resourceNames?.length || 0, 50), truncated: (rest.resourceNames?.length || 0) > 50 },
+    },
+  };
 }
 
 async function open(options) {
@@ -159,6 +262,7 @@ async function open(options) {
   if (!supportedModes.has(mode)) fail('INVALID_ARGS', `Unsupported mode: ${mode}.`, 2);
   const file = options.rest[0];
   if (!file) fail('INVALID_ARGS', 'open requires a structure file path.', 2);
+  await validateStoryBeforeOpen(file);
   if (mode === 'auto') {
     await openAuto(file, options);
     return;
@@ -592,6 +696,7 @@ async function act(options) {
   } catch (error) {
     fail('INVALID_ARGS', `Action is not valid JSON: ${error?.message || String(error)}.`, 2);
   }
+  action = await normalizeAgentActionPaths(action);
   const response = await fetch(buildAgentUrl(localUrl, '/__agent/act'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -697,6 +802,7 @@ async function actDesktopSession(options) {
   } catch (error) {
     fail('INVALID_ARGS', `Action is not valid JSON: ${error?.message || String(error)}.`, 2);
   }
+  action = await normalizeAgentActionPaths(action);
   const actionsPath = resolve(options.sessionDir, 'actions.json');
   const actionsFile = await readJsonFile(actionsPath, { apiVersion: 'burette-agent-control/v1', actions: [] });
   const itemId = `act-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -716,8 +822,15 @@ async function actDesktopSession(options) {
     console.log(JSON.stringify({ ok: true, apiVersion, result: { ok: true, action: publicDesktopAction(item) } }, null, 2));
     return;
   }
-  const result = await waitForDesktopAction(actionsPath, item.id, waitMs);
+  const result = await waitForDesktopAction(actionsPath, resolve(options.sessionDir, 'observe.json'), item.id, waitMs);
   console.log(JSON.stringify({ ok: true, apiVersion, result }, null, 2));
+}
+
+async function normalizeAgentActionPaths(action) {
+  if (action?.type !== 'manage_tabs' || action?.operation !== 'open_file' || typeof action.path !== 'string') return action;
+  const absolutePath = resolve(action.path);
+  const canonicalPath = await realpath(absolutePath).catch(() => absolutePath);
+  return { ...action, path: canonicalPath };
 }
 
 async function assertSessionResponsive(sessionDir) {
@@ -810,17 +923,48 @@ async function fetchWithTimeout(url, timeoutMs) {
   }
 }
 
-async function waitForDesktopAction(actionsPath, actionId, waitMs) {
+async function waitForDesktopAction(actionsPath, observePath, actionId, waitMs) {
   const deadline = Date.now() + waitMs;
   while (Date.now() <= deadline) {
     const actionsFile = await readJsonFile(actionsPath, { actions: [] });
     const action = (Array.isArray(actionsFile.actions) ? actionsFile.actions : []).find(item => item.id === actionId);
     if (action && ['completed', 'failed'].includes(action.status)) {
+      if (action.status === 'completed' && desktopActionNeedsEffectConfirmation(action)) {
+        const confirmed = await waitForDesktopActionEffect(observePath, action, deadline);
+        if (!confirmed) fail('ACTION_EFFECT_TIMEOUT', `Action ${actionId} completed, but its workspace effect was not observed.`, 1, { action: publicDesktopAction(action) });
+      }
       return { ok: action.status === 'completed', action: publicDesktopAction(action) };
     }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   fail('ACTION_TIMEOUT', `Timed out waiting for action ${actionId}.`, 1);
+}
+
+function desktopActionNeedsEffectConfirmation(action) {
+  const type = action?.action?.type;
+  const operation = action?.action?.operation;
+  return type === 'open_ketcher'
+    || (type === 'manage_tabs' && ['focus', 'next', 'previous', 'open_file', 'close', 'move'].includes(operation));
+}
+
+async function waitForDesktopActionEffect(observePath, action, deadline) {
+  const type = action?.action?.type;
+  const operation = action?.action?.operation;
+  const result = action?.result?.result;
+  const tabId = typeof result?.tabId === 'string' ? result.tabId : typeof action?.action?.tabId === 'string' ? action.action.tabId : null;
+  while (Date.now() <= deadline) {
+    const observe = await readJsonFile(observePath, null);
+    if (type === 'open_ketcher' && observe?.activeSurface?.kind === 'ketcher' && observe.activeSurface.ready === true) return true;
+    if (type === 'manage_tabs') {
+      if (['focus', 'next', 'previous'].includes(operation) && tabId && observe?.activeTabId === tabId) return true;
+      if (operation === 'open_file' && observe?.activeDocument?.path === action.action.path && observe.activeDocument.ready === true) return true;
+      if (operation === 'close' && tabId && Array.isArray(observe?.tabs) && !observe.tabs.some(tab => tab?.id === tabId)) return true;
+      if (operation === 'move' && tabId && Number.isInteger(result?.toIndex) && observe?.tabs?.[result.toIndex]?.id === tabId) return true;
+    }
+    if (Date.now() >= deadline) return false;
+    await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(1, deadline - Date.now()))));
+  }
+  return false;
 }
 
 function publicDesktopAction(action) {
@@ -846,7 +990,7 @@ async function waitForAction(url, actionId, waitMs) {
     const observed = parseJsonBody(body, 'Observe response was not JSON.');
     const action = (observed.actions?.recent || []).find(item => item.id === actionId) || observed.actions?.last;
     if (action?.id === actionId && ['completed', 'failed'].includes(action.status)) {
-      return observed;
+      return { ok: action.status === 'completed' && action.result?.ok !== false, action };
     }
     await new Promise(resolve => setTimeout(resolve, 100));
   }

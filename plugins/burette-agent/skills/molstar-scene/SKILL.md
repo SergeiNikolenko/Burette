@@ -25,6 +25,11 @@ Use this workflow for scene operations:
   representations, color, opacity, labels, camera, focus, and canvas concepts;
 - export image or screenshot when supported.
 
+For multi-step narratives, tours, presentations, or explanations, route to
+[mvs-story](../mvs-story/SKILL.md). `load_mvs` loads a complete payload, while
+the Story workflow also creates, validates, packages, observes, and navigates
+the snapshots.
+
 ## Contract
 
 Use one typed action surface:

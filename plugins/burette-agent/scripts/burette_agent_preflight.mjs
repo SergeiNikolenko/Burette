@@ -161,7 +161,7 @@ const payload = {
       {
         id: "desktop-app",
         status: hasCli ? "available" : "blocked",
-        note: "Explicit file-backed session directory passed through --burette-agent-session.",
+        note: "Explicit file-backed session directory passed through --burette-agent-session. MolViewSpec Story control requires Burette 2.2.0 or newer.",
       },
     ],
     visualQaSurfaces: [
@@ -189,6 +189,13 @@ const payload = {
         "reset camera",
         "load complete MolViewSpec scenes",
       ],
+      mvsStory: [
+        "author and validate multi-state MolViewSpec Stories",
+        "package local resources in MVSX",
+        "observe the current Story step",
+        "navigate, play, and pause Story playback",
+        "verify two rendered steps in Browser",
+      ],
       moleculeCollection: ["render SDF/property tables", "filter/sort externally", "link row selection to viewer"],
       trajectoryReview: ["load result bundles", "review frame metrics", "show trajectory controls when supported"],
       workflowResults: ["accept server-produced prep/docking/MD artifacts", "surface logs and run reports"],
@@ -202,6 +209,8 @@ const payload = {
       cif: "supported",
       xyz: "supported",
       sdf: "partial",
+      mvsj: "supported_with_accessible_resources",
+      mvsx: "supported_self_contained_story_bundle",
     },
     molstarActions: {
       apply_scene: "supported",
@@ -215,6 +224,14 @@ const payload = {
       contacts: "supported_when_structure_available",
       load_mvs: "supported_for_complete_mvs_payloads",
       full_mvs_scene: "supported_via_load_mvs",
+      story_create: "supported_with_official_mvs_schema_validation",
+      story_observe: "supported",
+      story_control: "supported",
+    },
+    storyTransports: {
+      "browser-agent-shell": "bundled",
+      "browser-preview": "bundled",
+      "desktop-app": "requires_burette_app_2.2.0_or_newer",
     },
     externalWorkflows: {
       proteinPreparation: "external_workflow",

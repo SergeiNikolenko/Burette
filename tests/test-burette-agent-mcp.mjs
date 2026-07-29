@@ -73,11 +73,13 @@ async function registerAll(pluginRoot) {
   const server = createFakeServer();
   const { registerFetch } = await import(moduleUrl(pluginRoot, "mcp", "registrations", "fetch", "register.mjs"));
   const { registerMolecularWorkspace } = await import(moduleUrl(pluginRoot, "mcp", "registrations", "molecular-workspace", "register.mjs"));
+  const { registerMvsStory } = await import(moduleUrl(pluginRoot, "mcp", "registrations", "mvs-story", "register.mjs"));
   const { registerMoleculeTable } = await import(moduleUrl(pluginRoot, "mcp", "registrations", "molecule-table", "register.mjs"));
   const { registerTrajectoryReview } = await import(moduleUrl(pluginRoot, "mcp", "registrations", "trajectory-review", "register.mjs"));
   const { registerMolecularReport } = await import(moduleUrl(pluginRoot, "mcp", "registrations", "molecular-report", "register.mjs"));
   registerFetch(server);
   registerMolecularWorkspace(server);
+  registerMvsStory(server);
   registerMoleculeTable(server);
   registerTrajectoryReview(server);
   registerMolecularReport(server);
@@ -98,6 +100,7 @@ async function installMockAgentCli(pluginRoot) {
       "import { existsSync, readFileSync, writeFileSync } from 'node:fs';",
       `const activeFile = ${JSON.stringify(sampleMini)};`,
       "const activePathState = new URL('./mock-active-path.txt', import.meta.url);",
+      "const ketcherState = new URL('./mock-ketcher-open.txt', import.meta.url);",
       "const apiVersion = 'burette-agent-cli/v1';",
       "const [command, ...args] = process.argv.slice(2);",
       "function parseArgs(values) {",
@@ -147,6 +150,7 @@ async function installMockAgentCli(pluginRoot) {
       "  }",
       "  const observedFile = existsSync(activePathState) ? readFileSync(activePathState, 'utf8') : activeFile;",
       "  const ready = !locator.includes('not-ready') && !observedFile.includes('mock-observe-not-ready');",
+      "  const ketcherOpen = existsSync(ketcherState) && readFileSync(ketcherState, 'utf8').trim() === 'open';",
       "  const itemCount = locator.includes('large-observe') ? 75 : 1;",
       "  let stress = null;",
       "  if (locator.includes('deep-observe')) {",
@@ -164,6 +168,8 @@ async function installMockAgentCli(pluginRoot) {
       "    tabs: Array.from({ length: itemCount }, (_, index) => ({ id: `tab-${index}`, title: `structure-${index}.pdb`, path: index === 0 ? observedFile : `/tmp/structure-${index}.pdb` })),",
       "    documents: Array.from({ length: itemCount }, (_, index) => ({ id: `document-${index}`, title: `structure-${index}.pdb`, path: index === 0 ? observedFile : `/tmp/structure-${index}.pdb` })),",
       "    activeDocument: { title: observedFile.split('/').at(-1), path: observedFile, renderer: 'molstar', ready },",
+      "    activeSurface: ketcherOpen ? { kind: 'ketcher', tabId: 'tab-ketcher', surfaceId: 'desktop-ketcher:mock', phase: 'ready', ready: true } : { kind: 'viewer', documentId: 'document-0', renderer: 'molstar' },",
+      "    chemicalEditor: ketcherOpen ? { surfaceId: 'desktop-ketcher:mock', phase: 'ready', structureRevision: 0 } : null,",
       "    viewerAgent: { available: ready, ready, viewerReady: ready },",
       "    viewer: { ready, representationCount: ready ? 2 : 0 },",
       "    scene: { known: ready, ligands: Array.from({ length: itemCount }, (_, index) => ({ id: `L${index}` })) },",
@@ -178,7 +184,12 @@ async function installMockAgentCli(pluginRoot) {
       "    console.error(JSON.stringify({ ok: false, error: { code: 'ACT_FAILED', message: 'synthetic open failure' } }));",
       "    process.exit(1);",
       "}",
-      "  if (action.type === 'open_files' && action.paths?.[0]) writeFileSync(activePathState, action.paths[0]);",
+      "  if (action.type === 'open_files' && action.paths?.[0]) { writeFileSync(activePathState, action.paths[0]); writeFileSync(ketcherState, 'closed'); }",
+      "  if (action.type === 'open_ketcher') writeFileSync(ketcherState, 'open');",
+      "  const storyState = { available: true, title: 'Mock Story', stepIndex: action.operation === 'next' ? 1 : 0, stepCount: 2, current: { key: action.operation === 'next' ? 'site' : 'overview', title: action.operation === 'next' ? 'Site' : 'Overview', description: '# Mock' }, steps: [{ key: 'overview', title: 'Overview' }, { key: 'site', title: 'Site' }], isPlaying: action.operation === 'play' };",
+      "  if (action.type === 'story_control' && action.operation === 'goto' && action.key === 'missing') { ok({ ok: false, action: { id: 'act-story', type: action.type, status: 'failed', result: { ok: false, command: 'story_control', error: { code: 'STORY_STEP_NOT_FOUND', message: 'missing Story step' } } } }); process.exit(0); }",
+      "  if (action.type === 'story_observe' || action.type === 'story_control') { ok({ ok: true, action: { id: 'act-story', type: action.type, status: 'completed', result: { ok: true, command: action.type, result: storyState } } }); process.exit(0); }",
+      "  if (action.type === 'synthetic_nested_failure') { ok({ ok: true, action: { id: 'act-mock', type: action.type, status: 'failed', result: { ok: false, error: { code: 'NESTED_FAILURE', message: 'synthetic nested failure' } } } }); process.exit(0); }",
       "  ok({ ok: true, action: { id: 'act-mock', type: action.type, status: 'queued', payload: action }, argv: args });",
       "} else {",
       "  console.error(JSON.stringify({ ok: false, error: { code: 'UNKNOWN_COMMAND', message: `Unknown command: ${command}` } }));",
@@ -196,12 +207,16 @@ async function testMcpRegistrations(tempRoot) {
   assert.deepEqual([...server.tools.keys()].sort(), [
     "act_molstar_scene",
     "burette.control_ketcher",
+    "burette.control_story",
     "burette.control_viewer",
+    "burette.create_story",
     "burette.get_context",
+    "burette.observe_story",
     "burette.observe_workspace",
     "burette.open_ketcher",
     "burette.open_workspace",
     "burette.render_panel",
+    "burette.validate_story",
     "edit_burette_fragment",
     "fetch",
     "focus_burette_selection",
@@ -217,6 +232,7 @@ async function testMcpRegistrations(tempRoot) {
     "validate_molecule_collection_artifact",
     "validate_trajectory_review_artifact",
   ]);
+  assert.equal(server.tools.get("burette.create_story").config.annotations.destructiveHint, true);
 }
 
 async function testValidationHandlers(tempRoot) {
@@ -287,6 +303,32 @@ async function testFetchAndWorkspaceHandlers(tempRoot) {
       truncated: true,
     });
     assert.equal(JSON.stringify(ligandHeavySummary.structuredContent.summary).length <= 256 * 1024, true);
+
+    const storyPath = path.join(tempRoot, "mcp-created-story.mvsj");
+    const relativeStory = await server.tools.get("burette.create_story").handler({
+      story: { title: "Relative", steps: [{ key: "one", title: "One", root: { kind: "root" } }] },
+      outputPath: "relative-story.mvsj",
+    });
+    assert.equal(relativeStory.structuredContent.ok, false);
+    assert.equal(relativeStory.structuredContent.error.code, "ABSOLUTE_PATH_REQUIRED");
+    const createdStory = await server.tools.get("burette.create_story").handler({
+      story: {
+        title: "MCP Story",
+        steps: [{ key: "overview", title: "Overview", description: "# Overview", root: { kind: "root" } }],
+      },
+      outputPath: storyPath,
+    });
+    assert.equal(createdStory.structuredContent.ok, true);
+    assert.equal(createdStory.structuredContent.result.format, "mvsj");
+    const validatedStory = await server.tools.get("burette.validate_story").handler({ file: storyPath });
+    assert.equal(validatedStory.structuredContent.ok, true);
+    assert.equal(validatedStory.structuredContent.result.summary.stepCount, 1);
+
+    const hugeInvalidStoryPath = path.join(tempRoot, "huge-invalid-story.mvsj");
+    await writeFile(hugeInvalidStoryPath, JSON.stringify({ kind: "multiple", metadata: { title: "Huge" }, snapshots: [], padding: "x".repeat(7 * 1024 * 1024) }));
+    const hugeInvalidStory = await server.tools.get("burette.validate_story").handler({ file: hugeInvalidStoryPath });
+    assert.equal(hugeInvalidStory.structuredContent.ok, false);
+    assert.equal(Buffer.byteLength(JSON.stringify(hugeInvalidStory.structuredContent), "utf8") <= 256 * 1024, true);
 
     const opened = await server.tools.get("open_burette_workspace").handler({
       file: sampleMini,
@@ -432,6 +474,35 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.equal(publicOpened.structuredContent.modelContext.activeDocument.path, sampleMini);
   assert.equal(publicOpened.structuredContent.modelContext.structureSummary.counts.atoms, 9);
 
+  const observedStory = await server.tools.get("burette.observe_story").handler({
+    workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
+  });
+  coveredTools.add("burette.observe_story");
+  assert.equal(observedStory.structuredContent.ok, true);
+  assert.equal(observedStory.structuredContent.result.action.result.result.current.key, "overview");
+  for (const operation of ["next", "previous", "play", "pause"]) {
+    const controlled = await server.tools.get("burette.control_story").handler({
+      workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
+      operation,
+    });
+    assert.equal(controlled.structuredContent.ok, true, operation);
+  }
+  coveredTools.add("burette.control_story");
+  const gotoStory = await server.tools.get("burette.control_story").handler({
+    workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
+    operation: "goto",
+    key: "site",
+  });
+  assert.equal(gotoStory.structuredContent.ok, true);
+  const missingStory = await server.tools.get("burette.control_story").handler({
+    workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
+    operation: "goto",
+    key: "missing",
+  });
+  assert.equal(missingStory.structuredContent.ok, false);
+  assert.equal(missingStory.isError, true);
+  assert.equal(missingStory.structuredContent.error.code, "STORY_STEP_NOT_FOUND");
+
   const publicKetcherOpened = await server.tools.get("burette.open_ketcher").handler({
     workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
   });
@@ -470,6 +541,14 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.equal(publicAction.structuredContent.ok, true);
   assert.equal(publicAction.structuredContent.result.action.payload.type, "reset_camera");
   assert.equal(publicAction.structuredContent.applied, true);
+
+  const publicNestedFailure = await server.tools.get("burette.control_viewer").handler({
+    workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
+    action: { type: "synthetic_nested_failure" },
+  });
+  assert.equal(publicNestedFailure.structuredContent.ok, false);
+  assert.equal(publicNestedFailure.isError, true);
+  assert.equal(publicNestedFailure.structuredContent.error.code, "NESTED_FAILURE");
 
   const publicPanel = await server.tools.get("burette.render_panel").handler({
     workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
@@ -731,8 +810,10 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.deepEqual([...coveredTools].sort(), [
     "act_molstar_scene",
     "burette.control_ketcher",
+    "burette.control_story",
     "burette.control_viewer",
     "burette.get_context",
+    "burette.observe_story",
     "burette.observe_workspace",
     "burette.open_ketcher",
     "burette.open_workspace",

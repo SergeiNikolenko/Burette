@@ -41,6 +41,10 @@ const PUBLIC_CONTRACT = {
     "burette.control_viewer",
     "burette.control_ketcher",
     "burette.render_panel",
+    "burette.create_story",
+    "burette.validate_story",
+    "burette.observe_story",
+    "burette.control_story",
   ],
   advancedTools: [
     "open_burette_workspace",
@@ -51,13 +55,16 @@ const PUBLIC_CONTRACT = {
     "open_burette_docking_view",
     "summarize_burette_structure",
   ],
-  supportedFormats: ["pdb", "cif", "mmcif", "mol", "sdf", "xyz", "mae", "maegz"],
+  supportedFormats: ["pdb", "cif", "mmcif", "mol", "sdf", "xyz", "mae", "maegz", "mvsj", "mvsx"],
   capabilities: {
     canOpenWorkspace: true,
     canObserveWorkspace: true,
     canControlMolstar: true,
     canControlKetcher: true,
     canRenderPanels: true,
+    canCreateMolViewSpecStory: true,
+    canObserveMolViewSpecStory: true,
+    canControlMolViewSpecStory: true,
     canUseBrowserShell: true,
     canUseBrowserPreview: true,
     canUseDesktopApp: true,
@@ -219,27 +226,31 @@ export function registerMolecularWorkspace(server) {
     async input => {
       const resolved = resolveWorkspaceSession(input);
       if (!resolved.ok) return publicContractFailure("burette.open_ketcher", resolved.error);
+      const waitMs = input.waitMs ?? 30000;
       const actionResult = await runWorkspaceAction({
         url: resolved.session.url,
         sessionDir: resolved.session.sessionDir,
-        waitMs: input.waitMs ?? 12000,
+        waitMs,
         action: { type: "open_ketcher" },
       });
-      const observed = actionResult.ok ? await observeWorkspaceSession(resolved.session) : null;
+      const actionOk = nestedResultOk(actionResult.ok, actionResult.payload?.result || null);
+      const observed = actionOk
+        ? await waitForWorkspaceSurfaceReady(resolved.session, waitMs, "ketcher")
+        : null;
       const readiness = workspaceReadiness(observed?.payload?.result || null);
       const session = updateKnownSession(resolved.session, {
         observe: observed?.payload?.result || resolved.session.observe || null,
       });
       return publicContractResult("burette.open_ketcher", {
-        ok: actionResult.ok,
+        ok: actionOk && observed?.ok === true && readiness.ready,
         session,
         observe: observed?.payload?.result || null,
         result: actionResult.payload?.result || null,
         action: { type: "open_ketcher" },
-        applied: actionResult.ok,
+        applied: actionOk,
         ready: readiness.ready,
-        completionState: readiness.ready ? "ready" : actionResult.ok ? "not_ready" : "failed",
-        error: actionResult.ok ? null : actionResult.error || viewerNotReadyError(readiness),
+        completionState: readiness.ready ? "ready" : actionOk ? "not_ready" : "failed",
+        error: readiness.ready ? null : actionResult.error || viewerNotReadyError(readiness),
         exitCode: actionResult.exitCode,
       });
     },
@@ -1139,20 +1150,21 @@ function publicContractResult(tool, {
   error = null,
   exitCode = null,
 }) {
+  const effectiveOk = nestedResultOk(ok, result);
   const boundedObserve = boundedWorkspaceObserve(observe);
-  const boundedError = boundedToolError(error);
+  const boundedError = boundedToolError(error || nestedResultError(result));
   const modelContext = buildModelContext({ session, observe: boundedObserve, structureSummary: structureSummary || session?.structureSummary || null });
   return {
     content: toolText(completionState === "awaiting_browser"
       ? `${tool} started. Open the returned workspace URL, then call burette.observe_workspace. Do not claim that the structure is visible until ready is true and the central canvas is visually verified.`
-      : ok
+      : effectiveOk
         ? `${tool} completed.`
       : completionState === "not_ready"
         ? `${tool} is not complete: ${boundedError?.message || "the molecular viewer is not ready"}`
         : `${tool} failed: ${boundedError?.message || "unknown error"}`),
-    ...(ok ? {} : { isError: true }),
+    ...(effectiveOk ? {} : { isError: true }),
     structuredContent: {
-      ok,
+      ok: effectiveOk,
       tool,
       apiVersion: PUBLIC_CONTRACT.apiVersion,
       workspaceSessionId: session?.workspaceSessionId || null,
@@ -1164,13 +1176,13 @@ function publicContractResult(tool, {
       modelContext,
       result,
       action,
-      applied: applied === null ? inferApplied(ok, result) : applied,
+      applied: applied === null ? inferApplied(effectiveOk, result) : effectiveOk && applied,
       started,
       ready,
       completionState,
       observe: boundedObserve,
       sessions: result?.sessions || undefined,
-      error: ok ? null : boundedError,
+      error: effectiveOk ? null : boundedError,
       exitCode,
     },
   };
@@ -1203,6 +1215,7 @@ function buildModelContext({ session, observe, structureSummary }) {
     chemicalEditor: observe?.chemicalEditor || null,
     viewer: observe?.viewer || observe?.viewerAgent || null,
     scene: observe?.scene || null,
+    story: observe?.story || null,
     tabs: Array.isArray(observe?.tabs) ? observe.tabs.map(tab => ({
       id: tab.id,
       title: tab.title,
@@ -1456,19 +1469,34 @@ async function safeStructureSummary(file) {
 }
 
 function cliToolResult(tool, result, extra = {}) {
-  const error = boundedToolError(result.error);
+  const payload = result.payload?.result || null;
+  const ok = nestedResultOk(result.ok, payload);
+  const error = boundedToolError(result.error || nestedResultError(payload));
   return {
-    content: toolText(result.ok ? `${tool} completed.` : `${tool} failed: ${error?.message || "unknown error"}`),
-    ...(result.ok ? {} : { isError: true }),
+    content: toolText(ok ? `${tool} completed.` : `${tool} failed: ${error?.message || "unknown error"}`),
+    ...(ok ? {} : { isError: true }),
     structuredContent: {
-      ok: result.ok,
+      ok,
       tool,
-      result: result.payload?.result || null,
+      result: payload,
       ...extra,
-      error: result.ok ? null : error,
+      error: ok ? null : error,
       exitCode: result.exitCode,
     },
   };
+}
+
+function nestedResultOk(ok, result) {
+  if (!ok) return false;
+  if (!result || typeof result !== "object") return true;
+  if (result.ok === false || result.action?.status === "failed") return false;
+  if (result.action?.result?.ok === false || result.result?.ok === false) return false;
+  return true;
+}
+
+function nestedResultError(result) {
+  if (!result || typeof result !== "object") return null;
+  return result.error || result.action?.result?.error || result.result?.error || null;
 }
 
 function observedWorkspaceToolResult(tool, {
@@ -1550,6 +1578,19 @@ async function waitForWorkspaceDocumentReady({ url, sessionDir, path, waitMs }) 
     },
     exitCode: observed?.exitCode ?? null,
   };
+}
+
+async function waitForWorkspaceSurfaceReady(session, waitMs, kind) {
+  const deadline = Date.now() + Math.max(0, waitMs);
+  let observed = null;
+  do {
+    observed = await observeWorkspaceSession(session);
+    const observe = observed.payload?.result || null;
+    if (observed.ok && observe?.activeSurface?.kind === kind && workspaceReadiness(observe).ready) return observed;
+    if (Date.now() >= deadline) break;
+    await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(1, deadline - Date.now()))));
+  } while (Date.now() <= deadline);
+  return observed;
 }
 
 function boundedWorkspaceObserve(observe) {

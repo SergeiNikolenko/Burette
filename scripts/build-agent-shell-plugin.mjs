@@ -15,6 +15,7 @@ const runtimeScripts = [
   'agent-preview.mjs',
   'agent-shell-server.mjs',
   'burette-agent.mjs',
+  'mvs-story.mjs',
 ];
 const requiredPreviewAssets = [
   'viewer.js',
@@ -40,6 +41,17 @@ await mkdir(resolve(pluginRoot, 'scripts'), { recursive: true });
 for (const script of runtimeScripts) {
   await cp(resolve(repoRoot, 'scripts', script), resolve(pluginRoot, 'scripts', script));
 }
+await run('bun', [
+  'build',
+  resolve(repoRoot, 'scripts/mvs-schema-validator.mjs'),
+  '--outfile',
+  resolve(pluginRoot, 'scripts/mvs-schema-validator.mjs'),
+  '--target',
+  'node',
+  '--format',
+  'esm',
+  '--minify',
+]);
 await mkdir(previewWeb, { recursive: true });
 await run('rsync', [
   '-a',
