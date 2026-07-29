@@ -24,6 +24,8 @@ contains only documents that describe the active project.
   diagnostics, and security reporting.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   Ketcher editing scope, artifacts, and checks.
+- [Molstar workflows](molstar-workflows.md): adopted Molstar 5.11 capabilities,
+  typed actions, scientific validation boundaries, and session/story semantics.
 - [Performance architecture](performance.md): runtime profiles, caches, binary
   payloads, grid search, and no-regression guardrails.
 - [Native GPU Compute Layer](superpowers/specs/2026-07-15-gpu-compute-platform-design.md):

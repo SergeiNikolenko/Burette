@@ -127,6 +127,29 @@ try {
     pluginChild.kill('SIGTERM');
   }
 
+  const densityTempDir = await mkdtemp(join(tmpdir(), 'burette-density-preview-'));
+  const densityPath = join(densityTempDir, 'density.mrc');
+  await writeFile(densityPath, Buffer.alloc(1024));
+  const densityPort = await freePort();
+  const densityChild = spawn(process.execPath, ['scripts/agent-preview.mjs', densityPath, '--port', String(densityPort)], {
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  try {
+    const densityReady = await waitForReady(densityChild);
+    const densityHtml = await get(densityReady.url);
+    const densityCookie = densityHtml.headers['set-cookie']?.find(value => value.startsWith('BuretteAgentPreviewToken='));
+    assert.ok(densityCookie, 'authorized density HTML response should set the preview token cookie');
+    const densityConfig = await get(`http://127.0.0.1:${densityPort}/preview-config.js`, {
+      Cookie: densityCookie.split(';')[0]
+    });
+    assert.equal(densityConfig.statusCode, 200);
+    assert.match(densityConfig.body, /"format":"ccp4"/);
+    assert.match(densityConfig.body, /"binary":true/);
+  } finally {
+    densityChild.kill('SIGTERM');
+    await rm(densityTempDir, { recursive: true, force: true });
+  }
+
   const htmlWithToken = await get(ready.url);
   assert.equal(htmlWithToken.statusCode, 200);
   assert.match(htmlWithToken.body, /viewer-runtime\.css\?v=\d+/);

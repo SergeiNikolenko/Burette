@@ -14,6 +14,7 @@ const webRoot = process.env.BURETTE_AGENT_PREVIEW_WEB_ROOT
   : defaultPreviewWebRoot();
 const agentControlApiVersion = 'burette-agent-control/v1';
 const renderPanelReadLimit = 512 * 1024;
+const actionResultReadLimit = 3 * 1024 * 1024;
 const mvsReadLimit = 25 * 1024 * 1024;
 const amberNcPreviewFrameLimit = 100;
 const coordinateArtifactExtensions = new Set(['xml', 'inpcrd', 'rst7', 'restrt', 'crd', 'rst', 'state', 'lammpstrj', 'dump', 'pos', 'cfg', 'in', 'inp', 'log', 'out', 'data', 'lammps', 'lmp']);
@@ -28,6 +29,8 @@ const trajectoryPairExtensions = new Set([
   ...trajectoryModelExtensions,
   ...trajectoryTopologyExtensions,
 ]);
+const volumeMapExtensions = new Set(['ccp4', 'mrc', 'map']);
+const reflectionDataExtensions = new Set(['mtz']);
 
 function defaultPreviewWebRoot() {
   const sourcePreviewWeb = sourcePreviewWebRoot();
@@ -72,6 +75,8 @@ function parseArgs(argv) {
 function inferFormat(file) {
   const ext = extname(file).toLowerCase().replace(/^\./, '');
   if (ext === 'cif' || ext === 'mmcif' || ext === 'mcif' || ext === 'bcif') return 'mmcif';
+  if (volumeMapExtensions.has(ext)) return 'ccp4';
+  if (reflectionDataExtensions.has(ext)) return 'mtz';
   if (ext === 'pdb' || ext === 'pdbqt') return 'pdb';
   if (ext === 'sdf' || ext === 'sd') return 'sdf';
   if (ext === 'mol') return 'mol';
@@ -1055,7 +1060,10 @@ const ATOMIC_SYMBOLS = [
 const ELEMENT_SYMBOLS = new Set(ATOMIC_SYMBOLS);
 
 function isBinaryFormat(file) {
-  return extname(file).toLowerCase() === '.bcif';
+  const extension = extname(file).toLowerCase().replace(/^\./, '');
+  return extension === 'bcif'
+    || volumeMapExtensions.has(extension)
+    || reflectionDataExtensions.has(extension);
 }
 
 function js(name, value) {
@@ -1266,7 +1274,15 @@ function validateAction(action) {
     'set_sdf_pose_index',
     'render_panel',
     'apply_scene',
+    'show_assembly_symmetry',
+    'show_water_bridges',
+    'apply_mesoscale_preset',
+    'color_xtb_charges',
+    'color_xtb_fukui',
     'load_mvs',
+    'observe_story',
+    'control_story',
+    'export_session',
     'screenshot',
     'export_image',
     'raw_burette_agent'
@@ -1502,7 +1518,7 @@ async function main() {
         return;
       }
       if (url.pathname === '/__agent/action-result' && req.method === 'POST') {
-        const body = await readRequestBody(req, 512 * 1024);
+        const body = await readRequestBody(req, actionResultReadLimit);
         const parsed = JSON.parse(body || '{}');
         const item = actions.get(String(parsed.id || ''));
         if (!item) {
