@@ -21,7 +21,7 @@ assert.match(filePage, /MesoscaleToolbar/);
 assert.match(dock, /MesoscaleScenePanel/);
 assert.match(dock, /MesoscaleInfoPanel/);
 assert.match(toolbar, /openDockTab\("right", "scene"\)/);
-for (const action of ["setGraphics", "resetCamera", "exportPng"]) {
+for (const action of ["setGraphics", "resetCamera", "exportPng", "setSelectionMode", "setIllumination"]) {
   assert.ok(toolbar.includes(`type: "${action}"`), `toolbar must expose ${action}`);
 }
 for (const action of ["getHierarchyPage", "setSelection", "focusObject", "setVisibility", "setStyle", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState"]) {
@@ -30,5 +30,10 @@ for (const action of ["getHierarchyPage", "setSelection", "focusObject", "setVis
 assert.match(info, /sourceSha256/);
 assert.match(store, /expectedRevision/);
 assert.match(store, /frames\.get\(response\.documentId\) !== event\.source/);
+assert.match(store, /requestAnimationFrame/);
+assert.match(store, /burette-mesoscale-preview/);
+assert.match(scene, /onPointerEnter/);
+assert.match(scene, /onPointerLeave/);
+assert.match(toolbar, /setPreference\("theme"/);
 
 console.log("mesoscale UI ownership contract passed");

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Box, Camera, ChevronRight, Download, Eye, EyeOff, Focus, Layers, Plus, Trash2 } from "lucide-react";
 import type { ViewerDocument } from "../../types";
-import { loadMesoscaleHierarchy, requestMesoscale, setMesoscaleVisibilityOptimistic, useMesoscaleStore } from "../../stores/mesoscale-store";
+import { loadMesoscaleHierarchy, previewMesoscaleObject, requestMesoscale, setMesoscaleVisibilityOptimistic, useMesoscaleStore } from "../../stores/mesoscale-store";
 import type { MesoscaleHierarchyObject } from "../../lib/mesoscale-contract";
 
 type SceneSection = "objects" | "snapshots" | "export";
@@ -22,6 +22,8 @@ export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) 
     }, 140);
     return () => window.clearTimeout(timer);
   }, [document.id, filter, session?.status === "loading", session?.status === "disposed"]);
+
+  useEffect(() => () => previewMesoscaleObject(document.id, null), [document.id]);
 
   const run = (action: Parameters<typeof requestMesoscale>[1]) => requestMesoscale(document.id, action).catch(() => undefined);
   return (
@@ -82,10 +84,23 @@ export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) 
 }
 
 function SceneObjectRow({ documentId, item }: { documentId: string; item: MesoscaleHierarchyObject }) {
+  const hovered = useMesoscaleStore((state) => state.sessions[documentId]?.hoveredRef === item.ref);
   const run = (action: Parameters<typeof requestMesoscale>[1]) => void requestMesoscale(documentId, action).catch(() => undefined);
   return (
-    <div className={`mesoscale-object-row${item.selected ? " selected" : ""}`} data-kind={item.kind}>
-      <button type="button" className="mesoscale-object-main" onClick={() => run({ type: "setSelection", ref: item.ref, mode: "replace" })}>
+    <div
+      className={`mesoscale-object-row${item.selected ? " selected" : ""}${hovered ? " hovered" : ""}`}
+      data-kind={item.kind}
+      onPointerEnter={() => previewMesoscaleObject(documentId, item.ref)}
+      onPointerLeave={() => previewMesoscaleObject(documentId, null)}
+    >
+      <button
+        type="button"
+        className="mesoscale-object-main"
+        onClick={() => run({ type: "setSelection", ref: item.ref, mode: "replace" })}
+        onDoubleClick={() => run({ type: "focusObject", ref: item.ref })}
+        onFocus={() => previewMesoscaleObject(documentId, item.ref)}
+        onBlur={() => previewMesoscaleObject(documentId, null)}
+      >
         <span className="mesoscale-object-indent" aria-hidden="true">{item.parentRef ? <ChevronRight size={12} /> : null}</span>
         {item.kind === "group" ? <Layers size={14} /> : <Box size={14} />}
         <span><strong>{item.label}</strong><small>{item.description || `${item.instanceCount.toLocaleString()} instances`}</small></span>

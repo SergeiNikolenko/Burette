@@ -3,11 +3,13 @@ import { MesoscaleState, getAllEntities, getAllGroups, getEntityDescription, get
 import { LoadModel, openState } from "molstar/lib/apps/mesoscale-explorer/ui/states.js";
 import { PluginCommands } from "molstar/lib/mol-plugin/commands.js";
 import { Structure } from "molstar/lib/mol-model/structure.js";
-import { Loci } from "molstar/lib/mol-model/loci.js";
+import { EveryLoci, Loci } from "molstar/lib/mol-model/loci.js";
 import { Sphere3D } from "molstar/lib/mol-math/geometry.js";
 import { PluginStateSnapshotManager } from "molstar/lib/mol-plugin-state/manager/snapshots.js";
 import { Asset } from "molstar/lib/mol-util/assets.js";
 import { Unzip } from "molstar/lib/mol-util/zip/zip.js";
+import { Color } from "molstar/lib/mol-util/color/index.js";
+import { MarkerAction } from "molstar/lib/mol-util/marker-action.js";
 import { mesoscaleZipEntries, validateGenericMesoscaleManifest, validateMesoscaleArchiveEntries } from "./mesoscale-package";
 import {
   MESOSCALE_API_VERSION,
@@ -15,6 +17,7 @@ import {
   type MesoscaleAction,
   type MesoscaleGraphicsMode,
   type MesoscaleHierarchyObject,
+  type MesoscalePreviewMessage,
   type MesoscaleRequest,
   type MesoscaleResult,
   type MesoscaleSceneSummary,
@@ -29,6 +32,7 @@ type MesoscaleConfig = {
   label?: string;
   sourceExtension?: string;
   uiMode?: "hosted" | "standalone" | "diagnostic";
+  theme?: "auto" | "dark" | "light";
 };
 
 type AgentAction = {
@@ -164,6 +168,7 @@ class MesoscaleRuntimeApi {
   revision = 0;
   readonly selectedRefs = new Set<string>();
   readonly visibilityOverrides = new Map<string, boolean>();
+  previewSequence = 0;
 
   constructor(explorer: MesoscaleExplorer) {
     this.explorer = explorer;
@@ -232,6 +237,8 @@ class MesoscaleRuntimeApi {
       filter: observed.filter,
       counts: observed.counts,
       selectedRefs: Array.from(this.selectedRefs).slice(0, MAX_OBSERVED_ITEMS),
+      selectionMode: Boolean(this.plugin.selectionMode),
+      illumination: Boolean(this.plugin.canvas3d?.props.illumination.enabled),
       snapshots: observed.snapshots,
       hierarchyPreview,
       hierarchyTotal: observed.counts.groups + observed.counts.entities,
@@ -316,6 +323,35 @@ class MesoscaleRuntimeApi {
     const entity = uniqueCells(getAllEntities(this.plugin)).find((cell: any) => cell?.transform?.ref === ref);
     if (!entity) throw new Error(`Mesoscale entity not found: ${ref}`);
     return entity;
+  }
+
+  highlightObject(ref: string | null, sequence: number) {
+    if (sequence < this.previewSequence) return;
+    this.previewSequence = sequence;
+    const canvas = this.plugin.canvas3d;
+    canvas?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
+    if (!ref) return;
+    const group = uniqueCells(getAllGroups(this.plugin)).find((cell: any) => cell?.transform?.ref === ref) as any;
+    const entities = group
+      ? uniqueCells(getAllEntities(this.plugin, String(group?.params?.values?.tag || "")))
+      : uniqueCells(getAllEntities(this.plugin)).filter((cell: any) => cell?.transform?.ref === ref);
+    for (const entity of entities as any[]) {
+      const repr = entity?.obj?.data?.repr;
+      if (repr) canvas?.mark({ repr, loci: EveryLoci }, MarkerAction.Highlight);
+    }
+  }
+
+  setSelectionMode(enabled: boolean) {
+    this.plugin.selectionMode = enabled;
+    this.changed();
+    return this.observe();
+  }
+
+  setIllumination(enabled: boolean) {
+    this.plugin.canvas3d?.setProps({ illumination: { enabled } });
+    this.plugin.canvas3d?.requestDraw();
+    this.changed();
+    return this.observe();
   }
 
   async setVisibility(ref: string, visible: boolean) {
@@ -517,6 +553,8 @@ class MesoscaleRuntimeApi {
         if (action.mode === "clear" || !action.ref) this.clearSelection();
         else await this.selectEntity(action.ref, action.mode ?? "replace");
         return this.sceneSummary();
+      case "setSelectionMode": this.setSelectionMode(action.enabled); return this.sceneSummary();
+      case "setIllumination": this.setIllumination(action.enabled); return this.sceneSummary();
       case "focusObject": await this.focusEntity(action.ref); return this.sceneSummary();
       case "setVisibility": await this.setVisibility(action.ref, action.visible); return this.sceneSummary();
       case "isolateObjects": await this.isolateObjects(action.refs); return this.sceneSummary();
@@ -536,7 +574,7 @@ class MesoscaleRuntimeApi {
       case "getCapabilities": return {
         kind: "capabilities",
         apiVersion: MESOSCALE_API_VERSION,
-        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "focusObject", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
+        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionMode", "setIllumination", "focusObject", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
         graphicsModes: ["ultra", "quality", "balanced", "performance", "custom"],
         hierarchyPageLimit: MESOSCALE_HIERARCHY_PAGE_LIMIT,
       };
@@ -572,9 +610,35 @@ async function loadSource(runtime: MesoscaleRuntimeApi, config: MesoscaleConfig)
   };
 }
 
+function resolveViewerTheme(theme: MesoscaleConfig["theme"]) {
+  if (theme === "light" || theme === "dark") return theme;
+  return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+
+function applyViewerTheme(runtime: MesoscaleRuntimeApi, theme: MesoscaleConfig["theme"]) {
+  const resolved = resolveViewerTheme(theme);
+  document.documentElement.dataset.buretteTheme = resolved;
+  document.body?.classList.toggle("burette-light-theme", resolved === "light");
+  document.body?.classList.toggle("burette-dark-theme", resolved === "dark");
+  document.body?.style.setProperty("background-color", resolved === "light" ? "#f5f5f7" : "#101010");
+  runtime.plugin.canvas3d?.setProps({
+    transparentBackground: false,
+    renderer: { backgroundColor: Color(resolved === "light" ? 0xf5f5f7 : 0x101010) },
+  });
+  runtime.plugin.canvas3d?.requestDraw();
+}
+
 function installActionBridge(runtime: MesoscaleRuntimeApi) {
   window.addEventListener("message", (event) => {
     const envelope = event.data;
+    if (envelope?.source === "burette-mesoscale-preview") {
+      const preview = envelope as MesoscalePreviewMessage;
+      const expectedDocumentId = window.BuretteConfig?.documentId;
+      if (event.source === window.parent && preview.apiVersion === MESOSCALE_API_VERSION && preview.documentId === expectedDocumentId) {
+        runtime.highlightObject(preview.ref, preview.sequence);
+      }
+      return;
+    }
     if (envelope?.source === "burette-mesoscale-host") {
       const request = envelope as MesoscaleRequest;
       const expectedDocumentId = window.BuretteConfig?.documentId;
@@ -597,6 +661,12 @@ function installActionBridge(runtime: MesoscaleRuntimeApi) {
         reply,
         (error) => reply({ kind: "failure", code: "MESOSCALE_ACTION_FAILED", message: String(error?.message || error), revision: runtime.revision }),
       );
+      return;
+    }
+    if (envelope?.source === "burette-host" && envelope.body?.type === "setViewerTheme") {
+      const theme = String(envelope.body.value || "auto") as MesoscaleConfig["theme"];
+      if (window.BuretteConfig) window.BuretteConfig.theme = theme;
+      applyViewerTheme(runtime, theme);
       return;
     }
     const body = envelope?.source === "burette-agent-host" ? envelope.body : envelope;
@@ -630,12 +700,20 @@ async function start() {
     layoutShowRemoteState: false,
     layoutShowSequence: false,
     layoutShowLog: diagnostic,
+    viewportShowExpand: !hosted,
+    viewportShowControls: !hosted,
+    viewportShowSettings: !hosted,
+    viewportShowSelectionMode: !hosted,
     viewportShowAnimation: !hosted,
     viewportShowTrajectoryControls: false,
   });
   const runtime = new MesoscaleRuntimeApi(explorer);
   window.BuretteMesoscale = runtime;
   installActionBridge(runtime);
+  applyViewerTheme(runtime, config.theme);
+  window.matchMedia?.("(prefers-color-scheme: light)").addEventListener("change", () => {
+    if ((window.BuretteConfig?.theme ?? "auto") === "auto") applyViewerTheme(runtime, "auto");
+  });
   await loadSource(runtime, config);
   explorer.handleResize();
   if (config.documentId && window.parent && window.parent !== window) {

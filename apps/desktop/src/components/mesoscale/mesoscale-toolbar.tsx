@@ -1,8 +1,9 @@
-import { Camera, Gauge, PanelRightOpen, RotateCcw } from "lucide-react";
-import type { ViewerDocument } from "../../types";
+import { Camera, Gauge, Lightbulb, Moon, MousePointer2, PanelRightOpen, RotateCcw, Sun } from "lucide-react";
+import type { ViewerDocument, ViewerPreferences } from "../../types";
 import type { ShellActions } from "../types";
 import { requestMesoscale, useMesoscaleStore } from "../../stores/mesoscale-store";
 import type { MesoscaleGraphicsMode } from "../../lib/mesoscale-contract";
+import { resolveThemeMode, useSystemThemeMode } from "../../lib/theme";
 
 const GRAPHICS: Array<{ value: MesoscaleGraphicsMode; label: string }> = [
   { value: "ultra", label: "Ultra" },
@@ -11,8 +12,10 @@ const GRAPHICS: Array<{ value: MesoscaleGraphicsMode; label: string }> = [
   { value: "performance", label: "Performance" },
 ];
 
-export function MesoscaleToolbar({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
+export function MesoscaleToolbar({ document, actions, preferences }: { document: ViewerDocument; actions: ShellActions; preferences: ViewerPreferences }) {
   const session = useMesoscaleStore((state) => state.sessions[document.id]);
+  const systemTheme = useSystemThemeMode();
+  const effectiveTheme = resolveThemeMode(preferences.theme, systemTheme);
   const disabled = !session || session.status === "loading" || session.status === "disposed";
   const run = (action: Parameters<typeof requestMesoscale>[1]) => void requestMesoscale(document.id, action).catch(() => undefined);
 
@@ -39,6 +42,37 @@ export function MesoscaleToolbar({ document, actions }: { document: ViewerDocume
       </button>
       <button type="button" disabled={disabled} onClick={() => run({ type: "exportPng" })} title="Save PNG" aria-label="Save PNG">
         <Camera size={15} />
+      </button>
+      <span className="mesoscale-toolbar-divider" aria-hidden="true" />
+      <button
+        type="button"
+        className={session?.summary?.illumination ? "active" : ""}
+        disabled={disabled}
+        aria-pressed={session?.summary?.illumination ?? false}
+        onClick={() => run({ type: "setIllumination", enabled: !session?.summary?.illumination })}
+        title="Realistic lighting"
+        aria-label="Realistic lighting"
+      >
+        <Lightbulb size={15} />
+      </button>
+      <button
+        type="button"
+        className={session?.summary?.selectionMode ? "active" : ""}
+        disabled={disabled}
+        aria-pressed={session?.summary?.selectionMode ?? false}
+        onClick={() => run({ type: "setSelectionMode", enabled: !session?.summary?.selectionMode })}
+        title="Selection mode"
+        aria-label="Selection mode"
+      >
+        <MousePointer2 size={15} />
+      </button>
+      <button
+        type="button"
+        onClick={() => actions.setPreference("theme", effectiveTheme === "dark" ? "light" : "dark")}
+        title={`Switch to ${effectiveTheme === "dark" ? "light" : "dark"} theme`}
+        aria-label={`Switch to ${effectiveTheme === "dark" ? "light" : "dark"} theme`}
+      >
+        {effectiveTheme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
       </button>
       <button
         type="button"

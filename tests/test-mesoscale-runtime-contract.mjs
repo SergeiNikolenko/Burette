@@ -33,6 +33,10 @@ assert.match(runtime, /getHierarchyPage/);
 assert.match(runtime, /hierarchyPreview/);
 assert.match(runtime, /layoutShowControls: diagnostic/);
 assert.match(runtime, /layoutShowLog: diagnostic/);
+assert.match(runtime, /viewportShowControls: !hosted/);
+assert.match(runtime, /burette-mesoscale-preview/);
+assert.match(runtime, /MarkerAction\.Highlight/);
+assert.match(runtime, /body\?\.type === "setViewerTheme"/);
 assert.match(runtime, /config\.uiMode \?\? "diagnostic"/);
 assert.doesNotMatch(runtime, /layoutShowControls: true/);
 assert.doesNotMatch(runtime, /layoutShowLog: true/);
@@ -50,7 +54,7 @@ assert.match(browser, /uiMode: "hosted"/);
 const contract = await read("apps/desktop/src/lib/mesoscale-contract.ts");
 assert.match(contract, /burette-mesoscale\/v2/);
 assert.match(contract, /MESOSCALE_HIERARCHY_PAGE_LIMIT = 128/);
-for (const action of ["getSummary", "getHierarchyPage", "setSelection", "setVisibility", "isolateObjects", "setStyle", "exportState"]) {
+for (const action of ["getSummary", "getHierarchyPage", "setSelection", "setSelectionMode", "setIllumination", "setVisibility", "isolateObjects", "setStyle", "exportState"]) {
   assert.ok(contract.includes(`type: "${action}"`), `Mesoscale v2 contract must expose ${action}`);
 }
 

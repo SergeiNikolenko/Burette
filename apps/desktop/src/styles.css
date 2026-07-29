@@ -6249,11 +6249,13 @@ input.structure-inspector-composition-search {
 }
 .mesoscale-toolbar button:hover:not(:disabled),
 .mesoscale-toolbar-select:hover { background: var(--surface-hover); color: var(--text-primary); }
+.mesoscale-toolbar button.active { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 20%, var(--surface-subtle)); }
 .mesoscale-toolbar button:disabled { opacity: 0.45; }
 .mesoscale-toolbar-title { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0 7px; white-space: nowrap; color: var(--text-primary); }
 .mesoscale-toolbar-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .mesoscale-toolbar-count { color: var(--text-muted); font-size: 11px; }
 .mesoscale-toolbar-select select { width: 82px; border: 0; outline: 0; color: inherit; background: transparent; appearance: none; }
+.mesoscale-toolbar-divider { width: 1px; height: 18px; margin-inline: 2px; background: var(--line-subtle); }
 .mesoscale-toolbar .mesoscale-toolbar-scene { padding-inline: 9px; background: color-mix(in srgb, var(--accent) 22%, var(--surface-subtle)); color: var(--text-primary); }
 
 .mesoscale-panel { height: 100%; min-height: 0; overflow: auto; padding: 12px; color: var(--text-secondary); }
@@ -6270,6 +6272,8 @@ input.structure-inspector-composition-search {
 .mesoscale-object-list { display: flex; flex-direction: column; min-height: 80px; border-block: 1px solid var(--line-subtler); }
 .mesoscale-object-row { display: grid; grid-template-columns: minmax(0, 1fr) 28px 28px; min-height: 38px; border-bottom: 1px solid var(--line-subtler); content-visibility: auto; contain-intrinsic-size: 38px; }
 .mesoscale-object-row.selected { background: color-mix(in srgb, var(--accent) 17%, transparent); }
+.mesoscale-object-row.hovered { background: color-mix(in srgb, var(--accent) 10%, var(--surface-hover)); }
+.mesoscale-object-row.hovered .mesoscale-object-main strong { color: var(--accent); }
 .mesoscale-object-row > button { min-width: 0; border: 0; color: var(--text-muted); background: transparent; }
 .mesoscale-object-row > button:hover { color: var(--text-primary); background: var(--surface-hover); }
 .mesoscale-object-main { display: grid; grid-template-columns: 12px 16px minmax(0, 1fr); align-items: center; gap: 5px; padding: 4px 5px; text-align: left; }

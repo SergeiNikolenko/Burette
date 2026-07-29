@@ -39,6 +39,8 @@ export type MesoscaleSceneSummary = {
   filter: string;
   counts: MesoscaleCounts;
   selectedRefs: string[];
+  selectionMode: boolean;
+  illumination: boolean;
   snapshots: MesoscaleSnapshot[];
   hierarchyPreview: MesoscaleHierarchyObject[];
   hierarchyTotal: number;
@@ -89,6 +91,8 @@ export type MesoscaleAction =
   | { type: "setGraphics"; graphics: MesoscaleGraphicsMode }
   | { type: "setFilter"; filter: string }
   | { type: "setSelection"; ref?: string; mode?: "replace" | "extend" | "toggle" | "clear" }
+  | { type: "setSelectionMode"; enabled: boolean }
+  | { type: "setIllumination"; enabled: boolean }
   | { type: "focusObject"; ref: string }
   | { type: "setVisibility"; ref: string; visible: boolean }
   | { type: "isolateObjects"; refs: string[] }
@@ -108,6 +112,17 @@ export type MesoscaleRequest = {
   requestId: string;
   expectedRevision?: number;
   action: MesoscaleAction;
+};
+
+// Hover is intentionally a separate, response-free channel. It is transient
+// viewport state and must never increment the scene revision, enter history, or
+// make the Scene panel look busy while the pointer moves across many rows.
+export type MesoscalePreviewMessage = {
+  source: "burette-mesoscale-preview";
+  apiVersion: typeof MESOSCALE_API_VERSION;
+  documentId: string;
+  sequence: number;
+  ref: string | null;
 };
 
 export type MesoscaleFailure = {
@@ -141,6 +156,7 @@ export type MesoscaleSessionState = {
   hierarchyFilter: string;
   hierarchyNextCursor: number | null;
   hierarchyTotal: number;
+  hoveredRef: string | null;
   pendingCount: number;
   error: MesoscaleFailure | null;
 };

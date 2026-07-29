@@ -24,7 +24,7 @@ export const fileKind = definePageKind<"file", FileLocation>({
   description: "Open structure",
   Component: ({ location, state, actions, isActive }) => {
     const document = findDocument(location, state.documents);
-    return document ? <ViewerSurface document={document} actions={actions} isActive={isActive} /> : null;
+    return document ? <ViewerSurface document={document} actions={actions} preferences={state.preferences} isActive={isActive} /> : null;
   },
   keepAlive: true,
   fromPayload: (data) => (typeof data.path === "string" ? { kind: "file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path } : null),
@@ -42,25 +42,29 @@ function findDocument(location: FileLocation, documents: ViewerDocument[]) {
 function ViewerSurface({
   document,
   actions,
+  preferences,
   isActive,
 }: {
   document: ViewerDocument;
   actions: ShellActions;
+  preferences: Parameters<typeof MesoscaleToolbar>[0]["preferences"];
   isActive: boolean;
 }) {
   if (document.renderer === "spectrum") {
     return <SpectrumViewer document={document} />;
   }
-  return <StructureViewerSurface document={document} actions={actions} isActive={isActive} />;
+  return <StructureViewerSurface document={document} actions={actions} preferences={preferences} isActive={isActive} />;
 }
 
 function StructureViewerSurface({
   document,
   actions,
+  preferences,
   isActive,
 }: {
   document: ViewerDocument;
   actions: ShellActions;
+  preferences: Parameters<typeof MesoscaleToolbar>[0]["preferences"];
   isActive: boolean;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -186,7 +190,7 @@ function StructureViewerSurface({
         onViewerLoad={handleViewerLoad}
         onStagingLoad={(identity, frame) => sourceEditing?.stagingLoaded(document, identity, frame)}
       />
-      {mesoscale ? <MesoscaleToolbar document={document} actions={actions} /> : null}
+      {mesoscale ? <MesoscaleToolbar document={document} actions={actions} preferences={preferences} /> : null}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   type MesoscaleAction,
   type MesoscaleFailure,
   type MesoscaleHierarchyPage,
+  type MesoscalePreviewMessage,
   type MesoscaleRequest,
   type MesoscaleResult,
   type MesoscaleSceneSummary,
@@ -18,6 +19,9 @@ type MesoscaleStore = {
 };
 
 const frames = new Map<string, Window>();
+const previewFrames = new Map<string, number>();
+const previewSequences = new Map<string, number>();
+const pendingPreviewRefs = new Map<string, string | null>();
 const pending = new Map<string, {
   documentId: string;
   resolve: (result: MesoscaleResult) => void;
@@ -36,6 +40,7 @@ function emptySession(documentId: string): MesoscaleSessionState {
     hierarchyFilter: "",
     hierarchyNextCursor: 0,
     hierarchyTotal: 0,
+    hoveredRef: null,
     pendingCount: 0,
     error: null,
   };
@@ -161,12 +166,20 @@ function installBridge() {
 export function bindMesoscaleFrame(documentId: string, frame: Window) {
   installBridge();
   frames.set(documentId, frame);
+  previewMesoscaleObject(documentId, null);
   updateSession(documentId, (session) => session.status === "disposed" ? emptySession(documentId) : session);
   void requestMesoscale(documentId, { type: "getSummary" }).catch(() => undefined);
 }
 
 export function releaseMesoscaleFrame(documentId: string, frame?: Window | null) {
   if (frame && frames.get(documentId) !== frame) return;
+  const activeFrame = frames.get(documentId);
+  if (activeFrame) postMesoscalePreview(activeFrame, documentId, null);
+  const previewFrame = previewFrames.get(documentId);
+  if (previewFrame !== undefined) window.cancelAnimationFrame(previewFrame);
+  previewFrames.delete(documentId);
+  previewSequences.delete(documentId);
+  pendingPreviewRefs.delete(documentId);
   frames.delete(documentId);
   for (const [requestId, request] of pending) {
     if (request.documentId !== documentId) continue;
@@ -174,7 +187,7 @@ export function releaseMesoscaleFrame(documentId: string, frame?: Window | null)
     window.clearTimeout(request.timer);
     request.reject(new Error("Mesoscale runtime was disposed"));
   }
-  updateSession(documentId, (session) => ({ ...session, status: "disposed", pendingCount: 0 }));
+  updateSession(documentId, (session) => ({ ...session, status: "disposed", pendingCount: 0, hoveredRef: null }));
 }
 
 export function removeMesoscaleSession(documentId: string) {
@@ -220,6 +233,31 @@ export function requestMesoscale(documentId: string, action: MesoscaleAction, ti
 
 export function loadMesoscaleHierarchy(documentId: string, filter: string, cursor = 0) {
   return requestMesoscale(documentId, { type: "getHierarchyPage", filter, cursor });
+}
+
+function postMesoscalePreview(frame: Window, documentId: string, ref: string | null) {
+  const sequence = (previewSequences.get(documentId) ?? 0) + 1;
+  previewSequences.set(documentId, sequence);
+  const message: MesoscalePreviewMessage = {
+    source: "burette-mesoscale-preview",
+    apiVersion: MESOSCALE_API_VERSION,
+    documentId,
+    sequence,
+    ref,
+  };
+  frame.postMessage(message, "*");
+}
+
+export function previewMesoscaleObject(documentId: string, ref: string | null) {
+  updateSession(documentId, (session) => session.hoveredRef === ref ? session : { ...session, hoveredRef: ref });
+  pendingPreviewRefs.set(documentId, ref);
+  if (previewFrames.has(documentId)) return;
+  previewFrames.set(documentId, window.requestAnimationFrame(() => {
+    previewFrames.delete(documentId);
+    const frame = frames.get(documentId);
+    if (!frame) return;
+    postMesoscalePreview(frame, documentId, pendingPreviewRefs.get(documentId) ?? null);
+  }));
 }
 
 export function setMesoscaleVisibilityOptimistic(documentId: string, ref: string, hidden: boolean) {
