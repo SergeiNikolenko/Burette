@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { ViewerDocument } from "../../../types";
 import { hasStructureDrag, readStructureDragPayload } from "../../../lib/structure-drag";
 import type { StructureDragPayload } from "../../../lib/structure-drag";
@@ -10,7 +10,7 @@ import { definePageKind } from "./types";
 import { SpectrumViewer } from "../../spectrum-viewer";
 import { useSourceEditing } from "../../../lib/source-editing/context";
 import { isMesoscaleViewerDocument } from "../../../lib/mesoscale-documents";
-import { bindMesoscaleFrame, releaseMesoscaleFrame } from "../../../stores/mesoscale-store";
+import { bindMesoscaleFrame, releaseMesoscaleFrame, setMesoscaleSceneOpen, useMesoscaleStore } from "../../../stores/mesoscale-store";
 import { MesoscaleToolbar } from "../../mesoscale/mesoscale-toolbar";
 import { MesoscaleSceneOverlay } from "../../mesoscale/mesoscale-scene-overlay";
 
@@ -73,7 +73,7 @@ function StructureViewerSurface({
   const sourceEditing = useSourceEditing();
   const sourceSession = sourceEditing?.sessionForDocument(document) ?? null;
   const mesoscale = isMesoscaleViewerDocument(document);
-  const [mesoscaleSceneOpen, setMesoscaleSceneOpen] = useState(false);
+  const mesoscaleSceneOpen = useMesoscaleStore((store) => store.sessions[document.id]?.sceneOpen ?? false);
   const sheetDropTarget = document.renderer === "xyzrender-external";
   const collectionDropTarget = document.renderer === "grid2d";
   const postViewerVisibility = useCallback((frame = iframeRef.current, frameActive = true) => {
@@ -192,14 +192,14 @@ function StructureViewerSurface({
         onViewerLoad={handleViewerLoad}
         onStagingLoad={(identity, frame) => sourceEditing?.stagingLoaded(document, identity, frame)}
       />
-      {mesoscale && mesoscaleSceneOpen ? <MesoscaleSceneOverlay document={document} onClose={() => setMesoscaleSceneOpen(false)} /> : null}
+      {mesoscale && mesoscaleSceneOpen ? <MesoscaleSceneOverlay document={document} onClose={() => setMesoscaleSceneOpen(document.id, false)} /> : null}
       {mesoscale ? (
         <MesoscaleToolbar
           document={document}
           actions={actions}
           preferences={preferences}
           sceneOpen={mesoscaleSceneOpen}
-          onToggleScene={() => setMesoscaleSceneOpen((open) => !open)}
+          onToggleScene={() => setMesoscaleSceneOpen(document.id, !mesoscaleSceneOpen)}
         />
       ) : null}
     </div>

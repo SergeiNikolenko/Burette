@@ -41,6 +41,7 @@ function emptySession(documentId: string): MesoscaleSessionState {
     hierarchyNextCursor: 0,
     hierarchyTotal: 0,
     hoveredRef: null,
+    sceneOpen: false,
     pendingCount: 0,
     error: null,
   };
@@ -167,7 +168,9 @@ export function bindMesoscaleFrame(documentId: string, frame: Window) {
   installBridge();
   frames.set(documentId, frame);
   previewMesoscaleObject(documentId, null);
-  updateSession(documentId, (session) => session.status === "disposed" ? emptySession(documentId) : session);
+  updateSession(documentId, (session) => session.status === "disposed"
+    ? { ...emptySession(documentId), sceneOpen: session.sceneOpen }
+    : session);
   void requestMesoscale(documentId, { type: "getSummary" }).catch(() => undefined);
 }
 
@@ -258,6 +261,10 @@ export function previewMesoscaleObject(documentId: string, ref: string | null) {
     if (!frame) return;
     postMesoscalePreview(frame, documentId, pendingPreviewRefs.get(documentId) ?? null);
   }));
+}
+
+export function setMesoscaleSceneOpen(documentId: string, open: boolean) {
+  updateSession(documentId, (session) => session.sceneOpen === open ? session : { ...session, sceneOpen: open });
 }
 
 export function setMesoscaleVisibilityOptimistic(documentId: string, ref: string, hidden: boolean) {

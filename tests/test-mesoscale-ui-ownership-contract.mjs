@@ -37,6 +37,7 @@ assert.match(store, /expectedRevision/);
 assert.match(store, /frames\.get\(response\.documentId\) !== event\.source/);
 assert.match(store, /requestAnimationFrame/);
 assert.match(store, /burette-mesoscale-preview/);
+assert.match(store, /sceneOpen: session\.sceneOpen/);
 assert.match(scene, /onPointerEnter/);
 assert.match(scene, /onPointerLeave/);
 assert.match(toolbar, /setPreference\("theme"/);

@@ -157,6 +157,7 @@ export type MesoscaleSessionState = {
   hierarchyNextCursor: number | null;
   hierarchyTotal: number;
   hoveredRef: string | null;
+  sceneOpen: boolean;
   pendingCount: number;
   error: MesoscaleFailure | null;
 };

@@ -34,6 +34,7 @@ assert.match(runtime, /hierarchyPreview/);
 assert.match(runtime, /layoutShowControls: diagnostic/);
 assert.match(runtime, /layoutShowLog: diagnostic/);
 assert.match(runtime, /viewportShowControls: !hosted/);
+assert.match(runtime, /burette-mesoscale-hosted \.msp-viewport-controls/);
 assert.match(runtime, /burette-mesoscale-preview/);
 assert.match(runtime, /MarkerAction\.Highlight/);
 assert.match(runtime, /body\?\.type === "setViewerTheme"/);

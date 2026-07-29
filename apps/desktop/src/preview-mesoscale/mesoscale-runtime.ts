@@ -628,6 +628,15 @@ function applyViewerTheme(runtime: MesoscaleRuntimeApi, theme: MesoscaleConfig["
   runtime.plugin.canvas3d?.requestDraw();
 }
 
+function applyHostedUi(hosted: boolean) {
+  document.body?.classList.toggle("burette-mesoscale-hosted", hosted);
+  if (!hosted || document.getElementById("burette-mesoscale-hosted-style")) return;
+  const style = document.createElement("style");
+  style.id = "burette-mesoscale-hosted-style";
+  style.textContent = ".burette-mesoscale-hosted .msp-viewport-controls,.burette-mesoscale-hosted .msp-logo{display:none!important}";
+  document.head.appendChild(style);
+}
+
 function installActionBridge(runtime: MesoscaleRuntimeApi) {
   window.addEventListener("message", (event) => {
     const envelope = event.data;
@@ -692,6 +701,7 @@ async function start() {
   const uiMode = config.uiMode ?? "diagnostic";
   const hosted = uiMode === "hosted";
   const diagnostic = uiMode === "diagnostic";
+  applyHostedUi(hosted);
   const explorer = await MesoscaleExplorer.create("app", {
     extensions: [],
     graphicsMode: config.graphicsMode ?? "balanced",
