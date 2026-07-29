@@ -1,13 +1,25 @@
 import type { OpenTextFilesResult, TextFileDocument } from "../types";
 import { readBrowserDevVirtualTextDocument } from "./browser-dev-documents";
 
+const INLINE_IMAGE_BATCH_LIMIT = 48 * 1024 * 1024;
+
 export async function openBrowserDevTextFiles(paths: string[]): Promise<OpenTextFilesResult> {
   const documents: TextFileDocument[] = [];
   const errors: string[] = [];
+  let inlineImageBytes = 0;
 
   for (const path of paths) {
     try {
-      documents.push(await readBrowserDevTextFile(path));
+      const remainingImageBytes = Math.max(0, INLINE_IMAGE_BATCH_LIMIT - inlineImageBytes);
+      const document = await readBrowserDevTextFile(path, remainingImageBytes);
+      if (document.language === "image" && document.content) {
+        if (inlineImageBytes + document.byteCount > INLINE_IMAGE_BATCH_LIMIT) {
+          documents.push({ ...document, content: "", truncated: true });
+          continue;
+        }
+        inlineImageBytes += document.byteCount;
+      }
+      documents.push(document);
     } catch (error) {
       errors.push(error instanceof Error ? error.message : String(error));
     }
@@ -17,7 +29,7 @@ export async function openBrowserDevTextFiles(paths: string[]): Promise<OpenText
   return { documents, errors };
 }
 
-async function readBrowserDevTextFile(path: string): Promise<TextFileDocument> {
+async function readBrowserDevTextFile(path: string, maxImageBytes: number): Promise<TextFileDocument> {
   const virtualText = readBrowserDevVirtualTextDocument(path);
   if (virtualText !== null) {
     const title = path.split("/").filter(Boolean).pop() || path;
@@ -33,9 +45,12 @@ async function readBrowserDevTextFile(path: string): Promise<TextFileDocument> {
       modifiedAt: null,
     };
   }
-  const response = await fetch(`/__burette/read-text-file?path=${encodeURIComponent(path)}`, {
+  const response = await fetch(
+    `/__burette/read-text-file?path=${encodeURIComponent(path)}&maxImageBytes=${maxImageBytes}`,
+    {
     cache: "no-store",
-  });
+    },
+  );
   if (!response.ok) {
     throw new Error(await browserDevTextFileError(response, path));
   }

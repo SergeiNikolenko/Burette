@@ -4,6 +4,8 @@ export function rendererLabel(renderer: string) {
   if (renderer === "xyzrender-external") return "xyzrender";
   if (renderer === "grid2d") return "Grid";
   if (renderer === "spectrum") return "Spectrum";
+  if (renderer === "image") return "Image";
+  if (renderer === "text") return "Text";
   if (renderer === "not-renderable") return "Preview";
   return "Mol*";
 }
