@@ -18,7 +18,6 @@ export function MesoscaleSceneOverlay({ document, onClose }: { document: ViewerD
       <header className="mesoscale-scene-overlay-header">
         <Layers3 size={15} aria-hidden="true" />
         <span>Scene</span>
-        <small>{document.title}</small>
         <Button variant="ghost" size="icon-sm" aria-label="Close scene" title="Close scene" onClick={onClose}>
           <X size={14} />
         </Button>

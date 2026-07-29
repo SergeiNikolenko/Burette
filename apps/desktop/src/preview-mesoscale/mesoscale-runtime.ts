@@ -665,10 +665,10 @@ function applyViewerTheme(runtime: MesoscaleRuntimeApi, theme: MesoscaleConfig["
   document.documentElement.dataset.buretteTheme = resolved;
   document.body?.classList.toggle("buret-theme-light", resolved === "light");
   document.body?.classList.toggle("buret-theme-dark", resolved === "dark");
-  document.body?.style.setProperty("background-color", resolved === "light" ? "#f5f5f7" : "#101010");
+  document.body?.style.setProperty("background-color", resolved === "light" ? "#ffffff" : "#101010");
   runtime.plugin.canvas3d?.setProps({
     transparentBackground: false,
-    renderer: { backgroundColor: Color(resolved === "light" ? 0xf5f5f7 : 0x101010) },
+    renderer: { backgroundColor: Color(resolved === "light" ? 0xffffff : 0x101010) },
   });
   runtime.plugin.canvas3d?.requestDraw();
 }
@@ -678,7 +678,7 @@ function applyHostedUi(hosted: boolean) {
   if (!hosted || document.getElementById("burette-mesoscale-hosted-style")) return;
   const style = document.createElement("style");
   style.id = "burette-mesoscale-hosted-style";
-  style.textContent = ".burette-mesoscale-hosted .msp-viewport-controls,.burette-mesoscale-hosted .msp-logo{display:none!important}";
+  style.textContent = ".burette-mesoscale-hosted .msp-logo{display:none!important}";
   document.head.appendChild(style);
 }
 
@@ -755,11 +755,11 @@ async function start() {
     layoutShowRemoteState: false,
     layoutShowSequence: false,
     layoutShowLog: diagnostic,
-    viewportShowExpand: !hosted,
-    viewportShowControls: !hosted,
-    viewportShowSettings: !hosted,
-    viewportShowSelectionMode: !hosted,
-    viewportShowAnimation: !hosted,
+    viewportShowExpand: true,
+    viewportShowControls: true,
+    viewportShowSettings: true,
+    viewportShowSelectionMode: true,
+    viewportShowAnimation: true,
     viewportShowTrajectoryControls: false,
   });
   const runtime = new MesoscaleRuntimeApi(explorer);

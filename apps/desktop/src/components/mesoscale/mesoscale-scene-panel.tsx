@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { Box, Camera, ChevronRight, Download, Eye, EyeOff, Focus, Layers, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Box, Camera, ChevronDown, ChevronRight, Download, Eye, EyeOff, Focus, Layers, Plus, Trash2 } from "lucide-react";
 import type { ViewerDocument } from "../../types";
 import { loadMesoscaleHierarchy, previewMesoscaleObject, requestMesoscale, setMesoscaleVisibilityOptimistic, useMesoscaleStore } from "../../stores/mesoscale-store";
 import type { MesoscaleHierarchyObject } from "../../lib/mesoscale-contract";
+import { showNativeContextMenu } from "../native-context-menu";
 
 type SceneSection = "objects" | "snapshots" | "export";
 
@@ -13,7 +14,9 @@ export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) 
   const [snapshotName, setSnapshotName] = useState("");
   const [styleColor, setStyleColor] = useState("#b9a4ff");
   const [styleOpacity, setStyleOpacity] = useState(1);
+  const [collapsedRefs, setCollapsedRefs] = useState<Set<string>>(() => new Set());
   const selected = session?.hierarchy.find((item) => item.selected) ?? null;
+  const tree = useMemo(() => sceneTree(session?.hierarchy ?? []), [session?.hierarchy]);
 
   useEffect(() => {
     if (!session || session.status === "loading" || session.status === "disposed") return;
@@ -40,8 +43,21 @@ export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) 
             <span>{session?.hierarchyTotal.toLocaleString() ?? 0} objects</span>
             <span>{session?.summary?.selectedRefs.length ?? 0} selected</span>
           </div>
-          <div className="mesoscale-object-list" aria-busy={session?.status === "busy"}>
-            {session?.hierarchy.map((item) => <SceneObjectRow key={item.ref} documentId={document.id} item={item} />)}
+          <div className="mesoscale-object-tree" role="tree" aria-label="Scene objects" aria-busy={session?.status === "busy"}>
+            {tree.map((node) => (
+              <SceneObjectBranch
+                key={node.item.ref}
+                documentId={document.id}
+                node={node}
+                collapsedRefs={collapsedRefs}
+                onToggle={(ref) => setCollapsedRefs((current) => {
+                  const next = new Set(current);
+                  if (next.has(ref)) next.delete(ref);
+                  else next.add(ref);
+                  return next;
+                })}
+              />
+            ))}
             {session?.hierarchyNextCursor != null ? (
               <button className="mesoscale-load-more" type="button" onClick={() => void loadMesoscaleHierarchy(document.id, filter, session.hierarchyNextCursor ?? 0).catch(() => undefined)}>Show more</button>
             ) : null}
@@ -83,41 +99,117 @@ export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) 
   );
 }
 
-function SceneObjectRow({ documentId, item }: { documentId: string; item: MesoscaleHierarchyObject }) {
+type SceneTreeNode = {
+  item: MesoscaleHierarchyObject;
+  children: SceneTreeNode[];
+};
+
+function sceneTree(items: MesoscaleHierarchyObject[]) {
+  const nodes = new Map(items.map((item) => [item.ref, { item, children: [] as SceneTreeNode[] }]));
+  const roots: SceneTreeNode[] = [];
+  for (const node of nodes.values()) {
+    const parent = node.item.parentRef ? nodes.get(node.item.parentRef) : null;
+    if (parent && parent !== node) parent.children.push(node);
+    else roots.push(node);
+  }
+  return roots;
+}
+
+function sceneObjectDetail(item: MesoscaleHierarchyObject, childCount: number) {
+  if (item.elementCount > 0) return `${item.elementCount.toLocaleString()} elements`;
+  if (childCount > 0) return `${childCount.toLocaleString()} ${childCount === 1 ? "object" : "objects"}`;
+  if (item.instanceCount > 0) return `${item.instanceCount.toLocaleString()} ${item.instanceCount === 1 ? "instance" : "instances"}`;
+  const description = item.description.replaceAll("**", "").trim();
+  return description && description.toLocaleLowerCase() !== item.label.toLocaleLowerCase() ? description : item.kind;
+}
+
+function SceneObjectBranch({
+  documentId,
+  node,
+  collapsedRefs,
+  onToggle,
+}: {
+  documentId: string;
+  node: SceneTreeNode;
+  collapsedRefs: Set<string>;
+  onToggle: (ref: string) => void;
+}) {
+  const { item, children } = node;
   const hovered = useMesoscaleStore((state) => state.sessions[documentId]?.hoveredRef === item.ref);
   const run = (action: Parameters<typeof requestMesoscale>[1]) => void requestMesoscale(documentId, action).catch(() => undefined);
+  const collapsed = collapsedRefs.has(item.ref);
+  const detail = sceneObjectDetail(item, children.length);
+  const setVisible = (visible: boolean) => {
+    setMesoscaleVisibilityOptimistic(documentId, item.ref, !visible);
+    void requestMesoscale(documentId, { type: "setVisibility", ref: item.ref, visible })
+      .catch(() => setMesoscaleVisibilityOptimistic(documentId, item.ref, visible));
+  };
+  const openContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    previewMesoscaleObject(documentId, item.ref);
+    void showNativeContextMenu([
+      { kind: "label", id: "mesoscale-object-label", text: item.label },
+      { kind: "item", id: "mesoscale-select", text: "Select", action: () => run({ type: "setSelection", ref: item.ref, mode: "replace" }) },
+      { kind: "item", id: "mesoscale-add-selection", text: "Add to Selection", action: () => run({ type: "setSelection", ref: item.ref, mode: "extend" }) },
+      { kind: "item", id: "mesoscale-toggle-selection", text: item.selected ? "Remove from Selection" : "Toggle Selection", action: () => run({ type: "setSelection", ref: item.ref, mode: "toggle" }) },
+      { kind: "separator" },
+      { kind: "item", id: "mesoscale-focus", text: "Focus", action: () => run({ type: "focusObject", ref: item.ref }) },
+      { kind: "item", id: "mesoscale-isolate", text: "Isolate", action: () => run({ type: "isolateObjects", refs: [item.ref] }) },
+      { kind: "item", id: "mesoscale-visibility", text: item.hidden ? "Show" : "Hide", action: () => setVisible(item.hidden) },
+      ...(item.selected ? [
+        { kind: "separator" as const },
+        { kind: "item" as const, id: "mesoscale-clear-selection", text: "Clear Selection", action: () => run({ type: "setSelection", mode: "clear" }) },
+      ] : []),
+    ], { x: event.clientX, y: event.clientY });
+  };
   return (
     <div
-      className={`mesoscale-object-row${item.selected ? " selected" : ""}${hovered ? " hovered" : ""}`}
-      data-kind={item.kind}
-      onPointerEnter={() => previewMesoscaleObject(documentId, item.ref)}
-      onPointerLeave={() => previewMesoscaleObject(documentId, null)}
+      className="mesoscale-tree-branch"
+      role="treeitem"
+      aria-expanded={children.length > 0 ? !collapsed : undefined}
+      aria-selected={item.selected}
     >
-      <button
-        type="button"
-        className="mesoscale-object-main"
-        onClick={() => run({ type: "setSelection", ref: item.ref, mode: "replace" })}
-        onDoubleClick={() => run({ type: "focusObject", ref: item.ref })}
-        onFocus={() => previewMesoscaleObject(documentId, item.ref)}
-        onBlur={() => previewMesoscaleObject(documentId, null)}
+      <div
+        className={`mesoscale-object-row${item.selected ? " selected" : ""}${hovered ? " hovered" : ""}`}
+        data-kind={item.kind}
+        onPointerEnter={() => previewMesoscaleObject(documentId, item.ref)}
+        onPointerLeave={() => previewMesoscaleObject(documentId, null)}
+        onContextMenu={openContextMenu}
       >
-        <span className="mesoscale-object-indent" aria-hidden="true">{item.parentRef ? <ChevronRight size={12} /> : null}</span>
-        {item.kind === "group" ? <Layers size={14} /> : <Box size={14} />}
-        <span><strong>{item.label}</strong><small>{item.description || `${item.instanceCount.toLocaleString()} instances`}</small></span>
-      </button>
-      <button type="button" aria-label={`Focus ${item.label}`} title="Focus" onClick={() => run({ type: "focusObject", ref: item.ref })}><Focus size={14} /></button>
-      <button
-        type="button"
-        aria-label={`${item.hidden ? "Show" : "Hide"} ${item.label}`}
-        title={item.hidden ? "Show" : "Hide"}
-        onClick={() => {
-          setMesoscaleVisibilityOptimistic(documentId, item.ref, !item.hidden);
-          void requestMesoscale(documentId, { type: "setVisibility", ref: item.ref, visible: item.hidden })
-            .catch(() => setMesoscaleVisibilityOptimistic(documentId, item.ref, item.hidden));
-        }}
-      >
-        {item.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
-      </button>
+        {children.length > 0 ? (
+          <button type="button" className="mesoscale-tree-disclosure" aria-label={`${collapsed ? "Expand" : "Collapse"} ${item.label}`} onClick={() => onToggle(item.ref)}>
+            {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+          </button>
+        ) : <span className="mesoscale-tree-leaf" aria-hidden="true" />}
+        <button
+          type="button"
+          className="mesoscale-object-main"
+          aria-label={`${item.label}, ${detail}`}
+          onClick={() => run({ type: "setSelection", ref: item.ref, mode: "replace" })}
+          onDoubleClick={() => run({ type: "focusObject", ref: item.ref })}
+          onFocus={() => previewMesoscaleObject(documentId, item.ref)}
+          onBlur={() => previewMesoscaleObject(documentId, null)}
+        >
+          {item.kind === "group" ? <Layers size={14} /> : <Box size={14} />}
+          <span><strong>{item.label}</strong><small>{detail}</small></span>
+        </button>
+        <button className="mesoscale-tree-action" type="button" aria-label={`Focus ${item.label}`} title="Focus" onClick={() => run({ type: "focusObject", ref: item.ref })}><Focus size={14} /></button>
+        <button
+          className="mesoscale-tree-action"
+          type="button"
+          aria-label={`${item.hidden ? "Show" : "Hide"} ${item.label}`}
+          title={item.hidden ? "Show" : "Hide"}
+          onClick={() => setVisible(item.hidden)}
+        >
+          {item.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+        </button>
+      </div>
+      {children.length > 0 && !collapsed ? (
+        <div className="mesoscale-tree-group" role="group">
+          {children.map((child) => <SceneObjectBranch key={child.item.ref} documentId={documentId} node={child} collapsedRefs={collapsedRefs} onToggle={onToggle} />)}
+        </div>
+      ) : null}
     </div>
   );
 }

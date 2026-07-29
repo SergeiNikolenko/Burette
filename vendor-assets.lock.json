@@ -37,14 +37,14 @@
     {
       "path": "PreviewExtension/Web/mesoscale.js",
       "package": "molstar",
-      "bytes": 5372349,
-      "sha256": "sha256-Ih8ZcwiI9EwkuZmA118bqhX5+fAOBErB7T2y3jXRnGk="
+      "bytes": 5372300,
+      "sha256": "sha256-AYZDndSRaPh01ExiEnhJPZmLM5J4p70a6/PqBdipIb4="
     },
     {
       "path": "PreviewExtension/Web/mesoscale.css",
       "package": "molstar",
-      "bytes": 80613,
-      "sha256": "sha256-ZephMfCuwZhi6EpFhoc6X0VLhFSpt1M4sD3X5sFOq9c="
+      "bytes": 84738,
+      "sha256": "sha256-uC+YGPPkAJ1r4PArsM/Qi4GjeYSvSyRQWYWzfGCja20="
     },
     {
       "path": "PreviewExtension/Web/rdkit/RDKit_minimal.js",

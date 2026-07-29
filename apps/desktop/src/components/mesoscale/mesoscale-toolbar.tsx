@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { ChevronDown, GripVertical } from "lucide-react";
+import { ChevronDown, GripVertical, SunMoon } from "lucide-react";
 import type { ViewerDocument, ViewerPreferences } from "../../types";
 import type { ShellActions } from "../types";
 import { requestMesoscale, useMesoscaleStore } from "../../stores/mesoscale-store";
 import type { MesoscaleGraphicsMode } from "../../lib/mesoscale-contract";
-import { resolveThemeMode, useSystemThemeMode } from "../../lib/theme";
 
 const GRAPHICS: Array<{ value: MesoscaleGraphicsMode; label: string }> = [
   { value: "ultra", label: "Ultra" },
@@ -16,8 +15,6 @@ const GRAPHICS: Array<{ value: MesoscaleGraphicsMode; label: string }> = [
 export function MesoscaleToolbar({ document, actions, preferences }: { document: ViewerDocument; actions: ShellActions; preferences: ViewerPreferences }) {
   const session = useMesoscaleStore((state) => state.sessions[document.id]);
   const [collapsed, setCollapsed] = useState(false);
-  const systemTheme = useSystemThemeMode();
-  const effectiveTheme = resolveThemeMode(preferences.theme, systemTheme);
   const disabled = !session || session.status === "loading" || session.status === "disposed";
   const run = (action: Parameters<typeof requestMesoscale>[1]) => void requestMesoscale(document.id, action).catch(() => undefined);
   const toggleRegion = (region: "left" | "right") => run({
@@ -58,15 +55,16 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
           </select>
           <ChevronDown size={13} aria-hidden="true" />
         </label>
-        <button
-          type="button"
-          className="mesoscale-toolbar-theme"
-          onClick={() => actions.setPreference("theme", effectiveTheme === "dark" ? "light" : "dark")}
-          title={`Switch to ${effectiveTheme === "dark" ? "light" : "dark"} theme`}
-          aria-label={`Switch to ${effectiveTheme === "dark" ? "light" : "dark"} theme`}
-        >
-          {effectiveTheme === "dark" ? "Light" : "Dark"}
-        </button>
+        <label className="mesoscale-toolbar-select mesoscale-toolbar-theme" title="Viewer theme">
+          <SunMoon size={13} aria-hidden="true" />
+          <span className="sr-only">Viewer theme</span>
+          <select value={preferences.theme} aria-label="Viewer theme" onChange={(event) => actions.setPreference("theme", event.target.value as ViewerPreferences["theme"])}>
+            <option value="auto">Auto</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+          <ChevronDown size={13} aria-hidden="true" />
+        </label>
       </div>
       <button
         type="button"

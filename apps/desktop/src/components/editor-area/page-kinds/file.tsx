@@ -13,7 +13,6 @@ import { isMesoscaleViewerDocument } from "../../../lib/mesoscale-documents";
 import { bindMesoscaleFrame, releaseMesoscaleFrame, setMesoscaleSceneOpen, useMesoscaleStore } from "../../../stores/mesoscale-store";
 import { MesoscaleToolbar } from "../../mesoscale/mesoscale-toolbar";
 import { MesoscaleSceneOverlay, MesoscaleSceneToggle } from "../../mesoscale/mesoscale-scene-overlay";
-import { MesoscaleViewportControls } from "../../mesoscale/mesoscale-viewport-controls";
 
 export type FileLocation = { kind: "file"; documentId?: string; path: string };
 
@@ -209,7 +208,6 @@ function StructureViewerSurface({
           preferences={preferences}
         />
       ) : null}
-      {mesoscale ? <MesoscaleViewportControls document={document} /> : null}
     </div>
   );
 }

@@ -13,23 +13,33 @@
 }
 
 body.buret-theme-light {
-  --buret-meso-panel: rgb(244, 244, 244);
-  --buret-meso-surface: rgb(244, 244, 244);
+  --buret-meso-panel: rgb(247, 247, 248);
+  --buret-meso-surface: rgb(241, 241, 243);
   --buret-meso-field: rgb(255, 255, 255);
-  --buret-meso-hover: rgb(228, 228, 228);
-  --buret-meso-border: rgba(0, 0, 0, 0.13);
+  --buret-meso-hover: rgb(229, 229, 232);
+  --buret-meso-border: rgba(0, 0, 0, 0.14);
   --buret-meso-text: rgba(32, 33, 35, 0.94);
-  --buret-meso-muted: rgba(86, 88, 92, 0.82);
+  --buret-meso-muted: rgba(76, 78, 83, 0.84);
 }
 
 body.buret-theme-dark {
-  --buret-meso-panel: rgb(18, 20, 22);
-  --buret-meso-surface: rgb(24, 26, 29);
-  --buret-meso-field: rgb(32, 35, 39);
+  --buret-meso-panel: rgb(20, 22, 24);
+  --buret-meso-surface: rgb(27, 30, 33);
+  --buret-meso-field: rgb(35, 39, 43);
   --buret-meso-hover: rgb(48, 52, 58);
-  --buret-meso-border: rgba(255, 255, 255, 0.10);
+  --buret-meso-border: rgba(255, 255, 255, 0.12);
   --buret-meso-text: rgba(246, 247, 249, 0.94);
-  --buret-meso-muted: rgba(190, 196, 204, 0.82);
+  --buret-meso-muted: rgba(198, 202, 208, 0.82);
+}
+
+html[data-burette-theme="light"],
+body.buret-theme-light {
+  background: #fff !important;
+}
+
+html[data-burette-theme="dark"],
+body.buret-theme-dark {
+  background: #101010 !important;
 }
 
 body .msp-plugin,
@@ -61,6 +71,14 @@ body .msp-plugin .msp-panel-description-content,
 body .msp-plugin .msp-log,
 body .msp-plugin .msp-sequence,
 body .msp-plugin .msp-toast-container .msp-toast-entry {
+  color: var(--buret-meso-text) !important;
+  background: var(--buret-meso-panel) !important;
+}
+
+body .msp-plugin .msp-layout-left .msp-scrollable-container,
+body .msp-plugin .msp-layout-right .msp-scrollable-container,
+body .msp-plugin .msp-layout-left .msp-scrollable,
+body .msp-plugin .msp-layout-right .msp-scrollable {
   color: var(--buret-meso-text) !important;
   background: var(--buret-meso-panel) !important;
 }
@@ -151,6 +169,114 @@ body .msp-plugin .msp-transform-header-brand svg {
   fill: var(--buret-meso-text) !important;
   stroke: var(--buret-meso-text) !important;
 }
+
+body .msp-plugin .msp-help-text,
+body .msp-plugin .msp-help-text p,
+body .msp-plugin .msp-panel-description-content,
+body .msp-plugin .msp-panel-description-content p {
+  color: var(--buret-meso-text) !important;
+}
+
+body .msp-plugin .msp-help-text > *,
+body .msp-plugin .msp-help-text > * * {
+  color: inherit !important;
+}
+
+body .msp-plugin #focusinfo {
+  margin: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--buret-meso-border);
+  border-radius: 8px;
+  color: var(--buret-meso-text) !important;
+  background: var(--buret-meso-field) !important;
+}
+
+body .msp-plugin #focusinfo p {
+  margin: 0;
+  padding: 0;
+  color: var(--buret-meso-muted) !important;
+}
+
+body .msp-plugin #focusinfo p + p { margin-top: 8px; }
+body .msp-plugin #focusinfo p:first-child { color: var(--buret-meso-accent) !important; font-weight: 650; }
+
+body .msp-plugin .msp-highlight-toast-wrapper {
+  right: 12px;
+  bottom: 12px;
+}
+
+body .msp-plugin .msp-highlight-info {
+  min-width: 190px;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 11px 13px;
+  border: 1px solid var(--buret-meso-border);
+  border-radius: 9px;
+  color: var(--buret-meso-text) !important;
+  background: color-mix(in srgb, var(--buret-meso-panel) 92%, transparent) !important;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.22);
+  opacity: 1 !important;
+  backdrop-filter: blur(16px);
+}
+
+body .msp-plugin .msp-highlight-info-additional {
+  margin-top: 4px;
+  color: var(--buret-meso-muted) !important;
+}
+
+body .msp-plugin .msp-highlight-markdown-row { padding: 0; }
+body .msp-plugin .msp-highlight-markdown-row p { margin: 0; padding: 0; color: var(--buret-meso-muted) !important; }
+body .msp-plugin .msp-highlight-markdown-row p + p { margin-top: 6px; }
+body .msp-plugin .msp-highlight-markdown-row p:first-child,
+body .msp-plugin .msp-highlight-markdown-row p:first-child strong { color: var(--buret-meso-accent) !important; }
+
+body .msp-plugin .msp-highlight-info-hr { background-color: var(--buret-meso-border) !important; }
+
+body .msp-plugin .msp-viewport-controls {
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  color: var(--buret-meso-text);
+}
+
+body .msp-plugin .msp-viewport-controls-buttons > div { margin-bottom: 4px; }
+body .msp-plugin .msp-viewport-controls .msp-semi-transparent-background {
+  border: 1px solid var(--buret-meso-border);
+  border-radius: 7px;
+  background: var(--buret-meso-field) !important;
+  opacity: 0.92;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.12);
+}
+
+body .msp-plugin .msp-viewport-controls button.msp-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 7px;
+  color: var(--buret-meso-text) !important;
+  background: transparent !important;
+}
+
+body .msp-plugin .msp-viewport-controls button.msp-btn:hover,
+body .msp-plugin .msp-viewport-controls button.msp-btn:focus-visible {
+  color: var(--buret-meso-accent) !important;
+  background: color-mix(in srgb, var(--buret-meso-accent) 12%, transparent) !important;
+}
+
+body .msp-plugin .msp-viewport-controls .msp-btn-link-toggle-on { color: var(--buret-meso-accent) !important; }
+body .msp-plugin .msp-viewport-controls svg { fill: currentColor !important; }
+
+body .msp-plugin .msp-hover-box-body,
+body .msp-plugin .msp-viewport-controls-panel {
+  overflow: hidden;
+  border: 1px solid var(--buret-meso-border);
+  border-radius: 8px;
+  color: var(--buret-meso-text) !important;
+  background: var(--buret-meso-panel) !important;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.2);
+}
+
+body .msp-plugin .msp-hover-box-body { width: 150px; }
+body .msp-plugin .msp-hover-box-body button.msp-btn { width: 100%; border-radius: 0; background: var(--buret-meso-field) !important; }
 
 body .msp-plugin ::-webkit-scrollbar-track { background-color: var(--buret-meso-surface) !important; }
 body .msp-plugin ::-webkit-scrollbar-thumb { background-color: var(--buret-meso-muted) !important; }
