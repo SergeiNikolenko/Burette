@@ -9,8 +9,18 @@ import { PluginStateSnapshotManager } from "molstar/lib/mol-plugin-state/manager
 import { Asset } from "molstar/lib/mol-util/assets.js";
 import { Unzip } from "molstar/lib/mol-util/zip/zip.js";
 import { mesoscaleZipEntries, validateGenericMesoscaleManifest, validateMesoscaleArchiveEntries } from "./mesoscale-package";
+import {
+  MESOSCALE_API_VERSION,
+  MESOSCALE_HIERARCHY_PAGE_LIMIT,
+  type MesoscaleAction,
+  type MesoscaleGraphicsMode,
+  type MesoscaleHierarchyObject,
+  type MesoscaleRequest,
+  type MesoscaleResult,
+  type MesoscaleSceneSummary,
+} from "../lib/mesoscale-contract";
 
-type GraphicsMode = "ultra" | "quality" | "balanced" | "performance" | "custom";
+type GraphicsMode = MesoscaleGraphicsMode;
 
 type MesoscaleConfig = {
   documentId?: string;
@@ -18,6 +28,7 @@ type MesoscaleConfig = {
   graphicsMode?: GraphicsMode;
   label?: string;
   sourceExtension?: string;
+  uiMode?: "hosted" | "standalone" | "diagnostic";
 };
 
 type AgentAction = {
@@ -95,6 +106,7 @@ function cellLabel(cell: any) {
 function groupSummary(cell: any) {
   return {
     ref: String(cell?.transform?.ref || ""),
+    parentRef: String(cell?.transform?.parent || "") || null,
     label: cellLabel(cell),
     description: String(cell?.obj?.description || cell?.params?.values?.description || ""),
     tag: String(cell?.params?.values?.tag || ""),
@@ -117,10 +129,11 @@ function entitySummary(plugin: MesoscaleExplorer["plugin"], cell: any) {
   const isStructure = source instanceof Structure;
   return {
     ref: String(cell?.transform?.ref || ""),
+    parentRef: String(cell?.transform?.parent || "") || null,
     label: getEntityLabel(plugin, cell),
     description: getEntityDescription(plugin, cell),
     hidden: Boolean(cell?.state?.isHidden),
-    kind: isStructure ? "structure" : "mesh",
+    kind: (isStructure ? "structure" : "mesh") as "structure" | "mesh",
     elementCount: isStructure ? Number(source.elementCount || 0) : 0,
     instanceCount: isStructure ? Math.max(1, Number(source.units?.length || 1)) : Number(cell?.obj?.data?.repr?.renderObjects?.length || 1),
   };
@@ -148,6 +161,9 @@ async function validateGenericPackage(runtime: MesoscaleRuntimeApi, bytes: Uint8
 class MesoscaleRuntimeApi {
   readonly explorer: MesoscaleExplorer;
   loadReport: Record<string, unknown> | null = null;
+  revision = 0;
+  readonly selectedRefs = new Set<string>();
+  readonly visibilityOverrides = new Map<string, boolean>();
 
   constructor(explorer: MesoscaleExplorer) {
     this.explorer = explorer;
@@ -167,6 +183,7 @@ class MesoscaleRuntimeApi {
     const snapshots = Array.from(this.plugin.managers.snapshot.state.entries).slice(0, MAX_OBSERVED_ITEMS);
     return {
       apiVersion: API_VERSION,
+      revision: this.revision,
       graphics: state?.graphics ?? null,
       filter: state?.filter ?? "",
       counts: {
@@ -191,8 +208,82 @@ class MesoscaleRuntimeApi {
     };
   }
 
+  sceneSummary(): MesoscaleSceneSummary {
+    const observed = this.observe();
+    const hierarchyPreview = [
+      ...observed.groups.map((item: ReturnType<typeof groupSummary>) => ({
+        ...item,
+        hidden: this.visibilityOverrides.get(item.ref) ?? item.hidden,
+        kind: "group" as const,
+        selected: this.selectedRefs.has(item.ref),
+        elementCount: 0,
+        instanceCount: 0,
+      })),
+      ...observed.entities.map((item: ReturnType<typeof entitySummary>) => ({
+        ...item,
+        hidden: this.visibilityOverrides.get(item.ref) ?? item.hidden,
+        selected: this.selectedRefs.has(item.ref),
+      })),
+    ].slice(0, MESOSCALE_HIERARCHY_PAGE_LIMIT);
+    return {
+      kind: "summary",
+      revision: this.revision,
+      graphics: observed.graphics as GraphicsMode | null,
+      filter: observed.filter,
+      counts: observed.counts,
+      selectedRefs: Array.from(this.selectedRefs).slice(0, MAX_OBSERVED_ITEMS),
+      snapshots: observed.snapshots,
+      hierarchyPreview,
+      hierarchyTotal: observed.counts.groups + observed.counts.entities,
+      loadReport: this.loadReport as MesoscaleSceneSummary["loadReport"],
+    };
+  }
+
+  hierarchyPage(filter = "", cursor = 0, requestedLimit = MESOSCALE_HIERARCHY_PAGE_LIMIT) {
+    const normalizedFilter = filter.trim().toLocaleLowerCase().slice(0, 256);
+    const limit = Math.max(1, Math.min(MESOSCALE_HIERARCHY_PAGE_LIMIT, Math.trunc(requestedLimit) || MESOSCALE_HIERARCHY_PAGE_LIMIT));
+    const groups: MesoscaleHierarchyObject[] = uniqueCells(getAllGroups(this.plugin)).map((cell: any) => {
+      const summary = groupSummary(cell);
+      return {
+        ...summary,
+        hidden: this.visibilityOverrides.get(summary.ref) ?? summary.hidden,
+        kind: "group" as const,
+        selected: this.selectedRefs.has(summary.ref),
+        elementCount: 0,
+        instanceCount: 0,
+      };
+    });
+    const entities: MesoscaleHierarchyObject[] = uniqueCells(getAllEntities(this.plugin)).map((cell: any) => {
+      const summary = entitySummary(this.plugin, cell);
+      return {
+        ...summary,
+        hidden: this.visibilityOverrides.get(summary.ref) ?? summary.hidden,
+        selected: this.selectedRefs.has(summary.ref),
+      };
+    });
+    const all = [...groups, ...entities].filter((item) => !normalizedFilter
+      || item.label.toLocaleLowerCase().includes(normalizedFilter)
+      || item.description.toLocaleLowerCase().includes(normalizedFilter));
+    const start = Math.max(0, Math.min(all.length, Math.trunc(cursor) || 0));
+    const items = all.slice(start, start + limit);
+    return {
+      kind: "hierarchy-page" as const,
+      revision: this.revision,
+      filter: normalizedFilter,
+      cursor: start,
+      nextCursor: start + items.length < all.length ? start + items.length : null,
+      total: all.length,
+      items,
+    };
+  }
+
+  private changed() {
+    this.revision += 1;
+  }
+
   async resetCamera() {
     this.plugin.managers.camera.reset(undefined, 250);
+    this.changed();
     return this.observe();
   }
 
@@ -202,11 +293,13 @@ class MesoscaleRuntimeApi {
     }
     await MesoscaleState.set(this.plugin, { graphics });
     if (graphics !== "custom") setGraphicsCanvas3DProps(this.plugin, graphics);
+    this.changed();
     return this.observe();
   }
 
   async setFilter(filter: string) {
     await MesoscaleState.set(this.plugin, { filter: filter.slice(0, 256) });
+    this.changed();
     return this.observe();
   }
 
@@ -215,6 +308,7 @@ class MesoscaleRuntimeApi {
     if (!group) throw new Error(`Mesoscale group not found: ${ref}`);
     if (!group.parent) throw new Error(`Mesoscale group has no state owner: ${ref}`);
     await PluginCommands.State.ToggleVisibility(this.plugin, { state: group.parent, ref });
+    this.changed();
     return this.observe();
   }
 
@@ -232,6 +326,8 @@ class MesoscaleRuntimeApi {
     if (Boolean(cell.state?.isHidden) === visible) {
       await PluginCommands.State.ToggleVisibility(this.plugin, { state: cell.parent, ref });
     }
+    this.visibilityOverrides.set(ref, !visible);
+    this.changed();
     return this.observe();
   }
 
@@ -244,6 +340,24 @@ class MesoscaleRuntimeApi {
     if (mode === "replace") selection.selectOnly({ loci }, false);
     else if (mode === "extend") selection.selectJoin({ loci }, false);
     else selection.toggle({ loci }, false);
+    if (mode === "replace") {
+      this.selectedRefs.clear();
+      this.selectedRefs.add(ref);
+    } else if (mode === "extend") {
+      this.selectedRefs.add(ref);
+    } else if (this.selectedRefs.has(ref)) {
+      this.selectedRefs.delete(ref);
+    } else {
+      this.selectedRefs.add(ref);
+    }
+    this.changed();
+    return this.observe();
+  }
+
+  clearSelection() {
+    this.plugin.managers.interactivity.lociSelects.deselectAll();
+    this.selectedRefs.clear();
+    this.changed();
     return this.observe();
   }
 
@@ -255,6 +369,7 @@ class MesoscaleRuntimeApi {
     const sphere = Loci.getBoundingSphere(loci) || Sphere3D();
     this.plugin.managers.camera.focusSphere(sphere, { durationMs: 250 });
     await MesoscaleState.set(this.plugin, { focusInfo: getEntityDescription(this.plugin, cell) });
+    this.changed();
     return this.observe();
   }
 
@@ -280,6 +395,7 @@ class MesoscaleRuntimeApi {
       }
     }).commit();
     await MesoscaleState.set(this.plugin, { graphics: "custom" });
+    this.changed();
     return this.observe();
   }
 
@@ -291,6 +407,7 @@ class MesoscaleRuntimeApi {
       descriptionFormat: "plaintext",
     });
     this.plugin.managers.snapshot.add(entry);
+    this.changed();
     return this.observe();
   }
 
@@ -298,12 +415,16 @@ class MesoscaleRuntimeApi {
     const snapshot = this.plugin.managers.snapshot.setCurrent(id);
     if (!snapshot) throw new Error(`Mesoscale snapshot not found: ${id}`);
     await this.plugin.state.setSnapshot(snapshot);
+    this.selectedRefs.clear();
+    this.visibilityOverrides.clear();
+    this.changed();
     return this.observe();
   }
 
   async deleteSnapshot(id: string) {
     if (!this.plugin.managers.snapshot.getEntry(id)) throw new Error(`Mesoscale snapshot not found: ${id}`);
     this.plugin.managers.snapshot.remove(id);
+    this.changed();
     return this.observe();
   }
 
@@ -323,6 +444,36 @@ class MesoscaleRuntimeApi {
     if (!screenshot) throw new Error("Mesoscale PNG export is unavailable");
     screenshot.download(`${String(window.BuretteConfig?.label || "mesoscale").replace(/\.[^.]+$/u, "")}.png`);
     return { type: "png", requested: true };
+  }
+
+  private isUnderRef(cell: any, refs: Set<string>) {
+    let ref = String(cell?.transform?.ref || "");
+    const state = cell?.parent;
+    const visited = new Set<string>();
+    while (ref && !visited.has(ref)) {
+      if (refs.has(ref)) return true;
+      visited.add(ref);
+      const parent = state?.cells?.get(ref)?.transform?.parent;
+      ref = typeof parent === "string" ? parent : "";
+    }
+    return false;
+  }
+
+  async isolateObjects(refs: string[]) {
+    const requested = new Set(refs.filter(Boolean).slice(0, MAX_OBSERVED_ITEMS));
+    if (requested.size === 0) throw new Error("At least one mesoscale object is required for isolation");
+    const cells = [...uniqueCells(getAllGroups(this.plugin)), ...uniqueCells(getAllEntities(this.plugin))];
+    if (!cells.some((cell: any) => requested.has(String(cell?.transform?.ref || "")))) {
+      throw new Error("None of the requested mesoscale objects exist");
+    }
+    for (const cell of cells as any[]) {
+      const visible = this.isUnderRef(cell, requested);
+      if (!cell?.parent || Boolean(cell.state?.isHidden) !== visible) continue;
+      await PluginCommands.State.ToggleVisibility(this.plugin, { state: cell.parent, ref: cell.transform.ref });
+      this.visibilityOverrides.set(String(cell.transform.ref), !visible);
+    }
+    this.changed();
+    return this.observe();
   }
 
   capabilities() {
@@ -353,6 +504,42 @@ class MesoscaleRuntimeApi {
       case "exportState": return this.exportState(String(args.type || "molx") as "molx" | "molj");
       case "exportPng": return this.exportPng();
       default: throw new Error(`Unsupported mesoscale action: ${String(action.type || "")}`);
+    }
+  }
+
+  async runV2(action: MesoscaleAction): Promise<MesoscaleResult> {
+    switch (action.type) {
+      case "getSummary": return this.sceneSummary();
+      case "getHierarchyPage": return this.hierarchyPage(action.filter, action.cursor, action.limit);
+      case "setGraphics": await this.setGraphics(action.graphics); return this.sceneSummary();
+      case "setFilter": await this.setFilter(action.filter); return this.sceneSummary();
+      case "setSelection":
+        if (action.mode === "clear" || !action.ref) this.clearSelection();
+        else await this.selectEntity(action.ref, action.mode ?? "replace");
+        return this.sceneSummary();
+      case "focusObject": await this.focusEntity(action.ref); return this.sceneSummary();
+      case "setVisibility": await this.setVisibility(action.ref, action.visible); return this.sceneSummary();
+      case "isolateObjects": await this.isolateObjects(action.refs); return this.sceneSummary();
+      case "setStyle": await this.styleEntity(action.ref, action); return this.sceneSummary();
+      case "resetCamera": await this.resetCamera(); return this.sceneSummary();
+      case "createSnapshot": await this.createSnapshot(action.name, action.description ?? ""); return this.sceneSummary();
+      case "applySnapshot": await this.applySnapshot(action.id); return this.sceneSummary();
+      case "deleteSnapshot": await this.deleteSnapshot(action.id); return this.sceneSummary();
+      case "exportState": {
+        const result = await this.exportState(action.format ?? "molx");
+        return { kind: "export", revision: this.revision, type: result.type, bytes: result.bytes };
+      }
+      case "exportPng": {
+        const result = await this.exportPng();
+        return { kind: "export", revision: this.revision, type: "png", requested: result.requested };
+      }
+      case "getCapabilities": return {
+        kind: "capabilities",
+        apiVersion: MESOSCALE_API_VERSION,
+        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "focusObject", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
+        graphicsModes: ["ultra", "quality", "balanced", "performance", "custom"],
+        hierarchyPageLimit: MESOSCALE_HIERARCHY_PAGE_LIMIT,
+      };
     }
   }
 }
@@ -388,6 +575,30 @@ async function loadSource(runtime: MesoscaleRuntimeApi, config: MesoscaleConfig)
 function installActionBridge(runtime: MesoscaleRuntimeApi) {
   window.addEventListener("message", (event) => {
     const envelope = event.data;
+    if (envelope?.source === "burette-mesoscale-host") {
+      const request = envelope as MesoscaleRequest;
+      const expectedDocumentId = window.BuretteConfig?.documentId;
+      const reply = (result: MesoscaleResult) => (event.source as Window | null)?.postMessage({
+        source: "burette-mesoscale-runtime",
+        apiVersion: MESOSCALE_API_VERSION,
+        documentId: String(expectedDocumentId || ""),
+        requestId: request.requestId,
+        result,
+      }, "*");
+      if (event.source !== window.parent || request.apiVersion !== MESOSCALE_API_VERSION || request.documentId !== expectedDocumentId) {
+        reply({ kind: "failure", code: "STALE_TARGET", message: "Mesoscale request target is stale or belongs to another document", revision: runtime.revision });
+        return;
+      }
+      if (request.expectedRevision !== undefined && request.expectedRevision !== runtime.revision && request.action.type !== "getSummary" && request.action.type !== "getHierarchyPage") {
+        reply({ kind: "failure", code: "REVISION_CONFLICT", message: "Mesoscale state changed before this action was applied", revision: runtime.revision });
+        return;
+      }
+      void runtime.runV2(request.action).then(
+        reply,
+        (error) => reply({ kind: "failure", code: "MESOSCALE_ACTION_FAILED", message: String(error?.message || error), revision: runtime.revision }),
+      );
+      return;
+    }
     const body = envelope?.source === "burette-agent-host" ? envelope.body : envelope;
     if (body?.type !== "agent-action" || typeof body.id !== "string") return;
     const reply = (result: Record<string, unknown>) => (event.source as Window | null)?.postMessage({
@@ -408,15 +619,18 @@ function installActionBridge(runtime: MesoscaleRuntimeApi) {
 
 async function start() {
   const config = window.BuretteConfig ?? {};
+  const uiMode = config.uiMode ?? "diagnostic";
+  const hosted = uiMode === "hosted";
+  const diagnostic = uiMode === "diagnostic";
   const explorer = await MesoscaleExplorer.create("app", {
     extensions: [],
     graphicsMode: config.graphicsMode ?? "balanced",
     layoutIsExpanded: false,
-    layoutShowControls: true,
+    layoutShowControls: diagnostic,
     layoutShowRemoteState: false,
     layoutShowSequence: false,
-    layoutShowLog: true,
-    viewportShowAnimation: true,
+    layoutShowLog: diagnostic,
+    viewportShowAnimation: !hosted,
     viewportShowTrajectoryControls: false,
   });
   const runtime = new MesoscaleRuntimeApi(explorer);
@@ -424,6 +638,14 @@ async function start() {
   installActionBridge(runtime);
   await loadSource(runtime, config);
   explorer.handleResize();
+  if (config.documentId && window.parent && window.parent !== window) {
+    window.parent.postMessage({
+      source: "burette-mesoscale-runtime",
+      apiVersion: MESOSCALE_API_VERSION,
+      documentId: config.documentId,
+      result: runtime.sceneSummary(),
+    }, "*");
+  }
   postHostMessage({ type: "mesoscale_ready", message: "Mesoscale runtime ready", apiVersion: API_VERSION, observe: runtime.observe() });
   postHostMessage({ type: "agentReady", message: "Burette Mesoscale agent ready", apiVersion: API_VERSION });
   postHostMessage({ type: "structureLoaded", message: `Loaded ${String(config.label || "mesoscale model")}`, mesoscale: runtime.observe() });

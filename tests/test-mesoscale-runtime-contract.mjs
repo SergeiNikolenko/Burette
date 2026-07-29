@@ -27,6 +27,15 @@ assert.match(runtime, /MesoscaleExplorer\.create/);
 assert.match(runtime, /LoadModel/);
 assert.match(runtime, /openState/);
 assert.match(runtime, /burette-mesoscale\/v1/);
+assert.match(runtime, /burette-mesoscale-host/);
+assert.match(runtime, /MESOSCALE_API_VERSION/);
+assert.match(runtime, /getHierarchyPage/);
+assert.match(runtime, /hierarchyPreview/);
+assert.match(runtime, /layoutShowControls: diagnostic/);
+assert.match(runtime, /layoutShowLog: diagnostic/);
+assert.match(runtime, /config\.uiMode \?\? "diagnostic"/);
+assert.doesNotMatch(runtime, /layoutShowControls: true/);
+assert.doesNotMatch(runtime, /layoutShowLog: true/);
 for (const command of ["summary", "resetCamera", "setGraphics", "setFilter", "toggleGroup"]) {
   assert.ok(runtime.includes(`"${command}"`), `Mesoscale bridge must expose ${command}`);
 }
@@ -35,10 +44,20 @@ const browser = await read("apps/desktop/src/lib/browser-dev-documents.ts");
 assert.match(browser, /isMesoscaleDocument/);
 assert.match(browser, /mesoscaleViewerHtml/);
 assert.match(browser, /mesoscale\.js/);
+assert.match(browser, /"mesoscale"\)/);
+assert.match(browser, /uiMode: "hosted"/);
+
+const contract = await read("apps/desktop/src/lib/mesoscale-contract.ts");
+assert.match(contract, /burette-mesoscale\/v2/);
+assert.match(contract, /MESOSCALE_HIERARCHY_PAGE_LIMIT = 128/);
+for (const action of ["getSummary", "getHierarchyPage", "setSelection", "setVisibility", "isolateObjects", "setStyle", "exportState"]) {
+  assert.ok(contract.includes(`type: "${action}"`), `Mesoscale v2 contract must expose ${action}`);
+}
 
 const tauri = await read("apps/desktop/src-tauri/src/preview/runtime_viewer.rs");
 assert.match(tauri, /AssetProfile::Mesoscale/);
 assert.match(tauri, /fn mesoscale_viewer_html/);
+assert.match(tauri, /config\["uiMode"\] = json!\("hosted"\)/);
 
 const quickLook = await read("PreviewExtension/Platform/PreviewViewController.swift");
 assert.match(quickLook, /isMesoscalePreview/);

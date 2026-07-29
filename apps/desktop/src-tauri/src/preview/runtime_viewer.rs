@@ -28,6 +28,7 @@ const VIEWER_MINIMAL_CSP: &str = "default-src 'self' file: asset: data: blob:; c
 pub(crate) struct CreatedRuntime {
     pub(crate) path: PathBuf,
     pub(crate) renderer: String,
+    pub(crate) viewer_profile: String,
 }
 
 pub(crate) struct DockingRuntimeSource {
@@ -238,6 +239,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     config["viewerProfile"] = json!(if mesoscale { "mesoscale" } else { "structure" });
     if mesoscale {
         config["graphicsMode"] = json!("balanced");
+        config["uiMode"] = json!("hosted");
     }
     if let Some(input_data) = xyzrender_input_data {
         config["xyzrenderInputDataBase64"] =
@@ -362,6 +364,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     Ok(CreatedRuntime {
         path: runtime.join("index.html"),
         renderer,
+        viewer_profile: if mesoscale { "mesoscale" } else { "structure" }.to_string(),
     })
 }
 
@@ -449,6 +452,7 @@ pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
     Ok(CreatedRuntime {
         path: runtime.join("index.html"),
         renderer: "molstar".to_string(),
+        viewer_profile: "structure".to_string(),
     })
 }
 
@@ -487,6 +491,7 @@ fn create_not_renderable_runtime(
     Ok(CreatedRuntime {
         path: index_path,
         renderer: "not-renderable".to_string(),
+        viewer_profile: "structure".to_string(),
     })
 }
 
@@ -630,6 +635,7 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
     Ok(CreatedRuntime {
         path: runtime.join("index.html"),
         renderer: "molstar".to_string(),
+        viewer_profile: "structure".to_string(),
     })
 }
 

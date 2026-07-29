@@ -874,7 +874,7 @@ async function openBrowserDevDocumentFromBytes(
       reloadOptions,
       documentId,
     );
-    return browserDocument(path, extension, "molstar", html, sourceByteCount, documentId);
+    return browserDocument(path, extension, "molstar", html, sourceByteCount, documentId, undefined, "mesoscale");
   }
   const text = await decodeStructureText(bytes, extension);
   const grid = gridPayload(path, extension, text);
@@ -1001,6 +1001,7 @@ function browserDocument(
     xyzrenderPreset?: string | null;
     xyzrenderPresetOptions?: Array<{ value: string; label: string }> | null;
   },
+  viewerProfile?: ViewerDocument["viewerProfile"],
 ): ViewerDocument {
   return {
     id: documentId ?? stableId(path),
@@ -1008,6 +1009,7 @@ function browserDocument(
     title: fileTitle(path),
     extension,
     renderer,
+    viewerProfile: viewerProfile ?? (renderer === "grid2d" ? "grid" : renderer === "spectrum" ? "spectrum" : "structure"),
     runtimePath: html,
     byteCount,
     xyzrenderControls: xyzrender?.xyzrenderControls ?? null,
@@ -1262,7 +1264,7 @@ function viewerHtml(
     sourcePath: path,
     sourceExtension: extension,
     viewerProfile: mesoscale ? "mesoscale" : "structure",
-    ...(mesoscale ? { graphicsMode: "balanced" } : {}),
+    ...(mesoscale ? { graphicsMode: "balanced", uiMode: "hosted" } : {}),
     quickLookBuild: "burette-browser-dev",
     debug: false,
     theme: visuals.theme,

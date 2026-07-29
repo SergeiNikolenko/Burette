@@ -383,6 +383,7 @@ export type ViewerDocument = {
   title: string;
   extension: string;
   renderer: string;
+  viewerProfile?: "structure" | "mesoscale" | "grid" | "spectrum";
   runtimePath: string;
   byteCount: number;
   virtual?: boolean;
