@@ -890,7 +890,7 @@ assert.match(previewRuntimeSource, /for candidate_base in candidate_desmond_base
 assert.doesNotMatch(previewRuntimeSource, /casebook|source_files|mnt__/);
 assert.match(viteConfig, /function isDevFileReadAllowed\(path: string\)/);
 assert.match(viteConfig, /async function collectDefaultDevFiles\(\)/);
-assert.doesNotMatch(viteConfig, /no-molecule-column\.csv/);
+assert.doesNotMatch(viteConfig, /if \(path\.endsWith\("\/no-molecule-column\.csv"\)\) return;/);
 assert.match(viteConfig, /function normalizeXyzrenderInputExtension\(value: string \| null\)/);
 assert.match(viteConfig, /registerBrowserDevXyzrenderRoute\(server,/);
 assert.match(browserDevXyzrender, /server\.middlewares\.use\("\/__burette\/xyzrender"/);
@@ -1003,12 +1003,10 @@ assert.match(moleculeStore, /const storedTabs = \(stored\?\.tabs \?\? current\.t
 assert.match(browserDevStartup, /export async function browserDevFilesFromLocation\(\)/);
 assert.match(browserDevStartup, /if \(params\.has\("devDocking"\)\) return \[\];/);
 assert.match(browserDevStartup, /params\.has\("devFiles"\)/);
-assert.match(browserDevStructureBundles, /!isSpectrumPath\(path, extension\) &&\s*!structureAndTextExtensions\.has\(extension\)/);
+assert.match(browserDevStructureBundles, /for \(const path of paths\) \{\s*addPath\(path\);\s*if \(!isStructureBundleCandidate\(path\)\) continue;/);
 assert.match(browserDevStartup, /export function browserDevFolderFromLocation\(\)/);
 assert.match(browserDevStartup, /export function browserDevFoldersFromLocation\(\)/);
 assert.match(browserDevStartup, /params\.getAll\("devFolder"\)/);
-assert.match(browserDevStartup, /export async function scanBrowserDevFolders/);
-assert.match(browserDevStartup, /maxFiles: String\(remainingFiles\)/);
 assert.match(browserDevStartup, /return browserDevFoldersFromLocation\(\)\[0\] \?\? null;/);
 assert.ok(browserDevStartup.includes('return trimmed ? trimmed.replace(/\\\\/g, "/").replace(/\\/+$/u, "") : null;'));
 assert.match(browserDevStartup, /export function browserDevHasExplicitWorkspace\(\)/);
@@ -1022,7 +1020,11 @@ assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevFoldersFromLo
 assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevHasExplicitWorkspace\(\), \[\]\)/);
 assert.match(appSidebarProjectsHook, /const browserDevGeneratedRoot = useMemo\(browserDevGeneratedProjectRoot, \[\]\);/);
 assert.match(appSidebarProjectsHook, /return appendSidebarProjectRoot\(roots, browserDevGeneratedRoot\);/);
-assert.match(appSidebarProjectsHook, /fetch\(`\/__burette\/dev-files\?root=\$\{encodeURIComponent\(browserDevGeneratedRoot\)\}`/);
+assert.match(appSidebarProjectsHook, /\.\.\.browserDevExplicitFolders,/);
+assert.match(appSidebarProjectsHook, /import \{ scanBrowserDevFolders \} from "\.\.\/lib\/browser-dev-startup";/);
+assert.match(appSidebarProjectsHook, /const scan = await scanBrowserDevFolders\(roots\);/);
+assert.match(browserDevStartup, /export async function scanBrowserDevFolders/);
+assert.match(browserDevStartup, /maxFiles: String\(remainingFiles\)/);
 assert.match(appSidebarProjectsHook, /window\.setInterval\(\(\) => void refresh\(\), browserDevGeneratedProjectScanMs\)/);
 assert.match(appSidebarProjectsHook, /const sidebarRecentStructures = browserDevExplicitFolders\.length > 0 \? \[\] : recentStructures;/);
 assert.match(appSidebarProjectsHook, /recentStructures: sidebarRecentStructures,/);
@@ -1368,7 +1370,7 @@ assert.match(
 );
 assert.match(
   appSidebarProjectsHook,
-  /Showing the first .* structures[\s\S]*?to keep Burette responsive/,
+  /Showing the first .* files[\s\S]*?to keep Burette responsive/,
   "the app must explain partial folder results to the user",
 );
 assert.match(
@@ -6646,6 +6648,7 @@ assert.doesNotMatch(app, /async function writeClipboardText/);
 assert.doesNotMatch(app, /function copyTextWithSelectionFallback/);
 assert.doesNotMatch(app, /function isXtbOptimizationTrajectoryLogPath/);
 assert.match(browserDevStructureBundles, /export async function expandBrowserDevStructureBundles/);
+assert.match(browserDevStructureBundles, /for \(const path of paths\) \{\s*addPath\(path\);\s*if \(!isStructureBundleCandidate\(path\)\) continue;/);
 assert.match(browserDevStructureBundles, /export function isXtbOptimizationTrajectoryLogPath/);
 assert.match(browserDevStructureBundles, /\/__burette\/file-bundle\?path=\$\{encodeURIComponent\(path\)\}/);
 assert.match(browserDevStructureBundles, /Browser-dev companion discovery is opportunistic/);

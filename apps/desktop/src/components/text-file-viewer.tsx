@@ -53,6 +53,8 @@ export function TextFileViewer({
   const languageCompartment = useMemo(() => new Compartment(), [document.id]);
   const markdownDocument = isMarkdown(document);
   const maestroDocument = isMaestroText(document);
+  const imageDocument = isImageDocument(document);
+  const nonEditorDocument = markdownDocument || maestroDocument || imageDocument;
   const editorContent = sourceEditing?.content ?? document.content;
   const editable = Boolean(sourceEditing?.editable);
 
@@ -67,7 +69,7 @@ export function TextFileViewer({
   }, [document, sourceEditing?.onChange, sourceEditing?.onSave]);
 
   useEffect(() => {
-    if (markdownDocument || maestroDocument) return undefined;
+    if (nonEditorDocument) return undefined;
     const parent = parentRef.current;
     if (!parent) return undefined;
 
@@ -237,10 +239,10 @@ export function TextFileViewer({
       view.destroy();
       viewRef.current = null;
     };
-  }, [document.id, editable, languageCompartment, markdownDocument, maestroDocument]);
+  }, [document.id, editable, languageCompartment, nonEditorDocument]);
 
   useEffect(() => {
-    if (markdownDocument || maestroDocument) return;
+    if (nonEditorDocument) return;
     const view = viewRef.current;
     if (!view || view.state.doc.toString() === editorContent) return;
     syncingContentRef.current = true;
@@ -248,10 +250,10 @@ export function TextFileViewer({
       changes: { from: 0, to: view.state.doc.length, insert: editorContent },
     });
     syncingContentRef.current = false;
-  }, [editorContent, markdownDocument, maestroDocument]);
+  }, [editorContent, nonEditorDocument]);
 
   useEffect(() => {
-    if (markdownDocument || maestroDocument) return undefined;
+    if (nonEditorDocument) return undefined;
     let cancelled = false;
     const view = viewRef.current;
     if (!view) return undefined;
@@ -264,7 +266,7 @@ export function TextFileViewer({
     return () => {
       cancelled = true;
     };
-  }, [document, languageCompartment, markdownDocument, maestroDocument]);
+  }, [document, languageCompartment, nonEditorDocument]);
 
   return (
     <div className="text-file-stage">
@@ -281,7 +283,7 @@ export function TextFileViewer({
             </span>
           )}
           <span>{document.language}</span>
-          <span>{formatBytes(new TextEncoder().encode(editorContent).byteLength)}</span>
+          <span>{formatBytes(imageDocument ? document.byteCount : new TextEncoder().encode(editorContent).byteLength)}</span>
           {sourceEditing?.onBeginEditing && !sourceEditing.editable && (
             <Button type="button" variant="secondary" size="xs" onClick={sourceEditing.onBeginEditing}>Edit Source</Button>
           )}
@@ -309,6 +311,8 @@ export function TextFileViewer({
         <MarkdownRichViewer document={document} openPaths={openPaths} />
       ) : maestroDocument ? (
         <MaestroOutlineViewer document={document} />
+      ) : imageDocument ? (
+        <ImageFilePreview document={document} />
       ) : (
         <div ref={parentRef} className="text-file-editor" />
       )}
@@ -353,6 +357,28 @@ function isMarkdown(document: TextFileDocument) {
 
 function isMaestroText(document: TextFileDocument) {
   return document.language === "maestro" || ["mae", "maegz", "cms"].includes(document.extension.toLowerCase());
+}
+
+function isImageDocument(document: TextFileDocument) {
+  return document.language === "image"
+    || ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(document.extension.toLowerCase());
+}
+
+function ImageFilePreview({ document }: { document: TextFileDocument }) {
+  if (!document.content) {
+    const exceedsFileLimit = document.byteCount > 24 * 1024 * 1024;
+    return (
+      <div className="image-file-preview-empty" role="status">
+        <strong>{exceedsFileLimit ? "Image preview is limited to 24 MB" : "Image preview was not loaded with this batch"}</strong>
+        <span>{formatBytes(document.byteCount)} · open the file with its default application for the full image.</span>
+      </div>
+    );
+  }
+  return (
+    <div className="image-file-preview">
+      <img src={document.content} alt={document.title} draggable={false} />
+    </div>
+  );
 }
 
 const textViewerTheme = EditorView.theme({
