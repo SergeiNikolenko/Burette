@@ -13,18 +13,36 @@ const fn = (name) => {
 
 // Superposition offers the three pairing rules Maestro and PyMOL separate, and the
 // toolbar button stays on `auto` so numbering is tried before sequence alignment.
-assert.match(viewer, /function alignStructureSceneEntries\(prepared, mode = 'auto'\)/);
-assert.match(viewer, /\['align:atoms', `Align to \$\{reference\} by residue numbers`\]/);
-assert.match(viewer, /\['align:sequence', `Align to \$\{reference\} by sequence`\]/);
-assert.match(viewer, /\['align:binding-site', `Align to \$\{reference\} by binding site`\]/);
+assert.match(viewer, /function alignStructureSceneEntries\(prepared, mode = 'auto', options = \{\}\)/);
+assert.match(viewer, /\['align:reference', `Use \$\{targetLabel\} as reference`\]/);
+assert.match(viewer, /\['align:target', `Align this structure to \$\{reference\}`\]/);
+assert.match(viewer, /\['align:all', `Align all other structures to \$\{reference\}`\]/);
+assert.match(viewer, /\['align:target:atoms', 'This structure by residue numbers'\]/);
+assert.match(viewer, /\['align:target:sequence', 'This structure by sequence'\]/);
+assert.match(viewer, /\['align:target:binding-site', 'This structure by binding site'\]/);
 const align = fn("alignStructureSceneEntries");
+assert.match(align, /const referencePoseIndex = structureAlignmentPoseIndex\(options\.referencePoseIndex, poses\.length, 0\)/);
+assert.match(align, /const movingPoseIndices = structureAlignmentMovingPoseIndices\(options\.movingPoseIndices, poses\.length, referencePoseIndex\)/);
+assert.match(align, /structureAlignmentChainMap\(reference\.unalignedData, options\.referenceChain, 'Reference'\)/);
+assert.match(align, /const movingChain = options\.movingChains\?\.\[poseIndex\] \?\? options\.movingChain;[\s\S]*structureAlignmentChainMap\(entry\.unalignedData, movingChain, 'Moving'\)/);
 assert.match(align, /const requested = mode === 'auto' \? 'atoms' : mode/);
 assert.match(align, /if \(!candidates\.length && mode === 'auto'\)[\s\S]*resolvedMode = 'sequence'/);
 assert.match(align, /requested === 'binding-site'[\s\S]*bindingSiteFilteredCandidate/);
 // Sequence/pocket matching follows the best chain sequence even when otherwise
 // identical files use different author-assigned chain IDs.
 assert.match(fn("structureAlignmentChainCandidates"), /sameChainOnly[\s\S]*for \(const movingResidues of chains\.values\(\)\)/);
-assert.match(align, /sameChainOnly: requested === 'atoms'/);
+assert.match(align, /sameChainOnly: requested === 'atoms' && options\.movingChain == null && options\.movingChains == null/);
+assert.match(fn("restoreStructureSceneEntries"), /structureAlignmentReferencePoseIndex/);
+assert.match(fn("restoreStructureSceneEntries"), /structureAlignmentMovingPoseIndices/);
+
+// The context target controls reference and moving scopes explicitly. Picking a
+// chain only configures the operation; coordinates move after an Align command.
+assert.match(fn("molstarContextStructureIndex"), /molstarContextStructures\(\)/);
+assert.match(fn("molstarContextStructureIndex"), /activeDockingSceneVisibilityState\.poseRefs\?\.findIndex\(refs => refs\.includes\(targetRef\)\)/);
+assert.match(fn("molstarContextAlignmentTarget"), /poseIndex[\s\S]*chain/);
+assert.match(viewer, /setReference: target =>/);
+assert.match(viewer, /alignTarget: \(target, mode = 'auto'\) =>/);
+assert.match(viewer, /alignAll: \(mode = 'auto'\) =>/);
 
 // Needleman-Wunsch keeps its guard rail and only anchors on identical residues; a
 // mismatched pair that the matrix walked through would drag the fit.

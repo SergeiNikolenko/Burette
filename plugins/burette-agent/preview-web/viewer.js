@@ -8384,7 +8384,28 @@
   // `align` on identical numbering), pair by sequence (`align`/`super`), or pair
   // only what lines the pocket (Maestro's binding-site alignment). `auto` is the
   // toolbar button: numbering when it works, sequence when it does not.
-  function alignStructureSceneEntries(prepared, mode = 'auto') {
+  function structureAlignmentPoseIndex(value, poseCount, fallback) {
+    const index = Number(value);
+    return Number.isInteger(index) && index >= 0 && index < poseCount ? index : fallback;
+  }
+
+  function structureAlignmentMovingPoseIndices(values, poseCount, referencePoseIndex) {
+    const requested = Array.isArray(values) ? values : Array.from({ length: poseCount }, (_, index) => index);
+    return Array.from(new Set(requested
+      .map(value => structureAlignmentPoseIndex(value, poseCount, -1))
+      .filter(index => index >= 0 && index !== referencePoseIndex)));
+  }
+
+  function structureAlignmentChainMap(data, chain, role) {
+    const chains = pdbAlphaCarbonResidues(data);
+    if (chain == null) return chains;
+    const requested = String(chain).trim() || '_';
+    const residues = chains.get(requested);
+    if (!residues) throw new Error(`${role} chain ${requested === '_' ? '(blank)' : requested} has no Cα atoms.`);
+    return new Map([[requested, residues]]);
+  }
+
+  function alignStructureSceneEntries(prepared, mode = 'auto', options = {}) {
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
     if (poses.length < 2 || poses.some(entry => normalizeFormat(entry?.format) !== 'pdb')) {
       throw new Error('One-click alignment currently requires two or more PDB structures.');
@@ -8392,14 +8413,21 @@
     for (const entry of poses) {
       if (typeof entry.unalignedData !== 'string') entry.unalignedData = entry.data;
     }
-    const reference = poses[0];
-    const referenceChains = pdbAlphaCarbonResidues(reference.unalignedData);
-    const movingChainsByPose = poses.slice(1).map(entry => pdbAlphaCarbonResidues(entry.unalignedData));
+    const referencePoseIndex = structureAlignmentPoseIndex(options.referencePoseIndex, poses.length, 0);
+    const movingPoseIndices = structureAlignmentMovingPoseIndices(options.movingPoseIndices, poses.length, referencePoseIndex);
+    if (!movingPoseIndices.length) throw new Error('Choose at least one other structure to align.');
+    const reference = poses[referencePoseIndex];
+    const referenceChains = structureAlignmentChainMap(reference.unalignedData, options.referenceChain, 'Reference');
+    const movingChainsByPose = movingPoseIndices.map(poseIndex => {
+      const entry = poses[poseIndex];
+      const movingChain = options.movingChains?.[poseIndex] ?? options.movingChain;
+      return structureAlignmentChainMap(entry.unalignedData, movingChain, 'Moving');
+    });
     const requested = mode === 'auto' ? 'atoms' : mode;
     const pairsFor = requested === 'atoms' ? alphaCarbonPairsByResidueNumber : alphaCarbonPairsBySequence;
     let resolvedMode = requested;
     let candidates = structureAlignmentChainCandidates(referenceChains, movingChainsByPose, pairsFor, {
-      sameChainOnly: requested === 'atoms'
+      sameChainOnly: requested === 'atoms' && options.movingChain == null && options.movingChains == null
     });
     if (!candidates.length && mode === 'auto') {
       resolvedMode = 'sequence';
@@ -8420,9 +8448,10 @@
     let alignedCount = 0;
     let matchedCount = 0;
     let rmsdTotal = 0;
-    for (let poseIndex = 1; poseIndex < poses.length; poseIndex += 1) {
+    for (let movingIndex = 0; movingIndex < movingPoseIndices.length; movingIndex += 1) {
+      const poseIndex = movingPoseIndices[movingIndex];
       const entry = poses[poseIndex];
-      const pairs = sharedChain.pairsByPose[poseIndex - 1];
+      const pairs = sharedChain.pairsByPose[movingIndex];
       const alignment = pdbRigidAlignment(pairs.map(pair => pair[1].point), pairs.map(pair => pair[0].point));
       if (!alignment) throw new Error(`Not enough Cα atoms could align ${entry.label || `structure ${poseIndex + 1}`}.`);
       entry.data = transformPdbCoordinates(entry.unalignedData, alignment.apply);
@@ -8433,6 +8462,9 @@
     reference.data = reference.unalignedData;
     prepared.structureAlignmentEnabled = true;
     prepared.structureAlignmentMode = resolvedMode;
+    prepared.structureAlignmentReferencePoseIndex = referencePoseIndex;
+    prepared.structureAlignmentReferenceChain = sharedChain.chain;
+    prepared.structureAlignmentMovingPoseIndices = movingPoseIndices;
     return {
       mode: resolvedMode,
       modeLabel: STRUCTURE_ALIGNMENT_MODE_LABELS[resolvedMode] || resolvedMode,
@@ -8440,7 +8472,9 @@
       chain: sharedChain.chain === '_' ? '(blank)' : sharedChain.chain,
       averageMatches: Math.round(matchedCount / Math.max(alignedCount, 1)),
       averageRmsd: rmsdTotal / Math.max(alignedCount, 1),
-      referenceLabel: reference.label || 'first structure'
+      referenceLabel: reference.label || `structure ${referencePoseIndex + 1}`,
+      referencePoseIndex,
+      movingPoseIndices
     };
   }
 
@@ -8507,6 +8541,9 @@
     }
     prepared.structureAlignmentEnabled = false;
     prepared.structureAlignmentMode = null;
+    prepared.structureAlignmentReferencePoseIndex = null;
+    prepared.structureAlignmentReferenceChain = null;
+    prepared.structureAlignmentMovingPoseIndices = null;
   }
 
   function structureSceneStoryStage(label, index) {
@@ -14751,6 +14788,14 @@
       };
       align.addEventListener('click', () => { void toggleXyzAlignment(); });
     } else if (align && alignmentSupported) {
+      let alignmentReference = {
+        poseIndex: structureAlignmentPoseIndex(prepared.structureAlignmentReferencePoseIndex, prepared.poses.length, 0),
+        chain: prepared.structureAlignmentReferenceChain || null
+      };
+      const alignmentReferenceLabel = () => {
+        const label = prepared.poses?.[alignmentReference.poseIndex]?.label || `structure ${alignmentReference.poseIndex + 1}`;
+        return alignmentReference.chain ? `${label} · chain ${alignmentReference.chain}` : label;
+      };
       // A failed alignment rolls the coordinates back, so the button has to follow
       // the scene rather than the attempt — otherwise it keeps reading "Aligned"
       // over structures that are no longer aligned.
@@ -14764,14 +14809,23 @@
       // `mode` is passed through from the 3D menu, which offers the pairing rules by
       // name; the toolbar button leaves it at `auto`. Re-running with a different
       // mode re-aligns rather than toggling off, so switching rules is one click.
-      const toggleAlignment = (mode = 'auto') => {
+      const toggleAlignment = (mode = 'auto', options = {}) => {
         align.disabled = true;
-        const enabling = prepared.structureAlignmentEnabled !== true || mode !== 'auto';
+        const enabling = options.force === true || prepared.structureAlignmentEnabled !== true || mode !== 'auto';
         try {
           let result = null;
           if (enabling) {
             if (prepared.structureAlignmentEnabled === true) restoreStructureSceneEntries(prepared);
-            result = alignStructureSceneEntries(prepared, mode);
+            result = alignStructureSceneEntries(prepared, mode, {
+              referencePoseIndex: options.referencePoseIndex ?? alignmentReference.poseIndex,
+              referenceChain: options.referenceChain ?? alignmentReference.chain,
+              movingPoseIndices: options.movingPoseIndices,
+              movingChain: options.movingChain
+            });
+            alignmentReference = {
+              poseIndex: result.referencePoseIndex,
+              chain: result.chain === '(blank)' ? '_' : result.chain
+            };
           } else {
             restoreStructureSceneEntries(prepared);
           }
@@ -14779,7 +14833,7 @@
             syncAlignButton();
             if (result) {
               align.title = `Aligned to ${result.referenceLabel} by ${result.modeLabel} · chain ${result.chain} Cα · ${result.averageMatches} matched atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
-              setStatus(`[web] Aligned ${result.alignedCount + 1} structures to ${result.referenceLabel} by ${result.modeLabel} (chain ${result.chain} Cα, ${result.averageMatches} matched atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
+              setStatus(`[web] Aligned ${result.alignedCount} structure${result.alignedCount === 1 ? '' : 's'} to ${result.referenceLabel} by ${result.modeLabel} (chain ${result.chain} Cα, ${result.averageMatches} matched atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
             } else {
               align.title = 'Align every structure to the first file using Cα atoms from the largest common chain';
               setStatus('[web] Restored original structure coordinates.');
@@ -14803,11 +14857,72 @@
           return settled.finally(() => { align.disabled = false; });
         }
       };
+      const setAlignmentReference = async target => {
+        const next = molstarContextAlignmentTarget(target);
+        if (next.poseIndex < 0 || next.poseIndex >= prepared.poses.length) {
+          throw new Error('This Mol* target does not map to an open structure.');
+        }
+        if (prepared.structureAlignmentEnabled === true) {
+          restoreStructureSceneEntries(prepared);
+          await applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false });
+          syncAlignButton();
+        }
+        alignmentReference = { poseIndex: next.poseIndex, chain: next.chain };
+        align.title = `Align other structures to ${alignmentReferenceLabel()}`;
+        setStatus(`[web] Alignment reference: ${alignmentReferenceLabel()}. Choose another structure or align all.`);
+        return alignmentReference;
+      };
+      const alignTarget = (target, mode = 'auto') => {
+        const moving = molstarContextAlignmentTarget(target);
+        if (moving.poseIndex < 0 || moving.poseIndex >= prepared.poses.length) {
+          throw new Error('This Mol* target does not map to an open structure.');
+        }
+        if (moving.poseIndex === alignmentReference.poseIndex) {
+          throw new Error('Choose a structure other than the alignment reference.');
+        }
+        return toggleAlignment(mode, {
+          force: true,
+          movingPoseIndices: [moving.poseIndex],
+          movingChain: moving.chain
+        });
+      };
+      const alignAll = (mode = 'auto') => toggleAlignment(mode, { force: true });
+      const alignmentState = () => ({
+        wasAligned: prepared.structureAlignmentEnabled === true,
+        mode: prepared.structureAlignmentMode || null,
+        referencePoseIndex: alignmentReference.poseIndex,
+        referenceChain: alignmentReference.chain,
+        movingPoseIndices: Array.isArray(prepared.structureAlignmentMovingPoseIndices)
+          ? [...prepared.structureAlignmentMovingPoseIndices]
+          : null
+      });
+      const restoreAlignmentState = state => {
+        alignmentReference = {
+          poseIndex: structureAlignmentPoseIndex(state?.referencePoseIndex, prepared.poses.length, 0),
+          chain: state?.referenceChain || null
+        };
+        if (state?.wasAligned) {
+          return toggleAlignment(state.mode || 'auto', {
+            force: true,
+            referencePoseIndex: alignmentReference.poseIndex,
+            referenceChain: alignmentReference.chain,
+            movingPoseIndices: state.movingPoseIndices
+          });
+        }
+        if (prepared.structureAlignmentEnabled === true) return toggleAlignment('auto');
+        return Promise.resolve();
+      };
       activeStructureAlignmentControl = {
         toggle: toggleAlignment,
+        setReference: target => setAlignmentReference(target),
+        alignTarget: (target, mode = 'auto') => alignTarget(target, mode),
+        alignAll: (mode = 'auto') => alignAll(mode),
         isAligned: () => prepared.structureAlignmentEnabled === true,
         mode: () => prepared.structureAlignmentMode || null,
-        referenceLabel: () => prepared.poses?.[0]?.label || 'the first structure'
+        reference: () => ({ ...alignmentReference }),
+        state: () => alignmentState(),
+        restore: state => restoreAlignmentState(state),
+        referenceLabel: () => alignmentReferenceLabel()
       };
       align.addEventListener('click', () => { void toggleAlignment(); });
     }
@@ -16247,6 +16362,34 @@
     return Array.isArray(hierarchy?.current?.structures) ? hierarchy.current.structures : [];
   }
 
+  function molstarContextStructureIndex(target) {
+    const targetStructure = target?.structure;
+    const targetRef = targetStructure?.cell?.transform?.ref || '';
+    const mappedPoseIndex = targetRef && activeDockingSceneVisibilityState?.viewer === activeViewer
+      ? activeDockingSceneVisibilityState.poseRefs?.findIndex(refs => refs.includes(targetRef))
+      : -1;
+    if (mappedPoseIndex >= 0) return mappedPoseIndex;
+    const targetData = molstarStructureFromRef(targetStructure) || targetStructure;
+    return molstarContextStructures().findIndex(structure => {
+      const data = molstarStructureFromRef(structure);
+      return structure === targetStructure
+        || data === targetData
+        || data?.root === targetData?.root;
+    });
+  }
+
+  function molstarContextAlignmentTarget(target) {
+    const poseIndex = molstarContextStructureIndex(target);
+    const chain = target?.pickingLevel === 'chain'
+      ? (molstarContextChainId(target?.atom) || null)
+      : null;
+    return {
+      poseIndex,
+      chain,
+      label: chain ? `${target?.label || `structure ${poseIndex + 1}`} · chain ${chain}` : (target?.label || `structure ${poseIndex + 1}`)
+    };
+  }
+
   function molstarContextPickedStructureInfo(structures) {
     const pickedStructure = molstarContextMenuPick?.loci?.structure || null;
     if (pickedStructure) {
@@ -17557,7 +17700,8 @@
       kind: 'align',
       label: String(label || 'alignment'),
       wasAligned: activeStructureAlignmentControl.isAligned(),
-      mode: activeStructureAlignmentControl.mode?.() || null
+      mode: activeStructureAlignmentControl.mode?.() || null,
+      alignment: activeStructureAlignmentControl.state?.() || null
     };
   }
 
@@ -17585,6 +17729,10 @@
   async function restoreMolstarAlignUndoSnapshot(snapshot) {
     const control = activeStructureAlignmentControl;
     if (!control) throw new Error('No structure scene is available to unalign.');
+    if (snapshot.alignment && typeof control.restore === 'function') {
+      await control.restore(snapshot.alignment);
+      return;
+    }
     const aligned = control.isAligned();
     const mode = control.mode?.() || null;
     if (aligned === snapshot.wasAligned && (!aligned || mode === snapshot.mode)) return;
@@ -18515,9 +18663,19 @@
     if (molstarContextCanBulkDelete(target)) actions.push(['remove-type', `Delete ${molstarContextBulkDeleteLabel(target)}`]);
     if (activeStructureAlignmentControl) {
       const reference = activeStructureAlignmentControl.referenceLabel();
-      actions.push(['align:atoms', `Align to ${reference} by residue numbers`]);
-      actions.push(['align:sequence', `Align to ${reference} by sequence`]);
-      actions.push(['align:binding-site', `Align to ${reference} by binding site`]);
+      const alignmentTarget = molstarContextAlignmentTarget(target);
+      const targetLabel = alignmentTarget.chain ? `chain ${alignmentTarget.chain}` : (target.label || 'this structure');
+      actions.push(['align:reference', `Use ${targetLabel} as reference`]);
+      if (alignmentTarget.poseIndex !== activeStructureAlignmentControl.reference()?.poseIndex) {
+        actions.push(['align:target', `Align this structure to ${reference}`]);
+        actions.push(['align:target:atoms', 'This structure by residue numbers']);
+        actions.push(['align:target:sequence', 'This structure by sequence']);
+        actions.push(['align:target:binding-site', 'This structure by binding site']);
+      }
+      actions.push(['align:all', `Align all other structures to ${reference}`]);
+      actions.push(['align:all:atoms', 'All others by residue numbers']);
+      actions.push(['align:all:sequence', 'All others by sequence']);
+      actions.push(['align:all:binding-site', 'All others by binding site']);
       if (activeStructureAlignmentControl.isAligned()) actions.push(['align-structures', 'Reset structure alignment']);
     }
     if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
@@ -18624,14 +18782,26 @@
         if (!activeStructureAlignmentControl) throw new Error('No structure scene is available to align.');
         hideMolstarContextMenu();
         const alignUndo = captureMolstarAlignUndoSnapshot(`aligning to ${activeStructureAlignmentControl.referenceLabel()}`);
-        await activeStructureAlignmentControl.toggle(action === 'align-structures' ? 'auto' : action.slice('align:'.length));
+        if (action === 'align:reference') {
+          await activeStructureAlignmentControl.setReference(target);
+        } else if (action === 'align-structures') {
+          await activeStructureAlignmentControl.toggle('auto');
+        } else {
+          const [, scope, requestedMode = 'auto'] = action.split(':');
+          if (scope === 'target') await activeStructureAlignmentControl.alignTarget(target, requestedMode);
+          else if (scope === 'all') await activeStructureAlignmentControl.alignAll(requestedMode);
+          else throw new Error(`Unknown alignment action: ${action}`);
+        }
         // The toggle reports its own failures through the status line rather than
         // throwing, so the entry is only kept when the scene actually moved.
-        const alignmentChanged = alignUndo && (
-          activeStructureAlignmentControl.isAligned() !== alignUndo.wasAligned
-          || (activeStructureAlignmentControl.isAligned()
-            && activeStructureAlignmentControl.mode?.() !== alignUndo.mode)
-        );
+        const currentAlignment = activeStructureAlignmentControl.state?.() || null;
+        const alignmentChanged = alignUndo && (alignUndo.alignment
+          ? JSON.stringify(currentAlignment) !== JSON.stringify(alignUndo.alignment)
+          : (
+            activeStructureAlignmentControl.isAligned() !== alignUndo.wasAligned
+            || (activeStructureAlignmentControl.isAligned()
+              && activeStructureAlignmentControl.mode?.() !== alignUndo.mode)
+          ));
         if (alignmentChanged) {
           pushMolstarEditUndoSnapshot(alignUndo);
         }
