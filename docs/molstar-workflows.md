@@ -15,6 +15,7 @@ from scientific validation.
 | Image export | `screenshot` / `export_image` | Applies requested resolution, PNG/JPEG/WebP format, quality, alpha, axes, illumination, and relative crop; reports the encoded MIME type and actual output dimensions. | Consumers must decode the data URI and verify dimensions/hash on the written artifact. |
 | Stories | `observe_story`, `control_story` | Reports all snapshot ids/names/current index/playback state and controls next, previous, goto, play, and pause. | A Story is a multi-snapshot state. Loading one frame does not prove the sequence. |
 | Native Molstar session | `export_session` / `exportSession` | Returns a real Molstar `.molx` or `.molj` serialization, including managed assets, as bounded base64 with byte count. | This is not called MVS. Arbitrary Molstar state cannot be losslessly claimed as MolViewSpec. |
+| Density and reflection data | Open `.ccp4`, `.mrc`, `.map`, `.mtz`, or a structure-factor `.cif` | CCP4-family maps use the native volume provider. MTZ amplitude/phase pairs produce 2Fo-Fc and signed Fo-Fc maps. CIF is routed to the structure-factor provider when `_refln.pdbx_FWT` and `_refln.pdbx_PHWT` are present. | Preserve unit cell, axes/origin, symmetry, and coefficient-column provenance. Difference density is rendered as separate positive and negative contours. |
 | Ligand MCCS superposition | Molstar Controls → Superposition → Ligands | Molstar 5.11 uses atom-name matching for identical compounds and maximum common connected subgraph otherwise, then selects the lowest-RMSD pose among compatible mappings. | Record matched-heavy-atom coverage, RMSD, truncation/time budget, aromaticity, bond-order, formal-charge, stereochemistry, and hydrogen policy. This remains an interactive Molstar workflow, not a typed Burette agent action. |
 
 ## Assembly symmetry object
@@ -39,4 +40,3 @@ allowlist. Other preview runtimes retain their local-only policy.
   identity or coordinates.
 - A successful state action or JSON response is insufficient proof for a visual
   workflow; browser or native-surface evidence is still required.
-

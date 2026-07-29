@@ -33,6 +33,8 @@
 				<string>com.local.burette10.mmcif</string>
 				<string>com.local.burette10.bcif</string>
 				<string>com.local.burette10.mmtf</string>
+				<string>com.local.burette10.volume-map</string>
+				<string>com.local.burette10.mtz</string>
 				<string>com.local.burette10.sdf</string>
 				<string>com.local.burette10.smiles</string>
 				<string>gg.flew.unfold.subtitle-smi</string>
@@ -710,6 +712,50 @@
 				<array>
 					<string>text/plain</string>
 					<string>application/xml</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>CCP4, MRC, or MAP electron-density volume</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.volume-map</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ccp4</string>
+					<string>mrc</string>
+					<string>map</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/octet-stream</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>CCP4 MTZ reflection data with map coefficients</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.mtz</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mtz</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/octet-stream</string>
 				</array>
 			</dict>
 		</dict>
