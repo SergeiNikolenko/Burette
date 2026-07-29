@@ -168,6 +168,7 @@
   let molstarPreviewRdkitPromise = null;
   const molstarPreviewSvgCache = new Map();
   const molstarEditUndoStack = [];
+  const molstarEditRedoStack = [];
   let activeDockingPrepared = null;
   let buretteAgentActionPollTimer = 0;
   let buretteAgentActionPollBusy = false;
@@ -2322,9 +2323,12 @@
     let handled = false;
     try {
       if (direction === 'redo') {
-        handled = xyzrenderActionRedoStack.length
-          ? redoXyzrenderLastAction({ fromSystemHistory: true })
-          : false;
+        if (xyzrenderActionRedoStack.length) {
+          handled = redoXyzrenderLastAction({ fromSystemHistory: true });
+        } else if (molstarEditRedoStack.length) {
+          await redoMolstarLastEdit();
+          handled = true;
+        }
       } else if (xyzrenderActionUndoStack.length) {
         handled = undoXyzrenderLastAction({ fromSystemHistory: true });
       } else if (molstarEditUndoStack.length) {
@@ -3967,6 +3971,14 @@
         goForwardXyzrenderSystemHistory();
         return;
       }
+      if (event.shiftKey && molstarEditRedoStack.length) {
+        event.preventDefault();
+        event.stopPropagation();
+        void redoMolstarLastEdit().catch(error => {
+          setStatus(`[web] Redo failed.\n\n${error?.message || String(error)}`, 'error');
+        });
+        return;
+      }
       if (!event.shiftKey && xyzrenderActionUndoStack.length) {
         event.preventDefault();
         event.stopPropagation();
@@ -5133,6 +5145,7 @@
   let sceneTreeMenuRef = '';
   let sceneTreeSelectedRef = '';
   let sceneTreeMenuPointerStart = null;
+  const sceneTreePickerUndoSnapshots = new WeakMap();
 
   function sceneTreeIconElement(paths) {
     const svg = document.createElementNS(SCENE_TREE_SVG_NS, 'svg');
@@ -6521,6 +6534,7 @@
       const ref = list.closest('[data-ref]')?.dataset.ref;
       if (ref) streamSceneTreeTheme(ref, list.dataset.sceneTreePickerList, list.dataset.current);
     }
+    if (restore) sceneTreePickerUndoSnapshots.delete(list);
     list.hidden = true;
     trigger?.setAttribute('aria-expanded', 'false');
   }
@@ -6669,28 +6683,72 @@
     initViewportPanelDrag(menu);
   }
 
-  function runSceneTreeAction(action, ref, control) {
+  function molstarSceneMenuUndoLabel(action, ref, control) {
+    const name = String(action || '');
+    const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+    const target = node?.label || 'scene object';
+    if (name === 'visibility') return `visibility of ${target}`;
+    if (name === 'isolate') return `isolating ${target}`;
+    if (name === 'show-all') return `showing all near ${target}`;
+    if (name === 'remove') return `removing ${target}`;
+    if (name === 'tint-color' || name === 'rep-tint-color') return `colour of ${target}`;
+    if (name === 'measurement-color') return `measurement colour of ${target}`;
+    if (name === 'apply-action') return control?.textContent?.trim() || `action on ${target}`;
+    return null;
+  }
+
+  async function runSceneTreeAction(action, ref, control) {
     if (action === 'expand') toggleSceneTreeNode(ref);
     else if (action === 'select') selectSceneTreeNode(ref);
     else if (action === 'visibility') toggleSceneTreeVisibility(ref);
     else if (action === 'focus') focusSceneTreeNode(ref);
     else if (action === 'isolate') isolateSceneTreeNode(ref);
     else if (action === 'show-all') showAllSceneTreeNodes(ref);
-    else if (action === 'save-focus') saveSceneTreeFocusNode(ref);
-    else if (action === 'delete-lasso-atoms') deleteMolstarLassoAtoms(ref);
-    else if (action === 'remove') removeSceneTreeNode(ref);
+    else if (action === 'save-focus') await saveSceneTreeFocusNode(ref);
+    else if (action === 'delete-lasso-atoms') await deleteMolstarLassoAtoms(ref);
+    else if (action === 'remove') await removeSceneTreeNode(ref);
     else if (action === 'tint-color') {
-      applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
+      await applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
     } else if (action === 'rep-tint-color') {
-      applySceneTreeReprColor(ref, 'tint', Number(control.dataset.sceneTreeColor));
+      await applySceneTreeReprColor(ref, 'tint', Number(control.dataset.sceneTreeColor));
     } else if (action === 'measurement-color') {
-      applySceneTreeMeasurementParam(
+      await applySceneTreeMeasurementParam(
         ref,
         control.dataset.sceneTreeMeasurementColor,
         Number(control.dataset.sceneTreeColor)
       );
     } else if (action === 'apply-action') {
-      applySceneTreeAction(ref, Number(control.dataset.sceneTreeActionIndex));
+      await applySceneTreeAction(ref, Number(control.dataset.sceneTreeActionIndex));
+    }
+  }
+
+  function molstarSceneMenuSelectUndoLabel(kind, ref) {
+    const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+    const target = node?.label || 'scene object';
+    if (kind === 'add-representation') return `representation on ${target}`;
+    if (kind === 'representation-type' || kind === 'representation-visual') return `representation of ${target}`;
+    if (kind === 'representation-color' || kind === 'color-theme') return `colour of ${target}`;
+    if (kind === 'representation-size') return `size of ${target}`;
+    if (kind === 'assembly-symmetry-visuals') return `symmetry display of ${target}`;
+    return null;
+  }
+
+  async function runSceneTreeSelectAction(kind, ref, value) {
+    if (kind === 'add-representation') {
+      await addSceneTreeRepresentation(ref, value);
+    } else if (kind === 'representation-type') {
+      await applySceneTreeReprType(ref, value);
+    } else if (kind === 'representation-color') {
+      await applySceneTreeReprColor(ref, value, null);
+    } else if (kind === 'representation-size') {
+      await applySceneTreeReprSize(ref, value);
+    } else if (kind === 'representation-visual') {
+      await applySceneTreeReprParam(ref, 'visuals', [value]);
+    } else if (kind === 'assembly-symmetry-visuals') {
+      const visuals = value === 'axes' ? ['axes'] : value === 'cage' ? ['cage'] : ['axes', 'cage'];
+      await updateSceneTreeAssemblySymmetry(ref, { visuals });
+    } else {
+      await applySceneTreeColorTheme(ref, value, null);
     }
   }
 
@@ -6707,6 +6765,13 @@
         if (other !== list) closeSceneTreePicker(other, { restore: true });
       }
       if (opening) {
+        const ref = list.closest('[data-ref]')?.dataset.ref;
+        const sceneUndoLabel = ref
+          ? molstarSceneMenuSelectUndoLabel(list.dataset.sceneTreePickerList, ref)
+          : null;
+        if (sceneUndoLabel) {
+          sceneTreePickerUndoSnapshots.set(list, captureMolstarSceneUndoSnapshot(sceneUndoLabel));
+        }
         list.hidden = false;
         trigger.setAttribute('aria-expanded', 'true');
       } else {
@@ -6720,9 +6785,13 @@
       const ref = picked.closest('[data-ref]')?.dataset.ref;
       const name = picked.dataset.sceneTreePickerValue;
       if (list && ref) {
+        const changed = name !== list.dataset.current;
+        const sceneUndoSnapshot = sceneTreePickerUndoSnapshots.get(list) || null;
         list.dataset.current = name;
         streamSceneTreeTheme(ref, list.dataset.sceneTreePickerList, name);
         closeSceneTreePicker(list);
+        sceneTreePickerUndoSnapshots.delete(list);
+        if (changed) pushMolstarEditUndoSnapshot(sceneUndoSnapshot);
         const owner = menu.querySelector(`[data-scene-tree-picker="${list.dataset.sceneTreePickerList}"]`);
         if (owner) { owner.textContent = picked.textContent; owner.title = picked.textContent; }
         for (const item of list.children) {
@@ -6741,7 +6810,12 @@
       openSceneTreeMenu(ref, rect.left, rect.bottom + 4);
       return;
     }
-    runSceneTreeAction(action, ref, control);
+    const sceneUndoLabel = molstarSceneMenuUndoLabel(action, ref, control);
+    if (sceneUndoLabel) {
+      void runMolstarSceneEdit(sceneUndoLabel, () => runSceneTreeAction(action, ref, control));
+    } else {
+      void runSceneTreeAction(action, ref, control);
+    }
     // The swatches let you try colours in place, so a pick keeps the menu open;
     // everything else is a one-shot and dismisses it.
     const persistent = action === 'tint-color' || action === 'rep-tint-color' || action === 'measurement-color';
@@ -7020,6 +7094,7 @@
     cube: ['M12 3 4.5 7v10L12 21l7.5-4V7Z', 'M4.5 7 12 11l7.5-4', 'M12 11v10'],
     scissors: ['M6.5 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'M6.5 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'm8.7 7.2 10.8 10.6', 'M19.5 6.2 8.7 16.8'],
     undo: ['M4 9h11a5 5 0 0 1 0 10h-7', 'm8 5-4 4 4 4'],
+    redo: ['M20 9H9a5 5 0 0 0 0 10h7', 'm-8-5 4 4-4 4'],
     play: ['m8 5 11 7-11 7Z'],
     stop: ['M6.5 6.5h11v11h-11Z']
   };
@@ -7608,7 +7683,11 @@
 
     sceneTreeMenuSection(menu);
     viewportMenuItem(menu, 'Undo', 'undo', {
-      icon: VIEWPORT_ICON.undo, disabled: plugin?.state?.data?.canUndo !== true
+      icon: VIEWPORT_ICON.undo,
+      disabled: !molstarEditUndoStack.length && plugin?.state?.data?.canUndo !== true
+    });
+    viewportMenuItem(menu, 'Redo', 'redo', {
+      icon: VIEWPORT_ICON.redo, disabled: !molstarEditRedoStack.length
     });
     viewportMenuItem(menu, 'Clear selection', 'selection-clear', {
       icon: SCENE_TREE_ICON.trash, destructive: true, disabled: empty
@@ -7693,12 +7772,21 @@
     } else if (action === 'selection-color-reset') paintViewportSelection(null);
     else if (action === 'selection-subtract') subtractViewportSelection();
     else if (action === 'undo') {
-      // undo() hands back a task rather than running one, the same way Mol*'s own
-      // selection controls take it.
-      const task = plugin.state.data.undo();
-      if (task) plugin.runTask(task);
-    }
-    else if (action === 'selection-clear') plugin.managers.interactivity.lociSelects.deselectAll();
+      if (molstarEditUndoStack.length) {
+        void undoMolstarLastEdit().catch(error => {
+          setStatus(`[web] Undo failed.\n\n${error?.message || String(error)}`, 'error');
+        });
+      } else {
+        // undo() hands back a task rather than running one, the same way Mol*'s own
+        // selection controls take it.
+        const task = plugin.state.data.undo();
+        if (task) plugin.runTask(task);
+      }
+    } else if (action === 'redo') {
+      void redoMolstarLastEdit().catch(error => {
+        setStatus(`[web] Redo failed.\n\n${error?.message || String(error)}`, 'error');
+      });
+    } else if (action === 'selection-clear') plugin.managers.interactivity.lociSelects.deselectAll();
     return false;
   }
 
@@ -7994,23 +8082,14 @@
         const ref = select?.closest('[data-ref]')?.dataset.ref;
         if (!select || !ref) return;
         const kind = select.dataset.sceneTreeSelect;
-        if (kind === 'add-representation') {
-          addSceneTreeRepresentation(ref, select.value);
-          select.value = '';
-        } else if (kind === 'representation-type') {
-          applySceneTreeReprType(ref, select.value);
-        } else if (kind === 'representation-color') {
-          applySceneTreeReprColor(ref, select.value, null);
-        } else if (kind === 'representation-size') {
-          applySceneTreeReprSize(ref, select.value);
-        } else if (kind === 'representation-visual') {
-          applySceneTreeReprParam(ref, 'visuals', [select.value]);
-        } else if (kind === 'assembly-symmetry-visuals') {
-          const visuals = select.value === 'axes' ? ['axes'] : select.value === 'cage' ? ['cage'] : ['axes', 'cage'];
-          updateSceneTreeAssemblySymmetry(ref, { visuals });
+        const value = select.value;
+        const sceneUndoLabel = molstarSceneMenuSelectUndoLabel(kind, ref);
+        if (sceneUndoLabel) {
+          void runMolstarSceneEdit(sceneUndoLabel, () => runSceneTreeSelectAction(kind, ref, value));
         } else {
-          applySceneTreeColorTheme(ref, select.value, null);
+          void runSceneTreeSelectAction(kind, ref, value);
         }
+        if (kind === 'add-representation') select.value = '';
       });
       // The advanced rows are built from the type's own schema, so one handler
       // covers every one of them: the control carries its parameter name and how
@@ -8020,13 +8099,21 @@
         const ref = control?.closest('[data-ref]')?.dataset.ref;
         if (!control || !ref || control.dataset.sceneTreeParamType === 'number') return;
         const value = control.dataset.sceneTreeParamType === 'boolean' ? control.checked : control.value;
-        applySceneTreeReprParam(ref, control.dataset.sceneTreeParam, value);
+        const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+        const sceneUndoLabel = `${control.dataset.sceneTreeParam} of ${node?.label || 'representation'}`;
+        void runMolstarSceneEdit(sceneUndoLabel, () => (
+          applySceneTreeReprParam(ref, control.dataset.sceneTreeParam, value)
+        ));
       });
       document.addEventListener('change', event => {
         const control = event.target.closest('[data-scene-tree-measurement-param]');
         const ref = control?.closest('[data-ref]')?.dataset.ref;
         if (!control || !ref || control.type === 'range') return;
-        applySceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementParam, control.value);
+        const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+        const sceneUndoLabel = `${control.dataset.sceneTreeMeasurementParam} of ${node?.label || 'measurement'}`;
+        void runMolstarSceneEdit(sceneUndoLabel, () => (
+          applySceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementParam, control.value)
+        ));
       });
       // The point of the theme list: the scene takes each theme as the pointer
       // passes over it, and gets its own back when the pointer leaves without
@@ -8061,7 +8148,10 @@
         const control = event.target.closest('[data-scene-tree-symmetry-scale]');
         const ref = control?.closest('[data-ref]')?.dataset.ref;
         if (!control || !ref) return;
-        updateSceneTreeAssemblySymmetry(ref, { scale: Number(control.value) });
+        const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+        void runMolstarSceneEdit(`symmetry scale of ${node?.label || 'global symmetry'}`, () => (
+          updateSceneTreeAssemblySymmetry(ref, { scale: Number(control.value) })
+        ));
       });
       document.addEventListener('input', event => {
         const slider = event.target.closest('[data-scene-tree-slider="opacity"]');
@@ -18345,6 +18435,7 @@
       return {
         kind: 'scene',
         label: String(label || 'scene change'),
+        dirty: molstarStructureDirty,
         state: plugin.state.data.getSnapshot(),
         selection: plugin.managers?.structure?.selection?.getSnapshot?.() || null
       };
@@ -18366,15 +18457,47 @@
     };
   }
 
-  function pushMolstarEditUndoSnapshot(snapshot) {
+  function pushMolstarHistorySnapshot(stack, snapshot) {
     if (!snapshot) return;
     if (snapshot.kind !== 'scene' && snapshot.kind !== 'align' && !snapshot.payload?.text) return;
-    molstarEditUndoStack.push(snapshot);
-    while (molstarEditUndoStack.length > MOLSTAR_EDIT_HISTORY_LIMIT) molstarEditUndoStack.shift();
+    stack.push(snapshot);
+    while (stack.length > MOLSTAR_EDIT_HISTORY_LIMIT) stack.shift();
+  }
+
+  function notifyMolstarEditHistoryChanged() {
+    postHostMessage({
+      type: 'molstarEditHistoryChanged',
+      canUndo: molstarEditUndoStack.length > 0,
+      canRedo: molstarEditRedoStack.length > 0,
+      undoLabel: molstarEditUndoStack.at(-1)?.label || null,
+      redoLabel: molstarEditRedoStack.at(-1)?.label || null
+    });
+  }
+
+  function pushMolstarEditUndoSnapshot(snapshot) {
+    if (!snapshot) return;
+    pushMolstarHistorySnapshot(molstarEditUndoStack, snapshot);
+    molstarEditRedoStack.length = 0;
+    notifyMolstarEditHistoryChanged();
+  }
+
+  async function runMolstarSceneEdit(label, operation) {
+    const snapshot = captureMolstarSceneUndoSnapshot(label);
+    try {
+      const result = await operation();
+      if (result !== false) pushMolstarEditUndoSnapshot(snapshot);
+      return result;
+    } catch (error) {
+      debug('scene edit failed: ' + (error?.message || String(error)));
+      setStatus(`[web] ${label} failed.\n\n${error?.message || String(error)}`, 'error');
+      return false;
+    }
   }
 
   function clearMolstarEditUndoHistory() {
     molstarEditUndoStack.length = 0;
+    molstarEditRedoStack.length = 0;
+    notifyMolstarEditHistoryChanged();
   }
 
   async function restoreMolstarSceneUndoSnapshot(snapshot) {
@@ -18384,6 +18507,7 @@
     if (snapshot.selection) {
       try { plugin.managers?.structure?.selection?.setSnapshot?.(snapshot.selection); } catch (_) {}
     }
+    setMolstarStructureDirty(snapshot.dirty === true);
     scheduleSceneTreeRender();
   }
 
@@ -18454,13 +18578,49 @@
       setStatus('[web] Nothing to undo.');
       return;
     }
+    const counterpart = captureMolstarHistoryCounterpart(snapshot);
+    if (!counterpart) {
+      molstarEditUndoStack.push(snapshot);
+      throw new Error('Mol* could not capture the current scene for redo.');
+    }
     try {
       await restoreMolstarEditUndoSnapshot(snapshot);
     } catch (error) {
       molstarEditUndoStack.push(snapshot);
       throw error;
     }
+    pushMolstarHistorySnapshot(molstarEditRedoStack, counterpart);
+    notifyMolstarEditHistoryChanged();
     setStatus(`[web] Undid ${snapshot.label}.`);
+    setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+  }
+
+  function captureMolstarHistoryCounterpart(snapshot) {
+    if (snapshot?.kind === 'scene') return captureMolstarSceneUndoSnapshot(snapshot.label);
+    if (snapshot?.kind === 'align') return captureMolstarAlignUndoSnapshot(snapshot.label);
+    return captureMolstarEditUndoSnapshot(snapshot?.label || 'Mol* edit');
+  }
+
+  async function redoMolstarLastEdit() {
+    const snapshot = molstarEditRedoStack.pop();
+    if (!snapshot) {
+      setStatus('[web] Nothing to redo.');
+      return;
+    }
+    const counterpart = captureMolstarHistoryCounterpart(snapshot);
+    if (!counterpart) {
+      molstarEditRedoStack.push(snapshot);
+      throw new Error('Mol* could not capture the current scene for undo.');
+    }
+    try {
+      await restoreMolstarEditUndoSnapshot(snapshot);
+    } catch (error) {
+      molstarEditRedoStack.push(snapshot);
+      throw error;
+    }
+    pushMolstarHistorySnapshot(molstarEditUndoStack, counterpart);
+    notifyMolstarEditHistoryChanged();
+    setStatus(`[web] Redid ${snapshot.label}.`);
     setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
   }
 
@@ -19400,11 +19560,10 @@
     });
   }
 
-  // Which menu actions ⌘Z should walk back. Selections are deliberately absent:
-  // they change constantly, and an undo history full of them would bury the edit
-  // the user actually wants back — Maestro and PyMOL leave selection out too.
-  // Exports write files and change nothing on screen, so they are out as well.
-  function molstarSceneUndoActionLabel(action, target) {
+  // Only explicit context-menu commands enter edit history. Ordinary picking and
+  // camera movement stay ephemeral, while deliberate selection commands, visual
+  // edits and newly-created scene objects all undo as one menu action.
+  function molstarContextSceneMutationLabel(action, target) {
     const name = String(action || '');
     // Without a pick the label falls back to the document title, which reads badly
     // in "Undid colour <file name>"; the structure is what was coloured.
@@ -19412,9 +19571,16 @@
     if (name.startsWith('colour:')) return `colour ${targetLabel}`;
     if (name === 'analyze:interactions') return `interactions around ${targetLabel}`;
     if (name === 'analyze:label') return `label ${targetLabel}`;
+    if (name === 'analyze:surroundings') return `surroundings of ${targetLabel}`;
     if (name === 'represent:surface') return `surface on ${targetLabel}`;
+    if (name === 'represent:component') return `component for ${targetLabel}`;
     if (name === 'view:hide') return `hiding ${targetLabel}`;
     if (name === 'view:isolate') return `isolating ${targetLabel}`;
+    if (name === 'select' || name === 'select-atom') return `selection of ${targetLabel}`;
+    if (name === 'select:whole-residues') return 'whole-residue selection';
+    if (name === 'select:grow') return 'grown selection';
+    if (name === 'select:invert') return 'inverted selection';
+    if (name === 'select:clear') return 'cleared selection';
     return null;
   }
 
@@ -19422,7 +19588,7 @@
     const target = targetOverride || molstarContextTarget();
     const targetLabel = target.label;
     let previewAfterAction = null;
-    const sceneUndoLabel = molstarSceneUndoActionLabel(action, target);
+    const sceneUndoLabel = molstarContextSceneMutationLabel(action, target);
     const sceneUndoSnapshot = sceneUndoLabel ? captureMolstarSceneUndoSnapshot(sceneUndoLabel) : null;
     let actionFailed = false;
     try {
