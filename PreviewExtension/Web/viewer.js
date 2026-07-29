@@ -2881,6 +2881,7 @@
     return {
       preview,
       canvas: preview?.querySelector('[data-buret-molstar-preset-preview-canvas]'),
+      image: preview?.querySelector('[data-buret-molstar-preset-preview-image]'),
       stage: preview?.querySelector('[data-buret-molstar-preset-preview-stage]'),
       label: preview?.querySelector('[data-buret-molstar-preset-preview-label]'),
       state: preview?.querySelector('[data-buret-molstar-preset-preview-state]')
@@ -2909,33 +2910,87 @@
 
   function sizeMolstarPresetPreview(preview) {
     if (!preview) return;
-    const { canvas, stage } = molstarPresetPreviewElements();
+    const { stage } = molstarPresetPreviewElements();
     const sourceCanvas = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas || document.querySelector('#app canvas');
     const sourceRect = sourceCanvas?.getBoundingClientRect?.();
     const sourceWidth = Number(sourceRect?.width);
     const sourceHeight = Number(sourceRect?.height);
     if (!(sourceWidth > 0) || !(sourceHeight > 0)) {
-      preview.style.height = '';
       return;
     }
-    const previewWidth = canvas?.clientWidth || preview.clientWidth || Math.min(240, Math.max(1, window.innerWidth - 24));
-    const availableCanvasHeight = Math.max(120, window.innerHeight - 52);
-    const canvasHeight = Math.min(availableCanvasHeight, Math.max(120, previewWidth * sourceHeight / sourceWidth));
-    preview.style.height = `${Math.round(28 + canvasHeight)}px`;
     if (stage) {
       stage.style.width = `${Math.round(sourceWidth)}px`;
       stage.style.height = `${Math.round(sourceHeight)}px`;
-      stage.style.transform = `scale(${previewWidth / sourceWidth})`;
     }
     try { molstarPresetPreviewViewer?.handleResize?.(); } catch (_) {}
   }
 
+  function drawMolstarPresetPreviewCrop(item, source, crop) {
+    const { preview, image } = molstarPresetPreviewElements();
+    if (!preview || !image || !source) throw new Error('Preset preview image is unavailable.');
+    const sourceWidth = source.width;
+    const sourceHeight = source.height;
+    const x = Math.max(0, Math.min(sourceWidth - 1, Math.floor((crop?.x || 0) * sourceWidth)));
+    const y = Math.max(0, Math.min(sourceHeight - 1, Math.floor((crop?.y || 0) * sourceHeight)));
+    const width = Math.max(1, Math.min(sourceWidth - x, Math.ceil((crop?.width || 1) * sourceWidth)));
+    const height = Math.max(1, Math.min(sourceHeight - y, Math.ceil((crop?.height || 1) * sourceHeight)));
+    image.width = width;
+    image.height = height;
+    const context = image.getContext('2d');
+    if (!context) throw new Error('Preset preview image cannot be drawn.');
+    context.clearRect(0, 0, width, height);
+    context.drawImage(source, x, y, width, height, 0, 0, width, height);
+
+    const maxWidth = Math.min(240, Math.max(1, window.innerWidth - 24));
+    const maxHeight = Math.min(320, Math.max(120, window.innerHeight - 52));
+    let scale = Math.min(maxWidth / width, maxHeight / height);
+    if (width * scale < 150 && height * (150 / width) <= maxHeight) scale = 150 / width;
+    if (height * scale < 120 && width * (120 / height) <= maxWidth) scale = 120 / height;
+    const displayWidth = Math.max(1, Math.round(width * scale));
+    const displayHeight = Math.max(1, Math.round(height * scale));
+    preview.style.width = `${displayWidth}px`;
+    preview.style.height = `${28 + displayHeight}px`;
+    preview.dataset.crop = `${x},${y},${width},${height}`;
+    preview.dataset.cropAspect = (width / height).toFixed(3);
+    positionMolstarPresetPreview(item);
+  }
+
+  async function captureMolstarPresetPreview(item, viewer, serial) {
+    const helper = viewer?.plugin?.helpers?.viewportScreenshot;
+    if (!helper?.getPreview) throw new Error('Mol* screenshot preview is unavailable.');
+    helper.behaviors.values.next({
+      ...helper.values,
+      transparent: false,
+      axes: { name: 'off', params: {} },
+      resolution: { name: 'viewport', params: {} }
+    });
+    helper.behaviors.cropParams.next({ auto: true, relativePadding: 0.07 });
+    helper.resetCrop();
+    const { stage } = molstarPresetPreviewElements();
+    const maxDim = Math.min(960, Math.max(320, stage?.clientWidth || 0, stage?.clientHeight || 0));
+    const rendered = await helper.getPreview({
+      isSynchronous: true,
+      shouldUpdate: false,
+      update() {}
+    }, maxDim);
+    if (serial !== molstarPresetPreviewSerial || !rendered?.canvas) return;
+    drawMolstarPresetPreviewCrop(item, rendered.canvas, helper.relativeCrop);
+  }
+
   function showMolstarPresetPreviewShell(item, option) {
-    const { preview, label, state } = molstarPresetPreviewElements();
+    const { preview, image, label, state } = molstarPresetPreviewElements();
     if (!preview) return;
     if (label) label.textContent = option.label;
     if (state) state.textContent = 'Rendering preview…';
     preview.classList.remove('hidden', 'ready', 'error');
+    preview.style.width = '';
+    preview.style.height = '';
+    preview.removeAttribute('data-crop');
+    preview.removeAttribute('data-crop-aspect');
+    if (image) {
+      image.width = 1;
+      image.height = 1;
+    }
     sizeMolstarPresetPreview(preview);
     positionMolstarPresetPreview(item);
   }
@@ -3019,6 +3074,8 @@
       else viewer.plugin?.canvas3d?.requestCameraReset?.({ durationMs: 0 });
       try { viewer.plugin?.canvas3d?.requestDraw?.(); } catch (_) {}
       await waitForAnimationFrame();
+      if (serial !== molstarPresetPreviewSerial) return;
+      await captureMolstarPresetPreview(item, viewer, serial);
       if (serial !== molstarPresetPreviewSerial) return;
       molstarPresetPreviewElements().preview?.classList.add('ready');
     } catch (error) {
