@@ -24,6 +24,7 @@ const projectScanSessionEntryBudget = 20_000;
 const browserDevStructureExtensions = new Set([
   "pdb", "ent", "pdbqt", "pqr", "xpdb",
   "cif", "mmcif", "mcif", "bcif", "mmtf",
+  "ccp4", "mrc", "map", "mtz",
   "sdf", "sd", "smi", "smiles",
   "mol", "mol2", "xyz", "gro", "mae", "maegz", "cms", "dtr",
   "nc", "ncdf", "netcdf", "ncrst",
