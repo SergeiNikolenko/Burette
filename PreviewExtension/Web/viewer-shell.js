@@ -142,6 +142,7 @@
           <span class="buret-molstar-preset-preview-caption">Current structure</span>
         </div>
         <div class="buret-molstar-preset-preview-canvas" data-buret-molstar-preset-preview-canvas>
+          <canvas class="buret-molstar-preset-preview-image" data-buret-molstar-preset-preview-image aria-hidden="true"></canvas>
           <div class="buret-molstar-preset-preview-stage" data-buret-molstar-preset-preview-stage></div>
         </div>
         <div class="buret-molstar-preset-preview-state" data-buret-molstar-preset-preview-state>Rendering preview…</div>
