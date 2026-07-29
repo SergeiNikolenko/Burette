@@ -805,6 +805,7 @@ function openBrowserDevTrajectoryPairDocument(
       activePose: null,
       sceneMode: null,
       poseMode: "single" as const,
+      syntheticTopology: pair.docking.receptor.synthetic === true,
     },
   };
 }

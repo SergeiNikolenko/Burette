@@ -9076,7 +9076,8 @@
       modelKind: dockingTrajectoryModelKind(modelEntry),
       coordinateEntry,
       coordinateEntries,
-      trajectorySegments
+      trajectorySegments,
+      synthetic: modelEntry.synthetic === true
     };
   }
 
@@ -9092,7 +9093,8 @@
       data: dockingPayloadData(receptor, payloads.receptor),
       format: normalizeFormat(receptor.format),
       label: receptor.label || 'Receptor',
-      sourcePath: receptor.path || ''
+      sourcePath: receptor.path || '',
+      synthetic: receptor.synthetic === true
     };
     const entries = [receptorEntry];
     ligandSources.forEach((source, ligandIndex) => {
@@ -13334,7 +13336,7 @@
     if (typeof viewer.loadTrajectory !== 'function') {
       throw new Error('Mol* trajectory pairing is unavailable in this viewer runtime.');
     }
-    const representationPreset = options.representationPreset;
+    const representationPreset = pair.synthetic ? undefined : options.representationPreset;
     const trajectoryTransform = window.molstar?.lib?.plugin?.StateTransforms?.Model?.TrajectoryFromModelAndCoordinates;
     if (representationPreset && trajectoryTransform) {
       const plugin = viewer.plugin;
@@ -13381,7 +13383,29 @@
       coordinatesLabel: pair.coordinateEntry.label,
       preset: 'default'
     });
+    // A derived topology records no bonds, so the default preset would draw ones
+    // Mol* inferred from interatomic distances: chemistry the trajectory never
+    // stated, and a hairball across a solvated box. Points show only what the
+    // coordinates actually say. The scene tree still offers the bonded styles.
+    if (pair.synthetic) {
+      await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
+    }
     return false;
+  }
+
+  // Every atom is the same unknown carbon, so element colouring would only
+  // suggest chemistry the trajectory never recorded.
+  function molstarDerivedTopologyRepresentation() {
+    return {
+      type: 'point',
+      typeParams: { alpha: 1, sizeFactor: 1, pointSizeAttenuation: true, pointStyle: 'circle' },
+      color: 'uniform',
+      colorParams: { value: 0x8aa4c8 },
+      size: 'uniform',
+      // Small enough that a solvated box reads as separate atoms rather than
+      // one merged mass.
+      sizeParams: { value: 0.2 }
+    };
   }
 
   async function applyDockingTrajectoryPairFrameCount(prepared) {
@@ -13540,17 +13564,24 @@
       if (isDockingTrajectoryPairEntry(entry, prepared.trajectoryPair)) continue;
       await loadMolstarEntry(viewer, entry);
     }
-    if (waterExcludedFromInitialPreset) {
-      await applyMolstarPolymerLigandRepresentation(
-        viewer,
-        { type: 'cartoon', color: 'chain-id' },
-        { type: 'ball-and-stick', typeParams: { sizeFactor: 0.16 }, color: 'element-symbol' }
-      );
+    // A derived topology has coordinates but no chemical identity. Keep its
+    // point representation intact instead of applying chemistry-dependent
+    // styles or solvent components inferred from placeholder atoms.
+    if (!prepared.trajectoryPair?.synthetic) {
+      if (waterExcludedFromInitialPreset) {
+        await applyMolstarPolymerLigandRepresentation(
+          viewer,
+          { type: 'cartoon', color: 'chain-id' },
+          { type: 'ball-and-stick', typeParams: { sizeFactor: 0.16 }, color: 'element-symbol' }
+        );
+      }
+      await applyMolstarStyle(viewer, style);
     }
-    await applyMolstarStyle(viewer, style);
     installDockingPoseControls(viewer, prepared);
     prepared.deferredWaterRepresentation = waterExcludedFromInitialPreset;
-    if (!waterExcludedFromInitialPreset) await applyMolstarWaterLineRepresentation(viewer);
+    if (!prepared.trajectoryPair?.synthetic && !waterExcludedFromInitialPreset) {
+      await applyMolstarWaterLineRepresentation(viewer);
+    }
   }
 
   let dockingPoseKeydownDisposer = null;
