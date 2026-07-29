@@ -805,7 +805,10 @@ assert.match(viteConfig, /const BROWSER_DEV_GENERATED_FILES_ROOT = process\.env\
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "Burette Generated Files"\)/);
 assert.match(viteConfig, /const BROWSER_DEV_XTB_JOBS_ROOT = join\(BROWSER_DEV_GENERATED_FILES_ROOT, "xTB Jobs"\);/);
 assert.match(viteConfig, /const BROWSER_DEV_CONFORMER_JOBS_ROOT = join\(BROWSER_DEV_GENERATED_FILES_ROOT, "Conformer Jobs"\);/);
-assert.match(viteConfig, /const browserDevGeneratedFileRoots = \[BROWSER_DEV_GENERATED_FILES_ROOT\];/);
+// Derived topologies are generated files too: browser dev writes them and the
+// inspector reads them back, so they belong on the same allow list.
+assert.match(viteConfig, /const BROWSER_DEV_DERIVED_TOPOLOGY_ROOT = join\(tmpdir\(\), "burette-browser-dev-derived-topology"\);/);
+assert.match(viteConfig, /const browserDevGeneratedFileRoots = \[BROWSER_DEV_GENERATED_FILES_ROOT, BROWSER_DEV_DERIVED_TOPOLOGY_ROOT\];/);
 assert.match(viteConfig, /const devFsAllowRoots = \[repoRoot, \.\.\.defaultFsAllow, \.\.\.browserDevGeneratedFileRoots, \.\.\.extraFsAllow\][\s\S]*\.map\(canonicalExistingPath\);/);
 assert.match(viteConfig, /"import\.meta\.env\.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT": JSON\.stringify\(BROWSER_DEV_GENERATED_FILES_ROOT\)/);
 assert.match(viteConfig, /registerBrowserDevRuntimeDoctorRoute\(server,/);
@@ -2643,7 +2646,7 @@ assert.match(structureInfoPanel, /const contextStyleCard = structureContextStyle
 assert.match(structureInfoPanel, /function structureContextStyleCardFor\(/);
 assert.match(structureInfoPanel, /if \(structureOverlayMode !== "all"\) return null/);
 assert.match(structureInfoPanel, /if \(isVirtualMolstarScene\(document\)\) \{/);
-assert.match(structureInfoPanel, /\{!hostedMcpWidget && !trajectoryDocument && !virtualScene \?/);
+assert.match(structureInfoPanel, /\{!hostedMcpWidget && !trajectoryDocument && !derivedTopology && !virtualScene \?/);
 assert.match(structureInfoPanel, /const maestroEntryCount = maestroPreviewEntryCount\(summary\)/);
 assert.match(structureInfoPanel, /detail: "Context structures"/);
 assert.match(structureInfoPanel, /detail: "Context molecules"/);
@@ -2723,6 +2726,11 @@ assert.match(structureInfoPanel, /globalFrameIndex: number/);
 assert.match(structureInfoPanel, /segmentStartFrame: number/);
 assert.match(structureInfoPanel, /sourcePath: string/);
 assert.match(structureInfoPanel, /function trajectoryPathsFor\(document: ViewerDocument, playback: TrajectoryPlaybackState \| null\)/);
+assert.match(structureInfoPanel, /const derivedTopology = document\.dockingRequest\?\.syntheticTopology === true/);
+assert.match(structureInfoPanel, /const compositionSummary = !derivedTopology && composition\.documentId === document\.id \? composition\.summary : null/);
+assert.match(structureInfoPanel, /function DerivedTopologyCard/);
+assert.match(structureInfoPanel, /positions only, with no elements, residues or bonds/);
+assert.match(structureInfoPanel, /Attach topology…/);
 assert.match(structureInfoPanel, /document\.dockingRequest\?\.ligandPaths\.includes\(playback\?\.sourcePath \|\| ""\)/);
 assert.match(structureInfoPanel, /const pair = trajectoryPathsFor\(document, playback\)/);
 assert.match(structureInfoPanel, /originalFrameIndex: playback\?\.globalFrameIndex \?\? 0/);
@@ -5344,7 +5352,10 @@ assert.match(previewViewer, /StateTransforms\?\.Model\?\.TrajectoryFromModelAndC
 assert.match(previewViewer, /deferWaterRepresentation \? \{ representationPreset: 'empty' \} : undefined/);
 assert.match(previewViewer, /const deferWaterRepresentation = shouldDeferDockingTrajectoryWater\(prepared\.trajectoryPair\)\s*&& molstarStyleSupportsDeferredWater\(style\)/);
 assert.match(previewViewer, /if \(waterExcludedFromInitialPreset\) \{\s*await applyMolstarPolymerLigandRepresentation\(/);
-assert.match(previewViewer, /await applyMolstarStyle\(viewer, style\);\s*installDockingPoseControls\(viewer, prepared\);\s*prepared\.deferredWaterRepresentation = waterExcludedFromInitialPreset;\s*if \(!waterExcludedFromInitialPreset\) await applyMolstarWaterLineRepresentation\(viewer\);/);
+assert.match(previewViewer, /function molstarDerivedTopologyRepresentation\(\)/);
+assert.match(previewViewer, /if \(pair\.synthetic\) \{\s*await applyMolstarUniformRepresentation\(viewer, molstarDerivedTopologyRepresentation\(\)\);\s*\}\s*return false;/);
+assert.match(previewViewer, /if \(!prepared\.trajectoryPair\?\.synthetic\) \{[\s\S]*?await applyMolstarStyle\(viewer, style\);\s*\}\s*installDockingPoseControls\(viewer, prepared\);/);
+assert.match(previewViewer, /if \(!prepared\.trajectoryPair\?\.synthetic && !waterExcludedFromInitialPreset\) \{\s*await applyMolstarWaterLineRepresentation\(viewer\);\s*\}/);
 assert.match(previewViewer, /setStatus\(`\[web\] Rendered \$\{config\.label \|\| 'structure'\}`\);\s*if \(prepared\?\.deferredWaterRepresentation === true\) \{\s*scheduleMolstarWaterLineRepresentation\(viewer\);/);
 assert.match(previewViewer, /plugin\.managers\.structure\.component\.setOptions\(\{\s*\.\.\.plugin\.managers\.structure\.component\.state\.options,\s*ignoreLight: true\s*\}\)/s);
 assert.match(previewViewer, /postprocessing:\s*\{\s*outline:/s);

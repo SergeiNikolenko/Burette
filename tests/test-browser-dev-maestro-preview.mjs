@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, extname, join } from "node:path";
 
 const {
   maestroPdbDataFromText,
 } = await import("../apps/desktop/src/lib/browser-dev-documents.ts");
+const { registerBrowserDevFileContentRoutes } = await import("../apps/desktop/vite/browser-dev/files.ts");
 
 const maestroWithIncompatibleCts = `
 f_m_ct {
@@ -97,5 +101,61 @@ assert.equal(
   undefined,
   "compatible Maestro trajectory models must not be duplicated as scene entries",
 );
+
+const trajectoryRoot = await mkdtemp(join(tmpdir(), "burette-derived-topology-test-"));
+try {
+  const trajectoryPath = join(trajectoryRoot, "04_CONTINUOUS_WINDOW_2P2_TO_2P3NM.xtc");
+  const unrelatedTopology = join(trajectoryRoot, "01_STORY_ALL_25_MODELS_BACKBONE.pdb");
+  const namedButUnrelatedTopology = join(trajectoryRoot, "04_CONTINUOUS_WINDOW_START.pdb");
+  const xtcHeader = Buffer.concat([Buffer.from([0, 0, 7, 203]), Buffer.from([0, 0, 0, 1])]);
+  const pdb = "ATOM      1  CA  ALA A   1       0.000   0.000   0.000  1.00 20.00           C\nEND\n";
+  await Promise.all([
+    writeFile(trajectoryPath, xtcHeader),
+    writeFile(unrelatedTopology, pdb),
+    writeFile(namedButUnrelatedTopology, pdb),
+  ]);
+
+  let trajectoryPairRoute;
+  registerBrowserDevFileContentRoutes({
+    middlewares: {
+      use(path, handler) {
+        if (path === "/__burette/trajectory-pair") trajectoryPairRoute = handler;
+      },
+    },
+  }, {
+    collectDefaultDevFiles: async () => [],
+    collectDevFiles: async (root, files) => {
+      for (const name of await readdir(root)) files.push(join(root, name));
+    },
+    devFileExtensions: new Set(["xtc", "pdb", "gro"]),
+    devFileSizeLimit: 75 * 1024 * 1024,
+    fileExtension: path => extname(path).slice(1).toLowerCase(),
+    fileTitle: basename,
+    isDevFileReadAllowed: path => dirname(path) === trajectoryRoot,
+    isNumpyArtifactExtension: () => false,
+    languageForTextExtension: () => "text",
+    looksBinary: () => false,
+    molecularBinaryArtifactSummary: () => "",
+    molecularBinaryMetadataExtensions: new Set(),
+    numpyArtifactTextSummary: () => "",
+    readableTextBytes: bytes => bytes,
+    resolveStructureFileBundle: () => null,
+    textFileReadLimit: () => 1024,
+  });
+  assert.equal(typeof trajectoryPairRoute, "function");
+
+  let body = "";
+  const response = { statusCode: 0, setHeader() {}, end(chunk = "") { body += chunk; } };
+  await trajectoryPairRoute({ method: "GET", url: `?path=${encodeURIComponent(trajectoryPath)}` }, response);
+  assert.equal(response.statusCode, 200, body);
+  const payload = JSON.parse(body);
+  assert.equal(payload.docking.receptor.synthetic, true, "unrelated PDB files must not override coordinates-only mode");
+  assert.equal(payload.docking.receptor.label, "Derived topology");
+  assert.notEqual(payload.topologyPath, unrelatedTopology);
+  assert.notEqual(payload.topologyPath, namedButUnrelatedTopology);
+  await rm(payload.topologyPath, { force: true });
+} finally {
+  await rm(trajectoryRoot, { recursive: true, force: true });
+}
 
 console.log("browser dev Maestro preview tests passed");
