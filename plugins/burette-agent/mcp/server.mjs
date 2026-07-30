@@ -7,6 +7,7 @@ import { pluginPath } from "./lib/plugin-root.mjs";
 import { registerFetch } from "./registrations/fetch/register.mjs";
 import { registerMolecularReport } from "./registrations/molecular-report/register.mjs";
 import { registerMolecularWorkspace } from "./registrations/molecular-workspace/register.mjs";
+import { registerMvsStory } from "./registrations/mvs-story/register.mjs";
 import { registerMoleculeTable } from "./registrations/molecule-table/register.mjs";
 import { registerTrajectoryReview } from "./registrations/trajectory-review/register.mjs";
 
@@ -25,6 +26,7 @@ const server = new McpServer(
 
 registerFetch(server);
 registerMolecularWorkspace(server);
+registerMvsStory(server);
 registerMoleculeTable(server);
 registerTrajectoryReview(server);
 registerMolecularReport(server);

@@ -1,0 +1,145 @@
+{
+  "schema": "burette_mvs_story_template.v1",
+  "id": "structure-overview",
+  "title": "Structure overview",
+  "summary": "Introduce one experimentally determined or predicted structure, then move from global fold to ligand context.",
+  "category": "structure",
+  "scientificUse": "Use for a first-pass orientation before making residue-level claims.",
+  "variables": [
+    {
+      "name": "structure_url",
+      "description": "HTTPS URL or MVSX archive path for a PDB structure.",
+      "required": true,
+      "example": "structure.pdb",
+      "maxLength": 4096
+    },
+    {
+      "name": "structure_label",
+      "description": "Short user-facing structure name.",
+      "required": false,
+      "default": "Structure",
+      "example": "Kinase complex",
+      "maxLength": 256
+    }
+  ],
+  "storyboard": [
+    {
+      "key": "overview",
+      "purpose": "Orient the user to the global fold and assembly.",
+      "evidence": "Show the complete polymer without residue-level interpretation."
+    },
+    {
+      "key": "ligand-context",
+      "purpose": "Focus on modeled non-polymer ligands in structural context.",
+      "evidence": "State whether a ligand is actually present before interpreting this step."
+    }
+  ],
+  "caveats": [
+    "A predicted model is not experimental evidence; report provenance and confidence separately.",
+    "The ligand-context step may be empty when the structure contains no ligand component.",
+    "Visual proximity alone does not establish a biochemical interaction."
+  ],
+  "story": {
+    "title": "{{structure_label}}: structure overview",
+    "description": "A reusable global-to-local orientation Story.",
+    "steps": [
+      {
+        "key": "overview",
+        "title": "Global fold",
+        "description": "# {{structure_label}}\n\nGlobal polymer overview. Add provenance, experimental method or prediction source, and confidence before drawing conclusions.",
+        "root": {
+          "kind": "root",
+          "children": [
+            {
+              "kind": "download",
+              "params": { "url": "{{structure_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#4E79A7" } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "key": "ligand-context",
+        "title": "Ligand context",
+        "description": "# Ligand context\n\nNon-polymer ligands are emphasized. Confirm ligand identity and model provenance; proximity in this scene is not proof of binding.",
+        "root": {
+          "kind": "root",
+          "children": [
+            {
+              "kind": "download",
+              "params": { "url": "{{structure_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#A9B7C8" } },
+                                { "kind": "opacity", "params": { "opacity": 0.55 } }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "component",
+                          "params": { "selector": "ligand" },
+                          "children": [
+                            { "kind": "focus", "params": {} },
+                            {
+                              "kind": "representation",
+                              "params": { "type": "ball_and_stick" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#F28E2B" } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

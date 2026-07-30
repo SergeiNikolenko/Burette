@@ -1,0 +1,219 @@
+{
+  "schema": "burette_mvs_story_template.v1",
+  "id": "aligned-structure-comparison",
+  "title": "Aligned structure comparison",
+  "summary": "Compare two structures that have already been transformed into the same coordinate frame.",
+  "category": "comparison",
+  "scientificUse": "Use after an explicit alignment step has produced coordinate-compatible reference and candidate structures.",
+  "variables": [
+    {
+      "name": "reference_url",
+      "description": "HTTPS URL or MVSX archive path for the aligned reference PDB.",
+      "required": true,
+      "example": "reference-aligned.pdb",
+      "maxLength": 4096
+    },
+    {
+      "name": "candidate_url",
+      "description": "HTTPS URL or MVSX archive path for the aligned candidate PDB.",
+      "required": true,
+      "example": "candidate-aligned.pdb",
+      "maxLength": 4096
+    },
+    {
+      "name": "comparison_label",
+      "description": "Short comparison name.",
+      "required": false,
+      "default": "Aligned structure comparison",
+      "example": "Apo versus holo",
+      "maxLength": 256
+    }
+  ],
+  "storyboard": [
+    {
+      "key": "reference",
+      "purpose": "Establish the reference conformation.",
+      "evidence": "Record structure source and modeled regions."
+    },
+    {
+      "key": "candidate",
+      "purpose": "Inspect the candidate independently with the same representation.",
+      "evidence": "Record missing residues, alternate conformations, and model confidence."
+    },
+    {
+      "key": "overlay",
+      "purpose": "Overlay both coordinate-compatible structures.",
+      "evidence": "Report the alignment method and quantitative metric outside this visual scaffold."
+    }
+  ],
+  "caveats": [
+    "This template does not align structures; both inputs must already share a coordinate frame.",
+    "Visual displacement is not a substitute for a declared RMSD or local-distance calculation.",
+    "Differences can reflect missing atoms, alternate models, or prediction uncertainty."
+  ],
+  "story": {
+    "title": "{{comparison_label}}",
+    "description": "Reference, candidate, and overlay views for pre-aligned structures.",
+    "steps": [
+      {
+        "key": "reference",
+        "title": "Reference structure",
+        "description": "# Reference structure\n\nDocument source, chain mapping, modeled regions, and experimental or prediction provenance.",
+        "root": {
+          "kind": "root",
+          "children": [
+            {
+              "kind": "download",
+              "params": { "url": "{{reference_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            { "kind": "focus", "params": {} },
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#4E79A7" } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "key": "candidate",
+        "title": "Candidate structure",
+        "description": "# Candidate structure\n\nInspect with the same representation. Note missing residues, alternate conformations, and confidence differences.",
+        "root": {
+          "kind": "root",
+          "children": [
+            {
+              "kind": "download",
+              "params": { "url": "{{candidate_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            { "kind": "focus", "params": {} },
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#F28E2B" } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "key": "overlay",
+        "title": "Aligned overlay",
+        "description": "# Aligned overlay\n\nBlue is the reference; orange is the candidate. State the alignment method, atom selection, quantitative metric, and excluded regions before interpreting displacement.",
+        "root": {
+          "kind": "root",
+          "children": [
+            {
+              "kind": "download",
+              "params": { "url": "{{reference_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            { "kind": "focus", "params": {} },
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#4E79A7" } },
+                                { "kind": "opacity", "params": { "opacity": 0.7 } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "download",
+              "params": { "url": "{{candidate_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#F28E2B" } },
+                                { "kind": "opacity", "params": { "opacity": 0.7 } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
