@@ -61,4 +61,33 @@ const storyWithoutComparison = structureStoryFromViewerMessage({
 assert.equal(storyWithoutComparison?.summary.length, 8_000);
 assert.equal(storyWithoutComparison?.comparison, null);
 
+const mvsStory = structureStoryFromViewerMessage({
+  type: "mvsStoryChanged",
+  documentId: "document-mvs",
+  fileName: "protein-tour.mvsx",
+  stepIndex: 1,
+  stepCount: 3,
+  isPlaying: true,
+  current: {
+    key: "binding-site",
+    title: "Binding site",
+    description: "The ligand and nearby residues.",
+    descriptionFormat: "markdown",
+  },
+});
+
+assert.deepEqual(mvsStory, {
+  documentId: "document-mvs",
+  stepIndex: 1,
+  stepCount: 3,
+  fileName: "protein-tour.mvsx",
+  stage: "Binding site",
+  summary: "The ligand and nearby residues.",
+  comparison: null,
+  source: "mvs",
+  key: "binding-site",
+  isPlaying: true,
+  descriptionFormat: "markdown",
+});
+
 console.log("structure story tests passed");

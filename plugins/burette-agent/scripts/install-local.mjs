@@ -46,6 +46,14 @@ const requiredBundleFiles = [
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
   "scripts/burette-agent.mjs",
+  "scripts/mvs-story.mjs",
+  "scripts/mvs-story-templates.mjs",
+  "scripts/mvs-schema-validator.mjs",
+  "skills/mvs-story/references/molviewspec-authoring.md",
+  "assets/mvs-story-templates/aligned-structure-comparison.json",
+  "assets/mvs-story-templates/binding-site-tour.json",
+  "assets/mvs-story-templates/docking-pose-comparison.json",
+  "assets/mvs-story-templates/structure-overview.json",
   "mcp/lib/server-bundle.mjs",
 ];
 

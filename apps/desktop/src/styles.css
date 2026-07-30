@@ -2673,6 +2673,28 @@ img.radix-menu-item-icon {
   color: var(--text-primary);
   line-height: 1.5;
 }
+.structure-story-markdown {
+  min-width: 0;
+  color: var(--text-primary);
+}
+.structure-story-markdown .text-file-rich-editor,
+.structure-story-markdown .text-file-rich-editor .cm-editor {
+  min-height: 0;
+}
+.structure-story-markdown .text-file-rich-editor .cm-content {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.structure-story-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
 .structure-brief-kicker {
   color: var(--text-muted);
   font-size: 11px;

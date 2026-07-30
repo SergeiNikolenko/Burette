@@ -1283,6 +1283,8 @@ function validateAction(action) {
     'observe_story',
     'control_story',
     'export_session',
+    'story_observe',
+    'story_control',
     'screenshot',
     'export_image',
     'raw_burette_agent'
@@ -1305,6 +1307,16 @@ function validateAction(action) {
       action.json === undefined
     ) {
       return 'load_mvs requires file, data, dataBase64, or json.';
+    }
+  }
+  if (type === 'story_control') {
+    const operation = String(action.operation || '').trim();
+    if (!['next', 'previous', 'goto', 'play', 'pause'].includes(operation)) return 'story_control operation must be next, previous, goto, play, or pause.';
+    if (operation === 'goto') {
+      const hasIndex = Number.isInteger(action.index) && action.index >= 0 && action.index <= 255;
+      const hasKey = typeof action.key === 'string' && action.key.trim();
+      const hasId = typeof action.id === 'string' && action.id.trim();
+      if (!hasIndex && !hasKey && !hasId) return 'story_control goto requires index, key, or id.';
     }
   }
   if (type === 'apply_scene') {
