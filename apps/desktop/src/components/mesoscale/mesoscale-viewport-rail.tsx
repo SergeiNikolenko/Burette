@@ -68,7 +68,7 @@ export function MesoscaleViewportRail({ document, hidden }: { document: ViewerDo
       <button type="button" className="mesoscale-rail-button" disabled={disabled} aria-pressed={summary?.selectionMode ?? false} aria-label="Selection mode" title="Selection mode" onClick={() => run({ type: "setSelectionMode", enabled: !(summary?.selectionMode ?? false) })}>
         <RailIcon paths={["m5 3 14 7.2-6 1.6-1.6 6L5 3Z"]} />
       </button>
-      {summary?.selectedRefs.length ? (
+      {summary?.selectedCount ? (
         <button type="button" className="mesoscale-rail-button mesoscale-clear-selection" aria-label="Clear selection" title="Clear selection" onClick={() => run({ type: "setSelection", mode: "clear" })}>
           <RailIcon paths={["M18 6 6 18M6 6l12 12"]} />
         </button>

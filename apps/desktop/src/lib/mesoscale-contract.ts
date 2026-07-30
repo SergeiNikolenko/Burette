@@ -41,6 +41,9 @@ export type MesoscaleSceneSummary = {
   filter: string;
   counts: MesoscaleCounts;
   selectedRefs: string[];
+  selectedCount?: number;
+  selectionTruncated?: boolean;
+  selectionVersion?: number;
   selectionMode: boolean;
   illumination: boolean;
   layout: Record<MesoscaleLayoutRegion, boolean>;
@@ -98,6 +101,9 @@ export type MesoscaleAction =
   | { type: "setGraphics"; graphics: MesoscaleGraphicsMode }
   | { type: "setFilter"; filter: string }
   | { type: "setSelection"; ref?: string; mode?: "replace" | "extend" | "toggle" | "clear" }
+  | { type: "setSelectionStyle"; color?: number; opacity?: number; emissive?: number; selectionVersion?: number }
+  | { type: "setSelectionVisibility"; visible: boolean }
+  | { type: "isolateSelection" }
   | { type: "setSelectionMode"; enabled: boolean }
   | { type: "setIllumination"; enabled: boolean }
   | { type: "setLayoutRegion"; region: MesoscaleLayoutRegion; visible: boolean }
@@ -153,6 +159,23 @@ export type MesoscaleChromeMessage = {
   placement: MesoscaleControlPlacement;
 };
 
+export type MesoscaleCanvasContextMenu = {
+  item: MesoscaleHierarchyObject;
+  selectedCount: number;
+  x: number;
+  y: number;
+  token: number;
+};
+
+export type MesoscaleCanvasInteractionMessage = {
+  source: "burette-mesoscale-interaction";
+  apiVersion: typeof MESOSCALE_API_VERSION;
+  documentId: string;
+} & (
+  | { kind: "selection"; summary: MesoscaleSceneSummary }
+  | { kind: "context-menu"; menu: Omit<MesoscaleCanvasContextMenu, "token">; summary: MesoscaleSceneSummary }
+);
+
 export type MesoscaleFailure = {
   kind: "failure";
   code: string;
@@ -185,6 +208,7 @@ export type MesoscaleSessionState = {
   hierarchyNextCursor: number | null;
   hierarchyTotal: number;
   hoveredRef: string | null;
+  canvasContextMenu: MesoscaleCanvasContextMenu | null;
   sceneOpen: boolean;
   layoutPreference: Record<MesoscaleLayoutRegion, boolean>;
   pendingCount: number;
@@ -198,4 +222,39 @@ export function isMesoscaleResponse(value: unknown): value is MesoscaleResponse 
     && response.apiVersion === MESOSCALE_API_VERSION
     && typeof response.documentId === "string"
     && Boolean(response.result && typeof response.result === "object");
+}
+
+export function isMesoscaleCanvasInteractionMessage(value: unknown): value is MesoscaleCanvasInteractionMessage {
+  if (!value || typeof value !== "object") return false;
+  const message = value as Partial<MesoscaleCanvasInteractionMessage>;
+  if (message.source !== "burette-mesoscale-interaction") return false;
+  if (message.apiVersion !== MESOSCALE_API_VERSION || typeof message.documentId !== "string") return false;
+  if (!message.summary || message.summary.kind !== "summary") return false;
+  if (message.kind === "selection") return true;
+  if (message.kind !== "context-menu" || !message.menu || typeof message.menu !== "object") return false;
+  const menu = message.menu as Partial<MesoscaleCanvasContextMenu>;
+  return Boolean(menu.item && typeof menu.item.ref === "string")
+    && Number.isFinite(menu.selectedCount)
+    && Number.isFinite(menu.x)
+    && Number.isFinite(menu.y);
+}
+
+export function mesoscaleSelectedCount(summary: Pick<MesoscaleSceneSummary, "selectedCount" | "selectedRefs">) {
+  return Number.isFinite(summary.selectedCount)
+    ? Math.max(0, Math.trunc(summary.selectedCount as number))
+    : summary.selectedRefs.length;
+}
+
+export function mergeMesoscaleHierarchySelection(items: MesoscaleHierarchyObject[], summary: MesoscaleSceneSummary) {
+  const selectedRefs = new Set(summary.selectedRefs);
+  const previewByRef = new Map(summary.hierarchyPreview.map((item) => [item.ref, item]));
+  const complete = !summary.selectionTruncated && mesoscaleSelectedCount(summary) <= selectedRefs.size;
+  return items.map((item) => {
+    const preview = previewByRef.get(item.ref);
+    return {
+      ...item,
+      ...preview,
+      selected: preview?.selected ?? (selectedRefs.has(item.ref) || (!complete && item.selected)),
+    };
+  });
 }

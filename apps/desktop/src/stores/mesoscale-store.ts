@@ -1,7 +1,10 @@
 import { create } from "zustand";
 import {
   MESOSCALE_API_VERSION,
+  isMesoscaleCanvasInteractionMessage,
   isMesoscaleResponse,
+  mergeMesoscaleHierarchySelection,
+  mesoscaleSelectedCount,
   type MesoscaleAction,
   type MesoscaleChromeMessage,
   type MesoscaleControlPlacement,
@@ -21,9 +24,11 @@ type MesoscaleStore = {
 };
 
 const frames = new Map<string, Window>();
+const frameGenerations = new Map<string, number>();
 const previewFrames = new Map<string, number>();
 const previewSequences = new Map<string, number>();
 const pendingPreviewRefs = new Map<string, string | null>();
+const selectionRefreshes = new Map<string, { revision: number; running: boolean }>();
 const pending = new Map<string, {
   documentId: string;
   resolve: (result: MesoscaleResult) => void;
@@ -43,6 +48,7 @@ function emptySession(documentId: string): MesoscaleSessionState {
     hierarchyNextCursor: 0,
     hierarchyTotal: 0,
     hoveredRef: null,
+    canvasContextMenu: null,
     sceneOpen: false,
     layoutPreference: { left: false, right: false },
     pendingCount: 0,
@@ -71,24 +77,25 @@ function updateSession(documentId: string, update: (session: MesoscaleSessionSta
 }
 
 function applySummary(documentId: string, summary: MesoscaleSceneSummary) {
+  const normalizedSummary = { ...summary, selectedCount: mesoscaleSelectedCount(summary) };
   updateSession(documentId, (session) => {
-    if (summary.revision < session.revision) return session;
-    const stableSummary = summary.hierarchyTotal === 0 && session.hierarchyTotal > 0
+    if (normalizedSummary.revision < session.revision) return session;
+    const stableSummary = normalizedSummary.hierarchyTotal === 0 && session.hierarchyTotal > 0
       ? {
-          ...summary,
-          counts: session.summary?.counts ?? summary.counts,
+          ...normalizedSummary,
+          counts: session.summary?.counts ?? normalizedSummary.counts,
           hierarchyPreview: session.hierarchy,
           hierarchyTotal: session.hierarchyTotal,
         }
-      : summary;
-    const selectedRefs = new Set(stableSummary.selectedRefs);
-    const previewByRef = new Map(stableSummary.hierarchyPreview.map((item) => [item.ref, item]));
-    const hierarchy = (session.hierarchy.length > 0 ? session.hierarchy : stableSummary.hierarchyPreview)
-      .map((item) => ({ ...item, ...previewByRef.get(item.ref), selected: selectedRefs.has(item.ref) }));
+      : normalizedSummary;
+    const hierarchy = mergeMesoscaleHierarchySelection(
+      session.hierarchy.length > 0 ? session.hierarchy : stableSummary.hierarchyPreview,
+      stableSummary,
+    );
     return {
       ...session,
       status: session.pendingCount > 0 ? "busy" : "ready",
-      revision: summary.revision,
+      revision: normalizedSummary.revision,
       summary: stableSummary,
       hierarchy,
       hierarchyNextCursor: session.hierarchy.length > 0
@@ -97,6 +104,41 @@ function applySummary(documentId: string, summary: MesoscaleSceneSummary) {
       hierarchyTotal: session.hierarchy.length > 0 ? session.hierarchyTotal : stableSummary.hierarchyTotal,
       error: null,
     };
+  });
+  const session = useMesoscaleStore.getState().sessions[documentId];
+  if (normalizedSummary.selectionTruncated && session?.hierarchy.length > 0) {
+    scheduleMesoscaleSelectionRefresh(documentId, normalizedSummary.revision);
+  }
+}
+
+function scheduleMesoscaleSelectionRefresh(documentId: string, revision: number) {
+  let refresh = selectionRefreshes.get(documentId);
+  if (refresh) {
+    refresh.revision = Math.max(refresh.revision, revision);
+    if (refresh.running) return;
+  } else {
+    refresh = { revision, running: false };
+    selectionRefreshes.set(documentId, refresh);
+  }
+  refresh.running = true;
+  queueMicrotask(() => {
+    void (async () => {
+      while (selectionRefreshes.get(documentId) === refresh) {
+        const targetRevision = refresh.revision;
+        const session = useMesoscaleStore.getState().sessions[documentId];
+        const targetCount = session?.hierarchy.length ?? 0;
+        const filter = session?.hierarchyFilter ?? "";
+        let cursor = 0;
+        while (cursor < targetCount) {
+          const result = await requestMesoscale(documentId, { type: "getHierarchyPage", filter, cursor });
+          if (refresh.revision !== targetRevision || result.kind !== "hierarchy-page" || result.nextCursor === null) break;
+          cursor = result.nextCursor;
+        }
+        if (refresh.revision === targetRevision) break;
+      }
+    })().catch(() => undefined).finally(() => {
+      if (selectionRefreshes.get(documentId) === refresh) selectionRefreshes.delete(documentId);
+    });
   });
 }
 
@@ -149,6 +191,26 @@ function installBridge() {
   if (installed || typeof window === "undefined") return;
   installed = true;
   window.addEventListener("message", (event) => {
+    if (isMesoscaleCanvasInteractionMessage(event.data)) {
+      const interaction = event.data;
+      if (frames.get(interaction.documentId) !== event.source) return;
+      applySummary(interaction.documentId, interaction.summary);
+      if (interaction.kind === "context-menu") {
+        const frame = Array.from(window.document.querySelectorAll("iframe"))
+          .find((candidate) => candidate.contentWindow === event.source);
+        const rect = frame?.getBoundingClientRect();
+        updateSession(interaction.documentId, (session) => ({
+          ...session,
+          canvasContextMenu: {
+            ...interaction.menu,
+            x: interaction.menu.x + (rect?.left ?? 0),
+            y: interaction.menu.y + (rect?.top ?? 0),
+            token: window.performance.now(),
+          },
+        }));
+      }
+      return;
+    }
     if (!isMesoscaleResponse(event.data)) return;
     const response = event.data;
     if (frames.get(response.documentId) !== event.source) return;
@@ -174,6 +236,7 @@ function installBridge() {
 export function bindMesoscaleFrame(documentId: string, frame: Window) {
   installBridge();
   frames.set(documentId, frame);
+  frameGenerations.set(documentId, (frameGenerations.get(documentId) ?? 0) + 1);
   previewMesoscaleObject(documentId, null);
   updateSession(documentId, (session) => session.status === "disposed"
     ? { ...emptySession(documentId), sceneOpen: session.sceneOpen, layoutPreference: session.layoutPreference }
@@ -200,14 +263,20 @@ export function releaseMesoscaleFrame(documentId: string, frame?: Window | null)
   previewFrames.delete(documentId);
   previewSequences.delete(documentId);
   pendingPreviewRefs.delete(documentId);
+  selectionRefreshes.delete(documentId);
   frames.delete(documentId);
+  frameGenerations.set(documentId, (frameGenerations.get(documentId) ?? 0) + 1);
   for (const [requestId, request] of pending) {
     if (request.documentId !== documentId) continue;
     pending.delete(requestId);
     window.clearTimeout(request.timer);
     request.reject(new Error("Mesoscale runtime was disposed"));
   }
-  updateSession(documentId, (session) => ({ ...session, status: "disposed", pendingCount: 0, hoveredRef: null }));
+  updateSession(documentId, (session) => ({ ...session, status: "disposed", pendingCount: 0, hoveredRef: null, canvasContextMenu: null }));
+}
+
+export function mesoscaleFrameGeneration(documentId: string) {
+  return frameGenerations.get(documentId) ?? 0;
 }
 
 export function removeMesoscaleSession(documentId: string) {
@@ -297,6 +366,12 @@ export function positionMesoscaleControls(documentId: string, placement: Mesosca
 
 export function setMesoscaleSceneOpen(documentId: string, open: boolean) {
   updateSession(documentId, (session) => session.sceneOpen === open ? session : { ...session, sceneOpen: open });
+}
+
+export function consumeMesoscaleCanvasContextMenu(documentId: string, token: number) {
+  updateSession(documentId, (session) => session.canvasContextMenu?.token === token
+    ? { ...session, canvasContextMenu: null }
+    : session);
 }
 
 export function setMesoscaleVisibilityOptimistic(documentId: string, ref: string, hidden: boolean) {

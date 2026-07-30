@@ -3,30 +3,12 @@ import { Camera, ChevronDown, ChevronRight, Download, Eye, EyeOff, Focus, Plus, 
 import type { ViewerDocument } from "../../types";
 import { loadMesoscaleHierarchy, previewMesoscaleObject, requestMesoscale, setMesoscaleVisibilityOptimistic, useMesoscaleStore } from "../../stores/mesoscale-store";
 import type { MesoscaleHierarchyObject } from "../../lib/mesoscale-contract";
-import { showNativeContextMenu } from "../native-context-menu";
-import type { MenuItemSpec } from "../menu-types";
+import { showMesoscaleAppearanceMenu, showMesoscaleObjectMenu } from "./mesoscale-object-menu";
 
 type SceneSection = "objects" | "snapshots" | "export";
-type SetStyleAction = Extract<Parameters<typeof requestMesoscale>[1], { type: "setStyle" }>;
-
-const MESOSCALE_COLORS = ["#af52de", "#0a84ff", "#40c8e0", "#32d74b", "#ffd60a", "#ff9f0a", "#ff453a", "#ff6482", "#98989d", "#f2f2f7"];
-const styleQueues = new Map<string, Promise<void>>();
-const GROUP_LONG_PRESS_MS = 520;
-const GROUP_LONG_PRESS_MOVE_PX = 6;
 
 function colorHex(color: number | null) {
   return color === null ? null : `#${color.toString(16).padStart(6, "0")}`;
-}
-
-function queueStyleChange(documentId: string, action: SetStyleAction) {
-  const previous = styleQueues.get(documentId) ?? Promise.resolve();
-  const next = previous
-    .then(() => requestMesoscale(documentId, action))
-    .then(() => undefined, () => undefined);
-  styleQueues.set(documentId, next);
-  void next.then(() => {
-    if (styleQueues.get(documentId) === next) styleQueues.delete(documentId);
-  });
 }
 
 export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) {
@@ -60,7 +42,7 @@ export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) 
           <input className="mesoscale-search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter groups and entities" aria-label="Filter scene objects" />
           <div className="mesoscale-object-summary">
             <span>{session?.hierarchyTotal.toLocaleString() ?? 0} objects</span>
-            <span>{session?.summary?.selectedRefs.length ?? 0} selected</span>
+            <span>{session?.summary?.selectedCount ?? session?.summary?.selectedRefs.length ?? 0} selected</span>
           </div>
           <div className="mesoscale-object-tree" role="tree" aria-label="Scene objects" aria-busy={session?.status === "busy"}>
             {tree.map((node) => (
@@ -134,16 +116,6 @@ function sceneObjectDetail(item: MesoscaleHierarchyObject, childCount: number) {
   return description && description.toLocaleLowerCase() !== item.label.toLocaleLowerCase() ? description : item.kind;
 }
 
-function appearanceMenu(item: MesoscaleHierarchyObject, run: (action: SetStyleAction) => void): MenuItemSpec[] {
-  const activeColor = colorHex(item.color) ?? undefined;
-  return [
-    { kind: "label", id: "mesoscale-appearance-label", text: `Appearance · ${item.label}` },
-    { kind: "swatches", id: "mesoscale-colors", colors: MESOSCALE_COLORS, activeColor, label: "Color", action: (color) => run({ type: "setStyle", ref: item.ref, color: Number.parseInt(color.slice(1), 16) }) },
-    { kind: "number", id: "mesoscale-opacity", label: "Opacity", value: item.opacity ?? 1, min: 0, max: 1, step: 0.05, action: (opacity) => run({ type: "setStyle", ref: item.ref, opacity }) },
-    { kind: "number", id: "mesoscale-emissive", label: "Emissive", value: item.emissive ?? 0, min: 0, max: 1, step: 0.05, action: (emissive) => run({ type: "setStyle", ref: item.ref, emissive }) },
-  ];
-}
-
 function SceneObjectBranch({
   documentId,
   node,
@@ -157,11 +129,13 @@ function SceneObjectBranch({
 }) {
   const { item, children } = node;
   const hovered = useMesoscaleStore((state) => state.sessions[documentId]?.hoveredRef === item.ref);
-  const longPressRef = useRef<{ pointerId: number; startX: number; startY: number; x: number; y: number; timer: number; target: HTMLButtonElement } | null>(null);
-  const suppressClickRef = useRef(false);
+  const selectedCount = useMesoscaleStore((state) => {
+    const summary = state.sessions[documentId]?.summary;
+    return summary?.selectedCount ?? summary?.selectedRefs.length ?? 0;
+  });
+  const selectionVersion = useMesoscaleStore((state) => state.sessions[documentId]?.summary?.selectionVersion);
   const rightMouseDownRef = useRef(0);
   const run = (action: Parameters<typeof requestMesoscale>[1]) => void requestMesoscale(documentId, action).catch(() => undefined);
-  const runStyle = (action: SetStyleAction) => queueStyleChange(documentId, action);
   const collapsed = collapsedRefs.has(item.ref);
   const detail = sceneObjectDetail(item, children.length);
   const ariaDetail = item.elementCount > 0 ? `${detail} elements` : detail;
@@ -170,24 +144,7 @@ function SceneObjectBranch({
     void requestMesoscale(documentId, { type: "setVisibility", ref: item.ref, visible })
       .catch(() => setMesoscaleVisibilityOptimistic(documentId, item.ref, visible));
   };
-  const showObjectMenu = (point: { x: number; y: number }, bulk = false) => {
-    void showNativeContextMenu([
-      { kind: "label", id: "mesoscale-object-label", text: `${bulk || item.kind === "group" ? "Group actions" : "Structure actions"} · ${item.label}` },
-      ...appearanceMenu(item, runStyle),
-      { kind: "separator" },
-      { kind: "item", id: "mesoscale-select", text: item.kind === "group" ? "Select all in group" : "Select", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "replace" }) },
-      { kind: "item", id: "mesoscale-add-selection", text: "Add to Selection", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "extend" }) },
-      { kind: "item", id: "mesoscale-toggle-selection", text: item.selected ? "Remove from Selection" : "Toggle Selection", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "toggle" }) },
-      { kind: "separator" },
-      { kind: "item", id: "mesoscale-focus", text: "Focus", disabled: item.kind === "mesh", action: () => run({ type: "focusObject", ref: item.ref }) },
-      { kind: "item", id: "mesoscale-isolate", text: "Isolate", action: () => run({ type: "isolateObjects", refs: [item.ref] }) },
-      { kind: "item", id: "mesoscale-visibility", text: item.hidden ? "Show" : "Hide", action: () => setVisible(item.hidden) },
-      ...(item.selected ? [
-        { kind: "separator" as const },
-        { kind: "item" as const, id: "mesoscale-clear-selection", text: "Clear Selection", action: () => run({ type: "setSelection", mode: "clear" }) },
-      ] : []),
-    ], point, { forceWeb: true });
-  };
+  const showObjectMenu = (point: { x: number; y: number }) => { void showMesoscaleObjectMenu(documentId, item, selectedCount, point, selectionVersion); };
   const openContextMenu = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -201,48 +158,7 @@ function SceneObjectBranch({
     event.preventDefault();
     event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
-    void showNativeContextMenu(appearanceMenu(item, runStyle), { x: rect.right + 6, y: rect.top }, { forceWeb: true });
-  };
-  const clearLongPress = () => {
-    const press = longPressRef.current;
-    if (!press) return;
-    window.clearTimeout(press.timer);
-    try {
-      if (press.target.hasPointerCapture(press.pointerId)) press.target.releasePointerCapture(press.pointerId);
-    } catch { /* pointer capture may already be released */ }
-    longPressRef.current = null;
-  };
-  useEffect(() => clearLongPress, []);
-  const startLongPress = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0 || item.kind !== "group") return;
-    clearLongPress();
-    const press = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      x: event.clientX,
-      y: event.clientY,
-      timer: 0,
-      target: event.currentTarget,
-    };
-    press.timer = window.setTimeout(() => {
-      if (longPressRef.current !== press) return;
-      longPressRef.current = null;
-      suppressClickRef.current = true;
-      try {
-        if (press.target.hasPointerCapture(press.pointerId)) press.target.releasePointerCapture(press.pointerId);
-      } catch { /* pointer capture may already be released */ }
-      previewMesoscaleObject(documentId, item.ref);
-      void requestMesoscale(documentId, { type: "setSelection", ref: item.ref, mode: "replace" })
-        .then(() => showObjectMenu({ x: press.x, y: press.y }, true), () => undefined);
-    }, GROUP_LONG_PRESS_MS);
-    longPressRef.current = press;
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-  const moveLongPress = (event: React.PointerEvent<HTMLButtonElement>) => {
-    const press = longPressRef.current;
-    if (!press || press.pointerId !== event.pointerId) return;
-    if (Math.abs(event.clientX - press.startX) > GROUP_LONG_PRESS_MOVE_PX || Math.abs(event.clientY - press.startY) > GROUP_LONG_PRESS_MOVE_PX) clearLongPress();
+    void showMesoscaleAppearanceMenu(documentId, item, { x: rect.right + 6, y: rect.top });
   };
   const actualColor = colorHex(item.color);
   return (
@@ -270,19 +186,7 @@ function SceneObjectBranch({
           className="mesoscale-object-main"
           aria-label={`${item.label}, ${ariaDetail}`}
           disabled={item.kind === "mesh"}
-          onPointerDown={startLongPress}
-          onPointerMove={moveLongPress}
-          onPointerUp={clearLongPress}
-          onPointerCancel={clearLongPress}
-          onClick={(event) => {
-            if (suppressClickRef.current) {
-              suppressClickRef.current = false;
-              event.preventDefault();
-              event.stopPropagation();
-              return;
-            }
-            run({ type: "setSelection", ref: item.ref, mode: "replace" });
-          }}
+          onClick={() => run({ type: "setSelection", ref: item.ref, mode: "replace" })}
           onDoubleClick={() => run({ type: "focusObject", ref: item.ref })}
           onFocus={() => previewMesoscaleObject(documentId, item.ref)}
           onBlur={() => previewMesoscaleObject(documentId, null)}

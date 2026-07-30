@@ -13,6 +13,7 @@ import { isMesoscaleViewerDocument } from "../../../lib/mesoscale-documents";
 import { bindMesoscaleFrame, releaseMesoscaleFrame, setMesoscaleSceneOpen, useMesoscaleStore } from "../../../stores/mesoscale-store";
 import { MesoscaleToolbar } from "../../mesoscale/mesoscale-toolbar";
 import { MesoscaleSceneOverlay, MesoscaleSceneToggle } from "../../mesoscale/mesoscale-scene-overlay";
+import { MesoscaleCanvasContextMenu } from "../../mesoscale/mesoscale-canvas-context-menu";
 
 export type FileLocation = { kind: "file"; documentId?: string; path: string };
 
@@ -194,6 +195,7 @@ function StructureViewerSurface({
         onViewerLoad={handleViewerLoad}
         onStagingLoad={(identity, frame) => sourceEditing?.stagingLoaded(document, identity, frame)}
       />
+      {mesoscale ? <MesoscaleCanvasContextMenu document={document} /> : null}
       {mesoscale && mesoscaleSceneOpen ? <MesoscaleSceneOverlay document={document} onClose={() => setMesoscaleSceneOpen(document.id, false)} /> : null}
       {mesoscale ? (
         <MesoscaleSceneToggle

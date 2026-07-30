@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(path, "utf8");
-const [filePage, dock, toolbar, rail, scene, overlay, info, store, documentTypes, rustRuntime] = await Promise.all([
+const [filePage, dock, toolbar, rail, scene, objectMenu, overlay, info, store, documentTypes, rustRuntime] = await Promise.all([
   read("apps/desktop/src/components/editor-area/page-kinds/file.tsx"),
   read("apps/desktop/src/components/dock-panel.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-toolbar.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-viewport-rail.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-scene-panel.tsx"),
+  read("apps/desktop/src/components/mesoscale/mesoscale-object-menu.ts"),
   read("apps/desktop/src/components/mesoscale/mesoscale-scene-overlay.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-info-panel.tsx"),
   read("apps/desktop/src/stores/mesoscale-store.ts"),
@@ -22,6 +23,7 @@ assert.match(filePage, /bindMesoscaleFrame/);
 assert.match(filePage, /MesoscaleToolbar/);
 assert.match(filePage, /MesoscaleSceneOverlay/);
 assert.match(filePage, /MesoscaleSceneToggle/);
+assert.match(filePage, /MesoscaleCanvasContextMenu/);
 assert.doesNotMatch(filePage, /MesoscaleViewportControls/);
 assert.match(filePage, /mesoscale-left-panel-open/);
 assert.match(filePage, /mesoscale-right-panel-open/);
@@ -34,7 +36,7 @@ assert.match(overlay, /MesoscaleScenePanel/);
 assert.match(overlay, /context-menu-content/);
 assert.match(toolbar, /type: "setGraphics"/);
 for (const action of ["getHierarchyPage", "setSelection", "focusObject", "setVisibility", "isolateObjects", "setStyle", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState"]) {
-  assert.ok(scene.includes(`type: "${action}"`) || store.includes(`type: "${action}"`), `Scene dock must expose ${action}`);
+  assert.ok(scene.includes(`type: "${action}"`) || objectMenu.includes(`type: "${action}"`) || store.includes(`type: "${action}"`), `Scene dock must expose ${action}`);
 }
 assert.match(info, /sourceSha256/);
 assert.match(store, /expectedRevision/);
@@ -42,6 +44,7 @@ assert.match(store, /frames\.get\(response\.documentId\) !== event\.source/);
 assert.match(store, /requestAnimationFrame/);
 assert.match(store, /burette-mesoscale-preview/);
 assert.match(store, /burette-mesoscale-chrome/);
+assert.match(store, /isMesoscaleCanvasInteractionMessage/);
 assert.match(store, /positionMesoscaleControls/);
 assert.match(store, /sceneOpen: session\.sceneOpen/);
 assert.match(store, /layoutPreference/);
@@ -53,17 +56,20 @@ assert.match(scene, /role="tree"/);
 assert.match(scene, /role="treeitem"/);
 assert.match(scene, /onContextMenu/);
 assert.match(scene, /onMouseDown/);
-assert.match(scene, /showNativeContextMenu/);
-assert.match(scene, /forceWeb: true/);
-assert.match(scene, /GROUP_LONG_PRESS_MS/);
-assert.match(scene, /setPointerCapture/);
-assert.match(scene, /Select all in group/);
-assert.match(scene, /Structure actions/);
+assert.match(objectMenu, /showNativeContextMenu/);
+assert.match(objectMenu, /forceWeb: true/);
+assert.doesNotMatch(scene, /GROUP_LONG_PRESS_MS/);
+assert.match(objectMenu, /Select all in group/);
+assert.match(objectMenu, /Structure actions/);
 assert.match(scene, /mesoscale-tree-bar/);
 assert.match(scene, /mesoscale-tree-color/);
-assert.match(scene, /kind: "swatches"/);
-assert.match(scene, /styleQueues/);
-assert.match(scene, /queueStyleChange/);
+assert.match(objectMenu, /kind: "swatches"/);
+assert.match(objectMenu, /mutationQueues/);
+assert.match(objectMenu, /queueMutation/);
+assert.match(objectMenu, /mesoscaleFrameGeneration/);
+assert.match(store, /selectionRefreshes/);
+assert.match(objectMenu, /Selection actions/);
+assert.match(objectMenu, /isolateSelection/);
 assert.doesNotMatch(scene, /mesoscale-style-editor/);
 assert.match(toolbar, /setPreference\("theme"/);
 assert.match(toolbar, /Switch to \$\{nextTheme\} theme/);

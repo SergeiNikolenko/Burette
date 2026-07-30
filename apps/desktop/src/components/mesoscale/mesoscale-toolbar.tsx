@@ -129,7 +129,7 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
       observer.disconnect();
       window.removeEventListener("resize", update);
     };
-  }, [collapsed, document.id, position, session?.status, session?.summary?.layout.left, session?.summary?.layout.right, session?.summary?.selectedRefs.length]);
+  }, [collapsed, document.id, position, session?.status, session?.summary?.layout.left, session?.summary?.layout.right, session?.summary?.selectedCount]);
 
   const onGripPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;

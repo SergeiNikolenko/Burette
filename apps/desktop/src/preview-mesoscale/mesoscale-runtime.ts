@@ -1,15 +1,20 @@
 import { MesoscaleExplorer } from "molstar/lib/apps/mesoscale-explorer/app.js";
+import { MesoFocusLoci } from "molstar/lib/apps/mesoscale-explorer/behavior/camera.js";
 import { MesoscaleState, getAllEntities, getAllGroups, getEntities, getEntityDescription, getEntityLabel, getRoots, setGraphicsCanvas3DProps } from "molstar/lib/apps/mesoscale-explorer/data/state.js";
 import { LoadModel, openState } from "molstar/lib/apps/mesoscale-explorer/ui/states.js";
 import { PluginCommands } from "molstar/lib/mol-plugin/commands.js";
-import { Structure } from "molstar/lib/mol-model/structure.js";
+import { Structure, StructureElement } from "molstar/lib/mol-model/structure.js";
 import { EveryLoci, Loci } from "molstar/lib/mol-model/loci.js";
 import { Sphere3D } from "molstar/lib/mol-math/geometry.js";
+import { Vec2 } from "molstar/lib/mol-math/linear-algebra.js";
 import { PluginStateSnapshotManager } from "molstar/lib/mol-plugin-state/manager/snapshots.js";
+import { StateSelection } from "molstar/lib/mol-state/index.js";
 import { Asset } from "molstar/lib/mol-util/assets.js";
 import { Unzip } from "molstar/lib/mol-util/zip/zip.js";
 import { Color } from "molstar/lib/mol-util/color/index.js";
+import { Binding } from "molstar/lib/mol-util/binding.js";
 import { MarkerAction } from "molstar/lib/mol-util/marker-action.js";
+import { createMesoscaleCanvasInteractionController, type MesoscaleCanvasPoint } from "./mesoscale-canvas-interaction";
 import { mesoscaleZipEntries, validateGenericMesoscaleManifest, validateMesoscaleArchiveEntries } from "./mesoscale-package";
 import {
   MESOSCALE_API_VERSION,
@@ -191,6 +196,8 @@ class MesoscaleRuntimeApi {
   readonly explorer: MesoscaleExplorer;
   loadReport: Record<string, unknown> | null = null;
   revision = 0;
+  selectionVersion = 0;
+  private selectionMutationDepth = 0;
   readonly selectedRefs = new Set<string>();
   readonly visibilityOverrides = new Map<string, boolean>();
   readonly layoutRegions: Record<MesoscaleLayoutRegion, boolean> = { left: false, right: false };
@@ -242,6 +249,7 @@ class MesoscaleRuntimeApi {
 
   sceneSummary(): MesoscaleSceneSummary {
     const observed = this.observe();
+    const selectedRefs = Array.from(this.selectedRefs).slice(0, MAX_OBSERVED_ITEMS);
     const hierarchyPreview = [
       ...observed.groups.map((item: ReturnType<typeof groupSummary>) => ({
         ...item,
@@ -266,7 +274,10 @@ class MesoscaleRuntimeApi {
       graphics: observed.graphics as GraphicsMode | null,
       filter: observed.filter,
       counts: observed.counts,
-      selectedRefs: Array.from(this.selectedRefs).slice(0, MAX_OBSERVED_ITEMS),
+      selectedRefs,
+      selectedCount: this.selectedRefs.size,
+      selectionTruncated: selectedRefs.length < this.selectedRefs.size,
+      selectionVersion: this.selectionVersion,
       selectionMode: Boolean(this.plugin.selectionMode),
       illumination: Boolean(this.plugin.canvas3d?.props.illumination.enabled),
       layout: { ...this.layoutRegions },
@@ -322,6 +333,28 @@ class MesoscaleRuntimeApi {
 
   private changed() {
     this.revision += 1;
+  }
+
+  syncSelectedRefs() {
+    const next = new Set<string>();
+    const selection = this.plugin.managers.structure.selection;
+    for (const cell of uniqueCells(getAllEntities(this.plugin)) as any[]) {
+      const structure = cell?.obj?.data?.sourceData;
+      if (!(structure instanceof Structure)) continue;
+      const loci = selection.getLoci(structure);
+      if (!StructureElement.Loci.is(loci) || StructureElement.Loci.isEmpty(loci)) continue;
+      const ref = String(cell?.transform?.ref || "");
+      if (ref) next.add(ref);
+    }
+    if (next.size === this.selectedRefs.size && Array.from(next).every((ref) => this.selectedRefs.has(ref))) return false;
+    this.selectedRefs.clear();
+    for (const ref of next) this.selectedRefs.add(ref);
+    this.selectionVersion += 1;
+    return true;
+  }
+
+  noteExternalSelectionChange() {
+    this.changed();
   }
 
   async resetCamera() {
@@ -457,51 +490,116 @@ class MesoscaleRuntimeApi {
     return this.observe();
   }
 
-  async setVisibility(ref: string, visible: boolean) {
-    const cell = [...uniqueCells(getAllGroups(this.plugin)), ...uniqueCells(getAllEntities(this.plugin))]
-      .find((candidate: any) => candidate?.transform?.ref === ref);
+  private async setCellVisibility(cell: any, visible: boolean) {
+    const ref = String(cell?.transform?.ref || "");
     if (!cell) throw new Error(`Mesoscale object not found: ${ref}`);
     if (!cell.parent) throw new Error(`Mesoscale object has no state owner: ${ref}`);
     if (Boolean(cell.state?.isHidden) === visible) {
       await PluginCommands.State.ToggleVisibility(this.plugin, { state: cell.parent, ref });
     }
     this.visibilityOverrides.set(ref, !visible);
+  }
+
+  async setVisibility(ref: string, visible: boolean) {
+    const cell = [...uniqueCells(getAllGroups(this.plugin)), ...uniqueCells(getAllEntities(this.plugin))]
+      .find((candidate: any) => candidate?.transform?.ref === ref);
+    if (!cell) throw new Error(`Mesoscale object not found: ${ref}`);
+    await this.setCellVisibility(cell, visible);
     this.changed();
     return this.observe();
+  }
+
+  private mutateSelection(ref: string, mode: "replace" | "extend" | "toggle" = "replace") {
+    const cells = this.objectEntities(ref).filter((cell: any) => cell?.obj?.data?.sourceData instanceof Structure) as any[];
+    if (cells.length === 0) throw new Error(`Object is not selectable as a molecular structure: ${ref}`);
+    const selection = this.plugin.managers.interactivity.lociSelects;
+    const before = new Set(this.selectedRefs);
+    this.selectionMutationDepth += 1;
+    try {
+      if (mode === "replace") {
+        selection.deselectAll();
+        this.selectedRefs.clear();
+      }
+      for (const cell of cells) {
+        const loci = Structure.toStructureElementLoci(cell.obj.data.sourceData);
+        const entityRef = String(cell?.transform?.ref || "");
+        if (mode === "toggle") {
+          selection.toggle({ loci }, false);
+          if (this.selectedRefs.has(entityRef)) this.selectedRefs.delete(entityRef);
+          else if (entityRef) this.selectedRefs.add(entityRef);
+        } else {
+          selection.select({ loci }, false);
+          if (entityRef) this.selectedRefs.add(entityRef);
+        }
+      }
+    } finally {
+      this.selectionMutationDepth -= 1;
+    }
+    if (before.size !== this.selectedRefs.size || Array.from(before).some((entityRef) => !this.selectedRefs.has(entityRef))) {
+      this.selectionVersion += 1;
+    }
+  }
+
+  selectEntityInteractive(ref: string, mode: "replace" | "extend" | "toggle" = "replace") {
+    this.mutateSelection(ref, mode);
+    this.changed();
   }
 
   async selectEntity(ref: string, mode: "replace" | "extend" | "toggle" = "replace") {
-    const cells = this.objectEntities(ref).filter((cell: any) => cell?.obj?.data?.sourceData instanceof Structure) as any[];
-    if (cells.length === 0) throw new Error(`Object is not selectable as a molecular structure: ${ref}`);
-    const entityRefs = cells.map((cell) => String(cell?.transform?.ref || "")).filter(Boolean);
-    const selectingGroup = entityRefs.length !== 1 || entityRefs[0] !== ref;
-    const selection = this.plugin.managers.interactivity.lociSelects;
-    if (mode === "replace") {
-      selection.deselectAll();
-      this.selectedRefs.clear();
-    }
-    for (const cell of cells) {
-      const loci = Structure.toStructureElementLoci(cell.obj.data.sourceData);
-      const entityRef = String(cell?.transform?.ref || "");
-      if (mode === "toggle") {
-        selection.toggle({ loci }, false);
-        if (this.selectedRefs.has(entityRef)) this.selectedRefs.delete(entityRef);
-        else this.selectedRefs.add(entityRef);
-      } else {
-        selection.selectJoin({ loci }, false);
-        if (entityRef) this.selectedRefs.add(entityRef);
-      }
-    }
-    if (selectingGroup) this.selectedRefs.delete(ref);
+    this.mutateSelection(ref, mode);
     this.changed();
     return this.observe();
   }
 
+  pickEntityRef(point: MesoscaleCanvasPoint) {
+    const canvas = this.plugin.canvas3d;
+    if (!canvas) return null;
+    const pick = canvas.identify(Vec2.create(point.x, point.y));
+    if (!pick) return null;
+    const current = canvas.getLoci(pick.id);
+    const pickedStructure = StructureElement.Loci.is(current.loci)
+      ? current.loci.structure
+      : current.loci.kind === "structure-loci" ? current.loci.structure : null;
+    const cell = uniqueCells(getAllEntities(this.plugin)).find((candidate: any) => {
+      const candidateRepresentation = candidate?.obj?.data?.repr;
+      return candidate?.obj?.data?.sourceData instanceof Structure
+      && (candidateRepresentation === current.repr
+        || candidateRepresentation?.renderObjects?.some((renderObject: any) => renderObject?.id === pick.id.objectId)
+        || Boolean(pickedStructure && (
+          candidate.obj.data.sourceData === pickedStructure
+          || Structure.areEquivalent(candidate.obj.data.sourceData, pickedStructure)
+        )));
+    });
+    return cell ? String(cell.transform.ref || "") || null : null;
+  }
+
+  canvasItem(ref: string): MesoscaleHierarchyObject | null {
+    const allGroups = uniqueCells(getAllGroups(this.plugin));
+    const cell = uniqueCells(getAllEntities(this.plugin)).find((candidate: any) => candidate?.transform?.ref === ref);
+    if (!cell) return null;
+    const summary = entitySummary(this.plugin, cell, entityGroupParentRef(this.plugin, cell, allGroups));
+    return {
+      ...summary,
+      hidden: this.visibilityOverrides.get(summary.ref) ?? summary.hidden,
+      selected: this.selectedRefs.has(summary.ref),
+    };
+  }
+
   clearSelection() {
-    this.plugin.managers.interactivity.lociSelects.deselectAll();
+    this.selectionMutationDepth += 1;
+    try {
+      this.plugin.managers.interactivity.lociSelects.deselectAll();
+    } finally {
+      this.selectionMutationDepth -= 1;
+    }
+    if (this.selectedRefs.size > 0) this.selectionVersion += 1;
     this.selectedRefs.clear();
     this.changed();
     return this.observe();
+  }
+
+  get ownsSelectionMutation() {
+    return this.selectionMutationDepth > 0;
   }
 
   async focusEntity(ref: string) {
@@ -523,8 +621,7 @@ class MesoscaleRuntimeApi {
     return this.observe();
   }
 
-  async styleEntity(ref: string, values: Record<string, unknown>) {
-    const cells = this.objectEntities(ref);
+  private async styleCells(cells: any[], values: Record<string, unknown>) {
     const opacity = values.opacity === undefined ? undefined : Math.min(1, Math.max(0, Number(values.opacity)));
     const emissive = values.emissive === undefined ? undefined : Math.min(1, Math.max(0, Number(values.emissive)));
     const color = values.color === undefined ? undefined : Number(values.color);
@@ -543,9 +640,34 @@ class MesoscaleRuntimeApi {
         }
         if (clipObjects) params.clip = { ...(params.clip || {}), objects: clipObjects };
       }).commit();
+      this.changed();
     }
+  }
+
+  async styleEntity(ref: string, values: Record<string, unknown>) {
+    await this.styleCells(this.objectEntities(ref), values);
     await MesoscaleState.set(this.plugin, { graphics: "custom" });
-    this.changed();
+    return this.observe();
+  }
+
+  async styleSelection(values: Record<string, unknown>) {
+    if (Number.isFinite(values.selectionVersion) && Number(values.selectionVersion) !== this.selectionVersion) {
+      throw new Error("Mesoscale selection changed before appearance was applied");
+    }
+    if (this.selectedRefs.size === 0) throw new Error("No Mesoscale structures are selected");
+    const cells = uniqueCells(Array.from(this.selectedRefs).flatMap((ref) => this.objectEntities(ref)));
+    await this.styleCells(cells, values);
+    await MesoscaleState.set(this.plugin, { graphics: "custom" });
+    return this.observe();
+  }
+
+  async setSelectionVisibility(visible: boolean) {
+    if (this.selectedRefs.size === 0) throw new Error("No Mesoscale structures are selected");
+    const cells = uniqueCells(Array.from(this.selectedRefs).flatMap((ref) => this.objectEntities(ref)));
+    for (const cell of cells) {
+      await this.setCellVisibility(cell, visible);
+      this.changed();
+    }
     return this.observe();
   }
 
@@ -566,6 +688,8 @@ class MesoscaleRuntimeApi {
     if (!snapshot) throw new Error(`Mesoscale snapshot not found: ${id}`);
     await this.plugin.state.setSnapshot(snapshot);
     this.selectedRefs.clear();
+    this.syncSelectedRefs();
+    this.selectionVersion += 1;
     this.visibilityOverrides.clear();
     this.changed();
     return this.observe();
@@ -621,8 +745,22 @@ class MesoscaleRuntimeApi {
       if (!cell?.parent || Boolean(cell.state?.isHidden) !== visible) continue;
       await PluginCommands.State.ToggleVisibility(this.plugin, { state: cell.parent, ref: cell.transform.ref });
       this.visibilityOverrides.set(String(cell.transform.ref), !visible);
+      this.changed();
     }
-    this.changed();
+    return this.observe();
+  }
+
+  async isolateSelection() {
+    if (this.selectedRefs.size === 0) throw new Error("No Mesoscale structures are selected");
+    const requested = new Set(this.selectedRefs);
+    const cells = [...uniqueCells(getAllGroups(this.plugin)), ...uniqueCells(getAllEntities(this.plugin))];
+    for (const cell of cells as any[]) {
+      const visible = this.isUnderRef(cell, requested);
+      if (!cell?.parent || Boolean(cell.state?.isHidden) !== visible) continue;
+      await PluginCommands.State.ToggleVisibility(this.plugin, { state: cell.parent, ref: cell.transform.ref });
+      this.visibilityOverrides.set(String(cell.transform.ref), !visible);
+      this.changed();
+    }
     return this.observe();
   }
 
@@ -667,6 +805,9 @@ class MesoscaleRuntimeApi {
         if (action.mode === "clear" || !action.ref) this.clearSelection();
         else await this.selectEntity(action.ref, action.mode ?? "replace");
         return this.sceneSummary();
+      case "setSelectionStyle": await this.styleSelection(action); return this.sceneSummary();
+      case "setSelectionVisibility": await this.setSelectionVisibility(action.visible); return this.sceneSummary();
+      case "isolateSelection": await this.isolateSelection(); return this.sceneSummary();
       case "setSelectionMode": this.setSelectionMode(action.enabled); return this.sceneSummary();
       case "setIllumination": this.setIllumination(action.enabled); return this.sceneSummary();
       case "setLayoutRegion": await this.setLayoutRegion(action.region, action.visible); return this.sceneSummary();
@@ -692,7 +833,7 @@ class MesoscaleRuntimeApi {
       case "getCapabilities": return {
         kind: "capabilities",
         apiVersion: MESOSCALE_API_VERSION,
-        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
+        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
         graphicsModes: ["ultra", "quality", "balanced", "performance", "custom"],
         hierarchyPageLimit: MESOSCALE_HIERARCHY_PAGE_LIMIT,
       };
@@ -755,6 +896,16 @@ function applyHostedUi(hosted: boolean) {
   document.head.appendChild(style);
 }
 
+async function applyHostedInteractionBindings(runtime: MesoscaleRuntimeApi, hosted: boolean) {
+  if (!hosted) return;
+  const behaviors = runtime.plugin.state.behaviors.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
+  for (const behavior of behaviors) {
+    await runtime.plugin.state.behaviors.build().to(behavior).update((params: any) => {
+      params.bindings = { ...params.bindings, clickCenterFocus: Binding.Empty };
+    }).commit();
+  }
+}
+
 function applyControlPlacement(placement: MesoscaleControlPlacement) {
   document.body?.classList.add("burette-mesoscale-owned-chrome");
   const controls = document.querySelector<HTMLElement>(".msp-viewport-controls");
@@ -763,7 +914,309 @@ function applyControlPlacement(placement: MesoscaleControlPlacement) {
   controls.dataset.buretteHostVisible = placement.visible ? "1" : "0";
 }
 
+function postCanvasInteraction(runtime: MesoscaleRuntimeApi, message: Record<string, unknown>) {
+  const documentId = window.BuretteConfig?.documentId;
+  if (!documentId || !window.parent || window.parent === window) return;
+  window.parent.postMessage({
+    source: "burette-mesoscale-interaction",
+    apiVersion: MESOSCALE_API_VERSION,
+    documentId,
+    ...message,
+  }, "*");
+}
+
+function installMesoscaleSelectionSync(runtime: MesoscaleRuntimeApi) {
+  let queued = false;
+  const subscription = runtime.plugin.managers.structure.selection.events.changed.subscribe(() => {
+    if (runtime.ownsSelectionMutation) return;
+    if (queued) return;
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      if (!runtime.syncSelectedRefs()) return;
+      runtime.noteExternalSelectionChange();
+      postCanvasInteraction(runtime, { kind: "selection", summary: runtime.sceneSummary() });
+    });
+  });
+  return () => subscription.unsubscribe();
+}
+
+function installMesoscaleCanvasInteractions(runtime: MesoscaleRuntimeApi) {
+  const canvas = runtime.plugin.canvas3dContext?.canvas;
+  if (!canvas) return () => undefined;
+  let moveFrame = 0;
+  let pendingPoint: MesoscaleCanvasPoint | null = null;
+  let suppressClick = false;
+  let suppressClickTimer = 0;
+  let suppressPrimaryMouse = false;
+  let suppressPrimaryMouseTimer = 0;
+  let suppressContextMenu = false;
+  let suppressContextMenuTimer = 0;
+  let contextPointer: { pointerId: number; startX: number; startY: number; moved: boolean; ref: string } | null = null;
+  let contextMouse: { startX: number; startY: number; moved: boolean; ref: string } | null = null;
+  let mouseGesture = false;
+  let activePointerId: number | null = null;
+  const hasHostMenu = Boolean(window.BuretteConfig?.documentId && window.parent && window.parent !== window);
+  const point = (event: PointerEvent | MouseEvent): MesoscaleCanvasPoint => {
+    const rect = canvas.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+  const emitSelection = () => postCanvasInteraction(runtime, { kind: "selection", summary: runtime.sceneSummary() });
+  const controller = createMesoscaleCanvasInteractionController({
+    pick: (target) => runtime.pickEntityRef(target),
+    select: (ref, mode) => {
+      try {
+        runtime.selectEntityInteractive(ref, mode);
+        emitSelection();
+      } catch { /* stale pick after a scene update */ }
+    },
+    isSelected: (ref) => runtime.selectedRefs.has(ref),
+    openContextMenu: (ref, target) => {
+      const item = runtime.canvasItem(ref);
+      if (!item) return;
+      const rect = canvas.getBoundingClientRect();
+      postCanvasInteraction(runtime, {
+        kind: "context-menu",
+        menu: { item, selectedCount: runtime.selectedRefs.size, x: target.x + rect.left, y: target.y + rect.top },
+        summary: runtime.sceneSummary(),
+      });
+    },
+  });
+  const stop = (event: Event, preventDefault = true) => {
+    if (preventDefault) event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  const armContextMenuSuppression = () => {
+    suppressContextMenu = true;
+    window.clearTimeout(suppressContextMenuTimer);
+    suppressContextMenuTimer = window.setTimeout(() => { suppressContextMenu = false; }, 1_000);
+  };
+  const clearContextMenuSuppression = () => {
+    suppressContextMenu = false;
+    window.clearTimeout(suppressContextMenuTimer);
+  };
+  const flushMove = () => {
+    moveFrame = 0;
+    if (!pendingPoint) return;
+    const target = pendingPoint;
+    pendingPoint = null;
+    controller.pointerMove(target);
+  };
+  const finish = (event?: PointerEvent | MouseEvent, includePending = true) => {
+    const wasActive = controller.active;
+    if (moveFrame) cancelAnimationFrame(moveFrame);
+    moveFrame = 0;
+    if (wasActive && includePending && pendingPoint) {
+      controller.pointerMove(pendingPoint);
+    }
+    pendingPoint = null;
+    if (wasActive) controller.pointerUp();
+    canvas.classList.remove("burette-mesoscale-sweep-selecting");
+    if (event instanceof PointerEvent) {
+      try { if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId); } catch { /* capture already ended */ }
+    }
+    activePointerId = null;
+    window.clearTimeout(suppressClickTimer);
+    suppressClick = event?.type === "pointerup" || event?.type === "mouseup";
+    if (suppressClick) suppressClickTimer = window.setTimeout(() => { suppressClick = false; }, 0);
+    window.clearTimeout(suppressPrimaryMouseTimer);
+    suppressPrimaryMouseTimer = window.setTimeout(() => { suppressPrimaryMouse = false; }, 0);
+    return wasActive;
+  };
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.target !== canvas) return;
+    if (event.button === 2) clearContextMenuSuppression();
+    const target = point(event);
+    const contextRef = event.button === 2 && hasHostMenu ? runtime.pickEntityRef(target) : null;
+    if (contextRef) {
+      contextPointer = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false, ref: contextRef };
+      return;
+    }
+    if (event.button !== 0 || !runtime.plugin.selectionMode) return;
+    const started = controller.pointerDown(event.button, target, event.shiftKey || event.ctrlKey || event.metaKey);
+    if (!started) {
+      runtime.clearSelection();
+      emitSelection();
+    }
+    stop(event);
+    suppressPrimaryMouse = true;
+    activePointerId = event.pointerId;
+    if (started) canvas.classList.add("burette-mesoscale-sweep-selecting");
+    try { canvas.setPointerCapture(event.pointerId); } catch { /* capture is best-effort */ }
+  };
+  const onPointerMove = (event: PointerEvent) => {
+    if (contextPointer && event.pointerId === contextPointer.pointerId && !contextPointer.moved) {
+      contextPointer.moved = Math.hypot(event.clientX - contextPointer.startX, event.clientY - contextPointer.startY) > 6;
+    }
+    if (contextPointer && event.pointerId === contextPointer.pointerId) {
+      // Let Mol* receive the original secondary-button stream so right-drag
+      // remains native camera navigation. We only arbitrate click vs drag.
+      return;
+    }
+    if (event.pointerId !== activePointerId) return;
+    stop(event);
+    if (!controller.active) return;
+    pendingPoint = point(event);
+    if (!moveFrame) moveFrame = requestAnimationFrame(flushMove);
+  };
+  const onPointerUp = (event: PointerEvent) => {
+    if (contextPointer && event.pointerId === contextPointer.pointerId) {
+      const gesture = contextPointer;
+      contextPointer = null;
+      armContextMenuSuppression();
+      if (!gesture.moved) {
+        controller.contextMenuFor(gesture.ref, point(event));
+      }
+      return;
+    }
+    if (event.pointerId !== activePointerId) return;
+    stop(event);
+    if (controller.active) pendingPoint = point(event);
+    finish(event);
+  };
+  const onPointerCancel = (event: PointerEvent) => {
+    if (contextPointer?.pointerId === event.pointerId) {
+      contextPointer = null;
+    }
+    if (event.pointerId !== activePointerId) return;
+    stop(event);
+    suppressPrimaryMouse = false;
+    pendingPoint = null;
+    finish(event);
+  };
+  const onLostPointerCapture = (event: PointerEvent) => {
+    if (event.pointerId !== activePointerId) return;
+    pendingPoint = null;
+    suppressPrimaryMouse = false;
+    finish(undefined, false);
+  };
+  const onContextMenu = (event: MouseEvent) => {
+    if (suppressContextMenu && event.target === canvas) {
+      clearContextMenuSuppression();
+      stop(event);
+      return;
+    }
+    if (contextPointer && event.target === canvas) {
+      stop(event);
+      return;
+    }
+    if (contextMouse && event.target === canvas) {
+      stop(event);
+      return;
+    }
+    if (!hasHostMenu || event.target !== canvas || !controller.contextMenu(point(event))) return;
+    stop(event);
+  };
+  const onClick = (event: MouseEvent) => {
+    if (event.target !== canvas || !suppressClick) return;
+    suppressClick = false;
+    window.clearTimeout(suppressClickTimer);
+    window.clearTimeout(suppressPrimaryMouseTimer);
+    stop(event);
+  };
+  const onMouseDown = (event: MouseEvent) => {
+    if (event.target !== canvas) return;
+    if (event.button === 2 && hasHostMenu) {
+      clearContextMenuSuppression();
+      if (contextPointer) return;
+      const target = point(event);
+      const ref = runtime.pickEntityRef(target);
+      if (ref) contextMouse = { startX: event.clientX, startY: event.clientY, moved: false, ref };
+      return;
+    }
+    if (event.button !== 0) return;
+    if (suppressPrimaryMouse) {
+      stop(event);
+      return;
+    }
+    if (!runtime.plugin.selectionMode) return;
+    const started = controller.pointerDown(event.button, point(event), event.shiftKey || event.ctrlKey || event.metaKey);
+    if (!started) {
+      runtime.clearSelection();
+      emitSelection();
+    }
+    mouseGesture = true;
+    if (started) canvas.classList.add("burette-mesoscale-sweep-selecting");
+    stop(event);
+  };
+  const onMouseMove = (event: MouseEvent) => {
+    if (contextMouse && (event.buttons & 2) !== 0 && !contextMouse.moved) {
+      contextMouse.moved = Math.hypot(event.clientX - contextMouse.startX, event.clientY - contextMouse.startY) > 6;
+    }
+    if (mouseGesture) {
+      stop(event);
+      if (!controller.active) return;
+      pendingPoint = point(event);
+      if (!moveFrame) moveFrame = requestAnimationFrame(flushMove);
+      return;
+    }
+    if (!suppressPrimaryMouse || (event.buttons & 1) === 0) return;
+    stop(event);
+  };
+  const onMouseUp = (event: MouseEvent) => {
+    if (event.button === 2 && contextMouse) {
+      const gesture = contextMouse;
+      contextMouse = null;
+      armContextMenuSuppression();
+      if (!gesture.moved) controller.contextMenuFor(gesture.ref, point(event));
+      return;
+    }
+    if (event.button !== 0) return;
+    if (mouseGesture) {
+      mouseGesture = false;
+      stop(event);
+      if (controller.active) pendingPoint = point(event);
+      finish(event);
+      return;
+    }
+    if (!suppressPrimaryMouse) return;
+    stop(event);
+    suppressPrimaryMouse = false;
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && (controller.active || mouseGesture || activePointerId !== null)) {
+      mouseGesture = false;
+      suppressPrimaryMouse = false;
+      pendingPoint = null;
+      finish(undefined, false);
+    }
+  };
+  document.addEventListener("pointerdown", onPointerDown, true);
+  document.addEventListener("pointermove", onPointerMove, true);
+  document.addEventListener("pointerup", onPointerUp, true);
+  document.addEventListener("pointercancel", onPointerCancel, true);
+  document.addEventListener("mousedown", onMouseDown, true);
+  document.addEventListener("mousemove", onMouseMove, true);
+  document.addEventListener("mouseup", onMouseUp, true);
+  canvas.addEventListener("lostpointercapture", onLostPointerCapture, true);
+  document.addEventListener("contextmenu", onContextMenu, true);
+  document.addEventListener("click", onClick, true);
+  document.addEventListener("keydown", onKeyDown, true);
+  return () => {
+    if (moveFrame) cancelAnimationFrame(moveFrame);
+    window.clearTimeout(suppressClickTimer);
+    window.clearTimeout(suppressPrimaryMouseTimer);
+    window.clearTimeout(suppressContextMenuTimer);
+    mouseGesture = false;
+    contextPointer = null;
+    contextMouse = null;
+    canvas.classList.remove("burette-mesoscale-sweep-selecting");
+    document.removeEventListener("pointerdown", onPointerDown, true);
+    document.removeEventListener("pointermove", onPointerMove, true);
+    document.removeEventListener("pointerup", onPointerUp, true);
+    document.removeEventListener("pointercancel", onPointerCancel, true);
+    document.removeEventListener("mousedown", onMouseDown, true);
+    document.removeEventListener("mousemove", onMouseMove, true);
+    document.removeEventListener("mouseup", onMouseUp, true);
+    canvas.removeEventListener("lostpointercapture", onLostPointerCapture, true);
+    document.removeEventListener("contextmenu", onContextMenu, true);
+    document.removeEventListener("click", onClick, true);
+    document.removeEventListener("keydown", onKeyDown, true);
+  };
+}
+
 function installActionBridge(runtime: MesoscaleRuntimeApi) {
+  let v2Queue = Promise.resolve();
   window.addEventListener("message", (event) => {
     const envelope = event.data;
     if (envelope?.source === "burette-mesoscale-chrome") {
@@ -796,14 +1249,19 @@ function installActionBridge(runtime: MesoscaleRuntimeApi) {
         reply({ kind: "failure", code: "STALE_TARGET", message: "Mesoscale request target is stale or belongs to another document", revision: runtime.revision });
         return;
       }
-      if (request.expectedRevision !== undefined && request.expectedRevision !== runtime.revision && request.action.type !== "getSummary" && request.action.type !== "getHierarchyPage") {
-        reply({ kind: "failure", code: "REVISION_CONFLICT", message: "Mesoscale state changed before this action was applied", revision: runtime.revision });
-        return;
-      }
-      void runtime.runV2(request.action).then(
-        reply,
-        (error) => reply({ kind: "failure", code: "MESOSCALE_ACTION_FAILED", message: String(error?.message || error), revision: runtime.revision }),
-      );
+      const execute = async (): Promise<MesoscaleResult> => {
+        if (request.expectedRevision !== undefined && request.expectedRevision !== runtime.revision && request.action.type !== "getSummary" && request.action.type !== "getHierarchyPage") {
+          return { kind: "failure", code: "REVISION_CONFLICT", message: "Mesoscale state changed before this action was applied", revision: runtime.revision };
+        }
+        try {
+          return await runtime.runV2(request.action);
+        } catch (error) {
+          return { kind: "failure", code: "MESOSCALE_ACTION_FAILED", message: String((error as Error)?.message || error), revision: runtime.revision };
+        }
+      };
+      const queued = v2Queue.then(execute, execute);
+      v2Queue = queued.then(() => undefined, () => undefined);
+      void queued.then(reply);
       return;
     }
     if (envelope?.source === "burette-host" && envelope.body?.type === "setViewerTheme") {
@@ -854,11 +1312,14 @@ async function start() {
   const runtime = new MesoscaleRuntimeApi(explorer);
   window.BuretteMesoscale = runtime;
   installActionBridge(runtime);
+  await applyHostedInteractionBindings(runtime, hosted);
   applyViewerTheme(runtime, config.theme);
   window.matchMedia?.("(prefers-color-scheme: light)").addEventListener("change", () => {
     if ((window.BuretteConfig?.theme ?? "auto") === "auto") applyViewerTheme(runtime, "auto");
   });
   await loadSource(runtime, config);
+  installMesoscaleSelectionSync(runtime);
+  installMesoscaleCanvasInteractions(runtime);
   explorer.handleResize();
   if (config.documentId && window.parent && window.parent !== window) {
     window.parent.postMessage({
