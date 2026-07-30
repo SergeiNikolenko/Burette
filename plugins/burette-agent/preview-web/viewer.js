@@ -3220,7 +3220,7 @@
     targetCanvas.setProps(previewProps);
   }
 
-  function restoreMolstarPresetPreviewCamera(viewer, snapshot) {
+  function restoreMolstarCameraSnapshotNow(viewer, snapshot) {
     const canvas3d = viewer?.plugin?.canvas3d;
     const camera = canvas3d?.camera;
     if (!snapshot || typeof camera?.setState !== 'function') return false;
@@ -3366,7 +3366,9 @@
       startViewer: startMolstarPresetPreviewViewer,
       stopViewer: stopMolstarPresetPreviewViewer,
       renderPreview: (viewer, payload) => renderMolstarPresetPreview(viewer, payload),
-      applyPreset: payload => applyMolstarPresetNow(payload.preset)
+      applyPreset: payload => applyMolstarPresetNow(payload.preset, {
+        preserveCamera: payload.preserveCamera === true
+      })
     }, { idleDisposeMs: 4000, stopAfterRender: true });
     return molstarPresetPreviewController;
   }
@@ -3390,7 +3392,7 @@
       if (serial !== molstarPresetPreviewSerial) return;
       try { viewer.handleResize(); } catch (_) {}
       await waitForAnimationFrame();
-      if (sourceCamera) restoreMolstarPresetPreviewCamera(viewer, sourceCamera);
+      if (sourceCamera) restoreMolstarCameraSnapshotNow(viewer, sourceCamera);
       else viewer.plugin?.canvas3d?.requestCameraReset?.({ durationMs: 0 });
       try { viewer.plugin?.canvas3d?.requestDraw?.(); } catch (_) {}
       await waitForMolstarPresetPreviewDraw(viewer);
@@ -3851,14 +3853,17 @@
     }
   }
 
-  async function requestMolstarPreset(preset) {
+  async function requestMolstarPreset(preset, { preserveCamera = false } = {}) {
     const value = normalizeMolstarPreset(preset);
     const controller = ensureMolstarPresetPreviewController();
-    if (controller) return controller.requestApply({ id: value, preset: value });
-    return applyMolstarPresetNow(value);
+    if (controller) {
+      const id = preserveCamera ? `${value}:preserve-camera` : value;
+      return controller.requestApply({ id, preset: value, preserveCamera });
+    }
+    return applyMolstarPresetNow(value, { preserveCamera });
   }
 
-  async function applyMolstarPresetNow(preset) {
+  async function applyMolstarPresetNow(preset, { preserveCamera = false } = {}) {
     const value = normalizeMolstarPreset(preset);
     const option = molstarPresetOption(value);
     const appearance = molstarPresetAppearance(option, activeConfig || window.BuretteConfig || {});
@@ -3869,6 +3874,7 @@
       setStatus('Mol* presets can be changed after the viewer loads.', 'error');
       return;
     }
+    const cameraSnapshot = preserveCamera ? captureMolstarCameraSnapshot(viewer) : null;
     const transitionFrame = captureMolstarTransitionFrame();
     let applied = false;
     const serial = ++molstarStyleApplySerial;
@@ -3879,6 +3885,11 @@
       if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
       await applyMolstarAppearance(viewer, appearance);
       if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+      if (cameraSnapshot) {
+        restoreMolstarCameraSnapshotNow(viewer, cameraSnapshot);
+        await waitForMolstarPresetPreviewDraw(viewer);
+        if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+      }
       applied = true;
       setStatus(`[web] Applied Mol* ${option.label} preset`);
       setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
@@ -4899,9 +4910,8 @@
       const { preview } = molstarPresetPreviewElements();
       preview?.addEventListener('pointerenter', cancelMolstarPresetPreviewClose);
       preview?.addEventListener('pointerdown', event => {
-        window.BuretteMolstarPresetPreviewController?.retainPointerTarget?.(
+        window.BuretteMolstarPresetPreviewController?.retainPointerActivation?.(
           event,
-          preview,
           cancelMolstarPresetPreviewClose
         );
       });
@@ -4920,7 +4930,7 @@
         preview.setAttribute('aria-busy', 'true');
         const caption = preview.querySelector('[data-buret-molstar-preset-preview-caption]');
         if (caption) caption.textContent = 'Applying…';
-        void requestMolstarPreset(preset);
+        void requestMolstarPreset(preset, { preserveCamera: true });
         hideMolstarPresetMenu({ restoreFocus: true, pointerFocus: event.type === 'click' && event.detail > 0 });
       };
       preview?.addEventListener('click', applyPreview);

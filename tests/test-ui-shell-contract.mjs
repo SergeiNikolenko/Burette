@@ -5321,7 +5321,7 @@ assert.match(previewViewer, /viewer\.plugin\.runTask\(viewer\.plugin\.state\.dat
 assert.match(previewViewer, /window\.molstar\.Viewer\.create\(stage, \{/);
 assert.match(previewViewer, /menu\.addEventListener\('pointerover'/);
 assert.match(previewViewer, /menu\.addEventListener\('focusin'/);
-assert.match(previewViewer, /function restoreMolstarPresetPreviewCamera\(viewer, snapshot\)/);
+assert.match(previewViewer, /function restoreMolstarCameraSnapshotNow\(viewer, snapshot\)/);
 assert.match(previewViewer, /camera\.setState\(snapshot, 0\)/);
 assert.match(previewViewer, /await waitForMolstarPresetPreviewDraw\(viewer\)/);
 assert.match(previewViewer, /pixelScale: molstarPresetPreviewPixelScale\(\)/);
@@ -5333,6 +5333,8 @@ assert.match(previewViewer, /animationLoop\?\.stop\?\.\(\{ noDraw: true \}\)/);
 assert.match(previewViewer, /preview\?\.addEventListener\('pointerenter', cancelMolstarPresetPreviewClose\)/);
 assert.match(previewViewer, /menu\.addEventListener\('pointerdown'/);
 assert.match(previewViewer, /preview\?\.addEventListener\('pointerdown'/);
+assert.match(previewViewer, /preview\?\.addEventListener\('pointerdown',[\s\S]*?retainPointerActivation\?\.\([\s\S]*?cancelMolstarPresetPreviewClose/);
+assert.match(previewViewer, /applyPreset: payload => applyMolstarPresetNow\(payload\.preset, \{[\s\S]*?preserveCamera: payload\.preserveCamera === true/);
 assert.match(previewViewer, /preview\?\.addEventListener\('click', applyPreview\)/);
 assert.match(previewViewer, /MOLSTAR_PRESET_PREVIEW_CLOSE_DELAY_MS = 700/);
 assert.match(previewViewer, /preview\?\.addEventListener\('keydown', applyPreview\)/);
@@ -5356,12 +5358,16 @@ const applyMolstarPresetNowSource = previewViewer.slice(
   previewViewer.indexOf('async function applyMolstarPresetNow'),
   previewViewer.indexOf('async function applyConfiguredMolstarPreset'),
 );
+assert.match(applyMolstarPresetNowSource, /async function applyMolstarPresetNow\(preset, \{ preserveCamera = false \} = \{\}\)/);
+assert.match(applyMolstarPresetNowSource, /const cameraSnapshot = preserveCamera \? captureMolstarCameraSnapshot\(viewer\) : null/);
+assert.match(applyMolstarPresetNowSource, /if \(cameraSnapshot\) \{[\s\S]*restoreMolstarCameraSnapshotNow\(viewer, cameraSnapshot\);[\s\S]*await waitForMolstarPresetPreviewDraw\(viewer\);[\s\S]*\}/);
 assert.match(applyMolstarPresetNowSource, /const transitionFrame = captureMolstarTransitionFrame\(\);[\s\S]*?if \(applied\) fadeMolstarTransitionFrame\(transitionFrame\)/);
 assert.match(applyMolstarPresetNowSource, /const viewer = activeViewer/);
 assert.match(applyMolstarPresetNowSource, /activeViewer !== viewer/);
 assert.match(previewViewer, /if \(style === 'default' \|\| style === 'illustrative'\) void requestMolstarAppearance\(style\)/);
 assert.match(previewViewer, /const appearance = molstarPresetAppearance\(option, activeConfig \|\| window\.BuretteConfig \|\| \{\}\)/);
 assert.match(previewViewer, /void requestMolstarPreset\(preset\)/);
+assert.match(previewViewer, /void requestMolstarPreset\(preset, \{ preserveCamera: true \}\)/);
 assert.match(previewViewer, /plugin\.managers\.structure\.component\.applyPreset\(structures, provider\)/);
 assert.match(applyMolstarPresetNowSource, /await applyMolstarAppearance\(viewer, appearance\)/);
 assert.match(previewViewer, /function requestMolstarStyle\(style\)/);
