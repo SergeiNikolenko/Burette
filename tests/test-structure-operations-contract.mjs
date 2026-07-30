@@ -41,6 +41,14 @@ assert.match(viewer, /const SEQUENCE_ALIGNMENT_MAX_CELLS = 4e6/);
 assert.match(fn("commitSuperpositionPlan"), /state\.updateTree\(update, \{ revertOnError: true, revertIfAborted: true \}\)/);
 assert.match(fn("createStructureSuperpositionController"), /await commitSuperpositionPlan\(viewer, entries, plan\);\s*\n\s*result = plan/);
 assert.match(fn("createStructureSuperpositionController"), /entriesStillLoaded[\s\S]*ensureEntries/);
+// Align resolves only structures already present in the live Mol* tree.
+// Re-preparing the docking scene here would restore older visibility,
+// representation, and selection state before applying the transform.
+assert.match(
+  fn("createStructureSuperpositionController"),
+  /const refreshEntries = async \(\) => \{\s*\n\s*entries = superpositionStructureEntries\(viewer, prepared\);/,
+);
+assert.doesNotMatch(fn("createStructureSuperpositionController"), /prepareSuperpositionScene|applyDockingSceneVisibility/);
 
 // PDB subsets are addressed by atom serial. Pairing the n-th ATOM line with the
 // n-th Mol* atom drifts on files where a record does not become an atom, which

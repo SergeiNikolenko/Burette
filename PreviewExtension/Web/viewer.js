@@ -13680,13 +13680,6 @@
     });
   }
 
-  async function prepareSuperpositionScene(viewer, prepared, activePose) {
-    if (activeSdfPoseMode !== 'all') setSdfPoseMode('all');
-    await applyDockingSceneVisibility(viewer, prepared, activePose, { focus: false });
-    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
-    return superpositionStructureEntries(viewer, prepared);
-  }
-
   function superpositionEntry(entries, id) {
     return entries.find(entry => entry.id === String(id)) || null;
   }
@@ -13908,7 +13901,7 @@
     return true;
   }
 
-  function createStructureSuperpositionController(viewer, prepared, alignButton, getActivePose) {
+  function createStructureSuperpositionController(viewer, prepared, alignButton) {
     let entries = [];
     let result = null;
     let panel = null;
@@ -13952,7 +13945,7 @@
     };
 
     const refreshEntries = async () => {
-      entries = await prepareSuperpositionScene(viewer, prepared, getActivePose());
+      entries = superpositionStructureEntries(viewer, prepared);
       syncPanelEntries();
       return entries;
     };
@@ -15588,7 +15581,6 @@
         viewer,
         prepared,
         align,
-        () => activePose,
       );
       activeStructureAlignmentControl = structureAlignmentControl;
       align.addEventListener('click', () => {

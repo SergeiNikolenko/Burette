@@ -6239,7 +6239,7 @@ assert.match(previewViewer, /function trajectoryPoseLabel\(prepared, controlLabe
 assert.match(previewViewer, /Time \$\{timeNs\} ns - \$\{indexText\}/);
 assert.match(previewViewer, /setCurrentName\(prepared\?\.poses\?\.\[poseIndex\]\?\.label \|\| `\$\{controlLabel\} \$\{poseIndex \+ 1\}`\)/);
 assert.match(previewViewer, /function alignStructureSceneEntries\(prepared, request = 'auto'\)/);
-assert.match(previewViewer, /function createStructureSuperpositionController\(viewer, prepared, alignButton, getActivePose\)/);
+assert.match(previewViewer, /function createStructureSuperpositionController\(viewer, prepared, alignButton\)/);
 assert.match(previewViewer, /TransformStructureConformation/);
 assert.match(previewViewer, /label\.className = 'buret-docking-pose-current'/);
 assert.match(previewViewer, /fileList\.className = 'buret-docking-pose-files'/);
