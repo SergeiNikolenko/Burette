@@ -19,17 +19,37 @@ const factory = vm.runInContext(
 assert.equal(typeof factory?.create, "function");
 assert.equal(typeof factory?.computePreviewPlacement, "function");
 assert.equal(typeof factory?.computePreviewCanvasLayout, "function");
+assert.equal(typeof factory?.focusPointerTarget, "function");
 assert.equal(typeof factory?.retainPointerTarget, "function");
 
 {
   const calls = [];
+  const listeners = new Map();
+  const target = {
+    classList: {
+      add: (name) => calls.push(["class:add", name]),
+      remove: (name) => calls.push(["class:remove", name]),
+    },
+    addEventListener: (type, listener, options) => {
+      listeners.set(type, listener);
+      calls.push(["listen", type, options?.once]);
+    },
+    focus: (options) => calls.push(["focus", options?.preventScroll]),
+  };
   const retained = factory.retainPointerTarget(
     { button: 0, preventDefault: () => calls.push("prevent") },
-    { focus: (options) => calls.push(["focus", options?.preventScroll]) },
+    target,
     () => calls.push("cancel"),
   );
   assert.equal(retained, true);
-  assert.deepEqual(calls, ["cancel", ["focus", true]]);
+  assert.deepEqual(calls, [
+    "cancel",
+    ["class:add", "buret-pointer-focus"],
+    ["listen", "blur", true],
+    ["focus", true],
+  ]);
+  listeners.get("blur")?.();
+  assert.deepEqual(calls.at(-1), ["class:remove", "buret-pointer-focus"]);
   assert.equal(factory.retainPointerTarget({ button: 2 }, null, null), false);
 }
 

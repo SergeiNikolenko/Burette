@@ -65,11 +65,19 @@
     };
   }
 
-  function retainPointerTarget(event, target, cancelClose) {
-    if (Number(event?.button ?? 0) !== 0) return false;
+  function focusPointerTarget(target, cancelClose) {
     if (typeof cancelClose === 'function') cancelClose();
+    target?.classList?.add?.('buret-pointer-focus');
+    target?.addEventListener?.('blur', () => {
+      target?.classList?.remove?.('buret-pointer-focus');
+    }, { once: true });
     target?.focus?.({ preventScroll: true });
     return true;
+  }
+
+  function retainPointerTarget(event, target, cancelClose) {
+    if (Number(event?.button ?? 0) !== 0) return false;
+    return focusPointerTarget(target, cancelClose);
   }
 
   function create(dependencies, options) {
@@ -361,6 +369,7 @@
     create,
     computePreviewPlacement,
     computePreviewCanvasLayout,
+    focusPointerTarget,
     retainPointerTarget,
   };
 })(globalThis);
