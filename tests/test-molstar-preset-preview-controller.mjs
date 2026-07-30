@@ -87,6 +87,26 @@ assert.equal(typeof factory?.retainPointerTarget, "function");
     }),
     { x: 0, y: 0, width, height },
   );
+
+  const widePixels = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < width * height; index += 1) widePixels[index * 4 + 3] = 255;
+  for (let y = 3; y <= 4; y += 1) {
+    for (let x = 2; x <= 9; x += 1) {
+      const offset = (y * width + x) * 4;
+      widePixels[offset] = 220;
+    }
+  }
+  assert.deepEqual(
+    factory.computePreviewContentBounds({
+      data: widePixels,
+      width,
+      height,
+      background: [0, 0, 0],
+      paddingRatio: 0,
+      minPadding: 0,
+    }),
+    { x: 2, y: 3, width: 8, height: 2 },
+  );
 }
 
 for (const [sourceWidth, sourceHeight] of [[200, 600], [400, 400], [600, 200]]) {

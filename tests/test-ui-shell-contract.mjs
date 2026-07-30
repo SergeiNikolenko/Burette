@@ -5307,6 +5307,7 @@ assert.match(previewViewer, /molstarPresetPreviewViewportKey\(\)/);
 assert.match(previewViewer, /function trackMolstarPresetPreviewState\(viewer\)/);
 assert.match(previewViewer, /state\?\.events\?\.changed\?\.subscribe\?\./);
 assert.match(previewViewer, /function captureMolstarPresetPreview\(item, viewer, serial\)/);
+assert.match(previewViewer, /function copyMolstarPresetPreviewCanvasProps\(sourceViewer, targetViewer\)[\s\S]*axes: \{ name: 'off', params: \{\} \}[\s\S]*targetCanvas\.setProps\(previewProps\);/);
 assert.match(previewViewer, /const source = viewer\?\.plugin\?\.canvas3d\?\.webgl\?\.gl\?\.canvas;/);
 assert.match(previewViewer, /drawMolstarPresetPreviewFrame\(item, source\)/);
 assert.doesNotMatch(previewViewer, /helper\.getPreview\(/);
