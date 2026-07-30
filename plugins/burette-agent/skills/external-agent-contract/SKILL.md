@@ -26,6 +26,10 @@ Prefer these short tools before advanced Burette tools:
   active chemical editor.
 - `burette.render_panel`: render markdown, table, or chart content into a
   workspace dock.
+- `burette.create_story` / `burette.validate_story`: author and validate MVSJ
+  or self-contained MVSX molecular narratives.
+- `burette.observe_story` / `burette.control_story`: inspect and navigate the
+  active MolViewSpec Story through typed Mol* snapshot state.
 
 `workspaceSessionId` is the external handle. `viewerSessionId` is returned as a
 compatibility alias for viewer-style workflows. Do not make downstream agents

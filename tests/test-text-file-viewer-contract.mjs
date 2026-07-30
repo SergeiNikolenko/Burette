@@ -158,7 +158,11 @@ assert.match(markdownRichViewer, /markdownTableDecorations\(\)/);
 assert.match(markdownRichViewer, /markdownHtmlBlockDecorations\(\)/);
 assert.match(markdownRichViewer, /markdownMermaidDecorations\(\)/);
 assert.match(markdownRichViewer, /markdownImageSrcResolver\(\(\) => document\.path\)/);
-assert.match(markdownRichViewer, /markdownLinkNavigation\(\(\) => document\.path, \(\) => disposedRef\.current, openPaths\)/);
+assert.match(markdownRichViewer, /let disposed = false;/);
+assert.match(markdownRichViewer, /let view: EditorView \| null = null;/);
+assert.match(markdownRichViewer, /markdownLinkNavigation\(\(\) => document\.path, \(\) => disposed, openPaths\)/);
+assert.match(markdownRichViewer, /disposed = true;\s+view\?\.destroy\(\);/);
+assert.doesNotMatch(markdownRichViewer, /disposedRef/);
 assert.match(markdownRichViewer, /EditorState\.readOnly\.of\(true\)/);
 assert.match(markdownRichViewer, /EditorView\.editable\.of\(false\)/);
 
