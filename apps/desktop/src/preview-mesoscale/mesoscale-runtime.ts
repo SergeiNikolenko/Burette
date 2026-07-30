@@ -376,11 +376,21 @@ class MesoscaleRuntimeApi {
   private objectEntities(ref: string) {
     const entity = uniqueCells(getAllEntities(this.plugin)).find((cell: any) => cell?.transform?.ref === ref);
     if (entity) return [entity];
-    const group = uniqueCells(getAllGroups(this.plugin)).find((cell: any) => cell?.transform?.ref === ref) as any;
+    const groups = uniqueCells(getAllGroups(this.plugin)) as any[];
+    const group = groups.find((cell: any) => cell?.transform?.ref === ref) as any;
     if (!group) throw new Error(`Mesoscale object not found: ${ref}`);
-    const entities = uniqueCells(getAllEntities(this.plugin, String(group?.params?.values?.tag || "")));
-    if (entities.length === 0) throw new Error(`Mesoscale group has no entities: ${ref}`);
-    return entities;
+    const visited = new Set<string>();
+    let current = group;
+    while (current) {
+      const currentRef = String(current?.transform?.ref || "");
+      if (!currentRef || visited.has(currentRef)) break;
+      visited.add(currentRef);
+      const entities = uniqueCells(getAllEntities(this.plugin, String(current?.params?.values?.tag || "")));
+      if (entities.length > 0) return entities;
+      const parentRef = String(current?.transform?.parent || "");
+      current = groups.find((candidate: any) => candidate?.transform?.ref === parentRef);
+    }
+    throw new Error(`Mesoscale group has no entities: ${ref}`);
   }
 
   highlightObject(ref: string | null, sequence: number) {
@@ -389,10 +399,8 @@ class MesoscaleRuntimeApi {
     const canvas = this.plugin.canvas3d;
     canvas?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
     if (!ref) return;
-    const group = uniqueCells(getAllGroups(this.plugin)).find((cell: any) => cell?.transform?.ref === ref) as any;
-    const entities = group
-      ? uniqueCells(getAllEntities(this.plugin, String(group?.params?.values?.tag || "")))
-      : uniqueCells(getAllEntities(this.plugin)).filter((cell: any) => cell?.transform?.ref === ref);
+    let entities: any[] = [];
+    try { entities = this.objectEntities(ref); } catch { /* empty organizational group */ }
     for (const entity of entities as any[]) {
       const repr = entity?.obj?.data?.repr;
       if (repr) canvas?.mark({ repr, loci: EveryLoci }, MarkerAction.Highlight);
@@ -465,23 +473,26 @@ class MesoscaleRuntimeApi {
   async selectEntity(ref: string, mode: "replace" | "extend" | "toggle" = "replace") {
     const cells = this.objectEntities(ref).filter((cell: any) => cell?.obj?.data?.sourceData instanceof Structure) as any[];
     if (cells.length === 0) throw new Error(`Object is not selectable as a molecular structure: ${ref}`);
+    const entityRefs = cells.map((cell) => String(cell?.transform?.ref || "")).filter(Boolean);
+    const selectingGroup = entityRefs.length !== 1 || entityRefs[0] !== ref;
     const selection = this.plugin.managers.interactivity.lociSelects;
-    if (mode === "replace") selection.deselectAll();
+    if (mode === "replace") {
+      selection.deselectAll();
+      this.selectedRefs.clear();
+    }
     for (const cell of cells) {
       const loci = Structure.toStructureElementLoci(cell.obj.data.sourceData);
-      if (mode === "toggle") selection.toggle({ loci }, false);
-      else selection.selectJoin({ loci }, false);
+      const entityRef = String(cell?.transform?.ref || "");
+      if (mode === "toggle") {
+        selection.toggle({ loci }, false);
+        if (this.selectedRefs.has(entityRef)) this.selectedRefs.delete(entityRef);
+        else this.selectedRefs.add(entityRef);
+      } else {
+        selection.selectJoin({ loci }, false);
+        if (entityRef) this.selectedRefs.add(entityRef);
+      }
     }
-    if (mode === "replace") {
-      this.selectedRefs.clear();
-      this.selectedRefs.add(ref);
-    } else if (mode === "extend") {
-      this.selectedRefs.add(ref);
-    } else if (this.selectedRefs.has(ref)) {
-      this.selectedRefs.delete(ref);
-    } else {
-      this.selectedRefs.add(ref);
-    }
+    if (selectingGroup) this.selectedRefs.delete(ref);
     this.changed();
     return this.observe();
   }

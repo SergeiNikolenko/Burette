@@ -7,7 +7,9 @@ import { MesoscaleScenePanel } from "./mesoscale-scene-panel";
 export function MesoscaleSceneOverlay({ document, onClose }: { document: ViewerDocument; onClose: () => void }) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") return;
+      if (window.document.querySelector('[data-slot="context-menu-content"], [data-slot="dropdown-menu-content"]')) return;
+      onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

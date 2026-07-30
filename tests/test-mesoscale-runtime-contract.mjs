@@ -78,6 +78,11 @@ assert.match(runtime, /PluginCommands\.Layout\.Update/);
 assert.match(runtime, /showControls/);
 assert.match(runtime, /regionState/);
 assert.match(runtime, /setMotion\(motion/);
+assert.match(runtime, /const entityRefs = cells\.map/);
+assert.match(runtime, /const selectingGroup =/);
+assert.match(runtime, /this\.selectedRefs\.add\(entityRef\)/);
+assert.match(runtime, /const visited = new Set<string>/);
+assert.match(runtime, /current = groups\.find/);
 
 const tauri = await read("apps/desktop/src-tauri/src/preview/runtime_viewer.rs");
 assert.match(tauri, /AssetProfile::Mesoscale/);
