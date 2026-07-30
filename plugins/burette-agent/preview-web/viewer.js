@@ -3042,22 +3042,35 @@
     const y = Math.max(0, Math.min(sourceHeight - 1, Math.floor((crop?.y || 0) * sourceHeight)));
     const width = Math.max(1, Math.min(sourceWidth - x, Math.ceil((crop?.width || 1) * sourceWidth)));
     const height = Math.max(1, Math.min(sourceHeight - y, Math.ceil((crop?.height || 1) * sourceHeight)));
-    const maxWidth = Math.min(240, Math.max(1, window.innerWidth - 24));
-    const maxHeight = Math.min(320, Math.max(120, window.innerHeight - 52));
-    let scale = Math.min(maxWidth / width, maxHeight / height);
-    if (width * scale < 150 && height * (150 / width) <= maxHeight) scale = 150 / width;
-    if (height * scale < 120 && width * (120 / height) <= maxWidth) scale = 120 / height;
-    const displayWidth = Math.max(1, Math.round(width * scale));
-    const displayHeight = Math.max(1, Math.round(height * scale));
-    const backingScale = Math.min(2, window.devicePixelRatio || 1, 640 / Math.max(displayWidth, displayHeight));
-    image.width = Math.max(1, Math.round(displayWidth * backingScale));
-    image.height = Math.max(1, Math.round(displayHeight * backingScale));
+    const layout = window.BuretteMolstarPresetPreviewController?.computePreviewCanvasLayout?.({
+      cropWidth: width,
+      cropHeight: height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio || 1
+    });
+    if (!layout) throw new Error('Preset preview layout is unavailable.');
+    const displayWidth = Math.round(layout.cardWidth);
+    const displayHeight = Math.round(layout.bodyHeight);
+    image.width = Math.max(1, Math.round(layout.cardWidth * layout.backingScale));
+    image.height = Math.max(1, Math.round(layout.bodyHeight * layout.backingScale));
     const context = image.getContext('2d');
     if (!context) throw new Error('Preset preview image cannot be drawn.');
-    context.clearRect(0, 0, image.width, image.height);
-    context.drawImage(source, x, y, width, height, 0, 0, image.width, image.height);
+    context.fillStyle = canvasBackgroundCSS();
+    context.fillRect(0, 0, image.width, image.height);
+    context.drawImage(
+      source,
+      x,
+      y,
+      width,
+      height,
+      Math.round(layout.drawX * layout.backingScale),
+      Math.round(layout.drawY * layout.backingScale),
+      Math.round(layout.drawWidth * layout.backingScale),
+      Math.round(layout.drawHeight * layout.backingScale)
+    );
     preview.style.width = `${displayWidth}px`;
-    preview.style.height = `${28 + displayHeight}px`;
+    preview.style.height = `${Math.round(layout.cardHeight)}px`;
     preview.dataset.crop = `${x},${y},${width},${height}`;
     preview.dataset.cropAspect = (width / height).toFixed(3);
     positionMolstarPresetPreview(item);
