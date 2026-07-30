@@ -9,6 +9,7 @@ const contractScripts = {
   "test-sidebar-projects.mjs": () => import("./test-sidebar-projects.mjs"),
   "test-docking-documents.mjs": () => import("./test-docking-documents.mjs"),
   "test-ui-shell-contract.mjs": () => import("./test-ui-shell-contract.mjs"),
+  "test-molstar-preset-preview-controller.mjs": () => import("./test-molstar-preset-preview-controller.mjs"),
   "test-collection-documents.mjs": () => import("./test-collection-documents.mjs"),
   "test-structure-drag.mjs": () => import("./test-structure-drag.mjs"),
   "test-drop-actions.mjs": () => import("./test-drop-actions.mjs"),

@@ -3,6 +3,38 @@
 
   const DEFAULT_IDLE_DISPOSE_MS = 4000;
 
+  function computePreviewPlacement(options) {
+    const value = options || {};
+    const viewportWidth = Math.max(1, Number(value.viewportWidth) || 1);
+    const viewportHeight = Math.max(1, Number(value.viewportHeight) || 1);
+    const margin = Math.max(0, Number(value.margin) || 0);
+    const gap = Math.max(0, Number(value.gap) || 0);
+    const minimumMenuHeight = Math.max(0, Number(value.minimumMenuHeight) || 0);
+    const menuRect = value.menuRect || {};
+    const itemRect = value.itemRect || {};
+    const previewWidth = Math.min(Math.max(1, Number(value.previewWidth) || 1), Math.max(1, viewportWidth - margin * 2));
+    const previewHeight = Math.min(Math.max(1, Number(value.previewHeight) || 1), Math.max(1, viewportHeight - margin * 2));
+    const leftCandidate = Number(menuRect.left || 0) - gap - previewWidth;
+    const rightCandidate = Number(menuRect.right || 0) + gap;
+    const alignedTop = Math.max(margin, Math.min(Number(itemRect.top || 0) - 28, viewportHeight - margin - previewHeight));
+    if (leftCandidate >= margin) {
+      return { placement: 'left', left: leftCandidate, top: alignedTop };
+    }
+    if (rightCandidate + previewWidth <= viewportWidth - margin) {
+      return { placement: 'right', left: rightCandidate, top: alignedTop };
+    }
+    const menuTop = margin + previewHeight + gap;
+    const menuMaxHeight = viewportHeight - margin - menuTop;
+    if (menuMaxHeight < minimumMenuHeight) return { placement: 'hidden' };
+    return {
+      placement: 'stacked',
+      left: Math.max(margin, Math.min(viewportWidth - margin - previewWidth, Number(menuRect.left || 0))),
+      top: margin,
+      menuTop,
+      menuMaxHeight,
+    };
+  }
+
   function create(dependencies, options) {
     const deps = dependencies || {};
     const config = options || {};
@@ -41,11 +73,11 @@
     let viewer = null;
     let viewerRunning = false;
     let creation = null;
-    let activeRender = null;
+    let pendingPreview = null;
+    let previewDrain = null;
     let idleDisposeTimer = 0;
-    const disposedViewers = new Set();
-    const pendingApplies = [];
-    const appliesByKey = new Map();
+    const disposedViewers = new WeakSet();
+    let pendingApply = null;
     let activeApply = null;
     let applyDrain = null;
 
@@ -97,56 +129,97 @@
       }, idleDisposeMs);
     }
 
-    async function runPreview(payload, epoch) {
-      let retainedViewer = viewer;
-      if (!retainedViewer) {
-        const candidate = { epoch, cancelled: false };
-        creation = candidate;
-        try {
-          retainedViewer = await createViewer();
-        } catch (error) {
-          if (creation === candidate) creation = null;
-          if (disposed || candidate.cancelled || epoch !== previewEpoch) return undefined;
-          throw error;
-        }
-        if (creation === candidate) creation = null;
-        if (disposed || candidate.cancelled || epoch !== previewEpoch || !retainedViewer) {
-          disposeViewerOnce(retainedViewer);
-          return undefined;
-        }
-        viewer = retainedViewer;
-      }
+    function settle(request, method, value) {
+      if (!request || request.settled) return;
+      request.settled = true;
+      request[method](value);
+    }
 
-      if (disposed || epoch !== previewEpoch || viewer !== retainedViewer) return undefined;
-      startRetainedViewer();
-      const render = { epoch, viewer: retainedViewer };
-      activeRender = render;
-      try {
-        const result = await renderPreview(retainedViewer, payload);
-        if (disposed || epoch !== previewEpoch || viewer !== retainedViewer) return undefined;
-        return result;
-      } finally {
-        if (activeRender === render) activeRender = null;
-        if (stopAfterRender && viewer === retainedViewer) stopRetainedViewer();
+    async function ensureViewer() {
+      if (viewer) return viewer;
+      if (creation) return creation;
+      creation = Promise.resolve()
+        .then(() => createViewer())
+        .then((candidate) => {
+          if (disposed || !candidate) {
+            disposeViewerOnce(candidate);
+            return null;
+          }
+          viewer = candidate;
+          if (!visible) {
+            safely(stopViewer, candidate);
+            scheduleIdleDisposal();
+          }
+          return candidate;
+        })
+        .finally(() => {
+          creation = null;
+        });
+      return creation;
+    }
+
+    async function drainPreviews() {
+      while (!disposed && pendingPreview) {
+        const request = pendingPreview;
+        pendingPreview = null;
+        let retainedViewer;
+        try {
+          retainedViewer = await ensureViewer();
+          if (disposed || !retainedViewer) {
+            settle(request, 'resolve', undefined);
+            continue;
+          }
+          if (!visible) {
+            scheduleIdleDisposal();
+            settle(request, 'resolve', undefined);
+            continue;
+          }
+          if (request.epoch !== previewEpoch) {
+            settle(request, 'resolve', undefined);
+            continue;
+          }
+          startRetainedViewer();
+          const result = await renderPreview(retainedViewer, request.payload);
+          if (disposed || request.epoch !== previewEpoch || viewer !== retainedViewer) {
+            settle(request, 'resolve', undefined);
+          } else {
+            settle(request, 'resolve', result);
+          }
+        } catch (error) {
+          if (disposed || request.epoch !== previewEpoch) settle(request, 'resolve', undefined);
+          else settle(request, 'reject', error);
+        } finally {
+          if (stopAfterRender && viewer === retainedViewer) stopRetainedViewer();
+        }
       }
+      if (pendingPreview && disposed) {
+        settle(pendingPreview, 'resolve', undefined);
+        pendingPreview = null;
+      }
+      previewDrain = null;
     }
 
     function requestPreview(payload) {
       if (disposed) return Promise.resolve(undefined);
       const epoch = ++previewEpoch;
       clearIdleDisposal();
-
-      if (creation) {
-        creation.cancelled = true;
-        creation = null;
-      }
-      if (activeRender) {
-        const staleViewer = activeRender.viewer;
-        activeRender = null;
-        disposeViewerOnce(staleViewer);
-      }
-
-      return runPreview(payload, epoch);
+      if (pendingPreview) settle(pendingPreview, 'resolve', undefined);
+      let resolveRequest;
+      let rejectRequest;
+      const promise = new Promise((resolve, reject) => {
+        resolveRequest = resolve;
+        rejectRequest = reject;
+      });
+      pendingPreview = {
+        epoch,
+        payload,
+        promise,
+        resolve: resolveRequest,
+        reject: rejectRequest,
+        settled: false,
+      };
+      if (!previewDrain) previewDrain = drainPreviews();
+      return promise;
     }
 
     function show() {
@@ -173,26 +246,24 @@
     }
 
     async function drainApplies() {
-      while (!disposed && pendingApplies.length) {
-        const request = pendingApplies.shift();
+      while (!disposed && pendingApply) {
+        const request = pendingApply;
+        pendingApply = null;
         activeApply = request;
         try {
           const result = await applyPreset(request.payload);
-          request.resolve(result);
+          if (disposed || request.cancelled) settle(request, 'resolve', undefined);
+          else settle(request, 'resolve', result);
         } catch (error) {
-          if (disposed) request.resolve(undefined);
-          else request.reject(error);
+          if (disposed || request.cancelled) settle(request, 'resolve', undefined);
+          else settle(request, 'reject', error);
         } finally {
-          appliesByKey.delete(request.key);
           activeApply = null;
         }
       }
-      if (disposed) {
-        while (pendingApplies.length) {
-          const request = pendingApplies.shift();
-          appliesByKey.delete(request.key);
-          request.resolve(undefined);
-        }
+      if (pendingApply && disposed) {
+        settle(pendingApply, 'resolve', undefined);
+        pendingApply = null;
       }
       applyDrain = null;
     }
@@ -200,8 +271,8 @@
     function requestApply(payload) {
       if (disposed) return Promise.resolve(undefined);
       const key = applyKey(payload);
-      const duplicate = appliesByKey.get(key);
-      if (duplicate) return duplicate.promise;
+      if (pendingApply?.key === key) return pendingApply.promise;
+      if (!pendingApply && activeApply?.key === key) return activeApply.promise;
       let resolveRequest;
       let rejectRequest;
       const promise = new Promise((resolve, reject) => {
@@ -214,9 +285,11 @@
         promise,
         resolve: resolveRequest,
         reject: rejectRequest,
+        settled: false,
+        cancelled: false,
       };
-      appliesByKey.set(key, request);
-      pendingApplies.push(request);
+      if (pendingApply) settle(pendingApply, 'resolve', undefined);
+      pendingApply = request;
       if (!applyDrain) applyDrain = drainApplies();
       return promise;
     }
@@ -227,15 +300,15 @@
       visible = false;
       previewEpoch += 1;
       clearIdleDisposal();
-      if (creation) creation.cancelled = true;
-      creation = null;
-      activeRender = null;
+      if (pendingPreview) settle(pendingPreview, 'resolve', undefined);
+      pendingPreview = null;
       disposeViewerOnce(viewer);
-      while (pendingApplies.length) {
-        const request = pendingApplies.shift();
-        appliesByKey.delete(request.key);
-        request.resolve(undefined);
+      if (activeApply) {
+        activeApply.cancelled = true;
+        settle(activeApply, 'resolve', undefined);
       }
+      if (pendingApply) settle(pendingApply, 'resolve', undefined);
+      pendingApply = null;
     }
 
     return {
@@ -247,5 +320,5 @@
     };
   }
 
-  root.BuretteMolstarPresetPreviewController = { create };
+  root.BuretteMolstarPresetPreviewController = { create, computePreviewPlacement };
 })(globalThis);

@@ -110,6 +110,7 @@ for (const [skill, allowImplicitInvocation] of skillInvocationPolicies) {
 const installScript = await read("scripts/install-local.mjs");
 const requiredPreviewRuntimeAssets = [
   "viewer-bootstrap.js",
+  "molstar-preset-preview-controller.js",
   "trajectory-smoothing.js",
   "openchemlib/openchemlib.js",
 ];
@@ -282,6 +283,7 @@ for (const asset of [
   "preview-web/index.html",
   "preview-web/viewer.js",
   "preview-web/viewer-bootstrap.js",
+  "preview-web/molstar-preset-preview-controller.js",
   "preview-web/trajectory-smoothing.js",
   "preview-web/grid-viewer.js",
   "preview-web/grid-ui.js",
@@ -307,6 +309,8 @@ for (const entrypoint of ["browser-shell-dist/index.html", "browser-shell-dist/i
     assert.equal(packedFiles.has(referencedAsset), true, `npm package is missing ${referencedAsset}`);
   }
 }
+const browserShellIndex = await read("browser-shell-dist/index.js");
+assert.match(browserShellIndex, /molstar-preset-preview-controller\.js/);
 
 const bundledServerSource = await read("mcp/lib/server-bundle.mjs");
 for (const match of bundledServerSource.matchAll(/["']\.\/(server-chunk-[^"'/?#\s]+\.mjs)["']/gu)) {

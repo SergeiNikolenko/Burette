@@ -221,6 +221,7 @@ const [
   remoteCheckScript,
   patchWebAssetsScript,
   hostedViewerBuildScript,
+  hostedMobileViewer,
   desmondPreviewExtract,
   fepGraphmlSample,
   rdkitConformer,
@@ -427,6 +428,7 @@ const [
   source('scripts/check-remote.sh'),
   source('scripts/patch-web-assets.sh'),
   source('apps/burette-public-plugin/scripts/build-hosted-viewer.mjs'),
+  source('apps/burette-public-plugin/assets/burette-hosted-mobile.js'),
   source('scripts/desmond_preview_extract.py'),
   source('samples/fep/ligand_network.graphml'),
   source('scripts/rdkit_conformer.py'),
@@ -711,6 +713,8 @@ assert.doesNotMatch(patchWebAssetsScript, /build:tauri/);
 assert.match(hostedViewerBuildScript, /"grid\.css"/);
 assert.match(hostedViewerBuildScript, /"grid-ui\.js"/);
 assert.match(hostedViewerBuildScript, /"grid-viewer\.js"/);
+assert.match(hostedViewerBuildScript, /"molstar-preset-preview-controller\.js"/);
+assert.match(hostedMobileViewer, /"trajectory-smoothing\.js",\s*"molstar-preset-preview-controller\.js",\s*"viewer\.js"/);
 assert.equal(JSON.parse(tauriConfig).bundle.resources['../public/xyzrender-gallery'], 'xyzrender-gallery');
 assert.equal(JSON.parse(tauriConfig).bundle.resources['../../../PreviewExtension/Web'], 'ViewerWeb');
 assert.match(previewRuntimeViewer, /resolve\("ViewerWeb", tauri::path::BaseDirectory::Resource\)/);
@@ -4931,7 +4935,8 @@ assert.doesNotMatch(previewShell, /data-buret-molstar-style aria-label="Mol\* ap
 assert.match(previewShell, /data-buret-molstar-preset-slot/);
 assert.match(previewShell, /data-buret-molstar-preset-trigger[^>]*aria-haspopup="menu"/);
 assert.match(previewShell, /data-buret-molstar-preset-menu role="menu"/);
-assert.match(previewShell, /data-buret-molstar-preset-preview role="button" tabindex="-1" aria-label="Apply preset preview"/);
+assert.match(previewShell, /data-buret-molstar-preset-preview>/);
+assert.doesNotMatch(previewShell, /data-buret-molstar-preset-preview role="button"/);
 assert.match(previewShell, /data-buret-molstar-preset-preview-state aria-live="polite"/);
 assert.match(previewShell, /data-buret-molstar-preset-preview-canvas/);
 assert.match(previewShell, /data-buret-molstar-preset-preview-stage/);
@@ -5312,14 +5317,28 @@ assert.match(previewViewer, /animationLoop\?\.start\?\.\(\{ immediate: true \}\)
 assert.match(previewViewer, /animationLoop\?\.stop\?\.\(\{ noDraw: true \}\)/);
 assert.match(previewViewer, /preview\?\.addEventListener\('pointerenter', cancelMolstarPresetPreviewClose\)/);
 assert.match(previewViewer, /preview\?\.addEventListener\('click', applyPreview\)/);
+assert.doesNotMatch(previewViewer, /preview\?\.addEventListener\('keydown'/);
 assert.match(previewViewer, /preview\.dataset\.buretMolstarPreset = option\.value/);
 assert.match(previewRuntimeCss, /@media \(prefers-reduced-motion: reduce\) \{\s*\.buret-molstar-preset-preview,\s*\.buret-molstar-transition-frame \{\s*transition: none;/);
-assert.match(previewViewer, /const transitionFrame = captureMolstarTransitionFrame\(\);[\s\S]*?if \(applied\) fadeMolstarTransitionFrame\(transitionFrame\)/);
+assert.match(previewRuntimeCss, /\.buret-molstar-preset-preview\.viewport-constrained \{ display: none; \}/);
+assert.match(previewViewer, /computePreviewPlacement\?\.\(\{/);
+assert.match(previewViewer, /placement\.placement === 'stacked'/);
+assert.match(previewViewer, /previewShell\?\.classList\.contains\('viewport-constrained'\)/);
+assert.match(previewViewer, /positionMolstarPresetMenu\(\);[\s\S]*?positionMolstarPresetPreview\(presetItem\)/);
+assert.match(previewViewer, /molstarPresetPreviewBudgetMessage\(\)/);
+assert.match(previewViewer, /restoreCachedMolstarPresetPreview\(item, preset\)/);
+const applyMolstarPresetNowSource = previewViewer.slice(
+  previewViewer.indexOf('async function applyMolstarPresetNow'),
+  previewViewer.indexOf('async function applyConfiguredMolstarPreset'),
+);
+assert.match(applyMolstarPresetNowSource, /const transitionFrame = captureMolstarTransitionFrame\(\);[\s\S]*?if \(applied\) fadeMolstarTransitionFrame\(transitionFrame\)/);
+assert.match(applyMolstarPresetNowSource, /const viewer = activeViewer/);
+assert.match(applyMolstarPresetNowSource, /activeViewer !== viewer/);
 assert.match(previewViewer, /if \(style === 'default' \|\| style === 'illustrative'\) void requestMolstarAppearance\(style\)/);
 assert.match(previewViewer, /const appearance = molstarPresetAppearance\(option, activeConfig \|\| window\.BuretteConfig \|\| \{\}\)/);
 assert.match(previewViewer, /void requestMolstarPreset\(preset\)/);
 assert.match(previewViewer, /plugin\.managers\.structure\.component\.applyPreset\(structures, provider\)/);
-assert.match(previewViewer, /await applyMolstarAppearance\(activeViewer, appearance\)/);
+assert.match(applyMolstarPresetNowSource, /await applyMolstarAppearance\(viewer, appearance\)/);
 assert.match(previewViewer, /function requestMolstarStyle\(style\)/);
 assert.match(previewViewer, /async function reloadMolstarStyle\(viewer, style, serial\)/);
 assert.match(previewViewer, /function captureMolstarCameraSnapshot\(viewer\)/);
@@ -5585,7 +5604,12 @@ assert.match(previewViewer, /function embeddedStructureDataByteLength\(\)/);
 assert.match(previewViewer, /async function ensureBrowserDevStructureData\(config, cb\)/);
 assert.match(previewViewer, /window\.BuretteDataBytes = null;\s*window\.BuretteDataBase64 = null;\s*await loadStructureData\(config, cb\);/);
 assert.match(previewViewer, /function disposeActiveMolstarViewer\(\)/);
-assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*disposeMolstarPresetPreview\(\);\s*cancelScheduledMolstarWaterRepresentation\(\);\s*notifyMolstarSelectionChanged\(null\);\s*molstarSelectionHostSignature = '';\s*setMolstarStructureDirty\(false\);/);
+const disposeActiveMolstarViewerSource = previewViewer.slice(
+  previewViewer.indexOf('function disposeActiveMolstarViewer()'),
+  previewViewer.indexOf('async function startMolstar'),
+);
+assert.match(disposeActiveMolstarViewerSource, /molstarStyleApplySerial \+= 1;/);
+assert.match(disposeActiveMolstarViewerSource, /disposeMolstarPresetPreview\(\);[\s\S]*?setMolstarStructureDirty\(false\);/);
 assert.match(previewViewer, /function startMolstar\(config, cb\)/);
 assert.match(previewViewer, /if \(toolbar\.dataset\.panelTogglesBound !== '1'\)/);
 assert.match(previewViewer, /if \(toolbar\.dataset\.dragBound === '1'\) return;/);

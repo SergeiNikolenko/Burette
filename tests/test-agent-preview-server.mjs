@@ -109,6 +109,10 @@ try {
   assert.match(staticViewerShell.body, /buret-renderer-choice/);
   assert.match(staticViewerShell.body, />Seq</);
   assert.doesNotMatch(staticViewerShell.body, /VESTA/);
+  const canonicalPresetPreviewController = await readFile('PreviewExtension/Web/molstar-preset-preview-controller.js', 'utf8');
+  const staticPresetPreviewController = await get(`${base}/molstar-preset-preview-controller.js`);
+  assert.equal(staticPresetPreviewController.statusCode, 200);
+  assert.equal(staticPresetPreviewController.body, canonicalPresetPreviewController);
   const canonicalViewer = await readFile('PreviewExtension/Web/viewer.js', 'utf8');
   const staticViewer = await get(`${base}/viewer.js`);
   assert.equal(staticViewer.statusCode, 200);
@@ -123,6 +127,9 @@ try {
     const pluginViewer = await get(`http://127.0.0.1:${pluginPort}/viewer.js`);
     assert.equal(pluginViewer.statusCode, 200);
     assert.equal(pluginViewer.body, canonicalViewer);
+    const pluginPresetPreviewController = await get(`http://127.0.0.1:${pluginPort}/molstar-preset-preview-controller.js`);
+    assert.equal(pluginPresetPreviewController.statusCode, 200);
+    assert.equal(pluginPresetPreviewController.body, canonicalPresetPreviewController);
   } finally {
     pluginChild.kill('SIGTERM');
   }
@@ -132,6 +139,7 @@ try {
   assert.match(htmlWithToken.body, /viewer-runtime\.css\?v=\d+/);
   assert.match(htmlWithToken.body, /viewer-shell\.js\?v=\d+/);
   assert.match(htmlWithToken.body, /burette-agent\.js\?v=\d+/);
+  assert.match(htmlWithToken.body, /molstar-preset-preview-controller\.js\?v=\d+/);
   assert.match(htmlWithToken.body, /viewer\.js\?v=\d+/);
   const cookie = htmlWithToken.headers['set-cookie']?.find(value => value.startsWith('BuretteAgentPreviewToken='));
   assert.ok(cookie, 'authorized HTML response should set the preview token cookie');

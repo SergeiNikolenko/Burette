@@ -17,6 +17,28 @@ const factory = vm.runInContext(
   context,
 );
 assert.equal(typeof factory?.create, "function");
+assert.equal(typeof factory?.computePreviewPlacement, "function");
+
+for (const viewportWidth of [320, 400, 512]) {
+  const menuRight = viewportWidth - 12;
+  const menuLeft = menuRight - 264;
+  const placement = factory.computePreviewPlacement({
+    viewportWidth,
+    viewportHeight: 568,
+    menuRect: { left: menuLeft, right: menuRight },
+    itemRect: { top: 150 },
+    previewWidth: 240,
+    previewHeight: 202,
+    margin: 12,
+    gap: 8,
+    minimumMenuHeight: 120,
+  });
+  assert.equal(placement.placement, "stacked");
+  assert.ok(placement.left >= 12);
+  assert.ok(placement.left + 240 <= viewportWidth - 12);
+  assert.ok(placement.top + 202 + 8 <= placement.menuTop);
+  assert.ok(placement.menuTop + placement.menuMaxHeight <= 568 - 12);
+}
 
 function deferred() {
   let resolve;
@@ -127,7 +149,7 @@ test("dispose during viewer creation disposes the stale viewer", async () => {
   await request;
 });
 
-test("a newer preview bypasses stale work and becomes the retained viewer", async () => {
+test("a newer preview waits for stale work and reuses one retained viewer", async () => {
   const previewA = deferred();
   const viewers = [];
   const rendered = [];
@@ -158,18 +180,52 @@ test("a newer preview bypasses stale work and becomes the retained viewer", asyn
 
   const requestB = controller.requestPreview({ id: "B" });
   await flushMicrotasks();
-  assert.deepEqual(rendered.map((entry) => entry.payload.id), ["A", "B"]);
-  assert.equal(viewers.length, 2);
-  assert.equal(rendered[1].viewer, viewers[1]);
-  assert.ok(disposed.includes(viewers[0]));
+  assert.deepEqual(rendered.map((entry) => entry.payload.id), ["A"]);
+  assert.equal(viewers.length, 1);
 
-  await requestB;
   previewA.resolve("late-A-result");
   await requestA;
   await flushMicrotasks();
+  assert.deepEqual(rendered.map((entry) => entry.payload.id), ["A", "B"]);
+  assert.equal(viewers.length, 1);
+  assert.equal(rendered[1].viewer, viewers[0]);
+  await requestB;
 
   controller.hide();
-  assert.equal(stopped.at(-1), viewers[1]);
+  assert.equal(stopped.at(-1), viewers[0]);
+  controller.dispose();
+  assert.deepEqual(disposed, [viewers[0]]);
+});
+
+test("hide during viewer creation skips rendering and schedules idle disposal", async () => {
+  const creation = deferred();
+  const timers = fakeTimers();
+  const viewer = { id: "hidden-late-viewer" };
+  const rendered = [];
+  const disposed = [];
+  const controller = factory.create(createDeps({
+    createViewer: () => creation.promise,
+    renderPreview(value, payload) {
+      rendered.push([value, payload]);
+    },
+    disposeViewer(value) {
+      disposed.push(value);
+    },
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
+  }), { idleDisposeMs: 250 });
+
+  const request = controller.requestPreview({ id: "A" });
+  await flushMicrotasks();
+  controller.hide();
+  creation.resolve(viewer);
+  await request;
+  await flushMicrotasks();
+
+  assert.deepEqual(rendered, []);
+  assert.deepEqual(timers.delays(), [250]);
+  timers.runAll();
+  assert.deepEqual(disposed, [viewer]);
   controller.dispose();
 });
 
@@ -250,6 +306,38 @@ test("preset applies are serialized and duplicate pending requests coalesce", as
   assert.deepEqual(applyCalls, ["A", "B"]);
   assert.equal(applyCalls.at(-1), "B");
   assert.equal(maximumActiveApplies, 1);
+  controller.dispose();
+});
+
+test("the last A in an A to B to A sequence wins", async () => {
+  const firstA = deferred();
+  const lastA = deferred();
+  const applyCalls = [];
+  let aCalls = 0;
+  const controller = factory.create(createDeps({
+    applyPreset(payload) {
+      applyCalls.push(payload.id);
+      if (payload.id !== "A") return Promise.resolve(`applied-${payload.id}`);
+      aCalls += 1;
+      return aCalls === 1 ? firstA.promise : lastA.promise;
+    },
+  }));
+
+  const requestFirstA = controller.requestApply({ id: "A" });
+  const requestB = controller.requestApply({ id: "B" });
+  const requestLastA = controller.requestApply({ id: "A" });
+  await flushMicrotasks();
+  assert.deepEqual(applyCalls, ["A"]);
+  assert.equal(await requestB, undefined);
+
+  firstA.resolve("first-A");
+  await requestFirstA;
+  await flushMicrotasks();
+  assert.deepEqual(applyCalls, ["A", "A"]);
+
+  lastA.resolve("last-A");
+  assert.equal(await requestLastA, "last-A");
+  assert.equal(applyCalls.at(-1), "A");
   controller.dispose();
 });
 
