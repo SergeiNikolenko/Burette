@@ -35,6 +35,39 @@
     };
   }
 
+  function computePreviewCanvasLayout(options) {
+    const value = options || {};
+    const margin = 12;
+    const headerHeight = 28;
+    const viewportWidth = Math.max(1, Number(value.viewportWidth) || 1);
+    const viewportHeight = Math.max(1, Number(value.viewportHeight) || 1);
+    const cropWidth = Math.max(1, Number(value.cropWidth) || 1);
+    const cropHeight = Math.max(1, Number(value.cropHeight) || 1);
+    const cardWidth = Math.min(240, Math.max(1, viewportWidth - margin * 2));
+    const bodyHeight = Math.min(174, Math.max(120, viewportHeight - headerHeight - margin * 2));
+    const padding = Math.min(10, cardWidth / 4, bodyHeight / 4);
+    const availableWidth = Math.max(1, cardWidth - padding * 2);
+    const availableHeight = Math.max(1, bodyHeight - padding * 2);
+    const scale = Math.min(availableWidth / cropWidth, availableHeight / cropHeight);
+    const drawWidth = cropWidth * scale;
+    const drawHeight = cropHeight * scale;
+    const backingScale = Math.min(
+      2,
+      Math.max(1, Number(value.devicePixelRatio) || 1),
+      640 / Math.max(cardWidth, bodyHeight),
+    );
+    return {
+      cardWidth,
+      cardHeight: headerHeight + bodyHeight,
+      bodyHeight,
+      backingScale,
+      drawX: (cardWidth - drawWidth) / 2,
+      drawY: (bodyHeight - drawHeight) / 2,
+      drawWidth,
+      drawHeight,
+    };
+  }
+
   function create(dependencies, options) {
     const deps = dependencies || {};
     const config = options || {};
@@ -320,5 +353,9 @@
     };
   }
 
-  root.BuretteMolstarPresetPreviewController = { create, computePreviewPlacement };
+  root.BuretteMolstarPresetPreviewController = {
+    create,
+    computePreviewPlacement,
+    computePreviewCanvasLayout,
+  };
 })(globalThis);

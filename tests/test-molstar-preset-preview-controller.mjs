@@ -18,6 +18,23 @@ const factory = vm.runInContext(
 );
 assert.equal(typeof factory?.create, "function");
 assert.equal(typeof factory?.computePreviewPlacement, "function");
+assert.equal(typeof factory?.computePreviewCanvasLayout, "function");
+
+for (const [cropWidth, cropHeight] of [[200, 600], [400, 400], [600, 200]]) {
+  const layout = factory.computePreviewCanvasLayout({
+    cropWidth,
+    cropHeight,
+    viewportWidth: 948,
+    viewportHeight: 994,
+    devicePixelRatio: 2,
+  });
+  assert.equal(layout.cardWidth, 240);
+  assert.equal(layout.cardHeight, 202);
+  assert.ok(layout.drawWidth <= 220);
+  assert.ok(layout.drawHeight <= 154);
+  assert.ok(layout.drawX >= 10);
+  assert.ok(layout.drawY >= 10);
+}
 
 for (const viewportWidth of [320, 400, 512]) {
   const menuRight = viewportWidth - 12;
