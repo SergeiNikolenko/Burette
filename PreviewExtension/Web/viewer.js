@@ -3157,26 +3157,67 @@
     return '';
   }
 
-  async function captureMolstarPresetPreview(item, viewer, serial) {
-    const helper = viewer?.plugin?.helpers?.viewportScreenshot;
-    if (!helper?.getPreview) throw new Error('Mol* screenshot preview is unavailable.');
-    helper.behaviors.values.next({
-      ...helper.values,
-      transparent: false,
-      axes: { name: 'off', params: {} },
-      resolution: { name: 'viewport', params: {} }
+  function molstarPresetPreviewPixelScale() {
+    const source = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas;
+    const rect = source?.getBoundingClientRect?.();
+    const cssWidth = Number(rect?.width);
+    const backingWidth = Number(source?.width);
+    const deviceScale = Math.max(1, Number(window.devicePixelRatio) || 1);
+    const scale = backingWidth / cssWidth / deviceScale;
+    return Number.isFinite(scale) && scale > 0 ? scale : 1;
+  }
+
+  function copyMolstarPresetPreviewCanvasProps(sourceViewer, targetViewer) {
+    const sourceCanvas = sourceViewer?.plugin?.canvas3d;
+    const targetCanvas = targetViewer?.plugin?.canvas3d;
+    if (!sourceCanvas?.props || !targetCanvas?.setProps) return;
+    targetCanvas.setProps(sourceCanvas.props);
+  }
+
+  function restoreMolstarPresetPreviewCamera(viewer, snapshot) {
+    const canvas3d = viewer?.plugin?.canvas3d;
+    const camera = canvas3d?.camera;
+    if (!snapshot || typeof camera?.setState !== 'function') return false;
+    camera.setState(snapshot, 0);
+    canvas3d.requestDraw?.();
+    return true;
+  }
+
+  async function waitForMolstarPresetPreviewDraw(viewer) {
+    const canvas3d = viewer?.plugin?.canvas3d;
+    const didDraw = canvas3d?.didDraw;
+    if (!canvas3d || typeof didDraw?.subscribe !== 'function') {
+      await waitForAnimationFrame();
+      return;
+    }
+    await new Promise(resolve => {
+      let sawCurrentValue = false;
+      let settled = false;
+      let subscription = null;
+      let timer = 0;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (timer) window.clearTimeout(timer);
+        subscription?.unsubscribe?.();
+        resolve();
+      };
+      subscription = didDraw.subscribe(() => {
+        if (sawCurrentValue) finish();
+        else sawCurrentValue = true;
+      });
+      timer = window.setTimeout(finish, 600);
+      canvas3d.requestDraw?.();
     });
-    helper.behaviors.cropParams.next({ auto: false, relativePadding: 0 });
-    helper.resetCrop();
-    const { stage } = molstarPresetPreviewElements();
-    const maxDim = Math.min(640, Math.max(320, stage?.clientWidth || 0, stage?.clientHeight || 0));
-    const rendered = await helper.getPreview({
-      isSynchronous: true,
-      shouldUpdate: false,
-      update() {}
-    }, maxDim);
-    if (serial !== molstarPresetPreviewSerial || !rendered?.canvas) return;
-    const geometry = drawMolstarPresetPreviewFrame(item, rendered.canvas);
+  }
+
+  async function captureMolstarPresetPreview(item, viewer, serial) {
+    const source = viewer?.plugin?.canvas3d?.webgl?.gl?.canvas;
+    if (!source || !(Number(source.width) > 0) || !(Number(source.height) > 0)) {
+      throw new Error('Mol* preview viewport is unavailable.');
+    }
+    if (serial !== molstarPresetPreviewSerial) return;
+    const geometry = drawMolstarPresetPreviewFrame(item, source);
     cacheMolstarPresetPreview(item?.dataset?.buretMolstarPreset || '', geometry);
   }
 
@@ -3246,9 +3287,7 @@
       viewportShowAnimation: false,
       viewportShowTrajectoryControls: false,
       viewportShowSettings: false,
-      preferWebgl1: true,
-      disableAntialiasing: true,
-      pixelScale: 0.75,
+      pixelScale: molstarPresetPreviewPixelScale(),
       viewportBackgroundColor: transparentBackground ? undefined : canvasBackgroundCSS(),
       powerPreference: 'default'
     }), 18000, 'Mol* preset preview timed out.');
@@ -3296,6 +3335,7 @@
       const snapshot = sourcePlugin.state.data.getSnapshot();
       await viewer.plugin.runTask(viewer.plugin.state.data.setSnapshot(snapshot));
       if (serial !== molstarPresetPreviewSerial) return;
+      copyMolstarPresetPreviewCanvasProps(activeViewer, viewer);
       if (option.provider) await applyMolstarProviderPreset(viewer, option);
       else await applyMolstarStyle(viewer, option.legacyStyle);
       const appearance = molstarPresetAppearance(option, activeConfig || window.BuretteConfig || {});
@@ -3304,10 +3344,10 @@
       if (serial !== molstarPresetPreviewSerial) return;
       try { viewer.handleResize(); } catch (_) {}
       await waitForAnimationFrame();
-      if (sourceCamera) restoreMolstarCameraSnapshot(viewer, sourceCamera);
+      if (sourceCamera) restoreMolstarPresetPreviewCamera(viewer, sourceCamera);
       else viewer.plugin?.canvas3d?.requestCameraReset?.({ durationMs: 0 });
       try { viewer.plugin?.canvas3d?.requestDraw?.(); } catch (_) {}
-      await waitForAnimationFrame();
+      await waitForMolstarPresetPreviewDraw(viewer);
       if (serial !== molstarPresetPreviewSerial) return;
       await captureMolstarPresetPreview(item, viewer, serial);
       if (serial !== molstarPresetPreviewSerial) return;
