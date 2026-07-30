@@ -3396,16 +3396,31 @@
     if (subscription) molstarPresetPreviewStateCleanup = () => subscription.unsubscribe?.();
   }
 
-  function hideMolstarPresetMenu({ restoreFocus = false } = {}) {
+  function focusMolstarPresetControl(target, pointerFocus = false) {
+    if (!target) return;
+    if (pointerFocus) {
+      window.BuretteMolstarPresetPreviewController?.focusPointerTarget?.(target);
+      return;
+    }
+    target.classList.remove('buret-pointer-focus');
+    target.focus?.();
+  }
+
+  function hideMolstarPresetMenu({ restoreFocus = false, pointerFocus = false } = {}) {
     const menu = document.querySelector('[data-buret-molstar-preset-menu]');
     const trigger = document.querySelector('[data-buret-molstar-preset-trigger]');
     menu?.classList.add('hidden');
     trigger?.setAttribute('aria-expanded', 'false');
     hideMolstarPresetPreview();
-    if (restoreFocus) trigger?.focus?.();
+    if (!restoreFocus) return;
+    if (pointerFocus) {
+      document.activeElement?.blur?.();
+      return;
+    }
+    focusMolstarPresetControl(trigger);
   }
 
-  function showMolstarPresetMenu(anchor) {
+  function showMolstarPresetMenu(anchor, { pointerFocus = false } = {}) {
     const menu = document.querySelector('[data-buret-molstar-preset-menu]');
     if (!menu || !anchor || anchor.disabled) return;
     hideGenerate3DMenu();
@@ -3415,7 +3430,7 @@
     anchor.setAttribute('aria-expanded', 'true');
     positionMolstarPresetMenu(anchor);
     const selected = menu.querySelector('[aria-checked="true"]');
-    setMolstarPresetMenuRovingItem(menu, selected)?.focus?.();
+    focusMolstarPresetControl(setMolstarPresetMenuRovingItem(menu, selected), pointerFocus);
   }
 
   function escapeHtml(value) {
@@ -4732,8 +4747,9 @@
       trigger.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
-        if (menu.classList.contains('hidden')) showMolstarPresetMenu(trigger);
-        else hideMolstarPresetMenu({ restoreFocus: true });
+        const pointerFocus = event.detail > 0;
+        if (menu.classList.contains('hidden')) showMolstarPresetMenu(trigger, { pointerFocus });
+        else hideMolstarPresetMenu({ restoreFocus: true, pointerFocus });
       });
       trigger.addEventListener('keydown', event => {
         if (event.key !== 'ArrowDown') return;
@@ -4756,7 +4772,7 @@
           event.stopPropagation();
           hideMolstarPresetPreview();
           const appearance = appearanceItem.dataset.buretMolstarAppearance;
-          hideMolstarPresetMenu({ restoreFocus: true });
+          hideMolstarPresetMenu({ restoreFocus: true, pointerFocus: event.detail > 0 });
           void requestMolstarAppearance(appearance);
           return;
         }
@@ -4764,7 +4780,7 @@
         if (!button || !menu.contains(button)) return;
         event.preventDefault();
         const preset = button.dataset.buretMolstarPreset;
-        hideMolstarPresetMenu({ restoreFocus: true });
+        hideMolstarPresetMenu({ restoreFocus: true, pointerFocus: event.detail > 0 });
         void requestMolstarPreset(preset);
       });
       menu.addEventListener('pointerover', event => {
@@ -4819,7 +4835,7 @@
         const caption = preview.querySelector('[data-buret-molstar-preset-preview-caption]');
         if (caption) caption.textContent = 'Applying…';
         void requestMolstarPreset(preset);
-        hideMolstarPresetMenu({ restoreFocus: true });
+        hideMolstarPresetMenu({ restoreFocus: true, pointerFocus: event.type === 'click' && event.detail > 0 });
       };
       preview?.addEventListener('click', applyPreview);
       preview?.addEventListener('keydown', applyPreview);
@@ -4857,6 +4873,7 @@
   document.addEventListener('keydown', event => {
     const menu = document.querySelector('[data-buret-molstar-preset-menu]');
     if (!menu || menu.classList.contains('hidden')) return;
+    document.querySelectorAll('.buret-pointer-focus').forEach(item => item.classList.remove('buret-pointer-focus'));
     if (event.key === 'Escape') {
       event.preventDefault();
       hideMolstarPresetMenu({ restoreFocus: true });

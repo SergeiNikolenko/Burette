@@ -2180,6 +2180,11 @@ body.buret-theme-light .buret-molstar-preset-menu-separator {
   outline: 2px solid var(--buret-menu-focus-ring);
   outline-offset: 2px;
 }
+.buret-molstar-preset-menu .buret-tree-menu-item.buret-pointer-focus:focus-visible,
+.buret-molstar-appearance-item.buret-pointer-focus:focus-visible,
+.buret-molstar-preset-preview.buret-pointer-focus:focus-visible {
+  outline: none;
+}
 .buret-molstar-preset-preview.applying {
   opacity: 0;
   transform: scale(0.96);

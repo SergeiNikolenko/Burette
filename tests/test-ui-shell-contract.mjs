@@ -5293,7 +5293,12 @@ assert.match(previewRuntimeCss, /body\.buret-theme-light \{[^}]*--buret-menu-foc
 assert.match(previewRuntimeCss, /\.buret-molstar-preset-menu \.buret-tree-menu-item:focus-visible \{[^}]*outline: 2px solid var\(--buret-menu-focus-ring\);[^}]*outline-offset: -2px;/);
 assert.match(previewRuntimeCss, /\.buret-molstar-appearance-item:focus-visible \{[^}]*outline: 2px solid var\(--buret-menu-focus-ring\);[^}]*outline-offset: -2px;/);
 assert.match(previewRuntimeCss, /\.buret-molstar-preset-menu \.buret-tree-menu-item\[aria-checked="true"\]:focus-visible,\s*\.buret-molstar-appearance-item\[aria-checked="true"\]:focus-visible \{[^}]*outline-width: 3px;/);
+assert.match(previewRuntimeCss, /\.buret-molstar-preset-menu \.buret-tree-menu-item\.buret-pointer-focus:focus-visible,\s*\.buret-molstar-appearance-item\.buret-pointer-focus:focus-visible,\s*\.buret-molstar-preset-preview\.buret-pointer-focus:focus-visible \{[^}]*outline: none;/);
 assert.match(previewRuntimeCss, /@media \(forced-colors: active\) \{\s*\.buret-molstar-preset-menu \.buret-tree-menu-item:focus-visible,\s*\.buret-molstar-appearance-item:focus-visible \{[^}]*outline-color: Highlight;/);
+assert.match(previewViewer, /function showMolstarPresetMenu\(anchor, \{ pointerFocus = false \} = \{\}\)/);
+assert.match(previewViewer, /function focusMolstarPresetControl\(target, pointerFocus = false\)/);
+assert.match(previewViewer, /if \(pointerFocus\) \{\s*document\.activeElement\?\.blur\?\.\(\);\s*return;\s*\}/);
+assert.match(previewViewer, /showMolstarPresetMenu\(trigger, \{ pointerFocus \}\)/);
 assert.match(previewRuntimeCss, /body\.buret-theme-light \.buret-molstar-preset-preview-caption \{\s*color: #5C5E63;\s*\}/);
 assert.match(previewViewer, /function sizeMolstarPresetPreview\(preview\)/);
 assert.match(previewViewer, /function drawMolstarPresetPreviewFrame\(item, source\)/);
