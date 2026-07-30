@@ -73,6 +73,7 @@
       "viewer-shell.js",
       "burette-agent.js",
       "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -95,6 +96,7 @@
       "viewer-shell.js",
       "burette-agent.js",
       "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -111,6 +113,7 @@
       "viewer-shell.js",
       "burette-agent.js",
       "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
       "viewer.js"
     ]
   },

@@ -1480,9 +1480,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func runtimeAssets(for renderer: String) -> [String] {
         if renderer == BuretteRendererMode.xyzrenderExternal {
-            return ["viewer-runtime.css", "viewer-shell.js", "molstar.css", "burette-agent.js", "viewer.js"]
+            return ["viewer-runtime.css", "viewer-shell.js", "molstar.css", "burette-agent.js", "molstar-preset-preview-controller.js", "viewer.js"]
         }
-        return ["viewer-runtime.css", "viewer-shell.js", "molstar.js", "molstar.css", "burette-agent.js", "viewer.js"]
+        return ["viewer-runtime.css", "viewer-shell.js", "molstar.js", "molstar.css", "burette-agent.js", "molstar-preset-preview-controller.js", "viewer.js"]
     }
 
     private static func copyAssetIfNeeded(from source: URL, to destination: URL, fileManager: FileManager) throws -> Bool {
@@ -2547,6 +2547,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             window.__mqlStatus && window.__mqlStatus('[web] About to load viewer.js from bundled resource…');
           </script>
           <script src="../assets/burette-agent.js"></script>
+          <script src="../assets/molstar-preset-preview-controller.js"></script>
           <script src="../assets/viewer.js"></script>
           <script>
             window.__mqlDebug && window.__mqlDebug('[web] viewer.js script tag parsed. async startup may still be running.');
@@ -2651,7 +2652,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static func validateVendoredWebAssets(in webDirectory: URL, fileManager: FileManager, diagnostics: inout [String]) throws {
-        let required = ["viewer.js", "burette-agent.js", "viewer-shell.js", "molstar.js", "molstar.css", "viewer-runtime.css"]
+        let required = ["viewer.js", "burette-agent.js", "viewer-shell.js", "molstar-preset-preview-controller.js", "molstar.js", "molstar.css", "viewer-runtime.css"]
         for name in required {
             let url = webDirectory.appendingPathComponent(name)
             let exists = fileManager.fileExists(atPath: url.path)

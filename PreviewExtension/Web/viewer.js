@@ -1174,12 +1174,11 @@
   let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
-  let molstarPresetPreviewViewer = null;
-  let molstarPresetPreviewInit = null;
+  let molstarPresetPreviewController = null;
   let molstarPresetPreviewSerial = 0;
   let molstarPresetPreviewPreset = '';
-  let molstarPresetPreviewRender = Promise.resolve();
   let molstarPresetPreviewCloseTimer = 0;
+  let molstarPresetPreviewCloseEpoch = 0;
   let molstarWaterRepresentationEpoch = 0;
   let latestXyzrenderOrientationRef = null;
   let orientationTrackingCleanup = null;
@@ -2407,10 +2406,20 @@
     const rect = canvas.getBoundingClientRect();
     if (rect.width < 4 || rect.height < 4) return null;
     try {
+      const maxDimension = 640;
+      const sourceWidth = Math.max(1, Number(canvas.width) || Math.round(rect.width));
+      const sourceHeight = Math.max(1, Number(canvas.height) || Math.round(rect.height));
+      const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight));
+      const snapshot = document.createElement('canvas');
+      snapshot.width = Math.max(1, Math.round(sourceWidth * scale));
+      snapshot.height = Math.max(1, Math.round(sourceHeight * scale));
+      const context = snapshot.getContext('2d');
+      if (!context) return null;
+      context.drawImage(canvas, 0, 0, snapshot.width, snapshot.height);
       const image = document.createElement('img');
       image.className = 'buret-molstar-transition-frame';
       image.alt = '';
-      image.src = canvas.toDataURL('image/png');
+      image.src = snapshot.toDataURL('image/png');
       image.style.left = `${Math.round(rect.left)}px`;
       image.style.top = `${Math.round(rect.top)}px`;
       image.style.width = `${Math.round(rect.width)}px`;
@@ -2836,6 +2845,7 @@
       appearance.dataset.buretMolstarAppearance = appearanceOption.value;
       appearance.setAttribute('role', 'menuitemradio');
       appearance.setAttribute('aria-checked', 'false');
+      appearance.tabIndex = -1;
       const itemLabel = document.createElement('span');
       itemLabel.className = 'buret-tree-menu-label';
       itemLabel.textContent = appearanceOption.label;
@@ -2869,6 +2879,7 @@
       button.dataset.buretMolstarPreset = option.value;
       button.setAttribute('role', 'menuitemradio');
       button.setAttribute('aria-checked', 'false');
+      button.tabIndex = -1;
       const label = document.createElement('span');
       label.className = 'buret-tree-menu-label';
       label.textContent = option.label;
@@ -2903,6 +2914,15 @@
       button.setAttribute('aria-checked', button.dataset.buretMolstarPreset === option.value ? 'true' : 'false');
     });
     updateMolstarAppearanceControl(menu, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
+  }
+
+  function setMolstarPresetMenuRovingItem(menu, activeItem) {
+    const items = Array.from(menu?.querySelectorAll?.('[role="menuitemradio"]') || []);
+    const selected = activeItem && items.includes(activeItem)
+      ? activeItem
+      : items.find(item => item.getAttribute('aria-checked') === 'true') || items[0];
+    for (const item of items) item.tabIndex = item === selected ? 0 : -1;
+    return selected || null;
   }
 
   function positionMolstarPresetMenu(anchor = document.querySelector('[data-buret-molstar-preset-trigger]')) {
@@ -2940,15 +2960,19 @@
   }
 
   function cancelMolstarPresetPreviewClose() {
-    if (!molstarPresetPreviewCloseTimer) return;
-    clearTimeout(molstarPresetPreviewCloseTimer);
-    molstarPresetPreviewCloseTimer = 0;
+    molstarPresetPreviewCloseEpoch += 1;
+    if (molstarPresetPreviewCloseTimer) {
+      clearTimeout(molstarPresetPreviewCloseTimer);
+      molstarPresetPreviewCloseTimer = 0;
+    }
   }
 
   function scheduleMolstarPresetPreviewClose() {
     cancelMolstarPresetPreviewClose();
+    const epoch = molstarPresetPreviewCloseEpoch;
     molstarPresetPreviewCloseTimer = window.setTimeout(() => {
       molstarPresetPreviewCloseTimer = 0;
+      if (epoch !== molstarPresetPreviewCloseEpoch) return;
       hideMolstarPresetPreview();
     }, 180);
   }
@@ -2961,16 +2985,26 @@
     const gap = 8;
     const menuRect = menu.getBoundingClientRect();
     const itemRect = item.getBoundingClientRect();
-    const previewWidth = preview.offsetWidth;
-    const previewHeight = preview.offsetHeight;
+    const previewWidth = Math.min(preview.offsetWidth || 240, Math.max(1, window.innerWidth - margin * 2));
+    const previewHeight = Math.min(preview.offsetHeight || 202, Math.max(120, window.innerHeight - margin * 2));
     const leftCandidate = menuRect.left - gap - previewWidth;
     const rightCandidate = menuRect.right + gap;
-    const left = leftCandidate >= margin
-      ? leftCandidate
-      : Math.min(window.innerWidth - margin - previewWidth, rightCandidate);
-    const top = Math.max(margin, Math.min(itemRect.top - 28, window.innerHeight - margin - previewHeight));
-    preview.style.left = `${Math.round(Math.max(margin, left))}px`;
+    const alignedTop = Math.max(margin, Math.min(itemRect.top - 28, window.innerHeight - margin - previewHeight));
+    if (leftCandidate >= margin || rightCandidate + previewWidth <= window.innerWidth - margin) {
+      const left = leftCandidate >= margin ? leftCandidate : rightCandidate;
+      preview.style.left = `${Math.round(left)}px`;
+      preview.style.top = `${Math.round(alignedTop)}px`;
+      preview.dataset.placement = leftCandidate >= margin ? 'left' : 'right';
+      return;
+    }
+    const below = menuRect.bottom + gap;
+    const above = menuRect.top - gap - previewHeight;
+    const top = below + previewHeight <= window.innerHeight - margin
+      ? below
+      : above >= margin ? above : Math.max(margin, window.innerHeight - margin - previewHeight);
+    preview.style.left = `${Math.round(Math.max(margin, Math.min(window.innerWidth - margin - previewWidth, menuRect.left)))}px`;
     preview.style.top = `${Math.round(top)}px`;
+    preview.dataset.placement = below + previewHeight <= window.innerHeight - margin ? 'below' : 'above';
   }
 
   function sizeMolstarPresetPreview(preview) {
@@ -2984,10 +3018,10 @@
       return;
     }
     if (stage) {
-      stage.style.width = `${Math.round(sourceWidth)}px`;
-      stage.style.height = `${Math.round(sourceHeight)}px`;
+      const scale = Math.min(1, 640 / Math.max(sourceWidth, sourceHeight));
+      stage.style.width = `${Math.max(1, Math.round(sourceWidth * scale))}px`;
+      stage.style.height = `${Math.max(1, Math.round(sourceHeight * scale))}px`;
     }
-    try { molstarPresetPreviewViewer?.handleResize?.(); } catch (_) {}
   }
 
   function drawMolstarPresetPreviewCrop(item, source, crop) {
@@ -2999,13 +3033,6 @@
     const y = Math.max(0, Math.min(sourceHeight - 1, Math.floor((crop?.y || 0) * sourceHeight)));
     const width = Math.max(1, Math.min(sourceWidth - x, Math.ceil((crop?.width || 1) * sourceWidth)));
     const height = Math.max(1, Math.min(sourceHeight - y, Math.ceil((crop?.height || 1) * sourceHeight)));
-    image.width = width;
-    image.height = height;
-    const context = image.getContext('2d');
-    if (!context) throw new Error('Preset preview image cannot be drawn.');
-    context.clearRect(0, 0, width, height);
-    context.drawImage(source, x, y, width, height, 0, 0, width, height);
-
     const maxWidth = Math.min(240, Math.max(1, window.innerWidth - 24));
     const maxHeight = Math.min(320, Math.max(120, window.innerHeight - 52));
     let scale = Math.min(maxWidth / width, maxHeight / height);
@@ -3013,6 +3040,13 @@
     if (height * scale < 120 && width * (120 / height) <= maxWidth) scale = 120 / height;
     const displayWidth = Math.max(1, Math.round(width * scale));
     const displayHeight = Math.max(1, Math.round(height * scale));
+    const backingScale = Math.min(2, window.devicePixelRatio || 1, 640 / Math.max(displayWidth, displayHeight));
+    image.width = Math.max(1, Math.round(displayWidth * backingScale));
+    image.height = Math.max(1, Math.round(displayHeight * backingScale));
+    const context = image.getContext('2d');
+    if (!context) throw new Error('Preset preview image cannot be drawn.');
+    context.clearRect(0, 0, image.width, image.height);
+    context.drawImage(source, x, y, width, height, 0, 0, image.width, image.height);
     preview.style.width = `${displayWidth}px`;
     preview.style.height = `${28 + displayHeight}px`;
     preview.dataset.crop = `${x},${y},${width},${height}`;
@@ -3032,7 +3066,7 @@
     helper.behaviors.cropParams.next({ auto: true, relativePadding: 0.07 });
     helper.resetCrop();
     const { stage } = molstarPresetPreviewElements();
-    const maxDim = Math.min(960, Math.max(320, stage?.clientWidth || 0, stage?.clientHeight || 0));
+    const maxDim = Math.min(640, Math.max(320, stage?.clientWidth || 0, stage?.clientHeight || 0));
     const rendered = await helper.getPreview({
       isSynchronous: true,
       shouldUpdate: false,
@@ -3068,6 +3102,7 @@
     cancelMolstarPresetPreviewClose();
     molstarPresetPreviewSerial += 1;
     molstarPresetPreviewPreset = '';
+    molstarPresetPreviewController?.hide?.();
     const { preview } = molstarPresetPreviewElements();
     preview?.classList.add('hidden');
     preview?.classList.remove('applying');
@@ -3076,23 +3111,16 @@
 
   function disposeMolstarPresetPreview() {
     hideMolstarPresetPreview();
-    const viewer = molstarPresetPreviewViewer;
-    molstarPresetPreviewViewer = null;
-    molstarPresetPreviewInit = null;
-    molstarPresetPreviewRender = Promise.resolve();
-    try { viewer?.dispose?.(); } catch (_) {
-      try { viewer?.plugin?.dispose?.(); } catch (_) {}
-    }
+    molstarPresetPreviewController?.dispose?.();
+    molstarPresetPreviewController = null;
     const { stage } = molstarPresetPreviewElements();
     if (stage) stage.innerHTML = '';
   }
 
-  async function ensureMolstarPresetPreviewViewer() {
-    if (molstarPresetPreviewViewer) return molstarPresetPreviewViewer;
-    if (molstarPresetPreviewInit) return molstarPresetPreviewInit;
+  async function createMolstarPresetPreviewViewer() {
     const { stage } = molstarPresetPreviewElements();
     if (!stage || !window.molstar?.Viewer) throw new Error('Mol* preview renderer is unavailable.');
-    molstarPresetPreviewInit = withTimeout(window.molstar.Viewer.create(stage, {
+    const viewer = await withTimeout(window.molstar.Viewer.create(stage, {
       layoutIsExpanded: false,
       layoutShowControls: false,
       layoutShowRemoteState: false,
@@ -3113,25 +3141,47 @@
       pixelScale: 0.75,
       viewportBackgroundColor: transparentBackground ? undefined : canvasBackgroundCSS(),
       powerPreference: 'default'
-    }), 18000, 'Mol* preset preview timed out.').then(viewer => {
-      molstarPresetPreviewViewer = viewer;
-      molstarPresetPreviewInit = null;
-      try { viewer.handleResize(); } catch (_) {}
-      return viewer;
-    }).catch(error => {
-      molstarPresetPreviewInit = null;
-      throw error;
-    });
-    return molstarPresetPreviewInit;
+    }), 18000, 'Mol* preset preview timed out.');
+    try { viewer.handleResize(); } catch (_) {}
+    return viewer;
   }
 
-  async function renderMolstarPresetPreview(item, preset, serial) {
+  function startMolstarPresetPreviewViewer(viewer) {
+    try { viewer?.plugin?.animationLoop?.start?.({ immediate: true }); } catch (_) {}
+    try { viewer?.plugin?.canvas3d?.requestDraw?.(); } catch (_) {}
+  }
+
+  function stopMolstarPresetPreviewViewer(viewer) {
+    try { viewer?.plugin?.animationLoop?.stop?.({ noDraw: true }); } catch (_) {}
+  }
+
+  function disposeMolstarPresetPreviewViewer(viewer) {
+    try { viewer?.dispose?.(); } catch (_) {
+      try { viewer?.plugin?.dispose?.(); } catch (_) {}
+    }
+  }
+
+  function ensureMolstarPresetPreviewController() {
+    if (molstarPresetPreviewController) return molstarPresetPreviewController;
+    const factory = window.BuretteMolstarPresetPreviewController;
+    if (typeof factory?.create !== 'function') return null;
+    molstarPresetPreviewController = factory.create({
+      createViewer: createMolstarPresetPreviewViewer,
+      disposeViewer: disposeMolstarPresetPreviewViewer,
+      startViewer: startMolstarPresetPreviewViewer,
+      stopViewer: stopMolstarPresetPreviewViewer,
+      renderPreview: (viewer, payload) => renderMolstarPresetPreview(viewer, payload),
+      applyPreset: payload => applyMolstarPresetNow(payload.preset)
+    }, { idleDisposeMs: 4000, stopAfterRender: true });
+    return molstarPresetPreviewController;
+  }
+
+  async function renderMolstarPresetPreview(viewer, { item, preset, serial }) {
     const option = molstarPresetOption(preset);
     try {
       const sourcePlugin = activeViewer?.plugin;
       const sourceCamera = captureMolstarCameraSnapshot(activeViewer);
       if (typeof sourcePlugin?.state?.data?.getSnapshot !== 'function') throw new Error('Current Mol* scene cannot be copied.');
-      const viewer = await ensureMolstarPresetPreviewViewer();
       if (serial !== molstarPresetPreviewSerial) return;
       const snapshot = sourcePlugin.state.data.getSnapshot();
       await viewer.plugin.runTask(viewer.plugin.state.data.setSnapshot(snapshot));
@@ -3171,11 +3221,23 @@
     molstarPresetPreviewPreset = preset;
     showMolstarPresetPreviewShell(item, molstarPresetOption(preset));
     const serial = ++molstarPresetPreviewSerial;
-    molstarPresetPreviewRender = molstarPresetPreviewRender
-      .catch(() => {})
-      .then(() => serial === molstarPresetPreviewSerial
-        ? renderMolstarPresetPreview(item, preset, serial)
-        : undefined);
+    const controller = ensureMolstarPresetPreviewController();
+    if (!controller) {
+      const { preview, caption, state } = molstarPresetPreviewElements();
+      preview?.classList.add('error');
+      if (caption) caption.textContent = 'Unavailable';
+      if (state) state.textContent = 'Preset preview controller is unavailable.';
+      return;
+    }
+    controller.show();
+    void controller.requestPreview({ item, preset, serial }).catch(error => {
+      if (serial !== molstarPresetPreviewSerial) return;
+      const { preview, caption, state } = molstarPresetPreviewElements();
+      preview?.classList.add('error');
+      if (caption) caption.textContent = 'Unavailable';
+      if (state) state.textContent = error?.message || 'Preset preview unavailable.';
+      debug('Mol* preset preview failed: ' + (error?.message || String(error)));
+    });
   }
 
   function hideMolstarPresetMenu({ restoreFocus = false } = {}) {
@@ -3197,7 +3259,7 @@
     anchor.setAttribute('aria-expanded', 'true');
     positionMolstarPresetMenu(anchor);
     const selected = menu.querySelector('[aria-checked="true"]');
-    (selected || menu.querySelector('[role="menuitemradio"]'))?.focus?.();
+    setMolstarPresetMenuRovingItem(menu, selected)?.focus?.();
   }
 
   function escapeHtml(value) {
@@ -3461,21 +3523,7 @@
     const value = normalizeMolstarStyle(style);
     const preset = molstarPresetForLegacyStyle(value);
     const appearance = value === 'illustrative' || value === 'illustrative-surface' ? 'illustrative' : 'default';
-    activeConfig = {
-      ...(activeConfig || window.BuretteConfig || {}),
-      molstarStyle: value,
-      molstarPreset: preset,
-      molstarAppearance: appearance
-    };
-    if (activeMolstarPrepared?.molstarStyleOverride) {
-      activeMolstarPrepared = {
-        ...activeMolstarPrepared,
-        molstarStyleOverride: value
-      };
-    }
-    window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
-    const toolbar = document.getElementById('buret-toolbar');
-    updateMolstarPresetControl(toolbar, preset);
+    updateMolstarPresentationConfig(preset, appearance, value);
     if (!activeViewer) {
       setStatus('Mol* style can be changed after the viewer loads.', 'error');
       return;
@@ -3545,6 +3593,13 @@
   }
 
   async function requestMolstarPreset(preset) {
+    const value = normalizeMolstarPreset(preset);
+    const controller = ensureMolstarPresetPreviewController();
+    if (controller) return controller.requestApply({ id: value, preset: value });
+    return applyMolstarPresetNow(value);
+  }
+
+  async function applyMolstarPresetNow(preset) {
     const value = normalizeMolstarPreset(preset);
     const option = molstarPresetOption(value);
     const appearance = molstarPresetAppearance(option, activeConfig || window.BuretteConfig || {});
@@ -4547,8 +4602,21 @@
         if (item && menu.contains(item)) scheduleMolstarPresetPreview(item);
       });
       menu.addEventListener('focusin', event => {
+        const control = event.target?.closest?.('[role="menuitemradio"]');
+        if (control && menu.contains(control)) {
+          setMolstarPresetMenuRovingItem(menu, control);
+        }
         const item = event.target?.closest?.('[data-buret-molstar-preset]');
-        if (item && menu.contains(item)) scheduleMolstarPresetPreview(item);
+        if (item && menu.contains(item)) {
+          scheduleMolstarPresetPreview(item);
+        }
+      });
+      menu.addEventListener('focusout', () => {
+        queueMicrotask(() => {
+          const { preview } = molstarPresetPreviewElements();
+          if (menu.contains(document.activeElement) || preview?.contains(document.activeElement)) return;
+          hideMolstarPresetMenu();
+        });
       });
       menu.addEventListener('pointerenter', cancelMolstarPresetPreviewClose);
       menu.addEventListener('pointerleave', event => {
@@ -4573,7 +4641,7 @@
         const caption = preview.querySelector('[data-buret-molstar-preset-preview-caption]');
         if (caption) caption.textContent = 'Applying…';
         void requestMolstarPreset(preset);
-        window.setTimeout(() => hideMolstarPresetMenu({ restoreFocus: true }), 160);
+        hideMolstarPresetMenu({ restoreFocus: true });
       };
       preview?.addEventListener('click', applyPreview);
       preview?.addEventListener('keydown', event => {
@@ -4598,6 +4666,10 @@
       hideMolstarPresetMenu({ restoreFocus: true });
       return;
     }
+    if (event.key === 'Tab') {
+      hideMolstarPresetMenu();
+      return;
+    }
     const items = Array.from(menu.querySelectorAll('[role="menuitemradio"]'));
     const currentIndex = items.indexOf(document.activeElement);
     let nextIndex = -1;
@@ -4607,6 +4679,7 @@
     if (event.key === 'End') nextIndex = items.length - 1;
     if (nextIndex >= 0 && items[nextIndex]) {
       event.preventDefault();
+      setMolstarPresetMenuRovingItem(menu, items[nextIndex]);
       items[nextIndex].focus();
     }
   });
