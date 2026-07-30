@@ -61,12 +61,14 @@ result back to the user.
 | Workspace observer | `bun scripts/burette-agent.mjs observe` | Reads typed state from a session directory. |
 | Workspace action | `bun scripts/burette-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
 | Ketcher surface | `burette.open_ketcher` / `burette.control_ketcher` | Opens and controls the active chemical editor with bounded, revision-checked actions. |
+| MolViewSpec Story | `story-schema` / `story-template-list` / `story-template-create` / `story-create` / `story-validate`; `burette.get_mvs_authoring_reference` / `burette.list_story_templates` / `burette.create_story_from_template` / `burette.create_story` / `burette.validate_story` / `burette.observe_story` / `burette.control_story` | Discovers the version-matched MVS schema, lists reusable scientific scaffolds, authors schema-valid multi-state MVSJ/MVSX, verifies resources, and exposes typed Story state and playback. |
 | Panel renderer | `bun scripts/burette-agent.mjs render-panel` | Opens bounded markdown/table/chart output in a docked panel. |
 | Tokenized preview | `bun scripts/agent-preview.mjs` | Starts typed browser preview sessions for direct observe/act checks. |
 | Router skill | `plugins/burette-agent/skills/index/SKILL.md` | Routes molecular workspace requests to the right focused skill. |
 | User context | `plugins/burette-agent/skills/user-context/SKILL.md` | Performs scoped preflight and capability checks. |
 | Open workspace | `plugins/burette-agent/skills/open-workspace/SKILL.md` | Opens files in Browser, browser-shell, or desktop surfaces. |
 | Mol* scene | `plugins/burette-agent/skills/molstar-scene/SKILL.md` | Applies or reviews Mol* scene actions and MVS-like operations. |
+| MolViewSpec Story | `plugins/burette-agent/skills/mvs-story/SKILL.md` | Builds and verifies an ordered molecular explanation with complete scenes per step. |
 | Molecule collection | `plugins/burette-agent/skills/molecule-collection/SKILL.md` | Handles SDF, SMILES, CSV, TSV, and grid workflows. |
 | Trajectory review | `plugins/burette-agent/skills/trajectory-review/SKILL.md` | Reviews trajectory or result-bundle artifacts. |
 | Workflow results | `plugins/burette-agent/skills/workflow-results/SKILL.md` | Intakes external workflow artifacts and maps them to Burette surfaces. |
@@ -101,6 +103,51 @@ state channel.
   panel through the normal text-document path.
 - Screenshot interpretation must not replace typed `observe`, validation
   output, or CLI/MCP errors.
+
+## MolViewSpec Story Contract
+
+A Story is standard MolViewSpec multi-state data: `kind: "multiple"`, global
+metadata, and ordered snapshots. Each snapshot contains a complete MVS root plus
+a unique key, title, markdown or plain-text description, linger duration, and
+transition duration. Burette treats Story as the primary agent-to-user surface
+for ordered explanations such as overview, binding site, ligand pose,
+interactions, comparison, and conclusion.
+
+`story-create` normalizes a compact storyboard or accepts the standard shape,
+validates every scene through the Mol* MVS schema, validates unique keys and
+bounds, and refuses implicit overwrite. `.mvsx` is the required handoff for
+local sidecars: every relative `download.url` must have a matching archive
+resource. `.mvsj` may reference only accessible HTTP(S) or data resources;
+relative resources require `.mvsx` because the embedded viewer has no portable
+filesystem base URL.
+Mol*'s standard `./assets/...` paths are normalized safely. `file:` URLs and
+absolute filesystem paths are rejected rather than leaking host paths into a
+browser scene.
+
+`story-template-list` exposes the installed catalog with declared inputs,
+step-by-step scientific purpose, evidence expectations, and caveats.
+`story-template-create` performs bounded string substitution, rejects missing
+or unknown variables, then follows the same validation and safe-write path as
+`story-create`. The source descriptors live in `templates/mvs-story/` and are
+packaged under `assets/mvs-story-templates/`. They are starting points, not
+analysis engines: contacts, scores, alignment metrics, and biological claims
+must be supplied from explicit calculations or observations.
+
+`story-schema` exposes progressive MolViewSpec authoring help from the same
+installed Mol* runtime used by Story validation. Without `--node` it returns a
+bounded scene or animation overview, supported node kinds, the MVS spec version,
+and official documentation links. With `--node`, it adds that node's exact
+parents, parameters, types, defaults, and descriptions. MCP exposes the same
+contract as `burette.get_mvs_authoring_reference`. This avoids injecting a full
+upstream documentation snapshot into every prompt while preventing agents from
+guessing version-sensitive syntax.
+
+After opening, `observe_story` reports the current snapshot and ordered bounded
+metadata from Mol*'s snapshot manager. `control_story` supports next, previous,
+goto by index/key/id, play, and pause. The visible Story dock mirrors that state
+and exposes Previous, Play/Pause, and Next. Completion requires schema/resource
+validation, ready workspace state, typed next/previous checks, and Browser
+verification of two nonblank steps.
 
 ## Ketcher Agent Contract
 
@@ -151,6 +198,8 @@ added.
 | MCP tool succeeds but the panel is empty | Widget snapshot is unbounded, malformed, or missing the expected artifact shape. | MCP registration output, `plugins/burette-agent/mcp/widget-assets/*`, `render-panel` payload |
 | `observe` returns no active document | Wrong session directory, closed Browser tab, or desktop session not attached. | CLI `sessionDir`, shell logs, `apps/desktop/src/hooks/use-agent-session.ts` |
 | `act` times out | Action was sent to the shell when the active Mol* viewer was not ready, or the action contract changed. | Last `observe` result, `apps/desktop/src/hooks/use-agent-session.ts`, viewer bridge tests |
+| Story opens but has no steps | The input is a single-state MVS document, an old runtime is active, or Mol* did not install snapshots. | Run `story-validate`, then `observe_story`; confirm `kind: "multiple"` and restart after plugin updates. |
+| Story validation reports a missing resource | A relative `download.url` is absent from MVSX or was used in standalone MVSJ. | Pass the exact archive path through `--asset` / `resources`, then recreate the MVSX. |
 | `control_ketcher` returns `REVISION_CONFLICT` | Another edit, selection change, or tab switch advanced the editor state. | Refresh `burette.observe_workspace` and use the returned `surfaceId`/`structureRevision`. |
 | `control_ketcher` returns `STALE_TARGET` | The requested surface is no longer the active Ketcher tab or was unmounted. | Reopen Ketcher with `burette.open_ketcher`; do not reuse the old surface id. |
 | Plugin preflight fails | Packaged plugin paths, CLI availability, or local runtime capabilities are out of sync. | `plugins/burette-agent/scripts/burette_agent_preflight.mjs`, `plugins/burette-agent/AGENTS.md` |
@@ -173,6 +222,7 @@ For CLI/session changes:
 bun tests/test-burette-agent-cli.mjs
 bun tests/test-agent-preview-server.mjs
 bun tests/test-burette-agent.mjs
+bun tests/test-mvs-story.mjs
 ```
 
 For plugin changes:

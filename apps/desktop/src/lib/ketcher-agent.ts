@@ -47,6 +47,8 @@ type StructureSummary = {
 };
 
 const controllers = new Map<string, KetcherAgentController>();
+const controllerSubscriptions = new Map<string, () => void>();
+const registryListeners = new Set<() => void>();
 
 export const KETCHER_AGENT_SURFACE_PREFIX = "desktop-ketcher:";
 
@@ -56,17 +58,23 @@ export function ketcherSurfaceId(tabId: string) {
 
 export function registerKetcherAgentController(tabId: string, editor: KetcherAgentEditor) {
   const existing = controllers.get(tabId);
+  controllerSubscriptions.get(tabId)?.();
   existing?.dispose();
   const controller = new KetcherAgentController(tabId, editor);
   controllers.set(tabId, controller);
+  controllerSubscriptions.set(tabId, controller.subscribe(emitRegistryChange));
+  emitRegistryChange();
   return controller;
 }
 
 export function unregisterKetcherAgentController(tabId: string, controller?: KetcherAgentController) {
   const current = controllers.get(tabId);
   if (!current || (controller && current !== controller)) return;
+  controllerSubscriptions.get(tabId)?.();
+  controllerSubscriptions.delete(tabId);
   current.dispose();
   controllers.delete(tabId);
+  emitRegistryChange();
 }
 
 export function getKetcherAgentController(tabId: string | null | undefined) {
@@ -75,6 +83,15 @@ export function getKetcherAgentController(tabId: string | null | undefined) {
 
 export function getKetcherAgentSnapshots() {
   return Array.from(controllers.values()).map((controller) => controller.snapshot());
+}
+
+export function subscribeKetcherAgentRegistry(listener: () => void) {
+  registryListeners.add(listener);
+  return () => { registryListeners.delete(listener); };
+}
+
+function emitRegistryChange() {
+  for (const listener of registryListeners) listener();
 }
 
 export class KetcherAgentController {

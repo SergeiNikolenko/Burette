@@ -89,6 +89,7 @@ try {
   assert.match(cliSource, /sessionDir,/);
   assert.match(cliSource, /async function browserShellSessionDir\(urlText\)/);
   assert.match(cliSource, /async function assertSessionResponsive\(sessionDir\)/);
+  assert.match(cliSource, /return \{ \.\.\.observed, ok: action\.status === 'completed' && action\.result\?\.ok !== false, action \};/);
   assert.match(cliSource, /BROWSER_AGENT_SHELL_UNAVAILABLE/);
   assert.match(cliSource, /BROWSER_AGENT_SHELL_FAILED/);
   assert.match(cliSource, /readLogTail/);
@@ -372,6 +373,12 @@ try {
 
   const sessionDir = await mkdtemp(resolve(tmpdir(), 'burette-agent-cli-test-'));
   try {
+    const invalidSessionDir = resolve(sessionDir, 'not-a-session');
+    await mkdir(invalidSessionDir);
+    const invalidSessionAction = runCli(['act', '--session-dir', invalidSessionDir, '{"type":"reset_camera"}']);
+    assert.equal(invalidSessionAction.status, 1);
+    assert.equal(JSON.parse(invalidSessionAction.stderr).error.code, 'INVALID_SESSION_DIRECTORY');
+
     const desktop = runCli(['open', '--mode', 'desktop-app', '--session-dir', sessionDir, '--no-launch', 'samples/mini.pdb']);
     assert.equal(desktop.status, 0, desktop.stderr);
     const desktopPayload = JSON.parse(desktop.stdout);
@@ -437,6 +444,24 @@ try {
     assert.equal(waitedAction.status, 1);
     const waitedActionError = JSON.parse(waitedAction.stderr);
     assert.equal(waitedActionError.error.code, 'ACTION_TIMEOUT');
+
+    const completedHistory = Array.from({ length: 140 }, (_, index) => ({
+      id: `completed-${index}`,
+      action: { type: 'reset_camera' },
+      status: 'completed',
+      createdAt: new Date(index * 1000).toISOString(),
+      completedAt: new Date(index * 1000 + 1).toISOString(),
+    }));
+    await writeFile(resolve(sessionDir, 'actions.json'), JSON.stringify({
+      apiVersion: 'burette-agent-control/v1',
+      actions: completedHistory,
+    }));
+    const boundedHistoryAction = runCli(['act', '--session-dir', sessionDir, '{"type":"reset_camera"}']);
+    assert.equal(boundedHistoryAction.status, 0, boundedHistoryAction.stderr);
+    const boundedHistory = JSON.parse(await readFile(resolve(sessionDir, 'actions.json'), 'utf8'));
+    assert.equal(boundedHistory.actions.length, 128);
+    assert.equal(boundedHistory.actions[0].id, 'completed-13');
+    assert.equal(boundedHistory.actions.at(-1).status, 'queued');
   } finally {
     await rm(sessionDir, { recursive: true, force: true });
   }

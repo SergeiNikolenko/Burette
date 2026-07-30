@@ -25,6 +25,11 @@ Use this workflow for scene operations:
   representations, color, opacity, labels, camera, focus, and canvas concepts;
 - export image or screenshot when supported.
 
+For multi-step narratives, tours, presentations, or explanations, route to
+[mvs-story](../mvs-story/SKILL.md). `load_mvs` loads a complete payload, while
+the Story workflow also creates, validates, packages, observes, and navigates
+the snapshots.
+
 ## Contract
 
 Use one typed action surface:
@@ -57,6 +62,11 @@ execution paths separate:
   through Mol* `loadMvsData`. Use it when the request really needs a full
   MVS tree: download/parse/structure/transform/component/representation/color/
   opacity/label/tooltip/focus/camera/canvas/primitives/volume/animation.
+
+Before authoring an unfamiliar full MVS tree, route to the
+[Story authoring reference](../mvs-story/references/molviewspec-authoring.md)
+and call `burette.get_mvs_authoring_reference`. Request the overview first and
+then one exact node contract at a time. Do not guess parameters from memory.
 
 Map natural language to these MVS concepts:
 

@@ -53,7 +53,7 @@ const compatibility = JSON.parse(await read("compatibility.json"));
 assert.equal(compatibility.schema, "burette_agent_compatibility.v1");
 assert.equal(compatibility.plugin.name, "burette");
 assert.equal(compatibility.plugin.version, manifest.version);
-assert.equal(compatibility.requires.buretteApp, ">=0.10.44");
+assert.equal(compatibility.requires.buretteApp, ">=2.1.16");
 assert.equal(compatibility.requires.agentCli, "burette-agent-cli/v1");
 assert.equal(compatibility.requires.controlApi, "burette-agent-control/v1");
 assert.equal(compatibility.bundle.relativePath, "plugins/burette-agent");
@@ -78,6 +78,8 @@ assert.match(packageJson.scripts.check, /scripts\/burette_agent_preflight\.mjs/)
 assert.match(packageJson.scripts.check, /mcp\/registrations\/fetch\/register\.mjs/);
 assert.match(packageJson.scripts.check, /mcp\/registrations\/molecular-workspace\/register\.mjs/);
 assert.match(packageJson.scripts.check, /mcp\/lib\/session-registry\.mjs/);
+const preflightScript = await read("scripts/burette_agent_preflight.mjs");
+assert.match(preflightScript, /story_authoring_reference: "supported_from_installed_molstar_schema"/);
 
 const rootPackageJson = JSON.parse(await readFile("package.json", "utf8"));
 assert.equal(rootPackageJson.scripts["install:plugin"], "bun plugins/burette-agent/scripts/install-local.mjs");
@@ -96,6 +98,7 @@ const skillInvocationPolicies = [
   ["molecular-report", false],
   ["molecule-collection", false],
   ["molstar-scene", false],
+  ["mvs-story", false],
   ["open-workspace", false],
   ["trajectory-review", false],
   ["user-context", false],
@@ -125,6 +128,16 @@ assert.match(installScript, /"preview-web\/viewer\.js"/);
 assert.match(installScript, /"browser-shell-dist\/index\.js"/);
 assert.match(installScript, /"scripts\/agent-preview\.mjs"/);
 assert.match(installScript, /"scripts\/agent-shell-server\.mjs"/);
+assert.match(installScript, /"scripts\/mvs-story-templates\.mjs"/);
+assert.match(installScript, /"skills\/mvs-story\/references\/molviewspec-authoring\.md"/);
+for (const template of [
+  "aligned-structure-comparison",
+  "binding-site-tour",
+  "docking-pose-comparison",
+  "structure-overview",
+]) {
+  assert.equal(installScript.includes(`"assets/mvs-story-templates/${template}.json"`), true);
+}
 for (const asset of requiredPreviewRuntimeAssets) {
   assert.equal(installScript.includes(`"preview-web/${asset}"`), true, `installer does not require ${asset}`);
 }
@@ -292,9 +305,22 @@ for (const asset of [
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
   "scripts/burette-agent.mjs",
+  "scripts/mvs-story-templates.mjs",
   "scripts/install-local.mjs",
+  "skills/mvs-story/references/molviewspec-authoring.md",
+  "assets/mvs-story-templates/aligned-structure-comparison.json",
+  "assets/mvs-story-templates/binding-site-tour.json",
+  "assets/mvs-story-templates/docking-pose-comparison.json",
+  "assets/mvs-story-templates/structure-overview.json",
 ]) {
   assert.equal(packedFiles.has(asset), true, `npm package is missing ${asset}`);
+}
+
+const mvsStorySkill = await read("skills/mvs-story/SKILL.md");
+const mvsAuthoringReference = await read("skills/mvs-story/references/molviewspec-authoring.md");
+assert.match(mvsStorySkill, /burette\.get_mvs_authoring_reference/);
+for (const section of ["Tree Schema", "Selectors", "Annotations", "Camera Settings", "Primitives", "Volumetric Data", "Animations", "MVS Extension"]) {
+  assert.equal(mvsAuthoringReference.includes(section), true, `MolViewSpec reference is missing ${section}`);
 }
 assert.equal(packedFiles.has("scripts/rdkit_conformer.py"), false, "browser shell must not package the Python conformer fallback");
 

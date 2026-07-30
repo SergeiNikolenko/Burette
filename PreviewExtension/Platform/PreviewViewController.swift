@@ -6832,6 +6832,10 @@ private struct StructureFormat {
             self = Self(molstarFormat: "xyz", isBinary: false)
         case "gro":
             self = Self(molstarFormat: "gro", isBinary: false)
+        case "mvsj":
+            self = Self(molstarFormat: "mvsj", isBinary: false)
+        case "mvsx":
+            self = Self(molstarFormat: "mvsx", isBinary: true)
         case "xtc", "trr", "dcd", "nctraj":
             self = Self(molstarFormat: ext, isBinary: true)
         case "lammpstrj", "dump", "top", "psf", "prmtop":
