@@ -19,6 +19,19 @@ const factory = vm.runInContext(
 assert.equal(typeof factory?.create, "function");
 assert.equal(typeof factory?.computePreviewPlacement, "function");
 assert.equal(typeof factory?.computePreviewCanvasLayout, "function");
+assert.equal(typeof factory?.retainPointerTarget, "function");
+
+{
+  const calls = [];
+  const retained = factory.retainPointerTarget(
+    { button: 0, preventDefault: () => calls.push("prevent") },
+    { focus: (options) => calls.push(["focus", options?.preventScroll]) },
+    () => calls.push("cancel"),
+  );
+  assert.equal(retained, true);
+  assert.deepEqual(calls, ["cancel", ["focus", true]]);
+  assert.equal(factory.retainPointerTarget({ button: 2 }, null, null), false);
+}
 
 for (const [sourceWidth, sourceHeight] of [[200, 600], [400, 400], [600, 200]]) {
   const layout = factory.computePreviewCanvasLayout({
