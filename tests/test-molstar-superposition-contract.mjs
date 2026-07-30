@@ -70,24 +70,52 @@ assert.match(runtimeProfiles, /superposition-panel\.js/g);
 assert.match(browserDevDocuments, /viewerAsset\("superposition-panel\.js"\)/);
 assert.match(agentShellServer, /'superposition-panel\.js'/);
 
-const demoNames = ['reference', 'rotated', 'flipped', 'flexed'];
-const demoCoordinates = new Map(demoNames.map(name => {
+const demoNames = ['1htb-a', '1htb-a-rotated', '1htb-b', '1htb-b-rotated'];
+const demoStructures = new Map(demoNames.map(name => {
   const pdb = source(`samples/structures/proteins/superposition-demo/${name}.pdb`);
+  assert.match(pdb, /SOURCE PDB ID 1HTB/);
+  assert.match(pdb, /RESIDUES 194 THROUGH 280/);
+  const atomLines = pdb.split('\n').filter(line => line.startsWith('ATOM'));
+  assert.equal(atomLines.length, 635, name);
+  const backboneByResidue = new Map();
+  for (const line of atomLines) {
+    const residue = `${line.slice(21, 22)}:${line.slice(22, 26).trim()}`;
+    const names = backboneByResidue.get(residue) || new Set();
+    names.add(line.slice(12, 16).trim());
+    backboneByResidue.set(residue, names);
+  }
+  assert.equal(backboneByResidue.size, 87, name);
+  for (const names of backboneByResidue.values()) {
+    for (const atomName of ['N', 'CA', 'C', 'O']) assert.ok(names.has(atomName), `${name} missing ${atomName}`);
+  }
   const coordinates = pdb.split('\n')
     .filter(line => line.startsWith('ATOM') && line.slice(12, 16).trim() === 'CA')
     .map(line => [Number(line.slice(30, 38)), Number(line.slice(38, 46)), Number(line.slice(46, 54))]);
-  assert.equal(coordinates.length, 10, name);
-  return [name, coordinates];
+  assert.equal(coordinates.length, 87, name);
+  const centroid = coordinates.reduce((sum, point) => sum.map((value, axis) => value + point[axis]), [0, 0, 0])
+    .map(value => value / coordinates.length);
+  return [name, { coordinates, centroid }];
 }));
 const distanceFingerprint = coordinates => coordinates.flatMap((left, leftIndex) => coordinates.slice(leftIndex + 1).map(right => (
   Math.hypot(left[0] - right[0], left[1] - right[1], left[2] - right[2])
 )));
-const referenceFingerprint = distanceFingerprint(demoCoordinates.get('reference'));
-for (const name of ['rotated', 'flipped']) {
-  const maximumError = Math.max(...distanceFingerprint(demoCoordinates.get(name)).map((distance, index) => Math.abs(distance - referenceFingerprint[index])));
-  assert.ok(maximumError < 1e-9, `${name} must be a rigid transform`);
+for (const [referenceName, rotatedName] of [
+  ['1htb-a', '1htb-a-rotated'],
+  ['1htb-b', '1htb-b-rotated'],
+]) {
+  const referenceFingerprint = distanceFingerprint(demoStructures.get(referenceName).coordinates);
+  const maximumError = Math.max(...distanceFingerprint(demoStructures.get(rotatedName).coordinates)
+    .map((distance, index) => Math.abs(distance - referenceFingerprint[index])));
+  assert.ok(maximumError < 0.003, `${rotatedName} must be a rigid transform of deposited coordinates`);
 }
-const flexedDifference = Math.max(...distanceFingerprint(demoCoordinates.get('flexed')).map((distance, index) => Math.abs(distance - referenceFingerprint[index])));
-assert.ok(flexedDifference > 1, 'flexed fixture must retain a measurable conformation change');
+const chainAFingerprint = distanceFingerprint(demoStructures.get('1htb-a').coordinates);
+const chainBDifference = Math.max(...distanceFingerprint(demoStructures.get('1htb-b').coordinates)
+  .map((distance, index) => Math.abs(distance - chainAFingerprint[index])));
+assert.ok(chainBDifference > 0.5, 'the experimental A/B copies must retain their conformational difference');
+for (const [leftName, rightName] of demoNames.flatMap((left, index) => demoNames.slice(index + 1).map(right => [left, right]))) {
+  const left = demoStructures.get(leftName).centroid;
+  const right = demoStructures.get(rightName).centroid;
+  assert.ok(Math.hypot(left[0] - right[0], left[1] - right[1], left[2] - right[2]) > 50, `${leftName} and ${rightName} must start visibly separated`);
+}
 
 console.log('Mol* superposition facade contract tests passed');
