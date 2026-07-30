@@ -128,6 +128,13 @@
     return focusPointerTarget(target, cancelClose);
   }
 
+  function retainPointerActivation(event, cancelClose) {
+    if (Number(event?.button ?? 0) !== 0) return false;
+    if (typeof cancelClose === 'function') cancelClose();
+    event?.preventDefault?.();
+    return true;
+  }
+
   function create(dependencies, options) {
     const deps = dependencies || {};
     const config = options || {};
@@ -419,6 +426,7 @@
     computePreviewCanvasLayout,
     computePreviewContentBounds,
     focusPointerTarget,
+    retainPointerActivation,
     retainPointerTarget,
   };
 })(globalThis);

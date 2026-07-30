@@ -21,6 +21,7 @@ assert.equal(typeof factory?.computePreviewPlacement, "function");
 assert.equal(typeof factory?.computePreviewCanvasLayout, "function");
 assert.equal(typeof factory?.computePreviewContentBounds, "function");
 assert.equal(typeof factory?.focusPointerTarget, "function");
+assert.equal(typeof factory?.retainPointerActivation, "function");
 assert.equal(typeof factory?.retainPointerTarget, "function");
 
 {
@@ -52,6 +53,16 @@ assert.equal(typeof factory?.retainPointerTarget, "function");
   listeners.get("blur")?.();
   assert.deepEqual(calls.at(-1), ["class:remove", "buret-pointer-focus"]);
   assert.equal(factory.retainPointerTarget({ button: 2 }, null, null), false);
+}
+
+{
+  const calls = [];
+  assert.equal(factory.retainPointerActivation({
+    button: 0,
+    preventDefault: () => calls.push("prevent"),
+  }, () => calls.push("cancel")), true);
+  assert.deepEqual(calls, ["cancel", "prevent"]);
+  assert.equal(factory.retainPointerActivation({ button: 2 }, null), false);
 }
 
 {
