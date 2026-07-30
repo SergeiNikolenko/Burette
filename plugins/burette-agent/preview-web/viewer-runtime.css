@@ -2715,6 +2715,60 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-docking-pose-align {
   min-width: 58px;
 }
+.buret-superposition-quick {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+.buret-superposition-quick .buret-docking-pose-align {
+  border-radius: 6px 0 0 6px;
+}
+.buret-superposition-quick .buret-superposition-quick-toggle {
+  min-width: 24px;
+  width: 24px;
+  margin-left: -1px;
+  padding: 0;
+  border-radius: 0 6px 6px 0;
+}
+.buret-superposition-quick-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 66;
+  display: flex;
+  flex-direction: column;
+  width: 154px;
+  padding: 4px;
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 8px;
+  background: var(--buret-menu-background);
+  box-shadow: var(--buret-menu-shadow);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.buret-superposition-quick-menu[hidden] {
+  display: none;
+}
+.buret-superposition-quick-menu button {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  white-space: nowrap;
+}
+.buret-superposition-quick-menu button:not(:disabled):hover,
+.buret-superposition-quick-menu button:not(:disabled):focus-visible {
+  background: color-mix(in srgb, var(--buret-molstar-text) 10%, transparent);
+}
+.buret-superposition-quick-reset:not([hidden]) {
+  margin-top: 3px;
+  border-top: 1px solid var(--buret-menu-border);
+  border-radius: 0 0 5px 5px;
+}
 .buret-docking-poses-structure-scene {
   width: fit-content;
   border-radius: 0;
@@ -3141,7 +3195,7 @@ body.burette-mobile-host .buret-docking-poses button {
   z-index: 64;
   display: flex;
   flex-direction: column;
-  width: min(390px, calc(100vw - 28px));
+  width: min(340px, calc(100vw - 28px));
   max-height: calc(100vh - 78px);
   border: 1px solid var(--buret-menu-border);
   border-radius: 12px;
@@ -3209,7 +3263,7 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-superposition-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   padding: 12px;
   overflow: auto;
 }
@@ -3266,20 +3320,7 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-superposition-methods {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-}
-.buret-superposition-method-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-}
-.buret-superposition-method-grid button {
-  padding: 4px 6px;
-  font-size: 11px;
-}
-.buret-superposition-method-grid button.active {
-  border-color: color-mix(in srgb, var(--buret-molstar-accent) 72%, white 8%);
-  background: color-mix(in srgb, var(--buret-molstar-accent) 24%, var(--buret-control-fill));
+  gap: 6px;
 }
 .buret-superposition-help {
   min-height: 32px;
@@ -3345,9 +3386,6 @@ body.burette-mobile-host .buret-superposition-panel {
   border-radius: 18px;
 }
 @media (max-width: 520px) {
-  .buret-superposition-method-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .buret-superposition-moving-row {
     grid-template-columns: minmax(0, 1fr);
   }

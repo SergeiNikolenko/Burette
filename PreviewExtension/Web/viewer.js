@@ -13856,26 +13856,40 @@
     return true;
   }
 
-  function createStructureSuperpositionController(viewer, prepared, alignButton, getActivePose) {
+  function createStructureSuperpositionController(viewer, prepared, alignButton, getActivePose, quickMenu) {
     let entries = [];
     let result = null;
     let panel = null;
+    let busy = false;
+
+    const averageRmsd = () => result?.pairs?.length
+      ? result.pairs.reduce((sum, pair) => sum + Number(pair.rmsdAngstrom || 0), 0) / result.pairs.length
+      : null;
 
     const sync = () => {
       const aligned = Boolean(result);
+      const rmsd = averageRmsd();
       prepared.structureAlignmentEnabled = aligned;
       prepared.structureAlignmentMode = result?.method || null;
-      alignButton.textContent = aligned ? 'Aligned' : 'Align';
+      alignButton.textContent = aligned && Number.isFinite(rmsd) ? `Aligned · ${rmsd.toFixed(2)} Å` : 'Align';
       alignButton.classList.toggle('active', aligned);
+      alignButton.disabled = busy;
       alignButton.setAttribute('aria-pressed', aligned ? 'true' : 'false');
       alignButton.title = aligned
         ? `${result.methodLabel} · ${result.pairs.length} moving structure${result.pairs.length === 1 ? '' : 's'}`
-        : 'Open Burette Superposition';
+        : 'Automatically superimpose every structure onto the first one';
+      quickMenu?.setAligned(aligned);
+      quickMenu?.setBusy(busy);
       panel?.setResult(result);
     };
 
-    const refreshEntries = async () => {
-      entries = await prepareSuperpositionScene(viewer, prepared, getActivePose());
+    const setBusy = value => {
+      busy = Boolean(value);
+      panel?.setBusy(busy);
+      sync();
+    };
+
+    const syncPanelEntries = () => {
       panel?.setEntries(entries.map(entry => ({
         id: entry.id,
         label: entry.label,
@@ -13885,6 +13899,11 @@
         })),
         canUseSifts: entry.canUseSifts,
       })));
+    };
+
+    const refreshEntries = async () => {
+      entries = await prepareSuperpositionScene(viewer, prepared, getActivePose());
+      syncPanelEntries();
       return entries;
     };
 
@@ -13897,7 +13916,7 @@
     const ensureEntries = () => entriesStillLoaded() ? Promise.resolve(entries) : refreshEntries();
 
     const apply = async (request = {}) => {
-      panel?.setBusy(true);
+      setBusy(true);
       try {
         await ensureEntries();
         const plan = nativeSuperpositionPlan(entries, request, prepared);
@@ -13914,12 +13933,12 @@
         setStatus(`[web] Could not superpose structures.\n\n${error?.message || String(error)}`, 'error');
         throw error;
       } finally {
-        panel?.setBusy(false);
+        setBusy(false);
       }
     };
 
     const reset = async () => {
-      panel?.setBusy(true);
+      setBusy(true);
       try {
         const wasAligned = Boolean(result);
         const undo = captureMolstarSceneUndoSnapshot('resetting superposition');
@@ -13931,7 +13950,7 @@
         setStatus('[web] Restored original structure transforms.');
         setTimeout(hideStatus, 1800);
       } finally {
-        panel?.setBusy(false);
+        setBusy(false);
       }
     };
 
@@ -13945,18 +13964,20 @@
         });
         activeSuperpositionPanel = panel;
       }
-      panel.setBusy(true);
+      setBusy(true);
       try {
         await ensureEntries();
+        syncPanelEntries();
         panel.open(method);
         sync();
       } finally {
-        panel.setBusy(false);
+        setBusy(false);
       }
     };
 
     const destroy = () => {
       panel?.destroy();
+      quickMenu?.destroy();
       if (activeSuperpositionPanel === panel) activeSuperpositionPanel = null;
       panel = null;
     };
@@ -15041,10 +15062,26 @@
           : 'Superposition needs two or more loaded structures')
         : xyzAlignFrames
           ? 'Superimpose every structure onto the first one by atom order'
-          : 'Open Burette Superposition';
+          : 'Automatically superimpose every structure onto the first one';
       align.disabled = !alignmentSupported;
       align.setAttribute('aria-pressed', alignmentOn ? 'true' : 'false');
     }
+    let structureAlignmentControl = null;
+    const alignmentQuickMenu = align && alignmentSupported && !xyzAlignFrames
+      && typeof window.BuretteSuperpositionPanel?.createQuickMenu === 'function'
+      ? window.BuretteSuperpositionPanel.createQuickMenu({
+        primary: align,
+        onSelect: action => {
+          if (!structureAlignmentControl) return;
+          const operation = action === 'advanced'
+            ? structureAlignmentControl.open()
+            : action === 'reset'
+              ? structureAlignmentControl.reset()
+              : structureAlignmentControl.apply({ method: action });
+          return Promise.resolve(operation).catch(() => {});
+        },
+      })
+      : null;
     const loop = document.createElement('button');
     loop.type = 'button';
     loop.textContent = 'Loop';
@@ -15433,12 +15470,19 @@
       };
       align.addEventListener('click', () => { void toggleXyzAlignment(); });
     } else if (align && alignmentSupported) {
-      activeStructureAlignmentControl = createStructureSuperpositionController(viewer, prepared, align, () => activePose);
-      align.addEventListener('click', () => {
-        Promise.resolve(activeStructureAlignmentControl?.open()).catch(error => {
-          setStatus(`[web] Could not open Superposition.\n\n${error?.message || String(error)}`, 'error');
+      structureAlignmentControl = createStructureSuperpositionController(
+        viewer,
+        prepared,
+        align,
+        () => activePose,
+        alignmentQuickMenu,
+      );
+      activeStructureAlignmentControl = structureAlignmentControl;
+      if (!alignmentQuickMenu) {
+        align.addEventListener('click', () => {
+          Promise.resolve(structureAlignmentControl?.apply({ method: 'auto' })).catch(() => {});
         });
-      });
+      }
     }
     activeStructurePoseSetter = setPose;
     if (prepared.kind === 'sdf-collection') activeSdfCollectionPoseSetter = setPose;
@@ -15619,10 +15663,10 @@
     if (toggleRow) {
       toggleRow.className = 'buret-docking-pose-toggles';
       if (story) toggleRow.append(story);
-      if (align) toggleRow.append(align);
+      if (align) toggleRow.append(alignmentQuickMenu?.element || align);
       if (all) toggleRow.append(all);
     } else {
-      if (align) mainRow.append(align);
+      if (align) mainRow.append(alignmentQuickMenu?.element || align);
       if (all) mainRow.append(all);
       animationRow.append(speed, loop, slider);
       if (smoothAvailable) animationRow.append(smooth);

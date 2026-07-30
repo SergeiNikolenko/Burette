@@ -50,13 +50,40 @@ for (const method of ['auto', 'atoms', 'sequence', 'binding-site', 'chains', 'tm
 assert.match(panel, /Reference chain/);
 assert.match(panel, /Moving structures/);
 assert.match(panel, /referenceNormalized/);
+assert.match(panel, /function createQuickMenu\(options\)/);
+assert.match(panel, /\['tm-align', 'TM-align'\]/);
+assert.match(panel, /\['advanced', 'Advanced…'\]/);
+assert.match(panel, /createSelect\('Method'/);
+assert.doesNotMatch(panel, /const methodGrid/);
 assert.match(viewer, /TransformStructureConformation/);
 assert.match(viewer, /window\.molstar\?\.BuretteSuperposition\?\.version !== 1/);
 assert.match(viewer, /revertOnError: true, revertIfAborted: true/);
 assert.match(viewer, /requestCameraReset/);
+assert.match(viewer, /structureAlignmentControl\.apply\(\{ method: action \}\)/);
+assert.match(viewer, /Automatically superimpose every structure onto the first one/);
 assert.doesNotMatch(viewer, /transformPdbCoordinates/);
 assert.match(runtimeProfiles, /superposition-panel\.js/g);
 assert.match(browserDevDocuments, /viewerAsset\("superposition-panel\.js"\)/);
 assert.match(agentShellServer, /'superposition-panel\.js'/);
+
+const demoNames = ['reference', 'rotated', 'flipped', 'flexed'];
+const demoCoordinates = new Map(demoNames.map(name => {
+  const pdb = source(`samples/structures/proteins/superposition-demo/${name}.pdb`);
+  const coordinates = pdb.split('\n')
+    .filter(line => line.startsWith('ATOM') && line.slice(12, 16).trim() === 'CA')
+    .map(line => [Number(line.slice(30, 38)), Number(line.slice(38, 46)), Number(line.slice(46, 54))]);
+  assert.equal(coordinates.length, 10, name);
+  return [name, coordinates];
+}));
+const distanceFingerprint = coordinates => coordinates.flatMap((left, leftIndex) => coordinates.slice(leftIndex + 1).map(right => (
+  Math.hypot(left[0] - right[0], left[1] - right[1], left[2] - right[2])
+)));
+const referenceFingerprint = distanceFingerprint(demoCoordinates.get('reference'));
+for (const name of ['rotated', 'flipped']) {
+  const maximumError = Math.max(...distanceFingerprint(demoCoordinates.get(name)).map((distance, index) => Math.abs(distance - referenceFingerprint[index])));
+  assert.ok(maximumError < 1e-9, `${name} must be a rigid transform`);
+}
+const flexedDifference = Math.max(...distanceFingerprint(demoCoordinates.get('flexed')).map((distance, index) => Math.abs(distance - referenceFingerprint[index])));
+assert.ok(flexedDifference > 1, 'flexed fixture must retain a measurable conformation change');
 
 console.log('Mol* superposition facade contract tests passed');

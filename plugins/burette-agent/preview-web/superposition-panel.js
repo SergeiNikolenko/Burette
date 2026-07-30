@@ -43,6 +43,81 @@
     return method !== 'uniprot' && method !== 'selected-atoms';
   }
 
+  function createQuickMenu(options) {
+    const root = element('span', 'buret-superposition-quick');
+    const primary = options.primary;
+    const toggle = element('button', 'buret-superposition-quick-toggle', '⌄');
+    toggle.type = 'button';
+    toggle.title = 'More alignment options';
+    toggle.setAttribute('aria-label', 'More alignment options');
+    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    const menu = element('div', 'buret-superposition-quick-menu');
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+    const actions = [
+      ['auto', 'Auto align'],
+      ['tm-align', 'TM-align'],
+      ['advanced', 'Advanced…'],
+      ['reset', 'Reset alignment'],
+    ];
+    const buttons = new Map();
+    for (const [action, label] of actions) {
+      const button = element('button', `buret-superposition-quick-${action}`, label);
+      button.type = 'button';
+      button.role = 'menuitem';
+      button.dataset.action = action;
+      buttons.set(action, button);
+      menu.append(button);
+    }
+    const setOpen = open => {
+      menu.hidden = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    const select = action => {
+      setOpen(false);
+      Promise.resolve(options.onSelect?.(action)).catch(() => {});
+    };
+    primary.addEventListener('click', () => select('auto'));
+    toggle.addEventListener('click', event => {
+      event.stopPropagation();
+      setOpen(menu.hidden);
+    });
+    menu.addEventListener('click', event => {
+      const button = event.target instanceof Element ? event.target.closest('button[data-action]') : null;
+      if (button) select(button.dataset.action);
+    });
+    const onPointerDown = event => {
+      if (!root.contains(event.target)) setOpen(false);
+    };
+    const onKeyDown = event => {
+      if (event.key !== 'Escape' || menu.hidden) return;
+      setOpen(false);
+      toggle.focus();
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKeyDown);
+    root.append(primary, toggle, menu);
+    return {
+      element: root,
+      close: () => setOpen(false),
+      destroy() {
+        window.removeEventListener('pointerdown', onPointerDown, true);
+        window.removeEventListener('keydown', onKeyDown);
+        root.remove();
+      },
+      setAligned(aligned) {
+        buttons.get('reset').hidden = !aligned;
+      },
+      setBusy(busy) {
+        primary.disabled = busy;
+        toggle.disabled = busy;
+        for (const button of buttons.values()) button.disabled = busy;
+        if (busy) setOpen(false);
+      },
+    };
+  }
+
   function formatMetric(value, digits = 2) {
     return Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '—';
   }
@@ -61,7 +136,7 @@
 
     const header = element('header', 'buret-superposition-header');
     const heading = element('div');
-    heading.append(element('strong', '', 'Superposition'), element('span', '', 'Burette + Mol*'));
+    heading.append(element('strong', '', 'Advanced alignment'));
     const close = element('button', 'buret-superposition-close', '×');
     close.type = 'button';
     close.title = 'Close Superposition';
@@ -73,21 +148,10 @@
     const moving = element('fieldset', 'buret-superposition-moving');
     const movingLegend = element('legend', '', 'Moving structures');
     moving.append(movingLegend);
-    const methodSection = element('section', 'buret-superposition-methods');
-    methodSection.append(element('div', 'buret-superposition-section-title', 'Method'));
-    const methodGrid = element('div', 'buret-superposition-method-grid');
-    const methodButtons = new Map();
     let selectedMethod = 'auto';
-    for (const [value, label] of METHODS) {
-      const button = element('button', '', label);
-      button.type = 'button';
-      button.dataset.method = value;
-      button.classList.toggle('active', value === selectedMethod);
-      button.setAttribute('aria-pressed', value === selectedMethod ? 'true' : 'false');
-      methodButtons.set(value, button);
-      methodGrid.append(button);
-    }
-    methodSection.append(methodGrid);
+    const methodField = createSelect('Method', METHODS.map(([value, label]) => ({ value, label })), selectedMethod);
+    const methodSection = element('section', 'buret-superposition-methods');
+    methodSection.append(methodField.row);
     const help = element('p', 'buret-superposition-help', methodDescription(selectedMethod));
     methodSection.append(help);
     const alignSequences = element('label', 'buret-superposition-option');
@@ -101,6 +165,7 @@
     const resultHeading = element('div', 'buret-superposition-section-title', 'Result');
     const resultBody = element('div', 'buret-superposition-result-body', 'No superposition applied.');
     resultSection.append(resultHeading, resultBody);
+    resultSection.hidden = true;
 
     const footer = element('footer', 'buret-superposition-footer');
     const reset = element('button', 'buret-superposition-reset', 'Reset');
@@ -173,9 +238,10 @@
     function renderResult() {
       resultBody.replaceChildren();
       if (!result) {
-        resultBody.textContent = aligned ? 'Superposition is active.' : 'No superposition applied.';
+        resultSection.hidden = true;
         return;
       }
+      resultSection.hidden = false;
       const summary = element('div', 'buret-superposition-result-summary');
       summary.append(element('strong', '', result.methodLabel || result.method || 'Superposition'));
       summary.append(element('span', '', `Reference: ${result.referenceLabel || '—'}`));
@@ -199,31 +265,27 @@
       apply.textContent = busy ? 'Applying…' : 'Apply';
       reset.disabled = busy || !aligned;
       referenceField.select.disabled = busy;
-      for (const button of methodButtons.values()) button.disabled = busy;
+      methodField.select.disabled = busy;
       alignSequences.hidden = selectedMethod !== 'chains';
-      const uniprot = methodButtons.get('uniprot');
+      const selected = [selectedReference(), ...entries.filter(entry => movingIds.includes(entry.id))].filter(Boolean);
+      const uniprot = Array.from(methodField.select.options).find(option => option.value === 'uniprot');
       if (uniprot) {
-        const selected = [selectedReference(), ...entries.filter(entry => movingIds.includes(entry.id))].filter(Boolean);
         const available = selected.length >= 2 && selected.every(entry => entry.canUseSifts === true);
-        uniprot.disabled = busy || !available;
+        uniprot.disabled = !available;
         uniprot.title = available ? '' : 'UniProt needs SIFTS mapping in every selected structure.';
       }
     }
 
     function setMethod(method) {
-      if (!methodButtons.has(method)) return;
+      if (!METHODS.some(([value]) => value === method)) return;
       selectedMethod = method;
-      for (const [value, button] of methodButtons) {
-        const active = value === selectedMethod;
-        button.classList.toggle('active', active);
-        button.setAttribute('aria-pressed', active ? 'true' : 'false');
-      }
+      methodField.select.value = selectedMethod;
       help.textContent = methodDescription(selectedMethod);
       renderMoving();
       refreshButtons();
     }
 
-    for (const [method, button] of methodButtons) button.addEventListener('click', () => setMethod(method));
+    methodField.select.addEventListener('change', () => setMethod(methodField.select.value));
     referenceField.select.addEventListener('change', renderMoving);
     moving.addEventListener('change', refreshButtons);
     close.addEventListener('click', () => { root.hidden = true; options.onClose?.(); });
@@ -271,5 +333,5 @@
     };
   }
 
-  window.BuretteSuperpositionPanel = Object.freeze({ create });
+  window.BuretteSuperpositionPanel = Object.freeze({ create, createQuickMenu });
 })();
