@@ -175,7 +175,7 @@
     return [
       'capabilities', 'summary', 'select', 'selectResidues', 'focusSelection', 'colorSelection',
       'labelSelection', 'showLigands', 'focusLigand', 'contacts', 'resetCamera', 'screenshot',
-      'showAssemblySymmetry', 'showWaterBridges', 'applyMesoscalePreset', 'colorScalarField',
+      'showAssemblySymmetry', 'hideAssemblySymmetry', 'showWaterBridges', 'applyMesoscalePreset', 'colorScalarField',
       'loadMVS', 'observeStory', 'controlStory',
       'exportSession', 'exportMVS'
     ];
@@ -198,6 +198,7 @@
       hasViewportScreenshot: typeof plugin?.helpers?.viewportScreenshot?.getImageDataUri === 'function',
       hasLoadMvsData: typeof viewer?.loadMvsData === 'function',
       hasAssemblySymmetry: findApplicableStateAction('Assembly Symmetry') != null,
+      hasAssemblySymmetryRepresentation: hasAssemblySymmetryRepresentation(),
       hasStoryManager: !!plugin?.managers?.snapshot,
       hasSessionExport: typeof plugin?.managers?.snapshot?.serialize === 'function',
       hasCameraManager: !!plugin?.managers?.camera,
@@ -301,6 +302,7 @@
     if (command === 'resetCamera') return commandResetCamera(args, warnings);
     if (command === 'screenshot') return commandScreenshot(args, warnings);
     if (command === 'showAssemblySymmetry') return commandShowAssemblySymmetry(args, warnings);
+    if (command === 'hideAssemblySymmetry') return commandHideAssemblySymmetry();
     if (command === 'showWaterBridges') return commandShowWaterBridges(args, warnings);
     if (command === 'applyMesoscalePreset') return commandApplyMesoscalePreset(args);
     if (command === 'colorScalarField') return commandColorScalarField(args, warnings);
@@ -726,6 +728,15 @@
     return null;
   }
 
+  function hasAssemblySymmetryRepresentation() {
+    return assemblySymmetryRepresentationCells().length > 0;
+  }
+
+  function assemblySymmetryRepresentationCells() {
+    return Array.from(state.plugin?.state?.data?.cells?.values?.() || [])
+      .filter(cell => cell?.obj?.label === 'Global Symmetry');
+  }
+
   async function commandShowAssemblySymmetry(args = {}, warnings) {
     const found = findApplicableStateAction('Assembly Symmetry');
     if (!found) {
@@ -745,6 +756,17 @@
     if (!created.length) warnings.push('Mol* completed the action but did not expose a non-C1 symmetry representation; inspect provider logs and assembly metadata.');
     state.sceneVersion++;
     return { applied: true, provider: params.serverUrl || 'Mol* configured provider', objects: created };
+  }
+
+  async function commandHideAssemblySymmetry() {
+    const data = state.plugin.state.data;
+    const cells = assemblySymmetryRepresentationCells();
+    if (!cells.length) return { hidden: true, removedCount: 0 };
+    const update = data.build();
+    for (const cell of cells) update.delete(cell.transform?.ref || cell.ref);
+    await update.commit();
+    state.sceneVersion++;
+    return { hidden: true, removedCount: cells.length };
   }
 
   async function commandShowWaterBridges(args = {}, warnings) {
