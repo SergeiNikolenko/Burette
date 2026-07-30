@@ -20,21 +20,34 @@ assert.equal(typeof factory?.create, "function");
 assert.equal(typeof factory?.computePreviewPlacement, "function");
 assert.equal(typeof factory?.computePreviewCanvasLayout, "function");
 
-for (const [cropWidth, cropHeight] of [[200, 600], [400, 400], [600, 200]]) {
+for (const [sourceWidth, sourceHeight] of [[200, 600], [400, 400], [600, 200]]) {
   const layout = factory.computePreviewCanvasLayout({
-    cropWidth,
-    cropHeight,
+    sourceWidth,
+    sourceHeight,
     viewportWidth: 948,
     viewportHeight: 994,
     devicePixelRatio: 2,
   });
-  assert.equal(layout.cardWidth, 240);
-  assert.equal(layout.cardHeight, 202);
-  assert.ok(layout.drawWidth <= 220);
-  assert.ok(layout.drawHeight <= 154);
-  assert.ok(layout.drawX >= 10);
-  assert.ok(layout.drawY >= 10);
+  assert.ok(layout.cardWidth <= 240);
+  assert.ok(layout.bodyHeight <= 320);
+  assert.equal(layout.cardHeight, 28 + layout.bodyHeight);
+  assert.equal(layout.drawX, 0);
+  assert.equal(layout.drawY, 0);
+  assert.equal(layout.drawWidth, layout.cardWidth);
+  assert.equal(layout.drawHeight, layout.bodyHeight);
+  assert.ok(Math.abs(layout.cardWidth / layout.bodyHeight - sourceWidth / sourceHeight) < 0.001);
 }
+
+const viewportReplica = factory.computePreviewCanvasLayout({
+  sourceWidth: 884,
+  sourceHeight: 994,
+  viewportWidth: 884,
+  viewportHeight: 994,
+  devicePixelRatio: 2,
+});
+assert.ok(Math.abs(viewportReplica.cardWidth - 240) < 0.001);
+assert.ok(viewportReplica.cardHeight > 280);
+assert.ok(viewportReplica.cardHeight < 320);
 
 for (const viewportWidth of [320, 400, 512]) {
   const menuRight = viewportWidth - 12;

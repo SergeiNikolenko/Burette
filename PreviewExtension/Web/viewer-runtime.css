@@ -2153,7 +2153,7 @@ body.buret-theme-light .buret-molstar-preset-menu-separator {
   z-index: 2147483645;
   box-sizing: border-box;
   width: min(240px, calc(100vw - 24px));
-  height: 202px;
+  height: auto;
   overflow: hidden;
   border: 1px solid var(--buret-molstar-border);
   border-radius: var(--buret-molstar-panel-radius);
@@ -2175,6 +2175,10 @@ body.buret-theme-light .buret-molstar-preset-menu-separator {
 .buret-molstar-preset-preview.ready:hover {
   box-shadow: 0 22px 52px var(--buret-molstar-shadow);
   transform: translateY(-2px) scale(1.012);
+}
+.buret-molstar-preset-preview:focus-visible {
+  outline: 2px solid var(--buret-menu-focus-ring);
+  outline-offset: 2px;
 }
 .buret-molstar-preset-preview.applying {
   opacity: 0;

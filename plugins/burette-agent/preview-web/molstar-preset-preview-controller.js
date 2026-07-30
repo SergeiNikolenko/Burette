@@ -41,16 +41,13 @@
     const headerHeight = 28;
     const viewportWidth = Math.max(1, Number(value.viewportWidth) || 1);
     const viewportHeight = Math.max(1, Number(value.viewportHeight) || 1);
-    const cropWidth = Math.max(1, Number(value.cropWidth) || 1);
-    const cropHeight = Math.max(1, Number(value.cropHeight) || 1);
-    const cardWidth = Math.min(240, Math.max(1, viewportWidth - margin * 2));
-    const bodyHeight = Math.min(174, Math.max(120, viewportHeight - headerHeight - margin * 2));
-    const padding = Math.min(10, cardWidth / 4, bodyHeight / 4);
-    const availableWidth = Math.max(1, cardWidth - padding * 2);
-    const availableHeight = Math.max(1, bodyHeight - padding * 2);
-    const scale = Math.min(availableWidth / cropWidth, availableHeight / cropHeight);
-    const drawWidth = cropWidth * scale;
-    const drawHeight = cropHeight * scale;
+    const sourceWidth = Math.max(1, Number(value.sourceWidth) || 1);
+    const sourceHeight = Math.max(1, Number(value.sourceHeight) || 1);
+    const maxWidth = Math.min(240, Math.max(1, viewportWidth - margin * 2));
+    const maxBodyHeight = Math.min(320, Math.max(1, viewportHeight - headerHeight - margin * 2));
+    const scale = Math.min(1, maxWidth / sourceWidth, maxBodyHeight / sourceHeight);
+    const cardWidth = sourceWidth * scale;
+    const bodyHeight = sourceHeight * scale;
     const backingScale = Math.min(
       2,
       Math.max(1, Number(value.devicePixelRatio) || 1),
@@ -61,10 +58,10 @@
       cardHeight: headerHeight + bodyHeight,
       bodyHeight,
       backingScale,
-      drawX: (cardWidth - drawWidth) / 2,
-      drawY: (bodyHeight - drawHeight) / 2,
-      drawWidth,
-      drawHeight,
+      drawX: 0,
+      drawY: 0,
+      drawWidth: cardWidth,
+      drawHeight: bodyHeight,
     };
   }
 
