@@ -114,21 +114,32 @@ assert.match(measurement, /measurement\[spec\.method\]\(\.\.\.points\)/);
 assert.match(fn("molstarMeasurePrompt"), /\$\{picked\}\/\$\{spec\.points\} points selected/);
 assert.match(fn("showMolstarMeasureToast"), /visible: true/);
 
-// Menu actions that change the scene are undoable through the same stack the
-// structure edits use, so Cmd-Z walks them in the order they were made. Selections
-// and exports stay out: one changes constantly, the other writes files.
+// Explicit menu actions that change the scene are undoable through the same stack
+// the structure edits use, so Cmd-Z walks them in the order they were made.
+// Exports stay out because they write files without changing the scene.
 assert.match(fn("captureMolstarSceneUndoSnapshot"), /kind: 'scene'[\s\S]*plugin\.state\.data\.getSnapshot\(\)/);
 assert.match(fn("restoreMolstarSceneUndoSnapshot"), /plugin\.runTask\(plugin\.state\.data\.setSnapshot\(snapshot\.state\)\)/);
 assert.match(fn("captureMolstarAlignUndoSnapshot"), /kind: 'align'[\s\S]*wasAligned/);
 assert.match(fn("captureMolstarAlignUndoSnapshot"), /mode: activeStructureAlignmentControl\.mode/);
 assert.match(fn("restoreMolstarAlignUndoSnapshot"), /mode === snapshot\.mode[\s\S]*control\.toggle\(snapshot\.mode \|\| 'auto'\)/);
 assert.match(fn("restoreMolstarEditUndoSnapshot"), /kind === 'scene'[\s\S]*kind === 'align'/);
-assert.match(fn("pushMolstarEditUndoSnapshot"), /kind !== 'scene' && snapshot\.kind !== 'align' && !snapshot\.payload\?\.text/);
-const undoLabels = fn("molstarSceneUndoActionLabel");
-for (const undoable of ["colour:", "analyze:interactions", "analyze:label", "represent:surface", "view:hide", "view:isolate"]) {
+assert.match(fn("pushMolstarHistorySnapshot"), /kind !== 'scene' && snapshot\.kind !== 'align' && !snapshot\.payload\?\.text/);
+assert.match(fn("pushMolstarEditUndoSnapshot"), /pushMolstarHistorySnapshot\(molstarEditUndoStack, snapshot\)/);
+const undoLabels = fn("molstarContextSceneMutationLabel");
+for (const undoable of [
+  "colour:",
+  "analyze:interactions",
+  "analyze:label",
+  "analyze:surroundings",
+  "represent:surface",
+  "represent:component",
+  "view:hide",
+  "view:isolate",
+  "select:",
+]) {
   assert.ok(undoLabels.includes(undoable), `scene undo should cover ${undoable}`);
 }
-for (const skipped of ["select:", "extract:", "split:", "save-"]) {
+for (const skipped of ["extract:", "split:", "save-"]) {
   assert.ok(!undoLabels.includes(skipped), `scene undo should skip ${skipped}`);
 }
 // A failed action leaves the scene alone, so it must not consume an undo step.

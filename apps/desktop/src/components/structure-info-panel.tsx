@@ -85,6 +85,10 @@ type TrajectoryPlaybackState = {
   sourcePath: string;
   playing: boolean;
 };
+type AssemblySymmetryState = {
+  available: boolean;
+  shown: boolean;
+};
 
 const SDF_CONTEXT_STYLE_OPTIONS = [
   { value: "line", label: "Line" },
@@ -142,16 +146,34 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
   const [trajectorySmoothingSignal, setTrajectorySmoothingSignal] = useState<MdsmoothSignal>("rmsd");
   const [trajectorySmoothingMode, setTrajectorySmoothingMode] = useState<MdsmoothMode>("extrema");
   const [trajectoryPlayback, setTrajectoryPlayback] = useState<TrajectoryPlaybackState | null>(null);
+  const [assemblySymmetry, setAssemblySymmetry] = useState<AssemblySymmetryState>({ available: false, shown: false });
+  const [assemblySymmetryPending, setAssemblySymmetryPending] = useState(false);
   const trajectorySmoothingSourcePath = useRef("");
   const foldingResult = useFoldingResult(document);
 
   useEffect(() => {
     setActiveActionKey(null);
+    setAssemblySymmetry({ available: false, shown: false });
+    setAssemblySymmetryPending(false);
     setTrajectorySmoothingBuilt(false);
     setTrajectorySmoothingView("original");
     setTrajectorySmoothingResult(null);
     setTrajectoryPlayback(null);
     trajectorySmoothingSourcePath.current = "";
+  }, [document?.id]);
+
+  useEffect(() => {
+    const handle = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      if (String(detail?.documentId || "") !== document?.id) return;
+      setAssemblySymmetry({
+        available: detail.hasAssemblySymmetry === true,
+        shown: detail.assemblySymmetryShown === true,
+      });
+      setAssemblySymmetryPending(false);
+    };
+    window.addEventListener("burette:molstar-capabilities-changed", handle);
+    return () => window.removeEventListener("burette:molstar-capabilities-changed", handle);
   }, [document?.id]);
 
   useEffect(() => {
@@ -420,6 +442,21 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         <InspectorHeaderStats document={document} summary={compositionSummary} pending={compositionPending} />
       </section>
 
+      {assemblySymmetry.available ? (
+        <AssemblySymmetryCard
+          shown={assemblySymmetry.shown}
+          pending={assemblySymmetryPending}
+          onToggle={() => {
+            setAssemblySymmetryPending(true);
+            actions.runStructureViewerAction(document, {
+              type: assemblySymmetry.shown ? "hide_assembly_symmetry" : "show_assembly_symmetry",
+              label: assemblySymmetry.shown ? "Hide assembly symmetry" : "Show assembly symmetry",
+              notify: false,
+            });
+          }}
+        />
+      ) : null}
+
       {contextStyleCard ? (
         <SdfContextStyleCard
           document={document}
@@ -665,6 +702,28 @@ function InspectorHeaderStats({
         </div>
       ))}
     </div>
+  );
+}
+
+function AssemblySymmetryCard({
+  shown,
+  pending,
+  onToggle,
+}: {
+  shown: boolean;
+  pending: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <section className="structure-brief-card structure-inspector-symmetry-card" aria-label="Assembly symmetry">
+      <div>
+        <h4>Assembly symmetry</h4>
+        <p>{shown ? "Axes and cage are visible in the scene." : "Available for this biological assembly."}</p>
+      </div>
+      <Button type="button" size="sm" variant={shown ? "outline" : "default"} disabled={pending} onClick={onToggle}>
+        {pending ? (shown ? "Hiding…" : "Adding…") : shown ? "Hide axes" : "Show axes"}
+      </Button>
+    </section>
   );
 }
 

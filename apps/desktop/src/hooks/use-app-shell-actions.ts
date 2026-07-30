@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ShellActions } from "../components/types";
 import type { DockDropInput } from "../lib/dock";
 import type { WindowCloseMutationPermit } from "../lib/window-mutation-barrier";
@@ -9,6 +9,7 @@ import {
 } from "../stores/workspace-history-store";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { ConformerJob, OpenDocumentsMode, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob } from "../types";
+import { requestActiveRuntimeWorkspaceHistory } from "../lib/workspace-history-dispatch";
 
 type SetState<T> = (value: T | ((previous: T) => T)) => void;
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
@@ -479,6 +480,8 @@ export function createWorkspaceHistoryShellActions(
     canNavigateForward: boolean;
     canRedoWorkspace: boolean;
     canUndoWorkspace: boolean;
+    canRedoFocusedPreview: boolean;
+    canUndoFocusedPreview: boolean;
   },
 ): ShellActions {
   const wrapped = { ...actions };
@@ -501,17 +504,19 @@ export function createWorkspaceHistoryShellActions(
   }
   return {
     ...wrapped,
-    canNavigateBack: options.canUndoWorkspace || options.canNavigateBack,
-    canNavigateForward: options.canRedoWorkspace || options.canNavigateForward,
+    canNavigateBack: options.canUndoFocusedPreview || options.canUndoWorkspace || options.canNavigateBack,
+    canNavigateForward: options.canRedoFocusedPreview || options.canRedoWorkspace || options.canNavigateForward,
     navigateBack: () => {
-      if (!useWorkspaceHistoryStore.getState().undoWorkspaceAction()) {
-        actions.navigateBack();
-      }
+      void requestActiveRuntimeWorkspaceHistory("undo").then((handled) => {
+        if (handled) return;
+        if (!useWorkspaceHistoryStore.getState().undoWorkspaceAction()) actions.navigateBack();
+      });
     },
     navigateForward: () => {
-      if (!useWorkspaceHistoryStore.getState().redoWorkspaceAction()) {
-        actions.navigateForward();
-      }
+      void requestActiveRuntimeWorkspaceHistory("redo").then((handled) => {
+        if (handled) return;
+        if (!useWorkspaceHistoryStore.getState().redoWorkspaceAction()) actions.navigateForward();
+      });
     },
     undoWorkspaceAction: () => useWorkspaceHistoryStore.getState().undoWorkspaceAction(),
     redoWorkspaceAction: () => useWorkspaceHistoryStore.getState().redoWorkspaceAction(),
@@ -831,6 +836,31 @@ export function useAppShellActions({
 }: UseAppShellActionsOptions) {
   const canUndoWorkspace = useWorkspaceHistoryStore((state) => state.canUndo);
   const canRedoWorkspace = useWorkspaceHistoryStore((state) => state.canRedo);
+  const [previewHistoryByDocument, setPreviewHistoryByDocument] = useState<Record<string, {
+    canUndo: boolean;
+    canRedo: boolean;
+  }>>({});
+
+  useEffect(() => {
+    const onHistoryChanged = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail || {};
+      const documentId = typeof detail.documentId === "string" ? detail.documentId : "";
+      if (!documentId) return;
+      setPreviewHistoryByDocument((current) => ({
+        ...current,
+        [documentId]: {
+          canUndo: detail.canUndo === true,
+          canRedo: detail.canRedo === true,
+        },
+      }));
+    };
+    window.addEventListener("burette:molstar-edit-history-changed", onHistoryChanged);
+    return () => window.removeEventListener("burette:molstar-edit-history-changed", onHistoryChanged);
+  }, []);
+
+  const focusedPreviewHistory = activeDocument
+    ? previewHistoryByDocument[activeDocument.id] ?? { canUndo: false, canRedo: false }
+    : { canUndo: false, canRedo: false };
 
   return useMemo<ShellActions>(() => createWorkspaceHistoryShellActions(createAppShellActions({
     chooseFiles,
@@ -972,9 +1002,11 @@ export function useAppShellActions({
   }), {
     canNavigateBack,
     canNavigateForward,
+    canRedoFocusedPreview: focusedPreviewHistory.canRedo,
     canRedoWorkspace,
+    canUndoFocusedPreview: focusedPreviewHistory.canUndo,
     canUndoWorkspace,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmCloseSourceDocuments, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmCloseSourceDocuments, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusedPreviewHistory.canRedo, focusedPreviewHistory.canUndo, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
 }
 
 export function createJobHistoryShellActions({
