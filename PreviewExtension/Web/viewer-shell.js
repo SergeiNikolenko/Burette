@@ -136,7 +136,7 @@
         </div>
       </div>
       <div id="buret-molstar-preset-menu" class="buret-molstar-preset-menu hidden" data-buret-molstar-preset-menu role="menu" aria-labelledby="buret-molstar-preset-trigger" aria-orientation="vertical"></div>
-      <div class="buret-molstar-preset-preview hidden" data-buret-molstar-preset-preview role="button" tabindex="0" aria-label="Apply preset preview">
+      <div class="buret-molstar-preset-preview hidden" data-buret-molstar-preset-preview role="button" tabindex="-1" aria-label="Apply preset preview">
         <div class="buret-molstar-preset-preview-header">
           <span data-buret-molstar-preset-preview-label>Preset preview</span>
           <span class="buret-molstar-preset-preview-caption" data-buret-molstar-preset-preview-caption>Rendering…</span>
