@@ -65,6 +65,54 @@
     };
   }
 
+  function computePreviewContentBounds(options) {
+    const value = options || {};
+    const width = Math.max(1, Math.floor(Number(value.width) || 1));
+    const height = Math.max(1, Math.floor(Number(value.height) || 1));
+    const data = value.data;
+    const fullFrame = { x: 0, y: 0, width, height };
+    if (!data || data.length < width * height * 4) return fullFrame;
+    const background = Array.isArray(value.background) && value.background.length >= 3
+      ? value.background.map(channel => Math.max(0, Math.min(255, Number(channel) || 0)))
+      : [data[0] || 0, data[1] || 0, data[2] || 0];
+    const threshold = Math.max(0, Number(value.threshold) || 6);
+    const alphaThreshold = Math.max(0, Number(value.alphaThreshold) || 4);
+    const transparent = value.transparent === true;
+    let left = width;
+    let right = -1;
+    let top = height;
+    let bottom = -1;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const offset = (y * width + x) * 4;
+        const alpha = data[offset + 3];
+        const visible = transparent
+          ? alpha > alphaThreshold
+          : alpha > alphaThreshold && Math.max(
+            Math.abs(data[offset] - background[0]),
+            Math.abs(data[offset + 1] - background[1]),
+            Math.abs(data[offset + 2] - background[2]),
+          ) > threshold;
+        if (!visible) continue;
+        if (x < left) left = x;
+        if (x > right) right = x;
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+      }
+    }
+    if (right < left || bottom < top) return fullFrame;
+    const contentWidth = right - left + 1;
+    const contentHeight = bottom - top + 1;
+    const paddingRatio = Math.max(0, Number(value.paddingRatio) || 0);
+    const minPadding = Math.max(0, Math.floor(Number(value.minPadding) || 0));
+    const padding = Math.max(minPadding, Math.round(Math.max(contentWidth, contentHeight) * paddingRatio));
+    left = Math.max(0, left - padding);
+    right = Math.min(width - 1, right + padding);
+    top = Math.max(0, top - padding);
+    bottom = Math.min(height - 1, bottom + padding);
+    return { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
+  }
+
   function focusPointerTarget(target, cancelClose) {
     if (typeof cancelClose === 'function') cancelClose();
     target?.classList?.add?.('buret-pointer-focus');
@@ -369,6 +417,7 @@
     create,
     computePreviewPlacement,
     computePreviewCanvasLayout,
+    computePreviewContentBounds,
     focusPointerTarget,
     retainPointerTarget,
   };
