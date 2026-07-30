@@ -136,16 +136,16 @@
         </div>
       </div>
       <div id="buret-molstar-preset-menu" class="buret-molstar-preset-menu hidden" data-buret-molstar-preset-menu role="menu" aria-labelledby="buret-molstar-preset-trigger" aria-orientation="vertical"></div>
-      <div class="buret-molstar-preset-preview hidden" data-buret-molstar-preset-preview role="status" aria-live="polite">
+      <div class="buret-molstar-preset-preview hidden" data-buret-molstar-preset-preview role="button" tabindex="0" aria-label="Apply preset preview">
         <div class="buret-molstar-preset-preview-header">
           <span data-buret-molstar-preset-preview-label>Preset preview</span>
-          <span class="buret-molstar-preset-preview-caption">Current structure</span>
+          <span class="buret-molstar-preset-preview-caption" data-buret-molstar-preset-preview-caption>Rendering…</span>
         </div>
         <div class="buret-molstar-preset-preview-canvas" data-buret-molstar-preset-preview-canvas>
           <canvas class="buret-molstar-preset-preview-image" data-buret-molstar-preset-preview-image aria-hidden="true"></canvas>
           <div class="buret-molstar-preset-preview-stage" data-buret-molstar-preset-preview-stage></div>
         </div>
-        <div class="buret-molstar-preset-preview-state" data-buret-molstar-preset-preview-state>Rendering preview…</div>
+        <div class="buret-molstar-preset-preview-state" data-buret-molstar-preset-preview-state aria-live="polite">Rendering preview…</div>
       </div>
       <div id="buret-viewport-corner" class="buret-viewport-corner">
         <button id="buret-scene-tree-toggle" class="buret-corner-toggle hidden" type="button" data-buret-action="scene-tree" aria-label="Toggle scene tree" aria-haspopup="dialog" aria-controls="buret-scene-tree" aria-expanded="false" title="Scene tree (⌘T)">

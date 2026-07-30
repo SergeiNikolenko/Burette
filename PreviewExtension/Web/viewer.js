@@ -1179,6 +1179,7 @@
   let molstarPresetPreviewSerial = 0;
   let molstarPresetPreviewPreset = '';
   let molstarPresetPreviewRender = Promise.resolve();
+  let molstarPresetPreviewCloseTimer = 0;
   let molstarWaterRepresentationEpoch = 0;
   let latestXyzrenderOrientationRef = null;
   let orientationTrackingCleanup = null;
@@ -2933,8 +2934,23 @@
       image: preview?.querySelector('[data-buret-molstar-preset-preview-image]'),
       stage: preview?.querySelector('[data-buret-molstar-preset-preview-stage]'),
       label: preview?.querySelector('[data-buret-molstar-preset-preview-label]'),
+      caption: preview?.querySelector('[data-buret-molstar-preset-preview-caption]'),
       state: preview?.querySelector('[data-buret-molstar-preset-preview-state]')
     };
+  }
+
+  function cancelMolstarPresetPreviewClose() {
+    if (!molstarPresetPreviewCloseTimer) return;
+    clearTimeout(molstarPresetPreviewCloseTimer);
+    molstarPresetPreviewCloseTimer = 0;
+  }
+
+  function scheduleMolstarPresetPreviewClose() {
+    cancelMolstarPresetPreviewClose();
+    molstarPresetPreviewCloseTimer = window.setTimeout(() => {
+      molstarPresetPreviewCloseTimer = 0;
+      hideMolstarPresetPreview();
+    }, 180);
   }
 
   function positionMolstarPresetPreview(item) {
@@ -3027,11 +3043,15 @@
   }
 
   function showMolstarPresetPreviewShell(item, option) {
-    const { preview, image, label, state } = molstarPresetPreviewElements();
+    const { preview, image, label, caption, state } = molstarPresetPreviewElements();
     if (!preview) return;
     if (label) label.textContent = option.label;
+    if (caption) caption.textContent = 'Rendering…';
     if (state) state.textContent = 'Rendering preview…';
-    preview.classList.remove('hidden', 'ready', 'error');
+    preview.classList.remove('hidden', 'ready', 'error', 'applying');
+    preview.dataset.buretMolstarPreset = option.value;
+    preview.setAttribute('aria-label', `Apply ${option.label} preset`);
+    preview.removeAttribute('aria-busy');
     preview.style.width = '';
     preview.style.height = '';
     preview.removeAttribute('data-crop');
@@ -3045,9 +3065,13 @@
   }
 
   function hideMolstarPresetPreview() {
+    cancelMolstarPresetPreviewClose();
     molstarPresetPreviewSerial += 1;
     molstarPresetPreviewPreset = '';
-    molstarPresetPreviewElements().preview?.classList.add('hidden');
+    const { preview } = molstarPresetPreviewElements();
+    preview?.classList.add('hidden');
+    preview?.classList.remove('applying');
+    preview?.removeAttribute('aria-busy');
   }
 
   function disposeMolstarPresetPreview() {
@@ -3126,11 +3150,14 @@
       if (serial !== molstarPresetPreviewSerial) return;
       await captureMolstarPresetPreview(item, viewer, serial);
       if (serial !== molstarPresetPreviewSerial) return;
-      molstarPresetPreviewElements().preview?.classList.add('ready');
+      const { preview, caption } = molstarPresetPreviewElements();
+      preview?.classList.add('ready');
+      if (caption) caption.textContent = 'Click to apply';
     } catch (error) {
       if (serial !== molstarPresetPreviewSerial) return;
-      const { preview, state } = molstarPresetPreviewElements();
+      const { preview, caption, state } = molstarPresetPreviewElements();
       preview?.classList.add('error');
+      if (caption) caption.textContent = 'Unavailable';
       if (state) state.textContent = error?.message || 'Preset preview unavailable.';
       debug('Mol* preset preview failed: ' + (error?.message || String(error)));
     }
@@ -3139,6 +3166,7 @@
   function scheduleMolstarPresetPreview(item) {
     const preset = item?.dataset?.buretMolstarPreset;
     if (!preset || !activeViewer) return;
+    cancelMolstarPresetPreviewClose();
     if (preset === molstarPresetPreviewPreset) return;
     molstarPresetPreviewPreset = preset;
     showMolstarPresetPreviewShell(item, molstarPresetOption(preset));
@@ -3526,6 +3554,8 @@
       setStatus('Mol* presets can be changed after the viewer loads.', 'error');
       return;
     }
+    const transitionFrame = captureMolstarTransitionFrame();
+    let applied = false;
     const serial = ++molstarStyleApplySerial;
     setStatus(`[web] Applying Mol* ${option.label} preset…`);
     try {
@@ -3534,11 +3564,15 @@
       if (serial !== molstarStyleApplySerial) return;
       await applyMolstarAppearance(activeViewer, appearance);
       if (serial !== molstarStyleApplySerial) return;
+      applied = true;
       setStatus(`[web] Applied Mol* ${option.label} preset`);
       setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
     } catch (error) {
       if (serial !== molstarStyleApplySerial) return;
       setStatus(`Mol* preset switch failed.\n\n${error?.message || String(error)}`, 'error');
+    } finally {
+      if (applied) fadeMolstarTransitionFrame(transitionFrame);
+      else removeMolstarTransitionFrame(transitionFrame);
     }
   }
 
@@ -4516,15 +4550,44 @@
         const item = event.target?.closest?.('[data-buret-molstar-preset]');
         if (item && menu.contains(item)) scheduleMolstarPresetPreview(item);
       });
-      menu.addEventListener('pointerleave', hideMolstarPresetPreview);
+      menu.addEventListener('pointerenter', cancelMolstarPresetPreviewClose);
+      menu.addEventListener('pointerleave', event => {
+        const { preview } = molstarPresetPreviewElements();
+        if (preview?.contains(event.relatedTarget)) return;
+        scheduleMolstarPresetPreviewClose();
+      });
+      const { preview } = molstarPresetPreviewElements();
+      preview?.addEventListener('pointerenter', cancelMolstarPresetPreviewClose);
+      preview?.addEventListener('pointerleave', event => {
+        if (menu.contains(event.relatedTarget)) return;
+        scheduleMolstarPresetPreviewClose();
+      });
+      const applyPreview = event => {
+        const preset = preview?.dataset?.buretMolstarPreset;
+        if (!preset) return;
+        event.preventDefault();
+        event.stopPropagation();
+        cancelMolstarPresetPreviewClose();
+        preview.classList.add('applying');
+        preview.setAttribute('aria-busy', 'true');
+        const caption = preview.querySelector('[data-buret-molstar-preset-preview-caption]');
+        if (caption) caption.textContent = 'Applying…';
+        void requestMolstarPreset(preset);
+        window.setTimeout(() => hideMolstarPresetMenu({ restoreFocus: true }), 160);
+      };
+      preview?.addEventListener('click', applyPreview);
+      preview?.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') applyPreview(event);
+      });
     }
     toolbar.dataset.molstarStyleBound = '1';
   }
 
   document.addEventListener('pointerdown', event => {
     const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    const { preview } = molstarPresetPreviewElements();
     if (!menu || menu.classList.contains('hidden')) return;
-    if (menu.contains(event.target) || event.target?.closest?.('[data-buret-molstar-preset-trigger]')) return;
+    if (menu.contains(event.target) || preview?.contains(event.target) || event.target?.closest?.('[data-buret-molstar-preset-trigger]')) return;
     hideMolstarPresetMenu();
   });
   document.addEventListener('keydown', event => {
