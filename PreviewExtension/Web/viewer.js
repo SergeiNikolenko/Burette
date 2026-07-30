@@ -142,9 +142,8 @@
   let molstarSelectionPreviewCleanup = null;
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
-  // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
-  // scene-tree menu at the same spot.
-  let molstarContextMenuLastPoint = null;
+  let moleculeToolDialog = null;
+  let moleculeToolDialogSerial = 0;
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
   let molstarLassoOverlay = null;
@@ -6721,6 +6720,10 @@
   function closeSceneTreeMenu() {
     sceneTreeMenuRef = '';
     const menu = document.getElementById('buret-scene-tree-menu');
+    if (moleculeToolDialog?.panel === menu) {
+      closeMoleculeToolDialog();
+      return;
+    }
     // Dismissing the menu mid-hover must not leave the previewed theme behind: the
     // pointer never reached a row to click, so nothing was chosen.
     for (const list of menu?.querySelectorAll('[data-scene-tree-picker-list]') || []) {
@@ -7388,6 +7391,31 @@
     sceneTreeMenuSwatches(menu, node.label, 'rep-tint-color', sceneTreeRepresentationTint(target.representation));
 
     sceneTreeAdvancedSection(menu, viewer, target);
+  }
+
+  function openSceneTreeRepresentationDialog(ref, targetLabel) {
+    closeSceneTreeMenu();
+    const viewer = activeMolstarViewer();
+    const node = sceneTreeNodeByRef(sceneTreeNodes(viewer), ref);
+    const target = sceneTreeRepresentationTargets(viewer).get(ref);
+    if (!node || !target) return false;
+    sceneTreeMenuRef = ref;
+    const previousFocus = document.activeElement;
+    const { panel, body } = createMoleculeToolDialog('Representation & colour', targetLabel, {
+      id: 'buret-scene-tree-menu',
+      className: 'buret-tree-menu',
+      previousFocus,
+      onClose: activePanel => {
+        for (const list of activePanel?.querySelectorAll('[data-scene-tree-picker-list]') || []) {
+          closeSceneTreePicker(list, { restore: true });
+        }
+        sceneTreeMenuRef = '';
+        scheduleMolstarSelectedMoleculePreview();
+      }
+    });
+    panel.dataset.ref = ref;
+    sceneTreeRepresentationMenu(body, viewer, node, target);
+    return true;
   }
 
   function openSceneTreeMenu(ref, clientX, clientY) {
@@ -18892,17 +18920,18 @@
     return !!component;
   }
 
-  async function openMolstarContextScopeComponentMenu(target) {
+  async function openMolstarContextScopeRepresentationDialog(target) {
     const representation = molstarContextModeUsesPolymerRepresentation() ? 'cartoon' : 'ball-and-stick';
     const component = await addMolstarContextScopeComponent(
       target,
       representation,
       target?.label || 'Selection'
     );
-    const componentRef = component?.cell?.transform?.ref;
-    if (!componentRef) return false;
-    const point = molstarContextMenuLastPoint || { x: 80, y: 120 };
-    window.setTimeout(() => openSceneTreeMenu(componentRef, point.x, point.y), 0);
+    const representationRef = component?.representations?.[0]?.cell?.transform?.ref;
+    if (!representationRef) return false;
+    window.setTimeout(() => {
+      openSceneTreeRepresentationDialog(representationRef, target?.label || 'Selection');
+    }, 0);
     return true;
   }
 
@@ -19464,9 +19493,9 @@
     { id: 'primary', title: 'Target', direct: true },
     { id: 'view', title: 'Visibility', direct: true, breakBefore: true },
     { id: 'represent', title: 'Representation', direct: true, breakBefore: true },
-    { id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true },
+    { id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true, dialog: true },
     { id: 'align', title: 'Superposition' },
-    { id: 'export', title: 'Export' },
+    { id: 'export', title: 'Export', dialog: true },
     { id: 'search', title: 'Search' },
     { id: 'compute', title: 'Compute' },
     { id: 'danger', title: 'Delete', direct: true, destructive: true, hideTitle: true, breakBefore: true }
@@ -19765,7 +19794,7 @@
         if (!await addGreySurfaceForContext(target)) throw new Error('No Mol* selection or target is available for a surface.');
         setStatus(`[web] Added a translucent surface to ${targetLabel}.`);
       } else if (action === 'represent:menu') {
-        if (!await openMolstarContextScopeComponentMenu(target)) {
+        if (!await openMolstarContextScopeRepresentationDialog(target)) {
           throw new Error('No Mol* selection or target is available to edit.');
         }
         setStatus(`[web] Editing ${targetLabel} representation.`);
@@ -20860,6 +20889,105 @@
     scheduleMolstarSelectedMoleculePreview();
   }
 
+  function moleculeToolDialogFocusable(panel) {
+    return [...(panel?.querySelectorAll('button, input, select, textarea, summary, [tabindex]') || [])]
+      .filter(control => !control.disabled && control.getAttribute('aria-hidden') !== 'true' && !control.hidden);
+  }
+
+  function closeMoleculeToolDialog(options = {}) {
+    const dialog = moleculeToolDialog;
+    if (!dialog) return;
+    moleculeToolDialog = null;
+    dialog.onClose?.(dialog.panel);
+    dialog.layer.remove();
+    if (options.restoreFocus === false) return;
+    const previousFocus = dialog.previousFocus;
+    if (previousFocus?.isConnected && typeof previousFocus.focus === 'function') {
+      previousFocus.focus({ preventScroll: true });
+    }
+  }
+
+  function createMoleculeToolDialog(titleText, subtitleText, options = {}) {
+    closeMoleculeToolDialog({ restoreFocus: false });
+    const serial = ++moleculeToolDialogSerial;
+    const previousFocus = options.previousFocus || document.activeElement;
+    const layer = document.createElement('div');
+    layer.className = 'buret-molecule-tool-dialog-layer';
+    const panel = document.createElement('section');
+    panel.id = options.id || `buret-molecule-tool-dialog-${serial}`;
+    panel.className = `buret-molecule-tool-dialog${options.className ? ` ${options.className}` : ''}`;
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.tabIndex = -1;
+
+    const header = document.createElement('header');
+    header.className = 'buret-molecule-tool-dialog-header';
+    const heading = document.createElement('div');
+    heading.className = 'buret-molecule-tool-dialog-heading';
+    const title = document.createElement('h2');
+    title.id = `buret-molecule-tool-dialog-title-${serial}`;
+    title.textContent = titleText;
+    panel.setAttribute('aria-labelledby', title.id);
+    heading.appendChild(title);
+    if (subtitleText) {
+      const subtitle = document.createElement('p');
+      subtitle.id = `buret-molecule-tool-dialog-description-${serial}`;
+      subtitle.textContent = subtitleText;
+      panel.setAttribute('aria-describedby', subtitle.id);
+      heading.appendChild(subtitle);
+    }
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'buret-molecule-tool-dialog-close';
+    close.setAttribute('aria-label', `Close ${titleText}`);
+    close.appendChild(sceneTreeIconElement(['M18 6 6 18', 'm6 6 12 12']));
+    header.append(heading, close);
+    const body = document.createElement('div');
+    body.className = 'buret-molecule-tool-dialog-body';
+    panel.append(header, body);
+    layer.appendChild(panel);
+    document.body.appendChild(layer);
+
+    moleculeToolDialog = {
+      layer,
+      panel,
+      previousFocus,
+      onClose: options.onClose
+    };
+    close.addEventListener('click', () => closeMoleculeToolDialog());
+    layer.addEventListener('pointerdown', event => {
+      if (event.target === layer) closeMoleculeToolDialog();
+    });
+    panel.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeMoleculeToolDialog();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = moleculeToolDialogFocusable(panel);
+      if (!focusable.length) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+    window.requestAnimationFrame(() => {
+      moleculeToolDialogFocusable(panel)[0]?.focus({ preventScroll: true });
+    });
+    return { layer, panel, body };
+  }
+
   function moleculeMenuIcon(paths) {
     const icon = document.createElement('span');
     icon.className = 'buret-tree-menu-icon';
@@ -20870,7 +20998,7 @@
   function moleculeMenuActionButton(action, label, options = {}) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.setAttribute('role', 'menuitem');
+    if (options.menuItem !== false) button.setAttribute('role', 'menuitem');
     button.className = `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
     button.dataset.buretMoleculeAction = action;
     const text = document.createElement('span');
@@ -20881,9 +21009,51 @@
       const target = options.target
         ? { ...options.target, pickingLevel: options.pickingLevel || options.target.pickingLevel }
         : null;
+      options.beforeAction?.();
       void moleculeContextMenuAction(action, label, target);
     });
     return button;
+  }
+
+  function showMoleculeActionDialog(section, entries, target, previousFocus) {
+    const { body } = createMoleculeToolDialog(section.title, target?.label || '', {
+      previousFocus,
+      onClose: () => scheduleMolstarSelectedMoleculePreview()
+    });
+    const group = document.createElement('div');
+    group.className = 'buret-molecule-tool-dialog-actions';
+    for (const [action, label] of entries) {
+      group.appendChild(moleculeMenuActionButton(action, label, {
+        target,
+        pickingLevel: target?.pickingLevel,
+        menuItem: false,
+        beforeAction: () => closeMoleculeToolDialog({ restoreFocus: false })
+      }));
+    }
+    body.appendChild(group);
+  }
+
+  function moleculeMenuDialogTrigger(section, entries, menu, target) {
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.setAttribute('role', 'menuitem');
+    trigger.setAttribute('aria-haspopup', 'dialog');
+    trigger.className = 'buret-tree-menu-item buret-tree-menu-dialog-trigger';
+    const label = document.createElement('span');
+    label.className = 'buret-tree-menu-label';
+    label.textContent = section.title;
+    const openIcon = document.createElement('span');
+    openIcon.className = 'buret-tree-menu-chevron';
+    openIcon.appendChild(sceneTreeIconElement(['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6']));
+    trigger.append(moleculeMenuIcon(MOLECULE_MENU_GROUP_ICONS[section.id]), label, openIcon);
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const previousFocus = menu._buretPreviousFocus;
+      hideMolstarContextMenu({ keepMoleculePreview: true });
+      showMoleculeActionDialog(section, entries, target, previousFocus);
+    });
+    return trigger;
   }
 
   function moleculeMenuSectionEntries(grouped, section) {
@@ -21182,7 +21352,9 @@
           heading.textContent = section.rootLabel;
           actionContainer.appendChild(heading);
         }
-        if (section.direct) {
+        if (section.dialog) {
+          actionContainer.appendChild(moleculeMenuDialogTrigger(section, entries, menu, actionTarget));
+        } else if (section.direct) {
           if (!section.hideTitle) {
             const heading = document.createElement('div');
             heading.className = 'buret-tree-menu-title';
@@ -21214,7 +21386,7 @@
       molstarContextMenuMode = mode;
       applyPickingLevel(levelLabel);
       renderActions();
-      const point = molstarContextMenuLastPoint || {
+      const point = {
         x: Number.parseFloat(menu.style.left) || 8,
         y: Number.parseFloat(menu.style.top) || 8
       };
@@ -21227,7 +21399,6 @@
     document.body.appendChild(menu);
     installMoleculeMenuKeyboard(menu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
-    molstarContextMenuLastPoint = { x: event.clientX, y: event.clientY };
     window.requestAnimationFrame(() => {
       if (menu.isConnected) menu.querySelector('.buret-tree-menu-item')?.focus({ preventScroll: true });
     });
