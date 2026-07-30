@@ -43,81 +43,6 @@
     return method !== 'uniprot' && method !== 'selected-atoms';
   }
 
-  function createQuickMenu(options) {
-    const root = element('span', 'buret-superposition-quick');
-    const primary = options.primary;
-    const toggle = element('button', 'buret-superposition-quick-toggle', '⌄');
-    toggle.type = 'button';
-    toggle.title = 'More alignment options';
-    toggle.setAttribute('aria-label', 'More alignment options');
-    toggle.setAttribute('aria-haspopup', 'menu');
-    toggle.setAttribute('aria-expanded', 'false');
-    const menu = element('div', 'buret-superposition-quick-menu');
-    menu.setAttribute('role', 'menu');
-    menu.hidden = true;
-    const actions = [
-      ['auto', 'Auto align'],
-      ['tm-align', 'TM-align'],
-      ['advanced', 'Advanced…'],
-      ['reset', 'Reset alignment'],
-    ];
-    const buttons = new Map();
-    for (const [action, label] of actions) {
-      const button = element('button', `buret-superposition-quick-${action}`, label);
-      button.type = 'button';
-      button.role = 'menuitem';
-      button.dataset.action = action;
-      buttons.set(action, button);
-      menu.append(button);
-    }
-    const setOpen = open => {
-      menu.hidden = !open;
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    };
-    const select = action => {
-      setOpen(false);
-      Promise.resolve(options.onSelect?.(action)).catch(() => {});
-    };
-    primary.addEventListener('click', () => select('auto'));
-    toggle.addEventListener('click', event => {
-      event.stopPropagation();
-      setOpen(menu.hidden);
-    });
-    menu.addEventListener('click', event => {
-      const button = event.target instanceof Element ? event.target.closest('button[data-action]') : null;
-      if (button) select(button.dataset.action);
-    });
-    const onPointerDown = event => {
-      if (!root.contains(event.target)) setOpen(false);
-    };
-    const onKeyDown = event => {
-      if (event.key !== 'Escape' || menu.hidden) return;
-      setOpen(false);
-      toggle.focus();
-    };
-    window.addEventListener('pointerdown', onPointerDown, true);
-    window.addEventListener('keydown', onKeyDown);
-    root.append(primary, toggle, menu);
-    return {
-      element: root,
-      close: () => setOpen(false),
-      destroy() {
-        window.removeEventListener('pointerdown', onPointerDown, true);
-        window.removeEventListener('keydown', onKeyDown);
-        root.remove();
-      },
-      setAligned(aligned) {
-        buttons.get('reset').hidden = !aligned;
-      },
-      setBusy(busy) {
-        primary.disabled = busy;
-        toggle.disabled = busy;
-        for (const button of buttons.values()) button.disabled = busy;
-        if (busy) setOpen(false);
-      },
-    };
-  }
-
   function formatMetric(value, digits = 2) {
     return Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '—';
   }
@@ -333,5 +258,5 @@
     };
   }
 
-  window.BuretteSuperpositionPanel = Object.freeze({ create, createQuickMenu });
+  window.BuretteSuperpositionPanel = Object.freeze({ create });
 })();

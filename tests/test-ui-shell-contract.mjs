@@ -6239,14 +6239,14 @@ assert.match(previewViewer, /function trajectoryPoseLabel\(prepared, controlLabe
 assert.match(previewViewer, /Time \$\{timeNs\} ns - \$\{indexText\}/);
 assert.match(previewViewer, /setCurrentName\(prepared\?\.poses\?\.\[poseIndex\]\?\.label \|\| `\$\{controlLabel\} \$\{poseIndex \+ 1\}`\)/);
 assert.match(previewViewer, /function alignStructureSceneEntries\(prepared, request = 'auto'\)/);
-assert.match(previewViewer, /function createStructureSuperpositionController\(viewer, prepared, alignButton, getActivePose, quickMenu\)/);
+assert.match(previewViewer, /function createStructureSuperpositionController\(viewer, prepared, alignButton, getActivePose\)/);
 assert.match(previewViewer, /TransformStructureConformation/);
 assert.match(previewViewer, /label\.className = 'buret-docking-pose-current'/);
 assert.match(previewViewer, /fileList\.className = 'buret-docking-pose-files'/);
 assert.match(previewViewer, /align\.className = 'buret-docking-pose-align'/);
 assert.match(previewViewer, /align\.textContent = alignmentOn \? 'Aligned' : 'Align'/);
 assert.match(previewViewer, /function xyzFramesAlignable\(frames\)/);
-assert.match(previewViewer, /\} else \{\s*if \(align\) mainRow\.append\(alignmentQuickMenu\?\.element \|\| align\);\s*if \(all\) mainRow\.append\(all\);/);
+assert.match(previewViewer, /\} else \{\s*if \(align\) mainRow\.append\(align\);\s*if \(all\) mainRow\.append\(all\);/);
 assert.match(previewViewer, /\['align-structures', 'Reset structure alignment'\]/);
 assert.match(previewViewer, /async function applyDockingSceneSinglePose\(viewer, prepared, activePose, options\)/);
 assert.match(previewViewer, /function setDockingSceneRefsHidden\(viewer, refs, hidden\)/);

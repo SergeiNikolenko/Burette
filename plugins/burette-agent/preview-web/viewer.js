@@ -13691,6 +13691,36 @@
     return entries.find(entry => entry.id === String(id)) || null;
   }
 
+  const SUPERPOSITION_CONTEXT_ACTION_PREFIX = 'align:context:';
+
+  function superpositionContextAction(request) {
+    return `${SUPERPOSITION_CONTEXT_ACTION_PREFIX}${encodeURIComponent(JSON.stringify(request))}`;
+  }
+
+  function superpositionContextRequest(action) {
+    if (!String(action || '').startsWith(SUPERPOSITION_CONTEXT_ACTION_PREFIX)) return null;
+    try {
+      const request = JSON.parse(decodeURIComponent(String(action).slice(SUPERPOSITION_CONTEXT_ACTION_PREFIX.length)));
+      if (!request || typeof request !== 'object') return null;
+      return request;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function superpositionChainForAtom(entry, atom) {
+    const authChainId = String(atom?.auth_asym_id || '').trim();
+    const labelChainId = String(atom?.label_asym_id || '').trim();
+    return entry?.chains?.find(chain => (
+      (authChainId && chain.authChainId === authChainId)
+      || (labelChainId && chain.labelChainId === labelChainId)
+    )) || null;
+  }
+
+  function superpositionChainShortLabel(chain) {
+    return `Chain ${chain?.authChainId || chain?.labelChainId || '(blank)'}`;
+  }
+
   function selectedSuperpositionEntries(entries, request) {
     const reference = superpositionEntry(entries, request.referenceId ?? entries[0]?.id);
     if (!reference) throw new Error('Choose a reference structure.');
@@ -13732,7 +13762,9 @@
       throw new Error(`${STRUCTURE_ALIGNMENT_MODE_LABELS[method] || method} currently needs PDB or PDBQT structures.`);
     }
     if (method === 'selected-atoms') {
-      const loci = selectedAtomSuperpositionLoci(activeViewer, selected.ordered);
+      const loci = request.useCurrentSelection === true
+        ? currentSelectionSuperpositionLoci(activeViewer, selected.ordered)
+        : selectedAtomSuperpositionLoci(activeViewer, selected.ordered);
       const transforms = facade.alignAtoms(loci);
       return normalizeNativeSuperpositionResult(method, selected, transforms);
     }
@@ -13796,6 +13828,26 @@
     });
   }
 
+  function currentSelectionSuperpositionLoci(viewer, orderedEntries) {
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const selection = viewer?.plugin?.managers?.structure?.selection;
+    if (!StructureElement || typeof selection?.getLoci !== 'function') {
+      throw new Error('Mol* selection APIs are unavailable.');
+    }
+    const loci = orderedEntries.map(entry => {
+      const selected = selection.getLoci(entry.root);
+      if (!selected || StructureElement.Loci.isEmpty(selected)) {
+        throw new Error(`${entry.label} has no selected atoms.`);
+      }
+      return StructureElement.Loci.remap(selected, entry.root);
+    });
+    const counts = loci.map(selected => StructureElement.Loci.size(selected));
+    if (counts[0] < 3 || counts.some(count => count !== counts[0])) {
+      throw new Error('Selected-part alignment needs the same canonical set of at least three atoms in both structures.');
+    }
+    return loci;
+  }
+
   function taggedSuperpositionTransform(state, entry, transformer) {
     return state.selectQ(query => query.root.subtree()
       .withTransformer(transformer)
@@ -13856,7 +13908,7 @@
     return true;
   }
 
-  function createStructureSuperpositionController(viewer, prepared, alignButton, getActivePose, quickMenu) {
+  function createStructureSuperpositionController(viewer, prepared, alignButton, getActivePose) {
     let entries = [];
     let result = null;
     let panel = null;
@@ -13876,10 +13928,8 @@
       alignButton.disabled = busy;
       alignButton.setAttribute('aria-pressed', aligned ? 'true' : 'false');
       alignButton.title = aligned
-        ? `${result.methodLabel} · ${result.pairs.length} moving structure${result.pairs.length === 1 ? '' : 's'}`
+        ? `${result.methodLabel} · ${result.pairs.length} moving structure${result.pairs.length === 1 ? '' : 's'} · click to reset`
         : 'Automatically superimpose every structure onto the first one';
-      quickMenu?.setAligned(aligned);
-      quickMenu?.setBusy(busy);
       panel?.setResult(result);
     };
 
@@ -13915,6 +13965,85 @@
 
     const ensureEntries = () => entriesStillLoaded() ? Promise.resolve(entries) : refreshEntries();
 
+    const contextEntries = () => {
+      if (entriesStillLoaded()) return entries;
+      try {
+        entries = superpositionStructureEntries(viewer, prepared);
+        return entries;
+      } catch (_) {
+        return [];
+      }
+    };
+
+    const contextEntry = (availableEntries, target) => {
+      const targetRoot = molstarStructureFromRef(target?.structure);
+      return availableEntries.find(entry => (
+        entry.wrapper === target?.structure
+        || entry.root === targetRoot
+        || (targetRoot && entry.root?.root === targetRoot.root)
+      )) || null;
+    };
+
+    const contextActions = (target, pickingLevel = 'residue') => {
+      const availableEntries = contextEntries();
+      const moving = contextEntry(availableEntries, target);
+      if (!moving || availableEntries.length < 2) return [];
+      const references = availableEntries.filter(entry => entry !== moving);
+      const actions = [];
+      if (target?.selectionBased) {
+        for (const reference of references) {
+          try {
+            const loci = currentSelectionSuperpositionLoci(viewer, [reference, moving]);
+            const atomCount = window.molstar.lib.structure.StructureElement.Loci.size(loci[0]);
+            actions.push([
+              superpositionContextAction({
+                method: 'selected-atoms',
+                referenceId: reference.id,
+                movingIds: [moving.id],
+                useCurrentSelection: true,
+              }),
+              `Selected ${atomCount} atoms → ${reference.label}`,
+            ]);
+          } catch (_) {}
+        }
+      } else if (pickingLevel === 'chain' && target?.atom) {
+        const movingChain = superpositionChainForAtom(moving, target.atom);
+        if (movingChain) {
+          for (const reference of references) {
+            for (const referenceChain of reference.chains) {
+              actions.push([
+                superpositionContextAction({
+                  method: 'chains',
+                  referenceId: reference.id,
+                  movingIds: [moving.id],
+                  chains: {
+                    [reference.id]: referenceChain.id,
+                    [moving.id]: movingChain.id,
+                  },
+                  alignSequences: true,
+                }),
+                `${superpositionChainShortLabel(movingChain)} → ${reference.label} · ${superpositionChainShortLabel(referenceChain)}`,
+              ]);
+            }
+          }
+        }
+      } else {
+        for (const reference of references) {
+          actions.push([
+            superpositionContextAction({ method: 'auto', referenceId: reference.id, movingIds: [moving.id] }),
+            `Align to ${reference.label}`,
+          ]);
+          actions.push([
+            superpositionContextAction({ method: 'tm-align', referenceId: reference.id, movingIds: [moving.id] }),
+            `TM-align to ${reference.label}`,
+          ]);
+        }
+      }
+      actions.push(['align:advanced', 'Advanced alignment…']);
+      if (result) actions.push(['align-structures', 'Reset structure alignment']);
+      return actions;
+    };
+
     const apply = async (request = {}) => {
       setBusy(true);
       try {
@@ -13947,6 +14076,7 @@
         result = null;
         if ((changed || wasAligned) && undo) pushMolstarEditUndoSnapshot(undo);
         sync();
+        if (changed) window.requestAnimationFrame(() => viewer?.plugin?.canvas3d?.requestCameraReset?.());
         setStatus('[web] Restored original structure transforms.');
         setTimeout(hideStatus, 1800);
       } finally {
@@ -13977,7 +14107,6 @@
 
     const destroy = () => {
       panel?.destroy();
-      quickMenu?.destroy();
       if (activeSuperpositionPanel === panel) activeSuperpositionPanel = null;
       panel = null;
     };
@@ -13989,9 +14118,9 @@
       apply,
       reset,
       destroy,
+      contextActions,
       isAligned: () => Boolean(result),
       mode: () => result?.method || null,
-      referenceLabel: () => result?.referenceLabel || prepared.poses?.[0]?.label || 'the first structure',
       snapshot: () => result ? structuredClone(result) : null,
       restoreMetadata: value => { result = value || null; sync(); },
     };
@@ -15067,21 +15196,6 @@
       align.setAttribute('aria-pressed', alignmentOn ? 'true' : 'false');
     }
     let structureAlignmentControl = null;
-    const alignmentQuickMenu = align && alignmentSupported && !xyzAlignFrames
-      && typeof window.BuretteSuperpositionPanel?.createQuickMenu === 'function'
-      ? window.BuretteSuperpositionPanel.createQuickMenu({
-        primary: align,
-        onSelect: action => {
-          if (!structureAlignmentControl) return;
-          const operation = action === 'advanced'
-            ? structureAlignmentControl.open()
-            : action === 'reset'
-              ? structureAlignmentControl.reset()
-              : structureAlignmentControl.apply({ method: action });
-          return Promise.resolve(operation).catch(() => {});
-        },
-      })
-      : null;
     const loop = document.createElement('button');
     loop.type = 'button';
     loop.textContent = 'Loop';
@@ -15475,14 +15589,14 @@
         prepared,
         align,
         () => activePose,
-        alignmentQuickMenu,
       );
       activeStructureAlignmentControl = structureAlignmentControl;
-      if (!alignmentQuickMenu) {
-        align.addEventListener('click', () => {
-          Promise.resolve(structureAlignmentControl?.apply({ method: 'auto' })).catch(() => {});
-        });
-      }
+      align.addEventListener('click', () => {
+        const operation = structureAlignmentControl?.isAligned()
+          ? structureAlignmentControl.reset()
+          : structureAlignmentControl?.apply({ method: 'auto' });
+        Promise.resolve(operation).catch(() => {});
+      });
     }
     activeStructurePoseSetter = setPose;
     if (prepared.kind === 'sdf-collection') activeSdfCollectionPoseSetter = setPose;
@@ -15663,10 +15777,10 @@
     if (toggleRow) {
       toggleRow.className = 'buret-docking-pose-toggles';
       if (story) toggleRow.append(story);
-      if (align) toggleRow.append(alignmentQuickMenu?.element || align);
+      if (align) toggleRow.append(align);
       if (all) toggleRow.append(all);
     } else {
-      if (align) mainRow.append(alignmentQuickMenu?.element || align);
+      if (align) mainRow.append(align);
       if (all) mainRow.append(all);
       animationRow.append(speed, loop, slider);
       if (smoothAvailable) animationRow.append(smooth);
@@ -19168,13 +19282,7 @@
     ];
     if (molstarContextCanBulkDelete(target)) actions.push(['remove-type', `Delete ${molstarContextBulkDeleteLabel(target)}`]);
     if (activeStructureAlignmentControl) {
-      const reference = activeStructureAlignmentControl.referenceLabel();
-      actions.push(['align:advanced', 'Burette Superposition…']);
-      actions.push(['align:atoms', `Align to ${reference} by residue numbers`]);
-      actions.push(['align:sequence', `Align to ${reference} by sequence`]);
-      actions.push(['align:binding-site', `Align to ${reference} by binding site`]);
-      actions.push(['align:tm-align', `TM-align to ${reference}`]);
-      if (activeStructureAlignmentControl.isAligned()) actions.push(['align-structures', 'Reset structure alignment']);
+      actions.push(...activeStructureAlignmentControl.contextActions(target, mode));
     }
     if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
     // The desktop overlay carries the scene-tree powers into the 3D right click.
@@ -19281,6 +19389,11 @@
         hideMolstarContextMenu();
         if (action === 'align-structures') await activeStructureAlignmentControl.reset();
         else if (action === 'align:advanced') await activeStructureAlignmentControl.open();
+        else if (action.startsWith(SUPERPOSITION_CONTEXT_ACTION_PREFIX)) {
+          const request = superpositionContextRequest(action);
+          if (!request) throw new Error('The requested contextual superposition is invalid.');
+          await activeStructureAlignmentControl.apply(request);
+        }
         else await activeStructureAlignmentControl.apply({ method: action.slice('align:'.length) });
         return;
       } else if (action === 'select') {

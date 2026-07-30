@@ -11,14 +11,14 @@ const fn = (name) => {
   return match[0];
 };
 
-// Superposition exposes explicit reference/moving structures, PDB pairing modes,
-// and Mol*'s native TM-align behind one controller and panel.
+// Superposition exposes explicit reference/moving structures, contextual target
+// actions, PDB pairing modes, and Mol*'s native TM-align behind one controller.
 assert.match(viewer, /function alignStructureSceneEntries\(prepared, request = 'auto'\)/);
-assert.match(viewer, /\['align:advanced', 'Burette Superposition…'\]/);
-assert.match(viewer, /\['align:atoms', `Align to \$\{reference\} by residue numbers`\]/);
-assert.match(viewer, /\['align:sequence', `Align to \$\{reference\} by sequence`\]/);
-assert.match(viewer, /\['align:binding-site', `Align to \$\{reference\} by binding site`\]/);
-assert.match(viewer, /\['align:tm-align', `TM-align to \$\{reference\}`\]/);
+assert.match(viewer, /\['align:advanced', 'Advanced alignment…'\]/);
+assert.match(viewer, /superpositionContextAction\(\{ method: 'auto', referenceId: reference\.id, movingIds: \[moving\.id\] \}\)/);
+assert.match(viewer, /superpositionContextAction\(\{ method: 'tm-align', referenceId: reference\.id, movingIds: \[moving\.id\] \}\)/);
+assert.match(viewer, /method: 'chains',[\s\S]*?\[moving\.id\]: movingChain\.id/);
+assert.match(viewer, /method: 'selected-atoms',[\s\S]*?useCurrentSelection: true/);
 const align = fn("alignStructureSceneEntries");
 assert.match(align, /referenceIndex[\s\S]*movingIndices[\s\S]*chainIds/);
 assert.match(align, /if \(method !== 'auto'\) return build\(method\)/);
