@@ -836,27 +836,30 @@ export function useAppShellActions({
 }: UseAppShellActionsOptions) {
   const canUndoWorkspace = useWorkspaceHistoryStore((state) => state.canUndo);
   const canRedoWorkspace = useWorkspaceHistoryStore((state) => state.canRedo);
-  const [previewHistory, setPreviewHistory] = useState({
-    documentId: "",
-    canUndo: false,
-    canRedo: false,
-  });
+  const [previewHistoryByDocument, setPreviewHistoryByDocument] = useState<Record<string, {
+    canUndo: boolean;
+    canRedo: boolean;
+  }>>({});
 
   useEffect(() => {
     const onHistoryChanged = (event: Event) => {
       const detail = (event as CustomEvent<Record<string, unknown>>).detail || {};
-      setPreviewHistory({
-        documentId: typeof detail.documentId === "string" ? detail.documentId : "",
-        canUndo: detail.canUndo === true,
-        canRedo: detail.canRedo === true,
-      });
+      const documentId = typeof detail.documentId === "string" ? detail.documentId : "";
+      if (!documentId) return;
+      setPreviewHistoryByDocument((current) => ({
+        ...current,
+        [documentId]: {
+          canUndo: detail.canUndo === true,
+          canRedo: detail.canRedo === true,
+        },
+      }));
     };
     window.addEventListener("burette:molstar-edit-history-changed", onHistoryChanged);
     return () => window.removeEventListener("burette:molstar-edit-history-changed", onHistoryChanged);
   }, []);
 
-  const focusedPreviewHistory = previewHistory.documentId === activeDocument?.id
-    ? previewHistory
+  const focusedPreviewHistory = activeDocument
+    ? previewHistoryByDocument[activeDocument.id] ?? { canUndo: false, canRedo: false }
     : { canUndo: false, canRedo: false };
 
   return useMemo<ShellActions>(() => createWorkspaceHistoryShellActions(createAppShellActions({

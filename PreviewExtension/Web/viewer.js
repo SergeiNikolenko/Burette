@@ -2320,24 +2320,11 @@
 
   async function handleWorkspaceHistoryCommand(body, source) {
     const direction = body.direction === 'redo' ? 'redo' : 'undo';
-    let handled = false;
-    try {
-      if (direction === 'redo') {
-        if (xyzrenderActionRedoStack.length) {
-          handled = redoXyzrenderLastAction({ fromSystemHistory: true });
-        } else if (molstarEditRedoStack.length) {
-          await redoMolstarLastEdit();
-          handled = true;
-        }
-      } else if (xyzrenderActionUndoStack.length) {
-        handled = undoXyzrenderLastAction({ fromSystemHistory: true });
-      } else if (molstarEditUndoStack.length) {
-        await undoMolstarLastEdit();
-        handled = true;
-      }
-    } catch (error) {
-      setStatus(`[web] ${direction === 'redo' ? 'Redo' : 'Undo'} failed.\n\n${error?.message || String(error)}`, 'error');
-    }
+    const handled = direction === 'redo'
+      ? xyzrenderActionRedoStack.length > 0 || molstarEditRedoStack.length > 0
+      : xyzrenderActionUndoStack.length > 0 || molstarEditUndoStack.length > 0;
+    // A structure snapshot can take seconds to restore. Acknowledge ownership
+    // before awaiting it so the host never falls through to a second Back/Undo.
     source?.postMessage({
       source: 'burette-viewer',
       body: {
@@ -2346,6 +2333,22 @@
         handled
       }
     }, '*');
+    if (!handled) return;
+    try {
+      if (direction === 'redo') {
+        if (xyzrenderActionRedoStack.length) {
+          redoXyzrenderLastAction({ fromSystemHistory: true });
+        } else if (molstarEditRedoStack.length) {
+          await redoMolstarLastEdit();
+        }
+      } else if (xyzrenderActionUndoStack.length) {
+        undoXyzrenderLastAction({ fromSystemHistory: true });
+      } else if (molstarEditUndoStack.length) {
+        await undoMolstarLastEdit();
+      }
+    } catch (error) {
+      setStatus(`[web] ${direction === 'redo' ? 'Redo' : 'Undo'} failed.\n\n${error?.message || String(error)}`, 'error');
+    }
   }
 
   async function replaceMolstarStructureFromHost(body) {

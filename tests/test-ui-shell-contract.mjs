@@ -4024,6 +4024,8 @@ assert.match(appShellActionsHook, /requestActiveRuntimeWorkspaceHistory\("undo"\
 assert.match(appShellActionsHook, /requestActiveRuntimeWorkspaceHistory\("redo"\)/);
 assert.match(appShellActionsHook, /canUndoFocusedPreview/);
 assert.match(appShellActionsHook, /canRedoFocusedPreview/);
+assert.match(appShellActionsHook, /previewHistoryByDocument\[activeDocument\.id\]/);
+assert.match(appShellActionsHook, /setPreviewHistoryByDocument\(\(current\) => \(\{/);
 assert.match(appViewerStateMessagesHook, /body\?\.type === "molstarEditHistoryChanged"/);
 assert.match(appViewerStateMessagesHook, /burette:molstar-edit-history-changed/);
 assert.match(appShellActionsHook, /useMemo<ShellActions>\(\(\) => createWorkspaceHistoryShellActions\(createAppShellActions\(\{/);
@@ -5812,6 +5814,10 @@ assert.match(previewViewer, /function captureMolstarHistoryCounterpart\(snapshot
 assert.match(previewViewer, /pushMolstarHistorySnapshot\(molstarEditRedoStack, counterpart\)/);
 assert.match(previewViewer, /pushMolstarHistorySnapshot\(molstarEditUndoStack, counterpart\)/);
 assert.match(previewViewer, /type: 'molstarEditHistoryChanged'/);
+assert.match(
+  previewViewer,
+  /async function handleWorkspaceHistoryCommand[\s\S]*?source\?\.postMessage\([\s\S]*?handled[\s\S]*?if \(!handled\) return;[\s\S]*?await (?:redo|undo)MolstarLastEdit\(\)/,
+);
 assert.match(previewViewer, /await plugin\.clear\(\);[\s\S]*loadPreparedStructure\(activeViewer, prepared\)[\s\S]*setMolstarStructureDirty\(snapshot\.dirty === true\);/);
 assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{[\s\S]*?setMolstarStructureDirty\(false\);\s*clearMolstarEditUndoHistory\(\);/);
 assert.match(previewViewer, /function molstarSceneMenuUndoLabel\(action, ref, control\)/);
