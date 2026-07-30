@@ -3207,7 +3207,17 @@
     const sourceCanvas = sourceViewer?.plugin?.canvas3d;
     const targetCanvas = targetViewer?.plugin?.canvas3d;
     if (!sourceCanvas?.props || !targetCanvas?.setProps) return;
-    targetCanvas.setProps(sourceCanvas.props);
+    const previewProps = {
+      ...sourceCanvas.props,
+      camera: {
+        ...sourceCanvas.props.camera,
+        helper: {
+          ...sourceCanvas.props.camera?.helper,
+          axes: { name: 'off', params: {} }
+        }
+      }
+    };
+    targetCanvas.setProps(previewProps);
   }
 
   function restoreMolstarPresetPreviewCamera(viewer, snapshot) {
