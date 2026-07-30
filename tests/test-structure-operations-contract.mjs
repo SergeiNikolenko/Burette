@@ -39,6 +39,11 @@ assert.match(viewer, /const SEQUENCE_ALIGNMENT_MAX_CELLS = 4e6/);
 // The scene mutation is one Mol* transaction and metadata only changes after it
 // commits, so a failed pair cannot leave a half-superposed scene.
 assert.match(fn("commitSuperpositionPlan"), /state\.updateTree\(update, \{ revertOnError: true, revertIfAborted: true \}\)/);
+assert.doesNotMatch(fn("commitSuperpositionPlan"), /update\.delete\(/);
+const resetSuperposition = fn("resetSuperpositionTransforms");
+assert.match(resetSuperposition, /identitySuperpositionTransformParams\(\)/);
+assert.match(resetSuperposition, /update\.to\(cell\)\.update\(identityParams\)/);
+assert.doesNotMatch(resetSuperposition, /update\.delete\(/);
 assert.match(fn("createStructureSuperpositionController"), /await commitSuperpositionPlan\(viewer, entries, plan\);\s*\n\s*result = plan/);
 assert.match(fn("createStructureSuperpositionController"), /entriesStillLoaded[\s\S]*ensureEntries/);
 // Align resolves only structures already present in the live Mol* tree.

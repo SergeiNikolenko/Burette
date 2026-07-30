@@ -2374,7 +2374,7 @@
   }
 
   function scheduleMolstarStructureFocus(viewer, options = {}) {
-    if (!molstarAutoFocusEnabled(activeConfig)) return;
+    if (options.force !== true && !molstarAutoFocusEnabled(activeConfig)) return;
     if (options.allowWithContextFocus !== true && hasMolstarContextFocus(activeConfig)) return;
     const serial = ++molstarStructureFocusSerial;
     const delays = Array.isArray(options.delays) && options.delays.length ? options.delays : [0, 80, 240, 520];
@@ -13857,6 +13857,18 @@
       : Mat4.clone(matrix);
   }
 
+  function identitySuperpositionTransformParams() {
+    return {
+      transform: {
+        name: 'matrix',
+        params: {
+          data: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+          transpose: false,
+        },
+      },
+    };
+  }
+
   async function commitSuperpositionPlan(viewer, entries, plan) {
     const plugin = viewer?.plugin;
     const state = plugin?.state?.data;
@@ -13865,11 +13877,12 @@
     const reference = entries[plan.referenceIndex];
     if (!reference) throw new Error('The reference structure is no longer loaded.');
     const update = state.build();
+    const identityParams = identitySuperpositionTransformParams();
     const movingIndices = new Set(plan.pairs.map(pair => pair.poseIndex));
     for (const entry of entries) {
       if (movingIndices.has(entry.poseIndex)) continue;
       const existing = taggedSuperpositionTransform(state, entry, transformer);
-      if (existing) update.delete(existing.transform.ref);
+      if (existing) update.to(existing).update(identityParams);
     }
     for (const pair of plan.pairs) {
       const entry = entries[pair.poseIndex];
@@ -13888,7 +13901,7 @@
     window.requestAnimationFrame(() => plugin.canvas3d?.requestCameraReset?.());
   }
 
-  async function removeSuperpositionTransforms(viewer, entries) {
+  async function resetSuperpositionTransforms(viewer, entries) {
     const plugin = viewer?.plugin;
     const state = plugin?.state?.data;
     const transformer = window.molstar?.lib?.plugin?.StateTransforms?.Model?.TransformStructureConformation;
@@ -13896,7 +13909,8 @@
     const tagged = entries.map(entry => taggedSuperpositionTransform(state, entry, transformer)).filter(Boolean);
     if (!tagged.length) return false;
     const update = state.build();
-    for (const cell of tagged) update.delete(cell.transform.ref);
+    const identityParams = identitySuperpositionTransformParams();
+    for (const cell of tagged) update.to(cell).update(identityParams);
     await plugin.runTask(state.updateTree(update, { revertOnError: true, revertIfAborted: true }));
     return true;
   }
@@ -14065,11 +14079,11 @@
         const wasAligned = Boolean(result);
         const undo = captureMolstarSceneUndoSnapshot('resetting superposition');
         await ensureEntries();
-        const changed = await removeSuperpositionTransforms(viewer, entries);
+        const changed = await resetSuperpositionTransforms(viewer, entries);
         result = null;
         if ((changed || wasAligned) && undo) pushMolstarEditUndoSnapshot(undo);
         sync();
-        if (changed) window.requestAnimationFrame(() => viewer?.plugin?.canvas3d?.requestCameraReset?.());
+        if (changed) scheduleMolstarStructureFocus(viewer, { reason: 'superposition-reset', durationMs: 180, force: true });
         setStatus('[web] Restored original structure transforms.');
         setTimeout(hideStatus, 1800);
       } finally {

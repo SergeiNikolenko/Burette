@@ -57,7 +57,7 @@ assert.match(viewer, /TransformStructureConformation/);
 assert.match(viewer, /window\.molstar\?\.BuretteSuperposition\?\.version !== 1/);
 assert.match(viewer, /revertOnError: true, revertIfAborted: true/);
 assert.match(viewer, /requestCameraReset/);
-assert.match(viewer, /if \(changed\) window\.requestAnimationFrame\(\(\) => viewer\?\.plugin\?\.canvas3d\?\.requestCameraReset\?\.\(\)\)/);
+assert.match(viewer, /if \(changed\) scheduleMolstarStructureFocus\(viewer, \{ reason: 'superposition-reset', durationMs: 180, force: true \}\)/);
 assert.match(viewer, /Automatically superimpose every structure onto the first one/);
 assert.match(viewer, /structureAlignmentControl\?\.isAligned\(\)\s*\? structureAlignmentControl\.reset\(\)\s*:\s*structureAlignmentControl\?\.apply\(\{ method: 'auto' \}\)/);
 assert.match(viewer, /SUPERPOSITION_CONTEXT_ACTION_PREFIX = 'align:context:'/);
