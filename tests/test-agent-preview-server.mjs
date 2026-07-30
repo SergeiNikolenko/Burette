@@ -638,6 +638,18 @@ Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
   assert.equal(observedAction.workspacePanels[0].status, 'dispatched');
   assert.equal(observedAction.workspacePanels[0].actionId, queuedPanel.action.id);
 
+  const storyObserveAction = await postJson(`${base}/__agent/act`, { type: 'story_observe' }, { Cookie: cookieHeader });
+  assert.equal(storyObserveAction.statusCode, 200);
+  assert.equal(JSON.parse(storyObserveAction.body).action.type, 'story_observe');
+  const storyNextAction = await postJson(`${base}/__agent/act`, { type: 'story_control', operation: 'next' }, { Cookie: cookieHeader });
+  assert.equal(storyNextAction.statusCode, 200);
+  assert.equal(JSON.parse(storyNextAction.body).action.type, 'story_control');
+  const storyGotoAction = await postJson(`${base}/__agent/act`, { type: 'story_control', operation: 'goto', key: 'site' }, { Cookie: cookieHeader });
+  assert.equal(storyGotoAction.statusCode, 200);
+  const invalidStoryGoto = await postJson(`${base}/__agent/act`, { type: 'story_control', operation: 'goto' }, { Cookie: cookieHeader });
+  assert.equal(invalidStoryGoto.statusCode, 400);
+  assert.equal(JSON.parse(invalidStoryGoto.body).error.code, 'INVALID_ACTION');
+
   console.log('agent-preview server tests passed');
 } finally {
   child.kill('SIGTERM');

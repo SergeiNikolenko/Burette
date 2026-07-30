@@ -1,7 +1,7 @@
 {
   "name": "burette",
-  "version": "0.1.2",
-  "description": "Operate Burette as an agent-accessible molecular workspace for structures, Mol* scenes, molecule collections, trajectories, and workflow result artifacts.",
+  "version": "0.2.2",
+  "description": "Operate Burette as an agent-accessible molecular workspace for structures, Mol* scenes and Stories, molecule collections, trajectories, and workflow result artifacts.",
   "author": {
     "name": "Burette contributors",
     "url": "https://github.com/SergeiNikolenko/Burette"
@@ -24,7 +24,7 @@
   "interface": {
     "displayName": "Burette",
     "shortDescription": "Operate molecular workspaces",
-    "longDescription": "Burette lets an assistant open molecular structures in Browser preview or the real desktop app, observe scene state as structured JSON, run allowlisted Mol* actions, render adjacent notes/tables/charts/reports, and hand off externally prepared molecular workflow artifacts for review. It keeps molecular commands typed and auditable while using Browser and Computer surfaces for visual verification.",
+    "longDescription": "Burette lets an assistant open molecular structures in Browser preview or the real desktop app, create and navigate reproducible multi-step MolViewSpec Stories, observe scene state as structured JSON, run allowlisted Mol* actions, render adjacent notes/tables/charts/reports, and hand off externally prepared molecular workflow artifacts for review. It keeps molecular commands typed and auditable while using Browser and Computer surfaces for visual verification.",
     "developerName": "Burette",
     "category": "Education & Research",
     "capabilities": [
@@ -39,7 +39,8 @@
     "defaultPrompt": [
       "Open this structure in Burette and describe the active molecular scene",
       "Hide waters, focus the ligand, and render a right-side notes panel",
-      "Review this SDF/property table and show the selected molecule in Burette"
+      "Review this SDF/property table and show the selected molecule in Burette",
+      "Create a MolViewSpec Story that explains this binding pose step by step"
     ],
     "brandColor": "#14A39A",
     "composerIcon": "./assets/composer-icon.png",

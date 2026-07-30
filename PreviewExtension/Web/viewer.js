@@ -119,6 +119,7 @@
   let molstarContainerResizeCleanup = null;
   let molstarContextMenuCleanup = null;
   let molstarSelectionPreviewCleanup = null;
+  let molstarStoryStateCleanup = null;
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
   // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
@@ -575,6 +576,12 @@
 
   async function executeBuretteAgentAction(action) {
     const type = String(action?.type || '');
+    if (type === 'story_observe') {
+      return molstarStoryResult('story_observe');
+    }
+    if (type === 'story_control') {
+      return controlMolstarStory(action);
+    }
     if (type === 'get_xtb_context') {
       const target = molstarSelectedMoleculeTargetFromSelection();
       return {
@@ -797,6 +804,100 @@
       return window.BuretteAgent.run({ command: action.command, args: action.args || {} });
     }
     return agentActionFailure(type, 'NOT_IMPLEMENTED', `Unsupported BuretteAgent action: ${type}`);
+  }
+
+  function molstarStoryState() {
+    const manager = activeViewer?.plugin?.managers?.snapshot;
+    const entries = manager?.state?.entries ? Array.from(manager.state.entries) : [];
+    const hasStoryKey = entries.some(entry => typeof entry?.key === 'string' && entry.key.trim());
+    const isMultipleStateMvs = activeMolstarPrepared?.kind === 'mvs'
+      && (activeMolstarPrepared.mvsKind === 'multiple' || entries.length > 1 || hasStoryKey);
+    if (!manager || !isMultipleStateMvs || entries.length === 0) {
+      return {
+        available: false,
+        title: String(activeConfig?.label || '').trim() || null,
+        stepIndex: null,
+        stepCount: 0,
+        current: null,
+        steps: [],
+        isPlaying: false,
+        hasPrevious: false,
+        hasNext: false
+      };
+    }
+    const currentId = manager.state.current;
+    const stepIndex = Math.max(0, entries.findIndex(entry => entry?.snapshot?.id === currentId));
+    const step = entries[stepIndex] || entries[0];
+    return {
+      available: true,
+      title: String(activeConfig?.label || '').replace(/\.mvs[\w]*$/iu, '') || 'MolViewSpec Story',
+      stepIndex,
+      stepCount: entries.length,
+      current: {
+        id: step?.snapshot?.id || null,
+        key: step?.key || null,
+        title: step?.name || `Step ${stepIndex + 1}`,
+        description: String(step?.description || '').slice(0, 64 * 1024),
+        descriptionFormat: step?.descriptionFormat === 'plaintext' ? 'plaintext' : 'markdown'
+      },
+      steps: entries.slice(0, 256).map((entry, index) => ({
+        index,
+        id: entry?.snapshot?.id || null,
+        key: entry?.key || null,
+        title: entry?.name || `Step ${index + 1}`
+      })),
+      isPlaying: manager.state.isPlaying === true,
+      hasPrevious: entries.length > 1,
+      hasNext: entries.length > 1
+    };
+  }
+
+  function molstarStoryResult(command) {
+    return { ok: true, command, result: molstarStoryState() };
+  }
+
+  async function controlMolstarStory(action) {
+    const manager = activeViewer?.plugin?.managers?.snapshot;
+    const story = molstarStoryState();
+    if (!manager || !story.available) return agentActionFailure('story_control', 'NO_STORY', 'The active Mol* viewer does not contain a MolViewSpec Story.');
+    const operation = String(action.operation || '').trim();
+    if (operation === 'next') await manager.applyNext(1);
+    else if (operation === 'previous') await manager.applyNext(-1);
+    else if (operation === 'play') await manager.play({ restart: action.restart === true });
+    else if (operation === 'pause') await manager.stop();
+    else if (operation === 'goto') {
+      const entries = Array.from(manager.state.entries);
+      const index = Number.isInteger(action.index)
+        ? action.index
+        : entries.findIndex(entry => entry?.key === action.key || entry?.snapshot?.id === action.id);
+      if (index < 0 || index >= entries.length) return agentActionFailure('story_control', 'STORY_STEP_NOT_FOUND', 'The requested Story step does not exist.');
+      const snapshot = manager.setCurrent(entries[index].snapshot.id);
+      if (snapshot) await activeViewer.plugin.state.setSnapshot(snapshot);
+    } else {
+      return agentActionFailure('story_control', 'INVALID_ARGS', 'story_control operation must be next, previous, goto, play, or pause.');
+    }
+    const result = molstarStoryResult('story_control');
+    reportMolstarStoryToHost();
+    return result;
+  }
+
+  function reportMolstarStoryToHost() {
+    const story = molstarStoryState();
+    if (!story.available) return;
+    postHostMessage({
+      type: 'mvsStoryChanged',
+      documentId: String(activeConfig?.documentId || ''),
+      fileName: String(activeConfig?.label || 'MolViewSpec Story'),
+      ...story
+    });
+  }
+
+  function observeMolstarStoryState(viewer) {
+    molstarStoryStateCleanup?.();
+    molstarStoryStateCleanup = null;
+    const subscription = viewer?.plugin?.managers?.snapshot?.events?.changed?.subscribe?.(() => reportMolstarStoryToHost());
+    if (subscription?.unsubscribe) molstarStoryStateCleanup = () => subscription.unsubscribe();
+    reportMolstarStoryToHost();
   }
 
   function buretteSceneSpecOperations(action) {
@@ -9583,11 +9684,13 @@
       return prepareStagedStructureScene(config, sceneEntries);
     }
     if (isMolViewSpecFormat(normalized)) {
+      const data = rawStructureData(config);
       return {
         kind: 'mvs',
-        data: rawStructureData(config),
+        data,
         format: normalized,
-        label: config.label || 'MolViewSpec scene'
+        label: config.label || 'MolViewSpec scene',
+        mvsKind: normalized === 'mvsj' ? molViewSpecJsonKind(data) : null
       };
     }
     if (normalized === 'ccp4' || normalized === 'mtz') {
@@ -9633,6 +9736,16 @@
       format: normalized,
       label: config.label || 'structure'
     };
+  }
+
+  function molViewSpecJsonKind(data) {
+    if (typeof data !== 'string') return null;
+    try {
+      const parsed = JSON.parse(data);
+      return parsed?.kind === 'multiple' ? 'multiple' : parsed?.kind === 'single' || parsed?.kind === undefined ? 'single' : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   function looksLikeStructureFactorsCif(data) {
@@ -21712,6 +21825,8 @@
       molstarContextMenuCleanup();
       molstarContextMenuCleanup = null;
     }
+    molstarStoryStateCleanup?.();
+    molstarStoryStateCleanup = null;
     if (molstarWindowResizeHandler) {
       window.removeEventListener('resize', molstarWindowResizeHandler);
       molstarWindowResizeHandler = null;
@@ -21788,6 +21903,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       45000,
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
+    observeMolstarStoryState(viewer);
     applyLayoutState(viewer);
     scheduleLayoutStateReapply(viewer);
     if (!hasMolstarContextFocus(config)) {
