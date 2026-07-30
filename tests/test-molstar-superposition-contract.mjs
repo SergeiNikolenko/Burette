@@ -9,6 +9,11 @@ const entry = source('scripts/molstar-viewer-entry.js');
 const facade = source('scripts/molstar-superposition-facade.js');
 const vendor = source('scripts/vendor-molstar.mjs');
 const bundle = source('PreviewExtension/Web/molstar.js');
+const panel = source('PreviewExtension/Web/superposition-panel.js');
+const viewer = source('PreviewExtension/Web/viewer.js');
+const runtimeProfiles = source('config/web-runtime-profiles.json');
+const browserDevDocuments = source('apps/desktop/src/lib/browser-dev-documents.ts');
+const agentShellServer = source('scripts/agent-shell-server.mjs');
 
 assert.equal(BuretteSuperposition.version, 1);
 assert.equal(BuretteSuperposition.defaultTmAlignMaxDpCells, 1_000_000);
@@ -17,6 +22,7 @@ for (const method of [
   'alignChains',
   'alignAtoms',
   'alignWithTM',
+  'hasSifts',
   'canAlignWithSifts',
   'alignWithSifts',
 ]) {
@@ -32,9 +38,25 @@ assert.match(facade, /result\.entries\.length !== input\.length - 1/);
 assert.doesNotMatch(facade, /sequenceIdentity/);
 
 assert.match(vendor, /Bun\.build\(\{/);
+assert.match(entry, /globalThis\.molstar = Object\.assign\(\s*\{\},\s*globalThis\.molstar \|\| \{\}/);
 assert.match(vendor, /loader: \{ '\.jpg': 'dataurl' \}/);
 assert.match(vendor, /entrypoints: \[viewerEntry\]/);
 assert.match(bundle, /BuretteSuperposition/);
 assert.match(bundle, /defaultTmAlignMaxDpCells/);
+
+for (const method of ['auto', 'atoms', 'sequence', 'binding-site', 'chains', 'tm-align', 'uniprot', 'selected-atoms']) {
+  assert.match(panel, new RegExp(`\\['${method}',`), method);
+}
+assert.match(panel, /Reference chain/);
+assert.match(panel, /Moving structures/);
+assert.match(panel, /referenceNormalized/);
+assert.match(viewer, /TransformStructureConformation/);
+assert.match(viewer, /window\.molstar\?\.BuretteSuperposition\?\.version !== 1/);
+assert.match(viewer, /revertOnError: true, revertIfAborted: true/);
+assert.match(viewer, /requestCameraReset/);
+assert.doesNotMatch(viewer, /transformPdbCoordinates/);
+assert.match(runtimeProfiles, /superposition-panel\.js/g);
+assert.match(browserDevDocuments, /viewerAsset\("superposition-panel\.js"\)/);
+assert.match(agentShellServer, /'superposition-panel\.js'/);
 
 console.log('Mol* superposition facade contract tests passed');

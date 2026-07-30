@@ -110,7 +110,9 @@ function alignChains(entries, options = {}) {
     movingIndex: index + 1,
     matrix: transform.bTransform,
     rmsdAngstrom: transform.rmsd,
-    matchedCount: StructureElement.Loci.size(input[index + 1]),
+    matchedCount: options.alignSequences === false
+      ? Math.min(StructureElement.Loci.size(input[0]), StructureElement.Loci.size(input[index + 1]))
+      : null,
     matchedUnit: options.traceOnly === false ? 'atoms' : 'residues',
     alignmentScore: Number.isFinite(transform.alignmentScore) ? transform.alignmentScore : null,
   }));
@@ -162,10 +164,14 @@ function alignWithTM(entries, options = {}) {
   });
 }
 
+function hasSifts(structure) {
+  return Boolean(structure?.models?.some(model => SIFTSMapping.Provider.isApplicable(model)));
+}
+
 function canAlignWithSifts(structures) {
   return Array.isArray(structures)
     && structures.length >= 2
-    && structures.every(structure => structure?.models?.some(model => SIFTSMapping.Provider.isApplicable(model)));
+    && structures.every(hasSifts);
 }
 
 function alignWithSifts(structures) {
@@ -197,6 +203,7 @@ export const BuretteSuperposition = Object.freeze({
   alignChains,
   alignAtoms,
   alignWithTM,
+  hasSifts,
   canAlignWithSifts,
   alignWithSifts,
 });

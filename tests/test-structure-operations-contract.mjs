@@ -11,20 +11,23 @@ const fn = (name) => {
   return match[0];
 };
 
-// Superposition offers the three pairing rules Maestro and PyMOL separate, and the
-// toolbar button stays on `auto` so numbering is tried before sequence alignment.
-assert.match(viewer, /function alignStructureSceneEntries\(prepared, mode = 'auto'\)/);
+// Superposition exposes explicit reference/moving structures, PDB pairing modes,
+// and Mol*'s native TM-align behind one controller and panel.
+assert.match(viewer, /function alignStructureSceneEntries\(prepared, request = 'auto'\)/);
+assert.match(viewer, /\['align:advanced', 'Burette Superposition…'\]/);
 assert.match(viewer, /\['align:atoms', `Align to \$\{reference\} by residue numbers`\]/);
 assert.match(viewer, /\['align:sequence', `Align to \$\{reference\} by sequence`\]/);
 assert.match(viewer, /\['align:binding-site', `Align to \$\{reference\} by binding site`\]/);
+assert.match(viewer, /\['align:tm-align', `TM-align to \$\{reference\}`\]/);
 const align = fn("alignStructureSceneEntries");
-assert.match(align, /const requested = mode === 'auto' \? 'atoms' : mode/);
-assert.match(align, /if \(!candidates\.length && mode === 'auto'\)[\s\S]*resolvedMode = 'sequence'/);
-assert.match(align, /requested === 'binding-site'[\s\S]*bindingSiteFilteredCandidate/);
-// Sequence/pocket matching follows the best chain sequence even when otherwise
-// identical files use different author-assigned chain IDs.
-assert.match(fn("structureAlignmentChainCandidates"), /sameChainOnly[\s\S]*for \(const movingResidues of chains\.values\(\)\)/);
-assert.match(align, /sameChainOnly: requested === 'atoms'/);
+assert.match(align, /referenceIndex[\s\S]*movingIndices[\s\S]*chainIds/);
+assert.match(align, /if \(method !== 'auto'\) return build\(method\)/);
+assert.match(align, /return build\('atoms'\)[\s\S]*const result = build\('sequence'\)/);
+assert.match(align, /resolvedMode === 'binding-site'[\s\S]*pdbLigandHeavyAtoms/);
+assert.match(fn("nativeSuperpositionPlan"), /facade\.alignWithTM\(nativeEntries\)/);
+assert.match(fn("nativeSuperpositionPlan"), /facade\.alignChains\(nativeEntries/);
+assert.match(fn("nativeSuperpositionPlan"), /facade\.alignWithSifts/);
+assert.match(fn("nativeSuperpositionPlan"), /facade\.alignAtoms/);
 
 // Needleman-Wunsch keeps its guard rail and only anchors on identical residues; a
 // mismatched pair that the matrix walked through would drag the fit.
@@ -33,9 +36,11 @@ assert.match(nw, /SEQUENCE_ALIGNMENT_MAX_CELLS/);
 assert.match(nw, /referenceResidues\[row - 1\]\.name === movingResidues\[column - 1\]\.name/);
 assert.match(viewer, /const SEQUENCE_ALIGNMENT_MAX_CELLS = 4e6/);
 
-// A failed alignment rolls coordinates back, so the button must follow the scene.
-assert.match(viewer, /const syncAlignButton = \(\) => \{[\s\S]*prepared\.structureAlignmentEnabled === true/);
-assert.match(viewer, /catch\(error => \{\s*\n\s*if \(enabling\) restoreStructureSceneEntries\(prepared\);\s*\n\s*syncAlignButton\(\);/);
+// The scene mutation is one Mol* transaction and metadata only changes after it
+// commits, so a failed pair cannot leave a half-superposed scene.
+assert.match(fn("commitSuperpositionPlan"), /state\.updateTree\(update, \{ revertOnError: true, revertIfAborted: true \}\)/);
+assert.match(fn("createStructureSuperpositionController"), /await commitSuperpositionPlan\(viewer, entries, plan\);\s*\n\s*result = plan/);
+assert.match(fn("createStructureSuperpositionController"), /entriesStillLoaded[\s\S]*ensureEntries/);
 
 // PDB subsets are addressed by atom serial. Pairing the n-th ATOM line with the
 // n-th Mol* atom drifts on files where a record does not become an atom, which
@@ -118,12 +123,12 @@ assert.match(fn("showMolstarMeasureToast"), /visible: true/);
 // structure edits use, so Cmd-Z walks them in the order they were made. Selections
 // and exports stay out: one changes constantly, the other writes files.
 assert.match(fn("captureMolstarSceneUndoSnapshot"), /kind: 'scene'[\s\S]*plugin\.state\.data\.getSnapshot\(\)/);
+assert.match(fn("captureMolstarSceneUndoSnapshot"), /superposition: activeStructureAlignmentControl\?\.snapshot\?\.\(\) \|\| null/);
 assert.match(fn("restoreMolstarSceneUndoSnapshot"), /plugin\.runTask\(plugin\.state\.data\.setSnapshot\(snapshot\.state\)\)/);
-assert.match(fn("captureMolstarAlignUndoSnapshot"), /kind: 'align'[\s\S]*wasAligned/);
-assert.match(fn("captureMolstarAlignUndoSnapshot"), /mode: activeStructureAlignmentControl\.mode/);
-assert.match(fn("restoreMolstarAlignUndoSnapshot"), /mode === snapshot\.mode[\s\S]*control\.toggle\(snapshot\.mode \|\| 'auto'\)/);
-assert.match(fn("restoreMolstarEditUndoSnapshot"), /kind === 'scene'[\s\S]*kind === 'align'/);
-assert.match(fn("pushMolstarEditUndoSnapshot"), /kind !== 'scene' && snapshot\.kind !== 'align' && !snapshot\.payload\?\.text/);
+assert.match(fn("restoreMolstarSceneUndoSnapshot"), /restoreMetadata\?\.\(snapshot\.superposition \|\| null\)/);
+assert.doesNotMatch(viewer, /kind: 'align'/);
+assert.match(fn("restoreMolstarEditUndoSnapshot"), /kind === 'scene'/);
+assert.match(fn("pushMolstarEditUndoSnapshot"), /kind !== 'scene' && !snapshot\.payload\?\.text/);
 const undoLabels = fn("molstarSceneUndoActionLabel");
 for (const undoable of ["colour:", "analyze:interactions", "analyze:label", "represent:surface", "view:hide", "view:isolate"]) {
   assert.ok(undoLabels.includes(undoable), `scene undo should cover ${undoable}`);

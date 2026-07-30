@@ -3134,6 +3134,224 @@ body.burette-mobile-host .buret-docking-poses button {
     flex: 1 1 auto;
   }
 }
+.buret-superposition-panel {
+  position: fixed;
+  top: 64px;
+  right: 14px;
+  z-index: 64;
+  display: flex;
+  flex-direction: column;
+  width: min(390px, calc(100vw - 28px));
+  max-height: calc(100vh - 78px);
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--buret-molstar-panel-background) 94%, transparent);
+  color: var(--buret-molstar-text);
+  box-shadow: var(--buret-menu-shadow);
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  font: 12px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+.buret-superposition-panel [hidden] {
+  display: none !important;
+}
+.buret-superposition-panel[hidden] {
+  display: none;
+}
+.buret-superposition-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--buret-menu-border);
+}
+.buret-superposition-header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.buret-superposition-header strong {
+  font-size: 13px;
+}
+.buret-superposition-header span {
+  color: var(--buret-molstar-muted);
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.buret-superposition-panel button,
+.buret-superposition-panel select {
+  min-height: 30px;
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 7px;
+  background: var(--buret-control-fill);
+  color: inherit;
+  font: inherit;
+}
+.buret-superposition-panel button:not(:disabled):hover,
+.buret-superposition-panel select:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--buret-molstar-accent) 70%, var(--buret-menu-border));
+}
+.buret-superposition-panel button:disabled,
+.buret-superposition-panel select:disabled {
+  opacity: .45;
+}
+.buret-superposition-close {
+  width: 30px;
+  padding: 0;
+  border-color: transparent !important;
+  background: transparent !important;
+  font-size: 18px !important;
+}
+.buret-superposition-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  overflow: auto;
+}
+.buret-superposition-field {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.buret-superposition-field > span,
+.buret-superposition-section-title,
+.buret-superposition-moving legend {
+  color: var(--buret-molstar-muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.buret-superposition-moving {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 9px;
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 9px;
+}
+.buret-superposition-moving legend {
+  padding: 0 4px;
+}
+.buret-superposition-moving-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, .8fr);
+  align-items: center;
+  gap: 8px;
+}
+.buret-superposition-moving-row > label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.buret-superposition-moving-row > label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-superposition-reference-chain {
+  grid-template-columns: 92px minmax(0, 1fr);
+  padding-bottom: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--buret-menu-border) 70%, transparent);
+}
+.buret-superposition-methods {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.buret-superposition-method-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+.buret-superposition-method-grid button {
+  padding: 4px 6px;
+  font-size: 11px;
+}
+.buret-superposition-method-grid button.active {
+  border-color: color-mix(in srgb, var(--buret-molstar-accent) 72%, white 8%);
+  background: color-mix(in srgb, var(--buret-molstar-accent) 24%, var(--buret-control-fill));
+}
+.buret-superposition-help {
+  min-height: 32px;
+  margin: 0;
+  color: var(--buret-molstar-muted);
+}
+.buret-superposition-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.buret-superposition-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.buret-superposition-result-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 40px;
+  padding: 9px;
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--buret-control-fill) 76%, transparent);
+}
+.buret-superposition-result-summary,
+.buret-superposition-result-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.buret-superposition-result-summary span,
+.buret-superposition-result-row span {
+  color: var(--buret-molstar-muted);
+  font-size: 11px;
+}
+.buret-superposition-warning {
+  margin: 2px 0 0;
+  color: #e7ad62;
+}
+.buret-superposition-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  padding-top: 2px;
+}
+.buret-superposition-footer button {
+  min-width: 82px;
+  padding: 0 12px;
+}
+.buret-superposition-apply {
+  border-color: color-mix(in srgb, var(--buret-molstar-accent) 70%, var(--buret-menu-border)) !important;
+  background: color-mix(in srgb, var(--buret-molstar-accent) 30%, var(--buret-control-fill)) !important;
+}
+body.burette-mobile-host .buret-superposition-panel {
+  top: auto;
+  right: 8px;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  left: 8px;
+  width: auto;
+  max-height: min(72vh, 620px);
+  border-radius: 18px;
+}
+@media (max-width: 520px) {
+  .buret-superposition-method-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .buret-superposition-moving-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .buret-agent-panel {
   position: fixed;
   top: 64px;

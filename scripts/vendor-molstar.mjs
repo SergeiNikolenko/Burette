@@ -54,7 +54,8 @@ if (!jsOutput) {
   process.exit(1);
 }
 const jsTarget = join(webDir, 'molstar.js');
-await Bun.write(jsTarget, jsOutput);
+const jsBundle = (await jsOutput.text()).replace(/[ \t]+$/gmu, '');
+await Bun.write(jsTarget, jsBundle);
 console.log(`Built Mol* viewer with Burette superposition facade -> ${jsTarget}`);
 
 const cssSource = join(viewerDir, 'molstar.css');
