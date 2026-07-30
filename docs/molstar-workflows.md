@@ -28,6 +28,20 @@ Burette registers the same upstream extension and invokes its applicable state
 action, so its object appears in the same state tree and can be hidden or removed
 independently.
 
+The desktop Molecular Inspector exposes a contextual `Assembly symmetry` row
+directly below the structure summary when Molstar reports the action as
+applicable. `Show axes` creates the upstream object and changes the action to
+`Hide axes`; hiding removes the `Global Symmetry` scene object and restores the
+show action. Structures without applicable biological-assembly metadata do not
+show the row.
+
+The Molstar canvas toolbar exposes the same contextual `Symmetry` toggle next
+to the representation style. It is hidden when the action is not applicable or
+when another renderer is active, and stays synchronized with Molecular Inspector.
+After the `Global Symmetry` object is created, its Scene Tree context menu can
+switch between `Axes + Cage`, `Axes only`, and `Cage only`, and adjust the
+upstream representation scale from 0.1 to 5 without recreating the assembly.
+
 Only the RCSB GraphQL origin is added to the Molstar runtime `connect-src`
 allowlist. Other preview runtimes retain their local-only policy.
 
