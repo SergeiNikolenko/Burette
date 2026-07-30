@@ -2056,8 +2056,8 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
 }
 .buret-molstar-preset-menu.hidden { display: none; }
 .buret-molstar-preset-menu-section {
-  margin: 7px 2px 3px;
-  padding: 0 6px;
+  margin: 2px 2px 3px;
+  padding: 1px 6px 0;
   color: var(--buret-molstar-muted-text);
   font: 600 10px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
@@ -2118,7 +2118,13 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
 .buret-molstar-preset-menu-separator {
   height: 1px;
   margin: 5px 2px;
-  background: var(--buret-molstar-border);
+  background: color-mix(in srgb, var(--buret-molstar-text) 13%, transparent);
+}
+body.buret-theme-light .buret-molstar-preset-menu-section {
+  color: color-mix(in srgb, var(--buret-molstar-text) 72%, transparent);
+}
+body.buret-theme-light .buret-molstar-preset-menu-separator {
+  background: color-mix(in srgb, var(--buret-molstar-text) 22%, transparent);
 }
 .buret-molstar-appearance-indicator {
   flex: 0 0 auto;

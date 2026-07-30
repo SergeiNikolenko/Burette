@@ -2811,11 +2811,51 @@
     }
   }
 
+  function appendMolstarPresetMenuSeparator(menu) {
+    const separator = document.createElement('div');
+    separator.className = 'buret-molstar-preset-menu-separator';
+    separator.setAttribute('role', 'separator');
+    menu.appendChild(separator);
+  }
+
+  function appendMolstarAppearanceMenu(menu) {
+    const appearanceLabel = document.createElement('div');
+    appearanceLabel.className = 'buret-molstar-preset-menu-section';
+    appearanceLabel.textContent = 'Appearance';
+    menu.appendChild(appearanceLabel);
+    const appearanceGroup = document.createElement('div');
+    appearanceGroup.className = 'buret-molstar-appearance-group';
+    appearanceGroup.dataset.buretMolstarAppearanceGroup = '1';
+    appearanceGroup.setAttribute('role', 'group');
+    appearanceGroup.setAttribute('aria-label', 'Appearance');
+    for (const appearanceOption of MOLSTAR_APPEARANCE_OPTIONS) {
+      const appearance = document.createElement('button');
+      appearance.type = 'button';
+      appearance.className = 'buret-molstar-appearance-item';
+      appearance.dataset.buretMolstarAppearance = appearanceOption.value;
+      appearance.setAttribute('role', 'menuitemradio');
+      appearance.setAttribute('aria-checked', 'false');
+      const itemLabel = document.createElement('span');
+      itemLabel.className = 'buret-tree-menu-label';
+      itemLabel.textContent = appearanceOption.label;
+      const indicator = document.createElement('span');
+      indicator.className = 'buret-molstar-appearance-indicator';
+      indicator.setAttribute('aria-hidden', 'true');
+      indicator.textContent = '✓';
+      appearance.append(itemLabel, indicator);
+      appearanceGroup.appendChild(appearance);
+    }
+    menu.appendChild(appearanceGroup);
+    appendMolstarPresetMenuSeparator(menu);
+  }
+
   function populateMolstarPresetMenu(menu) {
     if (!menu || menu.dataset.populated === '1') return;
+    appendMolstarAppearanceMenu(menu);
     let currentGroup = null;
     for (const option of MOLSTAR_PRESET_OPTIONS) {
       if (option.group && option.group !== currentGroup) {
+        appendMolstarPresetMenuSeparator(menu);
         const heading = document.createElement('div');
         heading.className = 'buret-molstar-preset-menu-section';
         heading.textContent = option.group;
@@ -2836,43 +2876,6 @@
       current.textContent = 'Current';
       button.append(label, current);
       menu.appendChild(button);
-      if (option.value === 'automatic') {
-        const before = document.createElement('div');
-        before.className = 'buret-molstar-preset-menu-separator';
-        before.setAttribute('role', 'separator');
-        menu.appendChild(before);
-        const appearanceLabel = document.createElement('div');
-        appearanceLabel.className = 'buret-molstar-preset-menu-section';
-        appearanceLabel.textContent = 'Appearance';
-        menu.appendChild(appearanceLabel);
-        const appearanceGroup = document.createElement('div');
-        appearanceGroup.className = 'buret-molstar-appearance-group';
-        appearanceGroup.dataset.buretMolstarAppearanceGroup = '1';
-        appearanceGroup.setAttribute('role', 'group');
-        appearanceGroup.setAttribute('aria-label', 'Appearance');
-        for (const appearanceOption of MOLSTAR_APPEARANCE_OPTIONS) {
-          const appearance = document.createElement('button');
-          appearance.type = 'button';
-          appearance.className = 'buret-molstar-appearance-item';
-          appearance.dataset.buretMolstarAppearance = appearanceOption.value;
-          appearance.setAttribute('role', 'menuitemradio');
-          appearance.setAttribute('aria-checked', 'false');
-          const itemLabel = document.createElement('span');
-          itemLabel.className = 'buret-tree-menu-label';
-          itemLabel.textContent = appearanceOption.label;
-          const indicator = document.createElement('span');
-          indicator.className = 'buret-molstar-appearance-indicator';
-          indicator.setAttribute('aria-hidden', 'true');
-          indicator.textContent = '✓';
-          appearance.append(itemLabel, indicator);
-          appearanceGroup.appendChild(appearance);
-        }
-        menu.appendChild(appearanceGroup);
-        const after = document.createElement('div');
-        after.className = 'buret-molstar-preset-menu-separator';
-        after.setAttribute('role', 'separator');
-        menu.appendChild(after);
-      }
     }
     menu.dataset.populated = '1';
   }
