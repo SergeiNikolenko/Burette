@@ -65,6 +65,13 @@
     };
   }
 
+  function retainPointerTarget(event, target, cancelClose) {
+    if (Number(event?.button ?? 0) !== 0) return false;
+    if (typeof cancelClose === 'function') cancelClose();
+    target?.focus?.({ preventScroll: true });
+    return true;
+  }
+
   function create(dependencies, options) {
     const deps = dependencies || {};
     const config = options || {};
@@ -354,5 +361,6 @@
     create,
     computePreviewPlacement,
     computePreviewCanvasLayout,
+    retainPointerTarget,
   };
 })(globalThis);

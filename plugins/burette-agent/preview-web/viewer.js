@@ -27,6 +27,7 @@
   const MOLSTAR_PREVIEW_RDKIT_SVG_SIZE = 260;
   const MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS = 300;
   const MOLSTAR_EDIT_HISTORY_LIMIT = 20;
+  const MOLSTAR_PRESET_PREVIEW_CLOSE_DELAY_MS = 700;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
   const SDF_POSE_MODE_STORAGE_KEY = 'buret.sdf.poseMode';
   const SDF_CONTEXT_STYLE_STORAGE_KEY = 'buret.sdf.contextStyle';
@@ -2980,7 +2981,7 @@
       molstarPresetPreviewCloseTimer = 0;
       if (epoch !== molstarPresetPreviewCloseEpoch) return;
       hideMolstarPresetPreview();
-    }, 180);
+    }, MOLSTAR_PRESET_PREVIEW_CLOSE_DELAY_MS);
   }
 
   function positionMolstarPresetPreview(item) {
@@ -4739,6 +4740,15 @@
         event.preventDefault();
         showMolstarPresetMenu(trigger);
       });
+      menu.addEventListener('pointerdown', event => {
+        const control = event.target?.closest?.('[role="menuitemradio"]');
+        if (!control || !menu.contains(control)) return;
+        window.BuretteMolstarPresetPreviewController?.retainPointerTarget?.(
+          event,
+          control,
+          cancelMolstarPresetPreviewClose
+        );
+      });
       menu.addEventListener('click', event => {
         const appearanceItem = event.target?.closest?.('[data-buret-molstar-appearance]');
         if (appearanceItem && menu.contains(appearanceItem)) {
@@ -4786,6 +4796,13 @@
       });
       const { preview } = molstarPresetPreviewElements();
       preview?.addEventListener('pointerenter', cancelMolstarPresetPreviewClose);
+      preview?.addEventListener('pointerdown', event => {
+        window.BuretteMolstarPresetPreviewController?.retainPointerTarget?.(
+          event,
+          preview,
+          cancelMolstarPresetPreviewClose
+        );
+      });
       preview?.addEventListener('pointerleave', event => {
         if (menu.contains(event.relatedTarget)) return;
         scheduleMolstarPresetPreviewClose();
