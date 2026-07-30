@@ -16,12 +16,22 @@ function focusedViewerFrame() {
     : null;
 }
 
+function activeViewerFrame() {
+  const focused = focusedViewerFrame();
+  if (focused) return focused;
+  return Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe"))
+    .find((frame) => frame.offsetParent !== null && !frame.hidden) ?? null;
+}
+
 export function isKetcherWorkspaceTarget(target: EventTarget | null) {
   return target instanceof Element && target.closest(".ketcher-page") !== null;
 }
 
-export function requestFocusedRuntimeWorkspaceHistory(direction: WorkspaceHistoryDirection, timeoutMs = 160) {
-  const iframe = focusedViewerFrame();
+function requestRuntimeWorkspaceHistory(
+  iframe: HTMLIFrameElement | null,
+  direction: WorkspaceHistoryDirection,
+  timeoutMs: number,
+) {
   const target = iframe?.contentWindow;
   if (!target) return Promise.resolve(false);
   const requestId = nextRequestId();
@@ -56,10 +66,17 @@ export function requestFocusedRuntimeWorkspaceHistory(direction: WorkspaceHistor
   });
 }
 
+export function requestFocusedRuntimeWorkspaceHistory(direction: WorkspaceHistoryDirection, timeoutMs = 160) {
+  return requestRuntimeWorkspaceHistory(focusedViewerFrame(), direction, timeoutMs);
+}
+
+export function requestActiveRuntimeWorkspaceHistory(direction: WorkspaceHistoryDirection, timeoutMs = 160) {
+  return requestRuntimeWorkspaceHistory(activeViewerFrame(), direction, timeoutMs);
+}
+
 export async function dispatchWorkspaceHistoryCommand(direction: WorkspaceHistoryDirection, actions: ShellActions) {
   if (await requestFocusedRuntimeWorkspaceHistory(direction)) return true;
   return direction === "undo"
     ? actions.undoWorkspaceAction()
     : actions.redoWorkspaceAction();
 }
-
