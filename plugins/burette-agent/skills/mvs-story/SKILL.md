@@ -107,7 +107,7 @@ The tool normalizes this into:
 
 ## Resource Rules
 
-- Prefer absolute HTTPS URLs for portable `.mvsj` files.
+- Use only absolute HTTP(S) or data URLs in portable `.mvsj` files.
 - Prefer `.mvsx` for local PDB, mmCIF, SDF, volume, annotation, or other
   sidecar resources.
 - Resource keys in `resources` must exactly match relative `download.url`
@@ -139,7 +139,7 @@ typed tools are available.
 Complete only when:
 
 - validation returns `ok: true`;
-- relative resources are present in MVSX or accessible beside MVSJ;
+- every relative resource is present in MVSX;
 - the workspace and viewer report ready;
 - `observe_story.available` is true and `stepCount` matches the storyboard;
 - next/previous returns the expected step metadata;

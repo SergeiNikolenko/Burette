@@ -16,6 +16,7 @@ const STORY_STRING_LIMIT = 4096;
 const STORY_REFERENCE_STRING_LIMIT = 48 * 1024;
 const STORY_TOTAL_STRING_LIMIT = 64 * 1024;
 const STORY_NODE_LIMIT = 2000;
+const STORY_INPUT_LIMIT = 8 * 1024 * 1024;
 
 export function registerMvsStory(server) {
   registerAppTool(server, "burette.get_mvs_authoring_reference", {
@@ -77,10 +78,17 @@ export function registerMvsStory(server) {
   }, async input => {
     const pathError = validateNativeStoryPaths(input.outputPath, input.resources || {});
     if (pathError) return storyFailure("burette.create_story", pathError);
+    const storyJson = JSON.stringify(input.story);
+    if (Buffer.byteLength(storyJson, "utf8") > STORY_INPUT_LIMIT) {
+      return storyFailure("burette.create_story", {
+        code: "STORY_TOO_LARGE",
+        message: `Story input exceeds ${STORY_INPUT_LIMIT} bytes.`,
+      });
+    }
     const temp = await mkdtemp(path.join(tmpdir(), "burette-story-mcp-"));
     try {
       const specPath = path.join(temp, "story.json");
-      await writeFile(specPath, `${JSON.stringify(input.story, null, 2)}\n`);
+      await writeFile(specPath, `${storyJson}\n`);
       const args = ["story-create", "--spec", specPath, "--output", input.outputPath];
       for (const [archivePath, sourcePath] of Object.entries(input.resources || {})) args.push("--asset", `${archivePath}=${sourcePath}`);
       if (input.overwrite === true) args.push("--overwrite");
@@ -146,8 +154,9 @@ async function runStoryAction(tool, input, action) {
   const resolved = resolveWorkspaceSession(input);
   if (!resolved.ok) return storyFailure(tool, resolved.error);
   const args = ["act"];
-  if (resolved.session.url) args.push("--url", resolved.session.url);
-  if (resolved.session.sessionDir) args.push("--session-dir", resolved.session.sessionDir);
+  if (resolved.session.mode === "browser-preview" && resolved.session.url) args.push("--url", resolved.session.url);
+  else if (resolved.session.sessionDir) args.push("--session-dir", resolved.session.sessionDir);
+  else if (resolved.session.url) args.push("--url", resolved.session.url);
   args.push(JSON.stringify(action), "--wait-ms", String(input.waitMs ?? 12000));
   const result = await runBuretteAgent(args, { timeoutMs: Math.max(30000, (input.waitMs ?? 12000) + 5000) });
   return cliStoryResult(tool, result, { workspaceSessionId: resolved.session.workspaceSessionId, action });
@@ -167,7 +176,7 @@ function cliStoryResult(tool, result, extra = {}) {
     exitCode: result.exitCode,
   });
   return {
-    content: toolText(ok ? `${tool} completed.` : `${tool} failed: ${error?.message || "unknown error"}`),
+    content: toolText(ok ? `${tool} completed.` : `${tool} failed: ${boundedToolMessage(error?.message)}`),
     ...(ok ? {} : { isError: true }),
     structuredContent,
   };
@@ -175,10 +184,15 @@ function cliStoryResult(tool, result, extra = {}) {
 
 function storyFailure(tool, error) {
   return {
-    content: toolText(`${tool} failed: ${error?.message || "unknown error"}`),
+    content: toolText(`${tool} failed: ${boundedToolMessage(error?.message)}`),
     isError: true,
     structuredContent: boundedStoryOutput({ ok: false, tool, result: null, error }),
   };
+}
+
+function boundedToolMessage(value) {
+  const message = typeof value === "string" && value.trim() ? value.trim() : "unknown error";
+  return message.length > STORY_STRING_LIMIT ? `${message.slice(0, STORY_STRING_LIMIT - 1)}…` : message;
 }
 
 function validateNativeStoryPaths(outputPath, resources) {

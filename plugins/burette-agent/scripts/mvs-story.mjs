@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, open as openFile, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, resolve } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 
@@ -11,19 +11,21 @@ const MAX_ASSET_BYTES = 32 * 1024 * 1024;
 const MAX_BUNDLE_BYTES = 128 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES = 1024;
 const MAX_ARCHIVE_PATH_BYTES = 4096;
+const MAX_COMPRESSION_RATIO = 1000;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
 export function buildMvsStory(spec, { now = new Date() } = {}) {
   if (isObject(spec) && spec.kind === 'multiple') return normalizeStory(spec, { now });
   const title = boundedRequiredString(spec?.title, 'Story title', 512);
+  const description = boundedOptionalString(spec?.description, 16_384);
   const snapshots = Array.isArray(spec?.snapshots) ? spec.snapshots : Array.isArray(spec?.steps) ? spec.steps : [];
   if (snapshots.length === 0) throw storyError('STORY_EMPTY', 'MolViewSpec Story requires at least one snapshot.');
   return normalizeStory({
     kind: 'multiple',
     metadata: {
       title,
-      ...(boundedOptionalString(spec?.description, 16_384) ? { description: boundedOptionalString(spec.description, 16_384) } : {}),
+      ...(description ? { description } : {}),
       ...(spec?.description_format === 'plaintext' ? { description_format: 'plaintext' } : {}),
       timestamp: now.toISOString(),
       version: '1.0',
@@ -43,7 +45,7 @@ export function buildMvsStory(spec, { now = new Date() } = {}) {
   }, { now });
 }
 
-export function validateMvsStory(input, { resourceNames = null, requireBundledResources = false } = {}) {
+export function validateMvsStory(input, { resourceNames = null, requireBundledResources = false, disallowRelativeResources = false } = {}) {
   const issues = [];
   const warnings = [];
   let story;
@@ -52,7 +54,7 @@ export function validateMvsStory(input, { resourceNames = null, requireBundledRe
   } catch (error) {
     return { ok: false, issues: [storyIssue(error?.code || 'INVALID_STORY', error?.message || String(error))], warnings, summary: null, story: null };
   }
-  const documentValidation = validateMvsDocument(story, { resourceNames, requireBundledResources });
+  const documentValidation = validateMvsDocument(story, { resourceNames, requireBundledResources, disallowRelativeResources });
   issues.push(...documentValidation.issues);
   warnings.push(...documentValidation.warnings);
   const resources = documentValidation.resources;
@@ -65,7 +67,7 @@ export function validateMvsStory(input, { resourceNames = null, requireBundledRe
   };
 }
 
-export function validateMvsDocument(input, { resourceNames = null, requireBundledResources = false } = {}) {
+export function validateMvsDocument(input, { resourceNames = null, requireBundledResources = false, disallowRelativeResources = false } = {}) {
   const issues = validateOfficialMvs(input).map(message => storyIssue('MVS_SCHEMA_INVALID', message));
   const warnings = [];
   const resources = collectMvsResources(input);
@@ -82,6 +84,8 @@ export function validateMvsDocument(input, { resourceNames = null, requireBundle
     }
     if (unsafeArchivePath(resource)) {
       issues.push(storyIssue('UNSAFE_RESOURCE_PATH', `Story resource path is unsafe: ${boundedResourceLabel(resource)}`, { resource: boundedResourceLabel(resource) }));
+    } else if (disallowRelativeResources) {
+      issues.push(storyIssue('RELATIVE_RESOURCE_REQUIRES_MVSX', `Relative Story resources require MVSX packaging: ${resource}`, { resource }));
     } else if (available && !available.has(normalizeArchivePath(resource))) {
       const issue = storyIssue('MISSING_RESOURCE', `Story resource is not present in the bundle: ${resource}`, { resource });
       if (requireBundledResources) issues.push(issue);
@@ -118,6 +122,7 @@ export async function validateMvsStoryFile(filePath) {
     const validation = validateMvsStory(loaded.story, {
       resourceNames: loaded.resourceNames,
       requireBundledResources: loaded.format === 'mvsx',
+      disallowRelativeResources: loaded.format === 'mvsj',
     });
     return { ...validation, path: loaded.path, format: loaded.format, resourceNames: loaded.resourceNames };
   } catch (error) {
@@ -140,6 +145,7 @@ export async function validateMvsDocumentFile(filePath) {
     const validation = validateMvsDocument(loaded.story, {
       resourceNames: loaded.resourceNames,
       requireBundledResources: loaded.format === 'mvsx',
+      disallowRelativeResources: loaded.format === 'mvsj',
     });
     return {
       ...validation,
@@ -186,13 +192,21 @@ export async function writeMvsStoryFile({ story: input, outputPath, assets = {},
     const bytes = await readBoundedFile(resolve(sourcePath), MAX_ASSET_BYTES);
     assetBytes += bytes.length;
     if (assetBytes > MAX_BUNDLE_BYTES) throw storyError('BUNDLE_TOO_LARGE', `MVSX assets exceed ${MAX_BUNDLE_BYTES} bytes.`);
-    assetEntries.set(archivePath, bytes);
+    assetEntries.set(canonicalPath, bytes);
   }
   const validation = validateMvsStory(story, {
     resourceNames: [...assetEntries.keys()],
     requireBundledResources: extension === '.mvsx',
+    disallowRelativeResources: extension === '.mvsj',
   });
-  if (!validation.ok) throw storyError('INVALID_STORY', validation.issues.map(issue => issue.message).join('; '), validation.issues);
+  if (!validation.ok) {
+    const issues = validation.issues.slice(0, 50);
+    throw storyError('INVALID_STORY', issues.map(issue => issue.message).join('; ').slice(0, 16_384), {
+      issues,
+      total: validation.issues.length,
+      truncated: validation.issues.length > issues.length,
+    });
+  }
   const json = `${JSON.stringify(story, null, 2)}\n`;
   const jsonBytes = textEncoder.encode(json);
   if (jsonBytes.length > MAX_JSON_BYTES) throw storyError('STORY_TOO_LARGE', `Story JSON exceeds ${MAX_JSON_BYTES} bytes.`);
@@ -236,11 +250,12 @@ function normalizeStory(input, { now = new Date() } = {}) {
     };
   });
   const metadata = isObject(input.metadata) ? input.metadata : {};
+  const description = boundedOptionalString(metadata.description, 64 * 1024);
   return {
     kind: 'multiple',
     metadata: {
       title: boundedRequiredString(metadata.title ?? 'Molecular Story', 'Story title', 512),
-      ...(boundedOptionalString(metadata.description, 64 * 1024) ? { description: boundedOptionalString(metadata.description, 64 * 1024) } : {}),
+      ...(description ? { description } : {}),
       ...(metadata.description_format === 'plaintext' ? { description_format: 'plaintext' } : {}),
       timestamp: typeof metadata.timestamp === 'string' && metadata.timestamp.trim() ? metadata.timestamp.trim() : now.toISOString(),
       version: typeof metadata.version === 'string' && metadata.version.trim() ? metadata.version.trim() : '1.0',
@@ -321,18 +336,24 @@ function unzipEntries(bytes) {
     const canonicalPath = normalizeArchivePath(name);
     if (canonicalPaths.has(canonicalPath)) throw storyError('DUPLICATE_ENTRY', `Duplicate path in MVSX archive: ${name}`);
     canonicalPaths.add(canonicalPath);
+    const entryLimit = canonicalPath === 'index.mvsj' ? MAX_JSON_BYTES : MAX_ASSET_BYTES;
+    if (size > entryLimit) throw storyError('ARCHIVE_ENTRY_TOO_LARGE', `Expanded MVSX entry exceeds ${entryLimit} bytes: ${name}`);
     if (size > MAX_BUNDLE_BYTES - total) throw storyError('BUNDLE_TOO_LARGE', `Expanded MVSX exceeds ${MAX_BUNDLE_BYTES} bytes.`);
+    if (method === 8 && size > 0 && (compressedSize === 0 || size / compressedSize > MAX_COMPRESSION_RATIO)) {
+      throw storyError('SUSPICIOUS_COMPRESSION_RATIO', `MVSX entry has an unsafe compression ratio: ${name}`);
+    }
     if (buffer.readUInt32LE(localOffset) !== 0x04034b50) throw storyError('INVALID_ARCHIVE', `Invalid local entry for ${name}.`);
     const localNameLength = buffer.readUInt16LE(localOffset + 26);
     const localExtraLength = buffer.readUInt16LE(localOffset + 28);
     const start = localOffset + 30 + localNameLength + localExtraLength;
+    if (start > buffer.length || compressedSize > buffer.length - start) throw storyError('INVALID_ARCHIVE', `Truncated MVSX entry: ${name}`);
     const compressed = buffer.subarray(start, start + compressedSize);
-    const data = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed, { maxOutputLength: MAX_BUNDLE_BYTES - total }) : null;
+    const data = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed, { maxOutputLength: entryLimit }) : null;
     if (!data || data.length !== size) throw storyError('INVALID_ARCHIVE', `Unsupported or corrupt MVSX entry: ${name}`);
     if (crc32(data) !== expectedCrc) throw storyError('INVALID_ARCHIVE', `CRC mismatch for MVSX entry: ${name}`);
     total += data.length;
     if (total > MAX_BUNDLE_BYTES) throw storyError('BUNDLE_TOO_LARGE', `Expanded MVSX exceeds ${MAX_BUNDLE_BYTES} bytes.`);
-    output.set(name, new Uint8Array(data));
+    output.set(canonicalPath, new Uint8Array(data));
     cursor += 46 + nameLength + extraLength + commentLength;
   }
   return output;
@@ -353,9 +374,25 @@ function crc32(bytes) {
 }
 
 async function readBoundedFile(path, limit) {
-  const bytes = await readFile(path);
-  if (bytes.length > limit) throw storyError('FILE_TOO_LARGE', `${basename(path)} exceeds ${limit} bytes.`);
-  return bytes;
+  const handle = await openFile(path, 'r');
+  try {
+    const info = await handle.stat();
+    if (!info.isFile()) throw storyError('INVALID_RESOURCE_FILE', `${basename(path)} is not a regular file.`);
+    if (info.size > limit) throw storyError('FILE_TOO_LARGE', `${basename(path)} exceeds ${limit} bytes.`);
+    const bytes = Buffer.alloc(info.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, offset);
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    const extra = Buffer.alloc(1);
+    const { bytesRead: extraBytesRead } = await handle.read(extra, 0, 1, offset);
+    if (extraBytesRead > 0) throw storyError('FILE_TOO_LARGE', `${basename(path)} exceeds ${limit} bytes.`);
+    return bytes.subarray(0, offset);
+  } finally {
+    await handle.close();
+  }
 }
 
 function boundedDuration(value, fallback) {
@@ -379,7 +416,19 @@ function boundedOptionalString(value, limit) {
 
 function hasResourceScheme(value) { return /^[a-z][a-z0-9+.-]*:/iu.test(value); }
 function isAllowedExternalResource(value) { return /^(?:https?|data):/iu.test(value); }
-function normalizeArchivePath(value) { return String(value || '').trim().replace(/^\.\//u, ''); }
+function normalizeArchivePath(value) {
+  let normalized = String(value || '').trim();
+  try {
+    for (let pass = 0; pass < 4; pass += 1) {
+      const decoded = decodeURIComponent(normalized);
+      if (decoded === normalized) break;
+      normalized = decoded;
+    }
+  } catch (_) {
+    return '';
+  }
+  return normalized.normalize('NFC').replace(/^(?:\.\/)+/u, '');
+}
 function unsafeArchivePath(value) {
   const normalized = normalizeArchivePath(value);
   return !normalized

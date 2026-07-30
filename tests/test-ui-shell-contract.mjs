@@ -5624,6 +5624,8 @@ assert.match(previewViewer, /overlayOnly: true/);
 assert.match(previewViewer, /nativeTrajectoryControls: true/);
 assert.match(previewViewer, /kind: 'docking'/);
 assert.match(previewViewer, /function loadDockingPreparedStructure\(viewer, prepared\)/);
+assert.match(previewViewer, /const hasStoryKey = entries\.some\(entry => typeof entry\?\.key === 'string' && entry\.key\.trim\(\)\)/);
+assert.match(previewViewer, /activeMolstarPrepared\.mvsKind === 'multiple' \|\| entries\.length > 1 \|\| hasStoryKey/);
 assert.match(previewViewer, /if \(prepared\.dockingSceneMode\) \{\s*await applyDockingSceneVisibility\(viewer, prepared, prepared\.activePose\);\s*installDockingPoseControls\(viewer, prepared\);\s*return;\s*\}/);
 assert.match(previewViewer, /function installDockingPoseControls\(viewer, prepared\)/);
 assert.match(previewViewer, /className = 'buret-docking-poses'/);

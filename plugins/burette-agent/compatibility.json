@@ -5,7 +5,7 @@
     "version": "0.2.2"
   },
   "requires": {
-    "buretteApp": ">=2.2.0",
+    "buretteApp": ">=2.1.16",
     "agentCli": "burette-agent-cli/v1",
     "controlApi": "burette-agent-control/v1"
   },

@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { deflateRawSync } from "node:zlib";
 
 import {
   buildMvsStory,
@@ -32,6 +33,11 @@ const story = buildMvsStory({
     { key: "site", title: "Binding site", description: "# Site", root, transitionDurationMs: 250 },
   ],
 }, { now: new Date("2026-07-29T00:00:00.000Z") });
+
+const portableStory = structuredClone(story);
+for (const snapshot of portableStory.snapshots) {
+  snapshot.root.children[0].params.url = "https://example.org/protein.pdb";
+}
 
 assert.equal(story.kind, "multiple");
 assert.equal(story.snapshots.length, 2);
@@ -172,22 +178,39 @@ try {
   assert.equal(validatedTemplate.ok, true, JSON.stringify(validatedTemplate.issues));
   assert.equal(validatedTemplate.summary.stepCount, 3);
 
+  const encodedTraversalStory = structuredClone(story);
+  encodedTraversalStory.snapshots[0].root.children[0].params.url = "assets/%2e%2e/private.pdb";
+  encodedTraversalStory.snapshots[1].root.children[0].params.url = "assets/%2e%2e/private.pdb";
+  await assert.rejects(
+    writeMvsStoryFile({
+      story: encodedTraversalStory,
+      outputPath: path.join(temp, "encoded-traversal.mvsx"),
+      assets: { "assets/%2e%2e/private.pdb": asset },
+    }),
+    error => error.code === "UNSAFE_RESOURCE_PATH",
+  );
+
   const singleMvsj = path.join(temp, "single.mvsj");
   const singleDocument = JSON.parse(await readFile("tests/fixtures/file-kinds/scene.mvsj", "utf8"));
+  singleDocument.root.children[0].params.url = "https://example.org/receptor.pdb";
   await writeFile(singleMvsj, `${JSON.stringify(singleDocument, null, 2)}\n`);
-  await writeFile(path.join(temp, "receptor.pdb"), await readFile(asset));
   assert.equal((await validateMvsDocumentFile(singleMvsj)).ok, true);
   const singleOpen = spawnSync(process.execPath, [
     "scripts/burette-agent.mjs", "open", "--mode", "desktop-app", "--no-launch", "--session-dir", path.join(temp, "single-session"), singleMvsj,
   ], { encoding: "utf8" });
   assert.equal(singleOpen.status, 0, singleOpen.stderr);
 
-  const writtenJson = await writeMvsStoryFile({ story, outputPath: mvsj });
+  await assert.rejects(
+    writeMvsStoryFile({ story, outputPath: mvsj }),
+    error => error.code === "INVALID_STORY"
+      && error.details.issues.some(issue => issue.code === "RELATIVE_RESOURCE_REQUIRES_MVSX"),
+  );
+  const writtenJson = await writeMvsStoryFile({ story: portableStory, outputPath: mvsj });
   assert.equal(writtenJson.ok, true);
   assert.equal(writtenJson.format, "mvsj");
   const validatedJson = await validateMvsStoryFile(mvsj);
   assert.equal(validatedJson.ok, true);
-  assert.equal(validatedJson.warnings[0].code, "MISSING_RESOURCE");
+  assert.equal(validatedJson.warnings.length, 0);
 
   const writtenArchive = await writeMvsStoryFile({
     story,
@@ -220,6 +243,13 @@ try {
   await writeFile(corruptMvsx, corruptBytes);
   assert.equal((await validateMvsStoryFile(corruptMvsx)).issues[0].code, "INVALID_ARCHIVE");
 
+  const compressedBomb = path.join(temp, "compressed-bomb.mvsx");
+  await writeFile(compressedBomb, deflatedZipEntry("index.mvsj", Buffer.alloc(2 * 1024 * 1024)));
+  await assert.rejects(
+    readMvsStoryFile(compressedBomb),
+    error => error.code === "SUSPICIOUS_COMPRESSION_RATIO",
+  );
+
   const tooManyAssets = Object.fromEntries(Array.from({ length: 1024 }, (_, index) => [`asset-${index}.pdb`, asset]));
   await assert.rejects(
     writeMvsStoryFile({ story: { ...story, snapshots: story.snapshots.map(snapshot => ({ ...snapshot, root: { kind: "root" } })) }, outputPath: path.join(temp, "too-many.mvsx"), assets: tooManyAssets }),
@@ -249,3 +279,33 @@ try {
 }
 
 console.log("MolViewSpec Story tests passed");
+
+function deflatedZipEntry(name, data) {
+  const nameBytes = Buffer.from(name);
+  const compressed = deflateRawSync(data);
+  const local = Buffer.alloc(30 + nameBytes.length + compressed.length);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(compressed.length, 18);
+  local.writeUInt32LE(data.length, 22);
+  local.writeUInt16LE(nameBytes.length, 26);
+  nameBytes.copy(local, 30);
+  compressed.copy(local, 30 + nameBytes.length);
+  const central = Buffer.alloc(46 + nameBytes.length);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(20, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(compressed.length, 20);
+  central.writeUInt32LE(data.length, 24);
+  central.writeUInt16LE(nameBytes.length, 28);
+  nameBytes.copy(central, 46);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(central.length, 12);
+  end.writeUInt32LE(local.length, 16);
+  return Buffer.concat([local, central, end]);
+}

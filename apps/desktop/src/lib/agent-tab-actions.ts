@@ -38,11 +38,9 @@ export async function executeAgentTabAction(
   const activeIndex = Math.max(0, tabs.findIndex(tab => tab.id === activeTabId));
   const explicitIndex = Number.isInteger(action.index) ? Number(action.index) : null;
   const explicitId = typeof action.tabId === "string" ? action.tabId.trim() : "";
-  const target = explicitId
-    ? tabs.find(tab => tab.id === explicitId) ?? null
-    : explicitIndex !== null
-      ? tabs[explicitIndex] ?? null
-      : tabs[activeIndex] ?? null;
+  let target: MoleculeTab | null = tabs[activeIndex] ?? null;
+  if (explicitIndex !== null) target = tabs[explicitIndex] ?? null;
+  if (explicitId) target = tabs.find(tab => tab.id === explicitId) ?? null;
   if (operation === "next" || operation === "previous") {
     const offset = operation === "next" ? 1 : -1;
     const index = (activeIndex + offset + tabs.length) % tabs.length;

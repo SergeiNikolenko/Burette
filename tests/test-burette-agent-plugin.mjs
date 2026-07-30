@@ -53,7 +53,7 @@ const compatibility = JSON.parse(await read("compatibility.json"));
 assert.equal(compatibility.schema, "burette_agent_compatibility.v1");
 assert.equal(compatibility.plugin.name, "burette");
 assert.equal(compatibility.plugin.version, manifest.version);
-assert.equal(compatibility.requires.buretteApp, ">=2.2.0");
+assert.equal(compatibility.requires.buretteApp, ">=2.1.16");
 assert.equal(compatibility.requires.agentCli, "burette-agent-cli/v1");
 assert.equal(compatibility.requires.controlApi, "burette-agent-control/v1");
 assert.equal(compatibility.bundle.relativePath, "plugins/burette-agent");

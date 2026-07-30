@@ -117,8 +117,9 @@ interactions, comparison, and conclusion.
 validates every scene through the Mol* MVS schema, validates unique keys and
 bounds, and refuses implicit overwrite. `.mvsx` is the required handoff for
 local sidecars: every relative `download.url` must have a matching archive
-resource. `.mvsj` may reference accessible HTTP(S) resources or files present
-beside the document; opening fails early when a local sidecar is missing.
+resource. `.mvsj` may reference only accessible HTTP(S) or data resources;
+relative resources require `.mvsx` because the embedded viewer has no portable
+filesystem base URL.
 Mol*'s standard `./assets/...` paths are normalized safely. `file:` URLs and
 absolute filesystem paths are rejected rather than leaking host paths into a
 browser scene.
@@ -198,7 +199,7 @@ added.
 | `observe` returns no active document | Wrong session directory, closed Browser tab, or desktop session not attached. | CLI `sessionDir`, shell logs, `apps/desktop/src/hooks/use-agent-session.ts` |
 | `act` times out | Action was sent to the shell when the active Mol* viewer was not ready, or the action contract changed. | Last `observe` result, `apps/desktop/src/hooks/use-agent-session.ts`, viewer bridge tests |
 | Story opens but has no steps | The input is a single-state MVS document, an old runtime is active, or Mol* did not install snapshots. | Run `story-validate`, then `observe_story`; confirm `kind: "multiple"` and restart after plugin updates. |
-| Story validation reports a missing resource | A relative `download.url` is absent from MVSX or beside MVSJ. | Pass the exact archive path through `--asset` / `resources`, then recreate the MVSX. |
+| Story validation reports a missing resource | A relative `download.url` is absent from MVSX or was used in standalone MVSJ. | Pass the exact archive path through `--asset` / `resources`, then recreate the MVSX. |
 | `control_ketcher` returns `REVISION_CONFLICT` | Another edit, selection change, or tab switch advanced the editor state. | Refresh `burette.observe_workspace` and use the returned `surfaceId`/`structureRevision`. |
 | `control_ketcher` returns `STALE_TARGET` | The requested surface is no longer the active Ketcher tab or was unmounted. | Reopen Ketcher with `burette.open_ketcher`; do not reuse the old surface id. |
 | Plugin preflight fails | Packaged plugin paths, CLI availability, or local runtime capabilities are out of sync. | `plugins/burette-agent/scripts/burette_agent_preflight.mjs`, `plugins/burette-agent/AGENTS.md` |

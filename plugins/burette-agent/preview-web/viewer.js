@@ -763,7 +763,10 @@
   function molstarStoryState() {
     const manager = activeViewer?.plugin?.managers?.snapshot;
     const entries = manager?.state?.entries ? Array.from(manager.state.entries) : [];
-    if (!manager || entries.length === 0) {
+    const hasStoryKey = entries.some(entry => typeof entry?.key === 'string' && entry.key.trim());
+    const isMultipleStateMvs = activeMolstarPrepared?.kind === 'mvs'
+      && (activeMolstarPrepared.mvsKind === 'multiple' || entries.length > 1 || hasStoryKey);
+    if (!manager || !isMultipleStateMvs || entries.length === 0) {
       return {
         available: false,
         title: String(activeConfig?.label || '').trim() || null,
@@ -9365,11 +9368,13 @@
       return prepareStagedStructureScene(config, sceneEntries);
     }
     if (isMolViewSpecFormat(normalized)) {
+      const data = rawStructureData(config);
       return {
         kind: 'mvs',
-        data: rawStructureData(config),
+        data,
         format: normalized,
-        label: config.label || 'MolViewSpec scene'
+        label: config.label || 'MolViewSpec scene',
+        mvsKind: normalized === 'mvsj' ? molViewSpecJsonKind(data) : null
       };
     }
     if (normalized === 'ccp4' || normalized === 'mtz') {
@@ -9415,6 +9420,16 @@
       format: normalized,
       label: config.label || 'structure'
     };
+  }
+
+  function molViewSpecJsonKind(data) {
+    if (typeof data !== 'string') return null;
+    try {
+      const parsed = JSON.parse(data);
+      return parsed?.kind === 'multiple' ? 'multiple' : parsed?.kind === 'single' || parsed?.kind === undefined ? 'single' : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   function looksLikeStructureFactorsCif(data) {

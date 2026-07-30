@@ -146,7 +146,7 @@ target does not open arbitrary local files or control the desktop application.
 
 MolViewSpec Story authoring and the bundled Browser transports are self-contained
 in plugin `0.2.2`. Native `desktop-app` Story observation and control require
-Burette `2.2.0` or newer; older app releases are intentionally excluded by
+Burette `2.1.16` or newer; older app releases are intentionally excluded by
 `compatibility.json`.
 
 The required manifest lives at `.codex-plugin/plugin.json`, the MCP server is

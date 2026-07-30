@@ -23,6 +23,8 @@ const browserDevGeneratedFilesRoot = process.env.BURETTE_BROWSER_DEV_GENERATED_F
   : resolve(homedir(), 'Desktop', 'Burette Generated Files');
 const apiVersion = 'burette-agent-cli/v1';
 const supportedModes = new Set(['auto', 'browser-preview', 'browser-agent-shell', 'browser-dev-shell', 'desktop-app']);
+const MAX_AGENT_ACTION_HISTORY = 128;
+const MAX_PENDING_AGENT_ACTIONS = 64;
 
 function usage() {
   console.error(`Usage:
@@ -318,16 +320,15 @@ async function validateStoryBeforeOpen(file) {
   const path = resolve(file);
   const extension = path.toLowerCase().endsWith('.mvsj') ? 'mvsj' : path.toLowerCase().endsWith('.mvsx') ? 'mvsx' : null;
   if (!extension) return;
-  const result = await validateMvsDocumentFile(path);
-  if (!result.ok) fail('STORY_INVALID', `MolViewSpec Story validation failed for ${path}.`, 1, boundedStoryValidationResult(result));
-  if (extension !== 'mvsj') return;
-  const missing = result.warnings
-    .filter(issue => issue.code === 'MISSING_RESOURCE' && typeof issue.details?.resource === 'string')
-    .map(issue => issue.details.resource)
-    .filter(resource => !existsSync(resolve(dirname(path), resource)));
-  if (missing.length > 0) {
-    fail('STORY_RESOURCE_MISSING', `MolViewSpec Story references ${missing.length} missing local resource${missing.length === 1 ? '' : 's'}. Package local assets as MVSX or place them beside the MVSJ.`, 1, { path, missing });
+  const documentResult = await validateMvsDocumentFile(path);
+  const result = documentResult.story?.kind === 'multiple'
+    ? await validateMvsStoryFile(path)
+    : documentResult;
+  const relativeResources = result.issues?.filter(issue => issue.code === 'RELATIVE_RESOURCE_REQUIRES_MVSX') || [];
+  if (relativeResources.length > 0) {
+    fail('STORY_RESOURCE_MISSING', 'Relative MVSJ resources cannot be resolved by the embedded viewer. Package them as MVSX.', 1, boundedStoryValidationResult(result));
   }
+  if (!result.ok) fail('STORY_INVALID', `MolViewSpec Story validation failed for ${path}.`, 1, boundedStoryValidationResult(result));
 }
 
 function boundedStoryValidationResult(result) {
@@ -904,8 +905,10 @@ async function actDesktopSession(options) {
     status: 'queued',
     createdAt: new Date().toISOString()
   };
-  const actions = Array.isArray(actionsFile.actions) ? actionsFile.actions : [];
-  actions.push(item);
+  const existingActions = Array.isArray(actionsFile.actions) ? actionsFile.actions : [];
+  const pendingCount = existingActions.filter(actionItem => !['completed', 'failed'].includes(actionItem?.status)).length;
+  if (pendingCount >= MAX_PENDING_AGENT_ACTIONS) fail('ACTION_QUEUE_FULL', `Agent session already has ${pendingCount} pending actions.`, 1);
+  const actions = boundedAgentActions([...existingActions, item]);
   await writeJsonFile(actionsPath, { apiVersion: 'burette-agent-control/v1', actions });
   const waitMs = Number.isFinite(options.waitMs) ? options.waitMs : 0;
   if (!waitMs) {
@@ -925,7 +928,14 @@ async function normalizeAgentActionPaths(action) {
 
 async function assertSessionResponsive(sessionDir) {
   const session = await readJsonFile(resolve(sessionDir, 'session.json'), null);
-  if (!session || session.mode !== 'browser-dev-shell' || typeof session.url !== 'string') return;
+  if (!session
+    || session.apiVersion !== apiVersion
+    || !['browser-dev-shell', 'desktop-app'].includes(session.mode)
+    || typeof session.token !== 'string'
+    || !session.token.trim()) {
+    fail('INVALID_SESSION_DIRECTORY', 'The session directory is not an initialized Burette agent workspace.', 1, { sessionDir: resolve(sessionDir) });
+  }
+  if (session.mode !== 'browser-dev-shell' || typeof session.url !== 'string') return;
   const sessionUrl = requireLocalAgentUrl(session.url, 'INVALID_SESSION_URL', { sessionDir });
   try {
     await fetchWithTimeout(sessionUrl, 1500);
@@ -1080,11 +1090,19 @@ async function waitForAction(url, actionId, waitMs) {
     const observed = parseJsonBody(body, 'Observe response was not JSON.');
     const action = (observed.actions?.recent || []).find(item => item.id === actionId) || observed.actions?.last;
     if (action?.id === actionId && ['completed', 'failed'].includes(action.status)) {
-      return { ok: action.status === 'completed' && action.result?.ok !== false, action };
+      return { ...observed, ok: action.status === 'completed' && action.result?.ok !== false, action };
     }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   fail('ACTION_TIMEOUT', `Timed out waiting for action ${actionId}.`, 1);
+}
+
+function boundedAgentActions(actions) {
+  const pending = actions.filter(item => !['completed', 'failed'].includes(item?.status));
+  const completed = actions.filter(item => ['completed', 'failed'].includes(item?.status));
+  const completedLimit = Math.max(0, MAX_AGENT_ACTION_HISTORY - pending.length);
+  const keep = new Set([...pending, ...completed.slice(-completedLimit)]);
+  return actions.filter(item => keep.has(item));
 }
 
 function parseJsonBody(body, message) {

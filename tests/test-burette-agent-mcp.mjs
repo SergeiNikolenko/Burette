@@ -188,7 +188,7 @@ async function installMockAgentCli(pluginRoot) {
       "  if (action.type === 'open_ketcher') writeFileSync(ketcherState, 'open');",
       "  const storyState = { available: true, title: 'Mock Story', stepIndex: action.operation === 'next' ? 1 : 0, stepCount: 2, current: { key: action.operation === 'next' ? 'site' : 'overview', title: action.operation === 'next' ? 'Site' : 'Overview', description: '# Mock' }, steps: [{ key: 'overview', title: 'Overview' }, { key: 'site', title: 'Site' }], isPlaying: action.operation === 'play' };",
       "  if (action.type === 'story_control' && action.operation === 'goto' && action.key === 'missing') { ok({ ok: false, action: { id: 'act-story', type: action.type, status: 'failed', result: { ok: false, command: 'story_control', error: { code: 'STORY_STEP_NOT_FOUND', message: 'missing Story step' } } } }); process.exit(0); }",
-      "  if (action.type === 'story_observe' || action.type === 'story_control') { ok({ ok: true, action: { id: 'act-story', type: action.type, status: 'completed', result: { ok: true, command: action.type, result: storyState } } }); process.exit(0); }",
+      "  if (action.type === 'story_observe' || action.type === 'story_control') { ok({ ok: true, action: { id: 'act-story', type: action.type, status: 'completed', result: { ok: true, command: action.type, result: storyState } }, argv: args }); process.exit(0); }",
       "  if (action.type === 'synthetic_nested_failure') { ok({ ok: true, action: { id: 'act-mock', type: action.type, status: 'failed', result: { ok: false, error: { code: 'NESTED_FAILURE', message: 'synthetic nested failure' } } } }); process.exit(0); }",
       "  ok({ ok: true, action: { id: 'act-mock', type: action.type, status: 'queued', payload: action }, argv: args });",
       "} else {",
@@ -354,6 +354,13 @@ async function testFetchAndWorkspaceHandlers(tempRoot) {
     });
     assert.equal(createdStory.structuredContent.ok, true);
     assert.equal(createdStory.structuredContent.result.format, "mvsj");
+    const oversizedStory = await server.tools.get("burette.create_story").handler({
+      story: { title: "Oversized", steps: [], padding: "x".repeat(8 * 1024 * 1024) },
+      outputPath: path.join(tempRoot, "oversized-story.mvsj"),
+    });
+    assert.equal(oversizedStory.structuredContent.ok, false);
+    assert.equal(oversizedStory.structuredContent.error.code, "STORY_TOO_LARGE");
+    assert.equal(oversizedStory.content[0].text.length <= 4096 + 64, true);
     const validatedStory = await server.tools.get("burette.validate_story").handler({ file: storyPath });
     assert.equal(validatedStory.structuredContent.ok, true);
     assert.equal(validatedStory.structuredContent.result.summary.stepCount, 1);
@@ -495,6 +502,9 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.equal(publicContext.structuredContent.ok, true);
   assert.equal(publicContext.structuredContent.apiVersion, "burette-external-agent/v1");
   assert.equal(publicContext.structuredContent.capabilities.canOpenWorkspace, true);
+  assert.equal(publicContext.structuredContent.modelContext.nextActions.includes("burette.get_mvs_authoring_reference"), true);
+  assert.equal(publicContext.structuredContent.modelContext.nextActions.includes("burette.list_story_templates"), true);
+  assert.equal(publicContext.structuredContent.modelContext.nextActions.includes("burette.create_story_from_template"), true);
 
   const publicOpened = await server.tools.get("burette.open_workspace").handler({
     file: sampleMini,
@@ -514,6 +524,8 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   coveredTools.add("burette.observe_story");
   assert.equal(observedStory.structuredContent.ok, true);
   assert.equal(observedStory.structuredContent.result.action.result.result.current.key, "overview");
+  assert.equal(observedStory.structuredContent.result.argv.includes("--url"), true);
+  assert.equal(observedStory.structuredContent.result.argv.includes("--session-dir"), false);
   for (const operation of ["next", "previous", "play", "pause"]) {
     const controlled = await server.tools.get("burette.control_story").handler({
       workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,

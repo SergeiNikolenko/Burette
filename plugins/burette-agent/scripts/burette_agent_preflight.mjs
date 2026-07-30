@@ -161,7 +161,7 @@ const payload = {
       {
         id: "desktop-app",
         status: hasCli ? "available" : "blocked",
-        note: "Explicit file-backed session directory passed through --burette-agent-session. MolViewSpec Story control requires Burette 2.2.0 or newer.",
+        note: "Explicit file-backed session directory passed through --burette-agent-session. MolViewSpec Story control requires Burette 2.1.16 or newer.",
       },
     ],
     visualQaSurfaces: [
@@ -233,7 +233,7 @@ const payload = {
     storyTransports: {
       "browser-agent-shell": "bundled",
       "browser-preview": "bundled",
-      "desktop-app": "requires_burette_app_2.2.0_or_newer",
+      "desktop-app": "requires_burette_app_2.1.16_or_newer",
     },
     externalWorkflows: {
       proteinPreparation: "external_workflow",

@@ -11,6 +11,9 @@ import type { MoleculeTab } from "../stores/molecule-store";
 const AGENT_API_VERSION = "burette-agent-control/v1";
 const ACTION_POLL_INTERVAL_MS = 500;
 const BROWSER_AGENT_SESSION_DIR = "__browser_agent_shell__";
+const MAX_OBSERVED_DOCUMENTS = 128;
+const MAX_OBSERVED_TABS = 128;
+const MAX_OBSERVED_PANELS = 64;
 const isBrowserAgentShell = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
 
 type KetcherAgentModule = typeof import("../lib/ketcher-agent");
@@ -351,14 +354,14 @@ async function writeObserve(
           ready: false,
           note: activeKetcher ? "The active surface is a Ketcher editor." : "No active document is open in the desktop app.",
         },
-    documents: documents.map((document) => ({
+    documents: documents.slice(0, MAX_OBSERVED_DOCUMENTS).map((document) => ({
       id: document.id,
-      title: document.title,
-      path: document.path,
+      title: boundedSessionString(document.title, 512),
+      path: boundedSessionString(document.path, 4096),
       renderer: document.renderer,
       byteCount: document.byteCount,
     })),
-    tabs: tabs.map((tab, index) => observedTab(tab, index, activeTabId, documents)),
+    tabs: tabs.slice(0, MAX_OBSERVED_TABS).map((tab, index) => observedTab(tab, index, activeTabId, documents)),
     activeTabId: activeTabId ?? null,
     activeSurface: activeKetcher
       ? {
@@ -391,8 +394,13 @@ async function writeObserve(
       lastAction: activeAgentState?.lastAction ?? null,
     },
     story: activeAgentState?.story ?? null,
-    panels: ["viewer", ...workspacePanels.map((panel) => panel.id)],
-    workspacePanels,
+    panels: ["viewer", ...workspacePanels.slice(-MAX_OBSERVED_PANELS).map((panel) => panel.id)],
+    workspacePanels: workspacePanels.slice(-MAX_OBSERVED_PANELS),
+    bounds: {
+      documents: { total: documents.length, returned: Math.min(documents.length, MAX_OBSERVED_DOCUMENTS), truncated: documents.length > MAX_OBSERVED_DOCUMENTS },
+      tabs: { total: tabs.length, returned: Math.min(tabs.length, MAX_OBSERVED_TABS), truncated: tabs.length > MAX_OBSERVED_TABS },
+      workspacePanels: { total: workspacePanels.length, returned: Math.min(workspacePanels.length, MAX_OBSERVED_PANELS), truncated: workspacePanels.length > MAX_OBSERVED_PANELS },
+    },
     errors: [],
   };
   await writeJson(joinSessionPath(sessionDir, "observe.json"), observe);
@@ -763,10 +771,14 @@ function storyStateFromActionResult(result: unknown): AgentStoryState | null {
     title: typeof story.title === "string" ? story.title.slice(0, 512) : null,
     stepIndex: Number.isInteger(story.stepIndex) ? Number(story.stepIndex) : null,
     stepCount: Number.isInteger(story.stepCount) ? Math.max(0, Math.min(256, Number(story.stepCount))) : steps.length,
-    current: typeof story.current === "object" && story.current !== null ? story.current as Record<string, unknown> : null,
-    steps,
+    current: typeof story.current === "object" && story.current !== null ? boundedStoryStep(story.current as Record<string, unknown>) : null,
+    steps: steps.map(boundedStoryStep),
     isPlaying: story.isPlaying === true,
   };
+}
+
+function boundedSessionString(value: unknown, limit: number) {
+  return typeof value === "string" ? value.slice(0, limit) : value ?? null;
 }
 
 function sceneSelectionFromActionResult(result: unknown): AgentSceneSelection | null {
