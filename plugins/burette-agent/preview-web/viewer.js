@@ -3048,11 +3048,47 @@
     }
   }
 
+  function molstarPresetPreviewContentCrop(source) {
+    const fullFrame = { x: 0, y: 0, width: source.width, height: source.height };
+    const computeBounds = window.BuretteMolstarPresetPreviewController?.computePreviewContentBounds;
+    if (typeof computeBounds !== 'function') return fullFrame;
+    const analysisScale = Math.min(1, 512 / Math.max(source.width, source.height));
+    const analysisWidth = Math.max(1, Math.round(source.width * analysisScale));
+    const analysisHeight = Math.max(1, Math.round(source.height * analysisScale));
+    const analysis = document.createElement('canvas');
+    analysis.width = analysisWidth;
+    analysis.height = analysisHeight;
+    const context = analysis.getContext('2d', { willReadFrequently: true });
+    if (!context) return fullFrame;
+    try {
+      context.drawImage(source, 0, 0, analysisWidth, analysisHeight);
+      const color = canvasBackgroundColor();
+      const bounds = computeBounds({
+        data: context.getImageData(0, 0, analysisWidth, analysisHeight).data,
+        width: analysisWidth,
+        height: analysisHeight,
+        background: [(color >> 16) & 255, (color >> 8) & 255, color & 255],
+        transparent: transparentBackground,
+        threshold: 6,
+        paddingRatio: 0.04,
+        minPadding: 4
+      });
+      const x = Math.max(0, Math.floor(bounds.x / analysisWidth * source.width));
+      const y = Math.max(0, Math.floor(bounds.y / analysisHeight * source.height));
+      const width = Math.min(source.width - x, Math.max(1, Math.ceil(bounds.width / analysisWidth * source.width)));
+      const height = Math.min(source.height - y, Math.max(1, Math.ceil(bounds.height / analysisHeight * source.height)));
+      return { x, y, width, height };
+    } catch (_) {
+      return fullFrame;
+    }
+  }
+
   function drawMolstarPresetPreviewFrame(item, source) {
     const { preview, image } = molstarPresetPreviewElements();
     if (!preview || !image || !source) throw new Error('Preset preview image is unavailable.');
-    const sourceWidth = source.width;
-    const sourceHeight = source.height;
+    const crop = molstarPresetPreviewContentCrop(source);
+    const sourceWidth = crop.width;
+    const sourceHeight = crop.height;
     const layout = window.BuretteMolstarPresetPreviewController?.computePreviewCanvasLayout?.({
       sourceWidth,
       sourceHeight,
@@ -3070,10 +3106,10 @@
     context.clearRect(0, 0, image.width, image.height);
     context.drawImage(
       source,
-      0,
-      0,
-      sourceWidth,
-      sourceHeight,
+      crop.x,
+      crop.y,
+      crop.width,
+      crop.height,
       Math.round(layout.drawX * layout.backingScale),
       Math.round(layout.drawY * layout.backingScale),
       Math.round(layout.drawWidth * layout.backingScale),

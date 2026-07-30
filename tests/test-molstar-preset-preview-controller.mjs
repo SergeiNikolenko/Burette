@@ -19,6 +19,7 @@ const factory = vm.runInContext(
 assert.equal(typeof factory?.create, "function");
 assert.equal(typeof factory?.computePreviewPlacement, "function");
 assert.equal(typeof factory?.computePreviewCanvasLayout, "function");
+assert.equal(typeof factory?.computePreviewContentBounds, "function");
 assert.equal(typeof factory?.focusPointerTarget, "function");
 assert.equal(typeof factory?.retainPointerTarget, "function");
 
@@ -51,6 +52,41 @@ assert.equal(typeof factory?.retainPointerTarget, "function");
   listeners.get("blur")?.();
   assert.deepEqual(calls.at(-1), ["class:remove", "buret-pointer-focus"]);
   assert.equal(factory.retainPointerTarget({ button: 2 }, null, null), false);
+}
+
+{
+  const width = 12;
+  const height = 8;
+  const pixels = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < width * height; index += 1) pixels[index * 4 + 3] = 255;
+  for (let y = 2; y <= 5; y += 1) {
+    for (let x = 1; x <= 4; x += 1) {
+      const offset = (y * width + x) * 4;
+      pixels[offset] = 40;
+      pixels[offset + 1] = 150;
+      pixels[offset + 2] = 220;
+    }
+  }
+  assert.deepEqual(
+    factory.computePreviewContentBounds({
+      data: pixels,
+      width,
+      height,
+      background: [0, 0, 0],
+      paddingRatio: 0,
+      minPadding: 0,
+    }),
+    { x: 1, y: 2, width: 4, height: 4 },
+  );
+  assert.deepEqual(
+    factory.computePreviewContentBounds({
+      data: new Uint8ClampedArray(width * height * 4),
+      width,
+      height,
+      transparent: true,
+    }),
+    { x: 0, y: 0, width, height },
+  );
 }
 
 for (const [sourceWidth, sourceHeight] of [[200, 600], [400, 400], [600, 200]]) {
