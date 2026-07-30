@@ -5268,6 +5268,10 @@ assert.match(previewViewer, /function molstarPresetAppearance\(option, config\)/
 assert.match(previewViewer, /defaultAppearance: 'illustrative'/);
 assert.doesNotMatch(previewViewer, /if \(option\?\.provider\) return option\.value === 'illustrative' \? 'illustrative' : 'default'/);
 assert.match(previewViewer, /function updateMolstarAppearanceControl\(menu, appearance\)/);
+assert.match(previewViewer, /function appendMolstarAppearanceMenu\(menu\)/);
+assert.match(previewViewer, /function appendMolstarPresetMenuSeparator\(menu\)/);
+assert.match(previewViewer, /function populateMolstarPresetMenu\(menu\) \{[\s\S]*?appendMolstarAppearanceMenu\(menu\);[\s\S]*?for \(const option of MOLSTAR_PRESET_OPTIONS\)/);
+assert.doesNotMatch(previewViewer, /if \(option\.value === 'automatic'\) \{/);
 assert.match(previewViewer, /appearanceGroup\.setAttribute\('role', 'group'\)/);
 assert.match(previewViewer, /appearance\.setAttribute\('role', 'menuitemradio'\)/);
 assert.match(previewViewer, /appearance\.dataset\.buretMolstarAppearance = appearanceOption\.value/);
@@ -5275,6 +5279,7 @@ assert.match(previewViewer, /appearanceItem\.dataset\.buretMolstarAppearance/);
 assert.doesNotMatch(previewViewer, /data-buret-molstar-illustrative/);
 assert.match(previewRuntimeCss, /\.buret-molstar-appearance-group \{/);
 assert.match(previewRuntimeCss, /\.buret-molstar-appearance-item\[aria-checked="true"\] \.buret-molstar-appearance-indicator/);
+assert.match(previewRuntimeCss, /body\.buret-theme-light \.buret-molstar-preset-menu-separator \{/);
 assert.match(previewViewer, /function sizeMolstarPresetPreview\(preview\)/);
 assert.match(previewViewer, /function drawMolstarPresetPreviewCrop\(item, source, crop\)/);
 assert.match(previewViewer, /function captureMolstarPresetPreview\(item, viewer, serial\)/);
