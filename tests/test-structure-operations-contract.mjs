@@ -143,19 +143,21 @@ assert.match(fn("sceneTreeMeasurementMenu"), /'geometry-color'[\s\S]*'line-size'
 assert.match(fn("sceneTreeMeasurementText"), /const field = 'custom-text'/);
 
 // The first level stays compact: common target actions are direct, the long
-// Maestro/PyMOL toolsets open as submenus, while the short visibility and
-// representation blocks stay one click away on the first level.
+// Maestro/PyMOL toolsets use either a submenu or a standalone dialog, while the
+// short visibility and representation blocks stay one click away on the first level.
 assert.match(viewer, /\{ id: 'primary', title: 'Target', direct: true \}/);
 assert.doesNotMatch(viewer, /\{ id: 'selection', title: 'Selection'/);
 assert.match(viewer, /\{ id: 'view', title: 'Visibility', direct: true, breakBefore: true \}/);
 assert.match(viewer, /\{ id: 'represent', title: 'Representation', direct: true, breakBefore: true \}/);
-assert.match(viewer, /\{ id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true \}/);
+assert.match(viewer, /\{ id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true, dialog: true \}/);
+assert.match(viewer, /\{ id: 'export', title: 'Export', dialog: true \}/);
 assert.doesNotMatch(viewer, /\{ id: 'appearance', title: 'Appearance'/);
 assert.match(viewer, /\{ id: 'align', title: 'Superposition' \}/);
 assert.match(viewer, /\{ id: 'danger', title: 'Delete', direct: true, destructive: true, hideTitle: true, breakBefore: true \}/);
 assert.match(fn("showMolstarContextMenu"), /const actionTarget = \{ \.\.\.menuTarget, pickingLevel: mode \}/);
 assert.match(fn("showMolstarContextMenu"), /if \(!section\.hideTitle\)[\s\S]*moleculeMenuActionButton\(action, label, \{[\s\S]*target: actionTarget/);
 assert.match(fn("moleculeMenuSubmenu"), /aria-haspopup[\s\S]*buret-tree-menu-sub-trigger[\s\S]*buret-molecule-context-submenu/);
+assert.match(fn("moleculeMenuDialogTrigger"), /aria-haspopup[\s\S]*dialog[\s\S]*showMoleculeActionDialog/);
 assert.match(fn("moleculeMenuActionButton"), /pickingLevel: options\.pickingLevel \|\| options\.target\.pickingLevel/);
 assert.match(fn("moleculeMenuActionButton"), /moleculeContextMenuAction\(action, label, target\)/);
 assert.match(fn("moleculeContextMenuAction"), /const target = targetOverride \|\| molstarContextTarget\(\)/);
@@ -163,7 +165,7 @@ assert.doesNotMatch(fn("moleculeContextMenuAction"), /action === 'select'[\s\S]*
 assert.doesNotMatch(fn("moleculeContextMenuAction"), /action === 'select'[\s\S]*activeViewer\.plugin\.selectionMode = false/);
 assert.match(fn("installMoleculeMenuKeyboard"), /ArrowLeft[\s\S]*stopPropagation/);
 assert.match(viewer, /menu\._buretPreviousFocus = document\.activeElement/);
-assert.match(viewer, /renderActions\(\);\s*\n\s*const point = molstarContextMenuLastPoint[\s\S]*positionMolstarContextMenu/);
+assert.match(viewer, /renderActions\(\);\s*\n\s*const point = \{[\s\S]*Number\.parseFloat\(menu\.style\.left\)[\s\S]*positionMolstarContextMenu/);
 assert.match(fn("molstarContextMenuActions"), /VIEWPORT_GRANULARITIES\.find\(\(\[value\]\) => value === mode\)/);
 assert.match(fn("molstarContextMenuActions"), /\['remove', molstarContextCanBulkDelete\(target\)/);
 assert.doesNotMatch(fn("molstarContextMenuActions"), /select:level:/);

@@ -1385,6 +1385,121 @@ body.burette-mobile-host .buret-molecule-preview-chip {
   outline: none;
   background: color-mix(in srgb, var(--buret-toolbar-color) 8%, transparent);
 }
+.buret-molecule-tool-dialog-layer {
+  position: fixed;
+  z-index: 2147483647;
+  inset: 0;
+  display: grid;
+  box-sizing: border-box;
+  place-items: center;
+  padding: 18px;
+  background: color-mix(in srgb, var(--buret-molstar-shadow) 26%, transparent);
+  animation: buret-molecule-dialog-backdrop-in 120ms ease-out;
+}
+.buret-molecule-tool-dialog {
+  position: relative;
+  display: flex;
+  width: min(380px, calc(100vw - 36px));
+  max-height: min(76vh, 620px);
+  box-sizing: border-box;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 14px;
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-panel-background);
+  box-shadow: 0 26px 80px color-mix(in srgb, var(--buret-molstar-shadow) 90%, transparent);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  animation: buret-molecule-dialog-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.buret-molecule-tool-dialog:focus { outline: none; }
+.buret-molecule-tool-dialog-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 14px 12px 16px;
+  border-bottom: 1px solid var(--buret-molstar-border);
+}
+.buret-molecule-tool-dialog-heading {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.buret-molecule-tool-dialog-heading h2,
+.buret-molecule-tool-dialog-heading p {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-molecule-tool-dialog-heading h2 {
+  font-size: 14px;
+  font-weight: 590;
+  line-height: 1.3;
+}
+.buret-molecule-tool-dialog-heading p {
+  padding-top: 2px;
+  color: var(--buret-molstar-muted-text);
+  font-size: 11px;
+}
+.buret-molecule-tool-dialog-close {
+  display: grid;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  margin: -3px -3px 0 0;
+  border: 0;
+  border-radius: 7px;
+  padding: 0;
+  color: var(--buret-molstar-muted-text);
+  background: transparent;
+}
+.buret-molecule-tool-dialog-close:hover,
+.buret-molecule-tool-dialog-close:focus-visible {
+  outline: none;
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-hover-background);
+}
+.buret-molecule-tool-dialog-close > svg { width: 14px; height: 14px; }
+.buret-molecule-tool-dialog-body {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px;
+}
+.buret-molecule-tool-dialog-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.buret-molecule-tool-dialog .buret-tree-menu-item {
+  min-height: 34px;
+  padding: 0 10px;
+}
+.buret-molecule-tool-dialog.buret-tree-menu {
+  position: relative;
+  z-index: auto;
+  left: auto !important;
+  top: auto !important;
+  width: min(420px, calc(100vw - 36px));
+  max-height: min(80vh, 680px);
+  overflow: hidden;
+  padding: 0;
+  border-radius: 14px;
+}
+.buret-molecule-tool-dialog.buret-tree-menu .buret-molecule-tool-dialog-body {
+  padding: 8px;
+}
+@keyframes buret-molecule-dialog-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes buret-molecule-dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 body.burette-mobile-host #status.hidden {
   display: none !important;
 }
@@ -1488,6 +1603,10 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 @media (prefers-reduced-motion: reduce) {
   .buret-molecule-context-mode::before {
     transition: none;
+  }
+  .buret-molecule-tool-dialog-layer,
+  .buret-molecule-tool-dialog {
+    animation: none;
   }
 }
 #buret-toolbar {
