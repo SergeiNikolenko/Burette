@@ -1571,6 +1571,7 @@ async function main() {
           .replaceAll('./viewer-runtime.css"', `./viewer-runtime.css?v=${assetVersion}"`)
           .replaceAll('./viewer-shell.js"', `./viewer-shell.js?v=${assetVersion}"`)
           .replaceAll('./burette-agent.js"', `./burette-agent.js?v=${assetVersion}"`)
+          .replaceAll('./molstar-preset-preview-controller.js"', `./molstar-preset-preview-controller.js?v=${assetVersion}"`)
           .replaceAll('./viewer.js"', `./viewer.js?v=${assetVersion}"`));
         return;
       }

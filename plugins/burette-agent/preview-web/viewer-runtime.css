@@ -2171,13 +2171,10 @@ body.buret-theme-light .buret-molstar-preset-menu-separator {
   user-select: none;
 }
 .buret-molstar-preset-preview.hidden { display: none; }
+.buret-molstar-preset-preview.viewport-constrained { display: none; }
 .buret-molstar-preset-preview.ready:hover {
   box-shadow: 0 22px 52px var(--buret-molstar-shadow);
   transform: translateY(-2px) scale(1.012);
-}
-.buret-molstar-preset-preview:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
-  outline-offset: 2px;
 }
 .buret-molstar-preset-preview.applying {
   opacity: 0;
