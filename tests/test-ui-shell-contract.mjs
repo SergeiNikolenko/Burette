@@ -5699,6 +5699,13 @@ assert.match(previewViewer, /Stage inferred from filename/);
 assert.match(previewViewer, /storyOpenRight\.setAttribute\('aria-label', 'Open Story in right sidebar'\)/);
 assert.match(previewViewer, /type: 'structureStoryChanged'/);
 assert.match(previewViewer, /type: 'openStructureStory'/);
+// A Story step must not repaint the viewer chrome: the snapshots are stripped of
+// their canvas settings, and a style the user picked is re-applied on top.
+assert.match(previewViewer, /function detachMolstarStoryPresentation\(manager\)/);
+assert.match(previewViewer, /snapshot\.canvas3d = undefined/);
+assert.match(previewViewer, /snapshot\.camera\.transitionDurationInMs = instant \? 0 : MOLSTAR_STORY_TRANSITION_MS/);
+assert.match(previewViewer, /if \(style !== 'default'\) await applyMolstarStyle\(viewer, style\)/);
+assert.match(previewViewer, /if \(molstarStoryState\(\)\.available\) \{\s*await applyMolstarStyle\(viewer, style\);/);
 assert.match(previewViewer, /function sceneTreeDisplayLabel\(value\)/);
 assert.match(previewViewer, /if \(\/\^reflig\$\/i\.test\(words\)\) label = 'Reference ligand'/);
 assert.match(previewViewer, /if \(ligand\) label = `Ligand \$\{ligand\[1\]\}`/);

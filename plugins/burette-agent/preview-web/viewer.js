@@ -120,6 +120,9 @@
   let molstarContextMenuCleanup = null;
   let molstarSelectionPreviewCleanup = null;
   let molstarStoryStateCleanup = null;
+  let molstarStoryPresentationRestoreInFlight = false;
+  const molstarStoryDetachedSnapshots = new WeakSet();
+  const MOLSTAR_STORY_TRANSITION_MS = 700;
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
   // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
@@ -881,6 +884,46 @@
     return result;
   }
 
+  // Mol* keeps the author's canvas settings - background, renderer, post-
+  // processing - inside every Story snapshot, so each step re-applies them over
+  // the chrome the user chose in Burette and flashes white on the way. Burette
+  // owns that chrome, so the presentation half of each snapshot is detached once
+  // when the Story is observed. Doing it at the snapshot instead of after each
+  // step covers every path that applies one: our controls, the agent, playback
+  // and the native Mol* state UI.
+  function detachMolstarStoryPresentation(manager) {
+    const entries = manager?.state?.entries ? Array.from(manager.state.entries) : [];
+    const instant = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+    for (const entry of entries) {
+      const snapshot = entry?.snapshot;
+      if (!snapshot || molstarStoryDetachedSnapshots.has(snapshot)) continue;
+      snapshot.canvas3d = undefined;
+      if (snapshot.camera?.current) {
+        snapshot.camera.transitionStyle = instant ? 'instant' : 'animate';
+        snapshot.camera.transitionDurationInMs = instant ? 0 : MOLSTAR_STORY_TRANSITION_MS;
+      }
+      molstarStoryDetachedSnapshots.add(snapshot);
+    }
+  }
+
+  // A step also carries its own representations, which is the Story doing its
+  // job - but a user who picked a style in the toolbar expects it to survive the
+  // step. `default` means "show the scene as authored", so it is left alone.
+  async function restoreMolstarStoryPresentation(viewer = activeViewer) {
+    if (!viewer || viewer !== activeViewer || molstarStoryPresentationRestoreInFlight) return;
+    const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
+    molstarStoryPresentationRestoreInFlight = true;
+    try {
+      if (style !== 'default') await applyMolstarStyle(viewer, style);
+      applyBackgroundMode();
+      applyViewerBackground(viewer);
+    } catch (error) {
+      debug('Mol* Story presentation restore failed: ' + (error?.message || String(error)));
+    } finally {
+      molstarStoryPresentationRestoreInFlight = false;
+    }
+  }
+
   function reportMolstarStoryToHost() {
     const story = molstarStoryState();
     if (!story.available) return;
@@ -895,7 +938,13 @@
   function observeMolstarStoryState(viewer) {
     molstarStoryStateCleanup?.();
     molstarStoryStateCleanup = null;
-    const subscription = viewer?.plugin?.managers?.snapshot?.events?.changed?.subscribe?.(() => reportMolstarStoryToHost());
+    const manager = viewer?.plugin?.managers?.snapshot;
+    detachMolstarStoryPresentation(manager);
+    const subscription = manager?.events?.changed?.subscribe?.(() => {
+      detachMolstarStoryPresentation(manager);
+      reportMolstarStoryToHost();
+      void restoreMolstarStoryPresentation(viewer);
+    });
     if (subscription?.unsubscribe) molstarStoryStateCleanup = () => subscription.unsubscribe();
     reportMolstarStoryToHost();
   }
@@ -3297,6 +3346,17 @@
     const prepared = activeMolstarPrepared;
     if (!prepared) {
       await applyMolstarStyle(viewer, style);
+      return;
+    }
+    // Reloading rebuilds Mol* state from the prepared source, which discards the
+    // snapshots a Story lives in and drops the viewer back on its first step.
+    // A Story keeps its scenes in plugin state, so the style goes on top of the
+    // step the user is looking at instead.
+    if (molstarStoryState().available) {
+      await applyMolstarStyle(viewer, style);
+      if (serial !== molstarStyleApplySerial) return;
+      setStatus(`[web] Applied Mol* ${molstarStyleLabel(style)} style`);
+      setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
       return;
     }
     const cameraSnapshot = captureMolstarCameraSnapshot(viewer);
