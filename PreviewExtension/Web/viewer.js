@@ -21064,6 +21064,9 @@
       const activeNode = sceneTreeNodeByRef(sceneTreeNodes(activeViewer), ref) || node;
       editor.replaceChildren();
       sceneTreeRepresentationMenu(editor, activeViewer, activeNode, activeTarget, { includeType: false, includeHeading: false });
+      for (const disclosure of editor.querySelectorAll('details')) {
+        disclosure.addEventListener('toggle', () => moleculeMenuPositionSubmenu(submenu, trigger));
+      }
       activeRepresentationRef = ref;
       submenu.dataset.ref = ref;
       typePicker?.update(ref);

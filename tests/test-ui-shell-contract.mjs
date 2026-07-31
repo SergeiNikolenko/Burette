@@ -5894,6 +5894,7 @@ assert.match(previewViewer, /type: nextType/);
 assert.match(previewViewer, /color: params\.colorTheme\?\.name/);
 assert.match(previewViewer, /size: params\.sizeTheme\?\.name/);
 assert.match(previewViewer, /function moleculeMenuRepresentationTypePicker\(menu, representationSubmenu, getActiveRef, onApplied\)/);
+assert.match(previewViewer, /editor\.querySelectorAll\('details'\)[\s\S]*addEventListener\('toggle'[\s\S]*moleculeMenuPositionSubmenu\(submenu, trigger\)/);
 assert.match(previewViewer, /function moleculeMenuRepresentationTypePreview\(getActiveRef\)/);
 assert.match(previewViewer, /preview: type => schedule\(\{ kind: 'preview', type \}\)/);
 assert.match(previewViewer, /restore: \(\) => schedule\(\{ kind: 'restore' \}\)/);
@@ -6108,7 +6109,7 @@ assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-re
 assert.match(previewRuntimeCss, /\.buret-representation-type-item \.buret-representation-type-check \{[\s\S]*opacity: 0;/);
 assert.match(previewRuntimeCss, /\.buret-representation-type-item\[data-current="true"\] \.buret-representation-type-check \{[\s\S]*opacity: 1;/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-representation-mode-radio/);
-assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-representation-menu\] \{[\s\S]*width: min\(248px, calc\(100vw - 16px\)\);/);
+assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-representation-menu\] \{[\s\S]*width: min\(200px, calc\(100vw - 16px\)\);[\s\S]*max-height: none;/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu \{[\s\S]*border: 0;/);
 assert.match(previewRuntimeCss, /--buret-menu-background: rgb\(30, 32, 36\);/);
 assert.match(previewRuntimeCss, /--buret-menu-background: var\(--buret-control-fill\);/);
