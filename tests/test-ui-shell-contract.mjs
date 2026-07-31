@@ -5699,6 +5699,33 @@ assert.match(previewViewer, /Stage inferred from filename/);
 assert.match(previewViewer, /storyOpenRight\.setAttribute\('aria-label', 'Open Story in right sidebar'\)/);
 assert.match(previewViewer, /type: 'structureStoryChanged'/);
 assert.match(previewViewer, /type: 'openStructureStory'/);
+assert.match(previewViewer, /function sceneTreeDisplayLabel\(value\)/);
+assert.match(previewViewer, /if \(\/\^reflig\$\/i\.test\(words\)\) label = 'Reference ligand'/);
+assert.match(previewViewer, /if \(ligand\) label = `Ligand \$\{ligand\[1\]\}`/);
+assert.match(previewViewer, /note: String\(cell\.obj\.description \|\| display\.format \|\| ''\)/);
+assert.match(previewViewer, /trigger\.dataset\.sourceLabel = node\.sourceLabel/);
+const sceneTreeDisplayLabelSource = previewViewer.slice(
+  previewViewer.indexOf('  function sceneTreeDisplayLabel(value)'),
+  previewViewer.indexOf('\n  function sceneTreeNodes(viewer)'),
+);
+const sceneTreeDisplayLabel = Function(`${sceneTreeDisplayLabelSource}; return sceneTreeDisplayLabel;`)();
+assert.deepEqual(
+  sceneTreeDisplayLabel('arcp://ni,hash/Receptor_chain_A.pdb'),
+  { label: 'Receptor chain A', format: 'PDB' },
+);
+assert.deepEqual(
+  sceneTreeDisplayLabel('arcp://ni,hash/Box_reference_UNL_A_901.pdb'),
+  { label: 'Box reference UNL A 901', format: 'PDB' },
+);
+assert.deepEqual(
+  sceneTreeDisplayLabel('arcp://ni,hash/reflig.sdf'),
+  { label: 'Reference ligand', format: 'SDF' },
+);
+assert.deepEqual(
+  sceneTreeDisplayLabel('arcp://ni,hash/lig2.sdf'),
+  { label: 'Ligand 2', format: 'SDF' },
+);
+assert.deepEqual(sceneTreeDisplayLabel('Polymer'), { label: 'Polymer', format: '' });
 assert.match(previewViewer, /if \(story\) toggleRow\.append\(story\)/);
 assert.match(previewViewer, /if \(storyPanel\) root\.append\(storyPanel\)/);
 assert.match(previewViewer, /story\.setAttribute\('aria-expanded', open \? 'true' : 'false'\)/);

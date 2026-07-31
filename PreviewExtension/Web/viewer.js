@@ -5384,6 +5384,32 @@
     return cell?.transform?.transformer?.definition?.isDecorator === true;
   }
 
+  function sceneTreeDisplayLabel(value) {
+    const source = String(value || '').trim();
+    if (!source.includes('://')) return { label: source || 'Node', format: '' };
+    const path = source.replace(/[?#].*$/, '');
+    const encodedName = path.slice(path.lastIndexOf('/') + 1);
+    if (!encodedName) return { label: source || 'Node', format: '' };
+    let fileName = encodedName;
+    try { fileName = decodeURIComponent(encodedName); } catch (_) {}
+    const extensionMatch = fileName.match(/\.([a-z0-9]+)$/i);
+    const format = extensionMatch ? extensionMatch[1].toUpperCase() : '';
+    const stem = extensionMatch ? fileName.slice(0, -extensionMatch[0].length) : fileName;
+    const words = stem
+      .replace(/[_-]+/g, ' ')
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/\s+/g, ' ')
+      .trim();
+    let label = words;
+    if (/^reflig$/i.test(words)) label = 'Reference ligand';
+    else {
+      const ligand = words.match(/^lig(?:and)?\s*(\d+)$/i);
+      if (ligand) label = `Ligand ${ligand[1]}`;
+      else if (label) label = label.charAt(0).toUpperCase() + label.slice(1);
+    }
+    return { label: label || fileName, format };
+  }
+
   function sceneTreeNodes(viewer) {
     const state = viewer?.plugin?.state?.data;
     if (!state?.cells) return [];
@@ -5421,11 +5447,14 @@
           const nodeCell = state.cells.get(nodeRef) || cell;
           const components = colorTargets.get(nodeRef) || null;
           const measurementEditable = sceneTreeMeasurementTargets(viewer, nodeRef).length > 0;
-          const label = String(cell.obj.label || 'Node');
+          const rawLabel = String(cell.obj.label || 'Node');
+          const display = sceneTreeDisplayLabel(rawLabel);
+          const label = display.label;
           nodes.push({
             ref: nodeRef,
             label,
-            note: String(cell.obj.description || ''),
+            note: String(cell.obj.description || display.format || ''),
+            sourceLabel: rawLabel === label ? '' : rawLabel,
             typeClass: String(cell.obj.type?.typeClass || 'Object'),
             hidden: sceneTreeCellHidden(state, nodeRef),
             colorable: !!components,
@@ -5528,6 +5557,7 @@
     label.className = 'buret-tree-label';
     label.textContent = node.label;
     trigger.appendChild(label);
+    if (node.sourceLabel) trigger.dataset.sourceLabel = node.sourceLabel;
     if (node.note) {
       const note = document.createElement('span');
       note.className = 'buret-tree-note';
