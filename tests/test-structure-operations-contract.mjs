@@ -77,6 +77,12 @@ assert.match(fn("modifyMolstarContextVisibility"), /state\?\.updateCellState\?\.
 assert.match(fn("moleculeContextMenuAction"), /modifyMolstarContextVisibility\(target, 'subtract'\)/);
 assert.match(fn("moleculeContextMenuAction"), /modifyMolstarContextVisibility\(target, 'intersect'\)/);
 assert.match(fn("moleculeContextMenuAction"), /action === 'view:isolate'[\s\S]*focusMolstarContextPick\(\{ \.\.\.target, loci: isolateLoci \}\)/);
+// Isolate's inverse and Mol*'s own cell actions came over from the scene tree menu
+// when the 3D right click took its place; both address the component by ref.
+assert.match(fn("molstarContextMenuActions"), /actions\.push\(\['view:show-all', 'Show all'\]\)/);
+assert.match(fn("molstarContextMenuActions"), /sceneTreeCellActions\(activeMolstarViewer\(\), componentRef\)[\s\S]*`molstar-action:\$\{index\}`/);
+assert.match(fn("moleculeContextMenuAction"), /action === 'view:show-all'[\s\S]*showAllSceneTreeNodes\(componentRef\)/);
+assert.match(fn("moleculeContextMenuAction"), /action\.startsWith\('molstar-action:'\)[\s\S]*applySceneTreeAction\(componentRef, Number\(/);
 assert.match(fn("addMolstarContextScopeComponent"), /const loci = molstarContextSelectionLoci\(target\)/);
 assert.match(fn("addMolstarContextScopeComponent"), /manager\.add\(\{[\s\S]*selection: selectionQuery[\s\S]*representation/);
 assert.match(fn("molstarContextTargetComponents"), /molstarCurrentStructures\(activeMolstarViewer\(\)\)[\s\S]*find\(structure => structure\?\.cell\?\.transform\?\.ref === targetRef\)/);
@@ -125,7 +131,7 @@ assert.match(fn("restoreMolstarAlignUndoSnapshot"), /mode === snapshot\.mode[\s\
 assert.match(fn("restoreMolstarEditUndoSnapshot"), /kind === 'scene'[\s\S]*kind === 'align'/);
 assert.match(fn("pushMolstarEditUndoSnapshot"), /kind !== 'scene' && snapshot\.kind !== 'align' && !snapshot\.payload\?\.text/);
 const undoLabels = fn("molstarSceneUndoActionLabel");
-for (const undoable of ["colour:", "analyze:interactions", "analyze:label", "represent:surface", "view:hide", "view:isolate"]) {
+for (const undoable of ["colour:", "analyze:interactions", "analyze:label", "represent:surface", "view:hide", "view:isolate", "view:show-all"]) {
   assert.ok(undoLabels.includes(undoable), `scene undo should cover ${undoable}`);
 }
 for (const skipped of ["select:", "extract:", "split:", "save-"]) {

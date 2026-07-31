@@ -19484,6 +19484,7 @@
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
     { id: 'compute', title: 'Compute' },
+    { id: 'molstar-action', title: 'Apply action' },
     { id: 'danger', title: 'Delete', direct: true, destructive: true, hideTitle: true, breakBefore: true }
   ];
 
@@ -19501,6 +19502,7 @@
     export: ['M12 3v12', 'm7-5 5 5 5-5', 'M5 21h14'],
     search: ['M21 21l-4.35-4.35', 'M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z'],
     compute: ['M9 3h6', 'M10 3v5l-5.5 9.5A2.3 2.3 0 0 0 6.5 21h11a2.3 2.3 0 0 0 2-3.5L14 8V3', 'M8 15h8'],
+    'molstar-action': ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'm10 8 6 4-6 4Z'],
     danger: SCENE_TREE_ICON.trash
   };
 
@@ -19519,6 +19521,7 @@
     // `select-atom` is the atom-mode pick and belongs with the primary actions; the
     // `select:` namespace is the selection toolkit, which gets its own section.
     if (name.startsWith('select:')) return 'selection';
+    if (name.startsWith('molstar-action:')) return 'molstar-action';
     return 'primary';
   }
 
@@ -19528,6 +19531,7 @@
     if (name.startsWith('focus')) return SCENE_TREE_ICON.focus;
     if (name === 'view:hide') return SCENE_TREE_ICON.eye;
     if (name === 'view:isolate') return SCENE_TREE_ICON.isolate;
+    if (name === 'view:show-all') return SCENE_TREE_ICON.restore;
     if (name === 'represent:surface') return ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
     if (name === 'represent:menu') return ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'];
     // A box with a plus: the selection becomes a new object in the scene.
@@ -19583,11 +19587,24 @@
     // The desktop overlay carries the scene-tree powers into the 3D right click.
     // These stay off the mobile host, which renders its own native sheet.
     if (document.body?.classList.contains('burette-mobile-host') !== true) {
-      if (molstarContextComponentRef(target)) {
+      const componentRef = molstarContextComponentRef(target);
+      if (componentRef) {
         actions.push(['view:hide', `Hide ${noun}`]);
         actions.push(['view:isolate', `Isolate ${noun}`]);
+        // Clears the hidden flag on every component of this structure: the way
+        // back from the scene tree's eye toggles, and from an Isolate that hid
+        // whole components outright. It does not undo the element-level subtract
+        // that Hide and Isolate apply to a component they do intersect — that
+        // rewrites the component rather than hiding a cell, and ⌘Z is its inverse.
+        actions.push(['view:show-all', 'Show all']);
         actions.push(['represent:surface', 'Add grey surface']);
         actions.push(['represent:menu', 'Representation & colour…']);
+        // Mol*'s own cell actions, the same list the scene tree offers. They are
+        // many and rarely the reason the menu was opened, so they stay behind a
+        // submenu rather than pushing the rest of the menu off screen.
+        sceneTreeCellActions(activeMolstarViewer(), componentRef).forEach((entry, index) => {
+          actions.push([`molstar-action:${index}`, entry.label]);
+        });
       }
       // Deliberately outside the componentRef check: this is the item for things
       // that have no component yet, which is exactly when it is worth offering.
@@ -19668,6 +19685,7 @@
     if (name === 'represent:surface') return `surface on ${targetLabel}`;
     if (name === 'view:hide') return `hiding ${targetLabel}`;
     if (name === 'view:isolate') return `isolating ${targetLabel}`;
+    if (name === 'view:show-all') return 'showing every component';
     return null;
   }
 
@@ -19776,6 +19794,16 @@
         }
         focusMolstarContextPick({ ...target, loci: isolateLoci });
         setStatus(`[web] Isolated ${targetLabel}.`);
+      } else if (action === 'view:show-all') {
+        const componentRef = molstarContextComponentRef(target);
+        if (!componentRef) throw new Error('No Mol* component is available to show.');
+        showAllSceneTreeNodes(componentRef);
+        setStatus('[web] Showed every component in the scene.');
+      } else if (action.startsWith('molstar-action:')) {
+        const componentRef = molstarContextComponentRef(target);
+        if (!componentRef) throw new Error('No Mol* component is available for this action.');
+        await applySceneTreeAction(componentRef, Number(action.slice('molstar-action:'.length)));
+        setStatus(`[web] Applied ${label} to ${targetLabel}.`);
       } else if (action === 'represent:surface') {
         if (!await addGreySurfaceForContext(target)) throw new Error('No Mol* selection or target is available for a surface.');
         setStatus(`[web] Added a translucent surface to ${targetLabel}.`);
