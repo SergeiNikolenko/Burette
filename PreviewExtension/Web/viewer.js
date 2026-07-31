@@ -20631,7 +20631,12 @@
     text.className = 'buret-tree-menu-label';
     text.textContent = label;
     button.append(moleculeMenuIcon(moleculeContextActionIcon(action)), text);
-    button.addEventListener('click', () => {
+    button.addEventListener('click', event => {
+      if (event.button !== 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       const target = options.target
         ? { ...options.target, pickingLevel: options.pickingLevel || options.target.pickingLevel }
         : null;
@@ -20680,6 +20685,9 @@
   function moleculeMenuOpenSubmenu(menu, submenu, trigger, options = {}) {
     submenu._buretParentSubmenu = trigger.closest('.buret-molecule-context-submenu');
     moleculeMenuCloseSubmenus(menu, submenu);
+    // Recursive submenus are created before their parents. Move the one being
+    // opened to the end so the deepest visible level paints above its ancestors.
+    menu.appendChild(submenu);
     submenu.hidden = false;
     submenu.dataset.open = 'true';
     trigger.setAttribute('aria-expanded', 'true');
@@ -20707,7 +20715,7 @@
     trigger.append(moleculeMenuIcon(moleculeContextActionIcon(action)), label, chevron);
 
     const submenu = document.createElement('div');
-    submenu.className = 'buret-molecule-context-submenu';
+    submenu.className = `buret-molecule-context-submenu${String(action).startsWith('align:') ? ' buret-superposition-context-submenu' : ''}`;
     submenu.setAttribute('role', 'menu');
     submenu.setAttribute('aria-label', actionLabel);
     submenu.dataset.open = 'false';
@@ -20725,6 +20733,11 @@
     const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
     trigger.addEventListener('pointerenter', () => open(false));
     trigger.addEventListener('click', event => {
+      if (event.button !== 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       event.preventDefault();
       if (submenu.hidden) open(true);
       else moleculeMenuCloseSubmenus(menu, options.parentSubmenu || null);
@@ -20769,7 +20782,7 @@
     trigger.append(moleculeMenuIcon(MOLECULE_MENU_GROUP_ICONS[section.id]), label, chevron);
 
     const submenu = document.createElement('div');
-    submenu.className = 'buret-molecule-context-submenu';
+    submenu.className = `buret-molecule-context-submenu${section.id === 'align' ? ' buret-superposition-context-submenu' : ''}`;
     submenu.setAttribute('role', 'menu');
     submenu.setAttribute('aria-label', section.title);
     submenu.dataset.open = 'false';
@@ -20807,6 +20820,11 @@
     const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
     trigger.addEventListener('pointerenter', () => open(false));
     trigger.addEventListener('click', event => {
+      if (event.button !== 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       event.preventDefault();
       if (submenu.hidden) open(true);
       else moleculeMenuCloseSubmenus(menu);
@@ -21114,6 +21132,12 @@
     };
     const suppressSecondaryMouseEvent = (event) => {
       if (event.button !== 2) return;
+      if (event.target instanceof Element && event.target.closest('.buret-molecule-context-menu')) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+        return;
+      }
       if (['mousedown', 'mouseup'].includes(event.type)) return;
       if (contextPointer?.moved) return;
       if (!contextPointer && !isMolstarContextMenuTarget(event.target)) return;
@@ -21125,7 +21149,25 @@
     const restoreContextPointerCamera = (pointer) => {
       const snapshot = pointer?.cameraSnapshot;
       if (!snapshot) return;
-      window.requestAnimationFrame(() => restoreMolstarCameraSnapshot(viewer, snapshot));
+      const canvas3d = viewer?.plugin?.canvas3d;
+      const camera = canvas3d?.camera;
+      const restore = () => {
+        if (typeof camera?.setState === 'function') {
+          try {
+            camera.setState(snapshot, 0);
+            canvas3d.requestDraw?.();
+            return;
+          } catch (_) {}
+        }
+        restoreMolstarCameraSnapshot(viewer, snapshot);
+      };
+      // Mol* maps secondary pointerdown to focus+zoom immediately and finishes
+      // its controls after pointerup. Restore after that cycle, then once more on
+      // the following frame so a short context click cannot retain camera motion.
+      window.requestAnimationFrame(() => {
+        restore();
+        window.requestAnimationFrame(restore);
+      });
     };
     const onContextMenu = (event) => {
       if (menuIsOpen() && !contextPointer) {
@@ -21151,6 +21193,15 @@
       contextPointer = null;
     };
     const onPointerDown = (event) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.buret-molecule-context-menu')) {
+        if (event.button === 2) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation?.();
+        }
+        return;
+      }
       beginMolstarSelectionPreserve(event);
       clearTouchContextPointer();
       // Remember where a left press on the viewport began, so a click (not a drag
@@ -21208,8 +21259,6 @@
         }, MOLSTAR_TOUCH_CONTEXT_MENU_DELAY_MS);
         touchContextPointer = pointer;
       }
-      const target = event.target;
-      if (target instanceof Element && target.closest('.buret-molecule-context-menu')) return;
       // Pressing the preview card is not a press on the view behind it. The plain
       // dismissal below re-derives the preview from the current pick, which tears
       // the card down mid-press and takes its buttons with it.

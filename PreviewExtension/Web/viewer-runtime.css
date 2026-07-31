@@ -4454,6 +4454,9 @@ body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-
 body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-item-destructive {
   color: #ff6b5e;
 }
+.buret-superposition-context-submenu .buret-tree-menu-icon {
+  display: none;
+}
 @keyframes buret-molecule-submenu-in {
   from { opacity: 0; transform: translateX(-2px) scale(0.98); }
   to { opacity: 1; transform: translateX(0) scale(1); }
