@@ -4525,9 +4525,10 @@ body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-repres
   padding: 0;
 }
 body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] {
-  width: min(248px, calc(100vw - 16px));
-  min-width: min(224px, calc(100vw - 16px));
-  max-width: min(248px, calc(100vw - 16px));
+  width: min(200px, calc(100vw - 16px));
+  min-width: min(200px, calc(100vw - 16px));
+  max-width: min(200px, calc(100vw - 16px));
+  max-height: none;
 }
 body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-representation-type-trigger {
   width: 100%;
