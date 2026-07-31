@@ -54,6 +54,11 @@ assert.match(
   /const refreshEntries = async \(\) => \{\s*\n\s*entries = superpositionStructureEntries\(viewer, prepared\);/,
 );
 assert.doesNotMatch(fn("createStructureSuperpositionController"), /prepareSuperpositionScene|applyDockingSceneVisibility/);
+assert.match(
+  fn("createStructureSuperpositionController"),
+  /const restoreAfterSceneReload = async \(\) => \{[\s\S]*?if \(!result\) return false;[\s\S]*?await refreshEntries\(\);[\s\S]*?await commitSuperpositionPlan\(viewer, entries, result\);/,
+);
+assert.match(fn("reloadSdfPoseMode"), /await activeStructureAlignmentControl\?\.restoreAfterSceneReload\?\.\(\)/);
 
 // PDB subsets are addressed by atom serial. Pairing the n-th ATOM line with the
 // n-th Mol* atom drifts on files where a record does not become an atom, which

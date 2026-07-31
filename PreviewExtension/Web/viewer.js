@@ -2599,6 +2599,7 @@
       const poseCount = Number(activeMolstarPrepared.poseCount || 0);
       const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
       await applyDockingSceneVisibility(activeViewer, activeMolstarPrepared, activePose, { focus: false });
+      await activeStructureAlignmentControl?.restoreAfterSceneReload?.();
       return;
     }
     if (activeMolstarPrepared?.kind === 'docking' && activeMolstarPrepared?.sdfPoseOverlayAvailable === true) {
@@ -14091,6 +14092,14 @@
       }
     };
 
+    const restoreAfterSceneReload = async () => {
+      if (!result) return false;
+      await refreshEntries();
+      await commitSuperpositionPlan(viewer, entries, result);
+      sync();
+      return true;
+    };
+
     const open = async (method) => {
       if (!panel) {
         if (typeof window.BuretteSuperpositionPanel?.create !== 'function') throw new Error('The Burette Superposition panel is unavailable.');
@@ -14124,6 +14133,7 @@
       open,
       apply,
       reset,
+      restoreAfterSceneReload,
       destroy,
       contextActions,
       isAligned: () => Boolean(result),
@@ -15451,6 +15461,7 @@
     const performSetPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
+      const shouldFocus = options.focus === true || options.userStep === true;
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
@@ -15470,23 +15481,20 @@
             }
             scheduleLoopStep(loopDelayMs(), loopEpoch);
           }
-          if (options.focus === true) {
-            scheduleMolstarStructureFocus(viewer, { reason: 'native-trajectory-pose', durationMs: 180 });
-          }
         } else if (prepared.kind === 'sdf-collection') {
-          await applySdfCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: options.focus === true });
+          await applySdfCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
           updateControls();
         } else if (prepared.kind === 'xyz-frame-overlay') {
-          await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false, focus: options.focus === true });
+          await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false, focus: false });
           activePose = nextIndex;
           updateControls();
         } else if (prepared.kind === 'docking' && prepared.dockingSceneMode) {
-          await applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: options.focus === true });
+          await applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
           updateControls();
         } else if (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true) {
-          await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: options.focus === true });
+          await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
           updateControls();
         } else {
@@ -15498,6 +15506,7 @@
           activePose = nextIndex;
           return;
         }
+        if (shouldFocus) scheduleMolstarStructureFocus(viewer, { reason: 'pose-selection', durationMs: 180, force: true });
         notifyDockingPoseChanged(activePose, prepared);
       } catch (error) {
         try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
@@ -21013,13 +21022,18 @@
     };
     const suppressSecondaryMouseEvent = (event) => {
       if (event.button !== 2) return;
-      if (event.type === 'mousedown') return;
+      if (['mousedown', 'mouseup'].includes(event.type)) return;
       if (contextPointer?.moved) return;
       if (!contextPointer && !isMolstarContextMenuTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation?.();
       clearMolstarHoverHighlights();
+    };
+    const restoreContextPointerCamera = (pointer) => {
+      const snapshot = pointer?.cameraSnapshot;
+      if (!snapshot) return;
+      window.requestAnimationFrame(() => restoreMolstarCameraSnapshot(viewer, snapshot));
     };
     const onContextMenu = (event) => {
       if (menuIsOpen() && !contextPointer) {
@@ -21031,8 +21045,10 @@
         event.preventDefault();
         event.stopPropagation();
         if (!contextPointer.moved) {
-          openFromEvent(event, contextPointer.pick);
+          const pointer = contextPointer;
           contextPointer = null;
+          restoreContextPointerCamera(pointer);
+          openFromEvent(event, pointer.pick);
           return;
         }
         hideMolstarContextMenu();
@@ -21067,6 +21083,7 @@
           startX: event.clientX,
           startY: event.clientY,
           moved: false,
+          cameraSnapshot: captureMolstarCameraSnapshot(viewer),
           pick: contextPick
         };
         hideMolstarContextMenu();
@@ -21162,10 +21179,10 @@
         contextPointer = null;
         return;
       }
-      event.preventDefault();
-      event.stopPropagation();
-      openFromEvent(event, contextPointer.pick);
+      const pointer = contextPointer;
       contextPointer = null;
+      restoreContextPointerCamera(pointer);
+      openFromEvent(syntheticContextEvent(event), pointer.pick);
     };
     const onPointerCancel = (event) => {
       if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) clearTouchContextPointer();
