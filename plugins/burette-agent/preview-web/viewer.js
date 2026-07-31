@@ -57,11 +57,10 @@
   ];
   const MOLSTAR_PRESET_OPTIONS = [
     { value: 'automatic', label: 'Automatic', provider: 'preset-structure-representation-auto' },
-    { value: 'cartoon-lines', label: 'Cartoon + Ligand Lines', group: 'Burette', legacyStyle: 'cartoon' },
+    { value: 'illustrative-surface', label: 'Ghost Surface', group: 'Burette', legacyStyle: 'illustrative-surface' },
     { value: 'ball-and-stick', label: 'Ball & Stick', group: 'Burette', legacyStyle: 'ball-and-stick' },
     { value: 'spacefill', label: 'Spacefill by Element', group: 'Burette', legacyStyle: 'spacefill' },
     { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line', defaultAppearance: 'default' },
-    { value: 'illustrative-surface', label: 'Ghost Surface', group: 'Burette', legacyStyle: 'illustrative-surface' },
     { value: 'atomic-detail', label: 'Atomic Detail', group: 'Basic', provider: 'preset-structure-representation-atomic-detail' },
     { value: 'polymer-cartoon', label: 'Polymer Cartoon', group: 'Basic', provider: 'preset-structure-representation-polymer-cartoon' },
     { value: 'polymer-ligand', label: 'Polymer & Ligand', group: 'Basic', provider: 'preset-structure-representation-polymer-and-ligand' },
@@ -1262,7 +1261,9 @@
   function molstarPresetForLegacyStyle(style) {
     const normalized = normalizeMolstarStyle(style);
     if (normalized === 'polymer-ligand') return 'polymer-ligand';
-    if (normalized === 'cartoon') return 'cartoon-lines';
+    // The Burette cartoon preset is gone; Mol*'s own Polymer Cartoon is what a
+    // config still asking for the legacy `cartoon` style means.
+    if (normalized === 'cartoon') return 'polymer-cartoon';
     if (['ball-and-stick', 'spacefill', 'line', 'illustrative-surface'].includes(normalized)) return normalized;
     if (normalized === 'molecular-surface') return 'molecular-surface';
     return DEFAULT_MOLSTAR_PRESET;
