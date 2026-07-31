@@ -4524,19 +4524,24 @@ body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-repres
   border-radius: 50%;
   padding: 0;
 }
-body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-representation-mode-group {
-  padding: 0 4px 4px;
-}
-body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-representation-mode-radio {
+body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-representation-type-trigger {
   width: 100%;
   min-height: 28px;
 }
-body:not(.burette-mobile-host) .buret-representation-mode-radio .buret-representation-mode-check {
+body:not(.burette-mobile-host) .buret-representation-type-value {
+  margin-left: auto;
+  color: var(--buret-molstar-muted-text);
+  font-size: 10px;
+}
+body:not(.burette-mobile-host) .buret-representation-type-item .buret-representation-type-check {
   opacity: 0;
 }
-body:not(.burette-mobile-host) .buret-representation-mode-radio[data-checked="true"] .buret-representation-mode-check {
+body:not(.burette-mobile-host) .buret-representation-type-item[data-current="true"] .buret-representation-type-check {
   opacity: 1;
   color: var(--buret-accent, #5da9ff);
+}
+body:not(.burette-mobile-host) .buret-representation-type-action-menu {
+  min-width: 176px;
 }
 @keyframes buret-molecule-submenu-in {
   from { opacity: 0; transform: translateX(-2px) scale(0.98); }

@@ -159,8 +159,9 @@ assert.match(fn("showMolstarContextMenu"), /if \(!section\.hideTitle\)[\s\S]*mol
 assert.match(fn("moleculeMenuSubmenu"), /aria-haspopup[\s\S]*buret-tree-menu-sub-trigger[\s\S]*buret-molecule-context-submenu/);
 assert.match(fn("moleculeMenuRepresentationSubmenu"), /aria-haspopup[\s\S]*menu[\s\S]*sceneTreeRepresentationMenu/);
 assert.match(fn("moleculeMenuRepresentationSubmenu"), /trigger\.addEventListener\('click'[\s\S]*event\.stopPropagation\(\)[\s\S]*open\(true\)/);
-assert.match(fn("duplicateSceneTreeRepresentation"), /addRepresentation[\s\S]*type: params\.type\?\.name[\s\S]*return String\(created\?\.ref/);
-assert.match(fn("moleculeMenuRepresentationMode"), /Apply to current[\s\S]*Add another[\s\S]*menuitemradio[\s\S]*duplicateSceneTreeRepresentation/);
+assert.match(fn("duplicateSceneTreeRepresentation"), /typeOverride[\s\S]*addRepresentation[\s\S]*type: nextType[\s\S]*return String\(created\?\.ref/);
+assert.match(fn("moleculeMenuRepresentationTypePicker"), /Update current[\s\S]*Add another[\s\S]*applySceneTreeReprType[\s\S]*duplicateSceneTreeRepresentation/);
+assert.doesNotMatch(viewer, /function moleculeMenuRepresentationMode/);
 assert.match(fn("moleculeMenuActionButton"), /pickingLevel: options\.pickingLevel \|\| options\.target\.pickingLevel/);
 assert.match(fn("moleculeMenuActionButton"), /moleculeContextMenuAction\(action, label, target\)/);
 assert.match(fn("moleculeContextMenuAction"), /const target = targetOverride \|\| molstarContextTarget\(\)/);

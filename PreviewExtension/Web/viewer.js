@@ -7042,16 +7042,18 @@
   // The representation editor can either change its current leaf or branch a new
   // one from it. Mol*'s builder returns the new state selector, so the same editor
   // can immediately retarget that exact copy without guessing from array order.
-  async function duplicateSceneTreeRepresentation(ref) {
+  async function duplicateSceneTreeRepresentation(ref, typeOverride = '') {
     const viewer = activeMolstarViewer();
     const target = sceneTreeRepresentationTargets(viewer).get(ref);
     const builder = viewer?.plugin?.builders?.structure?.representation;
     const params = target?.representation?.cell?.transform?.params;
     if (!target || !params?.type?.name || typeof builder?.addRepresentation !== 'function') return '';
     try {
+      const nextType = String(typeOverride || params.type.name);
+      const keepTypeParams = nextType === params.type.name;
       const created = await builder.addRepresentation(target.component?.cell || target.component, {
-        type: params.type?.name,
-        typeParams: { ...(params.type?.params || {}) },
+        type: nextType,
+        typeParams: keepTypeParams ? { ...(params.type?.params || {}) } : {},
         color: params.colorTheme?.name,
         colorParams: { ...(params.colorTheme?.params || {}) },
         size: params.sizeTheme?.name,
@@ -7394,14 +7396,16 @@
   // The leaf menu edits one representation on its own: what it is, how solid it is,
   // and how it is coloured. Type and opacity sit together because they describe the
   // same drawing; colour keeps the structure row's theme picker and swatches.
-  function sceneTreeRepresentationMenu(menu, viewer, node, target) {
+  function sceneTreeRepresentationMenu(menu, viewer, node, target, options = {}) {
     const params = target.representation?.cell?.transform?.params;
     const currentType = String(params?.type?.name || '');
     const alpha = Number.isFinite(params?.type?.params?.alpha) ? params.type.params.alpha : 1;
 
-    const types = sceneTreeRepresentationTypes(viewer, [target.component]);
-    sceneTreeMenuSection(menu, 'Representation');
-    if (types.length) sceneTreeMenuSelect(menu, 'Type', 'representation-type', types, currentType);
+    if (options.includeHeading !== false) sceneTreeMenuSection(menu, 'Representation');
+    if (options.includeType !== false) {
+      const types = sceneTreeRepresentationTypes(viewer, [target.component]);
+      if (types.length) sceneTreeMenuSelect(menu, 'Type', 'representation-type', types, currentType);
+    }
     sceneTreeSurfaceFillRow(menu, viewer, target);
     sceneTreeMenuSlider(menu, 'Opacity', 'opacity', Math.round(alpha * 100));
 
@@ -20898,8 +20902,12 @@
   }
 
   function moleculeMenuCloseSubmenus(menu, except = null) {
+    const keep = new Set();
+    for (let current = except; current && current !== menu; current = current.parentElement?.closest?.('.buret-molecule-context-submenu')) {
+      if (current.classList?.contains('buret-molecule-context-submenu')) keep.add(current);
+    }
     menu.querySelectorAll('.buret-molecule-context-submenu[data-open="true"]').forEach(submenu => {
-      if (submenu === except) return;
+      if (keep.has(submenu)) return;
       for (const list of submenu.querySelectorAll('[data-scene-tree-picker-list]')) {
         closeSceneTreePicker(list, { restore: true });
       }
@@ -21043,6 +21051,8 @@
     submenu.setAttribute('aria-label', `Representation and colour for ${target?.label || 'selection'}`);
     submenu._buretTrigger = trigger;
 
+    let activeRepresentationRef = representationRef;
+    let typePicker = null;
     const editor = document.createElement('div');
     editor.className = 'buret-representation-editor';
     const renderEditor = ref => {
@@ -21051,12 +21061,19 @@
       if (!activeTarget) return false;
       const activeNode = sceneTreeNodeByRef(sceneTreeNodes(activeViewer), ref) || node;
       editor.replaceChildren();
-      sceneTreeRepresentationMenu(editor, activeViewer, activeNode, activeTarget);
+      sceneTreeRepresentationMenu(editor, activeViewer, activeNode, activeTarget, { includeType: false, includeHeading: false });
+      activeRepresentationRef = ref;
       submenu.dataset.ref = ref;
+      typePicker?.update(ref);
       return true;
     };
-    moleculeMenuRepresentationMode(submenu, representationRef, renderEditor);
-    submenu.appendChild(editor);
+    typePicker = moleculeMenuRepresentationTypePicker(
+      menu,
+      submenu,
+      () => activeRepresentationRef,
+      renderEditor
+    );
+    submenu.append(typePicker.element, editor);
     renderEditor(representationRef);
 
     const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
@@ -21078,57 +21095,166 @@
     return trigger;
   }
 
-  // Mirrors a DropdownMenuRadioGroup: the checked row tells the editor whether it
-  // targets the representation that opened the menu or a newly duplicated layer.
-  // The duplicate is created only after the explicit choice, and once per menu.
-  function moleculeMenuRepresentationMode(submenu, originalRef, renderEditor) {
-    sceneTreeMenuSection(submenu, 'Apply to');
-    const group = document.createElement('div');
-    group.className = 'buret-representation-mode-group';
-    group.setAttribute('role', 'group');
-    group.setAttribute('aria-label', 'Apply representation changes to');
-    const items = new Map();
-    let activeMode = 'current';
-    let addedRef = '';
-    const update = () => {
-      for (const [mode, item] of items) {
-        const checked = mode === activeMode;
-        item.setAttribute('aria-checked', checked ? 'true' : 'false');
-        item.dataset.checked = checked ? 'true' : 'false';
-      }
+  // Type is a cascading menu rather than a native select: a type is chosen first,
+  // then a final submenu decides whether it replaces the active representation or
+  // becomes another layer. This keeps the destructive choice out of the editor.
+  function moleculeMenuRepresentationTypePicker(menu, representationSubmenu, getActiveRef, onApplied) {
+    const container = document.createElement('div');
+    container.className = 'buret-representation-type-control';
+    const heading = document.createElement('div');
+    heading.className = 'buret-tree-menu-title';
+    heading.textContent = 'Representation';
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'buret-tree-menu-item buret-tree-menu-sub-trigger buret-representation-type-trigger';
+    trigger.setAttribute('role', 'menuitem');
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    const triggerLabel = document.createElement('span');
+    triggerLabel.className = 'buret-tree-menu-label';
+    triggerLabel.textContent = 'Type';
+    const triggerValue = document.createElement('span');
+    triggerValue.className = 'buret-representation-type-value';
+    const triggerChevron = document.createElement('span');
+    triggerChevron.className = 'buret-tree-menu-chevron';
+    triggerChevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
+    trigger.append(moleculeMenuIcon(moleculeContextActionIcon('represent:menu')), triggerLabel, triggerValue, triggerChevron);
+    container.append(heading, trigger);
+
+    const typeMenu = document.createElement('div');
+    typeMenu.className = 'buret-molecule-context-submenu buret-representation-type-menu';
+    typeMenu.dataset.buretRepresentationTypeMenu = '1';
+    typeMenu.dataset.open = 'false';
+    typeMenu.hidden = true;
+    typeMenu.setAttribute('role', 'menu');
+    typeMenu.setAttribute('aria-label', 'Representation type');
+    typeMenu._buretTrigger = trigger;
+    const typeMenuHeading = document.createElement('div');
+    typeMenuHeading.className = 'buret-tree-menu-title';
+    typeMenuHeading.textContent = 'Type';
+    typeMenu.appendChild(typeMenuHeading);
+
+    const activeTarget = sceneTreeRepresentationTargets(activeMolstarViewer()).get(getActiveRef());
+    const types = activeTarget ? sceneTreeRepresentationTypes(activeMolstarViewer(), [activeTarget.component]) : [];
+    const typeItems = new Map();
+    let suppressFocusOpen = false;
+    const update = ref => {
+      const target = sceneTreeRepresentationTargets(activeMolstarViewer()).get(ref);
+      const currentType = String(target?.representation?.cell?.transform?.params?.type?.name || '');
+      triggerValue.textContent = types.find(type => type.name === currentType)?.label || currentType || 'Choose';
+      for (const [name, item] of typeItems) item.dataset.current = name === currentType ? 'true' : 'false';
     };
-    for (const [mode, label] of [['current', 'Apply to current'], ['add', 'Add another']]) {
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'buret-tree-menu-item buret-representation-mode-radio';
-      item.setAttribute('role', 'menuitemradio');
-      item.dataset.buretRepresentationMode = mode;
+    const finish = (ref, typeLabel, actionLabel) => {
+      if (!ref || !onApplied(ref)) return;
+      update(ref);
+      moleculeMenuCloseSubmenus(menu, representationSubmenu);
+      suppressFocusOpen = true;
+      trigger.focus();
+      suppressFocusOpen = false;
+      setStatus(`[web] ${actionLabel === 'Add another' ? 'Added' : 'Updated'} ${typeLabel}.`);
+    };
+
+    for (const type of types) {
+      const typeTrigger = document.createElement('button');
+      typeTrigger.type = 'button';
+      typeTrigger.className = 'buret-tree-menu-item buret-tree-menu-sub-trigger buret-representation-type-item';
+      typeTrigger.setAttribute('role', 'menuitem');
+      typeTrigger.setAttribute('aria-haspopup', 'menu');
+      typeTrigger.setAttribute('aria-expanded', 'false');
+      typeTrigger.dataset.buretRepresentationType = type.name;
       const check = moleculeMenuIcon(['M20 6 9 17l-5-5']);
-      check.classList.add('buret-representation-mode-check');
-      const text = document.createElement('span');
-      text.className = 'buret-tree-menu-label';
-      text.textContent = label;
-      item.append(check, text);
-      item.addEventListener('click', async event => {
+      check.classList.add('buret-representation-type-check');
+      const label = document.createElement('span');
+      label.className = 'buret-tree-menu-label';
+      label.textContent = type.label;
+      const chevron = document.createElement('span');
+      chevron.className = 'buret-tree-menu-chevron';
+      chevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
+      typeTrigger.append(check, label, chevron);
+
+      const actionMenu = document.createElement('div');
+      actionMenu.className = 'buret-molecule-context-submenu buret-representation-type-action-menu';
+      actionMenu.dataset.buretRepresentationTypeActionMenu = type.name;
+      actionMenu.dataset.open = 'false';
+      actionMenu.hidden = true;
+      actionMenu.setAttribute('role', 'menu');
+      actionMenu.setAttribute('aria-label', `${type.label} action`);
+      actionMenu._buretTrigger = typeTrigger;
+      for (const actionLabel of ['Update current', 'Add another']) {
+        const action = document.createElement('button');
+        action.type = 'button';
+        action.className = 'buret-tree-menu-item';
+        action.setAttribute('role', 'menuitem');
+        action.dataset.buretRepresentationTypeAction = actionLabel === 'Add another' ? 'add' : 'update';
+        const icon = moleculeMenuIcon(actionLabel === 'Add another' ? ['M12 5v14M5 12h14'] : ['M20 6 9 17l-5-5']);
+        const text = document.createElement('span');
+        text.className = 'buret-tree-menu-label';
+        text.textContent = actionLabel;
+        action.append(icon, text);
+        action.addEventListener('click', async event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const activeRef = getActiveRef();
+          action.disabled = true;
+          if (actionLabel === 'Update current') {
+            await applySceneTreeReprType(activeRef, type.name);
+            action.disabled = false;
+            finish(activeRef, type.label, actionLabel);
+          } else {
+            const createdRef = await duplicateSceneTreeRepresentation(activeRef, type.name);
+            action.disabled = false;
+            finish(createdRef, type.label, actionLabel);
+          }
+        });
+        actionMenu.appendChild(action);
+      }
+
+      const openActionMenu = focusFirst => moleculeMenuOpenSubmenu(menu, actionMenu, typeTrigger, { focusFirst });
+      typeTrigger.addEventListener('pointerenter', () => openActionMenu(false));
+      typeTrigger.addEventListener('focus', () => openActionMenu(false));
+      typeTrigger.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
-        if (mode === 'add' && !addedRef) {
-          item.disabled = true;
-          item.dataset.pending = 'true';
-          addedRef = await duplicateSceneTreeRepresentation(originalRef);
-          item.disabled = false;
-          delete item.dataset.pending;
-        }
-        const nextRef = mode === 'add' ? addedRef : originalRef;
-        if (!nextRef || !renderEditor(nextRef)) return;
-        activeMode = mode;
-        update();
+        openActionMenu(true);
       });
-      items.set(mode, item);
-      group.appendChild(item);
+      typeTrigger.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        event.stopPropagation();
+        openActionMenu(true);
+      });
+      actionMenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, actionMenu, typeTrigger));
+      typeItems.set(type.name, typeTrigger);
+      typeMenu.append(typeTrigger, actionMenu);
     }
-    update();
-    submenu.appendChild(group);
+
+    const openTypeMenu = focusCurrent => {
+      moleculeMenuOpenSubmenu(menu, typeMenu, trigger);
+      if (focusCurrent) {
+        (typeMenu.querySelector('.buret-representation-type-item[data-current="true"]')
+          || typeMenu.querySelector('.buret-representation-type-item'))?.focus();
+      }
+    };
+    trigger.addEventListener('pointerenter', () => openTypeMenu(false));
+    trigger.addEventListener('focus', () => {
+      if (!suppressFocusOpen) openTypeMenu(false);
+    });
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openTypeMenu(true);
+    });
+    trigger.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      event.stopPropagation();
+      openTypeMenu(true);
+    });
+    typeMenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, typeMenu, trigger));
+    representationSubmenu.appendChild(typeMenu);
+    update(getActiveRef());
+    return { element: container, update };
   }
 
   function installMoleculeMenuKeyboard(menu) {
@@ -21160,7 +21286,7 @@
         return;
       }
       if (event.key === 'Tab') {
-        if (currentMenu.dataset.buretRepresentationMenu === '1') return;
+        if (currentMenu.closest('[data-buret-representation-menu]')) return;
         event.stopPropagation();
         hideMolstarContextMenu();
         return;
