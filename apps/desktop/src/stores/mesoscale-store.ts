@@ -196,6 +196,17 @@ function installBridge() {
     if (isMesoscaleCanvasInteractionMessage(event.data)) {
       const interaction = event.data;
       if (frames.get(interaction.documentId) !== event.source) return;
+      if (interaction.kind === "layout-resize") {
+        const frame = Array.from(window.document.querySelectorAll("iframe"))
+          .find((candidate) => candidate.contentWindow === event.source);
+        const stage = frame?.closest<HTMLElement>(".molecule-stage");
+        const available = Math.max(0, (stage?.getBoundingClientRect().width ?? 0) - 240);
+        const left = Math.min(available, Math.max(0, interaction.reservation.left));
+        const right = Math.min(Math.max(0, available - left), Math.max(0, interaction.reservation.right));
+        stage?.style.setProperty("--mesoscale-canvas-left", `${left}px`);
+        stage?.style.setProperty("--mesoscale-canvas-right", `${right}px`);
+        return;
+      }
       applySummary(interaction.documentId, interaction.summary);
       if (interaction.kind === "context-menu") {
         const frame = Array.from(window.document.querySelectorAll("iframe"))

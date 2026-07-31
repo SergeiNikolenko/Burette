@@ -193,6 +193,7 @@ export type MesoscaleCanvasInteractionMessage = {
 } & (
   | { kind: "selection"; summary: MesoscaleSceneSummary }
   | { kind: "context-menu"; menu: Omit<MesoscaleCanvasContextMenu, "token">; summary: MesoscaleSceneSummary }
+  | { kind: "layout-resize"; reservation: { left: number; right: number } }
 );
 
 export type MesoscaleFailure = {
@@ -245,9 +246,24 @@ export function isMesoscaleResponse(value: unknown): value is MesoscaleResponse 
 
 export function isMesoscaleCanvasInteractionMessage(value: unknown): value is MesoscaleCanvasInteractionMessage {
   if (!value || typeof value !== "object") return false;
-  const message = value as Partial<MesoscaleCanvasInteractionMessage>;
+  const message = value as Partial<{
+    source: MesoscaleCanvasInteractionMessage["source"];
+    apiVersion: MesoscaleCanvasInteractionMessage["apiVersion"];
+    documentId: string;
+    kind: MesoscaleCanvasInteractionMessage["kind"];
+    summary: MesoscaleSceneSummary;
+    menu: Omit<MesoscaleCanvasContextMenu, "token">;
+    reservation: { left: number; right: number };
+  }>;
   if (message.source !== "burette-mesoscale-interaction") return false;
   if (message.apiVersion !== MESOSCALE_API_VERSION || typeof message.documentId !== "string") return false;
+  if (message.kind === "layout-resize") {
+    const reservation = message.reservation as { left?: unknown; right?: unknown } | undefined;
+    return Boolean(reservation)
+      && Number.isFinite(reservation?.left) && Number.isFinite(reservation?.right)
+      && Number(reservation?.left) >= 0 && Number(reservation?.left) <= 4096
+      && Number(reservation?.right) >= 0 && Number(reservation?.right) <= 4096;
+  }
   if (!message.summary || message.summary.kind !== "summary") return false;
   if (message.kind === "selection") return true;
   if (message.kind !== "context-menu" || !message.menu || typeof message.menu !== "object") return false;

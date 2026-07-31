@@ -64,7 +64,7 @@ assert.match(runtime, /hasHostMenu/);
 assert.match(runtime, /target\.x \+ rect\.left/);
 assert.match(runtime, /contextPointer\.moved = Math\.hypot/);
 assert.match(runtime, /if \(contextMouse && event\.target === canvas\)/);
-assert.match(runtime, /if \(!started\) \{\s*runtime\.clearSelection\(\);\s*emitSelection\(\);/s);
+assert.match(runtime, /if \(shouldClearMesoscaleSelectionOnMiss\(started, extend\)\) \{\s*runtime\.clearSelection\(\);\s*emitSelection\(\);/s);
 assert.match(runtime, /armContextMenuSuppression/);
 assert.match(runtime, /if \(event\.button === 2\) clearContextMenuSuppression\(\)/);
 assert.doesNotMatch(runtime, /dispatchSecondaryMouse/);

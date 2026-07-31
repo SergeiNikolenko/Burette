@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(path, "utf8");
-const [filePage, dock, toolbar, selectionBar, rail, scene, objectMenu, overlay, info, store, documentTypes, rustRuntime] = await Promise.all([
+const [filePage, dock, toolbar, selectionBar, rail, scene, objectMenu, overlay, info, store, documentTypes, rustRuntime, styles, runtime] = await Promise.all([
   read("apps/desktop/src/components/editor-area/page-kinds/file.tsx"),
   read("apps/desktop/src/components/dock-panel.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-toolbar.tsx"),
@@ -16,6 +16,8 @@ const [filePage, dock, toolbar, selectionBar, rail, scene, objectMenu, overlay, 
   read("apps/desktop/src/stores/mesoscale-store.ts"),
   read("apps/desktop/src/types.ts"),
   read("apps/desktop/src-tauri/src/preview/runtime.rs"),
+  read("apps/desktop/src/styles.css"),
+  read("apps/desktop/src/preview-mesoscale/mesoscale-runtime.ts"),
 ]);
 
 assert.match(documentTypes, /viewerProfile\?: "structure" \| "mesoscale" \| "grid" \| "spectrum"/);
@@ -69,6 +71,7 @@ assert.match(objectMenu, /Select all in group/);
 assert.match(objectMenu, /Structure actions/);
 assert.match(scene, /mesoscale-tree-bar/);
 assert.doesNotMatch(scene, /mesoscale-tree-color/);
+assert.match(styles, /grid-template-columns: 2px minmax\(0, 1fr\) minmax\(64px, 92px\)/, "scene names and element counts use stable columns");
 assert.match(scene, /data-mesoscale-ref/);
 assert.match(scene, /setSelectionBatch/);
 assert.match(scene, /selectionError/);
@@ -82,6 +85,8 @@ assert.match(objectMenu, /mutationQueues/);
 assert.match(objectMenu, /queueMutation/);
 assert.match(objectMenu, /mesoscaleFrameGeneration/);
 assert.match(store, /selectionRefreshes/);
+assert.match(runtime, /installMesoscalePanelResizeHandles/, "hosted Mol\* panels install Burette resize handles");
+assert.match(runtime, /suppressPrimaryMouse = false;\s*window\.clearTimeout\(suppressClickTimer\)/, "a compatibility click releases the next primary gesture");
 assert.match(objectMenu, /Selection actions/);
 assert.match(objectMenu, /isolateSelection/);
 assert.doesNotMatch(scene, /mesoscale-style-editor/);

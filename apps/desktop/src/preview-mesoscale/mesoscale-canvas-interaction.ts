@@ -9,9 +9,14 @@ type MesoscaleCanvasInteractionOptions = {
   openContextMenu: (ref: string, point: MesoscaleCanvasPoint) => void;
 };
 
+export function shouldClearMesoscaleSelectionOnMiss(started: boolean, extend: boolean) {
+  return !started && !extend;
+}
+
 export function createMesoscaleCanvasInteractionController(options: MesoscaleCanvasInteractionOptions) {
   let active = false;
   let visited = new Set<string>();
+  let nextMode: SelectionMode = "replace";
 
   const selectOnce = (ref: string, mode: SelectionMode) => {
     if (visited.has(ref)) return;
@@ -24,18 +29,23 @@ export function createMesoscaleCanvasInteractionController(options: MesoscaleCan
 
     pointerDown(button: number, point: MesoscaleCanvasPoint, extend: boolean) {
       if (button !== 0) return false;
-      const ref = options.pick(point);
-      if (!ref) return false;
       active = true;
       visited = new Set();
-      selectOnce(ref, extend ? "extend" : "replace");
+      nextMode = extend ? "extend" : "replace";
+      const ref = options.pick(point);
+      if (!ref) return false;
+      selectOnce(ref, nextMode);
+      nextMode = "extend";
       return true;
     },
 
     pointerMove(point: MesoscaleCanvasPoint) {
       if (!active) return false;
       const ref = options.pick(point);
-      if (ref) selectOnce(ref, "extend");
+      if (ref) {
+        selectOnce(ref, nextMode);
+        nextMode = "extend";
+      }
       return true;
     },
 

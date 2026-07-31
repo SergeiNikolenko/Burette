@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import assert from "node:assert/strict";
 
-import { createMesoscaleCanvasInteractionController } from "../apps/desktop/src/preview-mesoscale/mesoscale-canvas-interaction.ts";
-import { boundMesoscaleHierarchyPage, mergeMesoscaleHierarchySelection, mesoscaleSelectedCount } from "../apps/desktop/src/lib/mesoscale-contract.ts";
+import { createMesoscaleCanvasInteractionController, shouldClearMesoscaleSelectionOnMiss } from "../apps/desktop/src/preview-mesoscale/mesoscale-canvas-interaction.ts";
+import { MESOSCALE_API_VERSION, boundMesoscaleHierarchyPage, isMesoscaleCanvasInteractionMessage, mergeMesoscaleHierarchySelection, mesoscaleSelectedCount } from "../apps/desktop/src/lib/mesoscale-contract.ts";
 import { inclusiveMesoscaleTreeRange, mesoscaleTreeSelectionError } from "../apps/desktop/src/components/mesoscale/mesoscale-tree-selection.ts";
 
 const selected = new Set();
@@ -20,6 +20,9 @@ const controller = createMesoscaleCanvasInteractionController({
   openContextMenu: (ref, point) => menus.push({ ref, point, selectedRefs: [...selected] }),
 });
 
+assert.equal(shouldClearMesoscaleSelectionOnMiss(false, false), true, "an unmodified background-start gesture replaces the previous selection");
+assert.equal(shouldClearMesoscaleSelectionOnMiss(false, true), false, "a modified background-start gesture preserves the previous selection before extending it");
+
 assert.equal(controller.pointerDown(0, { x: 10, y: 5 }, false), true, "primary press on a structure starts sweep selection");
 assert.deepEqual(selections, [{ ref: "structure-a", mode: "replace" }]);
 assert.equal(controller.pointerMove({ x: 20, y: 5 }), true);
@@ -33,12 +36,27 @@ assert.deepEqual(selections, [
 assert.equal(controller.pointerUp(), true);
 assert.equal(controller.pointerMove({ x: 10, y: 5 }), false, "selection stops on release");
 
+assert.equal(controller.pointerDown(0, { x: 30, y: 5 }, false), true, "a new unmodified sweep starts without clearing first");
+assert.equal(controller.pointerMove({ x: 20, y: 5 }), true);
+assert.equal(controller.pointerUp(), true);
+assert.deepEqual([...selected], ["structure-c", "structure-b"], "a second unmodified sweep replaces the previous gesture selection");
+
+assert.equal(controller.pointerDown(0, { x: 10, y: 5 }, true), true, "an explicit modifier extends the previous gesture selection");
+assert.equal(controller.pointerUp(), true);
+assert.deepEqual([...selected], ["structure-c", "structure-b", "structure-a"], "only the modified sweep preserves the previous gesture selection");
+
+assert.equal(controller.pointerDown(0, { x: 99, y: 5 }, false), false, "a background press has no initial structure hit");
+assert.equal(controller.active, true, "a background press still owns the sweep gesture");
+assert.equal(controller.pointerMove({ x: 20, y: 5 }), true, "the first structure crossed from the background is selectable");
+assert.equal(controller.pointerUp(), true);
+assert.deepEqual([...selected], ["structure-b"], "the first crossed structure replaces the prior gesture without a manual clear");
+
 assert.equal(controller.contextMenu({ x: 20, y: 5 }), true, "right click resolves the structure under the pointer");
-assert.equal(selections.length, 3, "right click on an existing selection preserves the multi-selection");
+assert.equal(selections.length, 7, "right click on an existing selection preserves the current selection");
 assert.deepEqual(menus, [{
   ref: "structure-b",
   point: { x: 20, y: 5 },
-  selectedRefs: ["structure-a", "structure-b", "structure-c"],
+  selectedRefs: ["structure-b"],
 }]);
 
 selected.clear();
@@ -48,6 +66,10 @@ assert.deepEqual(selections.at(-1), { ref: "structure-c", mode: "replace" }, "ri
 assert.deepEqual(menus.at(-1)?.selectedRefs, ["structure-c"]);
 assert.equal(controller.contextMenu({ x: 99, y: 5 }), false, "right click on empty canvas remains available to the viewer");
 assert.equal(controller.contextMenuFor("structure-a", { x: 99, y: 5 }), true, "a context gesture keeps the structure picked at pointer-down even if release crosses a boundary");
+
+const resizeMessage = { source: "burette-mesoscale-interaction", apiVersion: MESOSCALE_API_VERSION, documentId: "doc", kind: "layout-resize", reservation: { left: 330, right: 300 } };
+assert.equal(isMesoscaleCanvasInteractionMessage(resizeMessage), true, "bounded iframe panel reservations cross the transient chrome channel");
+assert.equal(isMesoscaleCanvasInteractionMessage({ ...resizeMessage, reservation: { left: -1, right: 300 } }), false, "invalid iframe panel reservations are rejected");
 
 const hierarchy = Array.from({ length: 130 }, (_, index) => ({
   ref: `structure-${index}`,

@@ -14,7 +14,8 @@ import { Unzip } from "molstar/lib/mol-util/zip/zip.js";
 import { Color } from "molstar/lib/mol-util/color/index.js";
 import { Binding } from "molstar/lib/mol-util/binding.js";
 import { MarkerAction } from "molstar/lib/mol-util/marker-action.js";
-import { createMesoscaleCanvasInteractionController, type MesoscaleCanvasPoint } from "./mesoscale-canvas-interaction";
+import { createMesoscaleCanvasInteractionController, shouldClearMesoscaleSelectionOnMiss, type MesoscaleCanvasPoint } from "./mesoscale-canvas-interaction";
+import { installMesoscalePanelResizeHandles } from "./mesoscale-panel-resize";
 import { mesoscaleZipEntries, validateGenericMesoscaleManifest, validateMesoscaleArchiveEntries } from "./mesoscale-package";
 import {
   MESOSCALE_API_VERSION,
@@ -1152,15 +1153,16 @@ function installMesoscaleCanvasInteractions(runtime: MesoscaleRuntimeApi) {
       return;
     }
     if (event.button !== 0 || !runtime.plugin.selectionMode) return;
-    const started = controller.pointerDown(event.button, target, event.shiftKey || event.ctrlKey || event.metaKey);
-    if (!started) {
+    const extend = event.shiftKey || event.ctrlKey || event.metaKey;
+    const started = controller.pointerDown(event.button, target, extend);
+    if (shouldClearMesoscaleSelectionOnMiss(started, extend)) {
       runtime.clearSelection();
       emitSelection();
     }
     stop(event);
     suppressPrimaryMouse = true;
     activePointerId = event.pointerId;
-    if (started) canvas.classList.add("burette-mesoscale-sweep-selecting");
+    if (controller.active) canvas.classList.add("burette-mesoscale-sweep-selecting");
     try { canvas.setPointerCapture(event.pointerId); } catch { /* capture is best-effort */ }
   };
   const onPointerMove = (event: PointerEvent) => {
@@ -1229,6 +1231,7 @@ function installMesoscaleCanvasInteractions(runtime: MesoscaleRuntimeApi) {
   const onClick = (event: MouseEvent) => {
     if (event.target !== canvas || !suppressClick) return;
     suppressClick = false;
+    suppressPrimaryMouse = false;
     window.clearTimeout(suppressClickTimer);
     window.clearTimeout(suppressPrimaryMouseTimer);
     stop(event);
@@ -1249,13 +1252,14 @@ function installMesoscaleCanvasInteractions(runtime: MesoscaleRuntimeApi) {
       return;
     }
     if (!runtime.plugin.selectionMode) return;
-    const started = controller.pointerDown(event.button, point(event), event.shiftKey || event.ctrlKey || event.metaKey);
-    if (!started) {
+    const extend = event.shiftKey || event.ctrlKey || event.metaKey;
+    const started = controller.pointerDown(event.button, point(event), extend);
+    if (shouldClearMesoscaleSelectionOnMiss(started, extend)) {
       runtime.clearSelection();
       emitSelection();
     }
     mouseGesture = true;
-    if (started) canvas.classList.add("burette-mesoscale-sweep-selecting");
+    if (controller.active) canvas.classList.add("burette-mesoscale-sweep-selecting");
     stop(event);
   };
   const onMouseMove = (event: MouseEvent) => {
@@ -1439,6 +1443,12 @@ async function start() {
   await loadSource(runtime, config);
   installMesoscaleSelectionSync(runtime);
   installMesoscaleCanvasInteractions(runtime);
+  const pluginRoot = document.querySelector<HTMLElement>(".msp-plugin");
+  if (pluginRoot) installMesoscalePanelResizeHandles({
+    root: pluginRoot,
+    onResize: () => explorer.handleResize(),
+    onReservations: (reservation) => postCanvasInteraction(runtime, { kind: "layout-resize", reservation }),
+  });
   explorer.handleResize();
   if (config.documentId && window.parent && window.parent !== window) {
     window.parent.postMessage({
