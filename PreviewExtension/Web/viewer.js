@@ -7039,6 +7039,32 @@
     scheduleSceneTreeRender();
   }
 
+  // The representation editor can either change its current leaf or branch a new
+  // one from it. Mol*'s builder returns the new state selector, so the same editor
+  // can immediately retarget that exact copy without guessing from array order.
+  async function duplicateSceneTreeRepresentation(ref) {
+    const viewer = activeMolstarViewer();
+    const target = sceneTreeRepresentationTargets(viewer).get(ref);
+    const builder = viewer?.plugin?.builders?.structure?.representation;
+    const params = target?.representation?.cell?.transform?.params;
+    if (!target || !params?.type?.name || typeof builder?.addRepresentation !== 'function') return '';
+    try {
+      const created = await builder.addRepresentation(target.component?.cell || target.component, {
+        type: params.type?.name,
+        typeParams: { ...(params.type?.params || {}) },
+        color: params.colorTheme?.name,
+        colorParams: { ...(params.colorTheme?.params || {}) },
+        size: params.sizeTheme?.name,
+        sizeParams: { ...(params.sizeTheme?.params || {}) }
+      });
+      scheduleSceneTreeRender();
+      return String(created?.ref || created?.cell?.transform?.ref || '');
+    } catch (error) {
+      debug('scene tree duplicate representation failed: ' + (error && error.message || String(error)));
+      return '';
+    }
+  }
+
   // Per-representation edits all ride the same pivot update. Returning a fresh params
   // object from the updater lets one field change while Mol* keeps the rest of the
   // transform, which is why colour and opacity can be set without clobbering each
@@ -20967,8 +20993,8 @@
     trigger.addEventListener('focus', () => open(false));
     trigger.addEventListener('click', event => {
       event.preventDefault();
-      if (submenu.hidden) open(true);
-      else moleculeMenuCloseSubmenus(menu);
+      event.stopPropagation();
+      open(true);
     });
     trigger.addEventListener('keydown', event => {
       if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
@@ -21016,18 +21042,30 @@
     submenu.setAttribute('role', 'menu');
     submenu.setAttribute('aria-label', `Representation and colour for ${target?.label || 'selection'}`);
     submenu._buretTrigger = trigger;
-    sceneTreeRepresentationMenu(submenu, viewer, node, representationTarget);
-    if (submenu.firstElementChild?.classList.contains('buret-tree-menu-divider')) {
-      submenu.firstElementChild.remove();
-    }
+
+    const editor = document.createElement('div');
+    editor.className = 'buret-representation-editor';
+    const renderEditor = ref => {
+      const activeViewer = activeMolstarViewer();
+      const activeTarget = sceneTreeRepresentationTargets(activeViewer).get(ref);
+      if (!activeTarget) return false;
+      const activeNode = sceneTreeNodeByRef(sceneTreeNodes(activeViewer), ref) || node;
+      editor.replaceChildren();
+      sceneTreeRepresentationMenu(editor, activeViewer, activeNode, activeTarget);
+      submenu.dataset.ref = ref;
+      return true;
+    };
+    moleculeMenuRepresentationMode(submenu, representationRef, renderEditor);
+    submenu.appendChild(editor);
+    renderEditor(representationRef);
 
     const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
     trigger.addEventListener('pointerenter', () => open(false));
     trigger.addEventListener('focus', () => open(false));
     trigger.addEventListener('click', event => {
       event.preventDefault();
-      if (submenu.hidden) open(true);
-      else moleculeMenuCloseSubmenus(menu);
+      event.stopPropagation();
+      open(true);
     });
     trigger.addEventListener('keydown', event => {
       if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
@@ -21038,6 +21076,59 @@
     submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
     menu.appendChild(submenu);
     return trigger;
+  }
+
+  // Mirrors a DropdownMenuRadioGroup: the checked row tells the editor whether it
+  // targets the representation that opened the menu or a newly duplicated layer.
+  // The duplicate is created only after the explicit choice, and once per menu.
+  function moleculeMenuRepresentationMode(submenu, originalRef, renderEditor) {
+    sceneTreeMenuSection(submenu, 'Apply to');
+    const group = document.createElement('div');
+    group.className = 'buret-representation-mode-group';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', 'Apply representation changes to');
+    const items = new Map();
+    let activeMode = 'current';
+    let addedRef = '';
+    const update = () => {
+      for (const [mode, item] of items) {
+        const checked = mode === activeMode;
+        item.setAttribute('aria-checked', checked ? 'true' : 'false');
+        item.dataset.checked = checked ? 'true' : 'false';
+      }
+    };
+    for (const [mode, label] of [['current', 'Apply to current'], ['add', 'Add another']]) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'buret-tree-menu-item buret-representation-mode-radio';
+      item.setAttribute('role', 'menuitemradio');
+      item.dataset.buretRepresentationMode = mode;
+      const check = moleculeMenuIcon(['M20 6 9 17l-5-5']);
+      check.classList.add('buret-representation-mode-check');
+      const text = document.createElement('span');
+      text.className = 'buret-tree-menu-label';
+      text.textContent = label;
+      item.append(check, text);
+      item.addEventListener('click', async event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (mode === 'add' && !addedRef) {
+          item.disabled = true;
+          item.dataset.pending = 'true';
+          addedRef = await duplicateSceneTreeRepresentation(originalRef);
+          item.disabled = false;
+          delete item.dataset.pending;
+        }
+        const nextRef = mode === 'add' ? addedRef : originalRef;
+        if (!nextRef || !renderEditor(nextRef)) return;
+        activeMode = mode;
+        update();
+      });
+      items.set(mode, item);
+      group.appendChild(item);
+    }
+    update();
+    submenu.appendChild(group);
   }
 
   function installMoleculeMenuKeyboard(menu) {

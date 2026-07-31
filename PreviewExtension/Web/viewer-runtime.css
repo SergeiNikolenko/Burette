@@ -4524,6 +4524,20 @@ body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-repres
   border-radius: 50%;
   padding: 0;
 }
+body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-representation-mode-group {
+  padding: 0 4px 4px;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-representation-mode-radio {
+  width: 100%;
+  min-height: 28px;
+}
+body:not(.burette-mobile-host) .buret-representation-mode-radio .buret-representation-mode-check {
+  opacity: 0;
+}
+body:not(.burette-mobile-host) .buret-representation-mode-radio[data-checked="true"] .buret-representation-mode-check {
+  opacity: 1;
+  color: var(--buret-accent, #5da9ff);
+}
 @keyframes buret-molecule-submenu-in {
   from { opacity: 0; transform: translateX(-2px) scale(0.98); }
   to { opacity: 1; transform: translateX(0) scale(1); }
