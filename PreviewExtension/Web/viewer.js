@@ -12200,8 +12200,7 @@
       first.sourcePath || first.label || '',
       last.sourcePath || last.label || '',
       xyzFrameOverlayRawSignature(first.data || ''),
-      style,
-      prepared?.structureAlignmentEnabled === true ? 'aligned' : 'raw'
+      style
     ].join('|');
   }
 

@@ -67,6 +67,11 @@ assert.match(
   /const restoreAfterSceneReload = async \(\) => \{[\s\S]*?if \(!result\) return false;[\s\S]*?await refreshEntries\(\);[\s\S]*?await commitSuperpositionPlan\(viewer, entries, result\);/,
 );
 assert.match(fn("reloadSdfPoseMode"), /await activeStructureAlignmentControl\?\.restoreAfterSceneReload\?\.\(\)/);
+// Superposition is a transform inside the scene, not a different scene. Keying
+// the docking scene on the alignment flag made the first structure step after
+// Align rebuild the scene from scratch, which dropped every transform cell and
+// re-focused the camera.
+assert.doesNotMatch(fn("dockingSceneStateKey"), /structureAlignmentEnabled/);
 
 // PDB subsets are addressed by atom serial. Pairing the n-th ATOM line with the
 // n-th Mol* atom drifts on files where a record does not become an atom, which
