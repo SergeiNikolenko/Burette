@@ -5706,6 +5706,21 @@ assert.match(previewViewer, /snapshot\.canvas3d = undefined/);
 assert.match(previewViewer, /snapshot\.camera\.transitionDurationInMs = instant \? 0 : MOLSTAR_STORY_TRANSITION_MS/);
 assert.match(previewViewer, /if \(style !== 'default'\) await applyMolstarStyle\(viewer, style\)/);
 assert.match(previewViewer, /if \(molstarStoryState\(\)\.available\) \{\s*await applyMolstarStyle\(viewer, style\);/);
+// Story controls live in the viewer, not only in the right dock, and they reuse
+// the pose toolbar's shell so they inherit its position, drag and collapse.
+assert.match(previewViewer, /function renderMolstarStoryControls\(\)/);
+assert.match(previewViewer, /root\.className = 'buret-docking-poses buret-docking-poses-structure-scene buret-molstar-story'/);
+assert.match(previewViewer, /if \(document\.querySelector\('\.buret-docking-poses:not\(\.buret-molstar-story\)'\)\) return;/);
+assert.match(previewViewer, /previousRoot && updateMolstarStoryControls\(previousRoot, entries, story\.isPlaying\)\) return/);
+assert.match(previewViewer, /root\.__buretStoryDragCleanup = initDockingPoseControlsDrag\(root\)/);
+// Hovering a state shows its description; only a click applies the state.
+assert.match(previewViewer, /button\.addEventListener\('pointerenter', event => \{\s*if \(event\.pointerType === 'touch'\) return;\s*scheduleMolstarStoryDetails\(button\);\s*\}\)/);
+assert.match(previewViewer, /button\.addEventListener\('click', \(\) => \{\s*void controlMolstarStory\(\{ operation: 'goto', id: button\.__buretStoryEntry\.id \}\);/);
+assert.match(previewViewer, /MOLSTAR_STORY_DETAILS_DWELL_MS = 150/);
+assert.match(previewViewer, /function renderMolstarStoryMarkdown\(container, markdown\)/);
+assert.match(previewRuntimeCss, /\.buret-story-hover-card \{/);
+assert.match(appViewerStateMessagesHook, /if \(body\.type === "openStructureStory"\) openDockTab\("right", "story"\);/);
+assert.doesNotMatch(appViewerStateMessagesHook, /body\.type === "mvsStoryChanged"\) openDockTab/);
 assert.match(previewViewer, /function sceneTreeDisplayLabel\(value\)/);
 assert.match(previewViewer, /if \(\/\^reflig\$\/i\.test\(words\)\) label = 'Reference ligand'/);
 assert.match(previewViewer, /if \(ligand\) label = `Ligand \$\{ligand\[1\]\}`/);

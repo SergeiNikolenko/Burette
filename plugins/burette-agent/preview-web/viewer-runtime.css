@@ -2959,6 +2959,92 @@ body.burette-mobile-host .buret-docking-poses button {
   width: 28px;
   padding: 0 !important;
 }
+.buret-docking-pose-animation-button svg {
+  display: block;
+  width: 17px;
+  height: 17px;
+  margin: auto;
+}
+.buret-molstar-story-open {
+  font-weight: 600;
+}
+/* Description of the Story state under the pointer. It sits beside the state
+   list rather than inside the control, so a long description can scroll without
+   resizing the control the user just dragged into place. */
+.buret-story-hover-card {
+  position: fixed;
+  z-index: 2147483646;
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  max-height: min(46vh, 420px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: var(--buret-molstar-panel-radius);
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-panel-background);
+  box-shadow: 0 22px 60px var(--buret-molstar-shadow);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  font: 400 13px/1.52 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  scrollbar-gutter: stable;
+  animation: buret-story-hover-card-in 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes buret-story-hover-card-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.buret-story-hover-card-content > :first-child { margin-top: 0; }
+.buret-story-hover-card-content > :last-child { margin-bottom: 0; }
+.buret-story-hover-card h2,
+.buret-story-hover-card h3,
+.buret-story-hover-card h4 {
+  margin: 18px 0 7px;
+  color: var(--buret-molstar-text);
+  font-weight: 650;
+  line-height: 1.25;
+}
+.buret-story-hover-card h2 { font-size: 18px; }
+.buret-story-hover-card h3 { font-size: 15px; }
+.buret-story-hover-card h4 { font-size: 13px; }
+.buret-story-hover-card p { margin: 0 0 12px; }
+.buret-story-hover-card ul { margin: 0 0 13px; padding-left: 20px; }
+.buret-story-hover-card li { margin: 3px 0; }
+.buret-story-hover-card strong { font-weight: 650; }
+.buret-story-hover-card code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  color: var(--buret-molstar-text);
+  background: color-mix(in srgb, var(--buret-molstar-text) 9%, transparent);
+  font: 500 0.92em ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.buret-story-hover-card table {
+  width: 100%;
+  margin: 10px 0 15px;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.buret-story-hover-card th,
+.buret-story-hover-card td {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--buret-molstar-border);
+  text-align: left;
+  vertical-align: top;
+}
+.buret-story-hover-card th {
+  background: color-mix(in srgb, var(--buret-molstar-text) 6%, transparent);
+  font-weight: 650;
+}
+.buret-story-hover-card tr:last-child td { border-bottom: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .buret-story-hover-card { animation: none; }
+}
 .buret-docking-pose-all {
   min-width: 34px;
 }

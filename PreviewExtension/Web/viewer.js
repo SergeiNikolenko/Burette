@@ -121,8 +121,11 @@
   let molstarSelectionPreviewCleanup = null;
   let molstarStoryStateCleanup = null;
   let molstarStoryPresentationRestoreInFlight = false;
+  let molstarStoryDetailsTimer = 0;
+  let molstarStoryDetailsHideTimer = 0;
   const molstarStoryDetachedSnapshots = new WeakSet();
   const MOLSTAR_STORY_TRANSITION_MS = 700;
+  const MOLSTAR_STORY_DETAILS_DWELL_MS = 150;
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
   // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
@@ -943,10 +946,19 @@
     const subscription = manager?.events?.changed?.subscribe?.(() => {
       detachMolstarStoryPresentation(manager);
       reportMolstarStoryToHost();
+      renderMolstarStoryControls();
       void restoreMolstarStoryPresentation(viewer);
     });
-    if (subscription?.unsubscribe) molstarStoryStateCleanup = () => subscription.unsubscribe();
+    if (subscription?.unsubscribe) {
+      molstarStoryStateCleanup = () => {
+        subscription.unsubscribe();
+        document.querySelector('.buret-molstar-story')?.__buretStoryDragCleanup?.();
+        document.querySelector('.buret-molstar-story')?.remove();
+        hideMolstarStoryDetails();
+      };
+    }
     reportMolstarStoryToHost();
+    renderMolstarStoryControls();
   }
 
   function buretteSceneSpecOperations(action) {
@@ -15014,6 +15026,357 @@
     } catch (error) {
       return agentActionFailure('set_sdf_pose_index', 'ACTION_ERROR', error?.message || String(error));
     }
+  }
+
+  function molstarStoryControlEntries() {
+    const manager = activeViewer?.plugin?.managers?.snapshot;
+    const entries = manager?.state?.entries ? Array.from(manager.state.entries) : [];
+    const currentId = manager?.state?.current;
+    return entries.slice(0, 256).map((entry, index) => ({
+      index,
+      id: String(entry?.snapshot?.id || ''),
+      name: String(entry?.name || `State ${index + 1}`).slice(0, 512),
+      description: String(entry?.description || '').slice(0, 16 * 1024),
+      current: entry?.snapshot?.id === currentId
+    }));
+  }
+
+  function appendMolstarStoryInlineMarkdown(parent, text) {
+    const source = String(text || '');
+    const tokenPattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g;
+    let cursor = 0;
+    for (const match of source.matchAll(tokenPattern)) {
+      if (match.index > cursor) parent.append(document.createTextNode(source.slice(cursor, match.index)));
+      const token = match[0];
+      const element = document.createElement(token.startsWith('**') ? 'strong' : token.startsWith('`') ? 'code' : 'em');
+      element.textContent = token.startsWith('**') ? token.slice(2, -2) : token.slice(1, -1);
+      parent.append(element);
+      cursor = match.index + token.length;
+    }
+    if (cursor < source.length) parent.append(document.createTextNode(source.slice(cursor)));
+  }
+
+  function molstarStoryMarkdownCells(line) {
+    return String(line || '').trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim());
+  }
+
+  function isMolstarStoryMarkdownTableDivider(line) {
+    const cells = molstarStoryMarkdownCells(line);
+    return cells.length > 1 && cells.every(cell => /^:?-{3,}:?$/.test(cell));
+  }
+
+  // Story descriptions are Markdown, and the desktop dock renders them with the
+  // app's Markdown viewer. Inside the viewer iframe there is no React, so the
+  // subset the templates actually use - headings, lists, tables, emphasis and
+  // code - is rendered directly into DOM rather than shown as raw text.
+  function renderMolstarStoryMarkdown(container, markdown) {
+    container.replaceChildren();
+    const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n');
+    for (let index = 0; index < lines.length;) {
+      const line = lines[index];
+      if (!line.trim()) {
+        index++;
+        continue;
+      }
+      const heading = line.match(/^(#{1,6})\s+(.+)$/);
+      if (heading) {
+        const element = document.createElement(`h${Math.min(4, heading[1].length + 1)}`);
+        appendMolstarStoryInlineMarkdown(element, heading[2]);
+        container.append(element);
+        index++;
+        continue;
+      }
+      if (line.includes('|') && isMolstarStoryMarkdownTableDivider(lines[index + 1])) {
+        const table = document.createElement('table');
+        const head = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        for (const cell of molstarStoryMarkdownCells(line)) {
+          const th = document.createElement('th');
+          appendMolstarStoryInlineMarkdown(th, cell);
+          headRow.append(th);
+        }
+        head.append(headRow);
+        table.append(head);
+        const body = document.createElement('tbody');
+        index += 2;
+        while (index < lines.length && lines[index].trim() && lines[index].includes('|')) {
+          const row = document.createElement('tr');
+          for (const cell of molstarStoryMarkdownCells(lines[index])) {
+            const td = document.createElement('td');
+            appendMolstarStoryInlineMarkdown(td, cell);
+            row.append(td);
+          }
+          body.append(row);
+          index++;
+        }
+        table.append(body);
+        container.append(table);
+        continue;
+      }
+      if (/^\s*[-*]\s+/.test(line)) {
+        const list = document.createElement('ul');
+        while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) {
+          const item = document.createElement('li');
+          appendMolstarStoryInlineMarkdown(item, lines[index].replace(/^\s*[-*]\s+/, ''));
+          list.append(item);
+          index++;
+        }
+        container.append(list);
+        continue;
+      }
+      const paragraphLines = [];
+      while (index < lines.length && lines[index].trim()
+        && !/^(#{1,6})\s+/.test(lines[index])
+        && !/^\s*[-*]\s+/.test(lines[index])
+        && !(lines[index].includes('|') && isMolstarStoryMarkdownTableDivider(lines[index + 1]))) {
+        paragraphLines.push(lines[index].trim());
+        index++;
+      }
+      const paragraph = document.createElement('p');
+      appendMolstarStoryInlineMarkdown(paragraph, paragraphLines.join(' '));
+      container.append(paragraph);
+    }
+  }
+
+  function hideMolstarStoryDetails() {
+    if (molstarStoryDetailsTimer) clearTimeout(molstarStoryDetailsTimer);
+    if (molstarStoryDetailsHideTimer) clearTimeout(molstarStoryDetailsHideTimer);
+    molstarStoryDetailsTimer = 0;
+    molstarStoryDetailsHideTimer = 0;
+    document.querySelector('.buret-story-hover-card')?.remove();
+  }
+
+  function scheduleMolstarStoryDetailsHide() {
+    if (molstarStoryDetailsHideTimer) clearTimeout(molstarStoryDetailsHideTimer);
+    molstarStoryDetailsHideTimer = window.setTimeout(hideMolstarStoryDetails, 220);
+  }
+
+  function positionMolstarStoryDetails(card, anchor) {
+    const anchorRect = anchor.getBoundingClientRect();
+    const listRect = anchor.closest('.buret-docking-pose-files')?.getBoundingClientRect() || anchorRect;
+    const margin = 12;
+    const gap = 10;
+    const rightSpace = window.innerWidth - listRect.right - gap - margin;
+    const width = rightSpace >= 300 ? Math.min(520, rightSpace) : Math.min(520, window.innerWidth - margin * 2);
+    card.style.width = `${width}px`;
+    card.style.left = `${Math.max(margin, Math.min(listRect.right + gap, window.innerWidth - width - margin))}px`;
+    const height = Math.min(card.getBoundingClientRect().height, window.innerHeight - margin * 2);
+    card.style.top = `${Math.max(margin, Math.min(listRect.top, window.innerHeight - height - margin))}px`;
+  }
+
+  function showMolstarStoryDetails(anchor) {
+    const entry = anchor?.__buretStoryEntry;
+    if (!anchor?.isConnected || !entry?.description) return;
+    if (molstarStoryDetailsHideTimer) clearTimeout(molstarStoryDetailsHideTimer);
+    molstarStoryDetailsHideTimer = 0;
+    let card = document.querySelector('.buret-story-hover-card');
+    const created = !card;
+    if (!card) {
+      card = document.createElement('aside');
+      card.className = 'buret-story-hover-card';
+      card.addEventListener('pointerenter', () => {
+        if (molstarStoryDetailsHideTimer) clearTimeout(molstarStoryDetailsHideTimer);
+        molstarStoryDetailsHideTimer = 0;
+      });
+      card.addEventListener('pointerleave', scheduleMolstarStoryDetailsHide);
+    }
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-label', `${entry.name} details`);
+    let content = card.querySelector('.buret-story-hover-card-content');
+    if (!content) {
+      content = document.createElement('div');
+      content.className = 'buret-story-hover-card-content';
+      card.append(content);
+    }
+    renderMolstarStoryMarkdown(content, entry.description);
+    if (created) document.body.append(card);
+    positionMolstarStoryDetails(card, anchor);
+  }
+
+  // Reading about a step and moving to it are separate intents. Applying a step
+  // costs a full Mol* snapshot apply, so hovering only opens the description and
+  // the click does the switching - the dwell never has to be tuned against how
+  // long a scene takes to build.
+  function scheduleMolstarStoryDetails(anchor) {
+    if (molstarStoryDetailsTimer) clearTimeout(molstarStoryDetailsTimer);
+    if (molstarStoryDetailsHideTimer) clearTimeout(molstarStoryDetailsHideTimer);
+    molstarStoryDetailsHideTimer = 0;
+    if (document.querySelector('.buret-story-hover-card')) {
+      showMolstarStoryDetails(anchor);
+      return;
+    }
+    molstarStoryDetailsTimer = window.setTimeout(() => {
+      molstarStoryDetailsTimer = 0;
+      const focused = anchor.ownerDocument?.activeElement === anchor;
+      if (anchor.isConnected && (anchor.matches(':hover') || focused)) showMolstarStoryDetails(anchor);
+    }, MOLSTAR_STORY_DETAILS_DWELL_MS);
+  }
+
+  // Re-rendering on every step would close the open scene list and drop the
+  // panel the user dragged into place, so an unchanged list is updated in place
+  // and only a different set of steps rebuilds it.
+  function updateMolstarStoryControls(root, entries, isPlaying) {
+    const buttons = Array.from(root.querySelectorAll('.buret-docking-pose-file'));
+    if (buttons.length !== entries.length) return false;
+    if (buttons.some((button, index) => button.dataset.buretStoryId !== entries[index]?.id)) return false;
+    const currentEntry = entries.find(entry => entry.current) || entries[0];
+    const currentName = root.querySelector('.buret-docking-pose-current-text');
+    const currentIndex = root.querySelector('.buret-docking-pose-current-index');
+    if (currentName) currentName.textContent = currentEntry?.name || 'Story';
+    if (currentIndex) currentIndex.textContent = `${(currentEntry?.index ?? 0) + 1}/${entries.length}`;
+    const play = root.querySelector('[data-buret-story-play]');
+    if (play) {
+      play.classList.toggle('active', isPlaying);
+      play.textContent = isPlaying ? 'Pause' : 'Play';
+      play.setAttribute('aria-label', isPlaying ? 'Pause Story' : 'Play Story');
+    }
+    buttons.forEach((button, index) => {
+      const entry = entries[index];
+      button.__buretStoryEntry = entry;
+      button.classList.toggle('active', entry.current);
+      button.setAttribute('aria-selected', entry.current ? 'true' : 'false');
+      const name = button.querySelector('.buret-docking-pose-file-name');
+      if (name) name.textContent = entry.name;
+    });
+    return true;
+  }
+
+  function renderMolstarStoryControls() {
+    const story = molstarStoryState();
+    const entries = story.available ? molstarStoryControlEntries() : [];
+    const previousRoot = document.querySelector('.buret-molstar-story');
+    if (entries.length >= 2 && previousRoot && updateMolstarStoryControls(previousRoot, entries, story.isPlaying)) return;
+    previousRoot?.__buretStoryDragCleanup?.();
+    previousRoot?.remove();
+    const listWasOpen = previousRoot?.classList.contains('buret-docking-poses-files-open') === true;
+    hideMolstarStoryDetails();
+    if (entries.length < 2) {
+      if (!document.querySelector('.buret-docking-poses')) document.body.classList.remove('buret-docking-pose-controls-active');
+      return;
+    }
+    // A document that already drives the pose/trajectory toolbar keeps it: two
+    // overlays would fight for the same corner and the same saved position.
+    if (document.querySelector('.buret-docking-poses:not(.buret-molstar-story)')) return;
+
+    const currentEntry = entries.find(entry => entry.current) || entries[0];
+    const root = document.createElement('div');
+    root.className = 'buret-docking-poses buret-docking-poses-structure-scene buret-molstar-story';
+    root.setAttribute('aria-label', 'Story state controls');
+    const main = document.createElement('div');
+    main.className = 'buret-docking-pose-main';
+    const collapse = document.createElement('button');
+    collapse.type = 'button';
+    collapse.className = 'buret-docking-pose-animation-button';
+    collapse.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h16v2H4v-2Z" fill="currentColor"/></svg>';
+    collapse.setAttribute('aria-label', 'Collapse Story controls');
+    collapse.setAttribute('aria-expanded', 'true');
+    collapse.title = 'Collapse Story controls';
+    const previous = document.createElement('button');
+    previous.type = 'button';
+    previous.className = 'buret-docking-pose-previous';
+    previous.textContent = 'Prev';
+    previous.setAttribute('aria-label', 'Previous Story state');
+    const current = document.createElement('button');
+    current.type = 'button';
+    current.className = 'buret-docking-pose-current';
+    current.setAttribute('aria-haspopup', 'listbox');
+    current.setAttribute('aria-expanded', 'false');
+    const currentName = document.createElement('span');
+    currentName.className = 'buret-docking-pose-current-name';
+    const currentNameText = document.createElement('span');
+    currentNameText.className = 'buret-docking-pose-current-text';
+    currentNameText.textContent = currentEntry?.name || 'Story';
+    currentName.append(currentNameText);
+    const currentIndex = document.createElement('span');
+    currentIndex.className = 'buret-docking-pose-current-index';
+    currentIndex.textContent = `${(currentEntry?.index ?? 0) + 1}/${entries.length}`;
+    current.append(currentName, currentIndex);
+    const next = document.createElement('button');
+    next.type = 'button';
+    next.className = 'buret-docking-pose-next';
+    next.textContent = 'Next';
+    next.setAttribute('aria-label', 'Next Story state');
+    const play = document.createElement('button');
+    play.type = 'button';
+    play.dataset.buretStoryPlay = 'true';
+    play.className = story.isPlaying ? 'active' : '';
+    play.textContent = story.isPlaying ? 'Pause' : 'Play';
+    play.setAttribute('aria-label', story.isPlaying ? 'Pause Story' : 'Play Story');
+    const openRight = document.createElement('button');
+    openRight.type = 'button';
+    openRight.className = 'buret-molstar-story-open';
+    openRight.textContent = 'Story';
+    openRight.title = 'Open Story in right sidebar';
+    openRight.setAttribute('aria-label', 'Open Story in right sidebar');
+    const list = document.createElement('div');
+    list.className = 'buret-docking-pose-files';
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', 'Story states');
+    const setListOpen = (value) => {
+      if (value) setSceneTreeOpen(false);
+      root.classList.toggle('buret-docking-poses-files-open', value);
+      current.setAttribute('aria-expanded', value ? 'true' : 'false');
+      if (!value) hideMolstarStoryDetails();
+    };
+    entries.forEach(entry => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `buret-docking-pose-file${entry.current ? ' active' : ''}`;
+      button.dataset.buretStoryId = entry.id;
+      button.__buretStoryEntry = entry;
+      button.setAttribute('role', 'option');
+      button.setAttribute('aria-selected', entry.current ? 'true' : 'false');
+      const number = document.createElement('span');
+      number.className = 'buret-docking-pose-file-number';
+      number.textContent = String(entry.index + 1).padStart(2, '0');
+      const name = document.createElement('span');
+      name.className = 'buret-docking-pose-file-name';
+      name.textContent = entry.name;
+      button.append(number, name);
+      button.addEventListener('pointerenter', event => {
+        if (event.pointerType === 'touch') return;
+        scheduleMolstarStoryDetails(button);
+      });
+      button.addEventListener('pointerleave', () => {
+        if (molstarStoryDetailsTimer) clearTimeout(molstarStoryDetailsTimer);
+        molstarStoryDetailsTimer = 0;
+        scheduleMolstarStoryDetailsHide();
+      });
+      button.addEventListener('focus', () => scheduleMolstarStoryDetails(button));
+      button.addEventListener('blur', scheduleMolstarStoryDetailsHide);
+      button.addEventListener('click', () => {
+        void controlMolstarStory({ operation: 'goto', id: button.__buretStoryEntry.id });
+      });
+      list.append(button);
+    });
+    const setControlsCollapsed = (value) => {
+      const collapsed = Boolean(value);
+      root.classList.toggle('buret-docking-poses-collapsed', collapsed);
+      collapse.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      collapse.setAttribute('aria-label', collapsed ? 'Expand Story controls' : 'Collapse Story controls');
+      collapse.title = collapsed ? 'Expand Story controls' : 'Collapse Story controls';
+      if (collapsed) setListOpen(false);
+    };
+    collapse.addEventListener('click', () => setControlsCollapsed(!root.classList.contains('buret-docking-poses-collapsed')));
+    current.addEventListener('click', () => setListOpen(!root.classList.contains('buret-docking-poses-files-open')));
+    previous.addEventListener('click', () => void controlMolstarStory({ operation: 'previous' }));
+    next.addEventListener('click', () => void controlMolstarStory({ operation: 'next' }));
+    play.addEventListener('click', () => void controlMolstarStory({ operation: play.classList.contains('active') ? 'pause' : 'play' }));
+    openRight.addEventListener('click', () => postHostMessage({
+      type: 'openStructureStory',
+      documentId: String(activeConfig?.documentId || ''),
+      fileName: String(activeConfig?.label || 'MolViewSpec Story'),
+      ...molstarStoryState()
+    }));
+    root.addEventListener('pointerdown', event => event.stopPropagation());
+    root.addEventListener('click', event => event.stopPropagation());
+    main.append(collapse, previous, current, next, play, openRight);
+    root.append(main, list);
+    document.body.append(root);
+    restoreDockingPoseControlsPosition(root);
+    root.__buretStoryDragCleanup = initDockingPoseControlsDrag(root);
+    if (listWasOpen) setListOpen(true);
+    document.body.classList.add('buret-docking-pose-controls-active');
   }
 
   function installDockingPoseControls(viewer, prepared) {
