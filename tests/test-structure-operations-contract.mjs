@@ -15,10 +15,18 @@ const fn = (name) => {
 // actions, PDB pairing modes, and Mol*'s native TM-align behind one controller.
 assert.match(viewer, /function alignStructureSceneEntries\(prepared, request = 'auto'\)/);
 assert.match(viewer, /\['align:advanced', 'Advanced alignment…'\]/);
-assert.match(viewer, /superpositionContextAction\(\{ method: 'auto', referenceId: reference\.id, movingIds: \[moving\.id\] \}\)/);
-assert.match(viewer, /superpositionContextAction\(\{ method: 'tm-align', referenceId: reference\.id, movingIds: \[moving\.id\] \}\)/);
+assert.match(viewer, /moleculeMenuNestedAction\('align:menu:to', 'Align to', references\.map\(reference =>/);
+assert.match(viewer, /moleculeMenuNestedAction\(`align:menu:target:\$\{reference\.id\}`, reference\.label, \[/);
+assert.match(viewer, /superpositionContextAction\(\{ method: 'auto', referenceId: reference\.id, movingIds: \[moving\.id\] \}\), 'Automatic'/);
+assert.match(viewer, /superpositionContextAction\(\{ method: 'tm-align', referenceId: reference\.id, movingIds: \[moving\.id\] \}\), 'TM-align'/);
+assert.match(viewer, /moleculeMenuNestedAction\('align:menu:all-to-this', 'Align all to this', \[/);
+assert.match(viewer, /superpositionContextAction\(\{ method: 'auto', referenceId: moving\.id, movingIds: references\.map\(reference => reference\.id\) \}\), 'Automatic'/);
+assert.match(viewer, /superpositionContextAction\(\{ method: 'tm-align', referenceId: moving\.id, movingIds: references\.map\(reference => reference\.id\) \}\), 'TM-align'/);
 assert.match(viewer, /method: 'chains',[\s\S]*?\[moving\.id\]: movingChain\.id/);
 assert.match(viewer, /method: 'selected-atoms',[\s\S]*?useCurrentSelection: true/);
+assert.match(fn("moleculeMenuCloseSubmenus"), /_buretParentSubmenu/);
+assert.match(fn("moleculeMenuNestedSubmenu"), /aria-haspopup[\s\S]*?moleculeMenuActionItem/);
+assert.match(fn("molstarContextActionsPayload"), /moleculeMenuLeafActions/);
 const align = fn("alignStructureSceneEntries");
 assert.match(align, /referenceIndex[\s\S]*movingIndices[\s\S]*chainIds/);
 assert.match(align, /if \(method !== 'auto'\) return build\(method\)/);

@@ -14036,16 +14036,16 @@
           }
         }
       } else {
-        for (const reference of references) {
-          actions.push([
-            superpositionContextAction({ method: 'auto', referenceId: reference.id, movingIds: [moving.id] }),
-            `Align to ${reference.label}`,
-          ]);
-          actions.push([
-            superpositionContextAction({ method: 'tm-align', referenceId: reference.id, movingIds: [moving.id] }),
-            `TM-align to ${reference.label}`,
-          ]);
-        }
+        actions.push(moleculeMenuNestedAction('align:menu:to', 'Align to', references.map(reference =>
+          moleculeMenuNestedAction(`align:menu:target:${reference.id}`, reference.label, [
+            [superpositionContextAction({ method: 'auto', referenceId: reference.id, movingIds: [moving.id] }), 'Automatic'],
+            [superpositionContextAction({ method: 'tm-align', referenceId: reference.id, movingIds: [moving.id] }), 'TM-align'],
+          ])
+        )));
+        actions.push(moleculeMenuNestedAction('align:menu:all-to-this', 'Align all to this', [
+          [superpositionContextAction({ method: 'auto', referenceId: moving.id, movingIds: references.map(reference => reference.id) }), 'Automatic'],
+          [superpositionContextAction({ method: 'tm-align', referenceId: moving.id, movingIds: references.map(reference => reference.id) }), 'TM-align'],
+        ]));
       }
       actions.push(['align:advanced', 'Advanced alignment…']);
       if (result) actions.push(['align-structures', 'Reset structure alignment']);
@@ -19349,7 +19349,7 @@
   }
 
   function molstarContextActionsPayload(actions) {
-    return (Array.isArray(actions) ? actions : []).map(([name, title]) => ({
+    return moleculeMenuLeafActions(actions).map(([name, title]) => ({
       name: String(name || ''),
       title: String(title || '')
     })).filter(action => action.name && action.title);
@@ -19613,7 +19613,8 @@
     const nextMode = mode === 'atom' ? 'atom' : 'molecule';
     molstarContextMenuMode = nextMode;
     const target = molstarContextTarget();
-    const matchedAction = molstarContextMenuActions(target, nextMode).find(([name]) => name === actionName);
+    const matchedAction = moleculeMenuLeafActions(molstarContextMenuActions(target, nextMode))
+      .find(([name]) => name === actionName);
     void moleculeContextMenuAction(actionName, matchedAction?.[1] || actionName);
   };
 
@@ -20598,6 +20599,28 @@
     return icon;
   }
 
+  function moleculeMenuNestedAction(action, label, children) {
+    return [action, label, { children }];
+  }
+
+  function moleculeMenuActionChildren(entry) {
+    return Array.isArray(entry?.[2]?.children) ? entry[2].children : [];
+  }
+
+  function moleculeMenuLeafActions(entries, parents = []) {
+    const leaves = [];
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      const [action, label] = entry;
+      const children = moleculeMenuActionChildren(entry);
+      if (children.length) {
+        leaves.push(...moleculeMenuLeafActions(children, [...parents, label]));
+      } else {
+        leaves.push([action, [...parents, label].filter(Boolean).join(' › ')]);
+      }
+    }
+    return leaves;
+  }
+
   function moleculeMenuActionButton(action, label, options = {}) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -20614,6 +20637,11 @@
         : null;
       void moleculeContextMenuAction(action, label, target);
     });
+    if (options.menu) {
+      const closeChildren = () => moleculeMenuCloseSubmenus(options.menu, options.parentSubmenu || null);
+      button.addEventListener('pointerenter', closeChildren);
+      button.addEventListener('focus', closeChildren);
+    }
     return button;
   }
 
@@ -20623,8 +20651,10 @@
   }
 
   function moleculeMenuCloseSubmenus(menu, except = null) {
+    const keep = new Set();
+    for (let submenu = except; submenu; submenu = submenu._buretParentSubmenu) keep.add(submenu);
     menu.querySelectorAll('.buret-molecule-context-submenu[data-open="true"]').forEach(submenu => {
-      if (submenu === except) return;
+      if (keep.has(submenu)) return;
       submenu.dataset.open = 'false';
       submenu.hidden = true;
       submenu._buretTrigger?.setAttribute('aria-expanded', 'false');
@@ -20648,6 +20678,7 @@
   }
 
   function moleculeMenuOpenSubmenu(menu, submenu, trigger, options = {}) {
+    submenu._buretParentSubmenu = trigger.closest('.buret-molecule-context-submenu');
     moleculeMenuCloseSubmenus(menu, submenu);
     submenu.hidden = false;
     submenu.dataset.open = 'true';
@@ -20656,6 +20687,70 @@
     if (options.focusFirst) {
       submenu.querySelector('.buret-tree-menu-item')?.focus();
     }
+  }
+
+  function moleculeMenuNestedSubmenu(entry, menu, target, options = {}) {
+    const [action, actionLabel] = entry;
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.setAttribute('role', 'menuitem');
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.className = `buret-tree-menu-item buret-tree-menu-sub-trigger${options.destructive ? ' buret-tree-menu-sub-trigger-destructive' : ''}`;
+    trigger.dataset.buretMoleculeSubmenu = action;
+    const label = document.createElement('span');
+    label.className = 'buret-tree-menu-label';
+    label.textContent = actionLabel;
+    const chevron = document.createElement('span');
+    chevron.className = 'buret-tree-menu-chevron';
+    chevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
+    trigger.append(moleculeMenuIcon(moleculeContextActionIcon(action)), label, chevron);
+
+    const submenu = document.createElement('div');
+    submenu.className = 'buret-molecule-context-submenu';
+    submenu.setAttribute('role', 'menu');
+    submenu.setAttribute('aria-label', actionLabel);
+    submenu.dataset.open = 'false';
+    submenu.hidden = true;
+    submenu._buretTrigger = trigger;
+    submenu._buretParentSubmenu = options.parentSubmenu || null;
+    const group = document.createElement('div');
+    group.className = 'buret-molecule-context-menu-group';
+    group.setAttribute('role', 'group');
+    for (const child of moleculeMenuActionChildren(entry)) {
+      group.appendChild(moleculeMenuActionItem(child, menu, target, { parentSubmenu: submenu }));
+    }
+    submenu.appendChild(group);
+
+    const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
+    trigger.addEventListener('pointerenter', () => open(false));
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      if (submenu.hidden) open(true);
+      else moleculeMenuCloseSubmenus(menu, options.parentSubmenu || null);
+    });
+    trigger.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      event.stopPropagation();
+      open(true);
+    });
+    submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
+    menu.appendChild(submenu);
+    return trigger;
+  }
+
+  function moleculeMenuActionItem(entry, menu, target, options = {}) {
+    const children = moleculeMenuActionChildren(entry);
+    if (children.length) return moleculeMenuNestedSubmenu(entry, menu, target, options);
+    const [action, actionLabel] = entry;
+    return moleculeMenuActionButton(action, actionLabel, {
+      destructive: options.destructive,
+      target,
+      pickingLevel: target?.pickingLevel,
+      menu,
+      parentSubmenu: options.parentSubmenu || null,
+    });
   }
 
   function moleculeMenuSubmenu(section, grouped, menu, target) {
@@ -20700,11 +20795,10 @@
         heading.textContent = MOLECULE_MENU_GROUP_TITLES[groupId] || section.title;
         group.appendChild(heading);
       }
-      for (const [action, actionLabel] of entries) {
-        group.appendChild(moleculeMenuActionButton(action, actionLabel, {
+      for (const entry of entries) {
+        group.appendChild(moleculeMenuActionItem(entry, menu, target, {
           destructive: section.destructive,
-          target,
-          pickingLevel: target?.pickingLevel
+          parentSubmenu: submenu,
         }));
       }
       submenu.appendChild(group);
@@ -20712,7 +20806,6 @@
 
     const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
     trigger.addEventListener('pointerenter', () => open(false));
-    trigger.addEventListener('focus', () => open(false));
     trigger.addEventListener('click', event => {
       event.preventDefault();
       if (submenu.hidden) open(true);
@@ -20924,10 +21017,9 @@
             const item = moleculeMenuActionButton(action, label, {
               destructive: section.destructive,
               target: actionTarget,
-              pickingLevel: mode
+              pickingLevel: mode,
+              menu,
             });
-            item.addEventListener('pointerenter', () => moleculeMenuCloseSubmenus(menu));
-            item.addEventListener('focus', () => moleculeMenuCloseSubmenus(menu));
             actionContainer.appendChild(item);
           }
         } else {
