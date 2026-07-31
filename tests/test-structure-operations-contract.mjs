@@ -143,21 +143,21 @@ assert.match(fn("sceneTreeMeasurementMenu"), /'geometry-color'[\s\S]*'line-size'
 assert.match(fn("sceneTreeMeasurementText"), /const field = 'custom-text'/);
 
 // The first level stays compact: common target actions are direct, the long
-// Maestro/PyMOL toolsets use either a submenu or a standalone dialog, while the
-// short visibility and representation blocks stay one click away on the first level.
+// Maestro/PyMOL toolsets use submenus, while the short visibility actions stay one
+// click away and the representation editor gets the same cascading treatment.
 assert.match(viewer, /\{ id: 'primary', title: 'Target', direct: true \}/);
 assert.doesNotMatch(viewer, /\{ id: 'selection', title: 'Selection'/);
 assert.match(viewer, /\{ id: 'view', title: 'Visibility', direct: true, breakBefore: true \}/);
 assert.match(viewer, /\{ id: 'represent', title: 'Representation', direct: true, breakBefore: true \}/);
-assert.match(viewer, /\{ id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true, dialog: true \}/);
-assert.match(viewer, /\{ id: 'export', title: 'Export', dialog: true \}/);
+assert.match(viewer, /\{ id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true \}/);
+assert.match(viewer, /\{ id: 'export', title: 'Export' \}/);
 assert.doesNotMatch(viewer, /\{ id: 'appearance', title: 'Appearance'/);
 assert.match(viewer, /\{ id: 'align', title: 'Superposition' \}/);
 assert.match(viewer, /\{ id: 'danger', title: 'Delete', direct: true, destructive: true, hideTitle: true, breakBefore: true \}/);
 assert.match(fn("showMolstarContextMenu"), /const actionTarget = \{ \.\.\.menuTarget, pickingLevel: mode \}/);
 assert.match(fn("showMolstarContextMenu"), /if \(!section\.hideTitle\)[\s\S]*moleculeMenuActionButton\(action, label, \{[\s\S]*target: actionTarget/);
 assert.match(fn("moleculeMenuSubmenu"), /aria-haspopup[\s\S]*buret-tree-menu-sub-trigger[\s\S]*buret-molecule-context-submenu/);
-assert.match(fn("moleculeMenuDialogTrigger"), /aria-haspopup[\s\S]*dialog[\s\S]*showMoleculeActionDialog/);
+assert.match(fn("moleculeMenuRepresentationSubmenu"), /aria-haspopup[\s\S]*menu[\s\S]*sceneTreeRepresentationMenu/);
 assert.match(fn("moleculeMenuActionButton"), /pickingLevel: options\.pickingLevel \|\| options\.target\.pickingLevel/);
 assert.match(fn("moleculeMenuActionButton"), /moleculeContextMenuAction\(action, label, target\)/);
 assert.match(fn("moleculeContextMenuAction"), /const target = targetOverride \|\| molstarContextTarget\(\)/);
