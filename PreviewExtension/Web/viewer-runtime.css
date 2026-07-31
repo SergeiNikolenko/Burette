@@ -613,6 +613,30 @@ body.buret-toolbar-collapsed #buret-selection-bar {
 .buret-rail-button[data-motion="playing"] {
   color: var(--buret-molstar-accent);
 }
+/* The rail is a single column parked against the right edge, so a tooltip that
+   drops below the button centred on it runs off screen and covers the next
+   button down. It hangs off the rail's left side instead, level with the icon. */
+.buret-rail-button > .buret-tooltip {
+  top: 50%;
+  left: auto;
+  right: calc(100% + 10px);
+  transform: translate(4px, -50%) scale(0.98);
+  transform-origin: center right;
+}
+.buret-rail-button:hover > .buret-tooltip,
+.buret-rail-button:focus-visible > .buret-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(0, -50%) scale(1);
+  transition-delay: 180ms, 180ms, 0s;
+}
+/* An open menu already names what the button does, and the tooltip would sit on
+   top of it. */
+.buret-rail-button[aria-expanded="true"] > .buret-tooltip {
+  opacity: 0;
+  visibility: hidden;
+  transition-delay: 0s;
+}
 .buret-rail-button.buret-clear-selection {
   color: #ff6b5e;
   border-color: rgba(255, 107, 94, 0.72);
