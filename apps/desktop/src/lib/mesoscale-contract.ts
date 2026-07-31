@@ -1,10 +1,16 @@
 export const MESOSCALE_API_VERSION = "burette-mesoscale/v2" as const;
 export const MESOSCALE_HIERARCHY_PAGE_LIMIT = 128;
+export const MESOSCALE_HIERARCHY_DETAIL_LIMIT = 256;
+export const MESOSCALE_HIERARCHY_DETAIL_PER_OBJECT_LIMIT = 64;
+export const MESOSCALE_HIERARCHY_DETAIL_DEPTH_LIMIT = 3;
+export const MESOSCALE_HIERARCHY_TEXT_LIMIT = 256;
+export const MESOSCALE_HIERARCHY_INSPECTION_LIMIT = 1024;
+export const MESOSCALE_SELECTION_BATCH_LIMIT = 4096;
+export const MESOSCALE_SELECTION_REF_LIMIT = 256;
 
 export type MesoscaleGraphicsMode = "ultra" | "quality" | "balanced" | "performance" | "custom";
 export type MesoscaleLayoutRegion = "left" | "right";
 export type MesoscaleMotion = "off" | "spin" | "rock";
-
 export type MesoscaleCounts = {
   roots: number;
   groups: number;
@@ -54,6 +60,15 @@ export type MesoscaleSceneSummary = {
   loadReport: MesoscaleLoadReport | null;
 };
 
+export type MesoscaleHierarchyDetail = {
+  id: string;
+  label: string;
+  detail: string;
+  childCount?: number;
+  childrenTruncated?: boolean;
+  children?: MesoscaleHierarchyDetail[];
+};
+
 export type MesoscaleHierarchyObject = {
   ref: string;
   parentRef: string | null;
@@ -67,6 +82,9 @@ export type MesoscaleHierarchyObject = {
   color: number | null;
   opacity: number | null;
   emissive: number | null;
+  childCount?: number;
+  childrenTruncated?: boolean;
+  children?: MesoscaleHierarchyDetail[];
 };
 
 export type MesoscaleHierarchyPage = {
@@ -101,6 +119,7 @@ export type MesoscaleAction =
   | { type: "setGraphics"; graphics: MesoscaleGraphicsMode }
   | { type: "setFilter"; filter: string }
   | { type: "setSelection"; ref?: string; mode?: "replace" | "extend" | "toggle" | "clear" }
+  | { type: "setSelectionBatch"; refs: string[]; mode?: "replace" | "extend" }
   | { type: "setSelectionStyle"; color?: number; opacity?: number; emissive?: number; selectionVersion?: number }
   | { type: "setSelectionVisibility"; visible: boolean }
   | { type: "isolateSelection" }
@@ -257,4 +276,60 @@ export function mergeMesoscaleHierarchySelection(items: MesoscaleHierarchyObject
       selected: preview?.selected ?? (selectedRefs.has(item.ref) || (!complete && item.selected)),
     };
   });
+}
+
+function boundedMesoscaleText(value: unknown, limit = MESOSCALE_HIERARCHY_TEXT_LIMIT) {
+  return String(value ?? "").slice(0, limit);
+}
+
+export function boundMesoscaleHierarchyPage(page: MesoscaleHierarchyPage): MesoscaleHierarchyPage {
+  const detailBudget = { remaining: MESOSCALE_HIERARCHY_DETAIL_LIMIT };
+  const inspectionBudget = { remaining: MESOSCALE_HIERARCHY_INSPECTION_LIMIT };
+  const seen = new WeakSet<object>();
+  const boundDetails = (values: unknown, depth: number, objectBudget: { remaining: number }): MesoscaleHierarchyDetail[] => {
+    if (!Array.isArray(values) || depth > MESOSCALE_HIERARCHY_DETAIL_DEPTH_LIMIT || detailBudget.remaining <= 0 || objectBudget.remaining <= 0) return [];
+    const bounded: MesoscaleHierarchyDetail[] = [];
+    const inspected = Math.min(values.length, inspectionBudget.remaining);
+    for (let index = 0; index < inspected; index += 1) {
+      if (detailBudget.remaining <= 0 || objectBudget.remaining <= 0 || inspectionBudget.remaining <= 0) break;
+      inspectionBudget.remaining -= 1;
+      const value = values[index];
+      if (!value || typeof value !== "object" || seen.has(value)) continue;
+      seen.add(value);
+      const detail = value as Partial<MesoscaleHierarchyDetail>;
+      const id = boundedMesoscaleText(detail.id);
+      if (!id) continue;
+      detailBudget.remaining -= 1;
+      objectBudget.remaining -= 1;
+      const rawChildren = Array.isArray(detail.children) ? detail.children : [];
+      const children = boundDetails(rawChildren, depth + 1, objectBudget);
+      const childCount = Math.max(children.length, Number.isFinite(detail.childCount) ? Math.max(0, Math.trunc(detail.childCount as number)) : rawChildren.length);
+      bounded.push({
+        id,
+        label: boundedMesoscaleText(detail.label),
+        detail: boundedMesoscaleText(detail.detail),
+        childCount,
+        childrenTruncated: Boolean(detail.childrenTruncated) || children.length < childCount,
+        children,
+      });
+    }
+    return bounded;
+  };
+  const items = (Array.isArray(page.items) ? page.items : []).slice(0, MESOSCALE_HIERARCHY_PAGE_LIMIT).map((item) => {
+    const objectBudget = { remaining: MESOSCALE_HIERARCHY_DETAIL_PER_OBJECT_LIMIT };
+    const rawChildren = Array.isArray(item.children) ? item.children : [];
+    const children = boundDetails(rawChildren, 1, objectBudget);
+    const childCount = Math.max(children.length, Number.isFinite(item.childCount) ? Math.max(0, Math.trunc(item.childCount as number)) : rawChildren.length);
+    return {
+      ...item,
+      ref: boundedMesoscaleText(item.ref, MESOSCALE_SELECTION_REF_LIMIT),
+      parentRef: item.parentRef === null ? null : boundedMesoscaleText(item.parentRef, MESOSCALE_SELECTION_REF_LIMIT),
+      label: boundedMesoscaleText(item.label),
+      description: boundedMesoscaleText(item.description),
+      childCount,
+      childrenTruncated: Boolean(item.childrenTruncated) || children.length < childCount,
+      children,
+    };
+  });
+  return { ...page, items };
 }

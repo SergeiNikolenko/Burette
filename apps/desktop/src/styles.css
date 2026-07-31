@@ -6274,6 +6274,34 @@ input.structure-inspector-composition-search {
 .mesoscale-toolbar.dragging .mesoscale-toolbar-grip { cursor: grabbing; }
 .mesoscale-toolbar.collapsed .mesoscale-toolbar-grip { width: 36px; height: 36px; border: 1px solid var(--line-subtle); border-radius: 12px; background: color-mix(in srgb, var(--bg-base) 82%, transparent); box-shadow: 0 8px 28px rgb(0 0 0 / 0.16); opacity: 1; backdrop-filter: blur(18px); }
 
+.mesoscale-selection-bar {
+  position: absolute;
+  z-index: 25;
+  top: 54px;
+  right: calc(var(--mesoscale-canvas-right) + 56px);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 344px;
+  max-width: calc(100% - var(--mesoscale-canvas-left) - var(--mesoscale-canvas-right) - 84px);
+  min-height: 36px;
+  padding: 3px;
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-base) 92%, transparent);
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.22), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  backdrop-filter: blur(10px);
+  touch-action: auto;
+}
+.mesoscale-selection-level { display: flex; flex: 0 1 132px; min-width: 82px; height: 28px; align-items: center; gap: 4px; padding: 0 7px; border-radius: 8px; background: var(--surface-hover); }
+.mesoscale-selection-level span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mesoscale-selection-level svg { flex: 0 0 auto; }
+.mesoscale-selection-count { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--text-muted); font-size: 11px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.mesoscale-selection-bar > button { display: grid; flex: 0 0 28px; width: 28px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 8px; color: inherit; background: transparent; }
+.mesoscale-selection-bar > button:hover:not(:disabled) { color: var(--text-primary); background: var(--surface-hover); }
+.mesoscale-selection-bar > button:disabled { opacity: 0.4; }
+
 .mesoscale-viewport-rail {
   position: absolute;
   top: calc(100% + 6px);
@@ -6334,27 +6362,21 @@ input.structure-inspector-composition-search {
   background: var(--bg-base);
   box-shadow: 0 12px 34px rgb(0 0 0 / 0.22);
 }
-.mesoscale-scene-overlay-header { display: grid; grid-template-columns: 18px minmax(0, 1fr) 28px; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border-bottom: 1px solid var(--line-subtle); font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+.mesoscale-scene-overlay-header { display: grid; grid-template-columns: 18px minmax(0, 1fr) 28px 28px; align-items: center; gap: 3px; padding: 3px 4px 3px 10px; border-bottom: 1px solid var(--line-subtle); font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
 .mesoscale-scene-overlay-body { min-height: 0; overflow: hidden; }
 .mesoscale-scene-overlay .mesoscale-panel { max-height: calc(100vh - 150px); }
 
 .mesoscale-panel { height: 100%; min-height: 0; overflow: auto; padding: 8px; color: var(--text-secondary); }
 .mesoscale-panel section + section { margin-top: 18px; }
 .mesoscale-section-title { margin-bottom: 8px; color: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
-.mesoscale-segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-bottom: 8px; padding: 2px; border: 1px solid var(--line-subtler); border-radius: 7px; background: var(--surface-subtle); }
-.mesoscale-segmented button { min-height: 24px; border: 0; border-radius: 5px; color: var(--text-muted); background: transparent; font-size: 11px; }
-.mesoscale-segmented button.active { color: var(--text-primary); background: var(--surface-subtle-strong); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
-.mesoscale-search,
-.mesoscale-inline-form input { width: 100%; min-height: 30px; padding: 0 9px; border: 1px solid var(--line-subtle); border-radius: 7px; outline: 0; color: var(--text-primary); background: var(--surface-input); }
-.mesoscale-search:focus,
-.mesoscale-inline-form input:focus { border-color: var(--focus-border); }
 .mesoscale-object-summary { display: flex; justify-content: space-between; padding: 7px 2px 5px; color: var(--text-muted); font-size: 10px; }
-.mesoscale-object-tree { min-height: 80px; overflow: hidden; padding: 4px; border: 0; border-radius: 0; background: transparent; }
+.mesoscale-object-tree { min-height: 80px; overflow-x: auto; overflow-y: visible; padding: 4px; border: 0; border-radius: 0; background: transparent; }
 .mesoscale-tree-branch { position: relative; }
 .mesoscale-tree-group { position: relative; margin-left: 13px; }
 .mesoscale-tree-group::before { position: absolute; top: 0; bottom: 0; left: -5px; width: 1px; background: var(--line-subtler); content: ""; }
 .mesoscale-object-row { position: relative; display: flex; align-items: center; gap: 2px; min-height: 24px; padding-right: 3px; border-radius: 5px; content-visibility: auto; contain-intrinsic-size: 24px; }
 .mesoscale-object-row.selected { background: color-mix(in srgb, var(--text-primary) 9%, transparent); }
+.mesoscale-object-row.range-selected { background: color-mix(in srgb, var(--accent) 22%, var(--surface-hover)); }
 .mesoscale-object-row.hovered { background: var(--surface-hover); }
 .mesoscale-object-row.hovered .mesoscale-object-main strong { color: var(--text-primary); }
 .mesoscale-object-row > button { min-width: 0; border: 0; color: var(--text-muted); background: transparent; }
@@ -6365,13 +6387,18 @@ input.structure-inspector-composition-search {
 .mesoscale-tree-bar[data-kind="group"] { background: color-mix(in srgb, var(--accent) 70%, var(--text-muted)); }
 .mesoscale-tree-bar[data-kind="structure"] { background: #64d2ff; }
 .mesoscale-tree-bar[data-kind="mesh"] { background: #ffd60a; }
-.mesoscale-object-main { display: flex; flex: 1 1 auto; align-items: baseline; gap: 5px; min-width: 0; min-height: 24px; padding: 3px 2px; text-align: left; }
+.mesoscale-object-main { display: grid; grid-template-columns: 2px minmax(0, 1fr) minmax(58px, auto); flex: 1 1 auto; align-items: baseline; column-gap: 5px; min-width: 0; min-height: 24px; padding: 3px 2px; text-align: left; }
 .mesoscale-object-main strong,
-.mesoscale-object-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mesoscale-object-main strong { flex: 0 0 auto; max-width: 100%; color: var(--text-primary); font-size: 12px; line-height: 1.25; }
-.mesoscale-object-main small { flex: 1 1 0; min-width: 0; color: var(--text-muted); font-size: 10.5px; line-height: 1.25; }
-.mesoscale-tree-color { flex: 0 0 20px; width: 20px; height: 20px; padding: 0; border: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent) !important; border-radius: 5px; background: var(--surface-subtle-strong); box-shadow: inset -3px 0 0 color-mix(in srgb, #fff 28%, transparent); }
-.mesoscale-tree-color:hover { outline: 1px solid var(--focus-border); outline-offset: -1px; }
+.mesoscale-object-main small,
+.mesoscale-detail-main strong,
+.mesoscale-detail-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mesoscale-object-main strong { min-width: 0; color: var(--text-primary); font-size: 12px; line-height: 1.25; }
+.mesoscale-object-main small { min-width: 0; max-width: 92px; color: var(--text-muted); font-size: 10.5px; line-height: 1.25; text-align: right; font-variant-numeric: tabular-nums; }
+.mesoscale-detail-row { color: var(--text-muted); }
+.mesoscale-detail-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(58px, auto); flex: 1 1 auto; align-items: baseline; column-gap: 5px; min-width: 0; min-height: 24px; padding: 3px 2px; }
+.mesoscale-detail-main strong { min-width: 0; color: var(--text-secondary); font-size: 11.5px; font-weight: 500; }
+.mesoscale-detail-main small { min-width: 0; max-width: 92px; color: var(--text-muted); font-size: 10.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.mesoscale-truncation-row { opacity: 0.72; font-style: italic; }
 .mesoscale-tree-action { flex: 0 0 20px; width: 20px; height: 20px; padding: 0; border-radius: 4px; opacity: 0; transition: opacity 90ms ease; }
 .mesoscale-object-row:hover .mesoscale-tree-action,
 .mesoscale-object-row:focus-within .mesoscale-tree-action,
@@ -6385,17 +6412,6 @@ input.structure-inspector-composition-search {
 .mesoscale-style-editor label { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 31px; color: var(--text-muted); }
 .mesoscale-style-editor input[type="color"] { width: 34px; height: 24px; padding: 0; border: 0; background: transparent; }
 .mesoscale-style-editor output { min-width: 32px; text-align: right; font-size: 11px; }
-.mesoscale-section-stack { display: flex; flex-direction: column; gap: 7px; }
-.mesoscale-inline-form { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 5px; }
-.mesoscale-inline-form button,
-.mesoscale-snapshot-row button { border: 0; border-radius: 7px; color: var(--text-secondary); background: var(--surface-subtle); }
-.mesoscale-snapshot-row { display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 4px; }
-.mesoscale-snapshot-row button:first-child { display: flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 8px; text-align: left; }
-.mesoscale-snapshot-row button.current { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 18%, var(--surface-subtle)); }
-.mesoscale-export-grid { display: grid; gap: 7px; }
-.mesoscale-export-grid button { display: grid; grid-template-columns: 24px 1fr; grid-template-rows: auto auto; align-items: center; column-gap: 8px; min-height: 52px; padding: 8px; border: 1px solid var(--line-subtle); border-radius: var(--radius-md); text-align: left; color: var(--text-primary); background: var(--surface-card); }
-.mesoscale-export-grid svg { grid-row: 1 / 3; color: var(--text-muted); }
-.mesoscale-export-grid small { color: var(--text-muted); }
 .mesoscale-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 0; }
 .mesoscale-metrics div { padding: 8px; border-radius: var(--radius-md); background: var(--surface-card); }
 .mesoscale-metrics dt { color: var(--text-muted); font-size: 10px; }

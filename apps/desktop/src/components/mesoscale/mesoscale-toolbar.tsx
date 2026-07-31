@@ -47,7 +47,7 @@ function toolbarBounds(toolbar: HTMLElement) {
   const stageRect = stage.getBoundingClientRect();
   const toolbarRect = toolbar.getBoundingClientRect();
   const railRect = toolbar.querySelector<HTMLElement>(".mesoscale-viewport-rail:not(.hidden)")?.getBoundingClientRect();
-  const railFootprint = railRect?.height ? railRect.height + 6 : 0;
+  const railFootprint = (railRect?.height ?? 0) + 6;
   const styles = getComputedStyle(stage);
   const canvasLeft = Number.parseFloat(styles.getPropertyValue("--mesoscale-canvas-left")) || 0;
   const canvasRight = Number.parseFloat(styles.getPropertyValue("--mesoscale-canvas-right")) || 0;

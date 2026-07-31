@@ -3,6 +3,7 @@ import {
   MESOSCALE_API_VERSION,
   isMesoscaleCanvasInteractionMessage,
   isMesoscaleResponse,
+  boundMesoscaleHierarchyPage,
   mergeMesoscaleHierarchySelection,
   mesoscaleSelectedCount,
   type MesoscaleAction,
@@ -143,6 +144,7 @@ function scheduleMesoscaleSelectionRefresh(documentId: string, revision: number)
 }
 
 function applyHierarchyPage(documentId: string, page: MesoscaleHierarchyPage) {
+  page = boundMesoscaleHierarchyPage(page);
   updateSession(documentId, (session) => {
     if (page.revision < session.revision) return session;
     const knownObjectCount = Math.max(

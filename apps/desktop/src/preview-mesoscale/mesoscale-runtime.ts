@@ -3,7 +3,7 @@ import { MesoFocusLoci } from "molstar/lib/apps/mesoscale-explorer/behavior/came
 import { MesoscaleState, getAllEntities, getAllGroups, getEntities, getEntityDescription, getEntityLabel, getRoots, setGraphicsCanvas3DProps } from "molstar/lib/apps/mesoscale-explorer/data/state.js";
 import { LoadModel, openState } from "molstar/lib/apps/mesoscale-explorer/ui/states.js";
 import { PluginCommands } from "molstar/lib/mol-plugin/commands.js";
-import { Structure, StructureElement } from "molstar/lib/mol-model/structure.js";
+import { Structure, StructureElement, StructureProperties } from "molstar/lib/mol-model/structure.js";
 import { EveryLoci, Loci } from "molstar/lib/mol-model/loci.js";
 import { Sphere3D } from "molstar/lib/mol-math/geometry.js";
 import { Vec2 } from "molstar/lib/mol-math/linear-algebra.js";
@@ -18,11 +18,16 @@ import { createMesoscaleCanvasInteractionController, type MesoscaleCanvasPoint }
 import { mesoscaleZipEntries, validateGenericMesoscaleManifest, validateMesoscaleArchiveEntries } from "./mesoscale-package";
 import {
   MESOSCALE_API_VERSION,
+  MESOSCALE_HIERARCHY_DETAIL_LIMIT,
+  MESOSCALE_HIERARCHY_DETAIL_PER_OBJECT_LIMIT,
   MESOSCALE_HIERARCHY_PAGE_LIMIT,
+  MESOSCALE_SELECTION_BATCH_LIMIT,
+  MESOSCALE_SELECTION_REF_LIMIT,
   type MesoscaleAction,
   type MesoscaleChromeMessage,
   type MesoscaleControlPlacement,
   type MesoscaleGraphicsMode,
+  type MesoscaleHierarchyDetail,
   type MesoscaleHierarchyObject,
   type MesoscaleLayoutRegion,
   type MesoscaleMotion,
@@ -137,7 +142,72 @@ function uniqueCells<T>(cells: T[]) {
   });
 }
 
-function entitySummary(plugin: MesoscaleExplorer["plugin"], cell: any, parentRef?: string | null) {
+function structureHierarchy(source: Structure, budget: { remaining: number }) {
+  const models = new Map<string, { elements: number; chains: Map<string, { elements: number; operators: Map<string, number> }> }>();
+  const location = StructureElement.Location.create(source);
+  for (const unit of source.units) {
+    if (unit.elements.length === 0) continue;
+    location.unit = unit;
+    location.element = unit.elements[0];
+    const modelLabel = String(unit.model.modelNum || unit.model.id || "1").slice(0, 128);
+    const chainLabel = String(StructureProperties.chain.auth_asym_id(location) || StructureProperties.chain.label_asym_id(location) || unit.chainGroupId).slice(0, 128);
+    const operatorLabel = String(unit.conformation.operator.name || "1_555").slice(0, 128);
+    const elementCount = unit.elements.length;
+    const model = models.get(modelLabel) ?? { elements: 0, chains: new Map() };
+    const chain = model.chains.get(chainLabel) ?? { elements: 0, operators: new Map() };
+    model.elements += elementCount;
+    chain.elements += elementCount;
+    chain.operators.set(operatorLabel, (chain.operators.get(operatorLabel) ?? 0) + elementCount);
+    model.chains.set(chainLabel, chain);
+    models.set(modelLabel, model);
+  }
+  let localRemaining = Math.min(MESOSCALE_HIERARCHY_DETAIL_PER_OBJECT_LIMIT, budget.remaining);
+  const details: MesoscaleHierarchyDetail[] = [];
+  for (const [modelLabel, model] of models) {
+    if (localRemaining <= 0 || budget.remaining <= 0) break;
+    localRemaining -= 1;
+    budget.remaining -= 1;
+    const modelDetail: MesoscaleHierarchyDetail = {
+      id: `model:${modelLabel}`,
+      label: `Model ${modelLabel}`,
+      detail: `${model.elements.toLocaleString()} elements`,
+      childCount: model.chains.size,
+      children: [],
+    };
+    for (const [chainLabel, chain] of model.chains) {
+      if (localRemaining <= 0 || budget.remaining <= 0) break;
+      localRemaining -= 1;
+      budget.remaining -= 1;
+      const operatorEntries = Array.from(chain.operators);
+      const operatorChildCount = operatorEntries.length > 0 ? 1 : 0;
+      const chainDetail: MesoscaleHierarchyDetail = {
+        id: `model:${modelLabel}:chain:${chainLabel}`,
+        label: `Chain ${chainLabel}`,
+        detail: `${chain.elements.toLocaleString()} elements`,
+        childCount: operatorChildCount,
+        children: [],
+      };
+      if (operatorEntries.length > 0 && localRemaining > 0 && budget.remaining > 0) {
+        localRemaining -= 1;
+        budget.remaining -= 1;
+        const [operatorLabel, elements] = operatorEntries[0];
+        chainDetail.children?.push({
+          id: `model:${modelLabel}:chain:${chainLabel}:operators`,
+          label: operatorEntries.length === 1 ? `Operator ${operatorLabel}` : "Operators",
+          detail: operatorEntries.length === 1 ? `${elements.toLocaleString()} elements` : `${operatorEntries.length.toLocaleString()} instances`,
+          children: [],
+        });
+      }
+      chainDetail.childrenTruncated = (chainDetail.children?.length ?? 0) < operatorChildCount;
+      modelDetail.children?.push(chainDetail);
+    }
+    modelDetail.childrenTruncated = (modelDetail.children?.length ?? 0) < model.chains.size;
+    details.push(modelDetail);
+  }
+  return { children: details, childCount: models.size, childrenTruncated: details.length < models.size };
+}
+
+function entitySummary(plugin: MesoscaleExplorer["plugin"], cell: any, parentRef?: string | null, detailBudget?: { remaining: number }) {
   const source = cell?.obj?.data?.sourceData;
   const isStructure = source instanceof Structure;
   const params = cell?.transform?.params || {};
@@ -146,6 +216,7 @@ function entitySummary(plugin: MesoscaleExplorer["plugin"], cell: any, parentRef
   const color = colorTheme?.name === "illustrative"
     ? colorTheme?.params?.style?.params?.value
     : colorTheme?.params?.value ?? params.coloring?.params?.color;
+  const hierarchy = isStructure && detailBudget ? structureHierarchy(source, detailBudget) : null;
   return {
     ref: String(cell?.transform?.ref || ""),
     parentRef: parentRef === undefined ? String(cell?.transform?.parent || "") || null : parentRef,
@@ -158,6 +229,7 @@ function entitySummary(plugin: MesoscaleExplorer["plugin"], cell: any, parentRef
     color: Number.isInteger(color) ? Number(color) : null,
     opacity: Number.isFinite(typeParams.alpha) ? Number(typeParams.alpha) : 1,
     emissive: Number.isFinite(typeParams.emissive) ? Number(typeParams.emissive) : 0,
+    ...(hierarchy ?? {}),
   };
 }
 
@@ -261,6 +333,7 @@ class MesoscaleRuntimeApi {
         color: null,
         opacity: null,
         emissive: null,
+        children: [],
       })),
       ...observed.entities.map((item: ReturnType<typeof entitySummary>) => ({
         ...item,
@@ -304,10 +377,13 @@ class MesoscaleRuntimeApi {
         color: null,
         opacity: null,
         emissive: null,
+        children: [],
       };
     });
     const allGroups = uniqueCells(getAllGroups(this.plugin));
-    const entities: MesoscaleHierarchyObject[] = uniqueCells(getAllEntities(this.plugin)).map((cell: any) => {
+    const entityCells = uniqueCells(getAllEntities(this.plugin)) as any[];
+    const entityCellByRef = new Map(entityCells.map((cell: any) => [String(cell?.transform?.ref || ""), cell]));
+    const entities: MesoscaleHierarchyObject[] = entityCells.map((cell: any) => {
       const summary = entitySummary(this.plugin, cell, entityGroupParentRef(this.plugin, cell, allGroups));
       return {
         ...summary,
@@ -319,7 +395,18 @@ class MesoscaleRuntimeApi {
       || item.label.toLocaleLowerCase().includes(normalizedFilter)
       || item.description.toLocaleLowerCase().includes(normalizedFilter));
     const start = Math.max(0, Math.min(all.length, Math.trunc(cursor) || 0));
-    const items = all.slice(start, start + limit);
+    const detailBudget = { remaining: MESOSCALE_HIERARCHY_DETAIL_LIMIT };
+    const items = all.slice(start, start + limit).map((item) => {
+      if (item.kind !== "structure") return item;
+      const cell = entityCellByRef.get(item.ref);
+      if (!cell || detailBudget.remaining <= 0) return { ...item, childCount: Math.max(1, item.childCount ?? 0), childrenTruncated: true, children: [] };
+      const summary = entitySummary(this.plugin, cell, item.parentRef, detailBudget);
+      return {
+        ...summary,
+        hidden: this.visibilityOverrides.get(summary.ref) ?? summary.hidden,
+        selected: this.selectedRefs.has(summary.ref),
+      };
+    });
     return {
       kind: "hierarchy-page" as const,
       revision: this.revision,
@@ -547,6 +634,35 @@ class MesoscaleRuntimeApi {
 
   async selectEntity(ref: string, mode: "replace" | "extend" | "toggle" = "replace") {
     this.mutateSelection(ref, mode);
+    this.changed();
+    return this.observe();
+  }
+
+  async selectEntities(refs: string[], mode: "replace" | "extend" = "replace") {
+    if (!Array.isArray(refs) || refs.length === 0) throw new Error("At least one Mesoscale object is required for selection");
+    if (refs.length > MESOSCALE_SELECTION_BATCH_LIMIT) throw new Error(`Selection batch exceeds ${MESOSCALE_SELECTION_BATCH_LIMIT} objects`);
+    if (refs.some((ref) => typeof ref !== "string" || ref.length === 0 || ref.length > MESOSCALE_SELECTION_REF_LIMIT)) throw new Error("Selection batch contains an invalid object reference");
+    const boundedRefs = Array.from(new Set(refs));
+    const cells = uniqueCells(boundedRefs.flatMap((ref) => this.objectEntities(ref)))
+      .filter((cell: any) => cell?.obj?.data?.sourceData instanceof Structure) as any[];
+    if (cells.length === 0) throw new Error("No selectable molecular structures were found");
+    const before = new Set(this.selectedRefs);
+    const selection = this.plugin.managers.interactivity.lociSelects;
+    this.selectionMutationDepth += 1;
+    try {
+      if (mode === "replace") {
+        selection.deselectAll();
+        this.selectedRefs.clear();
+      }
+      for (const cell of cells) {
+        selection.select({ loci: Structure.toStructureElementLoci(cell.obj.data.sourceData) }, false);
+        const ref = String(cell?.transform?.ref || "");
+        if (ref) this.selectedRefs.add(ref);
+      }
+    } finally {
+      this.selectionMutationDepth -= 1;
+    }
+    if (before.size !== this.selectedRefs.size || Array.from(before).some((ref) => !this.selectedRefs.has(ref))) this.selectionVersion += 1;
     this.changed();
     return this.observe();
   }
@@ -805,6 +921,7 @@ class MesoscaleRuntimeApi {
         if (action.mode === "clear" || !action.ref) this.clearSelection();
         else await this.selectEntity(action.ref, action.mode ?? "replace");
         return this.sceneSummary();
+      case "setSelectionBatch": await this.selectEntities(action.refs, action.mode ?? "replace"); return this.sceneSummary();
       case "setSelectionStyle": await this.styleSelection(action); return this.sceneSummary();
       case "setSelectionVisibility": await this.setSelectionVisibility(action.visible); return this.sceneSummary();
       case "isolateSelection": await this.isolateSelection(); return this.sceneSummary();
@@ -833,7 +950,7 @@ class MesoscaleRuntimeApi {
       case "getCapabilities": return {
         kind: "capabilities",
         apiVersion: MESOSCALE_API_VERSION,
-        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
+        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionBatch", "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
         graphicsModes: ["ultra", "quality", "balanced", "performance", "custom"],
         hierarchyPageLimit: MESOSCALE_HIERARCHY_PAGE_LIMIT,
       };
@@ -892,7 +1009,9 @@ function applyHostedUi(hosted: boolean) {
   if (!hosted || document.getElementById("burette-mesoscale-hosted-style")) return;
   const style = document.createElement("style");
   style.id = "burette-mesoscale-hosted-style";
-  style.textContent = ".burette-mesoscale-hosted .msp-logo{display:none!important}";
+  const hostOwnedSelectors = [".burette-mesoscale-hosted .msp-logo"];
+  if (window.parent !== window) hostOwnedSelectors.push(".burette-mesoscale-hosted .msp-selection-viewport-controls");
+  style.textContent = `${hostOwnedSelectors.join(",")}{display:none!important}`;
   document.head.appendChild(style);
 }
 

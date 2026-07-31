@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 
 import { createMesoscaleCanvasInteractionController } from "../apps/desktop/src/preview-mesoscale/mesoscale-canvas-interaction.ts";
-import { mergeMesoscaleHierarchySelection, mesoscaleSelectedCount } from "../apps/desktop/src/lib/mesoscale-contract.ts";
+import { boundMesoscaleHierarchyPage, mergeMesoscaleHierarchySelection, mesoscaleSelectedCount } from "../apps/desktop/src/lib/mesoscale-contract.ts";
+import { inclusiveMesoscaleTreeRange, mesoscaleTreeSelectionError } from "../apps/desktop/src/components/mesoscale/mesoscale-tree-selection.ts";
 
 const selected = new Set();
 const selections = [];
@@ -71,5 +72,33 @@ const boundedSelection = {
 assert.equal(mesoscaleSelectedCount({ selectedRefs: ["legacy"] }), 1, "legacy v2 summaries fall back to their bounded ref count");
 assert.equal(mergeMesoscaleHierarchySelection(hierarchy, boundedSelection)[129].selected, true, "bounded summaries preserve selection state until paginated refresh arrives");
 assert.equal(mergeMesoscaleHierarchySelection(hierarchy, { ...boundedSelection, selectedRefs: [], selectedCount: 0, selectionTruncated: false, hierarchyPreview: [] })[129].selected, false, "a complete clear summary clears every loaded row");
+
+const treeRefs = ["structure-a", "structure-b", "structure-c", "structure-d"];
+assert.deepEqual(inclusiveMesoscaleTreeRange(treeRefs, "structure-a", "structure-d"), treeRefs, "forward tree drag selects the inclusive range");
+assert.deepEqual(inclusiveMesoscaleTreeRange(treeRefs, "structure-d", "structure-b"), ["structure-b", "structure-c", "structure-d"], "reverse tree drag selects the same ordered range");
+assert.deepEqual(inclusiveMesoscaleTreeRange(treeRefs, "missing", "structure-b"), ["structure-b"], "stale drag anchors fall back to the current visible row");
+assert.equal(mesoscaleTreeSelectionError(Array.from({ length: 4096 }, (_, index) => String(index))), null, "the documented atomic batch limit is selectable");
+assert.match(mesoscaleTreeSelectionError(Array.from({ length: 4097 }, (_, index) => String(index))), /4,096/, "oversized tree ranges fail visibly before the bridge");
+
+const recursiveDetail = { id: "detail", label: "x".repeat(400), detail: "y".repeat(400), children: [] };
+recursiveDetail.children.push(recursiveDetail);
+const boundedPage = boundMesoscaleHierarchyPage({
+  kind: "hierarchy-page",
+  revision: 1,
+  filter: "",
+  cursor: 0,
+  nextCursor: null,
+  total: 1,
+  items: [{ ...hierarchy[0], label: "z".repeat(400), description: "d".repeat(400), children: [recursiveDetail] }],
+});
+assert.equal(boundedPage.items[0].label.length, 256, "hierarchy labels are bounded at the host bridge");
+assert.equal(boundedPage.items[0].children?.[0].children?.length, 0, "cyclic hierarchy details are cut before rendering");
+assert.equal(boundedPage.items[0].children?.[0].childrenTruncated, true, "truncated hierarchy details are explicit");
+
+const malformedPage = boundMesoscaleHierarchyPage({
+  ...boundedPage,
+  items: [{ ...hierarchy[0], children: Array.from({ length: 2_000 }, () => null) }],
+});
+assert.equal(malformedPage.items[0].children?.length, 0, "malformed hierarchy entries remain bounded by the inspection budget");
 
 console.log("mesoscale canvas interaction tests passed");

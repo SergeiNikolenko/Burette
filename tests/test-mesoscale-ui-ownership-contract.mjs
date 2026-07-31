@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(path, "utf8");
-const [filePage, dock, toolbar, rail, scene, objectMenu, overlay, info, store, documentTypes, rustRuntime] = await Promise.all([
+const [filePage, dock, toolbar, selectionBar, rail, scene, objectMenu, overlay, info, store, documentTypes, rustRuntime] = await Promise.all([
   read("apps/desktop/src/components/editor-area/page-kinds/file.tsx"),
   read("apps/desktop/src/components/dock-panel.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-toolbar.tsx"),
+  read("apps/desktop/src/components/mesoscale/mesoscale-selection-bar.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-viewport-rail.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-scene-panel.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-object-menu.ts"),
@@ -24,6 +25,7 @@ assert.match(filePage, /MesoscaleToolbar/);
 assert.match(filePage, /MesoscaleSceneOverlay/);
 assert.match(filePage, /MesoscaleSceneToggle/);
 assert.match(filePage, /MesoscaleCanvasContextMenu/);
+assert.match(filePage, /MesoscaleSelectionBar/);
 assert.doesNotMatch(filePage, /MesoscaleViewportControls/);
 assert.match(filePage, /mesoscale-left-panel-open/);
 assert.match(filePage, /mesoscale-right-panel-open/);
@@ -35,8 +37,8 @@ assert.doesNotMatch(toolbar, /toggleDock\("right"\)/);
 assert.match(overlay, /MesoscaleScenePanel/);
 assert.match(overlay, /context-menu-content/);
 assert.match(toolbar, /type: "setGraphics"/);
-for (const action of ["getHierarchyPage", "setSelection", "focusObject", "setVisibility", "isolateObjects", "setStyle", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState"]) {
-  assert.ok(scene.includes(`type: "${action}"`) || objectMenu.includes(`type: "${action}"`) || store.includes(`type: "${action}"`), `Scene dock must expose ${action}`);
+for (const action of ["getHierarchyPage", "setSelection", "setSelectionBatch", "focusObject", "setVisibility", "isolateObjects", "setStyle", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState"]) {
+  assert.ok(scene.includes(`type: "${action}"`) || objectMenu.includes(`type: "${action}"`) || overlay.includes(`type: "${action}"`) || store.includes(`type: "${action}"`), `Scene dock must expose ${action}`);
 }
 assert.match(info, /sourceSha256/);
 assert.match(store, /expectedRevision/);
@@ -53,16 +55,28 @@ assert.match(store, /!response\.requestId && response\.result\.kind === "summary
 assert.match(scene, /onPointerEnter/);
 assert.match(scene, /onPointerLeave/);
 assert.match(scene, /role="tree"/);
+assert.match(scene, /aria-multiselectable="true"/);
 assert.match(scene, /role="treeitem"/);
 assert.match(scene, /onContextMenu/);
+assert.match(scene, /event\.button === 0 && event\.ctrlKey/);
 assert.match(scene, /onMouseDown/);
 assert.match(objectMenu, /showNativeContextMenu/);
 assert.match(objectMenu, /forceWeb: true/);
 assert.doesNotMatch(scene, /GROUP_LONG_PRESS_MS/);
+assert.doesNotMatch(scene, /mesoscale-segmented/);
+assert.doesNotMatch(scene, /mesoscale-search/);
 assert.match(objectMenu, /Select all in group/);
 assert.match(objectMenu, /Structure actions/);
 assert.match(scene, /mesoscale-tree-bar/);
-assert.match(scene, /mesoscale-tree-color/);
+assert.doesNotMatch(scene, /mesoscale-tree-color/);
+assert.match(scene, /data-mesoscale-ref/);
+assert.match(scene, /setSelectionBatch/);
+assert.match(scene, /selectionError/);
+assert.match(scene, /setPointerCapture/);
+assert.match(scene, /onLostPointerCapture/);
+assert.match(scene, /MesoscaleHierarchyDetail/);
+assert.match(scene, /More details/);
+assert.match(scene, /childrenTruncated/);
 assert.match(objectMenu, /kind: "swatches"/);
 assert.match(objectMenu, /mutationQueues/);
 assert.match(objectMenu, /queueMutation/);
@@ -76,6 +90,11 @@ assert.match(toolbar, /Switch to \$\{nextTheme\} theme/);
 assert.doesNotMatch(toolbar, /SunMoon/);
 assert.doesNotMatch(toolbar, /<select[^>]*aria-label="Viewer theme"/);
 assert.match(toolbar, /M8 5h2v2H8V5/);
+assert.doesNotMatch(toolbar, /MesoscaleSelectionBar/);
+assert.match(selectionBar, /Selection level: Structure/);
+assert.match(selectionBar, /Nothing selected/);
+assert.match(selectionBar, /type: "setSelection", mode: "clear"/);
+assert.match(selectionBar, /type: "setSelectionMode", enabled: false/);
 for (const action of ["resetCamera", "orientAxes", "resetAxes", "exportPng", "setIllumination", "setMotion", "setSelectionMode"]) {
   assert.ok(rail.includes(`type: "${action}"`), `Burette viewport rail must expose ${action}`);
 }
