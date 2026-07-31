@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(path, "utf8");
-const [filePage, dock, toolbar, selectionBar, rail, scene, objectMenu, overlay, info, store, documentTypes, rustRuntime, styles, runtime] = await Promise.all([
+const [filePage, dock, toolbar, selectionBar, rail, scene, objectMenu, overlay, info, store, documentTypes, mesoscaleContract, rustRuntime, styles, runtime] = await Promise.all([
   read("apps/desktop/src/components/editor-area/page-kinds/file.tsx"),
   read("apps/desktop/src/components/dock-panel.tsx"),
   read("apps/desktop/src/components/mesoscale/mesoscale-toolbar.tsx"),
@@ -15,12 +15,15 @@ const [filePage, dock, toolbar, selectionBar, rail, scene, objectMenu, overlay, 
   read("apps/desktop/src/components/mesoscale/mesoscale-info-panel.tsx"),
   read("apps/desktop/src/stores/mesoscale-store.ts"),
   read("apps/desktop/src/types.ts"),
+  read("apps/desktop/src/lib/mesoscale-contract.ts"),
   read("apps/desktop/src-tauri/src/preview/runtime.rs"),
   read("apps/desktop/src/styles.css"),
   read("apps/desktop/src/preview-mesoscale/mesoscale-runtime.ts"),
 ]);
 
 assert.match(documentTypes, /viewerProfile\?: "structure" \| "mesoscale" \| "grid" \| "spectrum"/);
+assert.match(mesoscaleContract, /MESOSCALE_HIERARCHY_DETAIL_LIMIT = 512/);
+assert.match(mesoscaleContract, /MESOSCALE_HIERARCHY_DETAIL_DEPTH_LIMIT = 4/);
 assert.match(rustRuntime, /viewer_profile: String/);
 assert.match(filePage, /bindMesoscaleFrame/);
 assert.match(filePage, /MesoscaleToolbar/);
@@ -70,7 +73,8 @@ assert.doesNotMatch(scene, /mesoscale-search/);
 assert.match(objectMenu, /Select all in group/);
 assert.match(objectMenu, /Structure actions/);
 assert.match(scene, /mesoscale-tree-bar/);
-assert.doesNotMatch(scene, /mesoscale-tree-color/);
+assert.match(scene, /mesoscale-tree-color/);
+assert.match(scene, /showMesoscaleAppearanceMenu/);
 assert.match(styles, /grid-template-columns: 2px minmax\(0, 1fr\) minmax\(64px, 92px\)/, "scene names and element counts use stable columns");
 assert.match(scene, /data-mesoscale-ref/);
 assert.match(scene, /setSelectionBatch/);
@@ -78,6 +82,10 @@ assert.match(scene, /selectionError/);
 assert.match(scene, /setPointerCapture/);
 assert.match(scene, /onLostPointerCapture/);
 assert.match(scene, /MesoscaleHierarchyDetail/);
+assert.match(scene, /<button type="button" className="mesoscale-detail-main"/, "detail hierarchy rows are interactive, not inert labels");
+assert.match(scene, /Focus structure for/, "operator leaves describe their owning-structure focus action honestly");
+assert.match(scene, /data-mesoscale-detail-id/, "detail rows expose stable hierarchy identity");
+assert.match(scene, /previewMesoscaleObject\(documentId, ownerRef\)/, "hovering a model, chain, or operator highlights its owning structure");
 assert.match(scene, /More details/);
 assert.match(scene, /childrenTruncated/);
 assert.match(objectMenu, /kind: "swatches"/);
@@ -86,6 +94,15 @@ assert.match(objectMenu, /queueMutation/);
 assert.match(objectMenu, /mesoscaleFrameGeneration/);
 assert.match(store, /selectionRefreshes/);
 assert.match(runtime, /installMesoscalePanelResizeHandles/, "hosted Mol\* panels install Burette resize handles");
+assert.match(runtime, /applyBuretteSelectionAppearance/, "Mesoscale selection keeps Burette-owned visual treatment");
+assert.match(runtime, /await loadSource\(runtime, config\);\s*\/\/[\s\S]*?applyBuretteSelectionAppearance\(runtime\);/, "Burette selection appearance must win after LoadModel resets Mol* props");
+assert.match(runtime, /await this\.plugin\.state\.setSnapshot\(snapshot\);\s*applyBuretteSelectionAppearance\(this\);/, "snapshot restore cannot reinstate native white/yellow selection props");
+assert.match(runtime, /installBuretteSelectionAppearanceGuard/, "modifier key release cannot restore the upstream white selection mask");
+assert.match(runtime, /keyReleased\.subscribe[\s\S]*?queueMicrotask[\s\S]*?dimStrength: 0/, "Ctrl+Shift key release restores the Burette non-dimming selection style");
+assert.match(runtime, /dimStrength: 0/, "selection must preserve the original colors of unselected structures");
+assert.match(runtime, /selectEdgeColor: Color\(0xaf52de\)/, "selection outline uses the Burette accent instead of Mesoscale yellow");
+assert.match(runtime, /highlightStrength: 0\.45/, "tree hover visibly marks the molecular structure");
+assert.match(runtime, /operatorDetail\.children\?\.push/, "operator groups preserve drill-down into individual instances");
 assert.match(runtime, /suppressPrimaryMouse = false;\s*window\.clearTimeout\(suppressClickTimer\)/, "a compatibility click releases the next primary gesture");
 assert.match(objectMenu, /Selection actions/);
 assert.match(objectMenu, /isolateSelection/);

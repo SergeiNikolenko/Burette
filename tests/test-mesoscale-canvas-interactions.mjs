@@ -117,6 +117,15 @@ assert.equal(boundedPage.items[0].label.length, 256, "hierarchy labels are bound
 assert.equal(boundedPage.items[0].children?.[0].children?.length, 0, "cyclic hierarchy details are cut before rendering");
 assert.equal(boundedPage.items[0].children?.[0].childrenTruncated, true, "truncated hierarchy details are explicit");
 
+const deepPage = boundMesoscaleHierarchyPage({
+  ...boundedPage,
+  items: [{
+    ...hierarchy[0],
+    children: [{ id: "model", label: "Model", detail: "", children: [{ id: "chain", label: "Chain", detail: "", children: [{ id: "operators", label: "Operators", detail: "", children: [{ id: "operator", label: "Operator ASM_1", detail: "1,949 elements", children: [] }] }] }] }],
+  }],
+});
+assert.equal(deepPage.items[0].children?.[0].children?.[0].children?.[0].children?.[0].label, "Operator ASM_1", "model, chain, and operator instance drill-down survives the bounded bridge");
+
 const malformedPage = boundMesoscaleHierarchyPage({
   ...boundedPage,
   items: [{ ...hierarchy[0], children: Array.from({ length: 2_000 }, () => null) }],

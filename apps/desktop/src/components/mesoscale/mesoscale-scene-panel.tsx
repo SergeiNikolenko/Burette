@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, Eye, EyeOff, Focus } from "lucide-react";
 import type { ViewerDocument } from "../../types";
 import { loadMesoscaleHierarchy, previewMesoscaleObject, requestMesoscale, setMesoscaleVisibilityOptimistic, useMesoscaleStore } from "../../stores/mesoscale-store";
 import type { MesoscaleHierarchyDetail, MesoscaleHierarchyObject } from "../../lib/mesoscale-contract";
-import { showMesoscaleObjectMenu } from "./mesoscale-object-menu";
+import { showMesoscaleAppearanceMenu, showMesoscaleObjectMenu } from "./mesoscale-object-menu";
 import { inclusiveMesoscaleTreeRange, mesoscaleTreeSelectionError } from "./mesoscale-tree-selection";
 
 type SceneTreeNode = {
@@ -81,12 +81,12 @@ export function MesoscaleScenePanel({ document }: { document: ViewerDocument }) 
     const collectDetails = (ownerRef: string, details: MesoscaleHierarchyDetail[]) => {
       for (const detail of details) {
         const collapseRef = `${ownerRef}::${detail.id}`;
-        if ((detail.children?.length ?? 0) > 0) discovered.add(collapseRef);
+        if ((detail.children?.length ?? 0) > 0 || detail.childrenTruncated) discovered.add(collapseRef);
         collectDetails(ownerRef, detail.children ?? []);
       }
     };
     for (const item of session?.hierarchy ?? []) {
-      if ((item.children?.length ?? 0) > 0) discovered.add(item.ref);
+      if ((item.children?.length ?? 0) > 0 || item.childrenTruncated) discovered.add(item.ref);
       collectDetails(item.ref, item.children ?? []);
     }
     const additions = Array.from(discovered).filter((ref) => !initializedDetailRefs.current.has(ref));
@@ -249,6 +249,12 @@ function SceneObjectBranch({ documentId, node, depth, collapsedRefs, rangeRefs, 
     previewMesoscaleObject(documentId, item.ref);
     showObjectMenu({ x: event.clientX, y: event.clientY });
   };
+  const openAppearanceMenu = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    void showMesoscaleAppearanceMenu(documentId, item, { x: rect.right + 6, y: rect.top });
+  };
   const actualColor = colorHex(item.color);
   return (
     <div className="mesoscale-tree-branch" role="treeitem" aria-level={depth} aria-expanded={hasChildren ? !collapsed : undefined} aria-selected={item.selected}>
@@ -285,6 +291,7 @@ function SceneObjectBranch({ documentId, node, depth, collapsedRefs, rangeRefs, 
           <strong>{item.label}</strong>
           <small title={detail}>{detail}</small>
         </button>
+        <button className="mesoscale-tree-color" type="button" aria-label={`Color ${item.label}`} title={`Color ${item.label}`} style={actualColor ? { backgroundColor: actualColor } : undefined} onClick={openAppearanceMenu} />
         <button className="mesoscale-tree-action" type="button" disabled={item.kind === "mesh"} aria-label={`Focus ${item.label}`} title="Focus" onClick={() => run({ type: "focusObject", ref: item.ref })}><Focus size={14} /></button>
         <button className="mesoscale-tree-action" type="button" aria-label={`${item.hidden ? "Show" : "Hide"} ${item.label}`} title={item.hidden ? "Show" : "Hide"} onClick={() => setVisible(item.hidden)}>
           {item.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -293,7 +300,7 @@ function SceneObjectBranch({ documentId, node, depth, collapsedRefs, rangeRefs, 
       {hasChildren && !collapsed ? (
         <div className="mesoscale-tree-group" role="group">
           {children.map((child) => <SceneObjectBranch key={child.item.ref} documentId={documentId} node={child} depth={depth + 1} collapsedRefs={collapsedRefs} rangeRefs={rangeRefs} onToggle={onToggle} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} onLostPointerCapture={onLostPointerCapture} onKeyboardSelect={onKeyboardSelect} />)}
-          {detailChildren.map((child) => <SceneDetailBranch key={child.id} ownerRef={item.ref} detail={child} depth={depth + 1} collapsedRefs={collapsedRefs} onToggle={onToggle} />)}
+          {detailChildren.map((child) => <SceneDetailBranch key={child.id} documentId={documentId} ownerRef={item.ref} detail={child} depth={depth + 1} collapsedRefs={collapsedRefs} onToggle={onToggle} />)}
           {item.childrenTruncated ? <SceneTruncationRow depth={depth + 1} remaining={Math.max(1, (item.childCount ?? detailChildren.length) - detailChildren.length)} /> : null}
         </div>
       ) : null}
@@ -301,27 +308,32 @@ function SceneObjectBranch({ documentId, node, depth, collapsedRefs, rangeRefs, 
   );
 }
 
-function SceneDetailBranch({ ownerRef, detail, depth, collapsedRefs, onToggle }: { ownerRef: string; detail: MesoscaleHierarchyDetail; depth: number; collapsedRefs: Set<string>; onToggle: (ref: string) => void }) {
+function SceneDetailBranch({ documentId, ownerRef, detail, depth, collapsedRefs, onToggle }: { documentId: string; ownerRef: string; detail: MesoscaleHierarchyDetail; depth: number; collapsedRefs: Set<string>; onToggle: (ref: string) => void }) {
   const collapseRef = `${ownerRef}::${detail.id}`;
   const children = detail.children ?? [];
   const collapsed = collapsedRefs.has(collapseRef);
   const hasChildren = children.length > 0 || Boolean(detail.childrenTruncated);
   return (
     <div className="mesoscale-tree-branch mesoscale-detail-branch" role="treeitem" aria-level={depth} aria-expanded={hasChildren ? !collapsed : undefined}>
-      <div className="mesoscale-object-row mesoscale-detail-row">
+      <div
+        className="mesoscale-object-row mesoscale-detail-row"
+        data-mesoscale-detail-id={detail.id}
+        onPointerEnter={() => previewMesoscaleObject(documentId, ownerRef)}
+        onPointerLeave={() => previewMesoscaleObject(documentId, null)}
+      >
         {hasChildren ? (
           <button type="button" className="mesoscale-tree-disclosure" aria-label={`${collapsed ? "Expand" : "Collapse"} ${detail.label}`} onClick={() => onToggle(collapseRef)}>
             {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
           </button>
         ) : <span className="mesoscale-tree-leaf" aria-hidden="true" />}
-        <div className="mesoscale-detail-main">
+        <button type="button" className="mesoscale-detail-main" aria-label={hasChildren ? `${collapsed ? "Open" : "Close"} ${detail.label} details` : `Focus structure for ${detail.label}`} onClick={() => hasChildren ? onToggle(collapseRef) : void requestMesoscale(documentId, { type: "focusObject", ref: ownerRef }).catch(() => undefined)}>
           <strong>{detail.label}</strong>
           <small title={detail.detail}>{detail.detail}</small>
-        </div>
+        </button>
       </div>
       {hasChildren && !collapsed ? (
         <div className="mesoscale-tree-group" role="group">
-          {children.map((child) => <SceneDetailBranch key={child.id} ownerRef={ownerRef} detail={child} depth={depth + 1} collapsedRefs={collapsedRefs} onToggle={onToggle} />)}
+          {children.map((child) => <SceneDetailBranch key={child.id} documentId={documentId} ownerRef={ownerRef} detail={child} depth={depth + 1} collapsedRefs={collapsedRefs} onToggle={onToggle} />)}
           {detail.childrenTruncated ? <SceneTruncationRow depth={depth + 1} remaining={Math.max(1, (detail.childCount ?? children.length) - children.length)} /> : null}
         </div>
       ) : null}

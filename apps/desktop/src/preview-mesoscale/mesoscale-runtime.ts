@@ -191,13 +191,26 @@ function structureHierarchy(source: Structure, budget: { remaining: number }) {
       if (operatorEntries.length > 0 && localRemaining > 0 && budget.remaining > 0) {
         localRemaining -= 1;
         budget.remaining -= 1;
-        const [operatorLabel, elements] = operatorEntries[0];
-        chainDetail.children?.push({
+        const operatorDetail: MesoscaleHierarchyDetail = {
           id: `model:${modelLabel}:chain:${chainLabel}:operators`,
-          label: operatorEntries.length === 1 ? `Operator ${operatorLabel}` : "Operators",
-          detail: operatorEntries.length === 1 ? `${elements.toLocaleString()} elements` : `${operatorEntries.length.toLocaleString()} instances`,
+          label: "Operators",
+          detail: `${operatorEntries.length.toLocaleString()} ${operatorEntries.length === 1 ? "instance" : "instances"}`,
+          childCount: operatorEntries.length,
           children: [],
-        });
+        };
+        for (const [operatorLabel, elements] of operatorEntries) {
+          if (localRemaining <= 0 || budget.remaining <= 0) break;
+          localRemaining -= 1;
+          budget.remaining -= 1;
+          operatorDetail.children?.push({
+            id: `model:${modelLabel}:chain:${chainLabel}:operator:${operatorLabel}`,
+            label: `Operator ${operatorLabel}`,
+            detail: `${elements.toLocaleString()} elements`,
+            children: [],
+          });
+        }
+        operatorDetail.childrenTruncated = (operatorDetail.children?.length ?? 0) < operatorEntries.length;
+        chainDetail.children?.push(operatorDetail);
       }
       chainDetail.childrenTruncated = (chainDetail.children?.length ?? 0) < operatorChildCount;
       modelDetail.children?.push(chainDetail);
@@ -804,6 +817,7 @@ class MesoscaleRuntimeApi {
     const snapshot = this.plugin.managers.snapshot.setCurrent(id);
     if (!snapshot) throw new Error(`Mesoscale snapshot not found: ${id}`);
     await this.plugin.state.setSnapshot(snapshot);
+    applyBuretteSelectionAppearance(this);
     this.selectedRefs.clear();
     this.syncSelectedRefs();
     this.selectionVersion += 1;
@@ -1003,6 +1017,40 @@ function applyViewerTheme(runtime: MesoscaleRuntimeApi, theme: MesoscaleConfig["
     renderer: { backgroundColor: Color(resolved === "light" ? 0xffffff : 0x101010) },
   });
   runtime.plugin.canvas3d?.requestDraw();
+}
+
+function applyBuretteSelectionAppearance(runtime: MesoscaleRuntimeApi) {
+  runtime.plugin.canvas3d?.setProps({
+    renderer: {
+      colorMarker: true,
+      highlightColor: Color(0xaf52de),
+      highlightStrength: 0.45,
+      selectColor: Color(0xaf52de),
+      selectStrength: 0,
+      dimStrength: 0,
+    },
+    marking: {
+      enabled: true,
+      highlightEdgeColor: Color(0xaf52de),
+      selectEdgeColor: Color(0xaf52de),
+      highlightEdgeStrength: 1,
+      selectEdgeStrength: 0.85,
+      ghostEdgeStrength: 0.25,
+      innerEdgeFactor: 1.2,
+      edgeScale: 1,
+    },
+  });
+}
+
+function installBuretteSelectionAppearanceGuard(runtime: MesoscaleRuntimeApi) {
+  return runtime.plugin.behaviors.interaction.keyReleased.subscribe(({ code }) => {
+    if (!code.startsWith("Shift") && !code.startsWith("Control")) return;
+    queueMicrotask(() => {
+      const canvas = runtime.plugin.canvas3d;
+      if (!canvas || canvas.props.renderer.dimStrength === 0) return;
+      canvas.setProps({ renderer: { dimStrength: 0 } });
+    });
+  });
 }
 
 function applyHostedUi(hosted: boolean) {
@@ -1441,6 +1489,11 @@ async function start() {
     if ((window.BuretteConfig?.theme ?? "auto") === "auto") applyViewerTheme(runtime, "auto");
   });
   await loadSource(runtime, config);
+  // LoadModel reapplies the Mesoscale Explorer white/yellow selection preset.
+  // Apply the Burette treatment after the scene exists so original entity
+  // colors remain visible whenever a selection is active.
+  applyBuretteSelectionAppearance(runtime);
+  installBuretteSelectionAppearanceGuard(runtime);
   installMesoscaleSelectionSync(runtime);
   installMesoscaleCanvasInteractions(runtime);
   const pluginRoot = document.querySelector<HTMLElement>(".msp-plugin");
