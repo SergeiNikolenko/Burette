@@ -5642,7 +5642,7 @@ assert.match(previewViewer, /if \(storyPanel\) root\.append\(storyPanel\)/);
 assert.match(previewViewer, /story\.setAttribute\('aria-expanded', open \? 'true' : 'false'\)/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-story-panel \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses-story-closed \.buret-docking-pose-story-panel/);
-assert.match(previewRuntimeCss, /\.buret-docking-poses-structure-scene \{\s*width: fit-content;\s*border-radius: 0;/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses-structure-scene \{\s*width: fit-content;\s*\}/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses-structure-scene \.buret-docking-pose-main \{\s*width: auto;\s*max-width: 100%;/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses-structure-scene \.buret-docking-pose-current \{\s*min-width: 0;\s*flex: 0 1 auto;\s*width: fit-content;\s*max-width: min\(180px, 42vw\);/);
 assert.match(previewViewer, /if \(stored === 'all' \|\| stored === 'single'\) return stored;\s*return 'single';/);
