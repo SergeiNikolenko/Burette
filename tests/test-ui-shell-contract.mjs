@@ -5650,6 +5650,20 @@ assert.match(previewRuntimeCss, /-webkit-line-clamp: 2/);
 assert.match(previewViewer, /function installMolstarContextMenu\(viewer\)/);
 assert.match(previewViewer, /document\.addEventListener\('contextmenu', onContextMenu, true\)/);
 assert.match(previewViewer, /if \(!viewer \|\| \(!picked && !isMolstarContextMenuTarget\(event\.target\)\)\) \{\s*hideMolstarContextMenu\(\);\s*return false;/);
+// Submenu levels switch on deliberate hover only. Acting on every pointerenter
+// let the rows between a trigger and its submenu close the level the pointer
+// was travelling to, and re-entering an open submenu moved the live node with
+// appendChild and re-measured it on every entry.
+assert.match(previewViewer, /const MOLECULE_MENU_HOVER_INTENT_MS = 110;/);
+assert.match(previewViewer, /trigger\.addEventListener\('pointerenter', \(\) => moleculeMenuScheduleHoverIntent\(menu, \(\) => open\(false\)\)\)/);
+assert.match(previewViewer, /button\.addEventListener\('pointerenter', \(\) => moleculeMenuScheduleHoverIntent\(options\.menu, closeChildren\)\)/);
+assert.doesNotMatch(previewViewer, /addEventListener\('pointerenter', \(\) => open\(false\)\)/);
+assert.doesNotMatch(previewViewer, /addEventListener\('pointerenter', closeChildren\)/);
+assert.match(
+  previewViewer,
+  /function moleculeMenuOpenSubmenu\([\s\S]*?if \(submenu\.dataset\.open === 'true'\) \{[\s\S]*?return;\s*\}\s*\n[\s\S]*?menu\.appendChild\(submenu\);/,
+);
+assert.match(previewViewer, /moleculeMenuCancelHoverIntent\(menu\);\s*\n\s*menu\?\.remove\(\);/);
 assert.match(previewViewer, /const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;/);
 assert.match(previewViewer, /let contextPointer = null;/);
 assert.match(previewViewer, /if \(event\.button === 2\) \{[\s\S]*?contextPointer = \{/);
@@ -5812,7 +5826,7 @@ assert.match(previewViewer, /label\.textContent = 'Picking level'/);
 assert.match(previewViewer, /for \(const \[level, levelLabel\] of VIEWPORT_GRANULARITIES\)/);
 assert.match(previewViewer, /item\.setAttribute\('role', 'menuitemradio'\)/);
 assert.match(previewViewer, /item\.setAttribute\('aria-checked', checked \? 'true' : 'false'\)/);
-assert.match(previewViewer, /trigger\.addEventListener\('pointerenter', \(\) => open\(false\)\)/);
+assert.match(previewViewer, /trigger\.addEventListener\('pointerenter', \(\) => moleculeMenuScheduleHoverIntent\(menu, \(\) => open\(false\)\)\)/);
 assert.match(previewViewer, /const proteinScope = menuTarget\.scope === 'residue' && !!menuTarget\.atom;/);
 assert.match(previewViewer, /molstarContextMenuMode = mode;/);
 assert.match(previewViewer, /let mode = molstarSelectionLevel\(\)/);

@@ -20582,6 +20582,7 @@
     const menu = document.querySelector('.buret-molecule-context-menu:not(.buret-xyzrender-context-menu)');
     const previousFocus = menu?._buretPreviousFocus;
     const restoreFocus = !!menu && menu.contains(document.activeElement);
+    moleculeMenuCancelHoverIntent(menu);
     menu?.remove();
     if (restoreFocus && previousFocus?.isConnected && typeof previousFocus.focus === 'function') {
       previousFocus.focus({ preventScroll: true });
@@ -20643,8 +20644,12 @@
     });
     if (options.menu) {
       const closeChildren = () => moleculeMenuCloseSubmenus(options.menu, options.parentSubmenu || null);
-      button.addEventListener('pointerenter', closeChildren);
-      button.addEventListener('focus', closeChildren);
+      button.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(options.menu, closeChildren));
+      button.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(options.menu));
+      button.addEventListener('focus', () => {
+        moleculeMenuCancelHoverIntent(options.menu);
+        closeChildren();
+      });
     }
     return button;
   }
@@ -20652,6 +20657,28 @@
   function moleculeMenuSectionEntries(grouped, section) {
     const groupIds = section.groups || [section.id];
     return groupIds.flatMap(group => grouped.get(group) || []);
+  }
+
+  // Hovering a level does not switch it immediately. The path from a submenu
+  // trigger to its submenu crosses the rows between them, and acting on every
+  // `pointerenter` let those rows close the submenu the pointer was heading
+  // for. A pending hover is dropped as soon as the pointer settles somewhere
+  // that contradicts it, so only a deliberate hover changes the open level.
+  const MOLECULE_MENU_HOVER_INTENT_MS = 110;
+
+  function moleculeMenuCancelHoverIntent(menu) {
+    if (!menu?._buretHoverIntent) return;
+    window.clearTimeout(menu._buretHoverIntent);
+    menu._buretHoverIntent = 0;
+  }
+
+  function moleculeMenuScheduleHoverIntent(menu, run) {
+    if (!menu) return;
+    moleculeMenuCancelHoverIntent(menu);
+    menu._buretHoverIntent = window.setTimeout(() => {
+      menu._buretHoverIntent = 0;
+      if (menu.isConnected) run();
+    }, MOLECULE_MENU_HOVER_INTENT_MS);
   }
 
   function moleculeMenuCloseSubmenus(menu, except = null) {
@@ -20684,6 +20711,13 @@
   function moleculeMenuOpenSubmenu(menu, submenu, trigger, options = {}) {
     submenu._buretParentSubmenu = trigger.closest('.buret-molecule-context-submenu');
     moleculeMenuCloseSubmenus(menu, submenu);
+    // Re-entering an open submenu only had to close its children, done above.
+    // Falling through moved the live node with appendChild and re-measured it,
+    // which dropped :hover and re-laid out the menu on every pointer entry.
+    if (submenu.dataset.open === 'true') {
+      if (options.focusFirst) submenu.querySelector('.buret-tree-menu-item')?.focus();
+      return;
+    }
     // Recursive submenus are created before their parents. Move the one being
     // opened to the end so the deepest visible level paints above its ancestors.
     menu.appendChild(submenu);
@@ -20730,7 +20764,8 @@
     submenu.appendChild(group);
 
     const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
-    trigger.addEventListener('pointerenter', () => open(false));
+    trigger.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(menu, () => open(false)));
+    trigger.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(menu));
     trigger.addEventListener('click', event => {
       if (event.button !== 0) {
         event.preventDefault();
@@ -20738,6 +20773,7 @@
         return;
       }
       event.preventDefault();
+      moleculeMenuCancelHoverIntent(menu);
       if (submenu.hidden) open(true);
       else moleculeMenuCloseSubmenus(menu, options.parentSubmenu || null);
     });
@@ -20745,9 +20781,13 @@
       if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       event.stopPropagation();
+      moleculeMenuCancelHoverIntent(menu);
       open(true);
     });
-    submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
+    submenu.addEventListener('pointerenter', () => {
+      moleculeMenuCancelHoverIntent(menu);
+      moleculeMenuOpenSubmenu(menu, submenu, trigger);
+    });
     menu.appendChild(submenu);
     return trigger;
   }
@@ -20817,7 +20857,8 @@
     });
 
     const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
-    trigger.addEventListener('pointerenter', () => open(false));
+    trigger.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(menu, () => open(false)));
+    trigger.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(menu));
     trigger.addEventListener('click', event => {
       if (event.button !== 0) {
         event.preventDefault();
@@ -20825,6 +20866,7 @@
         return;
       }
       event.preventDefault();
+      moleculeMenuCancelHoverIntent(menu);
       if (submenu.hidden) open(true);
       else moleculeMenuCloseSubmenus(menu);
     });
@@ -20832,9 +20874,13 @@
       if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       event.stopPropagation();
+      moleculeMenuCancelHoverIntent(menu);
       open(true);
     });
-    submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
+    submenu.addEventListener('pointerenter', () => {
+      moleculeMenuCancelHoverIntent(menu);
+      moleculeMenuOpenSubmenu(menu, submenu, trigger);
+    });
     menu.appendChild(submenu);
     return trigger;
   }
@@ -20945,10 +20991,15 @@
     }
     update(currentLevel);
     const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
-    trigger.addEventListener('pointerenter', () => open(false));
-    trigger.addEventListener('focus', () => open(false));
+    trigger.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(menu, () => open(false)));
+    trigger.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(menu));
+    trigger.addEventListener('focus', () => {
+      moleculeMenuCancelHoverIntent(menu);
+      open(false);
+    });
     trigger.addEventListener('click', event => {
       event.preventDefault();
+      moleculeMenuCancelHoverIntent(menu);
       if (submenu.hidden) open(true);
       else moleculeMenuCloseSubmenus(menu);
     });
@@ -20956,9 +21007,13 @@
       if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       event.stopPropagation();
+      moleculeMenuCancelHoverIntent(menu);
       open(true);
     });
-    submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
+    submenu.addEventListener('pointerenter', () => {
+      moleculeMenuCancelHoverIntent(menu);
+      moleculeMenuOpenSubmenu(menu, submenu, trigger);
+    });
     menu.appendChild(submenu);
     return trigger;
   }
