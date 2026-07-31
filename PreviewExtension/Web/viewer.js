@@ -121,6 +121,8 @@
   let molstarSelectionPreviewCleanup = null;
   let molstarStoryStateCleanup = null;
   let molstarStoryPresentationRestoreInFlight = false;
+  let molstarStoryPresentationRestoreTimer = 0;
+  let molstarStoryRestoredStateId = null;
   let molstarStoryDetailsTimer = 0;
   let molstarStoryDetailsHideTimer = 0;
   const molstarStoryDetachedSnapshots = new WeakSet();
@@ -909,6 +911,23 @@
     }
   }
 
+  // The restore has to wait for the step to finish building: applying a style
+  // while Mol* is still assembling the snapshot competes with it and leaves the
+  // canvas empty, which is what happened when the first state was restyled
+  // mid-load.
+  function scheduleMolstarStoryPresentationRestore(viewer, attempt = 0) {
+    if (molstarStoryPresentationRestoreTimer) clearTimeout(molstarStoryPresentationRestoreTimer);
+    molstarStoryPresentationRestoreTimer = window.setTimeout(() => {
+      molstarStoryPresentationRestoreTimer = 0;
+      if (!viewer || viewer !== activeViewer) return;
+      if (viewer.plugin?.behaviors?.state?.isBusy?.value === true && attempt < 40) {
+        scheduleMolstarStoryPresentationRestore(viewer, attempt + 1);
+        return;
+      }
+      void restoreMolstarStoryPresentation(viewer);
+    }, attempt === 0 ? 60 : 80);
+  }
+
   // A step also carries its own representations, which is the Story doing its
   // job - but a user who picked a style in the toolbar expects it to survive the
   // step. `default` means "show the scene as authored", so it is left alone.
@@ -943,11 +962,19 @@
     molstarStoryStateCleanup = null;
     const manager = viewer?.plugin?.managers?.snapshot;
     detachMolstarStoryPresentation(manager);
+    molstarStoryRestoredStateId = null;
     const subscription = manager?.events?.changed?.subscribe?.(() => {
       detachMolstarStoryPresentation(manager);
       reportMolstarStoryToHost();
       renderMolstarStoryControls();
-      void restoreMolstarStoryPresentation(viewer);
+      // `changed` also fires while the Story is being assembled and while a step
+      // builds. Only an actual move to a different state needs the viewer style
+      // re-applied, and the state the document opens on is left as authored.
+      const currentId = manager?.state?.current || null;
+      if (!currentId || currentId === molstarStoryRestoredStateId) return;
+      const isFirstState = molstarStoryRestoredStateId === null;
+      molstarStoryRestoredStateId = currentId;
+      if (!isFirstState) scheduleMolstarStoryPresentationRestore(viewer);
     });
     if (subscription?.unsubscribe) {
       molstarStoryStateCleanup = () => {
