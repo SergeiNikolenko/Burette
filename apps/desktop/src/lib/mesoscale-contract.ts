@@ -47,6 +47,7 @@ export type MesoscaleSceneSummary = {
   filter: string;
   counts: MesoscaleCounts;
   selectedRefs: string[];
+  selectedDetails?: MesoscaleSelectedDetail[];
   selectedCount?: number;
   selectionTruncated?: boolean;
   selectionVersion?: number;
@@ -60,10 +61,22 @@ export type MesoscaleSceneSummary = {
   loadReport: MesoscaleLoadReport | null;
 };
 
+export type MesoscaleHierarchySelector = {
+  model: string;
+  chain: string;
+  operator: string;
+};
+
+export type MesoscaleSelectedDetail = {
+  ref: string;
+  id: string;
+};
+
 export type MesoscaleHierarchyDetail = {
   id: string;
   label: string;
   detail: string;
+  selector?: MesoscaleHierarchySelector;
   childCount?: number;
   childrenTruncated?: boolean;
   children?: MesoscaleHierarchyDetail[];
@@ -120,6 +133,8 @@ export type MesoscaleAction =
   | { type: "setFilter"; filter: string }
   | { type: "setSelection"; ref?: string; mode?: "replace" | "extend" | "toggle" | "clear" }
   | { type: "setSelectionBatch"; refs: string[]; mode?: "replace" | "extend" }
+  | { type: "setDetailSelection"; ref: string; selector: MesoscaleHierarchySelector; mode?: "replace" | "extend" | "toggle" }
+  | { type: "setDetailSelectionBatch"; ref: string; selectors: MesoscaleHierarchySelector[]; mode?: "replace" | "extend" }
   | { type: "setSelectionStyle"; color?: number; opacity?: number; emissive?: number; selectionVersion?: number }
   | { type: "setSelectionVisibility"; visible: boolean }
   | { type: "isolateSelection" }
@@ -128,6 +143,7 @@ export type MesoscaleAction =
   | { type: "setLayoutRegion"; region: MesoscaleLayoutRegion; visible: boolean }
   | { type: "setMotion"; motion: MesoscaleMotion }
   | { type: "focusObject"; ref: string }
+  | { type: "focusDetail"; ref: string; selector: MesoscaleHierarchySelector }
   | { type: "setVisibility"; ref: string; visible: boolean }
   | { type: "isolateObjects"; refs: string[] }
   | { type: "setStyle"; ref: string; color?: number; opacity?: number; emissive?: number; clipObjects?: unknown[] }
@@ -159,6 +175,7 @@ export type MesoscalePreviewMessage = {
   documentId: string;
   sequence: number;
   ref: string | null;
+  selector?: MesoscaleHierarchySelector;
 };
 
 export type MesoscaleControlPlacement = {
@@ -320,10 +337,19 @@ export function boundMesoscaleHierarchyPage(page: MesoscaleHierarchyPage): Mesos
       const rawChildren = Array.isArray(detail.children) ? detail.children : [];
       const children = boundDetails(rawChildren, depth + 1, objectBudget);
       const childCount = Math.max(children.length, Number.isFinite(detail.childCount) ? Math.max(0, Math.trunc(detail.childCount as number)) : rawChildren.length);
+      const rawSelector = detail.selector;
+      const selector = rawSelector && typeof rawSelector === "object"
+        ? {
+            model: boundedMesoscaleText(rawSelector.model),
+            chain: boundedMesoscaleText(rawSelector.chain),
+            operator: boundedMesoscaleText(rawSelector.operator),
+          }
+        : undefined;
       bounded.push({
         id,
         label: boundedMesoscaleText(detail.label),
         detail: boundedMesoscaleText(detail.detail),
+        ...(selector?.model && selector.chain && selector.operator ? { selector } : {}),
         childCount,
         childrenTruncated: Boolean(detail.childrenTruncated) || children.length < childCount,
         children,

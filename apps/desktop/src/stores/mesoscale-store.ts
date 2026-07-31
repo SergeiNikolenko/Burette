@@ -11,6 +11,7 @@ import {
   type MesoscaleControlPlacement,
   type MesoscaleFailure,
   type MesoscaleHierarchyPage,
+  type MesoscaleHierarchySelector,
   type MesoscalePreviewMessage,
   type MesoscaleRequest,
   type MesoscaleResult,
@@ -29,6 +30,7 @@ const frameGenerations = new Map<string, number>();
 const previewFrames = new Map<string, number>();
 const previewSequences = new Map<string, number>();
 const pendingPreviewRefs = new Map<string, string | null>();
+const pendingPreviewSelectors = new Map<string, MesoscaleHierarchySelector | undefined>();
 const selectionRefreshes = new Map<string, { revision: number; running: boolean }>();
 const pending = new Map<string, {
   documentId: string;
@@ -276,6 +278,7 @@ export function releaseMesoscaleFrame(documentId: string, frame?: Window | null)
   previewFrames.delete(documentId);
   previewSequences.delete(documentId);
   pendingPreviewRefs.delete(documentId);
+  pendingPreviewSelectors.delete(documentId);
   selectionRefreshes.delete(documentId);
   frames.delete(documentId);
   frameGenerations.set(documentId, (frameGenerations.get(documentId) ?? 0) + 1);
@@ -340,7 +343,7 @@ export function loadMesoscaleHierarchy(documentId: string, filter: string, curso
   return requestMesoscale(documentId, { type: "getHierarchyPage", filter, cursor });
 }
 
-function postMesoscalePreview(frame: Window, documentId: string, ref: string | null) {
+function postMesoscalePreview(frame: Window, documentId: string, ref: string | null, selector?: MesoscaleHierarchySelector) {
   const sequence = (previewSequences.get(documentId) ?? 0) + 1;
   previewSequences.set(documentId, sequence);
   const message: MesoscalePreviewMessage = {
@@ -349,19 +352,21 @@ function postMesoscalePreview(frame: Window, documentId: string, ref: string | n
     documentId,
     sequence,
     ref,
+    selector,
   };
   frame.postMessage(message, "*");
 }
 
-export function previewMesoscaleObject(documentId: string, ref: string | null) {
+export function previewMesoscaleObject(documentId: string, ref: string | null, selector?: MesoscaleHierarchySelector) {
   updateSession(documentId, (session) => session.hoveredRef === ref ? session : { ...session, hoveredRef: ref });
   pendingPreviewRefs.set(documentId, ref);
+  pendingPreviewSelectors.set(documentId, ref ? selector : undefined);
   if (previewFrames.has(documentId)) return;
   previewFrames.set(documentId, window.requestAnimationFrame(() => {
     previewFrames.delete(documentId);
     const frame = frames.get(documentId);
     if (!frame) return;
-    postMesoscalePreview(frame, documentId, pendingPreviewRefs.get(documentId) ?? null);
+    postMesoscalePreview(frame, documentId, pendingPreviewRefs.get(documentId) ?? null, pendingPreviewSelectors.get(documentId));
   }));
 }
 

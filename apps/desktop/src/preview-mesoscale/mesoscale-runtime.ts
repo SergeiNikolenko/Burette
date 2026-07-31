@@ -4,6 +4,8 @@ import { MesoscaleState, getAllEntities, getAllGroups, getEntities, getEntityDes
 import { LoadModel, openState } from "molstar/lib/apps/mesoscale-explorer/ui/states.js";
 import { PluginCommands } from "molstar/lib/mol-plugin/commands.js";
 import { Structure, StructureElement, StructureProperties } from "molstar/lib/mol-model/structure.js";
+import { OrderedSet } from "molstar/lib/mol-data/int.js";
+import type { UnitIndex } from "molstar/lib/mol-model/structure/structure/element/util.js";
 import { EveryLoci, Loci } from "molstar/lib/mol-model/loci.js";
 import { Sphere3D } from "molstar/lib/mol-math/geometry.js";
 import { Vec2 } from "molstar/lib/mol-math/linear-algebra.js";
@@ -29,6 +31,7 @@ import {
   type MesoscaleControlPlacement,
   type MesoscaleGraphicsMode,
   type MesoscaleHierarchyDetail,
+  type MesoscaleHierarchySelector,
   type MesoscaleHierarchyObject,
   type MesoscaleLayoutRegion,
   type MesoscaleMotion,
@@ -143,16 +146,30 @@ function uniqueCells<T>(cells: T[]) {
   });
 }
 
+function structureUnitSelector(source: Structure, unit: Structure["units"][number]): MesoscaleHierarchySelector {
+  const location = StructureElement.Location.create(source);
+  location.unit = unit;
+  location.element = unit.elements[0];
+  return {
+    model: String(unit.model.modelNum || unit.model.id || "1").slice(0, 128),
+    chain: String(StructureProperties.chain.auth_asym_id(location) || StructureProperties.chain.label_asym_id(location) || unit.chainGroupId).slice(0, 128),
+    operator: String(unit.conformation.operator.name || "1_555").slice(0, 128),
+  };
+}
+
+function hierarchyDetailId(selector: MesoscaleHierarchySelector) {
+  return `model:${selector.model}:chain:${selector.chain}:operator:${selector.operator}`;
+}
+
+function selectedDetailKey(ref: string, id: string) {
+  return JSON.stringify([ref, id]);
+}
+
 function structureHierarchy(source: Structure, budget: { remaining: number }) {
   const models = new Map<string, { elements: number; chains: Map<string, { elements: number; operators: Map<string, number> }> }>();
-  const location = StructureElement.Location.create(source);
   for (const unit of source.units) {
     if (unit.elements.length === 0) continue;
-    location.unit = unit;
-    location.element = unit.elements[0];
-    const modelLabel = String(unit.model.modelNum || unit.model.id || "1").slice(0, 128);
-    const chainLabel = String(StructureProperties.chain.auth_asym_id(location) || StructureProperties.chain.label_asym_id(location) || unit.chainGroupId).slice(0, 128);
-    const operatorLabel = String(unit.conformation.operator.name || "1_555").slice(0, 128);
+    const { model: modelLabel, chain: chainLabel, operator: operatorLabel } = structureUnitSelector(source, unit);
     const elementCount = unit.elements.length;
     const model = models.get(modelLabel) ?? { elements: 0, chains: new Map() };
     const chain = model.chains.get(chainLabel) ?? { elements: 0, operators: new Map() };
@@ -203,9 +220,10 @@ function structureHierarchy(source: Structure, budget: { remaining: number }) {
           localRemaining -= 1;
           budget.remaining -= 1;
           operatorDetail.children?.push({
-            id: `model:${modelLabel}:chain:${chainLabel}:operator:${operatorLabel}`,
+            id: hierarchyDetailId({ model: modelLabel, chain: chainLabel, operator: operatorLabel }),
             label: `Operator ${operatorLabel}`,
             detail: `${elements.toLocaleString()} elements`,
+            selector: { model: modelLabel, chain: chainLabel, operator: operatorLabel },
             children: [],
           });
         }
@@ -285,6 +303,7 @@ class MesoscaleRuntimeApi {
   selectionVersion = 0;
   private selectionMutationDepth = 0;
   readonly selectedRefs = new Set<string>();
+  readonly selectedDetails = new Map<string, { ref: string; id: string }>();
   readonly visibilityOverrides = new Map<string, boolean>();
   readonly layoutRegions: Record<MesoscaleLayoutRegion, boolean> = { left: false, right: false };
   motion: MesoscaleMotion = "off";
@@ -336,6 +355,8 @@ class MesoscaleRuntimeApi {
   sceneSummary(): MesoscaleSceneSummary {
     const observed = this.observe();
     const selectedRefs = Array.from(this.selectedRefs).slice(0, MAX_OBSERVED_ITEMS);
+    const selectedDetails = Array.from(this.selectedDetails.values()).slice(0, MAX_OBSERVED_ITEMS);
+    const selectedCount = this.selectedRefs.size + this.selectedDetails.size;
     const hierarchyPreview = [
       ...observed.groups.map((item: ReturnType<typeof groupSummary>) => ({
         ...item,
@@ -362,8 +383,9 @@ class MesoscaleRuntimeApi {
       filter: observed.filter,
       counts: observed.counts,
       selectedRefs,
-      selectedCount: this.selectedRefs.size,
-      selectionTruncated: selectedRefs.length < this.selectedRefs.size,
+      selectedDetails,
+      selectedCount,
+      selectionTruncated: selectedRefs.length + selectedDetails.length < selectedCount,
       selectionVersion: this.selectionVersion,
       selectionMode: Boolean(this.plugin.selectionMode),
       illumination: Boolean(this.plugin.canvas3d?.props.illumination.enabled),
@@ -437,6 +459,7 @@ class MesoscaleRuntimeApi {
   }
 
   syncSelectedRefs() {
+    const hadSelectedDetails = this.selectedDetails.size > 0;
     const next = new Set<string>();
     const selection = this.plugin.managers.structure.selection;
     for (const cell of uniqueCells(getAllEntities(this.plugin)) as any[]) {
@@ -447,7 +470,8 @@ class MesoscaleRuntimeApi {
       const ref = String(cell?.transform?.ref || "");
       if (ref) next.add(ref);
     }
-    if (next.size === this.selectedRefs.size && Array.from(next).every((ref) => this.selectedRefs.has(ref))) return false;
+    if (!hadSelectedDetails && next.size === this.selectedRefs.size && Array.from(next).every((ref) => this.selectedRefs.has(ref))) return false;
+    this.selectedDetails.clear();
     this.selectedRefs.clear();
     for (const ref of next) this.selectedRefs.add(ref);
     this.selectionVersion += 1;
@@ -527,12 +551,62 @@ class MesoscaleRuntimeApi {
     throw new Error(`Mesoscale group has no entities: ${ref}`);
   }
 
-  highlightObject(ref: string | null, sequence: number) {
+  private detailTarget(ref: string, selector: MesoscaleHierarchySelector) {
+    if (!selector || typeof selector !== "object") throw new Error("Mesoscale detail selector is missing");
+    const normalized = {
+      model: String(selector.model || "").slice(0, 128),
+      chain: String(selector.chain || "").slice(0, 128),
+      operator: String(selector.operator || "").slice(0, 128),
+    };
+    if (!normalized.model || !normalized.chain || !normalized.operator) throw new Error("Mesoscale detail selector is invalid");
+    const cell = this.entity(ref);
+    const source = cell?.obj?.data?.sourceData;
+    if (!(source instanceof Structure)) throw new Error(`Object is not selectable as a molecular structure: ${ref}`);
+    const elements = source.units
+      .filter((unit) => unit.elements.length > 0)
+      .filter((unit) => {
+        const identity = structureUnitSelector(source, unit);
+        return identity.model === normalized.model && identity.chain === normalized.chain && identity.operator === normalized.operator;
+      })
+      .map((unit) => ({ unit, indices: OrderedSet.ofBounds(0, unit.elements.length) as OrderedSet<UnitIndex> }));
+    if (elements.length === 0) throw new Error(`Mesoscale operator was not found: ${normalized.operator}`);
+    return {
+      id: hierarchyDetailId(normalized),
+      loci: StructureElement.Loci(source, elements),
+      repr: cell?.obj?.data?.repr,
+    };
+  }
+
+  private setHoverAppearance(active: boolean) {
+    this.plugin.canvas3d?.setProps({
+      renderer: {
+        dimColor: Color(0xffffff),
+        dimStrength: 1,
+        highlightStrength: 0,
+        markerPriority: active ? 1 : 2,
+        selectColor: Color(0xffffff),
+        selectStrength: active ? 1 : 0,
+      },
+    });
+  }
+
+  highlightObject(ref: string | null, sequence: number, selector?: MesoscaleHierarchySelector) {
     if (sequence < this.previewSequence) return;
     this.previewSequence = sequence;
     const canvas = this.plugin.canvas3d;
     canvas?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
-    if (!ref) return;
+    if (!ref) {
+      this.setHoverAppearance(false);
+      return;
+    }
+    this.setHoverAppearance(true);
+    if (selector) {
+      try {
+        const target = this.detailTarget(ref, selector);
+        canvas?.mark({ repr: target.repr, loci: target.loci }, MarkerAction.Highlight);
+      } catch { /* stale hierarchy detail after a scene update */ }
+      return;
+    }
     let entities: any[] = [];
     try { entities = this.objectEntities(ref); } catch { /* empty organizational group */ }
     for (const entity of entities as any[]) {
@@ -620,6 +694,7 @@ class MesoscaleRuntimeApi {
       if (mode === "replace") {
         selection.deselectAll();
         this.selectedRefs.clear();
+        this.selectedDetails.clear();
       }
       for (const cell of cells) {
         const loci = Structure.toStructureElementLoci(cell.obj.data.sourceData);
@@ -627,10 +702,16 @@ class MesoscaleRuntimeApi {
         if (mode === "toggle") {
           selection.toggle({ loci }, false);
           if (this.selectedRefs.has(entityRef)) this.selectedRefs.delete(entityRef);
-          else if (entityRef) this.selectedRefs.add(entityRef);
+          else if (entityRef) {
+            for (const [key, detail] of this.selectedDetails) if (detail.ref === entityRef) this.selectedDetails.delete(key);
+            this.selectedRefs.add(entityRef);
+          }
         } else {
           selection.select({ loci }, false);
-          if (entityRef) this.selectedRefs.add(entityRef);
+          if (entityRef) {
+            for (const [key, detail] of this.selectedDetails) if (detail.ref === entityRef) this.selectedDetails.delete(key);
+            this.selectedRefs.add(entityRef);
+          }
         }
       }
     } finally {
@@ -652,6 +733,58 @@ class MesoscaleRuntimeApi {
     return this.observe();
   }
 
+  async selectDetail(ref: string, selector: MesoscaleHierarchySelector, mode: "replace" | "extend" | "toggle" = "replace") {
+    const target = this.detailTarget(ref, selector);
+    const key = selectedDetailKey(ref, target.id);
+    const selection = this.plugin.managers.interactivity.lociSelects;
+    const beforeCount = this.selectedRefs.size + this.selectedDetails.size;
+    this.selectionMutationDepth += 1;
+    try {
+      if (mode === "replace") {
+        selection.deselectAll();
+        this.selectedRefs.clear();
+        this.selectedDetails.clear();
+      }
+      if (mode === "toggle") {
+        selection.toggle({ loci: target.loci }, false);
+        if (this.selectedDetails.has(key)) this.selectedDetails.delete(key);
+        else this.selectedDetails.set(key, { ref, id: target.id });
+      } else {
+        selection.select({ loci: target.loci }, false);
+        this.selectedDetails.set(key, { ref, id: target.id });
+      }
+    } finally {
+      this.selectionMutationDepth -= 1;
+    }
+    if (beforeCount !== this.selectedRefs.size + this.selectedDetails.size || mode === "replace" || mode === "toggle") this.selectionVersion += 1;
+    this.changed();
+    return this.observe();
+  }
+
+  async selectDetails(ref: string, selectors: MesoscaleHierarchySelector[], mode: "replace" | "extend" = "replace") {
+    if (!Array.isArray(selectors) || selectors.length === 0) throw new Error("At least one Mesoscale operator is required for selection");
+    if (selectors.length > MESOSCALE_SELECTION_BATCH_LIMIT) throw new Error(`Selection batch exceeds ${MESOSCALE_SELECTION_BATCH_LIMIT} operators`);
+    const targets = selectors.map((selector) => this.detailTarget(ref, selector));
+    const selection = this.plugin.managers.interactivity.lociSelects;
+    this.selectionMutationDepth += 1;
+    try {
+      if (mode === "replace") {
+        selection.deselectAll();
+        this.selectedRefs.clear();
+        this.selectedDetails.clear();
+      }
+      for (const target of targets) {
+        selection.select({ loci: target.loci }, false);
+        this.selectedDetails.set(selectedDetailKey(ref, target.id), { ref, id: target.id });
+      }
+    } finally {
+      this.selectionMutationDepth -= 1;
+    }
+    this.selectionVersion += 1;
+    this.changed();
+    return this.observe();
+  }
+
   async selectEntities(refs: string[], mode: "replace" | "extend" = "replace") {
     if (!Array.isArray(refs) || refs.length === 0) throw new Error("At least one Mesoscale object is required for selection");
     if (refs.length > MESOSCALE_SELECTION_BATCH_LIMIT) throw new Error(`Selection batch exceeds ${MESOSCALE_SELECTION_BATCH_LIMIT} objects`);
@@ -667,11 +800,15 @@ class MesoscaleRuntimeApi {
       if (mode === "replace") {
         selection.deselectAll();
         this.selectedRefs.clear();
+        this.selectedDetails.clear();
       }
       for (const cell of cells) {
         selection.select({ loci: Structure.toStructureElementLoci(cell.obj.data.sourceData) }, false);
         const ref = String(cell?.transform?.ref || "");
-        if (ref) this.selectedRefs.add(ref);
+        if (ref) {
+          for (const [key, detail] of this.selectedDetails) if (detail.ref === ref) this.selectedDetails.delete(key);
+          this.selectedRefs.add(ref);
+        }
       }
     } finally {
       this.selectionMutationDepth -= 1;
@@ -722,8 +859,9 @@ class MesoscaleRuntimeApi {
     } finally {
       this.selectionMutationDepth -= 1;
     }
-    if (this.selectedRefs.size > 0) this.selectionVersion += 1;
+    if (this.selectedRefs.size > 0 || this.selectedDetails.size > 0) this.selectionVersion += 1;
     this.selectedRefs.clear();
+    this.selectedDetails.clear();
     this.changed();
     return this.observe();
   }
@@ -747,6 +885,16 @@ class MesoscaleRuntimeApi {
     if (!hasSphere) throw new Error(`Object has no molecular focus target: ${ref}`);
     this.plugin.managers.camera.focusSphere(sphere, { durationMs: 250 });
     await MesoscaleState.set(this.plugin, { focusInfo: cells.length === 1 ? getEntityDescription(this.plugin, cells[0]) : `${cells.length} entities` });
+    this.changed();
+    return this.observe();
+  }
+
+  async focusDetail(ref: string, selector: MesoscaleHierarchySelector) {
+    const target = this.detailTarget(ref, selector);
+    const sphere = Loci.getBoundingSphere(target.loci);
+    if (!sphere) throw new Error(`Mesoscale operator has no molecular focus target: ${selector.operator}`);
+    this.plugin.managers.camera.focusSphere(sphere, { durationMs: 250 });
+    await MesoscaleState.set(this.plugin, { focusInfo: `Operator ${selector.operator}` });
     this.changed();
     return this.observe();
   }
@@ -937,6 +1085,8 @@ class MesoscaleRuntimeApi {
         else await this.selectEntity(action.ref, action.mode ?? "replace");
         return this.sceneSummary();
       case "setSelectionBatch": await this.selectEntities(action.refs, action.mode ?? "replace"); return this.sceneSummary();
+      case "setDetailSelection": await this.selectDetail(action.ref, action.selector, action.mode ?? "replace"); return this.sceneSummary();
+      case "setDetailSelectionBatch": await this.selectDetails(action.ref, action.selectors, action.mode ?? "replace"); return this.sceneSummary();
       case "setSelectionStyle": await this.styleSelection(action); return this.sceneSummary();
       case "setSelectionVisibility": await this.setSelectionVisibility(action.visible); return this.sceneSummary();
       case "isolateSelection": await this.isolateSelection(); return this.sceneSummary();
@@ -945,6 +1095,7 @@ class MesoscaleRuntimeApi {
       case "setLayoutRegion": await this.setLayoutRegion(action.region, action.visible); return this.sceneSummary();
       case "setMotion": this.setMotion(action.motion); return this.sceneSummary();
       case "focusObject": await this.focusEntity(action.ref); return this.sceneSummary();
+      case "focusDetail": await this.focusDetail(action.ref, action.selector); return this.sceneSummary();
       case "setVisibility": await this.setVisibility(action.ref, action.visible); return this.sceneSummary();
       case "isolateObjects": await this.isolateObjects(action.refs); return this.sceneSummary();
       case "setStyle": await this.styleEntity(action.ref, action); return this.sceneSummary();
@@ -965,7 +1116,7 @@ class MesoscaleRuntimeApi {
       case "getCapabilities": return {
         kind: "capabilities",
         apiVersion: MESOSCALE_API_VERSION,
-        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionBatch", "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
+        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionBatch", "setDetailSelection", "setDetailSelectionBatch", "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "focusDetail", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
         graphicsModes: ["ultra", "quality", "balanced", "performance", "custom"],
         hierarchyPageLimit: MESOSCALE_HIERARCHY_PAGE_LIMIT,
       };
@@ -1023,11 +1174,13 @@ function applyBuretteSelectionAppearance(runtime: MesoscaleRuntimeApi) {
   runtime.plugin.canvas3d?.setProps({
     renderer: {
       colorMarker: true,
-      highlightColor: Color(0xaf52de),
-      highlightStrength: 0.45,
-      selectColor: Color(0xaf52de),
+      highlightColor: Color(0xffffff),
+      highlightStrength: 0,
+      selectColor: Color(0xffffff),
       selectStrength: 0,
-      dimStrength: 0,
+      dimColor: Color(0xffffff),
+      dimStrength: 1,
+      markerPriority: 2,
     },
     marking: {
       enabled: true,
@@ -1047,10 +1200,26 @@ function installBuretteSelectionAppearanceGuard(runtime: MesoscaleRuntimeApi) {
     if (!code.startsWith("Shift") && !code.startsWith("Control")) return;
     queueMicrotask(() => {
       const canvas = runtime.plugin.canvas3d;
-      if (!canvas || canvas.props.renderer.dimStrength === 0) return;
-      canvas.setProps({ renderer: { dimStrength: 0 } });
+      if (!canvas || canvas.props.renderer.dimStrength === 1) return;
+      canvas.setProps({ renderer: { dimStrength: 1 } });
     });
   });
+}
+
+function installBuretteSceneHover(runtime: MesoscaleRuntimeApi) {
+  const subscription = runtime.plugin.behaviors.interaction.hover.subscribe(({ current }) => {
+    const canvas = runtime.plugin.canvas3d;
+    if (!canvas) return;
+    canvas.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
+    if (Loci.isEmpty(current.loci) || !current.repr) {
+      runtime.highlightObject(null, runtime.previewSequence + 1);
+      return;
+    }
+    runtime.previewSequence += 1;
+    runtime["setHoverAppearance"](true);
+    canvas.mark({ repr: current.repr, loci: EveryLoci }, MarkerAction.Highlight);
+  });
+  return () => subscription.unsubscribe();
 }
 
 function applyHostedUi(hosted: boolean) {
@@ -1402,7 +1571,7 @@ function installActionBridge(runtime: MesoscaleRuntimeApi) {
       const preview = envelope as MesoscalePreviewMessage;
       const expectedDocumentId = window.BuretteConfig?.documentId;
       if (event.source === window.parent && preview.apiVersion === MESOSCALE_API_VERSION && preview.documentId === expectedDocumentId) {
-        runtime.highlightObject(preview.ref, preview.sequence);
+        runtime.highlightObject(preview.ref, preview.sequence, preview.selector);
       }
       return;
     }
@@ -1494,6 +1663,7 @@ async function start() {
   // colors remain visible whenever a selection is active.
   applyBuretteSelectionAppearance(runtime);
   installBuretteSelectionAppearanceGuard(runtime);
+  installBuretteSceneHover(runtime);
   installMesoscaleSelectionSync(runtime);
   installMesoscaleCanvasInteractions(runtime);
   const pluginRoot = document.querySelector<HTMLElement>(".msp-plugin");
