@@ -20861,6 +20861,7 @@
     const menu = document.querySelector('.buret-molecule-context-menu:not(.buret-xyzrender-context-menu)');
     const previousFocus = menu?._buretPreviousFocus;
     const restoreFocus = !!menu && menu.contains(document.activeElement);
+    if (menu) moleculeMenuCloseSubmenus(menu);
     menu?.remove();
     if (restoreFocus && previousFocus?.isConnected && typeof previousFocus.focus === 'function') {
       previousFocus.focus({ preventScroll: true });
@@ -20908,6 +20909,7 @@
     }
     menu.querySelectorAll('.buret-molecule-context-submenu[data-open="true"]').forEach(submenu => {
       if (keep.has(submenu)) return;
+      submenu._buretRestorePreview?.();
       for (const list of submenu.querySelectorAll('[data-scene-tree-picker-list]')) {
         closeSceneTreePicker(list, { restore: true });
       }
@@ -21095,6 +21097,63 @@
     return trigger;
   }
 
+  // Hover previews are real Mol* updates, but they remain provisional until an
+  // action is chosen. New pointer targets replace the pending one, so sweeping a
+  // long list never leaves a backlog of stale representation updates.
+  function moleculeMenuRepresentationTypePreview(getActiveRef) {
+    let originalRef = '';
+    let originalType = null;
+    let pending = null;
+    let drain = null;
+    const cloneType = type => type ? { ...type, params: { ...(type.params || {}) } } : null;
+    const execute = async next => {
+      const activeRef = getActiveRef();
+      if (next.kind === 'preview') {
+        const target = sceneTreeRepresentationTargets(activeMolstarViewer()).get(activeRef);
+        if (!target) return;
+        if (!originalType || originalRef !== activeRef) {
+          originalRef = activeRef;
+          originalType = cloneType(target.representation?.cell?.transform?.params?.type);
+        }
+        await applySceneTreeReprType(activeRef, next.type);
+      } else if (next.kind === 'restore') {
+        const restoreRef = originalRef;
+        const restoreType = cloneType(originalType);
+        if (restoreRef && restoreType) {
+          await updateSceneTreeRepresentation(restoreRef, old => ({ ...old, type: restoreType }));
+        }
+        originalRef = '';
+        originalType = null;
+      } else if (next.kind === 'commit') {
+        await applySceneTreeReprType(activeRef, next.type);
+        originalRef = '';
+        originalType = null;
+      }
+    };
+    const schedule = next => {
+      pending = next;
+      if (!drain) {
+        drain = (async () => {
+          try {
+            while (pending) {
+              const current = pending;
+              pending = null;
+              await execute(current);
+            }
+          } finally {
+            drain = null;
+          }
+        })();
+      }
+      return drain;
+    };
+    return {
+      preview: type => schedule({ kind: 'preview', type }),
+      restore: () => schedule({ kind: 'restore' }),
+      commit: type => schedule({ kind: 'commit', type })
+    };
+  }
+
   // Type is a cascading menu rather than a native select: a type is chosen first,
   // then a final submenu decides whether it replaces the active representation or
   // becomes another layer. This keeps the destructive choice out of the editor.
@@ -21138,6 +21197,7 @@
     const activeTarget = sceneTreeRepresentationTargets(activeMolstarViewer()).get(getActiveRef());
     const types = activeTarget ? sceneTreeRepresentationTypes(activeMolstarViewer(), [activeTarget.component]) : [];
     const typeItems = new Map();
+    const typePreview = moleculeMenuRepresentationTypePreview(getActiveRef);
     let suppressFocusOpen = false;
     const update = ref => {
       const target = sceneTreeRepresentationTargets(activeMolstarViewer()).get(ref);
@@ -21198,10 +21258,11 @@
           const activeRef = getActiveRef();
           action.disabled = true;
           if (actionLabel === 'Update current') {
-            await applySceneTreeReprType(activeRef, type.name);
+            await typePreview.commit(type.name);
             action.disabled = false;
             finish(activeRef, type.label, actionLabel);
           } else {
+            await typePreview.restore();
             const createdRef = await duplicateSceneTreeRepresentation(activeRef, type.name);
             action.disabled = false;
             finish(createdRef, type.label, actionLabel);
@@ -21210,7 +21271,10 @@
         actionMenu.appendChild(action);
       }
 
-      const openActionMenu = focusFirst => moleculeMenuOpenSubmenu(menu, actionMenu, typeTrigger, { focusFirst });
+      const openActionMenu = focusFirst => {
+        void typePreview.preview(type.name);
+        moleculeMenuOpenSubmenu(menu, actionMenu, typeTrigger, { focusFirst });
+      };
       typeTrigger.addEventListener('pointerenter', () => openActionMenu(false));
       typeTrigger.addEventListener('focus', () => openActionMenu(false));
       typeTrigger.addEventListener('click', event => {
@@ -21252,6 +21316,8 @@
       openTypeMenu(true);
     });
     typeMenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, typeMenu, trigger));
+    typeMenu.addEventListener('pointerleave', () => { void typePreview.restore(); });
+    typeMenu._buretRestorePreview = () => { void typePreview.restore(); };
     representationSubmenu.appendChild(typeMenu);
     update(getActiveRef());
     return { element: container, update };
@@ -21267,6 +21333,7 @@
         event.preventDefault();
         event.stopPropagation();
         if (currentMenu.classList.contains('buret-molecule-context-submenu')) {
+          currentMenu._buretRestorePreview?.();
           currentMenu.hidden = true;
           currentMenu.dataset.open = 'false';
           currentMenu._buretTrigger?.setAttribute('aria-expanded', 'false');
@@ -21279,6 +21346,7 @@
       if (event.key === 'ArrowLeft' && currentMenu.classList.contains('buret-molecule-context-submenu')) {
         event.preventDefault();
         event.stopPropagation();
+        currentMenu._buretRestorePreview?.();
         currentMenu.hidden = true;
         currentMenu.dataset.open = 'false';
         currentMenu._buretTrigger?.setAttribute('aria-expanded', 'false');

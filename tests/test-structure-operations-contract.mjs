@@ -160,7 +160,11 @@ assert.match(fn("moleculeMenuSubmenu"), /aria-haspopup[\s\S]*buret-tree-menu-sub
 assert.match(fn("moleculeMenuRepresentationSubmenu"), /aria-haspopup[\s\S]*menu[\s\S]*sceneTreeRepresentationMenu/);
 assert.match(fn("moleculeMenuRepresentationSubmenu"), /trigger\.addEventListener\('click'[\s\S]*event\.stopPropagation\(\)[\s\S]*open\(true\)/);
 assert.match(fn("duplicateSceneTreeRepresentation"), /typeOverride[\s\S]*addRepresentation[\s\S]*type: nextType[\s\S]*return String\(created\?\.ref/);
-assert.match(fn("moleculeMenuRepresentationTypePicker"), /Update current[\s\S]*Add another[\s\S]*applySceneTreeReprType[\s\S]*duplicateSceneTreeRepresentation/);
+assert.match(fn("moleculeMenuRepresentationTypePicker"), /Update current[\s\S]*Add another[\s\S]*typePreview\.commit[\s\S]*typePreview\.restore[\s\S]*duplicateSceneTreeRepresentation/);
+assert.match(fn("moleculeMenuRepresentationTypePreview"), /kind === 'preview'[\s\S]*kind === 'restore'[\s\S]*kind === 'commit'/);
+assert.match(fn("moleculeMenuRepresentationTypePicker"), /typePreview\.preview/);
+assert.match(fn("moleculeMenuRepresentationTypePicker"), /typePreview\.commit/);
+assert.match(fn("moleculeMenuRepresentationTypePicker"), /typePreview\.restore/);
 assert.doesNotMatch(viewer, /function moleculeMenuRepresentationMode/);
 assert.match(fn("moleculeMenuActionButton"), /pickingLevel: options\.pickingLevel \|\| options\.target\.pickingLevel/);
 assert.match(fn("moleculeMenuActionButton"), /moleculeContextMenuAction\(action, label, target\)/);
