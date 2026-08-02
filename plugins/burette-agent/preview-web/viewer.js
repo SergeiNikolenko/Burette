@@ -14185,6 +14185,12 @@
   }
 
   function installDockingPoseHoverSuppression() {
+    // Scoped to the Quick Look and mobile hosts, which render a preview rather
+    // than an editor. `isMolstarContextMenuTarget` matches the viewport canvas
+    // itself, so installing this in the app stopped every buttonless
+    // pointermove before Mol* saw it and killed the hover highlight across the
+    // whole scene.
+    if (!isQuickLookHost()) return null;
     const suppressHover = (event) => {
       if (Number(event.buttons || 0) !== 0) return;
       if (!isMolstarContextMenuTarget(event.target)) return;

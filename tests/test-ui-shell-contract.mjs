@@ -6320,6 +6320,10 @@ assert.match(previewViewer, /root\.addEventListener\('wheel', isolateWheel, \{ p
 assert.match(previewViewer, /const isolationDisposer = installDockingPoseInteractionIsolation\(root\)/);
 assert.match(previewViewer, /isolationDisposer\?\.\(\)/);
 assert.match(previewViewer, /function installDockingPoseHoverSuppression\(\)/);
+// The suppression matches the viewport canvas itself, so outside the preview
+// hosts it swallowed every buttonless pointermove and Mol* never highlighted
+// what the pointer was over.
+assert.match(previewViewer, /function installDockingPoseHoverSuppression\(\) \{[\s\S]*?if \(!isQuickLookHost\(\)\) return null;/);
 assert.match(previewViewer, /document\.addEventListener\('pointermove', suppressHover, true\)/);
 assert.match(previewViewer, /lociHighlights\?\.clearHighlights\?\.\(\)/);
 assert.match(previewViewer, /const hoverDisposer = installDockingPoseHoverSuppression\(\)/);
