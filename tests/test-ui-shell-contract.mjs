@@ -2038,6 +2038,9 @@ assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*overflow: hidden;[^}]*isol
 assert.doesNotMatch(styles, /\.ketcher-editor-shell\s*\{[^}]*contain: layout paint;/s);
 assert.match(styles, /\.ketcher-scale-control\s*\{[^}]*grid-template-columns: 28px minmax\(34px, 1fr\) 28px;/s);
 assert.match(styles, /\.ketcher-page-actions button\s*\{[^}]*position: relative;/s);
+// nowrap labels plus a shrinkable button spilled the text over the pill's edges.
+assert.match(styles, /\.ketcher-page-actions button\s*\{[^}]*flex: 0 0 auto;/s);
+assert.doesNotMatch(styles, /\.ketcher-page-actions button\s*\{[^}]*min-width: 0;/s);
 assert.match(styles, /\.ketcher-scale-control\s*\{[^}]*overflow: visible;/s);
 assert.match(styles, /\.ketcher-scale-control span\s*\{[^}]*font-variant-numeric: tabular-nums;/s);
 assert.match(styles, /\.ketcher-page-actions \.ketcher-theme-control\s*\{[^}]*min-width: 64px;[^}]*\}/s);
