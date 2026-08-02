@@ -1300,6 +1300,7 @@ function viewerHtml(
   ${extraWindowScript}
   <script src="${viewerAsset("burette-agent.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("trajectory-smoothing.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("superposition-panel.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("viewer.js")}?v=${runtimeAssetVersion}"></script>
 </body>
 </html>`;
