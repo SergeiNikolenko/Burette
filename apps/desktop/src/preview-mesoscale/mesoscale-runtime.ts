@@ -8,7 +8,7 @@ import { OrderedSet } from "molstar/lib/mol-data/int.js";
 import type { UnitIndex } from "molstar/lib/mol-model/structure/structure/element/util.js";
 import { EveryLoci, Loci } from "molstar/lib/mol-model/loci.js";
 import { Sphere3D } from "molstar/lib/mol-math/geometry.js";
-import { Vec2 } from "molstar/lib/mol-math/linear-algebra.js";
+import { Mat4, Vec2, Vec3 } from "molstar/lib/mol-math/linear-algebra.js";
 import { PluginStateSnapshotManager } from "molstar/lib/mol-plugin-state/manager/snapshots.js";
 import { StateSelection } from "molstar/lib/mol-state/index.js";
 import { Asset } from "molstar/lib/mol-util/assets.js";
@@ -31,6 +31,7 @@ import {
   type MesoscaleControlPlacement,
   type MesoscaleGraphicsMode,
   type MesoscaleHierarchyDetail,
+  type MesoscaleClipShape,
   type MesoscaleHierarchySelector,
   type MesoscaleHierarchyObject,
   type MesoscaleLayoutRegion,
@@ -944,6 +945,26 @@ class MesoscaleRuntimeApi {
     return this.observe();
   }
 
+  // A clip shape is placed against the scene's own bounds, the way the upstream
+  // Mesoscale clip control does, so the menu only has to name the shape.
+  async setClip(ref: string, shape: MesoscaleClipShape, invert = false) {
+    const bounds = this.plugin.canvas3d?.boundingSphere;
+    if (shape !== "none" && !bounds) throw new Error("Mesoscale scene bounds are unavailable for clipping");
+    // Upstream's default shape spans the whole scene, which cuts nothing; half the
+    // bounds gives a visible cut the moment the shape is picked.
+    const size = bounds ? bounds.radius : 0;
+    const clipObjects = shape === "none" ? [] : [{
+      type: shape,
+      invert,
+      position: Vec3.clone(bounds!.center),
+      scale: Vec3.create(size, size, size),
+      rotation: { axis: Vec3.create(0, 1, 0), angle: 0 },
+      transform: Mat4.identity(),
+    }];
+    await this.styleCells(this.objectEntities(ref), { clipObjects });
+    return this.observe();
+  }
+
   async styleSelection(values: Record<string, unknown>) {
     if (Number.isFinite(values.selectionVersion) && Number(values.selectionVersion) !== this.selectionVersion) {
       throw new Error("Mesoscale selection changed before appearance was applied");
@@ -1104,6 +1125,7 @@ class MesoscaleRuntimeApi {
       case "setDetailSelection": await this.selectDetail(action.ref, action.selector, action.mode ?? "replace"); return this.sceneSummary();
       case "setDetailSelectionBatch": await this.selectDetails(action.ref, action.selectors, action.mode ?? "replace"); return this.sceneSummary();
       case "setHoverDimming": this.setHoverDimming(action.enabled); return this.sceneSummary();
+      case "setClip": await this.setClip(action.ref, action.shape, action.invert); return this.sceneSummary();
       case "setSelectionStyle": await this.styleSelection(action); return this.sceneSummary();
       case "setSelectionVisibility": await this.setSelectionVisibility(action.visible); return this.sceneSummary();
       case "isolateSelection": await this.isolateSelection(); return this.sceneSummary();
@@ -1133,7 +1155,7 @@ class MesoscaleRuntimeApi {
       case "getCapabilities": return {
         kind: "capabilities",
         apiVersion: MESOSCALE_API_VERSION,
-        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionBatch", "setDetailSelection", "setDetailSelectionBatch", "setHoverDimming", "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "focusDetail", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
+        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionBatch", "setDetailSelection", "setDetailSelectionBatch", "setHoverDimming", "setClip", "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "focusDetail", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
         graphicsModes: ["ultra", "quality", "balanced", "performance", "custom"],
         hierarchyPageLimit: MESOSCALE_HIERARCHY_PAGE_LIMIT,
       };

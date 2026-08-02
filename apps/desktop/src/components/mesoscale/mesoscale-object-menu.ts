@@ -1,4 +1,4 @@
-import type { MesoscaleAction, MesoscaleHierarchyObject } from "../../lib/mesoscale-contract";
+import type { MesoscaleAction, MesoscaleClipShape, MesoscaleHierarchyObject } from "../../lib/mesoscale-contract";
 import { mesoscaleFrameGeneration, requestMesoscale, setMesoscaleVisibilityOptimistic } from "../../stores/mesoscale-store";
 import type { MenuItemSpec } from "../menu-types";
 import { showNativeContextMenu } from "../native-context-menu";
@@ -45,6 +45,23 @@ function appearanceMenu(documentId: string, item: MesoscaleHierarchyObject, bulk
   ];
 }
 
+// Mol* cuts an object with a single clip shape, so the menu names the shape and
+// the runtime places it against the scene bounds. "None" removes the cut again.
+function clipMenu(documentId: string, item: MesoscaleHierarchyObject): MenuItemSpec[] {
+  const clip = (shape: MesoscaleClipShape, invert = false) => queueMutation(documentId, { type: "setClip", ref: item.ref, shape, invert });
+  return [
+    { kind: "item", id: "mesoscale-clip-none", text: "No clip", action: () => clip("none") },
+    { kind: "separator" },
+    { kind: "item", id: "mesoscale-clip-plane", text: "Plane", action: () => clip("plane") },
+    { kind: "item", id: "mesoscale-clip-sphere", text: "Sphere", action: () => clip("sphere") },
+    { kind: "item", id: "mesoscale-clip-cube", text: "Cube", action: () => clip("cube") },
+    { kind: "item", id: "mesoscale-clip-cylinder", text: "Cylinder", action: () => clip("cylinder") },
+    { kind: "separator" },
+    { kind: "item", id: "mesoscale-clip-sphere-invert", text: "Sphere, inverted", action: () => clip("sphere", true) },
+    { kind: "item", id: "mesoscale-clip-cube-invert", text: "Cube, inverted", action: () => clip("cube", true) },
+  ];
+}
+
 export function showMesoscaleAppearanceMenu(documentId: string, item: MesoscaleHierarchyObject, point: { x: number; y: number }) {
   return showNativeContextMenu(appearanceMenu(documentId, item, false, 1), point, { forceWeb: true });
 }
@@ -63,33 +80,32 @@ export function showMesoscaleObjectMenu(
     void requestMesoscale(documentId, { type: "setVisibility", ref: item.ref, visible })
       .catch(() => setMesoscaleVisibilityOptimistic(documentId, item.ref, visible));
   };
+  const selectionItems: MenuItemSpec[] = bulk
+    ? [
+        { kind: "item", id: "mesoscale-isolate-selection", text: "Isolate Selection", action: () => run({ type: "isolateSelection" }) },
+        { kind: "item", id: "mesoscale-hide-selection", text: "Hide Selection", action: () => run({ type: "setSelectionVisibility", visible: false }) },
+        { kind: "item", id: "mesoscale-show-selection", text: "Show Selection", action: () => run({ type: "setSelectionVisibility", visible: true }) },
+        { kind: "separator" },
+        { kind: "item", id: "mesoscale-clear-selection", text: "Clear Selection", action: () => run({ type: "setSelection", mode: "clear" }) },
+      ]
+    : [
+        { kind: "item", id: "mesoscale-select", text: item.kind === "group" ? "Select all in group" : "Select", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "replace" }) },
+        { kind: "item", id: "mesoscale-add-selection", text: "Add to Selection", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "extend" }) },
+        { kind: "item", id: "mesoscale-toggle-selection", text: item.selected ? "Remove from Selection" : "Toggle Selection", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "toggle" }) },
+        ...(item.selected ? [
+          { kind: "separator" as const },
+          { kind: "item" as const, id: "mesoscale-clear-selection", text: "Clear Selection", action: () => run({ type: "setSelection", mode: "clear" }) },
+        ] : []),
+      ];
   const items: MenuItemSpec[] = [
-    { kind: "label", id: "mesoscale-object-label", text: bulk ? `Selection actions · ${selectedCount} structures` : `${item.kind === "group" ? "Group actions" : "Structure actions"} · ${item.label}` },
-    ...appearanceMenu(documentId, item, bulk, selectedCount, selectionVersion),
+    { kind: "label", id: "mesoscale-object-label", text: bulk ? `Selection · ${selectedCount} structures` : `${item.kind === "group" ? "Group" : "Structure"} · ${item.label}` },
+    { kind: "submenu", id: "mesoscale-appearance", text: "Appearance", items: appearanceMenu(documentId, item, bulk, selectedCount, selectionVersion) },
+    { kind: "submenu", id: "mesoscale-selection", text: "Selection", items: selectionItems },
+    { kind: "submenu", id: "mesoscale-clip", text: "Clip", disabled: item.kind === "mesh", items: clipMenu(documentId, item) },
     { kind: "separator" },
+    { kind: "item", id: "mesoscale-focus", text: "Focus", disabled: item.kind === "mesh", action: () => run({ type: "focusObject", ref: item.ref }) },
+    { kind: "item", id: "mesoscale-isolate", text: bulk ? "Isolate Selection" : "Isolate", action: () => run(bulk ? { type: "isolateSelection" } : { type: "isolateObjects", refs: [item.ref] }) },
+    { kind: "item", id: "mesoscale-visibility", text: item.hidden ? "Show" : "Hide", action: () => setVisible(item.hidden) },
   ];
-  if (bulk) {
-    items.push(
-      { kind: "item", id: "mesoscale-isolate-selection", text: "Isolate Selection", action: () => run({ type: "isolateSelection" }) },
-      { kind: "item", id: "mesoscale-hide-selection", text: "Hide Selection", action: () => run({ type: "setSelectionVisibility", visible: false }) },
-      { kind: "item", id: "mesoscale-show-selection", text: "Show Selection", action: () => run({ type: "setSelectionVisibility", visible: true }) },
-      { kind: "separator" },
-      { kind: "item", id: "mesoscale-clear-selection", text: "Clear Selection", action: () => run({ type: "setSelection", mode: "clear" }) },
-    );
-  } else {
-    items.push(
-      { kind: "item", id: "mesoscale-select", text: item.kind === "group" ? "Select all in group" : "Select", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "replace" }) },
-      { kind: "item", id: "mesoscale-add-selection", text: "Add to Selection", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "extend" }) },
-      { kind: "item", id: "mesoscale-toggle-selection", text: item.selected ? "Remove from Selection" : "Toggle Selection", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "toggle" }) },
-      { kind: "separator" },
-      { kind: "item", id: "mesoscale-focus", text: "Focus", disabled: item.kind === "mesh", action: () => run({ type: "focusObject", ref: item.ref }) },
-      { kind: "item", id: "mesoscale-isolate", text: "Isolate", action: () => run({ type: "isolateObjects", refs: [item.ref] }) },
-      { kind: "item", id: "mesoscale-visibility", text: item.hidden ? "Show" : "Hide", action: () => setVisible(item.hidden) },
-      ...(item.selected ? [
-        { kind: "separator" as const },
-        { kind: "item" as const, id: "mesoscale-clear-selection", text: "Clear Selection", action: () => run({ type: "setSelection", mode: "clear" }) },
-      ] : []),
-    );
-  }
   return showNativeContextMenu(items, point, { forceWeb: true });
 }

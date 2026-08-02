@@ -62,6 +62,9 @@ export type MesoscaleSceneSummary = {
   loadReport: MesoscaleLoadReport | null;
 };
 
+// The clip shapes Mol* can cut an object with. "none" removes the cut again.
+export type MesoscaleClipShape = "none" | "plane" | "sphere" | "cube" | "cylinder" | "infiniteCone";
+
 export type MesoscaleHierarchySelector = {
   model: string;
   chain: string;
@@ -137,6 +140,7 @@ export type MesoscaleAction =
   | { type: "setDetailSelection"; ref: string; selector: MesoscaleHierarchySelector; mode?: "replace" | "extend" | "toggle" }
   | { type: "setDetailSelectionBatch"; ref: string; selectors: MesoscaleHierarchySelector[]; mode?: "replace" | "extend" }
   | { type: "setHoverDimming"; enabled: boolean }
+  | { type: "setClip"; ref: string; shape: MesoscaleClipShape; invert?: boolean }
   | { type: "setSelectionStyle"; color?: number; opacity?: number; emissive?: number; selectionVersion?: number }
   | { type: "setSelectionVisibility"; visible: boolean }
   | { type: "isolateSelection" }
