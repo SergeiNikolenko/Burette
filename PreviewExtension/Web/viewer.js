@@ -9129,7 +9129,7 @@
   // the whole request first, then retries every moving structure by sequence.
   function alignStructureSceneEntries(prepared, request = 'auto') {
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
-    if (poses.length < 2 || poses.some(entry => !['pdb', 'pdbqt'].includes(normalizeFormat(entry?.format)))) {
+    if (poses.length < 2) {
       throw new Error('Residue-number, sequence, and binding-site pairing currently require two or more PDB or PDBQT structures.');
     }
     const options = typeof request === 'string' ? { method: request } : (request || {});
@@ -9139,6 +9139,11 @@
       ? Array.from(new Set(options.movingIndices.map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < poses.length && index !== referenceIndex)))
       : poses.map((_, index) => index).filter(index => index !== referenceIndex);
     if (!movingIndices.length) throw new Error('Choose at least one moving structure.');
+    // Only the structures this request pairs have to be PDB text. Rejecting on
+    // every pose blocked a valid PDB subset in a scene that also holds mmCIF.
+    if ([referenceIndex, ...movingIndices].some(index => !['pdb', 'pdbqt'].includes(normalizeFormat(poses[index]?.format)))) {
+      throw new Error('Residue-number, sequence, and binding-site pairing currently require two or more PDB or PDBQT structures.');
+    }
     const chainIds = options.chainIds || {};
     const reference = poses[referenceIndex];
     const referenceData = String(reference.unalignedData || reference.data || '');

@@ -28,6 +28,9 @@ assert.match(fn("moleculeMenuCloseSubmenus"), /_buretParentSubmenu/);
 assert.match(fn("moleculeMenuNestedSubmenu"), /aria-haspopup[\s\S]*?moleculeMenuActionItem/);
 assert.match(fn("molstarContextActionsPayload"), /moleculeMenuLeafActions/);
 const align = fn("alignStructureSceneEntries");
+// Only the paired structures have to be PDB text: a scene may also hold mmCIF
+// entries the request never touches.
+assert.match(align, /\[referenceIndex, \.\.\.movingIndices\]\.some\(index => !\['pdb', 'pdbqt'\]\.includes\(normalizeFormat\(poses\[index\]\?\.format\)\)\)/);
 assert.match(align, /referenceIndex[\s\S]*movingIndices[\s\S]*chainIds/);
 assert.match(align, /if \(method !== 'auto'\) return build\(method\)/);
 assert.match(align, /return build\('atoms'\)[\s\S]*const result = build\('sequence'\)/);

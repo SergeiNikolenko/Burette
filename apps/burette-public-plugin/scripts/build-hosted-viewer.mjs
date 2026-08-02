@@ -23,6 +23,7 @@ const VIEWER_FILES = [
   "viewer-bootstrap.js",
   "viewer-shell.js",
   "trajectory-smoothing.js",
+  "superposition-panel.js",
   "viewer.js",
 ];
 
