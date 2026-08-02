@@ -2576,7 +2576,7 @@
   }
 
   function scheduleMolstarStructureFocus(viewer, options = {}) {
-    if (!molstarAutoFocusEnabled(activeConfig)) return;
+    if (options.force !== true && !molstarAutoFocusEnabled(activeConfig)) return;
     if (options.allowWithContextFocus !== true && hasMolstarContextFocus(activeConfig)) return;
     const serial = ++molstarStructureFocusSerial;
     const delays = Array.isArray(options.delays) && options.delays.length ? options.delays : [0, 80, 240, 520];
@@ -2801,6 +2801,7 @@
       const poseCount = Number(activeMolstarPrepared.poseCount || 0);
       const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
       await applyDockingSceneVisibility(activeViewer, activeMolstarPrepared, activePose, { focus: false });
+      await activeStructureAlignmentControl?.restoreAfterSceneReload?.();
       return;
     }
     if (activeMolstarPrepared?.kind === 'docking' && activeMolstarPrepared?.sdfPoseOverlayAvailable === true) {
@@ -8977,6 +8978,23 @@
   function pdbRigidAlignment(movingPoints, referencePoints) {
     const count = Math.min(movingPoints.length, referencePoints.length);
     if (count < 3) return null;
+    const hasArea = points => {
+      const origin = points[0];
+      for (let left = 1; left < count - 1; left += 1) {
+        const a = points[left].map((value, axis) => value - origin[axis]);
+        for (let right = left + 1; right < count; right += 1) {
+          const b = points[right].map((value, axis) => value - origin[axis]);
+          const cross = [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+          ];
+          if (Math.hypot(...cross) > 1e-6) return true;
+        }
+      }
+      return false;
+    };
+    if (!hasArea(movingPoints) || !hasArea(referencePoints)) return null;
     const movingCenter = [0, 0, 0];
     const referenceCenter = [0, 0, 0];
     for (let index = 0; index < count; index += 1) {
@@ -9008,23 +9026,23 @@
     const apply = point => rotation.map((row, axis) => (
       row.reduce((sum, value, column) => sum + value * (point[column] - movingCenter[column]), 0) + referenceCenter[axis]
     ));
+    const translation = referenceCenter.map((value, axis) => (
+      value - rotation[axis].reduce((sum, coefficient, column) => sum + coefficient * movingCenter[column], 0)
+    ));
+    // Mol* matrices are column-major. This maps the complete moving structure
+    // into the fixed reference coordinate system without rewriting source text.
+    const matrix = [
+      rotation[0][0], rotation[1][0], rotation[2][0], 0,
+      rotation[0][1], rotation[1][1], rotation[2][1], 0,
+      rotation[0][2], rotation[1][2], rotation[2][2], 0,
+      translation[0], translation[1], translation[2], 1
+    ];
     let squaredError = 0;
     for (let index = 0; index < count; index += 1) {
       const aligned = apply(movingPoints[index]);
       squaredError += aligned.reduce((sum, value, axis) => sum + (value - referencePoints[index][axis]) ** 2, 0);
     }
-    return { apply, rmsd: Math.sqrt(squaredError / count), count };
-  }
-
-  function transformPdbCoordinates(data, apply) {
-    return String(data || '').split(/\r?\n/).map(line => {
-      if (!line.startsWith('ATOM  ') && !line.startsWith('HETATM')) return line;
-      const point = [Number(line.slice(30, 38)), Number(line.slice(38, 46)), Number(line.slice(46, 54))];
-      if (!point.every(Number.isFinite)) return line;
-      const aligned = apply(point);
-      const coordinates = aligned.map(value => value.toFixed(3).padStart(8, ' '));
-      return `${line.slice(0, 30)}${coordinates.join('')}${line.slice(54)}`;
-    }).join('\n');
+    return { apply, matrix, rotation, rmsd: Math.sqrt(squaredError / count), count };
   }
 
   // Pairs Cα atoms by residue number. Cheap and exact when the structures are the
@@ -9047,107 +9065,153 @@
 
   const STRUCTURE_ALIGNMENT_MIN_PAIRS = 3;
 
-  function structureAlignmentChainCandidates(referenceChains, movingChainsByPose, pairsFor, options = {}) {
-    const sameChainOnly = options.sameChainOnly === true;
-    return Array.from(referenceChains.entries()).map(([chain, residues]) => {
-      const pairsByPose = movingChainsByPose.map(chains => {
-        if (sameChainOnly) {
-          const movingResidues = chains.get(chain);
-          return movingResidues ? pairsFor(residues, movingResidues) : [];
-        }
-        // Sequence and pocket superposition describe chemistry, not author-chosen
-        // chain labels. A protein called chain A in one file may be chain B in the
-        // next, so take the best sequence match in each moving structure.
-        let best = [];
-        for (const movingResidues of chains.values()) {
-          const pairs = pairsFor(residues, movingResidues);
-          if (pairs.length > best.length) best = pairs;
-        }
-        return best;
-      });
-      return { chain, pairsByPose, minimumMatches: Math.min(...pairsByPose.map(pairs => pairs.length)) };
-    }).filter(candidate => candidate.minimumMatches >= STRUCTURE_ALIGNMENT_MIN_PAIRS)
-      .sort((left, right) => right.minimumMatches - left.minimumMatches);
-  }
-
-  function bindingSiteFilteredCandidate(candidate, referenceLigandPoints) {
-    if (!referenceLigandPoints.length) {
-      throw new Error('The reference structure has no ligand to define a binding site.');
-    }
-    const pairsByPose = candidate.pairsByPose.map(pairs => pairs.filter(([reference]) => (
-      residueIsNearAnyPoint(reference.point, referenceLigandPoints, BINDING_SITE_ALIGNMENT_RADIUS)
-    )));
-    return { ...candidate, pairsByPose, minimumMatches: Math.min(...pairsByPose.map(pairs => pairs.length)) };
-  }
-
   const STRUCTURE_ALIGNMENT_MODE_LABELS = {
     atoms: 'residue numbers',
     sequence: 'sequence alignment',
     'binding-site': `binding site (${BINDING_SITE_ALIGNMENT_RADIUS} Å)`
   };
 
-  // `mode` mirrors what Maestro and PyMOL separate: pair by numbering (PyMOL's
-  // `align` on identical numbering), pair by sequence (`align`/`super`), or pair
-  // only what lines the pocket (Maestro's binding-site alignment). `auto` is the
-  // toolbar button: numbering when it works, sequence when it does not.
-  function alignStructureSceneEntries(prepared, mode = 'auto') {
-    const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
-    if (poses.length < 2 || poses.some(entry => normalizeFormat(entry?.format) !== 'pdb')) {
-      throw new Error('One-click alignment currently requires two or more PDB structures.');
+  function rigidMatrixDeterminant(matrix) {
+    if (!Array.isArray(matrix) && !(matrix instanceof Float32Array) && !(matrix instanceof Float64Array)) return NaN;
+    if (matrix.length !== 16) return NaN;
+    const r00 = matrix[0], r01 = matrix[4], r02 = matrix[8];
+    const r10 = matrix[1], r11 = matrix[5], r12 = matrix[9];
+    const r20 = matrix[2], r21 = matrix[6], r22 = matrix[10];
+    return r00 * (r11 * r22 - r12 * r21)
+      - r01 * (r10 * r22 - r12 * r20)
+      + r02 * (r10 * r21 - r11 * r20);
+  }
+
+  function validateRigidAlignmentMatrix(matrix) {
+    if (!matrix || matrix.length !== 16 || Array.from(matrix).some(value => !Number.isFinite(value))) {
+      throw new Error('Superposition produced an invalid transformation matrix.');
     }
-    for (const entry of poses) {
-      if (typeof entry.unalignedData !== 'string') entry.unalignedData = entry.data;
+    const determinant = rigidMatrixDeterminant(matrix);
+    if (!Number.isFinite(determinant) || Math.abs(determinant - 1) > 1e-3) {
+      throw new Error(`Superposition produced a reflected or non-rigid transform (det=${Number(determinant).toFixed(4)}).`);
     }
-    const reference = poses[0];
-    const referenceChains = pdbAlphaCarbonResidues(reference.unalignedData);
-    const movingChainsByPose = poses.slice(1).map(entry => pdbAlphaCarbonResidues(entry.unalignedData));
-    const requested = mode === 'auto' ? 'atoms' : mode;
-    const pairsFor = requested === 'atoms' ? alphaCarbonPairsByResidueNumber : alphaCarbonPairsBySequence;
-    let resolvedMode = requested;
-    let candidates = structureAlignmentChainCandidates(referenceChains, movingChainsByPose, pairsFor, {
-      sameChainOnly: requested === 'atoms'
-    });
-    if (!candidates.length && mode === 'auto') {
-      resolvedMode = 'sequence';
-      candidates = structureAlignmentChainCandidates(referenceChains, movingChainsByPose, alphaCarbonPairsBySequence);
-    }
-    let sharedChain = candidates[0];
-    if (sharedChain && requested === 'binding-site') {
-      sharedChain = bindingSiteFilteredCandidate(sharedChain, pdbLigandHeavyAtoms(reference.unalignedData));
-      if (sharedChain.minimumMatches < STRUCTURE_ALIGNMENT_MIN_PAIRS) {
-        throw new Error(`Fewer than ${STRUCTURE_ALIGNMENT_MIN_PAIRS} residues line the reference binding site in every structure.`);
+    const columns = [[matrix[0], matrix[1], matrix[2]], [matrix[4], matrix[5], matrix[6]], [matrix[8], matrix[9], matrix[10]]];
+    let orthogonalityError = 0;
+    for (let row = 0; row < 3; row += 1) {
+      for (let column = 0; column < 3; column += 1) {
+        const dot = columns[row].reduce((sum, value, axis) => sum + value * columns[column][axis], 0);
+        orthogonalityError = Math.max(orthogonalityError, Math.abs(dot - (row === column ? 1 : 0)));
       }
     }
-    if (!sharedChain) {
-      throw new Error(mode === 'atoms'
-        ? 'No Cα chain with at least three common residue numbers exists across every structure.'
-        : 'No Cα chain with at least three alignable residues exists across every structure.');
+    if (orthogonalityError > 1e-3) {
+      throw new Error(`Superposition produced a non-orthogonal rotation (error=${orthogonalityError.toExponential(2)}).`);
     }
-    let alignedCount = 0;
-    let matchedCount = 0;
-    let rmsdTotal = 0;
-    for (let poseIndex = 1; poseIndex < poses.length; poseIndex += 1) {
-      const entry = poses[poseIndex];
-      const pairs = sharedChain.pairsByPose[poseIndex - 1];
-      const alignment = pdbRigidAlignment(pairs.map(pair => pair[1].point), pairs.map(pair => pair[0].point));
-      if (!alignment) throw new Error(`Not enough Cα atoms could align ${entry.label || `structure ${poseIndex + 1}`}.`);
-      entry.data = transformPdbCoordinates(entry.unalignedData, alignment.apply);
-      alignedCount += 1;
-      matchedCount += alignment.count;
-      rmsdTotal += alignment.rmsd;
+    return matrix;
+  }
+
+  function structureAlignmentResiduesForChain(chains, requestedChain) {
+    if (!chains?.size) return null;
+    if (requestedChain != null && requestedChain !== '') return chains.get(requestedChain) || null;
+    return Array.from(chains.values()).sort((left, right) => right.length - left.length)[0] || null;
+  }
+
+  function structureAlignmentMovingResidues(chains, requestedChain, referenceChain, referenceResidues, pairsFor, sameChainOnly) {
+    if (requestedChain != null && requestedChain !== '') return chains.get(requestedChain) || null;
+    if (sameChainOnly && chains.has(referenceChain)) return chains.get(referenceChain);
+    let best = null;
+    let bestCount = -1;
+    for (const residues of chains.values()) {
+      const count = pairsFor(referenceResidues, residues).length;
+      if (count > bestCount) {
+        best = residues;
+        bestCount = count;
+      }
     }
-    reference.data = reference.unalignedData;
-    prepared.structureAlignmentEnabled = true;
-    prepared.structureAlignmentMode = resolvedMode;
-    return {
-      mode: resolvedMode,
-      modeLabel: STRUCTURE_ALIGNMENT_MODE_LABELS[resolvedMode] || resolvedMode,
-      alignedCount,
-      chain: sharedChain.chain === '_' ? '(blank)' : sharedChain.chain,
-      averageMatches: Math.round(matchedCount / Math.max(alignedCount, 1)),
-      averageRmsd: rmsdTotal / Math.max(alignedCount, 1),
-      referenceLabel: reference.label || 'first structure'
+    return best;
+  }
+
+  // Builds matrices without changing PDB text. `auto` tries residue numbers for
+  // the whole request first, then retries every moving structure by sequence.
+  function alignStructureSceneEntries(prepared, request = 'auto') {
+    const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
+    if (poses.length < 2) {
+      throw new Error('Residue-number, sequence, and binding-site pairing currently require two or more PDB or PDBQT structures.');
+    }
+    const options = typeof request === 'string' ? { method: request } : (request || {});
+    const method = String(options.method || 'auto');
+    const referenceIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(options.referenceIndex) || 0)));
+    const movingIndices = Array.isArray(options.movingIndices)
+      ? Array.from(new Set(options.movingIndices.map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < poses.length && index !== referenceIndex)))
+      : poses.map((_, index) => index).filter(index => index !== referenceIndex);
+    if (!movingIndices.length) throw new Error('Choose at least one moving structure.');
+    // Only the structures this request pairs have to be PDB text. Rejecting on
+    // every pose blocked a valid PDB subset in a scene that also holds mmCIF.
+    if ([referenceIndex, ...movingIndices].some(index => !['pdb', 'pdbqt'].includes(normalizeFormat(poses[index]?.format)))) {
+      throw new Error('Residue-number, sequence, and binding-site pairing currently require two or more PDB or PDBQT structures.');
+    }
+    const chainIds = options.chainIds || {};
+    const reference = poses[referenceIndex];
+    const referenceData = String(reference.unalignedData || reference.data || '');
+    const referenceChains = pdbAlphaCarbonResidues(referenceData);
+    const referenceChain = String(chainIds[referenceIndex] ?? '');
+
+    const build = resolvedMode => {
+      const pairsFor = resolvedMode === 'atoms' ? alphaCarbonPairsByResidueNumber : alphaCarbonPairsBySequence;
+      const referenceResidues = structureAlignmentResiduesForChain(referenceChains, referenceChain);
+      if (!referenceResidues) throw new Error(`Reference chain ${referenceChain || ''} is not available.`.trim());
+      const resolvedReferenceChain = referenceChain || Array.from(referenceChains.entries()).find(([, residues]) => residues === referenceResidues)?.[0] || '_';
+      const referenceLigandPoints = resolvedMode === 'binding-site' ? pdbLigandHeavyAtoms(referenceData) : [];
+      if (resolvedMode === 'binding-site' && !referenceLigandPoints.length) {
+        throw new Error('The reference structure has no ligand to define a binding site.');
+      }
+      const alignments = movingIndices.map(poseIndex => {
+        const entry = poses[poseIndex];
+        const entryData = String(entry.unalignedData || entry.data || '');
+        const movingChains = pdbAlphaCarbonResidues(entryData);
+        const movingResidues = structureAlignmentMovingResidues(
+          movingChains,
+          String(chainIds[poseIndex] ?? ''),
+          resolvedReferenceChain,
+          referenceResidues,
+          pairsFor,
+          resolvedMode === 'atoms'
+        );
+        if (!movingResidues) throw new Error(`No polymer chain is available in ${entry.label || `structure ${poseIndex + 1}`}.`);
+        let pairs = pairsFor(referenceResidues, movingResidues);
+        if (resolvedMode === 'binding-site') {
+          pairs = pairs.filter(([residue]) => residueIsNearAnyPoint(residue.point, referenceLigandPoints, BINDING_SITE_ALIGNMENT_RADIUS));
+        }
+        if (pairs.length < STRUCTURE_ALIGNMENT_MIN_PAIRS) {
+          throw new Error(resolvedMode === 'atoms'
+            ? `No Cα chain with at least three common residue numbers exists for ${entry.label || `structure ${poseIndex + 1}`}.`
+            : `Fewer than three alignable Cα residues exist for ${entry.label || `structure ${poseIndex + 1}`}.`);
+        }
+        const alignment = pdbRigidAlignment(pairs.map(pair => pair[1].point), pairs.map(pair => pair[0].point));
+        if (!alignment) throw new Error(`Not enough Cα atoms could align ${entry.label || `structure ${poseIndex + 1}`}.`);
+        validateRigidAlignmentMatrix(alignment.matrix);
+        return {
+          poseIndex,
+          matrix: alignment.matrix,
+          rmsdAngstrom: alignment.rmsd,
+          matchedCount: alignment.count,
+          matchedUnit: resolvedMode === 'binding-site' ? 'pocket Cα atoms' : 'Cα atoms',
+          movingLabel: entry.label || `structure ${poseIndex + 1}`
+        };
+      });
+      return {
+        method: resolvedMode,
+        methodLabel: STRUCTURE_ALIGNMENT_MODE_LABELS[resolvedMode] || resolvedMode,
+        referenceIndex,
+        referenceLabel: reference.label || `structure ${referenceIndex + 1}`,
+        referenceChain: resolvedReferenceChain,
+        pairs: alignments,
+        warnings: []
+      };
     };
+
+    if (method !== 'auto') return build(method);
+    try {
+      return build('atoms');
+    } catch (numberingError) {
+      const result = build('sequence');
+      result.warnings.push(`Auto used sequence because residue-number pairing was unavailable: ${numberingError.message}`);
+      return result;
+    }
   }
 
   function xyzFrameElementSignature(frame) {
@@ -9205,14 +9269,6 @@
       averageRmsd: rmsdTotal / Math.max(1, frames.length - 1),
       atomCount: frames[0].atoms.length
     };
-  }
-
-  function restoreStructureSceneEntries(prepared) {
-    for (const entry of Array.isArray(prepared?.poses) ? prepared.poses : []) {
-      if (typeof entry.unalignedData === 'string') entry.data = entry.unalignedData;
-    }
-    prepared.structureAlignmentEnabled = false;
-    prepared.structureAlignmentMode = null;
   }
 
   function structureSceneStoryStage(label, index) {
@@ -12649,8 +12705,7 @@
       first.sourcePath || first.label || '',
       last.sourcePath || last.label || '',
       xyzFrameOverlayRawSignature(first.data || ''),
-      style,
-      prepared?.structureAlignmentEnabled === true ? 'aligned' : 'raw'
+      style
     ].join('|');
   }
 
@@ -14103,7 +14158,508 @@
   let activeSdfCollectionPoseSetter = null;
   let activeStructurePoseSetter = null;
   let activeStructureAlignmentControl = null;
+  let activeSuperpositionPanel = null;
   let activeTrajectoryPlaybackControl = null;
+
+  const BURETTE_SUPERPOSITION_TAG_PREFIX = 'BuretteSuperpositionTransform:';
+
+  function superpositionFacade() {
+    const facade = window.molstar?.BuretteSuperposition;
+    if (!facade || facade.version !== 1) throw new Error('The Burette Mol* superposition facade is unavailable.');
+    return facade;
+  }
+
+  function superpositionTransformTag(poseRef) {
+    return `${BURETTE_SUPERPOSITION_TAG_PREFIX}${String(poseRef || '')}`;
+  }
+
+  function superpositionStructureEntries(viewer, prepared) {
+    const visibility = activeDockingSceneVisibilityState;
+    if (!visibility || visibility.viewer !== viewer || !dockingSceneVisibilityStateStillLoaded(viewer, visibility)) {
+      throw new Error('Load all structures together before superposition.');
+    }
+    const facade = superpositionFacade();
+    const structuresByPose = dockingSceneStructuresByPose(viewer, visibility.poseRefs);
+    return (prepared.poses || []).map((pose, poseIndex) => {
+      const wrapper = structuresByPose[poseIndex]?.[0];
+      const root = wrapper?.cell?.obj?.data;
+      const poseRef = visibility.poseRefs[poseIndex]?.[0] || wrapper?.cell?.transform?.ref;
+      if (!wrapper || !root || !poseRef) throw new Error(`Mol* did not expose ${pose?.label || `structure ${poseIndex + 1}`}.`);
+      return {
+        id: String(poseIndex),
+        poseIndex,
+        poseRef,
+        label: pose?.label || `Structure ${poseIndex + 1}`,
+        format: normalizeFormat(pose?.format),
+        wrapper,
+        root,
+        chains: facade.polymerChains(root),
+        canUseSifts: facade.hasSifts(root),
+      };
+    });
+  }
+
+  function superpositionEntry(entries, id) {
+    return entries.find(entry => entry.id === String(id)) || null;
+  }
+
+  const SUPERPOSITION_CONTEXT_ACTION_PREFIX = 'align:context:';
+
+  function superpositionContextAction(request) {
+    return `${SUPERPOSITION_CONTEXT_ACTION_PREFIX}${encodeURIComponent(JSON.stringify(request))}`;
+  }
+
+  function superpositionContextRequest(action) {
+    if (!String(action || '').startsWith(SUPERPOSITION_CONTEXT_ACTION_PREFIX)) return null;
+    try {
+      const request = JSON.parse(decodeURIComponent(String(action).slice(SUPERPOSITION_CONTEXT_ACTION_PREFIX.length)));
+      if (!request || typeof request !== 'object') return null;
+      return request;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function superpositionChainForAtom(entry, atom) {
+    const authChainId = String(atom?.auth_asym_id || '').trim();
+    const labelChainId = String(atom?.label_asym_id || '').trim();
+    return entry?.chains?.find(chain => (
+      (authChainId && chain.authChainId === authChainId)
+      || (labelChainId && chain.labelChainId === labelChainId)
+    )) || null;
+  }
+
+  function superpositionChainShortLabel(chain) {
+    return `Chain ${chain?.authChainId || chain?.labelChainId || '(blank)'}`;
+  }
+
+  function selectedSuperpositionEntries(entries, request) {
+    const reference = superpositionEntry(entries, request.referenceId ?? entries[0]?.id);
+    if (!reference) throw new Error('Choose a reference structure.');
+    const movingIds = Array.isArray(request.movingIds)
+      ? request.movingIds.map(String)
+      : entries.filter(entry => entry !== reference).map(entry => entry.id);
+    const moving = movingIds.map(id => superpositionEntry(entries, id)).filter(Boolean).filter(entry => entry !== reference);
+    if (!moving.length) throw new Error('Choose at least one moving structure.');
+    if (moving.length > 8) throw new Error('Interactive superposition supports at most eight moving structures at a time.');
+    return { reference, moving, ordered: [reference, ...moving] };
+  }
+
+  function selectedSuperpositionChain(entry, chainId) {
+    const chain = entry.chains.find(candidate => candidate.id === chainId) || entry.chains[0];
+    if (!chain) throw new Error(`${entry.label} has no polymer chain.`);
+    return chain;
+  }
+
+  function nativeSuperpositionPlan(entries, request, prepared) {
+    const facade = superpositionFacade();
+    const selected = selectedSuperpositionEntries(entries, request);
+    const method = String(request.method || 'auto');
+    const pdbPairingMethod = method === 'auto' || method === 'atoms' || method === 'sequence' || method === 'binding-site';
+    const canUsePdbPairing = selected.ordered.every(entry => entry.format === 'pdb' || entry.format === 'pdbqt');
+    if (pdbPairingMethod && canUsePdbPairing) {
+      const chainIds = {};
+      for (const entry of selected.ordered) {
+        const chain = selectedSuperpositionChain(entry, request.chains?.[entry.id]);
+        chainIds[entry.poseIndex] = chain.authChainId || chain.labelChainId || '';
+      }
+      return alignStructureSceneEntries(prepared, {
+        method,
+        referenceIndex: selected.reference.poseIndex,
+        movingIndices: selected.moving.map(entry => entry.poseIndex),
+        chainIds,
+      });
+    }
+    if (pdbPairingMethod && method !== 'auto') {
+      throw new Error(`${STRUCTURE_ALIGNMENT_MODE_LABELS[method] || method} currently needs PDB or PDBQT structures.`);
+    }
+    if (method === 'selected-atoms') {
+      const loci = request.useCurrentSelection === true
+        ? currentSelectionSuperpositionLoci(activeViewer, selected.ordered)
+        : selectedAtomSuperpositionLoci(activeViewer, selected.ordered);
+      const transforms = facade.alignAtoms(loci);
+      return normalizeNativeSuperpositionResult(method, selected, transforms);
+    }
+    if (method === 'uniprot') {
+      const transforms = facade.alignWithSifts(selected.ordered.map(entry => entry.root));
+      return normalizeNativeSuperpositionResult(method, selected, transforms);
+    }
+    const nativeEntries = selected.ordered.map(entry => {
+      const chain = selectedSuperpositionChain(entry, request.chains?.[entry.id]);
+      return { root: entry.root, loci: chain.loci };
+    });
+    const transforms = method === 'tm-align'
+      ? facade.alignWithTM(nativeEntries)
+      : facade.alignChains(nativeEntries, { alignSequences: request.alignSequences !== false, traceOnly: true });
+    return normalizeNativeSuperpositionResult(method === 'auto' ? 'auto-native' : method, selected, transforms);
+  }
+
+  function normalizeNativeSuperpositionResult(method, selected, transforms) {
+    const methodLabels = {
+      chains: 'Mol* chain superposition',
+      'auto-native': 'Mol* automatic chain superposition',
+      'tm-align': 'TM-align',
+      uniprot: 'UniProt / SIFTS',
+      'selected-atoms': 'Selected atoms',
+    };
+    const byMovingIndex = new Map(selected.moving.map((entry, index) => [index + 1, entry]));
+    return {
+      method,
+      methodLabel: methodLabels[method] || method,
+      referenceIndex: selected.reference.poseIndex,
+      referenceLabel: selected.reference.label,
+      pairs: transforms.map(transform => {
+        const moving = byMovingIndex.get(transform.movingIndex);
+        if (!moving) throw new Error('Mol* returned a transform for an unknown moving structure.');
+        validateRigidAlignmentMatrix(transform.matrix);
+        return {
+          ...transform,
+          poseIndex: moving.poseIndex,
+          movingLabel: moving.label,
+        };
+      }),
+      warnings: [],
+    };
+  }
+
+  function selectedAtomSuperpositionLoci(viewer, orderedEntries) {
+    const Structure = window.molstar?.lib?.structure?.Structure;
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const history = viewer?.plugin?.managers?.structure?.selection?.additionsHistory || [];
+    if (!Structure || !StructureElement) throw new Error('Mol* atom selection APIs are unavailable.');
+    return orderedEntries.map(entry => {
+      const elements = [];
+      for (const item of history) {
+        if (StructureElement.Loci.size(item.loci) !== 1) continue;
+        if (!Structure.areRootsEquivalent(item.loci.structure, entry.root)) continue;
+        const remapped = StructureElement.Loci.remap(item.loci, entry.root);
+        elements.push(...remapped.elements);
+      }
+      if (elements.length < 3) throw new Error(`${entry.label} needs at least three selected atoms in selection-history order.`);
+      return StructureElement.Loci(entry.root, elements);
+    });
+  }
+
+  function currentSelectionSuperpositionLoci(viewer, orderedEntries) {
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const selection = viewer?.plugin?.managers?.structure?.selection;
+    if (!StructureElement || typeof selection?.getLoci !== 'function') {
+      throw new Error('Mol* selection APIs are unavailable.');
+    }
+    const loci = orderedEntries.map(entry => {
+      const selected = selection.getLoci(entry.root);
+      if (!selected || StructureElement.Loci.isEmpty(selected)) {
+        throw new Error(`${entry.label} has no selected atoms.`);
+      }
+      return StructureElement.Loci.remap(selected, entry.root);
+    });
+    const counts = loci.map(selected => StructureElement.Loci.size(selected));
+    if (counts[0] < 3 || counts.some(count => count !== counts[0])) {
+      throw new Error('Selected-part alignment needs the same canonical set of at least three atoms in both structures.');
+    }
+    return loci;
+  }
+
+  function taggedSuperpositionTransform(state, entry, transformer) {
+    return state.selectQ(query => query.root.subtree()
+      .withTransformer(transformer)
+      .withTag(superpositionTransformTag(entry.poseRef)))[0] || null;
+  }
+
+  function composedSuperpositionMatrix(reference, matrix) {
+    validateRigidAlignmentMatrix(matrix);
+    const Mat4 = window.molstar?.lib?.math?.LinearAlgebra?.Mat4;
+    if (!Mat4) return Array.from(matrix);
+    const coordinateSystem = reference.wrapper?.cell?.obj?.data?.coordinateSystem;
+    return coordinateSystem && !Mat4.isIdentity(coordinateSystem.matrix)
+      ? Mat4.mul(Mat4(), coordinateSystem.matrix, matrix)
+      : Mat4.clone(matrix);
+  }
+
+  function identitySuperpositionTransformParams() {
+    return {
+      transform: {
+        name: 'matrix',
+        params: {
+          data: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+          transpose: false,
+        },
+      },
+    };
+  }
+
+  async function commitSuperpositionPlan(viewer, entries, plan) {
+    const plugin = viewer?.plugin;
+    const state = plugin?.state?.data;
+    const transformer = window.molstar?.lib?.plugin?.StateTransforms?.Model?.TransformStructureConformation;
+    if (!state || !transformer) throw new Error('Mol* conformation transforms are unavailable.');
+    const reference = entries[plan.referenceIndex];
+    if (!reference) throw new Error('The reference structure is no longer loaded.');
+    const update = state.build();
+    const identityParams = identitySuperpositionTransformParams();
+    const movingIndices = new Set(plan.pairs.map(pair => pair.poseIndex));
+    for (const entry of entries) {
+      if (movingIndices.has(entry.poseIndex)) continue;
+      const existing = taggedSuperpositionTransform(state, entry, transformer);
+      if (existing) update.to(existing).update(identityParams);
+    }
+    for (const pair of plan.pairs) {
+      const entry = entries[pair.poseIndex];
+      if (!entry) throw new Error(`${pair.movingLabel || 'A moving structure'} is no longer loaded.`);
+      const params = {
+        transform: {
+          name: 'matrix',
+          params: { data: composedSuperpositionMatrix(reference, pair.matrix), transpose: false },
+        },
+      };
+      const existing = taggedSuperpositionTransform(state, entry, transformer);
+      if (existing) update.to(existing).update(params);
+      else update.to(entry.wrapper.cell).insert(transformer, params, { tags: superpositionTransformTag(entry.poseRef) });
+    }
+    await plugin.runTask(state.updateTree(update, { revertOnError: true, revertIfAborted: true }));
+    window.requestAnimationFrame(() => plugin.canvas3d?.requestCameraReset?.());
+  }
+
+  async function resetSuperpositionTransforms(viewer, entries) {
+    const plugin = viewer?.plugin;
+    const state = plugin?.state?.data;
+    const transformer = window.molstar?.lib?.plugin?.StateTransforms?.Model?.TransformStructureConformation;
+    if (!state || !transformer) throw new Error('Mol* conformation transforms are unavailable.');
+    const tagged = entries.map(entry => taggedSuperpositionTransform(state, entry, transformer)).filter(Boolean);
+    if (!tagged.length) return false;
+    const update = state.build();
+    const identityParams = identitySuperpositionTransformParams();
+    for (const cell of tagged) update.to(cell).update(identityParams);
+    await plugin.runTask(state.updateTree(update, { revertOnError: true, revertIfAborted: true }));
+    return true;
+  }
+
+  function createStructureSuperpositionController(viewer, prepared, alignButton) {
+    let entries = [];
+    let result = null;
+    let panel = null;
+    let busy = false;
+
+    const averageRmsd = () => result?.pairs?.length
+      ? result.pairs.reduce((sum, pair) => sum + Number(pair.rmsdAngstrom || 0), 0) / result.pairs.length
+      : null;
+
+    const sync = () => {
+      const aligned = Boolean(result);
+      const rmsd = averageRmsd();
+      prepared.structureAlignmentEnabled = aligned;
+      prepared.structureAlignmentMode = result?.method || null;
+      alignButton.textContent = aligned && Number.isFinite(rmsd) ? `Aligned · ${rmsd.toFixed(2)} Å` : 'Align';
+      alignButton.classList.toggle('active', aligned);
+      alignButton.disabled = busy;
+      alignButton.setAttribute('aria-pressed', aligned ? 'true' : 'false');
+      alignButton.title = aligned
+        ? `${result.methodLabel} · ${result.pairs.length} moving structure${result.pairs.length === 1 ? '' : 's'} · click to reset`
+        : 'Automatically superimpose every structure onto the first one';
+      panel?.setResult(result);
+    };
+
+    const setBusy = value => {
+      busy = Boolean(value);
+      panel?.setBusy(busy);
+      sync();
+    };
+
+    const syncPanelEntries = () => {
+      panel?.setEntries(entries.map(entry => ({
+        id: entry.id,
+        label: entry.label,
+        chains: entry.chains.map(chain => ({
+          id: chain.id,
+          label: chain.label,
+        })),
+        canUseSifts: entry.canUseSifts,
+      })));
+    };
+
+    const refreshEntries = async () => {
+      entries = superpositionStructureEntries(viewer, prepared);
+      syncPanelEntries();
+      return entries;
+    };
+
+    const entriesStillLoaded = () => {
+      const cells = viewer?.plugin?.state?.data?.cells;
+      return entries.length === prepared.poses.length
+        && entries.every(entry => cells?.has?.(entry.poseRef));
+    };
+
+    const ensureEntries = () => entriesStillLoaded() ? Promise.resolve(entries) : refreshEntries();
+
+    const contextEntries = () => {
+      if (entriesStillLoaded()) return entries;
+      try {
+        entries = superpositionStructureEntries(viewer, prepared);
+        return entries;
+      } catch (_) {
+        return [];
+      }
+    };
+
+    const contextEntry = (availableEntries, target) => {
+      const targetRoot = molstarStructureFromRef(target?.structure);
+      return availableEntries.find(entry => (
+        entry.wrapper === target?.structure
+        || entry.root === targetRoot
+        || (targetRoot && entry.root?.root === targetRoot.root)
+      )) || null;
+    };
+
+    const contextActions = (target, pickingLevel = 'residue') => {
+      const availableEntries = contextEntries();
+      const moving = contextEntry(availableEntries, target);
+      if (!moving || availableEntries.length < 2) return [];
+      const references = availableEntries.filter(entry => entry !== moving);
+      const actions = [];
+      if (target?.selectionBased) {
+        for (const reference of references) {
+          try {
+            const loci = currentSelectionSuperpositionLoci(viewer, [reference, moving]);
+            const atomCount = window.molstar.lib.structure.StructureElement.Loci.size(loci[0]);
+            actions.push([
+              superpositionContextAction({
+                method: 'selected-atoms',
+                referenceId: reference.id,
+                movingIds: [moving.id],
+                useCurrentSelection: true,
+              }),
+              `Selected ${atomCount} atoms → ${reference.label}`,
+            ]);
+          } catch (_) {}
+        }
+      } else if (pickingLevel === 'chain' && target?.atom) {
+        const movingChain = superpositionChainForAtom(moving, target.atom);
+        if (movingChain) {
+          for (const reference of references) {
+            for (const referenceChain of reference.chains) {
+              actions.push([
+                superpositionContextAction({
+                  method: 'chains',
+                  referenceId: reference.id,
+                  movingIds: [moving.id],
+                  chains: {
+                    [reference.id]: referenceChain.id,
+                    [moving.id]: movingChain.id,
+                  },
+                  alignSequences: true,
+                }),
+                `${superpositionChainShortLabel(movingChain)} → ${reference.label} · ${superpositionChainShortLabel(referenceChain)}`,
+              ]);
+            }
+          }
+        }
+      } else {
+        actions.push(moleculeMenuNestedAction('align:menu:to', 'Align to', references.map(reference =>
+          moleculeMenuNestedAction(`align:menu:target:${reference.id}`, reference.label, [
+            [superpositionContextAction({ method: 'auto', referenceId: reference.id, movingIds: [moving.id] }), 'Automatic'],
+            [superpositionContextAction({ method: 'tm-align', referenceId: reference.id, movingIds: [moving.id] }), 'TM-align'],
+          ])
+        )));
+        actions.push(moleculeMenuNestedAction('align:menu:all-to-this', 'Align all to this', [
+          [superpositionContextAction({ method: 'auto', referenceId: moving.id, movingIds: references.map(reference => reference.id) }), 'Automatic'],
+          [superpositionContextAction({ method: 'tm-align', referenceId: moving.id, movingIds: references.map(reference => reference.id) }), 'TM-align'],
+        ]));
+      }
+      actions.push(['align:advanced', 'Advanced alignment…']);
+      if (result) actions.push(['align-structures', 'Reset structure alignment']);
+      return actions;
+    };
+
+    const apply = async (request = {}) => {
+      setBusy(true);
+      try {
+        await ensureEntries();
+        const plan = nativeSuperpositionPlan(entries, request, prepared);
+        const undo = captureMolstarSceneUndoSnapshot(`superposition by ${plan.methodLabel}`);
+        await commitSuperpositionPlan(viewer, entries, plan);
+        result = plan;
+        if (undo) pushMolstarEditUndoSnapshot(undo);
+        sync();
+        const averageRmsd = plan.pairs.reduce((sum, pair) => sum + Number(pair.rmsdAngstrom || 0), 0) / Math.max(1, plan.pairs.length);
+        setStatus(`[web] ${plan.methodLabel}: aligned ${plan.pairs.length} structure${plan.pairs.length === 1 ? '' : 's'} to ${plan.referenceLabel} (average RMSD ${averageRmsd.toFixed(2)} Å).`);
+        setTimeout(hideStatus, 2600);
+        return plan;
+      } catch (error) {
+        setStatus(`[web] Could not superpose structures.\n\n${error?.message || String(error)}`, 'error');
+        throw error;
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    const reset = async () => {
+      setBusy(true);
+      try {
+        const wasAligned = Boolean(result);
+        const undo = captureMolstarSceneUndoSnapshot('resetting superposition');
+        await ensureEntries();
+        const changed = await resetSuperpositionTransforms(viewer, entries);
+        result = null;
+        if ((changed || wasAligned) && undo) pushMolstarEditUndoSnapshot(undo);
+        sync();
+        if (changed) scheduleMolstarStructureFocus(viewer, { reason: 'superposition-reset', durationMs: 180, force: true });
+        setStatus('[web] Restored original structure transforms.');
+        setTimeout(hideStatus, 1800);
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    const restoreAfterSceneReload = async () => {
+      if (!result) return false;
+      await refreshEntries();
+      await commitSuperpositionPlan(viewer, entries, result);
+      sync();
+      return true;
+    };
+
+    const open = async (method) => {
+      if (!panel) {
+        if (typeof window.BuretteSuperpositionPanel?.create !== 'function') throw new Error('The Burette Superposition panel is unavailable.');
+        panel = window.BuretteSuperpositionPanel.create({
+          entries: [],
+          onApply: apply,
+          onReset: reset,
+        });
+        activeSuperpositionPanel = panel;
+      }
+      setBusy(true);
+      try {
+        await ensureEntries();
+        syncPanelEntries();
+        panel.open(method);
+        sync();
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    const destroy = () => {
+      panel?.destroy();
+      if (activeSuperpositionPanel === panel) activeSuperpositionPanel = null;
+      panel = null;
+    };
+
+    sync();
+
+    return {
+      open,
+      apply,
+      reset,
+      restoreAfterSceneReload,
+      destroy,
+      contextActions,
+      isAligned: () => Boolean(result),
+      mode: () => result?.method || null,
+      snapshot: () => result ? structuredClone(result) : null,
+      restoreMetadata: value => { result = value || null; sync(); },
+    };
+  }
 
   function isDockingPoseKeyboardTarget(target) {
     const element = target instanceof Element ? target : null;
@@ -14148,6 +14704,12 @@
   }
 
   function installDockingPoseHoverSuppression() {
+    // Scoped to the Quick Look and mobile hosts, which render a preview rather
+    // than an editor. `isMolstarContextMenuTarget` matches the viewport canvas
+    // itself, so installing this in the app stopped every buttonless
+    // pointermove before Mol* saw it and killed the hover highlight across the
+    // whole scene.
+    if (!isQuickLookHost()) return null;
     const suppressHover = (event) => {
       if (Number(event.buttons || 0) !== 0) return;
       if (!isMolstarContextMenuTarget(event.target)) return;
@@ -14928,6 +15490,7 @@
 
   function installDockingPoseControls(viewer, prepared) {
     document.querySelector('.buret-docking-poses')?.remove();
+    activeStructureAlignmentControl?.destroy?.();
     if (dockingPoseKeydownDisposer) {
       dockingPoseKeydownDisposer();
       dockingPoseKeydownDisposer = null;
@@ -15152,7 +15715,9 @@
     }
     const alignmentSupported = Boolean(align) && (xyzAlignFrames
       ? xyzFramesAlignable(xyzAlignFrames)
-      : prepared.poses.every(entry => normalizeFormat(entry?.format) === 'pdb'));
+      : Boolean(prepared.dockingSceneMode)
+        && prepared.poses.length > 1
+        && window.molstar?.BuretteSuperposition?.version === 1);
     const alignmentOn = xyzAlignFrames
       ? xyzFrameAlignment?.signature === xyzAlignSignature
       : prepared.structureAlignmentEnabled === true;
@@ -15164,13 +15729,14 @@
       align.title = !alignmentSupported
         ? (xyzAlignFrames
           ? 'Alignment needs every structure to list the same atoms in the same order'
-          : 'One-click alignment currently supports PDB structure scenes')
+          : 'Superposition needs two or more loaded structures')
         : xyzAlignFrames
           ? 'Superimpose every structure onto the first one by atom order'
-          : 'Align every structure to the first file using Cα atoms from the largest common chain';
+          : 'Automatically superimpose every structure onto the first one';
       align.disabled = !alignmentSupported;
       align.setAttribute('aria-pressed', alignmentOn ? 'true' : 'false');
     }
+    let structureAlignmentControl = null;
     const loop = document.createElement('button');
     loop.type = 'button';
     loop.textContent = 'Loop';
@@ -15419,6 +15985,7 @@
     const performSetPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
+      const shouldFocus = options.focus === true || options.userStep === true;
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
@@ -15438,23 +16005,20 @@
             }
             scheduleLoopStep(loopDelayMs(), loopEpoch);
           }
-          if (options.focus === true) {
-            scheduleMolstarStructureFocus(viewer, { reason: 'native-trajectory-pose', durationMs: 180 });
-          }
         } else if (prepared.kind === 'sdf-collection') {
-          await applySdfCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: options.focus === true });
+          await applySdfCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
           updateControls();
         } else if (prepared.kind === 'xyz-frame-overlay') {
-          await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false, focus: options.focus === true });
+          await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false, focus: false });
           activePose = nextIndex;
           updateControls();
         } else if (prepared.kind === 'docking' && prepared.dockingSceneMode) {
-          await applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: options.focus === true });
+          await applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
           updateControls();
         } else if (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true) {
-          await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: options.focus === true });
+          await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
           updateControls();
         } else {
@@ -15466,6 +16030,7 @@
           activePose = nextIndex;
           return;
         }
+        if (shouldFocus) scheduleMolstarStructureFocus(viewer, { reason: 'pose-selection', durationMs: 180, force: true });
         notifyDockingPoseChanged(activePose, prepared);
       } catch (error) {
         try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
@@ -15559,65 +16124,18 @@
       };
       align.addEventListener('click', () => { void toggleXyzAlignment(); });
     } else if (align && alignmentSupported) {
-      // A failed alignment rolls the coordinates back, so the button has to follow
-      // the scene rather than the attempt — otherwise it keeps reading "Aligned"
-      // over structures that are no longer aligned.
-      const syncAlignButton = () => {
-        const aligned = prepared.structureAlignmentEnabled === true;
-        align.textContent = aligned ? 'Aligned' : 'Align';
-        align.classList.toggle('active', aligned);
-        align.setAttribute('aria-pressed', aligned ? 'true' : 'false');
-        return aligned;
-      };
-      // `mode` is passed through from the 3D menu, which offers the pairing rules by
-      // name; the toolbar button leaves it at `auto`. Re-running with a different
-      // mode re-aligns rather than toggling off, so switching rules is one click.
-      const toggleAlignment = (mode = 'auto') => {
-        align.disabled = true;
-        const enabling = prepared.structureAlignmentEnabled !== true || mode !== 'auto';
-        try {
-          let result = null;
-          if (enabling) {
-            if (prepared.structureAlignmentEnabled === true) restoreStructureSceneEntries(prepared);
-            result = alignStructureSceneEntries(prepared, mode);
-          } else {
-            restoreStructureSceneEntries(prepared);
-          }
-          return applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: true }).then(() => {
-            syncAlignButton();
-            if (result) {
-              align.title = `Aligned to ${result.referenceLabel} by ${result.modeLabel} · chain ${result.chain} Cα · ${result.averageMatches} matched atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
-              setStatus(`[web] Aligned ${result.alignedCount + 1} structures to ${result.referenceLabel} by ${result.modeLabel} (chain ${result.chain} Cα, ${result.averageMatches} matched atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
-            } else {
-              align.title = 'Align every structure to the first file using Cα atoms from the largest common chain';
-              setStatus('[web] Restored original structure coordinates.');
-            }
-            setTimeout(hideStatus, 2200);
-          }).catch(error => {
-            if (enabling) restoreStructureSceneEntries(prepared);
-            syncAlignButton();
-            setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
-          }).finally(() => { align.disabled = false; });
-        } catch (error) {
-          // The rollback restores coordinates the scene is still drawing from a
-          // previous alignment, so the scene is rebuilt before the button settles.
-          const rolledBack = enabling && prepared.structureAlignmentEnabled === true;
-          if (enabling) restoreStructureSceneEntries(prepared);
-          syncAlignButton();
-          setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
-          const settled = rolledBack
-            ? applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false }).catch(() => {})
-            : Promise.resolve();
-          return settled.finally(() => { align.disabled = false; });
-        }
-      };
-      activeStructureAlignmentControl = {
-        toggle: toggleAlignment,
-        isAligned: () => prepared.structureAlignmentEnabled === true,
-        mode: () => prepared.structureAlignmentMode || null,
-        referenceLabel: () => prepared.poses?.[0]?.label || 'the first structure'
-      };
-      align.addEventListener('click', () => { void toggleAlignment(); });
+      structureAlignmentControl = createStructureSuperpositionController(
+        viewer,
+        prepared,
+        align,
+      );
+      activeStructureAlignmentControl = structureAlignmentControl;
+      align.addEventListener('click', () => {
+        const operation = structureAlignmentControl?.isAligned()
+          ? structureAlignmentControl.reset()
+          : structureAlignmentControl?.apply({ method: 'auto' });
+        Promise.resolve(operation).catch(() => {});
+      });
     }
     activeStructurePoseSetter = setPose;
     if (prepared.kind === 'sdf-collection') activeSdfCollectionPoseSetter = setPose;
@@ -15855,6 +16373,10 @@
       hoverDisposer?.();
       dragDisposer?.();
       fileListDisposer?.();
+      if (activeStructureAlignmentControl) {
+        activeStructureAlignmentControl.destroy?.();
+        activeStructureAlignmentControl = null;
+      }
       document.body.classList.remove('buret-docking-pose-controls-active');
       if (activeStructurePoseSetter === setPose) activeStructurePoseSetter = null;
       if (activeSdfCollectionPoseSetter === setPose) activeSdfCollectionPoseSetter = null;
@@ -18582,7 +19104,8 @@
         label: String(label || 'scene change'),
         dirty: molstarStructureDirty,
         state: plugin.state.data.getSnapshot(),
-        selection: plugin.managers?.structure?.selection?.getSnapshot?.() || null
+        selection: plugin.managers?.structure?.selection?.getSnapshot?.() || null,
+        superposition: activeStructureAlignmentControl?.snapshot?.() || null,
       };
     } catch (error) {
       debug('scene undo snapshot failed: ' + (error && error.message || String(error)));
@@ -18590,21 +19113,9 @@
     }
   }
 
-  // Superposition rewrites coordinates and reloads the scene, so neither snapshot
-  // kind covers it; the alignment control is asked to put itself back instead.
-  function captureMolstarAlignUndoSnapshot(label) {
-    if (!activeStructureAlignmentControl) return null;
-    return {
-      kind: 'align',
-      label: String(label || 'alignment'),
-      wasAligned: activeStructureAlignmentControl.isAligned(),
-      mode: activeStructureAlignmentControl.mode?.() || null
-    };
-  }
-
   function pushMolstarHistorySnapshot(stack, snapshot) {
     if (!snapshot) return;
-    if (snapshot.kind !== 'scene' && snapshot.kind !== 'align' && !snapshot.payload?.text) return;
+    if (snapshot.kind !== 'scene' && !snapshot.payload?.text) return;
     stack.push(snapshot);
     while (stack.length > MOLSTAR_EDIT_HISTORY_LIMIT) stack.shift();
   }
@@ -18653,25 +19164,12 @@
       try { plugin.managers?.structure?.selection?.setSnapshot?.(snapshot.selection); } catch (_) {}
     }
     setMolstarStructureDirty(snapshot.dirty === true);
+    activeStructureAlignmentControl?.restoreMetadata?.(snapshot.superposition || null);
     scheduleSceneTreeRender();
-  }
-
-  async function restoreMolstarAlignUndoSnapshot(snapshot) {
-    const control = activeStructureAlignmentControl;
-    if (!control) throw new Error('No structure scene is available to unalign.');
-    const aligned = control.isAligned();
-    const mode = control.mode?.() || null;
-    if (aligned === snapshot.wasAligned && (!aligned || mode === snapshot.mode)) return;
-    if (snapshot.wasAligned) {
-      await control.toggle(snapshot.mode || 'auto');
-    } else if (aligned) {
-      await control.toggle('auto');
-    }
   }
 
   async function restoreMolstarEditUndoSnapshot(snapshot) {
     if (snapshot?.kind === 'scene') return restoreMolstarSceneUndoSnapshot(snapshot);
-    if (snapshot?.kind === 'align') return restoreMolstarAlignUndoSnapshot(snapshot);
     if (!activeViewer) throw new Error('Mol* viewer is not ready.');
     const payload = snapshot?.payload || {};
     const text = String(payload.text || '');
@@ -18742,7 +19240,6 @@
 
   function captureMolstarHistoryCounterpart(snapshot) {
     if (snapshot?.kind === 'scene') return captureMolstarSceneUndoSnapshot(snapshot.label);
-    if (snapshot?.kind === 'align') return captureMolstarAlignUndoSnapshot(snapshot.label);
     return captureMolstarEditUndoSnapshot(snapshot?.label || 'Mol* edit');
   }
 
@@ -19625,11 +20122,7 @@
     ];
     if (molstarContextCanBulkDelete(target)) actions.push(['remove-type', `Delete ${molstarContextBulkDeleteLabel(target)}`]);
     if (activeStructureAlignmentControl) {
-      const reference = activeStructureAlignmentControl.referenceLabel();
-      actions.push(['align:atoms', `Align to ${reference} by residue numbers`]);
-      actions.push(['align:sequence', `Align to ${reference} by sequence`]);
-      actions.push(['align:binding-site', `Align to ${reference} by binding site`]);
-      if (activeStructureAlignmentControl.isAligned()) actions.push(['align-structures', 'Reset structure alignment']);
+      actions.push(...activeStructureAlignmentControl.contextActions(target, mode));
     }
     if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
     // The desktop overlay carries the scene-tree powers into the 3D right click.
@@ -19681,7 +20174,7 @@
   }
 
   function molstarContextActionsPayload(actions) {
-    return (Array.isArray(actions) ? actions : []).map(([name, title]) => ({
+    return moleculeMenuLeafActions(actions).map(([name, title]) => ({
       name: String(name || ''),
       title: String(title || '')
     })).filter(action => action.name && action.title);
@@ -19740,18 +20233,14 @@
       if (action === 'align-structures' || action.startsWith('align:')) {
         if (!activeStructureAlignmentControl) throw new Error('No structure scene is available to align.');
         hideMolstarContextMenu();
-        const alignUndo = captureMolstarAlignUndoSnapshot(`aligning to ${activeStructureAlignmentControl.referenceLabel()}`);
-        await activeStructureAlignmentControl.toggle(action === 'align-structures' ? 'auto' : action.slice('align:'.length));
-        // The toggle reports its own failures through the status line rather than
-        // throwing, so the entry is only kept when the scene actually moved.
-        const alignmentChanged = alignUndo && (
-          activeStructureAlignmentControl.isAligned() !== alignUndo.wasAligned
-          || (activeStructureAlignmentControl.isAligned()
-            && activeStructureAlignmentControl.mode?.() !== alignUndo.mode)
-        );
-        if (alignmentChanged) {
-          pushMolstarEditUndoSnapshot(alignUndo);
+        if (action === 'align-structures') await activeStructureAlignmentControl.reset();
+        else if (action === 'align:advanced') await activeStructureAlignmentControl.open();
+        else if (action.startsWith(SUPERPOSITION_CONTEXT_ACTION_PREFIX)) {
+          const request = superpositionContextRequest(action);
+          if (!request) throw new Error('The requested contextual superposition is invalid.');
+          await activeStructureAlignmentControl.apply(request);
         }
+        else await activeStructureAlignmentControl.apply({ method: action.slice('align:'.length) });
         return;
       } else if (action === 'select') {
         const selectionLoci = molstarContextSelectionLoci(target);
@@ -19958,7 +20447,8 @@
     const nextMode = mode === 'atom' ? 'atom' : 'molecule';
     molstarContextMenuMode = nextMode;
     const target = molstarContextTarget();
-    const matchedAction = molstarContextMenuActions(target, nextMode).find(([name]) => name === actionName);
+    const matchedAction = moleculeMenuLeafActions(molstarContextMenuActions(target, nextMode))
+      .find(([name]) => name === actionName);
     void moleculeContextMenuAction(actionName, matchedAction?.[1] || actionName);
   };
 
@@ -20927,6 +21417,7 @@
     const menu = document.querySelector('.buret-molecule-context-menu:not(.buret-xyzrender-context-menu)');
     const previousFocus = menu?._buretPreviousFocus;
     const restoreFocus = !!menu && menu.contains(document.activeElement);
+    moleculeMenuCancelHoverIntent(menu);
     menu?.remove();
     if (restoreFocus && previousFocus?.isConnected && typeof previousFocus.focus === 'function') {
       previousFocus.focus({ preventScroll: true });
@@ -20943,6 +21434,28 @@
     return icon;
   }
 
+  function moleculeMenuNestedAction(action, label, children) {
+    return [action, label, { children }];
+  }
+
+  function moleculeMenuActionChildren(entry) {
+    return Array.isArray(entry?.[2]?.children) ? entry[2].children : [];
+  }
+
+  function moleculeMenuLeafActions(entries, parents = []) {
+    const leaves = [];
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      const [action, label] = entry;
+      const children = moleculeMenuActionChildren(entry);
+      if (children.length) {
+        leaves.push(...moleculeMenuLeafActions(children, [...parents, label]));
+      } else {
+        leaves.push([action, [...parents, label].filter(Boolean).join(' › ')]);
+      }
+    }
+    return leaves;
+  }
+
   function moleculeMenuActionButton(action, label, options = {}) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -20953,12 +21466,26 @@
     text.className = 'buret-tree-menu-label';
     text.textContent = label;
     button.append(moleculeMenuIcon(moleculeContextActionIcon(action)), text);
-    button.addEventListener('click', () => {
+    button.addEventListener('click', event => {
+      if (event.button !== 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       const target = options.target
         ? { ...options.target, pickingLevel: options.pickingLevel || options.target.pickingLevel }
         : null;
       void moleculeContextMenuAction(action, label, target);
     });
+    if (options.menu) {
+      const closeChildren = () => moleculeMenuCloseSubmenus(options.menu, options.parentSubmenu || null);
+      button.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(options.menu, closeChildren));
+      button.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(options.menu));
+      button.addEventListener('focus', () => {
+        moleculeMenuCancelHoverIntent(options.menu);
+        closeChildren();
+      });
+    }
     return button;
   }
 
@@ -20967,9 +21494,33 @@
     return groupIds.flatMap(group => grouped.get(group) || []);
   }
 
+  // Hovering a level does not switch it immediately. The path from a submenu
+  // trigger to its submenu crosses the rows between them, and acting on every
+  // `pointerenter` let those rows close the submenu the pointer was heading
+  // for. A pending hover is dropped as soon as the pointer settles somewhere
+  // that contradicts it, so only a deliberate hover changes the open level.
+  const MOLECULE_MENU_HOVER_INTENT_MS = 110;
+
+  function moleculeMenuCancelHoverIntent(menu) {
+    if (!menu?._buretHoverIntent) return;
+    window.clearTimeout(menu._buretHoverIntent);
+    menu._buretHoverIntent = 0;
+  }
+
+  function moleculeMenuScheduleHoverIntent(menu, run) {
+    if (!menu) return;
+    moleculeMenuCancelHoverIntent(menu);
+    menu._buretHoverIntent = window.setTimeout(() => {
+      menu._buretHoverIntent = 0;
+      if (menu.isConnected) run();
+    }, MOLECULE_MENU_HOVER_INTENT_MS);
+  }
+
   function moleculeMenuCloseSubmenus(menu, except = null) {
+    const keep = new Set();
+    for (let submenu = except; submenu; submenu = submenu._buretParentSubmenu) keep.add(submenu);
     menu.querySelectorAll('.buret-molecule-context-submenu[data-open="true"]').forEach(submenu => {
-      if (submenu === except) return;
+      if (keep.has(submenu)) return;
       submenu.dataset.open = 'false';
       submenu.hidden = true;
       submenu._buretTrigger?.setAttribute('aria-expanded', 'false');
@@ -20993,7 +21544,18 @@
   }
 
   function moleculeMenuOpenSubmenu(menu, submenu, trigger, options = {}) {
+    submenu._buretParentSubmenu = trigger.closest('.buret-molecule-context-submenu');
     moleculeMenuCloseSubmenus(menu, submenu);
+    // Re-entering an open submenu only had to close its children, done above.
+    // Falling through moved the live node with appendChild and re-measured it,
+    // which dropped :hover and re-laid out the menu on every pointer entry.
+    if (submenu.dataset.open === 'true') {
+      if (options.focusFirst) submenu.querySelector('.buret-tree-menu-item')?.focus();
+      return;
+    }
+    // Recursive submenus are created before their parents. Move the one being
+    // opened to the end so the deepest visible level paints above its ancestors.
+    menu.appendChild(submenu);
     submenu.hidden = false;
     submenu.dataset.open = 'true';
     trigger.setAttribute('aria-expanded', 'true');
@@ -21001,6 +21563,81 @@
     if (options.focusFirst) {
       submenu.querySelector('.buret-tree-menu-item')?.focus();
     }
+  }
+
+  function moleculeMenuNestedSubmenu(entry, menu, target, options = {}) {
+    const [action, actionLabel] = entry;
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.setAttribute('role', 'menuitem');
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.className = `buret-tree-menu-item buret-tree-menu-sub-trigger${options.destructive ? ' buret-tree-menu-sub-trigger-destructive' : ''}`;
+    trigger.dataset.buretMoleculeSubmenu = action;
+    const label = document.createElement('span');
+    label.className = 'buret-tree-menu-label';
+    label.textContent = actionLabel;
+    const chevron = document.createElement('span');
+    chevron.className = 'buret-tree-menu-chevron';
+    chevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
+    trigger.append(moleculeMenuIcon(moleculeContextActionIcon(action)), label, chevron);
+
+    const submenu = document.createElement('div');
+    submenu.className = `buret-molecule-context-submenu${String(action).startsWith('align:') ? ' buret-superposition-context-submenu' : ''}`;
+    submenu.setAttribute('role', 'menu');
+    submenu.setAttribute('aria-label', actionLabel);
+    submenu.dataset.open = 'false';
+    submenu.hidden = true;
+    submenu._buretTrigger = trigger;
+    submenu._buretParentSubmenu = options.parentSubmenu || null;
+    const group = document.createElement('div');
+    group.className = 'buret-molecule-context-menu-group';
+    group.setAttribute('role', 'group');
+    for (const child of moleculeMenuActionChildren(entry)) {
+      group.appendChild(moleculeMenuActionItem(child, menu, target, { parentSubmenu: submenu }));
+    }
+    submenu.appendChild(group);
+
+    const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
+    trigger.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(menu, () => open(false)));
+    trigger.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(menu));
+    trigger.addEventListener('click', event => {
+      if (event.button !== 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      event.preventDefault();
+      moleculeMenuCancelHoverIntent(menu);
+      if (submenu.hidden) open(true);
+      else moleculeMenuCloseSubmenus(menu, options.parentSubmenu || null);
+    });
+    trigger.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      event.stopPropagation();
+      moleculeMenuCancelHoverIntent(menu);
+      open(true);
+    });
+    submenu.addEventListener('pointerenter', () => {
+      moleculeMenuCancelHoverIntent(menu);
+      moleculeMenuOpenSubmenu(menu, submenu, trigger);
+    });
+    menu.appendChild(submenu);
+    return trigger;
+  }
+
+  function moleculeMenuActionItem(entry, menu, target, options = {}) {
+    const children = moleculeMenuActionChildren(entry);
+    if (children.length) return moleculeMenuNestedSubmenu(entry, menu, target, options);
+    const [action, actionLabel] = entry;
+    return moleculeMenuActionButton(action, actionLabel, {
+      destructive: options.destructive,
+      target,
+      pickingLevel: target?.pickingLevel,
+      menu,
+      parentSubmenu: options.parentSubmenu || null,
+    });
   }
 
   function moleculeMenuSubmenu(section, grouped, menu, target) {
@@ -21019,7 +21656,7 @@
     trigger.append(moleculeMenuIcon(MOLECULE_MENU_GROUP_ICONS[section.id]), label, chevron);
 
     const submenu = document.createElement('div');
-    submenu.className = 'buret-molecule-context-submenu';
+    submenu.className = `buret-molecule-context-submenu${section.id === 'align' ? ' buret-superposition-context-submenu' : ''}`;
     submenu.setAttribute('role', 'menu');
     submenu.setAttribute('aria-label', section.title);
     submenu.dataset.open = 'false';
@@ -21045,21 +21682,26 @@
         heading.textContent = MOLECULE_MENU_GROUP_TITLES[groupId] || section.title;
         group.appendChild(heading);
       }
-      for (const [action, actionLabel] of entries) {
-        group.appendChild(moleculeMenuActionButton(action, actionLabel, {
+      for (const entry of entries) {
+        group.appendChild(moleculeMenuActionItem(entry, menu, target, {
           destructive: section.destructive,
-          target,
-          pickingLevel: target?.pickingLevel
+          parentSubmenu: submenu,
         }));
       }
       submenu.appendChild(group);
     });
 
     const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
-    trigger.addEventListener('pointerenter', () => open(false));
-    trigger.addEventListener('focus', () => open(false));
+    trigger.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(menu, () => open(false)));
+    trigger.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(menu));
     trigger.addEventListener('click', event => {
+      if (event.button !== 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       event.preventDefault();
+      moleculeMenuCancelHoverIntent(menu);
       if (submenu.hidden) open(true);
       else moleculeMenuCloseSubmenus(menu);
     });
@@ -21067,9 +21709,13 @@
       if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       event.stopPropagation();
+      moleculeMenuCancelHoverIntent(menu);
       open(true);
     });
-    submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
+    submenu.addEventListener('pointerenter', () => {
+      moleculeMenuCancelHoverIntent(menu);
+      moleculeMenuOpenSubmenu(menu, submenu, trigger);
+    });
     menu.appendChild(submenu);
     return trigger;
   }
@@ -21180,10 +21826,15 @@
     }
     update(currentLevel);
     const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
-    trigger.addEventListener('pointerenter', () => open(false));
-    trigger.addEventListener('focus', () => open(false));
+    trigger.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(menu, () => open(false)));
+    trigger.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(menu));
+    trigger.addEventListener('focus', () => {
+      moleculeMenuCancelHoverIntent(menu);
+      open(false);
+    });
     trigger.addEventListener('click', event => {
       event.preventDefault();
+      moleculeMenuCancelHoverIntent(menu);
       if (submenu.hidden) open(true);
       else moleculeMenuCloseSubmenus(menu);
     });
@@ -21191,9 +21842,13 @@
       if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       event.stopPropagation();
+      moleculeMenuCancelHoverIntent(menu);
       open(true);
     });
-    submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
+    submenu.addEventListener('pointerenter', () => {
+      moleculeMenuCancelHoverIntent(menu);
+      moleculeMenuOpenSubmenu(menu, submenu, trigger);
+    });
     menu.appendChild(submenu);
     return trigger;
   }
@@ -21269,10 +21924,9 @@
             const item = moleculeMenuActionButton(action, label, {
               destructive: section.destructive,
               target: actionTarget,
-              pickingLevel: mode
+              pickingLevel: mode,
+              menu,
             });
-            item.addEventListener('pointerenter', () => moleculeMenuCloseSubmenus(menu));
-            item.addEventListener('focus', () => moleculeMenuCloseSubmenus(menu));
             actionContainer.appendChild(item);
           }
         } else {
@@ -21367,13 +22021,42 @@
     };
     const suppressSecondaryMouseEvent = (event) => {
       if (event.button !== 2) return;
-      if (event.type === 'mousedown') return;
+      if (event.target instanceof Element && event.target.closest('.buret-molecule-context-menu')) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+        return;
+      }
+      if (['mousedown', 'mouseup'].includes(event.type)) return;
       if (contextPointer?.moved) return;
       if (!contextPointer && !isMolstarContextMenuTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation?.();
       clearMolstarHoverHighlights();
+    };
+    const restoreContextPointerCamera = (pointer) => {
+      const snapshot = pointer?.cameraSnapshot;
+      if (!snapshot) return;
+      const canvas3d = viewer?.plugin?.canvas3d;
+      const camera = canvas3d?.camera;
+      const restore = () => {
+        if (typeof camera?.setState === 'function') {
+          try {
+            camera.setState(snapshot, 0);
+            canvas3d.requestDraw?.();
+            return;
+          } catch (_) {}
+        }
+        restoreMolstarCameraSnapshot(viewer, snapshot);
+      };
+      // Mol* maps secondary pointerdown to focus+zoom immediately and finishes
+      // its controls after pointerup. Restore after that cycle, then once more on
+      // the following frame so a short context click cannot retain camera motion.
+      window.requestAnimationFrame(() => {
+        restore();
+        window.requestAnimationFrame(restore);
+      });
     };
     const onContextMenu = (event) => {
       if (menuIsOpen() && !contextPointer) {
@@ -21385,8 +22068,10 @@
         event.preventDefault();
         event.stopPropagation();
         if (!contextPointer.moved) {
-          openFromEvent(event, contextPointer.pick);
+          const pointer = contextPointer;
           contextPointer = null;
+          restoreContextPointerCamera(pointer);
+          openFromEvent(event, pointer.pick);
           return;
         }
         hideMolstarContextMenu();
@@ -21397,6 +22082,15 @@
       contextPointer = null;
     };
     const onPointerDown = (event) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.buret-molecule-context-menu')) {
+        if (event.button === 2) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation?.();
+        }
+        return;
+      }
       beginMolstarSelectionPreserve(event);
       clearTouchContextPointer();
       // Remember where a left press on the viewport began, so a click (not a drag
@@ -21421,6 +22115,7 @@
           startX: event.clientX,
           startY: event.clientY,
           moved: false,
+          cameraSnapshot: captureMolstarCameraSnapshot(viewer),
           pick: contextPick
         };
         hideMolstarContextMenu();
@@ -21453,8 +22148,6 @@
         }, MOLSTAR_TOUCH_CONTEXT_MENU_DELAY_MS);
         touchContextPointer = pointer;
       }
-      const target = event.target;
-      if (target instanceof Element && target.closest('.buret-molecule-context-menu')) return;
       // Pressing the preview card is not a press on the view behind it. The plain
       // dismissal below re-derives the preview from the current pick, which tears
       // the card down mid-press and takes its buttons with it.
@@ -21516,10 +22209,10 @@
         contextPointer = null;
         return;
       }
-      event.preventDefault();
-      event.stopPropagation();
-      openFromEvent(event, contextPointer.pick);
+      const pointer = contextPointer;
       contextPointer = null;
+      restoreContextPointerCamera(pointer);
+      openFromEvent(syntheticContextEvent(event), pointer.pick);
     };
     const onPointerCancel = (event) => {
       if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) clearTouchContextPointer();
@@ -21853,7 +22546,8 @@
     const size = describeBytes(config.byteCount);
     const formatLabel = describeFormat(config.format, config.binary);
 
-    if (!window.molstar) {
+    const needsSuperpositionRuntime = window.molstar?.BuretteSuperposition?.version !== 1;
+    if (!window.molstar?.Viewer || needsSuperpositionRuntime) {
       setStatus(`[web] Loading Mol* engine…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       await loadScript(appendCacheBuster(runtimeURL('BuretteMolstarURL', './molstar.js'), cb), 'Mol* engine', 120000);
