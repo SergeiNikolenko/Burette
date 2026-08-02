@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { MouseEvent } from "react";
-import { Layers3, MoreHorizontal, X } from "lucide-react";
+import { Contrast, Layers3, MoreHorizontal, X } from "lucide-react";
 import type { ViewerDocument } from "../../types";
 import { Button } from "../ui/button";
 import { MesoscaleScenePanel } from "./mesoscale-scene-panel";
@@ -20,6 +20,7 @@ export function MesoscaleSceneOverlay({ document, onClose }: { document: ViewerD
   }, [onClose]);
 
   const run = (action: Parameters<typeof requestMesoscale>[1]) => void requestMesoscale(document.id, action).catch(() => undefined);
+  const hoverDimming = summary?.hoverDimming ?? true;
   const openSceneMenu = (event: MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const snapshots = summary?.snapshots ?? [];
@@ -40,6 +41,16 @@ export function MesoscaleSceneOverlay({ document, onClose }: { document: ViewerD
       <header className="mesoscale-scene-overlay-header">
         <Layers3 size={15} aria-hidden="true" />
         <span>Scene</span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-pressed={hoverDimming}
+          aria-label={hoverDimming ? "Keep other structures colored on hover" : "Fade other structures on hover"}
+          title={hoverDimming ? "Hover fades the rest" : "Hover keeps colors"}
+          onClick={() => run({ type: "setHoverDimming", enabled: !hoverDimming })}
+        >
+          <Contrast size={15} />
+        </Button>
         <Button variant="ghost" size="icon-sm" aria-label="Scene actions" title="Scene actions" onClick={openSceneMenu}>
           <MoreHorizontal size={15} />
         </Button>

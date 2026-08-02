@@ -308,6 +308,8 @@ class MesoscaleRuntimeApi {
   readonly layoutRegions: Record<MesoscaleLayoutRegion, boolean> = { left: false, right: false };
   motion: MesoscaleMotion = "off";
   previewSequence = 0;
+  hoverAppearanceActive = false;
+  hoverDimming = true;
 
   constructor(explorer: MesoscaleExplorer) {
     this.explorer = explorer;
@@ -389,6 +391,7 @@ class MesoscaleRuntimeApi {
       selectionVersion: this.selectionVersion,
       selectionMode: Boolean(this.plugin.selectionMode),
       illumination: Boolean(this.plugin.canvas3d?.props.illumination.enabled),
+      hoverDimming: this.hoverDimming,
       layout: { ...this.layoutRegions },
       motion: this.motion,
       snapshots: observed.snapshots,
@@ -577,17 +580,30 @@ class MesoscaleRuntimeApi {
     };
   }
 
+  // Dimming belongs to hover alone: a resting scene keeps every structure in its own
+  // color even while objects are selected, and only the pointer fades the rest away.
+  // With dimming turned off the hovered structure is tinted instead, so hover stays
+  // readable without washing out the scene.
   private setHoverAppearance(active: boolean) {
+    this.hoverAppearanceActive = active;
+    const dimmed = active && this.hoverDimming;
     this.plugin.canvas3d?.setProps({
       renderer: {
         dimColor: Color(0xffffff),
-        dimStrength: 1,
-        highlightStrength: 0,
+        dimStrength: dimmed ? 1 : 0,
+        highlightStrength: active && !this.hoverDimming ? 0.45 : 0,
         markerPriority: active ? 1 : 2,
         selectColor: Color(0xffffff),
-        selectStrength: active ? 1 : 0,
+        selectStrength: dimmed ? 1 : 0,
       },
     });
+  }
+
+  setHoverDimming(enabled: boolean) {
+    this.hoverDimming = enabled;
+    this.setHoverAppearance(this.hoverAppearanceActive);
+    this.changed();
+    return this.observe();
   }
 
   highlightObject(ref: string | null, sequence: number, selector?: MesoscaleHierarchySelector) {
@@ -1087,6 +1103,7 @@ class MesoscaleRuntimeApi {
       case "setSelectionBatch": await this.selectEntities(action.refs, action.mode ?? "replace"); return this.sceneSummary();
       case "setDetailSelection": await this.selectDetail(action.ref, action.selector, action.mode ?? "replace"); return this.sceneSummary();
       case "setDetailSelectionBatch": await this.selectDetails(action.ref, action.selectors, action.mode ?? "replace"); return this.sceneSummary();
+      case "setHoverDimming": this.setHoverDimming(action.enabled); return this.sceneSummary();
       case "setSelectionStyle": await this.styleSelection(action); return this.sceneSummary();
       case "setSelectionVisibility": await this.setSelectionVisibility(action.visible); return this.sceneSummary();
       case "isolateSelection": await this.isolateSelection(); return this.sceneSummary();
@@ -1116,7 +1133,7 @@ class MesoscaleRuntimeApi {
       case "getCapabilities": return {
         kind: "capabilities",
         apiVersion: MESOSCALE_API_VERSION,
-        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionBatch", "setDetailSelection", "setDetailSelectionBatch", "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "focusDetail", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
+        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionBatch", "setDetailSelection", "setDetailSelectionBatch", "setHoverDimming", "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "focusDetail", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
         graphicsModes: ["ultra", "quality", "balanced", "performance", "custom"],
         hierarchyPageLimit: MESOSCALE_HIERARCHY_PAGE_LIMIT,
       };
@@ -1200,8 +1217,9 @@ function installBuretteSelectionAppearanceGuard(runtime: MesoscaleRuntimeApi) {
     if (!code.startsWith("Shift") && !code.startsWith("Control")) return;
     queueMicrotask(() => {
       const canvas = runtime.plugin.canvas3d;
-      if (!canvas || canvas.props.renderer.dimStrength === 1) return;
-      canvas.setProps({ renderer: { dimStrength: 1 } });
+      const dimStrength = runtime.hoverAppearanceActive ? 1 : 0;
+      if (!canvas || canvas.props.renderer.dimStrength === dimStrength) return;
+      canvas.setProps({ renderer: { dimStrength } });
     });
   });
 }

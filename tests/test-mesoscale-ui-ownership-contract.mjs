@@ -101,12 +101,15 @@ assert.match(runtime, /applyBuretteSelectionAppearance/, "Mesoscale selection ke
 assert.match(runtime, /await loadSource\(runtime, config\);\s*\/\/[\s\S]*?applyBuretteSelectionAppearance\(runtime\);/, "Burette selection appearance must win after LoadModel resets Mol* props");
 assert.match(runtime, /await this\.plugin\.state\.setSnapshot\(snapshot\);\s*applyBuretteSelectionAppearance\(this\);/, "snapshot restore cannot reinstate native white/yellow selection props");
 assert.match(runtime, /installBuretteSelectionAppearanceGuard/, "modifier key release cannot restore the upstream white selection mask");
-assert.match(runtime, /keyReleased\.subscribe[\s\S]*?queueMicrotask[\s\S]*?dimStrength: 1/, "Ctrl+Shift key release restores the Burette hover dimming");
+assert.match(runtime, /keyReleased\.subscribe[\s\S]*?queueMicrotask[\s\S]*?hoverAppearanceActive \? 1 : 0/, "Ctrl+Shift key release restores whatever hover state the pointer is in");
 assert.match(runtime, /selectStrength: 0/, "selection must preserve the original colors of selected structures");
 assert.match(runtime, /selectEdgeColor: Color\(0xaf52de\)/, "selection outline uses the Burette accent instead of Mesoscale yellow");
 assert.match(runtime, /setHoverAppearance/, "hover has its own appearance separate from selection");
-assert.match(runtime, /dimStrength: 1/, "hovering an object fades every other structure, as upstream Mesoscale does");
-assert.match(runtime, /highlightStrength: 0/, "hover marks by dimming the rest, not by tinting the hovered structure");
+assert.match(runtime, /dimStrength: dimmed \? 1 : 0/, "a resting scene keeps every structure colored, even while objects are selected");
+assert.match(runtime, /const dimmed = active && this\.hoverDimming/, "only hover fades the rest, and only while dimming is enabled");
+assert.match(runtime, /highlightStrength: active && !this\.hoverDimming \? 0\.45 : 0/, "with dimming off hover tints the hovered structure instead");
+assert.match(runtime, /case "setHoverDimming"/, "the scene panel can switch the hover style at runtime");
+assert.match(overlay, /setHoverDimming/, "the scene header exposes the hover-style toggle");
 assert.match(runtime, /operatorDetail\.children\?\.push/, "operator groups preserve drill-down into individual instances");
 assert.match(runtime, /suppressPrimaryMouse = false;\s*window\.clearTimeout\(suppressClickTimer\)/, "a compatibility click releases the next primary gesture");
 assert.match(objectMenu, /Selection actions/);

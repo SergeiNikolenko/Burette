@@ -53,6 +53,7 @@ export type MesoscaleSceneSummary = {
   selectionVersion?: number;
   selectionMode: boolean;
   illumination: boolean;
+  hoverDimming?: boolean;
   layout: Record<MesoscaleLayoutRegion, boolean>;
   motion: MesoscaleMotion;
   snapshots: MesoscaleSnapshot[];
@@ -135,6 +136,7 @@ export type MesoscaleAction =
   | { type: "setSelectionBatch"; refs: string[]; mode?: "replace" | "extend" }
   | { type: "setDetailSelection"; ref: string; selector: MesoscaleHierarchySelector; mode?: "replace" | "extend" | "toggle" }
   | { type: "setDetailSelectionBatch"; ref: string; selectors: MesoscaleHierarchySelector[]; mode?: "replace" | "extend" }
+  | { type: "setHoverDimming"; enabled: boolean }
   | { type: "setSelectionStyle"; color?: number; opacity?: number; emissive?: number; selectionVersion?: number }
   | { type: "setSelectionVisibility"; visible: boolean }
   | { type: "isolateSelection" }
