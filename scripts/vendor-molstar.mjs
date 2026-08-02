@@ -21,7 +21,7 @@ try {
 
 const molstarRoot = dirname(molstarPkg);
 const viewerDir = join(molstarRoot, 'build', 'viewer');
-const files = ['molstar.js', 'molstar.css'];
+const viewerEntry = join(projectRoot, 'scripts', 'molstar-viewer-entry.js');
 
 if (!existsSync(viewerDir) || !statSync(viewerDir).isDirectory()) {
   console.error(`Expected Mol* viewer build directory not found: ${viewerDir}`);
@@ -30,16 +30,42 @@ if (!existsSync(viewerDir) || !statSync(viewerDir).isDirectory()) {
 }
 
 mkdirSync(webDir, { recursive: true });
-for (const file of files) {
-  const source = join(viewerDir, file);
-  const target = join(webDir, file);
-  if (!existsSync(source)) {
-    console.error(`Missing Mol* asset: ${source}`);
-    process.exit(1);
-  }
-  copyFileSync(source, target);
-  console.log(`Vendored ${file} -> ${target}`);
+if (typeof Bun?.build !== 'function') {
+  console.error('Mol* vendoring requires Bun.build. Run: bun scripts/vendor-molstar.mjs');
+  process.exit(1);
 }
+const buildResult = await Bun.build({
+  entrypoints: [viewerEntry],
+  target: 'browser',
+  format: 'iife',
+  naming: 'molstar.js',
+  minify: true,
+  write: false,
+  loader: { '.jpg': 'dataurl' },
+  define: { 'process.env.NODE_ENV': JSON.stringify('production') },
+});
+if (!buildResult.success) {
+  for (const log of buildResult.logs) console.error(log);
+  process.exit(1);
+}
+const jsOutput = buildResult.outputs.find(output => output.kind === 'entry-point');
+if (!jsOutput) {
+  console.error('Bun.build did not produce the Mol* JavaScript entry point.');
+  process.exit(1);
+}
+const jsTarget = join(webDir, 'molstar.js');
+const jsBundle = (await jsOutput.text()).replace(/[ \t]+$/gmu, '');
+await Bun.write(jsTarget, jsBundle);
+console.log(`Built Mol* viewer with Burette superposition facade -> ${jsTarget}`);
+
+const cssSource = join(viewerDir, 'molstar.css');
+const cssTarget = join(webDir, 'molstar.css');
+if (!existsSync(cssSource)) {
+  console.error(`Missing Mol* asset: ${cssSource}`);
+  process.exit(1);
+}
+copyFileSync(cssSource, cssTarget);
+console.log(`Vendored molstar.css -> ${cssTarget}`);
 
 const lockResult = spawnSync(process.execPath, [join(projectRoot, 'scripts', 'check-vendor-assets.mjs'), '--write'], {
   stdio: 'inherit',
