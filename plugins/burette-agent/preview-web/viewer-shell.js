@@ -158,7 +158,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5"/></svg>
           <span class="buret-tooltip" role="tooltip">Camera</span>
         </button>
-        <button class="buret-rail-button" type="button" data-buret-viewport-action="screenshot" aria-label="Save a screenshot" title="Save a screenshot">
+        <button class="buret-rail-button" type="button" data-buret-viewport-action="screenshot" aria-haspopup="menu" aria-expanded="false" aria-label="Save a screenshot" title="Save a screenshot">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z"/><path d="M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/></svg>
           <span class="buret-tooltip" role="tooltip">Save a screenshot</span>
         </button>

@@ -4060,6 +4060,25 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   color: var(--buret-molstar-text);
   background: var(--buret-molstar-hover-background);
 }
+/* The screenshot groups fold the same way, but their summary is a setting rather
+   than a heading: it reads out the chosen entry so the whole set can be checked
+   without opening anything. */
+.buret-screenshot-group > summary > .buret-tree-menu-label {
+  flex: 1 1 auto;
+}
+.buret-screenshot-group-value {
+  color: var(--buret-molstar-text);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.buret-screenshot-group[open] > summary > .buret-screenshot-group-value {
+  display: none;
+}
+.buret-screenshot-group [role="menuitemradio"][aria-checked="true"] > .buret-tree-menu-label,
+.buret-viewport-menu [role="menuitemcheckbox"][aria-checked="true"] > .buret-tree-menu-label {
+  color: var(--buret-molstar-accent);
+}
 .buret-tree-menu-divider {
   height: 1px;
   margin: 4px 6px;

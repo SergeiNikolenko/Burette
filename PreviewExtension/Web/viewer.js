@@ -7869,8 +7869,25 @@
     scissors: ['M6.5 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'M6.5 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'm8.7 7.2 10.8 10.6', 'M19.5 6.2 8.7 16.8'],
     undo: ['M4 9h11a5 5 0 0 1 0 10h-7', 'm8 5-4 4 4 4'],
     play: ['m8 5 11 7-11 7Z'],
-    stop: ['M6.5 6.5h11v11h-11Z']
+    stop: ['M6.5 6.5h11v11h-11Z'],
+    download: ['M12 3v12', 'm7 10 5 5 5-5', 'M5 21h14'],
+    clipboard: ['M9 4h6v3H9Z', 'M9 5.5H7A1.5 1.5 0 0 0 5.5 7v12A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V7A1.5 1.5 0 0 0 17 5.5h-2'],
+    wiggle: ['M3 12c2-4 4 4 6 0s4-4 6 0 4 4 6 0']
   };
+  // Mol* exposes these through plugin.helpers.viewportScreenshot; the labels are
+  // its own, minus the Custom size that would need a width/height form.
+  const VIEWPORT_SCREENSHOT_RESOLUTIONS = [
+    ['viewport', 'Viewport'],
+    ['hd', 'HD (1280 × 720)'],
+    ['full-hd', 'Full HD (1920 × 1080)'],
+    ['ultra-hd', 'Ultra HD (3840 × 2160)'],
+    ['8k-ultra-hd', '8K Ultra HD (7680 × 4320)']
+  ];
+  const VIEWPORT_SCREENSHOT_FORMATS = [
+    ['png', 'PNG'],
+    ['jpeg', 'JPEG'],
+    ['webp', 'WebP']
+  ];
   let selectionQueryModifier = 'set';
   let viewportControlsDisposers = [];
 
@@ -7984,6 +8001,67 @@
     viewportMenuItem(menu, 'Reset axes', 'camera-axes', { icon: SCENE_TREE_ICON.restore });
   }
 
+  function viewportScreenshotHelper() {
+    return viewportPlugin()?.helpers?.viewportScreenshot || null;
+  }
+
+  // A radio row inside one of the screenshot menu's folded groups. The group keeps
+  // the chosen entry in its summary, so the settings read at a glance while folded.
+  function viewportScreenshotChoice(group, action, value, label, current) {
+    const item = viewportMenuItem(group, label, action, { parent: group, data: { viewportValue: value } });
+    item.setAttribute('role', 'menuitemradio');
+    item.setAttribute('aria-checked', value === current ? 'true' : 'false');
+    return item;
+  }
+
+  function viewportScreenshotGroup(menu, title, action, entries, current) {
+    const disclosure = document.createElement('details');
+    disclosure.className = 'buret-tree-menu-actions buret-screenshot-group';
+    disclosure.dataset.buretScreenshotGroup = action;
+    const summary = document.createElement('summary');
+    const name = document.createElement('span');
+    name.className = 'buret-tree-menu-label';
+    name.textContent = title;
+    const value = document.createElement('span');
+    value.className = 'buret-screenshot-group-value';
+    value.textContent = entries.find(([entry]) => entry === current)?.[1] || '';
+    summary.append(name, value);
+    disclosure.appendChild(summary);
+    for (const [entry, label] of entries) viewportScreenshotChoice(disclosure, action, entry, label, current);
+    menu.appendChild(disclosure);
+  }
+
+  function viewportScreenshotToggle(menu, label, action, checked) {
+    const item = viewportMenuItem(menu, label, action, { icon: checked ? SCENE_TREE_ICON.eye : null });
+    item.setAttribute('role', 'menuitemcheckbox');
+    item.setAttribute('aria-checked', checked ? 'true' : 'false');
+    return item;
+  }
+
+  // The rail button used to be a one-shot download on Mol*'s defaults. Everything
+  // here is that helper's own parameter set - resolution, format, transparency,
+  // axes and the auto crop - reached without opening Mol*'s side panel.
+  function viewportScreenshotMenu(menu) {
+    const helper = viewportScreenshotHelper();
+    if (!helper) return;
+    const values = helper.values || {};
+    viewportMenuItem(menu, 'Save image', 'screenshot-save', { icon: VIEWPORT_ICON.download });
+    // Clipboard writes need a secure context; the item is dropped rather than
+    // offered as a row that fails only once it is pressed.
+    if (window.isSecureContext && navigator.clipboard) {
+      viewportMenuItem(menu, 'Copy to clipboard', 'screenshot-copy', { icon: VIEWPORT_ICON.clipboard });
+    }
+    sceneTreeMenuSection(menu, 'Image');
+    viewportScreenshotGroup(menu, 'Resolution', 'screenshot-resolution',
+      VIEWPORT_SCREENSHOT_RESOLUTIONS, values.resolution?.name || 'viewport');
+    viewportScreenshotGroup(menu, 'Format', 'screenshot-format',
+      VIEWPORT_SCREENSHOT_FORMATS, values.format?.name || 'png');
+    sceneTreeMenuSection(menu, 'Options');
+    viewportScreenshotToggle(menu, 'Transparent background', 'screenshot-transparent', values.transparent === true);
+    viewportScreenshotToggle(menu, 'Show axes', 'screenshot-axes', values.axes?.name === 'on');
+    viewportScreenshotToggle(menu, 'Crop to content', 'screenshot-crop', helper.cropParams?.auto === true);
+  }
+
   // Mol*'s own animation button offered both a trackball that keeps turning and
   // the plugin's timed animations. The rail keeps both, split by how they end:
   // motion runs until it is switched off, the rest play once and stop themselves.
@@ -7998,27 +8076,175 @@
       .filter(entry => !VIEWPORT_MOTION_ANIMATIONS.has(entry.animation?.name))
       .map(entry => ({ ...entry, applicability: viewportAnimationApplicability(entry.animation, plugin) }))
       .filter(entry => entry.animation?.display?.name)
-      // A greyed row earns its place by saying why it is greyed. One that cannot
-      // is just an entry you will never be able to use.
-      .filter(entry => entry.applicability.canApply || entry.applicability.reason);
-    if (!animations.length) return;
+      // Every one of these needs something the scene may not have - a trajectory,
+      // saved snapshots, an assembly. On a plain structure that left the whole
+      // block greyed out, which reads as a broken menu rather than an unmet
+      // precondition. They come back by themselves once the scene can run them.
+      .filter(entry => entry.applicability.canApply);
     // Stop leads, because the thing you most need from this menu while something
     // is moving is the way to make it stop.
     if (playing) {
       sceneTreeMenuSection(menu, 'Running');
       viewportMenuItem(menu, 'Stop', 'animation-stop', { icon: VIEWPORT_ICON.stop });
     }
+    viewportWiggleControls(menu);
+    if (!animations.length) return;
     sceneTreeMenuSection(menu, 'Animations');
     for (const entry of animations) {
       viewportMenuItem(menu, entry.animation.display.name, 'animation-play', {
         icon: VIEWPORT_ICON.play,
         data: { animationIndex: String(entry.index) },
-        disabled: !entry.applicability.canApply,
-        // Mol* explains why an animation does not apply; a greyed row that keeps
-        // its reason to itself is the thing this rail set out to replace.
-        title: entry.applicability.reason || entry.animation.display.description
+        title: entry.animation.display.description
       });
     }
+  }
+
+  const VIEWPORT_WIGGLE_TAG = 'wiggle-controls';
+  const VIEWPORT_WIGGLE_TRANSFORM = 'wiggle-structure-representation-3d-from-bundle';
+
+  // Mol*'s Procedural Animation panel, brought onto the rail. Wiggle jitters the
+  // vertices of a representation so a still structure reads as a molecule in
+  // solution rather than a model. Dynamics moves every atom by the same amount;
+  // Uncertainty moves each one by its own B-factor.
+  function viewportWiggleControls(menu) {
+    const options = viewportPlugin()?.managers?.structure?.component?.state?.options;
+    if (!options?.animation) return;
+    sceneTreeMenuSection(menu, 'Wiggle');
+    viewportMenuItem(menu, 'Dynamics', 'wiggle-dynamics', {
+      icon: VIEWPORT_ICON.wiggle,
+      title: 'Wiggle every atom by the same amount'
+    });
+    viewportMenuItem(menu, 'From uncertainty', 'wiggle-uncertainty', {
+      icon: VIEWPORT_ICON.wiggle,
+      title: 'Wiggle each atom by its own B-factor or RMSF'
+    });
+    viewportMenuItem(menu, 'Stop wiggling', 'wiggle-clear', { icon: SCENE_TREE_ICON.restore });
+  }
+
+  function viewportWiggleComponents() {
+    const structures = viewportPlugin()?.managers?.structure?.hierarchy?.selection?.structures || [];
+    return structures.flatMap(structure => structure.components || []);
+  }
+
+  async function setViewportWiggleOptions(animation) {
+    const manager = viewportPlugin()?.managers?.structure?.component;
+    const options = manager?.state?.options;
+    if (!manager || !options) return;
+    await manager.setOptions({ ...options, animation: { ...options.animation, ...animation } });
+  }
+
+  async function clearViewportWiggleLayers() {
+    const state = viewportPlugin()?.state?.data;
+    if (!state) return 0;
+    const refs = [];
+    for (const [ref, cell] of state.cells) {
+      if (cell?.transform?.transformer?.definition?.name === VIEWPORT_WIGGLE_TRANSFORM) refs.push(ref);
+    }
+    if (!refs.length) return 0;
+    const update = state.build();
+    for (const ref of refs) update.delete(ref);
+    await update.commit({ doNotUpdateCurrent: true });
+    return refs.length;
+  }
+
+  function viewportUncertaintyValue(unit, element) {
+    const Unit = window.molstar?.lib?.structure?.Unit;
+    if (Unit?.isAtomic?.(unit)) return unit.model.atomicConformation.B_iso_or_equiv.value(element);
+    if (Unit?.isSpheres?.(unit)) return unit.model.coarseConformation.spheres.rmsf[element];
+    return 0;
+  }
+
+  // Mol* carries per-group wiggle in a Uint8 texture, so the normalised values are
+  // binned to 256 levels and each bin becomes one layer. Written out here rather
+  // than called: the library keeps setStructureWiggleFromUncertainty internal, and
+  // the viewer bundle we vendor exports no way to reach it.
+  function viewportUncertaintyWiggleLayers(root, StructureElement) {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const unit of root.units) {
+      for (let i = 0, il = unit.elements.length; i < il; i++) {
+        const value = viewportUncertaintyValue(unit, unit.elements[i]);
+        if (value < min) min = value;
+        if (value > max) max = value;
+      }
+    }
+    const range = Number.isFinite(min) && Number.isFinite(max) ? max - min : 0;
+    if (range <= 0) return [];
+    const buckets = new Map();
+    for (const unit of root.units) {
+      const perBucket = new Map();
+      for (let i = 0, il = unit.elements.length; i < il; i++) {
+        const normalized = (viewportUncertaintyValue(unit, unit.elements[i]) - min) / range;
+        const bucket = Math.min(255, Math.round(normalized * 255));
+        if (!perBucket.has(bucket)) perBucket.set(bucket, []);
+        perBucket.get(bucket).push(i);
+      }
+      for (const [bucket, indices] of perBucket) {
+        if (!buckets.has(bucket)) buckets.set(bucket, []);
+        // Pushed in ascending order, which is what a sorted-array OrderedSet is.
+        buckets.get(bucket).push({ unit, indices: new Int32Array(indices) });
+      }
+    }
+    const layers = [];
+    for (const [bucket, elements] of buckets) {
+      const loci = StructureElement.Loci(root, elements);
+      if (StructureElement.Loci.isEmpty(loci)) continue;
+      layers.push({ bundle: StructureElement.Bundle.fromLoci(loci), value: bucket / 255 });
+    }
+    return layers;
+  }
+
+  async function applyViewportWiggleFromUncertainty() {
+    const state = viewportPlugin()?.state?.data;
+    const lib = window.molstar?.lib;
+    const StructureElement = lib?.structure?.StructureElement;
+    const transformer = lib?.plugin?.StateTransforms?.Representation?.WiggleStructureRepresentation3DFromBundle;
+    if (!state || !StructureElement || !transformer) return 0;
+    const update = state.build();
+    let applied = 0;
+    for (const component of viewportWiggleComponents()) {
+      for (const representation of component.representations || []) {
+        const root = representation.cell?.obj?.data?.sourceData?.root;
+        if (!root) continue;
+        const layers = viewportUncertaintyWiggleLayers(root, StructureElement);
+        if (!layers.length) continue;
+        update.to(representation.cell.transform.ref).apply(transformer, { layers }, { tags: VIEWPORT_WIGGLE_TAG });
+        applied += 1;
+      }
+    }
+    if (!applied) return 0;
+    await update.commit({ doNotUpdateCurrent: true });
+    return applied;
+  }
+
+  // Wiggle is judged by watching it, so every one of these keeps the menu up.
+  function runViewportWiggleAction(action) {
+    const fail = error => setStatus(`[web] Wiggle failed. ${error?.message || error}`, 'error');
+    if (action === 'dynamics') {
+      clearViewportWiggleLayers()
+        .then(() => setViewportWiggleOptions({ wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0.2 }))
+        .then(() => setStatus('[web] Wiggling every atom evenly.'))
+        .catch(fail);
+    } else if (action === 'uncertainty') {
+      // The per-group layers carry the amplitude themselves, so the uniform one is
+      // all but zeroed or the two would stack. Not zeroed, which is what Mol*'s own
+      // preset does: the render loop only runs while some amplitude is above zero,
+      // and with a flat zero the layers are built, resolved and then never drawn -
+      // measured, a scene that does not move a pixel. This baseline is a rounding
+      // error next to per-group values that reach a full Ångström.
+      setViewportWiggleOptions({ wiggleAmplitude: 0.01, tumbleAmplitude: 0 })
+        .then(() => applyViewportWiggleFromUncertainty())
+        .then(applied => setStatus(applied
+          ? `[web] Wiggling ${applied} representation${applied === 1 ? '' : 's'} by B-factor.`
+          : '[web] This structure has no B-factor or RMSF spread to wiggle by.'))
+        .catch(fail);
+    } else if (action === 'clear') {
+      setViewportWiggleOptions({ wiggleAmplitude: 0, tumbleAmplitude: 0 })
+        .then(() => clearViewportWiggleLayers())
+        .then(() => setStatus('[web] Stopped wiggling.'))
+        .catch(fail);
+    }
+    return true;
   }
 
   // play() with no params leaves each animation on its own defaults, and Mol*
@@ -8266,6 +8492,64 @@
       .catch(error => setStatus(`[web] Cutting the selection out failed. ${error?.message || error}`, 'error'));
   }
 
+  // Picking a branch of one of Mol*'s mapped params means supplying that branch's
+  // own defaults. An empty object looks harmless because most branches take no
+  // sub-params, but the ones that do - axes on, JPEG and WebP quality - then run
+  // their maths on undefined: axes turns the capture into a non-invertible matrix
+  // and a typed array of length -Infinity rather than an image.
+  function viewportMappedDefaults(helper, param, name) {
+    return helper.params?.[param]?.map?.(name)?.defaultValue || {};
+  }
+
+  // Returns true to keep the menu open: every setting here is chosen to be seen in
+  // the next capture, and a menu that closed on each toggle would have to be
+  // reopened three times to set up one image. Only the two captures dismiss it.
+  function runViewportScreenshotAction(action, control) {
+    const helper = viewportScreenshotHelper();
+    if (!helper) return false;
+    if (action === 'save') {
+      Promise.resolve(helper.download())
+        .then(() => setStatus('[web] Screenshot saved.'))
+        .catch(error => setStatus(`[web] Screenshot failed. ${error?.message || error}`, 'error'));
+      return false;
+    }
+    if (action === 'copy') {
+      Promise.resolve(helper.copyToClipboard())
+        .then(() => setStatus('[web] Screenshot copied to the clipboard.'))
+        .catch(error => setStatus(`[web] Copy failed. ${error?.message || error}`, 'error'));
+      return false;
+    }
+    const values = helper.values;
+    if (action === 'resolution' || action === 'format') {
+      const name = control.dataset.viewportValue;
+      helper.behaviors.values.next({ ...values, [action]: { name, params: viewportMappedDefaults(helper, action, name) } });
+      const group = control.closest('[data-buret-screenshot-group]');
+      for (const item of group?.querySelectorAll('[role="menuitemradio"]') || []) {
+        item.setAttribute('aria-checked', item === control ? 'true' : 'false');
+      }
+      const summaryValue = group?.querySelector('.buret-screenshot-group-value');
+      if (summaryValue) summaryValue.textContent = control.textContent.trim();
+      return true;
+    }
+    if (action === 'transparent' || action === 'axes') {
+      const checked = control.getAttribute('aria-checked') !== 'true';
+      const axes = checked ? 'on' : 'off';
+      helper.behaviors.values.next(action === 'transparent'
+        ? { ...values, transparent: checked }
+        : { ...values, axes: { name: axes, params: viewportMappedDefaults(helper, 'axes', axes) } });
+      control.setAttribute('aria-checked', checked ? 'true' : 'false');
+      return true;
+    }
+    if (action === 'crop') {
+      const auto = control.getAttribute('aria-checked') !== 'true';
+      helper.behaviors.cropParams.next({ ...helper.cropParams, auto });
+      if (!auto) helper.resetCrop();
+      control.setAttribute('aria-checked', auto ? 'true' : 'false');
+      return true;
+    }
+    return false;
+  }
+
   function runViewportMenuAction(action, control) {
     const plugin = viewportPlugin();
     if (!plugin) return false;
@@ -8280,6 +8564,10 @@
       updateViewportMotionSpeed(viewportMotionState());
       // Motion is judged by watching it, so the menu stays up to be adjusted.
       return true;
+    } else if (action.startsWith('screenshot-')) {
+      return runViewportScreenshotAction(action.slice('screenshot-'.length), control);
+    } else if (action.startsWith('wiggle-')) {
+      return runViewportWiggleAction(action.slice('wiggle-'.length));
     } else if (action === 'animation-play') {
       playViewportAnimation(Number(control.dataset.animationIndex));
     } else if (action === 'animation-stop') {
@@ -8321,9 +8609,7 @@
     } else if (action === 'animate') {
       openViewportMenu(control, 'Animate', viewportAnimateMenu);
     } else if (action === 'screenshot') {
-      Promise.resolve(plugin.helpers.viewportScreenshot?.download())
-        .then(() => setStatus('[web] Screenshot saved.'))
-        .catch(error => setStatus(`[web] Screenshot failed. ${error?.message || error}`, 'error'));
+      openViewportMenu(control, 'Screenshot', viewportScreenshotMenu);
     } else if (action === 'illumination') {
       const enabled = plugin.canvas3d?.props?.illumination?.enabled !== true;
       plugin.canvas3d?.setProps({ illumination: { enabled } });
@@ -8371,7 +8657,11 @@
     const changed = wasHidden !== bar.classList.contains('hidden');
     rail.querySelector('[data-buret-viewport-action="select-mode"]')
       ?.setAttribute('aria-pressed', active ? 'true' : 'false');
-    if (!active) closeViewportMenu();
+    // Leaving selection mode takes the selection bar's menus with it. This runs on
+    // every structure-state tick though, so it fires on the transition rather than
+    // the state - otherwise any menu action that touches the scene closes the menu
+    // it was pressed in.
+    if (!active && changed) closeViewportMenu();
     const stats = plugin?.managers?.structure?.selection?.stats;
     const hasSelection = Number(stats?.elementCount) > 0;
     rail.querySelector('[data-buret-viewport-action="clear-selection"]')
