@@ -5712,8 +5712,15 @@ assert.match(previewViewer, /if \(isStep\) setMolstarStoryTransition\(manager, a
 assert.match(previewViewer, /function queueMolstarStoryStep\(run\)/);
 assert.match(previewViewer, /serial === molstarStoryStepRequested \? run\(\) : null/);
 assert.match(previewViewer, /MOLSTAR_STORY_REPORT_INTERVAL_MS = 120/);
+assert.match(previewViewer, /function syncMolstarStoryUi\(\)/);
+assert.match(previewViewer, /function applyMolstarStoryStyleToSnapshots\(manager, style\)/);
+assert.match(previewViewer, /transform.version = molstarStoryTransformVersion\(transform, style\)/);
 assert.match(previewViewer, /if \(style !== 'default'\) await applyMolstarStyle\(viewer, style\)/);
-assert.match(previewViewer, /if \(molstarStoryState\(\)\.available\) \{\s*await applyMolstarStyle\(viewer, style\);/);
+// Restyling a Story rebuilds it from its own snapshots, so the state on screen
+// ends up looking like every other state - and the reload that would have wiped
+// the snapshots never happens.
+assert.match(previewViewer, /if \(molstarStoryState\(\)\.available\) \{\s*const normalized = normalizeMolstarStyle\(style\);/);
+assert.match(previewViewer, /if \(current\?\.snapshot\) await viewer\.plugin\.state\.setSnapshot\(current\.snapshot\);/);
 // Story controls live in the viewer, not only in the right dock, and they reuse
 // the pose toolbar's shell so they inherit its position, drag and collapse.
 assert.match(previewViewer, /function renderMolstarStoryControls\(\)/);
@@ -5730,7 +5737,8 @@ assert.match(previewViewer, /MOLSTAR_STORY_DETAILS_DWELL_MS = 500/);
 // style before the user's own style lands.
 assert.match(previewViewer, /canvas3d\?\.pause\?\.\(true\)/);
 assert.match(previewViewer, /await waitForMolstarIdle\(activeViewer\);\s*await restoreMolstarStoryPresentation\(activeViewer\);/);
-assert.match(previewViewer, /if \(!isFirstState && !molstarStoryStepInFlight\) scheduleMolstarStoryPresentationRestore\(viewer\);/);
+assert.match(previewViewer, /if \(!isFirstState && !molstarStoryStepInFlight && MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)\)/);
+assert.match(previewViewer, /const restyles = isStep && MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses\.buret-molstar-story \{\s*border-radius: 12px;/);
 assert.match(previewViewer, /function renderMolstarStoryMarkdown\(container, markdown\)/);
 assert.match(previewRuntimeCss, /\.buret-story-hover-card \{/);

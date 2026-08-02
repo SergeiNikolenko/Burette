@@ -133,6 +133,17 @@
   let molstarStoryReportedAt = 0;
   const MOLSTAR_STORY_REPORT_INTERVAL_MS = 120;
   const molstarStoryDetachedSnapshots = new WeakSet();
+  // Styles that replace every representation with one of a single kind, so they
+  // can be written straight into a Story snapshot instead of being re-applied
+  // over the scene once it has been built.
+  const MOLSTAR_UNIFORM_STYLE_REPRESENTATION = {
+    line: { type: 'line', typeParams: { sizeFactor: 0.08 }, color: 'element-symbol' },
+    'ball-and-stick': { type: 'ball-and-stick', typeParams: { sizeFactor: 0.16 }, color: 'element-symbol' },
+    spacefill: { type: 'spacefill', typeParams: { sizeFactor: 0.45 }, color: 'element-symbol' },
+    'molecular-surface': { type: 'molecular-surface', typeParams: { alpha: 0.72 }, color: 'element-symbol' }
+  };
+  const MOLSTAR_STORY_REBUILT_STYLES = new Set(['illustrative-surface', 'cartoon', 'polymer-ligand']);
+  const molstarStoryAuthoredRepresentations = new WeakMap();
   const MOLSTAR_STORY_TRANSITION_MS = 700;
   const MOLSTAR_STORY_PREVIEW_DWELL_MS = 240;
   const MOLSTAR_STORY_DETAILS_DWELL_MS = 500;
@@ -907,8 +918,14 @@
     // style. Rendering is held across the swap so the first frame drawn is already
     // the finished scene. Playback keeps rendering; it is a continuous animation.
     const isStep = operation === 'next' || operation === 'previous' || operation === 'goto';
-    const restyles = configuredMolstarStyle(activeConfig || window.BuretteConfig || {}) !== 'default' && isStep;
+    const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
+    // Styles built from more than one representation cannot be written into the
+    // snapshot, so they go on after the step with rendering held. `Illustrative`
+    // is not among them: it is post-processing on the canvas, which the snapshot
+    // no longer carries, so it survives a step untouched.
+    const restyles = isStep && MOLSTAR_STORY_REBUILT_STYLES.has(style);
     const canvas3d = activeViewer?.plugin?.canvas3d;
+    if (isStep || operation === 'play') applyMolstarStoryStyleToSnapshots(manager, style);
     if (isStep) setMolstarStoryTransition(manager, action.preview === true ? 0 : MOLSTAR_STORY_TRANSITION_MS);
     if (restyles) {
       molstarStoryStepInFlight = true;
@@ -942,7 +959,8 @@
       }
     }
     const result = molstarStoryResult('story_control');
-    reportMolstarStoryToHost();
+    molstarStoryReportedAt = 0;
+    syncMolstarStoryUi();
     return result;
   }
 
@@ -960,6 +978,58 @@
       if (!snapshot || molstarStoryDetachedSnapshots.has(snapshot)) continue;
       snapshot.canvas3d = undefined;
       molstarStoryDetachedSnapshots.add(snapshot);
+    }
+  }
+
+  // Applying a step and then restyling it builds the scene twice: measured on
+  // docking_story.mvsx at ~520 ms for the snapshot and another ~400 ms to rebuild
+  // every representation, with rendering held across both. For the styles that
+  // are a single representation kind, the style is written into the snapshots
+  // instead, so each step builds the scene once, already in the chosen style.
+  // The authored representation is kept so `Default` can restore the scene as
+  // the Story's author meant it.
+  // Derived from the transform and the style, never random: Mol* skips rebuilding
+  // a node whose version is unchanged, so two states that draw the same component
+  // the same way must agree on it. Random versions made every step rebuild the
+  // whole receptor - measured at 957 ms per step against 248 ms when the versions
+  // line up.
+  function molstarStoryTransformVersion(transform, style) {
+    return stableTextHash(`${transform.ref}:${style}`).padEnd(32, '0');
+  }
+
+  function applyMolstarStoryStyleToSnapshots(manager, style) {
+    const uniform = MOLSTAR_UNIFORM_STYLE_REPRESENTATION[style];
+    for (const entry of manager?.state?.entries || []) {
+      const transforms = entry?.snapshot?.data?.tree?.transforms;
+      if (!Array.isArray(transforms)) continue;
+      for (const transform of transforms) {
+        if (transform?.transformer !== 'ms-plugin.structure-representation-3d' || !transform.params?.type) continue;
+        if (!molstarStoryAuthoredRepresentations.has(transform)) {
+          molstarStoryAuthoredRepresentations.set(transform, {
+            type: transform.params.type,
+            colorTheme: transform.params.colorTheme,
+            version: transform.version
+          });
+        }
+        const authored = molstarStoryAuthoredRepresentations.get(transform);
+        if (!uniform) {
+          transform.params.type = authored.type;
+          transform.params.colorTheme = authored.colorTheme;
+          transform.version = authored.version;
+          continue;
+        }
+        // Only the new type's own parameters: representation parameters are
+        // per-type, and carrying the authored ones across made Mol* fall back to
+        // some other representation entirely.
+        transform.params.type = { name: uniform.type, params: { ...uniform.typeParams } };
+        transform.params.colorTheme = { name: uniform.color, params: {} };
+        // Mol* diffs snapshots by transform version, not by comparing parameters,
+        // so an edited transform has to look new or the change is skipped. Every
+        // state gets the same version for the same node, including a node that
+        // already drew this type: leaving that one on its authored version made
+        // the versions disagree between states and rebuilt it on every step.
+        transform.version = molstarStoryTransformVersion(transform, style);
+      }
     }
   }
 
@@ -1012,23 +1082,28 @@
   }
 
   // Mol* reports every intermediate state while a step is applied, and each
-  // report re-renders the host's Story dock. Hovering down the list turned that
-  // into a burst of updates, so reports are coalesced and the last one always
-  // arrives.
-  function reportMolstarStoryToHost() {
+  // report re-renders the Story controls and the host's Story dock. They are
+  // coalesced, and the last one always arrives.
+  function syncMolstarStoryUi() {
     const now = Date.now();
     const sinceLast = now - molstarStoryReportedAt;
     if (sinceLast < MOLSTAR_STORY_REPORT_INTERVAL_MS) {
       if (molstarStoryReportTimer) return;
       molstarStoryReportTimer = window.setTimeout(() => {
         molstarStoryReportTimer = 0;
-        reportMolstarStoryToHost();
+        syncMolstarStoryUi();
       }, MOLSTAR_STORY_REPORT_INTERVAL_MS - sinceLast);
       return;
     }
+    molstarStoryReportedAt = now;
+    renderMolstarStoryControls();
+    updateSceneTreeStoryCaption();
+    reportMolstarStoryToHost();
+  }
+
+  function reportMolstarStoryToHost() {
     const story = molstarStoryState();
     if (!story.available) return;
-    molstarStoryReportedAt = now;
     postHostMessage({
       type: 'mvsStoryChanged',
       documentId: String(activeConfig?.documentId || ''),
@@ -1046,9 +1121,11 @@
     molstarStoryRestoredStateId = null;
     const subscription = manager?.events?.changed?.subscribe?.(() => {
       detachMolstarStoryPresentation(manager);
-      reportMolstarStoryToHost();
-      renderMolstarStoryControls();
-      updateSceneTreeStoryCaption();
+      // Mol* fires this several times while a step is applied, and each pass
+      // rebuilds the Story UI. Measured against raw `applyNext`, our handlers
+      // added ~80 ms per step on top of Mol*'s own ~300 ms; coalescing them
+      // keeps that off the step.
+      syncMolstarStoryUi();
       // `changed` also fires while the Story is being assembled and while a step
       // builds. Only an actual move to a different state needs the viewer style
       // re-applied, and the state the document opens on is left as authored.
@@ -1056,9 +1133,12 @@
       if (!currentId || currentId === molstarStoryRestoredStateId) return;
       const isFirstState = molstarStoryRestoredStateId === null;
       molstarStoryRestoredStateId = currentId;
-      // A step driven through the controls restores the style itself, with
-      // rendering held; scheduling a second pass here would restyle twice.
-      if (!isFirstState && !molstarStoryStepInFlight) scheduleMolstarStoryPresentationRestore(viewer);
+      // Only a composite style needs a pass over the built scene, and a step
+      // driven through the controls has already done it with rendering held.
+      const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
+      if (!isFirstState && !molstarStoryStepInFlight && MOLSTAR_STORY_REBUILT_STYLES.has(style)) {
+        scheduleMolstarStoryPresentationRestore(viewer);
+      }
     });
     if (subscription?.unsubscribe) {
       molstarStoryStateCleanup = () => {
@@ -1072,8 +1152,8 @@
         hideMolstarStoryDetails();
       };
     }
-    reportMolstarStoryToHost();
-    renderMolstarStoryControls();
+    molstarStoryReportedAt = 0;
+    syncMolstarStoryUi();
   }
 
   function buretteSceneSpecOperations(action) {
@@ -3480,7 +3560,18 @@
     // A Story keeps its scenes in plugin state, so the style goes on top of the
     // step the user is looking at instead.
     if (molstarStoryState().available) {
-      await applyMolstarStyle(viewer, style);
+      const normalized = normalizeMolstarStyle(style);
+      const manager = viewer?.plugin?.managers?.snapshot;
+      applyMolstarStoryStyleToSnapshots(manager, normalized);
+      // Restyling a Story goes through its snapshots, so the scene on screen is
+      // rebuilt the same way a step builds it. Applying the style over the scene
+      // instead would leave the current state looking unlike every other one.
+      const current = Array.from(manager?.state?.entries || []).find(entry => entry?.snapshot?.id === manager?.state?.current);
+      if (MOLSTAR_UNIFORM_STYLE_REPRESENTATION[normalized] || normalized === 'default') {
+        if (current?.snapshot) await viewer.plugin.state.setSnapshot(current.snapshot);
+      } else {
+        await applyMolstarStyle(viewer, style);
+      }
       if (serial !== molstarStyleApplySerial) return;
       setStatus(`[web] Applied Mol* ${molstarStyleLabel(style)} style`);
       setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
@@ -13446,36 +13537,9 @@
       await applyMolstarNonIllustrativePostprocessing(viewer);
     }
 
-    if (normalized === 'line') {
-      await applyMolstarUniformRepresentation(viewer, {
-        type: 'line',
-        typeParams: { sizeFactor: 0.08 },
-        color: 'element-symbol'
-      });
-      return;
-    }
-    if (normalized === 'ball-and-stick') {
-      await applyMolstarUniformRepresentation(viewer, {
-        type: 'ball-and-stick',
-        typeParams: { sizeFactor: 0.16 },
-        color: 'element-symbol'
-      });
-      return;
-    }
-    if (normalized === 'spacefill') {
-      await applyMolstarUniformRepresentation(viewer, {
-        type: 'spacefill',
-        typeParams: { sizeFactor: 0.45 },
-        color: 'element-symbol'
-      });
-      return;
-    }
-    if (normalized === 'molecular-surface') {
-      await applyMolstarUniformRepresentation(viewer, {
-        type: 'molecular-surface',
-        typeParams: { alpha: 0.72 },
-        color: 'element-symbol'
-      });
+    const uniform = MOLSTAR_UNIFORM_STYLE_REPRESENTATION[normalized];
+    if (uniform) {
+      await applyMolstarUniformRepresentation(viewer, uniform);
       return;
     }
     if (normalized === 'illustrative') {
