@@ -63,6 +63,7 @@ const RUNTIME_ASSET_PATHS = new Set([
   'viewer-bootstrap.js',
   'viewer-shell.js',
   'trajectory-smoothing.js',
+  'superposition-panel.js',
   'molstar.css',
   'molstar.js',
   'burette-agent.js',

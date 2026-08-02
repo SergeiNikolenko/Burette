@@ -24,6 +24,7 @@ const requiredPreviewAssets = [
   'viewer-shell.js',
   'viewer-runtime.css',
   'trajectory-smoothing.js',
+  'superposition-panel.js',
   'molstar.js',
   'molstar.css',
   'burette-agent.js',
