@@ -780,6 +780,11 @@ body.buret-selection-toolbar-open .buret-selection-bar {
 .buret-viewport-menu[data-filtering="true"] .buret-tree-menu-actions > summary {
   display: none;
 }
+/* display wins over the hidden attribute's default, and the wiggle noise switch is
+   hidden whenever there is no wiggle to shape. */
+.buret-viewport-segment[hidden] {
+  display: none;
+}
 .buret-viewport-segment {
   display: flex;
   gap: 1px;

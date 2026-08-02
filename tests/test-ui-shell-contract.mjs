@@ -5156,6 +5156,22 @@ assert.doesNotMatch(previewViewer, /axes: \{ name: checked \? 'on' : 'off', para
 // amplitude, which stops the render loop and freezes the per-group layers.
 assert.match(previewViewer, /function viewportWiggleControls\(menu\) \{/);
 assert.match(previewViewer, /wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0\.2/);
+// Wiggle is shaped like the Motion switch above it: a kind, then its parameters.
+assert.match(previewViewer, /const VIEWPORT_WIGGLES = \[\s*\['off', 'Off'\],\s*\['even', 'Even'\],\s*\['uncertainty', 'B-factor'\]/);
+for (const spec of ['wiggleAmplitude', 'wiggleSpeed', 'wiggleFrequency', 'tumbleAmplitude', 'tumbleSpeed', 'tumbleFrequency']) {
+  assert.ok(previewViewer.includes(`name: '${spec}'`), `wiggle sliders should cover ${spec}`);
+}
+// Tumble's shaping rows are meaningless without an amplitude to shape.
+assert.match(previewViewer, /needs: 'tumbleAmplitude'/);
+assert.match(previewViewer, /row\.hidden = state\?\.name === 'off' \|\| \(spec\.needs && !\(Number\(state\?\.animation\?\.\[spec\.needs\]\) > 0\)\)/);
+// The kind is read back from the scene, and only the per-group layers distinguish
+// a B-factor wiggle from an even one.
+assert.match(previewViewer, /if \(viewportWiggleLayerRefs\(\)\.length\) return \{ name: 'uncertainty', animation \}/);
+// setOptions rebuilds every representation, so a dragged slider coalesces.
+assert.match(previewViewer, /async function streamViewportWiggleOption\(name, value\) \{[\s\S]*if \(viewportWiggleWriteInFlight\) return;/);
+assert.match(previewViewer, /while \(viewportWigglePendingWrite\) \{[\s\S]*await setViewportWiggleOptions\(next\)/);
+// The hidden attribute loses to the segment's own display rule.
+assert.match(previewRuntimeCss, /\.buret-viewport-segment\[hidden\] \{\s*display: none;\s*\}/);
 assert.match(previewViewer, /setViewportWiggleOptions\(\{ wiggleAmplitude: 0\.01, tumbleAmplitude: 0 \}\)[\s\S]*applyViewportWiggleFromUncertainty\(\)/);
 assert.match(previewViewer, /const VIEWPORT_WIGGLE_TRANSFORM = 'wiggle-structure-representation-3d-from-bundle';/);
 // The uncertainty layers are built here because the vendored viewer bundle keeps
