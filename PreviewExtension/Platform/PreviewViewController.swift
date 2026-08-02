@@ -37,7 +37,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static let maxViewerPageZoom: CGFloat = 0.9
     private static let previewSourceMonitorQueue = DispatchQueue(label: "com.local.BuretteV10.preview-source-monitor")
     private static let gridRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
-    private static let molstarRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
+    private static let molstarRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file: https://data.rcsb.org; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
     private static let externalArtifactRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
     private static let minimalRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
     private static let maestroPreviewReadLimit = 64 * 1024 * 1024
@@ -6832,6 +6832,10 @@ private struct StructureFormat {
             self = Self(molstarFormat: "xyz", isBinary: false)
         case "gro":
             self = Self(molstarFormat: "gro", isBinary: false)
+        case "mvsj":
+            self = Self(molstarFormat: "mvsj", isBinary: false)
+        case "mvsx":
+            self = Self(molstarFormat: "mvsx", isBinary: true)
         case "xtc", "trr", "dcd", "nctraj":
             self = Self(molstarFormat: ext, isBinary: true)
         case "lammpstrj", "dump", "top", "psf", "prmtop":

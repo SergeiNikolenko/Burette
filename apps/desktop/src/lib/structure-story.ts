@@ -20,6 +20,10 @@ export type StructureStory = {
   stage: string;
   summary: string;
   comparison: StructureStoryComparison | null;
+  source?: "mvs";
+  key?: string | null;
+  isPlaying?: boolean;
+  descriptionFormat?: "markdown" | "plaintext";
 };
 
 function boundedString(value: unknown, maximumLength: number) {
@@ -36,6 +40,27 @@ export function structureStoryFromViewerMessage(body: Record<string, unknown> | 
   if (!body) return null;
   const documentId = boundedString(body.documentId, MAX_DOCUMENT_ID_LENGTH);
   const fileName = boundedString(body.fileName, MAX_FILE_NAME_LENGTH);
+  if (body.type === "mvsStoryChanged") {
+    const current = body.current && typeof body.current === "object" ? body.current as Record<string, unknown> : null;
+    const stepIndex = boundedInteger(body.stepIndex, 0, MAX_STEP_COUNT - 1);
+    const stepCount = boundedInteger(body.stepCount, 1, MAX_STEP_COUNT);
+    const stage = boundedString(current?.title, MAX_STAGE_LENGTH);
+    const summary = boundedString(current?.description, MAX_SUMMARY_LENGTH) || "No description for this Story step.";
+    if (!documentId || !fileName || !stage || stepIndex === null || stepCount === null || stepIndex >= stepCount) return null;
+    return {
+      documentId,
+      stepIndex,
+      stepCount,
+      fileName,
+      stage,
+      summary,
+      comparison: null,
+      source: "mvs",
+      key: boundedString(current?.key, 256) || null,
+      isPlaying: body.isPlaying === true,
+      descriptionFormat: current?.descriptionFormat === "plaintext" ? "plaintext" : "markdown",
+    };
+  }
   const stage = boundedString(body.stage, MAX_STAGE_LENGTH);
   const summary = boundedString(body.summary, MAX_SUMMARY_LENGTH);
   const stepIndex = boundedInteger(body.stepIndex, 0, MAX_STEP_COUNT - 1);
