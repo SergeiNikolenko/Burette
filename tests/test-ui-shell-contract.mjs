@@ -5739,7 +5739,21 @@ assert.doesNotMatch(appViewerStateMessagesHook, /body\.type === "mvsStoryChanged
 assert.match(previewViewer, /function sceneTreeDisplayLabel\(value\)/);
 assert.match(previewViewer, /if \(\/\^reflig\$\/i\.test\(words\)\) label = 'Reference ligand'/);
 assert.match(previewViewer, /if \(ligand\) label = `Ligand \$\{ligand\[1\]\}`/);
-assert.match(previewViewer, /note: String\(cell\.obj\.description \|\| display\.format \|\| ''\)/);
+assert.match(previewViewer, /note: String\(cell\.obj\.description \|\| display\.note \|\| display\.format \|\| ''\)/);
+// MolViewSpec internals do not belong in the tree: primitives are named after
+// what they draw, a residue query becomes a count, and the two halves of a scene
+// are separated.
+assert.match(previewViewer, /function molstarPrimitiveDataLabel\(cell\)/);
+assert.match(previewViewer, /distance_measurement: \['Distance', 'Distances'\]/);
+assert.match(previewViewer, /if \(!rawLabel\.startsWith\('Custom Selection:'\)\) return null;/);
+assert.match(previewViewer, /return \{ label: 'Selected residues', note: String\(residues\) \};/);
+assert.match(previewViewer, /group: String\(cell\.obj\.type\?\.name \|\| ''\) === 'Primitive Data' \? 'annotations' : 'structures'/);
+assert.match(previewViewer, /root\.appendChild\(sceneTreeSectionElement\('Structures'\)\)/);
+assert.match(previewViewer, /root\.appendChild\(sceneTreeSectionElement\('Annotations'\)\)/);
+assert.match(previewViewer, /function updateSceneTreeStoryCaption\(\)/);
+assert.match(previewViewer, /caption\.textContent = `\$\{story\.stepIndex \+ 1\}\/\$\{story\.stepCount\} · \$\{story\.current\?\.title \|\| 'Story state'\}`/);
+assert.match(previewShell, /data-buret-scene-tree-story/);
+assert.match(previewRuntimeCss, /\.buret-tree-section \{/);
 assert.match(previewViewer, /trigger\.dataset\.sourceLabel = node\.sourceLabel/);
 const sceneTreeDisplayLabelSource = previewViewer.slice(
   previewViewer.indexOf('  function sceneTreeDisplayLabel(value)'),

@@ -1048,6 +1048,7 @@
       detachMolstarStoryPresentation(manager);
       reportMolstarStoryToHost();
       renderMolstarStoryControls();
+      updateSceneTreeStoryCaption();
       // `changed` also fires while the Story is being assembled and while a step
       // builds. Only an actual move to a different state needs the viewer style
       // re-applied, and the state the document opens on is left as authored.
@@ -5596,6 +5597,56 @@
     return { label: label || fileName, format };
   }
 
+  // A MolViewSpec scene carries its annotations as "Primitive Data" holding
+  // "Labels" - true to Mol*'s internals and useless to a reader. The primitives
+  // themselves say what they are, so the row is named after what it draws.
+  function molstarPrimitiveDataLabel(cell) {
+    const children = cell?.params?.values?.node?.children;
+    if (!Array.isArray(children)) return null;
+    const counts = new Map();
+    for (const child of children) {
+      const kind = String(child?.params?.kind || child?.kind || '').trim();
+      if (kind) counts.set(kind, (counts.get(kind) || 0) + 1);
+    }
+    if (counts.size === 0) return null;
+    const total = Array.from(counts.values()).reduce((sum, count) => sum + count, 0);
+    // A scene usually holds one primitive per row, so the plural form and a
+    // count of "1" beside it would both be noise.
+    const names = {
+      distance_measurement: ['Distance', 'Distances'],
+      angle_measurement: ['Angle', 'Angles'],
+      label: ['Label', 'Labels'],
+      line: ['Line', 'Lines'],
+      tube: ['Tube', 'Tubes'],
+      arrow: ['Arrow', 'Arrows'],
+      ellipse: ['Ellipse', 'Ellipses'],
+      box: ['Box', 'Boxes']
+    };
+    const kinds = Array.from(counts.keys());
+    const name = kinds.length === 1 ? names[kinds[0]] : null;
+    const label = name ? name[total === 1 ? 0 : 1] : 'Annotations';
+    return { label, note: total === 1 ? '' : String(total) };
+  }
+
+  // Mol* spells a residue selection out as its query, which overruns the row and
+  // says nothing a reader wants. The count does.
+  function molstarSelectionLabel(rawLabel) {
+    if (!rawLabel.startsWith('Custom Selection:')) return null;
+    const residues = (rawLabel.match(/auth_seq_id/g) || []).length;
+    if (residues === 0) return null;
+    return { label: 'Selected residues', note: String(residues) };
+  }
+
+  function sceneTreeRowLabel(cell, rawLabel) {
+    const transformer = String(cell?.transform?.transformer?.id || '');
+    const primitives = transformer === 'mvs.mvs-inline-primitive-data' ? molstarPrimitiveDataLabel(cell) : null;
+    if (primitives) return { ...primitives, format: '' };
+    const selection = molstarSelectionLabel(rawLabel);
+    if (selection) return { ...selection, format: '' };
+    const display = sceneTreeDisplayLabel(rawLabel);
+    return { label: display.label, note: '', format: display.format };
+  }
+
   function sceneTreeNodes(viewer) {
     const state = viewer?.plugin?.state?.data;
     if (!state?.cells) return [];
@@ -5634,13 +5685,14 @@
           const components = colorTargets.get(nodeRef) || null;
           const measurementEditable = sceneTreeMeasurementTargets(viewer, nodeRef).length > 0;
           const rawLabel = String(cell.obj.label || 'Node');
-          const display = sceneTreeDisplayLabel(rawLabel);
+          const display = sceneTreeRowLabel(cell, rawLabel);
           const label = display.label;
           nodes.push({
             ref: nodeRef,
             label,
-            note: String(cell.obj.description || display.format || ''),
+            note: String(cell.obj.description || display.note || display.format || ''),
             sourceLabel: rawLabel === label ? '' : rawLabel,
+            group: String(cell.obj.type?.name || '') === 'Primitive Data' ? 'annotations' : 'structures',
             typeClass: String(cell.obj.type?.typeClass || 'Object'),
             hidden: sceneTreeCellHidden(state, nodeRef),
             colorable: !!components,
@@ -5804,6 +5856,29 @@
     }, 0);
   }
 
+  // Which Story state the tree is describing. Without it the tree looks like the
+  // whole document, when it is only whichever scene is on screen.
+  function updateSceneTreeStoryCaption() {
+    const caption = document.querySelector('[data-buret-scene-tree-story]');
+    if (!caption) return;
+    const story = molstarStoryState();
+    if (!story.available) {
+      caption.classList.add('hidden');
+      caption.textContent = '';
+      return;
+    }
+    caption.classList.remove('hidden');
+    caption.textContent = `${story.stepIndex + 1}/${story.stepCount} · ${story.current?.title || 'Story state'}`;
+    caption.title = String(story.current?.title || '');
+  }
+
+  function sceneTreeSectionElement(title) {
+    const section = document.createElement('div');
+    section.className = 'buret-tree-section';
+    section.textContent = title;
+    return section;
+  }
+
   function renderSceneTree() {
     const toggle = document.getElementById('buret-scene-tree-toggle');
     const panel = document.getElementById('buret-scene-tree');
@@ -5829,8 +5904,21 @@
     const highlight = document.createElement('div');
     highlight.className = 'buret-tree-highlight';
     root.appendChild(highlight);
-    for (const node of nodes) root.appendChild(sceneTreeNodeElement(node));
+    // A MolViewSpec scene mixes the structures it loaded with the annotations it
+    // draws over them, and read as one flat list it is hard to tell which is
+    // which. They are split only when both are actually present.
+    const annotations = nodes.filter(node => node.group === 'annotations');
+    const structures = nodes.filter(node => node.group !== 'annotations');
+    if (annotations.length > 0 && structures.length > 0) {
+      root.appendChild(sceneTreeSectionElement('Structures'));
+      for (const node of structures) root.appendChild(sceneTreeNodeElement(node));
+      root.appendChild(sceneTreeSectionElement('Annotations'));
+      for (const node of annotations) root.appendChild(sceneTreeNodeElement(node));
+    } else {
+      for (const node of nodes) root.appendChild(sceneTreeNodeElement(node));
+    }
     body.replaceChildren(root);
+    updateSceneTreeStoryCaption();
     requestAnimationFrame(() => root.classList.add('buret-tree-animate'));
     const hovered = sceneTreeHoverRef
       ? root.querySelector(`.buret-tree-row[data-ref="${CSS.escape(sceneTreeHoverRef)}"]`)

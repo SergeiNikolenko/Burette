@@ -3479,6 +3479,30 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   text-transform: uppercase;
   color: var(--buret-molstar-muted-text);
 }
+.buret-scene-tree-story {
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--buret-molstar-muted-text);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Section heading inside the tree - a label for the rows under it, not a row. */
+.buret-tree-section {
+  margin: 8px 0 2px;
+  padding: 0 6px;
+  color: var(--buret-molstar-muted-text);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.buret-tree-section:first-child {
+  margin-top: 0;
+}
 .buret-scene-tree-header-actions {
   display: flex;
   align-items: center;
