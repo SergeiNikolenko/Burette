@@ -5134,7 +5134,36 @@ assert.match(previewRuntimeCss, /\.buret-molecule-preview-chip \{/);
 assert.match(structureInfoPanel, /setActiveActionKey\(\(current\) => current && current\.includes\("focus_ligand"\) \? null : current\)/);
 assert.match(previewViewer, /const VIEWPORT_MOTION_ANIMATIONS = new Set\(\[/);
 assert.match(previewViewer, /'built-in\.animate-camera-spin'/);
-assert.match(previewViewer, /\.filter\(entry => entry\.applicability\.canApply \|\| entry\.applicability\.reason\)/);
+// Every plugin animation needs something the scene may not have, so a plain
+// structure used to show a block of nothing but greyed rows.
+assert.match(previewViewer, /\.filter\(entry => entry\.applicability\.canApply\);/);
+assert.doesNotMatch(previewViewer, /\.filter\(entry => entry\.applicability\.canApply \|\| entry\.applicability\.reason\)/);
+// The rail's screenshot button carries Mol*'s own capture settings.
+assert.match(viewerShell, /data-buret-viewport-action="screenshot" aria-haspopup="menu" aria-expanded="false"/);
+assert.match(previewViewer, /action === 'screenshot'\) \{\s*openViewportMenu\(control, 'Screenshot', viewportScreenshotMenu\)/);
+assert.match(previewViewer, /function viewportScreenshotMenu\(menu\) \{/);
+for (const entry of ['screenshot-save', 'screenshot-copy', 'screenshot-resolution', 'screenshot-format',
+  'screenshot-transparent', 'screenshot-axes', 'screenshot-crop']) {
+  assert.ok(previewViewer.includes(`'${entry}'`), `screenshot menu should offer ${entry}`);
+}
+// Choosing a branch of a mapped param without its defaults leaves axes, JPEG and
+// WebP running their maths on undefined, which throws instead of saving a file.
+assert.match(previewViewer, /function viewportMappedDefaults\(helper, param, name\) \{\s*return helper\.params\?\.\[param\]\?\.map\?\.\(name\)\?\.defaultValue \|\| \{\};/);
+assert.match(previewViewer, /\[action\]: \{ name, params: viewportMappedDefaults\(helper, action, name\) \}/);
+assert.match(previewViewer, /axes: \{ name: axes, params: viewportMappedDefaults\(helper, 'axes', axes\) \}/);
+assert.doesNotMatch(previewViewer, /axes: \{ name: checked \? 'on' : 'off', params: \{\} \}/);
+// Mol*'s procedural animation, on the rail. Its own preset zeroes the global
+// amplitude, which stops the render loop and freezes the per-group layers.
+assert.match(previewViewer, /function viewportWiggleControls\(menu\) \{/);
+assert.match(previewViewer, /wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0\.2/);
+assert.match(previewViewer, /setViewportWiggleOptions\(\{ wiggleAmplitude: 0\.01, tumbleAmplitude: 0 \}\)[\s\S]*applyViewportWiggleFromUncertainty\(\)/);
+assert.match(previewViewer, /const VIEWPORT_WIGGLE_TRANSFORM = 'wiggle-structure-representation-3d-from-bundle';/);
+// The uncertainty layers are built here because the vendored viewer bundle keeps
+// setStructureWiggleFromUncertainty internal.
+assert.match(previewViewer, /function viewportUncertaintyWiggleLayers\(root, StructureElement\) \{/);
+assert.match(previewViewer, /bundle: StructureElement\.Bundle\.fromLoci\(loci\), value: bucket \/ 255/);
+// A menu action that touches the scene must not close the menu it was pressed in.
+assert.match(previewViewer, /if \(!active && changed\) closeViewportMenu\(\);/);
 // Rock reads an angle and an axis besides its speed; a partial payload leaves the
 // maths on undefined and the scene simply never moves.
 assert.match(previewViewer, /rock: \{ value: 0\.3, min: 0\.02, max: 1\.5, step: 0\.02, params: \{ angle: 10, axis: \[0, -1, 0\] \} \}/);
