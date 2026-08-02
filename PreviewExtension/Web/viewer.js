@@ -127,11 +127,16 @@
   let molstarStoryDetailsHideTimer = 0;
   let molstarStoryPreviewTimer = 0;
   let molstarStoryStepInFlight = false;
+  let molstarStoryStepQueue = Promise.resolve();
+  let molstarStoryStepRequested = 0;
+  let molstarStoryReportTimer = 0;
+  let molstarStoryReportedAt = 0;
+  const MOLSTAR_STORY_REPORT_INTERVAL_MS = 120;
   const molstarStoryDetachedSnapshots = new WeakSet();
   const MOLSTAR_STORY_TRANSITION_MS = 700;
-  const MOLSTAR_STORY_PREVIEW_DWELL_MS = 180;
+  const MOLSTAR_STORY_PREVIEW_DWELL_MS = 240;
   const MOLSTAR_STORY_DETAILS_DWELL_MS = 500;
-  const MOLSTAR_STORY_STEP_SETTLE_TIMEOUT_MS = 2000;
+  const MOLSTAR_STORY_STEP_SETTLE_TIMEOUT_MS = 700;
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
   // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
@@ -875,7 +880,24 @@
     }
   }
 
-  async function controlMolstarStory(action) {
+  // Steps overlap easily - hovering down the list, holding Next, an agent call
+  // arriving mid-transition - and overlapping them means competing snapshot
+  // applies and unbalanced render pauses, which looks like the viewer tearing
+  // itself apart. Steps are run one at a time, and a step that was superseded
+  // while it waited its turn is dropped: only where the pointer ended up matters.
+  function queueMolstarStoryStep(run) {
+    const serial = ++molstarStoryStepRequested;
+    molstarStoryStepQueue = molstarStoryStepQueue
+      .catch(() => {})
+      .then(() => (serial === molstarStoryStepRequested ? run() : null));
+    return molstarStoryStepQueue;
+  }
+
+  function controlMolstarStory(action) {
+    return queueMolstarStoryStep(() => applyMolstarStoryControl(action));
+  }
+
+  async function applyMolstarStoryControl(action) {
     const manager = activeViewer?.plugin?.managers?.snapshot;
     const story = molstarStoryState();
     if (!manager || !story.available) return agentActionFailure('story_control', 'NO_STORY', 'The active Mol* viewer does not contain a MolViewSpec Story.');
@@ -884,9 +906,10 @@
     // user picked lands a frame or two later - which reads as a flash of the wrong
     // style. Rendering is held across the swap so the first frame drawn is already
     // the finished scene. Playback keeps rendering; it is a continuous animation.
-    const restyles = configuredMolstarStyle(activeConfig || window.BuretteConfig || {}) !== 'default'
-      && (operation === 'next' || operation === 'previous' || operation === 'goto');
+    const isStep = operation === 'next' || operation === 'previous' || operation === 'goto';
+    const restyles = configuredMolstarStyle(activeConfig || window.BuretteConfig || {}) !== 'default' && isStep;
     const canvas3d = activeViewer?.plugin?.canvas3d;
+    if (isStep) setMolstarStoryTransition(manager, action.preview === true ? 0 : MOLSTAR_STORY_TRANSITION_MS);
     if (restyles) {
       molstarStoryStepInFlight = true;
       canvas3d?.pause?.(true);
@@ -932,16 +955,24 @@
   // and the native Mol* state UI.
   function detachMolstarStoryPresentation(manager) {
     const entries = manager?.state?.entries ? Array.from(manager.state.entries) : [];
-    const instant = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
     for (const entry of entries) {
       const snapshot = entry?.snapshot;
       if (!snapshot || molstarStoryDetachedSnapshots.has(snapshot)) continue;
       snapshot.canvas3d = undefined;
-      if (snapshot.camera?.current) {
-        snapshot.camera.transitionStyle = instant ? 'instant' : 'animate';
-        snapshot.camera.transitionDurationInMs = instant ? 0 : MOLSTAR_STORY_TRANSITION_MS;
-      }
       molstarStoryDetachedSnapshots.add(snapshot);
+    }
+  }
+
+  // Camera transitions are set on the snapshots because `applyNext` reads them
+  // from there. Previewing by hover uses no transition: a flight per state as
+  // the pointer moves down the list reads as the viewer lurching about.
+  function setMolstarStoryTransition(manager, durationMs) {
+    const instant = durationMs <= 0 || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+    for (const entry of manager?.state?.entries || []) {
+      const camera = entry?.snapshot?.camera;
+      if (!camera?.current) continue;
+      camera.transitionStyle = instant ? 'instant' : 'animate';
+      camera.transitionDurationInMs = instant ? 0 : durationMs;
     }
   }
 
@@ -980,9 +1011,24 @@
     }
   }
 
+  // Mol* reports every intermediate state while a step is applied, and each
+  // report re-renders the host's Story dock. Hovering down the list turned that
+  // into a burst of updates, so reports are coalesced and the last one always
+  // arrives.
   function reportMolstarStoryToHost() {
+    const now = Date.now();
+    const sinceLast = now - molstarStoryReportedAt;
+    if (sinceLast < MOLSTAR_STORY_REPORT_INTERVAL_MS) {
+      if (molstarStoryReportTimer) return;
+      molstarStoryReportTimer = window.setTimeout(() => {
+        molstarStoryReportTimer = 0;
+        reportMolstarStoryToHost();
+      }, MOLSTAR_STORY_REPORT_INTERVAL_MS - sinceLast);
+      return;
+    }
     const story = molstarStoryState();
     if (!story.available) return;
+    molstarStoryReportedAt = now;
     postHostMessage({
       type: 'mvsStoryChanged',
       documentId: String(activeConfig?.documentId || ''),
@@ -996,6 +1042,7 @@
     molstarStoryStateCleanup = null;
     const manager = viewer?.plugin?.managers?.snapshot;
     detachMolstarStoryPresentation(manager);
+    setMolstarStoryTransition(manager, MOLSTAR_STORY_TRANSITION_MS);
     molstarStoryRestoredStateId = null;
     const subscription = manager?.events?.changed?.subscribe?.(() => {
       detachMolstarStoryPresentation(manager);
@@ -1015,6 +1062,10 @@
     if (subscription?.unsubscribe) {
       molstarStoryStateCleanup = () => {
         subscription.unsubscribe();
+        if (molstarStoryReportTimer) clearTimeout(molstarStoryReportTimer);
+        if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
+        molstarStoryReportTimer = 0;
+        molstarStoryPreviewTimer = 0;
         document.querySelector('.buret-molstar-story')?.__buretStoryDragCleanup?.();
         document.querySelector('.buret-molstar-story')?.remove();
         hideMolstarStoryDetails();
@@ -15265,7 +15316,7 @@
       molstarStoryPreviewTimer = 0;
       if (!anchor.isConnected || !anchor.matches(':hover')) return;
       if (anchor.classList.contains('active')) return;
-      void controlMolstarStory({ operation: 'goto', id: anchor.__buretStoryEntry?.id });
+      void controlMolstarStory({ operation: 'goto', id: anchor.__buretStoryEntry?.id, preview: true });
     }, MOLSTAR_STORY_PREVIEW_DWELL_MS);
   }
 

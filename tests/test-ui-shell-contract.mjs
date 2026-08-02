@@ -5703,7 +5703,15 @@ assert.match(previewViewer, /type: 'openStructureStory'/);
 // their canvas settings, and a style the user picked is re-applied on top.
 assert.match(previewViewer, /function detachMolstarStoryPresentation\(manager\)/);
 assert.match(previewViewer, /snapshot\.canvas3d = undefined/);
-assert.match(previewViewer, /snapshot\.camera\.transitionDurationInMs = instant \? 0 : MOLSTAR_STORY_TRANSITION_MS/);
+assert.match(previewViewer, /camera\.transitionDurationInMs = instant \? 0 : durationMs/);
+// Hover previews jump straight to the state; a camera flight per state as the
+// pointer crosses the list reads as the viewer lurching about.
+assert.match(previewViewer, /if \(isStep\) setMolstarStoryTransition\(manager, action\.preview === true \? 0 : MOLSTAR_STORY_TRANSITION_MS\)/);
+// Overlapping steps mean competing snapshot applies and unbalanced render
+// pauses, so steps run one at a time and superseded ones are dropped.
+assert.match(previewViewer, /function queueMolstarStoryStep\(run\)/);
+assert.match(previewViewer, /serial === molstarStoryStepRequested \? run\(\) : null/);
+assert.match(previewViewer, /MOLSTAR_STORY_REPORT_INTERVAL_MS = 120/);
 assert.match(previewViewer, /if \(style !== 'default'\) await applyMolstarStyle\(viewer, style\)/);
 assert.match(previewViewer, /if \(molstarStoryState\(\)\.available\) \{\s*await applyMolstarStyle\(viewer, style\);/);
 // Story controls live in the viewer, not only in the right dock, and they reuse
@@ -5716,7 +5724,7 @@ assert.match(previewViewer, /root\.__buretStoryDragCleanup = initDockingPoseCont
 // Hovering a state previews it; the description trails behind so it does not
 // flash while the pointer crosses the list.
 assert.match(previewViewer, /button\.addEventListener\('pointerenter', event => \{\s*if \(event\.pointerType === 'touch'\) return;\s*scheduleMolstarStoryPreview\(button\);\s*scheduleMolstarStoryDetails\(button\);\s*\}\)/);
-assert.match(previewViewer, /MOLSTAR_STORY_PREVIEW_DWELL_MS = 180/);
+assert.match(previewViewer, /MOLSTAR_STORY_PREVIEW_DWELL_MS = 240/);
 assert.match(previewViewer, /MOLSTAR_STORY_DETAILS_DWELL_MS = 500/);
 // The style swap happens with rendering held, so no frame shows the authored
 // style before the user's own style lands.
