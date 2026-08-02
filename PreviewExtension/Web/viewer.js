@@ -125,9 +125,13 @@
   let molstarStoryRestoredStateId = null;
   let molstarStoryDetailsTimer = 0;
   let molstarStoryDetailsHideTimer = 0;
+  let molstarStoryPreviewTimer = 0;
+  let molstarStoryStepInFlight = false;
   const molstarStoryDetachedSnapshots = new WeakSet();
   const MOLSTAR_STORY_TRANSITION_MS = 700;
-  const MOLSTAR_STORY_DETAILS_DWELL_MS = 150;
+  const MOLSTAR_STORY_PREVIEW_DWELL_MS = 180;
+  const MOLSTAR_STORY_DETAILS_DWELL_MS = 500;
+  const MOLSTAR_STORY_STEP_SETTLE_TIMEOUT_MS = 2000;
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
   // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
@@ -864,25 +868,55 @@
     return { ok: true, command, result: molstarStoryState() };
   }
 
+  async function waitForMolstarIdle(viewer, timeoutMs = MOLSTAR_STORY_STEP_SETTLE_TIMEOUT_MS) {
+    const startedAt = Date.now();
+    while (viewer?.plugin?.behaviors?.state?.isBusy?.value === true && Date.now() - startedAt < timeoutMs) {
+      await new Promise(resolve => window.setTimeout(resolve, 30));
+    }
+  }
+
   async function controlMolstarStory(action) {
     const manager = activeViewer?.plugin?.managers?.snapshot;
     const story = molstarStoryState();
     if (!manager || !story.available) return agentActionFailure('story_control', 'NO_STORY', 'The active Mol* viewer does not contain a MolViewSpec Story.');
     const operation = String(action.operation || '').trim();
-    if (operation === 'next') await manager.applyNext(1);
-    else if (operation === 'previous') await manager.applyNext(-1);
-    else if (operation === 'play') await manager.play({ restart: action.restart === true });
-    else if (operation === 'pause') await manager.stop();
-    else if (operation === 'goto') {
-      const entries = Array.from(manager.state.entries);
-      const index = Number.isInteger(action.index)
-        ? action.index
-        : entries.findIndex(entry => entry?.key === action.key || entry?.snapshot?.id === action.id);
-      if (index < 0 || index >= entries.length) return agentActionFailure('story_control', 'STORY_STEP_NOT_FOUND', 'The requested Story step does not exist.');
-      const snapshot = manager.setCurrent(entries[index].snapshot.id);
-      if (snapshot) await activeViewer.plugin.state.setSnapshot(snapshot);
-    } else {
-      return agentActionFailure('story_control', 'INVALID_ARGS', 'story_control operation must be next, previous, goto, play, or pause.');
+    // Applying a step paints the scene as the Story authored it, and the style the
+    // user picked lands a frame or two later - which reads as a flash of the wrong
+    // style. Rendering is held across the swap so the first frame drawn is already
+    // the finished scene. Playback keeps rendering; it is a continuous animation.
+    const restyles = configuredMolstarStyle(activeConfig || window.BuretteConfig || {}) !== 'default'
+      && (operation === 'next' || operation === 'previous' || operation === 'goto');
+    const canvas3d = activeViewer?.plugin?.canvas3d;
+    if (restyles) {
+      molstarStoryStepInFlight = true;
+      canvas3d?.pause?.(true);
+    }
+    try {
+      if (operation === 'next') await manager.applyNext(1);
+      else if (operation === 'previous') await manager.applyNext(-1);
+      else if (operation === 'play') await manager.play({ restart: action.restart === true });
+      else if (operation === 'pause') await manager.stop();
+      else if (operation === 'goto') {
+        const entries = Array.from(manager.state.entries);
+        const index = Number.isInteger(action.index)
+          ? action.index
+          : entries.findIndex(entry => entry?.key === action.key || entry?.snapshot?.id === action.id);
+        if (index < 0 || index >= entries.length) return agentActionFailure('story_control', 'STORY_STEP_NOT_FOUND', 'The requested Story step does not exist.');
+        const snapshot = manager.setCurrent(entries[index].snapshot.id);
+        if (snapshot) await activeViewer.plugin.state.setSnapshot(snapshot);
+      } else {
+        return agentActionFailure('story_control', 'INVALID_ARGS', 'story_control operation must be next, previous, goto, play, or pause.');
+      }
+      if (restyles) {
+        await waitForMolstarIdle(activeViewer);
+        await restoreMolstarStoryPresentation(activeViewer);
+      }
+    } finally {
+      if (restyles) {
+        molstarStoryStepInFlight = false;
+        canvas3d?.resume?.();
+        canvas3d?.requestDraw?.();
+      }
     }
     const result = molstarStoryResult('story_control');
     reportMolstarStoryToHost();
@@ -974,7 +1008,9 @@
       if (!currentId || currentId === molstarStoryRestoredStateId) return;
       const isFirstState = molstarStoryRestoredStateId === null;
       molstarStoryRestoredStateId = currentId;
-      if (!isFirstState) scheduleMolstarStoryPresentationRestore(viewer);
+      // A step driven through the controls restores the style itself, with
+      // rendering held; scheduling a second pass here would restyle twice.
+      if (!isFirstState && !molstarStoryStepInFlight) scheduleMolstarStoryPresentationRestore(viewer);
     });
     if (subscription?.unsubscribe) {
       molstarStoryStateCleanup = () => {
@@ -15220,10 +15256,21 @@
     positionMolstarStoryDetails(card, anchor);
   }
 
-  // Reading about a step and moving to it are separate intents. Applying a step
-  // costs a full Mol* snapshot apply, so hovering only opens the description and
-  // the click does the switching - the dwell never has to be tuned against how
-  // long a scene takes to build.
+  // Hovering a state moves to it, so the list doubles as a preview. The dwell
+  // keeps a pointer travelling down the list from applying every state it
+  // crosses.
+  function scheduleMolstarStoryPreview(anchor) {
+    if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
+    molstarStoryPreviewTimer = window.setTimeout(() => {
+      molstarStoryPreviewTimer = 0;
+      if (!anchor.isConnected || !anchor.matches(':hover')) return;
+      if (anchor.classList.contains('active')) return;
+      void controlMolstarStory({ operation: 'goto', id: anchor.__buretStoryEntry?.id });
+    }, MOLSTAR_STORY_PREVIEW_DWELL_MS);
+  }
+
+  // The description trails the scene: it appears once the pointer has settled,
+  // so it does not flash open and shut while the pointer crosses the list.
   function scheduleMolstarStoryDetails(anchor) {
     if (molstarStoryDetailsTimer) clearTimeout(molstarStoryDetailsTimer);
     if (molstarStoryDetailsHideTimer) clearTimeout(molstarStoryDetailsHideTimer);
@@ -15362,16 +15409,21 @@
       button.append(number, name);
       button.addEventListener('pointerenter', event => {
         if (event.pointerType === 'touch') return;
+        scheduleMolstarStoryPreview(button);
         scheduleMolstarStoryDetails(button);
       });
       button.addEventListener('pointerleave', () => {
+        if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
         if (molstarStoryDetailsTimer) clearTimeout(molstarStoryDetailsTimer);
+        molstarStoryPreviewTimer = 0;
         molstarStoryDetailsTimer = 0;
         scheduleMolstarStoryDetailsHide();
       });
       button.addEventListener('focus', () => scheduleMolstarStoryDetails(button));
       button.addEventListener('blur', scheduleMolstarStoryDetailsHide);
       button.addEventListener('click', () => {
+        if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
+        molstarStoryPreviewTimer = 0;
         void controlMolstarStory({ operation: 'goto', id: button.__buretStoryEntry.id });
       });
       list.append(button);

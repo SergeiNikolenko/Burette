@@ -5713,10 +5713,17 @@ assert.match(previewViewer, /root\.className = 'buret-docking-poses buret-dockin
 assert.match(previewViewer, /if \(document\.querySelector\('\.buret-docking-poses:not\(\.buret-molstar-story\)'\)\) return;/);
 assert.match(previewViewer, /previousRoot && updateMolstarStoryControls\(previousRoot, entries, story\.isPlaying\)\) return/);
 assert.match(previewViewer, /root\.__buretStoryDragCleanup = initDockingPoseControlsDrag\(root\)/);
-// Hovering a state shows its description; only a click applies the state.
-assert.match(previewViewer, /button\.addEventListener\('pointerenter', event => \{\s*if \(event\.pointerType === 'touch'\) return;\s*scheduleMolstarStoryDetails\(button\);\s*\}\)/);
-assert.match(previewViewer, /button\.addEventListener\('click', \(\) => \{\s*void controlMolstarStory\(\{ operation: 'goto', id: button\.__buretStoryEntry\.id \}\);/);
-assert.match(previewViewer, /MOLSTAR_STORY_DETAILS_DWELL_MS = 150/);
+// Hovering a state previews it; the description trails behind so it does not
+// flash while the pointer crosses the list.
+assert.match(previewViewer, /button\.addEventListener\('pointerenter', event => \{\s*if \(event\.pointerType === 'touch'\) return;\s*scheduleMolstarStoryPreview\(button\);\s*scheduleMolstarStoryDetails\(button\);\s*\}\)/);
+assert.match(previewViewer, /MOLSTAR_STORY_PREVIEW_DWELL_MS = 180/);
+assert.match(previewViewer, /MOLSTAR_STORY_DETAILS_DWELL_MS = 500/);
+// The style swap happens with rendering held, so no frame shows the authored
+// style before the user's own style lands.
+assert.match(previewViewer, /canvas3d\?\.pause\?\.\(true\)/);
+assert.match(previewViewer, /await waitForMolstarIdle\(activeViewer\);\s*await restoreMolstarStoryPresentation\(activeViewer\);/);
+assert.match(previewViewer, /if \(!isFirstState && !molstarStoryStepInFlight\) scheduleMolstarStoryPresentationRestore\(viewer\);/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses\.buret-molstar-story \{\s*border-radius: 12px;/);
 assert.match(previewViewer, /function renderMolstarStoryMarkdown\(container, markdown\)/);
 assert.match(previewRuntimeCss, /\.buret-story-hover-card \{/);
 assert.match(appViewerStateMessagesHook, /if \(body\.type === "openStructureStory"\) openDockTab\("right", "story"\);/);

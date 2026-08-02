@@ -2968,6 +2968,12 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-molstar-story-open {
   font-weight: 600;
 }
+/* The Story control borrows the pose toolbar's shell for its layout, but not its
+   square corners: those exist because the docking scene toolbar sits flush against
+   the viewport edge, while this one floats. */
+.buret-docking-poses.buret-molstar-story {
+  border-radius: 12px;
+}
 /* Description of the Story state under the pointer. It sits beside the state
    list rather than inside the control, so a long description can scroll without
    resizing the control the user just dragged into place. */
