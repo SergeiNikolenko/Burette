@@ -166,6 +166,31 @@ function selectedDetailKey(ref: string, id: string) {
   return JSON.stringify([ref, id]);
 }
 
+function parseHierarchyDetailId(id: string): MesoscaleHierarchySelector | null {
+  const match = /^model:(.*):chain:(.*):operator:(.*)$/.exec(id);
+  return match ? { model: match[1], chain: match[2], operator: match[3] } : null;
+}
+
+const MESOSCALE_HISTORY_LIMIT = 50;
+
+const MESOSCALE_UNDOABLE_ACTIONS = new Set<MesoscaleAction["type"]>([
+  "setGraphics", "setSelection", "setSelectionBatch", "setDetailSelection", "setDetailSelectionBatch",
+  "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setIllumination", "setMotion",
+  "focusObject", "focusDetail", "setVisibility", "isolateObjects", "setStyle", "setClip",
+  "resetCamera", "orientAxes", "resetAxes", "applySnapshot",
+]);
+
+type MesoscaleSceneState = {
+  entities: { ref: string; color: number | null; opacity: number; emissive: number; hidden: boolean; clipObjects: unknown[] }[];
+  groups: { ref: string; hidden: boolean }[];
+  selectedRefs: string[];
+  selectedDetails: { ref: string; id: string }[];
+  camera: unknown;
+  graphics: string | null;
+  motion: MesoscaleMotion;
+  illumination: boolean;
+};
+
 function structureHierarchy(source: Structure, budget: { remaining: number }) {
   const models = new Map<string, { elements: number; chains: Map<string, { elements: number; operators: Map<string, number> }> }>();
   for (const unit of source.units) {
@@ -311,6 +336,8 @@ class MesoscaleRuntimeApi {
   previewSequence = 0;
   hoverAppearanceActive = false;
   hoverDimming = true;
+  readonly undoStack: MesoscaleSceneState[] = [];
+  readonly redoStack: MesoscaleSceneState[] = [];
 
   constructor(explorer: MesoscaleExplorer) {
     this.explorer = explorer;
@@ -393,6 +420,7 @@ class MesoscaleRuntimeApi {
       selectionMode: Boolean(this.plugin.selectionMode),
       illumination: Boolean(this.plugin.canvas3d?.props.illumination.enabled),
       hoverDimming: this.hoverDimming,
+      history: { canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0 },
       layout: { ...this.layoutRegions },
       motion: this.motion,
       snapshots: observed.snapshots,
@@ -484,6 +512,115 @@ class MesoscaleRuntimeApi {
 
   noteExternalSelectionChange() {
     this.changed();
+  }
+
+  // Undo restores a compact snapshot of everything this screen can change —
+  // appearance, clipping, visibility, selection, camera and render settings —
+  // rather than a full Mol* state snapshot, which would be far too heavy for a
+  // mesoscale scene.
+  captureSceneState(): MesoscaleSceneState {
+    const entities = uniqueCells(getAllEntities(this.plugin)) as any[];
+    return {
+      entities: entities.map((cell) => {
+        const summary = entitySummary(this.plugin, cell);
+        const params = cell?.transform?.params || {};
+        const typeParams = params.type?.params || params;
+        return {
+          ref: summary.ref,
+          color: summary.color,
+          opacity: summary.opacity,
+          emissive: summary.emissive,
+          hidden: Boolean(cell?.state?.isHidden),
+          clipObjects: Array.isArray(typeParams.clip?.objects) ? [...typeParams.clip.objects] : [],
+        };
+      }),
+      groups: (uniqueCells(getAllGroups(this.plugin)) as any[]).map((cell) => ({
+        ref: String(cell?.transform?.ref || ""),
+        hidden: Boolean(cell?.state?.isHidden),
+      })),
+      selectedRefs: Array.from(this.selectedRefs),
+      selectedDetails: Array.from(this.selectedDetails.values()).map((detail) => ({ ...detail })),
+      camera: this.plugin.canvas3d?.camera.getSnapshot(),
+      graphics: (MesoscaleState.has(this.plugin) ? MesoscaleState.get(this.plugin).graphics : null) ?? null,
+      motion: this.motion,
+      illumination: Boolean(this.plugin.canvas3d?.props.illumination.enabled),
+    };
+  }
+
+  private async applySceneState(state: MesoscaleSceneState) {
+    const cells = new Map((uniqueCells(getAllEntities(this.plugin)) as any[]).map((cell) => [String(cell?.transform?.ref || ""), cell]));
+    for (const entity of state.entities) {
+      const cell = cells.get(entity.ref);
+      if (!cell) continue;
+      const current = entitySummary(this.plugin, cell);
+      const params = cell?.transform?.params || {};
+      const currentClip = Array.isArray((params.type?.params || params).clip?.objects) ? (params.type?.params || params).clip.objects : [];
+      const values: Record<string, unknown> = {};
+      if (current.color !== entity.color && entity.color !== null) values.color = entity.color;
+      if (current.opacity !== entity.opacity) values.opacity = entity.opacity;
+      if (current.emissive !== entity.emissive) values.emissive = entity.emissive;
+      if (currentClip.length !== entity.clipObjects.length) values.clipObjects = entity.clipObjects;
+      if (Object.keys(values).length > 0) await this.styleCells([cell], values);
+      if (Boolean(cell?.state?.isHidden) !== entity.hidden) await this.setCellVisibility(cell, !entity.hidden);
+    }
+    const groupCells = new Map((uniqueCells(getAllGroups(this.plugin)) as any[]).map((cell) => [String(cell?.transform?.ref || ""), cell]));
+    for (const group of state.groups) {
+      const cell = groupCells.get(group.ref);
+      if (cell && Boolean(cell?.state?.isHidden) !== group.hidden) await this.setCellVisibility(cell, !group.hidden);
+    }
+    this.selectionMutationDepth += 1;
+    try {
+      this.plugin.managers.interactivity.lociSelects.deselectAll();
+      this.selectedRefs.clear();
+      this.selectedDetails.clear();
+      for (const ref of state.selectedRefs) {
+        try { this.mutateSelection(ref, "extend"); } catch { /* the object left the scene */ }
+      }
+      for (const detail of state.selectedDetails) {
+        const source = this.entity(detail.ref)?.obj?.data?.sourceData;
+        if (!(source instanceof Structure)) continue;
+        const selector = parseHierarchyDetailId(detail.id);
+        if (!selector) continue;
+        try {
+          const target = this.detailTarget(detail.ref, selector);
+          this.plugin.managers.interactivity.lociSelects.select({ loci: target.loci }, false);
+          this.selectedDetails.set(selectedDetailKey(detail.ref, target.id), { ref: detail.ref, id: target.id });
+        } catch { /* the operator left the scene */ }
+      }
+    } finally {
+      this.selectionMutationDepth -= 1;
+    }
+    this.selectionVersion += 1;
+    if (state.camera) this.plugin.canvas3d?.camera.setState(state.camera, 0);
+    if (state.graphics) await this.setGraphics(state.graphics as GraphicsMode);
+    if (state.motion !== this.motion) this.setMotion(state.motion);
+    if (Boolean(this.plugin.canvas3d?.props.illumination.enabled) !== state.illumination) {
+      this.plugin.canvas3d?.setProps({ illumination: { enabled: state.illumination } });
+    }
+    this.plugin.canvas3d?.requestDraw();
+    this.changed();
+  }
+
+  pushHistory() {
+    this.redoStack.length = 0;
+    this.undoStack.push(this.captureSceneState());
+    if (this.undoStack.length > MESOSCALE_HISTORY_LIMIT) this.undoStack.shift();
+  }
+
+  async undo() {
+    const previous = this.undoStack.pop();
+    if (!previous) throw new Error("Nothing to undo on this scene");
+    this.redoStack.push(this.captureSceneState());
+    await this.applySceneState(previous);
+    return this.observe();
+  }
+
+  async redo() {
+    const next = this.redoStack.pop();
+    if (!next) throw new Error("Nothing to redo on this scene");
+    this.undoStack.push(this.captureSceneState());
+    await this.applySceneState(next);
+    return this.observe();
   }
 
   async resetCamera() {
@@ -1112,7 +1249,12 @@ class MesoscaleRuntimeApi {
   }
 
   async runV2(action: MesoscaleAction): Promise<MesoscaleResult> {
+    // Everything that changes what the scene looks like records a restore point
+    // first, so one Cmd+Z steps back through the same actions the UI performs.
+    if (MESOSCALE_UNDOABLE_ACTIONS.has(action.type)) this.pushHistory();
     switch (action.type) {
+      case "undo": await this.undo(); return this.sceneSummary();
+      case "redo": await this.redo(); return this.sceneSummary();
       case "getSummary": return this.sceneSummary();
       case "getHierarchyPage": return this.hierarchyPage(action.filter, action.cursor, action.limit);
       case "setGraphics": await this.setGraphics(action.graphics); return this.sceneSummary();
@@ -1155,7 +1297,7 @@ class MesoscaleRuntimeApi {
       case "getCapabilities": return {
         kind: "capabilities",
         apiVersion: MESOSCALE_API_VERSION,
-        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionBatch", "setDetailSelection", "setDetailSelectionBatch", "setHoverDimming", "setClip", "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "focusDetail", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
+        actions: ["getSummary", "getHierarchyPage", "setGraphics", "setFilter", "setSelection", "setSelectionBatch", "setDetailSelection", "setDetailSelectionBatch", "setHoverDimming", "setClip", "undo", "redo", "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setSelectionMode", "setIllumination", "setLayoutRegion", "setMotion", "focusObject", "focusDetail", "setVisibility", "isolateObjects", "setStyle", "resetCamera", "orientAxes", "resetAxes", "createSnapshot", "applySnapshot", "deleteSnapshot", "exportState", "exportPng", "getCapabilities"],
         graphicsModes: ["ultra", "quality", "balanced", "performance", "custom"],
         hierarchyPageLimit: MESOSCALE_HIERARCHY_PAGE_LIMIT,
       };

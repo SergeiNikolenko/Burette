@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { ChevronDown } from "lucide-react";
 import type { ViewerDocument, ViewerPreferences } from "../../types";
@@ -89,6 +89,21 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
     region,
     visible: !(session?.summary?.layout[region] ?? false),
   });
+
+  // Undo belongs to the whole screen, not just the scene panel, so the shortcut
+  // lives with the toolbar, which is mounted for as long as the scene is open.
+  useEffect(() => {
+    if (disabled) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "z" || !(event.metaKey || event.ctrlKey)) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable || /^(input|textarea|select)$/i.test(target?.tagName ?? "")) return;
+      event.preventDefault();
+      run({ type: event.shiftKey ? "redo" : "undo" });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [disabled, document.id]);
 
   const syncNativeControls = () => {
     const toolbar = toolbarRef.current;

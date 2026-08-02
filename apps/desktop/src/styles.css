@@ -6362,7 +6362,7 @@ input.structure-inspector-composition-search {
   background: var(--bg-base);
   box-shadow: 0 12px 34px rgb(0 0 0 / 0.22);
 }
-.mesoscale-scene-overlay-header { display: grid; grid-template-columns: 18px minmax(0, 1fr) 28px 28px 28px; align-items: center; gap: 3px; padding: 3px 4px 3px 10px; border-bottom: 1px solid var(--line-subtle); font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+.mesoscale-scene-overlay-header { display: grid; grid-template-columns: 18px minmax(0, 1fr) repeat(5, 28px); align-items: center; gap: 3px; padding: 3px 4px 3px 10px; border-bottom: 1px solid var(--line-subtle); font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
 .mesoscale-scene-overlay-body { min-height: 0; overflow: hidden; }
 .mesoscale-scene-overlay .mesoscale-panel { max-height: calc(100vh - 150px); }
 

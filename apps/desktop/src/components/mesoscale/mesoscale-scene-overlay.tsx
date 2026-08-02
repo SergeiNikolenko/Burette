@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { MouseEvent } from "react";
-import { Contrast, Layers3, MoreHorizontal, X } from "lucide-react";
+import { Contrast, Layers3, MoreHorizontal, Redo2, Undo2, X } from "lucide-react";
 import type { ViewerDocument } from "../../types";
 import { Button } from "../ui/button";
 import { MesoscaleScenePanel } from "./mesoscale-scene-panel";
@@ -41,6 +41,26 @@ export function MesoscaleSceneOverlay({ document, onClose }: { document: ViewerD
       <header className="mesoscale-scene-overlay-header">
         <Layers3 size={15} aria-hidden="true" />
         <span>Scene</span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled={!(summary?.history?.canUndo ?? false)}
+          aria-label="Undo"
+          title="Undo"
+          onClick={() => run({ type: "undo" })}
+        >
+          <Undo2 size={15} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled={!(summary?.history?.canRedo ?? false)}
+          aria-label="Redo"
+          title="Redo"
+          onClick={() => run({ type: "redo" })}
+        >
+          <Redo2 size={15} />
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"

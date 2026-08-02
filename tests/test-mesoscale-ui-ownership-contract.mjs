@@ -112,6 +112,12 @@ assert.match(runtime, /const dimmed = active && this\.hoverDimming/, "only hover
 assert.match(runtime, /highlightStrength: active && !this\.hoverDimming \? 0\.45 : 0/, "with dimming off hover tints the hovered structure instead");
 assert.match(runtime, /case "setHoverDimming"/, "the scene panel can switch the hover style at runtime");
 assert.match(overlay, /setHoverDimming/, "the scene header exposes the hover-style toggle");
+assert.match(runtime, /MESOSCALE_UNDOABLE_ACTIONS\.has\(action\.type\)/, "every scene-changing action records a restore point");
+assert.match(runtime, /captureSceneState\(\)[\s\S]*?applySceneState/, "undo restores a compact scene snapshot rather than a full Mol\* state");
+assert.match(runtime, /history: \{ canUndo: this\.undoStack\.length > 0, canRedo: this\.redoStack\.length > 0 \}/, "the scene summary reports what the history can do");
+assert.match(overlay, /type: "undo"/, "the scene header exposes undo");
+assert.match(overlay, /type: "redo"/, "the scene header exposes redo");
+assert.match(toolbar, /event\.shiftKey \? "redo" : "undo"/, "Cmd\+Z and Cmd\+Shift\+Z drive the same history");
 assert.match(runtime, /operatorDetail\.children\?\.push/, "operator groups preserve drill-down into individual instances");
 assert.match(runtime, /suppressPrimaryMouse = false;\s*window\.clearTimeout\(suppressClickTimer\)/, "a compatibility click releases the next primary gesture");
 assert.match(objectMenu, /text: "Selection"/);
