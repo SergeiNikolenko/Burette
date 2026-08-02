@@ -8102,23 +8102,141 @@
   const VIEWPORT_WIGGLE_TAG = 'wiggle-controls';
   const VIEWPORT_WIGGLE_TRANSFORM = 'wiggle-structure-representation-3d-from-bundle';
 
-  // Mol*'s Procedural Animation panel, brought onto the rail. Wiggle jitters the
+  // Mol*'s Procedural Animation panel, brought onto the rail and shaped like the
+  // Motion switch above it: pick a kind, then tune it in place. Wiggle jitters the
   // vertices of a representation so a still structure reads as a molecule in
-  // solution rather than a model. Dynamics moves every atom by the same amount;
-  // Uncertainty moves each one by its own B-factor.
+  // solution rather than a model. Even moves every atom the same; B-factor moves
+  // each one by its own uncertainty.
+  const VIEWPORT_WIGGLES = [
+    ['off', 'Off'],
+    ['even', 'Even'],
+    ['uncertainty', 'B-factor']
+  ];
+  // Mol*'s own bounds, from getAnimationParam. Tumble's two shaping controls only
+  // matter once it has an amplitude to shape, so they appear with one.
+  const VIEWPORT_WIGGLE_SLIDERS = [
+    { name: 'wiggleAmplitude', label: 'Amplitude', min: 0, max: 5, step: 0.01, digits: 2, unit: ' Å' },
+    { name: 'wiggleSpeed', label: 'Speed', min: 0, max: 10, step: 0.1, digits: 1 },
+    { name: 'wiggleFrequency', label: 'Noise scale', min: 0.01, max: 2, step: 0.01, digits: 2 },
+    { name: 'tumbleAmplitude', label: 'Tumble', min: 0, max: 10, step: 0.1, digits: 1, unit: ' Å' },
+    { name: 'tumbleSpeed', label: 'Tumble speed', min: 0, max: 10, step: 0.1, digits: 1, needs: 'tumbleAmplitude' },
+    { name: 'tumbleFrequency', label: 'Tumble noise', min: 0, max: 2, step: 0.01, digits: 2, needs: 'tumbleAmplitude' }
+  ];
+  const VIEWPORT_WIGGLE_MODES = [
+    ['position', 'Correlated', 'Nearby atoms move together, the way a folded chain does'],
+    ['group', 'Independent', 'Every group takes its own noise, so the scene shimmers']
+  ];
+
+  function viewportWiggleLayerRefs() {
+    const state = viewportPlugin()?.state?.data;
+    if (!state) return [];
+    const refs = [];
+    for (const [ref, cell] of state.cells) {
+      if (cell?.transform?.transformer?.definition?.name === VIEWPORT_WIGGLE_TRANSFORM) refs.push(ref);
+    }
+    return refs;
+  }
+
+  function viewportWiggleState() {
+    const animation = viewportPlugin()?.managers?.structure?.component?.state?.options?.animation;
+    if (!animation) return null;
+    // Per-group layers are what makes it a B-factor wiggle; the amplitudes alone
+    // cannot tell the two kinds apart.
+    if (viewportWiggleLayerRefs().length) return { name: 'uncertainty', animation };
+    const moving = Number(animation.wiggleAmplitude) > 0 || Number(animation.tumbleAmplitude) > 0;
+    return { name: moving ? 'even' : 'off', animation };
+  }
+
+  function viewportWiggleSliderRow(menu, spec, state) {
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
+    row.dataset.buretViewportWiggleSlider = spec.name;
+    const caption = document.createElement('span');
+    caption.textContent = spec.label;
+    const control = document.createElement('input');
+    control.type = 'range';
+    control.className = 'buret-tree-menu-range';
+    control.dataset.buretViewportSlider = `wiggle-${spec.name}`;
+    control.min = String(spec.min);
+    control.max = String(spec.max);
+    control.step = String(spec.step);
+    const readout = document.createElement('span');
+    readout.className = 'buret-tree-menu-slider-value';
+    row.append(caption, control, readout);
+    menu.appendChild(row);
+    updateViewportWiggleSlider(row, spec, state);
+    return row;
+  }
+
+  function updateViewportWiggleSlider(row, spec, state) {
+    const value = Number(state?.animation?.[spec.name]) || 0;
+    row.hidden = state?.name === 'off' || (spec.needs && !(Number(state?.animation?.[spec.needs]) > 0));
+    row.querySelector('input').value = String(value);
+    row.querySelector('.buret-tree-menu-slider-value').textContent = value.toFixed(spec.digits) + (spec.unit || '');
+  }
+
   function viewportWiggleControls(menu) {
-    const options = viewportPlugin()?.managers?.structure?.component?.state?.options;
-    if (!options?.animation) return;
+    const state = viewportWiggleState();
+    if (!state) return;
     sceneTreeMenuSection(menu, 'Wiggle');
-    viewportMenuItem(menu, 'Dynamics', 'wiggle-dynamics', {
-      icon: VIEWPORT_ICON.wiggle,
-      title: 'Wiggle every atom by the same amount'
-    });
-    viewportMenuItem(menu, 'From uncertainty', 'wiggle-uncertainty', {
-      icon: VIEWPORT_ICON.wiggle,
-      title: 'Wiggle each atom by its own B-factor or RMSF'
-    });
-    viewportMenuItem(menu, 'Stop wiggling', 'wiggle-clear', { icon: SCENE_TREE_ICON.restore });
+    const segment = document.createElement('div');
+    segment.className = 'buret-viewport-segment';
+    segment.setAttribute('role', 'group');
+    segment.setAttribute('aria-label', 'Structure wiggle');
+    for (const [name, label] of VIEWPORT_WIGGLES) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-viewport-segment-button';
+      button.dataset.buretViewportMenu = 'wiggle-kind';
+      button.dataset.wiggle = name;
+      button.setAttribute('aria-pressed', name === state.name ? 'true' : 'false');
+      button.textContent = label;
+      segment.appendChild(button);
+    }
+    menu.appendChild(segment);
+    for (const spec of VIEWPORT_WIGGLE_SLIDERS) viewportWiggleSliderRow(menu, spec, state);
+
+    const modes = document.createElement('div');
+    modes.className = 'buret-viewport-segment';
+    modes.dataset.buretViewportWiggleModes = '1';
+    modes.setAttribute('role', 'group');
+    modes.setAttribute('aria-label', 'Wiggle noise');
+    modes.hidden = state.name === 'off';
+    for (const [name, label, description] of VIEWPORT_WIGGLE_MODES) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-viewport-segment-button';
+      button.dataset.buretViewportMenu = 'wiggle-mode';
+      button.dataset.wiggleMode = name;
+      button.title = description;
+      button.setAttribute('aria-pressed', name === state.animation.wiggleMode ? 'true' : 'false');
+      button.textContent = label;
+      modes.appendChild(button);
+    }
+    menu.appendChild(modes);
+  }
+
+  // The rows read the scene rather than their own last write, so a preset that
+  // moves three values at once lands on every slider in the open menu.
+  function refreshViewportWiggleControls() {
+    const menu = document.getElementById('buret-viewport-menu');
+    const state = viewportWiggleState();
+    if (!menu || !state) return;
+    for (const button of menu.querySelectorAll('[data-buret-viewport-menu="wiggle-kind"]')) {
+      button.setAttribute('aria-pressed', button.dataset.wiggle === state.name ? 'true' : 'false');
+    }
+    for (const spec of VIEWPORT_WIGGLE_SLIDERS) {
+      const row = menu.querySelector(`[data-buret-viewport-wiggle-slider="${spec.name}"]`);
+      if (row) updateViewportWiggleSlider(row, spec, state);
+    }
+    const modes = menu.querySelector('[data-buret-viewport-wiggle-modes]');
+    if (modes) {
+      modes.hidden = state.name === 'off';
+      for (const button of modes.children) {
+        button.setAttribute('aria-pressed', button.dataset.wiggleMode === state.animation.wiggleMode ? 'true' : 'false');
+      }
+    }
+    positionOpenViewportMenu();
   }
 
   function viewportWiggleComponents() {
@@ -8135,11 +8253,7 @@
 
   async function clearViewportWiggleLayers() {
     const state = viewportPlugin()?.state?.data;
-    if (!state) return 0;
-    const refs = [];
-    for (const [ref, cell] of state.cells) {
-      if (cell?.transform?.transformer?.definition?.name === VIEWPORT_WIGGLE_TRANSFORM) refs.push(ref);
-    }
+    const refs = state ? viewportWiggleLayerRefs() : [];
     if (!refs.length) return 0;
     const update = state.build();
     for (const ref of refs) update.delete(ref);
@@ -8218,14 +8332,24 @@
   }
 
   // Wiggle is judged by watching it, so every one of these keeps the menu up.
-  function runViewportWiggleAction(action) {
+  function runViewportWiggleAction(action, control) {
     const fail = error => setStatus(`[web] Wiggle failed. ${error?.message || error}`, 'error');
-    if (action === 'dynamics') {
+    const done = message => {
+      refreshViewportWiggleControls();
+      if (message) setStatus(message);
+    };
+    if (action === 'mode') {
+      setViewportWiggleOptions({ wiggleMode: control.dataset.wiggleMode })
+        .then(() => done()).catch(fail);
+      return true;
+    }
+    const kind = control.dataset.wiggle;
+    if (kind === 'even') {
       clearViewportWiggleLayers()
         .then(() => setViewportWiggleOptions({ wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0.2 }))
-        .then(() => setStatus('[web] Wiggling every atom evenly.'))
+        .then(() => done('[web] Wiggling every atom evenly.'))
         .catch(fail);
-    } else if (action === 'uncertainty') {
+    } else if (kind === 'uncertainty') {
       // The per-group layers carry the amplitude themselves, so the uniform one is
       // all but zeroed or the two would stack. Not zeroed, which is what Mol*'s own
       // preset does: the render loop only runs while some amplitude is above zero,
@@ -8234,17 +8358,40 @@
       // error next to per-group values that reach a full Ångström.
       setViewportWiggleOptions({ wiggleAmplitude: 0.01, tumbleAmplitude: 0 })
         .then(() => applyViewportWiggleFromUncertainty())
-        .then(applied => setStatus(applied
+        .then(applied => done(applied
           ? `[web] Wiggling ${applied} representation${applied === 1 ? '' : 's'} by B-factor.`
           : '[web] This structure has no B-factor or RMSF spread to wiggle by.'))
         .catch(fail);
-    } else if (action === 'clear') {
+    } else {
       setViewportWiggleOptions({ wiggleAmplitude: 0, tumbleAmplitude: 0 })
         .then(() => clearViewportWiggleLayers())
-        .then(() => setStatus('[web] Stopped wiggling.'))
+        .then(() => done('[web] Stopped wiggling.'))
         .catch(fail);
     }
     return true;
+  }
+
+  // setOptions rebuilds every representation's animation state, which a dragged
+  // slider would ask for faster than it can finish. The newest value waits for the
+  // running write and the ones in between are dropped - the drag is only ever
+  // judged by where it ends up.
+  let viewportWiggleWriteInFlight = false;
+  let viewportWigglePendingWrite = null;
+  async function streamViewportWiggleOption(name, value) {
+    viewportWigglePendingWrite = { ...viewportWigglePendingWrite, [name]: value };
+    if (viewportWiggleWriteInFlight) return;
+    viewportWiggleWriteInFlight = true;
+    try {
+      while (viewportWigglePendingWrite) {
+        const next = viewportWigglePendingWrite;
+        viewportWigglePendingWrite = null;
+        await setViewportWiggleOptions(next);
+      }
+    } catch (error) {
+      debug('wiggle option failed: ' + (error && error.message || String(error)));
+    } finally {
+      viewportWiggleWriteInFlight = false;
+    }
   }
 
   // play() with no params leaves each animation on its own defaults, and Mol*
@@ -8566,8 +8713,8 @@
       return true;
     } else if (action.startsWith('screenshot-')) {
       return runViewportScreenshotAction(action.slice('screenshot-'.length), control);
-    } else if (action.startsWith('wiggle-')) {
-      return runViewportWiggleAction(action.slice('wiggle-'.length));
+    } else if (action === 'wiggle-kind' || action === 'wiggle-mode') {
+      return runViewportWiggleAction(action.slice('wiggle-'.length), control);
     } else if (action === 'animation-play') {
       playViewportAnimation(Number(control.dataset.animationIndex));
     } else if (action === 'animation-stop') {
@@ -8801,6 +8948,18 @@
           setViewportMotion(viewportMotionState().name, speed);
           const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
           if (readout) readout.textContent = `${speed.toFixed(2)}/s`;
+          return;
+        }
+        const wiggle = event.target.closest('[data-buret-viewport-slider^="wiggle-"]');
+        if (wiggle) {
+          const name = wiggle.dataset.buretViewportSlider.slice('wiggle-'.length);
+          const spec = VIEWPORT_WIGGLE_SLIDERS.find(entry => entry.name === name);
+          const value = Number(wiggle.value);
+          void streamViewportWiggleOption(name, value);
+          const readout = wiggle.parentElement?.querySelector('.buret-tree-menu-slider-value');
+          if (readout && spec) readout.textContent = value.toFixed(spec.digits) + (spec.unit || '');
+          // Tumble's shaping rows appear the moment it has an amplitude to shape.
+          if (name === 'tumbleAmplitude') refreshViewportWiggleControls();
           return;
         }
         const search = event.target.closest('[data-buret-viewport-search]');
