@@ -1212,6 +1212,18 @@ function applyBuretteSelectionAppearance(runtime: MesoscaleRuntimeApi) {
   });
 }
 
+// Scene state the host did not ask for — a panel closed by dragging its divider,
+// for example — still has to reach the toolbar so its toggles stay truthful.
+function postSceneSummary(runtime: MesoscaleRuntimeApi, documentId: string | undefined) {
+  if (!documentId || !window.parent || window.parent === window) return;
+  window.parent.postMessage({
+    source: "burette-mesoscale-runtime",
+    apiVersion: MESOSCALE_API_VERSION,
+    documentId,
+    result: runtime.sceneSummary(),
+  }, "*");
+}
+
 function installBuretteSelectionAppearanceGuard(runtime: MesoscaleRuntimeApi) {
   return runtime.plugin.behaviors.interaction.keyReleased.subscribe(({ code }) => {
     if (!code.startsWith("Shift") && !code.startsWith("Control")) return;
@@ -1689,16 +1701,17 @@ async function start() {
     root: pluginRoot,
     onResize: () => explorer.handleResize(),
     onReservations: (reservation) => postCanvasInteraction(runtime, { kind: "layout-resize", reservation }),
+    onCollapse: (axis) => {
+      // Squeezing a divider past its panel's minimum closes the panel, so the
+      // toolbar's L/R toggles and the divider agree on one visibility state.
+      const regions: MesoscaleLayoutRegion[] = axis === "bottom" ? ["left", "right"] : [axis];
+      void Promise.all(regions.map((region) => runtime.setLayoutRegion(region, false)))
+        .then(() => postCanvasInteraction(runtime, { kind: "layout-collapse", regions, summary: runtime.sceneSummary() }))
+        .catch(() => undefined);
+    },
   });
   explorer.handleResize();
-  if (config.documentId && window.parent && window.parent !== window) {
-    window.parent.postMessage({
-      source: "burette-mesoscale-runtime",
-      apiVersion: MESOSCALE_API_VERSION,
-      documentId: config.documentId,
-      result: runtime.sceneSummary(),
-    }, "*");
-  }
+  postSceneSummary(runtime, config.documentId);
   postHostMessage({ type: "mesoscale_ready", message: "Mesoscale runtime ready", apiVersion: API_VERSION, observe: runtime.observe() });
   postHostMessage({ type: "agentReady", message: "Burette Mesoscale agent ready", apiVersion: API_VERSION });
   postHostMessage({ type: "structureLoaded", message: `Loaded ${String(config.label || "mesoscale model")}`, mesoscale: runtime.observe() });

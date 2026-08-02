@@ -213,6 +213,9 @@ export type MesoscaleCanvasInteractionMessage = {
   | { kind: "selection"; summary: MesoscaleSceneSummary }
   | { kind: "context-menu"; menu: Omit<MesoscaleCanvasContextMenu, "token">; summary: MesoscaleSceneSummary }
   | { kind: "layout-resize"; reservation: { left: number; right: number } }
+  // Closing a panel by squeezing its divider is a user gesture, so it has to
+  // update the host's remembered layout instead of being restored right back.
+  | { kind: "layout-collapse"; regions: MesoscaleLayoutRegion[]; summary: MesoscaleSceneSummary }
 );
 
 export type MesoscaleFailure = {
@@ -284,6 +287,10 @@ export function isMesoscaleCanvasInteractionMessage(value: unknown): value is Me
       && Number(reservation?.right) >= 0 && Number(reservation?.right) <= 4096;
   }
   if (!message.summary || message.summary.kind !== "summary") return false;
+  if (message.kind === "layout-collapse") {
+    const regions = (message as { regions?: unknown }).regions;
+    return Array.isArray(regions) && regions.length > 0 && regions.every((region) => region === "left" || region === "right");
+  }
   if (message.kind === "selection") return true;
   if (message.kind !== "context-menu" || !message.menu || typeof message.menu !== "object") return false;
   const menu = message.menu as Partial<MesoscaleCanvasContextMenu>;

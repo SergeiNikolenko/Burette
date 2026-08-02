@@ -210,6 +210,18 @@ function installBridge() {
         return;
       }
       applySummary(interaction.documentId, interaction.summary);
+      if (interaction.kind === "layout-collapse") {
+        // The divider closed the panel, so forget the remembered preference too:
+        // otherwise the next summary would reopen what the user just squeezed shut.
+        updateSession(interaction.documentId, (session) => ({
+          ...session,
+          layoutPreference: interaction.regions.reduce(
+            (preference, region) => ({ ...preference, [region]: false }),
+            session.layoutPreference,
+          ),
+        }));
+        return;
+      }
       if (interaction.kind === "context-menu") {
         const frame = Array.from(window.document.querySelectorAll("iframe"))
           .find((candidate) => candidate.contentWindow === event.source);

@@ -96,20 +96,58 @@ body .msp-plugin .msp-layout-right .msp-scrollable {
   touch-action: none;
 }
 
+/* Mirrors the workspace divider: a hairline that is always drawn, plus a pill
+   grip that fades in on hover or focus and darkens while dragging. */
 .buret-meso-panel-resizer::after {
   position: absolute;
-  border-radius: 999px;
   background: var(--buret-meso-border);
-  opacity: 0;
-  transition: opacity 120ms ease-out, background 120ms ease-out;
+  pointer-events: none;
+  transition: background 120ms ease, opacity 120ms ease;
   content: "";
 }
 
 .buret-meso-panel-resizer:hover::after,
 .buret-meso-panel-resizer:focus-visible::after,
 .buret-meso-panel-resizer.dragging::after {
-  background: color-mix(in srgb, var(--buret-meso-accent) 72%, var(--buret-meso-text));
+  background: color-mix(in srgb, var(--buret-meso-text) 42%, var(--buret-meso-border));
+}
+
+.buret-meso-panel-resizer-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 44px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--buret-meso-text) 55%, transparent);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: background 120ms ease, height 120ms ease, width 120ms ease, opacity 120ms ease;
+  pointer-events: none;
+}
+
+.buret-meso-panel-resizer:hover .buret-meso-panel-resizer-grip,
+.buret-meso-panel-resizer:focus-visible .buret-meso-panel-resizer-grip {
+  height: 56px;
   opacity: 1;
+}
+
+.buret-meso-panel-resizer.dragging .buret-meso-panel-resizer-grip {
+  height: 56px;
+  background: var(--buret-meso-text);
+  opacity: 1;
+}
+
+.buret-meso-panel-resizer[data-axis="bottom"] .buret-meso-panel-resizer-grip {
+  width: 44px;
+  height: 4px;
+}
+
+.buret-meso-panel-resizer[data-axis="bottom"]:hover .buret-meso-panel-resizer-grip,
+.buret-meso-panel-resizer[data-axis="bottom"]:focus-visible .buret-meso-panel-resizer-grip,
+.buret-meso-panel-resizer[data-axis="bottom"].dragging .buret-meso-panel-resizer-grip {
+  width: 56px;
+  height: 4px;
 }
 
 .buret-meso-panel-resizer:focus-visible {
@@ -165,10 +203,11 @@ body .msp-plugin .msp-layout-right .msp-scrollable {
 
   .buret-meso-panel-resizer[data-axis="left"]::after,
   .buret-meso-panel-resizer[data-axis="right"]::after {
-    top: 10px;
-    bottom: 10px;
-    left: 6px;
-    width: 2px;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
   }
 }
 
@@ -199,10 +238,42 @@ body .msp-plugin .msp-layout-right .msp-scrollable {
   }
 
   .buret-meso-panel-resizer[data-axis="bottom"]::after {
-    top: 6px;
-    right: 10px;
-    left: 10px;
-    height: 2px;
+    top: 50%;
+    right: 0;
+    left: 0;
+    height: 1px;
+    transform: translateY(-50%);
+  }
+
+  /* The divider between the two stacked panels, so their share of the strip is
+     adjustable the same way the docks are. */
+  body .msp-plugin .msp-layout-standard-reactive .msp-layout-left,
+  body .msp-plugin .msp-layout-standard-portrait .msp-layout-left {
+    width: var(--buret-meso-split-width) !important;
+  }
+
+  body .msp-plugin .msp-layout-standard-reactive .msp-layout-right,
+  body .msp-plugin .msp-layout-standard-portrait .msp-layout-right {
+    left: var(--buret-meso-split-width) !important;
+    width: auto !important;
+    right: 0 !important;
+  }
+
+  .buret-meso-panel-resizer[data-axis="split"] {
+    top: auto;
+    bottom: 0;
+    left: calc(var(--buret-meso-split-width) - 7px);
+    width: 14px;
+    height: var(--buret-meso-bottom-height);
+    cursor: col-resize;
+  }
+
+  .buret-meso-panel-resizer[data-axis="split"]::after {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
   }
 }
 

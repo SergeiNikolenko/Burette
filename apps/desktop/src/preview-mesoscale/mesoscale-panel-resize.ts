@@ -1,4 +1,4 @@
-export type MesoscalePanelResizeAxis = "left" | "right" | "bottom";
+export type MesoscalePanelResizeAxis = "left" | "right" | "bottom" | "split";
 export type MesoscalePanelPoint = { x: number; y: number };
 export type MesoscalePanelRect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 
@@ -6,25 +6,43 @@ const SIDE_MIN = 220;
 const CANVAS_MIN_WIDTH = 240;
 const BOTTOM_MIN = 200;
 const CANVAS_MIN_HEIGHT = 180;
+// Dragging a divider this far past a panel's minimum closes the panel, the same
+// squeeze-to-close gesture the workspace sidebar and docks use.
+const COLLAPSE_SLACK = 72;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), Math.max(min, max));
 }
 
+function rawMesoscalePanelSize(axis: MesoscalePanelResizeAxis, point: MesoscalePanelPoint, rect: MesoscalePanelRect) {
+  if (axis === "left") return point.x - rect.left;
+  if (axis === "right") return rect.right - point.x;
+  if (axis === "split") return point.x - rect.left;
+  return rect.bottom - point.y;
+}
+
 export function nextMesoscalePanelSize(axis: MesoscalePanelResizeAxis, point: MesoscalePanelPoint, rect: MesoscalePanelRect, oppositePanelSize = 0) {
-  if (axis === "left") return clamp(point.x - rect.left, SIDE_MIN, rect.width - CANVAS_MIN_WIDTH - oppositePanelSize);
-  if (axis === "right") return clamp(rect.right - point.x, SIDE_MIN, rect.width - CANVAS_MIN_WIDTH - oppositePanelSize);
-  return clamp(rect.bottom - point.y, BOTTOM_MIN, rect.height - CANVAS_MIN_HEIGHT);
+  const raw = rawMesoscalePanelSize(axis, point, rect);
+  if (axis === "left" || axis === "right") return clamp(raw, SIDE_MIN, rect.width - CANVAS_MIN_WIDTH - oppositePanelSize);
+  if (axis === "split") return clamp(raw, SIDE_MIN, Math.max(SIDE_MIN, rect.width - SIDE_MIN));
+  return clamp(raw, BOTTOM_MIN, rect.height - CANVAS_MIN_HEIGHT);
+}
+
+export function shouldCollapseMesoscalePanel(axis: MesoscalePanelResizeAxis, point: MesoscalePanelPoint, rect: MesoscalePanelRect) {
+  if (axis === "split") return false;
+  const minimum = axis === "bottom" ? BOTTOM_MIN : SIDE_MIN;
+  return rawMesoscalePanelSize(axis, point, rect) < minimum - COLLAPSE_SLACK;
 }
 
 type InstallOptions = {
   root: HTMLElement;
   onResize: () => void;
   onReservations: (reservation: { left: number; right: number }) => void;
+  onCollapse: (axis: Exclude<MesoscalePanelResizeAxis, "split">) => void;
 };
 
-export function installMesoscalePanelResizeHandles({ root, onResize, onReservations }: InstallOptions) {
-  const sizes: Record<MesoscalePanelResizeAxis, number> = { left: 330, right: 300, bottom: 361 };
+export function installMesoscalePanelResizeHandles({ root, onResize, onReservations, onCollapse }: InstallOptions) {
+  const sizes: Record<MesoscalePanelResizeAxis, number> = { left: 330, right: 300, bottom: 361, split: 0 };
   const handles = new Map<MesoscalePanelResizeAxis, HTMLDivElement>();
   let resizeFrame = 0;
   let mouseAxis: MesoscalePanelResizeAxis | null = null;
@@ -40,16 +58,22 @@ export function installMesoscalePanelResizeHandles({ root, onResize, onReservati
   };
   const setSize = (axis: MesoscalePanelResizeAxis, size: number) => {
     sizes[axis] = Math.round(size);
-    root.style.setProperty(`--buret-meso-${axis}-${axis === "bottom" ? "height" : "width"}`, `${sizes[axis]}px`);
+    if (axis === "split") root.style.setProperty("--buret-meso-split-width", `${sizes.split}px`);
+    else root.style.setProperty(`--buret-meso-${axis}-${axis === "bottom" ? "height" : "width"}`, `${sizes[axis]}px`);
     const handle = handles.get(axis);
     if (handle) handle.setAttribute("aria-valuenow", String(sizes[axis]));
   };
   const resizeAt = (axis: MesoscalePanelResizeAxis, point: MesoscalePanelPoint) => {
+    const rect = root.getBoundingClientRect();
+    if (shouldCollapseMesoscalePanel(axis, point, rect)) {
+      onCollapse(axis as Exclude<MesoscalePanelResizeAxis, "split">);
+      return;
+    }
     const classes = layout()?.classList;
     const oppositePanelSize = axis === "left" && classes && !classes.contains("msp-layout-hide-right")
       ? sizes.right
       : axis === "right" && classes && !classes.contains("msp-layout-hide-left") ? sizes.left : 0;
-    setSize(axis, nextMesoscalePanelSize(axis, point, root.getBoundingClientRect(), oppositePanelSize));
+    setSize(axis, nextMesoscalePanelSize(axis, point, rect, oppositePanelSize));
     syncVisibility();
   };
   const syncVisibility = () => {
@@ -66,7 +90,13 @@ export function installMesoscalePanelResizeHandles({ root, onResize, onReservati
     const leftHandle = handles.get("left");
     const rightHandle = handles.get("right");
     const bottomHandle = handles.get("bottom");
+    const splitHandle = handles.get("split");
     const rect = root.getBoundingClientRect();
+    if (splitHandle) {
+      if (sizes.split === 0 && rect.width > 0) setSize("split", Math.round(rect.width / 2));
+      splitHandle.hidden = !isPortrait || !leftVisible || !rightVisible;
+      splitHandle.setAttribute("aria-valuemax", String(Math.max(SIDE_MIN, Math.round(rect.width - SIDE_MIN))));
+    }
     leftHandle?.setAttribute("aria-valuemax", String(Math.max(SIDE_MIN, Math.round(rect.width - CANVAS_MIN_WIDTH))));
     rightHandle?.setAttribute("aria-valuemax", String(Math.max(SIDE_MIN, Math.round(rect.width - CANVAS_MIN_WIDTH))));
     bottomHandle?.setAttribute("aria-valuemax", String(Math.max(BOTTOM_MIN, Math.round(rect.height - CANVAS_MIN_HEIGHT))));
@@ -77,15 +107,19 @@ export function installMesoscalePanelResizeHandles({ root, onResize, onReservati
     scheduleResize();
   };
 
-  for (const axis of ["left", "right", "bottom"] as const) {
+  for (const axis of ["left", "right", "bottom", "split"] as const) {
     const handle = document.createElement("div");
     handle.className = "buret-meso-panel-resizer";
     handle.dataset.axis = axis;
     handle.tabIndex = 0;
     handle.setAttribute("role", "separator");
-    handle.setAttribute("aria-label", axis === "bottom" ? "Resize Mol* panels" : `Resize Mol* ${axis} panel`);
+    handle.setAttribute("aria-label", axis === "bottom" ? "Resize Mol* panels" : axis === "split" ? "Resize Mol* panel split" : `Resize Mol* ${axis} panel`);
     handle.setAttribute("aria-orientation", axis === "bottom" ? "horizontal" : "vertical");
     handle.setAttribute("aria-valuemin", String(axis === "bottom" ? BOTTOM_MIN : SIDE_MIN));
+    const grip = document.createElement("span");
+    grip.className = "buret-meso-panel-resizer-grip";
+    grip.setAttribute("aria-hidden", "true");
+    handle.append(grip);
     handle.setAttribute("aria-valuenow", String(sizes[axis]));
     handle.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
@@ -119,7 +153,9 @@ export function installMesoscalePanelResizeHandles({ root, onResize, onReservati
       event.preventDefault();
       const rect = root.getBoundingClientRect();
       const minimum = axis === "bottom" ? BOTTOM_MIN : SIDE_MIN;
-      const maximum = axis === "bottom" ? Math.max(minimum, rect.height - CANVAS_MIN_HEIGHT) : Math.max(minimum, rect.width - CANVAS_MIN_WIDTH);
+      const maximum = axis === "bottom"
+        ? Math.max(minimum, rect.height - CANVAS_MIN_HEIGHT)
+        : axis === "split" ? Math.max(minimum, rect.width - SIDE_MIN) : Math.max(minimum, rect.width - CANVAS_MIN_WIDTH);
       const direction = axis === "right" || axis === "bottom" ? -1 : 1;
       const delta = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -12 : 12;
       setSize(axis, event.key === "Home" ? minimum : event.key === "End" ? maximum : clamp(sizes[axis] + delta * direction, minimum, maximum));

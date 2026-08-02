@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 import { createMesoscaleCanvasInteractionController, shouldClearMesoscaleSelectionOnMiss } from "../apps/desktop/src/preview-mesoscale/mesoscale-canvas-interaction.ts";
 import { MESOSCALE_API_VERSION, boundMesoscaleHierarchyPage, isMesoscaleCanvasInteractionMessage, mergeMesoscaleHierarchySelection, mesoscaleSelectedCount } from "../apps/desktop/src/lib/mesoscale-contract.ts";
@@ -70,6 +71,14 @@ assert.equal(controller.contextMenuFor("structure-a", { x: 99, y: 5 }), true, "a
 const resizeMessage = { source: "burette-mesoscale-interaction", apiVersion: MESOSCALE_API_VERSION, documentId: "doc", kind: "layout-resize", reservation: { left: 330, right: 300 } };
 assert.equal(isMesoscaleCanvasInteractionMessage(resizeMessage), true, "bounded iframe panel reservations cross the transient chrome channel");
 assert.equal(isMesoscaleCanvasInteractionMessage({ ...resizeMessage, reservation: { left: -1, right: 300 } }), false, "invalid iframe panel reservations are rejected");
+
+const collapseMessage = { source: "burette-mesoscale-interaction", apiVersion: MESOSCALE_API_VERSION, documentId: "doc", kind: "layout-collapse", regions: ["left"], summary: { kind: "summary" } };
+assert.equal(isMesoscaleCanvasInteractionMessage(collapseMessage), true, "squeezing a panel shut reaches the host as a gesture");
+assert.equal(isMesoscaleCanvasInteractionMessage({ ...collapseMessage, regions: [] }), false, "a collapse must name the panels it closed");
+assert.equal(isMesoscaleCanvasInteractionMessage({ ...collapseMessage, regions: ["bottom"] }), false, "only real layout regions can be collapsed");
+
+const storeSource = await readFile("apps/desktop/src/stores/mesoscale-store.ts", "utf8");
+assert.match(storeSource, /kind === "layout-collapse"[\s\S]*?layoutPreference/, "a collapsed panel also clears the remembered layout so it is not restored");
 
 const hierarchy = Array.from({ length: 130 }, (_, index) => ({
   ref: `structure-${index}`,
