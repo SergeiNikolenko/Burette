@@ -2,6 +2,7 @@ use super::numpy_artifact::{read_numpy_arrays, NumpyArraySummary};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashSet;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -812,6 +813,11 @@ fn collect_files(root: &Path, depth: usize, files: &mut Vec<FileEntry>) {
 }
 
 fn candidate_roots(input: &Path) -> Result<Vec<PathBuf>, String> {
+    let home = env::var_os("HOME").map(PathBuf::from);
+    candidate_roots_with_home(input, home.as_deref())
+}
+
+fn candidate_roots_with_home(input: &Path, home: Option<&Path>) -> Result<Vec<PathBuf>, String> {
     let metadata = fs::metadata(input).map_err(|err| format!("{}: {err}", input.display()))?;
     let mut root = if metadata.is_dir() {
         input.to_path_buf()
@@ -823,6 +829,9 @@ fn candidate_roots(input: &Path) -> Result<Vec<PathBuf>, String> {
     };
     let mut roots = Vec::new();
     for _ in 0..=FOLDING_SCAN_DEPTH_LIMIT {
+        if is_user_collection_root(&root, home) {
+            break;
+        }
         roots.push(root.clone());
         let Some(parent) = root.parent() else {
             break;
@@ -830,6 +839,22 @@ fn candidate_roots(input: &Path) -> Result<Vec<PathBuf>, String> {
         root = parent.to_path_buf();
     }
     Ok(roots)
+}
+
+fn is_user_collection_root(root: &Path, home: Option<&Path>) -> bool {
+    let Some(home) = home else {
+        return false;
+    };
+    if root == home {
+        return true;
+    }
+    root.parent() == Some(home)
+        && matches!(
+            root.file_name().and_then(|name| name.to_str()),
+            Some(
+                "Desktop" | "Documents" | "Downloads" | "Movies" | "Music" | "Pictures" | "Public"
+            )
+        )
 }
 
 fn model_index_for_path(path: &Path) -> Option<usize> {
@@ -1030,7 +1055,7 @@ fn file_extension(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::read_folding_result_bundle_impl;
+    use super::{candidate_roots_with_home, read_folding_result_bundle_impl};
     use crate::commands::numpy_artifact::read_numpy_arrays;
     use std::fs;
     use std::path::PathBuf;
@@ -1042,6 +1067,21 @@ mod tests {
         ));
         fs::create_dir_all(&path).expect("fixture dir should create");
         path
+    }
+
+    #[test]
+    fn folding_scan_stops_before_user_collection_directories() {
+        let home = temp_dir("home-boundary");
+        let project = home.join("Desktop").join("folding-project");
+        fs::create_dir_all(&project).expect("project dir should create");
+        let pdb = project.join("ordinary.pdb");
+        fs::write(&pdb, "ATOM      1  N   GLY A   1\n").expect("pdb should write");
+
+        let roots =
+            candidate_roots_with_home(&pdb, Some(&home)).expect("candidate roots should resolve");
+
+        assert_eq!(roots, vec![project]);
+        let _ = fs::remove_dir_all(home);
     }
 
     fn npy_f32(shape: &[usize], values: &[f32]) -> Vec<u8> {
