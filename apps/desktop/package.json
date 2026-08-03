@@ -17,7 +17,7 @@
     "@vercel/speed-insights": "2.0.0",
     "eve-raphael": "0.5.0",
     "ketcher-core": "3.15.0",
-    "ketcher-react": "3.15.0",
+    "ketcher-react": "3.17.1",
     "ketcher-standalone": "3.15.0",
     "lucide-react": "^1.25.0",
     "motion": "^12.42.2",
