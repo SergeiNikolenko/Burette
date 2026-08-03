@@ -827,7 +827,12 @@
       return window.BuretteAgent.run({ command: 'observeStory', args: {} });
     }
     if (type === 'control_story') {
-      return window.BuretteAgent.run({ command: 'controlStory', args: action.args || action });
+      // Routed through the same path as `story_control` rather than straight to
+      // the agent runtime: otherwise the two accepted spellings of one action
+      // differ in whether the viewer style survives and whether concurrent steps
+      // are serialized.
+      const args = action.args || action;
+      return controlMolstarStory({ ...args, operation: args.operation || args.action });
     }
     if (type === 'export_session') {
       return window.BuretteAgent.run({ command: 'exportSession', args: action.args || action });
@@ -910,7 +915,8 @@
     const serial = ++molstarStoryStepRequested;
     molstarStoryStepQueue = molstarStoryStepQueue
       .catch(() => {})
-      .then(() => (action.preview === true && serial !== molstarStoryStepRequested
+      .then(() => (action.preview === true
+        && (serial !== molstarStoryStepRequested || action.stillWanted?.() === false)
         ? molstarStoryResult('story_control')
         : applyMolstarStoryControl(action)));
     return molstarStoryStepQueue;
@@ -3580,11 +3586,19 @@
       // rebuilt the same way a step builds it. Applying the style over the scene
       // instead would leave the current state looking unlike every other one.
       const current = Array.from(manager?.state?.entries || []).find(entry => entry?.snapshot?.id === manager?.state?.current);
-      if (MOLSTAR_UNIFORM_STYLE_REPRESENTATION[normalized] || normalized === 'default') {
-        if (current?.snapshot) await viewer.plugin.state.setSnapshot(current.snapshot);
+      // A style has a canvas half - outline, occlusion, flat shading - that the
+      // snapshots no longer carry, and a scene half that they do. The canvas half
+      // is set here, including turning the illustrative post-processing back off,
+      // and the scene half comes from re-applying the current snapshot.
+      if (normalized === 'illustrative' || normalized === 'illustrative-surface') {
+        await applyMolstarIllustrativePostprocessing(viewer, { includeTransparent: normalized === 'illustrative-surface' });
       } else {
-        await applyMolstarStyle(viewer, style);
+        await applyMolstarNonIllustrativePostprocessing(viewer);
       }
+      if (current?.snapshot) await viewer.plugin.state.setSnapshot(current.snapshot);
+      // Styles made of several representations cannot live in a snapshot, so they
+      // are built over the scene the snapshot just produced.
+      if (MOLSTAR_STORY_REBUILT_STYLES.has(normalized)) await applyMolstarStyle(viewer, normalized);
       if (serial !== molstarStyleApplySerial) return;
       setStatus(`[web] Applied Mol* ${molstarStyleLabel(style)} style`);
       setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
@@ -16042,7 +16056,15 @@
       molstarStoryPreviewTimer = 0;
       if (!anchor.isConnected || !anchor.matches(':hover')) return;
       if (anchor.classList.contains('active')) return;
-      void controlMolstarStory({ operation: 'goto', id: anchor.__buretStoryEntry?.id, preview: true });
+      // Checked again when the step reaches the front of the queue: a slow step
+      // ahead of it can leave this one waiting long after the pointer has moved
+      // on, and applying it then would jump to a state nobody is pointing at.
+      void controlMolstarStory({
+        operation: 'goto',
+        id: anchor.__buretStoryEntry?.id,
+        preview: true,
+        stillWanted: () => anchor.isConnected && anchor.matches(':hover')
+      });
     }, MOLSTAR_STORY_PREVIEW_DWELL_MS);
   }
 

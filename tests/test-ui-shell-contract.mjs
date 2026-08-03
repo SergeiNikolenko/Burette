@@ -5710,7 +5710,7 @@ assert.match(previewViewer, /camera\.transitionDurationInMs = instant \? 0 : dur
 assert.match(previewViewer, /if \(isStep\) setMolstarStoryTransition\(manager, action\.preview === true \? 0 : MOLSTAR_STORY_TRANSITION_MS\)/);
 // Overlapping steps mean competing snapshot applies and unbalanced render
 // pauses, so steps run one at a time and superseded ones are dropped.
-assert.match(previewViewer, /action\.preview === true && serial !== molstarStoryStepRequested/);
+assert.match(previewViewer, /action\.preview === true\s*&& \(serial !== molstarStoryStepRequested \|\| action\.stillWanted\?\.\(\) === false\)/);
 // A superseded hover preview still answers with the current state: `story_control`
 // hands this result back to the agent, and dropping one would answer with nothing.
 assert.match(previewViewer, /\? molstarStoryResult\('story_control'\)\s*: applyMolstarStoryControl\(action\)/);
@@ -5745,6 +5745,16 @@ assert.match(previewViewer, /const restyles = isStep && MOLSTAR_STORY_REBUILT_ST
 // `Illustrative` flattens shading through `ignoreLight` on each representation,
 // so it has to ride along in the snapshots or a step brings lit shading back.
 assert.match(previewViewer, /illustrative: \{ ignoreLight: true \}/);
+// Switching styles inside a Story sets the canvas half here and takes the scene
+// half from re-applying the current snapshot, so leaving Illustrative also turns
+// its post-processing back off.
+assert.match(previewViewer, /await applyMolstarIllustrativePostprocessing\(viewer, \{ includeTransparent: normalized === 'illustrative-surface' \}\)/);
+assert.match(previewViewer, /await applyMolstarNonIllustrativePostprocessing\(viewer\);\s*\}\s*if \(current\?\.snapshot\)/);
+// Both spellings of the action share one path, so style preservation and step
+// serialization do not depend on which one the caller used.
+assert.match(previewViewer, /return controlMolstarStory\(\{ \.\.\.args, operation: args\.operation \|\| args\.action \}\);/);
+// A queued preview is re-checked when it reaches the front of the queue.
+assert.match(previewViewer, /action\.stillWanted\?\.\(\) === false/);
 assert.match(previewViewer, /const overrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES\[style\]/);
 assert.match(previewViewer, /if \(!uniform && !overrides\) \{/);
 assert.match(previewViewer, /\{ name: authored\.type\?\.name, params: \{ \.\.\.\(authored\.type\?\.params \|\| \{\}\), \.\.\.overrides \} \}/);
