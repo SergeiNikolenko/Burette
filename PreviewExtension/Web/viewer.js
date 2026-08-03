@@ -142,6 +142,14 @@
     spacefill: { type: 'spacefill', typeParams: { sizeFactor: 0.45 }, color: 'element-symbol' },
     'molecular-surface': { type: 'molecular-surface', typeParams: { alpha: 0.72 }, color: 'element-symbol' }
   };
+  // `Illustrative` keeps the scene as authored and only flattens the shading, so
+  // it is not a representation of its own - but `ignoreLight` lives on each
+  // representation, not on the canvas, and a step would otherwise rebuild them
+  // without it and drop back to lit shading.
+  const MOLSTAR_STYLE_REPRESENTATION_OVERRIDES = {
+    illustrative: { ignoreLight: true },
+    'illustrative-surface': { ignoreLight: true }
+  };
   const MOLSTAR_STORY_REBUILT_STYLES = new Set(['illustrative-surface', 'cartoon', 'polymer-ligand']);
   const molstarStoryAuthoredRepresentations = new WeakMap();
   const MOLSTAR_STORY_TRANSITION_MS = 700;
@@ -999,6 +1007,7 @@
 
   function applyMolstarStoryStyleToSnapshots(manager, style) {
     const uniform = MOLSTAR_UNIFORM_STYLE_REPRESENTATION[style];
+    const overrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES[style];
     for (const entry of manager?.state?.entries || []) {
       const transforms = entry?.snapshot?.data?.tree?.transforms;
       if (!Array.isArray(transforms)) continue;
@@ -1012,7 +1021,7 @@
           });
         }
         const authored = molstarStoryAuthoredRepresentations.get(transform);
-        if (!uniform) {
+        if (!uniform && !overrides) {
           transform.params.type = authored.type;
           transform.params.colorTheme = authored.colorTheme;
           transform.version = authored.version;
@@ -1020,9 +1029,12 @@
         }
         // Only the new type's own parameters: representation parameters are
         // per-type, and carrying the authored ones across made Mol* fall back to
-        // some other representation entirely.
-        transform.params.type = { name: uniform.type, params: { ...uniform.typeParams } };
-        transform.params.colorTheme = { name: uniform.color, params: {} };
+        // some other representation entirely. An override keeps the authored
+        // representation and only adjusts it.
+        transform.params.type = uniform
+          ? { name: uniform.type, params: { ...uniform.typeParams, ...overrides } }
+          : { name: authored.type?.name, params: { ...(authored.type?.params || {}), ...overrides } };
+        transform.params.colorTheme = uniform ? { name: uniform.color, params: {} } : authored.colorTheme;
         // Mol* diffs snapshots by transform version, not by comparing parameters,
         // so an edited transform has to look new or the change is skipped. Every
         // state gets the same version for the same node, including a node that

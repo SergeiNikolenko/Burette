@@ -5739,6 +5739,12 @@ assert.match(previewViewer, /canvas3d\?\.pause\?\.\(true\)/);
 assert.match(previewViewer, /await waitForMolstarIdle\(activeViewer\);\s*await restoreMolstarStoryPresentation\(activeViewer\);/);
 assert.match(previewViewer, /if \(!isFirstState && !molstarStoryStepInFlight && MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)\)/);
 assert.match(previewViewer, /const restyles = isStep && MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)/);
+// `Illustrative` flattens shading through `ignoreLight` on each representation,
+// so it has to ride along in the snapshots or a step brings lit shading back.
+assert.match(previewViewer, /illustrative: \{ ignoreLight: true \}/);
+assert.match(previewViewer, /const overrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES\[style\]/);
+assert.match(previewViewer, /if \(!uniform && !overrides\) \{/);
+assert.match(previewViewer, /\{ name: authored\.type\?\.name, params: \{ \.\.\.\(authored\.type\?\.params \|\| \{\}\), \.\.\.overrides \} \}/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses\.buret-molstar-story \{\s*border-radius: 12px;/);
 assert.match(previewViewer, /function renderMolstarStoryMarkdown\(container, markdown\)/);
 assert.match(previewRuntimeCss, /\.buret-story-hover-card \{/);
