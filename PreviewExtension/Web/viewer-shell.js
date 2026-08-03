@@ -19,9 +19,12 @@
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L<span class="buret-tooltip" role="tooltip">Toggle Mol* left object tree</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R<span class="buret-tooltip" role="tooltip">Toggle Mol* right properties panel</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq<span class="buret-tooltip" role="tooltip">Toggle sequence panel</span></button>
-          <div class="buret-molstar-style-slot" data-buret-molstar-style-slot>
-            <select class="buret-select" data-buret-molstar-style aria-label="Mol* preview style" title="Mol* preview style"></select>
-            <span class="buret-tooltip" role="tooltip">Choose Mol* representation style</span>
+          <div class="buret-molstar-preset-slot" data-buret-molstar-preset-slot>
+            <button id="buret-molstar-preset-trigger" class="buret-button buret-molstar-preset-trigger" type="button" data-buret-molstar-preset-trigger aria-label="Mol* representation preset" aria-haspopup="menu" aria-controls="buret-molstar-preset-menu" aria-expanded="false" title="Mol* representation preset">
+              <span data-buret-molstar-preset-label>Automatic</span>
+              <span class="buret-molstar-preset-chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="buret-tooltip" role="tooltip">Choose component and representation preset</span>
+            </button>
           </div>
           <button class="buret-button buret-assembly-symmetry hidden" type="button" data-buret-action="assembly-symmetry" aria-label="Show assembly symmetry axes" aria-pressed="false" title="Show assembly symmetry axes">Symmetry<span class="buret-tooltip" role="tooltip">Show assembly symmetry axes</span></button>
           <button class="buret-button buret-molstar-lasso" type="button" data-buret-action="molstar-lasso" aria-label="Lasso select" aria-pressed="false" title="Lasso select">
@@ -133,6 +136,18 @@
           </details>
         </div>
       </div>
+      <div id="buret-molstar-preset-menu" class="buret-molstar-preset-menu hidden" data-buret-molstar-preset-menu role="menu" aria-labelledby="buret-molstar-preset-trigger" aria-orientation="vertical"></div>
+      <div class="buret-molstar-preset-preview hidden" data-buret-molstar-preset-preview role="button" tabindex="0" aria-label="Apply preset preview">
+        <div class="buret-molstar-preset-preview-header">
+          <span data-buret-molstar-preset-preview-label>Preset preview</span>
+          <span class="buret-molstar-preset-preview-caption" data-buret-molstar-preset-preview-caption>Rendering…</span>
+        </div>
+        <div class="buret-molstar-preset-preview-canvas" data-buret-molstar-preset-preview-canvas>
+          <canvas class="buret-molstar-preset-preview-image" data-buret-molstar-preset-preview-image aria-hidden="true"></canvas>
+          <div class="buret-molstar-preset-preview-stage" data-buret-molstar-preset-preview-stage></div>
+        </div>
+        <div class="buret-molstar-preset-preview-state" data-buret-molstar-preset-preview-state aria-live="polite">Rendering preview…</div>
+      </div>
       <div id="buret-viewport-corner" class="buret-viewport-corner">
         <button id="buret-scene-tree-toggle" class="buret-corner-toggle hidden" type="button" data-buret-action="scene-tree" aria-label="Toggle scene tree" aria-haspopup="dialog" aria-controls="buret-scene-tree" aria-expanded="false" title="Scene tree (⌘T)">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
@@ -144,7 +159,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5"/></svg>
           <span class="buret-tooltip" role="tooltip">Camera</span>
         </button>
-        <button class="buret-rail-button" type="button" data-buret-viewport-action="screenshot" aria-label="Save a screenshot" title="Save a screenshot">
+        <button class="buret-rail-button" type="button" data-buret-viewport-action="screenshot" aria-haspopup="menu" aria-expanded="false" aria-label="Save a screenshot" title="Save a screenshot">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z"/><path d="M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/></svg>
           <span class="buret-tooltip" role="tooltip">Save a screenshot</span>
         </button>

@@ -24,6 +24,7 @@ const requiredPreviewAssets = [
   'viewer-shell.js',
   'viewer-runtime.css',
   'trajectory-smoothing.js',
+  'molstar-preset-preview-controller.js',
   'superposition-panel.js',
   'molstar.js',
   'molstar.css',

@@ -152,6 +152,7 @@
       "viewer-bootstrap.js",
       "burette-agent.js",
       "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
       "viewer.js",
     ];
 

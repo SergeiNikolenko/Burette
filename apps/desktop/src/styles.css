@@ -5295,7 +5295,10 @@ input.structure-inspector-composition-search {
 }
 .ketcher-page-actions button {
   position: relative;
-  min-width: 0;
+  /* The labels do not wrap, so a button squeezed narrower than its text spills the
+     text over its own rounded edges. Letting them shrink bought nothing anyway:
+     measured at a 560px window the header runs past the viewport either way. */
+  flex: 0 0 auto;
   height: 30px;
   border: 0;
   border-radius: var(--control-radius);
