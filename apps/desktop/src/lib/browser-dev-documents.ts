@@ -113,6 +113,10 @@ const BROWSER_DEV_OPEN_CONCURRENCY = 4;
 const GRID_ASSET_VERSION = "grid-ui-v166";
 const VIEWER_ASSET_VERSION = "viewer-ui-v70";
 const MESOSCALE_ASSET_VERSION = "mesoscale-ui-v1";
+// One cache-buster per page load, not per render: the viewer iframe is keyed by
+// its srcdoc, so a fresh timestamp on every rebuild would remount the frame and
+// reload the whole scene whenever an unrelated part of the layout changes.
+const RUNTIME_ASSET_SESSION = Date.now();
 const REPO_ROOT = String(import.meta.env.BURETTE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = String(
   (typeof window !== "undefined" ? window.__BURETTE_WEB_ASSETS_BASE__ : "")
@@ -201,6 +205,11 @@ type BrowserDevMolstarContextEntry = {
 
 export function browserDevRuntimeNeedsRefresh(document: ViewerDocument) {
   if (document.renderer === "grid2d") return !document.runtimePath.includes(GRID_ASSET_VERSION);
+  // A mesoscale document is served by its own runtime, so it carries the
+  // mesoscale asset version. Measuring it against the structure viewer's version
+  // marked it stale on every check, which reopened the file — and reloaded the
+  // whole scene — whenever an unrelated part of the layout re-rendered.
+  if (document.viewerProfile === "mesoscale") return !document.runtimePath.includes(MESOSCALE_ASSET_VERSION);
   if (!document.runtimePath.includes(VIEWER_ASSET_VERSION)) return true;
   return !document.runtimePath.includes("viewer-shell.js")
     || document.runtimePath.includes('<div id="buret-toolbar"')
@@ -1318,7 +1327,7 @@ function viewerHtml(
     renderer === "xyzrender-external"
       ? `<link rel="stylesheet" href="${viewerAsset("molstar.css")}" />`
       : `<link rel="stylesheet" href="${viewerAsset("molstar.css")}" /><script src="${viewerAsset("molstar.js")}"></script>`;
-  const runtimeAssetVersion = `${VIEWER_ASSET_VERSION}-${Date.now()}`;
+  const runtimeAssetVersion = `${VIEWER_ASSET_VERSION}-${RUNTIME_ASSET_SESSION}`;
   const embeddedBytes = renderer === "xyzrender-external" ? new Uint8Array([10]) : bytes;
   const runtimeBootstrap = hostedMcpBootstrap
     ? `<script id="burette-runtime-config" type="application/json">${serializeInlineJson(config)}</script>
@@ -1358,7 +1367,7 @@ function mesoscaleViewerHtml(
   config: Record<string, unknown>,
   transparentBackground: boolean,
 ) {
-  const version = `${MESOSCALE_ASSET_VERSION}-${Date.now()}`;
+  const version = `${MESOSCALE_ASSET_VERSION}-${RUNTIME_ASSET_SESSION}`;
   return `<!doctype html>
 <html lang="en">
 <head>

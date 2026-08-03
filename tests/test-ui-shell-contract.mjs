@@ -4478,6 +4478,21 @@ assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v166"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v70"/);
+assert.match(
+  browserDevDocuments,
+  /viewerProfile === "mesoscale"\) return !document\.runtimePath\.includes\(MESOSCALE_ASSET_VERSION\)/,
+  "a mesoscale document is measured against its own runtime version, or it reopens on every re-render",
+);
+assert.match(
+  browserDevDocuments,
+  /const RUNTIME_ASSET_SESSION = Date\.now\(\)/,
+  "the runtime cache buster is fixed per page load so the viewer iframe is not rekeyed by unrelated renders",
+);
+assert.doesNotMatch(
+  browserDevDocuments,
+  /ASSET_VERSION\}-\$\{Date\.now\(\)\}/,
+  "asset versions must not embed a fresh timestamp per rebuild",
+);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
 assert.match(viteConfig, /registerBrowserDevAgentSessionRoute\(server\)/);
 assert.match(browserDevAgentSession, /__burette\/agent-session\//);
@@ -4880,7 +4895,7 @@ assert.match(previewViewController, /"PYTHONNOUSERSITE": "1"/);
 assert.match(previewViewController, /"PYTHONPATH": paths\.sitePackages\.path/);
 assert.match(previewViewController, /cacheKeyPath: executablePath/);
 assert.match(browserDevDocuments, /defaultLayoutState: \{ left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" \}/);
-assert.match(browserDevDocuments, /const runtimeAssetVersion = `\$\{VIEWER_ASSET_VERSION\}-\$\{Date\.now\(\)\}`/);
+assert.match(browserDevDocuments, /const runtimeAssetVersion = `\$\{VIEWER_ASSET_VERSION\}-\$\{RUNTIME_ASSET_SESSION\}`/);
 assert.match(browserDevDocuments, /viewerAsset\("viewer-runtime\.css"\)/);
 assert.match(browserDevDocuments, /viewerAsset\("viewer-shell\.js"\)/);
 assert.match(browserDevDocuments, /viewerAsset\("viewer\.js"\)/);
