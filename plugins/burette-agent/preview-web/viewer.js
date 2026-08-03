@@ -8969,12 +8969,21 @@
     ['group', 'Independent', 'Every group takes its own noise, so the scene shimmers']
   ];
 
+  // Only the layers these controls created. A scene can arrive with wiggle of its
+  // own - authored in a session file or applied by another Mol* action - and
+  // switching this menu to Off must not delete someone else's work, so the tag
+  // this code stamps is what identifies its own.
   function viewportWiggleLayerRefs() {
     const state = viewportPlugin()?.state?.data;
     if (!state) return [];
     const refs = [];
     for (const [ref, cell] of state.cells) {
-      if (cell?.transform?.transformer?.definition?.name === VIEWPORT_WIGGLE_TRANSFORM) refs.push(ref);
+      if (cell?.transform?.transformer?.definition?.name !== VIEWPORT_WIGGLE_TRANSFORM) continue;
+      const tags = cell.transform.tags;
+      const owned = Array.isArray(tags)
+        ? tags.includes(VIEWPORT_WIGGLE_TAG)
+        : tags?.has?.(VIEWPORT_WIGGLE_TAG) === true;
+      if (owned) refs.push(ref);
     }
     return refs;
   }
@@ -9157,6 +9166,14 @@
     const transformer = lib?.plugin?.StateTransforms?.Representation?.WiggleStructureRepresentation3DFromBundle;
     if (!state || !StructureElement || !transformer) return 0;
     const update = state.build();
+    // Pressing B-factor twice must not stack a second layer set under every
+    // representation: an existing one of ours is updated in place.
+    const existing = new Map();
+    for (const ref of viewportWiggleLayerRefs()) {
+      const cell = state.cells.get(ref);
+      const parent = cell?.transform?.parent;
+      if (parent) existing.set(parent, ref);
+    }
     let applied = 0;
     for (const component of viewportWiggleComponents()) {
       for (const representation of component.representations || []) {
@@ -9164,7 +9181,10 @@
         if (!root) continue;
         const layers = viewportUncertaintyWiggleLayers(root, StructureElement);
         if (!layers.length) continue;
-        update.to(representation.cell.transform.ref).apply(transformer, { layers }, { tags: VIEWPORT_WIGGLE_TAG });
+        const ref = representation.cell.transform.ref;
+        const current = existing.get(ref);
+        if (current) update.to(current).update({ layers });
+        else update.to(ref).apply(transformer, { layers }, { tags: VIEWPORT_WIGGLE_TAG });
         applied += 1;
       }
     }
@@ -9200,9 +9220,15 @@
       // error next to per-group values that reach a full Ångström.
       setViewportWiggleOptions({ wiggleAmplitude: 0.01, tumbleAmplitude: 0 })
         .then(() => applyViewportWiggleFromUncertainty())
-        .then(applied => done(applied
-          ? `[web] Wiggling ${applied} representation${applied === 1 ? '' : 's'} by B-factor.`
-          : '[web] This structure has no B-factor or RMSF spread to wiggle by.'))
+        .then(async applied => {
+          // Nothing to weight by means nothing should be moving: the baseline
+          // amplitude set a moment ago would otherwise leave the whole structure
+          // shivering while the status line says there was nothing to do.
+          if (!applied) await setViewportWiggleOptions({ wiggleAmplitude: 0, tumbleAmplitude: 0 });
+          done(applied
+            ? `[web] Wiggling ${applied} representation${applied === 1 ? '' : 's'} by B-factor.`
+            : '[web] This structure has no B-factor or RMSF spread to wiggle by.');
+        })
         .catch(fail);
     } else {
       setViewportWiggleOptions({ wiggleAmplitude: 0, tumbleAmplitude: 0 })
