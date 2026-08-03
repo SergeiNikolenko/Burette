@@ -9,6 +9,7 @@
       "viewer-shell.js",
       "burette-agent.js",
       "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
       "superposition-panel.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
@@ -36,6 +37,7 @@
       "viewer-shell.js",
       "burette-agent.js",
       "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
       "superposition-panel.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
@@ -57,6 +59,7 @@
       "viewer-shell.js",
       "burette-agent.js",
       "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
       "superposition-panel.js",
       "viewer.js"
     ]

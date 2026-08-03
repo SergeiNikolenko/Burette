@@ -32,6 +32,7 @@ const requiredBundleFiles = [
   "preview-web/viewer.js",
   "preview-web/viewer-bootstrap.js",
   "preview-web/viewer-shell.js",
+  "preview-web/molstar-preset-preview-controller.js",
   "preview-web/viewer-runtime.css",
   "preview-web/trajectory-smoothing.js",
   "preview-web/molstar.js",
