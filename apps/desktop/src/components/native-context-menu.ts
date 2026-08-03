@@ -12,12 +12,13 @@ export async function showNativeContextMenu(
     return true;
   }
 
-  const [{ LogicalPosition }, { Menu }, { MenuItem }, { CheckMenuItem }, { PredefinedMenuItem }] = await Promise.all([
+  const [{ LogicalPosition }, { Menu }, { MenuItem }, { CheckMenuItem }, { PredefinedMenuItem }, { Submenu }] = await Promise.all([
     import("@tauri-apps/api/dpi"),
     import("@tauri-apps/api/menu/menu"),
     import("@tauri-apps/api/menu/menuItem"),
     import("@tauri-apps/api/menu/checkMenuItem"),
     import("@tauri-apps/api/menu/predefinedMenuItem"),
+    import("@tauri-apps/api/menu/submenu"),
   ]);
 
   // A native menu holds commands, so the richer kinds map down to what AppKit
@@ -42,6 +43,17 @@ export async function showNativeContextMenu(
           ...(entry.disabled || !entry.action ? {} : { action: () => entry.action?.(!entry.checked) }),
           ...(entry.accelerator ? { accelerator: entry.accelerator } : {}),
         })];
+      }
+      if (entry.kind === "submenu") {
+        return [Promise.all(entry.items.flatMap((child) => child.kind === "item"
+          ? [MenuItem.new({
+              id: child.id,
+              text: child.text,
+              enabled: !child.disabled,
+              ...(child.disabled || !child.action ? {} : { action: child.action }),
+            })]
+          : child.kind === "separator" ? [PredefinedMenuItem.new({ item: "Separator" })] : []))
+          .then((items) => Submenu.new({ id: entry.id, text: entry.text, enabled: !entry.disabled, items }))];
       }
       if (entry.kind !== "item") return [];
       return [MenuItem.new({

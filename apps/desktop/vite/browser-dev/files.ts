@@ -16,6 +16,7 @@ type BrowserDevFileRoutesOptions = {
   ) => Promise<BrowserDevFileScan>;
   devFileExtensions: Set<string>;
   devFileSizeLimit: number;
+  devFileSizeLimitForPath?: (path: string) => number;
   fileExtension: (path: string) => string;
   fileTitle: (path: string) => string;
   isDevFileReadAllowed: (path: string) => boolean | string;
@@ -115,7 +116,8 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
         return;
       }
       const info = await stat(filePath);
-      if (!info.isFile() || info.size > options.devFileSizeLimit || !options.devFileExtensions.has(options.fileExtension(filePath))) {
+      const sizeLimit = options.devFileSizeLimitForPath?.(filePath) ?? options.devFileSizeLimit;
+      if (!info.isFile() || info.size > sizeLimit || !options.devFileExtensions.has(options.fileExtension(filePath))) {
         sendJson(res, 400, { error: "Unsupported file" });
         return;
       }
@@ -353,9 +355,8 @@ async function browserDevTrajectoryPairPayload(filePath: string, options: Browse
   if (!TRAJECTORY_PAIR_FORMATS.has(extension)) return null;
   const files: string[] = [];
   await options.collectDevFiles(dirname(filePath), files);
-  const candidates = Array.from(new Set([filePath, ...files]))
-    .filter((candidate) => options.isDevFileReadAllowed(candidate))
-    .filter((candidate) => TRAJECTORY_PAIR_FORMATS.has(options.fileExtension(candidate)));
+  const candidates = localTrajectoryPairCandidates(filePath, files, options.fileExtension)
+    .filter((candidate) => options.isDevFileReadAllowed(candidate));
   const coordinatePath = TRAJECTORY_COORDINATE_FORMATS.has(extension)
     ? filePath
     : preferredTrajectoryCandidate(candidates, TRAJECTORY_COORDINATE_FORMATS, filePath, options);
@@ -405,6 +406,17 @@ async function browserDevTrajectoryPairPayload(filePath: string, options: Browse
       ligands: [{ dataBase64: coordinate.dataBase64 }],
     },
   };
+}
+
+export function localTrajectoryPairCandidates(
+  filePath: string,
+  discoveredPaths: string[],
+  fileExtension: (path: string) => string,
+) {
+  const sourceDirectory = dirname(filePath);
+  return Array.from(new Set([filePath, ...discoveredPaths]))
+    .filter((candidate) => dirname(candidate) === sourceDirectory)
+    .filter((candidate) => TRAJECTORY_PAIR_FORMATS.has(fileExtension(candidate)));
 }
 
 // Mirrors SYNTHETIC_TOPOLOGY_EXTENSIONS and the header reads on the Rust side, so

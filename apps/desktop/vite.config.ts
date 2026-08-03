@@ -95,6 +95,7 @@ const BROWSER_DEV_APP_ICONS: Record<string, string> = {
   vesta: "/Applications/VESTA.app/Contents/Resources/VESTA.icns",
 };
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
+const MESOSCALE_DEV_FILE_SIZE_LIMIT = 512 * 1024 * 1024;
 const DEV_FILE_SCAN_MAX_FILES = 2_000;
 const DEV_FILE_SCAN_MAX_DIRECTORIES = 400;
 const DEV_FILE_SCAN_MAX_ENTRIES = 20_000;
@@ -3597,6 +3598,7 @@ export function browserDevXyzrenderPlugin() {
         collectDevFiles,
         devFileExtensions: DEV_FILE_EXTENSIONS,
         devFileSizeLimit: DEV_FILE_SIZE_LIMIT,
+        devFileSizeLimitForPath,
         fileExtension,
         fileTitle,
         isDevFileReadAllowed,
@@ -3713,9 +3715,17 @@ function browserDevFileScanOptions() {
     fileExtension,
     maxDirectories: DEV_FILE_SCAN_MAX_DIRECTORIES,
     maxEntries: DEV_FILE_SCAN_MAX_ENTRIES,
-    maxFileBytes: DEV_FILE_SIZE_LIMIT,
+    maxFileBytes: devFileSizeLimitForPath,
     maxFiles: DEV_FILE_SCAN_MAX_FILES,
   };
+}
+
+function devFileSizeLimitForPath(path: string) {
+  const extension = fileExtension(path);
+  const name = pathBasename(path).toLowerCase();
+  return extension === "molj" || extension === "molx" || extension === "mesozip" || name.startsWith("mesoscale-")
+    ? MESOSCALE_DEV_FILE_SIZE_LIMIT
+    : DEV_FILE_SIZE_LIMIT;
 }
 
 function isDevFileReadAllowed(path: string) {

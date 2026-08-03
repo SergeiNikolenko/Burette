@@ -26,6 +26,8 @@ const packageSpecs = [
 const assetSpecs = [
   { path: 'PreviewExtension/Web/molstar.js', package: 'molstar' },
   { path: 'PreviewExtension/Web/molstar.css', package: 'molstar' },
+  { path: 'PreviewExtension/Web/mesoscale.js', package: 'molstar' },
+  { path: 'PreviewExtension/Web/mesoscale.css', package: 'molstar' },
   { path: 'PreviewExtension/Web/rdkit/RDKit_minimal.js', package: '@rdkit/rdkit' },
   { path: 'PreviewExtension/Web/rdkit/RDKit_minimal.wasm', package: '@rdkit/rdkit' },
   { path: 'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js', package: 'burette-rdkit-conformer' },
