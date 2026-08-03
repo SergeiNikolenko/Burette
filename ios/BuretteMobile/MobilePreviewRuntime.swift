@@ -146,6 +146,8 @@ struct MobilePreviewDocument: Identifiable, Hashable {
             "pdb"
         case "xyzr":
             "xyz"
+        case "mesozip":
+            "zip"
         default:
             fileExtension
         }
@@ -698,6 +700,7 @@ struct MobilePreviewRuntime {
         }
         let data = try Data(contentsOf: sampleURL)
         guard !data.isEmpty else { throw RuntimeError.emptySample }
+        let usesMesoscaleViewer = isMesoscalePreview(document: document, data: data)
 
         let previewsDirectory = try resetPreviewsDirectory(fileManager: fileManager)
         let assetsDirectory = previewsDirectory.appendingPathComponent("assets", isDirectory: true)
@@ -705,9 +708,9 @@ struct MobilePreviewRuntime {
 
         let runtimeDirectory = previewsDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try fileManager.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
-        try Data(inlineHTML(title: document.displayName, theme: theme).utf8)
+        try Data(inlineHTML(title: document.displayName, theme: theme, usesMesoscaleViewer: usesMesoscaleViewer).utf8)
             .write(to: runtimeDirectory.appendingPathComponent("index.html"), options: [.atomic])
-        try Data("window.BuretteConfig = \(previewConfigJSON(document: document, byteCount: data.count, theme: theme, style: style, waterRepresentation: waterRepresentation, molstarQuality: molstarQuality));\n".utf8)
+        try Data("window.BuretteConfig = \(previewConfigJSON(document: document, byteCount: data.count, theme: theme, style: style, waterRepresentation: waterRepresentation, molstarQuality: molstarQuality, usesMesoscaleViewer: usesMesoscaleViewer));\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
         let dataScript = "window.BuretteDataBase64 = '\(data.base64EncodedString())';\n"
         try Data(dataScript.utf8)
@@ -745,14 +748,15 @@ struct MobilePreviewRuntime {
         theme: MobilePreviewTheme,
         style: MobileMolecularStyle,
         waterRepresentation: MobileWaterRepresentation,
-        molstarQuality: MobileMolstarQuality
+        molstarQuality: MobileMolstarQuality,
+        usesMesoscaleViewer: Bool
     ) -> String {
         let xyzFrameCount = document.xyzFrameCount()
         let trajectoryFrameCount = xyzFrameCount > 1 ? xyzFrameCount : 0
         let payload: [String: Any] = [
             "format": document.format,
             "molstarFormat": document.format,
-            "binary": false,
+            "binary": ["molx", "mesozip", "bcif"].contains(document.fileExtension),
             "renderer": "molstar",
             "requestedRenderer": "molstar",
             "allowMolstarFallback": true,
@@ -761,6 +765,8 @@ struct MobilePreviewRuntime {
             "byteCount": byteCount,
             "previewByteCount": byteCount,
             "sourceExtension": document.fileExtension,
+            "viewerProfile": usesMesoscaleViewer ? "mesoscale" : "structure",
+            "graphicsMode": molstarQuality == .high ? "quality" : "balanced",
             "stagedEntries": [],
             "quickLookBuild": "ios-mobile",
             "quickLookViewer": true,
@@ -806,7 +812,10 @@ struct MobilePreviewRuntime {
         return String(data: data, encoding: .utf8) ?? "{}"
     }
 
-    private static func inlineHTML(title: String, theme: MobilePreviewTheme) -> String {
+    private static func inlineHTML(title: String, theme: MobilePreviewTheme, usesMesoscaleViewer: Bool) -> String {
+        if usesMesoscaleViewer {
+            return mesoscaleInlineHTML(title: title, theme: theme)
+        }
         let safeTitle = escapeHTML(title)
         return """
         <!doctype html>
@@ -915,6 +924,46 @@ struct MobilePreviewRuntime {
         </body>
         </html>
         """
+    }
+
+    private static func mesoscaleInlineHTML(title: String, theme: MobilePreviewTheme) -> String {
+        let safeTitle = escapeHTML(title)
+        return """
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+          <title>Burette Mesoscale - \(safeTitle)</title>
+          <link rel="stylesheet" href="../assets/mesoscale.css" />
+          <style>html,body,#app{width:100%;height:100%;margin:0;overflow:hidden;background:\(theme.canvasBackground)}#status{position:fixed;left:16px;bottom:16px;z-index:10000;padding:10px 12px;border-radius:8px;background:#17191f;color:#fff;font:13px -apple-system,BlinkMacSystemFont,sans-serif}.hidden{display:none}</style>
+          <script>
+            window.addEventListener('error', function (event) {
+              try { window.webkit.messageHandlers.burette.postMessage({ type: 'error', message: event.message || 'Mesoscale script error' }); } catch (_) {}
+            });
+          </script>
+        </head>
+        <body class="burette-opaque-background burette-mobile-host">
+          <div id="app"></div>
+          <div id="status" class="hidden">Loading \(safeTitle)…</div>
+          <script src="preview-config.js"></script>
+          <script src="preview-data.js"></script>
+          <script src="../assets/mesoscale.js"></script>
+        </body>
+        </html>
+        """
+    }
+
+    private static func isMesoscalePreview(document: MobilePreviewDocument, data: Data) -> Bool {
+        let fileExtension = document.fileExtension
+        if ["molj", "molx", "mesozip"].contains(fileExtension) { return true }
+        let name = document.displayName.lowercased()
+        if fileExtension == "bcif" {
+            return name.contains("cellpack") || name.contains("petworld") || name.contains("mesoscale")
+        }
+        guard ["cif", "mmcif", "mcif"].contains(fileExtension) else { return false }
+        let header = String(decoding: data.prefix(256 * 1024), as: UTF8.self).uppercased()
+        return header.contains("CELLPACK") || header.contains("_PDBX_MODEL.") || header.contains("_PDBX_MODEL ")
     }
 
     enum RuntimeError: LocalizedError {

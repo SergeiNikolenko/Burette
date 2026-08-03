@@ -49,6 +49,12 @@ const PROJECT_STRUCTURE_SCAN_REQUEST_MAX_FILES: usize = 4_000;
 const PROJECT_STRUCTURE_SCAN_REQUEST_MAX_DIRECTORIES: usize = 800;
 const PROJECT_STRUCTURE_SCAN_REQUEST_MAX_ENTRIES: usize = 20_000;
 const CONFORMER_PYTHON_STATUS_TIMEOUT: Duration = Duration::from_secs(10);
+const PROJECT_TEXT_PREVIEW_EXTENSIONS: &[&str] = &[
+    "", "md", "markdown", "mdx", "txt", "log", "out", "err", "sh", "bash", "zsh", "py", "rs", "js",
+    "jsx", "mjs", "cjs", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "htm", "css",
+    "npy", "npz", "pkl",
+];
+const PROJECT_IMAGE_PREVIEW_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 
 #[derive(Clone, Copy)]
 struct ProjectStructureScanLimits {
@@ -928,8 +934,15 @@ fn project_structure_file(path: PathBuf) -> Result<Option<ProjectStructureFile>,
         Err(error) => return Err(format!("{}: {error}", path.display())),
     };
     let extension = structure_path_extension(&path);
-    let plan = preview_plan_for_extension(&extension, "auto")
-        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let renderer = if PROJECT_IMAGE_PREVIEW_EXTENSIONS.contains(&extension.as_str()) {
+        "image".to_string()
+    } else if PROJECT_TEXT_PREVIEW_EXTENSIONS.contains(&extension.as_str()) {
+        "text".to_string()
+    } else {
+        preview_plan_for_extension(&extension, "auto")
+            .map_err(|error| format!("{}: {error}", path.display()))?
+            .renderer
+    };
     Ok(Some(ProjectStructureFile {
         path: path.to_string_lossy().to_string(),
         title: path
@@ -938,7 +951,7 @@ fn project_structure_file(path: PathBuf) -> Result<Option<ProjectStructureFile>,
             .unwrap_or("structure")
             .to_string(),
         extension,
-        renderer: plan.renderer,
+        renderer,
         byte_count: metadata.len(),
     }))
 }
@@ -2792,6 +2805,12 @@ fn supported_open_target_extensions() -> Result<BTreeSet<String>, String> {
             .into_iter()
             .map(str::to_string),
     );
+    supported.extend(
+        PROJECT_TEXT_PREVIEW_EXTENSIONS
+            .iter()
+            .chain(PROJECT_IMAGE_PREVIEW_EXTENSIONS.iter())
+            .map(|extension| (*extension).to_string()),
+    );
     Ok(supported)
 }
 
@@ -3461,8 +3480,16 @@ mod tests {
             std::path::Path::new("candidate.magma"),
             &supported_extensions
         ));
-        assert!(!looks_like_supported_structure_file(
+        assert!(looks_like_supported_structure_file(
             std::path::Path::new("notes.txt"),
+            &supported_extensions
+        ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("plot.png"),
+            &supported_extensions
+        ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("SHA256SUMS"),
             &supported_extensions
         ));
     }
@@ -3650,7 +3677,8 @@ mod tests {
                     .join("nested")
                     .join("MassSpecGymID0075191.ms"),
                 canonical_root.join("nested").join("caffeine.com"),
-                canonical_root.join("nested").join("mini.cif")
+                canonical_root.join("nested").join("mini.cif"),
+                canonical_root.join("nested").join("notes.txt")
             ]
         );
 
@@ -3698,11 +3726,15 @@ mod tests {
         let pdb = root.join("mini.pdb");
         let csv = root.join("molecules.csv");
         let state_csv = root.join("state.csv");
+        let plot = root.join("plot.png");
+        let checksums = root.join("SHA256SUMS");
         let cif = nested.join("mini.cif");
         let txt = nested.join("notes.txt");
         fs::write(&pdb, "HEADER TEST\n").unwrap();
         fs::write(&csv, "smiles,name\nCC,ethane\n").unwrap();
         fs::write(&state_csv, "step,energy\n1,-2.5\n").unwrap();
+        fs::write(&plot, [0x89, b'P', b'N', b'G']).unwrap();
+        fs::write(&checksums, "abc  mini.pdb\n").unwrap();
         fs::write(&cif, "data_test\n").unwrap();
         fs::write(&txt, "ignore\n").unwrap();
 
@@ -3713,10 +3745,10 @@ mod tests {
         let scan = &scans[0];
         assert!(!scan.truncated);
         assert_eq!(scan.scanned_directories, 2);
-        assert_eq!(scan.scanned_entries, 6);
+        assert_eq!(scan.scanned_entries, 8);
         assert!(scan.error.is_none());
         let files = &scan.files;
-        assert_eq!(files.len(), 4);
+        assert_eq!(files.len(), 7);
         let pdb_file = files.iter().find(|file| file.extension == "pdb").unwrap();
         assert_eq!(
             pdb_file.path,
@@ -3740,6 +3772,30 @@ mod tests {
                 .renderer,
             "grid2d"
         );
+        assert_eq!(
+            files
+                .iter()
+                .find(|file| file.title == "plot.png")
+                .unwrap()
+                .renderer,
+            "image"
+        );
+        assert_eq!(
+            files
+                .iter()
+                .find(|file| file.title == "SHA256SUMS")
+                .unwrap()
+                .renderer,
+            "text"
+        );
+        assert_eq!(
+            files
+                .iter()
+                .find(|file| file.title == "notes.txt")
+                .unwrap()
+                .renderer,
+            "text"
+        );
         let cif_file = files.iter().find(|file| file.extension == "cif").unwrap();
         assert_eq!(
             cif_file.path,
@@ -3751,6 +3807,8 @@ mod tests {
 
         fs::remove_file(txt).unwrap();
         fs::remove_file(cif).unwrap();
+        fs::remove_file(checksums).unwrap();
+        fs::remove_file(plot).unwrap();
         fs::remove_file(state_csv).unwrap();
         fs::remove_file(csv).unwrap();
         fs::remove_file(pdb).unwrap();
@@ -3969,7 +4027,7 @@ mod tests {
         ));
         fs::create_dir_all(&root).unwrap();
         for index in 0..8 {
-            fs::write(root.join(format!("note-{index}.txt")), "ignore\n").unwrap();
+            fs::write(root.join(format!("note-{index}.unsupported")), "ignore\n").unwrap();
         }
         let supported_extensions =
             supported_open_target_extensions().expect("supported extensions should load");

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateActio
 import { invoke } from "@tauri-apps/api/core";
 
 import { buildSidebarProjects, type SidebarProjectStructure } from "../lib/sidebar-projects";
+import { scanBrowserDevFolders } from "../lib/browser-dev-startup";
 import { isTauriRuntime } from "../lib/tauri";
 import type { RecentStructure, ViewerDocument } from "../types";
 import {
@@ -23,10 +24,17 @@ const projectScanSessionEntryBudget = 20_000;
 const browserDevStructureExtensions = new Set([
   "pdb", "ent", "pdbqt", "pqr", "xpdb",
   "cif", "mmcif", "mcif", "bcif", "mmtf",
-  "sdf", "sd", "smi", "smiles", "csv", "tsv",
+  "ccp4", "mrc", "map", "mtz",
+  "sdf", "sd", "smi", "smiles",
   "mol", "mol2", "xyz", "gro", "mae", "maegz", "cms", "dtr",
   "nc", "ncdf", "netcdf", "ncrst",
 ]);
+const browserDevTextExtensions = new Set([
+  "", "md", "markdown", "mdx", "txt", "log", "err", "sh", "bash", "zsh", "py", "rs",
+  "js", "jsx", "ts", "tsx", "json", "npy", "npz", "pkl", "yaml", "yml", "toml", "html", "css",
+]);
+const browserDevImageExtensions = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp"]);
+const browserDevTableExtensions = new Set(["csv", "tsv"]);
 
 type SidebarProjectRootScan = {
   root: string;
@@ -139,13 +147,18 @@ export function useAppSidebarProjects({
 
   useEffect(() => {
     if (!isTauriRuntime()) {
-      if (!browserDevGeneratedRoot) {
+      const roots = Array.from(new Set([
+        ...(browserDevGeneratedRoot ? [browserDevGeneratedRoot] : []),
+        ...browserDevExplicitFolders,
+      ]));
+      if (roots.length === 0) {
         lastGeneratedFilesSignatureRef.current = "";
         setProjectStructures([]);
         return undefined;
       }
       let cancelled = false;
       let reportedError = false;
+      let reportedTruncation = false;
       lastGeneratedFilesSignatureRef.current = "";
       const applyFiles = (files: string[]) => {
         const signature = files.join("\n");
@@ -155,24 +168,32 @@ export function useAppSidebarProjects({
       };
       const refresh = async () => {
         try {
-          const response = await fetch(`/__burette/dev-files?root=${encodeURIComponent(browserDevGeneratedRoot)}`, { cache: "no-store" });
-          if (!response.ok) throw new Error(`Generated project scan failed with HTTP ${response.status}`);
-          const payload = await response.json() as { files?: string[] };
-          applyFiles(Array.isArray(payload.files) ? payload.files : []);
+          const scan = await scanBrowserDevFolders(roots);
+          applyFiles(scan.files.sort((left, right) => left.localeCompare(right)));
+          if (scan.truncated && !reportedTruncation) {
+            reportedTruncation = true;
+            pushStatus(
+              `Browser project scanning stopped after ${scan.scannedEntries.toLocaleString()} entries in `
+              + `${scan.scannedDirectories.toLocaleString()} folders to keep Burette responsive. `
+              + "Open a smaller subfolder as a separate project to inspect additional files.",
+            );
+          }
         } catch (error) {
           if (cancelled) return;
           applyFiles([]);
           if (!reportedError) {
             reportedError = true;
-            pushErrorStatus(error, "Generated project scan failed");
+            pushErrorStatus(error, "Browser project scan failed");
           }
         }
       };
       void refresh();
-      const interval = window.setInterval(() => void refresh(), browserDevGeneratedProjectScanMs);
+      const interval = browserDevGeneratedRoot
+        ? window.setInterval(() => void refresh(), browserDevGeneratedProjectScanMs)
+        : null;
       return () => {
         cancelled = true;
-        window.clearInterval(interval);
+        if (interval !== null) window.clearInterval(interval);
       };
     }
     if (projectRoots.length === 0) {
@@ -299,7 +320,7 @@ export function useAppSidebarProjects({
             }
             if (result.truncated) {
               partialMessages.push(
-                `Showing the first ${result.files.length.toLocaleString()} structures from ${projectRootTitle(root)}; `
+                `Showing the first ${result.files.length.toLocaleString()} files from ${projectRootTitle(root)}; `
                 + `the scan stopped after ${result.scannedEntries.toLocaleString()} entries in `
                 + `${result.scannedDirectories.toLocaleString()} folders to keep Burette responsive. `
                 + "Open a smaller subfolder as a separate project to inspect additional files.",
@@ -328,7 +349,7 @@ export function useAppSidebarProjects({
         .catch(() => undefined);
     }
     return undefined;
-  }, [browserDevGeneratedRoot, projectRoots, projectRootsToScan, pushErrorStatus, pushStatus]);
+  }, [browserDevExplicitFolders, browserDevGeneratedRoot, projectRoots, projectRootsToScan, pushErrorStatus, pushStatus]);
 
   useEffect(() => {
     if (prunedPersistedPathsRef.current || !isTauriRuntime()) return;
@@ -410,11 +431,16 @@ function browserDevSampleProjectStructures(browserDevHasExplicitWorkspace: boole
 function browserDevProjectStructureForPath(path: string): SidebarProjectStructure {
   const title = path.replace(/\\/g, "/").split("/").filter(Boolean).pop() || path;
   const extension = browserDevProjectExtension(path);
+  let renderer: SidebarProjectStructure["renderer"] = "not-renderable";
+  if (browserDevImageExtensions.has(extension)) renderer = "image";
+  else if (browserDevTableExtensions.has(extension)) renderer = "grid2d";
+  else if (browserDevTextExtensions.has(extension)) renderer = "text";
+  else if (browserDevStructureExtensions.has(extension)) renderer = "molstar";
   return {
     path,
     title,
     extension,
-    renderer: browserDevStructureExtensions.has(extension) ? "molstar" : "not-renderable",
+    renderer,
     byteCount: 0,
     openedAt: null,
   };

@@ -17,6 +17,7 @@ export type FileKind =
   | "network"
   | "scene"
   | "sequence"
+  | "image"
   | "plot"
   | "log"
   | "document"
@@ -109,6 +110,10 @@ const FILE_KIND_BY_EXTENSION: Record<string, FileKind> = {
   com: "calculation",
   cub: "calculation",
   cube: "calculation",
+  ccp4: "calculation",
+  mrc: "calculation",
+  map: "calculation",
+  mtz: "calculation",
   fdf: "calculation",
   fhiaims: "calculation",
   gms: "calculation",
@@ -133,8 +138,18 @@ const FILE_KIND_BY_EXTENSION: Record<string, FileKind> = {
 
   mvsj: "scene",
   mvsx: "scene",
+  molj: "scene",
+  molx: "scene",
+  mesozip: "scene",
 
   fasta: "sequence",
+
+  png: "image",
+  jpg: "image",
+  jpeg: "image",
+  gif: "image",
+  webp: "image",
+  bmp: "image",
 
   xvg: "plot",
   edr: "plot",
@@ -295,6 +310,14 @@ const KIND_GLYPHS: Record<FileKind, ReactElement> = {
       <path d="M3.6 7.4h4.4M10.3 7.4h2.6M15.2 7.4h5.2" />
       <path d="M3.6 12h2.4M8.3 12h5.4M16 12h4.4" />
       <path d="M3.6 16.6h5.6M11.5 16.6h2.4M16.2 16.6h4.2" />
+    </>
+  ),
+  // Raster figure or screenshot.
+  image: (
+    <>
+      <rect x="3.4" y="4.6" width="17.2" height="14.8" rx="3.2" />
+      <circle cx="8.2" cy="9" r="1.5" />
+      <path d="m5.4 17 4.2-4 2.6 2.2 2.7-3 3.7 4.8" />
     </>
   ),
   // Series on axes.

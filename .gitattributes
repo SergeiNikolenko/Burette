@@ -1,4 +1,10 @@
 # Generated Browser bundles may contain significant trailing spaces inside embedded source text.
 plugins/burette-agent/browser-shell-dist/** whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+# Keep pinned upstream Mol* bundles byte-for-byte, including shader/template whitespace.
+PreviewExtension/Web/molstar.js whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+plugins/burette-agent/preview-web/molstar.js whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+# Mesoscale bundle is generated from the same upstream shader/template sources.
+PreviewExtension/Web/mesoscale.js whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+plugins/burette-agent/preview-web/mesoscale.js whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
 # Preserve the pinned upstream CRLF reference table byte-for-byte.
 compute/semiempirical/reference/parameters_PM6_MOPAC.csv -text whitespace=-blank-at-eol

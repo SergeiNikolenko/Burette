@@ -87,6 +87,13 @@ try {
     "burette.open_workspace",
     "burette.observe_workspace",
     "burette.control_viewer",
+    "burette.get_mvs_authoring_reference",
+    "burette.list_story_templates",
+    "burette.create_story_from_template",
+    "burette.create_story",
+    "burette.validate_story",
+    "burette.observe_story",
+    "burette.control_story",
     "burette.render_panel",
   ]) {
     assert.equal(toolNames.includes(required), true, `Missing ${required}`);
@@ -100,6 +107,23 @@ try {
   assert.equal(context.structuredContent.ok, true);
   const capabilities = context.structuredContent.context?.capabilities || context.structuredContent.capabilities;
   assert.equal(capabilities.canOpenWorkspace, true);
+
+  const templates = await request("tools/call", {
+    name: "burette.list_story_templates",
+    arguments: {},
+  });
+  assert.equal(templates.isError, undefined);
+  assert.equal(templates.structuredContent.ok, true);
+  assert.equal(templates.structuredContent.result.count, 4);
+
+  const authoringReference = await request("tools/call", {
+    name: "burette.get_mvs_authoring_reference",
+    arguments: { schema: "scene", nodeKind: "component" },
+  });
+  assert.equal(authoringReference.isError, undefined);
+  assert.equal(authoringReference.structuredContent.ok, true);
+  assert.equal(authoringReference.structuredContent.result.nodeKind, "component");
+  assert.match(authoringReference.structuredContent.result.markdown, /Parent: `structure`/);
   console.log("burette-agent bundled MCP tests passed");
 } finally {
   if (child.exitCode === null) child.kill("SIGTERM");

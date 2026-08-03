@@ -17,6 +17,7 @@ skills/
   user-context/          scoped preflight and capability registry
   open-workspace/        open Browser preview or desktop sessions
   molstar-scene/         allowlisted Mol* actions and scene inspection
+  mvs-story/             author, validate, observe, and control MolViewSpec Stories
   molecule-collection/   SDF/grid/property workflows
   trajectory-review/     trajectory/result-bundle review
   workflow-results/      external workflow artifact intake
@@ -60,6 +61,12 @@ bun scripts/burette-agent.mjs observe --session-dir /tmp/burette-agent-session
 bun scripts/burette-agent.mjs act --session-dir /tmp/burette-agent-session '{"type":"reset_camera"}'
 bun scripts/burette-agent.mjs act --session-dir /tmp/burette-agent-session '{"type":"apply_scene","components":[{"selector":"protein","label":"Protein","highlight":true},{"selector":{"chain":"A","range":[45,58]},"label":"Active loop","select":true,"focus":true}]}'
 bun scripts/burette-agent.mjs render-panel --session-dir /tmp/burette-agent-session --kind markdown --file notes.md
+bun scripts/burette-agent.mjs story-create --spec story.json --output story.mvsx --asset protein.cif=/path/protein.cif
+bun scripts/burette-agent.mjs story-validate --file story.mvsx
+bun scripts/burette-agent.mjs story-template-list
+bun scripts/burette-agent.mjs story-template-create --template binding-site-tour --output story.mvsx --var protein_url=protein.pdb --var ligand_url=ligand.sdf --asset protein.pdb=/path/protein.pdb --asset ligand.sdf=/path/ligand.sdf
+bun scripts/burette-agent.mjs story-schema --schema scene
+bun scripts/burette-agent.mjs story-schema --schema scene --node component
 ```
 
 MCP tools wrap this CLI instead of reimplementing the app control layer.
@@ -73,6 +80,13 @@ burette.open_ketcher
 burette.observe_workspace
 burette.control_viewer
 burette.control_ketcher
+burette.get_mvs_authoring_reference
+burette.list_story_templates
+burette.create_story_from_template
+burette.create_story
+burette.validate_story
+burette.observe_story
+burette.control_story
 burette.render_panel
 ```
 
@@ -129,6 +143,11 @@ The same repository also owns the hosted plugin-plus-skills target at
 <https://burette-plugin.vercel.app/mcp> and renders one authorized attachment or
 public PDB entry in the real sandboxed Burette browser workspace. The hosted
 target does not open arbitrary local files or control the desktop application.
+
+MolViewSpec Story authoring and the bundled Browser transports are self-contained
+in plugin `0.2.2`. Native `desktop-app` Story observation and control require
+Burette `2.1.16` or newer; older app releases are intentionally excluded by
+`compatibility.json`.
 
 The required manifest lives at `.codex-plugin/plugin.json`, the MCP server is
 declared in `.mcp.json`, and the repository marketplace is declared at
@@ -193,6 +212,25 @@ There are two execution paths:
   loaded through Mol* `loadMvsData`. Use this for full representation graphs,
   durable opacity/labels/tooltips/primitives, explicit camera/canvas settings,
   transforms/instances, volumes, and animations.
+
+For an explanation that should unfold step by step, use a MolViewSpec Story:
+`burette.get_mvs_authoring_reference` returns the installed MolViewSpec version,
+official documentation map, supported scene or animation nodes, and the exact
+parent/parameter contract for one requested node. Use it before unfamiliar
+selectors, annotations, cameras, primitives, volumes, or animations instead of
+guessing syntax from memory.
+`burette.list_story_templates` returns reusable structure-overview,
+binding-site, docking-comparison, and aligned-structure scaffolds with declared
+inputs, storyboard purposes, and scientific caveats.
+`burette.create_story_from_template` instantiates one through the same safe
+validation/write path; customize its generic prose with observed evidence.
+`burette.create_story` writes a standard multi-state document,
+`burette.validate_story` checks the official Mol* schema and bundled resources,
+and `burette.observe_story` / `burette.control_story` expose the current step and
+playback controls without DOM automation. Every snapshot is a complete scene,
+so overview, pocket, pose, contacts, comparison, and conclusion remain
+reproducible and independently loadable. Package local sidecars in `.mvsx`;
+standalone `.mvsj` is appropriate only when all referenced URLs are accessible.
 
 Use `apply_scene` for commands like "highlight the protein", "select and focus
 the active loop", or "show the ligand pocket". Use `load_mvs` when the user

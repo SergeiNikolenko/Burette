@@ -30,6 +30,7 @@ const [
   markdownImageResolver,
   markdownLinkNavigation,
   browserDevTextFiles,
+  browserDevFiles,
   tauriLib,
   textFilesCommand,
   permissions,
@@ -60,6 +61,7 @@ const [
   source("apps/desktop/src/components/text-file-viewer/markdown-image-src-resolver.ts"),
   source("apps/desktop/src/components/text-file-viewer/markdown-link-navigation.ts"),
   source("apps/desktop/src/lib/browser-dev-text-files.ts"),
+  source("apps/desktop/vite/browser-dev/files.ts"),
   source("apps/desktop/src-tauri/src/lib.rs"),
   source("apps/desktop/src-tauri/src/commands/text_files.rs"),
   source("apps/desktop/src-tauri/permissions/burette.toml"),
@@ -120,6 +122,9 @@ assert.match(textViewer, /textNumberHighlighting\(\)/);
 assert.match(textViewer, /return \[await description\.load\(\), numberHighlighting\]/);
 assert.match(textViewer, /<MarkdownRichViewer document=\{document\} openPaths=\{openPaths\} \/>/);
 assert.match(textViewer, /<MaestroOutlineViewer document=\{document\} \/>/);
+assert.match(textViewer, /<ImageFilePreview document=\{document\} \/>/);
+assert.match(textViewer, /Image preview is limited to 24 MB/);
+assert.match(textFilesCommand, /data:\{mime_type\};base64/);
 assert.match(textViewer, /function isMaestroText\(document: TextFileDocument\)/);
 assert.match(textViewer, /fontVariantNumeric: "tabular-nums"/);
 assert.match(textViewer, /fontFeatureSettings: "\\"tnum\\" 1, \\"kern\\" 0, \\"liga\\" 0, \\"calt\\" 0"/);
@@ -153,7 +158,11 @@ assert.match(markdownRichViewer, /markdownTableDecorations\(\)/);
 assert.match(markdownRichViewer, /markdownHtmlBlockDecorations\(\)/);
 assert.match(markdownRichViewer, /markdownMermaidDecorations\(\)/);
 assert.match(markdownRichViewer, /markdownImageSrcResolver\(\(\) => document\.path\)/);
-assert.match(markdownRichViewer, /markdownLinkNavigation\(\(\) => document\.path, \(\) => disposedRef\.current, openPaths\)/);
+assert.match(markdownRichViewer, /let disposed = false;/);
+assert.match(markdownRichViewer, /let view: EditorView \| null = null;/);
+assert.match(markdownRichViewer, /markdownLinkNavigation\(\(\) => document\.path, \(\) => disposed, openPaths\)/);
+assert.match(markdownRichViewer, /disposed = true;\s+view\?\.destroy\(\);/);
+assert.doesNotMatch(markdownRichViewer, /disposedRef/);
 assert.match(markdownRichViewer, /EditorState\.readOnly\.of\(true\)/);
 assert.match(markdownRichViewer, /EditorView\.editable\.of\(false\)/);
 
@@ -180,13 +189,18 @@ assert.match(textFilesCommand, /pub\(crate\) fn read_text_file\(\s*path: String,
 assert.match(textFilesCommand, /fn read_limit\(max_bytes: Option<usize>\) -> usize/);
 assert.match(textFilesCommand, /\.take\(limit as u64\)/);
 assert.match(textFilesCommand, /looks_binary/);
+assert.match(textFilesCommand, /language: "image"\.to_string\(\)/);
+assert.match(textFilesCommand, /binary_file_summary/);
 assert.match(textFilesCommand, /GzDecoder/);
 assert.match(textFilesCommand, /String::from_utf8_lossy/);
 assert.match(tauriLib, /commands::text_files::open_text_files/);
 assert.match(permissions, /"open_text_files"/);
 assert.match(browserDevTextFiles, /\/__burette\/read-text-file\?path=\$\{encodeURIComponent\(path\)\}/);
 assert.match(browserDevTextFiles, /export async function openBrowserDevTextFiles/);
-for (const extension of ["inpcrd", "rst7", "crd", "rst", "state", "xml"]) {
+assert.match(browserDevTextFiles, /INLINE_IMAGE_BATCH_LIMIT/);
+assert.match(browserDevTextFiles, /maxImageBytes=\$\{maxImageBytes\}/);
+assert.match(browserDevFiles, /info\.size > maxImageBytes/);
+for (const extension of ["inpcrd", "rst7", "crd", "rst", "state", "xml", "png", "jpg", "jpeg", "gif", "webp", "bmp"]) {
   assert.match(viteConfig, new RegExp(`"${extension}"`), `${extension} should be allowed by browser-dev read-file`);
 }
 

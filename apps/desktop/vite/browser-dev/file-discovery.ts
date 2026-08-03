@@ -18,7 +18,9 @@ type BrowserDevFileScanOptions = BrowserDevFileScanLimits & {
   allowedExtensions: Set<string>;
   fileExtension: (path: string) => string;
   includeFile?: (path: string) => boolean;
-  maxFileBytes: number;
+  // A number for a uniform cap, or a per-path limit when some formats are
+  // allowed to be much larger than the rest — mesoscale scenes, for instance.
+  maxFileBytes: number | ((path: string) => number);
 };
 
 export function emptyBrowserDevFileScan(): BrowserDevFileScan {
@@ -58,7 +60,8 @@ export async function collectBrowserDevFiles(
     }
     return scan;
   }
-  if (!info.isFile() || info.size > options.maxFileBytes) return scan;
+  const maxFileBytes = typeof options.maxFileBytes === "function" ? options.maxFileBytes(path) : options.maxFileBytes;
+  if (!info.isFile() || info.size > maxFileBytes) return scan;
   if (!options.allowedExtensions.has(options.fileExtension(path))) return scan;
   if (options.includeFile && !options.includeFile(path)) return scan;
   files.push(path);

@@ -610,7 +610,8 @@ body.buret-toolbar-collapsed #buret-selection-bar {
    the state while its menu is closed. */
 .buret-rail-button[data-motion="spin"],
 .buret-rail-button[data-motion="rock"],
-.buret-rail-button[data-motion="playing"] {
+.buret-rail-button[data-motion="playing"],
+.buret-rail-button[data-motion="wiggle"] {
   color: var(--buret-molstar-accent);
 }
 /* The rail is a single column parked against the right edge, so a tooltip that
@@ -1722,7 +1723,8 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 .buret-button svg { width: 17px; height: 17px; display: block; }
 .buret-pose-toggle { width: auto; min-width: 34px; }
 .buret-grip { width: 28px; padding: 0; cursor: grab; color: currentColor; opacity: 0.66; }
-.buret-molstar-lasso.active {
+.buret-molstar-lasso.active,
+.buret-assembly-symmetry.active {
   background: var(--buret-toolbar-hover);
   box-shadow: inset 0 0 0 1px var(--buret-toolbar-border);
 }
@@ -3009,7 +3011,6 @@ body.burette-mobile-host .buret-docking-poses button {
 }
 .buret-docking-poses-structure-scene {
   width: fit-content;
-  border-radius: 0;
 }
 .buret-docking-poses-trajectory-segments {
   width: min(392px, calc(100vw - 24px));
@@ -3250,6 +3251,98 @@ body.burette-mobile-host .buret-docking-poses button {
   width: 28px;
   padding: 0 !important;
 }
+.buret-docking-pose-animation-button svg {
+  display: block;
+  width: 17px;
+  height: 17px;
+  margin: auto;
+}
+.buret-molstar-story-open {
+  font-weight: 600;
+}
+/* The Story control borrows the pose toolbar's shell for its layout, but not its
+   square corners: those exist because the docking scene toolbar sits flush against
+   the viewport edge, while this one floats. */
+.buret-docking-poses.buret-molstar-story {
+  border-radius: 12px;
+}
+/* Description of the Story state under the pointer. It sits beside the state
+   list rather than inside the control, so a long description can scroll without
+   resizing the control the user just dragged into place. */
+.buret-story-hover-card {
+  position: fixed;
+  z-index: 2147483646;
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  max-height: min(46vh, 420px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: var(--buret-molstar-panel-radius);
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-panel-background);
+  box-shadow: 0 22px 60px var(--buret-molstar-shadow);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  font: 400 13px/1.52 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  scrollbar-gutter: stable;
+  animation: buret-story-hover-card-in 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes buret-story-hover-card-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.buret-story-hover-card-content > :first-child { margin-top: 0; }
+.buret-story-hover-card-content > :last-child { margin-bottom: 0; }
+.buret-story-hover-card h2,
+.buret-story-hover-card h3,
+.buret-story-hover-card h4 {
+  margin: 18px 0 7px;
+  color: var(--buret-molstar-text);
+  font-weight: 650;
+  line-height: 1.25;
+}
+.buret-story-hover-card h2 { font-size: 18px; }
+.buret-story-hover-card h3 { font-size: 15px; }
+.buret-story-hover-card h4 { font-size: 13px; }
+.buret-story-hover-card p { margin: 0 0 12px; }
+.buret-story-hover-card ul { margin: 0 0 13px; padding-left: 20px; }
+.buret-story-hover-card li { margin: 3px 0; }
+.buret-story-hover-card strong { font-weight: 650; }
+.buret-story-hover-card code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  color: var(--buret-molstar-text);
+  background: color-mix(in srgb, var(--buret-molstar-text) 9%, transparent);
+  font: 500 0.92em ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.buret-story-hover-card table {
+  width: 100%;
+  margin: 10px 0 15px;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.buret-story-hover-card th,
+.buret-story-hover-card td {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--buret-molstar-border);
+  text-align: left;
+  vertical-align: top;
+}
+.buret-story-hover-card th {
+  background: color-mix(in srgb, var(--buret-molstar-text) 6%, transparent);
+  font-weight: 650;
+}
+.buret-story-hover-card tr:last-child td { border-bottom: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .buret-story-hover-card { animation: none; }
+}
 .buret-docking-pose-all {
   min-width: 34px;
 }
@@ -3424,6 +3517,208 @@ body.burette-mobile-host .buret-docking-poses button {
     min-width: 0;
     width: auto;
     flex: 1 1 auto;
+  }
+}
+.buret-superposition-panel {
+  position: fixed;
+  top: 64px;
+  right: 14px;
+  z-index: 64;
+  display: flex;
+  flex-direction: column;
+  width: min(340px, calc(100vw - 28px));
+  max-height: calc(100vh - 78px);
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--buret-molstar-panel-background) 94%, transparent);
+  color: var(--buret-molstar-text);
+  box-shadow: var(--buret-menu-shadow);
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  font: 12px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+.buret-superposition-panel [hidden] {
+  display: none !important;
+}
+.buret-superposition-panel[hidden] {
+  display: none;
+}
+.buret-superposition-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--buret-menu-border);
+}
+.buret-superposition-header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.buret-superposition-header strong {
+  font-size: 13px;
+}
+.buret-superposition-header span {
+  color: var(--buret-molstar-muted);
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.buret-superposition-panel button,
+.buret-superposition-panel select {
+  min-height: 30px;
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 7px;
+  background: var(--buret-control-fill);
+  color: inherit;
+  font: inherit;
+}
+.buret-superposition-panel button:not(:disabled):hover,
+.buret-superposition-panel select:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--buret-molstar-accent) 70%, var(--buret-menu-border));
+}
+.buret-superposition-panel button:disabled,
+.buret-superposition-panel select:disabled {
+  opacity: .45;
+}
+.buret-superposition-close {
+  width: 30px;
+  padding: 0;
+  border-color: transparent !important;
+  background: transparent !important;
+  font-size: 18px !important;
+}
+.buret-superposition-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow: auto;
+}
+.buret-superposition-field {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.buret-superposition-field > span,
+.buret-superposition-section-title,
+.buret-superposition-moving legend {
+  color: var(--buret-molstar-muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.buret-superposition-moving {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 9px;
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 9px;
+}
+.buret-superposition-moving legend {
+  padding: 0 4px;
+}
+.buret-superposition-moving-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, .8fr);
+  align-items: center;
+  gap: 8px;
+}
+.buret-superposition-moving-row > label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.buret-superposition-moving-row > label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-superposition-reference-chain {
+  grid-template-columns: 92px minmax(0, 1fr);
+  padding-bottom: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--buret-menu-border) 70%, transparent);
+}
+.buret-superposition-methods {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.buret-superposition-help {
+  min-height: 32px;
+  margin: 0;
+  color: var(--buret-molstar-muted);
+}
+.buret-superposition-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.buret-superposition-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.buret-superposition-result-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 40px;
+  padding: 9px;
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--buret-control-fill) 76%, transparent);
+}
+.buret-superposition-result-summary,
+.buret-superposition-result-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.buret-superposition-result-summary span,
+.buret-superposition-result-row span {
+  color: var(--buret-molstar-muted);
+  font-size: 11px;
+}
+.buret-superposition-warning {
+  margin: 2px 0 0;
+  color: #e7ad62;
+}
+.buret-superposition-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  padding-top: 2px;
+}
+.buret-superposition-footer button {
+  min-width: 82px;
+  padding: 0 12px;
+}
+.buret-superposition-apply {
+  border-color: color-mix(in srgb, var(--buret-molstar-accent) 70%, var(--buret-menu-border)) !important;
+  background: color-mix(in srgb, var(--buret-molstar-accent) 30%, var(--buret-control-fill)) !important;
+}
+body.burette-mobile-host .buret-superposition-panel {
+  top: auto;
+  right: 8px;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  left: 8px;
+  width: auto;
+  max-height: min(72vh, 620px);
+  border-radius: 18px;
+}
+@media (max-width: 520px) {
+  .buret-superposition-moving-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 .buret-agent-panel {
@@ -3677,6 +3972,30 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--buret-molstar-muted-text);
+}
+.buret-scene-tree-story {
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--buret-molstar-muted-text);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Section heading inside the tree - a label for the rows under it, not a row. */
+.buret-tree-section {
+  margin: 8px 0 2px;
+  padding: 0 6px;
+  color: var(--buret-molstar-muted-text);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.buret-tree-section:first-child {
+  margin-top: 0;
 }
 .buret-scene-tree-header-actions {
   display: flex;
@@ -4596,6 +4915,8 @@ body:not(.burette-mobile-host) .buret-representation-type-item[data-current="tru
 }
 body:not(.burette-mobile-host) .buret-representation-type-action-menu {
   min-width: 176px;
+.buret-superposition-context-submenu .buret-tree-menu-icon {
+  display: none;
 }
 @keyframes buret-molecule-submenu-in {
   from { opacity: 0; transform: translateX(-2px) scale(0.98); }

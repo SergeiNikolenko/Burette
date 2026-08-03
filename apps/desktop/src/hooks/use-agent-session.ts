@@ -5,10 +5,15 @@ import type { DockingSceneMode, ViewerDocument } from "../types";
 import type { OpenTextFilesResult } from "../types";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import type { DockArea } from "../lib/dock";
+import { executeAgentTabAction, type AgentTabActions } from "../lib/agent-tab-actions";
+import type { MoleculeTab } from "../stores/molecule-store";
 
 const AGENT_API_VERSION = "burette-agent-control/v1";
 const ACTION_POLL_INTERVAL_MS = 500;
 const BROWSER_AGENT_SESSION_DIR = "__browser_agent_shell__";
+const MAX_OBSERVED_DOCUMENTS = 128;
+const MAX_OBSERVED_TABS = 128;
+const MAX_OBSERVED_PANELS = 64;
 const isBrowserAgentShell = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
 
 type KetcherAgentModule = typeof import("../lib/ketcher-agent");
@@ -67,7 +72,18 @@ type ViewerAgentState = {
   lastError: string | null;
   lastAction: AgentSceneAction | null;
   selection: AgentSceneSelection | null;
+  story: AgentStoryState | null;
   updatedAt: string;
+};
+
+type AgentStoryState = {
+  available: boolean;
+  title: string | null;
+  stepIndex: number | null;
+  stepCount: number;
+  current: Record<string, unknown> | null;
+  steps: Array<Record<string, unknown>>;
+  isPlaying: boolean;
 };
 
 type AgentSceneAction = {
@@ -89,6 +105,8 @@ type UseAgentSessionArgs = {
   activeTabId: string | null | undefined;
   activeTabKind: string | null | undefined;
   openDockingDocument: OpenDockingDocument;
+  tabs: MoleculeTab[];
+  tabActions: AgentTabActions;
   openKetcherTab: OpenKetcherTab;
   documents: ViewerDocument[];
   openTextDocuments: OpenTextDocuments;
@@ -102,6 +120,8 @@ export function useAgentSession({
   activeTabId,
   activeTabKind,
   openDockingDocument,
+  tabs,
+  tabActions,
   openKetcherTab,
   documents,
   openTextDocuments,
@@ -114,6 +134,8 @@ export function useAgentSession({
   const activeTabIdRef = useRef<string | null | undefined>(activeTabId);
   const activeTabKindRef = useRef<string | null | undefined>(activeTabKind);
   const documentsRef = useRef<ViewerDocument[]>(documents);
+  const tabsRef = useRef<MoleculeTab[]>(tabs);
+  const tabActionsRef = useRef(tabActions);
   const openPathsRef = useRef(openPaths);
   const openDockingDocumentRef = useRef(openDockingDocument);
   const openKetcherTabRef = useRef(openKetcherTab);
@@ -126,12 +148,14 @@ export function useAgentSession({
 
   activeTabIdRef.current = activeTabId;
   activeTabKindRef.current = activeTabKind;
+  tabsRef.current = tabs;
+  tabActionsRef.current = tabActions;
 
   useEffect(() => {
     activeDocumentRef.current = activeDocument;
     documentsRef.current = documents;
-    void writeObserve(sessionDirRef.current, activeDocument, documents, workspacePanelsRef.current, viewerAgentStatesRef.current, activeTabIdRef.current, activeTabKindRef.current);
-  }, [activeDocument, activeTabId, activeTabKind, documents]);
+    void writeObserve(sessionDirRef.current, activeDocument, documents, tabs, workspacePanelsRef.current, viewerAgentStatesRef.current, activeTabIdRef.current, activeTabKindRef.current);
+  }, [activeDocument, activeTabId, activeTabKind, documents, tabs]);
 
   useEffect(() => {
     openPathsRef.current = openPaths;
@@ -146,7 +170,7 @@ export function useAgentSession({
     const cleanSessionDir = typeof sessionDir === "string" ? sessionDir.trim() : "";
     if (!cleanSessionDir) return;
     sessionDirRef.current = cleanSessionDir;
-    void writeObserve(cleanSessionDir, activeDocumentRef.current, documentsRef.current, workspacePanelsRef.current, viewerAgentStatesRef.current, activeTabIdRef.current, activeTabKindRef.current);
+    void writeObserve(cleanSessionDir, activeDocumentRef.current, documentsRef.current, tabsRef.current, workspacePanelsRef.current, viewerAgentStatesRef.current, activeTabIdRef.current, activeTabKindRef.current);
   }, []);
 
   useEffect(() => {
@@ -191,6 +215,7 @@ export function useAgentSession({
             sessionDirRef.current,
             activeDocumentRef.current,
             documentsRef.current,
+            tabsRef.current,
             workspacePanelsRef.current,
             viewerAgentStatesRef.current,
             activeTabIdRef.current,
@@ -213,6 +238,7 @@ export function useAgentSession({
         sessionDirRef.current,
         activeDocumentRef.current,
         documentsRef.current,
+        tabsRef.current,
         workspacePanelsRef.current,
         viewerAgentStatesRef.current,
         activeTabIdRef.current,
@@ -221,6 +247,31 @@ export function useAgentSession({
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime() && !isBrowserAgentShell) return undefined;
+    let disposed = false;
+    let unsubscribe: () => void = () => undefined;
+    void loadKetcherAgentModule().then((module) => {
+      if (disposed) return;
+      unsubscribe = module.subscribeKetcherAgentRegistry(() => {
+        void writeObserve(
+          sessionDirRef.current,
+          activeDocumentRef.current,
+          documentsRef.current,
+          tabsRef.current,
+          workspacePanelsRef.current,
+          viewerAgentStatesRef.current,
+          activeTabIdRef.current,
+          activeTabKindRef.current,
+        );
+      });
+    });
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -241,6 +292,8 @@ export function useAgentSession({
         workspacePanelsRef.current,
         activeDocumentRef.current,
         documentsRef.current,
+        tabsRef.current,
+        tabActionsRef.current,
         viewerAgentStatesRef.current,
         activeTabIdRef.current,
         activeTabKindRef.current,
@@ -267,6 +320,7 @@ async function writeObserve(
   sessionDir: string | null,
   activeDocument: ViewerDocument | null | undefined,
   documents: ViewerDocument[],
+  tabs: MoleculeTab[],
   workspacePanels: AgentWorkspacePanel[],
   viewerAgentStates: Record<string, ViewerAgentState>,
   activeTabId: string | null | undefined,
@@ -300,13 +354,15 @@ async function writeObserve(
           ready: false,
           note: activeKetcher ? "The active surface is a Ketcher editor." : "No active document is open in the desktop app.",
         },
-    documents: documents.map((document) => ({
+    documents: documents.slice(0, MAX_OBSERVED_DOCUMENTS).map((document) => ({
       id: document.id,
-      title: document.title,
-      path: document.path,
+      title: boundedSessionString(document.title, 512),
+      path: boundedSessionString(document.path, 4096),
       renderer: document.renderer,
       byteCount: document.byteCount,
     })),
+    tabs: tabs.slice(0, MAX_OBSERVED_TABS).map((tab, index) => observedTab(tab, index, activeTabId, documents)),
+    activeTabId: activeTabId ?? null,
     activeSurface: activeKetcher
       ? {
           kind: "ketcher",
@@ -337,11 +393,45 @@ async function writeObserve(
       selection: activeAgentState?.selection ?? null,
       lastAction: activeAgentState?.lastAction ?? null,
     },
-    panels: ["viewer", ...workspacePanels.map((panel) => panel.id)],
-    workspacePanels,
+    story: activeAgentState?.story ?? null,
+    panels: ["viewer", ...workspacePanels.slice(-MAX_OBSERVED_PANELS).map((panel) => panel.id)],
+    workspacePanels: workspacePanels.slice(-MAX_OBSERVED_PANELS),
+    bounds: {
+      documents: { total: documents.length, returned: Math.min(documents.length, MAX_OBSERVED_DOCUMENTS), truncated: documents.length > MAX_OBSERVED_DOCUMENTS },
+      tabs: { total: tabs.length, returned: Math.min(tabs.length, MAX_OBSERVED_TABS), truncated: tabs.length > MAX_OBSERVED_TABS },
+      workspacePanels: { total: workspacePanels.length, returned: Math.min(workspacePanels.length, MAX_OBSERVED_PANELS), truncated: workspacePanels.length > MAX_OBSERVED_PANELS },
+    },
     errors: [],
   };
   await writeJson(joinSessionPath(sessionDir, "observe.json"), observe);
+}
+
+function observedTab(
+  tab: MoleculeTab,
+  index: number,
+  activeTabId: string | null | undefined,
+  documents: ViewerDocument[],
+) {
+  const documentId = tab.location.kind === "file" ? tab.location.documentId : null;
+  const document = documentId ? documents.find(item => item.id === documentId) ?? null : null;
+  const kind = tab.location.kind;
+  const title = document?.title ?? ({
+    launcher: "New tab",
+    ketcher: "Ketcher",
+    settings: "Settings",
+    "fep-setup": "FEP setup",
+    "fep-network": "FEP network",
+    "pose-review": "Pose review",
+    "text-file": "Text file",
+  } as Record<string, string>)[kind] ?? kind;
+  return {
+    id: tab.id,
+    index,
+    kind,
+    title,
+    path: document?.path ?? ("path" in tab.location && typeof tab.location.path === "string" ? tab.location.path : null),
+    active: tab.id === activeTabId,
+  };
 }
 
 async function pollAgentActions(
@@ -355,6 +445,8 @@ async function pollAgentActions(
   workspacePanels: AgentWorkspacePanel[],
   activeDocument: ViewerDocument | null | undefined,
   documents: ViewerDocument[],
+  tabs: MoleculeTab[],
+  tabActions: AgentTabActions,
   viewerAgentStates: Record<string, ViewerAgentState>,
   activeTabId: string | null | undefined,
   activeTabKind: string | null | undefined,
@@ -380,12 +472,14 @@ async function pollAgentActions(
     viewerAgentStates,
     activeTabId,
     activeTabKind,
+    tabs,
+    tabActions,
   );
   nextAction.completedAt = new Date().toISOString();
   nextAction.result = result;
   nextAction.status = isFailedResult(result) ? "failed" : "completed";
   await writeJson(actionsPath, { apiVersion: AGENT_API_VERSION, actions });
-  await writeObserve(sessionDir, activeDocument, documents, workspacePanels, viewerAgentStates, activeTabId, activeTabKind);
+  await writeObserve(sessionDir, activeDocument, documents, tabs, workspacePanels, viewerAgentStates, activeTabId, activeTabKind);
 }
 
 async function executeDesktopAgentAction(
@@ -401,6 +495,8 @@ async function executeDesktopAgentAction(
   viewerAgentStates: Record<string, ViewerAgentState>,
   activeTabId: string | null | undefined,
   activeTabKind: string | null | undefined,
+  tabs: MoleculeTab[],
+  tabActions: AgentTabActions,
 ) {
   const type = String(item.action?.type || "");
   if (type === "open_ketcher") {
@@ -460,6 +556,9 @@ async function executeDesktopAgentAction(
         ligandCount: ligandPaths.length,
       },
     };
+  }
+  if (type === "manage_tabs") {
+    return executeAgentTabAction(item.action as AgentActionItem["action"] & { type: "manage_tabs" }, tabs, activeTabId, tabActions, openPaths);
   }
   if (type === "render_panel") {
     return renderPanel(item.action, openTextDocuments, setDockDocument, workspacePanels);
@@ -567,8 +666,18 @@ function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; 
     lastError: previous?.lastError ?? null,
     lastAction: previous?.lastAction ?? null,
     selection: previous?.selection ?? null,
+    story: previous?.story ?? null,
     updatedAt: new Date().toISOString(),
   };
+  if (type === "mvsStoryChanged") {
+    const story = storyStateFromViewerEvent(body as Record<string, unknown>);
+    if (!story) return null;
+    next.story = story;
+    next.lastMessage = story.current && typeof story.current.title === "string"
+      ? `Story step: ${story.current.title}`
+      : "MolViewSpec Story updated";
+    return next;
+  }
   if (type === "agentReady") {
     next.agentReady = true;
     next.viewerReady = true;
@@ -587,6 +696,37 @@ function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; 
     return next;
   }
   return null;
+}
+
+function storyStateFromViewerEvent(body: Record<string, unknown>): AgentStoryState | null {
+  const steps = Array.isArray(body.steps)
+    ? body.steps.filter((step): step is Record<string, unknown> => typeof step === "object" && step !== null).slice(0, 256)
+    : [];
+  const stepCount = Number.isInteger(body.stepCount) ? Math.max(0, Math.min(256, Number(body.stepCount))) : steps.length;
+  const stepIndex = Number.isInteger(body.stepIndex) ? Number(body.stepIndex) : null;
+  if (stepCount === 0 || stepIndex === null || stepIndex < 0 || stepIndex >= stepCount) return null;
+  const current = typeof body.current === "object" && body.current !== null
+    ? boundedStoryStep(body.current as Record<string, unknown>)
+    : null;
+  return {
+    available: true,
+    title: typeof body.title === "string" ? body.title.slice(0, 512) : null,
+    stepIndex,
+    stepCount,
+    current,
+    steps: steps.map(boundedStoryStep),
+    isPlaying: body.isPlaying === true,
+  };
+}
+
+function boundedStoryStep(step: Record<string, unknown>) {
+  return {
+    id: typeof step.id === "string" ? step.id.slice(0, 256) : null,
+    key: typeof step.key === "string" ? step.key.slice(0, 256) : null,
+    title: typeof step.title === "string" ? step.title.slice(0, 512) : null,
+    description: typeof step.description === "string" ? step.description.slice(0, 8_000) : "",
+    descriptionFormat: step.descriptionFormat === "plaintext" ? "plaintext" : "markdown",
+  };
 }
 
 function viewerAgentStateWithActionResult(
@@ -611,9 +751,34 @@ function viewerAgentStateWithActionResult(
       completedAt: new Date().toISOString(),
     },
     selection: sceneSelectionFromActionResult(result) ?? previous?.selection ?? null,
+    story: storyStateFromActionResult(result) ?? previous?.story ?? null,
     updatedAt: new Date().toISOString(),
   };
   return next;
+}
+
+function storyStateFromActionResult(result: unknown): AgentStoryState | null {
+  if (typeof result !== "object" || result === null) return null;
+  const outer = result as Record<string, unknown>;
+  if (outer.command !== "story_observe" && outer.command !== "story_control") return null;
+  const story = typeof outer.result === "object" && outer.result !== null ? outer.result as Record<string, unknown> : null;
+  if (!story || typeof story.available !== "boolean") return null;
+  const steps = Array.isArray(story.steps)
+    ? story.steps.filter((step): step is Record<string, unknown> => typeof step === "object" && step !== null).slice(0, 256)
+    : [];
+  return {
+    available: story.available,
+    title: typeof story.title === "string" ? story.title.slice(0, 512) : null,
+    stepIndex: Number.isInteger(story.stepIndex) ? Number(story.stepIndex) : null,
+    stepCount: Number.isInteger(story.stepCount) ? Math.max(0, Math.min(256, Number(story.stepCount))) : steps.length,
+    current: typeof story.current === "object" && story.current !== null ? boundedStoryStep(story.current as Record<string, unknown>) : null,
+    steps: steps.map(boundedStoryStep),
+    isPlaying: story.isPlaying === true,
+  };
+}
+
+function boundedSessionString(value: unknown, limit: number) {
+  return typeof value === "string" ? value.slice(0, limit) : value ?? null;
 }
 
 function sceneSelectionFromActionResult(result: unknown): AgentSceneSelection | null {

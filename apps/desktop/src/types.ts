@@ -83,6 +83,8 @@ export type DockingDocumentRequest = {
   activePose?: number | null;
   sceneMode?: DockingSceneMode | null;
   poseMode?: DockingPoseMode | null;
+  /** Set when receptorPath is a topology Burette derived from the trajectory. */
+  syntheticTopology?: boolean;
 };
 
 export type FepSetupRequest = {
@@ -383,6 +385,7 @@ export type ViewerDocument = {
   title: string;
   extension: string;
   renderer: string;
+  viewerProfile?: "structure" | "mesoscale" | "grid" | "spectrum";
   runtimePath: string;
   byteCount: number;
   virtual?: boolean;

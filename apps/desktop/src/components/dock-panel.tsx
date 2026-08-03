@@ -17,6 +17,7 @@ import type { ShellActions, ShellViewState } from "./types";
 import { showNativeContextMenu } from "./native-context-menu";
 import { ViewerFrame } from "./editor-area/viewer-frame";
 import { TextFileViewer } from "./text-file-viewer";
+import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { useSourceEditing } from "../lib/source-editing/context";
 import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
@@ -28,6 +29,9 @@ import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spe
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import type { ConformerJob, TextFileDocument, ViewerDocument, ViewerReloadOptions, XtbJob, XyzrenderControls } from "../types";
+import { isMesoscaleViewerDocument } from "../lib/mesoscale-documents";
+import { MesoscaleScenePanel } from "./mesoscale/mesoscale-scene-panel";
+import { MesoscaleInfoPanel } from "./mesoscale/mesoscale-info-panel";
 
 // Chemical Space reaches three.js through chemical-space-3d, and this panel is
 // always mounted, so a static import put that whole stack in the entry chunk.
@@ -43,6 +47,7 @@ type DockPanelProps = {
 };
 
 const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
+  scene: Atom01Icon,
   xyzrender: Atom01Icon,
   files: Folder01Icon,
   spectrum: Atom01Icon,
@@ -114,10 +119,19 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const xyzrenderDockDocument = area === "right" && activeStructureDocument?.renderer === "xyzrender-external"
     ? activeStructureDocument
     : null;
-  const runtimeTabs = xyzrenderDockDocument && !tabs.some((tab) => tab.kind === "xyzrender")
-    ? [createDockTab("xyzrender"), ...tabs]
+  const mesoscaleDockDocument = area === "right" && isMesoscaleViewerDocument(activeStructureDocument)
+    ? activeStructureDocument
+    : null;
+  const mesoscaleTabs = mesoscaleDockDocument && !tabs.some((tab) => tab.kind === "scene")
+    ? [createDockTab("scene"), ...tabs]
     : tabs;
-  const visibleTabs = xyzrenderDockDocument ? runtimeTabs : runtimeTabs.filter((tab) => tab.kind !== "xyzrender");
+  const runtimeTabs = xyzrenderDockDocument && !mesoscaleTabs.some((tab) => tab.kind === "xyzrender")
+    ? [createDockTab("xyzrender"), ...mesoscaleTabs]
+    : mesoscaleTabs;
+  const visibleTabs = runtimeTabs.filter((tab) => (
+    (tab.kind !== "xyzrender" || Boolean(xyzrenderDockDocument))
+    && (tab.kind !== "scene" || Boolean(mesoscaleDockDocument))
+  ));
   const activeTab = visibleTabs.find((tab) => tab.kind === activeTabKind) ?? visibleTabs[0] ?? tabs[0];
   const filesTabDragPayload = dockFilesDragPayload(dockDocument, dockTextDocument, dockTool);
   const dockDrops = useMemo(
@@ -145,6 +159,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
         if (kind === "xyzrender") return Boolean(xyzrenderDockDocument);
+        if (kind === "scene") return Boolean(mesoscaleDockDocument);
         if (kind === "chemical-space") return chemicalSpaceDockAvailable;
         if (kind === "story") return Boolean(state.structureStory);
         return true;
@@ -308,6 +323,11 @@ function DockPanelContent({
       })
     : [];
   const activeFileEntryKey = activeDockFileEntryKey(dockDocument, dockTextDocument, dockTool);
+  if (activeTabKind === "scene") {
+    return isMesoscaleViewerDocument(dockStructureDocument)
+      ? <MesoscaleScenePanel document={dockStructureDocument} />
+      : <DockEmptyState title="No mesoscale model open" description="Open a CellPack, PetWorld, .molx, .molj, or .mesozip model to inspect its scene." />;
+  }
   if (activeTabKind === "spectrum") {
     const spectrumDocument = dockStructureDocument?.renderer === "spectrum" ? dockStructureDocument : null;
     if (area === "bottom" && spectrumDocument) {
@@ -408,7 +428,7 @@ function DockPanelContent({
   }
   if (activeTabKind === "story") {
     return state.structureStory
-      ? <StructureStoryPanel story={state.structureStory} />
+      ? <StructureStoryPanel story={state.structureStory} document={state.activeDocument} actions={actions} />
       : (
           <DockEmptyState
             title="No story yet"
@@ -421,6 +441,7 @@ function DockPanelContent({
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
     if (dockTextDocument) return <TextDocumentInfoPanel document={dockTextDocument} actions={actions} />;
     if (dockStructureDocument?.renderer === "spectrum") return <SpectrumInfoPanel document={dockStructureDocument} />;
+    if (isMesoscaleViewerDocument(dockStructureDocument)) return <MesoscaleInfoPanel document={dockStructureDocument} />;
     return (
       <StructureInfoPanel
         document={dockStructureDocument}
@@ -1856,7 +1877,17 @@ function dockFilesDragPayload(
   return null;
 }
 
-function StructureStoryPanel({ story }: { story: StructureStory }) {
+function StructureStoryPanel({ story, document, actions }: { story: StructureStory; document: ViewerDocument | null; actions: ShellActions }) {
+  const markdownDocument = useMemo<TextFileDocument>(() => ({
+    id: `mvs-story:${story.documentId}:${story.key ?? story.stepIndex}`,
+    path: story.fileName,
+    title: story.stage,
+    extension: "md",
+    language: "markdown",
+    byteCount: story.summary.length,
+    content: story.summary,
+    truncated: false,
+  }), [story.documentId, story.fileName, story.key, story.stage, story.stepIndex, story.summary]);
   return (
     <div className="dock-content structure-story-dock">
       <section className="structure-brief-card structure-story-card">
@@ -1867,7 +1898,18 @@ function StructureStoryPanel({ story }: { story: StructureStory }) {
           </div>
         </div>
         <p className="structure-story-file" title={story.fileName}>{story.fileName}</p>
-        <p className="structure-story-summary">{story.summary}</p>
+        {story.descriptionFormat === "markdown" ? (
+          <div className="structure-story-markdown"><MarkdownRichViewer document={markdownDocument} /></div>
+        ) : (
+          <p className="structure-story-summary">{story.summary}</p>
+        )}
+        {story.source === "mvs" && document ? (
+          <div className="structure-story-controls" aria-label="MolViewSpec Story controls">
+            <Button size="sm" variant="outline" onClick={() => actions.runStructureViewerAction(document, { type: "story_control", operation: "previous", label: "Previous Story step", notify: false })}>Previous</Button>
+            <Button size="sm" variant="secondary" onClick={() => actions.runStructureViewerAction(document, { type: "story_control", operation: story.isPlaying ? "pause" : "play", label: story.isPlaying ? "Pause Story" : "Play Story", notify: false })}>{story.isPlaying ? "Pause" : "Play"}</Button>
+            <Button size="sm" variant="outline" onClick={() => actions.runStructureViewerAction(document, { type: "story_control", operation: "next", label: "Next Story step", notify: false })}>Next</Button>
+          </div>
+        ) : null}
       </section>
       {story.comparison ? (
         <>

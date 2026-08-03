@@ -239,7 +239,7 @@ export function ProjectGroup({
         onDragEnd={sidebarDrag.onDragEnd}
         onKeyDown={handleKeyDown}
         aria-expanded={expanded}
-        aria-label={`${project.title}, ${project.items.length} structure${project.items.length === 1 ? "" : "s"}`}
+        aria-label={`${project.title}, ${project.items.length} file${project.items.length === 1 ? "" : "s"}`}
       >
         <span className="project-folder-icon" aria-hidden="true">
           <HugeiconsIcon icon={expanded ? Folder02Icon : Folder01Icon} size={16} color="currentColor" strokeWidth={2} />

@@ -24,6 +24,7 @@ const VIEWER_FILES = [
   "viewer-shell.js",
   "molstar-preset-preview-controller.js",
   "trajectory-smoothing.js",
+  "superposition-panel.js",
   "viewer.js",
 ];
 
