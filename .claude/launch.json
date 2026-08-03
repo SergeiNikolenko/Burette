@@ -16,6 +16,17 @@
         "false"
       ],
       "port": 1451
+    },
+    {
+      "name": "story-preview",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "scripts/agent-preview.mjs",
+        "samples/mvs/docking_story.mvsx",
+        "--port",
+        "5177"
+      ],
+      "port": 5177
     }
   ]
 }
