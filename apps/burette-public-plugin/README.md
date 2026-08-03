@@ -75,11 +75,11 @@ from the model and conversation transcript.
   origin for runtime fetches and resources; the widget does not embed subframes.
 - The hosted shell loads only the plugin's pinned, self-hosted Burette, Mol*,
   and RDKit runtime assets.
-- The Mol* 5.7.0 build is transformed by
-  `scripts/build-molstar-csp.mjs` to remove dynamic code generation that is not
-  allowed by MCP Apps sandbox CSP. The build script verifies the pinned source
-  checksums, defers the disabled MP4 encoder's WASM initialization, and fails
-  closed if the upstream bundle changes.
+- The hosted plugin copies the reviewed Mol* bundle from
+  `PreviewExtension/Web`, whose source and checksum are pinned by
+  `vendor-assets.lock.json`. `scripts/build-molstar-csp.mjs` fails closed if
+  that bundle contains dynamic code generation forbidden by the MCP Apps
+  sandbox CSP.
 - Every string and collection copied into model-visible `structuredContent` is
   bounded by the declared output schema. Raw structure text remains only in
   widget-only `_meta`.
