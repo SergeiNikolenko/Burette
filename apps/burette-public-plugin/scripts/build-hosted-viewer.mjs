@@ -22,6 +22,7 @@ const VIEWER_FILES = [
   "viewer-runtime.css",
   "viewer-bootstrap.js",
   "viewer-shell.js",
+  "molstar-preset-preview-controller.js",
   "trajectory-smoothing.js",
   "superposition-panel.js",
   "viewer.js",

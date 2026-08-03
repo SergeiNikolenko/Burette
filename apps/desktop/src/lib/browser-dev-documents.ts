@@ -212,6 +212,7 @@ export function browserDevRuntimeNeedsRefresh(document: ViewerDocument) {
   if (document.viewerProfile === "mesoscale") return !document.runtimePath.includes(MESOSCALE_ASSET_VERSION);
   if (!document.runtimePath.includes(VIEWER_ASSET_VERSION)) return true;
   return !document.runtimePath.includes("viewer-shell.js")
+    || !document.runtimePath.includes("molstar-preset-preview-controller.js")
     || document.runtimePath.includes('<div id="buret-toolbar"')
     || document.runtimePath.includes("function viewerRuntimeCss");
 }
@@ -1357,6 +1358,7 @@ function viewerHtml(
   ${extraWindowScript}
   <script src="${viewerAsset("burette-agent.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("trajectory-smoothing.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("molstar-preset-preview-controller.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("superposition-panel.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("viewer.js")}?v=${runtimeAssetVersion}"></script>
 </body>

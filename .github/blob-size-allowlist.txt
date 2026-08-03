@@ -21,6 +21,9 @@ plugins/burette-agent/browser-shell-dist/assets/index.modern-CT0VIV_p.js
 plugins/burette-agent/browser-shell-dist/assets/indigo-ketcher-1.43.0-uUo-NEHL.wasm
 plugins/burette-agent/browser-shell-dist/assets/plotly-basic.min-BGGwveDV.js
 plugins/burette-agent/browser-shell-dist/assets/three.module-B9xciExR.js
+plugins/burette-agent/browser-shell-dist/assets/index.modern-610bH81i.js
+plugins/burette-agent/browser-shell-dist/assets/dist-UhtgvaWx.js
+plugins/burette-agent/browser-shell-dist/assets/index.modern-Dc_tqQEr.js
 plugins/burette-agent/browser-shell-dist/index.js
 tests/test-ui-shell-contract.mjs
 docs/public/burette-quick-look-preview.png

@@ -1,0 +1,432 @@
+(function (root) {
+  'use strict';
+
+  const DEFAULT_IDLE_DISPOSE_MS = 4000;
+
+  function computePreviewPlacement(options) {
+    const value = options || {};
+    const viewportWidth = Math.max(1, Number(value.viewportWidth) || 1);
+    const viewportHeight = Math.max(1, Number(value.viewportHeight) || 1);
+    const margin = Math.max(0, Number(value.margin) || 0);
+    const gap = Math.max(0, Number(value.gap) || 0);
+    const minimumMenuHeight = Math.max(0, Number(value.minimumMenuHeight) || 0);
+    const menuRect = value.menuRect || {};
+    const itemRect = value.itemRect || {};
+    const previewWidth = Math.min(Math.max(1, Number(value.previewWidth) || 1), Math.max(1, viewportWidth - margin * 2));
+    const previewHeight = Math.min(Math.max(1, Number(value.previewHeight) || 1), Math.max(1, viewportHeight - margin * 2));
+    const leftCandidate = Number(menuRect.left || 0) - gap - previewWidth;
+    const rightCandidate = Number(menuRect.right || 0) + gap;
+    const alignedTop = Math.max(margin, Math.min(Number(itemRect.top || 0) - 28, viewportHeight - margin - previewHeight));
+    if (leftCandidate >= margin) {
+      return { placement: 'left', left: leftCandidate, top: alignedTop };
+    }
+    if (rightCandidate + previewWidth <= viewportWidth - margin) {
+      return { placement: 'right', left: rightCandidate, top: alignedTop };
+    }
+    const menuTop = margin + previewHeight + gap;
+    const menuMaxHeight = viewportHeight - margin - menuTop;
+    if (menuMaxHeight < minimumMenuHeight) return { placement: 'hidden' };
+    return {
+      placement: 'stacked',
+      left: Math.max(margin, Math.min(viewportWidth - margin - previewWidth, Number(menuRect.left || 0))),
+      top: margin,
+      menuTop,
+      menuMaxHeight,
+    };
+  }
+
+  function computePreviewCanvasLayout(options) {
+    const value = options || {};
+    const margin = 12;
+    const headerHeight = 28;
+    const viewportWidth = Math.max(1, Number(value.viewportWidth) || 1);
+    const viewportHeight = Math.max(1, Number(value.viewportHeight) || 1);
+    const sourceWidth = Math.max(1, Number(value.sourceWidth) || 1);
+    const sourceHeight = Math.max(1, Number(value.sourceHeight) || 1);
+    const maxWidth = Math.min(240, Math.max(1, viewportWidth - margin * 2));
+    const maxBodyHeight = Math.min(320, Math.max(1, viewportHeight - headerHeight - margin * 2));
+    const scale = Math.min(1, maxWidth / sourceWidth, maxBodyHeight / sourceHeight);
+    const cardWidth = sourceWidth * scale;
+    const bodyHeight = sourceHeight * scale;
+    const backingScale = Math.min(
+      2,
+      Math.max(1, Number(value.devicePixelRatio) || 1),
+      640 / Math.max(cardWidth, bodyHeight),
+    );
+    return {
+      cardWidth,
+      cardHeight: headerHeight + bodyHeight,
+      bodyHeight,
+      backingScale,
+      drawX: 0,
+      drawY: 0,
+      drawWidth: cardWidth,
+      drawHeight: bodyHeight,
+    };
+  }
+
+  function computePreviewContentBounds(options) {
+    const value = options || {};
+    const width = Math.max(1, Math.floor(Number(value.width) || 1));
+    const height = Math.max(1, Math.floor(Number(value.height) || 1));
+    const data = value.data;
+    const fullFrame = { x: 0, y: 0, width, height };
+    if (!data || data.length < width * height * 4) return fullFrame;
+    const background = Array.isArray(value.background) && value.background.length >= 3
+      ? value.background.map(channel => Math.max(0, Math.min(255, Number(channel) || 0)))
+      : [data[0] || 0, data[1] || 0, data[2] || 0];
+    const threshold = Math.max(0, Number(value.threshold) || 6);
+    const alphaThreshold = Math.max(0, Number(value.alphaThreshold) || 4);
+    const transparent = value.transparent === true;
+    let left = width;
+    let right = -1;
+    let top = height;
+    let bottom = -1;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const offset = (y * width + x) * 4;
+        const alpha = data[offset + 3];
+        const visible = transparent
+          ? alpha > alphaThreshold
+          : alpha > alphaThreshold && Math.max(
+            Math.abs(data[offset] - background[0]),
+            Math.abs(data[offset + 1] - background[1]),
+            Math.abs(data[offset + 2] - background[2]),
+          ) > threshold;
+        if (!visible) continue;
+        if (x < left) left = x;
+        if (x > right) right = x;
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+      }
+    }
+    if (right < left || bottom < top) return fullFrame;
+    const contentWidth = right - left + 1;
+    const contentHeight = bottom - top + 1;
+    const paddingRatio = Math.max(0, Number(value.paddingRatio) || 0);
+    const minPadding = Math.max(0, Math.floor(Number(value.minPadding) || 0));
+    const padding = Math.max(minPadding, Math.round(Math.max(contentWidth, contentHeight) * paddingRatio));
+    left = Math.max(0, left - padding);
+    right = Math.min(width - 1, right + padding);
+    top = Math.max(0, top - padding);
+    bottom = Math.min(height - 1, bottom + padding);
+    return { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
+  }
+
+  function focusPointerTarget(target, cancelClose) {
+    if (typeof cancelClose === 'function') cancelClose();
+    target?.classList?.add?.('buret-pointer-focus');
+    target?.addEventListener?.('blur', () => {
+      target?.classList?.remove?.('buret-pointer-focus');
+    }, { once: true });
+    target?.focus?.({ preventScroll: true });
+    return true;
+  }
+
+  function retainPointerTarget(event, target, cancelClose) {
+    if (Number(event?.button ?? 0) !== 0) return false;
+    return focusPointerTarget(target, cancelClose);
+  }
+
+  function retainPointerActivation(event, cancelClose) {
+    if (Number(event?.button ?? 0) !== 0) return false;
+    if (typeof cancelClose === 'function') cancelClose();
+    event?.preventDefault?.();
+    return true;
+  }
+
+  function create(dependencies, options) {
+    const deps = dependencies || {};
+    const config = options || {};
+    const createViewer = typeof deps.createViewer === 'function'
+      ? deps.createViewer
+      : async () => null;
+    const disposeViewer = typeof deps.disposeViewer === 'function'
+      ? deps.disposeViewer
+      : () => {};
+    const startViewer = typeof deps.startViewer === 'function'
+      ? deps.startViewer
+      : () => {};
+    const stopViewer = typeof deps.stopViewer === 'function'
+      ? deps.stopViewer
+      : () => {};
+    const renderPreview = typeof deps.renderPreview === 'function'
+      ? deps.renderPreview
+      : async () => {};
+    const applyPreset = typeof deps.applyPreset === 'function'
+      ? deps.applyPreset
+      : async () => {};
+    const scheduleTimeout = typeof deps.setTimeout === 'function'
+      ? deps.setTimeout
+      : typeof root.setTimeout === 'function' ? root.setTimeout.bind(root) : () => 0;
+    const cancelTimeout = typeof deps.clearTimeout === 'function'
+      ? deps.clearTimeout
+      : typeof root.clearTimeout === 'function' ? root.clearTimeout.bind(root) : () => {};
+    const idleDisposeMs = Number.isFinite(Number(config.idleDisposeMs))
+      ? Math.max(0, Number(config.idleDisposeMs))
+      : DEFAULT_IDLE_DISPOSE_MS;
+    const stopAfterRender = config.stopAfterRender === true;
+
+    let disposed = false;
+    let visible = true;
+    let previewEpoch = 0;
+    let viewer = null;
+    let viewerRunning = false;
+    let creation = null;
+    let pendingPreview = null;
+    let previewDrain = null;
+    let idleDisposeTimer = 0;
+    const disposedViewers = new WeakSet();
+    let pendingApply = null;
+    let activeApply = null;
+    let applyDrain = null;
+
+    function safely(action, value) {
+      try {
+        return action(value);
+      } catch (_) {
+        return undefined;
+      }
+    }
+
+    function disposeViewerOnce(value) {
+      if (!value || disposedViewers.has(value)) return;
+      disposedViewers.add(value);
+      if (viewer === value) {
+        viewer = null;
+        viewerRunning = false;
+      }
+      safely(stopViewer, value);
+      safely(disposeViewer, value);
+    }
+
+    function startRetainedViewer() {
+      if (!viewer || viewerRunning || !visible || disposed) return;
+      viewerRunning = true;
+      safely(startViewer, viewer);
+    }
+
+    function stopRetainedViewer() {
+      if (!viewer || !viewerRunning) return;
+      viewerRunning = false;
+      safely(stopViewer, viewer);
+    }
+
+    function clearIdleDisposal() {
+      if (!idleDisposeTimer) return;
+      cancelTimeout(idleDisposeTimer);
+      idleDisposeTimer = 0;
+    }
+
+    function scheduleIdleDisposal() {
+      clearIdleDisposal();
+      const retainedViewer = viewer;
+      if (!retainedViewer || disposed) return;
+      idleDisposeTimer = scheduleTimeout(() => {
+        idleDisposeTimer = 0;
+        if (disposed || visible || viewer !== retainedViewer) return;
+        disposeViewerOnce(retainedViewer);
+      }, idleDisposeMs);
+    }
+
+    function settle(request, method, value) {
+      if (!request || request.settled) return;
+      request.settled = true;
+      request[method](value);
+    }
+
+    async function ensureViewer() {
+      if (viewer) return viewer;
+      if (creation) return creation;
+      creation = Promise.resolve()
+        .then(() => createViewer())
+        .then((candidate) => {
+          if (disposed || !candidate) {
+            disposeViewerOnce(candidate);
+            return null;
+          }
+          viewer = candidate;
+          if (!visible) {
+            safely(stopViewer, candidate);
+            scheduleIdleDisposal();
+          }
+          return candidate;
+        })
+        .finally(() => {
+          creation = null;
+        });
+      return creation;
+    }
+
+    async function drainPreviews() {
+      while (!disposed && pendingPreview) {
+        const request = pendingPreview;
+        pendingPreview = null;
+        let retainedViewer;
+        try {
+          retainedViewer = await ensureViewer();
+          if (disposed || !retainedViewer) {
+            settle(request, 'resolve', undefined);
+            continue;
+          }
+          if (!visible) {
+            scheduleIdleDisposal();
+            settle(request, 'resolve', undefined);
+            continue;
+          }
+          if (request.epoch !== previewEpoch) {
+            settle(request, 'resolve', undefined);
+            continue;
+          }
+          startRetainedViewer();
+          const result = await renderPreview(retainedViewer, request.payload);
+          if (disposed || request.epoch !== previewEpoch || viewer !== retainedViewer) {
+            settle(request, 'resolve', undefined);
+          } else {
+            settle(request, 'resolve', result);
+          }
+        } catch (error) {
+          if (disposed || request.epoch !== previewEpoch) settle(request, 'resolve', undefined);
+          else settle(request, 'reject', error);
+        } finally {
+          if (stopAfterRender && viewer === retainedViewer) stopRetainedViewer();
+        }
+      }
+      if (pendingPreview && disposed) {
+        settle(pendingPreview, 'resolve', undefined);
+        pendingPreview = null;
+      }
+      previewDrain = null;
+    }
+
+    function requestPreview(payload) {
+      if (disposed) return Promise.resolve(undefined);
+      const epoch = ++previewEpoch;
+      clearIdleDisposal();
+      if (pendingPreview) settle(pendingPreview, 'resolve', undefined);
+      let resolveRequest;
+      let rejectRequest;
+      const promise = new Promise((resolve, reject) => {
+        resolveRequest = resolve;
+        rejectRequest = reject;
+      });
+      pendingPreview = {
+        epoch,
+        payload,
+        promise,
+        resolve: resolveRequest,
+        reject: rejectRequest,
+        settled: false,
+      };
+      if (!previewDrain) previewDrain = drainPreviews();
+      return promise;
+    }
+
+    function show() {
+      if (disposed) return;
+      visible = true;
+      clearIdleDisposal();
+      startRetainedViewer();
+    }
+
+    function hide() {
+      if (disposed) return;
+      visible = false;
+      stopRetainedViewer();
+      scheduleIdleDisposal();
+    }
+
+    function applyKey(payload) {
+      if (payload && typeof payload === 'object' && payload.id != null) return `id:${payload.id}`;
+      try {
+        return JSON.stringify(payload);
+      } catch (_) {
+        return String(payload);
+      }
+    }
+
+    async function drainApplies() {
+      while (!disposed && pendingApply) {
+        const request = pendingApply;
+        pendingApply = null;
+        activeApply = request;
+        try {
+          const result = await applyPreset(request.payload);
+          if (disposed || request.cancelled) settle(request, 'resolve', undefined);
+          else settle(request, 'resolve', result);
+        } catch (error) {
+          if (disposed || request.cancelled) settle(request, 'resolve', undefined);
+          else settle(request, 'reject', error);
+        } finally {
+          activeApply = null;
+        }
+      }
+      if (pendingApply && disposed) {
+        settle(pendingApply, 'resolve', undefined);
+        pendingApply = null;
+      }
+      applyDrain = null;
+    }
+
+    function requestApply(payload) {
+      if (disposed) return Promise.resolve(undefined);
+      const key = applyKey(payload);
+      if (pendingApply?.key === key) return pendingApply.promise;
+      if (!pendingApply && activeApply?.key === key) return activeApply.promise;
+      let resolveRequest;
+      let rejectRequest;
+      const promise = new Promise((resolve, reject) => {
+        resolveRequest = resolve;
+        rejectRequest = reject;
+      });
+      const request = {
+        key,
+        payload,
+        promise,
+        resolve: resolveRequest,
+        reject: rejectRequest,
+        settled: false,
+        cancelled: false,
+      };
+      if (pendingApply) settle(pendingApply, 'resolve', undefined);
+      pendingApply = request;
+      if (!applyDrain) applyDrain = drainApplies();
+      return promise;
+    }
+
+    function dispose() {
+      if (disposed) return;
+      disposed = true;
+      visible = false;
+      previewEpoch += 1;
+      clearIdleDisposal();
+      if (pendingPreview) settle(pendingPreview, 'resolve', undefined);
+      pendingPreview = null;
+      disposeViewerOnce(viewer);
+      if (activeApply) {
+        activeApply.cancelled = true;
+        settle(activeApply, 'resolve', undefined);
+      }
+      if (pendingApply) settle(pendingApply, 'resolve', undefined);
+      pendingApply = null;
+    }
+
+    return {
+      requestPreview,
+      requestApply,
+      show,
+      hide,
+      dispose,
+    };
+  }
+
+  root.BuretteMolstarPresetPreviewController = {
+    create,
+    computePreviewPlacement,
+    computePreviewCanvasLayout,
+    computePreviewContentBounds,
+    focusPointerTarget,
+    retainPointerActivation,
+    retainPointerTarget,
+  };
+})(globalThis);
