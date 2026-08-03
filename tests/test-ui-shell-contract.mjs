@@ -5700,6 +5700,110 @@ assert.match(previewViewer, /Stage inferred from filename/);
 assert.match(previewViewer, /storyOpenRight\.setAttribute\('aria-label', 'Open Story in right sidebar'\)/);
 assert.match(previewViewer, /type: 'structureStoryChanged'/);
 assert.match(previewViewer, /type: 'openStructureStory'/);
+// A Story step must not repaint the viewer chrome: the snapshots are stripped of
+// their canvas settings, and a style the user picked is re-applied on top.
+assert.match(previewViewer, /function detachMolstarStoryPresentation\(manager\)/);
+assert.match(previewViewer, /snapshot\.canvas3d = undefined/);
+assert.match(previewViewer, /camera\.transitionDurationInMs = instant \? 0 : durationMs/);
+// Hover previews jump straight to the state; a camera flight per state as the
+// pointer crosses the list reads as the viewer lurching about.
+assert.match(previewViewer, /if \(isStep\) setMolstarStoryTransition\(manager, action\.preview === true \? 0 : MOLSTAR_STORY_TRANSITION_MS\)/);
+// Overlapping steps mean competing snapshot applies and unbalanced render
+// pauses, so steps run one at a time and superseded ones are dropped.
+assert.match(previewViewer, /action\.preview === true\s*&& \(serial !== molstarStoryStepRequested \|\| action\.stillWanted\?\.\(\) === false\)/);
+// A superseded hover preview still answers with the current state: `story_control`
+// hands this result back to the agent, and dropping one would answer with nothing.
+assert.match(previewViewer, /\? molstarStoryResult\('story_control'\)\s*: applyMolstarStoryControl\(action\)/);
+assert.match(previewViewer, /MOLSTAR_STORY_REPORT_INTERVAL_MS = 120/);
+assert.match(previewViewer, /function syncMolstarStoryUi\(\)/);
+assert.match(previewViewer, /function applyMolstarStoryStyleToSnapshots\(manager, style\)/);
+assert.match(previewViewer, /transform.version = molstarStoryTransformVersion\(transform, style\)/);
+assert.match(previewViewer, /if \(style !== 'default'\) await applyMolstarStyle\(viewer, style\)/);
+// Restyling a Story rebuilds it from its own snapshots, so the state on screen
+// ends up looking like every other state - and the reload that would have wiped
+// the snapshots never happens.
+assert.match(previewViewer, /if \(molstarStoryState\(\)\.available\) \{\s*const normalized = normalizeMolstarStyle\(style\);/);
+assert.match(previewViewer, /if \(current\?\.snapshot\) await viewer\.plugin\.state\.setSnapshot\(current\.snapshot\);/);
+// Story controls live in the viewer, not only in the right dock, and they reuse
+// the pose toolbar's shell so they inherit its position, drag and collapse.
+assert.match(previewViewer, /function renderMolstarStoryControls\(\)/);
+assert.match(previewViewer, /root\.className = 'buret-docking-poses buret-docking-poses-structure-scene buret-molstar-story'/);
+assert.match(previewViewer, /if \(document\.querySelector\('\.buret-docking-poses:not\(\.buret-molstar-story\)'\)\) return;/);
+assert.match(previewViewer, /previousRoot && updateMolstarStoryControls\(previousRoot, entries, story\.isPlaying\)\) return/);
+assert.match(previewViewer, /root\.__buretStoryDragCleanup = initDockingPoseControlsDrag\(root\)/);
+// Hovering a state previews it; the description trails behind so it does not
+// flash while the pointer crosses the list.
+assert.match(previewViewer, /button\.addEventListener\('pointerenter', event => \{\s*if \(event\.pointerType === 'touch'\) return;\s*scheduleMolstarStoryPreview\(button\);\s*scheduleMolstarStoryDetails\(button\);\s*\}\)/);
+assert.match(previewViewer, /MOLSTAR_STORY_PREVIEW_DWELL_MS = 240/);
+assert.match(previewViewer, /MOLSTAR_STORY_DETAILS_DWELL_MS = 500/);
+// The style swap happens with rendering held, so no frame shows the authored
+// style before the user's own style lands.
+assert.match(previewViewer, /canvas3d\?\.pause\?\.\(true\)/);
+assert.match(previewViewer, /await waitForMolstarIdle\(activeViewer\);\s*await restoreMolstarStoryPresentation\(activeViewer\);/);
+assert.match(previewViewer, /if \(!isFirstState && !molstarStoryStepInFlight && MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)\)/);
+assert.match(previewViewer, /const restyles = isStep && MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)/);
+// `Illustrative` flattens shading through `ignoreLight` on each representation,
+// so it has to ride along in the snapshots or a step brings lit shading back.
+assert.match(previewViewer, /illustrative: \{ ignoreLight: true \}/);
+// Switching styles inside a Story sets the canvas half here and takes the scene
+// half from re-applying the current snapshot, so leaving Illustrative also turns
+// its post-processing back off.
+assert.match(previewViewer, /await applyMolstarIllustrativePostprocessing\(viewer, \{ includeTransparent: normalized === 'illustrative-surface' \}\)/);
+assert.match(previewViewer, /await applyMolstarNonIllustrativePostprocessing\(viewer\);\s*\}\s*if \(current\?\.snapshot\)/);
+// Both spellings of the action share one path, so style preservation and step
+// serialization do not depend on which one the caller used.
+assert.match(previewViewer, /return controlMolstarStory\(\{ \.\.\.args, operation: args\.operation \|\| args\.action \}\);/);
+// A queued preview is re-checked when it reaches the front of the queue.
+assert.match(previewViewer, /action\.stillWanted\?\.\(\) === false/);
+assert.match(previewViewer, /const overrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES\[style\]/);
+assert.match(previewViewer, /if \(!uniform && !overrides\) \{/);
+assert.match(previewViewer, /\{ name: authored\.type\?\.name, params: \{ \.\.\.\(authored\.type\?\.params \|\| \{\}\), \.\.\.overrides \} \}/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses\.buret-molstar-story \{\s*border-radius: 12px;/);
+assert.match(previewViewer, /function renderMolstarStoryMarkdown\(container, markdown\)/);
+assert.match(previewRuntimeCss, /\.buret-story-hover-card \{/);
+assert.match(appViewerStateMessagesHook, /if \(body\.type === "openStructureStory"\) openDockTab\("right", "story"\);/);
+assert.doesNotMatch(appViewerStateMessagesHook, /body\.type === "mvsStoryChanged"\) openDockTab/);
+assert.match(previewViewer, /function sceneTreeDisplayLabel\(value\)/);
+assert.match(previewViewer, /if \(\/\^reflig\$\/i\.test\(words\)\) label = 'Reference ligand'/);
+assert.match(previewViewer, /if \(ligand\) label = `Ligand \$\{ligand\[1\]\}`/);
+assert.match(previewViewer, /note: String\(cell\.obj\.description \|\| display\.note \|\| display\.format \|\| ''\)/);
+// MolViewSpec internals do not belong in the tree: primitives are named after
+// what they draw, a residue query becomes a count, and the two halves of a scene
+// are separated.
+assert.match(previewViewer, /function molstarPrimitiveDataLabel\(cell\)/);
+assert.match(previewViewer, /distance_measurement: \['Distance', 'Distances'\]/);
+assert.match(previewViewer, /if \(!rawLabel\.startsWith\('Custom Selection:'\)\) return null;/);
+assert.match(previewViewer, /return \{ label: 'Selected residues', note: String\(residues\) \};/);
+assert.match(previewViewer, /group: String\(cell\.obj\.type\?\.name \|\| ''\) === 'Primitive Data' \? 'annotations' : 'structures'/);
+assert.match(previewViewer, /root\.appendChild\(sceneTreeSectionElement\('Structures'\)\)/);
+assert.match(previewViewer, /root\.appendChild\(sceneTreeSectionElement\('Annotations'\)\)/);
+assert.match(previewViewer, /function updateSceneTreeStoryCaption\(\)/);
+assert.match(previewViewer, /caption\.textContent = `\$\{story\.stepIndex \+ 1\}\/\$\{story\.stepCount\} · \$\{story\.current\?\.title \|\| 'Story state'\}`/);
+assert.match(previewShell, /data-buret-scene-tree-story/);
+assert.match(previewRuntimeCss, /\.buret-tree-section \{/);
+assert.match(previewViewer, /trigger\.dataset\.sourceLabel = node\.sourceLabel/);
+const sceneTreeDisplayLabelSource = previewViewer.slice(
+  previewViewer.indexOf('  function sceneTreeDisplayLabel(value)'),
+  previewViewer.indexOf('\n  function sceneTreeNodes(viewer)'),
+);
+const sceneTreeDisplayLabel = Function(`${sceneTreeDisplayLabelSource}; return sceneTreeDisplayLabel;`)();
+assert.deepEqual(
+  sceneTreeDisplayLabel('arcp://ni,hash/Receptor_chain_A.pdb'),
+  { label: 'Receptor chain A', format: 'PDB' },
+);
+assert.deepEqual(
+  sceneTreeDisplayLabel('arcp://ni,hash/Box_reference_UNL_A_901.pdb'),
+  { label: 'Box reference UNL A 901', format: 'PDB' },
+);
+assert.deepEqual(
+  sceneTreeDisplayLabel('arcp://ni,hash/reflig.sdf'),
+  { label: 'Reference ligand', format: 'SDF' },
+);
+assert.deepEqual(
+  sceneTreeDisplayLabel('arcp://ni,hash/lig2.sdf'),
+  { label: 'Ligand 2', format: 'SDF' },
+);
+assert.deepEqual(sceneTreeDisplayLabel('Polymer'), { label: 'Polymer', format: '' });
 assert.match(previewViewer, /if \(story\) toggleRow\.append\(story\)/);
 assert.match(previewViewer, /if \(storyPanel\) root\.append\(storyPanel\)/);
 assert.match(previewViewer, /story\.setAttribute\('aria-expanded', open \? 'true' : 'false'\)/);

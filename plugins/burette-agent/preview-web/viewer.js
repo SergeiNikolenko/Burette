@@ -120,6 +120,42 @@
   let molstarContextMenuCleanup = null;
   let molstarSelectionPreviewCleanup = null;
   let molstarStoryStateCleanup = null;
+  let molstarStoryPresentationRestoreInFlight = false;
+  let molstarStoryPresentationRestoreTimer = 0;
+  let molstarStoryRestoredStateId = null;
+  let molstarStoryDetailsTimer = 0;
+  let molstarStoryDetailsHideTimer = 0;
+  let molstarStoryPreviewTimer = 0;
+  let molstarStoryStepInFlight = false;
+  let molstarStoryStepQueue = Promise.resolve();
+  let molstarStoryStepRequested = 0;
+  let molstarStoryReportTimer = 0;
+  let molstarStoryReportedAt = 0;
+  const MOLSTAR_STORY_REPORT_INTERVAL_MS = 120;
+  const molstarStoryDetachedSnapshots = new WeakSet();
+  // Styles that replace every representation with one of a single kind, so they
+  // can be written straight into a Story snapshot instead of being re-applied
+  // over the scene once it has been built.
+  const MOLSTAR_UNIFORM_STYLE_REPRESENTATION = {
+    line: { type: 'line', typeParams: { sizeFactor: 0.08 }, color: 'element-symbol' },
+    'ball-and-stick': { type: 'ball-and-stick', typeParams: { sizeFactor: 0.16 }, color: 'element-symbol' },
+    spacefill: { type: 'spacefill', typeParams: { sizeFactor: 0.45 }, color: 'element-symbol' },
+    'molecular-surface': { type: 'molecular-surface', typeParams: { alpha: 0.72 }, color: 'element-symbol' }
+  };
+  // `Illustrative` keeps the scene as authored and only flattens the shading, so
+  // it is not a representation of its own - but `ignoreLight` lives on each
+  // representation, not on the canvas, and a step would otherwise rebuild them
+  // without it and drop back to lit shading.
+  const MOLSTAR_STYLE_REPRESENTATION_OVERRIDES = {
+    illustrative: { ignoreLight: true },
+    'illustrative-surface': { ignoreLight: true }
+  };
+  const MOLSTAR_STORY_REBUILT_STYLES = new Set(['illustrative-surface', 'cartoon', 'polymer-ligand']);
+  const molstarStoryAuthoredRepresentations = new WeakMap();
+  const MOLSTAR_STORY_TRANSITION_MS = 700;
+  const MOLSTAR_STORY_PREVIEW_DWELL_MS = 240;
+  const MOLSTAR_STORY_DETAILS_DWELL_MS = 500;
+  const MOLSTAR_STORY_STEP_SETTLE_TIMEOUT_MS = 700;
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
   // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
@@ -791,7 +827,12 @@
       return window.BuretteAgent.run({ command: 'observeStory', args: {} });
     }
     if (type === 'control_story') {
-      return window.BuretteAgent.run({ command: 'controlStory', args: action.args || action });
+      // Routed through the same path as `story_control` rather than straight to
+      // the agent runtime: otherwise the two accepted spellings of one action
+      // differ in whether the viewer style survives and whether concurrent steps
+      // are serialized.
+      const args = action.args || action;
+      return controlMolstarStory({ ...args, operation: args.operation || args.action });
     }
     if (type === 'export_session') {
       return window.BuretteAgent.run({ command: 'exportSession', args: action.args || action });
@@ -856,29 +897,226 @@
     return { ok: true, command, result: molstarStoryState() };
   }
 
-  async function controlMolstarStory(action) {
+  async function waitForMolstarIdle(viewer, timeoutMs = MOLSTAR_STORY_STEP_SETTLE_TIMEOUT_MS) {
+    const startedAt = Date.now();
+    while (viewer?.plugin?.behaviors?.state?.isBusy?.value === true && Date.now() - startedAt < timeoutMs) {
+      await new Promise(resolve => window.setTimeout(resolve, 30));
+    }
+  }
+
+  // Steps overlap easily - hovering down the list, holding Next, an agent call
+  // arriving mid-transition - and overlapping them means competing snapshot
+  // applies and unbalanced render pauses, which looks like the viewer tearing
+  // itself apart. Steps run one at a time. A hover preview that a later hover
+  // overtook while it waited is dropped - only where the pointer ended up
+  // matters - but a requested step always runs: `story_control` answers the
+  // agent with the result, and dropping one would answer with nothing.
+  function controlMolstarStory(action) {
+    const serial = ++molstarStoryStepRequested;
+    molstarStoryStepQueue = molstarStoryStepQueue
+      .catch(() => {})
+      .then(() => (action.preview === true
+        && (serial !== molstarStoryStepRequested || action.stillWanted?.() === false)
+        ? molstarStoryResult('story_control')
+        : applyMolstarStoryControl(action)));
+    return molstarStoryStepQueue;
+  }
+
+  async function applyMolstarStoryControl(action) {
     const manager = activeViewer?.plugin?.managers?.snapshot;
     const story = molstarStoryState();
     if (!manager || !story.available) return agentActionFailure('story_control', 'NO_STORY', 'The active Mol* viewer does not contain a MolViewSpec Story.');
     const operation = String(action.operation || '').trim();
-    if (operation === 'next') await manager.applyNext(1);
-    else if (operation === 'previous') await manager.applyNext(-1);
-    else if (operation === 'play') await manager.play({ restart: action.restart === true });
-    else if (operation === 'pause') await manager.stop();
-    else if (operation === 'goto') {
-      const entries = Array.from(manager.state.entries);
-      const index = Number.isInteger(action.index)
-        ? action.index
-        : entries.findIndex(entry => entry?.key === action.key || entry?.snapshot?.id === action.id);
-      if (index < 0 || index >= entries.length) return agentActionFailure('story_control', 'STORY_STEP_NOT_FOUND', 'The requested Story step does not exist.');
-      const snapshot = manager.setCurrent(entries[index].snapshot.id);
-      if (snapshot) await activeViewer.plugin.state.setSnapshot(snapshot);
-    } else {
-      return agentActionFailure('story_control', 'INVALID_ARGS', 'story_control operation must be next, previous, goto, play, or pause.');
+    // Applying a step paints the scene as the Story authored it, and the style the
+    // user picked lands a frame or two later - which reads as a flash of the wrong
+    // style. Rendering is held across the swap so the first frame drawn is already
+    // the finished scene. Playback keeps rendering; it is a continuous animation.
+    const isStep = operation === 'next' || operation === 'previous' || operation === 'goto';
+    const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
+    // Styles built from more than one representation cannot be written into the
+    // snapshot, so they go on after the step with rendering held. `Illustrative`
+    // is not among them: it is post-processing on the canvas, which the snapshot
+    // no longer carries, so it survives a step untouched.
+    const restyles = isStep && MOLSTAR_STORY_REBUILT_STYLES.has(style);
+    const canvas3d = activeViewer?.plugin?.canvas3d;
+    if (isStep || operation === 'play') applyMolstarStoryStyleToSnapshots(manager, style);
+    if (isStep) setMolstarStoryTransition(manager, action.preview === true ? 0 : MOLSTAR_STORY_TRANSITION_MS);
+    if (restyles) {
+      molstarStoryStepInFlight = true;
+      canvas3d?.pause?.(true);
+    }
+    try {
+      if (operation === 'next') await manager.applyNext(1);
+      else if (operation === 'previous') await manager.applyNext(-1);
+      else if (operation === 'play') await manager.play({ restart: action.restart === true });
+      else if (operation === 'pause') await manager.stop();
+      else if (operation === 'goto') {
+        const entries = Array.from(manager.state.entries);
+        const index = Number.isInteger(action.index)
+          ? action.index
+          : entries.findIndex(entry => entry?.key === action.key || entry?.snapshot?.id === action.id);
+        if (index < 0 || index >= entries.length) return agentActionFailure('story_control', 'STORY_STEP_NOT_FOUND', 'The requested Story step does not exist.');
+        const snapshot = manager.setCurrent(entries[index].snapshot.id);
+        if (snapshot) await activeViewer.plugin.state.setSnapshot(snapshot);
+      } else {
+        return agentActionFailure('story_control', 'INVALID_ARGS', 'story_control operation must be next, previous, goto, play, or pause.');
+      }
+      if (restyles) {
+        await waitForMolstarIdle(activeViewer);
+        await restoreMolstarStoryPresentation(activeViewer);
+      }
+    } finally {
+      if (restyles) {
+        molstarStoryStepInFlight = false;
+        canvas3d?.resume?.();
+        canvas3d?.requestDraw?.();
+      }
     }
     const result = molstarStoryResult('story_control');
-    reportMolstarStoryToHost();
+    molstarStoryReportedAt = 0;
+    syncMolstarStoryUi();
     return result;
+  }
+
+  // Mol* keeps the author's canvas settings - background, renderer, post-
+  // processing - inside every Story snapshot, so each step re-applies them over
+  // the chrome the user chose in Burette and flashes white on the way. Burette
+  // owns that chrome, so the presentation half of each snapshot is detached once
+  // when the Story is observed. Doing it at the snapshot instead of after each
+  // step covers every path that applies one: our controls, the agent, playback
+  // and the native Mol* state UI.
+  function detachMolstarStoryPresentation(manager) {
+    const entries = manager?.state?.entries ? Array.from(manager.state.entries) : [];
+    for (const entry of entries) {
+      const snapshot = entry?.snapshot;
+      if (!snapshot || molstarStoryDetachedSnapshots.has(snapshot)) continue;
+      snapshot.canvas3d = undefined;
+      molstarStoryDetachedSnapshots.add(snapshot);
+    }
+  }
+
+  // Applying a step and then restyling it builds the scene twice: measured on
+  // docking_story.mvsx at ~520 ms for the snapshot and another ~400 ms to rebuild
+  // every representation, with rendering held across both. For the styles that
+  // are a single representation kind, the style is written into the snapshots
+  // instead, so each step builds the scene once, already in the chosen style.
+  // The authored representation is kept so `Default` can restore the scene as
+  // the Story's author meant it.
+  // Derived from the transform and the style, never random: Mol* skips rebuilding
+  // a node whose version is unchanged, so two states that draw the same component
+  // the same way must agree on it. Random versions made every step rebuild the
+  // whole receptor - measured at 957 ms per step against 248 ms when the versions
+  // line up.
+  function molstarStoryTransformVersion(transform, style) {
+    return stableTextHash(`${transform.ref}:${style}`).padEnd(32, '0');
+  }
+
+  function applyMolstarStoryStyleToSnapshots(manager, style) {
+    const uniform = MOLSTAR_UNIFORM_STYLE_REPRESENTATION[style];
+    const overrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES[style];
+    for (const entry of manager?.state?.entries || []) {
+      const transforms = entry?.snapshot?.data?.tree?.transforms;
+      if (!Array.isArray(transforms)) continue;
+      for (const transform of transforms) {
+        if (transform?.transformer !== 'ms-plugin.structure-representation-3d' || !transform.params?.type) continue;
+        if (!molstarStoryAuthoredRepresentations.has(transform)) {
+          molstarStoryAuthoredRepresentations.set(transform, {
+            type: transform.params.type,
+            colorTheme: transform.params.colorTheme,
+            version: transform.version
+          });
+        }
+        const authored = molstarStoryAuthoredRepresentations.get(transform);
+        if (!uniform && !overrides) {
+          transform.params.type = authored.type;
+          transform.params.colorTheme = authored.colorTheme;
+          transform.version = authored.version;
+          continue;
+        }
+        // Only the new type's own parameters: representation parameters are
+        // per-type, and carrying the authored ones across made Mol* fall back to
+        // some other representation entirely. An override keeps the authored
+        // representation and only adjusts it.
+        transform.params.type = uniform
+          ? { name: uniform.type, params: { ...uniform.typeParams, ...overrides } }
+          : { name: authored.type?.name, params: { ...(authored.type?.params || {}), ...overrides } };
+        transform.params.colorTheme = uniform ? { name: uniform.color, params: {} } : authored.colorTheme;
+        // Mol* diffs snapshots by transform version, not by comparing parameters,
+        // so an edited transform has to look new or the change is skipped. Every
+        // state gets the same version for the same node, including a node that
+        // already drew this type: leaving that one on its authored version made
+        // the versions disagree between states and rebuilt it on every step.
+        transform.version = molstarStoryTransformVersion(transform, style);
+      }
+    }
+  }
+
+  // Camera transitions are set on the snapshots because `applyNext` reads them
+  // from there. Previewing by hover uses no transition: a flight per state as
+  // the pointer moves down the list reads as the viewer lurching about.
+  function setMolstarStoryTransition(manager, durationMs) {
+    const instant = durationMs <= 0 || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+    for (const entry of manager?.state?.entries || []) {
+      const camera = entry?.snapshot?.camera;
+      if (!camera?.current) continue;
+      camera.transitionStyle = instant ? 'instant' : 'animate';
+      camera.transitionDurationInMs = instant ? 0 : durationMs;
+    }
+  }
+
+  // The restore has to wait for the step to finish building: applying a style
+  // while Mol* is still assembling the snapshot competes with it and leaves the
+  // canvas empty, which is what happened when the first state was restyled
+  // mid-load.
+  function scheduleMolstarStoryPresentationRestore(viewer, attempt = 0) {
+    if (molstarStoryPresentationRestoreTimer) clearTimeout(molstarStoryPresentationRestoreTimer);
+    molstarStoryPresentationRestoreTimer = window.setTimeout(() => {
+      molstarStoryPresentationRestoreTimer = 0;
+      if (!viewer || viewer !== activeViewer) return;
+      if (viewer.plugin?.behaviors?.state?.isBusy?.value === true && attempt < 40) {
+        scheduleMolstarStoryPresentationRestore(viewer, attempt + 1);
+        return;
+      }
+      void restoreMolstarStoryPresentation(viewer);
+    }, attempt === 0 ? 60 : 80);
+  }
+
+  // A step also carries its own representations, which is the Story doing its
+  // job - but a user who picked a style in the toolbar expects it to survive the
+  // step. `default` means "show the scene as authored", so it is left alone.
+  async function restoreMolstarStoryPresentation(viewer = activeViewer) {
+    if (!viewer || viewer !== activeViewer || molstarStoryPresentationRestoreInFlight) return;
+    const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
+    molstarStoryPresentationRestoreInFlight = true;
+    try {
+      if (style !== 'default') await applyMolstarStyle(viewer, style);
+      applyBackgroundMode();
+      applyViewerBackground(viewer);
+    } catch (error) {
+      debug('Mol* Story presentation restore failed: ' + (error?.message || String(error)));
+    } finally {
+      molstarStoryPresentationRestoreInFlight = false;
+    }
+  }
+
+  // Mol* reports every intermediate state while a step is applied, and each
+  // report re-renders the Story controls and the host's Story dock. They are
+  // coalesced, and the last one always arrives.
+  function syncMolstarStoryUi() {
+    const now = Date.now();
+    const sinceLast = now - molstarStoryReportedAt;
+    if (sinceLast < MOLSTAR_STORY_REPORT_INTERVAL_MS) {
+      if (molstarStoryReportTimer) return;
+      molstarStoryReportTimer = window.setTimeout(() => {
+        molstarStoryReportTimer = 0;
+        syncMolstarStoryUi();
+      }, MOLSTAR_STORY_REPORT_INTERVAL_MS - sinceLast);
+      return;
+    }
+    molstarStoryReportedAt = now;
+    renderMolstarStoryControls();
+    updateSceneTreeStoryCaption();
+    reportMolstarStoryToHost();
   }
 
   function reportMolstarStoryToHost() {
@@ -895,9 +1133,45 @@
   function observeMolstarStoryState(viewer) {
     molstarStoryStateCleanup?.();
     molstarStoryStateCleanup = null;
-    const subscription = viewer?.plugin?.managers?.snapshot?.events?.changed?.subscribe?.(() => reportMolstarStoryToHost());
-    if (subscription?.unsubscribe) molstarStoryStateCleanup = () => subscription.unsubscribe();
-    reportMolstarStoryToHost();
+    const manager = viewer?.plugin?.managers?.snapshot;
+    detachMolstarStoryPresentation(manager);
+    setMolstarStoryTransition(manager, MOLSTAR_STORY_TRANSITION_MS);
+    molstarStoryRestoredStateId = null;
+    const subscription = manager?.events?.changed?.subscribe?.(() => {
+      detachMolstarStoryPresentation(manager);
+      // Mol* fires this several times while a step is applied, and each pass
+      // rebuilds the Story UI. Measured against raw `applyNext`, our handlers
+      // added ~80 ms per step on top of Mol*'s own ~300 ms; coalescing them
+      // keeps that off the step.
+      syncMolstarStoryUi();
+      // `changed` also fires while the Story is being assembled and while a step
+      // builds. Only an actual move to a different state needs the viewer style
+      // re-applied, and the state the document opens on is left as authored.
+      const currentId = manager?.state?.current || null;
+      if (!currentId || currentId === molstarStoryRestoredStateId) return;
+      const isFirstState = molstarStoryRestoredStateId === null;
+      molstarStoryRestoredStateId = currentId;
+      // Only a composite style needs a pass over the built scene, and a step
+      // driven through the controls has already done it with rendering held.
+      const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
+      if (!isFirstState && !molstarStoryStepInFlight && MOLSTAR_STORY_REBUILT_STYLES.has(style)) {
+        scheduleMolstarStoryPresentationRestore(viewer);
+      }
+    });
+    if (subscription?.unsubscribe) {
+      molstarStoryStateCleanup = () => {
+        subscription.unsubscribe();
+        if (molstarStoryReportTimer) clearTimeout(molstarStoryReportTimer);
+        if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
+        molstarStoryReportTimer = 0;
+        molstarStoryPreviewTimer = 0;
+        document.querySelector('.buret-molstar-story')?.__buretStoryDragCleanup?.();
+        document.querySelector('.buret-molstar-story')?.remove();
+        hideMolstarStoryDetails();
+      };
+    }
+    molstarStoryReportedAt = 0;
+    syncMolstarStoryUi();
   }
 
   function buretteSceneSpecOperations(action) {
@@ -3300,6 +3574,36 @@
       await applyMolstarStyle(viewer, style);
       return;
     }
+    // Reloading rebuilds Mol* state from the prepared source, which discards the
+    // snapshots a Story lives in and drops the viewer back on its first step.
+    // A Story keeps its scenes in plugin state, so the style goes on top of the
+    // step the user is looking at instead.
+    if (molstarStoryState().available) {
+      const normalized = normalizeMolstarStyle(style);
+      const manager = viewer?.plugin?.managers?.snapshot;
+      applyMolstarStoryStyleToSnapshots(manager, normalized);
+      // Restyling a Story goes through its snapshots, so the scene on screen is
+      // rebuilt the same way a step builds it. Applying the style over the scene
+      // instead would leave the current state looking unlike every other one.
+      const current = Array.from(manager?.state?.entries || []).find(entry => entry?.snapshot?.id === manager?.state?.current);
+      // A style has a canvas half - outline, occlusion, flat shading - that the
+      // snapshots no longer carry, and a scene half that they do. The canvas half
+      // is set here, including turning the illustrative post-processing back off,
+      // and the scene half comes from re-applying the current snapshot.
+      if (normalized === 'illustrative' || normalized === 'illustrative-surface') {
+        await applyMolstarIllustrativePostprocessing(viewer, { includeTransparent: normalized === 'illustrative-surface' });
+      } else {
+        await applyMolstarNonIllustrativePostprocessing(viewer);
+      }
+      if (current?.snapshot) await viewer.plugin.state.setSnapshot(current.snapshot);
+      // Styles made of several representations cannot live in a snapshot, so they
+      // are built over the scene the snapshot just produced.
+      if (MOLSTAR_STORY_REBUILT_STYLES.has(normalized)) await applyMolstarStyle(viewer, normalized);
+      if (serial !== molstarStyleApplySerial) return;
+      setStatus(`[web] Applied Mol* ${molstarStyleLabel(style)} style`);
+      setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+      return;
+    }
     const cameraSnapshot = captureMolstarCameraSnapshot(viewer);
     const plugin = viewer?.plugin;
     if (typeof plugin?.clear === 'function') {
@@ -5385,6 +5689,82 @@
     return cell?.transform?.transformer?.definition?.isDecorator === true;
   }
 
+  function sceneTreeDisplayLabel(value) {
+    const source = String(value || '').trim();
+    if (!source.includes('://')) return { label: source || 'Node', format: '' };
+    const path = source.replace(/[?#].*$/, '');
+    const encodedName = path.slice(path.lastIndexOf('/') + 1);
+    if (!encodedName) return { label: source || 'Node', format: '' };
+    let fileName = encodedName;
+    try { fileName = decodeURIComponent(encodedName); } catch (_) {}
+    const extensionMatch = fileName.match(/\.([a-z0-9]+)$/i);
+    const format = extensionMatch ? extensionMatch[1].toUpperCase() : '';
+    const stem = extensionMatch ? fileName.slice(0, -extensionMatch[0].length) : fileName;
+    const words = stem
+      .replace(/[_-]+/g, ' ')
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/\s+/g, ' ')
+      .trim();
+    let label = words;
+    if (/^reflig$/i.test(words)) label = 'Reference ligand';
+    else {
+      const ligand = words.match(/^lig(?:and)?\s*(\d+)$/i);
+      if (ligand) label = `Ligand ${ligand[1]}`;
+      else if (label) label = label.charAt(0).toUpperCase() + label.slice(1);
+    }
+    return { label: label || fileName, format };
+  }
+
+  // A MolViewSpec scene carries its annotations as "Primitive Data" holding
+  // "Labels" - true to Mol*'s internals and useless to a reader. The primitives
+  // themselves say what they are, so the row is named after what it draws.
+  function molstarPrimitiveDataLabel(cell) {
+    const children = cell?.params?.values?.node?.children;
+    if (!Array.isArray(children)) return null;
+    const counts = new Map();
+    for (const child of children) {
+      const kind = String(child?.params?.kind || child?.kind || '').trim();
+      if (kind) counts.set(kind, (counts.get(kind) || 0) + 1);
+    }
+    if (counts.size === 0) return null;
+    const total = Array.from(counts.values()).reduce((sum, count) => sum + count, 0);
+    // A scene usually holds one primitive per row, so the plural form and a
+    // count of "1" beside it would both be noise.
+    const names = {
+      distance_measurement: ['Distance', 'Distances'],
+      angle_measurement: ['Angle', 'Angles'],
+      label: ['Label', 'Labels'],
+      line: ['Line', 'Lines'],
+      tube: ['Tube', 'Tubes'],
+      arrow: ['Arrow', 'Arrows'],
+      ellipse: ['Ellipse', 'Ellipses'],
+      box: ['Box', 'Boxes']
+    };
+    const kinds = Array.from(counts.keys());
+    const name = kinds.length === 1 ? names[kinds[0]] : null;
+    const label = name ? name[total === 1 ? 0 : 1] : 'Annotations';
+    return { label, note: total === 1 ? '' : String(total) };
+  }
+
+  // Mol* spells a residue selection out as its query, which overruns the row and
+  // says nothing a reader wants. The count does.
+  function molstarSelectionLabel(rawLabel) {
+    if (!rawLabel.startsWith('Custom Selection:')) return null;
+    const residues = (rawLabel.match(/auth_seq_id/g) || []).length;
+    if (residues === 0) return null;
+    return { label: 'Selected residues', note: String(residues) };
+  }
+
+  function sceneTreeRowLabel(cell, rawLabel) {
+    const transformer = String(cell?.transform?.transformer?.id || '');
+    const primitives = transformer === 'mvs.mvs-inline-primitive-data' ? molstarPrimitiveDataLabel(cell) : null;
+    if (primitives) return { ...primitives, format: '' };
+    const selection = molstarSelectionLabel(rawLabel);
+    if (selection) return { ...selection, format: '' };
+    const display = sceneTreeDisplayLabel(rawLabel);
+    return { label: display.label, note: '', format: display.format };
+  }
+
   function sceneTreeNodes(viewer) {
     const state = viewer?.plugin?.state?.data;
     if (!state?.cells) return [];
@@ -5422,11 +5802,15 @@
           const nodeCell = state.cells.get(nodeRef) || cell;
           const components = colorTargets.get(nodeRef) || null;
           const measurementEditable = sceneTreeMeasurementTargets(viewer, nodeRef).length > 0;
-          const label = String(cell.obj.label || 'Node');
+          const rawLabel = String(cell.obj.label || 'Node');
+          const display = sceneTreeRowLabel(cell, rawLabel);
+          const label = display.label;
           nodes.push({
             ref: nodeRef,
             label,
-            note: String(cell.obj.description || ''),
+            note: String(cell.obj.description || display.note || display.format || ''),
+            sourceLabel: rawLabel === label ? '' : rawLabel,
+            group: String(cell.obj.type?.name || '') === 'Primitive Data' ? 'annotations' : 'structures',
             typeClass: String(cell.obj.type?.typeClass || 'Object'),
             hidden: sceneTreeCellHidden(state, nodeRef),
             colorable: !!components,
@@ -5529,6 +5913,7 @@
     label.className = 'buret-tree-label';
     label.textContent = node.label;
     trigger.appendChild(label);
+    if (node.sourceLabel) trigger.dataset.sourceLabel = node.sourceLabel;
     if (node.note) {
       const note = document.createElement('span');
       note.className = 'buret-tree-note';
@@ -5589,6 +5974,29 @@
     }, 0);
   }
 
+  // Which Story state the tree is describing. Without it the tree looks like the
+  // whole document, when it is only whichever scene is on screen.
+  function updateSceneTreeStoryCaption() {
+    const caption = document.querySelector('[data-buret-scene-tree-story]');
+    if (!caption) return;
+    const story = molstarStoryState();
+    if (!story.available) {
+      caption.classList.add('hidden');
+      caption.textContent = '';
+      return;
+    }
+    caption.classList.remove('hidden');
+    caption.textContent = `${story.stepIndex + 1}/${story.stepCount} · ${story.current?.title || 'Story state'}`;
+    caption.title = String(story.current?.title || '');
+  }
+
+  function sceneTreeSectionElement(title) {
+    const section = document.createElement('div');
+    section.className = 'buret-tree-section';
+    section.textContent = title;
+    return section;
+  }
+
   function renderSceneTree() {
     const toggle = document.getElementById('buret-scene-tree-toggle');
     const panel = document.getElementById('buret-scene-tree');
@@ -5614,8 +6022,21 @@
     const highlight = document.createElement('div');
     highlight.className = 'buret-tree-highlight';
     root.appendChild(highlight);
-    for (const node of nodes) root.appendChild(sceneTreeNodeElement(node));
+    // A MolViewSpec scene mixes the structures it loaded with the annotations it
+    // draws over them, and read as one flat list it is hard to tell which is
+    // which. They are split only when both are actually present.
+    const annotations = nodes.filter(node => node.group === 'annotations');
+    const structures = nodes.filter(node => node.group !== 'annotations');
+    if (annotations.length > 0 && structures.length > 0) {
+      root.appendChild(sceneTreeSectionElement('Structures'));
+      for (const node of structures) root.appendChild(sceneTreeNodeElement(node));
+      root.appendChild(sceneTreeSectionElement('Annotations'));
+      for (const node of annotations) root.appendChild(sceneTreeNodeElement(node));
+    } else {
+      for (const node of nodes) root.appendChild(sceneTreeNodeElement(node));
+    }
     body.replaceChildren(root);
+    updateSceneTreeStoryCaption();
     requestAnimationFrame(() => root.classList.add('buret-tree-animate'));
     const hovered = sceneTreeHoverRef
       ? root.querySelector(`.buret-tree-row[data-ref="${CSS.escape(sceneTreeHoverRef)}"]`)
@@ -13197,36 +13618,9 @@
       await applyMolstarNonIllustrativePostprocessing(viewer);
     }
 
-    if (normalized === 'line') {
-      await applyMolstarUniformRepresentation(viewer, {
-        type: 'line',
-        typeParams: { sizeFactor: 0.08 },
-        color: 'element-symbol'
-      });
-      return;
-    }
-    if (normalized === 'ball-and-stick') {
-      await applyMolstarUniformRepresentation(viewer, {
-        type: 'ball-and-stick',
-        typeParams: { sizeFactor: 0.16 },
-        color: 'element-symbol'
-      });
-      return;
-    }
-    if (normalized === 'spacefill') {
-      await applyMolstarUniformRepresentation(viewer, {
-        type: 'spacefill',
-        typeParams: { sizeFactor: 0.45 },
-        color: 'element-symbol'
-      });
-      return;
-    }
-    if (normalized === 'molecular-surface') {
-      await applyMolstarUniformRepresentation(viewer, {
-        type: 'molecular-surface',
-        typeParams: { alpha: 0.72 },
-        color: 'element-symbol'
-      });
+    const uniform = MOLSTAR_UNIFORM_STYLE_REPRESENTATION[normalized];
+    if (uniform) {
+      await applyMolstarUniformRepresentation(viewer, uniform);
       return;
     }
     if (normalized === 'illustrative') {
@@ -15486,6 +15880,381 @@
     } catch (error) {
       return agentActionFailure('set_sdf_pose_index', 'ACTION_ERROR', error?.message || String(error));
     }
+  }
+
+  function molstarStoryControlEntries() {
+    const manager = activeViewer?.plugin?.managers?.snapshot;
+    const entries = manager?.state?.entries ? Array.from(manager.state.entries) : [];
+    const currentId = manager?.state?.current;
+    return entries.slice(0, 256).map((entry, index) => ({
+      index,
+      id: String(entry?.snapshot?.id || ''),
+      name: String(entry?.name || `State ${index + 1}`).slice(0, 512),
+      description: String(entry?.description || '').slice(0, 16 * 1024),
+      current: entry?.snapshot?.id === currentId
+    }));
+  }
+
+  function appendMolstarStoryInlineMarkdown(parent, text) {
+    const source = String(text || '');
+    const tokenPattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g;
+    let cursor = 0;
+    for (const match of source.matchAll(tokenPattern)) {
+      if (match.index > cursor) parent.append(document.createTextNode(source.slice(cursor, match.index)));
+      const token = match[0];
+      const element = document.createElement(token.startsWith('**') ? 'strong' : token.startsWith('`') ? 'code' : 'em');
+      element.textContent = token.startsWith('**') ? token.slice(2, -2) : token.slice(1, -1);
+      parent.append(element);
+      cursor = match.index + token.length;
+    }
+    if (cursor < source.length) parent.append(document.createTextNode(source.slice(cursor)));
+  }
+
+  function molstarStoryMarkdownCells(line) {
+    return String(line || '').trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim());
+  }
+
+  function isMolstarStoryMarkdownTableDivider(line) {
+    const cells = molstarStoryMarkdownCells(line);
+    return cells.length > 1 && cells.every(cell => /^:?-{3,}:?$/.test(cell));
+  }
+
+  // Story descriptions are Markdown, and the desktop dock renders them with the
+  // app's Markdown viewer. Inside the viewer iframe there is no React, so the
+  // subset the templates actually use - headings, lists, tables, emphasis and
+  // code - is rendered directly into DOM rather than shown as raw text.
+  function renderMolstarStoryMarkdown(container, markdown) {
+    container.replaceChildren();
+    const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n');
+    for (let index = 0; index < lines.length;) {
+      const line = lines[index];
+      if (!line.trim()) {
+        index++;
+        continue;
+      }
+      const heading = line.match(/^(#{1,6})\s+(.+)$/);
+      if (heading) {
+        const element = document.createElement(`h${Math.min(4, heading[1].length + 1)}`);
+        appendMolstarStoryInlineMarkdown(element, heading[2]);
+        container.append(element);
+        index++;
+        continue;
+      }
+      if (line.includes('|') && isMolstarStoryMarkdownTableDivider(lines[index + 1])) {
+        const table = document.createElement('table');
+        const head = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        for (const cell of molstarStoryMarkdownCells(line)) {
+          const th = document.createElement('th');
+          appendMolstarStoryInlineMarkdown(th, cell);
+          headRow.append(th);
+        }
+        head.append(headRow);
+        table.append(head);
+        const body = document.createElement('tbody');
+        index += 2;
+        while (index < lines.length && lines[index].trim() && lines[index].includes('|')) {
+          const row = document.createElement('tr');
+          for (const cell of molstarStoryMarkdownCells(lines[index])) {
+            const td = document.createElement('td');
+            appendMolstarStoryInlineMarkdown(td, cell);
+            row.append(td);
+          }
+          body.append(row);
+          index++;
+        }
+        table.append(body);
+        container.append(table);
+        continue;
+      }
+      if (/^\s*[-*]\s+/.test(line)) {
+        const list = document.createElement('ul');
+        while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) {
+          const item = document.createElement('li');
+          appendMolstarStoryInlineMarkdown(item, lines[index].replace(/^\s*[-*]\s+/, ''));
+          list.append(item);
+          index++;
+        }
+        container.append(list);
+        continue;
+      }
+      const paragraphLines = [];
+      while (index < lines.length && lines[index].trim()
+        && !/^(#{1,6})\s+/.test(lines[index])
+        && !/^\s*[-*]\s+/.test(lines[index])
+        && !(lines[index].includes('|') && isMolstarStoryMarkdownTableDivider(lines[index + 1]))) {
+        paragraphLines.push(lines[index].trim());
+        index++;
+      }
+      const paragraph = document.createElement('p');
+      appendMolstarStoryInlineMarkdown(paragraph, paragraphLines.join(' '));
+      container.append(paragraph);
+    }
+  }
+
+  function hideMolstarStoryDetails() {
+    if (molstarStoryDetailsTimer) clearTimeout(molstarStoryDetailsTimer);
+    if (molstarStoryDetailsHideTimer) clearTimeout(molstarStoryDetailsHideTimer);
+    molstarStoryDetailsTimer = 0;
+    molstarStoryDetailsHideTimer = 0;
+    document.querySelector('.buret-story-hover-card')?.remove();
+  }
+
+  function scheduleMolstarStoryDetailsHide() {
+    if (molstarStoryDetailsHideTimer) clearTimeout(molstarStoryDetailsHideTimer);
+    molstarStoryDetailsHideTimer = window.setTimeout(hideMolstarStoryDetails, 220);
+  }
+
+  function positionMolstarStoryDetails(card, anchor) {
+    const anchorRect = anchor.getBoundingClientRect();
+    const listRect = anchor.closest('.buret-docking-pose-files')?.getBoundingClientRect() || anchorRect;
+    const margin = 12;
+    const gap = 10;
+    const rightSpace = window.innerWidth - listRect.right - gap - margin;
+    const width = rightSpace >= 300 ? Math.min(520, rightSpace) : Math.min(520, window.innerWidth - margin * 2);
+    card.style.width = `${width}px`;
+    card.style.left = `${Math.max(margin, Math.min(listRect.right + gap, window.innerWidth - width - margin))}px`;
+    const height = Math.min(card.getBoundingClientRect().height, window.innerHeight - margin * 2);
+    card.style.top = `${Math.max(margin, Math.min(listRect.top, window.innerHeight - height - margin))}px`;
+  }
+
+  function showMolstarStoryDetails(anchor) {
+    const entry = anchor?.__buretStoryEntry;
+    if (!anchor?.isConnected || !entry?.description) return;
+    if (molstarStoryDetailsHideTimer) clearTimeout(molstarStoryDetailsHideTimer);
+    molstarStoryDetailsHideTimer = 0;
+    let card = document.querySelector('.buret-story-hover-card');
+    const created = !card;
+    if (!card) {
+      card = document.createElement('aside');
+      card.className = 'buret-story-hover-card';
+      card.addEventListener('pointerenter', () => {
+        if (molstarStoryDetailsHideTimer) clearTimeout(molstarStoryDetailsHideTimer);
+        molstarStoryDetailsHideTimer = 0;
+      });
+      card.addEventListener('pointerleave', scheduleMolstarStoryDetailsHide);
+    }
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-label', `${entry.name} details`);
+    let content = card.querySelector('.buret-story-hover-card-content');
+    if (!content) {
+      content = document.createElement('div');
+      content.className = 'buret-story-hover-card-content';
+      card.append(content);
+    }
+    renderMolstarStoryMarkdown(content, entry.description);
+    if (created) document.body.append(card);
+    positionMolstarStoryDetails(card, anchor);
+  }
+
+  // Hovering a state moves to it, so the list doubles as a preview. The dwell
+  // keeps a pointer travelling down the list from applying every state it
+  // crosses.
+  function scheduleMolstarStoryPreview(anchor) {
+    if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
+    molstarStoryPreviewTimer = window.setTimeout(() => {
+      molstarStoryPreviewTimer = 0;
+      if (!anchor.isConnected || !anchor.matches(':hover')) return;
+      if (anchor.classList.contains('active')) return;
+      // Checked again when the step reaches the front of the queue: a slow step
+      // ahead of it can leave this one waiting long after the pointer has moved
+      // on, and applying it then would jump to a state nobody is pointing at.
+      void controlMolstarStory({
+        operation: 'goto',
+        id: anchor.__buretStoryEntry?.id,
+        preview: true,
+        stillWanted: () => anchor.isConnected && anchor.matches(':hover')
+      });
+    }, MOLSTAR_STORY_PREVIEW_DWELL_MS);
+  }
+
+  // The description trails the scene: it appears once the pointer has settled,
+  // so it does not flash open and shut while the pointer crosses the list.
+  function scheduleMolstarStoryDetails(anchor) {
+    if (molstarStoryDetailsTimer) clearTimeout(molstarStoryDetailsTimer);
+    if (molstarStoryDetailsHideTimer) clearTimeout(molstarStoryDetailsHideTimer);
+    molstarStoryDetailsHideTimer = 0;
+    if (document.querySelector('.buret-story-hover-card')) {
+      showMolstarStoryDetails(anchor);
+      return;
+    }
+    molstarStoryDetailsTimer = window.setTimeout(() => {
+      molstarStoryDetailsTimer = 0;
+      const focused = anchor.ownerDocument?.activeElement === anchor;
+      if (anchor.isConnected && (anchor.matches(':hover') || focused)) showMolstarStoryDetails(anchor);
+    }, MOLSTAR_STORY_DETAILS_DWELL_MS);
+  }
+
+  // Re-rendering on every step would close the open scene list and drop the
+  // panel the user dragged into place, so an unchanged list is updated in place
+  // and only a different set of steps rebuilds it.
+  function updateMolstarStoryControls(root, entries, isPlaying) {
+    const buttons = Array.from(root.querySelectorAll('.buret-docking-pose-file'));
+    if (buttons.length !== entries.length) return false;
+    if (buttons.some((button, index) => button.dataset.buretStoryId !== entries[index]?.id)) return false;
+    const currentEntry = entries.find(entry => entry.current) || entries[0];
+    const currentName = root.querySelector('.buret-docking-pose-current-text');
+    const currentIndex = root.querySelector('.buret-docking-pose-current-index');
+    if (currentName) currentName.textContent = currentEntry?.name || 'Story';
+    if (currentIndex) currentIndex.textContent = `${(currentEntry?.index ?? 0) + 1}/${entries.length}`;
+    const play = root.querySelector('[data-buret-story-play]');
+    if (play) {
+      play.classList.toggle('active', isPlaying);
+      play.textContent = isPlaying ? 'Pause' : 'Play';
+      play.setAttribute('aria-label', isPlaying ? 'Pause Story' : 'Play Story');
+    }
+    buttons.forEach((button, index) => {
+      const entry = entries[index];
+      button.__buretStoryEntry = entry;
+      button.classList.toggle('active', entry.current);
+      button.setAttribute('aria-selected', entry.current ? 'true' : 'false');
+      const name = button.querySelector('.buret-docking-pose-file-name');
+      if (name) name.textContent = entry.name;
+    });
+    return true;
+  }
+
+  function renderMolstarStoryControls() {
+    const story = molstarStoryState();
+    const entries = story.available ? molstarStoryControlEntries() : [];
+    const previousRoot = document.querySelector('.buret-molstar-story');
+    if (entries.length >= 2 && previousRoot && updateMolstarStoryControls(previousRoot, entries, story.isPlaying)) return;
+    previousRoot?.__buretStoryDragCleanup?.();
+    previousRoot?.remove();
+    const listWasOpen = previousRoot?.classList.contains('buret-docking-poses-files-open') === true;
+    hideMolstarStoryDetails();
+    if (entries.length < 2) {
+      if (!document.querySelector('.buret-docking-poses')) document.body.classList.remove('buret-docking-pose-controls-active');
+      return;
+    }
+    // A document that already drives the pose/trajectory toolbar keeps it: two
+    // overlays would fight for the same corner and the same saved position.
+    if (document.querySelector('.buret-docking-poses:not(.buret-molstar-story)')) return;
+
+    const currentEntry = entries.find(entry => entry.current) || entries[0];
+    const root = document.createElement('div');
+    root.className = 'buret-docking-poses buret-docking-poses-structure-scene buret-molstar-story';
+    root.setAttribute('aria-label', 'Story state controls');
+    const main = document.createElement('div');
+    main.className = 'buret-docking-pose-main';
+    const collapse = document.createElement('button');
+    collapse.type = 'button';
+    collapse.className = 'buret-docking-pose-animation-button';
+    collapse.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h16v2H4v-2Z" fill="currentColor"/></svg>';
+    collapse.setAttribute('aria-label', 'Collapse Story controls');
+    collapse.setAttribute('aria-expanded', 'true');
+    collapse.title = 'Collapse Story controls';
+    const previous = document.createElement('button');
+    previous.type = 'button';
+    previous.className = 'buret-docking-pose-previous';
+    previous.textContent = 'Prev';
+    previous.setAttribute('aria-label', 'Previous Story state');
+    const current = document.createElement('button');
+    current.type = 'button';
+    current.className = 'buret-docking-pose-current';
+    current.setAttribute('aria-haspopup', 'listbox');
+    current.setAttribute('aria-expanded', 'false');
+    const currentName = document.createElement('span');
+    currentName.className = 'buret-docking-pose-current-name';
+    const currentNameText = document.createElement('span');
+    currentNameText.className = 'buret-docking-pose-current-text';
+    currentNameText.textContent = currentEntry?.name || 'Story';
+    currentName.append(currentNameText);
+    const currentIndex = document.createElement('span');
+    currentIndex.className = 'buret-docking-pose-current-index';
+    currentIndex.textContent = `${(currentEntry?.index ?? 0) + 1}/${entries.length}`;
+    current.append(currentName, currentIndex);
+    const next = document.createElement('button');
+    next.type = 'button';
+    next.className = 'buret-docking-pose-next';
+    next.textContent = 'Next';
+    next.setAttribute('aria-label', 'Next Story state');
+    const play = document.createElement('button');
+    play.type = 'button';
+    play.dataset.buretStoryPlay = 'true';
+    play.className = story.isPlaying ? 'active' : '';
+    play.textContent = story.isPlaying ? 'Pause' : 'Play';
+    play.setAttribute('aria-label', story.isPlaying ? 'Pause Story' : 'Play Story');
+    const openRight = document.createElement('button');
+    openRight.type = 'button';
+    openRight.className = 'buret-molstar-story-open';
+    openRight.textContent = 'Story';
+    openRight.title = 'Open Story in right sidebar';
+    openRight.setAttribute('aria-label', 'Open Story in right sidebar');
+    const list = document.createElement('div');
+    list.className = 'buret-docking-pose-files';
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', 'Story states');
+    const setListOpen = (value) => {
+      if (value) setSceneTreeOpen(false);
+      root.classList.toggle('buret-docking-poses-files-open', value);
+      current.setAttribute('aria-expanded', value ? 'true' : 'false');
+      if (!value) hideMolstarStoryDetails();
+    };
+    entries.forEach(entry => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `buret-docking-pose-file${entry.current ? ' active' : ''}`;
+      button.dataset.buretStoryId = entry.id;
+      button.__buretStoryEntry = entry;
+      button.setAttribute('role', 'option');
+      button.setAttribute('aria-selected', entry.current ? 'true' : 'false');
+      const number = document.createElement('span');
+      number.className = 'buret-docking-pose-file-number';
+      number.textContent = String(entry.index + 1).padStart(2, '0');
+      const name = document.createElement('span');
+      name.className = 'buret-docking-pose-file-name';
+      name.textContent = entry.name;
+      button.append(number, name);
+      button.addEventListener('pointerenter', event => {
+        if (event.pointerType === 'touch') return;
+        scheduleMolstarStoryPreview(button);
+        scheduleMolstarStoryDetails(button);
+      });
+      button.addEventListener('pointerleave', () => {
+        if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
+        if (molstarStoryDetailsTimer) clearTimeout(molstarStoryDetailsTimer);
+        molstarStoryPreviewTimer = 0;
+        molstarStoryDetailsTimer = 0;
+        scheduleMolstarStoryDetailsHide();
+      });
+      button.addEventListener('focus', () => scheduleMolstarStoryDetails(button));
+      button.addEventListener('blur', scheduleMolstarStoryDetailsHide);
+      button.addEventListener('click', () => {
+        if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
+        molstarStoryPreviewTimer = 0;
+        void controlMolstarStory({ operation: 'goto', id: button.__buretStoryEntry.id });
+      });
+      list.append(button);
+    });
+    const setControlsCollapsed = (value) => {
+      const collapsed = Boolean(value);
+      root.classList.toggle('buret-docking-poses-collapsed', collapsed);
+      collapse.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      collapse.setAttribute('aria-label', collapsed ? 'Expand Story controls' : 'Collapse Story controls');
+      collapse.title = collapsed ? 'Expand Story controls' : 'Collapse Story controls';
+      if (collapsed) setListOpen(false);
+    };
+    collapse.addEventListener('click', () => setControlsCollapsed(!root.classList.contains('buret-docking-poses-collapsed')));
+    current.addEventListener('click', () => setListOpen(!root.classList.contains('buret-docking-poses-files-open')));
+    previous.addEventListener('click', () => void controlMolstarStory({ operation: 'previous' }));
+    next.addEventListener('click', () => void controlMolstarStory({ operation: 'next' }));
+    play.addEventListener('click', () => void controlMolstarStory({ operation: play.classList.contains('active') ? 'pause' : 'play' }));
+    openRight.addEventListener('click', () => postHostMessage({
+      type: 'openStructureStory',
+      documentId: String(activeConfig?.documentId || ''),
+      fileName: String(activeConfig?.label || 'MolViewSpec Story'),
+      ...molstarStoryState()
+    }));
+    root.addEventListener('pointerdown', event => event.stopPropagation());
+    root.addEventListener('click', event => event.stopPropagation());
+    main.append(collapse, previous, current, next, play, openRight);
+    root.append(main, list);
+    document.body.append(root);
+    restoreDockingPoseControlsPosition(root);
+    root.__buretStoryDragCleanup = initDockingPoseControlsDrag(root);
+    if (listWasOpen) setListOpen(true);
+    document.body.classList.add('buret-docking-pose-controls-active');
   }
 
   function installDockingPoseControls(viewer, prepared) {

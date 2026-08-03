@@ -109,7 +109,10 @@ export function useAppViewerStateMessages({
       const story = structureStoryFromViewerMessage(body);
       if (!story) return true;
       setStructureStories((previous) => ({ ...previous, [story.documentId]: story }));
-      if (body.type === "openStructureStory" || body.type === "mvsStoryChanged") openDockTab("right", "story");
+      // Every Story step reports itself, so opening the dock on the report kept
+      // re-opening a panel the user had closed. Only the explicit "open Story"
+      // action from the viewer controls does that now.
+      if (body.type === "openStructureStory") openDockTab("right", "story");
       return true;
     }
 
