@@ -28,8 +28,9 @@ jobs:
             changed="$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)"
           else
             before="${{ github.event.before }}"
-            if [[ -z "$before" || "$before" == "0000000000000000000000000000000000000000" ]]; then
-              changed="$(git diff --name-only HEAD~1 HEAD)"
+            if [[ -z "$before" || "$before" == "0000000000000000000000000000000000000000" ]] \
+              || ! git cat-file -e "$before^{commit}" 2>/dev/null; then
+              changed="$(git ls-tree -r --name-only HEAD)"
             else
               changed="$(git diff --name-only "$before" HEAD)"
             fi
