@@ -9,6 +9,9 @@ export type MenuItemSpec =
   | { kind: "item"; id: string; text: string; detail?: string; tooltip?: string; iconText?: string; iconUrl?: string; action?: () => void; accelerator?: string; disabled?: boolean }
   | { kind: "separator" }
   | { kind: "label"; id: string; text: string }
+  // A submenu keeps a long command list readable: the parent row names the
+  // topic and the nested items carry the commands themselves.
+  | { kind: "submenu"; id: string; text: string; items: MenuItemSpec[]; detail?: string; iconText?: string; disabled?: boolean }
   | { kind: "checkbox"; id: string; text: string; checked: boolean; detail?: string; accelerator?: string; disabled?: boolean; action?: (checked: boolean) => void }
   | { kind: "swatches"; id: string; colors: string[]; activeColor?: string; label?: string; action?: (color: string) => void }
   | { kind: "select"; id: string; label: string; value: string; options: readonly string[]; optionLabels?: Record<string, string>; disabled?: boolean; action?: (value: string) => void }
