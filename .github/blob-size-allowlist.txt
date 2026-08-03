@@ -1,5 +1,6 @@
 # Paths are matched exactly, relative to the repository root.
 # Keep this list short and limited to intentional large checked-in assets.
+PreviewExtension/Web/mesoscale.js
 PreviewExtension/Web/molstar.js
 PreviewExtension/Web/viewer.js
 PreviewExtension/Web/openchemlib/openchemlib.js
@@ -8,16 +9,18 @@ PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm
 compute/semiempirical/reference/c6ab_d3.npz
 crates/burette-compute-core/src/semiempirical/pm6_d3.generated.bin
 plugins/burette-agent/preview-web/viewer.js
+plugins/burette-agent/preview-web/mesoscale.js
 plugins/burette-agent/preview-web/molstar.js
 plugins/burette-agent/preview-web/openchemlib/openchemlib.js
 plugins/burette-agent/preview-web/rdkit-conformer/Burette_rdkit_conformer.wasm
 plugins/burette-agent/browser-shell-dist/assets/Burette_rdkit_conformer-BA7plZBF.wasm
 plugins/burette-agent/browser-shell-dist/assets/RDKit_minimal-tnscgqxm.wasm
-plugins/burette-agent/browser-shell-dist/assets/dist-CQl48rOZ.js
-plugins/burette-agent/browser-shell-dist/assets/index.modern-C1laRYbs.js
-plugins/burette-agent/browser-shell-dist/assets/index.modern-CTbRksHc.js
+plugins/burette-agent/browser-shell-dist/assets/dist-D9K0Gcn-.js
+plugins/burette-agent/browser-shell-dist/assets/index.modern-BmjV2ZLw.js
+plugins/burette-agent/browser-shell-dist/assets/index.modern-CT0VIV_p.js
 plugins/burette-agent/browser-shell-dist/assets/indigo-ketcher-1.43.0-uUo-NEHL.wasm
 plugins/burette-agent/browser-shell-dist/assets/plotly-basic.min-BGGwveDV.js
+plugins/burette-agent/browser-shell-dist/assets/three.module-B9xciExR.js
 plugins/burette-agent/browser-shell-dist/index.js
 tests/test-ui-shell-contract.mjs
 docs/public/burette-quick-look-preview.png

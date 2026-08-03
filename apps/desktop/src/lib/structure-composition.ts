@@ -70,6 +70,11 @@ export type StructureViewerAction =
       index: number;
     }
   | {
+      type: "show_assembly_symmetry" | "hide_assembly_symmetry";
+      label: string;
+      notify?: boolean;
+    }
+  | {
       type: "apply_trajectory_smoothing";
       label: string;
       notify?: boolean;

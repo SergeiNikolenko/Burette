@@ -13,6 +13,7 @@ import {
 } from "./hooks/use-command-palette";
 import { useAppActiveTextDocument } from "./hooks/use-app-active-text-document";
 import { useAppBrowserDevStartup } from "./hooks/use-app-browser-dev-startup";
+import { useAppAgentSessionActions } from "./hooks/use-app-agent-session-actions";
 import { useAppChemistryJobs } from "./hooks/use-app-chemistry-jobs";
 import { useAppConformerWorkflows } from "./hooks/use-app-conformer-workflows";
 import { useAppDescriptors } from "./hooks/use-app-descriptors";
@@ -174,6 +175,7 @@ export default function App() {
     openKetcherTab();
   }, [activeTab?.location.kind, hostedKetcherWidget, openKetcherTab]);
   const moveTab = useMoveTab();
+  const agentTabActions = useAppAgentSessionActions({ closeTab, moveTab, openNewTab, setActiveTab });
   const {
     sidebarOpen,
     sidebarWidth,
@@ -776,6 +778,8 @@ export default function App() {
     activeDocument,
     activeTabId,
     activeTabKind: activeTab?.location.kind ?? null,
+    tabs,
+    tabActions: agentTabActions,
     openKetcherTab,
     addProjectRoots: addDroppedProjectRoots,
     addXyzrenderSheetItems,

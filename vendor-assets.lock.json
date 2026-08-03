@@ -7,8 +7,8 @@
   "packages": {
     "molstar": {
       "packageName": "molstar",
-      "version": "5.10.1",
-      "integrity": "sha512-eKff0Z/6UCRAb+O6rLyAtquIuXvn9Tge0SLdDL2TBm3X2pVFEX0a5atunNSL01zhQb2sNIm3XgmvDec6WBPvjg=="
+      "version": "5.11.0",
+      "integrity": "sha512-Jv2oHkKoCpzrhqLmGlknepm0pfRsoTDebsGRkvXpbUFb6p+JIAkhLyM3uqV2twC6VR83ZbXtdswOtouPhozpuQ=="
     },
     "@rdkit/rdkit": {
       "packageName": "@rdkit/rdkit",
@@ -25,14 +25,26 @@
     {
       "path": "PreviewExtension/Web/molstar.js",
       "package": "molstar",
-      "bytes": 4954434,
-      "sha256": "sha256-VWfrGfqOens7Fh1LloB8TbJEzs0vPnyH+ZwFK4tbWzA="
+      "bytes": 5760223,
+      "sha256": "sha256-XA/mwBJcM9Xooa9MXtrjjFjRMdUopbPFHy5TCSIBeWc="
     },
     {
       "path": "PreviewExtension/Web/molstar.css",
       "package": "molstar",
       "bytes": 72842,
       "sha256": "sha256-W2jOttNkJUm06bLAceWOQbmKU1CuJpGAWHs52oaSXVU="
+    },
+    {
+      "path": "PreviewExtension/Web/mesoscale.js",
+      "package": "molstar",
+      "bytes": 5403236,
+      "sha256": "sha256-LNiLiuTPNUadVlSCWoJ2VYzmBOHOjrZYdAANrh2X46E="
+    },
+    {
+      "path": "PreviewExtension/Web/mesoscale.css",
+      "package": "molstar",
+      "bytes": 91239,
+      "sha256": "sha256-Hz1g5H0LPEuzindJUya1aVTiWxUT5Ja13WnzDddhDZU="
     },
     {
       "path": "PreviewExtension/Web/rdkit/RDKit_minimal.js",
@@ -74,9 +86,14 @@
       "burette-agent.js",
       "trajectory-smoothing.js",
       "molstar-preset-preview-controller.js",
+      "superposition-panel.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
+    ],
+    "desktop-mesoscale": [
+      "mesoscale.js",
+      "mesoscale.css"
     ],
     "desktop-grid": [
       "grid-viewer.js",
@@ -97,9 +114,14 @@
       "burette-agent.js",
       "trajectory-smoothing.js",
       "molstar-preset-preview-controller.js",
+      "superposition-panel.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
+    ],
+    "quicklook-mesoscale": [
+      "mesoscale.js",
+      "mesoscale.css"
     ],
     "quicklook-grid": [
       "grid-viewer.js",
@@ -114,6 +136,7 @@
       "burette-agent.js",
       "trajectory-smoothing.js",
       "molstar-preset-preview-controller.js",
+      "superposition-panel.js",
       "viewer.js"
     ]
   },
@@ -121,6 +144,7 @@
     "tauri": {
       "profiles": [
         "desktop-molstar",
+        "desktop-mesoscale",
         "desktop-grid",
         "desktop-native-compute",
         "external-artifact"
@@ -130,6 +154,7 @@
     "quicklook": {
       "profiles": [
         "quicklook-molstar",
+        "quicklook-mesoscale",
         "quicklook-grid",
         "external-artifact"
       ],

@@ -9,6 +9,12 @@ import { showNativeContextMenu } from "../../native-context-menu";
 import { definePageKind } from "./types";
 import { SpectrumViewer } from "../../spectrum-viewer";
 import { useSourceEditing } from "../../../lib/source-editing/context";
+import { isMesoscaleViewerDocument } from "../../../lib/mesoscale-documents";
+import { bindMesoscaleFrame, releaseMesoscaleFrame, setMesoscaleSceneOpen, useMesoscaleStore } from "../../../stores/mesoscale-store";
+import { MesoscaleToolbar } from "../../mesoscale/mesoscale-toolbar";
+import { MesoscaleSceneOverlay, MesoscaleSceneToggle } from "../../mesoscale/mesoscale-scene-overlay";
+import { MesoscaleCanvasContextMenu } from "../../mesoscale/mesoscale-canvas-context-menu";
+import { MesoscaleSelectionBar } from "../../mesoscale/mesoscale-selection-bar";
 
 export type FileLocation = { kind: "file"; documentId?: string; path: string };
 
@@ -21,7 +27,7 @@ export const fileKind = definePageKind<"file", FileLocation>({
   description: "Open structure",
   Component: ({ location, state, actions, isActive }) => {
     const document = findDocument(location, state.documents);
-    return document ? <ViewerSurface document={document} actions={actions} isActive={isActive} /> : null;
+    return document ? <ViewerSurface document={document} actions={actions} preferences={state.preferences} isActive={isActive} /> : null;
   },
   keepAlive: true,
   fromPayload: (data) => (typeof data.path === "string" ? { kind: "file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path } : null),
@@ -39,31 +45,39 @@ function findDocument(location: FileLocation, documents: ViewerDocument[]) {
 function ViewerSurface({
   document,
   actions,
+  preferences,
   isActive,
 }: {
   document: ViewerDocument;
   actions: ShellActions;
+  preferences: Parameters<typeof MesoscaleToolbar>[0]["preferences"];
   isActive: boolean;
 }) {
   if (document.renderer === "spectrum") {
     return <SpectrumViewer document={document} />;
   }
-  return <StructureViewerSurface document={document} actions={actions} isActive={isActive} />;
+  return <StructureViewerSurface document={document} actions={actions} preferences={preferences} isActive={isActive} />;
 }
 
 function StructureViewerSurface({
   document,
   actions,
+  preferences,
   isActive,
 }: {
   document: ViewerDocument;
   actions: ShellActions;
+  preferences: Parameters<typeof MesoscaleToolbar>[0]["preferences"];
   isActive: boolean;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const stagingIframeRef = useRef<HTMLIFrameElement>(null);
   const sourceEditing = useSourceEditing();
   const sourceSession = sourceEditing?.sessionForDocument(document) ?? null;
+  const mesoscale = isMesoscaleViewerDocument(document);
+  const mesoscaleSceneOpen = useMesoscaleStore((store) => store.sessions[document.id]?.sceneOpen ?? false);
+  const mesoscaleLeftPanelOpen = useMesoscaleStore((store) => store.sessions[document.id]?.summary?.layout.left ?? false);
+  const mesoscaleRightPanelOpen = useMesoscaleStore((store) => store.sessions[document.id]?.summary?.layout.right ?? false);
   const sheetDropTarget = document.renderer === "xyzrender-external";
   const collectionDropTarget = document.renderer === "grid2d";
   const postViewerVisibility = useCallback((frame = iframeRef.current, frameActive = true) => {
@@ -81,6 +95,12 @@ function StructureViewerSurface({
     postViewerVisibility(iframeRef.current, true);
     postViewerVisibility(stagingIframeRef.current, false);
   }, [postViewerVisibility, sourceSession?.sourcePreview?.activeSlot]);
+  useEffect(() => () => releaseMesoscaleFrame(document.id, iframeRef.current?.contentWindow), [document.id]);
+
+  const handleViewerLoad = useCallback((frame: HTMLIFrameElement, active: boolean) => {
+    postViewerVisibility(frame, active);
+    if (mesoscale && active && frame.contentWindow) bindMesoscaleFrame(document.id, frame.contentWindow);
+  }, [document.id, mesoscale, postViewerVisibility]);
   const dropTarget = useMemo(() => ({
     kind: "active-viewer" as const,
     documentId: document.id,
@@ -160,7 +180,7 @@ function StructureViewerSurface({
 
   return (
     <div
-      className="molecule-stage"
+      className={`molecule-stage${mesoscaleLeftPanelOpen ? " mesoscale-left-panel-open" : ""}${mesoscaleRightPanelOpen ? " mesoscale-right-panel-open" : ""}`}
       data-drop-document-path={document.path}
       data-drop-document-id={document.id}
       data-drop-document-renderer={document.renderer}
@@ -173,9 +193,25 @@ function StructureViewerSurface({
         iframeRef={iframeRef}
         stagingIframeRef={stagingIframeRef}
         sourcePreview={sourceSession?.sourcePreview ?? undefined}
-        onViewerLoad={postViewerVisibility}
+        onViewerLoad={handleViewerLoad}
         onStagingLoad={(identity, frame) => sourceEditing?.stagingLoaded(document, identity, frame)}
       />
+      {mesoscale ? <MesoscaleCanvasContextMenu document={document} /> : null}
+      {mesoscale ? <MesoscaleSelectionBar documentId={document.id} /> : null}
+      {mesoscale && mesoscaleSceneOpen ? <MesoscaleSceneOverlay document={document} onClose={() => setMesoscaleSceneOpen(document.id, false)} /> : null}
+      {mesoscale ? (
+        <MesoscaleSceneToggle
+          open={mesoscaleSceneOpen}
+          onToggle={() => setMesoscaleSceneOpen(document.id, !mesoscaleSceneOpen)}
+        />
+      ) : null}
+      {mesoscale ? (
+        <MesoscaleToolbar
+          document={document}
+          actions={actions}
+          preferences={preferences}
+        />
+      ) : null}
     </div>
   );
 }

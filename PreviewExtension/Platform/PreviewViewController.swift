@@ -37,7 +37,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static let maxViewerPageZoom: CGFloat = 0.9
     private static let previewSourceMonitorQueue = DispatchQueue(label: "com.local.BuretteV10.preview-source-monitor")
     private static let gridRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
-    private static let molstarRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
+    private static let molstarRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file: https://data.rcsb.org; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
     private static let externalArtifactRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
     private static let minimalRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
     private static let maestroPreviewReadLimit = 64 * 1024 * 1024
@@ -600,6 +600,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             diag("trajectory.frames=\(trajectoryFrameCount) controls=\(structurePreview.renderer == BuretteRendererMode.molstar && trajectoryFrameCount > 1)")
         }
 
+        let usesMesoscaleViewer = isMesoscalePreview(
+            fileName: url.lastPathComponent,
+            fileExtension: pathExtension,
+            data: structurePreview.structureData
+        )
         let configJSON = try previewConfigJSON(
             format: structurePreview.format,
             label: url.lastPathComponent,
@@ -619,6 +624,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             previewPlan: previewPlan,
             molstarAvailable: structurePreview.molstarAvailable,
             dockingConfig: structurePreview.dockingConfig,
+            usesMesoscaleViewer: usesMesoscaleViewer,
             preferences: preferences
         )
         diag("structure.payload.bytes=\(structurePreview.structureData.count)")
@@ -639,6 +645,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             title: url.lastPathComponent,
             preferences: preferences,
             renderer: structurePreview.renderer,
+            usesMesoscaleViewer: usesMesoscaleViewer,
             hasDockingPayloads: structurePreview.dockingPayloadsJSON != nil
         )
         diag("inlineHTML.bytes=\(html.utf8.count)")
@@ -651,8 +658,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             auxiliaryFiles: structurePreview.auxiliaryFiles,
             dockingPayloadsJSON: structurePreview.dockingPayloadsJSON,
             gridRecordsScript: nil,
-            requiredAssets: runtimeAssets(for: structurePreview.renderer),
-            requiresRDKit: structurePreview.renderer == BuretteRendererMode.molstar,
+            requiredAssets: runtimeAssets(for: structurePreview.renderer, usesMesoscaleViewer: usesMesoscaleViewer),
+            requiresRDKit: structurePreview.renderer == BuretteRendererMode.molstar && !usesMesoscaleViewer,
             externalArtifactSourceURL: structurePreview.externalArtifactSourceURL,
             fileManager: fileManager,
             diagnostics: &diagnostics
@@ -1478,7 +1485,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
     }
 
-    private static func runtimeAssets(for renderer: String) -> [String] {
+    private static func runtimeAssets(for renderer: String, usesMesoscaleViewer: Bool = false) -> [String] {
+        if usesMesoscaleViewer {
+            return ["mesoscale.js", "mesoscale.css"]
+        }
         if renderer == BuretteRendererMode.xyzrenderExternal {
             return ["viewer-runtime.css", "viewer-shell.js", "molstar.css", "burette-agent.js", "molstar-preset-preview-controller.js", "viewer.js"]
         }
@@ -1572,6 +1582,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         previewPlan: BurettePreviewPlan?,
         molstarAvailable: Bool,
         dockingConfig: [String: Any]?,
+        usesMesoscaleViewer: Bool,
         preferences: PreviewPreferences
     ) throws -> String {
         let resolvedTrajectoryFrameCount = trajectoryFrameCount ?? 0
@@ -1591,6 +1602,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "previewByteCount": previewByteCount,
             "dataPath": "./preview-data.bin",
             "sourceExtension": normalizedOriginalExtension,
+            "viewerProfile": usesMesoscaleViewer ? "mesoscale" : "structure",
             "stagedEntries": stagedEntries,
             "quickLookBuild": "v10-product",
             "quickLookViewer": true,
@@ -2431,8 +2443,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         title: String,
         preferences: PreviewPreferences,
         renderer: String,
+        usesMesoscaleViewer: Bool = false,
         hasDockingPayloads: Bool = false
     ) -> String {
+        if usesMesoscaleViewer {
+            return mesoscaleInlineHTML(title: title, preferences: preferences)
+        }
         let safeTitle = escapeHTML(title)
         let backgroundClass = preferences.resolvedTransparentBackground ? "burette-transparent-background" : "burette-opaque-background"
         let csp = runtimeCSP(for: renderer)
@@ -2555,6 +2571,49 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         </body>
         </html>
         """
+    }
+
+    private static func mesoscaleInlineHTML(title: String, preferences: PreviewPreferences) -> String {
+        let safeTitle = escapeHTML(title)
+        let backgroundClass = preferences.resolvedTransparentBackground ? "burette-transparent-background" : "burette-opaque-background"
+        return """
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <meta http-equiv="Content-Security-Policy" content="\(molstarRuntimeCSP)" />
+          <title>Burette Mesoscale - \(safeTitle)</title>
+          <link rel="stylesheet" href="../assets/mesoscale.css" />
+          <style>html,body,#app{width:100%;height:100%;margin:0;overflow:hidden}#status{position:fixed;left:16px;bottom:16px;z-index:10000;padding:10px 12px;border-radius:8px;background:#17191f;color:#fff;font:13px -apple-system,BlinkMacSystemFont,sans-serif}.hidden{display:none}</style>
+          <script>
+            window.addEventListener('error', function (event) {
+              try { window.webkit.messageHandlers.burette.postMessage({ type: 'error', message: event.message || 'Mesoscale script error' }); } catch (_) {}
+            });
+            window.BuretteDataURL = './preview-data.bin';
+          </script>
+        </head>
+        <body class="\(backgroundClass) burette-quicklook-host">
+          <div id="app"></div>
+          <div id="status" class="hidden">Loading \(safeTitle)…</div>
+          <script src="preview-config.js"></script>
+          <script src="../assets/mesoscale.js"></script>
+        </body>
+        </html>
+        """
+    }
+
+    private static func isMesoscalePreview(fileName: String, fileExtension: String, data: Data) -> Bool {
+        let normalizedExtension = fileExtension.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if ["molj", "molx", "mesozip"].contains(normalizedExtension) { return true }
+        let normalizedName = fileName.lowercased()
+        if normalizedExtension == "bcif" {
+            return normalizedName.contains("cellpack") || normalizedName.contains("petworld") || normalizedName.contains("mesoscale")
+        }
+        guard ["cif", "mmcif", "mcif"].contains(normalizedExtension) else { return false }
+        let prefix = data.prefix(256 * 1024)
+        let header = String(decoding: prefix, as: UTF8.self).uppercased()
+        return header.contains("CELLPACK") || header.contains("_PDBX_MODEL.") || header.contains("_PDBX_MODEL ")
     }
 
     private static func runtimeCSP(for renderer: String) -> String {
@@ -6833,6 +6892,10 @@ private struct StructureFormat {
             self = Self(molstarFormat: "xyz", isBinary: false)
         case "gro":
             self = Self(molstarFormat: "gro", isBinary: false)
+        case "mvsj":
+            self = Self(molstarFormat: "mvsj", isBinary: false)
+        case "mvsx":
+            self = Self(molstarFormat: "mvsx", isBinary: true)
         case "xtc", "trr", "dcd", "nctraj":
             self = Self(molstarFormat: ext, isBinary: true)
         case "lammpstrj", "dump", "top", "psf", "prmtop":

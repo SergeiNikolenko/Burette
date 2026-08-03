@@ -6,8 +6,6 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>Burette</string>
-	<key>CFBundleIconName</key>
-	<string>AppIcon</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -23,12 +21,12 @@
 			<key>LSHandlerRank</key>
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
-				<array>
-					<string>com.local.burette10.csv</string>
-					<string>com.local.burette10.tsv</string>
-					<string>public.comma-separated-values-text</string>
-					<string>public.tab-separated-values-text</string>
-				</array>
+			<array>
+				<string>com.local.burette10.csv</string>
+				<string>com.local.burette10.tsv</string>
+				<string>public.comma-separated-values-text</string>
+				<string>public.tab-separated-values-text</string>
+			</array>
 		</dict>
 		<dict>
 			<key>CFBundleTypeExtensions</key>
@@ -36,12 +34,16 @@
 				<string>abi</string>
 				<string>arc</string>
 				<string>bcif</string>
+				<string>ccp4</string>
 				<string>cfg</string>
+				<string>checkpoint</string>
+				<string>chk</string>
 				<string>cif</string>
 				<string>cms</string>
 				<string>com</string>
 				<string>config</string>
 				<string>coor</string>
+				<string>crd</string>
 				<string>crdbox</string>
 				<string>csv</string>
 				<string>cub</string>
@@ -68,26 +70,33 @@
 				<string>inp</string>
 				<string>inpcrd</string>
 				<string>itp</string>
-				<string>lammpstrj</string>
+				<string>json</string>
+				<string>key</string>
 				<string>lammps</string>
+				<string>lammpstrj</string>
 				<string>lmp</string>
 				<string>log</string>
 				<string>mae</string>
 				<string>mae.gz</string>
 				<string>maegz</string>
 				<string>magma</string>
+				<string>map</string>
 				<string>mcif</string>
 				<string>mdcrd</string>
+				<string>mdl</string>
+				<string>mesozip</string>
 				<string>mgf</string>
 				<string>mmcif</string>
 				<string>mmtf</string>
-					<string>mol</string>
-					<string>mdl</string>
-					<string>json</string>
-					<string>mol2</string>
-					<string>msj</string>
-					<string>ms</string>
+				<string>mol</string>
+				<string>mol2</string>
+				<string>molj</string>
+				<string>molx</string>
+				<string>mrc</string>
+				<string>ms</string>
+				<string>msj</string>
 				<string>msp</string>
+				<string>mtz</string>
 				<string>mvsj</string>
 				<string>mvsx</string>
 				<string>mzml</string>
@@ -105,8 +114,9 @@
 				<string>parm7</string>
 				<string>pdb</string>
 				<string>pdbqt</string>
-				<string>pqr</string>
+				<string>ph4</string>
 				<string>pos</string>
+				<string>pqr</string>
 				<string>prm</string>
 				<string>prmtop</string>
 				<string>psf</string>
@@ -122,9 +132,9 @@
 				<string>smiles</string>
 				<string>state</string>
 				<string>str</string>
+				<string>tng</string>
 				<string>top</string>
 				<string>tpr</string>
-				<string>tng</string>
 				<string>trc</string>
 				<string>trj</string>
 				<string>trr</string>
@@ -132,17 +142,12 @@
 				<string>tsv</string>
 				<string>txyz</string>
 				<string>vasp</string>
-				<string>xtc</string>
 				<string>xml</string>
 				<string>xpdb</string>
+				<string>xtc</string>
 				<string>xvg</string>
 				<string>xyz</string>
 				<string>xyzr</string>
-				<string>ph4</string>
-				<string>key</string>
-				<string>chk</string>
-				<string>checkpoint</string>
-				<string>crd</string>
 			</array>
 			<key>CFBundleTypeName</key>
 			<string>Molecular structure files</string>
@@ -152,49 +157,56 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.local.burette10.pdb</string>
-				<string>public.pdb</string>
-				<string>com.local.burette10.cif</string>
-				<string>public.cif</string>
-				<string>com.local.burette10.mmcif</string>
-				<string>com.local.burette10.bcif</string>
-				<string>com.local.burette10.mmtf</string>
-				<string>com.local.burette10.sdf</string>
-				<string>com.local.burette10.smiles</string>
-				<string>com.local.burette10.csv</string>
-				<string>com.local.burette10.datawarrior</string>
-				<string>com.local.burette10.tsv</string>
-				<string>com.local.burette10.mol</string>
-				<string>com.local.burette10.mol2</string>
-				<string>com.schrodinger.mol</string>
-				<string>net.sourceforge.openbabel.mdl</string>
-				<string>com.schrodinger.pdb</string>
-				<string>com.schrodinger.sdf</string>
-				<string>com.local.burette10.xyz</string>
-				<string>com.local.burette10.xyzrender-input</string>
-				<string>net.sourceforge.openbabel.xyz</string>
 				<string>com.adobe.fdf</string>
 				<string>com.apple.videoapps.cube</string>
 				<string>com.gaussian.cube</string>
+				<string>com.local.burette10.bcif</string>
+				<string>com.local.burette10.cif</string>
+				<string>com.local.burette10.csv</string>
+				<string>com.local.burette10.datawarrior</string>
+				<string>com.local.burette10.fep-edge-list</string>
+				<string>com.local.burette10.graphml</string>
 				<string>com.local.burette10.gro</string>
-				<string>gg.flew.unfold.gromacs-structure</string>
+				<string>com.local.burette10.mesozip</string>
+				<string>com.local.burette10.mmcif</string>
+				<string>com.local.burette10.mmtf</string>
+				<string>com.local.burette10.mol</string>
+				<string>com.local.burette10.mol2</string>
+				<string>com.local.burette10.molecular-dynamics</string>
+				<string>com.local.burette10.molj</string>
+				<string>com.local.burette10.molx</string>
+				<string>com.local.burette10.mtz</string>
 				<string>com.local.burette10.mvsj</string>
 				<string>com.local.burette10.mvsx</string>
-				<string>com.local.burette10.molecular-dynamics</string>
-					<string>com.schrodinger.mae</string>
-					<string>com.local.burette10.schrodinger</string>
-					<string>com.local.burette10.graphml</string>
-					<string>com.local.burette10.fep-edge-list</string>
-					<string>com.local.burette10.pharmacophore</string>
-				<string>com.local.burette10.spectrum</string>
-				<string>com.local.burette10.spectrum-json</string>
 				<string>com.local.burette10.openmm-coordinate-artifact</string>
 				<string>com.local.burette10.openmm-workflow-text-artifact</string>
+				<string>com.local.burette10.pdb</string>
+				<string>com.local.burette10.pharmacophore</string>
+				<string>com.local.burette10.schrodinger</string>
+				<string>com.local.burette10.sdf</string>
+				<string>com.local.burette10.smiles</string>
+				<string>com.local.burette10.spectrum</string>
+				<string>com.local.burette10.spectrum-json</string>
+				<string>com.local.burette10.tsv</string>
+				<string>com.local.burette10.volume-map</string>
+				<string>com.local.burette10.xyz</string>
+				<string>com.local.burette10.xyzrender-input</string>
+				<string>com.schrodinger.mae</string>
+				<string>com.schrodinger.mol</string>
+				<string>com.schrodinger.pdb</string>
+				<string>com.schrodinger.sdf</string>
+				<string>gg.flew.unfold.gromacs-structure</string>
+				<string>net.sourceforge.openbabel.mdl</string>
+				<string>net.sourceforge.openbabel.xyz</string>
+				<string>public.cif</string>
+				<string>public.pdb</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -260,10 +272,10 @@
 					<string>chemical/x-pdbqt</string>
 				</array>
 			</dict>
-			</dict>
-			<dict>
-				<key>UTTypeConformsTo</key>
-				<array>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
@@ -304,34 +316,34 @@
 				<array>
 					<string>chemical/x-cif</string>
 					<string>chemical/x-mmcif</string>
-					</array>
-				</dict>
-			</dict>
-			<dict>
-				<key>UTTypeConformsTo</key>
-				<array>
-					<string>public.plain-text</string>
-					<string>public.data</string>
 				</array>
-				<key>UTTypeDescription</key>
-				<string>FEP edge-list network file</string>
-				<key>UTTypeIdentifier</key>
-				<string>com.local.burette10.fep-edge-list</string>
-				<key>UTTypeTagSpecification</key>
-				<dict>
-					<key>public.filename-extension</key>
-					<array>
-						<string>edge</string>
-					</array>
-					<key>public.mime-type</key>
-					<array>
-						<string>text/plain</string>
-					</array>
-				</dict>
 			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>FEP edge-list network file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.fep-edge-list</string>
+			<key>UTTypeTagSpecification</key>
 			<dict>
-				<key>UTTypeConformsTo</key>
+				<key>public.filename-extension</key>
 				<array>
+					<string>edge</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/plain</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
 				<string>com.local.burette10.cif</string>
 				<string>public.plain-text</string>
 				<string>public.data</string>
@@ -826,11 +838,11 @@
 					<string>checkpoint</string>
 					<string>dms</string>
 					<string>xvg</string>
-						<string>edr</string>
-						<string>fasta</string>
-						<string>fdef</string>
-						<string>msj</string>
-					</array>
+					<string>edr</string>
+					<string>fasta</string>
+					<string>fdef</string>
+					<string>msj</string>
+				</array>
 				<key>public.mime-type</key>
 				<array>
 					<string>text/plain</string>
@@ -862,6 +874,119 @@
 				<array>
 					<string>text/plain</string>
 					<string>application/xml</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>CCP4, MRC, or MAP electron-density volume</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.volume-map</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ccp4</string>
+					<string>mrc</string>
+					<string>map</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/octet-stream</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>CCP4 MTZ reflection data with map coefficients</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.mtz</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mtz</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/octet-stream</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+				<string>public.text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Molstar Mesoscale Explorer state file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.molj</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>molj</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.molstar.molj+json</string>
+					<string>application/json</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.archive</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Molstar Mesoscale Explorer state archive</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.molx</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>molx</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.molstar.molx</string>
+					<string>application/zip</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.archive</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Mesoscale model package</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.mesozip</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mesozip</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.burette.mesoscale+zip</string>
 				</array>
 			</dict>
 		</dict>

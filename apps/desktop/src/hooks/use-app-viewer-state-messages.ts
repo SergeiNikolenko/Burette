@@ -91,13 +91,27 @@ export function useAppViewerStateMessages({
       return true;
     }
 
-    if (
-      sourceName === "burette-viewer"
-      && (body?.type === "structureStoryChanged" || body?.type === "openStructureStory")
-    ) {
+    if (sourceName === "burette-viewer" && body?.type === "molstarCapabilitiesChanged") {
+      window.dispatchEvent(new CustomEvent("burette:molstar-capabilities-changed", { detail: body }));
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && body?.type === "molstarEditHistoryChanged") {
+      window.dispatchEvent(new CustomEvent("burette:molstar-edit-history-changed", { detail: body }));
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && (
+      body?.type === "structureStoryChanged"
+      || body?.type === "openStructureStory"
+      || body?.type === "mvsStoryChanged"
+    )) {
       const story = structureStoryFromViewerMessage(body);
       if (!story) return true;
       setStructureStories((previous) => ({ ...previous, [story.documentId]: story }));
+      // Every Story step reports itself, so opening the dock on the report kept
+      // re-opening a panel the user had closed. Only the explicit "open Story"
+      // action from the viewer controls does that now.
       if (body.type === "openStructureStory") openDockTab("right", "story");
       return true;
     }

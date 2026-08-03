@@ -95,6 +95,7 @@ const BROWSER_DEV_APP_ICONS: Record<string, string> = {
   vesta: "/Applications/VESTA.app/Contents/Resources/VESTA.icns",
 };
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
+const MESOSCALE_DEV_FILE_SIZE_LIMIT = 512 * 1024 * 1024;
 const DEV_FILE_SCAN_MAX_FILES = 2_000;
 const DEV_FILE_SCAN_MAX_DIRECTORIES = 400;
 const DEV_FILE_SCAN_MAX_ENTRIES = 20_000;
@@ -108,7 +109,11 @@ const BROWSER_DEV_GENERATED_FILES_ROOT = process.env.BURETTE_BROWSER_DEV_GENERAT
   : join(homedir(), "Desktop", "Burette Generated Files");
 const BROWSER_DEV_XTB_JOBS_ROOT = join(BROWSER_DEV_GENERATED_FILES_ROOT, "xTB Jobs");
 const BROWSER_DEV_CONFORMER_JOBS_ROOT = join(BROWSER_DEV_GENERATED_FILES_ROOT, "Conformer Jobs");
-const browserDevGeneratedFileRoots = [BROWSER_DEV_GENERATED_FILES_ROOT];
+// Topologies derived from bare trajectories land here, and the inspector reads
+// them back to describe the composition, so browser dev has to be allowed to
+// read it the same way it reads its other generated files.
+const BROWSER_DEV_DERIVED_TOPOLOGY_ROOT = join(tmpdir(), "burette-browser-dev-derived-topology");
+const browserDevGeneratedFileRoots = [BROWSER_DEV_GENERATED_FILES_ROOT, BROWSER_DEV_DERIVED_TOPOLOGY_ROOT];
 const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...browserDevGeneratedFileRoots, ...extraFsAllow]
   .map(canonicalExistingPath);
 const BROWSER_DEV_CCD_CACHE_ROOT = join(homedir(), ".cache", "burette", "ccd-ligands");
@@ -244,6 +249,13 @@ const DEV_FILE_EXTENSIONS = new Set([
   "css",
   "csv",
   "tsv",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "bmp",
+  "",
 ]);
 const MD_COORDINATE_EXTENSIONS = [
   "xtc", "trr", "dcd", "nctraj", "tng", "h5md", "gsd", "trz", "coor", "namdbin",
@@ -3586,10 +3598,12 @@ export function browserDevXyzrenderPlugin() {
         collectDevFiles,
         devFileExtensions: DEV_FILE_EXTENSIONS,
         devFileSizeLimit: DEV_FILE_SIZE_LIMIT,
+        devFileSizeLimitForPath,
         fileExtension,
         fileTitle,
         isDevFileReadAllowed,
         isNumpyArtifactExtension,
+        imageMimeTypeForExtension,
         languageForTextExtension,
         looksBinary,
         molecularBinaryArtifactSummary,
@@ -3701,9 +3715,17 @@ function browserDevFileScanOptions() {
     fileExtension,
     maxDirectories: DEV_FILE_SCAN_MAX_DIRECTORIES,
     maxEntries: DEV_FILE_SCAN_MAX_ENTRIES,
-    maxFileBytes: DEV_FILE_SIZE_LIMIT,
+    maxFileBytes: devFileSizeLimitForPath,
     maxFiles: DEV_FILE_SCAN_MAX_FILES,
   };
+}
+
+function devFileSizeLimitForPath(path: string) {
+  const extension = fileExtension(path);
+  const name = pathBasename(path).toLowerCase();
+  return extension === "molj" || extension === "molx" || extension === "mesozip" || name.startsWith("mesoscale-")
+    ? MESOSCALE_DEV_FILE_SIZE_LIMIT
+    : DEV_FILE_SIZE_LIMIT;
 }
 
 function isDevFileReadAllowed(path: string) {
@@ -3765,6 +3787,15 @@ function languageForTextExtension(extension: string) {
   if (extension === "xml") return "xml";
   if (extension === "mae" || extension === "maegz" || extension === "cms") return "maestro";
   return "text";
+}
+
+function imageMimeTypeForExtension(extension: string) {
+  if (extension === "png") return "image/png";
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "gif") return "image/gif";
+  if (extension === "webp") return "image/webp";
+  if (extension === "bmp") return "image/bmp";
+  return null;
 }
 
 function candidateDesmondBaseNames(stem: string) {

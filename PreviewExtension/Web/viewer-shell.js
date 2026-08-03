@@ -26,9 +26,10 @@
               <span class="buret-tooltip" role="tooltip">Choose component and representation preset</span>
             </button>
           </div>
+          <button class="buret-button buret-assembly-symmetry hidden" type="button" data-buret-action="assembly-symmetry" aria-label="Show assembly symmetry axes" aria-pressed="false" title="Show assembly symmetry axes">Symmetry<span class="buret-tooltip" role="tooltip">Show assembly symmetry axes</span></button>
           <button class="buret-button buret-molstar-lasso" type="button" data-buret-action="molstar-lasso" aria-label="Lasso select" aria-pressed="false" title="Lasso select">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.2 5.6c2.3-2 6.6-2.4 10.2-.8 3.5 1.6 5.4 4.6 4.5 7.3-.8 2.5-3.7 4.2-7.3 4.2-1.5 0-3-.3-4.3-.9l-2.6 3.2c-.4.5-1.2.2-1.2-.4l.2-4.1C2.5 12 2.6 7.8 5.2 5.6Zm1.3 1.5c-1.8 1.5-1.7 4.4.2 5.8.2.1.3.4.3.7l-.1 1.8 1.6-1.9c.3-.3.7-.4 1-.2 1 .6 2 .9 3.1.9 2.8 0 4.9-1.2 5.4-2.7.5-1.6-.8-3.6-3.5-4.8-2.9-1.3-6.4-1.1-8 .4Z" fill="currentColor"/></svg>
-            <span class="buret-tooltip" role="tooltip">Lasso select visible atoms</span>
+            <span class="buret-tooltip" role="tooltip">Select all atoms inside the lasso</span>
           </button>
           <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light<span class="buret-tooltip" role="tooltip">Switch to light theme</span></button>
           <button class="buret-button buret-save-modified hidden" type="button" data-buret-action="save-modified-structure" aria-label="Save modified structure" title="Save modified structure">Save<span class="buret-tooltip" role="tooltip">Save modified Mol* structure</span></button>
@@ -198,6 +199,7 @@
       <aside id="buret-scene-tree" class="buret-scene-tree hidden" data-buret-scene-tree role="dialog" aria-label="Scene tree" aria-hidden="true">
         <div class="buret-scene-tree-header" data-buret-panel-handle>
           <span class="buret-scene-tree-title">Scene</span>
+          <span class="buret-scene-tree-story hidden" data-buret-scene-tree-story></span>
           <span class="buret-scene-tree-header-actions">
           <button class="buret-scene-tree-header-action" type="button" data-buret-action="scene-tree-expand-all" aria-label="Collapse all" title="Collapse all"></button>
           <button class="buret-scene-tree-header-action" type="button" data-buret-action="scene-tree-close" aria-label="Close scene tree" title="Close scene tree">

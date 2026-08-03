@@ -16,6 +16,7 @@ use super::grid_store::GridParseOptions;
 use super::runtime_grid::{create_grid_runtime_with_options, grid_requires_preview};
 use super::runtime_utils::{file_title, stable_id};
 use super::runtime_viewer::{create_docking_runtime, create_runtime, DockingRuntimeSource};
+use super::synthetic_topology::{synthetic_topology_for_trajectory, SYNTHETIC_TOPOLOGY_EXTENSIONS};
 use super::text_xyz::converted_data_from_text;
 use super::trace::{append_preview_trace, elapsed_ms, preview_error_code, PreviewTraceEvent};
 
@@ -73,9 +74,6 @@ const MOLSTAR_MD_COORDINATE_EXTENSIONS: &[&str] = &[
     "ncrst",
     "lammpstrj",
 ];
-const TOPOLOGY_REQUIRED_TRAJECTORY_EXTENSIONS: &[&str] = &[
-    "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst",
-];
 const MOLSTAR_MD_MODEL_EXTENSIONS: &[&str] = &[
     "pdb", "ent", "pdbqt", "pqr", "xpdb", "gro", "cif", "mmcif", "mcif", "psf", "prmtop", "top",
     "tpr",
@@ -99,6 +97,9 @@ struct StructureAttachment {
 enum StructureBundleKind {
     Desmond,
     Md,
+    /// A trajectory paired with a topology derived from its own header, because
+    /// no real topology was found beside it.
+    MdSynthetic,
     Single,
 }
 
@@ -415,6 +416,7 @@ pub(crate) struct ViewerDocument {
     renderer: String,
     runtime_path: String,
     byte_count: u64,
+    viewer_profile: String,
     #[serde(rename = "virtual", skip_serializing_if = "is_false")]
     is_virtual: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -453,6 +455,7 @@ impl ViewerDocument {
             renderer,
             runtime_path,
             byte_count,
+            viewer_profile: "structure".to_string(),
             is_virtual: true,
             docking_request: None,
             open_claim_id: None,
@@ -627,6 +630,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
                 renderer: runtime.renderer,
                 runtime_path: runtime.path.to_string_lossy().to_string(),
                 byte_count: metadata.len(),
+                viewer_profile: runtime.viewer_profile,
                 is_virtual: false,
                 docking_request: None,
                 open_claim_id: None,
@@ -638,11 +642,8 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     if let Some(bundle) = resolve_molstar_md_file_bundle(&canonical, &extension) {
         return open_md_trajectory_document(app, bundle, preferences);
     }
-    if TOPOLOGY_REQUIRED_TRAJECTORY_EXTENSIONS.contains(&extension.as_str()) {
-        return Err(format!(
-            "{} is a coordinate trajectory and requires a topology file. Add a supported same-stem topology or topology.pdb, topol.pdb, or reference.pdb beside it",
-            canonical.display()
-        ));
+    if let Some(bundle) = resolve_synthetic_md_file_bundle(app, &canonical, &extension) {
+        return open_md_trajectory_document(app, bundle?, preferences);
     }
     let uses_bounded_maestro_preview =
         is_maestro_preview_extension(&extension) && metadata.len() > MAX_STRUCTURE_FILE_SIZE;
@@ -683,6 +684,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
                 renderer: "grid2d".to_string(),
                 runtime_path: runtime_path.to_string_lossy().to_string(),
                 byte_count: metadata.len(),
+                viewer_profile: "grid".to_string(),
                 is_virtual: false,
                 docking_request: None,
                 open_claim_id: None,
@@ -767,6 +769,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
                 renderer: "grid2d".to_string(),
                 runtime_path: runtime_path.to_string_lossy().to_string(),
                 byte_count: metadata.len(),
+                viewer_profile: "grid".to_string(),
                 is_virtual: false,
                 docking_request: None,
                 open_claim_id: None,
@@ -845,6 +848,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         renderer: runtime.renderer,
         runtime_path: runtime.path.to_string_lossy().to_string(),
         byte_count: metadata.len(),
+        viewer_profile: runtime.viewer_profile,
         is_virtual: false,
         docking_request: None,
         open_claim_id: None,
@@ -1121,6 +1125,37 @@ fn resolve_md_file_bundle(path: &Path, extension: &str) -> Option<StructureFileB
     None
 }
 
+/// Pairs a sibling-less trajectory with a topology derived from its own header.
+///
+/// Only reached once [`resolve_molstar_md_file_bundle`] has failed to find a real
+/// topology, so a trajectory that ships with one is never affected.
+fn resolve_synthetic_md_file_bundle<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: &Path,
+    extension: &str,
+) -> Option<Result<StructureFileBundle, String>> {
+    if !SYNTHETIC_TOPOLOGY_EXTENSIONS.contains(&extension) {
+        return None;
+    }
+    Some(
+        synthetic_topology_for_trajectory(app, path).map(|topology| StructureFileBundle {
+            kind: StructureBundleKind::MdSynthetic,
+            primary_path: topology.clone(),
+            input_path: path.to_path_buf(),
+            attachments: vec![
+                StructureAttachment {
+                    role: StructureAttachmentRole::Topology,
+                    path: topology,
+                },
+                StructureAttachment {
+                    role: StructureAttachmentRole::Trajectory,
+                    path: path.to_path_buf(),
+                },
+            ],
+        }),
+    )
+}
+
 fn conventional_md_topology_companion(path: &Path) -> Option<PathBuf> {
     let parent = path.parent()?;
     CONVENTIONAL_MD_TOPOLOGY_STEMS.iter().find_map(|stem| {
@@ -1163,7 +1198,8 @@ fn open_md_trajectory_document<R: Runtime>(
         .find(|attachment| attachment.role == StructureAttachmentRole::Trajectory)
         .map(|attachment| attachment.path.as_path())
         .ok_or_else(|| "MD trajectory bundle is missing its coordinates.".to_string())?;
-    let topology_source = read_docking_source(&topology_path.to_string_lossy())?;
+    let mut topology_source = read_docking_source(&topology_path.to_string_lossy())?;
+    topology_source.synthetic = bundle.kind == StructureBundleKind::MdSynthetic;
     let trajectory_source = read_docking_source(&trajectory_path.to_string_lossy())?;
     let document_id = stable_id(&bundle.input_path);
     let title = file_title(&bundle.input_path);
@@ -1174,6 +1210,7 @@ fn open_md_trajectory_document<R: Runtime>(
         ligand_paths: vec![trajectory_source.path.clone()],
         active_pose: None,
         scene_mode: None,
+        synthetic_topology: topology_source.synthetic,
     };
     let runtime = create_docking_runtime(
         app,
@@ -1193,6 +1230,7 @@ fn open_md_trajectory_document<R: Runtime>(
         renderer: runtime.renderer,
         runtime_path: runtime.path.to_string_lossy().to_string(),
         byte_count,
+        viewer_profile: runtime.viewer_profile,
         is_virtual: false,
         docking_request: Some(docking_request),
         open_claim_id: None,
@@ -1245,6 +1283,11 @@ pub(crate) struct DockingDocumentRequest {
     ligand_paths: Vec<String>,
     active_pose: Option<usize>,
     scene_mode: Option<String>,
+    /// Set when `receptor_path` points at a topology Burette derived from the
+    /// trajectory rather than one the user supplied. Never sent by the frontend,
+    /// which is why it defaults.
+    #[serde(default)]
+    synthetic_topology: bool,
 }
 
 pub(crate) fn open_docking_document<R: Runtime>(
@@ -1309,6 +1352,7 @@ pub(crate) fn open_docking_document<R: Runtime>(
         ligand_paths: ligands.iter().map(|ligand| ligand.path.clone()).collect(),
         active_pose: request.active_pose,
         scene_mode: scene_mode.map(str::to_string),
+        synthetic_topology: false,
     };
     let runtime = create_docking_runtime(
         app,
@@ -1328,6 +1372,7 @@ pub(crate) fn open_docking_document<R: Runtime>(
         renderer: runtime.renderer,
         runtime_path: runtime.path.to_string_lossy().to_string(),
         byte_count,
+        viewer_profile: runtime.viewer_profile,
         is_virtual: true,
         docking_request: Some(docking_request),
         open_claim_id: None,
@@ -1397,6 +1442,7 @@ fn read_docking_source(path: &str) -> Result<DockingRuntimeSource, String> {
             binary: false,
             data: converted.data,
             byte_count: metadata.len() as usize,
+            synthetic: false,
         });
     }
     Ok(DockingRuntimeSource {
@@ -1407,6 +1453,7 @@ fn read_docking_source(path: &str) -> Result<DockingRuntimeSource, String> {
         binary: format.is_binary,
         data,
         byte_count: metadata.len() as usize,
+        synthetic: false,
     })
 }
 
@@ -1646,15 +1693,25 @@ mod document_open_tests {
     }
 
     #[test]
-    fn standalone_xtc_reports_that_topology_is_required() {
+    fn standalone_xtc_opens_with_a_derived_topology() {
         let app = mock_app_with_grid_registry();
         let preferences = viewer_preferences();
-        let path = create_temp_file("xtc", &[0x0f, 0x00, 0x00, 0x01, b'X', b'T', b'C']);
+        let mut header = 1995i32.to_be_bytes().to_vec();
+        header.extend_from_slice(&1i32.to_be_bytes());
+        let path = create_temp_file("xtc", &header);
 
-        let error = open_document(app.handle(), path.clone(), &preferences, None)
-            .expect_err("standalone XTC should not create an empty Molstar document");
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
+            .expect("standalone XTC should open against a derived topology");
+        let request = document
+            .docking_request
+            .expect("derived trajectory should retain its pairing");
 
-        assert!(error.contains("requires a topology"));
+        assert!(request.synthetic_topology);
+        assert!(request.receptor_path.ends_with(".gro"));
+        assert_eq!(
+            request.ligand_paths,
+            vec![path.canonicalize().unwrap().to_string_lossy().to_string()]
+        );
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
         }
@@ -1897,6 +1954,7 @@ mod document_open_tests {
                 ligand_paths: vec![trr.to_string_lossy().to_string()],
                 active_pose: None,
                 scene_mode: None,
+                synthetic_topology: false,
             },
             &preferences,
         )
