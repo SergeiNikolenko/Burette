@@ -184,6 +184,7 @@
       <aside id="buret-scene-tree" class="buret-scene-tree hidden" data-buret-scene-tree role="dialog" aria-label="Scene tree" aria-hidden="true">
         <div class="buret-scene-tree-header" data-buret-panel-handle>
           <span class="buret-scene-tree-title">Scene</span>
+          <span class="buret-scene-tree-story hidden" data-buret-scene-tree-story></span>
           <span class="buret-scene-tree-header-actions">
           <button class="buret-scene-tree-header-action" type="button" data-buret-action="scene-tree-expand-all" aria-label="Collapse all" title="Collapse all"></button>
           <button class="buret-scene-tree-header-action" type="button" data-buret-action="scene-tree-close" aria-label="Close scene tree" title="Close scene tree">
