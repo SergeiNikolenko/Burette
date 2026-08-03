@@ -5,6 +5,7 @@ export type DockArea = "right" | "bottom";
 export type DockToolKind = "ketcher";
 
 export type DockTabKind =
+  | "scene"
   | "xyzrender"
   | "files"
   | "spectrum"
@@ -75,6 +76,7 @@ export type DockFileEntriesInput = {
 };
 
 export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
+  scene: "Scene",
   xyzrender: "xyzr",
   files: "Files",
   spectrum: "Spectrum",
@@ -108,6 +110,7 @@ export const BOTTOM_DOCK_DEFAULT_TABS: DockTabKind[] = [
 ];
 
 const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
+  "scene",
   "xyzrender",
   "chemical-space",
   "inspector",
@@ -129,6 +132,7 @@ const BOTTOM_DOCK_TAB_CATALOG: DockTabKind[] = [
 ];
 
 const DOCUMENT_DROP_DOCK_TABS = new Set<DockTabKind>([
+  "scene",
   "xyzrender",
   "files",
   "spectrum",

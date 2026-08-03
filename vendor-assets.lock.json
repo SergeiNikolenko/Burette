@@ -35,6 +35,18 @@
       "sha256": "sha256-W2jOttNkJUm06bLAceWOQbmKU1CuJpGAWHs52oaSXVU="
     },
     {
+      "path": "PreviewExtension/Web/mesoscale.js",
+      "package": "molstar",
+      "bytes": 5403236,
+      "sha256": "sha256-LNiLiuTPNUadVlSCWoJ2VYzmBOHOjrZYdAANrh2X46E="
+    },
+    {
+      "path": "PreviewExtension/Web/mesoscale.css",
+      "package": "molstar",
+      "bytes": 91239,
+      "sha256": "sha256-Hz1g5H0LPEuzindJUya1aVTiWxUT5Ja13WnzDddhDZU="
+    },
+    {
       "path": "PreviewExtension/Web/rdkit/RDKit_minimal.js",
       "package": "@rdkit/rdkit",
       "bytes": 128073,
@@ -78,6 +90,10 @@
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
     ],
+    "desktop-mesoscale": [
+      "mesoscale.js",
+      "mesoscale.css"
+    ],
     "desktop-grid": [
       "grid-viewer.js",
       "openchemlib/openchemlib.js",
@@ -101,6 +117,10 @@
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
     ],
+    "quicklook-mesoscale": [
+      "mesoscale.js",
+      "mesoscale.css"
+    ],
     "quicklook-grid": [
       "grid-viewer.js",
       "openchemlib/openchemlib.js",
@@ -121,6 +141,7 @@
     "tauri": {
       "profiles": [
         "desktop-molstar",
+        "desktop-mesoscale",
         "desktop-grid",
         "desktop-native-compute",
         "external-artifact"
@@ -130,6 +151,7 @@
     "quicklook": {
       "profiles": [
         "quicklook-molstar",
+        "quicklook-mesoscale",
         "quicklook-grid",
         "external-artifact"
       ],

@@ -869,6 +869,8 @@ assert.equal(vendorAssetsLock.packages.molstar.version, packageConfig.dependenci
 assert.equal(vendorAssetsLock.packages['@rdkit/rdkit'].version, packageConfig.dependencies['@rdkit/rdkit']);
 assert.equal(vendorAssetsLock.packages.openchemlib.version, packageConfig.dependencies.openchemlib);
 assert.deepEqual(vendorAssetsLock.assets.map((asset) => asset.path).toSorted(), [
+  'PreviewExtension/Web/mesoscale.css',
+  'PreviewExtension/Web/mesoscale.js',
   'PreviewExtension/Web/molstar.css',
   'PreviewExtension/Web/molstar.js',
   'PreviewExtension/Web/openchemlib/openchemlib.js',
@@ -895,16 +897,18 @@ assert.ok(webRuntimeProfiles.profiles['quicklook-grid'].includes('openchemlib/op
 assert.ok(webRuntimeProfiles.profiles['external-artifact'].includes('viewer-shell.js'));
 assert.deepEqual(webRuntimeProfiles.bundleTargets.tauri.profiles, [
   'desktop-molstar',
+  'desktop-mesoscale',
   'desktop-grid',
   'desktop-native-compute',
   'external-artifact',
 ]);
 assert.deepEqual(webRuntimeProfiles.bundleTargets.quicklook.profiles, [
   'quicklook-molstar',
+  'quicklook-mesoscale',
   'quicklook-grid',
   'external-artifact',
 ]);
-assert.match(xcodeProjectSource, /check-vendor-assets\.mjs --profile quicklook-molstar --profile quicklook-grid --profile external-artifact/);
+assert.match(xcodeProjectSource, /check-vendor-assets\.mjs --profile quicklook-molstar --profile quicklook-mesoscale --profile quicklook-grid --profile external-artifact/);
 assert.match(previewEntitlements, /com\.apple\.security\.app-sandbox/);
 assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.read-only/);
 assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.executable/);

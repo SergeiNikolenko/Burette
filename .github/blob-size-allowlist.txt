@@ -1,5 +1,6 @@
 # Paths are matched exactly, relative to the repository root.
 # Keep this list short and limited to intentional large checked-in assets.
+PreviewExtension/Web/mesoscale.js
 PreviewExtension/Web/molstar.js
 PreviewExtension/Web/viewer.js
 PreviewExtension/Web/openchemlib/openchemlib.js
@@ -8,6 +9,7 @@ PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm
 compute/semiempirical/reference/c6ab_d3.npz
 crates/burette-compute-core/src/semiempirical/pm6_d3.generated.bin
 plugins/burette-agent/preview-web/viewer.js
+plugins/burette-agent/preview-web/mesoscale.js
 plugins/burette-agent/preview-web/molstar.js
 plugins/burette-agent/preview-web/openchemlib/openchemlib.js
 plugins/burette-agent/preview-web/rdkit-conformer/Burette_rdkit_conformer.wasm

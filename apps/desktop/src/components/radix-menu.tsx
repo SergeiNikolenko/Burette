@@ -8,6 +8,9 @@ import {
   ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuShortcut,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -18,6 +21,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { MenuItemSpec } from "./menu-types";
@@ -147,6 +153,14 @@ function renderDropdownItem(item: MenuItemSpec, index: number) {
   if (item.kind === "swatches" || item.kind === "select" || item.kind === "number") {
     return renderControl(item);
   }
+  if (item.kind === "submenu") {
+    return (
+      <DropdownMenuSub key={item.id}>
+        <DropdownMenuSubTrigger disabled={item.disabled}>{renderItemBody(item)}</DropdownMenuSubTrigger>
+        <DropdownMenuSubContent>{item.items.map(renderDropdownItem)}</DropdownMenuSubContent>
+      </DropdownMenuSub>
+    );
+  }
 
   return (
     <DropdownMenuItem
@@ -182,6 +196,14 @@ function renderContextItem(item: MenuItemSpec, index: number) {
   }
   if (item.kind === "swatches" || item.kind === "select" || item.kind === "number") {
     return renderControl(item);
+  }
+  if (item.kind === "submenu") {
+    return (
+      <ContextMenuSub key={item.id}>
+        <ContextMenuSubTrigger disabled={item.disabled}>{renderItemBody(item)}</ContextMenuSubTrigger>
+        <ContextMenuSubContent>{item.items.map(renderContextItem)}</ContextMenuSubContent>
+      </ContextMenuSub>
+    );
   }
 
   return (
@@ -264,9 +286,9 @@ function renderControl(item: Extract<MenuItemSpec, { kind: "swatches" | "select"
 // The item's own layout stays local: a menu entry here can carry an icon and a second
 // line of detail, which the shadcn item does not model. It sits inside the shadcn
 // item, so spacing, hover and disabled states still come from the component.
-function renderItemBody(item: Extract<MenuItemSpec, { kind: "item" | "checkbox" }>) {
+function renderItemBody(item: Extract<MenuItemSpec, { kind: "item" | "checkbox" | "submenu" }>) {
   const iconUrl = item.kind === "item" ? item.iconUrl : undefined;
-  const iconText = item.kind === "item" ? item.iconText : undefined;
+  const iconText = item.kind === "item" || item.kind === "submenu" ? item.iconText : undefined;
   const tooltip = item.kind === "item" ? item.tooltip : undefined;
   return (
     <span className="radix-menu-item-body" title={tooltip}>

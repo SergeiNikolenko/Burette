@@ -64,15 +64,18 @@
 				<string>com.local.burette10.mvsj</string>
 				<string>com.local.burette10.mvsx</string>
 				<string>com.local.burette10.molecular-dynamics</string>
-					<string>com.schrodinger.mae</string>
-					<string>com.local.burette10.schrodinger</string>
-					<string>com.local.burette10.graphml</string>
-					<string>com.local.burette10.fep-edge-list</string>
-					<string>com.local.burette10.pharmacophore</string>
+				<string>com.schrodinger.mae</string>
+				<string>com.local.burette10.schrodinger</string>
+				<string>com.local.burette10.graphml</string>
+				<string>com.local.burette10.fep-edge-list</string>
+				<string>com.local.burette10.pharmacophore</string>
 				<string>com.local.burette10.spectrum</string>
 				<string>com.local.burette10.spectrum-json</string>
 				<string>com.local.burette10.openmm-coordinate-artifact</string>
 				<string>com.local.burette10.openmm-workflow-text-artifact</string>
+				<string>com.local.burette10.mesozip</string>
+				<string>com.local.burette10.molj</string>
+				<string>com.local.burette10.molx</string>
 			</array>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>

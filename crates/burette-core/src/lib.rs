@@ -1010,6 +1010,9 @@ mod tests {
         assert_eq!(quick_look_size_limit_for_extension("sdf"), 25 * mib);
         assert_eq!(quick_look_size_limit_for_extension("mvsj"), 25 * mib);
         assert_eq!(quick_look_size_limit_for_extension("mvsx"), 25 * mib);
+        assert_eq!(quick_look_size_limit_for_extension("molj"), 100 * mib);
+        assert_eq!(quick_look_size_limit_for_extension("molx"), 100 * mib);
+        assert_eq!(quick_look_size_limit_for_extension("mesozip"), 100 * mib);
         assert_eq!(quick_look_size_limit_for_extension("mae.gz"), 64 * mib);
         assert_eq!(quick_look_size_limit_for_extension("xtc"), 75 * mib);
         assert_eq!(quick_look_size_limit_for_extension("trr"), 75 * mib);
