@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync, type Dirent, type Stats } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import type { ViteDevServer } from "vite";
@@ -680,14 +681,22 @@ function collectBrowserDevFoldingFiles(root: string, depth: number, files: Array
 function candidateFoldingRoots(inputPath: string) {
   const info = statSync(inputPath);
   let root = info.isDirectory() ? inputPath : dirname(inputPath);
-  const roots = [root];
-  for (let index = 0; index < 6; index += 1) {
+  const roots: string[] = [];
+  const home = homedir();
+  for (let index = 0; index <= 6; index += 1) {
+    if (isUserCollectionRoot(root, home)) break;
+    roots.push(root);
     const parent = dirname(root);
     if (!parent || parent === root) break;
     root = parent;
-    roots.push(root);
   }
   return roots;
+}
+
+function isUserCollectionRoot(root: string, home: string) {
+  if (root === home) return true;
+  return dirname(root) === home
+    && ["Desktop", "Documents", "Downloads", "Movies", "Music", "Pictures", "Public"].includes(fileTitle(root));
 }
 
 function foldingArtifactKind(entry: { title: string; extension: string }) {
