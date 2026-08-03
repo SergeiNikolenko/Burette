@@ -276,6 +276,7 @@
 					"$(SRCROOT)/PreviewExtension/Web/molstar.css",
 					"$(SRCROOT)/PreviewExtension/Web/viewer-runtime.css",
 					"$(SRCROOT)/PreviewExtension/Web/viewer-shell.js",
+					"$(SRCROOT)/PreviewExtension/Web/molstar-preset-preview-controller.js",
 					"$(SRCROOT)/PreviewExtension/Web/burette-agent.js",
 					"$(SRCROOT)/PreviewExtension/Web/viewer.js",
 					"$(SRCROOT)/PreviewExtension/Web/grid-viewer.js",
@@ -290,7 +291,7 @@
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 				shellPath = /bin/sh;
-				shellScript = "set -euo pipefail\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\ncd \"${SRCROOT}\"\n\nif ! command -v bun >/dev/null 2>&1; then\n  echo \"error: Bun is required to validate Burette web assets. Install it with: brew install oven-sh/bun/bun\"\n  exit 1\nfi\nfor asset in PreviewExtension/Web/molstar.js PreviewExtension/Web/molstar.css PreviewExtension/Web/viewer-runtime.css PreviewExtension/Web/viewer-shell.js PreviewExtension/Web/burette-agent.js PreviewExtension/Web/viewer.js PreviewExtension/Web/grid-viewer.js PreviewExtension/Web/grid.css PreviewExtension/Web/rdkit/RDKit_minimal.js PreviewExtension/Web/rdkit/RDKit_minimal.wasm; do\n  if [ ! -s \"$asset\" ]; then\n    echo \"error: missing vendored web asset: $asset\"\n    echo \"Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit\"\n    exit 1\n  fi\ndone\nbun scripts/check-vendor-assets.mjs --profile quicklook-molstar --profile quicklook-mesoscale --profile quicklook-grid --profile external-artifact\nbun scripts/check-js-syntax.mjs PreviewExtension/Web/viewer.js PreviewExtension/Web/viewer-shell.js PreviewExtension/Web/burette-agent.js PreviewExtension/Web/grid-viewer.js\n\n# Downloaded archives and unzipped bundles can carry com.apple.quarantine, FinderInfo,\n# or AppleDouble files. If Xcode copies those into the .appex, codesign fails with:\n# \"resource fork, Finder information, or similar detritus not allowed\".\nif command -v xattr >/dev/null 2>&1; then\n  xattr -cr \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nif command -v dot_clean >/dev/null 2>&1; then\n  dot_clean -m \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nfind \"${SRCROOT}/PreviewExtension/Web\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\nmkdir -p \"${DERIVED_FILE_DIR}\"\ntouch \"${DERIVED_FILE_DIR}/BuretteWebAssetsValidated.stamp\"\n";
+				shellScript = "set -euo pipefail\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\ncd \"${SRCROOT}\"\n\nif ! command -v bun >/dev/null 2>&1; then\n  echo \"error: Bun is required to validate Burette web assets. Install it with: brew install oven-sh/bun/bun\"\n  exit 1\nfi\nfor asset in PreviewExtension/Web/molstar.js PreviewExtension/Web/molstar.css PreviewExtension/Web/viewer-runtime.css PreviewExtension/Web/viewer-shell.js PreviewExtension/Web/molstar-preset-preview-controller.js PreviewExtension/Web/burette-agent.js PreviewExtension/Web/viewer.js PreviewExtension/Web/grid-viewer.js PreviewExtension/Web/grid.css PreviewExtension/Web/rdkit/RDKit_minimal.js PreviewExtension/Web/rdkit/RDKit_minimal.wasm; do\n  if [ ! -s \"$asset\" ]; then\n    echo \"error: missing vendored web asset: $asset\"\n    echo \"Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit\"\n    exit 1\n  fi\ndone\nbun scripts/check-vendor-assets.mjs --profile quicklook-molstar --profile quicklook-mesoscale --profile quicklook-grid --profile external-artifact\nbun scripts/check-js-syntax.mjs PreviewExtension/Web/viewer.js PreviewExtension/Web/viewer-shell.js PreviewExtension/Web/molstar-preset-preview-controller.js PreviewExtension/Web/burette-agent.js PreviewExtension/Web/grid-viewer.js\n\n# Downloaded archives and unzipped bundles can carry com.apple.quarantine, FinderInfo,\n# or AppleDouble files. If Xcode copies those into the .appex, codesign fails with:\n# \"resource fork, Finder information, or similar detritus not allowed\".\nif command -v xattr >/dev/null 2>&1; then\n  xattr -cr \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nif command -v dot_clean >/dev/null 2>&1; then\n  dot_clean -m \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nfind \"${SRCROOT}/PreviewExtension/Web\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\nmkdir -p \"${DERIVED_FILE_DIR}\"\ntouch \"${DERIVED_FILE_DIR}/BuretteWebAssetsValidated.stamp\"\n";
 			};
 
 		7E7F01C829F8540000010001 /* Clean bundle detritus before codesign */ = {
@@ -449,7 +450,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PreviewExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
-				MARKETING_VERSION = 2.1.20;
+				MARKETING_VERSION = 2.1.21;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BuretteV10.Preview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -474,7 +475,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PreviewExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
-				MARKETING_VERSION = 2.1.20;
+				MARKETING_VERSION = 2.1.21;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BuretteV10.Preview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -499,7 +500,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PreviewExtension/ThumbnailInfo.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
-				MARKETING_VERSION = 2.1.20;
+				MARKETING_VERSION = 2.1.21;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BuretteV10.Thumbnail;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -524,7 +525,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PreviewExtension/ThumbnailInfo.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
-				MARKETING_VERSION = 2.1.20;
+				MARKETING_VERSION = 2.1.21;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BuretteV10.Thumbnail;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -545,7 +546,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ios/BuretteMobile/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 2.1.20;
+				MARKETING_VERSION = 2.1.21;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BuretteV10.Mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -568,7 +569,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ios/BuretteMobile/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 2.1.20;
+				MARKETING_VERSION = 2.1.21;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BuretteV10.Mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

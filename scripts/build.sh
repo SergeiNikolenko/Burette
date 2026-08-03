@@ -534,6 +534,7 @@ require_asset PreviewExtension/Web/molstar.js
 require_asset PreviewExtension/Web/molstar.css
 require_asset PreviewExtension/Web/viewer-runtime.css
 require_asset PreviewExtension/Web/viewer-shell.js
+require_asset PreviewExtension/Web/molstar-preset-preview-controller.js
 require_asset PreviewExtension/Web/burette-agent.js
 require_asset PreviewExtension/Web/viewer.js
 require_asset PreviewExtension/Web/grid-ui.js
@@ -544,6 +545,7 @@ require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
 bun scripts/check-js-syntax.mjs \
   PreviewExtension/Web/viewer.js \
   PreviewExtension/Web/viewer-shell.js \
+  PreviewExtension/Web/molstar-preset-preview-controller.js \
   PreviewExtension/Web/burette-agent.js \
   PreviewExtension/Web/grid-ui.js \
   PreviewExtension/Web/grid-viewer.js >/dev/null

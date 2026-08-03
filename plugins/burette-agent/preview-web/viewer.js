@@ -30,6 +30,7 @@
   const MOLSTAR_PREVIEW_RDKIT_SVG_SIZE = 260;
   const MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS = 300;
   const MOLSTAR_EDIT_HISTORY_LIMIT = 20;
+  const MOLSTAR_PRESET_PREVIEW_CLOSE_DELAY_MS = 700;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
   const SDF_POSE_MODE_STORAGE_KEY = 'buret.sdf.poseMode';
   const SDF_CONTEXT_STYLE_STORAGE_KEY = 'buret.sdf.contextStyle';
@@ -40,6 +41,8 @@
   const MAX_STRUCTURE_OVERLAY_FRAME_COUNT = 50;
   const XYZ_FRAME_BACKGROUND_MIN_ALPHA = 0.0001;
   const DEFAULT_MOLSTAR_STYLE = 'illustrative';
+  const DEFAULT_MOLSTAR_PRESET = 'automatic';
+  const DEFAULT_MOLSTAR_APPEARANCE = 'illustrative';
   const MOLSTAR_STYLE_OPTIONS = [
     { value: 'default', label: 'Default' },
     { value: 'illustrative', label: 'Illustrative' },
@@ -50,6 +53,26 @@
     { value: 'spacefill', label: 'Spacefill' },
     { value: 'line', label: 'Line' },
     { value: 'molecular-surface', label: 'Surface' }
+  ];
+  const MOLSTAR_APPEARANCE_OPTIONS = [
+    { value: 'default', label: 'Default' },
+    { value: 'illustrative', label: 'Illustrative' }
+  ];
+  const MOLSTAR_PRESET_OPTIONS = [
+    { value: 'automatic', label: 'Automatic', provider: 'preset-structure-representation-auto' },
+    { value: 'illustrative-surface', label: 'Ghost Surface', group: 'Burette', legacyStyle: 'illustrative-surface' },
+    { value: 'ball-and-stick', label: 'Ball & Stick', group: 'Burette', legacyStyle: 'ball-and-stick' },
+    { value: 'spacefill', label: 'Spacefill by Element', group: 'Burette', legacyStyle: 'spacefill' },
+    { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line', defaultAppearance: 'default' },
+    { value: 'atomic-detail', label: 'Atomic Detail', group: 'Basic', provider: 'preset-structure-representation-atomic-detail' },
+    { value: 'polymer-cartoon', label: 'Polymer Cartoon', group: 'Basic', provider: 'preset-structure-representation-polymer-cartoon' },
+    { value: 'polymer-ligand', label: 'Polymer & Ligand', group: 'Basic', provider: 'preset-structure-representation-polymer-and-ligand' },
+    { value: 'protein-nucleic', label: 'Protein & Nucleic', group: 'Basic', provider: 'preset-structure-representation-protein-and-nucleic' },
+    { value: 'coarse-surface', label: 'Coarse Surface', group: 'Basic', provider: 'preset-structure-representation-coarse-surface' },
+    { value: 'illustrative', label: 'Illustrative', group: 'Miscellaneous', provider: 'preset-structure-representation-illustrative', defaultAppearance: 'illustrative' },
+    { value: 'molecular-surface', label: 'Molecular Surface', group: 'Miscellaneous', provider: 'preset-structure-representation-molecular-surface' },
+    { value: 'automatic-detail', label: 'Automatic Detail', group: 'Miscellaneous', provider: 'preset-structure-representation-auto-lod' },
+    { value: 'mesoscale', label: 'Mesoscale', group: 'Miscellaneous', provider: 'preset-structure-representation-mesoscale' }
   ];
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
@@ -158,9 +181,6 @@
   const MOLSTAR_STORY_STEP_SETTLE_TIMEOUT_MS = 700;
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
-  // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
-  // scene-tree menu at the same spot.
-  let molstarContextMenuLastPoint = null;
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
   let molstarLassoOverlay = null;
@@ -1621,6 +1641,15 @@
   let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
+  let molstarPresetPreviewController = null;
+  let molstarPresetPreviewSerial = 0;
+  let molstarPresetPreviewPreset = '';
+  let molstarPresetPreviewSceneRevision = 0;
+  let molstarPresetPreviewCache = null;
+  let molstarPresetPreviewCloseTimer = 0;
+  let molstarPresetPreviewCloseEpoch = 0;
+  let molstarPresetPreviewResizeTimer = 0;
+  let molstarPresetPreviewStateCleanup = null;
   let molstarWaterRepresentationEpoch = 0;
   let latestXyzrenderOrientationRef = null;
   let orientationTrackingCleanup = null;
@@ -1692,6 +1721,50 @@
 
   function configuredMolstarStyle(config) {
     return normalizeMolstarStyle(config && config.molstarStyle);
+  }
+
+  function normalizeMolstarPreset(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return MOLSTAR_PRESET_OPTIONS.some(option => option.value === normalized) ? normalized : DEFAULT_MOLSTAR_PRESET;
+  }
+
+  function molstarPresetForLegacyStyle(style) {
+    const normalized = normalizeMolstarStyle(style);
+    if (normalized === 'polymer-ligand') return 'polymer-ligand';
+    // The Burette cartoon preset is gone; Mol*'s own Polymer Cartoon is what a
+    // config still asking for the legacy `cartoon` style means.
+    if (normalized === 'cartoon') return 'polymer-cartoon';
+    if (['ball-and-stick', 'spacefill', 'line', 'illustrative-surface'].includes(normalized)) return normalized;
+    if (normalized === 'molecular-surface') return 'molecular-surface';
+    return DEFAULT_MOLSTAR_PRESET;
+  }
+
+  function configuredMolstarPreset(config) {
+    if (config?.molstarPreset != null) return normalizeMolstarPreset(config.molstarPreset);
+    return molstarPresetForLegacyStyle(config?.molstarStyle);
+  }
+
+  function normalizeMolstarAppearance(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return MOLSTAR_APPEARANCE_OPTIONS.some(option => option.value === normalized)
+      ? normalized
+      : DEFAULT_MOLSTAR_APPEARANCE;
+  }
+
+  function configuredMolstarAppearance(config) {
+    if (config?.molstarAppearance != null) return normalizeMolstarAppearance(config.molstarAppearance);
+    const style = normalizeMolstarStyle(config?.molstarStyle);
+    return style === 'illustrative' || style === 'illustrative-surface' ? 'illustrative' : 'default';
+  }
+
+  function molstarPresetOption(value) {
+    const normalized = normalizeMolstarPreset(value);
+    return MOLSTAR_PRESET_OPTIONS.find(option => option.value === normalized) || MOLSTAR_PRESET_OPTIONS[0];
+  }
+
+  function molstarPresetAppearance(option, config) {
+    if (option?.defaultAppearance) return normalizeMolstarAppearance(option.defaultAppearance);
+    return configuredMolstarAppearance(config);
   }
 
   function normalizeSdfCollectionContextStyle(value) {
@@ -1861,6 +1934,7 @@
         if (viewerTheme !== 'auto') return;
         applyBackgroundMode();
         applyViewerBackground();
+        scheduleVisibleMolstarPresetPreviewRefresh();
       };
       if (typeof media.addEventListener === 'function') media.addEventListener('change', update);
       else if (typeof media.addListener === 'function') media.addListener(update);
@@ -1970,6 +2044,7 @@
     applyViewerBackground(viewer);
     updateThemeButton();
     scheduleViewerResize(viewer, 40);
+    scheduleVisibleMolstarPresetPreviewRefresh();
   }
 
   function toggleViewerTheme(viewer = activeViewer) {
@@ -2085,13 +2160,13 @@
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
     const lassoButton = toolbar.querySelector('[data-buret-action="molstar-lasso"]');
     control.classList.toggle('visible', canSwitchRenderer);
-    const molstarStyleSlot = toolbar.querySelector('[data-buret-molstar-style-slot]');
-    const molstarStyleSelect = toolbar.querySelector('[data-buret-molstar-style]');
-    molstarStyleSlot?.classList.toggle('visible', renderer === 'molstar');
-    if (molstarStyleSelect) {
-      populateMolstarStyleSelect(molstarStyleSelect);
-      molstarStyleSelect.value = configuredMolstarStyle(config);
-      molstarStyleSelect.disabled = renderer !== 'molstar';
+    const molstarPresetSlot = toolbar.querySelector('[data-buret-molstar-preset-slot]');
+    const molstarPresetTrigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
+    molstarPresetSlot?.classList.toggle('visible', renderer === 'molstar');
+    if (renderer !== 'molstar') hideMolstarPresetMenu();
+    if (molstarPresetTrigger) {
+      molstarPresetTrigger.disabled = renderer !== 'molstar';
+      updateMolstarPresetControl(toolbar, configuredMolstarPreset(config));
     }
     const lassoAvailable = renderer === 'molstar' || renderer === 'xyzrender-external';
     lassoButton?.classList.toggle('hidden', !lassoAvailable);
@@ -2650,11 +2725,12 @@
       setViewerTheme(nextTheme, activeViewer);
       return;
     }
-    // Applied in place so the default-style preference never rebuilds the viewer.
-    // requestMolstarStyle updates the config, the toolbar selector, and re-renders
-    // through the same path the toolbar dropdown uses.
+    // Settings own the default Mol* appearance. Applying that preference in place
+    // preserves the component preset selected in the preview toolbar.
     if (body.type === 'setViewerStyle') {
-      requestMolstarStyle(body.value);
+      const style = normalizeMolstarStyle(body.value);
+      if (style === 'default' || style === 'illustrative') void requestMolstarAppearance(style);
+      else requestMolstarStyle(style);
       return;
     }
     if (body.type === 'setXyzrenderControls') {
@@ -2812,10 +2888,20 @@
     const rect = canvas.getBoundingClientRect();
     if (rect.width < 4 || rect.height < 4) return null;
     try {
+      const maxDimension = 640;
+      const sourceWidth = Math.max(1, Number(canvas.width) || Math.round(rect.width));
+      const sourceHeight = Math.max(1, Number(canvas.height) || Math.round(rect.height));
+      const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight));
+      const snapshot = document.createElement('canvas');
+      snapshot.width = Math.max(1, Math.round(sourceWidth * scale));
+      snapshot.height = Math.max(1, Math.round(sourceHeight * scale));
+      const context = snapshot.getContext('2d');
+      if (!context) return null;
+      context.drawImage(canvas, 0, 0, snapshot.width, snapshot.height);
       const image = document.createElement('img');
       image.className = 'buret-molstar-transition-frame';
       image.alt = '';
-      image.src = canvas.toDataURL('image/png');
+      image.src = snapshot.toDataURL('image/png');
       image.style.left = `${Math.round(rect.left)}px`;
       image.style.top = `${Math.round(rect.top)}px`;
       image.style.width = `${Math.round(rect.width)}px`;
@@ -2886,8 +2972,12 @@
       const radiusScale = Number.isFinite(configuredScale) && configuredScale > 0
         ? configuredScale
         : (document.body?.classList.contains('burette-mobile-host') ? 0.58 : 0.88);
+      const up = Array.isArray(options.up) && options.up.length >= 3 ? options.up : [0, 1, 0];
+      const direction = Array.isArray(options.direction) && options.direction.length >= 3
+        ? options.direction
+        : [0.85, -0.38, 0.92];
       const snapshot = typeof camera.getFocus === 'function'
-        ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), [0, 1, 0], [0.85, -0.38, 0.92])
+        ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), up, direction)
         : null;
       if (snapshot) snapshot.mode = 'perspective';
       canvas3d.requestCameraReset({
@@ -3188,14 +3278,15 @@
     });
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     const preset = toolbar.querySelector('[data-buret-xyzrender-preset]');
-    const molstarStyleSlot = toolbar.querySelector('[data-buret-molstar-style-slot]');
-    const molstarStyleSelect = toolbar.querySelector('[data-buret-molstar-style]');
+    const molstarPresetSlot = toolbar.querySelector('[data-buret-molstar-preset-slot]');
+    const molstarPresetTrigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
     const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
     const lassoButton = toolbar.querySelector('[data-buret-action="molstar-lasso"]');
     const external = normalized === 'xyzrender-external';
-    molstarStyleSlot?.classList.toggle('visible', !external);
-    if (molstarStyleSelect) molstarStyleSelect.disabled = external;
+    molstarPresetSlot?.classList.toggle('visible', !external);
+    if (external) hideMolstarPresetMenu();
+    if (molstarPresetTrigger) molstarPresetTrigger.disabled = external;
     const lassoAvailable = normalized === 'molstar' || external;
     lassoButton?.classList.toggle('hidden', !lassoAvailable);
     if (lassoButton) {
@@ -3213,12 +3304,697 @@
     }
   }
 
-  function populateMolstarStyleSelect(select) {
-    if (!select || select.dataset.populated === '1') return;
-    select.innerHTML = MOLSTAR_STYLE_OPTIONS
-      .map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
-      .join('');
-    select.dataset.populated = '1';
+  function appendMolstarPresetMenuSeparator(menu) {
+    const separator = document.createElement('div');
+    separator.className = 'buret-molstar-preset-menu-separator';
+    separator.setAttribute('role', 'separator');
+    menu.appendChild(separator);
+  }
+
+  function appendMolstarAppearanceMenu(menu) {
+    const appearanceLabel = document.createElement('div');
+    appearanceLabel.className = 'buret-molstar-preset-menu-section';
+    appearanceLabel.textContent = 'Appearance';
+    menu.appendChild(appearanceLabel);
+    const appearanceGroup = document.createElement('div');
+    appearanceGroup.className = 'buret-molstar-appearance-group';
+    appearanceGroup.dataset.buretMolstarAppearanceGroup = '1';
+    appearanceGroup.setAttribute('role', 'group');
+    appearanceGroup.setAttribute('aria-label', 'Appearance');
+    for (const appearanceOption of MOLSTAR_APPEARANCE_OPTIONS) {
+      const appearance = document.createElement('button');
+      appearance.type = 'button';
+      appearance.className = 'buret-molstar-appearance-item';
+      appearance.dataset.buretMolstarAppearance = appearanceOption.value;
+      appearance.setAttribute('role', 'menuitemradio');
+      appearance.setAttribute('aria-checked', 'false');
+      appearance.tabIndex = -1;
+      const itemLabel = document.createElement('span');
+      itemLabel.className = 'buret-tree-menu-label';
+      itemLabel.textContent = appearanceOption.label;
+      const indicator = document.createElement('span');
+      indicator.className = 'buret-molstar-appearance-indicator';
+      indicator.setAttribute('aria-hidden', 'true');
+      indicator.textContent = '✓';
+      appearance.append(itemLabel, indicator);
+      appearanceGroup.appendChild(appearance);
+    }
+    menu.appendChild(appearanceGroup);
+    appendMolstarPresetMenuSeparator(menu);
+  }
+
+  function populateMolstarPresetMenu(menu) {
+    if (!menu || menu.dataset.populated === '1') return;
+    appendMolstarAppearanceMenu(menu);
+    let currentGroup = null;
+    for (const option of MOLSTAR_PRESET_OPTIONS) {
+      if (option.group && option.group !== currentGroup) {
+        appendMolstarPresetMenuSeparator(menu);
+        const heading = document.createElement('div');
+        heading.className = 'buret-molstar-preset-menu-section';
+        heading.textContent = option.group;
+        menu.appendChild(heading);
+        currentGroup = option.group;
+      }
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-tree-menu-item';
+      button.dataset.buretMolstarPreset = option.value;
+      button.setAttribute('role', 'menuitemradio');
+      button.setAttribute('aria-checked', 'false');
+      button.tabIndex = -1;
+      const label = document.createElement('span');
+      label.className = 'buret-tree-menu-label';
+      label.textContent = option.label;
+      const current = document.createElement('span');
+      current.className = 'buret-molstar-preset-current';
+      current.textContent = 'Current';
+      button.append(label, current);
+      menu.appendChild(button);
+    }
+    menu.dataset.populated = '1';
+  }
+
+  function updateMolstarAppearanceControl(menu, appearance) {
+    const value = normalizeMolstarAppearance(appearance);
+    menu?.querySelectorAll('[data-buret-molstar-appearance]').forEach(item => {
+      const checked = item.dataset.buretMolstarAppearance === value;
+      item.setAttribute('aria-checked', checked ? 'true' : 'false');
+      item.dataset.state = checked ? 'checked' : 'unchecked';
+    });
+  }
+
+  function updateMolstarPresetControl(toolbar, preset) {
+    if (!toolbar) return;
+    const option = molstarPresetOption(preset);
+    const trigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
+    const label = trigger?.querySelector('[data-buret-molstar-preset-label]');
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    populateMolstarPresetMenu(menu);
+    if (label) label.textContent = option.label;
+    if (trigger) trigger.title = `Mol* preset: ${option.label}`;
+    menu?.querySelectorAll('[data-buret-molstar-preset]').forEach(button => {
+      button.setAttribute('aria-checked', button.dataset.buretMolstarPreset === option.value ? 'true' : 'false');
+    });
+    updateMolstarAppearanceControl(menu, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
+  }
+
+  function setMolstarPresetMenuRovingItem(menu, activeItem) {
+    const items = Array.from(menu?.querySelectorAll?.('[role="menuitemradio"]') || []);
+    const selected = activeItem && items.includes(activeItem)
+      ? activeItem
+      : items.find(item => item.getAttribute('aria-checked') === 'true') || items[0];
+    for (const item of items) item.tabIndex = item === selected ? 0 : -1;
+    return selected || null;
+  }
+
+  function positionMolstarPresetMenu(anchor = document.querySelector('[data-buret-molstar-preset-trigger]')) {
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    if (!menu || menu.classList.contains('hidden') || !anchor) return;
+    const margin = 12;
+    const gap = 6;
+    const anchorRect = anchor.getBoundingClientRect();
+    const menuWidth = menu.offsetWidth;
+    const left = Math.max(margin, Math.min(anchorRect.left, window.innerWidth - margin - menuWidth));
+    const belowTop = anchorRect.bottom + gap;
+    const spaceBelow = window.innerHeight - margin - belowTop;
+    const spaceAbove = anchorRect.top - gap - margin;
+    const openAbove = spaceBelow < Math.min(menu.scrollHeight, 260) && spaceAbove > spaceBelow;
+    const availableHeight = Math.max(120, openAbove ? spaceAbove : spaceBelow);
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(openAbove
+      ? Math.max(margin, anchorRect.top - gap - Math.min(menu.scrollHeight, availableHeight))
+      : belowTop)}px`;
+    menu.style.maxHeight = `${Math.floor(availableHeight)}px`;
+    menu.dataset.placement = openAbove ? 'top' : 'bottom';
+  }
+
+  function molstarPresetPreviewElements() {
+    const preview = document.querySelector('[data-buret-molstar-preset-preview]');
+    return {
+      preview,
+      canvas: preview?.querySelector('[data-buret-molstar-preset-preview-canvas]'),
+      image: preview?.querySelector('[data-buret-molstar-preset-preview-image]'),
+      stage: preview?.querySelector('[data-buret-molstar-preset-preview-stage]'),
+      label: preview?.querySelector('[data-buret-molstar-preset-preview-label]'),
+      caption: preview?.querySelector('[data-buret-molstar-preset-preview-caption]'),
+      state: preview?.querySelector('[data-buret-molstar-preset-preview-state]')
+    };
+  }
+
+  function cancelMolstarPresetPreviewClose() {
+    molstarPresetPreviewCloseEpoch += 1;
+    if (molstarPresetPreviewCloseTimer) {
+      clearTimeout(molstarPresetPreviewCloseTimer);
+      molstarPresetPreviewCloseTimer = 0;
+    }
+  }
+
+  function scheduleMolstarPresetPreviewClose() {
+    cancelMolstarPresetPreviewClose();
+    const epoch = molstarPresetPreviewCloseEpoch;
+    molstarPresetPreviewCloseTimer = window.setTimeout(() => {
+      molstarPresetPreviewCloseTimer = 0;
+      if (epoch !== molstarPresetPreviewCloseEpoch) return;
+      hideMolstarPresetPreview();
+    }, MOLSTAR_PRESET_PREVIEW_CLOSE_DELAY_MS);
+  }
+
+  function positionMolstarPresetPreview(item) {
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    const { preview } = molstarPresetPreviewElements();
+    if (!menu || !preview || !item) return;
+    const margin = 12;
+    const gap = 8;
+    const menuRect = menu.getBoundingClientRect();
+    const itemRect = item.getBoundingClientRect();
+    const previewWidth = Math.min(preview.offsetWidth || 240, Math.max(1, window.innerWidth - margin * 2));
+    const previewHeight = Math.min(preview.offsetHeight || 202, Math.max(120, window.innerHeight - margin * 2));
+    preview.classList.remove('viewport-constrained');
+    const placement = window.BuretteMolstarPresetPreviewController?.computePreviewPlacement?.({
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      menuRect,
+      itemRect,
+      previewWidth,
+      previewHeight,
+      margin,
+      gap,
+      minimumMenuHeight: 120
+    });
+    if (!placement || placement.placement === 'hidden') {
+      preview.classList.add('viewport-constrained');
+      preview.dataset.placement = 'hidden';
+      return;
+    }
+    preview.style.left = `${Math.round(placement.left)}px`;
+    preview.style.top = `${Math.round(placement.top)}px`;
+    preview.dataset.placement = placement.placement;
+    if (placement.placement === 'stacked') {
+      menu.style.top = `${Math.round(placement.menuTop)}px`;
+      menu.style.maxHeight = `${Math.floor(placement.menuMaxHeight)}px`;
+      menu.dataset.placement = 'stacked';
+    }
+  }
+
+  function sizeMolstarPresetPreview(preview) {
+    if (!preview) return;
+    const { stage } = molstarPresetPreviewElements();
+    const sourceCanvas = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas || document.querySelector('#app canvas');
+    const sourceRect = sourceCanvas?.getBoundingClientRect?.();
+    const sourceWidth = Number(sourceRect?.width);
+    const sourceHeight = Number(sourceRect?.height);
+    if (!(sourceWidth > 0) || !(sourceHeight > 0)) {
+      return;
+    }
+    const layout = window.BuretteMolstarPresetPreviewController?.computePreviewCanvasLayout?.({
+      sourceWidth,
+      sourceHeight,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio || 1
+    });
+    if (layout) {
+      preview.style.width = `${Math.round(layout.cardWidth)}px`;
+      preview.style.height = `${Math.round(layout.cardHeight)}px`;
+    }
+    if (stage) {
+      stage.style.width = `${Math.max(1, sourceWidth)}px`;
+      stage.style.height = `${Math.max(1, sourceHeight)}px`;
+    }
+  }
+
+  function molstarPresetPreviewContentCrop(source) {
+    const fullFrame = { x: 0, y: 0, width: source.width, height: source.height };
+    const computeBounds = window.BuretteMolstarPresetPreviewController?.computePreviewContentBounds;
+    if (typeof computeBounds !== 'function') return fullFrame;
+    const analysisScale = Math.min(1, 512 / Math.max(source.width, source.height));
+    const analysisWidth = Math.max(1, Math.round(source.width * analysisScale));
+    const analysisHeight = Math.max(1, Math.round(source.height * analysisScale));
+    const analysis = document.createElement('canvas');
+    analysis.width = analysisWidth;
+    analysis.height = analysisHeight;
+    const context = analysis.getContext('2d', { willReadFrequently: true });
+    if (!context) return fullFrame;
+    try {
+      context.drawImage(source, 0, 0, analysisWidth, analysisHeight);
+      const color = canvasBackgroundColor();
+      const bounds = computeBounds({
+        data: context.getImageData(0, 0, analysisWidth, analysisHeight).data,
+        width: analysisWidth,
+        height: analysisHeight,
+        background: [(color >> 16) & 255, (color >> 8) & 255, color & 255],
+        transparent: transparentBackground,
+        threshold: 6,
+        paddingRatio: 0.04,
+        minPadding: 4
+      });
+      const x = Math.max(0, Math.floor(bounds.x / analysisWidth * source.width));
+      const y = Math.max(0, Math.floor(bounds.y / analysisHeight * source.height));
+      const width = Math.min(source.width - x, Math.max(1, Math.ceil(bounds.width / analysisWidth * source.width)));
+      const height = Math.min(source.height - y, Math.max(1, Math.ceil(bounds.height / analysisHeight * source.height)));
+      return { x, y, width, height };
+    } catch (_) {
+      return fullFrame;
+    }
+  }
+
+  function drawMolstarPresetPreviewFrame(item, source) {
+    const { preview, image } = molstarPresetPreviewElements();
+    if (!preview || !image || !source) throw new Error('Preset preview image is unavailable.');
+    const crop = molstarPresetPreviewContentCrop(source);
+    const sourceWidth = crop.width;
+    const sourceHeight = crop.height;
+    const layout = window.BuretteMolstarPresetPreviewController?.computePreviewCanvasLayout?.({
+      sourceWidth,
+      sourceHeight,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio || 1
+    });
+    if (!layout) throw new Error('Preset preview layout is unavailable.');
+    const displayWidth = Math.round(layout.cardWidth);
+    const displayHeight = Math.round(layout.bodyHeight);
+    image.width = Math.max(1, Math.round(layout.cardWidth * layout.backingScale));
+    image.height = Math.max(1, Math.round(layout.bodyHeight * layout.backingScale));
+    const context = image.getContext('2d');
+    if (!context) throw new Error('Preset preview image cannot be drawn.');
+    context.clearRect(0, 0, image.width, image.height);
+    context.drawImage(
+      source,
+      crop.x,
+      crop.y,
+      crop.width,
+      crop.height,
+      Math.round(layout.drawX * layout.backingScale),
+      Math.round(layout.drawY * layout.backingScale),
+      Math.round(layout.drawWidth * layout.backingScale),
+      Math.round(layout.drawHeight * layout.backingScale)
+    );
+    preview.style.width = `${displayWidth}px`;
+    preview.style.height = `${Math.round(layout.cardHeight)}px`;
+    preview.dataset.frameAspect = (sourceWidth / sourceHeight).toFixed(3);
+    positionMolstarPresetPreview(item);
+    return { displayWidth, displayHeight, frameAspect: preview.dataset.frameAspect };
+  }
+
+  function molstarPresetPreviewCameraKey() {
+    const snapshot = captureMolstarCameraSnapshot(activeViewer);
+    if (!snapshot) return 'default-camera';
+    const values = [snapshot.radius, ...(snapshot.position || []), ...(snapshot.target || []), ...(snapshot.up || [])];
+    return values.map(value => String(Number(value) || 0)).join(',');
+  }
+
+  function molstarPresetPreviewViewportKey() {
+    const sourceCanvas = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas || document.querySelector('#app canvas');
+    const sourceRect = sourceCanvas?.getBoundingClientRect?.();
+    const width = Math.max(1, Number(sourceRect?.width) || 1);
+    const height = Math.max(1, Number(sourceRect?.height) || 1);
+    const dpr = Math.max(1, Number(window.devicePixelRatio) || 1);
+    const background = transparentBackground ? 'transparent' : canvasBackgroundCSS();
+    return `${width}x${height}@${dpr}:${background}`;
+  }
+
+  function molstarPresetPreviewCacheKey(preset) {
+    return `${molstarPresetPreviewSceneRevision}:${preset}:${molstarPresetPreviewCameraKey()}:${molstarPresetPreviewViewportKey()}`;
+  }
+
+  function cacheMolstarPresetPreview(preset, geometry) {
+    const { image } = molstarPresetPreviewElements();
+    if (!image || !geometry) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.drawImage(image, 0, 0);
+    molstarPresetPreviewCache = {
+      viewer: activeViewer,
+      key: molstarPresetPreviewCacheKey(preset),
+      canvas,
+      ...geometry
+    };
+  }
+
+  function restoreCachedMolstarPresetPreview(item, preset) {
+    const cached = molstarPresetPreviewCache;
+    if (!cached || cached.viewer !== activeViewer || cached.key !== molstarPresetPreviewCacheKey(preset)) return false;
+    const { preview, image, caption } = molstarPresetPreviewElements();
+    if (!preview || !image) return false;
+    image.width = cached.canvas.width;
+    image.height = cached.canvas.height;
+    const context = image.getContext('2d');
+    if (!context) return false;
+    context.clearRect(0, 0, image.width, image.height);
+    context.drawImage(cached.canvas, 0, 0);
+    preview.style.width = `${cached.displayWidth}px`;
+    preview.style.height = `${28 + cached.displayHeight}px`;
+    preview.dataset.frameAspect = cached.frameAspect;
+    preview.classList.add('ready');
+    if (caption) caption.textContent = 'Click to apply';
+    positionMolstarPresetPreview(item);
+    return true;
+  }
+
+  function molstarPresetPreviewBudgetMessage() {
+    const config = activeConfig || window.BuretteConfig || {};
+    const byteCount = Number(config.previewByteCount || config.byteCount || 0);
+    if (byteCount > 32 * 1024 * 1024) return 'Preview is disabled for files larger than 32 MB.';
+    const structures = activeViewer?.plugin?.managers?.structure?.hierarchy?.selection?.structures || [];
+    const elementCount = structures.reduce((total, entry) => {
+      const structure = entry?.cell?.obj?.data || entry?.obj?.data || entry;
+      return total + Math.max(0, Number(structure?.elementCount) || 0);
+    }, 0);
+    if (elementCount > 250000) return 'Preview is disabled for structures larger than 250,000 elements.';
+    return '';
+  }
+
+  function molstarPresetPreviewPixelScale() {
+    const source = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas;
+    const rect = source?.getBoundingClientRect?.();
+    const cssWidth = Number(rect?.width);
+    const backingWidth = Number(source?.width);
+    const deviceScale = Math.max(1, Number(window.devicePixelRatio) || 1);
+    const scale = backingWidth / cssWidth / deviceScale;
+    return Number.isFinite(scale) && scale > 0 ? scale : 1;
+  }
+
+  function copyMolstarPresetPreviewCanvasProps(sourceViewer, targetViewer) {
+    const sourceCanvas = sourceViewer?.plugin?.canvas3d;
+    const targetCanvas = targetViewer?.plugin?.canvas3d;
+    if (!sourceCanvas?.props || !targetCanvas?.setProps) return;
+    const previewProps = {
+      ...sourceCanvas.props,
+      camera: {
+        ...sourceCanvas.props.camera,
+        helper: {
+          ...sourceCanvas.props.camera?.helper,
+          axes: { name: 'off', params: {} }
+        }
+      }
+    };
+    targetCanvas.setProps(previewProps);
+  }
+
+  function restoreMolstarCameraSnapshotNow(viewer, snapshot) {
+    const canvas3d = viewer?.plugin?.canvas3d;
+    const camera = canvas3d?.camera;
+    if (!snapshot || typeof camera?.setState !== 'function') return false;
+    camera.setState(snapshot, 0);
+    canvas3d.requestDraw?.();
+    return true;
+  }
+
+  async function waitForMolstarPresetPreviewDraw(viewer) {
+    const canvas3d = viewer?.plugin?.canvas3d;
+    const didDraw = canvas3d?.didDraw;
+    if (!canvas3d || typeof didDraw?.subscribe !== 'function') {
+      await waitForAnimationFrame();
+      return;
+    }
+    await new Promise(resolve => {
+      let sawCurrentValue = false;
+      let settled = false;
+      let subscription = null;
+      let timer = 0;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (timer) window.clearTimeout(timer);
+        subscription?.unsubscribe?.();
+        resolve();
+      };
+      subscription = didDraw.subscribe(() => {
+        if (sawCurrentValue) finish();
+        else sawCurrentValue = true;
+      });
+      timer = window.setTimeout(finish, 600);
+      canvas3d.requestDraw?.();
+    });
+  }
+
+  async function captureMolstarPresetPreview(item, viewer, serial) {
+    const source = viewer?.plugin?.canvas3d?.webgl?.gl?.canvas;
+    if (!source || !(Number(source.width) > 0) || !(Number(source.height) > 0)) {
+      throw new Error('Mol* preview viewport is unavailable.');
+    }
+    if (serial !== molstarPresetPreviewSerial) return;
+    const geometry = drawMolstarPresetPreviewFrame(item, source);
+    cacheMolstarPresetPreview(item?.dataset?.buretMolstarPreset || '', geometry);
+  }
+
+  function showMolstarPresetPreviewShell(item, option) {
+    const { preview, image, label, caption, state } = molstarPresetPreviewElements();
+    if (!preview) return;
+    if (label) label.textContent = option.label;
+    if (caption) caption.textContent = 'Rendering…';
+    if (state) state.textContent = 'Rendering preview…';
+    preview.classList.remove('hidden', 'ready', 'error', 'applying');
+    preview.dataset.buretMolstarPreset = option.value;
+    preview.title = `Click to apply ${option.label}`;
+    preview.setAttribute('aria-label', `Apply ${option.label} preset`);
+    preview.removeAttribute('aria-busy');
+    preview.style.width = '';
+    preview.style.height = '';
+    preview.removeAttribute('data-frame-aspect');
+    if (image) {
+      image.width = 1;
+      image.height = 1;
+    }
+    sizeMolstarPresetPreview(preview);
+    positionMolstarPresetPreview(item);
+  }
+
+  function hideMolstarPresetPreview() {
+    cancelMolstarPresetPreviewClose();
+    molstarPresetPreviewSerial += 1;
+    molstarPresetPreviewPreset = '';
+    if (molstarPresetPreviewResizeTimer) {
+      clearTimeout(molstarPresetPreviewResizeTimer);
+      molstarPresetPreviewResizeTimer = 0;
+    }
+    molstarPresetPreviewController?.hide?.();
+    const { preview } = molstarPresetPreviewElements();
+    preview?.classList.add('hidden');
+    preview?.classList.remove('applying', 'viewport-constrained');
+    preview?.removeAttribute('aria-busy');
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    if (menu && !menu.classList.contains('hidden')) positionMolstarPresetMenu();
+  }
+
+  function disposeMolstarPresetPreview() {
+    hideMolstarPresetPreview();
+    molstarPresetPreviewController?.dispose?.();
+    molstarPresetPreviewController = null;
+    const { stage } = molstarPresetPreviewElements();
+    if (stage) stage.innerHTML = '';
+  }
+
+  async function createMolstarPresetPreviewViewer() {
+    const { stage } = molstarPresetPreviewElements();
+    if (!stage || !window.molstar?.Viewer) throw new Error('Mol* preview renderer is unavailable.');
+    const viewer = await withTimeout(window.molstar.Viewer.create(stage, {
+      layoutIsExpanded: false,
+      layoutShowControls: false,
+      layoutShowRemoteState: false,
+      layoutShowSequence: false,
+      layoutShowLog: false,
+      layoutShowLeftPanel: false,
+      viewportShowReset: false,
+      viewportShowScreenshotControls: false,
+      viewportShowControls: false,
+      viewportShowExpand: false,
+      viewportShowToggleFullscreen: false,
+      viewportShowSelectionMode: false,
+      viewportShowAnimation: false,
+      viewportShowTrajectoryControls: false,
+      viewportShowSettings: false,
+      pixelScale: molstarPresetPreviewPixelScale(),
+      viewportBackgroundColor: transparentBackground ? undefined : canvasBackgroundCSS(),
+      powerPreference: 'default'
+    }), 18000, 'Mol* preset preview timed out.');
+    try { viewer.handleResize(); } catch (_) {}
+    return viewer;
+  }
+
+  function startMolstarPresetPreviewViewer(viewer) {
+    try { viewer?.plugin?.animationLoop?.start?.({ immediate: true }); } catch (_) {}
+    try { viewer?.plugin?.canvas3d?.requestDraw?.(); } catch (_) {}
+  }
+
+  function stopMolstarPresetPreviewViewer(viewer) {
+    try { viewer?.plugin?.animationLoop?.stop?.({ noDraw: true }); } catch (_) {}
+  }
+
+  function disposeMolstarPresetPreviewViewer(viewer) {
+    try { viewer?.dispose?.(); } catch (_) {
+      try { viewer?.plugin?.dispose?.(); } catch (_) {}
+    }
+  }
+
+  function ensureMolstarPresetPreviewController() {
+    if (molstarPresetPreviewController) return molstarPresetPreviewController;
+    const factory = window.BuretteMolstarPresetPreviewController;
+    if (typeof factory?.create !== 'function') return null;
+    molstarPresetPreviewController = factory.create({
+      createViewer: createMolstarPresetPreviewViewer,
+      disposeViewer: disposeMolstarPresetPreviewViewer,
+      startViewer: startMolstarPresetPreviewViewer,
+      stopViewer: stopMolstarPresetPreviewViewer,
+      renderPreview: (viewer, payload) => renderMolstarPresetPreview(viewer, payload),
+      applyPreset: payload => applyMolstarPresetNow(payload.preset, {
+        preserveCamera: payload.preserveCamera === true
+      })
+    }, { idleDisposeMs: 4000, stopAfterRender: true });
+    return molstarPresetPreviewController;
+  }
+
+  async function renderMolstarPresetPreview(viewer, { item, preset, serial }) {
+    const option = molstarPresetOption(preset);
+    try {
+      const sourcePlugin = activeViewer?.plugin;
+      const sourceCamera = captureMolstarCameraSnapshot(activeViewer);
+      if (typeof sourcePlugin?.state?.data?.getSnapshot !== 'function') throw new Error('Current Mol* scene cannot be copied.');
+      if (serial !== molstarPresetPreviewSerial) return;
+      const snapshot = sourcePlugin.state.data.getSnapshot();
+      await viewer.plugin.runTask(viewer.plugin.state.data.setSnapshot(snapshot));
+      if (serial !== molstarPresetPreviewSerial) return;
+      copyMolstarPresetPreviewCanvasProps(activeViewer, viewer);
+      if (option.provider) await applyMolstarProviderPreset(viewer, option);
+      else await applyMolstarStyle(viewer, option.legacyStyle);
+      const appearance = molstarPresetAppearance(option, activeConfig || window.BuretteConfig || {});
+      await applyMolstarAppearance(viewer, appearance);
+      applyViewerBackground(viewer);
+      if (serial !== molstarPresetPreviewSerial) return;
+      try { viewer.handleResize(); } catch (_) {}
+      await waitForAnimationFrame();
+      if (sourceCamera) restoreMolstarCameraSnapshotNow(viewer, sourceCamera);
+      else viewer.plugin?.canvas3d?.requestCameraReset?.({ durationMs: 0 });
+      try { viewer.plugin?.canvas3d?.requestDraw?.(); } catch (_) {}
+      await waitForMolstarPresetPreviewDraw(viewer);
+      if (serial !== molstarPresetPreviewSerial) return;
+      await captureMolstarPresetPreview(item, viewer, serial);
+      if (serial !== molstarPresetPreviewSerial) return;
+      const { preview, caption } = molstarPresetPreviewElements();
+      preview?.classList.add('ready');
+      if (caption) caption.textContent = 'Click to apply';
+    } catch (error) {
+      if (serial !== molstarPresetPreviewSerial) return;
+      const { preview, caption, state } = molstarPresetPreviewElements();
+      preview?.classList.add('error');
+      if (caption) caption.textContent = 'Unavailable';
+      if (state) state.textContent = error?.message || 'Preset preview unavailable.';
+      debug('Mol* preset preview failed: ' + (error?.message || String(error)));
+    }
+  }
+
+  function scheduleMolstarPresetPreview(item) {
+    const preset = item?.dataset?.buretMolstarPreset;
+    if (!preset || !activeViewer) return;
+    cancelMolstarPresetPreviewClose();
+    if (preset === molstarPresetPreviewPreset) return;
+    molstarPresetPreviewPreset = preset;
+    showMolstarPresetPreviewShell(item, molstarPresetOption(preset));
+    const { preview: previewShell } = molstarPresetPreviewElements();
+    if (previewShell?.classList.contains('viewport-constrained')) return;
+    const budgetMessage = molstarPresetPreviewBudgetMessage();
+    if (budgetMessage) {
+      const { preview, caption, state } = molstarPresetPreviewElements();
+      preview?.classList.add('error');
+      if (caption) caption.textContent = 'Unavailable';
+      if (state) state.textContent = budgetMessage;
+      return;
+    }
+    if (restoreCachedMolstarPresetPreview(item, preset)) return;
+    const serial = ++molstarPresetPreviewSerial;
+    const controller = ensureMolstarPresetPreviewController();
+    if (!controller) {
+      const { preview, caption, state } = molstarPresetPreviewElements();
+      preview?.classList.add('error');
+      if (caption) caption.textContent = 'Unavailable';
+      if (state) state.textContent = 'Preset preview controller is unavailable.';
+      return;
+    }
+    controller.show();
+    void controller.requestPreview({ item, preset, serial }).catch(error => {
+      if (serial !== molstarPresetPreviewSerial) return;
+      const { preview, caption, state } = molstarPresetPreviewElements();
+      preview?.classList.add('error');
+      if (caption) caption.textContent = 'Unavailable';
+      if (state) state.textContent = error?.message || 'Preset preview unavailable.';
+      debug('Mol* preset preview failed: ' + (error?.message || String(error)));
+    });
+  }
+
+  function scheduleMolstarPresetPreviewResize(item) {
+    if (!item) return;
+    if (molstarPresetPreviewResizeTimer) clearTimeout(molstarPresetPreviewResizeTimer);
+    molstarPresetPreviewResizeTimer = window.setTimeout(() => {
+      molstarPresetPreviewResizeTimer = 0;
+      const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+      const { preview } = molstarPresetPreviewElements();
+      if (!menu || menu.classList.contains('hidden') || !preview || preview.classList.contains('hidden')) return;
+      molstarPresetPreviewPreset = '';
+      scheduleMolstarPresetPreview(item);
+    }, 80);
+  }
+
+  function scheduleVisibleMolstarPresetPreviewRefresh() {
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    const { preview } = molstarPresetPreviewElements();
+    if (!menu || menu.classList.contains('hidden') || !preview || preview.classList.contains('hidden')) return;
+    const item = menu.querySelector(`[data-buret-molstar-preset="${CSS.escape(molstarPresetPreviewPreset)}"]`);
+    if (item) scheduleMolstarPresetPreviewResize(item);
+  }
+
+  function trackMolstarPresetPreviewState(viewer) {
+    molstarPresetPreviewStateCleanup?.();
+    molstarPresetPreviewStateCleanup = null;
+    const state = viewer?.plugin?.state?.data;
+    const subscription = state?.events?.changed?.subscribe?.(() => {
+      if (activeViewer !== viewer) return;
+      molstarPresetPreviewSceneRevision += 1;
+      molstarPresetPreviewCache = null;
+      scheduleVisibleMolstarPresetPreviewRefresh();
+    });
+    if (subscription) molstarPresetPreviewStateCleanup = () => subscription.unsubscribe?.();
+  }
+
+  function focusMolstarPresetControl(target, pointerFocus = false) {
+    if (!target) return;
+    if (pointerFocus) {
+      window.BuretteMolstarPresetPreviewController?.focusPointerTarget?.(target);
+      return;
+    }
+    target.classList.remove('buret-pointer-focus');
+    target.focus?.();
+  }
+
+  function hideMolstarPresetMenu({ restoreFocus = false, pointerFocus = false } = {}) {
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    const trigger = document.querySelector('[data-buret-molstar-preset-trigger]');
+    menu?.classList.add('hidden');
+    trigger?.setAttribute('aria-expanded', 'false');
+    hideMolstarPresetPreview();
+    if (!restoreFocus) return;
+    if (pointerFocus) {
+      document.activeElement?.blur?.();
+      return;
+    }
+    focusMolstarPresetControl(trigger);
+  }
+
+  function showMolstarPresetMenu(anchor, { pointerFocus = false } = {}) {
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    if (!menu || !anchor || anchor.disabled) return;
+    hideGenerate3DMenu();
+    populateMolstarPresetMenu(menu);
+    updateMolstarPresetControl(document.getElementById('buret-toolbar'), configuredMolstarPreset(activeConfig || window.BuretteConfig || {}));
+    menu.classList.remove('hidden');
+    anchor.setAttribute('aria-expanded', 'true');
+    positionMolstarPresetMenu(anchor);
+    const selected = menu.querySelector('[aria-checked="true"]');
+    focusMolstarPresetControl(setMolstarPresetMenuRovingItem(menu, selected), pointerFocus);
   }
 
   function escapeHtml(value) {
@@ -3480,20 +4256,9 @@
 
   function requestMolstarStyle(style) {
     const value = normalizeMolstarStyle(style);
-    activeConfig = {
-      ...(activeConfig || window.BuretteConfig || {}),
-      molstarStyle: value
-    };
-    if (activeMolstarPrepared?.molstarStyleOverride) {
-      activeMolstarPrepared = {
-        ...activeMolstarPrepared,
-        molstarStyleOverride: value
-      };
-    }
-    window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
-    const toolbar = document.getElementById('buret-toolbar');
-    const select = toolbar?.querySelector('[data-buret-molstar-style]');
-    if (select) select.value = value;
+    const preset = molstarPresetForLegacyStyle(value);
+    const appearance = value === 'illustrative' || value === 'illustrative-surface' ? 'illustrative' : 'default';
+    updateMolstarPresentationConfig(preset, appearance, value);
     if (!activeViewer) {
       setStatus('Mol* style can be changed after the viewer loads.', 'error');
       return;
@@ -3508,6 +4273,118 @@
 
   function molstarStyleLabel(value) {
     return MOLSTAR_STYLE_OPTIONS.find(option => option.value === value)?.label || value;
+  }
+
+  async function applyMolstarAppearance(viewer, appearance) {
+    const normalized = normalizeMolstarAppearance(appearance);
+    if (normalized === 'illustrative') await applyMolstarIllustrativePostprocessing(viewer);
+    else await applyMolstarNonIllustrativePostprocessing(viewer);
+  }
+
+  async function applyMolstarProviderPreset(viewer, option) {
+    const plugin = viewer?.plugin;
+    const provider = option?.provider && plugin?.builders?.structure?.representation?.resolveProvider?.(option.provider);
+    const structures = plugin?.managers?.structure?.hierarchy?.selection?.structures || [];
+    if (!provider) throw new Error(`Mol* preset provider is unavailable: ${option?.provider || option?.value || 'unknown'}.`);
+    if (!structures.length) throw new Error('No Mol* structure is available for the preset.');
+    await plugin.managers.structure.component.applyPreset(structures, provider);
+  }
+
+  function updateMolstarPresentationConfig(preset, appearance, legacyStyle) {
+    molstarPresetPreviewSceneRevision += 1;
+    activeConfig = {
+      ...(activeConfig || window.BuretteConfig || {}),
+      molstarPreset: preset,
+      molstarAppearance: appearance,
+      molstarStyle: legacyStyle
+    };
+    window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
+    if (activeMolstarPrepared?.molstarStyleOverride) {
+      activeMolstarPrepared = { ...activeMolstarPrepared, molstarStyleOverride: legacyStyle };
+    }
+    const toolbar = document.getElementById('buret-toolbar');
+    updateMolstarPresetControl(toolbar, preset);
+  }
+
+  async function requestMolstarAppearance(appearance) {
+    const value = normalizeMolstarAppearance(appearance);
+    const preset = configuredMolstarPreset(activeConfig || window.BuretteConfig || {});
+    const option = molstarPresetOption(preset);
+    updateMolstarPresentationConfig(preset, value, option.legacyStyle || value);
+    const viewer = activeViewer;
+    if (!viewer) {
+      setStatus('Mol* appearance can be changed after the viewer loads.', 'error');
+      return;
+    }
+    const serial = ++molstarStyleApplySerial;
+    setStatus(`[web] Applying Mol* ${value} appearance…`);
+    try {
+      await applyMolstarAppearance(viewer, value);
+      if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+      setStatus(`[web] Applied Mol* ${value} appearance`);
+      setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+    } catch (error) {
+      if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+      setStatus(`Mol* appearance switch failed.\n\n${error?.message || String(error)}`, 'error');
+    }
+  }
+
+  async function requestMolstarPreset(preset, { preserveCamera = false } = {}) {
+    const value = normalizeMolstarPreset(preset);
+    const controller = ensureMolstarPresetPreviewController();
+    if (controller) {
+      const id = preserveCamera ? `${value}:preserve-camera` : value;
+      return controller.requestApply({ id, preset: value, preserveCamera });
+    }
+    return applyMolstarPresetNow(value, { preserveCamera });
+  }
+
+  async function applyMolstarPresetNow(preset, { preserveCamera = false } = {}) {
+    const value = normalizeMolstarPreset(preset);
+    const option = molstarPresetOption(value);
+    const appearance = molstarPresetAppearance(option, activeConfig || window.BuretteConfig || {});
+    const legacyStyle = option.legacyStyle || appearance;
+    updateMolstarPresentationConfig(value, appearance, legacyStyle);
+    const viewer = activeViewer;
+    if (!viewer) {
+      setStatus('Mol* presets can be changed after the viewer loads.', 'error');
+      return;
+    }
+    const cameraSnapshot = preserveCamera ? captureMolstarCameraSnapshot(viewer) : null;
+    const transitionFrame = captureMolstarTransitionFrame();
+    let applied = false;
+    const serial = ++molstarStyleApplySerial;
+    setStatus(`[web] Applying Mol* ${option.label} preset…`);
+    try {
+      if (option.provider) await applyMolstarProviderPreset(viewer, option);
+      else await reloadMolstarStyle(viewer, legacyStyle, serial);
+      if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+      await applyMolstarAppearance(viewer, appearance);
+      if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+      if (cameraSnapshot) {
+        restoreMolstarCameraSnapshotNow(viewer, cameraSnapshot);
+        await waitForMolstarPresetPreviewDraw(viewer);
+        if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+      }
+      applied = true;
+      setStatus(`[web] Applied Mol* ${option.label} preset`);
+      setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+    } catch (error) {
+      if (serial !== molstarStyleApplySerial) return;
+      setStatus(`Mol* preset switch failed.\n\n${error?.message || String(error)}`, 'error');
+    } finally {
+      if (applied) fadeMolstarTransitionFrame(transitionFrame);
+      else removeMolstarTransitionFrame(transitionFrame);
+    }
+  }
+
+  async function applyConfiguredMolstarPreset(viewer, config) {
+    const value = configuredMolstarPreset(config);
+    const option = molstarPresetOption(value);
+    const explicitlyConfigured = config?.molstarPreset != null;
+    if (!option.provider || (!explicitlyConfigured && value === DEFAULT_MOLSTAR_PRESET)) return;
+    await applyMolstarProviderPreset(viewer, option);
+    await applyMolstarAppearance(viewer, molstarPresetAppearance(option, config));
   }
 
   // A structure that has not been focused yet still reports the default camera
@@ -4325,6 +5202,7 @@
     bindSaveModifiedStructureButton(toolbar);
     installMolstarEditUndoShortcuts();
     bindMolstarStyleControls(toolbar);
+    trackMolstarPresetPreviewState(viewer);
     bindAssemblySymmetryButton(toolbar);
     bindMolstarLassoButton(toolbar);
     bindMolstarLassoKeyboardButton(toolbar);
@@ -4356,6 +5234,7 @@
   }
 
   function setMolstarStructureDirty(dirty) {
+    molstarPresetPreviewSceneRevision += 1;
     molstarStructureDirty = dirty === true;
     updateSaveModifiedStructureButton();
   }
@@ -4472,15 +5351,163 @@
 
   function bindMolstarStyleControls(toolbar) {
     if (!toolbar || toolbar.dataset.molstarStyleBound === '1') return;
-    const select = toolbar.querySelector('[data-buret-molstar-style]');
-    populateMolstarStyleSelect(select);
-    if (select) {
-      select.value = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
-      select.addEventListener('change', () => requestMolstarStyle(select.value));
+    const trigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    populateMolstarPresetMenu(menu);
+    if (trigger && menu) {
+      updateMolstarPresetControl(toolbar, configuredMolstarPreset(activeConfig || window.BuretteConfig || {}));
+      trigger.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const pointerFocus = event.detail > 0;
+        if (menu.classList.contains('hidden')) showMolstarPresetMenu(trigger, { pointerFocus });
+        else hideMolstarPresetMenu({ restoreFocus: true, pointerFocus });
+      });
+      trigger.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowDown') return;
+        event.preventDefault();
+        showMolstarPresetMenu(trigger);
+      });
+      menu.addEventListener('pointerdown', event => {
+        const control = event.target?.closest?.('[role="menuitemradio"]');
+        if (!control || !menu.contains(control)) return;
+        window.BuretteMolstarPresetPreviewController?.retainPointerTarget?.(
+          event,
+          control,
+          cancelMolstarPresetPreviewClose
+        );
+      });
+      menu.addEventListener('click', event => {
+        const appearanceItem = event.target?.closest?.('[data-buret-molstar-appearance]');
+        if (appearanceItem && menu.contains(appearanceItem)) {
+          event.preventDefault();
+          event.stopPropagation();
+          hideMolstarPresetPreview();
+          const appearance = appearanceItem.dataset.buretMolstarAppearance;
+          hideMolstarPresetMenu({ restoreFocus: true, pointerFocus: event.detail > 0 });
+          void requestMolstarAppearance(appearance);
+          return;
+        }
+        const button = event.target?.closest?.('[data-buret-molstar-preset]');
+        if (!button || !menu.contains(button)) return;
+        event.preventDefault();
+        const preset = button.dataset.buretMolstarPreset;
+        hideMolstarPresetMenu({ restoreFocus: true, pointerFocus: event.detail > 0 });
+        void requestMolstarPreset(preset);
+      });
+      menu.addEventListener('pointerover', event => {
+        const item = event.target?.closest?.('[data-buret-molstar-preset]');
+        if (item && menu.contains(item)) scheduleMolstarPresetPreview(item);
+      });
+      menu.addEventListener('focusin', event => {
+        const control = event.target?.closest?.('[role="menuitemradio"]');
+        if (control && menu.contains(control)) {
+          setMolstarPresetMenuRovingItem(menu, control);
+        }
+        const item = event.target?.closest?.('[data-buret-molstar-preset]');
+        if (item && menu.contains(item)) {
+          scheduleMolstarPresetPreview(item);
+        }
+      });
+      menu.addEventListener('focusout', () => {
+        queueMicrotask(() => {
+          const { preview } = molstarPresetPreviewElements();
+          if (menu.contains(document.activeElement) || preview?.contains(document.activeElement)) return;
+          hideMolstarPresetMenu();
+        });
+      });
+      menu.addEventListener('pointerenter', cancelMolstarPresetPreviewClose);
+      menu.addEventListener('pointerleave', event => {
+        const { preview } = molstarPresetPreviewElements();
+        if (preview?.contains(event.relatedTarget)) return;
+        scheduleMolstarPresetPreviewClose();
+      });
+      const { preview } = molstarPresetPreviewElements();
+      preview?.addEventListener('pointerenter', cancelMolstarPresetPreviewClose);
+      preview?.addEventListener('pointerdown', event => {
+        window.BuretteMolstarPresetPreviewController?.retainPointerActivation?.(
+          event,
+          cancelMolstarPresetPreviewClose
+        );
+      });
+      preview?.addEventListener('pointerleave', event => {
+        if (menu.contains(event.relatedTarget)) return;
+        scheduleMolstarPresetPreviewClose();
+      });
+      const applyPreview = event => {
+        if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
+        const preset = preview?.dataset?.buretMolstarPreset;
+        if (!preset) return;
+        event.preventDefault();
+        event.stopPropagation();
+        cancelMolstarPresetPreviewClose();
+        preview.classList.add('applying');
+        preview.setAttribute('aria-busy', 'true');
+        const caption = preview.querySelector('[data-buret-molstar-preset-preview-caption]');
+        if (caption) caption.textContent = 'Applying…';
+        void requestMolstarPreset(preset, { preserveCamera: true });
+        hideMolstarPresetMenu({ restoreFocus: true, pointerFocus: event.type === 'click' && event.detail > 0 });
+      };
+      preview?.addEventListener('click', applyPreview);
+      preview?.addEventListener('keydown', applyPreview);
     }
     toolbar.dataset.molstarStyleBound = '1';
   }
 
+  document.addEventListener('pointerdown', event => {
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    const { preview } = molstarPresetPreviewElements();
+    if (!menu || menu.classList.contains('hidden')) return;
+    if (menu.contains(event.target) || preview?.contains(event.target) || event.target?.closest?.('[data-buret-molstar-preset-trigger]')) return;
+    hideMolstarPresetMenu();
+  });
+
+  function moveMolstarPresetPreviewFocus(event, menu) {
+    if (event.key !== 'Tab' || !menu) return false;
+    const { preview } = molstarPresetPreviewElements();
+    if (!preview || preview.classList.contains('hidden') || preview.classList.contains('viewport-constrained')) return false;
+    if (!event.shiftKey && menu.contains(document.activeElement)) {
+      event.preventDefault();
+      preview.focus();
+      return true;
+    }
+    if (event.shiftKey && preview.contains(document.activeElement)) {
+      event.preventDefault();
+      const current = menu.querySelector('[role="menuitemradio"][tabindex="0"]')
+        || menu.querySelector('[role="menuitemradio"][aria-checked="true"]');
+      current?.focus?.();
+      return true;
+    }
+    return false;
+  }
+
+  document.addEventListener('keydown', event => {
+    const menu = document.querySelector('[data-buret-molstar-preset-menu]');
+    if (!menu || menu.classList.contains('hidden')) return;
+    document.querySelectorAll('.buret-pointer-focus').forEach(item => item.classList.remove('buret-pointer-focus'));
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      hideMolstarPresetMenu({ restoreFocus: true });
+      return;
+    }
+    if (event.key === 'Tab') {
+      if (moveMolstarPresetPreviewFocus(event, menu)) return;
+      hideMolstarPresetMenu();
+      return;
+    }
+    const items = Array.from(menu.querySelectorAll('[role="menuitemradio"]'));
+    const currentIndex = items.indexOf(document.activeElement);
+    let nextIndex = -1;
+    if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;
+    if (event.key === 'ArrowUp') nextIndex = currentIndex < 0 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = items.length - 1;
+    if (nextIndex >= 0 && items[nextIndex]) {
+      event.preventDefault();
+      setMolstarPresetMenuRovingItem(menu, items[nextIndex]);
+      items[nextIndex].focus();
+    }
+  });
   function bindAssemblySymmetryButton(toolbar) {
     const button = toolbar?.querySelector('[data-buret-action="assembly-symmetry"]');
     if (!button || button.dataset.bound === '1') return;
@@ -4701,6 +5728,7 @@
   function setToolbarCollapsed(toolbar, collapsed, viewer, persist = true) {
     if (collapsed) {
       setXyzrenderPopoverVisibility(toolbar, false);
+      hideMolstarPresetMenu();
       hideGenerate3DMenu();
       closeViewportMenu();
     }
@@ -4851,6 +5879,16 @@
       updateFloatingLayoutOffsets();
       positionXyzrenderPopover(toolbar);
       positionGenerate3DMenu();
+      const presetMenu = document.querySelector('[data-buret-molstar-preset-menu]');
+      if (presetMenu && !presetMenu.classList.contains('hidden')) {
+        positionMolstarPresetMenu();
+        const presetItem = presetMenu.querySelector(`[data-buret-molstar-preset="${CSS.escape(molstarPresetPreviewPreset)}"]`);
+        const { preview } = molstarPresetPreviewElements();
+        if (presetItem && preview && !preview.classList.contains('hidden')) {
+          positionMolstarPresetPreview(presetItem);
+          scheduleMolstarPresetPreviewResize(presetItem);
+        }
+      }
     });
   }
 
@@ -5196,7 +6234,10 @@
       molstarViewportPanelOpen = panelOpen;
       molstarSelectionControlsOpen = selectionOpen;
       const suppressToolbar = panelOpen;
-      if (panelOpen) hideGenerate3DMenu();
+      if (panelOpen) {
+        hideGenerate3DMenu();
+        hideMolstarPresetMenu();
+      }
       document.body?.classList.toggle(MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS, panelOpen);
       document.body?.classList.toggle('buret-molstar-selection-controls-open', selectionOpen);
       const toolbar = document.getElementById('buret-toolbar');
@@ -6749,6 +7790,34 @@
     scheduleSceneTreeRender();
   }
 
+  // The representation editor can either change its current leaf or branch a new
+  // one from it. Mol*'s builder returns the new state selector, so the same editor
+  // can immediately retarget that exact copy without guessing from array order.
+  async function duplicateSceneTreeRepresentation(ref, typeOverride = '') {
+    const viewer = activeMolstarViewer();
+    const target = sceneTreeRepresentationTargets(viewer).get(ref);
+    const builder = viewer?.plugin?.builders?.structure?.representation;
+    const params = target?.representation?.cell?.transform?.params;
+    if (!target || !params?.type?.name || typeof builder?.addRepresentation !== 'function') return '';
+    try {
+      const nextType = String(typeOverride || params.type.name);
+      const keepTypeParams = nextType === params.type.name;
+      const created = await builder.addRepresentation(target.component?.cell || target.component, {
+        type: nextType,
+        typeParams: keepTypeParams ? { ...(params.type?.params || {}) } : {},
+        color: params.colorTheme?.name,
+        colorParams: { ...(params.colorTheme?.params || {}) },
+        size: params.sizeTheme?.name,
+        sizeParams: { ...(params.sizeTheme?.params || {}) }
+      });
+      scheduleSceneTreeRender();
+      return String(created?.ref || created?.cell?.transform?.ref || '');
+    } catch (error) {
+      debug('scene tree duplicate representation failed: ' + (error && error.message || String(error)));
+      return '';
+    }
+  }
+
   // Per-representation edits all ride the same pivot update. Returning a fresh params
   // object from the updater lets one field change while Mol* keeps the rest of the
   // transform, which is why colour and opacity can be set without clobbering each
@@ -7079,14 +8148,16 @@
   // The leaf menu edits one representation on its own: what it is, how solid it is,
   // and how it is coloured. Type and opacity sit together because they describe the
   // same drawing; colour keeps the structure row's theme picker and swatches.
-  function sceneTreeRepresentationMenu(menu, viewer, node, target) {
+  function sceneTreeRepresentationMenu(menu, viewer, node, target, options = {}) {
     const params = target.representation?.cell?.transform?.params;
     const currentType = String(params?.type?.name || '');
     const alpha = Number.isFinite(params?.type?.params?.alpha) ? params.type.params.alpha : 1;
 
-    const types = sceneTreeRepresentationTypes(viewer, [target.component]);
-    sceneTreeMenuSection(menu, 'Representation');
-    if (types.length) sceneTreeMenuSelect(menu, 'Type', 'representation-type', types, currentType);
+    if (options.includeHeading !== false) sceneTreeMenuSection(menu, 'Representation');
+    if (options.includeType !== false) {
+      const types = sceneTreeRepresentationTypes(viewer, [target.component]);
+      if (types.length) sceneTreeMenuSelect(menu, 'Type', 'representation-type', types, currentType);
+    }
     sceneTreeSurfaceFillRow(menu, viewer, target);
     sceneTreeMenuSlider(menu, 'Opacity', 'opacity', Math.round(alpha * 100));
 
@@ -7295,7 +8366,9 @@
   }
 
   function onSceneTreeClick(event) {
-    const menu = document.getElementById('buret-scene-tree-menu');
+    const menu = event.target.closest?.(
+      '#buret-scene-tree-menu, .buret-molecule-context-submenu[data-buret-representation-menu]'
+    ) || document.getElementById('buret-scene-tree-menu');
     const trigger = event.target.closest?.('[data-scene-tree-picker]');
     if (trigger && menu?.contains(trigger)) {
       const list = menu.querySelector(`[data-scene-tree-picker-list="${trigger.dataset.sceneTreePicker}"]`);
@@ -7628,7 +8701,6 @@
     'built-in.animate-camera-spin',
     'built-in.animate-camera-rock'
   ]);
-  const VIEWPORT_WIGGLE_TAG = 'wiggle-controls';
   const VIEWPORT_ICON = {
     camera: ['M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z', 'M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'],
     layFlat: ['M3 8.5 12 4l9 4.5-9 4.5Z', 'm3 15 9 4.5L21 15'],
@@ -7638,8 +8710,25 @@
     undo: ['M4 9h11a5 5 0 0 1 0 10h-7', 'm8 5-4 4 4 4'],
     redo: ['M20 9H9a5 5 0 0 0 0 10h7', 'm-8-5 4 4-4 4'],
     play: ['m8 5 11 7-11 7Z'],
-    stop: ['M6.5 6.5h11v11h-11Z']
+    stop: ['M6.5 6.5h11v11h-11Z'],
+    download: ['M12 3v12', 'm7 10 5 5 5-5', 'M5 21h14'],
+    clipboard: ['M9 4h6v3H9Z', 'M9 5.5H7A1.5 1.5 0 0 0 5.5 7v12A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V7A1.5 1.5 0 0 0 17 5.5h-2'],
+    wiggle: ['M3 12c2-4 4 4 6 0s4-4 6 0 4 4 6 0']
   };
+  // Mol* exposes these through plugin.helpers.viewportScreenshot; the labels are
+  // its own, minus the Custom size that would need a width/height form.
+  const VIEWPORT_SCREENSHOT_RESOLUTIONS = [
+    ['viewport', 'Viewport'],
+    ['hd', 'HD (1280 × 720)'],
+    ['full-hd', 'Full HD (1920 × 1080)'],
+    ['ultra-hd', 'Ultra HD (3840 × 2160)'],
+    ['8k-ultra-hd', '8K Ultra HD (7680 × 4320)']
+  ];
+  const VIEWPORT_SCREENSHOT_FORMATS = [
+    ['png', 'PNG'],
+    ['jpeg', 'JPEG'],
+    ['webp', 'WebP']
+  ];
   let selectionQueryModifier = 'set';
   let viewportControlsDisposers = [];
 
@@ -7753,13 +8842,73 @@
     viewportMenuItem(menu, 'Reset axes', 'camera-axes', { icon: SCENE_TREE_ICON.restore });
   }
 
+  function viewportScreenshotHelper() {
+    return viewportPlugin()?.helpers?.viewportScreenshot || null;
+  }
+
+  // A radio row inside one of the screenshot menu's folded groups. The group keeps
+  // the chosen entry in its summary, so the settings read at a glance while folded.
+  function viewportScreenshotChoice(group, action, value, label, current) {
+    const item = viewportMenuItem(group, label, action, { parent: group, data: { viewportValue: value } });
+    item.setAttribute('role', 'menuitemradio');
+    item.setAttribute('aria-checked', value === current ? 'true' : 'false');
+    return item;
+  }
+
+  function viewportScreenshotGroup(menu, title, action, entries, current) {
+    const disclosure = document.createElement('details');
+    disclosure.className = 'buret-tree-menu-actions buret-screenshot-group';
+    disclosure.dataset.buretScreenshotGroup = action;
+    const summary = document.createElement('summary');
+    const name = document.createElement('span');
+    name.className = 'buret-tree-menu-label';
+    name.textContent = title;
+    const value = document.createElement('span');
+    value.className = 'buret-screenshot-group-value';
+    value.textContent = entries.find(([entry]) => entry === current)?.[1] || '';
+    summary.append(name, value);
+    disclosure.appendChild(summary);
+    for (const [entry, label] of entries) viewportScreenshotChoice(disclosure, action, entry, label, current);
+    menu.appendChild(disclosure);
+  }
+
+  function viewportScreenshotToggle(menu, label, action, checked) {
+    const item = viewportMenuItem(menu, label, action, { icon: checked ? SCENE_TREE_ICON.eye : null });
+    item.setAttribute('role', 'menuitemcheckbox');
+    item.setAttribute('aria-checked', checked ? 'true' : 'false');
+    return item;
+  }
+
+  // The rail button used to be a one-shot download on Mol*'s defaults. Everything
+  // here is that helper's own parameter set - resolution, format, transparency,
+  // axes and the auto crop - reached without opening Mol*'s side panel.
+  function viewportScreenshotMenu(menu) {
+    const helper = viewportScreenshotHelper();
+    if (!helper) return;
+    const values = helper.values || {};
+    viewportMenuItem(menu, 'Save image', 'screenshot-save', { icon: VIEWPORT_ICON.download });
+    // Clipboard writes need a secure context; the item is dropped rather than
+    // offered as a row that fails only once it is pressed.
+    if (window.isSecureContext && navigator.clipboard) {
+      viewportMenuItem(menu, 'Copy to clipboard', 'screenshot-copy', { icon: VIEWPORT_ICON.clipboard });
+    }
+    sceneTreeMenuSection(menu, 'Image');
+    viewportScreenshotGroup(menu, 'Resolution', 'screenshot-resolution',
+      VIEWPORT_SCREENSHOT_RESOLUTIONS, values.resolution?.name || 'viewport');
+    viewportScreenshotGroup(menu, 'Format', 'screenshot-format',
+      VIEWPORT_SCREENSHOT_FORMATS, values.format?.name || 'png');
+    sceneTreeMenuSection(menu, 'Options');
+    viewportScreenshotToggle(menu, 'Transparent background', 'screenshot-transparent', values.transparent === true);
+    viewportScreenshotToggle(menu, 'Show axes', 'screenshot-axes', values.axes?.name === 'on');
+    viewportScreenshotToggle(menu, 'Crop to content', 'screenshot-crop', helper.cropParams?.auto === true);
+  }
+
   // Mol*'s own animation button offered both a trackball that keeps turning and
   // the plugin's timed animations. The rail keeps both, split by how they end:
   // motion runs until it is switched off, the rest play once and stop themselves.
   function viewportAnimateMenu(menu) {
     viewportMotionControls(menu);
     const plugin = viewportPlugin();
-    viewportWiggleControls(menu, plugin);
     const manager = plugin?.managers?.animation;
     const playing = manager?.state?.animationState === 'playing'
       || activeTrajectoryPlaybackControl?.isPlaying() === true;
@@ -7769,211 +8918,348 @@
       .filter(entry => !VIEWPORT_MOTION_ANIMATIONS.has(entry.animation?.name))
       .map(entry => ({ ...entry, applicability: viewportAnimationApplicability(entry.animation, plugin) }))
       .filter(entry => entry.animation?.display?.name)
-      // A greyed row earns its place by saying why it is greyed. One that cannot
-      // is just an entry you will never be able to use.
-      .filter(entry => entry.applicability.canApply || entry.applicability.reason);
-    if (!animations.length) return;
+      // Every one of these needs something the scene may not have - a trajectory,
+      // saved snapshots, an assembly. On a plain structure that left the whole
+      // block greyed out, which reads as a broken menu rather than an unmet
+      // precondition. They come back by themselves once the scene can run them.
+      .filter(entry => entry.applicability.canApply);
     // Stop leads, because the thing you most need from this menu while something
     // is moving is the way to make it stop.
     if (playing) {
       sceneTreeMenuSection(menu, 'Running');
       viewportMenuItem(menu, 'Stop', 'animation-stop', { icon: VIEWPORT_ICON.stop });
     }
+    viewportWiggleControls(menu);
+    if (!animations.length) return;
     sceneTreeMenuSection(menu, 'Animations');
     for (const entry of animations) {
       viewportMenuItem(menu, entry.animation.display.name, 'animation-play', {
         icon: VIEWPORT_ICON.play,
         data: { animationIndex: String(entry.index) },
-        disabled: !entry.applicability.canApply,
-        // Mol* explains why an animation does not apply; a greyed row that keeps
-        // its reason to itself is the thing this rail set out to replace.
-        title: entry.applicability.reason || entry.animation.display.description
+        title: entry.animation.display.description
       });
     }
   }
 
-  function viewportWiggleTransform() {
-    return window.molstar?.lib?.plugin?.StateTransforms?.Representation
-      ?.WiggleStructureRepresentation3DFromBundle || null;
-  }
+  const VIEWPORT_WIGGLE_TAG = 'wiggle-controls';
+  const VIEWPORT_WIGGLE_TRANSFORM = 'wiggle-structure-representation-3d-from-bundle';
 
-  function viewportWiggleCells(plugin) {
-    const transform = viewportWiggleTransform();
-    const cells = [];
-    if (!transform) return cells;
-    plugin?.state?.data?.cells?.forEach?.(cell => {
-      const tags = cell?.transform?.tags;
-      const tagged = Array.isArray(tags)
+  // Mol*'s Procedural Animation panel, brought onto the rail and shaped like the
+  // Motion switch above it: pick a kind, then tune it in place. Wiggle jitters the
+  // vertices of a representation so a still structure reads as a molecule in
+  // solution rather than a model. Even moves every atom the same; B-factor moves
+  // each one by its own uncertainty.
+  const VIEWPORT_WIGGLES = [
+    ['off', 'Off'],
+    ['even', 'Even'],
+    ['uncertainty', 'B-factor']
+  ];
+  // Mol*'s own bounds, from getAnimationParam. Tumble's two shaping controls only
+  // matter once it has an amplitude to shape, so they appear with one.
+  const VIEWPORT_WIGGLE_SLIDERS = [
+    { name: 'wiggleAmplitude', label: 'Amplitude', min: 0, max: 5, step: 0.01, digits: 2, unit: ' Å' },
+    { name: 'wiggleSpeed', label: 'Speed', min: 0, max: 10, step: 0.1, digits: 1 },
+    { name: 'wiggleFrequency', label: 'Noise scale', min: 0.01, max: 2, step: 0.01, digits: 2 },
+    { name: 'tumbleAmplitude', label: 'Tumble', min: 0, max: 10, step: 0.1, digits: 1, unit: ' Å' },
+    { name: 'tumbleSpeed', label: 'Tumble speed', min: 0, max: 10, step: 0.1, digits: 1, needs: 'tumbleAmplitude' },
+    { name: 'tumbleFrequency', label: 'Tumble noise', min: 0, max: 2, step: 0.01, digits: 2, needs: 'tumbleAmplitude' }
+  ];
+  const VIEWPORT_WIGGLE_MODES = [
+    ['position', 'Correlated', 'Nearby atoms move together, the way a folded chain does'],
+    ['group', 'Independent', 'Every group takes its own noise, so the scene shimmers']
+  ];
+
+  // Only the layers these controls created. A scene can arrive with wiggle of its
+  // own - authored in a session file or applied by another Mol* action - and
+  // switching this menu to Off must not delete someone else's work, so the tag
+  // this code stamps is what identifies its own.
+  function viewportWiggleLayerRefs() {
+    const state = viewportPlugin()?.state?.data;
+    if (!state) return [];
+    const refs = [];
+    for (const [ref, cell] of state.cells) {
+      if (cell?.transform?.transformer?.definition?.name !== VIEWPORT_WIGGLE_TRANSFORM) continue;
+      const tags = cell.transform.tags;
+      const owned = Array.isArray(tags)
         ? tags.includes(VIEWPORT_WIGGLE_TAG)
         : tags?.has?.(VIEWPORT_WIGGLE_TAG) === true;
-      const transformer = cell?.transform?.transformer;
-      if (tagged && (transformer === transform || transformer?.id === transform.id)) cells.push(cell);
-    });
-    return cells;
+      if (owned) refs.push(ref);
+    }
+    return refs;
   }
 
-  function viewportWiggleMode(plugin = viewportPlugin()) {
-    const amplitude = Number(plugin?.managers?.structure?.component?.state?.options?.animation?.wiggleAmplitude);
-    if (amplitude > 0) return 'dynamics';
-    return viewportWiggleCells(plugin).length ? 'uncertainty' : 'clear';
+  function viewportWiggleState() {
+    const animation = viewportPlugin()?.managers?.structure?.component?.state?.options?.animation;
+    if (!animation) return null;
+    // Per-group layers are what makes it a B-factor wiggle; the amplitudes alone
+    // cannot tell the two kinds apart.
+    if (viewportWiggleLayerRefs().length) return { name: 'uncertainty', animation };
+    const moving = Number(animation.wiggleAmplitude) > 0 || Number(animation.tumbleAmplitude) > 0;
+    return { name: moving ? 'even' : 'off', animation };
   }
 
-  function viewportWiggleControls(menu, plugin) {
-    sceneTreeMenuSection(menu, 'Apply Wiggle');
+  function viewportWiggleSliderRow(menu, spec, state) {
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
+    row.dataset.buretViewportWiggleSlider = spec.name;
+    const caption = document.createElement('span');
+    caption.textContent = spec.label;
+    const control = document.createElement('input');
+    control.type = 'range';
+    control.className = 'buret-tree-menu-range';
+    control.dataset.buretViewportSlider = `wiggle-${spec.name}`;
+    control.min = String(spec.min);
+    control.max = String(spec.max);
+    control.step = String(spec.step);
+    const readout = document.createElement('span');
+    readout.className = 'buret-tree-menu-slider-value';
+    row.append(caption, control, readout);
+    menu.appendChild(row);
+    updateViewportWiggleSlider(row, spec, state);
+    return row;
+  }
+
+  function updateViewportWiggleSlider(row, spec, state) {
+    const value = Number(state?.animation?.[spec.name]) || 0;
+    row.hidden = state?.name === 'off' || (spec.needs && !(Number(state?.animation?.[spec.needs]) > 0));
+    row.querySelector('input').value = String(value);
+    row.querySelector('.buret-tree-menu-slider-value').textContent = value.toFixed(spec.digits) + (spec.unit || '');
+  }
+
+  function viewportWiggleControls(menu) {
+    const state = viewportWiggleState();
+    if (!state) return;
+    sceneTreeMenuSection(menu, 'Wiggle');
     const segment = document.createElement('div');
     segment.className = 'buret-viewport-segment';
     segment.setAttribute('role', 'group');
-    segment.setAttribute('aria-label', 'Apply wiggle');
-    const active = viewportWiggleMode(plugin);
-    const actions = [
-      ['dynamics', 'Dynamics', 'Apply procedural molecular motion'],
-      ['uncertainty', 'Uncertainty', 'Scale motion by B-factor or RMSF uncertainty'],
-      ['clear', 'Clear', 'Remove procedural molecular motion']
-    ];
-    for (const [name, label, title] of actions) {
+    segment.setAttribute('aria-label', 'Structure wiggle');
+    for (const [name, label] of VIEWPORT_WIGGLES) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'buret-viewport-segment-button';
-      button.dataset.buretViewportMenu = 'wiggle';
+      button.dataset.buretViewportMenu = 'wiggle-kind';
       button.dataset.wiggle = name;
-      button.setAttribute('aria-pressed', name === active ? 'true' : 'false');
-      button.title = title;
+      button.setAttribute('aria-pressed', name === state.name ? 'true' : 'false');
       button.textContent = label;
       segment.appendChild(button);
     }
     menu.appendChild(segment);
+    for (const spec of VIEWPORT_WIGGLE_SLIDERS) viewportWiggleSliderRow(menu, spec, state);
+
+    const modes = document.createElement('div');
+    modes.className = 'buret-viewport-segment';
+    modes.dataset.buretViewportWiggleModes = '1';
+    modes.setAttribute('role', 'group');
+    modes.setAttribute('aria-label', 'Wiggle noise');
+    modes.hidden = state.name === 'off';
+    for (const [name, label, description] of VIEWPORT_WIGGLE_MODES) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-viewport-segment-button';
+      button.dataset.buretViewportMenu = 'wiggle-mode';
+      button.dataset.wiggleMode = name;
+      button.title = description;
+      button.setAttribute('aria-pressed', name === state.animation.wiggleMode ? 'true' : 'false');
+      button.textContent = label;
+      modes.appendChild(button);
+    }
+    menu.appendChild(modes);
   }
 
-  async function clearViewportWiggleLayers(plugin) {
-    const cells = viewportWiggleCells(plugin);
-    if (!cells.length) return;
-    const update = plugin.state.data.build();
-    for (const cell of cells) update.delete(cell.transform.ref);
+  // The rows read the scene rather than their own last write, so a preset that
+  // moves three values at once lands on every slider in the open menu.
+  function refreshViewportWiggleControls() {
+    const menu = document.getElementById('buret-viewport-menu');
+    const state = viewportWiggleState();
+    if (!menu || !state) return;
+    for (const button of menu.querySelectorAll('[data-buret-viewport-menu="wiggle-kind"]')) {
+      button.setAttribute('aria-pressed', button.dataset.wiggle === state.name ? 'true' : 'false');
+    }
+    for (const spec of VIEWPORT_WIGGLE_SLIDERS) {
+      const row = menu.querySelector(`[data-buret-viewport-wiggle-slider="${spec.name}"]`);
+      if (row) updateViewportWiggleSlider(row, spec, state);
+    }
+    const modes = menu.querySelector('[data-buret-viewport-wiggle-modes]');
+    if (modes) {
+      modes.hidden = state.name === 'off';
+      for (const button of modes.children) {
+        button.setAttribute('aria-pressed', button.dataset.wiggleMode === state.animation.wiggleMode ? 'true' : 'false');
+      }
+    }
+    positionOpenViewportMenu();
+  }
+
+  function viewportWiggleComponents() {
+    const structures = viewportPlugin()?.managers?.structure?.hierarchy?.selection?.structures || [];
+    return structures.flatMap(structure => structure.components || []);
+  }
+
+  async function setViewportWiggleOptions(animation) {
+    const manager = viewportPlugin()?.managers?.structure?.component;
+    const options = manager?.state?.options;
+    if (!manager || !options) return;
+    await manager.setOptions({ ...options, animation: { ...options.animation, ...animation } });
+  }
+
+  async function clearViewportWiggleLayers() {
+    const state = viewportPlugin()?.state?.data;
+    const refs = state ? viewportWiggleLayerRefs() : [];
+    if (!refs.length) return 0;
+    const update = state.build();
+    for (const ref of refs) update.delete(ref);
     await update.commit({ doNotUpdateCurrent: true });
+    return refs.length;
   }
 
-  function viewportUncertaintyValue(unit, element, Unit) {
-    if (Unit.isAtomic(unit)) return unit.model.atomicConformation.B_iso_or_equiv.value(element);
-    if (Unit.isSpheres(unit)) return unit.model.coarseConformation.spheres.rmsf[element];
+  function viewportUncertaintyValue(unit, element) {
+    const Unit = window.molstar?.lib?.structure?.Unit;
+    if (Unit?.isAtomic?.(unit)) return unit.model.atomicConformation.B_iso_or_equiv.value(element);
+    if (Unit?.isSpheres?.(unit)) return unit.model.coarseConformation.spheres.rmsf[element];
     return 0;
   }
 
-  function viewportUncertaintyLayers(structure, StructureElement, Unit) {
-    const root = structure.root;
+  // Mol* carries per-group wiggle in a Uint8 texture, so the normalised values are
+  // binned to 256 levels and each bin becomes one layer. Written out here rather
+  // than called: the library keeps setStructureWiggleFromUncertainty internal, and
+  // the viewer bundle we vendor exports no way to reach it.
+  function viewportUncertaintyWiggleLayers(root, StructureElement) {
     let min = Infinity;
     let max = -Infinity;
     for (const unit of root.units) {
-      for (const element of unit.elements) {
-        const value = viewportUncertaintyValue(unit, element, Unit);
+      for (let i = 0, il = unit.elements.length; i < il; i++) {
+        const value = viewportUncertaintyValue(unit, unit.elements[i]);
         if (value < min) min = value;
         if (value > max) max = value;
       }
     }
-    const range = max - min;
-    if (!Number.isFinite(range) || range <= 0) return [];
-
+    const range = Number.isFinite(min) && Number.isFinite(max) ? max - min : 0;
+    if (range <= 0) return [];
     const buckets = new Map();
     for (const unit of root.units) {
-      const unitBuckets = new Map();
-      for (let index = 0; index < unit.elements.length; index += 1) {
-        const value = viewportUncertaintyValue(unit, unit.elements[index], Unit);
-        const bucket = Math.min(255, Math.round(((value - min) / range) * 255));
-        if (!unitBuckets.has(bucket)) unitBuckets.set(bucket, []);
-        unitBuckets.get(bucket).push(index);
+      const perBucket = new Map();
+      for (let i = 0, il = unit.elements.length; i < il; i++) {
+        const normalized = (viewportUncertaintyValue(unit, unit.elements[i]) - min) / range;
+        const bucket = Math.min(255, Math.round(normalized * 255));
+        if (!perBucket.has(bucket)) perBucket.set(bucket, []);
+        perBucket.get(bucket).push(i);
       }
-      for (const [bucket, indices] of unitBuckets) {
+      for (const [bucket, indices] of perBucket) {
         if (!buckets.has(bucket)) buckets.set(bucket, []);
-        buckets.get(bucket).push({ unit, indices });
+        // Pushed in ascending order, which is what a sorted-array OrderedSet is.
+        buckets.get(bucket).push({ unit, indices: new Int32Array(indices) });
       }
     }
-
     const layers = [];
-    for (const [bucket, unitIndices] of buckets) {
-      const elements = unitIndices.map(({ unit, indices }) => ({
-        unit,
-        indices: new Int32Array(indices)
-      }));
-      let loci = StructureElement.Loci(root, elements);
-      loci = StructureElement.Loci.remap(loci, structure);
+    for (const [bucket, elements] of buckets) {
+      const loci = StructureElement.Loci(root, elements);
       if (StructureElement.Loci.isEmpty(loci)) continue;
-      loci = StructureElement.Loci.remap(loci, root);
-      layers.push({
-        bundle: StructureElement.Bundle.fromLoci(loci),
-        value: bucket / 255
-      });
+      layers.push({ bundle: StructureElement.Bundle.fromLoci(loci), value: bucket / 255 });
     }
     return layers;
   }
 
-  async function applyViewportUncertaintyWiggle(plugin) {
-    const transform = viewportWiggleTransform();
-    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
-    const Unit = window.molstar?.lib?.structure?.Unit;
-    if (!transform || !StructureElement || !Unit) throw new Error('Mol* wiggle helpers are unavailable');
-
-    const components = plugin.managers.structure.hierarchy.selection.structures
-      .flatMap(structure => structure.components || []);
-    const update = plugin.state.data.build();
-    const layerCache = new Map();
+  async function applyViewportWiggleFromUncertainty() {
+    const state = viewportPlugin()?.state?.data;
+    const lib = window.molstar?.lib;
+    const StructureElement = lib?.structure?.StructureElement;
+    const transformer = lib?.plugin?.StateTransforms?.Representation?.WiggleStructureRepresentation3DFromBundle;
+    if (!state || !StructureElement || !transformer) return 0;
+    const update = state.build();
+    // Pressing B-factor twice must not stack a second layer set under every
+    // representation: an existing one of ours is updated in place.
+    const existing = new Map();
+    for (const ref of viewportWiggleLayerRefs()) {
+      const cell = state.cells.get(ref);
+      const parent = cell?.transform?.parent;
+      if (parent) existing.set(parent, ref);
+    }
     let applied = 0;
-    for (const component of components) {
+    for (const component of viewportWiggleComponents()) {
       for (const representation of component.representations || []) {
-        const structure = representation.cell?.obj?.data?.sourceData;
-        if (!structure) continue;
-        let layers = layerCache.get(structure);
-        if (!layers) {
-          layers = viewportUncertaintyLayers(structure, StructureElement, Unit);
-          layerCache.set(structure, layers);
-        }
+        const root = representation.cell?.obj?.data?.sourceData?.root;
+        if (!root) continue;
+        const layers = viewportUncertaintyWiggleLayers(root, StructureElement);
         if (!layers.length) continue;
-        update.to(representation.cell.transform.ref).apply(
-          transform,
-          { kind: 'element-loci', layers },
-          { tags: VIEWPORT_WIGGLE_TAG }
-        );
+        const ref = representation.cell.transform.ref;
+        const current = existing.get(ref);
+        if (current) update.to(current).update({ layers });
+        else update.to(ref).apply(transformer, { layers }, { tags: VIEWPORT_WIGGLE_TAG });
         applied += 1;
       }
     }
-    if (applied) await update.commit({ doNotUpdateCurrent: true });
+    if (!applied) return 0;
+    await update.commit({ doNotUpdateCurrent: true });
     return applied;
   }
 
-  async function setViewportWiggle(mode) {
-    const plugin = viewportPlugin();
-    const manager = plugin?.managers?.structure?.component;
-    if (!plugin || !manager) return false;
-    const options = manager.state.options;
-    const animation = mode === 'dynamics'
-      ? { ...options.animation, wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0.2 }
-      : { ...options.animation, wiggleAmplitude: 0, tumbleAmplitude: 0 };
-    await manager.setOptions({ ...options, animation });
-    await clearViewportWiggleLayers(plugin);
-    if (mode === 'uncertainty') {
-      const applied = await applyViewportUncertaintyWiggle(plugin);
-      if (!applied) {
-        setStatus('[web] This structure has no varying B-factor or RMSF uncertainty data.', 'info', {
-          visible: true, timeoutMs: 3500
-        });
-        updateViewportAnimateState();
-        return false;
-      }
+  // Wiggle is judged by watching it, so every one of these keeps the menu up.
+  function runViewportWiggleAction(action, control) {
+    const fail = error => setStatus(`[web] Wiggle failed. ${error?.message || error}`, 'error');
+    const done = message => {
+      refreshViewportWiggleControls();
+      if (message) setStatus(message);
+    };
+    if (action === 'mode') {
+      setViewportWiggleOptions({ wiggleMode: control.dataset.wiggleMode })
+        .then(() => done()).catch(fail);
+      return true;
     }
-    updateViewportAnimateState();
+    const kind = control.dataset.wiggle;
+    if (kind === 'even') {
+      clearViewportWiggleLayers()
+        .then(() => setViewportWiggleOptions({ wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0.2 }))
+        .then(() => done('[web] Wiggling every atom evenly.'))
+        .catch(fail);
+    } else if (kind === 'uncertainty') {
+      // The per-group layers carry the amplitude themselves, so the uniform one is
+      // all but zeroed or the two would stack. Not zeroed, which is what Mol*'s own
+      // preset does: the render loop only runs while some amplitude is above zero,
+      // and with a flat zero the layers are built, resolved and then never drawn -
+      // measured, a scene that does not move a pixel. This baseline is a rounding
+      // error next to per-group values that reach a full Ångström.
+      setViewportWiggleOptions({ wiggleAmplitude: 0.01, tumbleAmplitude: 0 })
+        .then(() => applyViewportWiggleFromUncertainty())
+        .then(async applied => {
+          // Nothing to weight by means nothing should be moving: the baseline
+          // amplitude set a moment ago would otherwise leave the whole structure
+          // shivering while the status line says there was nothing to do.
+          if (!applied) await setViewportWiggleOptions({ wiggleAmplitude: 0, tumbleAmplitude: 0 });
+          done(applied
+            ? `[web] Wiggling ${applied} representation${applied === 1 ? '' : 's'} by B-factor.`
+            : '[web] This structure has no B-factor or RMSF spread to wiggle by.');
+        })
+        .catch(fail);
+    } else {
+      setViewportWiggleOptions({ wiggleAmplitude: 0, tumbleAmplitude: 0 })
+        .then(() => clearViewportWiggleLayers())
+        .then(() => done('[web] Stopped wiggling.'))
+        .catch(fail);
+    }
     return true;
   }
 
-  function runViewportWiggle(mode, control) {
-    const buttons = Array.from(control.parentElement?.querySelectorAll('[data-wiggle]') || []);
-    for (const button of buttons) button.disabled = true;
-    Promise.resolve(setViewportWiggle(mode))
-      .then(applied => {
-        const active = applied ? mode : viewportWiggleMode();
-        for (const button of buttons) button.setAttribute('aria-pressed', button.dataset.wiggle === active ? 'true' : 'false');
-      })
-      .catch(error => setStatus(`[web] Applying wiggle failed. ${error?.message || error}`, 'error'))
-      .finally(() => {
-        for (const button of buttons) button.disabled = false;
-      });
+  // setOptions rebuilds every representation's animation state, which a dragged
+  // slider would ask for faster than it can finish. The newest value waits for the
+  // running write and the ones in between are dropped - the drag is only ever
+  // judged by where it ends up.
+  let viewportWiggleWriteInFlight = false;
+  let viewportWigglePendingWrite = null;
+  async function streamViewportWiggleOption(name, value) {
+    viewportWigglePendingWrite = { ...viewportWigglePendingWrite, [name]: value };
+    if (viewportWiggleWriteInFlight) return;
+    viewportWiggleWriteInFlight = true;
+    try {
+      while (viewportWigglePendingWrite) {
+        const next = viewportWigglePendingWrite;
+        viewportWigglePendingWrite = null;
+        await setViewportWiggleOptions(next);
+      }
+    } catch (error) {
+      debug('wiggle option failed: ' + (error && error.message || String(error)));
+    } finally {
+      viewportWiggleWriteInFlight = false;
+    }
   }
 
   // play() with no params leaves each animation on its own defaults, and Mol*
@@ -8060,7 +9346,7 @@
     const playing = plugin?.managers?.animation?.state?.animationState === 'playing'
       || activeTrajectoryPlaybackControl?.isPlaying() === true;
     const motion = viewportMotionState().name;
-    const state = playing ? 'playing' : (motion !== 'off' ? motion : (viewportWiggleMode(plugin) === 'clear' ? 'off' : 'wiggle'));
+    const state = playing ? 'playing' : (motion !== 'off' ? motion : (viewportWiggleState()?.name === 'off' ? 'off' : 'wiggle'));
     document.querySelector('[data-buret-viewport-action="animate"]')
       ?.setAttribute('data-motion', state);
   }
@@ -8273,6 +9559,64 @@
       .catch(error => setStatus(`[web] Cutting the selection out failed. ${error?.message || error}`, 'error'));
   }
 
+  // Picking a branch of one of Mol*'s mapped params means supplying that branch's
+  // own defaults. An empty object looks harmless because most branches take no
+  // sub-params, but the ones that do - axes on, JPEG and WebP quality - then run
+  // their maths on undefined: axes turns the capture into a non-invertible matrix
+  // and a typed array of length -Infinity rather than an image.
+  function viewportMappedDefaults(helper, param, name) {
+    return helper.params?.[param]?.map?.(name)?.defaultValue || {};
+  }
+
+  // Returns true to keep the menu open: every setting here is chosen to be seen in
+  // the next capture, and a menu that closed on each toggle would have to be
+  // reopened three times to set up one image. Only the two captures dismiss it.
+  function runViewportScreenshotAction(action, control) {
+    const helper = viewportScreenshotHelper();
+    if (!helper) return false;
+    if (action === 'save') {
+      Promise.resolve(helper.download())
+        .then(() => setStatus('[web] Screenshot saved.'))
+        .catch(error => setStatus(`[web] Screenshot failed. ${error?.message || error}`, 'error'));
+      return false;
+    }
+    if (action === 'copy') {
+      Promise.resolve(helper.copyToClipboard())
+        .then(() => setStatus('[web] Screenshot copied to the clipboard.'))
+        .catch(error => setStatus(`[web] Copy failed. ${error?.message || error}`, 'error'));
+      return false;
+    }
+    const values = helper.values;
+    if (action === 'resolution' || action === 'format') {
+      const name = control.dataset.viewportValue;
+      helper.behaviors.values.next({ ...values, [action]: { name, params: viewportMappedDefaults(helper, action, name) } });
+      const group = control.closest('[data-buret-screenshot-group]');
+      for (const item of group?.querySelectorAll('[role="menuitemradio"]') || []) {
+        item.setAttribute('aria-checked', item === control ? 'true' : 'false');
+      }
+      const summaryValue = group?.querySelector('.buret-screenshot-group-value');
+      if (summaryValue) summaryValue.textContent = control.textContent.trim();
+      return true;
+    }
+    if (action === 'transparent' || action === 'axes') {
+      const checked = control.getAttribute('aria-checked') !== 'true';
+      const axes = checked ? 'on' : 'off';
+      helper.behaviors.values.next(action === 'transparent'
+        ? { ...values, transparent: checked }
+        : { ...values, axes: { name: axes, params: viewportMappedDefaults(helper, 'axes', axes) } });
+      control.setAttribute('aria-checked', checked ? 'true' : 'false');
+      return true;
+    }
+    if (action === 'crop') {
+      const auto = control.getAttribute('aria-checked') !== 'true';
+      helper.behaviors.cropParams.next({ ...helper.cropParams, auto });
+      if (!auto) helper.resetCrop();
+      control.setAttribute('aria-checked', auto ? 'true' : 'false');
+      return true;
+    }
+    return false;
+  }
+
   function runViewportMenuAction(action, control) {
     const plugin = viewportPlugin();
     if (!plugin) return false;
@@ -8287,6 +9631,10 @@
       updateViewportMotionSpeed(viewportMotionState());
       // Motion is judged by watching it, so the menu stays up to be adjusted.
       return true;
+    } else if (action.startsWith('screenshot-')) {
+      return runViewportScreenshotAction(action.slice('screenshot-'.length), control);
+    } else if (action === 'wiggle-kind' || action === 'wiggle-mode') {
+      return runViewportWiggleAction(action.slice('wiggle-'.length), control);
     } else if (action === 'animation-play') {
       playViewportAnimation(Number(control.dataset.animationIndex));
     } else if (action === 'animation-stop') {
@@ -8294,9 +9642,6 @@
       plugin.managers.animation.stop();
       activeTrajectoryPlaybackControl?.stop();
       updateViewportAnimateState();
-    } else if (action === 'wiggle') {
-      runViewportWiggle(control.dataset.wiggle, control);
-      return true;
     } else if (action === 'modifier') {
       selectionQueryModifier = control.dataset.modifier || 'set';
       for (const button of control.parentElement?.children || []) {
@@ -8342,9 +9687,7 @@
     } else if (action === 'animate') {
       openViewportMenu(control, 'Animate', viewportAnimateMenu);
     } else if (action === 'screenshot') {
-      Promise.resolve(plugin.helpers.viewportScreenshot?.download())
-        .then(() => setStatus('[web] Screenshot saved.'))
-        .catch(error => setStatus(`[web] Screenshot failed. ${error?.message || error}`, 'error'));
+      openViewportMenu(control, 'Screenshot', viewportScreenshotMenu);
     } else if (action === 'illumination') {
       const enabled = plugin.canvas3d?.props?.illumination?.enabled !== true;
       plugin.canvas3d?.setProps({ illumination: { enabled } });
@@ -8392,7 +9735,11 @@
     const changed = wasHidden !== bar.classList.contains('hidden');
     rail.querySelector('[data-buret-viewport-action="select-mode"]')
       ?.setAttribute('aria-pressed', active ? 'true' : 'false');
-    if (!active) closeViewportMenu();
+    // Leaving selection mode takes the selection bar's menus with it. This runs on
+    // every structure-state tick though, so it fires on the transition rather than
+    // the state - otherwise any menu action that touches the scene closes the menu
+    // it was pressed in.
+    if (!active && changed) closeViewportMenu();
     const stats = plugin?.managers?.structure?.selection?.stats;
     const hasSelection = Number(stats?.elementCount) > 0;
     rail.querySelector('[data-buret-viewport-action="clear-selection"]')
@@ -8532,6 +9879,18 @@
           setViewportMotion(viewportMotionState().name, speed);
           const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
           if (readout) readout.textContent = `${speed.toFixed(2)}/s`;
+          return;
+        }
+        const wiggle = event.target.closest('[data-buret-viewport-slider^="wiggle-"]');
+        if (wiggle) {
+          const name = wiggle.dataset.buretViewportSlider.slice('wiggle-'.length);
+          const spec = VIEWPORT_WIGGLE_SLIDERS.find(entry => entry.name === name);
+          const value = Number(wiggle.value);
+          void streamViewportWiggleOption(name, value);
+          const readout = wiggle.parentElement?.querySelector('.buret-tree-menu-slider-value');
+          if (readout && spec) readout.textContent = value.toFixed(spec.digits) + (spec.unit || '');
+          // Tumble's shaping rows appear the moment it has an amplitude to shape.
+          if (name === 'tumbleAmplitude') refreshViewportWiggleControls();
           return;
         }
         const search = event.target.closest('[data-buret-viewport-search]');
@@ -20225,20 +21584,6 @@
     return !!component;
   }
 
-  async function openMolstarContextScopeComponentMenu(target) {
-    const representation = molstarContextModeUsesPolymerRepresentation() ? 'cartoon' : 'ball-and-stick';
-    const component = await addMolstarContextScopeComponent(
-      target,
-      representation,
-      target?.label || 'Selection'
-    );
-    const componentRef = component?.cell?.transform?.ref;
-    if (!componentRef) return false;
-    const point = molstarContextMenuLastPoint || { x: 80, y: 120 };
-    window.setTimeout(() => openSceneTreeMenu(componentRef, point.x, point.y), 0);
-    return true;
-  }
-
   // A measurement needs two to four atoms, and naming them by opening the menu once
   // per atom reads as a bug. Choosing the action arms the viewer instead: the next
   // picks — in the 3D view or the sequence — become the points. Selection mode is
@@ -20802,6 +22147,7 @@
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
     { id: 'compute', title: 'Compute' },
+    { id: 'molstar-action', title: 'Apply action' },
     { id: 'danger', title: 'Delete', direct: true, destructive: true, hideTitle: true, breakBefore: true }
   ];
 
@@ -20819,6 +22165,7 @@
     export: ['M12 3v12', 'm7-5 5 5 5-5', 'M5 21h14'],
     search: ['M21 21l-4.35-4.35', 'M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z'],
     compute: ['M9 3h6', 'M10 3v5l-5.5 9.5A2.3 2.3 0 0 0 6.5 21h11a2.3 2.3 0 0 0 2-3.5L14 8V3', 'M8 15h8'],
+    'molstar-action': ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'm10 8 6 4-6 4Z'],
     danger: SCENE_TREE_ICON.trash
   };
 
@@ -20837,6 +22184,7 @@
     // `select-atom` is the atom-mode pick and belongs with the primary actions; the
     // `select:` namespace is the selection toolkit, which gets its own section.
     if (name.startsWith('select:')) return 'selection';
+    if (name.startsWith('molstar-action:')) return 'molstar-action';
     return 'primary';
   }
 
@@ -20846,6 +22194,7 @@
     if (name.startsWith('focus')) return SCENE_TREE_ICON.focus;
     if (name === 'view:hide') return SCENE_TREE_ICON.eye;
     if (name === 'view:isolate') return SCENE_TREE_ICON.isolate;
+    if (name === 'view:show-all') return SCENE_TREE_ICON.restore;
     if (name === 'represent:surface') return ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
     if (name === 'represent:menu') return ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'];
     // A box with a plus: the selection becomes a new object in the scene.
@@ -20897,11 +22246,24 @@
     // The desktop overlay carries the scene-tree powers into the 3D right click.
     // These stay off the mobile host, which renders its own native sheet.
     if (document.body?.classList.contains('burette-mobile-host') !== true) {
-      if (molstarContextComponentRef(target)) {
+      const componentRef = molstarContextComponentRef(target);
+      if (componentRef) {
         actions.push(['view:hide', `Hide ${noun}`]);
         actions.push(['view:isolate', `Isolate ${noun}`]);
+        // Clears the hidden flag on every component of this structure: the way
+        // back from the scene tree's eye toggles, and from an Isolate that hid
+        // whole components outright. It does not undo the element-level subtract
+        // that Hide and Isolate apply to a component they do intersect — that
+        // rewrites the component rather than hiding a cell, and ⌘Z is its inverse.
+        actions.push(['view:show-all', 'Show all']);
         actions.push(['represent:surface', 'Add grey surface']);
         actions.push(['represent:menu', 'Representation & colour…']);
+        // Mol*'s own cell actions, the same list the scene tree offers. They are
+        // many and rarely the reason the menu was opened, so they stay behind a
+        // submenu rather than pushing the rest of the menu off screen.
+        sceneTreeCellActions(activeMolstarViewer(), componentRef).forEach((entry, index) => {
+          actions.push([`molstar-action:${index}`, entry.label]);
+        });
       }
       // Deliberately outside the componentRef check: this is the item for things
       // that have no component yet, which is exactly when it is worth offering.
@@ -20983,6 +22345,7 @@
     if (name === 'represent:component') return `component for ${targetLabel}`;
     if (name === 'view:hide') return `hiding ${targetLabel}`;
     if (name === 'view:isolate') return `isolating ${targetLabel}`;
+    if (name === 'view:show-all') return 'showing every component';
     if (name === 'select' || name === 'select-atom') return `selection of ${targetLabel}`;
     if (name === 'select:whole-residues') return 'whole-residue selection';
     if (name === 'select:grow') return 'grown selection';
@@ -21095,14 +22458,19 @@
         }
         focusMolstarContextPick({ ...target, loci: isolateLoci });
         setStatus(`[web] Isolated ${targetLabel}.`);
+      } else if (action === 'view:show-all') {
+        const componentRef = molstarContextComponentRef(target);
+        if (!componentRef) throw new Error('No Mol* component is available to show.');
+        showAllSceneTreeNodes(componentRef);
+        setStatus('[web] Showed every component in the scene.');
+      } else if (action.startsWith('molstar-action:')) {
+        const componentRef = molstarContextComponentRef(target);
+        if (!componentRef) throw new Error('No Mol* component is available for this action.');
+        await applySceneTreeAction(componentRef, Number(action.slice('molstar-action:'.length)));
+        setStatus(`[web] Applied ${label} to ${targetLabel}.`);
       } else if (action === 'represent:surface') {
         if (!await addGreySurfaceForContext(target)) throw new Error('No Mol* selection or target is available for a surface.');
         setStatus(`[web] Added a translucent surface to ${targetLabel}.`);
-      } else if (action === 'represent:menu') {
-        if (!await openMolstarContextScopeComponentMenu(target)) {
-          throw new Error('No Mol* selection or target is available to edit.');
-        }
-        setStatus(`[web] Editing ${targetLabel} representation.`);
       } else if (action === 'represent:component') {
         // "Whatever is selected" means the live selection when there is one, and
         // the thing under the cursor when there is not - so the item works on a
@@ -22186,6 +23554,9 @@
     const menu = document.querySelector('.buret-molecule-context-menu:not(.buret-xyzrender-context-menu)');
     const previousFocus = menu?._buretPreviousFocus;
     const restoreFocus = !!menu && menu.contains(document.activeElement);
+    // Submenus close before the menu is dropped: removing the tree outright would
+    // strand a hover preview that only the close path winds back.
+    if (menu) moleculeMenuCloseSubmenus(menu);
     moleculeMenuCancelHoverIntent(menu);
     menu?.remove();
     if (restoreFocus && previousFocus?.isConnected && typeof previousFocus.focus === 'function') {
@@ -22287,9 +23658,17 @@
 
   function moleculeMenuCloseSubmenus(menu, except = null) {
     const keep = new Set();
+    // main walks the recorded parent chain rather than the DOM: a submenu is
+    // portalled onto the menu root, so closest() never finds its opener.
     for (let submenu = except; submenu; submenu = submenu._buretParentSubmenu) keep.add(submenu);
     menu.querySelectorAll('.buret-molecule-context-submenu[data-open="true"]').forEach(submenu => {
       if (keep.has(submenu)) return;
+      // A hover preview and a half-open theme picker both outlive the submenu
+      // that owns them unless they are wound back here.
+      submenu._buretRestorePreview?.();
+      for (const list of submenu.querySelectorAll('[data-scene-tree-picker-list]')) {
+        closeSceneTreePicker(list, { restore: true });
+      }
       submenu.dataset.open = 'false';
       submenu.hidden = true;
       submenu._buretTrigger?.setAttribute('aria-expanded', 'false');
@@ -22470,6 +23849,7 @@
         return;
       }
       event.preventDefault();
+      event.stopPropagation();
       moleculeMenuCancelHoverIntent(menu);
       if (submenu.hidden) open(true);
       else moleculeMenuCloseSubmenus(menu);
@@ -22489,6 +23869,319 @@
     return trigger;
   }
 
+  function moleculeMenuRepresentationSubmenu(menu, target) {
+    const viewer = activeMolstarViewer();
+    const componentRef = molstarContextComponentRef(target);
+    const component = sceneTreeColorTargets(viewer).get(componentRef)?.[0] || null;
+    const representation = component?.representations?.[0] || null;
+    const representationRef = representation?.cell?.transform?.ref;
+    const representationTarget = representationRef
+      ? sceneTreeRepresentationTargets(viewer).get(representationRef)
+      : null;
+    const node = representationRef ? sceneTreeNodeByRef(sceneTreeNodes(viewer), representationRef) : null;
+    if (!representationRef || !representationTarget || !node) return null;
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.setAttribute('role', 'menuitem');
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.className = 'buret-tree-menu-item buret-tree-menu-sub-trigger';
+    const label = document.createElement('span');
+    label.className = 'buret-tree-menu-label';
+    label.textContent = 'Representation & colour…';
+    const chevron = document.createElement('span');
+    chevron.className = 'buret-tree-menu-chevron';
+    chevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
+    trigger.append(moleculeMenuIcon(moleculeContextActionIcon('represent:menu')), label, chevron);
+
+    const submenu = document.createElement('div');
+    submenu.className = 'buret-molecule-context-submenu';
+    submenu.dataset.buretRepresentationMenu = '1';
+    submenu.dataset.open = 'false';
+    submenu.dataset.ref = representationRef;
+    submenu.hidden = true;
+    submenu.setAttribute('role', 'menu');
+    submenu.setAttribute('aria-label', `Representation and colour for ${target?.label || 'selection'}`);
+    submenu._buretTrigger = trigger;
+
+    let activeRepresentationRef = representationRef;
+    let typePicker = null;
+    const editor = document.createElement('div');
+    editor.className = 'buret-representation-editor';
+    const renderEditor = ref => {
+      const activeViewer = activeMolstarViewer();
+      const activeTarget = sceneTreeRepresentationTargets(activeViewer).get(ref);
+      if (!activeTarget) return false;
+      const activeNode = sceneTreeNodeByRef(sceneTreeNodes(activeViewer), ref) || node;
+      editor.replaceChildren();
+      sceneTreeRepresentationMenu(editor, activeViewer, activeNode, activeTarget, { includeType: false, includeHeading: false });
+      for (const disclosure of editor.querySelectorAll('details')) {
+        disclosure.addEventListener('toggle', () => moleculeMenuPositionSubmenu(submenu, trigger));
+      }
+      activeRepresentationRef = ref;
+      submenu.dataset.ref = ref;
+      typePicker?.update(ref);
+      return true;
+    };
+    typePicker = moleculeMenuRepresentationTypePicker(
+      menu,
+      submenu,
+      () => activeRepresentationRef,
+      renderEditor
+    );
+    submenu.append(typePicker.element, editor);
+    renderEditor(representationRef);
+
+    const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
+    // Hover-intent rather than a bare pointerenter: crossing this row on the way
+    // to another item should not throw the representation editor open.
+    trigger.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(menu, () => open(false)));
+    trigger.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(menu));
+    trigger.addEventListener('focus', () => open(false));
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      moleculeMenuCancelHoverIntent(menu);
+      open(true);
+    });
+    trigger.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      event.stopPropagation();
+      open(true);
+    });
+    submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
+    menu.appendChild(submenu);
+    return trigger;
+  }
+
+  // Hover previews are real Mol* updates, but they remain provisional until an
+  // action is chosen. New pointer targets replace the pending one, so sweeping a
+  // long list never leaves a backlog of stale representation updates.
+  function moleculeMenuRepresentationTypePreview(getActiveRef) {
+    let originalRef = '';
+    let originalType = null;
+    let pending = null;
+    let drain = null;
+    const cloneType = type => type ? { ...type, params: { ...(type.params || {}) } } : null;
+    const execute = async next => {
+      const activeRef = getActiveRef();
+      if (next.kind === 'preview') {
+        const target = sceneTreeRepresentationTargets(activeMolstarViewer()).get(activeRef);
+        if (!target) return;
+        if (!originalType || originalRef !== activeRef) {
+          originalRef = activeRef;
+          originalType = cloneType(target.representation?.cell?.transform?.params?.type);
+        }
+        await applySceneTreeReprType(activeRef, next.type);
+      } else if (next.kind === 'restore') {
+        const restoreRef = originalRef;
+        const restoreType = cloneType(originalType);
+        if (restoreRef && restoreType) {
+          await updateSceneTreeRepresentation(restoreRef, old => ({ ...old, type: restoreType }));
+        }
+        originalRef = '';
+        originalType = null;
+      } else if (next.kind === 'commit') {
+        await applySceneTreeReprType(activeRef, next.type);
+        originalRef = '';
+        originalType = null;
+      }
+    };
+    const schedule = next => {
+      pending = next;
+      if (!drain) {
+        drain = (async () => {
+          try {
+            while (pending) {
+              const current = pending;
+              pending = null;
+              await execute(current);
+            }
+          } finally {
+            drain = null;
+          }
+        })();
+      }
+      return drain;
+    };
+    return {
+      preview: type => schedule({ kind: 'preview', type }),
+      restore: () => schedule({ kind: 'restore' }),
+      commit: type => schedule({ kind: 'commit', type })
+    };
+  }
+
+  // Type is a cascading menu rather than a native select: a type is chosen first,
+  // then a final submenu decides whether it replaces the active representation or
+  // becomes another layer. This keeps the destructive choice out of the editor.
+  function moleculeMenuRepresentationTypePicker(menu, representationSubmenu, getActiveRef, onApplied) {
+    const container = document.createElement('div');
+    container.className = 'buret-representation-type-control';
+    const heading = document.createElement('div');
+    heading.className = 'buret-tree-menu-title';
+    heading.textContent = 'Representation';
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'buret-tree-menu-item buret-tree-menu-sub-trigger buret-representation-type-trigger';
+    trigger.setAttribute('role', 'menuitem');
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    const triggerLabel = document.createElement('span');
+    triggerLabel.className = 'buret-tree-menu-label';
+    triggerLabel.textContent = 'Type';
+    const triggerValue = document.createElement('span');
+    triggerValue.className = 'buret-representation-type-value';
+    const triggerChevron = document.createElement('span');
+    triggerChevron.className = 'buret-tree-menu-chevron';
+    triggerChevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
+    trigger.append(moleculeMenuIcon(moleculeContextActionIcon('represent:menu')), triggerLabel, triggerValue, triggerChevron);
+    container.append(heading, trigger);
+
+    const typeMenu = document.createElement('div');
+    typeMenu.className = 'buret-molecule-context-submenu buret-representation-type-menu';
+    typeMenu.dataset.buretRepresentationTypeMenu = '1';
+    typeMenu.dataset.open = 'false';
+    typeMenu.hidden = true;
+    typeMenu.setAttribute('role', 'menu');
+    typeMenu.setAttribute('aria-label', 'Representation type');
+    typeMenu._buretTrigger = trigger;
+    const typeMenuHeading = document.createElement('div');
+    typeMenuHeading.className = 'buret-tree-menu-title';
+    typeMenuHeading.textContent = 'Type';
+    typeMenu.appendChild(typeMenuHeading);
+
+    const activeTarget = sceneTreeRepresentationTargets(activeMolstarViewer()).get(getActiveRef());
+    const types = activeTarget ? sceneTreeRepresentationTypes(activeMolstarViewer(), [activeTarget.component]) : [];
+    const typeItems = new Map();
+    const typePreview = moleculeMenuRepresentationTypePreview(getActiveRef);
+    let suppressFocusOpen = false;
+    const update = ref => {
+      const target = sceneTreeRepresentationTargets(activeMolstarViewer()).get(ref);
+      const currentType = String(target?.representation?.cell?.transform?.params?.type?.name || '');
+      triggerValue.textContent = types.find(type => type.name === currentType)?.label || currentType || 'Choose';
+      for (const [name, item] of typeItems) item.dataset.current = name === currentType ? 'true' : 'false';
+    };
+    const finish = (ref, typeLabel, actionLabel) => {
+      if (!ref || !onApplied(ref)) return;
+      update(ref);
+      moleculeMenuCloseSubmenus(menu, representationSubmenu);
+      suppressFocusOpen = true;
+      trigger.focus();
+      suppressFocusOpen = false;
+      setStatus(`[web] ${actionLabel === 'Add another' ? 'Added' : 'Updated'} ${typeLabel}.`);
+    };
+
+    for (const type of types) {
+      const typeTrigger = document.createElement('button');
+      typeTrigger.type = 'button';
+      typeTrigger.className = 'buret-tree-menu-item buret-tree-menu-sub-trigger buret-representation-type-item';
+      typeTrigger.setAttribute('role', 'menuitem');
+      typeTrigger.setAttribute('aria-haspopup', 'menu');
+      typeTrigger.setAttribute('aria-expanded', 'false');
+      typeTrigger.dataset.buretRepresentationType = type.name;
+      const check = moleculeMenuIcon(['M20 6 9 17l-5-5']);
+      check.classList.add('buret-representation-type-check');
+      const label = document.createElement('span');
+      label.className = 'buret-tree-menu-label';
+      label.textContent = type.label;
+      const chevron = document.createElement('span');
+      chevron.className = 'buret-tree-menu-chevron';
+      chevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
+      typeTrigger.append(check, label, chevron);
+
+      const actionMenu = document.createElement('div');
+      actionMenu.className = 'buret-molecule-context-submenu buret-representation-type-action-menu';
+      actionMenu.dataset.buretRepresentationTypeActionMenu = type.name;
+      actionMenu.dataset.open = 'false';
+      actionMenu.hidden = true;
+      actionMenu.setAttribute('role', 'menu');
+      actionMenu.setAttribute('aria-label', `${type.label} action`);
+      actionMenu._buretTrigger = typeTrigger;
+      for (const actionLabel of ['Update current', 'Add another']) {
+        const action = document.createElement('button');
+        action.type = 'button';
+        action.className = 'buret-tree-menu-item';
+        action.setAttribute('role', 'menuitem');
+        action.dataset.buretRepresentationTypeAction = actionLabel === 'Add another' ? 'add' : 'update';
+        const icon = moleculeMenuIcon(actionLabel === 'Add another' ? ['M12 5v14M5 12h14'] : ['M20 6 9 17l-5-5']);
+        const text = document.createElement('span');
+        text.className = 'buret-tree-menu-label';
+        text.textContent = actionLabel;
+        action.append(icon, text);
+        action.addEventListener('click', async event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const activeRef = getActiveRef();
+          action.disabled = true;
+          if (actionLabel === 'Update current') {
+            await typePreview.commit(type.name);
+            action.disabled = false;
+            finish(activeRef, type.label, actionLabel);
+          } else {
+            await typePreview.restore();
+            const createdRef = await duplicateSceneTreeRepresentation(activeRef, type.name);
+            action.disabled = false;
+            finish(createdRef, type.label, actionLabel);
+          }
+        });
+        actionMenu.appendChild(action);
+      }
+
+      const openActionMenu = focusFirst => {
+        void typePreview.preview(type.name);
+        moleculeMenuOpenSubmenu(menu, actionMenu, typeTrigger, { focusFirst });
+      };
+      typeTrigger.addEventListener('pointerenter', () => openActionMenu(false));
+      typeTrigger.addEventListener('focus', () => openActionMenu(false));
+      typeTrigger.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        openActionMenu(true);
+      });
+      typeTrigger.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        event.stopPropagation();
+        openActionMenu(true);
+      });
+      actionMenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, actionMenu, typeTrigger));
+      typeItems.set(type.name, typeTrigger);
+      typeMenu.append(typeTrigger, actionMenu);
+    }
+
+    const openTypeMenu = focusCurrent => {
+      moleculeMenuOpenSubmenu(menu, typeMenu, trigger);
+      if (focusCurrent) {
+        (typeMenu.querySelector('.buret-representation-type-item[data-current="true"]')
+          || typeMenu.querySelector('.buret-representation-type-item'))?.focus();
+      }
+    };
+    trigger.addEventListener('pointerenter', () => openTypeMenu(false));
+    trigger.addEventListener('focus', () => {
+      if (!suppressFocusOpen) openTypeMenu(false);
+    });
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openTypeMenu(true);
+    });
+    trigger.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      event.stopPropagation();
+      openTypeMenu(true);
+    });
+    typeMenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, typeMenu, trigger));
+    typeMenu.addEventListener('pointerleave', () => { void typePreview.restore(); });
+    typeMenu._buretRestorePreview = () => { void typePreview.restore(); };
+    representationSubmenu.appendChild(typeMenu);
+    update(getActiveRef());
+    return { element: container, update };
+  }
+
   function installMoleculeMenuKeyboard(menu) {
     menu.addEventListener('keydown', event => {
       const target = event.target;
@@ -22499,6 +24192,7 @@
         event.preventDefault();
         event.stopPropagation();
         if (currentMenu.classList.contains('buret-molecule-context-submenu')) {
+          currentMenu._buretRestorePreview?.();
           currentMenu.hidden = true;
           currentMenu.dataset.open = 'false';
           currentMenu._buretTrigger?.setAttribute('aria-expanded', 'false');
@@ -22511,6 +24205,7 @@
       if (event.key === 'ArrowLeft' && currentMenu.classList.contains('buret-molecule-context-submenu')) {
         event.preventDefault();
         event.stopPropagation();
+        currentMenu._buretRestorePreview?.();
         currentMenu.hidden = true;
         currentMenu.dataset.open = 'false';
         currentMenu._buretTrigger?.setAttribute('aria-expanded', 'false');
@@ -22518,6 +24213,7 @@
         return;
       }
       if (event.key === 'Tab') {
+        if (currentMenu.closest('[data-buret-representation-menu]')) return;
         event.stopPropagation();
         hideMolstarContextMenu();
         return;
@@ -22690,6 +24386,11 @@
             actionContainer.appendChild(heading);
           }
           for (const [action, label] of entries) {
+            if (action === 'represent:menu') {
+              const item = moleculeMenuRepresentationSubmenu(menu, actionTarget);
+              if (item) actionContainer.appendChild(item);
+              continue;
+            }
             const item = moleculeMenuActionButton(action, label, {
               destructive: section.destructive,
               target: actionTarget,
@@ -22713,7 +24414,7 @@
       molstarContextMenuMode = mode;
       applyPickingLevel(levelLabel);
       renderActions();
-      const point = molstarContextMenuLastPoint || {
+      const point = {
         x: Number.parseFloat(menu.style.left) || 8,
         y: Number.parseFloat(menu.style.top) || 8
       };
@@ -22726,7 +24427,6 @@
     document.body.appendChild(menu);
     installMoleculeMenuKeyboard(menu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
-    molstarContextMenuLastPoint = { x: event.clientX, y: event.clientY };
     window.requestAnimationFrame(() => {
       if (menu.isConnected) menu.querySelector('.buret-tree-menu-item')?.focus({ preventScroll: true });
     });
@@ -23270,6 +24970,12 @@
   }
 
   function disposeActiveMolstarViewer() {
+    molstarStyleApplySerial += 1;
+    molstarPresetPreviewSceneRevision += 1;
+    molstarPresetPreviewCache = null;
+    molstarPresetPreviewStateCleanup?.();
+    molstarPresetPreviewStateCleanup = null;
+    disposeMolstarPresetPreview();
     cancelViewportTrajectoryAnimation();
     cancelScheduledMolstarWaterRepresentation();
     notifyMolstarSelectionChanged(null);
@@ -23407,6 +25113,11 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
           throw error;
         }
       }
+    }
+    try {
+      await applyConfiguredMolstarPreset(viewer, activeConfig || config);
+    } catch (error) {
+      debug('Configured Mol* preset failed: ' + (error?.message || String(error)));
     }
     {
       const poseCount = Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || prepared?.xyzFrameCount || config?.trajectoryFrameCount || 0);
