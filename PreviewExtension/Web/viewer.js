@@ -902,18 +902,18 @@
   // Steps overlap easily - hovering down the list, holding Next, an agent call
   // arriving mid-transition - and overlapping them means competing snapshot
   // applies and unbalanced render pauses, which looks like the viewer tearing
-  // itself apart. Steps are run one at a time, and a step that was superseded
-  // while it waited its turn is dropped: only where the pointer ended up matters.
-  function queueMolstarStoryStep(run) {
+  // itself apart. Steps run one at a time. A hover preview that a later hover
+  // overtook while it waited is dropped - only where the pointer ended up
+  // matters - but a requested step always runs: `story_control` answers the
+  // agent with the result, and dropping one would answer with nothing.
+  function controlMolstarStory(action) {
     const serial = ++molstarStoryStepRequested;
     molstarStoryStepQueue = molstarStoryStepQueue
       .catch(() => {})
-      .then(() => (serial === molstarStoryStepRequested ? run() : null));
+      .then(() => (action.preview === true && serial !== molstarStoryStepRequested
+        ? molstarStoryResult('story_control')
+        : applyMolstarStoryControl(action)));
     return molstarStoryStepQueue;
-  }
-
-  function controlMolstarStory(action) {
-    return queueMolstarStoryStep(() => applyMolstarStoryControl(action));
   }
 
   async function applyMolstarStoryControl(action) {

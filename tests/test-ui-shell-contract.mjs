@@ -5710,8 +5710,10 @@ assert.match(previewViewer, /camera\.transitionDurationInMs = instant \? 0 : dur
 assert.match(previewViewer, /if \(isStep\) setMolstarStoryTransition\(manager, action\.preview === true \? 0 : MOLSTAR_STORY_TRANSITION_MS\)/);
 // Overlapping steps mean competing snapshot applies and unbalanced render
 // pauses, so steps run one at a time and superseded ones are dropped.
-assert.match(previewViewer, /function queueMolstarStoryStep\(run\)/);
-assert.match(previewViewer, /serial === molstarStoryStepRequested \? run\(\) : null/);
+assert.match(previewViewer, /action\.preview === true && serial !== molstarStoryStepRequested/);
+// A superseded hover preview still answers with the current state: `story_control`
+// hands this result back to the agent, and dropping one would answer with nothing.
+assert.match(previewViewer, /\? molstarStoryResult\('story_control'\)\s*: applyMolstarStoryControl\(action\)/);
 assert.match(previewViewer, /MOLSTAR_STORY_REPORT_INTERVAL_MS = 120/);
 assert.match(previewViewer, /function syncMolstarStoryUi\(\)/);
 assert.match(previewViewer, /function applyMolstarStoryStyleToSnapshots\(manager, style\)/);
