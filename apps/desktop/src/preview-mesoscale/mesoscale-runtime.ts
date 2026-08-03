@@ -173,6 +173,13 @@ function parseHierarchyDetailId(id: string): MesoscaleHierarchySelector | null {
 
 const MESOSCALE_HISTORY_LIMIT = 50;
 
+function clipSignature(objects: unknown[]) {
+  return objects.map((object) => {
+    const clip = object as { type?: unknown; invert?: unknown; position?: ArrayLike<number>; scale?: ArrayLike<number> };
+    return [clip?.type, clip?.invert, Array.from(clip?.position ?? []), Array.from(clip?.scale ?? [])];
+  }).map((parts) => JSON.stringify(parts)).join("|");
+}
+
 const MESOSCALE_UNDOABLE_ACTIONS = new Set<MesoscaleAction["type"]>([
   "setGraphics", "setSelection", "setSelectionBatch", "setDetailSelection", "setDetailSelectionBatch",
   "setSelectionStyle", "setSelectionVisibility", "isolateSelection", "setIllumination", "setMotion",
@@ -559,7 +566,9 @@ class MesoscaleRuntimeApi {
       if (current.color !== entity.color && entity.color !== null) values.color = entity.color;
       if (current.opacity !== entity.opacity) values.opacity = entity.opacity;
       if (current.emissive !== entity.emissive) values.emissive = entity.emissive;
-      if (currentClip.length !== entity.clipObjects.length) values.clipObjects = entity.clipObjects;
+      // Compare the shapes themselves: swapping a sphere for a cube keeps the
+      // count identical, and a count-only check would leave the cut in place.
+      if (clipSignature(currentClip) !== clipSignature(entity.clipObjects)) values.clipObjects = entity.clipObjects;
       if (Object.keys(values).length > 0) await this.styleCells([cell], values);
       if (Boolean(cell?.state?.isHidden) !== entity.hidden) await this.setCellVisibility(cell, !entity.hidden);
     }
