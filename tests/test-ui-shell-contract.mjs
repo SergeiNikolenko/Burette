@@ -805,8 +805,11 @@ assert.match(viteConfig, /const BROWSER_DEV_GENERATED_FILES_ROOT = process\.env\
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "Burette Generated Files"\)/);
 assert.match(viteConfig, /const BROWSER_DEV_XTB_JOBS_ROOT = join\(BROWSER_DEV_GENERATED_FILES_ROOT, "xTB Jobs"\);/);
 assert.match(viteConfig, /const BROWSER_DEV_CONFORMER_JOBS_ROOT = join\(BROWSER_DEV_GENERATED_FILES_ROOT, "Conformer Jobs"\);/);
-assert.match(viteConfig, /const browserDevGeneratedFileRoots = \[BROWSER_DEV_GENERATED_FILES_ROOT\];/);
-assert.match(viteConfig, /const devFsAllowRoots = \[repoRoot, \.\.\.defaultFsAllow, \.\.\.browserDevGeneratedFileRoots, \.\.\.extraFsAllow\]\.map\(\(path\) => resolve\(path\)\);/);
+// Derived topologies are generated files too: browser dev writes them and the
+// inspector reads them back, so they belong on the same allow list.
+assert.match(viteConfig, /const BROWSER_DEV_DERIVED_TOPOLOGY_ROOT = join\(tmpdir\(\), "burette-browser-dev-derived-topology"\);/);
+assert.match(viteConfig, /const browserDevGeneratedFileRoots = \[BROWSER_DEV_GENERATED_FILES_ROOT, BROWSER_DEV_DERIVED_TOPOLOGY_ROOT\];/);
+assert.match(viteConfig, /const devFsAllowRoots = \[repoRoot, \.\.\.defaultFsAllow, \.\.\.browserDevGeneratedFileRoots, \.\.\.extraFsAllow\][\s\S]*\.map\(canonicalExistingPath\);/);
 assert.match(viteConfig, /"import\.meta\.env\.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT": JSON\.stringify\(BROWSER_DEV_GENERATED_FILES_ROOT\)/);
 assert.match(viteConfig, /registerBrowserDevRuntimeDoctorRoute\(server,/);
 assert.match(viteConfig, /xyzrenderStatus: browserDevXyzrenderStatus/);
@@ -887,7 +890,7 @@ assert.match(previewRuntimeSource, /for candidate_base in candidate_desmond_base
 assert.doesNotMatch(previewRuntimeSource, /casebook|source_files|mnt__/);
 assert.match(viteConfig, /function isDevFileReadAllowed\(path: string\)/);
 assert.match(viteConfig, /async function collectDefaultDevFiles\(\)/);
-assert.match(viteConfig, /if \(path\.endsWith\("\/no-molecule-column\.csv"\)\) return;/);
+assert.doesNotMatch(viteConfig, /if \(path\.endsWith\("\/no-molecule-column\.csv"\)\) return;/);
 assert.match(viteConfig, /function normalizeXyzrenderInputExtension\(value: string \| null\)/);
 assert.match(viteConfig, /registerBrowserDevXyzrenderRoute\(server,/);
 assert.match(browserDevXyzrender, /server\.middlewares\.use\("\/__burette\/xyzrender"/);
@@ -1000,7 +1003,7 @@ assert.match(moleculeStore, /const storedTabs = \(stored\?\.tabs \?\? current\.t
 assert.match(browserDevStartup, /export async function browserDevFilesFromLocation\(\)/);
 assert.match(browserDevStartup, /if \(params\.has\("devDocking"\)\) return \[\];/);
 assert.match(browserDevStartup, /params\.has\("devFiles"\)/);
-assert.match(browserDevStructureBundles, /!isSpectrumPath\(path, extension\) &&\s*!structureAndTextExtensions\.has\(extension\)/);
+assert.match(browserDevStructureBundles, /for \(const path of paths\) \{\s*addPath\(path\);\s*if \(!isStructureBundleCandidate\(path\)\) continue;/);
 assert.match(browserDevStartup, /export function browserDevFolderFromLocation\(\)/);
 assert.match(browserDevStartup, /export function browserDevFoldersFromLocation\(\)/);
 assert.match(browserDevStartup, /params\.getAll\("devFolder"\)/);
@@ -1017,7 +1020,11 @@ assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevFoldersFromLo
 assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevHasExplicitWorkspace\(\), \[\]\)/);
 assert.match(appSidebarProjectsHook, /const browserDevGeneratedRoot = useMemo\(browserDevGeneratedProjectRoot, \[\]\);/);
 assert.match(appSidebarProjectsHook, /return appendSidebarProjectRoot\(roots, browserDevGeneratedRoot\);/);
-assert.match(appSidebarProjectsHook, /fetch\(`\/__burette\/dev-files\?root=\$\{encodeURIComponent\(browserDevGeneratedRoot\)\}`/);
+assert.match(appSidebarProjectsHook, /\.\.\.browserDevExplicitFolders,/);
+assert.match(appSidebarProjectsHook, /import \{ scanBrowserDevFolders \} from "\.\.\/lib\/browser-dev-startup";/);
+assert.match(appSidebarProjectsHook, /const scan = await scanBrowserDevFolders\(roots\);/);
+assert.match(browserDevStartup, /export async function scanBrowserDevFolders/);
+assert.match(browserDevStartup, /maxFiles: String\(remainingFiles\)/);
 assert.match(appSidebarProjectsHook, /window\.setInterval\(\(\) => void refresh\(\), browserDevGeneratedProjectScanMs\)/);
 assert.match(appSidebarProjectsHook, /const sidebarRecentStructures = browserDevExplicitFolders\.length > 0 \? \[\] : recentStructures;/);
 assert.match(appSidebarProjectsHook, /recentStructures: sidebarRecentStructures,/);
@@ -1363,7 +1370,7 @@ assert.match(
 );
 assert.match(
   appSidebarProjectsHook,
-  /Showing the first .* structures[\s\S]*?to keep Burette responsive/,
+  /Showing the first .* files[\s\S]*?to keep Burette responsive/,
   "the app must explain partial folder results to the user",
 );
 assert.match(
@@ -1740,11 +1747,38 @@ for (const runtimeSource of [viewer]) {
   assert.match(initStaticRendererToolbarBody, /bindMolstarLassoKeyboardButton\(toolbar\)/);
   assert.match(initStaticRendererToolbarBody, /installMolstarLassoSelection\(\)/);
   assert.match(initStaticRendererToolbarBody, /installMolstarToolbarActionDelegates\(\)/);
-  assert.match(runtimeSource, /function applyMolstarLassoPicks\(picks, additive\)/);
+  assert.match(runtimeSource, /async function molstarLassoProjectedLoci\(stroke\)/);
+  assert.match(runtimeSource, /function molstarLassoProjectionSources\(viewer, structureRef\)/);
+  assert.match(runtimeSource, /component\?\.cell\?\.state\?\.isHidden === true/);
+  assert.match(runtimeSource, /componentManager\?\.canBeModified\?\.\(component\) === false/);
+  assert.match(runtimeSource, /const MOLSTAR_LASSO_PROJECTION_YIELD_INTERVAL = 4096;/);
+  assert.match(runtimeSource, /unit\.conformation\.position\(unit\.elements\[index\], world\)/);
+  assert.match(runtimeSource, /camera\.project\(projected, world\)/);
+  assert.match(runtimeSource, /StructureElement\.Loci\.remap\(sourceLoci, structure\)/);
+  assert.match(runtimeSource, /StructureElement\.Loci\.union\(structureLoci, remapped\)/);
+  assert.match(runtimeSource, /molstarPointInPolygon\(\{ x: clientX, y: clientY \}, stroke\.points\)/);
+  assert.match(runtimeSource, /indices: Int32Array\.from\(indices\)/);
+  assert.match(runtimeSource, /await molstarLassoYield\(\)/);
+  assert.match(runtimeSource, /async function applyMolstarLassoLoci\(lociList, additive\)/);
   assert.match(runtimeSource, /const lassoApplyGranularity = false;/);
+  assert.match(runtimeSource, /for \(const loci of lociList\)/);
   assert.match(runtimeSource, /selects\.select\(\{ loci \}, lassoApplyGranularity\)/);
-  assert.match(runtimeSource, /selection\.fromLoci\('add', loci, lassoApplyGranularity\)/);
-  assert.match(runtimeSource, /function notifyMolstarLassoSelection\(picks, selected\)/);
+  assert.match(runtimeSource, /else if \(canSelectStructure\) selection\.fromLoci\('add', loci, lassoApplyGranularity\)/);
+  assert.match(runtimeSource, /function notifyMolstarLassoSelection\(lociList, batchAtoms, totalAtoms\)/);
+  assert.match(runtimeSource, /function molstarContextHasLassoSelection\(structureRef, selectionLoci\)/);
+  assert.match(runtimeSource, /const canReuseSelection = molstarContextHasLassoSelection\(targetStructure, selectionLoci\) \|\| molstarContextMenuMode === 'molecule' \|\| !pickedAtom;/);
+  assert.match(runtimeSource, /molstarContextOrderedSetForEach\(element\.indices, index =>/);
+  assert.doesNotMatch(runtimeSource, /for \(const index of element\.indices \|\| \[\]\)/);
+  assert.match(runtimeSource, /tryCreateComponentFromSelection/);
+  assert.match(runtimeSource, /MOLSTAR_LASSO_COMPONENT_KEY/);
+  assert.match(runtimeSource, /MOLSTAR_LASSO_COMPONENT_TAG/);
+  assert.match(runtimeSource, /await removeMolstarLassoSceneObjects\(plugin\)/);
+  assert.match(runtimeSource, /Delete selected atoms/);
+  assert.match(runtimeSource, /Remove selection object/);
+  assert.match(runtimeSource, /async function deleteMolstarLassoAtoms\(ref\)/);
+  assert.match(runtimeSource, /Structure\.toSubStructureElementLoci\(parent, selected\)/);
+  assert.match(runtimeSource, /captureMolstarSceneUndoSnapshot\(`delete \$\{atomCount\} lasso-selected atoms`\)/);
+  assert.match(runtimeSource, /modifyByCurrentSelection\(components, 'subtract'\)/);
   assert.match(runtimeSource, /window\.__mqlPost\?\.\('selectionChanged'/);
   assert.match(runtimeSource, /function xyzrenderAtomIndexFromElement\(element\)/);
   assert.match(runtimeSource, /const atomNodes = xyzrenderAtomNodes\(item\)/);
@@ -2017,7 +2051,7 @@ assert.doesNotMatch(gridViewer, /gridRailOpen/);
 assert.doesNotMatch(gridViewer, /data-buret-grid-rail-position="\$\{position\}"\$\{indexAttr\} title="\$\{title\}"/);
 assert.doesNotMatch(gridViewer, /railOutsideHandler/);
 assert.doesNotMatch(gridViewer, /railHoverIndex/);
-assert.match(gridViewer, /<nav class="buret-grid-rail" data-buret-grid-rail aria-label="Molecule navigation">/);
+assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Molecule navigation' : 'Row navigation'/);
 assert.match(gridViewer, /function initGridRail\(cfg\)/);
 assert.match(gridCss, /\.buret-grid-rail \{/);
 assert.match(styles, /\.app-shell\[data-runtime="browser"\]\s*\{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/s);
@@ -2519,14 +2553,18 @@ assert.match(appViewerStateMessagesHook, /body\?\.type === "structureOverlayMode
 assert.match(appViewerStateMessagesHook, /setStructureOverlayModes\(\(previous\) => \(\{ \.\.\.previous, \[documentId\]: mode \}\)\)/);
 assert.match(app, /structureOverlayMode: activeDocument \? structureOverlayModes\[activeDocument\.id\] \?\? "single" : "single"/);
 assert.match(app, /const \[structureStories, setStructureStories\] = useState<Record<string, StructureStory \| null>>\(\{\}\)/);
-assert.match(appViewerStateMessagesHook, /body\?\.type === "structureStoryChanged" \|\| body\?\.type === "openStructureStory"/);
+assert.match(appViewerStateMessagesHook, /body\?\.type === "structureStoryChanged"[\s\S]*body\?\.type === "openStructureStory"[\s\S]*body\?\.type === "mvsStoryChanged"/);
 assert.match(appViewerStateMessagesHook, /structureStoryFromViewerMessage\(body\)/);
 assert.match(appViewerStateMessagesHook, /openDockTab\("right", "story"\)/);
 assert.match(appShellViewStateHook, /structureStories\[state\.activeDocument\.id\] \?\? null/);
 assert.match(dock, /inspector: "Info"/);
 assert.match(dock, /story: "Story"/);
 assert.match(dockPanel, /if \(activeTabKind === "story"\)/);
-assert.match(dockPanel, /function StructureStoryPanel\(\{ story \}: \{ story: StructureStory \}\)/);
+assert.match(dockPanel, /function StructureStoryPanel\(\{ story, document, actions \}: \{ story: StructureStory; document: ViewerDocument \| null; actions: ShellActions \}\)/);
+assert.match(dockPanel, /structure-story-controls/);
+assert.match(dockPanel, /type: "story_control"/);
+assert.match(dockPanel, /MarkdownRichViewer document=\{markdownDocument\}/);
+assert.match(dockPanel, /story\.descriptionFormat === "markdown"/);
 assert.match(structureInfoPanel, /Molecular Inspector/);
 assert.match(structureInfoPanel, /No active structure/);
 assert.match(structureInfoPanel, /actions\.showDocumentMetadata\(document\)/);
@@ -2642,7 +2680,7 @@ assert.match(structureInfoPanel, /const contextStyleCard = structureContextStyle
 assert.match(structureInfoPanel, /function structureContextStyleCardFor\(/);
 assert.match(structureInfoPanel, /if \(structureOverlayMode !== "all"\) return null/);
 assert.match(structureInfoPanel, /if \(isVirtualMolstarScene\(document\)\) \{/);
-assert.match(structureInfoPanel, /\{!hostedMcpWidget && !trajectoryDocument && !virtualScene \?/);
+assert.match(structureInfoPanel, /\{!hostedMcpWidget && !trajectoryDocument && !derivedTopology && !virtualScene \?/);
 assert.match(structureInfoPanel, /const maestroEntryCount = maestroPreviewEntryCount\(summary\)/);
 assert.match(structureInfoPanel, /detail: "Context structures"/);
 assert.match(structureInfoPanel, /detail: "Context molecules"/);
@@ -2722,6 +2760,11 @@ assert.match(structureInfoPanel, /globalFrameIndex: number/);
 assert.match(structureInfoPanel, /segmentStartFrame: number/);
 assert.match(structureInfoPanel, /sourcePath: string/);
 assert.match(structureInfoPanel, /function trajectoryPathsFor\(document: ViewerDocument, playback: TrajectoryPlaybackState \| null\)/);
+assert.match(structureInfoPanel, /const derivedTopology = document\.dockingRequest\?\.syntheticTopology === true/);
+assert.match(structureInfoPanel, /const compositionSummary = !derivedTopology && composition\.documentId === document\.id \? composition\.summary : null/);
+assert.match(structureInfoPanel, /function DerivedTopologyCard/);
+assert.match(structureInfoPanel, /positions only, with no elements, residues or bonds/);
+assert.match(structureInfoPanel, /Attach topology…/);
 assert.match(structureInfoPanel, /document\.dockingRequest\?\.ligandPaths\.includes\(playback\?\.sourcePath \|\| ""\)/);
 assert.match(structureInfoPanel, /const pair = trajectoryPathsFor\(document, playback\)/);
 assert.match(structureInfoPanel, /originalFrameIndex: playback\?\.globalFrameIndex \?\? 0/);
@@ -3982,6 +4025,14 @@ assert.match(appShellActionsHook, new RegExp(`\\.\\.\\.slices\\.${sliceName}`));
 }
 assert.match(appShellActionsHook, /export function useAppShellActions\(\{/);
 assert.match(appShellActionsHook, /export function createWorkspaceHistoryShellActions/);
+assert.match(appShellActionsHook, /requestActiveRuntimeWorkspaceHistory\("undo"\)/);
+assert.match(appShellActionsHook, /requestActiveRuntimeWorkspaceHistory\("redo"\)/);
+assert.match(appShellActionsHook, /canUndoFocusedPreview/);
+assert.match(appShellActionsHook, /canRedoFocusedPreview/);
+assert.match(appShellActionsHook, /previewHistoryByDocument\[activeDocument\.id\]/);
+assert.match(appShellActionsHook, /setPreviewHistoryByDocument\(\(current\) => \(\{/);
+assert.match(appViewerStateMessagesHook, /body\?\.type === "molstarEditHistoryChanged"/);
+assert.match(appViewerStateMessagesHook, /burette:molstar-edit-history-changed/);
 assert.match(appShellActionsHook, /useMemo<ShellActions>\(\(\) => createWorkspaceHistoryShellActions\(createAppShellActions\(\{/);
 assert.match(appShellActionsHook, /\.\.\.createJobHistoryShellActions\(\{ pushStatus, setConformerJobs, setXtbJobs \}\)/);
 assert.match(appShellActionsHook, /createJobHistoryShellActions/);
@@ -4134,6 +4185,7 @@ assert.match(app, /openStructureUrlInMolstar,/);
 assert.match(app, /openKetcherWithStructures,/);
 assert.match(appDockingWorkflowsHook, /existingDockingRequest = documents\.find/);
 assert.match(appDockingWorkflowsHook, /dockingRequestForDrop\(targetPath, droppedPaths, existingDockingRequest\)/);
+assert.match(appDockingWorkflowsHook, /request\.sceneMode = options\.sceneMode \?\? request\.sceneMode \?\? null/);
 assert.match(appOpenDropControllerHook, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.match(app, /from "\.\/hooks\/use-app-open-actions"/);
 assert.match(app, /useAppOpenActions\(\{/);
@@ -4387,7 +4439,7 @@ assert.match(openDropHook, /chooseDropAction\(choices, payload\.point, runChoice
 assert.match(openDropHook, /if \(!handled\) runChoice\(choices\[0\]\)/);
 assert.match(openDropHook, /documentPath: activeDocumentPath/);
 assert.match(openDropHook, /renderer: activeDocumentRenderer/);
-assert.match(openDropHook, /void openDockingDocument\(action\.request\.receptorPath, action\.request\.ligandPaths\)/);
+assert.match(openDropHook, /void openDockingDocument\(\s*action\.request\.receptorPath,\s*action\.request\.ligandPaths,\s*\{\s*sceneMode: action\.request\.sceneMode \?\? null,\s*\}\s*\)/s);
 assert.match(openDropHook, /function elementFromTauriDropPosition/);
 assert.match(openDropHook, /scaled \? document\.elementFromPoint\(scaled\.x, scaled\.y\) : null/);
 assert.match(openDropHook, /document\.elementFromPoint\(position\.x, position\.y\)/);
@@ -4476,7 +4528,7 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v166"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v168"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v70"/);
 assert.match(
   browserDevDocuments,
@@ -4501,16 +4553,21 @@ assert.match(browserDevAgentSession, /"actions\.json", "observe\.json", "session
 assert.match(browserDevAgentSession, /text\/event-stream/);
 assert.match(browserDevAgentSession, /watch\(sessionDir/);
 assert.match(browserDevAgentSession, /changedFileName === "actions\.json"/);
-assert.doesNotMatch(app, /from "\.\/hooks\/use-app-agent-session-actions"/);
-assert.doesNotMatch(app, /const agentTabActions = useAppAgentSessionActions\(\{/);
-assert.doesNotMatch(app, /tabActions: agentTabActions/);
-assert.match(appOpenDropControllerHook, /useAgentSession\(\{\s*activeDocument,\s*activeTabId,\s*activeTabKind,\s*openKetcherTab,\s*documents,\s*openTextDocuments,\s*openPaths,\s*pushErrorStatus,\s*setDockDocument,\s*\}\);/s);
+assert.match(app, /from "\.\/hooks\/use-app-agent-session-actions"/);
+assert.match(app, /const agentTabActions = useAppAgentSessionActions\(\{ closeTab, moveTab, openNewTab, setActiveTab \}\)/);
+assert.match(app, /tabActions: agentTabActions/);
+assert.match(appOpenDropControllerHook, /useAgentSession\(\{\s*activeDocument,\s*activeTabId,\s*activeTabKind,\s*openDockingDocument,\s*tabs,\s*tabActions,\s*openKetcherTab,\s*documents,\s*openTextDocuments,\s*openPaths,\s*pushErrorStatus,\s*setDockDocument,\s*\}\);/s);
 assert.match(agentSessionHook, /type UseAgentSessionArgs = \{/);
 assert.match(agentSessionHook, /setDockDocument: \(area: DockArea, documentId: string \| null\) => void/);
-assert.doesNotMatch(agentSessionHook, /tabActions:/);
+assert.match(agentSessionHook, /tabActions: AgentTabActions/);
+assert.match(agentSessionHook, /type === "manage_tabs"/);
+assert.match(agentSessionHook, /executeAgentTabAction/);
+assert.match(agentSessionHook, /if \(type === "open_docking_view"\)[\s\S]*?await openDockingDocument\(/);
 assert.match(agentSessionHook, /type AgentSceneAction = \{/);
 assert.match(agentSessionHook, /type AgentSceneSelection = \{/);
 assert.match(agentSessionHook, /viewerAgentStateWithActionResult/);
+assert.match(agentSessionHook, /type === "mvsStoryChanged"/);
+assert.match(agentSessionHook, /storyStateFromViewerEvent/);
 assert.match(agentSessionHook, /sceneSelectionFromActionResult/);
 assert.match(agentSessionHook, /selection: activeAgentState\?\.selection \?\? null/);
 assert.match(agentSessionHook, /lastAction: activeAgentState\?\.lastAction \?\? null/);
@@ -4940,6 +4997,22 @@ assert.match(previewShell, /class="buret-button buret-save-modified hidden"/);
 assert.match(previewShell, /title="Save modified structure"/);
 assert.match(previewShell, /data-buret-molstar-style-slot/);
 assert.match(previewShell, /data-buret-molstar-style aria-label="Mol\* preview style"/);
+assert.match(previewShell, /data-buret-action="assembly-symmetry"/);
+assert.match(previewShell, /aria-label="Show assembly symmetry axes"/);
+assert.match(previewShell, /data-buret-action="assembly-symmetry"[^>]*>Symmetry<span/);
+assert.match(previewViewer, /function bindAssemblySymmetryButton\(toolbar\)/);
+assert.match(previewViewer, /assemblySymmetryShown \? 'hideAssemblySymmetry' : 'showAssemblySymmetry'/);
+assert.match(previewViewer, /function sceneTreeAssemblySymmetryMenu\(menu, viewer, ref\)/);
+assert.match(previewViewer, /\{ name: 'both', label: 'Axes \+ Cage' \}/);
+assert.match(previewViewer, /\{ name: 'axes', label: 'Axes only' \}/);
+assert.match(previewViewer, /\{ name: 'cage', label: 'Cage only' \}/);
+assert.match(previewViewer, /updateSceneTreeAssemblySymmetry\(ref, \{ visuals \}\)/);
+assert.match(previewViewer, /updateSceneTreeAssemblySymmetry\(ref, \{ scale: Number\(control\.value\) \}\)/);
+assert.match(previewRuntimeCss, /\.buret-assembly-symmetry\.active \{/);
+assert.doesNotMatch(previewRuntimeCss, /\.buret-assembly-symmetry \{\s*align-self: center;\s*height: 28px;\s*line-height: 1;/);
+assert.match(previewViewer, /function toolbarViewportBounds\(\)/);
+assert.match(previewViewer, /document\.querySelector\('\.msp-layout-region\.msp-layout-main, \.msp-layout-main, \.msp-viewport'\)/);
+assert.match(previewViewer, /const bounds = toolbarViewportBounds\(\);[\s\S]*const rightEdge = bounds\.right;/);
 assert.match(previewShell, /data-buret-renderer="molstar"[\s\S]*data-buret-renderer="xyzrender-external"/);
 assert.doesNotMatch(previewShell, /data-buret-renderer="xyz-fast"/);
 assert.doesNotMatch(previewShell, /id="buret-open-in-app"/);
@@ -4994,6 +5067,7 @@ assert.match(previewViewer, /function captureMolstarTransitionFrame\(\)/);
 assert.match(previewViewer, /canvas\.toDataURL\('image\/png'\)/);
 assert.match(previewViewer, /function requestGenerated3DCameraView\(viewer\)/);
 assert.match(previewViewer, /requestMolstarStructureFocus\(viewer, \{/);
+assert.match(previewViewer, /if \(options\.force !== true && !molstarAutoFocusEnabled\(activeConfig\)\) return/);
 assert.match(previewViewer, /function molstarAutoFocusEnabled\(config\) \{\s*return !isQuickLookHost\(\) && config\?\.autoFocusStructure === true;\s*\}/);
 assert.match(previewViewer, /function requestMolstarStructureFocus\(viewer, options = \{\}\)/);
 assert.match(previewViewer, /camera\.getFocus\(target, Math\.max\(0\.1, safeRadius \* radiusScale\), \[0, 1, 0\], \[0\.85, -0\.38, 0\.92\]\)/);
@@ -5082,6 +5156,10 @@ assert.match(previewViewer, /if \(persist \|\| collapsed\) toolbar\.dataset\.def
 assert.doesNotMatch(previewViewer, /VIEWPORT_RAIL_POSITION_VERSION/);
 assert.doesNotMatch(previewViewer, /localStorage\.setItem\('buret\.viewportRail\.position'/);
 assert.match(previewViewer, /function initViewportRailDrag\(rail, toolbar\) \{/);
+assert.match(
+  previewViewer,
+  /const onPointerDown = event => \{\s*if \(event\.button !== 0 \|\| event\.target\.closest\('\[data-buret-viewport-action\]'\)\) return;/,
+);
 assert.match(previewViewer, /moveToolbar\(\s*toolbar,\s*drag\.toolbarLeft \+ event\.clientX - drag\.startX,\s*drag\.toolbarTop \+ event\.clientY - drag\.startY\s*\);/s);
 assert.match(previewViewer, /saveToolbarPosition\(toolbar\);/);
 assert.match(previewViewer, /initViewportRailDrag\(rail, document\.getElementById\('buret-toolbar'\)\);/);
@@ -5114,6 +5192,12 @@ assert.match(previewRuntimeCss, /\.buret-viewport-rail\.hidden,\s*\.buret-rail-b
 assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection \{[\s\S]*color: #ff6b5e;[\s\S]*border-color: rgba\(255, 107, 94, 0\.72\);/);
 assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection:hover \{[\s\S]*color: #fff;[\s\S]*background: rgba\(255, 107, 94, 0\.88\);/);
 assert.match(previewViewer, /function viewportAnimateMenu\(menu\) \{/);
+const animateMenuSource = previewViewer.slice(
+  previewViewer.indexOf('function viewportAnimateMenu(menu)'),
+  previewViewer.indexOf('function viewportWiggleTransform()'),
+);
+assert.ok(animateMenuSource.indexOf('viewportMotionControls(menu)') < animateMenuSource.indexOf('viewportWiggleControls(menu, plugin)'));
+assert.ok(animateMenuSource.indexOf('viewportWiggleControls(menu, plugin)') < animateMenuSource.indexOf("sceneTreeMenuSection(menu, 'Animations')"));
 // Closing the molecule card drops the selection, and the host has to be told
 // directly because clearing this way does not reach the selection manager events.
 // × parks the card without touching the selection: it latches "suppressed" and
@@ -5139,7 +5223,33 @@ assert.match(previewViewer, /spin: \{ value: 0\.1, min: 0\.01, max: 1, step: 0\.
 // to be told to finish.
 assert.match(previewViewer, /if \('playOnce' in params\) params\.playOnce = true;/);
 assert.match(previewViewer, /manager\.play\(animation, viewportAnimationParams\(animation, plugin\)\)/);
+assert.match(previewViewer, /animation\.name === 'built-in\.animate-model-index' && activeTrajectoryPlaybackControl/);
+assert.match(previewViewer, /applyTrajectorySmoothingFromAction\(\{[\s\S]*outputFrames: interpolatedTrajectoryFrameCount\(playback\.frameCount\(\)\)/);
+assert.match(previewViewer, /playback = activeTrajectoryPlaybackControl;[\s\S]*playback\.play\(\);/);
+assert.match(previewViewer, /activeTrajectoryPlaybackControl\?\.stop\(\)/);
+assert.match(previewViewer, /prepared\.kind === 'trajectory' \|\| prepared\.kind === 'xyz-frame-overlay'/);
+assert.match(previewViewer, /const animationEpoch = \+\+viewportTrajectoryAnimationEpoch;/);
+assert.match(previewViewer, /if \(animationEpoch !== viewportTrajectoryAnimationEpoch \|\| activeViewer !== viewer\) return;/);
+assert.match(previewViewer, /action === 'animation-stop'[\s\S]*cancelViewportTrajectoryAnimation\(\);/);
+assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*cancelViewportTrajectoryAnimation\(\);/);
+assert.match(previewViewer, /Build a smoothed trajectory before animating this format/);
+assert.match(previewViewer, /!activeTrajectoryPlaybackControl\.canInterpolate\(\)/);
 assert.match(previewViewer, /plugin\?\.behaviors\?\.state\?\.isAnimating\?\.subscribe\?\.\(updateViewportAnimateState\)/);
+// Mol*'s Procedural Animation panel is carried into the same Animate menu with
+// all three upstream actions: a uniform dynamics wiggle, uncertainty-weighted
+// B-factor/RMSF wiggle, and a clear state.
+assert.match(previewViewer, /sceneTreeMenuSection\(menu, 'Apply Wiggle'\)/);
+assert.match(previewViewer, /\['dynamics', 'Dynamics', 'Apply procedural molecular motion'\]/);
+assert.match(previewViewer, /\['uncertainty', 'Uncertainty', 'Scale motion by B-factor or RMSF uncertainty'\]/);
+assert.match(previewViewer, /\['clear', 'Clear', 'Remove procedural molecular motion'\]/);
+assert.match(previewViewer, /wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0\.2/);
+assert.match(previewViewer, /wiggleAmplitude: 0, tumbleAmplitude: 0/);
+assert.match(previewViewer, /WiggleStructureRepresentation3DFromBundle/);
+assert.match(previewViewer, /B_iso_or_equiv\.value\(element\)/);
+assert.match(previewViewer, /coarseConformation\.spheres\.rmsf\[element\]/);
+assert.match(previewViewer, /action === 'wiggle'[\s\S]*runViewportWiggle\(control\.dataset\.wiggle, control\)/);
+assert.match(previewViewer, /data-motion', state/);
+assert.match(previewRuntimeCss, /\.buret-rail-button\[data-motion="wiggle"\]/);
 // Motion lives on the animate button now, so the camera menu must not offer it too.
 assert.doesNotMatch(
   previewViewer.slice(previewViewer.indexOf("function viewportCameraMenu"), previewViewer.indexOf("function viewportAnimateMenu")),
@@ -5320,7 +5430,10 @@ assert.match(previewViewer, /StateTransforms\?\.Model\?\.TrajectoryFromModelAndC
 assert.match(previewViewer, /deferWaterRepresentation \? \{ representationPreset: 'empty' \} : undefined/);
 assert.match(previewViewer, /const deferWaterRepresentation = shouldDeferDockingTrajectoryWater\(prepared\.trajectoryPair\)\s*&& molstarStyleSupportsDeferredWater\(style\)/);
 assert.match(previewViewer, /if \(waterExcludedFromInitialPreset\) \{\s*await applyMolstarPolymerLigandRepresentation\(/);
-assert.match(previewViewer, /await applyMolstarStyle\(viewer, style\);\s*installDockingPoseControls\(viewer, prepared\);\s*prepared\.deferredWaterRepresentation = waterExcludedFromInitialPreset;\s*if \(!waterExcludedFromInitialPreset\) await applyMolstarWaterLineRepresentation\(viewer\);/);
+assert.match(previewViewer, /function molstarDerivedTopologyRepresentation\(\)/);
+assert.match(previewViewer, /if \(pair\.synthetic\) \{\s*await applyMolstarUniformRepresentation\(viewer, molstarDerivedTopologyRepresentation\(\)\);\s*\}\s*return false;/);
+assert.match(previewViewer, /if \(!prepared\.trajectoryPair\?\.synthetic\) \{[\s\S]*?await applyMolstarStyle\(viewer, style\);\s*\}\s*installDockingPoseControls\(viewer, prepared\);/);
+assert.match(previewViewer, /if \(!prepared\.trajectoryPair\?\.synthetic && !waterExcludedFromInitialPreset\) \{\s*await applyMolstarWaterLineRepresentation\(viewer\);\s*\}/);
 assert.match(previewViewer, /setStatus\(`\[web\] Rendered \$\{config\.label \|\| 'structure'\}`\);\s*if \(prepared\?\.deferredWaterRepresentation === true\) \{\s*scheduleMolstarWaterLineRepresentation\(viewer\);/);
 assert.match(previewViewer, /plugin\.managers\.structure\.component\.setOptions\(\{\s*\.\.\.plugin\.managers\.structure\.component\.state\.options,\s*ignoreLight: true\s*\}\)/s);
 assert.match(previewViewer, /postprocessing:\s*\{\s*outline:/s);
@@ -5409,6 +5522,7 @@ assert.match(previewViewer, /const toolbar = document\.getElementById\('buret-to
 assert.match(previewViewer, /let molstarStructureDirty = false;/);
 assert.match(previewViewer, /const MOLSTAR_EDIT_HISTORY_LIMIT = 20/);
 assert.match(previewViewer, /const molstarEditUndoStack = \[\]/);
+assert.match(previewViewer, /const molstarEditRedoStack = \[\]/);
 assert.match(previewViewer, /installMolstarEditUndoShortcuts\(\);/);
 assert.match(previewViewer, /bindSaveModifiedStructureButton\(toolbar\);/);
 assert.match(previewViewer, /function setMolstarStructureDirty\(dirty\)/);
@@ -5417,6 +5531,7 @@ assert.doesNotMatch(previewViewer, /data-buret-action="undo-molstar-edit"/);
 assert.doesNotMatch(previewViewer, /function bindMolstarEditUndoButton\(toolbar\)/);
 assert.match(previewViewer, /function installMolstarEditUndoShortcuts\(\)/);
 assert.match(previewViewer, /document\.addEventListener\('keydown'[\s\S]*!\['z', 'я'\]\.includes\(key\)[\s\S]*!\(event\.metaKey \|\| event\.ctrlKey\)[\s\S]*undoMolstarLastEdit\(\)/);
+assert.match(previewViewer, /event\.shiftKey && molstarEditRedoStack\.length[\s\S]*redoMolstarLastEdit\(\)/);
 assert.match(previewViewer, /function updateSaveModifiedStructureButton\(\)/);
 assert.match(previewViewer, /const visible = molstarStructureDirty && !!activeViewer;/);
 assert.match(previewViewer, /button\.classList\.toggle\('hidden', !visible\)/);
@@ -5425,7 +5540,7 @@ assert.match(previewViewer, /const saved = saveMolstarModifiedStructure\(\);[\s\
 assert.match(previewViewer, /installToolbarAutoLayoutTracking\(toolbar\);/);
 assert.match(previewViewer, /function installToolbarAutoLayoutTracking\(toolbar\)/);
 assert.match(previewViewer, /const observer = new ResizeObserver\(handleSizeChange\);/);
-assert.match(previewViewer, /if \(toolbar\.dataset\.defaultPosition === '1'\) \{\s*applyDefaultToolbarPosition\(toolbar\);\s*\} else \{\s*fitToolbarToViewport\(toolbar\);\s*updateFloatingLayoutOffsets\(\);\s*\}/s);
+assert.match(previewViewer, /if \(toolbar\.dataset\.defaultPosition === '1'\) \{\s*applyDefaultToolbarPosition\(toolbar\);\s*\} else \{\s*repositionToolbar\(toolbar\);\s*\}/s);
 assert.match(previewViewer, /const presetSlot = toolbar\.querySelector\('\[data-buret-xyzrender-preset-slot\]'\)/);
 assert.match(previewViewer, /presetSlot\?\.classList\.toggle\('visible', renderer === 'xyzrender-external'\)/);
 assert.match(previewViewer, /toolbar\.classList\.add\('buret-dragging'\)/);
@@ -5435,7 +5550,7 @@ assert.match(previewViewer, /toolbar\.classList\.add\('buret-toolbar-docked'\)/)
 assert.match(previewViewer, /function undockToolbar\(toolbar\)/);
 assert.match(previewViewer, /toolbar\.classList\.remove\('buret-toolbar-docked'\)/);
 assert.match(previewViewer, /function fitToolbarToViewport\(toolbar\)/);
-assert.match(previewViewer, /const availableWidth = window\.innerWidth;/);
+assert.match(previewViewer, /const availableWidth = toolbarViewportBounds\(\)\.width;/);
 assert.match(previewViewer, /toolbar\.style\.maxWidth = Math\.max\(180, availableWidth - TOOLBAR_MARGIN \* 2\) \+ 'px'/);
 assert.match(previewViewer, /const content = toolbar\.querySelector\('\[data-buret-toolbar-content\]'\)/);
 assert.match(previewViewer, /content\.style\.maxWidth = Math\.max\(0, availableWidth - TOOLBAR_MARGIN \* 2 - 36\) \+ 'px'/);
@@ -5517,7 +5632,7 @@ assert.match(previewViewer, /function embeddedStructureDataByteLength\(\)/);
 assert.match(previewViewer, /async function ensureBrowserDevStructureData\(config, cb\)/);
 assert.match(previewViewer, /window\.BuretteDataBytes = null;\s*window\.BuretteDataBase64 = null;\s*await loadStructureData\(config, cb\);/);
 assert.match(previewViewer, /function disposeActiveMolstarViewer\(\)/);
-assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*cancelScheduledMolstarWaterRepresentation\(\);\s*notifyMolstarSelectionChanged\(null\);\s*molstarSelectionHostSignature = '';\s*setMolstarStructureDirty\(false\);/);
+assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*cancelViewportTrajectoryAnimation\(\);\s*cancelScheduledMolstarWaterRepresentation\(\);\s*notifyMolstarSelectionChanged\(null\);\s*molstarSelectionHostSignature = '';\s*setMolstarStructureDirty\(false\);/);
 assert.match(previewViewer, /function startMolstar\(config, cb\)/);
 assert.match(previewViewer, /if \(toolbar\.dataset\.panelTogglesBound !== '1'\)/);
 assert.match(previewViewer, /if \(toolbar\.dataset\.dragBound === '1'\) return;/);
@@ -5579,6 +5694,8 @@ assert.match(previewViewer, /overlayOnly: true/);
 assert.match(previewViewer, /nativeTrajectoryControls: true/);
 assert.match(previewViewer, /kind: 'docking'/);
 assert.match(previewViewer, /function loadDockingPreparedStructure\(viewer, prepared\)/);
+assert.match(previewViewer, /const hasStoryKey = entries\.some\(entry => typeof entry\?\.key === 'string' && entry\.key\.trim\(\)\)/);
+assert.match(previewViewer, /activeMolstarPrepared\.mvsKind === 'multiple' \|\| entries\.length > 1 \|\| hasStoryKey/);
 assert.match(previewViewer, /if \(prepared\.dockingSceneMode\) \{\s*await applyDockingSceneVisibility\(viewer, prepared, prepared\.activePose\);\s*installDockingPoseControls\(viewer, prepared\);\s*return;\s*\}/);
 assert.match(previewViewer, /function installDockingPoseControls\(viewer, prepared\)/);
 assert.match(previewViewer, /className = 'buret-docking-poses'/);
@@ -5604,7 +5721,7 @@ assert.match(previewViewer, /if \(storyPanel\) root\.append\(storyPanel\)/);
 assert.match(previewViewer, /story\.setAttribute\('aria-expanded', open \? 'true' : 'false'\)/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-story-panel \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses-story-closed \.buret-docking-pose-story-panel/);
-assert.match(previewRuntimeCss, /\.buret-docking-poses-structure-scene \{\s*width: fit-content;\s*border-radius: 0;/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses-structure-scene \{\s*width: fit-content;\s*\}/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses-structure-scene \.buret-docking-pose-main \{\s*width: auto;\s*max-width: 100%;/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses-structure-scene \.buret-docking-pose-current \{\s*min-width: 0;\s*flex: 0 1 auto;\s*width: fit-content;\s*max-width: min\(180px, 42vw\);/);
 assert.match(previewViewer, /if \(stored === 'all' \|\| stored === 'single'\) return stored;\s*return 'single';/);
@@ -5612,17 +5729,38 @@ assert.match(previewRuntimeCss, /-webkit-line-clamp: 2/);
 assert.match(previewViewer, /function installMolstarContextMenu\(viewer\)/);
 assert.match(previewViewer, /document\.addEventListener\('contextmenu', onContextMenu, true\)/);
 assert.match(previewViewer, /if \(!viewer \|\| \(!picked && !isMolstarContextMenuTarget\(event\.target\)\)\) \{\s*hideMolstarContextMenu\(\);\s*return false;/);
+// Submenu levels switch on deliberate hover only. Acting on every pointerenter
+// let the rows between a trigger and its submenu close the level the pointer
+// was travelling to, and re-entering an open submenu moved the live node with
+// appendChild and re-measured it on every entry.
+assert.match(previewViewer, /const MOLECULE_MENU_HOVER_INTENT_MS = 110;/);
+assert.match(previewViewer, /trigger\.addEventListener\('pointerenter', \(\) => moleculeMenuScheduleHoverIntent\(menu, \(\) => open\(false\)\)\)/);
+assert.match(previewViewer, /button\.addEventListener\('pointerenter', \(\) => moleculeMenuScheduleHoverIntent\(options\.menu, closeChildren\)\)/);
+assert.doesNotMatch(previewViewer, /addEventListener\('pointerenter', \(\) => open\(false\)\)/);
+assert.doesNotMatch(previewViewer, /addEventListener\('pointerenter', closeChildren\)/);
+assert.match(
+  previewViewer,
+  /function moleculeMenuOpenSubmenu\([\s\S]*?if \(submenu\.dataset\.open === 'true'\) \{[\s\S]*?return;\s*\}\s*\n[\s\S]*?menu\.appendChild\(submenu\);/,
+);
+assert.match(previewViewer, /moleculeMenuCancelHoverIntent\(menu\);\s*\n\s*menu\?\.remove\(\);/);
 assert.match(previewViewer, /const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;/);
 assert.match(previewViewer, /let contextPointer = null;/);
 assert.match(previewViewer, /if \(event\.button === 2\) \{[\s\S]*?contextPointer = \{/);
-assert.match(previewViewer, /const suppressSecondaryMouseEvent = \(event\) => \{[\s\S]*?if \(event\.type === 'mousedown'\) return;[\s\S]*?if \(contextPointer\?\.moved\) return;/);
+assert.match(previewViewer, /const suppressSecondaryMouseEvent = \(event\) => \{[\s\S]*?if \(\['mousedown', 'mouseup'\]\.includes\(event\.type\)\) return;[\s\S]*?if \(contextPointer\?\.moved\) return;/);
+assert.match(previewViewer, /contextPointer = \{[\s\S]*?cameraSnapshot: captureMolstarCameraSnapshot\(viewer\)/);
+assert.match(previewViewer, /const restoreContextPointerCamera = \(pointer\) => \{[\s\S]*?camera\.setState\(snapshot, 0\);[\s\S]*?window\.requestAnimationFrame\(\(\) => \{[\s\S]*?window\.requestAnimationFrame\(restore\);/);
+assert.match(previewViewer, /const target = event\.target;\s*if \(target instanceof Element && target\.closest\('\.buret-molecule-context-menu'\)\) \{[\s\S]*?if \(event\.button === 2\) \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?event\.stopPropagation\(\);[\s\S]*?\}[\s\S]*?return;/);
+assert.match(previewViewer, /openFromEvent\(syntheticContextEvent\(event\), pointer\.pick\)/);
 assert.doesNotMatch(previewViewer, /const contextPick = molstarContextPickFromEvent\(event\);[\s\S]*?event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{/);
-assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{[\s\S]*?event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{/);
 assert.doesNotMatch(previewViewer, /actionContainer\.querySelector\('button'\)\?\.focus\(\)/);
 assert.doesNotMatch(previewViewer, /menu\.querySelector\('button'\)\?\.focus\(\)/);
-assert.match(previewViewer, /const onPointerUp = \(event\) => \{[\s\S]*?if \(contextPointer\.moved\) \{[\s\S]*?hideMolstarContextMenu\(\);[\s\S]*?contextPointer = null;[\s\S]*?return;[\s\S]*?\}[\s\S]*?openFromEvent\(event, contextPointer\.pick\);[\s\S]*?contextPointer = null;/);
+assert.match(previewViewer, /const onPointerUp = \(event\) => \{[\s\S]*?if \(contextPointer\.moved\) \{[\s\S]*?hideMolstarContextMenu\(\);[\s\S]*?contextPointer = null;[\s\S]*?return;[\s\S]*?\}[\s\S]*?const pointer = contextPointer;[\s\S]*?contextPointer = null;[\s\S]*?restoreContextPointerCamera\(pointer\);[\s\S]*?openFromEvent\(syntheticContextEvent\(event\), pointer\.pick\);/);
 assert.match(previewViewer, /document\.addEventListener\('pointerup', onPointerUp, true\)/);
-assert.match(previewViewer, /if \(contextPointer\) \{[\s\S]*?if \(!contextPointer\.moved\) \{[\s\S]*?openFromEvent\(event, contextPointer\.pick\);[\s\S]*?contextPointer = null;[\s\S]*?return;[\s\S]*?\}[\s\S]*?hideMolstarContextMenu\(\);[\s\S]*?contextPointer = null;[\s\S]*?return;/);
+assert.match(previewViewer, /if \(contextPointer\) \{[\s\S]*?if \(!contextPointer\.moved\) \{[\s\S]*?const pointer = contextPointer;[\s\S]*?contextPointer = null;[\s\S]*?restoreContextPointerCamera\(pointer\);[\s\S]*?openFromEvent\(event, pointer\.pick\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?hideMolstarContextMenu\(\);[\s\S]*?contextPointer = null;[\s\S]*?return;/);
+assert.match(previewViewer, /function moleculeMenuOpenSubmenu\(menu, submenu, trigger, options = \{\}\) \{[\s\S]*?menu\.appendChild\(submenu\);[\s\S]*?moleculeMenuPositionSubmenu\(submenu, trigger\);/);
+assert.match(previewViewer, /button\.addEventListener\('click', event => \{\s*if \(event\.button !== 0\) \{/);
+assert.match(previewViewer, /buret-superposition-context-submenu/);
+assert.match(previewRuntimeCss, /\.buret-superposition-context-submenu \.buret-tree-menu-icon \{\s*display: none;\s*\}/);
 assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{\s*openFromEvent\(event\);\s*return;/);
 assert.match(previewViewer, /function isMolstarContextMenuTarget\(target\)/);
 assert.match(previewViewer, /function molstarContextPickFromEvent\(event, options = \{\}\)/);
@@ -5701,6 +5839,9 @@ assert.match(previewViewer, /function molstarContextPickingLevelLoci\(target, pi
 assert.match(previewViewer, /level === 'chain'[\s\S]*molstarContextChainLociFromPick/);
 assert.match(previewViewer, /function molstarContextLociContainsAtom\(loci, atom\)/);
 assert.match(previewViewer, /function molstarContextOrderedSetSome\(indices, predicate\)/);
+assert.match(previewViewer, /function molstarContextOrderedSetForEach\(indices, callback\)/);
+assert.match(previewViewer, /view\.setFloat64\(0, indices, true\);[\s\S]*const start = view\.getInt32\(0, true\);[\s\S]*const end = view\.getInt32\(4, true\);/);
+assert.match(previewViewer, /molstarContextOrderedSetForEach\(indices, index => \{[\s\S]*found = predicate\(index\) === true;/);
 assert.match(previewViewer, /molstarContextOrderedSetSome\(element\.indices, index => molstarContextLociIndexMatchesAtom\(element\.unit, index, atom\)\)/);
 assert.match(previewViewer, /function deleteMolstarContextPick\(target\)/);
 assert.match(previewViewer, /return deleteMolstarContextLoci\(target, loci, false\);/);
@@ -5716,10 +5857,34 @@ assert.match(previewViewer, /function pushMolstarEditUndoSnapshot\(snapshot\)/);
 assert.match(previewViewer, /function clearMolstarEditUndoHistory\(\)/);
 assert.match(previewViewer, /function restoreMolstarEditUndoSnapshot\(snapshot\)/);
 assert.match(previewViewer, /function undoMolstarLastEdit\(\)/);
+assert.match(previewViewer, /function redoMolstarLastEdit\(\)/);
+assert.match(previewViewer, /function captureMolstarHistoryCounterpart\(snapshot\)/);
+assert.match(previewViewer, /pushMolstarHistorySnapshot\(molstarEditRedoStack, counterpart\)/);
+assert.match(previewViewer, /pushMolstarHistorySnapshot\(molstarEditUndoStack, counterpart\)/);
+assert.match(previewViewer, /type: 'molstarEditHistoryChanged'/);
+assert.match(
+  previewViewer,
+  /async function handleWorkspaceHistoryCommand[\s\S]*?source\?\.postMessage\([\s\S]*?handled[\s\S]*?if \(!handled\) return;[\s\S]*?await (?:redo|undo)MolstarLastEdit\(\)/,
+);
 assert.match(previewViewer, /await plugin\.clear\(\);[\s\S]*loadPreparedStructure\(activeViewer, prepared\)[\s\S]*setMolstarStructureDirty\(snapshot\.dirty === true\);/);
 assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{[\s\S]*?setMolstarStructureDirty\(false\);\s*clearMolstarEditUndoHistory\(\);/);
+assert.match(previewViewer, /function molstarSceneMenuUndoLabel\(action, ref, control\)/);
+assert.match(previewViewer, /runMolstarSceneEdit\(sceneUndoLabel, \(\) => runSceneTreeAction/);
+assert.match(previewViewer, /runMolstarSceneEdit\(sceneUndoLabel, \(\) => runSceneTreeSelectAction/);
+assert.match(previewViewer, /const sceneTreePickerUndoSnapshots = new WeakMap\(\)/);
+assert.match(previewViewer, /const sceneTreeControlUndoSnapshots = new WeakMap\(\)/);
+assert.match(previewViewer, /sceneTreePickerUndoSnapshots\.set\(list, captureMolstarSceneUndoSnapshot\(sceneUndoLabel\)\)/);
+assert.match(previewViewer, /if \(changed\) pushMolstarEditUndoSnapshot\(sceneUndoSnapshot\)/);
+assert.match(previewViewer, /function beginSceneTreeControlUndo\(control, ref, description\)/);
+assert.match(previewViewer, /function commitSceneTreeControlUndo\(control\)/);
+assert.match(previewViewer, /beginSceneTreeControlUndo\(slider, ref, 'opacity'\)/);
+assert.match(previewViewer, /function molstarContextSceneMutationLabel\(action, target\)/);
+assert.match(previewViewer, /name === 'represent:component'/);
+assert.match(previewViewer, /name === 'select' \|\| name === 'select-atom'/);
 assert.match(previewViewer, /action === 'remove-chain'/);
 assert.match(previewViewer, /captureMolstarEditUndoSnapshot\(`delete \$\{targetLabel\}`\)[\s\S]*deleteMolstarContextPick\(target\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
+assert.match(previewViewer, /target\?\.selectionBased\s*\? captureMolstarSceneUndoSnapshot\(`delete \$\{targetLabel\}`\)\s*: captureMolstarEditUndoSnapshot\(`delete \$\{targetLabel\}`\)/);
+assert.match(previewViewer, /if \(target\?\.selectionBased\) await clearMolstarSelection\(\)/);
 assert.match(previewViewer, /captureMolstarEditUndoSnapshot\(`delete \$\{bulkLabel\}`\)[\s\S]*deleteMolstarContextBulkType\(target\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
 assert.match(previewViewer, /captureMolstarEditUndoSnapshot\(`delete \$\{chainLabel\}`\)[\s\S]*deleteMolstarContextChain\(target\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
 assert.match(previewViewer, /deleteMolstarContextPick\(target\)[\s\S]*?setMolstarStructureDirty\(true\);[\s\S]*?Deleted \$\{targetLabel\}/);
@@ -5744,7 +5909,8 @@ assert.match(previewViewer, /function molstarContextNormalizeLoci\(loci, granula
 assert.match(previewViewer, /lociApi\.normalize\(loci, granularity, true\)/);
 assert.match(previewViewer, /function molstarContextResolvedLoci\(targetStructure\)/);
 assert.match(previewViewer, /const selectionLoci = molstarContextSelectionLociForStructure\(targetStructure\)/);
-assert.match(previewViewer, /const canReuseSelection = molstarContextMenuMode === 'molecule' \|\| !pickedAtom;/);
+assert.match(previewViewer, /const canReuseSelection = molstarContextHasLassoSelection\(targetStructure, selectionLoci\) \|\| molstarContextMenuMode === 'molecule' \|\| !pickedAtom;/);
+assert.match(previewViewer, /filter\(component => !component\?\.cell\?\.transform\?\.tags\?\.includes\(MOLSTAR_LASSO_COMPONENT_TAG\)\)/);
 assert.match(previewViewer, /if \(canReuseSelection && selectedAtom && \(!pickedAtom \|\| molstarContextLociContainsAtom\(selectionLoci, pickedAtom\)\)\) return \{/);
 assert.match(previewViewer, /selectionBased: true/);
 assert.match(previewViewer, /atomLoci: molstarContextAtomLociForStructure\(structure \|\| pickedLoci\?\.structure, pickedAtom\)/);
@@ -5767,7 +5933,7 @@ assert.match(previewViewer, /label\.textContent = 'Picking level'/);
 assert.match(previewViewer, /for \(const \[level, levelLabel\] of VIEWPORT_GRANULARITIES\)/);
 assert.match(previewViewer, /item\.setAttribute\('role', 'menuitemradio'\)/);
 assert.match(previewViewer, /item\.setAttribute\('aria-checked', checked \? 'true' : 'false'\)/);
-assert.match(previewViewer, /trigger\.addEventListener\('pointerenter', \(\) => open\(false\)\)/);
+assert.match(previewViewer, /trigger\.addEventListener\('pointerenter', \(\) => moleculeMenuScheduleHoverIntent\(menu, \(\) => open\(false\)\)\)/);
 assert.match(previewViewer, /const proteinScope = menuTarget\.scope === 'residue' && !!menuTarget\.atom;/);
 assert.match(previewViewer, /molstarContextMenuMode = mode;/);
 assert.match(previewViewer, /let mode = molstarSelectionLevel\(\)/);
@@ -6029,8 +6195,8 @@ assert.match(previewViewer, /async function reloadActiveMolstarStructure\(\)/);
 assert.match(previewViewer, /const prepared = structureDataForMolstar\(config\)/);
 assert.match(previewViewer, /activeMolstarPrepared\?\.kind === 'docking' && activeMolstarPrepared\?\.dockingSceneMode[\s\S]*await applyDockingSceneVisibility\(activeViewer, activeMolstarPrepared, activePose, \{ focus: false \}\);/);
 assert.match(previewViewer, /activeMolstarPrepared\?\.kind === 'docking' && activeMolstarPrepared\?\.sdfPoseOverlayAvailable === true[\s\S]*await applyDockingPoseCollectionVisibility\(activeViewer, activeMolstarPrepared, activePose, \{ focus: false \}\);/);
-assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.dockingSceneMode[\s\S]*await applyDockingSceneVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: options\.focus === true \}\);[\s\S]*activePose = nextIndex;/);
-assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.sdfPoseOverlayAvailable === true[\s\S]*await applyDockingPoseCollectionVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: options\.focus === true \}\);[\s\S]*activePose = nextIndex;/);
+assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.dockingSceneMode[\s\S]*await applyDockingSceneVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: false \}\);[\s\S]*activePose = nextIndex;/);
+assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.sdfPoseOverlayAvailable === true[\s\S]*await applyDockingPoseCollectionVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: false \}\);[\s\S]*activePose = nextIndex;/);
 assert.match(previewViewer, /const sceneStructures = \[\];[\s\S]*sceneStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\);[\s\S]*await applySdfCollectionMolstarStyle\(viewer, resolvedContextStyle, sceneStructures, 1, 'colored'\);/);
 assert.match(previewViewer, /function minimumTrajectoryLoopDelay\(prepared\)/);
 assert.match(previewViewer, /const NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD = 25/);
@@ -6065,7 +6231,7 @@ assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls && activeSd
 assert.match(previewViewer, /else if \(prepared\.xyzFrameOverlayAvailable === true\) \{\s*await applyXyzFrameOverlayVisibility\(activeViewer, prepared, index, \{ focus: false \}\);/);
 assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls\) \{/);
 assert.match(previewViewer, /else if \(prepared\.kind === 'sdf-collection'\) \{/);
-assert.match(previewViewer, /await applySdfCollectionVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: options\.focus === true \}\)/);
+assert.match(previewViewer, /await applySdfCollectionVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: false \}\)/);
 assert.match(previewViewer, /if \(type === 'set_sdf_molecule'\) \{/);
 assert.match(previewViewer, /return setSdfCollectionMoleculeFromAction\(action\)/);
 assert.match(previewViewer, /if \(type === 'set_sdf_context_style'\) \{/);
@@ -6201,9 +6367,9 @@ assert.match(previewViewer, /function pdbTrajectoryTimesPs\(data\)/);
 assert.match(previewViewer, /function trajectoryPoseLabel\(prepared, controlLabel, activePose\)/);
 assert.match(previewViewer, /Time \$\{timeNs\} ns - \$\{indexText\}/);
 assert.match(previewViewer, /setCurrentName\(prepared\?\.poses\?\.\[poseIndex\]\?\.label \|\| `\$\{controlLabel\} \$\{poseIndex \+ 1\}`\)/);
-assert.match(previewViewer, /function alignStructureSceneEntries\(prepared, mode = 'auto'\)/);
-assert.match(previewViewer, /function restoreStructureSceneEntries\(prepared\)/);
-assert.match(previewViewer, /value\.toFixed\(3\)\.padStart\(8, ' '\)/);
+assert.match(previewViewer, /function alignStructureSceneEntries\(prepared, request = 'auto'\)/);
+assert.match(previewViewer, /function createStructureSuperpositionController\(viewer, prepared, alignButton\)/);
+assert.match(previewViewer, /TransformStructureConformation/);
 assert.match(previewViewer, /label\.className = 'buret-docking-pose-current'/);
 assert.match(previewViewer, /fileList\.className = 'buret-docking-pose-files'/);
 assert.match(previewViewer, /align\.className = 'buret-docking-pose-align'/);
@@ -6215,9 +6381,10 @@ assert.match(previewViewer, /async function applyDockingSceneSinglePose\(viewer,
 assert.match(previewViewer, /function setDockingSceneRefsHidden\(viewer, refs, hidden\)/);
 assert.match(previewViewer, /state\.updateCellState\(representationRef, \{ isHidden: hidden \}\)/);
 assert.match(previewViewer, /button\.addEventListener\('pointerenter'/);
-assert.match(previewViewer, /await activeStructureAlignmentControl\.toggle\(action === 'align-structures' \? 'auto' : action\.slice\('align:'\.length\)\)/);
-assert.match(previewViewer, /alignStructureSceneEntries\(prepared, mode\)/);
-assert.match(previewViewer, /restoreStructureSceneEntries\(prepared\)/);
+assert.match(previewViewer, /action === 'align-structures'\) await activeStructureAlignmentControl\.reset\(\)/);
+assert.match(previewViewer, /action === 'align:advanced'\) await activeStructureAlignmentControl\.open\(\)/);
+assert.match(previewViewer, /alignStructureSceneEntries\(prepared, \{/);
+assert.match(previewViewer, /resetSuperpositionTransforms\(viewer, entries\)/);
 assert.match(previewViewer, /speed\.addEventListener\('change', \(\) => \{/);
 assert.match(previewViewer, /localStorage\.setItem\(trajectoryLoopFpsStorageKey\(activeConfig, prepared\), String\(fps\)\)/);
 assert.match(previewViewer, /loop\.addEventListener\('click', \(\) => \{/);
@@ -6238,6 +6405,8 @@ assert.match(previewViewer, /let poseUpdateQueue = Promise\.resolve\(\)/);
 assert.match(previewViewer, /let loopEpoch = 0/);
 assert.match(previewViewer, /const setPose = \(index, options = \{\}\) => \{[\s\S]*?if \(options\.loopStep !== true && loopActive\) \{[\s\S]*?loopEpoch \+= 1;[\s\S]*?loopStartPose = requestedIndex;[\s\S]*?poseUpdateQueue = queued\.catch\(\(\) => \{\}\);[\s\S]*?return queued;[\s\S]*?\};/);
 assert.match(previewViewer, /const performSetPose = async \(index, options = \{\}\) => \{/);
+assert.match(previewViewer, /const shouldFocus = options\.focus === true \|\| options\.userStep === true;/);
+assert.match(previewViewer, /if \(shouldFocus\) scheduleMolstarStructureFocus\(viewer, \{ reason: 'pose-selection', durationMs: 180, force: true \}\);/);
 assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\(\), expectedLoopEpoch = loopEpoch\) => \{[\s\S]*?if \(!loopActive \|\| expectedLoopEpoch !== loopEpoch\) return;/);
 assert.match(previewViewer, /slider\.className = 'buret-docking-pose-slider'/);
 assert.match(previewViewer, /slider\.max = String\(controlBounds\.count\)/);
@@ -6258,6 +6427,10 @@ assert.match(previewViewer, /root\.addEventListener\('wheel', isolateWheel, \{ p
 assert.match(previewViewer, /const isolationDisposer = installDockingPoseInteractionIsolation\(root\)/);
 assert.match(previewViewer, /isolationDisposer\?\.\(\)/);
 assert.match(previewViewer, /function installDockingPoseHoverSuppression\(\)/);
+// The suppression matches the viewport canvas itself, so outside the preview
+// hosts it swallowed every buttonless pointermove and Mol* never highlighted
+// what the pointer was over.
+assert.match(previewViewer, /function installDockingPoseHoverSuppression\(\) \{[\s\S]*?if \(!isQuickLookHost\(\)\) return null;/);
 assert.match(previewViewer, /document\.addEventListener\('pointermove', suppressHover, true\)/);
 assert.match(previewViewer, /lociHighlights\?\.clearHighlights\?\.\(\)/);
 assert.match(previewViewer, /const hoverDisposer = installDockingPoseHoverSuppression\(\)/);
@@ -6611,6 +6784,7 @@ assert.doesNotMatch(app, /async function writeClipboardText/);
 assert.doesNotMatch(app, /function copyTextWithSelectionFallback/);
 assert.doesNotMatch(app, /function isXtbOptimizationTrajectoryLogPath/);
 assert.match(browserDevStructureBundles, /export async function expandBrowserDevStructureBundles/);
+assert.match(browserDevStructureBundles, /for \(const path of paths\) \{\s*addPath\(path\);\s*if \(!isStructureBundleCandidate\(path\)\) continue;/);
 assert.match(browserDevStructureBundles, /export function isXtbOptimizationTrajectoryLogPath/);
 assert.match(browserDevStructureBundles, /\/__burette\/file-bundle\?path=\$\{encodeURIComponent\(path\)\}/);
 assert.match(browserDevStructureBundles, /Browser-dev companion discovery is opportunistic/);
@@ -7175,6 +7349,11 @@ assert.match(gridUi, /id="open-selected-ketcher"/);
 assert.match(gridViewer, /onOpenKetcher\(\) \{ requestSelectedKetcherDocument\(cfg\); \}/);
 assert.match(browserDevDocuments, /const hasMoleculeRecords = records\.some/);
 assert.match(browserDevDocuments, /rendererSwitch: hasMoleculeRecords/);
+assert.match(browserDevDocuments, /molecularGrid: hasMoleculeRecords/);
+assert.match(gridViewer, /typeof cfg\?\.molecularGrid === 'boolean'/);
+assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Molecule table' : 'Data table'/);
+assert.match(gridViewer, /numeric === 1 \? 'row' : 'rows'/);
+assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Search molecules and SMARTS' : 'Search table rows'/);
 assert.doesNotMatch(gridViewer, /data-buret-grid-renderer="xyzrender-external">xyzrender/);
 assert.match(gridViewer, /function requestSdfPoseDocument\(cfg\)/);
 assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Molstar\.', 'error'\)/);
@@ -7580,14 +7759,14 @@ assert.match(appStartupEffectsHook, /browserDevDockingFromLocation\(\)/);
 assert.match(appStartupEffectsHook, /void openDockingDocument\(request\.receptorPath, request\.ligandPaths, \{ sceneMode \}\)/);
 assert.match(appStartupEffectsHook, /const sceneMode = browserDevSceneModeFromLocation\(\)/);
 assert.match(appDockingWorkflowsHook, /request\.activePose = options\.activePose \?\? null/);
-assert.match(appDockingWorkflowsHook, /request\.sceneMode = options\.sceneMode \?\? null/);
-assert.match(appDockingWorkflowsHook, /request\.poseMode = options\.sceneMode === "structureAll" \? "all" : "single"/);
+assert.match(appDockingWorkflowsHook, /request\.sceneMode = options\.sceneMode \?\? request\.sceneMode \?\? null/);
+assert.match(appDockingWorkflowsHook, /request\.poseMode = request\.sceneMode === "structureAll" \? "all" : "single"/);
 assert.match(appDockingPoseMessagesHook, /const poseMode = body\.poseMode === "all" \? "all" : "single"/);
 assert.match(appDockingPoseMessagesHook, /if \(dockingDocument\?\.dockingRequest && dockingDocument\.dockingRequest\.poseMode !== poseMode\) \{/);
 assert.match(appDockingPoseMessagesHook, /addBackgroundDocuments\(\[\{/);
 assert.match(appDockingPoseMessagesHook, /poseMode,/);
 assert.doesNotMatch(appDockingWorkflowsHook, /rightDockActiveTab === "descriptors"/);
-assert.match(appDockingWorkflowsHook, /openBrowserDevDockingDocument\(request\.receptorPath, request\.ligandPaths, preferences, options\)/);
+assert.match(appDockingWorkflowsHook, /openBrowserDevDockingDocument\(request\.receptorPath, request\.ligandPaths, preferences, \{\s*\.\.\.options,\s*sceneMode: request\.sceneMode,\s*\}\)/s);
 assert.match(appGridWorkflowsHook, /const point = payload\.point && Number\.isFinite\(payload\.point\.x\) && Number\.isFinite\(payload\.point\.y\)/);
 assert.match(appGridWorkflowsHook, /point,/);
 assert.match(appDockingWorkflowsHook, /invoke<ViewerDocument>\("open_docking_document"/);

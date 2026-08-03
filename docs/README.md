@@ -28,6 +28,8 @@ contains only documents that describe the active project.
   desktop-first Mol* Mesoscale Explorer integration, runtime and format
   boundaries, staged gates, scientific validation, performance budgets, and
   separate Quick Look/iPhone acceptance.
+- [Molstar workflows](molstar-workflows.md): adopted Molstar 5.11 capabilities,
+  typed actions, scientific validation boundaries, and session/story semantics.
 - [Performance architecture](performance.md): runtime profiles, caches, binary
   payloads, grid search, and no-regression guardrails.
 - [Native GPU Compute Layer](superpowers/specs/2026-07-15-gpu-compute-platform-design.md):

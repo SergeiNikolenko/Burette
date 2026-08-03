@@ -93,6 +93,36 @@
       "quickLook": { "sizeLimitMiB": 40 }
     },
     {
+      "id": "volume-map",
+      "contentType": "com.local.burette10.volume-map",
+      "extensions": ["ccp4", "mrc", "map"],
+      "mimeTypes": ["application/octet-stream"],
+      "conformsTo": ["public.data"],
+      "description": "CCP4, MRC, or MAP electron-density volume",
+      "viewer": { "molstarFormat": "ccp4", "binary": true, "externalOnly": false },
+      "preview": {
+        "strategy": "direct",
+        "renderer": "molstar",
+        "primary": { "role": "volume", "format": "ccp4", "binary": true }
+      },
+      "quickLook": { "sizeLimitMiB": 75 }
+    },
+    {
+      "id": "reflection-data",
+      "contentType": "com.local.burette10.mtz",
+      "extensions": ["mtz"],
+      "mimeTypes": ["application/octet-stream"],
+      "conformsTo": ["public.data"],
+      "description": "CCP4 MTZ reflection data with map coefficients",
+      "viewer": { "molstarFormat": "mtz", "binary": true, "externalOnly": false },
+      "preview": {
+        "strategy": "direct",
+        "renderer": "molstar",
+        "primary": { "role": "volume", "format": "mtz", "binary": true }
+      },
+      "quickLook": { "sizeLimitMiB": 75 }
+    },
+    {
       "id": "sdf",
       "contentType": "com.local.burette10.sdf",
       "contentTypeAliases": ["com.schrodinger.sdf"],
@@ -496,10 +526,10 @@
   "documentTypes": {
     "name": "Molecular structure files",
     "extensions": [
-      "abi", "arc", "bcif", "cfg", "cif", "cms", "com", "config", "coor", "crdbox", "csv", "cub", "cube", "data", "dcd", "dms", "dump", "dwar", "edge", "edr", "ent", "fasta", "fdef", "fdf", "fhiaims", "gms", "graphml", "gro", "gsd", "h5md", "history",
+      "abi", "arc", "bcif", "ccp4", "cfg", "cif", "cms", "com", "config", "coor", "crdbox", "csv", "cub", "cube", "data", "dcd", "dms", "dump", "dwar", "edge", "edr", "ent", "fasta", "fdef", "fdf", "fhiaims", "gms", "graphml", "gro", "gsd", "h5md", "history",
       "in", "inp", "inpcrd", "itp", "lammpstrj", "lammps", "lmp", "log", "mae", "mae.gz", "maegz", "magma", "mcif", "mdcrd", "mdl", "mgf", "mmcif", "mmtf", "mol",
       "json", "mesozip", "mol2", "molj", "molx", "ms", "msp", "mvsj", "mvsx", "mzml", "mzxml", "namdbin", "nc", "ncdf", "ncrst", "nctraj", "netcdf", "nw", "out", "par", "parm", "parm7", "pdb", "pdbqt", "pqr", "pos", "prm", "prmtop", "psf", "psi4", "qcin",
-      "restrt", "rst", "rst7", "rtf", "sd", "sdf", "smi", "smiles", "state", "str", "top", "tpr", "tng", "trc", "trj", "trr", "trz", "tsv", "txyz", "vasp", "xtc", "xml", "xpdb", "xvg", "xyz", "xyzr", "ph4",
+      "map", "mrc", "mtz", "restrt", "rst", "rst7", "rtf", "sd", "sdf", "smi", "smiles", "state", "str", "top", "tpr", "tng", "trc", "trj", "trr", "trz", "tsv", "txyz", "vasp", "xtc", "xml", "xpdb", "xvg", "xyz", "xyzr", "ph4",
       "key", "chk", "checkpoint", "crd", "msj"
     ]
   },
@@ -510,6 +540,8 @@
       "com.local.burette10.mmcif",
       "com.local.burette10.bcif",
       "com.local.burette10.mmtf",
+      "com.local.burette10.volume-map",
+      "com.local.burette10.mtz",
       "com.local.burette10.sdf",
       "com.local.burette10.csv",
       "com.local.burette10.tsv",
@@ -544,6 +576,8 @@
       "com.local.burette10.mmcif",
       "com.local.burette10.bcif",
       "com.local.burette10.mmtf",
+      "com.local.burette10.volume-map",
+      "com.local.burette10.mtz",
       "com.local.burette10.sdf",
       "com.local.burette10.smiles",
       "gg.flew.unfold.subtitle-smi",

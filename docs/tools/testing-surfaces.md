@@ -51,6 +51,20 @@ bun scripts/burette-agent.mjs observe --session-dir <sessionDir>
 bun scripts/burette-agent.mjs act --session-dir <sessionDir> '{"type":"reset_camera"}'
 ```
 
+For a multi-state MolViewSpec Story, validate the source and resources before
+opening, then exercise typed Story navigation rather than clicking Mol* DOM:
+
+```bash
+bun scripts/burette-agent.mjs story-create --spec /tmp/story.json --output /tmp/story.mvsx --asset protein.cif=/path/protein.cif
+bun scripts/burette-agent.mjs story-validate --file /tmp/story.mvsx
+bun scripts/burette-agent.mjs open --mode browser-agent-shell --no-launch /tmp/story.mvsx
+bun scripts/burette-agent.mjs act --session-dir <sessionDir> '{"type":"story_observe"}'
+bun scripts/burette-agent.mjs act --session-dir <sessionDir> '{"type":"story_control","operation":"next"}'
+```
+
+Typed readiness and a successful transition are necessary but not sufficient:
+use Browser to verify a nonblank first step and one transitioned step.
+
 Stop the returned `processId` when the Browser check is complete.
 
 Use this surface for normal app UI work: sidebar, tabs, docks, command palette,

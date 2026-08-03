@@ -23,7 +23,10 @@
   const MOLSTAR_LASSO_MIN_POINTS = 4;
   const MOLSTAR_LASSO_MIN_DISTANCE_PX = 3;
   const MOLSTAR_LASSO_SAMPLE_STEP_PX = 8;
-  const MOLSTAR_LASSO_SAMPLE_LIMIT = 4500;
+  const MOLSTAR_LASSO_PROJECTION_YIELD_INTERVAL = 4096;
+  const MOLSTAR_LASSO_PREVIEW_ATOM_LIMIT = 128;
+  const MOLSTAR_LASSO_COMPONENT_KEY = 'burette-lasso-selection';
+  const MOLSTAR_LASSO_COMPONENT_TAG = 'burette-lasso-selection-object';
   const MOLSTAR_PREVIEW_RDKIT_SVG_SIZE = 260;
   const MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS = 300;
   const MOLSTAR_EDIT_HISTORY_LIMIT = 20;
@@ -116,6 +119,7 @@
   let molstarContainerResizeCleanup = null;
   let molstarContextMenuCleanup = null;
   let molstarSelectionPreviewCleanup = null;
+  let molstarStoryStateCleanup = null;
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
   // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
@@ -124,6 +128,7 @@
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
   let molstarLassoOverlay = null;
+  let molstarLassoBusy = false;
   const molstarLassoSelectionAtoms = new Map();
   const molstarLassoSelectionAtomKeys = new Set();
   const molstarLassoSelectionResidueKeys = new Set();
@@ -164,6 +169,7 @@
   let molstarPreviewRdkitPromise = null;
   const molstarPreviewSvgCache = new Map();
   const molstarEditUndoStack = [];
+  const molstarEditRedoStack = [];
   let activeDockingPrepared = null;
   let buretteAgentActionPollTimer = 0;
   let buretteAgentActionPollBusy = false;
@@ -171,6 +177,9 @@
   let generate3dPending = false;
   let generate3dPendingMode = 'single';
   let molstarStructureFocusSerial = 0;
+  let assemblySymmetryAvailable = false;
+  let assemblySymmetryShown = false;
+  let assemblySymmetryPending = false;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message, payload = {}) {
@@ -203,6 +212,41 @@
       return false;
     }
   }
+
+  async function reportMolstarCapabilities() {
+    if (!window.BuretteAgent?.run) {
+      assemblySymmetryPending = false;
+      updateAssemblySymmetryButton();
+      return false;
+    }
+    try {
+      const response = await window.BuretteAgent.run({ command: 'capabilities', args: {} });
+      if (!response?.ok) {
+        assemblySymmetryPending = false;
+        updateAssemblySymmetryButton();
+        return false;
+      }
+      assemblySymmetryAvailable = response.result?.hasAssemblySymmetry === true;
+      assemblySymmetryShown = response.result?.hasAssemblySymmetryRepresentation === true;
+      assemblySymmetryPending = false;
+      updateAssemblySymmetryButton();
+      postHostMessage({
+        type: 'molstarCapabilitiesChanged',
+        hasAssemblySymmetry: assemblySymmetryAvailable,
+        assemblySymmetryShown
+      });
+      return true;
+    } catch (error) {
+      assemblySymmetryPending = false;
+      updateAssemblySymmetryButton();
+      debug('Mol* capability report failed: ' + (error && error.message || String(error)));
+      return false;
+    }
+  }
+
+  window.addEventListener('burette-agent-ready', () => {
+    void reportMolstarCapabilities();
+  });
 
   function isEditableShortcutTarget(target) {
     const tagName = target?.tagName?.toLowerCase();
@@ -532,6 +576,12 @@
 
   async function executeBuretteAgentAction(action) {
     const type = String(action?.type || '');
+    if (type === 'story_observe') {
+      return molstarStoryResult('story_observe');
+    }
+    if (type === 'story_control') {
+      return controlMolstarStory(action);
+    }
     if (type === 'get_xtb_context') {
       const target = molstarSelectedMoleculeTargetFromSelection();
       return {
@@ -640,6 +690,45 @@
         }
       });
     }
+    if (type === 'show_assembly_symmetry') {
+      return window.BuretteAgent.run({
+        command: 'showAssemblySymmetry',
+        args: { params: action.params || {}, serverUrl: action.serverUrl }
+      });
+    }
+    if (type === 'hide_assembly_symmetry') {
+      return window.BuretteAgent.run({ command: 'hideAssemblySymmetry', args: {} });
+    }
+    if (type === 'show_water_bridges') {
+      return window.BuretteAgent.run({ command: 'showWaterBridges', args: action.args || action });
+    }
+    if (type === 'apply_mesoscale_preset') {
+      return window.BuretteAgent.run({ command: 'applyMesoscalePreset', args: action.args || action });
+    }
+    if (type === 'color_xtb_charges') {
+      return window.BuretteAgent.run({
+        command: 'colorScalarField',
+        args: {
+          mode: 'partial-charge',
+          values: action.charges || action.values || [],
+          provenance: {
+            source: 'xTB partial charges',
+            chargeFilePath: action.chargeFilePath,
+            ...(action.provenance || {})
+          }
+        }
+      });
+    }
+    if (type === 'color_xtb_fukui') {
+      return window.BuretteAgent.run({
+        command: 'colorScalarField',
+        args: {
+          mode: `fukui-${action.mode || 'fzero'}`,
+          values: action.values || [],
+          provenance: { source: 'xTB Fukui indices', convention: 'signed', ...(action.provenance || {}) }
+        }
+      });
+    }
     if (type === 'label_selection') {
       return window.BuretteAgent.run({
         command: 'labelSelection',
@@ -698,6 +787,15 @@
         }
       });
     }
+    if (type === 'observe_story') {
+      return window.BuretteAgent.run({ command: 'observeStory', args: {} });
+    }
+    if (type === 'control_story') {
+      return window.BuretteAgent.run({ command: 'controlStory', args: action.args || action });
+    }
+    if (type === 'export_session') {
+      return window.BuretteAgent.run({ command: 'exportSession', args: action.args || action });
+    }
     if (type === 'screenshot' || type === 'export_image') {
       return window.BuretteAgent.run({ command: 'screenshot', args: action.args || {} });
     }
@@ -706,6 +804,100 @@
       return window.BuretteAgent.run({ command: action.command, args: action.args || {} });
     }
     return agentActionFailure(type, 'NOT_IMPLEMENTED', `Unsupported BuretteAgent action: ${type}`);
+  }
+
+  function molstarStoryState() {
+    const manager = activeViewer?.plugin?.managers?.snapshot;
+    const entries = manager?.state?.entries ? Array.from(manager.state.entries) : [];
+    const hasStoryKey = entries.some(entry => typeof entry?.key === 'string' && entry.key.trim());
+    const isMultipleStateMvs = activeMolstarPrepared?.kind === 'mvs'
+      && (activeMolstarPrepared.mvsKind === 'multiple' || entries.length > 1 || hasStoryKey);
+    if (!manager || !isMultipleStateMvs || entries.length === 0) {
+      return {
+        available: false,
+        title: String(activeConfig?.label || '').trim() || null,
+        stepIndex: null,
+        stepCount: 0,
+        current: null,
+        steps: [],
+        isPlaying: false,
+        hasPrevious: false,
+        hasNext: false
+      };
+    }
+    const currentId = manager.state.current;
+    const stepIndex = Math.max(0, entries.findIndex(entry => entry?.snapshot?.id === currentId));
+    const step = entries[stepIndex] || entries[0];
+    return {
+      available: true,
+      title: String(activeConfig?.label || '').replace(/\.mvs[\w]*$/iu, '') || 'MolViewSpec Story',
+      stepIndex,
+      stepCount: entries.length,
+      current: {
+        id: step?.snapshot?.id || null,
+        key: step?.key || null,
+        title: step?.name || `Step ${stepIndex + 1}`,
+        description: String(step?.description || '').slice(0, 64 * 1024),
+        descriptionFormat: step?.descriptionFormat === 'plaintext' ? 'plaintext' : 'markdown'
+      },
+      steps: entries.slice(0, 256).map((entry, index) => ({
+        index,
+        id: entry?.snapshot?.id || null,
+        key: entry?.key || null,
+        title: entry?.name || `Step ${index + 1}`
+      })),
+      isPlaying: manager.state.isPlaying === true,
+      hasPrevious: entries.length > 1,
+      hasNext: entries.length > 1
+    };
+  }
+
+  function molstarStoryResult(command) {
+    return { ok: true, command, result: molstarStoryState() };
+  }
+
+  async function controlMolstarStory(action) {
+    const manager = activeViewer?.plugin?.managers?.snapshot;
+    const story = molstarStoryState();
+    if (!manager || !story.available) return agentActionFailure('story_control', 'NO_STORY', 'The active Mol* viewer does not contain a MolViewSpec Story.');
+    const operation = String(action.operation || '').trim();
+    if (operation === 'next') await manager.applyNext(1);
+    else if (operation === 'previous') await manager.applyNext(-1);
+    else if (operation === 'play') await manager.play({ restart: action.restart === true });
+    else if (operation === 'pause') await manager.stop();
+    else if (operation === 'goto') {
+      const entries = Array.from(manager.state.entries);
+      const index = Number.isInteger(action.index)
+        ? action.index
+        : entries.findIndex(entry => entry?.key === action.key || entry?.snapshot?.id === action.id);
+      if (index < 0 || index >= entries.length) return agentActionFailure('story_control', 'STORY_STEP_NOT_FOUND', 'The requested Story step does not exist.');
+      const snapshot = manager.setCurrent(entries[index].snapshot.id);
+      if (snapshot) await activeViewer.plugin.state.setSnapshot(snapshot);
+    } else {
+      return agentActionFailure('story_control', 'INVALID_ARGS', 'story_control operation must be next, previous, goto, play, or pause.');
+    }
+    const result = molstarStoryResult('story_control');
+    reportMolstarStoryToHost();
+    return result;
+  }
+
+  function reportMolstarStoryToHost() {
+    const story = molstarStoryState();
+    if (!story.available) return;
+    postHostMessage({
+      type: 'mvsStoryChanged',
+      documentId: String(activeConfig?.documentId || ''),
+      fileName: String(activeConfig?.label || 'MolViewSpec Story'),
+      ...story
+    });
+  }
+
+  function observeMolstarStoryState(viewer) {
+    molstarStoryStateCleanup?.();
+    molstarStoryStateCleanup = null;
+    const subscription = viewer?.plugin?.managers?.snapshot?.events?.changed?.subscribe?.(() => reportMolstarStoryToHost());
+    if (subscription?.unsubscribe) molstarStoryStateCleanup = () => subscription.unsubscribe();
+    reportMolstarStoryToHost();
   }
 
   function buretteSceneSpecOperations(action) {
@@ -796,6 +988,9 @@
       } catch (error) {
         const actionType = String(body.action?.type || 'unknown');
         result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
+      }
+      if (body.action?.type === 'show_assembly_symmetry' || body.action?.type === 'hide_assembly_symmetry') {
+        await reportMolstarCapabilities();
       }
       event.source?.postMessage({
         source: 'burette-agent-viewer',
@@ -1143,6 +1338,7 @@
   let activeMolstarPrepared = null;
   let trajectorySmoothingState = null;
   let pendingTrajectoryPlaybackRestore = null;
+  let viewportTrajectoryAnimationEpoch = 0;
   let activeSdfPoseMode = 'single';
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
@@ -1630,6 +1826,7 @@
       lassoButton.setAttribute('aria-hidden', lassoAvailable ? 'false' : 'true');
     }
     updateMolstarLassoButton();
+    updateAssemblySymmetryButton();
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     presetSlot?.classList.remove('visible');
     const canOpenSdfGrid = canOpenSdfGridFromConfig(config);
@@ -2224,21 +2421,11 @@
 
   async function handleWorkspaceHistoryCommand(body, source) {
     const direction = body.direction === 'redo' ? 'redo' : 'undo';
-    let handled = false;
-    try {
-      if (direction === 'redo') {
-        handled = xyzrenderActionRedoStack.length
-          ? redoXyzrenderLastAction({ fromSystemHistory: true })
-          : false;
-      } else if (xyzrenderActionUndoStack.length) {
-        handled = undoXyzrenderLastAction({ fromSystemHistory: true });
-      } else if (molstarEditUndoStack.length) {
-        await undoMolstarLastEdit();
-        handled = true;
-      }
-    } catch (error) {
-      setStatus(`[web] ${direction === 'redo' ? 'Redo' : 'Undo'} failed.\n\n${error?.message || String(error)}`, 'error');
-    }
+    const handled = direction === 'redo'
+      ? xyzrenderActionRedoStack.length > 0 || molstarEditRedoStack.length > 0
+      : xyzrenderActionUndoStack.length > 0 || molstarEditUndoStack.length > 0;
+    // A structure snapshot can take seconds to restore. Acknowledge ownership
+    // before awaiting it so the host never falls through to a second Back/Undo.
     source?.postMessage({
       source: 'burette-viewer',
       body: {
@@ -2247,6 +2434,22 @@
         handled
       }
     }, '*');
+    if (!handled) return;
+    try {
+      if (direction === 'redo') {
+        if (xyzrenderActionRedoStack.length) {
+          redoXyzrenderLastAction({ fromSystemHistory: true });
+        } else if (molstarEditRedoStack.length) {
+          await redoMolstarLastEdit();
+        }
+      } else if (xyzrenderActionUndoStack.length) {
+        undoXyzrenderLastAction({ fromSystemHistory: true });
+      } else if (molstarEditUndoStack.length) {
+        await undoMolstarLastEdit();
+      }
+    } catch (error) {
+      setStatus(`[web] ${direction === 'redo' ? 'Redo' : 'Undo'} failed.\n\n${error?.message || String(error)}`, 'error');
+    }
   }
 
   async function replaceMolstarStructureFromHost(body) {
@@ -2373,7 +2576,7 @@
   }
 
   function scheduleMolstarStructureFocus(viewer, options = {}) {
-    if (!molstarAutoFocusEnabled(activeConfig)) return;
+    if (options.force !== true && !molstarAutoFocusEnabled(activeConfig)) return;
     if (options.allowWithContextFocus !== true && hasMolstarContextFocus(activeConfig)) return;
     const serial = ++molstarStructureFocusSerial;
     const delays = Array.isArray(options.delays) && options.delays.length ? options.delays : [0, 80, 240, 520];
@@ -2598,6 +2801,7 @@
       const poseCount = Number(activeMolstarPrepared.poseCount || 0);
       const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
       await applyDockingSceneVisibility(activeViewer, activeMolstarPrepared, activePose, { focus: false });
+      await activeStructureAlignmentControl?.restoreAfterSceneReload?.();
       return;
     }
     if (activeMolstarPrepared?.kind === 'docking' && activeMolstarPrepared?.sdfPoseOverlayAvailable === true) {
@@ -3817,6 +4021,7 @@
     bindSaveModifiedStructureButton(toolbar);
     installMolstarEditUndoShortcuts();
     bindMolstarStyleControls(toolbar);
+    bindAssemblySymmetryButton(toolbar);
     bindMolstarLassoButton(toolbar);
     bindMolstarLassoKeyboardButton(toolbar);
     installMolstarLassoSelection();
@@ -3869,6 +4074,14 @@
         event.preventDefault();
         event.stopPropagation();
         goForwardXyzrenderSystemHistory();
+        return;
+      }
+      if (event.shiftKey && molstarEditRedoStack.length) {
+        event.preventDefault();
+        event.stopPropagation();
+        void redoMolstarLastEdit().catch(error => {
+          setStatus(`[web] Redo failed.\n\n${error?.message || String(error)}`, 'error');
+        });
         return;
       }
       if (!event.shiftKey && xyzrenderActionUndoStack.length) {
@@ -3927,8 +4140,7 @@
         if (toolbar.dataset.defaultPosition === '1') {
           applyDefaultToolbarPosition(toolbar);
         } else {
-          fitToolbarToViewport(toolbar);
-          updateFloatingLayoutOffsets();
+          repositionToolbar(toolbar);
         }
       });
     };
@@ -3963,6 +4175,48 @@
       select.addEventListener('change', () => requestMolstarStyle(select.value));
     }
     toolbar.dataset.molstarStyleBound = '1';
+  }
+
+  function bindAssemblySymmetryButton(toolbar) {
+    const button = toolbar?.querySelector('[data-buret-action="assembly-symmetry"]');
+    if (!button || button.dataset.bound === '1') return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', async () => {
+      if (assemblySymmetryPending || !assemblySymmetryAvailable) return;
+      assemblySymmetryPending = true;
+      updateAssemblySymmetryButton();
+      try {
+        const command = assemblySymmetryShown ? 'hideAssemblySymmetry' : 'showAssemblySymmetry';
+        const response = await window.BuretteAgent?.run?.({ command, args: {} });
+        if (!response?.ok) throw new Error(response?.error?.message || 'Assembly symmetry action failed.');
+        await reportMolstarCapabilities();
+      } catch (error) {
+        assemblySymmetryPending = false;
+        updateAssemblySymmetryButton();
+        setStatus('[web] Assembly symmetry could not be updated.', 'error');
+        debug('Assembly symmetry toolbar action failed: ' + (error && error.message || String(error)));
+      }
+    });
+    updateAssemblySymmetryButton();
+  }
+
+  function updateAssemblySymmetryButton() {
+    const button = document.querySelector('#buret-toolbar [data-buret-action="assembly-symmetry"]');
+    if (!button) return;
+    const renderer = normalizeRenderer((activeConfig || window.BuretteConfig || {}).renderer);
+    const visible = assemblySymmetryAvailable && renderer === 'molstar';
+    button.classList.toggle('hidden', !visible);
+    button.classList.toggle('active', assemblySymmetryShown);
+    button.disabled = !visible || assemblySymmetryPending;
+    button.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    button.setAttribute('aria-pressed', assemblySymmetryShown ? 'true' : 'false');
+    button.setAttribute('aria-busy', assemblySymmetryPending ? 'true' : 'false');
+    const label = assemblySymmetryPending
+      ? 'Updating assembly symmetry'
+      : assemblySymmetryShown ? 'Hide assembly symmetry axes' : 'Show assembly symmetry axes';
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    setTooltipLabel(button, label);
   }
 
   function bindMolstarLassoButton(toolbar) {
@@ -4334,13 +4588,30 @@
     saveToolbarPosition(toolbar);
   }
 
+  function toolbarViewportBounds() {
+    const viewport = document.querySelector('.msp-layout-region.msp-layout-main, .msp-layout-main, .msp-viewport');
+    const rect = viewport?.getBoundingClientRect?.();
+    if (rect && rect.width > 0 && rect.height > 0) {
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height
+      };
+    }
+    return { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight, width: window.innerWidth, height: window.innerHeight };
+  }
+
   function applyDefaultToolbarPosition(toolbar) {
     dockToolbar(toolbar);
     fitToolbarToViewport(toolbar);
-    const top = defaultToolbarTop();
+    const bounds = toolbarViewportBounds();
+    const top = Math.max(defaultToolbarTop(), bounds.top + TOOLBAR_MARGIN);
     const width = toolbar.offsetWidth || toolbar.getBoundingClientRect().width || 320;
-    const rightEdge = window.innerWidth;
-    const left = Math.max(TOOLBAR_MARGIN, Math.round(rightEdge - width - TOOLBAR_MARGIN));
+    const rightEdge = bounds.right;
+    const left = Math.max(bounds.left + TOOLBAR_MARGIN, Math.round(rightEdge - width - TOOLBAR_MARGIN));
     delete toolbar.dataset.dockCorner;
     toolbar.dataset.defaultPosition = '1';
     toolbar.style.left = left + 'px';
@@ -4355,14 +4626,16 @@
 
   function toolbarCornerWithinDistance(toolbar, distance) {
     const rect = toolbar.getBoundingClientRect();
-    const horizontal = rect.left <= distance
+    const bounds = toolbarViewportBounds();
+    const horizontal = rect.left - bounds.left <= distance
       ? 'left'
-      : window.innerWidth - rect.right <= distance
+      : bounds.right - rect.right <= distance
       ? 'right'
       : '';
-    const vertical = rect.top - toolbarSafeTop() <= distance
+    const safeTop = Math.max(toolbarSafeTop(), bounds.top + TOOLBAR_MARGIN);
+    const vertical = rect.top - safeTop <= distance
       ? 'top'
-      : window.innerHeight - rect.bottom <= distance
+      : bounds.bottom - rect.bottom <= distance
       ? 'bottom'
       : '';
     return horizontal && vertical ? `${vertical}-${horizontal}` : '';
@@ -4384,16 +4657,18 @@
 
   function positionToolbarAtCorner(toolbar, corner) {
     fitToolbarToViewport(toolbar);
+    const bounds = toolbarViewportBounds();
     const width = toolbar.offsetWidth || toolbar.getBoundingClientRect().width || 320;
     const height = toolbar.offsetHeight || toolbar.getBoundingClientRect().height || 36;
     const horizontal = corner.endsWith('left') ? 'left' : 'right';
     const vertical = corner.startsWith('bottom') ? 'bottom' : 'top';
     const left = horizontal === 'left'
-      ? TOOLBAR_MARGIN
-      : Math.max(TOOLBAR_MARGIN, window.innerWidth - width - TOOLBAR_MARGIN);
+      ? bounds.left + TOOLBAR_MARGIN
+      : Math.max(bounds.left + TOOLBAR_MARGIN, bounds.right - width - TOOLBAR_MARGIN);
+    const safeTop = Math.max(toolbarSafeTop(), bounds.top + TOOLBAR_MARGIN);
     const top = vertical === 'top'
-      ? toolbarSafeTop()
-      : Math.max(toolbarSafeTop(), window.innerHeight - height - TOOLBAR_MARGIN);
+      ? safeTop
+      : Math.max(safeTop, bounds.bottom - height - TOOLBAR_MARGIN);
     toolbar.style.left = Math.round(left) + 'px';
     toolbar.style.top = Math.round(top) + 'px';
     toolbar.style.right = 'auto';
@@ -4415,10 +4690,12 @@
   function moveToolbar(toolbar, left, top) {
     fitToolbarToViewport(toolbar);
     const margin = TOOLBAR_MARGIN;
-    const safeTop = toolbarSafeTop();
-    const maxLeft = Math.max(margin, window.innerWidth - toolbar.offsetWidth - margin);
-    const maxTop = Math.max(safeTop, window.innerHeight - toolbar.offsetHeight - margin);
-    toolbar.style.left = Math.min(Math.max(margin, left), maxLeft) + 'px';
+    const bounds = toolbarViewportBounds();
+    const minLeft = bounds.left + margin;
+    const safeTop = Math.max(toolbarSafeTop(), bounds.top + margin);
+    const maxLeft = Math.max(minLeft, bounds.right - toolbar.offsetWidth - margin);
+    const maxTop = Math.max(safeTop, bounds.bottom - toolbar.offsetHeight - margin);
+    toolbar.style.left = Math.min(Math.max(minLeft, left), maxLeft) + 'px';
     toolbar.style.top = Math.min(Math.max(safeTop, top), maxTop) + 'px';
     toolbar.style.right = 'auto';
     updateToolbarCornerIntent(toolbar);
@@ -4434,7 +4711,7 @@
   }
 
   function fitToolbarToViewport(toolbar) {
-    const availableWidth = window.innerWidth;
+    const availableWidth = toolbarViewportBounds().width;
     toolbar.style.maxWidth = Math.max(180, availableWidth - TOOLBAR_MARGIN * 2) + 'px';
     const content = toolbar.querySelector('[data-buret-toolbar-content]');
     if (content) {
@@ -4973,6 +5250,8 @@
   let sceneTreeMenuRef = '';
   let sceneTreeSelectedRef = '';
   let sceneTreeMenuPointerStart = null;
+  const sceneTreePickerUndoSnapshots = new WeakMap();
+  const sceneTreeControlUndoSnapshots = new WeakMap();
 
   function sceneTreeIconElement(paths) {
     const svg = document.createElementNS(SCENE_TREE_SVG_NS, 'svg');
@@ -5754,6 +6033,56 @@
     menu.appendChild(row);
   }
 
+  async function updateSceneTreeAssemblySymmetry(ref, patch) {
+    const state = activeMolstarViewer()?.plugin?.state?.data;
+    const cell = state?.cells?.get(ref);
+    if (typeof state?.build !== 'function' || cell?.obj?.label !== 'Global Symmetry') return false;
+    try {
+      const update = state.build();
+      update.to(ref).update(old => ({ ...old, ...patch }));
+      await update.commit();
+      scheduleSceneTreeRender();
+      return true;
+    } catch (error) {
+      debug('assembly symmetry representation update failed: ' + (error?.message || String(error)));
+      setStatus(`[web] Symmetry settings failed. ${error?.message || error}`, 'error');
+      return false;
+    }
+  }
+
+  function sceneTreeAssemblySymmetryMenu(menu, viewer, ref) {
+    const params = viewer?.plugin?.state?.data?.cells?.get(ref)?.transform?.params || {};
+    const visuals = Array.isArray(params.visuals) ? params.visuals : ['axes', 'cage'];
+    const mode = visuals.includes('axes') && visuals.includes('cage')
+      ? 'both'
+      : visuals.includes('cage') ? 'cage' : 'axes';
+    sceneTreeMenuSection(menu, 'Symmetry');
+    sceneTreeMenuSelect(menu, 'Visual', 'assembly-symmetry-visuals', [
+      { name: 'both', label: 'Axes + Cage' },
+      { name: 'axes', label: 'Axes only' },
+      { name: 'cage', label: 'Cage only' }
+    ], mode);
+
+    const row = document.createElement('div');
+    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
+    const caption = document.createElement('span');
+    caption.textContent = 'Scale';
+    const control = document.createElement('input');
+    control.type = 'range';
+    control.className = 'buret-tree-menu-range';
+    control.min = '0.1';
+    control.max = '5';
+    control.step = '0.1';
+    control.value = String(Number.isFinite(params.scale) ? params.scale : 2);
+    control.dataset.sceneTreeSymmetryScale = '1';
+    control.setAttribute('aria-label', 'Symmetry scale');
+    const readout = document.createElement('span');
+    readout.className = 'buret-tree-menu-slider-value';
+    readout.textContent = control.value;
+    row.append(caption, control, readout);
+    menu.appendChild(row);
+  }
+
   // A native <select> cannot preview: its popup is drawn by the OS, its <option>
   // elements have no layout box, and no pointer event ever reaches them. Colour
   // themes are the one list here worth seeing before committing to, so this row is
@@ -6311,6 +6640,7 @@
       const ref = list.closest('[data-ref]')?.dataset.ref;
       if (ref) streamSceneTreeTheme(ref, list.dataset.sceneTreePickerList, list.dataset.current);
     }
+    if (restore) sceneTreePickerUndoSnapshots.delete(list);
     list.hidden = true;
     trigger?.setAttribute('aria-expanded', 'false');
   }
@@ -6357,6 +6687,8 @@
     const components = sceneTreeColorTargets(viewer).get(ref) || [];
     const measurementTargets = sceneTreeMeasurementTargets(viewer, ref);
     const isComponent = components.length === 1 && components[0]?.cell?.transform?.ref === ref;
+    const isLassoSelection = isMolstarLassoSceneRef(viewer, ref);
+    const isAssemblySymmetry = viewer?.plugin?.state?.data?.cells?.get(ref)?.obj?.label === 'Global Symmetry';
 
     const menu = document.createElement('div');
     menu.id = 'buret-scene-tree-menu';
@@ -6389,7 +6721,9 @@
       icon: node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
     }));
 
-    if (measurementTargets.length) {
+    if (isAssemblySymmetry) {
+      sceneTreeAssemblySymmetryMenu(menu, viewer, ref);
+    } else if (measurementTargets.length) {
       sceneTreeMeasurementMenu(menu, measurementTargets);
     } else if (repTarget) {
       sceneTreeRepresentationMenu(menu, viewer, node, repTarget);
@@ -6418,7 +6752,7 @@
 
     // Mol*'s own actions are many and rarely the reason the menu was opened, so they
     // stay folded away instead of pushing everything else off the screen.
-    const actions = sceneTreeCellActions(viewer, ref);
+    const actions = isLassoSelection ? [] : sceneTreeCellActions(viewer, ref);
     if (actions.length) {
       sceneTreeMenuSection(menu);
       const disclosure = document.createElement('details');
@@ -6434,8 +6768,17 @@
       menu.appendChild(disclosure);
     }
 
-    sceneTreeMenuSection(menu);
-    menu.appendChild(sceneTreeMenuItem('Remove', 'remove', { icon: SCENE_TREE_ICON.trash, destructive: true }));
+    sceneTreeMenuSection(menu, isLassoSelection ? 'Selection' : '');
+    if (isLassoSelection) {
+      menu.appendChild(sceneTreeMenuItem('Delete selected atoms', 'delete-lasso-atoms', {
+        icon: SCENE_TREE_ICON.trash,
+        destructive: true
+      }));
+    }
+    menu.appendChild(sceneTreeMenuItem(isLassoSelection ? 'Remove selection object' : 'Remove', 'remove', {
+      icon: SCENE_TREE_ICON.trash,
+      destructive: !isLassoSelection
+    }));
 
     document.body.appendChild(menu);
     const rect = menu.getBoundingClientRect();
@@ -6446,27 +6789,87 @@
     initViewportPanelDrag(menu);
   }
 
-  function runSceneTreeAction(action, ref, control) {
+  function molstarSceneMenuUndoLabel(action, ref, control) {
+    const name = String(action || '');
+    const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+    const target = node?.label || 'scene object';
+    if (name === 'visibility') return `visibility of ${target}`;
+    if (name === 'isolate') return `isolating ${target}`;
+    if (name === 'show-all') return `showing all near ${target}`;
+    if (name === 'remove') return `removing ${target}`;
+    if (name === 'tint-color' || name === 'rep-tint-color') return `colour of ${target}`;
+    if (name === 'measurement-color') return `measurement colour of ${target}`;
+    if (name === 'apply-action') return control?.textContent?.trim() || `action on ${target}`;
+    return null;
+  }
+
+  async function runSceneTreeAction(action, ref, control) {
     if (action === 'expand') toggleSceneTreeNode(ref);
     else if (action === 'select') selectSceneTreeNode(ref);
     else if (action === 'visibility') toggleSceneTreeVisibility(ref);
     else if (action === 'focus') focusSceneTreeNode(ref);
     else if (action === 'isolate') isolateSceneTreeNode(ref);
     else if (action === 'show-all') showAllSceneTreeNodes(ref);
-    else if (action === 'save-focus') saveSceneTreeFocusNode(ref);
-    else if (action === 'remove') removeSceneTreeNode(ref);
+    else if (action === 'save-focus') await saveSceneTreeFocusNode(ref);
+    else if (action === 'delete-lasso-atoms') await deleteMolstarLassoAtoms(ref);
+    else if (action === 'remove') await removeSceneTreeNode(ref);
     else if (action === 'tint-color') {
-      applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
+      await applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
     } else if (action === 'rep-tint-color') {
-      applySceneTreeReprColor(ref, 'tint', Number(control.dataset.sceneTreeColor));
+      await applySceneTreeReprColor(ref, 'tint', Number(control.dataset.sceneTreeColor));
     } else if (action === 'measurement-color') {
-      applySceneTreeMeasurementParam(
+      await applySceneTreeMeasurementParam(
         ref,
         control.dataset.sceneTreeMeasurementColor,
         Number(control.dataset.sceneTreeColor)
       );
     } else if (action === 'apply-action') {
-      applySceneTreeAction(ref, Number(control.dataset.sceneTreeActionIndex));
+      await applySceneTreeAction(ref, Number(control.dataset.sceneTreeActionIndex));
+    }
+  }
+
+  function molstarSceneMenuSelectUndoLabel(kind, ref) {
+    const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+    const target = node?.label || 'scene object';
+    if (kind === 'add-representation') return `representation on ${target}`;
+    if (kind === 'representation-type' || kind === 'representation-visual') return `representation of ${target}`;
+    if (kind === 'representation-color' || kind === 'color-theme') return `colour of ${target}`;
+    if (kind === 'representation-size') return `size of ${target}`;
+    if (kind === 'assembly-symmetry-visuals') return `symmetry display of ${target}`;
+    return null;
+  }
+
+  function beginSceneTreeControlUndo(control, ref, description) {
+    if (sceneTreeControlUndoSnapshots.has(control)) return;
+    const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+    const label = `${description} of ${node?.label || 'scene object'}`;
+    sceneTreeControlUndoSnapshots.set(control, captureMolstarSceneUndoSnapshot(label));
+  }
+
+  function commitSceneTreeControlUndo(control) {
+    if (!sceneTreeControlUndoSnapshots.has(control)) return false;
+    const snapshot = sceneTreeControlUndoSnapshots.get(control) || null;
+    sceneTreeControlUndoSnapshots.delete(control);
+    pushMolstarEditUndoSnapshot(snapshot);
+    return true;
+  }
+
+  async function runSceneTreeSelectAction(kind, ref, value) {
+    if (kind === 'add-representation') {
+      await addSceneTreeRepresentation(ref, value);
+    } else if (kind === 'representation-type') {
+      await applySceneTreeReprType(ref, value);
+    } else if (kind === 'representation-color') {
+      await applySceneTreeReprColor(ref, value, null);
+    } else if (kind === 'representation-size') {
+      await applySceneTreeReprSize(ref, value);
+    } else if (kind === 'representation-visual') {
+      await applySceneTreeReprParam(ref, 'visuals', [value]);
+    } else if (kind === 'assembly-symmetry-visuals') {
+      const visuals = value === 'axes' ? ['axes'] : value === 'cage' ? ['cage'] : ['axes', 'cage'];
+      await updateSceneTreeAssemblySymmetry(ref, { visuals });
+    } else {
+      await applySceneTreeColorTheme(ref, value, null);
     }
   }
 
@@ -6483,6 +6886,13 @@
         if (other !== list) closeSceneTreePicker(other, { restore: true });
       }
       if (opening) {
+        const ref = list.closest('[data-ref]')?.dataset.ref;
+        const sceneUndoLabel = ref
+          ? molstarSceneMenuSelectUndoLabel(list.dataset.sceneTreePickerList, ref)
+          : null;
+        if (sceneUndoLabel) {
+          sceneTreePickerUndoSnapshots.set(list, captureMolstarSceneUndoSnapshot(sceneUndoLabel));
+        }
         list.hidden = false;
         trigger.setAttribute('aria-expanded', 'true');
       } else {
@@ -6496,9 +6906,13 @@
       const ref = picked.closest('[data-ref]')?.dataset.ref;
       const name = picked.dataset.sceneTreePickerValue;
       if (list && ref) {
+        const changed = name !== list.dataset.current;
+        const sceneUndoSnapshot = sceneTreePickerUndoSnapshots.get(list) || null;
         list.dataset.current = name;
         streamSceneTreeTheme(ref, list.dataset.sceneTreePickerList, name);
         closeSceneTreePicker(list);
+        sceneTreePickerUndoSnapshots.delete(list);
+        if (changed) pushMolstarEditUndoSnapshot(sceneUndoSnapshot);
         const owner = menu.querySelector(`[data-scene-tree-picker="${list.dataset.sceneTreePickerList}"]`);
         if (owner) { owner.textContent = picked.textContent; owner.title = picked.textContent; }
         for (const item of list.children) {
@@ -6517,7 +6931,12 @@
       openSceneTreeMenu(ref, rect.left, rect.bottom + 4);
       return;
     }
-    runSceneTreeAction(action, ref, control);
+    const sceneUndoLabel = molstarSceneMenuUndoLabel(action, ref, control);
+    if (sceneUndoLabel) {
+      void runMolstarSceneEdit(sceneUndoLabel, () => runSceneTreeAction(action, ref, control));
+    } else {
+      void runSceneTreeAction(action, ref, control);
+    }
     // The swatches let you try colours in place, so a pick keeps the menu open;
     // everything else is a one-shot and dismisses it.
     const persistent = action === 'tint-color' || action === 'rep-tint-color' || action === 'measurement-color';
@@ -6788,6 +7207,7 @@
     'built-in.animate-camera-spin',
     'built-in.animate-camera-rock'
   ]);
+  const VIEWPORT_WIGGLE_TAG = 'wiggle-controls';
   const VIEWPORT_ICON = {
     camera: ['M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z', 'M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'],
     layFlat: ['M3 8.5 12 4l9 4.5-9 4.5Z', 'm3 15 9 4.5L21 15'],
@@ -6795,6 +7215,7 @@
     cube: ['M12 3 4.5 7v10L12 21l7.5-4V7Z', 'M4.5 7 12 11l7.5-4', 'M12 11v10'],
     scissors: ['M6.5 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'M6.5 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'm8.7 7.2 10.8 10.6', 'M19.5 6.2 8.7 16.8'],
     undo: ['M4 9h11a5 5 0 0 1 0 10h-7', 'm8 5-4 4 4 4'],
+    redo: ['M20 9H9a5 5 0 0 0 0 10h7', 'm-8-5 4 4-4 4'],
     play: ['m8 5 11 7-11 7Z'],
     stop: ['M6.5 6.5h11v11h-11Z']
   };
@@ -6917,8 +7338,10 @@
   function viewportAnimateMenu(menu) {
     viewportMotionControls(menu);
     const plugin = viewportPlugin();
+    viewportWiggleControls(menu, plugin);
     const manager = plugin?.managers?.animation;
-    const playing = manager?.state?.animationState === 'playing';
+    const playing = manager?.state?.animationState === 'playing'
+      || activeTrajectoryPlaybackControl?.isPlaying() === true;
     const animations = (manager?.animations || [])
       .map((animation, index) => ({ animation, index }))
       // Camera spin and rock are the Motion switch above, only on a timer.
@@ -6948,6 +7371,190 @@
     }
   }
 
+  function viewportWiggleTransform() {
+    return window.molstar?.lib?.plugin?.StateTransforms?.Representation
+      ?.WiggleStructureRepresentation3DFromBundle || null;
+  }
+
+  function viewportWiggleCells(plugin) {
+    const transform = viewportWiggleTransform();
+    const cells = [];
+    if (!transform) return cells;
+    plugin?.state?.data?.cells?.forEach?.(cell => {
+      const tags = cell?.transform?.tags;
+      const tagged = Array.isArray(tags)
+        ? tags.includes(VIEWPORT_WIGGLE_TAG)
+        : tags?.has?.(VIEWPORT_WIGGLE_TAG) === true;
+      const transformer = cell?.transform?.transformer;
+      if (tagged && (transformer === transform || transformer?.id === transform.id)) cells.push(cell);
+    });
+    return cells;
+  }
+
+  function viewportWiggleMode(plugin = viewportPlugin()) {
+    const amplitude = Number(plugin?.managers?.structure?.component?.state?.options?.animation?.wiggleAmplitude);
+    if (amplitude > 0) return 'dynamics';
+    return viewportWiggleCells(plugin).length ? 'uncertainty' : 'clear';
+  }
+
+  function viewportWiggleControls(menu, plugin) {
+    sceneTreeMenuSection(menu, 'Apply Wiggle');
+    const segment = document.createElement('div');
+    segment.className = 'buret-viewport-segment';
+    segment.setAttribute('role', 'group');
+    segment.setAttribute('aria-label', 'Apply wiggle');
+    const active = viewportWiggleMode(plugin);
+    const actions = [
+      ['dynamics', 'Dynamics', 'Apply procedural molecular motion'],
+      ['uncertainty', 'Uncertainty', 'Scale motion by B-factor or RMSF uncertainty'],
+      ['clear', 'Clear', 'Remove procedural molecular motion']
+    ];
+    for (const [name, label, title] of actions) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-viewport-segment-button';
+      button.dataset.buretViewportMenu = 'wiggle';
+      button.dataset.wiggle = name;
+      button.setAttribute('aria-pressed', name === active ? 'true' : 'false');
+      button.title = title;
+      button.textContent = label;
+      segment.appendChild(button);
+    }
+    menu.appendChild(segment);
+  }
+
+  async function clearViewportWiggleLayers(plugin) {
+    const cells = viewportWiggleCells(plugin);
+    if (!cells.length) return;
+    const update = plugin.state.data.build();
+    for (const cell of cells) update.delete(cell.transform.ref);
+    await update.commit({ doNotUpdateCurrent: true });
+  }
+
+  function viewportUncertaintyValue(unit, element, Unit) {
+    if (Unit.isAtomic(unit)) return unit.model.atomicConformation.B_iso_or_equiv.value(element);
+    if (Unit.isSpheres(unit)) return unit.model.coarseConformation.spheres.rmsf[element];
+    return 0;
+  }
+
+  function viewportUncertaintyLayers(structure, StructureElement, Unit) {
+    const root = structure.root;
+    let min = Infinity;
+    let max = -Infinity;
+    for (const unit of root.units) {
+      for (const element of unit.elements) {
+        const value = viewportUncertaintyValue(unit, element, Unit);
+        if (value < min) min = value;
+        if (value > max) max = value;
+      }
+    }
+    const range = max - min;
+    if (!Number.isFinite(range) || range <= 0) return [];
+
+    const buckets = new Map();
+    for (const unit of root.units) {
+      const unitBuckets = new Map();
+      for (let index = 0; index < unit.elements.length; index += 1) {
+        const value = viewportUncertaintyValue(unit, unit.elements[index], Unit);
+        const bucket = Math.min(255, Math.round(((value - min) / range) * 255));
+        if (!unitBuckets.has(bucket)) unitBuckets.set(bucket, []);
+        unitBuckets.get(bucket).push(index);
+      }
+      for (const [bucket, indices] of unitBuckets) {
+        if (!buckets.has(bucket)) buckets.set(bucket, []);
+        buckets.get(bucket).push({ unit, indices });
+      }
+    }
+
+    const layers = [];
+    for (const [bucket, unitIndices] of buckets) {
+      const elements = unitIndices.map(({ unit, indices }) => ({
+        unit,
+        indices: new Int32Array(indices)
+      }));
+      let loci = StructureElement.Loci(root, elements);
+      loci = StructureElement.Loci.remap(loci, structure);
+      if (StructureElement.Loci.isEmpty(loci)) continue;
+      loci = StructureElement.Loci.remap(loci, root);
+      layers.push({
+        bundle: StructureElement.Bundle.fromLoci(loci),
+        value: bucket / 255
+      });
+    }
+    return layers;
+  }
+
+  async function applyViewportUncertaintyWiggle(plugin) {
+    const transform = viewportWiggleTransform();
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const Unit = window.molstar?.lib?.structure?.Unit;
+    if (!transform || !StructureElement || !Unit) throw new Error('Mol* wiggle helpers are unavailable');
+
+    const components = plugin.managers.structure.hierarchy.selection.structures
+      .flatMap(structure => structure.components || []);
+    const update = plugin.state.data.build();
+    const layerCache = new Map();
+    let applied = 0;
+    for (const component of components) {
+      for (const representation of component.representations || []) {
+        const structure = representation.cell?.obj?.data?.sourceData;
+        if (!structure) continue;
+        let layers = layerCache.get(structure);
+        if (!layers) {
+          layers = viewportUncertaintyLayers(structure, StructureElement, Unit);
+          layerCache.set(structure, layers);
+        }
+        if (!layers.length) continue;
+        update.to(representation.cell.transform.ref).apply(
+          transform,
+          { kind: 'element-loci', layers },
+          { tags: VIEWPORT_WIGGLE_TAG }
+        );
+        applied += 1;
+      }
+    }
+    if (applied) await update.commit({ doNotUpdateCurrent: true });
+    return applied;
+  }
+
+  async function setViewportWiggle(mode) {
+    const plugin = viewportPlugin();
+    const manager = plugin?.managers?.structure?.component;
+    if (!plugin || !manager) return false;
+    const options = manager.state.options;
+    const animation = mode === 'dynamics'
+      ? { ...options.animation, wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0.2 }
+      : { ...options.animation, wiggleAmplitude: 0, tumbleAmplitude: 0 };
+    await manager.setOptions({ ...options, animation });
+    await clearViewportWiggleLayers(plugin);
+    if (mode === 'uncertainty') {
+      const applied = await applyViewportUncertaintyWiggle(plugin);
+      if (!applied) {
+        setStatus('[web] This structure has no varying B-factor or RMSF uncertainty data.', 'info', {
+          visible: true, timeoutMs: 3500
+        });
+        updateViewportAnimateState();
+        return false;
+      }
+    }
+    updateViewportAnimateState();
+    return true;
+  }
+
+  function runViewportWiggle(mode, control) {
+    const buttons = Array.from(control.parentElement?.querySelectorAll('[data-wiggle]') || []);
+    for (const button of buttons) button.disabled = true;
+    Promise.resolve(setViewportWiggle(mode))
+      .then(applied => {
+        const active = applied ? mode : viewportWiggleMode();
+        for (const button of buttons) button.setAttribute('aria-pressed', button.dataset.wiggle === active ? 'true' : 'false');
+      })
+      .catch(error => setStatus(`[web] Applying wiggle failed. ${error?.message || error}`, 'error'))
+      .finally(() => {
+        for (const button of buttons) button.disabled = false;
+      });
+  }
+
   // play() with no params leaves each animation on its own defaults, and Mol*
   // defaults Unwind Assembly to looping - a scene that keeps rebuilding itself
   // under every click until someone finds the stop button.
@@ -6960,6 +7567,12 @@
   }
 
   function viewportAnimationApplicability(animation, plugin) {
+    if (animation?.name === 'built-in.animate-model-index'
+      && activeTrajectoryPlaybackControl
+      && !trajectorySmoothingState
+      && !activeTrajectoryPlaybackControl.canInterpolate()) {
+      return { canApply: false, reason: 'Build a smoothed trajectory before animating this format' };
+    }
     if (typeof animation?.canApply !== 'function') return { canApply: true };
     try {
       return animation.canApply(plugin) || { canApply: true };
@@ -6969,11 +7582,51 @@
     }
   }
 
+  function interpolatedTrajectoryFrameCount(sourceFrameCount) {
+    const count = Math.max(2, Math.trunc(Number(sourceFrameCount) || 2));
+    if (count >= 60) return count;
+    return Math.min(600, Math.max(60, (count - 1) * 8 + 1));
+  }
+
+  function cancelViewportTrajectoryAnimation() {
+    viewportTrajectoryAnimationEpoch += 1;
+  }
+
+  async function playViewportTrajectoryAnimation() {
+    const animationEpoch = ++viewportTrajectoryAnimationEpoch;
+    const viewer = activeViewer;
+    let playback = activeTrajectoryPlaybackControl;
+    if (!playback) throw new Error('Trajectory playback controls are unavailable for this scene.');
+    playback.stop();
+    if (trajectorySmoothingState?.view === 'original') {
+      const restored = await setTrajectorySmoothingViewFromAction({ view: 'smoothed' });
+      if (!restored.ok) throw new Error(restored.error?.message || 'The smoothed trajectory could not be restored.');
+    } else if (!trajectorySmoothingState) {
+      if (!playback.canInterpolate()) throw new Error('Build a smoothed trajectory before animating this format.');
+      const smoothed = await applyTrajectorySmoothingFromAction({
+        preset: 'balanced',
+        outputFrames: interpolatedTrajectoryFrameCount(playback.frameCount())
+      });
+      if (!smoothed.ok) throw new Error(smoothed.error?.message || 'The trajectory could not be interpolated.');
+    }
+    if (animationEpoch !== viewportTrajectoryAnimationEpoch || activeViewer !== viewer) return;
+    playback = activeTrajectoryPlaybackControl;
+    if (!playback) throw new Error('Trajectory playback controls were lost while preparing the animation.');
+    playback.play();
+    updateViewportAnimateState();
+  }
+
   function playViewportAnimation(index) {
     const plugin = viewportPlugin();
     const manager = plugin?.managers?.animation;
     const animation = manager?.animations?.[index];
     if (!animation) return;
+    if (animation.name === 'built-in.animate-model-index' && activeTrajectoryPlaybackControl) {
+      Promise.resolve(playViewportTrajectoryAnimation())
+        .catch(error => setStatus(`[web] Trajectory animation failed. ${error?.message || error}`, 'error'));
+      return;
+    }
+    cancelViewportTrajectoryAnimation();
     Promise.resolve(manager.play(animation, viewportAnimationParams(animation, plugin)))
       .then(() => updateViewportAnimateState())
       .catch(error => setStatus(`[web] Animation failed. ${error?.message || error}`, 'error'));
@@ -6983,10 +7636,12 @@
   // because a still frame cannot tell you the scene is in motion.
   function updateViewportAnimateState() {
     const plugin = viewportPlugin();
-    const playing = plugin?.managers?.animation?.state?.animationState === 'playing';
+    const playing = plugin?.managers?.animation?.state?.animationState === 'playing'
+      || activeTrajectoryPlaybackControl?.isPlaying() === true;
     const motion = viewportMotionState().name;
+    const state = playing ? 'playing' : (motion !== 'off' ? motion : (viewportWiggleMode(plugin) === 'clear' ? 'off' : 'wiggle'));
     document.querySelector('[data-buret-viewport-action="animate"]')
-      ?.setAttribute('data-motion', playing ? 'playing' : motion);
+      ?.setAttribute('data-motion', state);
   }
 
   function viewportMotionState() {
@@ -7149,7 +7804,11 @@
 
     sceneTreeMenuSection(menu);
     viewportMenuItem(menu, 'Undo', 'undo', {
-      icon: VIEWPORT_ICON.undo, disabled: plugin?.state?.data?.canUndo !== true
+      icon: VIEWPORT_ICON.undo,
+      disabled: !molstarEditUndoStack.length && plugin?.state?.data?.canUndo !== true
+    });
+    viewportMenuItem(menu, 'Redo', 'redo', {
+      icon: VIEWPORT_ICON.redo, disabled: !molstarEditRedoStack.length
     });
     viewportMenuItem(menu, 'Clear selection', 'selection-clear', {
       icon: SCENE_TREE_ICON.trash, destructive: true, disabled: empty
@@ -7210,8 +7869,13 @@
     } else if (action === 'animation-play') {
       playViewportAnimation(Number(control.dataset.animationIndex));
     } else if (action === 'animation-stop') {
+      cancelViewportTrajectoryAnimation();
       plugin.managers.animation.stop();
+      activeTrajectoryPlaybackControl?.stop();
       updateViewportAnimateState();
+    } else if (action === 'wiggle') {
+      runViewportWiggle(control.dataset.wiggle, control);
+      return true;
     } else if (action === 'modifier') {
       selectionQueryModifier = control.dataset.modifier || 'set';
       for (const button of control.parentElement?.children || []) {
@@ -7229,12 +7893,21 @@
     } else if (action === 'selection-color-reset') paintViewportSelection(null);
     else if (action === 'selection-subtract') subtractViewportSelection();
     else if (action === 'undo') {
-      // undo() hands back a task rather than running one, the same way Mol*'s own
-      // selection controls take it.
-      const task = plugin.state.data.undo();
-      if (task) plugin.runTask(task);
-    }
-    else if (action === 'selection-clear') plugin.managers.interactivity.lociSelects.deselectAll();
+      if (molstarEditUndoStack.length) {
+        void undoMolstarLastEdit().catch(error => {
+          setStatus(`[web] Undo failed.\n\n${error?.message || String(error)}`, 'error');
+        });
+      } else {
+        // undo() hands back a task rather than running one, the same way Mol*'s own
+        // selection controls take it.
+        const task = plugin.state.data.undo();
+        if (task) plugin.runTask(task);
+      }
+    } else if (action === 'redo') {
+      void redoMolstarLastEdit().catch(error => {
+        setStatus(`[web] Redo failed.\n\n${error?.message || String(error)}`, 'error');
+      });
+    } else if (action === 'selection-clear') plugin.managers.interactivity.lociSelects.deselectAll();
     return false;
   }
 
@@ -7320,7 +7993,7 @@
     let drag = null;
     let suppressClickUntil = 0;
     const onPointerDown = event => {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || event.target.closest('[data-buret-viewport-action]')) return;
       const toolbarRect = toolbar.getBoundingClientRect();
       drag = {
         pointerId: event.pointerId,
@@ -7471,6 +8144,8 @@
       plugin?.behaviors?.interaction?.selectionMode?.subscribe?.(updateSelectionBar),
       plugin?.managers?.structure?.selection?.events?.changed?.subscribe?.(updateSelectionBar),
       plugin?.managers?.interactivity?.events?.propsUpdated?.subscribe?.(updateSelectionBar),
+      plugin?.managers?.structure?.component?.events?.optionsUpdated?.subscribe?.(updateViewportAnimateState),
+      plugin?.state?.data?.events?.changed?.subscribe?.(updateViewportAnimateState),
       // Timed animations end on their own, so the button cannot be left holding a
       // state nobody switched off.
       plugin?.behaviors?.state?.isAnimating?.subscribe?.(updateViewportAnimateState)
@@ -7528,20 +8203,14 @@
         const ref = select?.closest('[data-ref]')?.dataset.ref;
         if (!select || !ref) return;
         const kind = select.dataset.sceneTreeSelect;
-        if (kind === 'add-representation') {
-          addSceneTreeRepresentation(ref, select.value);
-          select.value = '';
-        } else if (kind === 'representation-type') {
-          applySceneTreeReprType(ref, select.value);
-        } else if (kind === 'representation-color') {
-          applySceneTreeReprColor(ref, select.value, null);
-        } else if (kind === 'representation-size') {
-          applySceneTreeReprSize(ref, select.value);
-        } else if (kind === 'representation-visual') {
-          applySceneTreeReprParam(ref, 'visuals', [select.value]);
+        const value = select.value;
+        const sceneUndoLabel = molstarSceneMenuSelectUndoLabel(kind, ref);
+        if (sceneUndoLabel) {
+          void runMolstarSceneEdit(sceneUndoLabel, () => runSceneTreeSelectAction(kind, ref, value));
         } else {
-          applySceneTreeColorTheme(ref, select.value, null);
+          void runSceneTreeSelectAction(kind, ref, value);
         }
+        if (kind === 'add-representation') select.value = '';
       });
       // The advanced rows are built from the type's own schema, so one handler
       // covers every one of them: the control carries its parameter name and how
@@ -7549,15 +8218,29 @@
       document.addEventListener('change', event => {
         const control = event.target.closest('[data-scene-tree-param]');
         const ref = control?.closest('[data-ref]')?.dataset.ref;
-        if (!control || !ref || control.dataset.sceneTreeParamType === 'number') return;
+        if (!control || !ref) return;
+        if (control.dataset.sceneTreeParamType === 'number') {
+          commitSceneTreeControlUndo(control);
+          return;
+        }
         const value = control.dataset.sceneTreeParamType === 'boolean' ? control.checked : control.value;
-        applySceneTreeReprParam(ref, control.dataset.sceneTreeParam, value);
+        const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+        const sceneUndoLabel = `${control.dataset.sceneTreeParam} of ${node?.label || 'representation'}`;
+        void runMolstarSceneEdit(sceneUndoLabel, () => (
+          applySceneTreeReprParam(ref, control.dataset.sceneTreeParam, value)
+        ));
       });
       document.addEventListener('change', event => {
         const control = event.target.closest('[data-scene-tree-measurement-param]');
         const ref = control?.closest('[data-ref]')?.dataset.ref;
-        if (!control || !ref || control.type === 'range') return;
-        applySceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementParam, control.value);
+        if (!control || !ref) return;
+        if (commitSceneTreeControlUndo(control)) return;
+        if (control.type === 'range') return;
+        const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+        const sceneUndoLabel = `${control.dataset.sceneTreeMeasurementParam} of ${node?.label || 'measurement'}`;
+        void runMolstarSceneEdit(sceneUndoLabel, () => (
+          applySceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementParam, control.value)
+        ));
       });
       // The point of the theme list: the scene takes each theme as the pointer
       // passes over it, and gets its own back when the pointer leaves without
@@ -7583,13 +8266,33 @@
       // Opacity streams as the thumb moves; the slider sits inside the menu, so the
       // outside-click dismissal never sees these events and the menu stays open.
       document.addEventListener('input', event => {
+        const control = event.target.closest('[data-scene-tree-symmetry-scale]');
+        if (!control) return;
+        const readout = control.parentElement?.querySelector('.buret-tree-menu-slider-value');
+        if (readout) readout.textContent = control.value;
+      });
+      document.addEventListener('change', event => {
+        const control = event.target.closest('[data-scene-tree-symmetry-scale]');
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref) return;
+        const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+        void runMolstarSceneEdit(`symmetry scale of ${node?.label || 'global symmetry'}`, () => (
+          updateSceneTreeAssemblySymmetry(ref, { scale: Number(control.value) })
+        ));
+      });
+      document.addEventListener('input', event => {
         const slider = event.target.closest('[data-scene-tree-slider="opacity"]');
         const ref = slider?.closest('[data-ref]')?.dataset.ref;
         if (!slider || !ref) return;
+        beginSceneTreeControlUndo(slider, ref, 'opacity');
         const percent = Number(slider.value);
         const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
         if (readout) readout.textContent = `${percent}%`;
         streamSceneTreeReprAlpha(ref, percent / 100);
+      });
+      document.addEventListener('change', event => {
+        const slider = event.target.closest('[data-scene-tree-slider="opacity"]');
+        if (slider) commitSceneTreeControlUndo(slider);
       });
       // Numeric advanced rows follow the thumb like opacity does. Surfaces rebuild
       // their mesh on every commit, so these share the same latest-wins queue
@@ -7598,6 +8301,7 @@
         const slider = event.target.closest('[data-scene-tree-param]');
         const ref = slider?.closest('[data-ref]')?.dataset.ref;
         if (!slider || !ref || slider.dataset.sceneTreeParamType !== 'number') return;
+        beginSceneTreeControlUndo(slider, ref, slider.dataset.sceneTreeParam);
         const value = Number(slider.value);
         const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
         if (readout) readout.textContent = slider.value;
@@ -7607,6 +8311,7 @@
         const control = event.target.closest('[data-scene-tree-measurement-param]');
         const ref = control?.closest('[data-ref]')?.dataset.ref;
         if (!control || !ref) return;
+        beginSceneTreeControlUndo(control, ref, control.dataset.sceneTreeMeasurementParam);
         if (control.type === 'range') {
           const value = Number(control.value);
           const readout = control.parentElement?.querySelector('.buret-tree-menu-slider-value');
@@ -7984,6 +8689,7 @@
     if (value === 'cifcore' || value === 'corecif' || value === 'core-cif') return 'cifCore';
     if (value === 'cif' || value === 'mmcif' || value === 'mcif') return 'mmcif';
     if (value === 'bcif' || value === 'binarycif') return 'mmcif';
+    if (value === 'mrc' || value === 'map') return 'ccp4';
     if (value === 'sd') return 'sdf';
     if (value === 'xyzr') return 'xyz';
     if (value === 'nc' || value === 'ncdf' || value === 'netcdf' || value === 'ncrst') return 'nctraj';
@@ -8272,6 +8978,23 @@
   function pdbRigidAlignment(movingPoints, referencePoints) {
     const count = Math.min(movingPoints.length, referencePoints.length);
     if (count < 3) return null;
+    const hasArea = points => {
+      const origin = points[0];
+      for (let left = 1; left < count - 1; left += 1) {
+        const a = points[left].map((value, axis) => value - origin[axis]);
+        for (let right = left + 1; right < count; right += 1) {
+          const b = points[right].map((value, axis) => value - origin[axis]);
+          const cross = [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+          ];
+          if (Math.hypot(...cross) > 1e-6) return true;
+        }
+      }
+      return false;
+    };
+    if (!hasArea(movingPoints) || !hasArea(referencePoints)) return null;
     const movingCenter = [0, 0, 0];
     const referenceCenter = [0, 0, 0];
     for (let index = 0; index < count; index += 1) {
@@ -8303,23 +9026,23 @@
     const apply = point => rotation.map((row, axis) => (
       row.reduce((sum, value, column) => sum + value * (point[column] - movingCenter[column]), 0) + referenceCenter[axis]
     ));
+    const translation = referenceCenter.map((value, axis) => (
+      value - rotation[axis].reduce((sum, coefficient, column) => sum + coefficient * movingCenter[column], 0)
+    ));
+    // Mol* matrices are column-major. This maps the complete moving structure
+    // into the fixed reference coordinate system without rewriting source text.
+    const matrix = [
+      rotation[0][0], rotation[1][0], rotation[2][0], 0,
+      rotation[0][1], rotation[1][1], rotation[2][1], 0,
+      rotation[0][2], rotation[1][2], rotation[2][2], 0,
+      translation[0], translation[1], translation[2], 1
+    ];
     let squaredError = 0;
     for (let index = 0; index < count; index += 1) {
       const aligned = apply(movingPoints[index]);
       squaredError += aligned.reduce((sum, value, axis) => sum + (value - referencePoints[index][axis]) ** 2, 0);
     }
-    return { apply, rmsd: Math.sqrt(squaredError / count), count };
-  }
-
-  function transformPdbCoordinates(data, apply) {
-    return String(data || '').split(/\r?\n/).map(line => {
-      if (!line.startsWith('ATOM  ') && !line.startsWith('HETATM')) return line;
-      const point = [Number(line.slice(30, 38)), Number(line.slice(38, 46)), Number(line.slice(46, 54))];
-      if (!point.every(Number.isFinite)) return line;
-      const aligned = apply(point);
-      const coordinates = aligned.map(value => value.toFixed(3).padStart(8, ' '));
-      return `${line.slice(0, 30)}${coordinates.join('')}${line.slice(54)}`;
-    }).join('\n');
+    return { apply, matrix, rotation, rmsd: Math.sqrt(squaredError / count), count };
   }
 
   // Pairs Cα atoms by residue number. Cheap and exact when the structures are the
@@ -8342,107 +9065,153 @@
 
   const STRUCTURE_ALIGNMENT_MIN_PAIRS = 3;
 
-  function structureAlignmentChainCandidates(referenceChains, movingChainsByPose, pairsFor, options = {}) {
-    const sameChainOnly = options.sameChainOnly === true;
-    return Array.from(referenceChains.entries()).map(([chain, residues]) => {
-      const pairsByPose = movingChainsByPose.map(chains => {
-        if (sameChainOnly) {
-          const movingResidues = chains.get(chain);
-          return movingResidues ? pairsFor(residues, movingResidues) : [];
-        }
-        // Sequence and pocket superposition describe chemistry, not author-chosen
-        // chain labels. A protein called chain A in one file may be chain B in the
-        // next, so take the best sequence match in each moving structure.
-        let best = [];
-        for (const movingResidues of chains.values()) {
-          const pairs = pairsFor(residues, movingResidues);
-          if (pairs.length > best.length) best = pairs;
-        }
-        return best;
-      });
-      return { chain, pairsByPose, minimumMatches: Math.min(...pairsByPose.map(pairs => pairs.length)) };
-    }).filter(candidate => candidate.minimumMatches >= STRUCTURE_ALIGNMENT_MIN_PAIRS)
-      .sort((left, right) => right.minimumMatches - left.minimumMatches);
-  }
-
-  function bindingSiteFilteredCandidate(candidate, referenceLigandPoints) {
-    if (!referenceLigandPoints.length) {
-      throw new Error('The reference structure has no ligand to define a binding site.');
-    }
-    const pairsByPose = candidate.pairsByPose.map(pairs => pairs.filter(([reference]) => (
-      residueIsNearAnyPoint(reference.point, referenceLigandPoints, BINDING_SITE_ALIGNMENT_RADIUS)
-    )));
-    return { ...candidate, pairsByPose, minimumMatches: Math.min(...pairsByPose.map(pairs => pairs.length)) };
-  }
-
   const STRUCTURE_ALIGNMENT_MODE_LABELS = {
     atoms: 'residue numbers',
     sequence: 'sequence alignment',
     'binding-site': `binding site (${BINDING_SITE_ALIGNMENT_RADIUS} Å)`
   };
 
-  // `mode` mirrors what Maestro and PyMOL separate: pair by numbering (PyMOL's
-  // `align` on identical numbering), pair by sequence (`align`/`super`), or pair
-  // only what lines the pocket (Maestro's binding-site alignment). `auto` is the
-  // toolbar button: numbering when it works, sequence when it does not.
-  function alignStructureSceneEntries(prepared, mode = 'auto') {
-    const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
-    if (poses.length < 2 || poses.some(entry => normalizeFormat(entry?.format) !== 'pdb')) {
-      throw new Error('One-click alignment currently requires two or more PDB structures.');
+  function rigidMatrixDeterminant(matrix) {
+    if (!Array.isArray(matrix) && !(matrix instanceof Float32Array) && !(matrix instanceof Float64Array)) return NaN;
+    if (matrix.length !== 16) return NaN;
+    const r00 = matrix[0], r01 = matrix[4], r02 = matrix[8];
+    const r10 = matrix[1], r11 = matrix[5], r12 = matrix[9];
+    const r20 = matrix[2], r21 = matrix[6], r22 = matrix[10];
+    return r00 * (r11 * r22 - r12 * r21)
+      - r01 * (r10 * r22 - r12 * r20)
+      + r02 * (r10 * r21 - r11 * r20);
+  }
+
+  function validateRigidAlignmentMatrix(matrix) {
+    if (!matrix || matrix.length !== 16 || Array.from(matrix).some(value => !Number.isFinite(value))) {
+      throw new Error('Superposition produced an invalid transformation matrix.');
     }
-    for (const entry of poses) {
-      if (typeof entry.unalignedData !== 'string') entry.unalignedData = entry.data;
+    const determinant = rigidMatrixDeterminant(matrix);
+    if (!Number.isFinite(determinant) || Math.abs(determinant - 1) > 1e-3) {
+      throw new Error(`Superposition produced a reflected or non-rigid transform (det=${Number(determinant).toFixed(4)}).`);
     }
-    const reference = poses[0];
-    const referenceChains = pdbAlphaCarbonResidues(reference.unalignedData);
-    const movingChainsByPose = poses.slice(1).map(entry => pdbAlphaCarbonResidues(entry.unalignedData));
-    const requested = mode === 'auto' ? 'atoms' : mode;
-    const pairsFor = requested === 'atoms' ? alphaCarbonPairsByResidueNumber : alphaCarbonPairsBySequence;
-    let resolvedMode = requested;
-    let candidates = structureAlignmentChainCandidates(referenceChains, movingChainsByPose, pairsFor, {
-      sameChainOnly: requested === 'atoms'
-    });
-    if (!candidates.length && mode === 'auto') {
-      resolvedMode = 'sequence';
-      candidates = structureAlignmentChainCandidates(referenceChains, movingChainsByPose, alphaCarbonPairsBySequence);
-    }
-    let sharedChain = candidates[0];
-    if (sharedChain && requested === 'binding-site') {
-      sharedChain = bindingSiteFilteredCandidate(sharedChain, pdbLigandHeavyAtoms(reference.unalignedData));
-      if (sharedChain.minimumMatches < STRUCTURE_ALIGNMENT_MIN_PAIRS) {
-        throw new Error(`Fewer than ${STRUCTURE_ALIGNMENT_MIN_PAIRS} residues line the reference binding site in every structure.`);
+    const columns = [[matrix[0], matrix[1], matrix[2]], [matrix[4], matrix[5], matrix[6]], [matrix[8], matrix[9], matrix[10]]];
+    let orthogonalityError = 0;
+    for (let row = 0; row < 3; row += 1) {
+      for (let column = 0; column < 3; column += 1) {
+        const dot = columns[row].reduce((sum, value, axis) => sum + value * columns[column][axis], 0);
+        orthogonalityError = Math.max(orthogonalityError, Math.abs(dot - (row === column ? 1 : 0)));
       }
     }
-    if (!sharedChain) {
-      throw new Error(mode === 'atoms'
-        ? 'No Cα chain with at least three common residue numbers exists across every structure.'
-        : 'No Cα chain with at least three alignable residues exists across every structure.');
+    if (orthogonalityError > 1e-3) {
+      throw new Error(`Superposition produced a non-orthogonal rotation (error=${orthogonalityError.toExponential(2)}).`);
     }
-    let alignedCount = 0;
-    let matchedCount = 0;
-    let rmsdTotal = 0;
-    for (let poseIndex = 1; poseIndex < poses.length; poseIndex += 1) {
-      const entry = poses[poseIndex];
-      const pairs = sharedChain.pairsByPose[poseIndex - 1];
-      const alignment = pdbRigidAlignment(pairs.map(pair => pair[1].point), pairs.map(pair => pair[0].point));
-      if (!alignment) throw new Error(`Not enough Cα atoms could align ${entry.label || `structure ${poseIndex + 1}`}.`);
-      entry.data = transformPdbCoordinates(entry.unalignedData, alignment.apply);
-      alignedCount += 1;
-      matchedCount += alignment.count;
-      rmsdTotal += alignment.rmsd;
+    return matrix;
+  }
+
+  function structureAlignmentResiduesForChain(chains, requestedChain) {
+    if (!chains?.size) return null;
+    if (requestedChain != null && requestedChain !== '') return chains.get(requestedChain) || null;
+    return Array.from(chains.values()).sort((left, right) => right.length - left.length)[0] || null;
+  }
+
+  function structureAlignmentMovingResidues(chains, requestedChain, referenceChain, referenceResidues, pairsFor, sameChainOnly) {
+    if (requestedChain != null && requestedChain !== '') return chains.get(requestedChain) || null;
+    if (sameChainOnly && chains.has(referenceChain)) return chains.get(referenceChain);
+    let best = null;
+    let bestCount = -1;
+    for (const residues of chains.values()) {
+      const count = pairsFor(referenceResidues, residues).length;
+      if (count > bestCount) {
+        best = residues;
+        bestCount = count;
+      }
     }
-    reference.data = reference.unalignedData;
-    prepared.structureAlignmentEnabled = true;
-    prepared.structureAlignmentMode = resolvedMode;
-    return {
-      mode: resolvedMode,
-      modeLabel: STRUCTURE_ALIGNMENT_MODE_LABELS[resolvedMode] || resolvedMode,
-      alignedCount,
-      chain: sharedChain.chain === '_' ? '(blank)' : sharedChain.chain,
-      averageMatches: Math.round(matchedCount / Math.max(alignedCount, 1)),
-      averageRmsd: rmsdTotal / Math.max(alignedCount, 1),
-      referenceLabel: reference.label || 'first structure'
+    return best;
+  }
+
+  // Builds matrices without changing PDB text. `auto` tries residue numbers for
+  // the whole request first, then retries every moving structure by sequence.
+  function alignStructureSceneEntries(prepared, request = 'auto') {
+    const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
+    if (poses.length < 2) {
+      throw new Error('Residue-number, sequence, and binding-site pairing currently require two or more PDB or PDBQT structures.');
+    }
+    const options = typeof request === 'string' ? { method: request } : (request || {});
+    const method = String(options.method || 'auto');
+    const referenceIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(options.referenceIndex) || 0)));
+    const movingIndices = Array.isArray(options.movingIndices)
+      ? Array.from(new Set(options.movingIndices.map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < poses.length && index !== referenceIndex)))
+      : poses.map((_, index) => index).filter(index => index !== referenceIndex);
+    if (!movingIndices.length) throw new Error('Choose at least one moving structure.');
+    // Only the structures this request pairs have to be PDB text. Rejecting on
+    // every pose blocked a valid PDB subset in a scene that also holds mmCIF.
+    if ([referenceIndex, ...movingIndices].some(index => !['pdb', 'pdbqt'].includes(normalizeFormat(poses[index]?.format)))) {
+      throw new Error('Residue-number, sequence, and binding-site pairing currently require two or more PDB or PDBQT structures.');
+    }
+    const chainIds = options.chainIds || {};
+    const reference = poses[referenceIndex];
+    const referenceData = String(reference.unalignedData || reference.data || '');
+    const referenceChains = pdbAlphaCarbonResidues(referenceData);
+    const referenceChain = String(chainIds[referenceIndex] ?? '');
+
+    const build = resolvedMode => {
+      const pairsFor = resolvedMode === 'atoms' ? alphaCarbonPairsByResidueNumber : alphaCarbonPairsBySequence;
+      const referenceResidues = structureAlignmentResiduesForChain(referenceChains, referenceChain);
+      if (!referenceResidues) throw new Error(`Reference chain ${referenceChain || ''} is not available.`.trim());
+      const resolvedReferenceChain = referenceChain || Array.from(referenceChains.entries()).find(([, residues]) => residues === referenceResidues)?.[0] || '_';
+      const referenceLigandPoints = resolvedMode === 'binding-site' ? pdbLigandHeavyAtoms(referenceData) : [];
+      if (resolvedMode === 'binding-site' && !referenceLigandPoints.length) {
+        throw new Error('The reference structure has no ligand to define a binding site.');
+      }
+      const alignments = movingIndices.map(poseIndex => {
+        const entry = poses[poseIndex];
+        const entryData = String(entry.unalignedData || entry.data || '');
+        const movingChains = pdbAlphaCarbonResidues(entryData);
+        const movingResidues = structureAlignmentMovingResidues(
+          movingChains,
+          String(chainIds[poseIndex] ?? ''),
+          resolvedReferenceChain,
+          referenceResidues,
+          pairsFor,
+          resolvedMode === 'atoms'
+        );
+        if (!movingResidues) throw new Error(`No polymer chain is available in ${entry.label || `structure ${poseIndex + 1}`}.`);
+        let pairs = pairsFor(referenceResidues, movingResidues);
+        if (resolvedMode === 'binding-site') {
+          pairs = pairs.filter(([residue]) => residueIsNearAnyPoint(residue.point, referenceLigandPoints, BINDING_SITE_ALIGNMENT_RADIUS));
+        }
+        if (pairs.length < STRUCTURE_ALIGNMENT_MIN_PAIRS) {
+          throw new Error(resolvedMode === 'atoms'
+            ? `No Cα chain with at least three common residue numbers exists for ${entry.label || `structure ${poseIndex + 1}`}.`
+            : `Fewer than three alignable Cα residues exist for ${entry.label || `structure ${poseIndex + 1}`}.`);
+        }
+        const alignment = pdbRigidAlignment(pairs.map(pair => pair[1].point), pairs.map(pair => pair[0].point));
+        if (!alignment) throw new Error(`Not enough Cα atoms could align ${entry.label || `structure ${poseIndex + 1}`}.`);
+        validateRigidAlignmentMatrix(alignment.matrix);
+        return {
+          poseIndex,
+          matrix: alignment.matrix,
+          rmsdAngstrom: alignment.rmsd,
+          matchedCount: alignment.count,
+          matchedUnit: resolvedMode === 'binding-site' ? 'pocket Cα atoms' : 'Cα atoms',
+          movingLabel: entry.label || `structure ${poseIndex + 1}`
+        };
+      });
+      return {
+        method: resolvedMode,
+        methodLabel: STRUCTURE_ALIGNMENT_MODE_LABELS[resolvedMode] || resolvedMode,
+        referenceIndex,
+        referenceLabel: reference.label || `structure ${referenceIndex + 1}`,
+        referenceChain: resolvedReferenceChain,
+        pairs: alignments,
+        warnings: []
+      };
     };
+
+    if (method !== 'auto') return build(method);
+    try {
+      return build('atoms');
+    } catch (numberingError) {
+      const result = build('sequence');
+      result.warnings.push(`Auto used sequence because residue-number pairing was unavailable: ${numberingError.message}`);
+      return result;
+    }
   }
 
   function xyzFrameElementSignature(frame) {
@@ -8500,14 +9269,6 @@
       averageRmsd: rmsdTotal / Math.max(1, frames.length - 1),
       atomCount: frames[0].atoms.length
     };
-  }
-
-  function restoreStructureSceneEntries(prepared) {
-    for (const entry of Array.isArray(prepared?.poses) ? prepared.poses : []) {
-      if (typeof entry.unalignedData === 'string') entry.data = entry.unalignedData;
-    }
-    prepared.structureAlignmentEnabled = false;
-    prepared.structureAlignmentMode = null;
   }
 
   function structureSceneStoryStage(label, index) {
@@ -8834,7 +9595,8 @@
       modelKind: dockingTrajectoryModelKind(modelEntry),
       coordinateEntry,
       coordinateEntries,
-      trajectorySegments
+      trajectorySegments,
+      synthetic: modelEntry.synthetic === true
     };
   }
 
@@ -8850,7 +9612,8 @@
       data: dockingPayloadData(receptor, payloads.receptor),
       format: normalizeFormat(receptor.format),
       label: receptor.label || 'Receptor',
-      sourcePath: receptor.path || ''
+      sourcePath: receptor.path || '',
+      synthetic: receptor.synthetic === true
     };
     const entries = [receptorEntry];
     ligandSources.forEach((source, ligandIndex) => {
@@ -8977,12 +9740,33 @@
       return prepareStagedStructureScene(config, sceneEntries);
     }
     if (isMolViewSpecFormat(normalized)) {
+      const data = rawStructureData(config);
       return {
         kind: 'mvs',
-        data: rawStructureData(config),
+        data,
         format: normalized,
-        label: config.label || 'MolViewSpec scene'
+        label: config.label || 'MolViewSpec scene',
+        mvsKind: normalized === 'mvsj' ? molViewSpecJsonKind(data) : null
       };
+    }
+    if (normalized === 'ccp4' || normalized === 'mtz') {
+      return {
+        kind: 'volume',
+        data: rawStructureData({ ...config, binary: true }),
+        format: normalized,
+        label: config.label || 'density map'
+      };
+    }
+    if (normalized === 'mmcif' && config.binary !== true) {
+      const cifData = rawStructureData({ ...config, binary: false });
+      if (looksLikeStructureFactorsCif(cifData)) {
+        return {
+          kind: 'volume',
+          data: cifData,
+          format: 'sfcif',
+          label: config.label || 'structure factors'
+        };
+      }
     }
     if (normalized === 'cifCore') {
       const pdb = coreCifToPdb(rawStructureData({ ...config, binary: false }));
@@ -9008,6 +9792,22 @@
       format: normalized,
       label: config.label || 'structure'
     };
+  }
+
+  function molViewSpecJsonKind(data) {
+    if (typeof data !== 'string') return null;
+    try {
+      const parsed = JSON.parse(data);
+      return parsed?.kind === 'multiple' ? 'multiple' : parsed?.kind === 'single' || parsed?.kind === undefined ? 'single' : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function looksLikeStructureFactorsCif(data) {
+    const text = String(data || '');
+    return /(?:^|\n)_refln\.pdbx_FWT\b/mu.test(text)
+      && /(?:^|\n)_refln\.pdbx_PHWT\b/mu.test(text);
   }
 
   const PDB_SCENE_BACKBONE_ATOM_NAMES = new Set(['N', 'CA', 'C', 'O']);
@@ -11905,8 +12705,7 @@
       first.sourcePath || first.label || '',
       last.sourcePath || last.label || '',
       xyzFrameOverlayRawSignature(first.data || ''),
-      style,
-      prepared?.structureAlignmentEnabled === true ? 'aligned' : 'raw'
+      style
     ].join('|');
   }
 
@@ -12712,6 +13511,7 @@
     molstarLassoSelectionAtomKeys.clear();
     molstarLassoSelectionResidueKeys.clear();
     await Promise.allSettled(pending.filter(Boolean));
+    await removeMolstarLassoSceneObjects(plugin);
     plugin?.canvas3d?.requestDraw?.();
     window.__mqlPost?.('selectionChanged', '', {
       selection: { source: 'viewer', cleared: true, atoms: 0, residues: [], atomIdentities: [] }
@@ -13001,6 +13801,19 @@
       installDockingPoseControls(viewer, null);
       return;
     }
+    if (prepared.kind === 'volume') {
+      activeDockingPrepared = null;
+      const plugin = viewer.plugin;
+      const provider = plugin.dataFormats.get(prepared.format);
+      if (!provider || typeof provider.parse !== 'function') {
+        throw new Error(`Mol* volume provider is unavailable for ${prepared.format}.`);
+      }
+      const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
+      const parsed = await provider.parse(plugin, data, { entryId: prepared.entryId });
+      const visuals = typeof provider.visuals === 'function' ? await provider.visuals(plugin, parsed) : [];
+      installDockingPoseControls(viewer, null);
+      return { parsed, visuals };
+    }
     activeDockingPrepared = null;
     if (prepared.format === 'mol' && typeof viewer.loadStructureFromData === 'function') {
       await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
@@ -13092,7 +13905,7 @@
     if (typeof viewer.loadTrajectory !== 'function') {
       throw new Error('Mol* trajectory pairing is unavailable in this viewer runtime.');
     }
-    const representationPreset = options.representationPreset;
+    const representationPreset = pair.synthetic ? undefined : options.representationPreset;
     const trajectoryTransform = window.molstar?.lib?.plugin?.StateTransforms?.Model?.TrajectoryFromModelAndCoordinates;
     if (representationPreset && trajectoryTransform) {
       const plugin = viewer.plugin;
@@ -13139,7 +13952,29 @@
       coordinatesLabel: pair.coordinateEntry.label,
       preset: 'default'
     });
+    // A derived topology records no bonds, so the default preset would draw ones
+    // Mol* inferred from interatomic distances: chemistry the trajectory never
+    // stated, and a hairball across a solvated box. Points show only what the
+    // coordinates actually say. The scene tree still offers the bonded styles.
+    if (pair.synthetic) {
+      await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
+    }
     return false;
+  }
+
+  // Every atom is the same unknown carbon, so element colouring would only
+  // suggest chemistry the trajectory never recorded.
+  function molstarDerivedTopologyRepresentation() {
+    return {
+      type: 'point',
+      typeParams: { alpha: 1, sizeFactor: 1, pointSizeAttenuation: true, pointStyle: 'circle' },
+      color: 'uniform',
+      colorParams: { value: 0x8aa4c8 },
+      size: 'uniform',
+      // Small enough that a solvated box reads as separate atoms rather than
+      // one merged mass.
+      sizeParams: { value: 0.2 }
+    };
   }
 
   async function applyDockingTrajectoryPairFrameCount(prepared) {
@@ -13298,17 +14133,24 @@
       if (isDockingTrajectoryPairEntry(entry, prepared.trajectoryPair)) continue;
       await loadMolstarEntry(viewer, entry);
     }
-    if (waterExcludedFromInitialPreset) {
-      await applyMolstarPolymerLigandRepresentation(
-        viewer,
-        { type: 'cartoon', color: 'chain-id' },
-        { type: 'ball-and-stick', typeParams: { sizeFactor: 0.16 }, color: 'element-symbol' }
-      );
+    // A derived topology has coordinates but no chemical identity. Keep its
+    // point representation intact instead of applying chemistry-dependent
+    // styles or solvent components inferred from placeholder atoms.
+    if (!prepared.trajectoryPair?.synthetic) {
+      if (waterExcludedFromInitialPreset) {
+        await applyMolstarPolymerLigandRepresentation(
+          viewer,
+          { type: 'cartoon', color: 'chain-id' },
+          { type: 'ball-and-stick', typeParams: { sizeFactor: 0.16 }, color: 'element-symbol' }
+        );
+      }
+      await applyMolstarStyle(viewer, style);
     }
-    await applyMolstarStyle(viewer, style);
     installDockingPoseControls(viewer, prepared);
     prepared.deferredWaterRepresentation = waterExcludedFromInitialPreset;
-    if (!waterExcludedFromInitialPreset) await applyMolstarWaterLineRepresentation(viewer);
+    if (!prepared.trajectoryPair?.synthetic && !waterExcludedFromInitialPreset) {
+      await applyMolstarWaterLineRepresentation(viewer);
+    }
   }
 
   let dockingPoseKeydownDisposer = null;
@@ -13316,6 +14158,508 @@
   let activeSdfCollectionPoseSetter = null;
   let activeStructurePoseSetter = null;
   let activeStructureAlignmentControl = null;
+  let activeSuperpositionPanel = null;
+  let activeTrajectoryPlaybackControl = null;
+
+  const BURETTE_SUPERPOSITION_TAG_PREFIX = 'BuretteSuperpositionTransform:';
+
+  function superpositionFacade() {
+    const facade = window.molstar?.BuretteSuperposition;
+    if (!facade || facade.version !== 1) throw new Error('The Burette Mol* superposition facade is unavailable.');
+    return facade;
+  }
+
+  function superpositionTransformTag(poseRef) {
+    return `${BURETTE_SUPERPOSITION_TAG_PREFIX}${String(poseRef || '')}`;
+  }
+
+  function superpositionStructureEntries(viewer, prepared) {
+    const visibility = activeDockingSceneVisibilityState;
+    if (!visibility || visibility.viewer !== viewer || !dockingSceneVisibilityStateStillLoaded(viewer, visibility)) {
+      throw new Error('Load all structures together before superposition.');
+    }
+    const facade = superpositionFacade();
+    const structuresByPose = dockingSceneStructuresByPose(viewer, visibility.poseRefs);
+    return (prepared.poses || []).map((pose, poseIndex) => {
+      const wrapper = structuresByPose[poseIndex]?.[0];
+      const root = wrapper?.cell?.obj?.data;
+      const poseRef = visibility.poseRefs[poseIndex]?.[0] || wrapper?.cell?.transform?.ref;
+      if (!wrapper || !root || !poseRef) throw new Error(`Mol* did not expose ${pose?.label || `structure ${poseIndex + 1}`}.`);
+      return {
+        id: String(poseIndex),
+        poseIndex,
+        poseRef,
+        label: pose?.label || `Structure ${poseIndex + 1}`,
+        format: normalizeFormat(pose?.format),
+        wrapper,
+        root,
+        chains: facade.polymerChains(root),
+        canUseSifts: facade.hasSifts(root),
+      };
+    });
+  }
+
+  function superpositionEntry(entries, id) {
+    return entries.find(entry => entry.id === String(id)) || null;
+  }
+
+  const SUPERPOSITION_CONTEXT_ACTION_PREFIX = 'align:context:';
+
+  function superpositionContextAction(request) {
+    return `${SUPERPOSITION_CONTEXT_ACTION_PREFIX}${encodeURIComponent(JSON.stringify(request))}`;
+  }
+
+  function superpositionContextRequest(action) {
+    if (!String(action || '').startsWith(SUPERPOSITION_CONTEXT_ACTION_PREFIX)) return null;
+    try {
+      const request = JSON.parse(decodeURIComponent(String(action).slice(SUPERPOSITION_CONTEXT_ACTION_PREFIX.length)));
+      if (!request || typeof request !== 'object') return null;
+      return request;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function superpositionChainForAtom(entry, atom) {
+    const authChainId = String(atom?.auth_asym_id || '').trim();
+    const labelChainId = String(atom?.label_asym_id || '').trim();
+    return entry?.chains?.find(chain => (
+      (authChainId && chain.authChainId === authChainId)
+      || (labelChainId && chain.labelChainId === labelChainId)
+    )) || null;
+  }
+
+  function superpositionChainShortLabel(chain) {
+    return `Chain ${chain?.authChainId || chain?.labelChainId || '(blank)'}`;
+  }
+
+  function selectedSuperpositionEntries(entries, request) {
+    const reference = superpositionEntry(entries, request.referenceId ?? entries[0]?.id);
+    if (!reference) throw new Error('Choose a reference structure.');
+    const movingIds = Array.isArray(request.movingIds)
+      ? request.movingIds.map(String)
+      : entries.filter(entry => entry !== reference).map(entry => entry.id);
+    const moving = movingIds.map(id => superpositionEntry(entries, id)).filter(Boolean).filter(entry => entry !== reference);
+    if (!moving.length) throw new Error('Choose at least one moving structure.');
+    if (moving.length > 8) throw new Error('Interactive superposition supports at most eight moving structures at a time.');
+    return { reference, moving, ordered: [reference, ...moving] };
+  }
+
+  function selectedSuperpositionChain(entry, chainId) {
+    const chain = entry.chains.find(candidate => candidate.id === chainId) || entry.chains[0];
+    if (!chain) throw new Error(`${entry.label} has no polymer chain.`);
+    return chain;
+  }
+
+  function nativeSuperpositionPlan(entries, request, prepared) {
+    const facade = superpositionFacade();
+    const selected = selectedSuperpositionEntries(entries, request);
+    const method = String(request.method || 'auto');
+    const pdbPairingMethod = method === 'auto' || method === 'atoms' || method === 'sequence' || method === 'binding-site';
+    const canUsePdbPairing = selected.ordered.every(entry => entry.format === 'pdb' || entry.format === 'pdbqt');
+    if (pdbPairingMethod && canUsePdbPairing) {
+      const chainIds = {};
+      for (const entry of selected.ordered) {
+        const chain = selectedSuperpositionChain(entry, request.chains?.[entry.id]);
+        chainIds[entry.poseIndex] = chain.authChainId || chain.labelChainId || '';
+      }
+      return alignStructureSceneEntries(prepared, {
+        method,
+        referenceIndex: selected.reference.poseIndex,
+        movingIndices: selected.moving.map(entry => entry.poseIndex),
+        chainIds,
+      });
+    }
+    if (pdbPairingMethod && method !== 'auto') {
+      throw new Error(`${STRUCTURE_ALIGNMENT_MODE_LABELS[method] || method} currently needs PDB or PDBQT structures.`);
+    }
+    if (method === 'selected-atoms') {
+      const loci = request.useCurrentSelection === true
+        ? currentSelectionSuperpositionLoci(activeViewer, selected.ordered)
+        : selectedAtomSuperpositionLoci(activeViewer, selected.ordered);
+      const transforms = facade.alignAtoms(loci);
+      return normalizeNativeSuperpositionResult(method, selected, transforms);
+    }
+    if (method === 'uniprot') {
+      const transforms = facade.alignWithSifts(selected.ordered.map(entry => entry.root));
+      return normalizeNativeSuperpositionResult(method, selected, transforms);
+    }
+    const nativeEntries = selected.ordered.map(entry => {
+      const chain = selectedSuperpositionChain(entry, request.chains?.[entry.id]);
+      return { root: entry.root, loci: chain.loci };
+    });
+    const transforms = method === 'tm-align'
+      ? facade.alignWithTM(nativeEntries)
+      : facade.alignChains(nativeEntries, { alignSequences: request.alignSequences !== false, traceOnly: true });
+    return normalizeNativeSuperpositionResult(method === 'auto' ? 'auto-native' : method, selected, transforms);
+  }
+
+  function normalizeNativeSuperpositionResult(method, selected, transforms) {
+    const methodLabels = {
+      chains: 'Mol* chain superposition',
+      'auto-native': 'Mol* automatic chain superposition',
+      'tm-align': 'TM-align',
+      uniprot: 'UniProt / SIFTS',
+      'selected-atoms': 'Selected atoms',
+    };
+    const byMovingIndex = new Map(selected.moving.map((entry, index) => [index + 1, entry]));
+    return {
+      method,
+      methodLabel: methodLabels[method] || method,
+      referenceIndex: selected.reference.poseIndex,
+      referenceLabel: selected.reference.label,
+      pairs: transforms.map(transform => {
+        const moving = byMovingIndex.get(transform.movingIndex);
+        if (!moving) throw new Error('Mol* returned a transform for an unknown moving structure.');
+        validateRigidAlignmentMatrix(transform.matrix);
+        return {
+          ...transform,
+          poseIndex: moving.poseIndex,
+          movingLabel: moving.label,
+        };
+      }),
+      warnings: [],
+    };
+  }
+
+  function selectedAtomSuperpositionLoci(viewer, orderedEntries) {
+    const Structure = window.molstar?.lib?.structure?.Structure;
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const history = viewer?.plugin?.managers?.structure?.selection?.additionsHistory || [];
+    if (!Structure || !StructureElement) throw new Error('Mol* atom selection APIs are unavailable.');
+    return orderedEntries.map(entry => {
+      const elements = [];
+      for (const item of history) {
+        if (StructureElement.Loci.size(item.loci) !== 1) continue;
+        if (!Structure.areRootsEquivalent(item.loci.structure, entry.root)) continue;
+        const remapped = StructureElement.Loci.remap(item.loci, entry.root);
+        elements.push(...remapped.elements);
+      }
+      if (elements.length < 3) throw new Error(`${entry.label} needs at least three selected atoms in selection-history order.`);
+      return StructureElement.Loci(entry.root, elements);
+    });
+  }
+
+  function currentSelectionSuperpositionLoci(viewer, orderedEntries) {
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const selection = viewer?.plugin?.managers?.structure?.selection;
+    if (!StructureElement || typeof selection?.getLoci !== 'function') {
+      throw new Error('Mol* selection APIs are unavailable.');
+    }
+    const loci = orderedEntries.map(entry => {
+      const selected = selection.getLoci(entry.root);
+      if (!selected || StructureElement.Loci.isEmpty(selected)) {
+        throw new Error(`${entry.label} has no selected atoms.`);
+      }
+      return StructureElement.Loci.remap(selected, entry.root);
+    });
+    const counts = loci.map(selected => StructureElement.Loci.size(selected));
+    if (counts[0] < 3 || counts.some(count => count !== counts[0])) {
+      throw new Error('Selected-part alignment needs the same canonical set of at least three atoms in both structures.');
+    }
+    return loci;
+  }
+
+  function taggedSuperpositionTransform(state, entry, transformer) {
+    return state.selectQ(query => query.root.subtree()
+      .withTransformer(transformer)
+      .withTag(superpositionTransformTag(entry.poseRef)))[0] || null;
+  }
+
+  function composedSuperpositionMatrix(reference, matrix) {
+    validateRigidAlignmentMatrix(matrix);
+    const Mat4 = window.molstar?.lib?.math?.LinearAlgebra?.Mat4;
+    if (!Mat4) return Array.from(matrix);
+    const coordinateSystem = reference.wrapper?.cell?.obj?.data?.coordinateSystem;
+    return coordinateSystem && !Mat4.isIdentity(coordinateSystem.matrix)
+      ? Mat4.mul(Mat4(), coordinateSystem.matrix, matrix)
+      : Mat4.clone(matrix);
+  }
+
+  function identitySuperpositionTransformParams() {
+    return {
+      transform: {
+        name: 'matrix',
+        params: {
+          data: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+          transpose: false,
+        },
+      },
+    };
+  }
+
+  async function commitSuperpositionPlan(viewer, entries, plan) {
+    const plugin = viewer?.plugin;
+    const state = plugin?.state?.data;
+    const transformer = window.molstar?.lib?.plugin?.StateTransforms?.Model?.TransformStructureConformation;
+    if (!state || !transformer) throw new Error('Mol* conformation transforms are unavailable.');
+    const reference = entries[plan.referenceIndex];
+    if (!reference) throw new Error('The reference structure is no longer loaded.');
+    const update = state.build();
+    const identityParams = identitySuperpositionTransformParams();
+    const movingIndices = new Set(plan.pairs.map(pair => pair.poseIndex));
+    for (const entry of entries) {
+      if (movingIndices.has(entry.poseIndex)) continue;
+      const existing = taggedSuperpositionTransform(state, entry, transformer);
+      if (existing) update.to(existing).update(identityParams);
+    }
+    for (const pair of plan.pairs) {
+      const entry = entries[pair.poseIndex];
+      if (!entry) throw new Error(`${pair.movingLabel || 'A moving structure'} is no longer loaded.`);
+      const params = {
+        transform: {
+          name: 'matrix',
+          params: { data: composedSuperpositionMatrix(reference, pair.matrix), transpose: false },
+        },
+      };
+      const existing = taggedSuperpositionTransform(state, entry, transformer);
+      if (existing) update.to(existing).update(params);
+      else update.to(entry.wrapper.cell).insert(transformer, params, { tags: superpositionTransformTag(entry.poseRef) });
+    }
+    await plugin.runTask(state.updateTree(update, { revertOnError: true, revertIfAborted: true }));
+    window.requestAnimationFrame(() => plugin.canvas3d?.requestCameraReset?.());
+  }
+
+  async function resetSuperpositionTransforms(viewer, entries) {
+    const plugin = viewer?.plugin;
+    const state = plugin?.state?.data;
+    const transformer = window.molstar?.lib?.plugin?.StateTransforms?.Model?.TransformStructureConformation;
+    if (!state || !transformer) throw new Error('Mol* conformation transforms are unavailable.');
+    const tagged = entries.map(entry => taggedSuperpositionTransform(state, entry, transformer)).filter(Boolean);
+    if (!tagged.length) return false;
+    const update = state.build();
+    const identityParams = identitySuperpositionTransformParams();
+    for (const cell of tagged) update.to(cell).update(identityParams);
+    await plugin.runTask(state.updateTree(update, { revertOnError: true, revertIfAborted: true }));
+    return true;
+  }
+
+  function createStructureSuperpositionController(viewer, prepared, alignButton) {
+    let entries = [];
+    let result = null;
+    let panel = null;
+    let busy = false;
+
+    const averageRmsd = () => result?.pairs?.length
+      ? result.pairs.reduce((sum, pair) => sum + Number(pair.rmsdAngstrom || 0), 0) / result.pairs.length
+      : null;
+
+    const sync = () => {
+      const aligned = Boolean(result);
+      const rmsd = averageRmsd();
+      prepared.structureAlignmentEnabled = aligned;
+      prepared.structureAlignmentMode = result?.method || null;
+      alignButton.textContent = aligned && Number.isFinite(rmsd) ? `Aligned · ${rmsd.toFixed(2)} Å` : 'Align';
+      alignButton.classList.toggle('active', aligned);
+      alignButton.disabled = busy;
+      alignButton.setAttribute('aria-pressed', aligned ? 'true' : 'false');
+      alignButton.title = aligned
+        ? `${result.methodLabel} · ${result.pairs.length} moving structure${result.pairs.length === 1 ? '' : 's'} · click to reset`
+        : 'Automatically superimpose every structure onto the first one';
+      panel?.setResult(result);
+    };
+
+    const setBusy = value => {
+      busy = Boolean(value);
+      panel?.setBusy(busy);
+      sync();
+    };
+
+    const syncPanelEntries = () => {
+      panel?.setEntries(entries.map(entry => ({
+        id: entry.id,
+        label: entry.label,
+        chains: entry.chains.map(chain => ({
+          id: chain.id,
+          label: chain.label,
+        })),
+        canUseSifts: entry.canUseSifts,
+      })));
+    };
+
+    const refreshEntries = async () => {
+      entries = superpositionStructureEntries(viewer, prepared);
+      syncPanelEntries();
+      return entries;
+    };
+
+    const entriesStillLoaded = () => {
+      const cells = viewer?.plugin?.state?.data?.cells;
+      return entries.length === prepared.poses.length
+        && entries.every(entry => cells?.has?.(entry.poseRef));
+    };
+
+    const ensureEntries = () => entriesStillLoaded() ? Promise.resolve(entries) : refreshEntries();
+
+    const contextEntries = () => {
+      if (entriesStillLoaded()) return entries;
+      try {
+        entries = superpositionStructureEntries(viewer, prepared);
+        return entries;
+      } catch (_) {
+        return [];
+      }
+    };
+
+    const contextEntry = (availableEntries, target) => {
+      const targetRoot = molstarStructureFromRef(target?.structure);
+      return availableEntries.find(entry => (
+        entry.wrapper === target?.structure
+        || entry.root === targetRoot
+        || (targetRoot && entry.root?.root === targetRoot.root)
+      )) || null;
+    };
+
+    const contextActions = (target, pickingLevel = 'residue') => {
+      const availableEntries = contextEntries();
+      const moving = contextEntry(availableEntries, target);
+      if (!moving || availableEntries.length < 2) return [];
+      const references = availableEntries.filter(entry => entry !== moving);
+      const actions = [];
+      if (target?.selectionBased) {
+        for (const reference of references) {
+          try {
+            const loci = currentSelectionSuperpositionLoci(viewer, [reference, moving]);
+            const atomCount = window.molstar.lib.structure.StructureElement.Loci.size(loci[0]);
+            actions.push([
+              superpositionContextAction({
+                method: 'selected-atoms',
+                referenceId: reference.id,
+                movingIds: [moving.id],
+                useCurrentSelection: true,
+              }),
+              `Selected ${atomCount} atoms → ${reference.label}`,
+            ]);
+          } catch (_) {}
+        }
+      } else if (pickingLevel === 'chain' && target?.atom) {
+        const movingChain = superpositionChainForAtom(moving, target.atom);
+        if (movingChain) {
+          for (const reference of references) {
+            for (const referenceChain of reference.chains) {
+              actions.push([
+                superpositionContextAction({
+                  method: 'chains',
+                  referenceId: reference.id,
+                  movingIds: [moving.id],
+                  chains: {
+                    [reference.id]: referenceChain.id,
+                    [moving.id]: movingChain.id,
+                  },
+                  alignSequences: true,
+                }),
+                `${superpositionChainShortLabel(movingChain)} → ${reference.label} · ${superpositionChainShortLabel(referenceChain)}`,
+              ]);
+            }
+          }
+        }
+      } else {
+        actions.push(moleculeMenuNestedAction('align:menu:to', 'Align to', references.map(reference =>
+          moleculeMenuNestedAction(`align:menu:target:${reference.id}`, reference.label, [
+            [superpositionContextAction({ method: 'auto', referenceId: reference.id, movingIds: [moving.id] }), 'Automatic'],
+            [superpositionContextAction({ method: 'tm-align', referenceId: reference.id, movingIds: [moving.id] }), 'TM-align'],
+          ])
+        )));
+        actions.push(moleculeMenuNestedAction('align:menu:all-to-this', 'Align all to this', [
+          [superpositionContextAction({ method: 'auto', referenceId: moving.id, movingIds: references.map(reference => reference.id) }), 'Automatic'],
+          [superpositionContextAction({ method: 'tm-align', referenceId: moving.id, movingIds: references.map(reference => reference.id) }), 'TM-align'],
+        ]));
+      }
+      actions.push(['align:advanced', 'Advanced alignment…']);
+      if (result) actions.push(['align-structures', 'Reset structure alignment']);
+      return actions;
+    };
+
+    const apply = async (request = {}) => {
+      setBusy(true);
+      try {
+        await ensureEntries();
+        const plan = nativeSuperpositionPlan(entries, request, prepared);
+        const undo = captureMolstarSceneUndoSnapshot(`superposition by ${plan.methodLabel}`);
+        await commitSuperpositionPlan(viewer, entries, plan);
+        result = plan;
+        if (undo) pushMolstarEditUndoSnapshot(undo);
+        sync();
+        const averageRmsd = plan.pairs.reduce((sum, pair) => sum + Number(pair.rmsdAngstrom || 0), 0) / Math.max(1, plan.pairs.length);
+        setStatus(`[web] ${plan.methodLabel}: aligned ${plan.pairs.length} structure${plan.pairs.length === 1 ? '' : 's'} to ${plan.referenceLabel} (average RMSD ${averageRmsd.toFixed(2)} Å).`);
+        setTimeout(hideStatus, 2600);
+        return plan;
+      } catch (error) {
+        setStatus(`[web] Could not superpose structures.\n\n${error?.message || String(error)}`, 'error');
+        throw error;
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    const reset = async () => {
+      setBusy(true);
+      try {
+        const wasAligned = Boolean(result);
+        const undo = captureMolstarSceneUndoSnapshot('resetting superposition');
+        await ensureEntries();
+        const changed = await resetSuperpositionTransforms(viewer, entries);
+        result = null;
+        if ((changed || wasAligned) && undo) pushMolstarEditUndoSnapshot(undo);
+        sync();
+        if (changed) scheduleMolstarStructureFocus(viewer, { reason: 'superposition-reset', durationMs: 180, force: true });
+        setStatus('[web] Restored original structure transforms.');
+        setTimeout(hideStatus, 1800);
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    const restoreAfterSceneReload = async () => {
+      if (!result) return false;
+      await refreshEntries();
+      await commitSuperpositionPlan(viewer, entries, result);
+      sync();
+      return true;
+    };
+
+    const open = async (method) => {
+      if (!panel) {
+        if (typeof window.BuretteSuperpositionPanel?.create !== 'function') throw new Error('The Burette Superposition panel is unavailable.');
+        panel = window.BuretteSuperpositionPanel.create({
+          entries: [],
+          onApply: apply,
+          onReset: reset,
+        });
+        activeSuperpositionPanel = panel;
+      }
+      setBusy(true);
+      try {
+        await ensureEntries();
+        syncPanelEntries();
+        panel.open(method);
+        sync();
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    const destroy = () => {
+      panel?.destroy();
+      if (activeSuperpositionPanel === panel) activeSuperpositionPanel = null;
+      panel = null;
+    };
+
+    sync();
+
+    return {
+      open,
+      apply,
+      reset,
+      restoreAfterSceneReload,
+      destroy,
+      contextActions,
+      isAligned: () => Boolean(result),
+      mode: () => result?.method || null,
+      snapshot: () => result ? structuredClone(result) : null,
+      restoreMetadata: value => { result = value || null; sync(); },
+    };
+  }
 
   function isDockingPoseKeyboardTarget(target) {
     const element = target instanceof Element ? target : null;
@@ -13360,6 +14704,12 @@
   }
 
   function installDockingPoseHoverSuppression() {
+    // Scoped to the Quick Look and mobile hosts, which render a preview rather
+    // than an editor. `isMolstarContextMenuTarget` matches the viewport canvas
+    // itself, so installing this in the app stopped every buttonless
+    // pointermove before Mol* saw it and killed the hover highlight across the
+    // whole scene.
+    if (!isQuickLookHost()) return null;
     const suppressHover = (event) => {
       if (Number(event.buttons || 0) !== 0) return;
       if (!isMolstarContextMenuTarget(event.target)) return;
@@ -13827,6 +15177,7 @@
         format: originalPrepared.format,
         preset: action.preset,
         targetFrames: action.targetFrames,
+        outputFrames: action.outputFrames,
         referenceFrame: action.referenceFrame,
         align: action.align !== false
       });
@@ -14139,6 +15490,7 @@
 
   function installDockingPoseControls(viewer, prepared) {
     document.querySelector('.buret-docking-poses')?.remove();
+    activeStructureAlignmentControl?.destroy?.();
     if (dockingPoseKeydownDisposer) {
       dockingPoseKeydownDisposer();
       dockingPoseKeydownDisposer = null;
@@ -14150,6 +15502,7 @@
     activeSdfCollectionPoseSetter = null;
     activeStructurePoseSetter = null;
     activeStructureAlignmentControl = null;
+    activeTrajectoryPlaybackControl = null;
     document.body.classList.remove('buret-docking-pose-controls-active');
     if (!prepared) return;
     const overlayAvailable = structureOverlayAvailable(prepared);
@@ -14362,7 +15715,9 @@
     }
     const alignmentSupported = Boolean(align) && (xyzAlignFrames
       ? xyzFramesAlignable(xyzAlignFrames)
-      : prepared.poses.every(entry => normalizeFormat(entry?.format) === 'pdb'));
+      : Boolean(prepared.dockingSceneMode)
+        && prepared.poses.length > 1
+        && window.molstar?.BuretteSuperposition?.version === 1);
     const alignmentOn = xyzAlignFrames
       ? xyzFrameAlignment?.signature === xyzAlignSignature
       : prepared.structureAlignmentEnabled === true;
@@ -14374,13 +15729,14 @@
       align.title = !alignmentSupported
         ? (xyzAlignFrames
           ? 'Alignment needs every structure to list the same atoms in the same order'
-          : 'One-click alignment currently supports PDB structure scenes')
+          : 'Superposition needs two or more loaded structures')
         : xyzAlignFrames
           ? 'Superimpose every structure onto the first one by atom order'
-          : 'Align every structure to the first file using Cα atoms from the largest common chain';
+          : 'Automatically superimpose every structure onto the first one';
       align.disabled = !alignmentSupported;
       align.setAttribute('aria-pressed', alignmentOn ? 'true' : 'false');
     }
+    let structureAlignmentControl = null;
     const loop = document.createElement('button');
     loop.type = 'button';
     loop.textContent = 'Loop';
@@ -14499,6 +15855,7 @@
         sourcePath: activeSegment.segment?.sourcePath || prepared.smoothingSourcePath || '',
         playing: loopActive
       });
+      updateViewportAnimateState();
     };
     const setFileListOpen = (open) => {
       if (!fileList) return;
@@ -14548,6 +15905,7 @@
         sourcePath: activeSegment.segment?.sourcePath || prepared.smoothingSourcePath || '',
         playing: loopActive
       });
+      updateViewportAnimateState();
     };
     updateControls();
     updateSpeedMode();
@@ -14592,6 +15950,21 @@
         });
       }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
     };
+    const trajectoryPlaybackControl = {
+      play: () => {
+        if (loopActive) return;
+        setLoopActive(true);
+        scheduleLoopStep();
+      },
+      stop: () => {
+        if (loopActive) setLoopActive(false);
+      },
+      isPlaying: () => loopActive,
+      frameCount: () => prepared.poseCount,
+      canInterpolate: () => (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay')
+        && (normalizeFormat(activeMolstarPrepared?.format) === 'pdb' || normalizeFormat(activeMolstarPrepared?.format) === 'xyz')
+    };
+    activeTrajectoryPlaybackControl = trajectoryPlaybackControl;
     const setPose = (index, options = {}) => {
       const requestedIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       let queuedOptions = options;
@@ -14612,6 +15985,7 @@
     const performSetPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
+      const shouldFocus = options.focus === true || options.userStep === true;
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
@@ -14631,23 +16005,20 @@
             }
             scheduleLoopStep(loopDelayMs(), loopEpoch);
           }
-          if (options.focus === true) {
-            scheduleMolstarStructureFocus(viewer, { reason: 'native-trajectory-pose', durationMs: 180 });
-          }
         } else if (prepared.kind === 'sdf-collection') {
-          await applySdfCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: options.focus === true });
+          await applySdfCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
           updateControls();
         } else if (prepared.kind === 'xyz-frame-overlay') {
-          await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false, focus: options.focus === true });
+          await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false, focus: false });
           activePose = nextIndex;
           updateControls();
         } else if (prepared.kind === 'docking' && prepared.dockingSceneMode) {
-          await applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: options.focus === true });
+          await applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
           updateControls();
         } else if (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true) {
-          await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: options.focus === true });
+          await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
           updateControls();
         } else {
@@ -14659,6 +16030,7 @@
           activePose = nextIndex;
           return;
         }
+        if (shouldFocus) scheduleMolstarStructureFocus(viewer, { reason: 'pose-selection', durationMs: 180, force: true });
         notifyDockingPoseChanged(activePose, prepared);
       } catch (error) {
         try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
@@ -14752,65 +16124,18 @@
       };
       align.addEventListener('click', () => { void toggleXyzAlignment(); });
     } else if (align && alignmentSupported) {
-      // A failed alignment rolls the coordinates back, so the button has to follow
-      // the scene rather than the attempt — otherwise it keeps reading "Aligned"
-      // over structures that are no longer aligned.
-      const syncAlignButton = () => {
-        const aligned = prepared.structureAlignmentEnabled === true;
-        align.textContent = aligned ? 'Aligned' : 'Align';
-        align.classList.toggle('active', aligned);
-        align.setAttribute('aria-pressed', aligned ? 'true' : 'false');
-        return aligned;
-      };
-      // `mode` is passed through from the 3D menu, which offers the pairing rules by
-      // name; the toolbar button leaves it at `auto`. Re-running with a different
-      // mode re-aligns rather than toggling off, so switching rules is one click.
-      const toggleAlignment = (mode = 'auto') => {
-        align.disabled = true;
-        const enabling = prepared.structureAlignmentEnabled !== true || mode !== 'auto';
-        try {
-          let result = null;
-          if (enabling) {
-            if (prepared.structureAlignmentEnabled === true) restoreStructureSceneEntries(prepared);
-            result = alignStructureSceneEntries(prepared, mode);
-          } else {
-            restoreStructureSceneEntries(prepared);
-          }
-          return applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: true }).then(() => {
-            syncAlignButton();
-            if (result) {
-              align.title = `Aligned to ${result.referenceLabel} by ${result.modeLabel} · chain ${result.chain} Cα · ${result.averageMatches} matched atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
-              setStatus(`[web] Aligned ${result.alignedCount + 1} structures to ${result.referenceLabel} by ${result.modeLabel} (chain ${result.chain} Cα, ${result.averageMatches} matched atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
-            } else {
-              align.title = 'Align every structure to the first file using Cα atoms from the largest common chain';
-              setStatus('[web] Restored original structure coordinates.');
-            }
-            setTimeout(hideStatus, 2200);
-          }).catch(error => {
-            if (enabling) restoreStructureSceneEntries(prepared);
-            syncAlignButton();
-            setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
-          }).finally(() => { align.disabled = false; });
-        } catch (error) {
-          // The rollback restores coordinates the scene is still drawing from a
-          // previous alignment, so the scene is rebuilt before the button settles.
-          const rolledBack = enabling && prepared.structureAlignmentEnabled === true;
-          if (enabling) restoreStructureSceneEntries(prepared);
-          syncAlignButton();
-          setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
-          const settled = rolledBack
-            ? applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false }).catch(() => {})
-            : Promise.resolve();
-          return settled.finally(() => { align.disabled = false; });
-        }
-      };
-      activeStructureAlignmentControl = {
-        toggle: toggleAlignment,
-        isAligned: () => prepared.structureAlignmentEnabled === true,
-        mode: () => prepared.structureAlignmentMode || null,
-        referenceLabel: () => prepared.poses?.[0]?.label || 'the first structure'
-      };
-      align.addEventListener('click', () => { void toggleAlignment(); });
+      structureAlignmentControl = createStructureSuperpositionController(
+        viewer,
+        prepared,
+        align,
+      );
+      activeStructureAlignmentControl = structureAlignmentControl;
+      align.addEventListener('click', () => {
+        const operation = structureAlignmentControl?.isAligned()
+          ? structureAlignmentControl.reset()
+          : structureAlignmentControl?.apply({ method: 'auto' });
+        Promise.resolve(operation).catch(() => {});
+      });
     }
     activeStructurePoseSetter = setPose;
     if (prepared.kind === 'sdf-collection') activeSdfCollectionPoseSetter = setPose;
@@ -15048,9 +16373,14 @@
       hoverDisposer?.();
       dragDisposer?.();
       fileListDisposer?.();
+      if (activeStructureAlignmentControl) {
+        activeStructureAlignmentControl.destroy?.();
+        activeStructureAlignmentControl = null;
+      }
       document.body.classList.remove('buret-docking-pose-controls-active');
       if (activeStructurePoseSetter === setPose) activeStructurePoseSetter = null;
       if (activeSdfCollectionPoseSetter === setPose) activeSdfCollectionPoseSetter = null;
+      if (activeTrajectoryPlaybackControl === trajectoryPlaybackControl) activeTrajectoryPlaybackControl = null;
     };
   }
 
@@ -15199,7 +16529,7 @@
   }
 
   function onMolstarLassoPointerDown(event) {
-    if (!molstarLassoEnabled || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
+    if (molstarLassoBusy || !molstarLassoEnabled || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
     const canvas = molstarContextCanvasFromEvent(event);
     if (!canvas) return;
     hideMolstarContextMenu();
@@ -15248,7 +16578,7 @@
     if (Math.hypot(event.clientX - stroke.points[0].x, event.clientY - stroke.points[0].y) >= MOLSTAR_LASSO_MIN_DISTANCE_PX) {
       stroke.points.push({ x: event.clientX, y: event.clientY });
     }
-    finishMolstarLassoStroke(stroke);
+    void finishMolstarLassoStroke(stroke);
     try { stroke.canvas.releasePointerCapture?.(event.pointerId); } catch (_) {}
     event.preventDefault();
     event.stopPropagation();
@@ -15293,7 +16623,7 @@
     removeMolstarLassoOverlay();
   }
 
-  function finishMolstarLassoStroke(stroke) {
+  async function finishMolstarLassoStroke(stroke) {
     molstarLassoStroke = null;
     removeMolstarLassoOverlay();
     const bounds = molstarLassoBounds(stroke.points);
@@ -15301,15 +16631,29 @@
       setStatus('[web] Lasso selection was too small.');
       return;
     }
-    const picks = molstarLassoPicks(stroke);
-    if (!picks.length) {
-      setStatus('[web] No visible atoms inside lasso.');
-      return;
+    molstarLassoBusy = true;
+    setStatus('[web] Selecting every atom inside the lasso…');
+    try {
+      await molstarLassoYield();
+      const lociList = await molstarLassoProjectedLoci(stroke);
+      if (!lociList.length) {
+        setStatus('[web] No atom centres inside lasso.');
+        return;
+      }
+      const selected = await applyMolstarLassoLoci(lociList, stroke.additive);
+      setStatus(selected.totalAtoms > 0
+        ? `[web] Lasso selection · ${selected.totalAtoms.toLocaleString()} atom${selected.totalAtoms === 1 ? '' : 's'}.`
+        : '[web] Lasso selection did not match selectable atoms.');
+    } catch (error) {
+      debug('Mol* lasso selection failed: ' + (error?.message || String(error)));
+      setStatus(`[web] Lasso selection failed. ${error?.message || error}`, 'error');
+    } finally {
+      molstarLassoBusy = false;
     }
-    const selected = applyMolstarLassoPicks(picks, stroke.additive);
-    setStatus(selected > 0
-      ? `[web] Selected ${selected} visible target${selected === 1 ? '' : 's'} with lasso.`
-      : '[web] Lasso selection did not match selectable atoms.');
+  }
+
+  function molstarLassoYield() {
+    return new Promise(resolve => window.setTimeout(resolve, 0));
   }
 
   function molstarLassoBounds(points) {
@@ -15334,53 +16678,96 @@
     return inside;
   }
 
-  function molstarLassoPickKey(pick, fallback) {
-    const atom = molstarContextAtomFromLoci(pick?.loci);
-    if (atom) {
-      return [
-        atom.model?.id || atom.model?.entryId || 'model',
-        atom.label_entity_id || '',
-        atom.label_asym_id || atom.auth_asym_id || '',
-        atom.label_seq_id ?? atom.auth_seq_id ?? '',
-        atom.label_comp_id || atom.auth_comp_id || '',
-        atom.atomIndex ?? ''
-      ].join(':');
-    }
-    return `${pick?.loci?.kind || 'loci'}:${fallback}`;
-  }
-
-  function molstarLassoPicks(stroke) {
-    const bounds = molstarLassoBounds(stroke.points);
-    const picks = [];
+  function molstarLassoProjectionSources(viewer, structureRef) {
+    const componentManager = viewer?.plugin?.managers?.structure?.component;
+    const sources = [];
     const seen = new Set();
-    let sampled = 0;
-    const addPick = (x, y) => {
-      if (sampled >= MOLSTAR_LASSO_SAMPLE_LIMIT) return;
-      sampled += 1;
-      const pick = molstarPickFromCanvasPoint(stroke.canvas, x, y);
-      if (!pick?.loci) return;
-      const key = molstarLassoPickKey(pick, `${Math.round(x)}:${Math.round(y)}`);
-      if (seen.has(key)) return;
-      seen.add(key);
-      picks.push(pick);
-    };
-    for (const point of stroke.points) {
-      addPick(point.x, point.y);
-    }
-    for (let y = bounds.top; y <= bounds.bottom; y += MOLSTAR_LASSO_SAMPLE_STEP_PX) {
-      for (let x = bounds.left; x <= bounds.right; x += MOLSTAR_LASSO_SAMPLE_STEP_PX) {
-        if (molstarPointInPolygon({ x, y }, stroke.points)) addPick(x, y);
+    for (const component of structureRef?.components || []) {
+      const componentData = component?.cell?.obj?.data;
+      if (
+        !componentData
+        || component?.cell?.state?.isHidden === true
+        || component?.cell?.transform?.tags?.includes(MOLSTAR_LASSO_COMPONENT_TAG)
+        || componentManager?.canBeModified?.(component) === false
+      ) continue;
+      if (!seen.has(componentData)) {
+        seen.add(componentData);
+        sources.push(componentData);
       }
     }
-    return picks;
+    return sources;
   }
 
-  function applyMolstarLassoPicks(picks, additive) {
-    const selects = activeViewer?.plugin?.managers?.interactivity?.lociSelects;
-    const selection = activeViewer?.plugin?.managers?.structure?.selection;
+  async function molstarLassoProjectedLoci(stroke) {
+    const viewer = activeMolstarViewer();
+    const camera = viewer?.plugin?.canvas3d?.camera;
+    const canvasRect = stroke.canvas?.getBoundingClientRect?.();
+    const viewport = camera?.viewport;
+    const lociList = [];
+    if (!camera?.project || !canvasRect?.width || !canvasRect?.height || !viewport?.width || !viewport?.height) return lociList;
+    const bounds = molstarLassoBounds(stroke.points);
+    const world = new Float64Array(3);
+    const projected = new Float64Array(4);
+    const StructureElement = molstarStructureRuntime().StructureElement;
+    if (
+      typeof StructureElement?.Loci?.remap !== 'function'
+      || typeof StructureElement?.Loci?.union !== 'function'
+    ) return lociList;
+    let scanned = 0;
+    // The polygon is extruded through the view depth: every atom centre whose
+    // screen projection lies inside it is selected, including atoms hidden behind
+    // a surface. User-hidden components and non-component root data stay out of
+    // the selection so the count matches the molecular objects the action edits.
+    for (const structureRef of molstarCurrentStructures(viewer)) {
+      const structure = molstarStructureFromRef(structureRef);
+      if (!structure) continue;
+      let structureLoci = null;
+      const sources = molstarLassoProjectionSources(viewer, structureRef);
+      for (const source of sources) {
+        const elements = [];
+        for (const unit of source.units || []) {
+          const indices = [];
+          for (let index = 0; index < unit.elements.length; index++) {
+            unit.conformation.position(unit.elements[index], world);
+            camera.project(projected, world);
+            const clientX = canvasRect.left + ((projected[0] - viewport.x) / viewport.width) * canvasRect.width;
+            const clientY = canvasRect.top + (1 - (projected[1] - viewport.y) / viewport.height) * canvasRect.height;
+            if (
+              projected[3] > 0
+              && projected[2] >= 0
+              && projected[2] <= 1
+              && clientX >= bounds.left
+              && clientX <= bounds.right
+              && clientY >= bounds.top
+              && clientY <= bounds.bottom
+              && molstarPointInPolygon({ x: clientX, y: clientY }, stroke.points)
+            ) {
+              indices.push(index);
+            }
+            scanned += 1;
+            if (scanned % MOLSTAR_LASSO_PROJECTION_YIELD_INTERVAL === 0) await molstarLassoYield();
+          }
+          if (indices.length) elements.push({ unit, indices: Int32Array.from(indices) });
+        }
+        if (!elements.length) continue;
+        const sourceLoci = { kind: 'element-loci', structure: source, elements };
+        const remapped = StructureElement.Loci.remap(sourceLoci, structure);
+        structureLoci = structureLoci ? StructureElement.Loci.union(structureLoci, remapped) : remapped;
+      }
+      if (structureLoci?.elements?.length) lociList.push(structureLoci);
+    }
+    return lociList;
+  }
+
+  async function applyMolstarLassoLoci(lociList, additive) {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    const selects = plugin?.managers?.interactivity?.lociSelects;
+    const selection = plugin?.managers?.structure?.selection;
+    const StructureElement = molstarStructureRuntime().StructureElement;
     const canSelect = typeof selects?.select === 'function';
     const canSelectStructure = typeof selection?.fromLoci === 'function';
-    if (!canSelect && !canSelectStructure) return 0;
+    if (!canSelect && !canSelectStructure) return { batchAtoms: 0, totalAtoms: 0 };
     const lassoApplyGranularity = false;
     if (!additive) {
       selects?.deselectAll?.();
@@ -15389,34 +16776,153 @@
       molstarLassoSelectionAtomKeys.clear();
       molstarLassoSelectionResidueKeys.clear();
     }
-    let selected = 0;
-    for (const pick of picks) {
-      const loci = molstarContextNormalizeLoci(pick?.loci, 'element');
-      if (!loci || molstarLociIsEmpty(loci)) continue;
+    let batchAtoms = 0;
+    for (const loci of lociList) {
       if (canSelect) selects.select({ loci }, lassoApplyGranularity);
-      if (canSelectStructure) selection.fromLoci('add', loci, lassoApplyGranularity);
-      selected += 1;
+      else if (canSelectStructure) selection.fromLoci('add', loci, lassoApplyGranularity);
+      batchAtoms += Number(StructureElement.Loci.size?.(loci)) || 0;
     }
-    if (selected > 0) {
-      scheduleMolstarSelectedMoleculePreview();
-      notifyMolstarLassoSelection(picks, selected);
+    if (batchAtoms > 0) {
+      const totalAtoms = Math.max(batchAtoms, Number(selection?.stats?.elementCount) || 0);
+      if (totalAtoms <= MOLSTAR_LASSO_PREVIEW_ATOM_LIMIT) scheduleMolstarSelectedMoleculePreview();
+      else hideMolstarMoleculePreview({ force: true });
+      notifyMolstarLassoSelection(lociList, batchAtoms, totalAtoms);
+      await upsertMolstarLassoSceneObject(totalAtoms);
+      return { batchAtoms, totalAtoms };
     }
-    return selected;
+    return { batchAtoms: 0, totalAtoms: 0 };
   }
 
-  function notifyMolstarLassoSelection(picks, selected) {
-    for (const pick of picks) {
-      const atom = molstarContextAtomFromLoci(pick?.loci);
-      if (!atom) continue;
-      const chain = String(atom.auth_asym_id || atom.label_asym_id || '').trim();
-      const sequence = atom.auth_seq_id ?? atom.label_seq_id ?? null;
-      const compId = String(atom.auth_comp_id || atom.label_comp_id || '').trim();
-      const atomName = String(atom.auth_atom_id || atom.label_atom_id || '').trim();
-      const atomKey = `${chain}:${sequence ?? ''}:${compId}:${atomName}:${atom.atomIndex ?? ''}`;
-      molstarLassoSelectionAtomKeys.add(atomKey);
-      molstarLassoSelectionResidueKeys.add(`${chain}:${sequence ?? ''}:${compId}`);
-      if (!molstarLassoSelectionAtoms.has(atomKey) && molstarLassoSelectionAtoms.size < 96) {
-        molstarLassoSelectionAtoms.set(atomKey, { chain, sequence, compId, atomName });
+  async function removeMolstarLassoSceneObjects(plugin = activeMolstarViewer()?.plugin, keepParentRefs = null) {
+    const state = plugin?.state?.data;
+    if (typeof state?.build !== 'function' || !state?.cells) return;
+    const refs = [];
+    for (const [ref, cell] of state.cells) {
+      if (!cell?.transform?.tags?.includes(MOLSTAR_LASSO_COMPONENT_TAG)) continue;
+      if (keepParentRefs?.has(cell.transform.parent)) continue;
+      refs.push(ref);
+    }
+    if (!refs.length) return;
+    const update = state.build();
+    for (const ref of refs) update.delete(ref);
+    await update.commit();
+    scheduleSceneTreeRender();
+  }
+
+  async function upsertMolstarLassoSceneObject(atomCount) {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    const selection = currentSelectionQuery();
+    const structures = plugin?.managers?.structure?.hierarchy?.getStructuresWithSelection?.() || [];
+    const builder = plugin?.builders?.structure;
+    if (!plugin || !selection || typeof builder?.tryCreateComponentFromSelection !== 'function' || !structures.length) {
+      await removeMolstarLassoSceneObjects(plugin);
+      return;
+    }
+    const parentRefs = new Set(structures.map(structure => structure?.cell?.transform?.ref).filter(Boolean));
+    await removeMolstarLassoSceneObjects(plugin, parentRefs);
+    const label = `Lasso selection · ${atomCount.toLocaleString()} ${atomCount === 1 ? 'atom' : 'atoms'}`;
+    // The stable key makes repeated and additive lassos update the same component
+    // row instead of appending one state object per interaction.
+    await Promise.all(structures.map(structure => builder.tryCreateComponentFromSelection(
+      structure.cell,
+      selection,
+      MOLSTAR_LASSO_COMPONENT_KEY,
+      { label, tags: [MOLSTAR_LASSO_COMPONENT_TAG] }
+    )));
+    scheduleSceneTreeRender();
+  }
+
+  function isMolstarLassoSceneRef(viewer, ref) {
+    return viewer?.plugin?.state?.data?.cells?.get(ref)?.transform?.tags?.includes(MOLSTAR_LASSO_COMPONENT_TAG) === true;
+  }
+
+  function molstarLassoSceneComponent(viewer, ref) {
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const component = (structure?.components || [])
+        .find(candidate => candidate?.cell?.transform?.ref === ref);
+      if (component) return component;
+    }
+    return null;
+  }
+
+  async function deleteMolstarLassoAtoms(ref) {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    const component = molstarLassoSceneComponent(viewer, ref);
+    const parent = component?.structure?.cell?.obj?.data;
+    const selected = component?.cell?.obj?.data;
+    const structureLib = molstarStructureRuntime();
+    const Structure = structureLib.Structure;
+    const StructureElement = structureLib.StructureElement;
+    const selection = plugin?.managers?.structure?.selection;
+    const componentManager = plugin?.managers?.structure?.component;
+    if (
+      !isMolstarLassoSceneRef(viewer, ref)
+      || !parent
+      || !selected
+      || typeof Structure?.toSubStructureElementLoci !== 'function'
+      || typeof StructureElement?.Loci?.size !== 'function'
+      || typeof selection?.fromLoci !== 'function'
+      || typeof componentManager?.modifyByCurrentSelection !== 'function'
+    ) {
+      setStatus('[web] Delete selected atoms failed. The lasso selection is no longer available.', 'error');
+      return false;
+    }
+    const loci = Structure.toSubStructureElementLoci(parent, selected);
+    const atomCount = Number(StructureElement.Loci.size(loci)) || 0;
+    const components = (component.structure?.components || []).filter(candidate => (
+      candidate?.cell?.transform?.ref !== ref
+      && !candidate?.cell?.transform?.tags?.includes(MOLSTAR_LASSO_COMPONENT_TAG)
+      && componentManager.canBeModified?.(candidate) !== false
+    ));
+    if (!atomCount || !components.length) {
+      setStatus('[web] Delete selected atoms failed. No editable atoms were found.', 'error');
+      return false;
+    }
+    try {
+      // The lasso component already encodes the exact structure subset in the
+      // Mol* state tree. Snapshot that tree directly: exporting a huge
+      // biological assembly just to create undo is both slow and unavailable
+      // for some mmCIF assemblies.
+      const undoSnapshot = captureMolstarSceneUndoSnapshot(`delete ${atomCount} lasso-selected atoms`);
+      selection.clear?.();
+      selection.fromLoci('set', loci, false);
+      await componentManager.modifyByCurrentSelection(components, 'subtract');
+      await clearMolstarSelection();
+      pushMolstarEditUndoSnapshot(undoSnapshot);
+      setMolstarStructureDirty(true);
+      scheduleSceneTreeRender();
+      setStatus(`[web] Deleted ${atomCount.toLocaleString()} lasso-selected atom${atomCount === 1 ? '' : 's'}.`);
+      return true;
+    } catch (error) {
+      debug('delete lasso-selected atoms failed: ' + (error?.message || String(error)));
+      setStatus(`[web] Delete selected atoms failed. ${error?.message || error}`, 'error');
+      return false;
+    }
+  }
+
+  function notifyMolstarLassoSelection(lociList, batchAtoms, totalAtoms) {
+    sampleAtoms:
+    for (const loci of lociList) {
+      for (const element of loci.elements || []) {
+        molstarContextOrderedSetForEach(element.indices, index => {
+          const atomIndex = element.unit?.elements?.[index];
+          const atom = molstarContextAtomFromModelIndex(element.unit?.model, atomIndex);
+          if (!atom) return true;
+          const chain = String(atom.auth_asym_id || atom.label_asym_id || '').trim();
+          const sequence = atom.auth_seq_id ?? atom.label_seq_id ?? null;
+          const compId = String(atom.auth_comp_id || atom.label_comp_id || '').trim();
+          const atomName = String(atom.auth_atom_id || atom.label_atom_id || '').trim();
+          const atomKey = `${chain}:${sequence ?? ''}:${compId}:${atomName}:${atom.atomIndex ?? ''}`;
+          molstarLassoSelectionAtomKeys.add(atomKey);
+          molstarLassoSelectionResidueKeys.add(`${chain}:${sequence ?? ''}:${compId}`);
+          if (!molstarLassoSelectionAtoms.has(atomKey) && molstarLassoSelectionAtoms.size < 96) {
+            molstarLassoSelectionAtoms.set(atomKey, { chain, sequence, compId, atomName });
+          }
+          return molstarLassoSelectionAtoms.size < 96;
+        });
+        if (molstarLassoSelectionAtoms.size >= 96) break sampleAtoms;
       }
     }
     const atoms = Array.from(molstarLassoSelectionAtoms.values());
@@ -15431,10 +16937,10 @@
     window.__mqlPost?.('selectionChanged', '', {
       selection: {
         source: 'lasso',
-        label: `Lasso selection: ${molstarLassoSelectionAtomKeys.size} visible atom${molstarLassoSelectionAtomKeys.size === 1 ? '' : 's'} across ${molstarLassoSelectionResidueKeys.size} residue${molstarLassoSelectionResidueKeys.size === 1 ? '' : 's'}`,
-        atoms: molstarLassoSelectionAtomKeys.size,
+        label: `Lasso selection: ${totalAtoms} atom${totalAtoms === 1 ? '' : 's'} inside the outlined screen area`,
+        atoms: totalAtoms,
         residueCount: molstarLassoSelectionResidueKeys.size,
-        visibleTargets: selected,
+        visibleTargets: batchAtoms,
         residues: Array.from(residues.values()),
         atomIdentities: atoms
       }
@@ -16539,50 +18045,73 @@
     return atomIndex === atom.atomIndex;
   }
 
-  function molstarContextOrderedSetSome(indices, predicate) {
-    if (indices == null || typeof predicate !== 'function') return false;
-    const single = molstarContextNumberOrUndefined(indices);
-    if (single != null) return predicate(single);
-    if (Array.isArray(indices)) return indices.some(index => predicate(index));
+  function molstarContextOrderedSetForEach(indices, callback) {
+    if (indices == null || typeof callback !== 'function') return;
+    let stopped = false;
+    const visit = value => {
+      const index = molstarContextNumberOrUndefined(value);
+      if (!Number.isInteger(index) || stopped) return;
+      if (callback(index) === false) stopped = true;
+    };
     const orderedSet = molstarExportLib()?.OrderedSet || molstarRuntime()?.OrderedSet;
     if (typeof orderedSet?.forEach === 'function') {
-      let found = false;
       try {
-        orderedSet.forEach(indices, index => {
-          if (!found && predicate(index)) found = true;
-        });
-        if (found) return true;
+        orderedSet.forEach(indices, value => visit(value));
+        return;
       } catch (_) {}
     }
     if (typeof orderedSet?.size === 'function' && typeof orderedSet?.getAt === 'function') {
       try {
         const size = orderedSet.size(indices);
-        for (let i = 0; i < size; i++) {
-          if (predicate(orderedSet.getAt(indices, i))) return true;
-        }
+        for (let offset = 0; offset < size && !stopped; offset++) visit(orderedSet.getAt(indices, offset));
+        return;
       } catch (_) {}
     }
-    if (ArrayBuffer.isView(indices)) {
-      for (const index of indices) {
-        if (predicate(index)) return true;
+    if (Array.isArray(indices) || ArrayBuffer.isView(indices)) {
+      for (const value of indices) {
+        visit(value);
+        if (stopped) break;
       }
-      return false;
+      return;
+    }
+    if (typeof indices === 'number' && Number.isFinite(indices)) {
+      if (Number.isInteger(indices) && indices !== 0) {
+        visit(indices);
+        return;
+      }
+      try {
+        const buffer = new ArrayBuffer(8);
+        const view = new DataView(buffer);
+        view.setFloat64(0, indices, true);
+        const start = view.getInt32(0, true);
+        const end = view.getInt32(4, true);
+        if (start >= 0 && end >= start) {
+          for (let index = start; index < end && !stopped; index++) visit(index);
+        }
+      } catch (_) {}
+      return;
     }
     if (typeof indices?.[Symbol.iterator] === 'function') {
-      for (const index of indices) {
-        if (predicate(index)) return true;
+      for (const value of indices) {
+        visit(value);
+        if (stopped) break;
       }
-      return false;
+      return;
     }
     if (indices.array) {
       const start = Number.isInteger(indices.start) ? indices.start : 0;
       const end = Number.isInteger(indices.end) ? indices.end : indices.array.length;
-      for (let i = start; i < end; i++) {
-        if (predicate(indices.array[i])) return true;
-      }
-      return false;
+      for (let offset = start; offset < end && !stopped; offset++) visit(indices.array[offset]);
     }
-    return false;
+  }
+
+  function molstarContextOrderedSetSome(indices, predicate) {
+    let found = false;
+    molstarContextOrderedSetForEach(indices, index => {
+      found = predicate(index) === true;
+      return !found;
+    });
+    return found;
   }
 
   function molstarContextLociContainsAtom(loci, atom) {
@@ -16607,13 +18136,40 @@
     ));
   }
 
+  function molstarContextHasLassoSelection(structureRef, selectionLoci) {
+    if (!selectionLoci || molstarLociIsEmpty(selectionLoci)) return false;
+    const structure = molstarCurrentStructures(activeMolstarViewer())
+      .find(candidate => candidate?.cell?.transform?.ref === structureRef?.cell?.transform?.ref) || structureRef;
+    const Structure = molstarStructureRuntime().Structure;
+    const StructureElement = molstarStructureRuntime().StructureElement;
+    if (
+      !Array.isArray(structure?.components)
+      || typeof Structure?.toSubStructureElementLoci !== 'function'
+      || typeof StructureElement?.Loci?.size !== 'function'
+    ) return false;
+    const selectionSize = Number(StructureElement.Loci.size(selectionLoci)) || 0;
+    if (!selectionSize) return false;
+    return structure.components.some(component => {
+      if (!component?.cell?.transform?.tags?.includes(MOLSTAR_LASSO_COMPONENT_TAG)) return false;
+      const parent = component?.structure?.cell?.obj?.data;
+      const selected = component?.cell?.obj?.data;
+      if (!parent || !selected) return false;
+      try {
+        const lassoLoci = Structure.toSubStructureElementLoci(parent, selected);
+        return Number(StructureElement.Loci.size(lassoLoci)) === selectionSize;
+      } catch (_) {
+        return false;
+      }
+    });
+  }
+
   function molstarContextResolvedLoci(targetStructure) {
     const structure = molstarStructureFromRef(targetStructure) || targetStructure;
     const pickedLoci = molstarContextMenuPick?.loci || null;
     const pickedAtom = molstarContextAtomFromLoci(pickedLoci);
     const selectionLoci = molstarContextSelectionLociForStructure(targetStructure);
     const selectedAtom = molstarContextAtomFromLoci(selectionLoci);
-    const canReuseSelection = molstarContextMenuMode === 'molecule' || !pickedAtom;
+    const canReuseSelection = molstarContextHasLassoSelection(targetStructure, selectionLoci) || molstarContextMenuMode === 'molecule' || !pickedAtom;
     if (canReuseSelection && selectedAtom && (!pickedAtom || molstarContextLociContainsAtom(selectionLoci, pickedAtom))) return {
       loci: selectionLoci,
       atomLoci: pickedAtom
@@ -17215,6 +18771,11 @@
     return runtime?.lib || runtime || {};
   }
 
+  function molstarStructureRuntime() {
+    const lib = molstarExportLib();
+    return lib?.structure || lib || {};
+  }
+
   function molstarExportToMmCif() {
     const runtime = molstarRuntime();
     const lib = molstarExportLib();
@@ -17541,8 +19102,10 @@
       return {
         kind: 'scene',
         label: String(label || 'scene change'),
+        dirty: molstarStructureDirty,
         state: plugin.state.data.getSnapshot(),
-        selection: plugin.managers?.structure?.selection?.getSnapshot?.() || null
+        selection: plugin.managers?.structure?.selection?.getSnapshot?.() || null,
+        superposition: activeStructureAlignmentControl?.snapshot?.() || null,
       };
     } catch (error) {
       debug('scene undo snapshot failed: ' + (error && error.message || String(error)));
@@ -17550,27 +19113,47 @@
     }
   }
 
-  // Superposition rewrites coordinates and reloads the scene, so neither snapshot
-  // kind covers it; the alignment control is asked to put itself back instead.
-  function captureMolstarAlignUndoSnapshot(label) {
-    if (!activeStructureAlignmentControl) return null;
-    return {
-      kind: 'align',
-      label: String(label || 'alignment'),
-      wasAligned: activeStructureAlignmentControl.isAligned(),
-      mode: activeStructureAlignmentControl.mode?.() || null
-    };
+  function pushMolstarHistorySnapshot(stack, snapshot) {
+    if (!snapshot) return;
+    if (snapshot.kind !== 'scene' && !snapshot.payload?.text) return;
+    stack.push(snapshot);
+    while (stack.length > MOLSTAR_EDIT_HISTORY_LIMIT) stack.shift();
+  }
+
+  function notifyMolstarEditHistoryChanged() {
+    postHostMessage({
+      type: 'molstarEditHistoryChanged',
+      canUndo: molstarEditUndoStack.length > 0,
+      canRedo: molstarEditRedoStack.length > 0,
+      undoLabel: molstarEditUndoStack.at(-1)?.label || null,
+      redoLabel: molstarEditRedoStack.at(-1)?.label || null
+    });
   }
 
   function pushMolstarEditUndoSnapshot(snapshot) {
     if (!snapshot) return;
-    if (snapshot.kind !== 'scene' && snapshot.kind !== 'align' && !snapshot.payload?.text) return;
-    molstarEditUndoStack.push(snapshot);
-    while (molstarEditUndoStack.length > MOLSTAR_EDIT_HISTORY_LIMIT) molstarEditUndoStack.shift();
+    pushMolstarHistorySnapshot(molstarEditUndoStack, snapshot);
+    molstarEditRedoStack.length = 0;
+    notifyMolstarEditHistoryChanged();
+  }
+
+  async function runMolstarSceneEdit(label, operation) {
+    const snapshot = captureMolstarSceneUndoSnapshot(label);
+    try {
+      const result = await operation();
+      if (result !== false) pushMolstarEditUndoSnapshot(snapshot);
+      return result;
+    } catch (error) {
+      debug('scene edit failed: ' + (error?.message || String(error)));
+      setStatus(`[web] ${label} failed.\n\n${error?.message || String(error)}`, 'error');
+      return false;
+    }
   }
 
   function clearMolstarEditUndoHistory() {
     molstarEditUndoStack.length = 0;
+    molstarEditRedoStack.length = 0;
+    notifyMolstarEditHistoryChanged();
   }
 
   async function restoreMolstarSceneUndoSnapshot(snapshot) {
@@ -17580,25 +19163,13 @@
     if (snapshot.selection) {
       try { plugin.managers?.structure?.selection?.setSnapshot?.(snapshot.selection); } catch (_) {}
     }
+    setMolstarStructureDirty(snapshot.dirty === true);
+    activeStructureAlignmentControl?.restoreMetadata?.(snapshot.superposition || null);
     scheduleSceneTreeRender();
-  }
-
-  async function restoreMolstarAlignUndoSnapshot(snapshot) {
-    const control = activeStructureAlignmentControl;
-    if (!control) throw new Error('No structure scene is available to unalign.');
-    const aligned = control.isAligned();
-    const mode = control.mode?.() || null;
-    if (aligned === snapshot.wasAligned && (!aligned || mode === snapshot.mode)) return;
-    if (snapshot.wasAligned) {
-      await control.toggle(snapshot.mode || 'auto');
-    } else if (aligned) {
-      await control.toggle('auto');
-    }
   }
 
   async function restoreMolstarEditUndoSnapshot(snapshot) {
     if (snapshot?.kind === 'scene') return restoreMolstarSceneUndoSnapshot(snapshot);
-    if (snapshot?.kind === 'align') return restoreMolstarAlignUndoSnapshot(snapshot);
     if (!activeViewer) throw new Error('Mol* viewer is not ready.');
     const payload = snapshot?.payload || {};
     const text = String(payload.text || '');
@@ -17650,13 +19221,48 @@
       setStatus('[web] Nothing to undo.');
       return;
     }
+    const counterpart = captureMolstarHistoryCounterpart(snapshot);
+    if (!counterpart) {
+      molstarEditUndoStack.push(snapshot);
+      throw new Error('Mol* could not capture the current scene for redo.');
+    }
     try {
       await restoreMolstarEditUndoSnapshot(snapshot);
     } catch (error) {
       molstarEditUndoStack.push(snapshot);
       throw error;
     }
+    pushMolstarHistorySnapshot(molstarEditRedoStack, counterpart);
+    notifyMolstarEditHistoryChanged();
     setStatus(`[web] Undid ${snapshot.label}.`);
+    setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+  }
+
+  function captureMolstarHistoryCounterpart(snapshot) {
+    if (snapshot?.kind === 'scene') return captureMolstarSceneUndoSnapshot(snapshot.label);
+    return captureMolstarEditUndoSnapshot(snapshot?.label || 'Mol* edit');
+  }
+
+  async function redoMolstarLastEdit() {
+    const snapshot = molstarEditRedoStack.pop();
+    if (!snapshot) {
+      setStatus('[web] Nothing to redo.');
+      return;
+    }
+    const counterpart = captureMolstarHistoryCounterpart(snapshot);
+    if (!counterpart) {
+      molstarEditRedoStack.push(snapshot);
+      throw new Error('Mol* could not capture the current scene for undo.');
+    }
+    try {
+      await restoreMolstarEditUndoSnapshot(snapshot);
+    } catch (error) {
+      molstarEditRedoStack.push(snapshot);
+      throw error;
+    }
+    pushMolstarHistorySnapshot(molstarEditUndoStack, counterpart);
+    notifyMolstarEditHistoryChanged();
+    setStatus(`[web] Redid ${snapshot.label}.`);
     setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
   }
 
@@ -17705,7 +19311,8 @@
         .find(structure => structure?.cell?.transform?.ref === targetRef)
       : null;
     const structure = currentStructure || target?.structure;
-    const components = Array.isArray(structure?.components) ? structure.components : [];
+    const components = (Array.isArray(structure?.components) ? structure.components : [])
+      .filter(component => !component?.cell?.transform?.tags?.includes(MOLSTAR_LASSO_COMPONENT_TAG));
     const componentManager = activeViewer?.plugin?.managers?.structure?.component;
     if (typeof componentManager?.canBeModified !== 'function') return components;
     return components.filter(component => componentManager.canBeModified(component));
@@ -18515,11 +20122,7 @@
     ];
     if (molstarContextCanBulkDelete(target)) actions.push(['remove-type', `Delete ${molstarContextBulkDeleteLabel(target)}`]);
     if (activeStructureAlignmentControl) {
-      const reference = activeStructureAlignmentControl.referenceLabel();
-      actions.push(['align:atoms', `Align to ${reference} by residue numbers`]);
-      actions.push(['align:sequence', `Align to ${reference} by sequence`]);
-      actions.push(['align:binding-site', `Align to ${reference} by binding site`]);
-      if (activeStructureAlignmentControl.isAligned()) actions.push(['align-structures', 'Reset structure alignment']);
+      actions.push(...activeStructureAlignmentControl.contextActions(target, mode));
     }
     if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
     // The desktop overlay carries the scene-tree powers into the 3D right click.
@@ -18571,7 +20174,7 @@
   }
 
   function molstarContextActionsPayload(actions) {
-    return (Array.isArray(actions) ? actions : []).map(([name, title]) => ({
+    return moleculeMenuLeafActions(actions).map(([name, title]) => ({
       name: String(name || ''),
       title: String(title || '')
     })).filter(action => action.name && action.title);
@@ -18595,11 +20198,10 @@
     });
   }
 
-  // Which menu actions ⌘Z should walk back. Selections are deliberately absent:
-  // they change constantly, and an undo history full of them would bury the edit
-  // the user actually wants back — Maestro and PyMOL leave selection out too.
-  // Exports write files and change nothing on screen, so they are out as well.
-  function molstarSceneUndoActionLabel(action, target) {
+  // Only explicit context-menu commands enter edit history. Ordinary picking and
+  // camera movement stay ephemeral, while deliberate selection commands, visual
+  // edits and newly-created scene objects all undo as one menu action.
+  function molstarContextSceneMutationLabel(action, target) {
     const name = String(action || '');
     // Without a pick the label falls back to the document title, which reads badly
     // in "Undid colour <file name>"; the structure is what was coloured.
@@ -18607,9 +20209,16 @@
     if (name.startsWith('colour:')) return `colour ${targetLabel}`;
     if (name === 'analyze:interactions') return `interactions around ${targetLabel}`;
     if (name === 'analyze:label') return `label ${targetLabel}`;
+    if (name === 'analyze:surroundings') return `surroundings of ${targetLabel}`;
     if (name === 'represent:surface') return `surface on ${targetLabel}`;
+    if (name === 'represent:component') return `component for ${targetLabel}`;
     if (name === 'view:hide') return `hiding ${targetLabel}`;
     if (name === 'view:isolate') return `isolating ${targetLabel}`;
+    if (name === 'select' || name === 'select-atom') return `selection of ${targetLabel}`;
+    if (name === 'select:whole-residues') return 'whole-residue selection';
+    if (name === 'select:grow') return 'grown selection';
+    if (name === 'select:invert') return 'inverted selection';
+    if (name === 'select:clear') return 'cleared selection';
     return null;
   }
 
@@ -18617,25 +20226,21 @@
     const target = targetOverride || molstarContextTarget();
     const targetLabel = target.label;
     let previewAfterAction = null;
-    const sceneUndoLabel = molstarSceneUndoActionLabel(action, target);
+    const sceneUndoLabel = molstarContextSceneMutationLabel(action, target);
     const sceneUndoSnapshot = sceneUndoLabel ? captureMolstarSceneUndoSnapshot(sceneUndoLabel) : null;
     let actionFailed = false;
     try {
       if (action === 'align-structures' || action.startsWith('align:')) {
         if (!activeStructureAlignmentControl) throw new Error('No structure scene is available to align.');
         hideMolstarContextMenu();
-        const alignUndo = captureMolstarAlignUndoSnapshot(`aligning to ${activeStructureAlignmentControl.referenceLabel()}`);
-        await activeStructureAlignmentControl.toggle(action === 'align-structures' ? 'auto' : action.slice('align:'.length));
-        // The toggle reports its own failures through the status line rather than
-        // throwing, so the entry is only kept when the scene actually moved.
-        const alignmentChanged = alignUndo && (
-          activeStructureAlignmentControl.isAligned() !== alignUndo.wasAligned
-          || (activeStructureAlignmentControl.isAligned()
-            && activeStructureAlignmentControl.mode?.() !== alignUndo.mode)
-        );
-        if (alignmentChanged) {
-          pushMolstarEditUndoSnapshot(alignUndo);
+        if (action === 'align-structures') await activeStructureAlignmentControl.reset();
+        else if (action === 'align:advanced') await activeStructureAlignmentControl.open();
+        else if (action.startsWith(SUPERPOSITION_CONTEXT_ACTION_PREFIX)) {
+          const request = superpositionContextRequest(action);
+          if (!request) throw new Error('The requested contextual superposition is invalid.');
+          await activeStructureAlignmentControl.apply(request);
         }
+        else await activeStructureAlignmentControl.apply({ method: action.slice('align:'.length) });
         return;
       } else if (action === 'select') {
         const selectionLoci = molstarContextSelectionLoci(target);
@@ -18643,8 +20248,11 @@
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(`[web] Selected ${targetLabel}.`);
       } else if (action === 'remove') {
-        const undoSnapshot = captureMolstarEditUndoSnapshot(`delete ${targetLabel}`);
+        const undoSnapshot = target?.selectionBased
+          ? captureMolstarSceneUndoSnapshot(`delete ${targetLabel}`)
+          : captureMolstarEditUndoSnapshot(`delete ${targetLabel}`);
         if (!await deleteMolstarContextPick(target)) throw new Error('No editable Mol* residue or ligand is available to delete.');
+        if (target?.selectionBased) await clearMolstarSelection();
         pushMolstarEditUndoSnapshot(undoSnapshot);
         setMolstarStructureDirty(true);
         setStatus(`[web] Deleted ${targetLabel}.`);
@@ -18839,7 +20447,8 @@
     const nextMode = mode === 'atom' ? 'atom' : 'molecule';
     molstarContextMenuMode = nextMode;
     const target = molstarContextTarget();
-    const matchedAction = molstarContextMenuActions(target, nextMode).find(([name]) => name === actionName);
+    const matchedAction = moleculeMenuLeafActions(molstarContextMenuActions(target, nextMode))
+      .find(([name]) => name === actionName);
     void moleculeContextMenuAction(actionName, matchedAction?.[1] || actionName);
   };
 
@@ -19808,6 +21417,7 @@
     const menu = document.querySelector('.buret-molecule-context-menu:not(.buret-xyzrender-context-menu)');
     const previousFocus = menu?._buretPreviousFocus;
     const restoreFocus = !!menu && menu.contains(document.activeElement);
+    moleculeMenuCancelHoverIntent(menu);
     menu?.remove();
     if (restoreFocus && previousFocus?.isConnected && typeof previousFocus.focus === 'function') {
       previousFocus.focus({ preventScroll: true });
@@ -19824,6 +21434,28 @@
     return icon;
   }
 
+  function moleculeMenuNestedAction(action, label, children) {
+    return [action, label, { children }];
+  }
+
+  function moleculeMenuActionChildren(entry) {
+    return Array.isArray(entry?.[2]?.children) ? entry[2].children : [];
+  }
+
+  function moleculeMenuLeafActions(entries, parents = []) {
+    const leaves = [];
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      const [action, label] = entry;
+      const children = moleculeMenuActionChildren(entry);
+      if (children.length) {
+        leaves.push(...moleculeMenuLeafActions(children, [...parents, label]));
+      } else {
+        leaves.push([action, [...parents, label].filter(Boolean).join(' › ')]);
+      }
+    }
+    return leaves;
+  }
+
   function moleculeMenuActionButton(action, label, options = {}) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -19834,12 +21466,26 @@
     text.className = 'buret-tree-menu-label';
     text.textContent = label;
     button.append(moleculeMenuIcon(moleculeContextActionIcon(action)), text);
-    button.addEventListener('click', () => {
+    button.addEventListener('click', event => {
+      if (event.button !== 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       const target = options.target
         ? { ...options.target, pickingLevel: options.pickingLevel || options.target.pickingLevel }
         : null;
       void moleculeContextMenuAction(action, label, target);
     });
+    if (options.menu) {
+      const closeChildren = () => moleculeMenuCloseSubmenus(options.menu, options.parentSubmenu || null);
+      button.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(options.menu, closeChildren));
+      button.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(options.menu));
+      button.addEventListener('focus', () => {
+        moleculeMenuCancelHoverIntent(options.menu);
+        closeChildren();
+      });
+    }
     return button;
   }
 
@@ -19848,9 +21494,33 @@
     return groupIds.flatMap(group => grouped.get(group) || []);
   }
 
+  // Hovering a level does not switch it immediately. The path from a submenu
+  // trigger to its submenu crosses the rows between them, and acting on every
+  // `pointerenter` let those rows close the submenu the pointer was heading
+  // for. A pending hover is dropped as soon as the pointer settles somewhere
+  // that contradicts it, so only a deliberate hover changes the open level.
+  const MOLECULE_MENU_HOVER_INTENT_MS = 110;
+
+  function moleculeMenuCancelHoverIntent(menu) {
+    if (!menu?._buretHoverIntent) return;
+    window.clearTimeout(menu._buretHoverIntent);
+    menu._buretHoverIntent = 0;
+  }
+
+  function moleculeMenuScheduleHoverIntent(menu, run) {
+    if (!menu) return;
+    moleculeMenuCancelHoverIntent(menu);
+    menu._buretHoverIntent = window.setTimeout(() => {
+      menu._buretHoverIntent = 0;
+      if (menu.isConnected) run();
+    }, MOLECULE_MENU_HOVER_INTENT_MS);
+  }
+
   function moleculeMenuCloseSubmenus(menu, except = null) {
+    const keep = new Set();
+    for (let submenu = except; submenu; submenu = submenu._buretParentSubmenu) keep.add(submenu);
     menu.querySelectorAll('.buret-molecule-context-submenu[data-open="true"]').forEach(submenu => {
-      if (submenu === except) return;
+      if (keep.has(submenu)) return;
       submenu.dataset.open = 'false';
       submenu.hidden = true;
       submenu._buretTrigger?.setAttribute('aria-expanded', 'false');
@@ -19874,7 +21544,18 @@
   }
 
   function moleculeMenuOpenSubmenu(menu, submenu, trigger, options = {}) {
+    submenu._buretParentSubmenu = trigger.closest('.buret-molecule-context-submenu');
     moleculeMenuCloseSubmenus(menu, submenu);
+    // Re-entering an open submenu only had to close its children, done above.
+    // Falling through moved the live node with appendChild and re-measured it,
+    // which dropped :hover and re-laid out the menu on every pointer entry.
+    if (submenu.dataset.open === 'true') {
+      if (options.focusFirst) submenu.querySelector('.buret-tree-menu-item')?.focus();
+      return;
+    }
+    // Recursive submenus are created before their parents. Move the one being
+    // opened to the end so the deepest visible level paints above its ancestors.
+    menu.appendChild(submenu);
     submenu.hidden = false;
     submenu.dataset.open = 'true';
     trigger.setAttribute('aria-expanded', 'true');
@@ -19882,6 +21563,81 @@
     if (options.focusFirst) {
       submenu.querySelector('.buret-tree-menu-item')?.focus();
     }
+  }
+
+  function moleculeMenuNestedSubmenu(entry, menu, target, options = {}) {
+    const [action, actionLabel] = entry;
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.setAttribute('role', 'menuitem');
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.className = `buret-tree-menu-item buret-tree-menu-sub-trigger${options.destructive ? ' buret-tree-menu-sub-trigger-destructive' : ''}`;
+    trigger.dataset.buretMoleculeSubmenu = action;
+    const label = document.createElement('span');
+    label.className = 'buret-tree-menu-label';
+    label.textContent = actionLabel;
+    const chevron = document.createElement('span');
+    chevron.className = 'buret-tree-menu-chevron';
+    chevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
+    trigger.append(moleculeMenuIcon(moleculeContextActionIcon(action)), label, chevron);
+
+    const submenu = document.createElement('div');
+    submenu.className = `buret-molecule-context-submenu${String(action).startsWith('align:') ? ' buret-superposition-context-submenu' : ''}`;
+    submenu.setAttribute('role', 'menu');
+    submenu.setAttribute('aria-label', actionLabel);
+    submenu.dataset.open = 'false';
+    submenu.hidden = true;
+    submenu._buretTrigger = trigger;
+    submenu._buretParentSubmenu = options.parentSubmenu || null;
+    const group = document.createElement('div');
+    group.className = 'buret-molecule-context-menu-group';
+    group.setAttribute('role', 'group');
+    for (const child of moleculeMenuActionChildren(entry)) {
+      group.appendChild(moleculeMenuActionItem(child, menu, target, { parentSubmenu: submenu }));
+    }
+    submenu.appendChild(group);
+
+    const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
+    trigger.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(menu, () => open(false)));
+    trigger.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(menu));
+    trigger.addEventListener('click', event => {
+      if (event.button !== 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      event.preventDefault();
+      moleculeMenuCancelHoverIntent(menu);
+      if (submenu.hidden) open(true);
+      else moleculeMenuCloseSubmenus(menu, options.parentSubmenu || null);
+    });
+    trigger.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      event.stopPropagation();
+      moleculeMenuCancelHoverIntent(menu);
+      open(true);
+    });
+    submenu.addEventListener('pointerenter', () => {
+      moleculeMenuCancelHoverIntent(menu);
+      moleculeMenuOpenSubmenu(menu, submenu, trigger);
+    });
+    menu.appendChild(submenu);
+    return trigger;
+  }
+
+  function moleculeMenuActionItem(entry, menu, target, options = {}) {
+    const children = moleculeMenuActionChildren(entry);
+    if (children.length) return moleculeMenuNestedSubmenu(entry, menu, target, options);
+    const [action, actionLabel] = entry;
+    return moleculeMenuActionButton(action, actionLabel, {
+      destructive: options.destructive,
+      target,
+      pickingLevel: target?.pickingLevel,
+      menu,
+      parentSubmenu: options.parentSubmenu || null,
+    });
   }
 
   function moleculeMenuSubmenu(section, grouped, menu, target) {
@@ -19900,7 +21656,7 @@
     trigger.append(moleculeMenuIcon(MOLECULE_MENU_GROUP_ICONS[section.id]), label, chevron);
 
     const submenu = document.createElement('div');
-    submenu.className = 'buret-molecule-context-submenu';
+    submenu.className = `buret-molecule-context-submenu${section.id === 'align' ? ' buret-superposition-context-submenu' : ''}`;
     submenu.setAttribute('role', 'menu');
     submenu.setAttribute('aria-label', section.title);
     submenu.dataset.open = 'false';
@@ -19926,21 +21682,26 @@
         heading.textContent = MOLECULE_MENU_GROUP_TITLES[groupId] || section.title;
         group.appendChild(heading);
       }
-      for (const [action, actionLabel] of entries) {
-        group.appendChild(moleculeMenuActionButton(action, actionLabel, {
+      for (const entry of entries) {
+        group.appendChild(moleculeMenuActionItem(entry, menu, target, {
           destructive: section.destructive,
-          target,
-          pickingLevel: target?.pickingLevel
+          parentSubmenu: submenu,
         }));
       }
       submenu.appendChild(group);
     });
 
     const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
-    trigger.addEventListener('pointerenter', () => open(false));
-    trigger.addEventListener('focus', () => open(false));
+    trigger.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(menu, () => open(false)));
+    trigger.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(menu));
     trigger.addEventListener('click', event => {
+      if (event.button !== 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       event.preventDefault();
+      moleculeMenuCancelHoverIntent(menu);
       if (submenu.hidden) open(true);
       else moleculeMenuCloseSubmenus(menu);
     });
@@ -19948,9 +21709,13 @@
       if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       event.stopPropagation();
+      moleculeMenuCancelHoverIntent(menu);
       open(true);
     });
-    submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
+    submenu.addEventListener('pointerenter', () => {
+      moleculeMenuCancelHoverIntent(menu);
+      moleculeMenuOpenSubmenu(menu, submenu, trigger);
+    });
     menu.appendChild(submenu);
     return trigger;
   }
@@ -20061,10 +21826,15 @@
     }
     update(currentLevel);
     const open = focusFirst => moleculeMenuOpenSubmenu(menu, submenu, trigger, { focusFirst });
-    trigger.addEventListener('pointerenter', () => open(false));
-    trigger.addEventListener('focus', () => open(false));
+    trigger.addEventListener('pointerenter', () => moleculeMenuScheduleHoverIntent(menu, () => open(false)));
+    trigger.addEventListener('pointerleave', () => moleculeMenuCancelHoverIntent(menu));
+    trigger.addEventListener('focus', () => {
+      moleculeMenuCancelHoverIntent(menu);
+      open(false);
+    });
     trigger.addEventListener('click', event => {
       event.preventDefault();
+      moleculeMenuCancelHoverIntent(menu);
       if (submenu.hidden) open(true);
       else moleculeMenuCloseSubmenus(menu);
     });
@@ -20072,9 +21842,13 @@
       if (event.key !== 'ArrowRight' && event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       event.stopPropagation();
+      moleculeMenuCancelHoverIntent(menu);
       open(true);
     });
-    submenu.addEventListener('pointerenter', () => moleculeMenuOpenSubmenu(menu, submenu, trigger));
+    submenu.addEventListener('pointerenter', () => {
+      moleculeMenuCancelHoverIntent(menu);
+      moleculeMenuOpenSubmenu(menu, submenu, trigger);
+    });
     menu.appendChild(submenu);
     return trigger;
   }
@@ -20150,10 +21924,9 @@
             const item = moleculeMenuActionButton(action, label, {
               destructive: section.destructive,
               target: actionTarget,
-              pickingLevel: mode
+              pickingLevel: mode,
+              menu,
             });
-            item.addEventListener('pointerenter', () => moleculeMenuCloseSubmenus(menu));
-            item.addEventListener('focus', () => moleculeMenuCloseSubmenus(menu));
             actionContainer.appendChild(item);
           }
         } else {
@@ -20248,13 +22021,42 @@
     };
     const suppressSecondaryMouseEvent = (event) => {
       if (event.button !== 2) return;
-      if (event.type === 'mousedown') return;
+      if (event.target instanceof Element && event.target.closest('.buret-molecule-context-menu')) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+        return;
+      }
+      if (['mousedown', 'mouseup'].includes(event.type)) return;
       if (contextPointer?.moved) return;
       if (!contextPointer && !isMolstarContextMenuTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation?.();
       clearMolstarHoverHighlights();
+    };
+    const restoreContextPointerCamera = (pointer) => {
+      const snapshot = pointer?.cameraSnapshot;
+      if (!snapshot) return;
+      const canvas3d = viewer?.plugin?.canvas3d;
+      const camera = canvas3d?.camera;
+      const restore = () => {
+        if (typeof camera?.setState === 'function') {
+          try {
+            camera.setState(snapshot, 0);
+            canvas3d.requestDraw?.();
+            return;
+          } catch (_) {}
+        }
+        restoreMolstarCameraSnapshot(viewer, snapshot);
+      };
+      // Mol* maps secondary pointerdown to focus+zoom immediately and finishes
+      // its controls after pointerup. Restore after that cycle, then once more on
+      // the following frame so a short context click cannot retain camera motion.
+      window.requestAnimationFrame(() => {
+        restore();
+        window.requestAnimationFrame(restore);
+      });
     };
     const onContextMenu = (event) => {
       if (menuIsOpen() && !contextPointer) {
@@ -20266,8 +22068,10 @@
         event.preventDefault();
         event.stopPropagation();
         if (!contextPointer.moved) {
-          openFromEvent(event, contextPointer.pick);
+          const pointer = contextPointer;
           contextPointer = null;
+          restoreContextPointerCamera(pointer);
+          openFromEvent(event, pointer.pick);
           return;
         }
         hideMolstarContextMenu();
@@ -20278,6 +22082,15 @@
       contextPointer = null;
     };
     const onPointerDown = (event) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.buret-molecule-context-menu')) {
+        if (event.button === 2) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation?.();
+        }
+        return;
+      }
       beginMolstarSelectionPreserve(event);
       clearTouchContextPointer();
       // Remember where a left press on the viewport began, so a click (not a drag
@@ -20302,6 +22115,7 @@
           startX: event.clientX,
           startY: event.clientY,
           moved: false,
+          cameraSnapshot: captureMolstarCameraSnapshot(viewer),
           pick: contextPick
         };
         hideMolstarContextMenu();
@@ -20334,8 +22148,6 @@
         }, MOLSTAR_TOUCH_CONTEXT_MENU_DELAY_MS);
         touchContextPointer = pointer;
       }
-      const target = event.target;
-      if (target instanceof Element && target.closest('.buret-molecule-context-menu')) return;
       // Pressing the preview card is not a press on the view behind it. The plain
       // dismissal below re-derives the preview from the current pick, which tears
       // the card down mid-press and takes its buttons with it.
@@ -20397,10 +22209,10 @@
         contextPointer = null;
         return;
       }
-      event.preventDefault();
-      event.stopPropagation();
-      openFromEvent(event, contextPointer.pick);
+      const pointer = contextPointer;
       contextPointer = null;
+      restoreContextPointerCamera(pointer);
+      openFromEvent(syntheticContextEvent(event), pointer.pick);
     };
     const onPointerCancel = (event) => {
       if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) clearTouchContextPointer();
@@ -20689,6 +22501,7 @@
   }
 
   function disposeActiveMolstarViewer() {
+    cancelViewportTrajectoryAnimation();
     cancelScheduledMolstarWaterRepresentation();
     notifyMolstarSelectionChanged(null);
     molstarSelectionHostSignature = '';
@@ -20705,6 +22518,8 @@
       molstarContextMenuCleanup();
       molstarContextMenuCleanup = null;
     }
+    molstarStoryStateCleanup?.();
+    molstarStoryStateCleanup = null;
     if (molstarWindowResizeHandler) {
       window.removeEventListener('resize', molstarWindowResizeHandler);
       molstarWindowResizeHandler = null;
@@ -20731,7 +22546,8 @@
     const size = describeBytes(config.byteCount);
     const formatLabel = describeFormat(config.format, config.binary);
 
-    if (!window.molstar) {
+    const needsSuperpositionRuntime = window.molstar?.BuretteSuperposition?.version !== 1;
+    if (!window.molstar?.Viewer || needsSuperpositionRuntime) {
       setStatus(`[web] Loading Mol* engine…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       await loadScript(appendCacheBuster(runtimeURL('BuretteMolstarURL', './molstar.js'), cb), 'Mol* engine', 120000);
@@ -20781,6 +22597,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       45000,
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
+    observeMolstarStoryState(viewer);
     applyLayoutState(viewer);
     scheduleLayoutStateReapply(viewer);
     if (!hasMolstarContextFocus(config)) {

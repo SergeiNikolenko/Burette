@@ -22,6 +22,7 @@ pub(crate) mod runtime_viewer;
     reason = "snapshot filesystem capabilities are owned by the staged Grid snapshot boundary"
 )]
 mod snapshot_fs;
+pub(crate) mod synthetic_topology;
 pub(crate) mod text_xyz;
 pub(crate) mod trace;
 pub(crate) mod xyz;

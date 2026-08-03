@@ -21,7 +21,7 @@ const KETCHER_EDIT_MAX_BYTES: usize = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS: usize = 300;
 const EMBEDDED_PREVIEW_DATA_SCRIPT_MAX_BYTES: usize = 32 * 1024 * 1024;
 const RDKIT_WASM_MAX_BYTES: usize = 16 * 1024 * 1024;
-const VIEWER_MOLSTAR_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;";
+const VIEWER_MOLSTAR_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset: https://data.rcsb.org; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;";
 const VIEWER_EXTERNAL_ARTIFACT_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'none';";
 const VIEWER_MINIMAL_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'none';";
 
@@ -39,6 +39,9 @@ pub(crate) struct DockingRuntimeSource {
     pub(crate) binary: bool,
     pub(crate) data: Vec<u8>,
     pub(crate) byte_count: usize,
+    /// True when this model was derived from the trajectory itself rather than
+    /// read from a topology the user supplied.
+    pub(crate) synthetic: bool,
 }
 
 pub(crate) fn create_runtime<R: Runtime>(
@@ -544,7 +547,8 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
             "extension": source.extension,
             "format": source.format,
             "binary": source.binary,
-            "byteCount": source.byte_count
+            "byteCount": source.byte_count,
+            "synthetic": source.synthetic
         })
     };
     let sdf_grid_path = ligands

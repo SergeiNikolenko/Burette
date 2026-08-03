@@ -34,6 +34,8 @@ Choose the smallest focused workflow that covers the request:
   app.
 - [molstar-scene](../molstar-scene/SKILL.md): run high-level Mol* scene actions
   such as focus ligand, hide waters, surface, color, contacts, and reset camera.
+- [mvs-story](../mvs-story/SKILL.md): create, validate, package, observe, and
+  navigate multi-step MolViewSpec molecular narratives.
 - [molecule-collection](../molecule-collection/SKILL.md): review SDF/grid/table
   collections, properties, filtering outputs, and selected molecule handoff.
 - [trajectory-review](../trajectory-review/SKILL.md): review trajectories,
@@ -54,7 +56,9 @@ interpretation.
 For external agent workflows, prefer the short MCP facade first:
 `burette.get_context`, `burette.open_workspace`,
 `burette.open_ketcher`, `burette.observe_workspace`, `burette.control_viewer`,
-`burette.control_ketcher`, and `burette.render_panel`. These tools return a
+`burette.control_ketcher`, `burette.render_panel`, `burette.create_story`,
+`burette.validate_story`, `burette.observe_story`, and
+`burette.control_story`. These tools return a
 stable `workspaceSessionId` and
 compact `modelContext`; the advanced Burette tools remain available for
 docking, fragments, reports, trajectories, and lower-level scene operations.

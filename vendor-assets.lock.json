@@ -25,8 +25,8 @@
     {
       "path": "PreviewExtension/Web/molstar.js",
       "package": "molstar",
-      "bytes": 5027864,
-      "sha256": "sha256-f61VYcdLyQCTD7V9arAo0ar92oIiOpAb+TKxCY6E8fM="
+      "bytes": 5760223,
+      "sha256": "sha256-XA/mwBJcM9Xooa9MXtrjjFjRMdUopbPFHy5TCSIBeWc="
     },
     {
       "path": "PreviewExtension/Web/molstar.css",
@@ -85,6 +85,7 @@
       "viewer-shell.js",
       "burette-agent.js",
       "trajectory-smoothing.js",
+      "superposition-panel.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -111,6 +112,7 @@
       "viewer-shell.js",
       "burette-agent.js",
       "trajectory-smoothing.js",
+      "superposition-panel.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -131,6 +133,7 @@
       "viewer-shell.js",
       "burette-agent.js",
       "trajectory-smoothing.js",
+      "superposition-panel.js",
       "viewer.js"
     ]
   },

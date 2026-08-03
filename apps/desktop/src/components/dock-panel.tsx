@@ -17,6 +17,7 @@ import type { ShellActions, ShellViewState } from "./types";
 import { showNativeContextMenu } from "./native-context-menu";
 import { ViewerFrame } from "./editor-area/viewer-frame";
 import { TextFileViewer } from "./text-file-viewer";
+import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { useSourceEditing } from "../lib/source-editing/context";
 import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
@@ -427,7 +428,7 @@ function DockPanelContent({
   }
   if (activeTabKind === "story") {
     return state.structureStory
-      ? <StructureStoryPanel story={state.structureStory} />
+      ? <StructureStoryPanel story={state.structureStory} document={state.activeDocument} actions={actions} />
       : (
           <DockEmptyState
             title="No story yet"
@@ -1876,7 +1877,17 @@ function dockFilesDragPayload(
   return null;
 }
 
-function StructureStoryPanel({ story }: { story: StructureStory }) {
+function StructureStoryPanel({ story, document, actions }: { story: StructureStory; document: ViewerDocument | null; actions: ShellActions }) {
+  const markdownDocument = useMemo<TextFileDocument>(() => ({
+    id: `mvs-story:${story.documentId}:${story.key ?? story.stepIndex}`,
+    path: story.fileName,
+    title: story.stage,
+    extension: "md",
+    language: "markdown",
+    byteCount: story.summary.length,
+    content: story.summary,
+    truncated: false,
+  }), [story.documentId, story.fileName, story.key, story.stage, story.stepIndex, story.summary]);
   return (
     <div className="dock-content structure-story-dock">
       <section className="structure-brief-card structure-story-card">
@@ -1887,7 +1898,18 @@ function StructureStoryPanel({ story }: { story: StructureStory }) {
           </div>
         </div>
         <p className="structure-story-file" title={story.fileName}>{story.fileName}</p>
-        <p className="structure-story-summary">{story.summary}</p>
+        {story.descriptionFormat === "markdown" ? (
+          <div className="structure-story-markdown"><MarkdownRichViewer document={markdownDocument} /></div>
+        ) : (
+          <p className="structure-story-summary">{story.summary}</p>
+        )}
+        {story.source === "mvs" && document ? (
+          <div className="structure-story-controls" aria-label="MolViewSpec Story controls">
+            <Button size="sm" variant="outline" onClick={() => actions.runStructureViewerAction(document, { type: "story_control", operation: "previous", label: "Previous Story step", notify: false })}>Previous</Button>
+            <Button size="sm" variant="secondary" onClick={() => actions.runStructureViewerAction(document, { type: "story_control", operation: story.isPlaying ? "pause" : "play", label: story.isPlaying ? "Pause Story" : "Play Story", notify: false })}>{story.isPlaying ? "Pause" : "Play"}</Button>
+            <Button size="sm" variant="outline" onClick={() => actions.runStructureViewerAction(document, { type: "story_control", operation: "next", label: "Next Story step", notify: false })}>Next</Button>
+          </div>
+        ) : null}
       </section>
       {story.comparison ? (
         <>

@@ -6,7 +6,9 @@ import { useOpenEvents } from "./use-open-events";
 import type { DockArea, DockDropInput } from "../lib/dock";
 import type { DropActionChoice } from "../lib/drop-actions";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
-import type { DockingDocumentRequest, FepSetupRequest, OpenTextFilesResult, ViewerDocument } from "../types";
+import type { DockingSceneMode, FepSetupRequest, OpenTextFilesResult, ViewerDocument } from "../types";
+import type { MoleculeTab } from "../stores/molecule-store";
+import type { AgentTabActions } from "../lib/agent-tab-actions";
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
@@ -15,7 +17,7 @@ type OpenTextDocuments = (paths: string[]) => Promise<OpenTextFilesResult | null
 type OpenDockingDocument = (
   receptorPath: string,
   ligandPaths: string[],
-  options?: { activePose?: number | null },
+  options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null },
 ) => void | Promise<ViewerDocument | null>;
 type OpenDockingStructureRecords = (
   receptorPath: string,
@@ -38,6 +40,8 @@ type UseAppOpenDropControllerOptions = {
   activeDocument: ViewerDocument | null;
   activeTabId: string | null;
   activeTabKind: string | null;
+  tabs: MoleculeTab[];
+  tabActions: AgentTabActions;
   openKetcherTab: () => void | Promise<void>;
   addProjectRoots: (paths: string[]) => void;
   addXyzrenderSheetItems: (payload: StructureDragPayload) => boolean;
@@ -63,6 +67,8 @@ export function useAppOpenDropController({
   activeDocument,
   activeTabId,
   activeTabKind,
+  tabs,
+  tabActions,
   openKetcherTab,
   addProjectRoots,
   addXyzrenderSheetItems,
@@ -92,6 +98,9 @@ export function useAppOpenDropController({
     activeDocument,
     activeTabId,
     activeTabKind,
+    openDockingDocument,
+    tabs,
+    tabActions,
     openKetcherTab,
     documents,
     openTextDocuments,

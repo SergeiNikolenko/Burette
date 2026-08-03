@@ -15,6 +15,8 @@ const runtimeScripts = [
   'agent-preview.mjs',
   'agent-shell-server.mjs',
   'burette-agent.mjs',
+  'mvs-story.mjs',
+  'mvs-story-templates.mjs',
 ];
 const requiredPreviewAssets = [
   'viewer.js',
@@ -22,6 +24,7 @@ const requiredPreviewAssets = [
   'viewer-shell.js',
   'viewer-runtime.css',
   'trajectory-smoothing.js',
+  'superposition-panel.js',
   'molstar.js',
   'molstar.css',
   'mesoscale.js',
@@ -42,6 +45,20 @@ await mkdir(resolve(pluginRoot, 'scripts'), { recursive: true });
 for (const script of runtimeScripts) {
   await cp(resolve(repoRoot, 'scripts', script), resolve(pluginRoot, 'scripts', script));
 }
+const storyTemplateAssets = resolve(pluginRoot, 'assets', 'mvs-story-templates');
+await rm(storyTemplateAssets, { recursive: true, force: true });
+await cp(resolve(repoRoot, 'templates', 'mvs-story'), storyTemplateAssets, { recursive: true });
+await run('bun', [
+  'build',
+  resolve(repoRoot, 'scripts/mvs-schema-validator.mjs'),
+  '--outfile',
+  resolve(pluginRoot, 'scripts/mvs-schema-validator.mjs'),
+  '--target',
+  'node',
+  '--format',
+  'esm',
+  '--minify',
+]);
 await mkdir(previewWeb, { recursive: true });
 await run('rsync', [
   '-a',

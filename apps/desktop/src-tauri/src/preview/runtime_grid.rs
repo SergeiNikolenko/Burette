@@ -136,6 +136,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         "overlayOpacity": 0.90,
         "transparentBackground": preferences.resolved_transparent_background(),
         "recordsTotal": collection.records_total,
+        "molecularGrid": collection.has_molecules,
         "recordsIndexed": collection.records_indexed,
         "indexing": !collection.index_ready,
         "indexReady": collection.index_ready,
@@ -224,7 +225,11 @@ fn grid_html(
   <script>
     window.__mqlPost = function (type, message, payload) {{
       try {{
-        window.parent && window.parent.postMessage({{ source: 'burette-grid', body: {{ type: type, message: String(message || ''), ...(payload || {{}}) }} }}, '*');
+        const body = {{ type: type, message: String(message || ''), ...(payload || {{}}) }};
+        if (window.BuretteConfig && window.BuretteConfig.documentId) {{
+          body.documentId = String(window.BuretteConfig.documentId);
+        }}
+        window.parent && window.parent.postMessage({{ source: 'burette-grid', body: body }}, '*');
       }} catch (_) {{}}
     }};
     window.BuretteInlineMode = true;
