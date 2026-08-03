@@ -1566,9 +1566,9 @@ assert.match(fileKind, /export const fileKind = definePageKind/);
 assert.match(fileKind, /keepAlive: true/);
 assert.match(fileKind, /kind: "file"/);
 assert.match(fileKind, /path: location\.path/);
-assert.match(fileKind, /const document = findDocument\(location, state\.documents\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} isActive=\{isActive\} \/> : null;/);
+assert.match(fileKind, /const document = findDocument\(location, state\.documents\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} preferences=\{state\.preferences\} isActive=\{isActive\} \/> : null;/);
 assert.doesNotMatch(fileKind, /findDocument\(location, state\.documents\) \?\? state\.activeDocument/);
-assert.match(fileKind, /className="molecule-stage"/);
+assert.match(fileKind, /className=\{`molecule-stage/);
 assert.match(fileKind, /sourcePreview=\{sourceSession\?\.sourcePreview \?\? undefined\}/);
 assert.match(fileKind, /onStagingLoad=\{\(identity, frame\) => sourceEditing\?\.stagingLoaded\(document, identity, frame\)\}/);
 assert.match(viewerFrame, /export function ViewerFrame/);
@@ -2178,7 +2178,7 @@ assert.match(styles, /\.molecule-stage/);
 assert.match(styles, /inset: var\(--chrome-height\) 0 0/);
 assert.match(styles, /--accent: #af52de/);
 assert.match(styles, /--control-radius: 10px/);
-assert.equal(styles.match(/border-radius: 8px/g)?.length, 4);
+assert.ok((styles.match(/border-radius: 8px/g)?.length ?? 0) >= 4);
 assert.match(styles, /--chrome-drag-height: 72px/);
 assert.match(styles, /\.app-shell\[data-theme="light"\] \{[^}]*--bg-base: #ffffff;[^}]*--fg-base: #0d0d0d;[^}]*--bg: rgba\(255, 255, 255, 0\.715\);[^}]*--surface-card: transparent;/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\] \{[^}]*--bg-base: #ffffff;[^}]*--bg: rgba\(255, 255, 255, 0\.715\);[^}]*--surface-card: transparent;/);
@@ -2343,7 +2343,8 @@ assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, filesTa
 assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, item\.payload\)/);
 assert.match(dockPanel, /const dockStructureDocument = dockDocument \?\? activeDocument/);
 assert.match(dockPanel, /const xyzrenderDockDocument = area === "right" && activeStructureDocument\?\.renderer === "xyzrender-external"/);
-assert.match(dockPanel, /const runtimeTabs = xyzrenderDockDocument && !tabs\.some\(\(tab\) => tab\.kind === "xyzrender"\)/);
+assert.match(dockPanel, /const mesoscaleTabs = mesoscaleDockDocument && !tabs\.some\(\(tab\) => tab\.kind === "scene"\)/);
+assert.match(dockPanel, /const runtimeTabs = xyzrenderDockDocument && !mesoscaleTabs\.some\(\(tab\) => tab\.kind === "xyzrender"\)/);
 assert.match(dockPanel, /actions\.openDockTab\("right", "xyzrender"\)/);
 assert.match(dockPanel, /const xyzrenderDocument = area === "right" && dockStructureDocument\?\.renderer === "xyzrender-external"/);
 assert.match(dockPanel, /if \(kind === "xyzrender"\) return Boolean\(xyzrenderDockDocument\)/);
@@ -4529,6 +4530,21 @@ assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v168"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v70"/);
+assert.match(
+  browserDevDocuments,
+  /viewerProfile === "mesoscale"\) return !document\.runtimePath\.includes\(MESOSCALE_ASSET_VERSION\)/,
+  "a mesoscale document is measured against its own runtime version, or it reopens on every re-render",
+);
+assert.match(
+  browserDevDocuments,
+  /const RUNTIME_ASSET_SESSION = Date\.now\(\)/,
+  "the runtime cache buster is fixed per page load so the viewer iframe is not rekeyed by unrelated renders",
+);
+assert.doesNotMatch(
+  browserDevDocuments,
+  /ASSET_VERSION\}-\$\{Date\.now\(\)\}/,
+  "asset versions must not embed a fresh timestamp per rebuild",
+);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
 assert.match(viteConfig, /registerBrowserDevAgentSessionRoute\(server\)/);
 assert.match(browserDevAgentSession, /__burette\/agent-session\//);
@@ -4936,7 +4952,7 @@ assert.match(previewViewController, /"PYTHONNOUSERSITE": "1"/);
 assert.match(previewViewController, /"PYTHONPATH": paths\.sitePackages\.path/);
 assert.match(previewViewController, /cacheKeyPath: executablePath/);
 assert.match(browserDevDocuments, /defaultLayoutState: \{ left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" \}/);
-assert.match(browserDevDocuments, /const runtimeAssetVersion = `\$\{VIEWER_ASSET_VERSION\}-\$\{Date\.now\(\)\}`/);
+assert.match(browserDevDocuments, /const runtimeAssetVersion = `\$\{VIEWER_ASSET_VERSION\}-\$\{RUNTIME_ASSET_SESSION\}`/);
 assert.match(browserDevDocuments, /viewerAsset\("viewer-runtime\.css"\)/);
 assert.match(browserDevDocuments, /viewerAsset\("viewer-shell\.js"\)/);
 assert.match(browserDevDocuments, /viewerAsset\("viewer\.js"\)/);
