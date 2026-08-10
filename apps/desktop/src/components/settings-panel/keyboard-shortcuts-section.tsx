@@ -59,6 +59,21 @@ const keyboardShortcutRows: ShortcutRow[] = [
     keybindings: ["⌥⌘B"],
   },
   {
+    command: "Zoom in",
+    description: "Scale all window content up one step.",
+    keybindings: ["⌘="],
+  },
+  {
+    command: "Zoom out",
+    description: "Scale all window content down one step.",
+    keybindings: ["⌘-"],
+  },
+  {
+    command: "Actual size",
+    description: "Reset window content scaling to 100%.",
+    keybindings: ["⌘0"],
+  },
+  {
     command: "Open Settings",
     description: "Open the settings workspace.",
     keybindings: ["⌘,"],

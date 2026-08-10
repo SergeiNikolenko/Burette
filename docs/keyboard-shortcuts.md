@@ -33,6 +33,9 @@ or the hosted MCP widget is open.
 | Cmd+Option+B | Toggle Inspector (right dock) |
 | Cmd+J | Toggle bottom panel |
 | Cmd+\ | Toggle sidebar (browser runtime) |
+| Cmd+= | Zoom in window content (desktop app) |
+| Cmd+- | Zoom out window content (desktop app) |
+| Cmd+0 | Reset window content to actual size (desktop app) |
 | Cmd+, | Open Settings |
 | Cmd+W | Close the active tab |
 | Cmd+Shift+W | Close the active window |

@@ -1449,8 +1449,8 @@ assert.match(appLayout, /const compactLeadingChrome = !tauriRuntime \|\| windowF
 // only reaches the DOM a render after the drag frame that produced it. React
 // contributes the leading-chrome inset (traffic lights) and the first-paint
 // seeds; `--sidebar-edge` / `--right-dock-edge` come from the observer.
-assert.match(appLayout, /const chromeLeadingInset = compactLeadingChrome \? 112 : 192;/);
-assert.match(appLayout, /"--chrome-leading-inset": `\$\{chromeLeadingInset\}px`/);
+assert.match(appLayout, /const chromeLeadingInset = compactLeadingChrome\s*\?\s*"112px"\s*:\s*"calc\(92px \/ var\(--window-zoom, 1\) \+ 100px\)"/);
+assert.match(appLayout, /"--chrome-leading-inset": chromeLeadingInset/);
 assert.doesNotMatch(appLayout, /tabChromeLeft/);
 assert.match(appLayout, /function usePanelEdgeVariables/);
 assert.match(appLayout, /\{ elementRef: sidebarElementRef, property: "--sidebar-edge" \}/);
