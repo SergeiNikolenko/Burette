@@ -114,7 +114,10 @@ PY
 
 require_tool bun "Install it with: brew install oven-sh/bun/bun"
 require_tool xcodebuild "Install full Xcode from the App Store."
+require_tool xcrun "Install full Xcode from the App Store."
 require_tool ditto "ditto is normally present on macOS."
+
+bash "$ROOT/scripts/check-metal-toolchain.sh"
 
 require_asset PreviewExtension/Web/molstar.js
 require_asset PreviewExtension/Web/molstar.css

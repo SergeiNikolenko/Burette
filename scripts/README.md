@@ -27,6 +27,11 @@ BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
 BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
 ```
 
+Both native build commands verify that `xcrun metal` is executable before
+starting the frontend or Rust build. If Xcode reports a missing MetalToolchain,
+install the component with `xcodebuild -downloadComponent MetalToolchain` and
+rerun the build.
+
 Preview checks:
 
 ```bash

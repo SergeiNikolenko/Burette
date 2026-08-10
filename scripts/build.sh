@@ -507,6 +507,7 @@ smoke_bundled_compute_service() {
 require_tool bun "Install it with: brew install oven-sh/bun/bun"
 require_tool cargo "Install Rust from: https://www.rust-lang.org/tools/install"
 require_tool xcodebuild "Install full Xcode from the App Store."
+require_tool xcrun "Install full Xcode from the App Store."
 require_tool rsync "rsync is normally present on macOS."
 require_tool ditto "ditto is normally present on macOS."
 
@@ -516,6 +517,8 @@ if ! xcodebuild -version >/dev/null 2>&1; then
   echo "Use: sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer" >&2
   exit 1
 fi
+
+bash "$ROOT/scripts/check-metal-toolchain.sh"
 
 case "$ROOT" in *"/.Trash/"*|*"/Library/Mobile Documents/.Trash/"*)
   echo "error: this project is physically inside macOS Trash/iCloud Trash: $ROOT" >&2
