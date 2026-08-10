@@ -7,6 +7,7 @@ import type {
 import type { ConformerGenerationResult } from "./conformer-generation";
 import {
   fingerprintBrowserChemicalSpaceRecords,
+  representationUnavailableError,
   type BrowserChemicalSpaceInputRecord,
   type ChemicalSpaceOptions,
   type ChemicalSpaceClusterResult,
@@ -222,7 +223,7 @@ function prepareBrowserChemicalSpaceRepresentation(
       | (LearnedRepresentationResult & { error?: unknown })
       | null;
     if (!response.ok || !payload) {
-      throw new Error(
+      throw representationServerError(
         typeof payload?.error === "string"
           ? payload.error
           : `Metal representation request failed with status ${response.status}`,
@@ -244,6 +245,12 @@ function prepareBrowserChemicalSpaceRepresentation(
     if (browserRepresentationCache.get(key) === pending) browserRepresentationCache.delete(key);
   });
   return pending;
+}
+
+function representationServerError(message: string): Error {
+  return /model runtime is not installed/iu.test(message)
+    ? representationUnavailableError(message)
+    : new Error(message);
 }
 
 async function fetchRepresentationWithRetry<T>(
@@ -298,7 +305,7 @@ async function readRepresentationStream(
     } else if (event.type === "result") {
       result = event.result;
     } else if (event.type === "error") {
-      throw new Error(event.error);
+      throw representationServerError(event.error);
     }
   };
   while (true) {

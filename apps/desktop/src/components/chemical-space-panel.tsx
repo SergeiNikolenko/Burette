@@ -38,6 +38,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   computeErrorMessage,
   invalidateChemicalSpaceFingerprintCache,
+  isRepresentationUnavailableError,
   runChemicalSpaceClusteringWorkflow,
   runChemicalSpaceWorkflow,
   runChemicalSpaceStudyWorkflow,
@@ -223,6 +224,9 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [result, setResult] = useState<ChemicalSpaceResult | null>(null);
   const [progress, setProgress] = useState<ChemicalSpaceProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A missing learned-model runtime is a configuration state, not a transient
+  // failure, so the panel offers a way back to Morgan instead of Retry.
+  const [errorNeedsModelRuntime, setErrorNeedsModelRuntime] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [hovered, setHovered] = useState<number | null>(null);
   const [preview, setPreview] = useState<MoleculePreview | null>(null);
@@ -298,6 +302,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   useEffect(() => {
     setResult(null);
     setError(null);
+    setErrorNeedsModelRuntime(false);
     setProgress(null);
     setSelected(new Set());
     setHovered(null);
@@ -452,6 +457,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       setResult(cached);
       setProgress(null);
       setError(null);
+      setErrorNeedsModelRuntime(false);
       return;
     }
     const startedAt = Date.now();
@@ -459,6 +465,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     workflowControllerRef.current = controller;
     setResult(null);
     setError(null);
+    setErrorNeedsModelRuntime(false);
     setProgress({ phase: "queued" });
     const workflow = isTauriRuntime()
       ? runChemicalSpaceWorkflow(documentId, options, setProgress, controller.signal)
@@ -475,6 +482,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       .catch((cause) => {
         if (controller.signal.aborted) return;
         setProgress(null);
+        setErrorNeedsModelRuntime(isRepresentationUnavailableError(cause));
         setError(computeErrorMessage(cause));
       })
       .finally(() => {
@@ -618,6 +626,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setProgress(null);
     setResult(null);
     setError("Calculation stopped.");
+    setErrorNeedsModelRuntime(false);
   }, []);
   const stopStudy = useCallback(() => {
     studyControllerRef.current?.abort();
@@ -652,6 +661,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       randomSeed: draft.randomSeed,
     }));
     setError(null);
+    setErrorNeedsModelRuntime(false);
     setProgress({ phase: "queued" });
     setStudyPlaying(false);
     setStudyRunning(true);
@@ -671,6 +681,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       if (controller.signal.aborted) return;
       setProgress(null);
       setStudyRunning(false);
+      setErrorNeedsModelRuntime(isRepresentationUnavailableError(cause));
       setError(computeErrorMessage(cause));
     } finally {
       if (studyControllerRef.current === controller) {
@@ -720,7 +731,9 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
             >
               {CHEMICAL_SPACE_REPRESENTATIONS.map((representation) => (
                 <NativeSelectOption key={representation.value} value={representation.value}>
-                  {representation.label}
+                  {representation.value !== "morgan" && isTauriRuntime()
+                    ? `${representation.label} · not installed`
+                    : representation.label}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
@@ -942,7 +955,19 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               onAction={() => setConfirmedLargeRunDocumentKey(largeRunConfirmationKey)}
             />
           ) : error ? (
-            <ChemicalSpaceEmpty message={error} actionLabel="Retry" onAction={() => commitOptions({ ...draft })} />
+            errorNeedsModelRuntime ? (
+              <ChemicalSpaceRepresentationUnavailable
+                representation={representationLabel(options.representation)}
+                detail={error}
+                onUseMorgan={() => {
+                  const next = { ...draft, representation: "morgan" as const };
+                  setDraft(next);
+                  commitOptions(next);
+                }}
+              />
+            ) : (
+              <ChemicalSpaceEmpty message={error} actionLabel="Retry" onAction={() => commitOptions({ ...draft })} />
+            )
           ) : (
             <ChemicalSpaceLoading
               message={runningLabel || "Preparing chemical space…"}
@@ -1804,6 +1829,30 @@ function clusterMembersForSource(
   const clusterId = index < 0 ? undefined : clusters.clusterIds[index];
   if (clusterId === undefined) return [sourceRecordId];
   return clusters.sourceRecordIds.filter((_, memberIndex) => clusters.clusterIds[memberIndex] === clusterId);
+}
+
+function ChemicalSpaceRepresentationUnavailable({
+  representation,
+  detail,
+  onUseMorgan,
+}: {
+  representation: string;
+  detail: string;
+  onUseMorgan: () => void;
+}) {
+  return (
+    <Empty className="h-full min-h-40">
+      <EmptyHeader>
+        <EmptyTitle>{representation} is not installed</EmptyTitle>
+        <EmptyDescription>
+          {detail} Morgan · Tanimoto runs natively on Metal and needs no download.
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button size="sm" variant="outline" onClick={onUseMorgan}>Use Morgan · Tanimoto</Button>
+      </EmptyContent>
+    </Empty>
+  );
 }
 
 function ChemicalSpaceEmpty({ message, actionLabel, onAction }: { message: string; actionLabel?: string; onAction?: () => void }) {

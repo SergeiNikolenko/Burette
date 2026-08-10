@@ -381,7 +381,7 @@ export async function runChemicalSpaceWorkflow(
   signal?: AbortSignal,
 ): Promise<ChemicalSpaceResult> {
   if (options.representation !== "morgan") {
-    throw new Error("Learned Metal representations are not yet installed in the packaged runtime.");
+    throw representationUnavailableError(PACKAGED_REPRESENTATION_UNAVAILABLE_MESSAGE);
   }
   const job = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
   throwIfAborted(signal);
@@ -415,7 +415,7 @@ export async function runChemicalSpaceStudyWorkflow(
   signal?: AbortSignal,
 ): Promise<ChemicalSpaceResult[]> {
   if (frames.some((frame) => frame.representation !== "morgan")) {
-    throw new Error("Learned Metal representations are not yet installed in the packaged runtime.");
+    throw representationUnavailableError(PACKAGED_REPRESENTATION_UNAVAILABLE_MESSAGE);
   }
   if (frames.length < 2 || frames.length > 24) {
     throw new Error("A parameter study requires between 2 and 24 frames.");
@@ -632,6 +632,27 @@ function clusterPreparationRequest(
       maxDispatchMs: 250,
     },
   };
+}
+
+// Learned representations run through a Python model runtime that the packaged
+// desktop app does not ship yet. The panel turns this into a dedicated state
+// with a way back to Morgan instead of a dead-end Retry, so the error carries a
+// stable name for that classification.
+export const REPRESENTATION_UNAVAILABLE_ERROR_NAME = "RepresentationUnavailableError";
+const PACKAGED_REPRESENTATION_UNAVAILABLE_MESSAGE =
+  "Learned representations are not included in this desktop build yet.";
+
+export function representationUnavailableError(message: string): Error {
+  const error = new Error(message);
+  error.name = REPRESENTATION_UNAVAILABLE_ERROR_NAME;
+  return error;
+}
+
+export function isRepresentationUnavailableError(cause: unknown): boolean {
+  if (cause instanceof Error && cause.name === REPRESENTATION_UNAVAILABLE_ERROR_NAME) return true;
+  const message = computeErrorMessage(cause).toLowerCase();
+  return message.includes("model runtime is not installed")
+    || message.includes("not included in this desktop build");
 }
 
 export function computeErrorMessage(error: unknown): string {
