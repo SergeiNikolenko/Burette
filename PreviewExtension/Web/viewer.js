@@ -141,6 +141,7 @@
   let molstarWindowResizeHandler = null;
   let molstarContainerResizeCleanup = null;
   let molstarContextMenuCleanup = null;
+  let molstarBrowserAnnotationTargetCleanup = null;
   let molstarSelectionPreviewCleanup = null;
   let molstarStoryStateCleanup = null;
   let molstarStoryPresentationRestoreInFlight = false;
@@ -924,6 +925,20 @@
     }
   }
 
+  // A MolViewSpec focus camera is queued after the state task reports idle, even
+  // when its transition is instant. Rendering remains paused while the focus
+  // settles, so capture the final camera before resuming the rebuilt scene.
+  async function waitForMolstarStoryCameraTarget(viewer, timeoutMs = 700) {
+    const startedAt = Date.now();
+    let targetSnapshot = null;
+    while (Date.now() - startedAt < timeoutMs) {
+      await new Promise(resolve => window.setTimeout(resolve, 16));
+      const nextSnapshot = captureMolstarCameraSnapshot(viewer);
+      if (nextSnapshot) targetSnapshot = nextSnapshot;
+    }
+    return targetSnapshot;
+  }
+
   // Steps overlap easily - hovering down the list, holding Next, an agent call
   // arriving mid-transition - and overlapping them means competing snapshot
   // applies and unbalanced render pauses, which looks like the viewer tearing
@@ -952,15 +967,25 @@
     // style. Rendering is held across the swap so the first frame drawn is already
     // the finished scene. Playback keeps rendering; it is a continuous animation.
     const isStep = operation === 'next' || operation === 'previous' || operation === 'goto';
-    const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
-    // Styles built from more than one representation cannot be written into the
+    const config = activeConfig || window.BuretteConfig || {};
+    const style = configuredMolstarStyle(config);
+    const appearance = configuredMolstarAppearance(config);
+    // Composite styles and Mol* provider presets cannot be written into the
     // snapshot, so they go on after the step with rendering held. `Illustrative`
     // is not among them: it is post-processing on the canvas, which the snapshot
     // no longer carries, so it survives a step untouched.
-    const restyles = isStep && MOLSTAR_STORY_REBUILT_STYLES.has(style);
+    const restyles = isStep && molstarStoryPresentationRequiresRebuild(config);
+    const animatesRestyledStep = restyles
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches !== true;
+    const sourceCamera = animatesRestyledStep ? captureMolstarCameraSnapshot(activeViewer) : null;
+    let targetCamera = null;
     const canvas3d = activeViewer?.plugin?.canvas3d;
-    if (isStep || operation === 'play') applyMolstarStoryStyleToSnapshots(manager, style);
-    if (isStep) setMolstarStoryTransition(manager, action.preview === true ? 0 : MOLSTAR_STORY_TRANSITION_MS);
+    if (isStep || operation === 'play') applyMolstarStoryStyleToSnapshots(manager, style, appearance);
+    // A composite representation is rebuilt while rendering is paused. Letting
+    // Mol* animate the snapshot camera during that pause consumes the transition
+    // invisibly and leaves a single jump when rendering resumes. Swap instantly,
+    // then animate between the captured cameras once the finished scene can draw.
+    if (isStep) setMolstarStoryTransition(manager, restyles || action.preview === true ? 0 : MOLSTAR_STORY_TRANSITION_MS);
     if (restyles) {
       molstarStoryStepInFlight = true;
       canvas3d?.pause?.(true);
@@ -983,7 +1008,9 @@
       }
       if (restyles) {
         await waitForMolstarIdle(activeViewer);
+        if (sourceCamera) targetCamera = await waitForMolstarStoryCameraTarget(activeViewer);
         await restoreMolstarStoryPresentation(activeViewer);
+        if (targetCamera) restoreMolstarCameraSnapshotNow(activeViewer, sourceCamera);
       }
     } finally {
       if (restyles) {
@@ -991,6 +1018,10 @@
         canvas3d?.resume?.();
         canvas3d?.requestDraw?.();
       }
+    }
+    if (targetCamera) {
+      canvas3d?.requestCameraReset?.({ snapshot: targetCamera, durationMs: MOLSTAR_STORY_TRANSITION_MS });
+      canvas3d?.requestDraw?.();
     }
     const result = molstarStoryResult('story_control');
     molstarStoryReportedAt = 0;
@@ -1027,13 +1058,17 @@
   // the same way must agree on it. Random versions made every step rebuild the
   // whole receptor - measured at 957 ms per step against 248 ms when the versions
   // line up.
-  function molstarStoryTransformVersion(transform, style) {
-    return stableTextHash(`${transform.ref}:${style}`).padEnd(32, '0');
+  function molstarStoryTransformVersion(transform, style, appearance) {
+    return stableTextHash(`${transform.ref}:${style}:${appearance}`).padEnd(32, '0');
   }
 
-  function applyMolstarStoryStyleToSnapshots(manager, style) {
+  function applyMolstarStoryStyleToSnapshots(manager, style, appearance) {
     const uniform = MOLSTAR_UNIFORM_STYLE_REPRESENTATION[style];
-    const overrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES[style];
+    const styleOverrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES[style] || {};
+    const appearanceOverride = normalizeMolstarAppearance(appearance) === 'illustrative'
+      ? { ignoreLight: true }
+      : { ignoreLight: false };
+    const overrides = { ...styleOverrides, ...appearanceOverride };
     for (const entry of manager?.state?.entries || []) {
       const transforms = entry?.snapshot?.data?.tree?.transforms;
       if (!Array.isArray(transforms)) continue;
@@ -1047,12 +1082,6 @@
           });
         }
         const authored = molstarStoryAuthoredRepresentations.get(transform);
-        if (!uniform && !overrides) {
-          transform.params.type = authored.type;
-          transform.params.colorTheme = authored.colorTheme;
-          transform.version = authored.version;
-          continue;
-        }
         // Only the new type's own parameters: representation parameters are
         // per-type, and carrying the authored ones across made Mol* fall back to
         // some other representation entirely. An override keeps the authored
@@ -1066,22 +1095,32 @@
         // state gets the same version for the same node, including a node that
         // already drew this type: leaving that one on its authored version made
         // the versions disagree between states and rebuilt it on every step.
-        transform.version = molstarStoryTransformVersion(transform, style);
+        transform.version = molstarStoryTransformVersion(transform, style, appearance);
       }
     }
   }
 
   // Camera transitions are set on the snapshots because `applyNext` reads them
-  // from there. Previewing by hover uses no transition: a flight per state as
-  // the pointer moves down the list reads as the viewer lurching about.
+  // from there. Lightweight hover previews stay instant; composite previews swap
+  // while paused and use the post-rebuild camera transition above.
   function setMolstarStoryTransition(manager, durationMs) {
     const instant = durationMs <= 0 || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
     for (const entry of manager?.state?.entries || []) {
       const camera = entry?.snapshot?.camera;
-      if (!camera?.current) continue;
+      if (!camera?.current && !camera?.focus) continue;
       camera.transitionStyle = instant ? 'instant' : 'animate';
       camera.transitionDurationInMs = instant ? 0 : durationMs;
     }
+  }
+
+  function molstarStoryPresetOverride(config) {
+    if (config?.molstarPresentationOverride !== true) return null;
+    return molstarPresetOption(configuredMolstarPreset(config));
+  }
+
+  function molstarStoryPresentationRequiresRebuild(config) {
+    return Boolean(molstarStoryPresetOverride(config)?.provider)
+      || MOLSTAR_STORY_REBUILT_STYLES.has(configuredMolstarStyle(config));
   }
 
   // The restore has to wait for the step to finish building: applying a style
@@ -1106,10 +1145,16 @@
   // step. `default` means "show the scene as authored", so it is left alone.
   async function restoreMolstarStoryPresentation(viewer = activeViewer) {
     if (!viewer || viewer !== activeViewer || molstarStoryPresentationRestoreInFlight) return;
-    const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
+    const config = activeConfig || window.BuretteConfig || {};
+    const style = configuredMolstarStyle(config);
+    const appearance = configuredMolstarAppearance(config);
+    const option = molstarStoryPresetOverride(config);
+    const legacyAppearance = style === 'illustrative' || style === 'illustrative-surface' ? 'illustrative' : 'default';
     molstarStoryPresentationRestoreInFlight = true;
     try {
-      if (style !== 'default') await applyMolstarStyle(viewer, style);
+      if (option?.provider) await applyMolstarProviderPreset(viewer, option);
+      else if (style !== 'default') await applyMolstarStyle(viewer, style);
+      if (option?.provider || appearance !== legacyAppearance) await applyMolstarAppearance(viewer, appearance);
       applyBackgroundMode();
       applyViewerBackground(viewer);
     } catch (error) {
@@ -1171,10 +1216,11 @@
       if (!currentId || currentId === molstarStoryRestoredStateId) return;
       const isFirstState = molstarStoryRestoredStateId === null;
       molstarStoryRestoredStateId = currentId;
-      // Only a composite style needs a pass over the built scene, and a step
-      // driven through the controls has already done it with rendering held.
-      const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
-      if (!isFirstState && !molstarStoryStepInFlight && MOLSTAR_STORY_REBUILT_STYLES.has(style)) {
+      // Composite styles and user-selected Mol* providers need a pass over the
+      // built scene; a step driven through our controls already did that while
+      // rendering was held.
+      const config = activeConfig || window.BuretteConfig || {};
+      if (!isFirstState && !molstarStoryStepInFlight && molstarStoryPresentationRequiresRebuild(config)) {
         scheduleMolstarStoryPresentationRestore(viewer);
       }
     });
@@ -3650,7 +3696,9 @@
     preview.style.width = `${cached.displayWidth}px`;
     preview.style.height = `${28 + cached.displayHeight}px`;
     preview.dataset.frameAspect = cached.frameAspect;
+    preview.classList.remove('loading');
     preview.classList.add('ready');
+    preview.removeAttribute('aria-busy');
     if (caption) caption.textContent = 'Click to apply';
     positionMolstarPresetPreview(item);
     return true;
@@ -3750,10 +3798,11 @@
     if (caption) caption.textContent = 'Rendering…';
     if (state) state.textContent = 'Rendering preview…';
     preview.classList.remove('hidden', 'ready', 'error', 'applying');
+    preview.classList.add('loading');
     preview.dataset.buretMolstarPreset = option.value;
     preview.title = `Click to apply ${option.label}`;
     preview.setAttribute('aria-label', `Apply ${option.label} preset`);
-    preview.removeAttribute('aria-busy');
+    preview.setAttribute('aria-busy', 'true');
     preview.style.width = '';
     preview.style.height = '';
     preview.removeAttribute('data-frame-aspect');
@@ -3776,7 +3825,7 @@
     molstarPresetPreviewController?.hide?.();
     const { preview } = molstarPresetPreviewElements();
     preview?.classList.add('hidden');
-    preview?.classList.remove('applying', 'viewport-constrained');
+    preview?.classList.remove('loading', 'applying', 'viewport-constrained');
     preview?.removeAttribute('aria-busy');
     const menu = document.querySelector('[data-buret-molstar-preset-menu]');
     if (menu && !menu.classList.contains('hidden')) positionMolstarPresetMenu();
@@ -3849,6 +3898,12 @@
     return molstarPresetPreviewController;
   }
 
+  function hideFailedMolstarPresetPreview(error, serial = molstarPresetPreviewSerial) {
+    if (serial !== molstarPresetPreviewSerial) return;
+    debug('Mol* preset preview failed: ' + (error?.message || String(error)));
+    hideMolstarPresetPreview();
+  }
+
   async function renderMolstarPresetPreview(viewer, { item, preset, serial }) {
     const option = molstarPresetOption(preset);
     try {
@@ -3876,15 +3931,12 @@
       await captureMolstarPresetPreview(item, viewer, serial);
       if (serial !== molstarPresetPreviewSerial) return;
       const { preview, caption } = molstarPresetPreviewElements();
+      preview?.classList.remove('loading');
       preview?.classList.add('ready');
+      preview?.removeAttribute('aria-busy');
       if (caption) caption.textContent = 'Click to apply';
     } catch (error) {
-      if (serial !== molstarPresetPreviewSerial) return;
-      const { preview, caption, state } = molstarPresetPreviewElements();
-      preview?.classList.add('error');
-      if (caption) caption.textContent = 'Unavailable';
-      if (state) state.textContent = error?.message || 'Preset preview unavailable.';
-      debug('Mol* preset preview failed: ' + (error?.message || String(error)));
+      hideFailedMolstarPresetPreview(error, serial);
     }
   }
 
@@ -3899,30 +3951,19 @@
     if (previewShell?.classList.contains('viewport-constrained')) return;
     const budgetMessage = molstarPresetPreviewBudgetMessage();
     if (budgetMessage) {
-      const { preview, caption, state } = molstarPresetPreviewElements();
-      preview?.classList.add('error');
-      if (caption) caption.textContent = 'Unavailable';
-      if (state) state.textContent = budgetMessage;
+      hideFailedMolstarPresetPreview(new Error(budgetMessage));
       return;
     }
     if (restoreCachedMolstarPresetPreview(item, preset)) return;
     const serial = ++molstarPresetPreviewSerial;
     const controller = ensureMolstarPresetPreviewController();
     if (!controller) {
-      const { preview, caption, state } = molstarPresetPreviewElements();
-      preview?.classList.add('error');
-      if (caption) caption.textContent = 'Unavailable';
-      if (state) state.textContent = 'Preset preview controller is unavailable.';
+      hideFailedMolstarPresetPreview(new Error('Preset preview controller is unavailable.'), serial);
       return;
     }
     controller.show();
     void controller.requestPreview({ item, preset, serial }).catch(error => {
-      if (serial !== molstarPresetPreviewSerial) return;
-      const { preview, caption, state } = molstarPresetPreviewElements();
-      preview?.classList.add('error');
-      if (caption) caption.textContent = 'Unavailable';
-      if (state) state.textContent = error?.message || 'Preset preview unavailable.';
-      debug('Mol* preset preview failed: ' + (error?.message || String(error)));
+      hideFailedMolstarPresetPreview(error, serial);
     });
   }
 
@@ -4189,11 +4230,6 @@
       if (previewDockState.right) void refreshPreviewDockObserve();
       else window.clearTimeout(previewDockObserveTimer);
     }
-    updatePreviewDockButtons();
-  }
-
-  function togglePreviewDock(area) {
-    setPreviewDockOpen(area, !previewDockState[area]);
   }
 
   function previewDocksEnabled() {
@@ -4211,28 +4247,8 @@
     return enabled;
   }
 
-  function updatePreviewDockButtons() {
-    const toolbar = document.getElementById('buret-toolbar');
-    if (!toolbar) return;
-    for (const area of ['bottom', 'right']) {
-      const button = toolbar.querySelector(`[data-buret-dock-toggle="${area}"]`);
-      if (!button) continue;
-      const open = previewDockState[area] === true;
-      button.classList.toggle('active', open);
-      button.setAttribute('aria-label', `${open ? 'Hide' : 'Show'} ${area} dock`);
-      button.setAttribute('title', `${open ? 'Hide' : 'Show'} ${area} dock`);
-    }
-  }
-
   function bindPreviewDockControls(toolbar) {
-    if (!toolbar || !previewDocksEnabled() || toolbar.dataset.previewDockTogglesBound === '1') return;
-    toolbar.addEventListener('click', event => {
-      const button = event.target?.closest?.('[data-buret-dock-toggle]');
-      if (!button || !toolbar.contains(button)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      togglePreviewDock(button.getAttribute('data-buret-dock-toggle'));
-    });
+    if (!toolbar || !previewDocksEnabled() || toolbar.dataset.previewDockControlsBound === '1') return;
     document.addEventListener('click', event => {
       const close = event.target?.closest?.('[data-buret-dock-close]');
       if (!close) return;
@@ -4240,8 +4256,7 @@
       event.stopPropagation();
       setPreviewDockOpen(close.getAttribute('data-buret-dock-close'), false);
     });
-    toolbar.dataset.previewDockTogglesBound = '1';
-    updatePreviewDockButtons();
+    toolbar.dataset.previewDockControlsBound = '1';
   }
 
   function applyDefaultPreviewDocks(toolbar) {
@@ -4290,13 +4305,14 @@
     await plugin.managers.structure.component.applyPreset(structures, provider);
   }
 
-  function updateMolstarPresentationConfig(preset, appearance, legacyStyle) {
+  function updateMolstarPresentationConfig(preset, appearance, legacyStyle, { userOverride = true } = {}) {
     molstarPresetPreviewSceneRevision += 1;
     activeConfig = {
       ...(activeConfig || window.BuretteConfig || {}),
       molstarPreset: preset,
       molstarAppearance: appearance,
-      molstarStyle: legacyStyle
+      molstarStyle: legacyStyle,
+      molstarPresentationOverride: userOverride
     };
     window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
     if (activeMolstarPrepared?.molstarStyleOverride) {
@@ -4315,6 +4331,14 @@
     if (!viewer) {
       setStatus('Mol* appearance can be changed after the viewer loads.', 'error');
       return;
+    }
+    const storyManager = viewer.plugin?.managers?.snapshot;
+    if (storyManager && molstarStoryState().available) {
+      applyMolstarStoryStyleToSnapshots(
+        storyManager,
+        configuredMolstarStyle(activeConfig || window.BuretteConfig || {}),
+        value
+      );
     }
     const serial = ++molstarStyleApplySerial;
     setStatus(`[web] Applying Mol* ${value} appearance…`);
@@ -4344,34 +4368,68 @@
     const option = molstarPresetOption(value);
     const appearance = molstarPresetAppearance(option, activeConfig || window.BuretteConfig || {});
     const legacyStyle = option.legacyStyle || appearance;
-    updateMolstarPresentationConfig(value, appearance, legacyStyle);
     const viewer = activeViewer;
     if (!viewer) {
       setStatus('Mol* presets can be changed after the viewer loads.', 'error');
       return;
     }
-    const cameraSnapshot = preserveCamera ? captureMolstarCameraSnapshot(viewer) : null;
+    const previousConfig = activeConfig || window.BuretteConfig || {};
+    const previousPreset = configuredMolstarPreset(previousConfig);
+    const previousStyle = configuredMolstarStyle(previousConfig);
+    const previousAppearance = configuredMolstarAppearance(previousConfig);
+    const rollbackCameraSnapshot = captureMolstarCameraSnapshot(viewer);
+    const cameraSnapshot = preserveCamera ? rollbackCameraSnapshot : null;
     const transitionFrame = captureMolstarTransitionFrame();
+    const wasStoryPlaying = molstarStoryState().isPlaying;
+    let sceneSnapshot = null;
     let applied = false;
     const serial = ++molstarStyleApplySerial;
     setStatus(`[web] Applying Mol* ${option.label} preset…`);
     try {
+      if (wasStoryPlaying) await controlMolstarStory({ operation: 'pause' });
+      sceneSnapshot = viewer.plugin?.state?.data?.getSnapshot?.();
       if (option.provider) await applyMolstarProviderPreset(viewer, option);
-      else await reloadMolstarStyle(viewer, legacyStyle, serial);
-      if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+      else await reloadMolstarStyle(viewer, legacyStyle, serial, appearance);
+      if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
       await applyMolstarAppearance(viewer, appearance);
-      if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+      if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
       if (cameraSnapshot) {
         restoreMolstarCameraSnapshotNow(viewer, cameraSnapshot);
         await waitForMolstarPresetPreviewDraw(viewer);
-        if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+        if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
       }
+      updateMolstarPresentationConfig(value, appearance, legacyStyle);
+      if (wasStoryPlaying) await controlMolstarStory({ operation: 'play' });
       applied = true;
       setStatus(`[web] Applied Mol* ${option.label} preset`);
       setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
     } catch (error) {
-      if (serial !== molstarStyleApplySerial) return;
-      setStatus(`Mol* preset switch failed.\n\n${error?.message || String(error)}`, 'error');
+      if (activeViewer !== viewer) return;
+      if (serial !== molstarStyleApplySerial) {
+        if (wasStoryPlaying && !molstarStoryState().isPlaying) {
+          try { await controlMolstarStory({ operation: 'play' }); } catch (_) {}
+        }
+        return;
+      }
+      try {
+        updateMolstarPresentationConfig(previousPreset, previousAppearance, previousStyle, {
+          userOverride: previousConfig.molstarPresentationOverride === true
+        });
+        const storyManager = viewer.plugin?.managers?.snapshot;
+        if (storyManager && molstarStoryState().available) {
+          applyMolstarStoryStyleToSnapshots(storyManager, previousStyle, previousAppearance);
+        }
+        if (sceneSnapshot) {
+          await viewer.plugin.runTask(viewer.plugin.state.data.setSnapshot(sceneSnapshot));
+        }
+        await applyMolstarAppearance(viewer, previousAppearance);
+        restoreMolstarCameraSnapshotNow(viewer, rollbackCameraSnapshot);
+        if (wasStoryPlaying) await controlMolstarStory({ operation: 'play' });
+      } catch (restoreError) {
+        debug('Mol* preset rollback failed: ' + (restoreError?.message || String(restoreError)));
+      }
+      setStatus(`Couldn’t apply ${option.label}. The previous view was restored.`, 'error');
+      debug('Mol* preset switch failed: ' + (error?.message || String(error)));
     } finally {
       if (applied) fadeMolstarTransitionFrame(transitionFrame);
       else removeMolstarTransitionFrame(transitionFrame);
@@ -4445,7 +4503,7 @@
     }
   }
 
-  async function reloadMolstarStyle(viewer, style, serial) {
+  async function reloadMolstarStyle(viewer, style, serial, appearance = configuredMolstarAppearance(activeConfig || window.BuretteConfig || {})) {
     const prepared = activeMolstarPrepared;
     if (!prepared) {
       await applyMolstarStyle(viewer, style);
@@ -4458,7 +4516,7 @@
     if (molstarStoryState().available) {
       const normalized = normalizeMolstarStyle(style);
       const manager = viewer?.plugin?.managers?.snapshot;
-      applyMolstarStoryStyleToSnapshots(manager, normalized);
+      applyMolstarStoryStyleToSnapshots(manager, normalized, appearance);
       // Restyling a Story goes through its snapshots, so the scene on screen is
       // rebuilt the same way a step builds it. Applying the style over the scene
       // instead would leave the current state looking unlike every other one.
@@ -5228,7 +5286,6 @@
     installViewerResizeObserver(viewer);
     updateToolbarVisibility();
     updateSdfPoseButton();
-    updatePreviewDockButtons();
     updateThemeButton();
     applyLayoutState(viewer);
   }
@@ -5437,7 +5494,7 @@
       const applyPreview = event => {
         if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
         const preset = preview?.dataset?.buretMolstarPreset;
-        if (!preset) return;
+        if (!preset || !preview.classList.contains('ready')) return;
         event.preventDefault();
         event.stopPropagation();
         cancelMolstarPresetPreviewClose();
@@ -5465,7 +5522,7 @@
   function moveMolstarPresetPreviewFocus(event, menu) {
     if (event.key !== 'Tab' || !menu) return false;
     const { preview } = molstarPresetPreviewElements();
-    if (!preview || preview.classList.contains('hidden') || preview.classList.contains('viewport-constrained')) return false;
+    if (!preview || preview.classList.contains('hidden') || preview.classList.contains('loading') || preview.classList.contains('viewport-constrained')) return false;
     if (!event.shiftKey && menu.contains(document.activeElement)) {
       event.preventDefault();
       preview.focus();
@@ -8695,11 +8752,12 @@
     spin: { value: 0.1, min: 0.01, max: 1, step: 0.01, params: { axis: [0, -1, 0] } },
     rock: { value: 0.3, min: 0.02, max: 1.5, step: 0.02, params: { angle: 10, axis: [0, -1, 0] } }
   };
-  // The plugin ships timed camera spin and rock too; the Motion switch covers the
-  // same ground without a stopwatch, so they are not listed twice.
-  const VIEWPORT_MOTION_ANIMATIONS = new Set([
-    'built-in.animate-camera-spin',
-    'built-in.animate-camera-rock'
+  // Mol* also exposes framework-level animations for snapshots, state trees and
+  // time transforms. In Burette those either duplicate Story/Motion or do nothing
+  // without hidden plugin state. A trajectory is the one contextual task that
+  // belongs here, and its applicability check keeps it out of ordinary scenes.
+  const VIEWPORT_CONTEXT_ANIMATIONS = new Set([
+    'built-in.animate-model-index'
   ]);
   const VIEWPORT_ICON = {
     camera: ['M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z', 'M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'],
@@ -8903,9 +8961,8 @@
     viewportScreenshotToggle(menu, 'Crop to content', 'screenshot-crop', helper.cropParams?.auto === true);
   }
 
-  // Mol*'s own animation button offered both a trackball that keeps turning and
-  // the plugin's timed animations. The rail keeps both, split by how they end:
-  // motion runs until it is switched off, the rest play once and stop themselves.
+  // Motion and wiggle are always explicit. A task animation appears only when the
+  // active document supplies its context, currently a trajectory with frames.
   function viewportAnimateMenu(menu) {
     viewportMotionControls(menu);
     const plugin = viewportPlugin();
@@ -8914,8 +8971,7 @@
       || activeTrajectoryPlaybackControl?.isPlaying() === true;
     const animations = (manager?.animations || [])
       .map((animation, index) => ({ animation, index }))
-      // Camera spin and rock are the Motion switch above, only on a timer.
-      .filter(entry => !VIEWPORT_MOTION_ANIMATIONS.has(entry.animation?.name))
+      .filter(entry => VIEWPORT_CONTEXT_ANIMATIONS.has(entry.animation?.name))
       .map(entry => ({ ...entry, applicability: viewportAnimationApplicability(entry.animation, plugin) }))
       .filter(entry => entry.animation?.display?.name)
       // Every one of these needs something the scene may not have - a trajectory,
@@ -16485,9 +16541,13 @@
     // corner toggle, so it sits right next to that button instead of on top of it.
     const cornerRect = visibleRect('#buret-viewport-corner');
     const clearedLeft = cornerRect ? Math.max(left, Math.ceil(cornerRect.right + 8)) : left;
+    const viewportRailRect = visibleRect('#buret-viewport-rail');
+    const clearedRight = viewportRailRect
+      ? Math.min(right, Math.floor(viewportRailRect.left - FLOATING_LAYOUT_GAP))
+      : right;
     return {
       left: clearedLeft,
-      right: Math.max(clearedLeft, right),
+      right: Math.max(clearedLeft, clearedRight),
       top: margin,
       bottom: window.innerHeight - margin
     };
@@ -16545,10 +16605,19 @@
     applyDefaultDockingPoseControlsPosition(root);
   }
 
+  function defaultDockingPoseControlsTop(root, bounds) {
+    const toolbarRect = visibleRect('#buret-toolbar');
+    if (!toolbarRect) return bounds.top;
+    const width = root.offsetWidth || root.getBoundingClientRect().width || 180;
+    const overlapsToolbar = bounds.left < toolbarRect.right + FLOATING_LAYOUT_GAP
+      && bounds.left + width > toolbarRect.left - FLOATING_LAYOUT_GAP;
+    return overlapsToolbar ? Math.ceil(toolbarRect.bottom + FLOATING_LAYOUT_GAP) : bounds.top;
+  }
+
   function applyDefaultDockingPoseControlsPosition(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     root.dataset.defaultPosition = '1';
     const bounds = dockingPoseControlsBounds(mainRect);
-    moveDockingPoseControls(root, bounds.left, 12, mainRect);
+    moveDockingPoseControls(root, bounds.left, defaultDockingPoseControlsTop(root, bounds), mainRect);
   }
 
   function repositionDockingPoseControls(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
@@ -17406,9 +17475,9 @@
     positionMolstarStoryDetails(card, anchor);
   }
 
-  // Hovering a state moves to it, so the list doubles as a preview. The dwell
-  // keeps a pointer travelling down the list from applying every state it
-  // crosses.
+  // Hovering a state moves to it, so the list doubles as a preview. Slow composite
+  // styles use the same serialized, post-rebuild camera transition as a click;
+  // stale previews are dropped by controlMolstarStory before they start.
   function scheduleMolstarStoryPreview(anchor) {
     if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
     molstarStoryPreviewTimer = window.setTimeout(() => {
@@ -20041,8 +20110,11 @@
     const residues = ah.residues || {};
     const chains = ah.chains || {};
     const labelEntityId = molstarContextValueAt(chains.label_entity_id, chainIndex);
-    const labelCompId = molstarContextValueAt(residues.label_comp_id, residueIndex);
-    const authCompId = molstarContextValueAt(residues.auth_comp_id, residueIndex) || labelCompId;
+    const labelCompId = molstarContextValueAt(atoms.label_comp_id, atomIndex)
+      || molstarContextValueAt(residues.label_comp_id, residueIndex);
+    const authCompId = molstarContextValueAt(atoms.auth_comp_id, atomIndex)
+      || molstarContextValueAt(residues.auth_comp_id, residueIndex)
+      || labelCompId;
     const entityType = molstarContextEntityType(model, labelEntityId);
     return {
       model,
@@ -24788,6 +24860,111 @@
     };
   }
 
+  function molstarSemanticCanvasTargetLabel(target, pickingLevel) {
+    if (!target?.atom) return String(target?.label || 'molecule');
+    if (pickingLevel === 'atom' || pickingLevel === 'element') return molstarContextAtomLabel(target);
+    if (pickingLevel === 'chain') return molstarContextChainLabel(target.atom);
+    const comp = String(target.atom.auth_comp_id || target.atom.label_comp_id || '').trim();
+    const seq = String(target.atom.auth_seq_id ?? target.atom.label_seq_id ?? '').trim();
+    const chain = molstarContextChainId(target.atom);
+    const residue = [comp, seq].filter(Boolean).join(' ') || target.label || 'residue';
+    return chain ? `residue ${residue}, chain ${chain}` : `residue ${residue}`;
+  }
+
+  // Browser comments resolve annotations with elementFromPoint after temporarily
+  // disabling their own overlay. Mol* renders the whole scene into one canvas,
+  // so expose one transparent, semantic hit target only while comment mode is
+  // active. This never participates in the normal viewer interaction surface.
+  function installMolstarBrowserAnnotationTarget(viewer) {
+    molstarBrowserAnnotationTargetCleanup?.();
+    molstarBrowserAnnotationTargetCleanup = null;
+    const canvas = viewer?.plugin?.canvas3d?.webgl?.gl?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) return;
+    let annotationTarget = null;
+    let observedCommentRoot = null;
+    let commentRootObserver = null;
+    const clearTarget = () => {
+      annotationTarget?.remove();
+      annotationTarget = null;
+    };
+    const activeBrowserCommentRoot = () => {
+      for (const child of document.documentElement.children) {
+        const root = child.shadowRoot?.querySelector?.('[data-browser-comment-root]');
+        if (!(root instanceof HTMLElement)) continue;
+        if (root.style.pointerEvents === 'auto') return root;
+      }
+      return null;
+    };
+    const observeCommentRoot = root => {
+      if (root === observedCommentRoot) return;
+      commentRootObserver?.disconnect();
+      observedCommentRoot = root;
+      commentRootObserver = new MutationObserver(() => {
+        if (root.style.pointerEvents !== 'auto') clearTarget();
+      });
+      commentRootObserver.observe(root, { attributes: true, attributeFilter: ['style'] });
+    };
+    const ensureTarget = () => {
+      if (annotationTarget?.isConnected) return annotationTarget;
+      const target = document.createElement('div');
+      target.dataset.buretMolstarAnnotationTarget = 'true';
+      target.setAttribute('role', 'img');
+      Object.assign(target.style, {
+        position: 'fixed',
+        zIndex: '2147483646',
+        width: '24px',
+        height: '24px',
+        overflow: 'hidden',
+        padding: '0',
+        margin: '0',
+        border: '0',
+        color: 'transparent',
+        background: 'transparent',
+        fontSize: '0',
+        lineHeight: '0',
+        pointerEvents: 'auto',
+        transform: 'translate(-50%, -50%)'
+      });
+      document.body.appendChild(target);
+      annotationTarget = target;
+      return target;
+    };
+    const updateTarget = event => {
+      const commentRoot = activeBrowserCommentRoot();
+      if (!commentRoot || molstarLassoEnabled || (event.type !== 'pointerdown' && Number(event.buttons || 0) !== 0)) {
+        clearTarget();
+        return;
+      }
+      observeCommentRoot(commentRoot);
+      const pick = molstarPickFromCanvasPoint(canvas, event.clientX, event.clientY);
+      const contextTarget = pick ? molstarContextTargetForPick(pick) : null;
+      if (!contextTarget?.atom || (!contextTarget.atomLoci && !contextTarget.loci)) {
+        clearTarget();
+        return;
+      }
+      const label = molstarSemanticCanvasTargetLabel(contextTarget, molstarSelectionLevel());
+      const target = ensureTarget();
+      target.textContent = label;
+      target.dataset.label = label;
+      target.dataset.scope = contextTarget.scope || 'selection';
+      target.setAttribute('aria-label', `Mol* ${label}`);
+      target.style.left = `${Math.round(event.clientX)}px`;
+      target.style.top = `${Math.round(event.clientY)}px`;
+    };
+    window.addEventListener('mousemove', updateTarget, true);
+    window.addEventListener('pointerdown', updateTarget, true);
+    window.addEventListener('blur', clearTarget);
+    window.addEventListener('resize', clearTarget);
+    molstarBrowserAnnotationTargetCleanup = () => {
+      window.removeEventListener('mousemove', updateTarget, true);
+      window.removeEventListener('pointerdown', updateTarget, true);
+      window.removeEventListener('blur', clearTarget);
+      window.removeEventListener('resize', clearTarget);
+      commentRootObserver?.disconnect();
+      clearTarget();
+    };
+  }
+
   function subscribeMolstarPreviewEvent(source, update, disposers) {
     if (!source || typeof source.subscribe !== 'function') return;
     try {
@@ -24993,6 +25170,8 @@
       molstarContextMenuCleanup();
       molstarContextMenuCleanup = null;
     }
+    molstarBrowserAnnotationTargetCleanup?.();
+    molstarBrowserAnnotationTargetCleanup = null;
     molstarStoryStateCleanup?.();
     molstarStoryStateCleanup = null;
     if (molstarWindowResizeHandler) {
@@ -25053,6 +25232,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
     installMolstarContextMenu(viewer);
+    installMolstarBrowserAnnotationTarget(viewer);
     installMolstarSelectionPreviewSync(viewer);
     installLeftPanelVisibilityGuard();
     scheduleLayoutStateReapply(viewer);
@@ -25072,6 +25252,10 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       45000,
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
+    // MVSX snapshots can carry an authored canvas color. Restore the active
+    // Burette theme after the snapshot has finished loading.
+    applyBackgroundMode();
+    applyViewerBackground(viewer);
     observeMolstarStoryState(viewer);
     applyLayoutState(viewer);
     scheduleLayoutStateReapply(viewer);
