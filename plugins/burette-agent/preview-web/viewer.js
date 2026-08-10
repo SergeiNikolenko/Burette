@@ -973,7 +973,6 @@
     // no longer carries, so it survives a step untouched.
     const restyles = isStep && MOLSTAR_STORY_REBUILT_STYLES.has(style);
     const animatesRestyledStep = restyles
-      && action.preview !== true
       && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches !== true;
     const sourceCamera = animatesRestyledStep ? captureMolstarCameraSnapshot(activeViewer) : null;
     let targetCamera = null;
@@ -1101,8 +1100,8 @@
   }
 
   // Camera transitions are set on the snapshots because `applyNext` reads them
-  // from there. Previewing by hover uses no transition: a flight per state as
-  // the pointer moves down the list reads as the viewer lurching about.
+  // from there. Lightweight hover previews stay instant; composite previews swap
+  // while paused and use the post-rebuild camera transition above.
   function setMolstarStoryTransition(manager, durationMs) {
     const instant = durationMs <= 0 || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
     for (const entry of manager?.state?.entries || []) {
@@ -17461,12 +17460,10 @@
     positionMolstarStoryDetails(card, anchor);
   }
 
-  // Hovering a lightweight state moves to it, so the list doubles as a preview.
-  // Composite styles are click-only: their geometry can finish rebuilding after
-  // the pointer leaves and then race the state the user actually clicked.
+  // Hovering a state moves to it, so the list doubles as a preview. Slow composite
+  // styles use the same serialized, post-rebuild camera transition as a click;
+  // stale previews are dropped by controlMolstarStory before they start.
   function scheduleMolstarStoryPreview(anchor) {
-    const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
-    if (MOLSTAR_STORY_REBUILT_STYLES.has(style)) return;
     if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
     molstarStoryPreviewTimer = window.setTimeout(() => {
       molstarStoryPreviewTimer = 0;

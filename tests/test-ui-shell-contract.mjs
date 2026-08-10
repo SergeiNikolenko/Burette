@@ -5926,6 +5926,8 @@ assert.match(previewViewer, /camera\.transitionDurationInMs = instant \? 0 : dur
 // Composite styles rebuild their geometry with rendering paused. Their snapshot
 // swap is instant, then the camera animates only after the finished scene resumes.
 assert.match(previewViewer, /if \(isStep\) setMolstarStoryTransition\(manager, restyles \|\| action\.preview === true \? 0 : MOLSTAR_STORY_TRANSITION_MS\)/);
+assert.match(previewViewer, /const animatesRestyledStep = restyles\s*&& window\.matchMedia\?\.\('\(prefers-reduced-motion: reduce\)'\)\?\.matches !== true/);
+assert.doesNotMatch(previewViewer, /const animatesRestyledStep = restyles\s*&& action\.preview !== true/);
 assert.match(previewViewer, /const sourceCamera = animatesRestyledStep \? captureMolstarCameraSnapshot\(activeViewer\) : null/);
 assert.match(previewViewer, /async function waitForMolstarStoryCameraTarget\(viewer, timeoutMs = 700\)/);
 assert.match(previewViewer, /while \(Date\.now\(\) - startedAt < timeoutMs\)/);
@@ -5956,11 +5958,12 @@ assert.match(previewViewer, /root\.className = 'buret-docking-poses buret-dockin
 assert.match(previewViewer, /if \(document\.querySelector\('\.buret-docking-poses:not\(\.buret-molstar-story\)'\)\) return;/);
 assert.match(previewViewer, /previousRoot && updateMolstarStoryControls\(previousRoot, entries, story\.isPlaying\)\) return/);
 assert.match(previewViewer, /root\.__buretStoryDragCleanup = initDockingPoseControlsDrag\(root\)/);
-// A composite style does not preview scenes on hover: rebuilding a surface can
-// finish after the pointer has left and then race the user's click. Its details
-// card still trails behind so crossing the list does not flash it.
+// Composite styles still preview on hover. Their geometry work is serialized
+// by controlMolstarStory, while the manual camera transition keeps the result
+// smooth instead of disabling this Story interaction.
 assert.match(previewViewer, /button\.addEventListener\('pointerenter', event => \{\s*if \(event\.pointerType === 'touch'\) return;\s*scheduleMolstarStoryPreview\(button\);\s*scheduleMolstarStoryDetails\(button\);\s*\}\)/);
-assert.match(previewViewer, /function scheduleMolstarStoryPreview\(anchor\) \{\s*const style = configuredMolstarStyle\(activeConfig \|\| window\.BuretteConfig \|\| \{\}\);\s*if \(MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)\) return;/);
+assert.doesNotMatch(previewViewer, /function scheduleMolstarStoryPreview\(anchor\) \{\s*const style = configuredMolstarStyle\(activeConfig \|\| window\.BuretteConfig \|\| \{\}\);\s*if \(MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)\) return;/);
+assert.match(previewViewer, /preview: true,\s*stillWanted: \(\) => anchor\.isConnected && anchor\.matches\(':hover'\)/);
 assert.match(previewViewer, /MOLSTAR_STORY_PREVIEW_DWELL_MS = 240/);
 assert.match(previewViewer, /MOLSTAR_STORY_DETAILS_DWELL_MS = 500/);
 // The style swap happens with rendering held, so no frame shows the authored
