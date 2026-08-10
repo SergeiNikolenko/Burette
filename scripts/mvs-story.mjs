@@ -194,6 +194,7 @@ export async function writeMvsStoryFile({ story: input, outputPath, assets = {},
     if (assetBytes > MAX_BUNDLE_BYTES) throw storyError('BUNDLE_TOO_LARGE', `MVSX assets exceed ${MAX_BUNDLE_BYTES} bytes.`);
     assetEntries.set(canonicalPath, bytes);
   }
+  validateBundledJsonResources(story, assetEntries);
   const validation = validateMvsStory(story, {
     resourceNames: [...assetEntries.keys()],
     requireBundledResources: extension === '.mvsx',
@@ -221,6 +222,52 @@ export async function writeMvsStoryFile({ story: input, outputPath, assets = {},
     unzipEntries(archive);
     await writeFile(path, archive, { flag: overwrite ? 'w' : 'wx' });
     return { ok: true, path, format: 'mvsx', byteCount: archive.length, summary: validation.summary, warnings: validation.warnings };
+  }
+}
+
+function validateBundledJsonResources(story, assetEntries) {
+  const visit = value => {
+    if (Array.isArray(value)) return value.forEach(visit);
+    if (!isObject(value)) return;
+    if (value.kind === 'primitives_from_uri' && typeof value.params?.uri === 'string') {
+      const uri = value.params.uri.trim();
+      if (!isAllowedExternalResource(uri) && !hasResourceScheme(uri) && !uri.startsWith('/') && !unsafeArchivePath(uri)) {
+        const resource = normalizeArchivePath(uri);
+        const primitives = parseBundledJsonResource(assetEntries, resource, 'INVALID_PRIMITIVE_RESOURCE', 'primitive');
+        if (primitives) {
+          const hasPrimitive = primitives?.kind === 'primitives'
+            && Array.isArray(primitives.children)
+            && primitives.children.some(child => child?.kind === 'primitive');
+          if (!hasPrimitive) {
+            throw storyError('INVALID_PRIMITIVE_RESOURCE', `MVS primitive resource must contain at least one visible primitive: ${resource}`, { resource });
+          }
+        }
+      }
+    }
+    if (value.kind === 'component_from_uri' && value.params?.format === 'json' && typeof value.params.uri === 'string') {
+      const uri = value.params.uri.trim();
+      if (!isAllowedExternalResource(uri) && !hasResourceScheme(uri) && !uri.startsWith('/') && !unsafeArchivePath(uri)) {
+        const resource = normalizeArchivePath(uri);
+        const rows = parseBundledJsonResource(assetEntries, resource, 'INVALID_ANNOTATION_RESOURCE', 'annotation');
+        if (rows) {
+          if (!Array.isArray(rows) || rows.length === 0 || !rows.every(isObject)) {
+            throw storyError('INVALID_ANNOTATION_RESOURCE', `MVS annotation resource must contain at least one selector row: ${resource}`, { resource });
+          }
+        }
+      }
+    }
+    Object.values(value).forEach(visit);
+  };
+  visit(story);
+}
+
+function parseBundledJsonResource(assetEntries, resource, code, label) {
+  const bytes = assetEntries.get(resource);
+  if (!bytes) return null;
+  try {
+    return JSON.parse(textDecoder.decode(bytes));
+  } catch (_) {
+    throw storyError(code, `MVS ${label} resource is not valid JSON: ${resource}`, { resource });
   }
 }
 
