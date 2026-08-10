@@ -58,7 +58,7 @@ turn.
 - `structure-overview`: global fold to ligand context.
 - `binding-site-tour`: overview, pocket focus, and evidence-qualified interpretation.
 - `docking-pose-comparison`: receptor, two poses with required computed key-interaction
-  primitive layers, matching endpoint-residue annotations, compact element-aware
+  primitive layers, matching endpoint-residue annotations, compact default-colored
   ball-and-stick ligands, and a consistently encoded overlay.
 - `aligned-structure-comparison`: reference, candidate, and overlay; inputs must
   already share a coordinate frame.

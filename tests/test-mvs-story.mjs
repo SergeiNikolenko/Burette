@@ -151,6 +151,7 @@ const dockingVariables = Object.fromEntries(dockingTemplate.variables
   .filter(variable => variable.required)
   .map(variable => [variable.name, variable.example]));
 const dockingStory = (await instantiateMvsStoryTemplate("docking-pose-comparison", dockingVariables)).story;
+assert.equal(findNodes(dockingStory, "color").length, 0, "the docking story must preserve Mol* default object coloring");
 for (const [key, expectedInteractionUrls] of [
   ["pose-a", ["pose-a-interactions.json"]],
   ["pose-b", ["pose-b-interactions.json"]],

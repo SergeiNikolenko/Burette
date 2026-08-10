@@ -135,10 +135,7 @@
                           "children": [
                             {
                               "kind": "representation",
-                              "params": { "type": "cartoon" },
-                              "children": [
-                                { "kind": "color", "params": { "color": "#4E79A7" } }
-                              ]
+                              "params": { "type": "cartoon" }
                             }
                           ]
                         }
@@ -154,7 +151,7 @@
       {
         "key": "pose-a",
         "title": "Pose A",
-        "description": "# Pose A\n\n## Key interactions\n\n{{pose_a_interactions_summary}}\n\nThe visible dashed primitives are required, explicitly computed contacts for this pose. Every receptor endpoint is shown as an element-aware ball-and-stick residue and identifies itself on hover. Keep interaction type, receptor residue, distance, and method provenance together; do not call the docking score an experimental affinity.",
+        "description": "# Pose A\n\n## Key interactions\n\n{{pose_a_interactions_summary}}\n\nThe visible dashed primitives are required, explicitly computed contacts for this pose. Every receptor endpoint is shown as a default-colored ball-and-stick residue and identifies itself on hover. Keep interaction type, receptor residue, distance, and method provenance together; do not call the docking score an experimental affinity.",
         "root": {
           "kind": "root",
           "children": [
@@ -178,7 +175,6 @@
                               "kind": "representation",
                               "params": { "type": "cartoon" },
                               "children": [
-                                { "kind": "color", "params": { "color": "#A9B7C8" } },
                                 { "kind": "opacity", "params": { "opacity": 0.35 } }
                               ]
                             }
@@ -194,19 +190,7 @@
                           "children": [
                             {
                               "kind": "representation",
-                              "params": { "type": "ball_and_stick", "size_factor": 0.65, "ignore_hydrogens": true },
-                              "children": [
-                                {
-                                  "kind": "color",
-                                  "params": {},
-                                  "custom": {
-                                    "molstar_color_theme_name": "element-symbol",
-                                    "molstar_color_theme_params": {
-                                      "carbonColor": { "name": "uniform", "params": { "value": 2450411 } }
-                                    }
-                                  }
-                                }
-                              ]
+                              "params": { "type": "ball_and_stick", "size_factor": 0.65, "ignore_hydrogens": true }
                             }
                           ]
                         },
@@ -245,19 +229,7 @@
                             { "kind": "focus", "params": {} },
                             {
                               "kind": "representation",
-                              "params": { "type": "ball_and_stick", "size_factor": 0.65, "ignore_hydrogens": true },
-                              "children": [
-                                {
-                                  "kind": "color",
-                                  "params": {},
-                                  "custom": {
-                                    "molstar_color_theme_name": "element-symbol",
-                                    "molstar_color_theme_params": {
-                                      "carbonColor": { "name": "uniform", "params": { "value": 15896107 } }
-                                    }
-                                  }
-                                }
-                              ]
+                              "params": { "type": "ball_and_stick", "size_factor": 0.65, "ignore_hydrogens": true }
                             }
                           ]
                         }
@@ -280,7 +252,7 @@
       {
         "key": "pose-b",
         "title": "Pose B",
-        "description": "# Pose B\n\n## Key interactions\n\n{{pose_b_interactions_summary}}\n\nThe visible dashed primitives are required, explicitly computed contacts for this pose. Every receptor endpoint is shown as an element-aware ball-and-stick residue and identifies itself on hover. Use the same camera logic, representation, and evidence fields as Pose A so the comparison is not visually biased.",
+        "description": "# Pose B\n\n## Key interactions\n\n{{pose_b_interactions_summary}}\n\nThe visible dashed primitives are required, explicitly computed contacts for this pose. Every receptor endpoint is shown as a default-colored ball-and-stick residue and identifies itself on hover. Use the same camera logic, representation, and evidence fields as Pose A so the comparison is not visually biased.",
         "root": {
           "kind": "root",
           "children": [
@@ -304,7 +276,6 @@
                               "kind": "representation",
                               "params": { "type": "cartoon" },
                               "children": [
-                                { "kind": "color", "params": { "color": "#A9B7C8" } },
                                 { "kind": "opacity", "params": { "opacity": 0.35 } }
                               ]
                             }
@@ -320,19 +291,7 @@
                           "children": [
                             {
                               "kind": "representation",
-                              "params": { "type": "ball_and_stick", "size_factor": 0.65, "ignore_hydrogens": true },
-                              "children": [
-                                {
-                                  "kind": "color",
-                                  "params": {},
-                                  "custom": {
-                                    "molstar_color_theme_name": "element-symbol",
-                                    "molstar_color_theme_params": {
-                                      "carbonColor": { "name": "uniform", "params": { "value": 2450411 } }
-                                    }
-                                  }
-                                }
-                              ]
+                              "params": { "type": "ball_and_stick", "size_factor": 0.65, "ignore_hydrogens": true }
                             }
                           ]
                         },
@@ -371,19 +330,7 @@
                             { "kind": "focus", "params": {} },
                             {
                               "kind": "representation",
-                              "params": { "type": "ball_and_stick", "size_factor": 0.65, "ignore_hydrogens": true },
-                              "children": [
-                                {
-                                  "kind": "color",
-                                  "params": {},
-                                  "custom": {
-                                    "molstar_color_theme_name": "element-symbol",
-                                    "molstar_color_theme_params": {
-                                      "carbonColor": { "name": "uniform", "params": { "value": 5873999 } }
-                                    }
-                                  }
-                                }
-                              ]
+                              "params": { "type": "ball_and_stick", "size_factor": 0.65, "ignore_hydrogens": true }
                             }
                           ]
                         }
@@ -406,7 +353,7 @@
       {
         "key": "comparison",
         "title": "Pose overlay and decision",
-        "description": "# Pose overlay and decision\n\nOrange is Pose A; green is Pose B. The dedicated pose steps show the required 3D key-interaction layers; this overlay keeps both evidence summaries without duplicating every line.\n\n**Pose A:** {{pose_a_interactions_summary}}\n\n**Pose B:** {{pose_b_interactions_summary}}\n\nState geometry, method-specific scores, contacts from explicit calculations, uncertainty, and the next validation step separately.",
+        "description": "# Pose overlay and decision\n\nBoth poses use Mol* default coloring. The dedicated pose steps show the required 3D key-interaction layers; this overlay keeps both evidence summaries without duplicating every line.\n\n**Pose A:** {{pose_a_interactions_summary}}\n\n**Pose B:** {{pose_b_interactions_summary}}\n\nState geometry, method-specific scores, contacts from explicit calculations, uncertainty, and the next validation step separately.",
         "root": {
           "kind": "root",
           "children": [
@@ -430,7 +377,6 @@
                               "kind": "representation",
                               "params": { "type": "cartoon" },
                               "children": [
-                                { "kind": "color", "params": { "color": "#A9B7C8" } },
                                 { "kind": "opacity", "params": { "opacity": 0.25 } }
                               ]
                             }
@@ -461,10 +407,7 @@
                             { "kind": "focus", "params": {} },
                             {
                               "kind": "representation",
-                              "params": { "type": "ball_and_stick", "size_factor": 0.55, "ignore_hydrogens": true },
-                              "children": [
-                                { "kind": "color", "params": { "color": "#F28E2B" } }
-                              ]
+                              "params": { "type": "ball_and_stick", "size_factor": 0.55, "ignore_hydrogens": true }
                             }
                           ]
                         }
@@ -492,10 +435,7 @@
                           "children": [
                             {
                               "kind": "representation",
-                              "params": { "type": "ball_and_stick", "size_factor": 0.55, "ignore_hydrogens": true },
-                              "children": [
-                                { "kind": "color", "params": { "color": "#59A14F" } }
-                              ]
+                              "params": { "type": "ball_and_stick", "size_factor": 0.55, "ignore_hydrogens": true }
                             }
                           ]
                         }

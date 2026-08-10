@@ -44,7 +44,7 @@ than being relabeled as measured binding affinities.
 The docking comparison additionally requires one non-empty `mvs-node-json`
 primitives resource, one non-empty receptor-residue annotation, and one
 evidence-qualified interaction summary per pose. Contact residues are rendered
-as ball-and-stick at the line endpoints; ligands use a compact element-aware
+as ball-and-stick at the line endpoints; ligands use a compact, default-colored
 ball-and-stick representation. Those inputs must identify the calculation
 method and keep uncertain geometry labelled as a candidate or generic contact;
 the template displays the results but does not infer biochemical interactions
