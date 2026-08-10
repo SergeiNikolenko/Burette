@@ -16,8 +16,17 @@ overrides. Keep each setting in the smallest layer that owns it.
 | `apps/desktop/src-tauri/tauri.conf.json` | Tauri bundle metadata, resources, app identifiers, update config, and macOS file associations. |
 | `apps/desktop/src-tauri/capabilities/default.json` | Tauri capability set exposed to the desktop shell windows. |
 | `apps/desktop/src-tauri/permissions/burette.toml` | Burette command allowlist exposed through Tauri permissions. |
+| `apps/desktop/src-tauri/capabilities/compute.json` | Native compute capability set (`allow-compute-commands`) for the `main` and `workspace-*` windows. |
+| `apps/desktop/src-tauri/permissions/compute.toml` | Allowlist of the `compute_*` job, artifact, and purge commands. |
 | `package.json` | Workspace version, public scripts, package manager, and JavaScript dependency metadata. |
 | `vendor-assets.lock.json` | Expected Mol*, RDKit, and bundled web-runtime asset state. |
+| `config/xtb/pixi.toml` (+ `pixi.lock`) | Pinned Conda environment for the managed xTB runtime installation. |
+
+User-facing app settings (appearance, rendering defaults, compute defaults,
+xTB parameters, update channel) are owned by the settings UI; their nav
+structure lives in `apps/desktop/src/lib/settings-sections.ts` and their
+defaults in `apps/desktop/src/stores/settings-store.ts`. Do not duplicate that
+inventory here.
 
 When a preview format or document type changes, keep the registry, plist files,
 and focused format tests in sync. Run:
@@ -48,7 +57,7 @@ Example browser-dev shell:
 
 ```bash
 BURETTE_DEV_FS_ALLOW="$PWD/samples" \
-  bun scripts/burette-agent.mjs open --mode browser-dev-shell samples/mini.pdb
+  bun scripts/burette-agent.mjs open --mode browser-agent-shell samples/mini.pdb
 ```
 
 Example packaged dev install:

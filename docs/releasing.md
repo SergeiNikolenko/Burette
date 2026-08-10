@@ -8,18 +8,34 @@ Release identity is Burette-specific:
 - extension identifier: `com.local.BuretteV10.Preview`
 - release repository: `SergeiNikolenko/Burette`
 
+## Release Triggers
+
+The Release workflow (`.github/workflows/release.yml`) runs on:
+
+- a pushed tag matching `v*` (the tag must equal `v<package.json version>`), or
+- a manual `workflow_dispatch`, which derives the tag from the current
+  `package.json` version and fails if that tag already exists.
+
+Merged PRs do not create releases by themselves; a maintainer cuts a release
+by bumping the version and pushing the tag (or dispatching the workflow).
+Version bumps still happen per PR: the Native Bundle Build PR check runs
+`scripts/check-release-version.mjs`, which requires any PR that touches
+native build scope to advance the version past the last release.
+
 ## Version Discipline
 
-Every merged PR creates a release, so each PR must advance the version beyond
-`main`. Keep these versions aligned:
+Advance the version past the last released tag before cutting a release, and
+keep these locations aligned:
 
 - root `package.json`
 - root `bun.lock`
 - Tauri `apps/desktop/src-tauri/tauri.conf.json`
+- Tauri `apps/desktop/src-tauri/Cargo.toml`
+- `packages/burette/package.json` (Bun CLI installer)
 - Xcode `MARKETING_VERSION`
 - visible About/update version strings exposed by the Tauri shell
 
-Run:
+Run the alignment check (it also runs inside the Release workflow):
 
 ```bash
 bun run check:release
@@ -239,8 +255,9 @@ meet the default tap notability threshold yet.
 
 Stable GitHub releases update the external Homebrew tap automatically.
 Configure the `HOMEBREW_TAP_TOKEN` repository secret with write access to
-`SergeiNikolenko/homebrew-burette`; the release workflow fails early for stable
-releases when this token is missing. After the GitHub release is created, the
+`SergeiNikolenko/homebrew-burette`. When the token is missing, the workflow
+emits a warning and skips the Homebrew cask update; the app release is still
+built and published. After the GitHub release is created, the
 workflow checks out the tap, updates `Casks/burette.rb` or the sharded
 `Casks/b/burette.rb` cask `version` and `sha256` from the uploaded
 `Burette-<version>.zip` artifact, normalizes the macOS dependency syntax,

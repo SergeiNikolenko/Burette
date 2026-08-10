@@ -27,9 +27,14 @@ source of truth for which web assets belong to each runtime family.
 Current profiles:
 
 - `desktop-molstar`: Mol* viewer shell assets for desktop structure previews.
+- `desktop-mesoscale`: Mesoscale Explorer runtime assets for desktop mesoscale
+  documents.
 - `desktop-grid`: grid viewer, grid CSS, and RDKit JS/WASM for desktop
   collection previews.
+- `desktop-native-compute`: web assets for the native compute panels.
 - `quicklook-molstar`: Mol* viewer shell assets for Finder previews.
+- `quicklook-mesoscale`: Mesoscale runtime assets for Finder mesoscale
+  previews.
 - `quicklook-grid`: grid viewer, grid CSS, and RDKit JS/WASM for Finder grid
   previews.
 - `external-artifact`: minimal viewer shell assets for already-rendered
@@ -114,9 +119,11 @@ sort stay in the desktop grid command path so the web runtime does not need to
 hold the entire collection in memory.
 
 Grid bridge page sizes are intentionally split by host. Desktop Tauri and
-browser-dev runtimes request 72 rows per page to keep scrolling responsive
-without the earlier aggressive 144-row batches. Quick Look requests 48 rows per
-page to keep Finder extension memory lower.
+browser-dev runtimes request 720 rows per page
+(`apps/desktop/src-tauri/src/preview/runtime_grid.rs`,
+`PreviewExtension/Web/grid-viewer.js`) to keep large-collection scrolling
+smooth. Quick Look requests 48 rows per page to keep Finder extension memory
+lower.
 
 `scripts/perf-smoke.sh` includes an opt-in FTS perf smoke:
 

@@ -51,7 +51,7 @@ Use the CLI as the execution contract:
 
 ```bash
 bun scripts/burette-agent.mjs open --mode browser-preview samples/mini.pdb
-bun scripts/burette-agent.mjs open --mode browser-dev-shell samples/mini.pdb
+bun scripts/burette-agent.mjs open --mode browser-agent-shell samples/mini.pdb
 bun scripts/burette-agent.mjs observe --session-dir /tmp/burette-agent-session
 bun scripts/burette-agent.mjs act --session-dir /tmp/burette-agent-session '{"type":"reset_camera"}'
 ```
@@ -65,8 +65,8 @@ changing CLI, MCP, or skill behavior.
 | --- | --- |
 | `bun run ci:fast` | Fast PR validation equivalent. |
 | `bun run ci` | Broader repository validation. |
-| `bun run check` | JavaScript, vendor, format registry, Rust format/clippy, and Tauri structure checks. |
-| `bun run test` | Agent, update, and UI test groups. |
+| `bun run check` | JavaScript, vendor, format registry, Rust format/clippy, Tauri structure, and compute Metal checks. |
+| `bun run test` | Mesoscale, agent, update, and UI test groups. |
 | `bun scripts/check-preview-format-registry.mjs` | Preview format registry or content type changes. |
 | `bun scripts/check-vendor-assets.mjs` | Vendored runtime asset checks. |
 | `python3 scripts/check-blob-size.py --base <sha> --head <sha> --max-bytes 512000 --allowlist .github/blob-size-allowlist.txt` | GitHub blob-size policy checks for accidental large files. |
