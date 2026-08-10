@@ -3650,7 +3650,9 @@
     preview.style.width = `${cached.displayWidth}px`;
     preview.style.height = `${28 + cached.displayHeight}px`;
     preview.dataset.frameAspect = cached.frameAspect;
+    preview.classList.remove('loading');
     preview.classList.add('ready');
+    preview.removeAttribute('aria-busy');
     if (caption) caption.textContent = 'Click to apply';
     positionMolstarPresetPreview(item);
     return true;
@@ -3750,10 +3752,11 @@
     if (caption) caption.textContent = 'Rendering…';
     if (state) state.textContent = 'Rendering preview…';
     preview.classList.remove('hidden', 'ready', 'error', 'applying');
+    preview.classList.add('loading');
     preview.dataset.buretMolstarPreset = option.value;
     preview.title = `Click to apply ${option.label}`;
     preview.setAttribute('aria-label', `Apply ${option.label} preset`);
-    preview.removeAttribute('aria-busy');
+    preview.setAttribute('aria-busy', 'true');
     preview.style.width = '';
     preview.style.height = '';
     preview.removeAttribute('data-frame-aspect');
@@ -3776,7 +3779,7 @@
     molstarPresetPreviewController?.hide?.();
     const { preview } = molstarPresetPreviewElements();
     preview?.classList.add('hidden');
-    preview?.classList.remove('applying', 'viewport-constrained');
+    preview?.classList.remove('loading', 'applying', 'viewport-constrained');
     preview?.removeAttribute('aria-busy');
     const menu = document.querySelector('[data-buret-molstar-preset-menu]');
     if (menu && !menu.classList.contains('hidden')) positionMolstarPresetMenu();
@@ -3849,6 +3852,12 @@
     return molstarPresetPreviewController;
   }
 
+  function hideFailedMolstarPresetPreview(error, serial = molstarPresetPreviewSerial) {
+    if (serial !== molstarPresetPreviewSerial) return;
+    debug('Mol* preset preview failed: ' + (error?.message || String(error)));
+    hideMolstarPresetPreview();
+  }
+
   async function renderMolstarPresetPreview(viewer, { item, preset, serial }) {
     const option = molstarPresetOption(preset);
     try {
@@ -3876,15 +3885,12 @@
       await captureMolstarPresetPreview(item, viewer, serial);
       if (serial !== molstarPresetPreviewSerial) return;
       const { preview, caption } = molstarPresetPreviewElements();
+      preview?.classList.remove('loading');
       preview?.classList.add('ready');
+      preview?.removeAttribute('aria-busy');
       if (caption) caption.textContent = 'Click to apply';
     } catch (error) {
-      if (serial !== molstarPresetPreviewSerial) return;
-      const { preview, caption, state } = molstarPresetPreviewElements();
-      preview?.classList.add('error');
-      if (caption) caption.textContent = 'Unavailable';
-      if (state) state.textContent = error?.message || 'Preset preview unavailable.';
-      debug('Mol* preset preview failed: ' + (error?.message || String(error)));
+      hideFailedMolstarPresetPreview(error, serial);
     }
   }
 
@@ -3899,30 +3905,19 @@
     if (previewShell?.classList.contains('viewport-constrained')) return;
     const budgetMessage = molstarPresetPreviewBudgetMessage();
     if (budgetMessage) {
-      const { preview, caption, state } = molstarPresetPreviewElements();
-      preview?.classList.add('error');
-      if (caption) caption.textContent = 'Unavailable';
-      if (state) state.textContent = budgetMessage;
+      hideFailedMolstarPresetPreview(new Error(budgetMessage));
       return;
     }
     if (restoreCachedMolstarPresetPreview(item, preset)) return;
     const serial = ++molstarPresetPreviewSerial;
     const controller = ensureMolstarPresetPreviewController();
     if (!controller) {
-      const { preview, caption, state } = molstarPresetPreviewElements();
-      preview?.classList.add('error');
-      if (caption) caption.textContent = 'Unavailable';
-      if (state) state.textContent = 'Preset preview controller is unavailable.';
+      hideFailedMolstarPresetPreview(new Error('Preset preview controller is unavailable.'), serial);
       return;
     }
     controller.show();
     void controller.requestPreview({ item, preset, serial }).catch(error => {
-      if (serial !== molstarPresetPreviewSerial) return;
-      const { preview, caption, state } = molstarPresetPreviewElements();
-      preview?.classList.add('error');
-      if (caption) caption.textContent = 'Unavailable';
-      if (state) state.textContent = error?.message || 'Preset preview unavailable.';
-      debug('Mol* preset preview failed: ' + (error?.message || String(error)));
+      hideFailedMolstarPresetPreview(error, serial);
     });
   }
 
@@ -4344,34 +4339,66 @@
     const option = molstarPresetOption(value);
     const appearance = molstarPresetAppearance(option, activeConfig || window.BuretteConfig || {});
     const legacyStyle = option.legacyStyle || appearance;
-    updateMolstarPresentationConfig(value, appearance, legacyStyle);
     const viewer = activeViewer;
     if (!viewer) {
       setStatus('Mol* presets can be changed after the viewer loads.', 'error');
       return;
     }
-    const cameraSnapshot = preserveCamera ? captureMolstarCameraSnapshot(viewer) : null;
+    const previousConfig = activeConfig || window.BuretteConfig || {};
+    const previousPreset = configuredMolstarPreset(previousConfig);
+    const previousStyle = configuredMolstarStyle(previousConfig);
+    const previousAppearance = configuredMolstarAppearance(previousConfig);
+    const rollbackCameraSnapshot = captureMolstarCameraSnapshot(viewer);
+    const cameraSnapshot = preserveCamera ? rollbackCameraSnapshot : null;
     const transitionFrame = captureMolstarTransitionFrame();
+    const wasStoryPlaying = molstarStoryState().isPlaying;
+    let sceneSnapshot = null;
     let applied = false;
     const serial = ++molstarStyleApplySerial;
     setStatus(`[web] Applying Mol* ${option.label} preset…`);
     try {
+      if (wasStoryPlaying) await controlMolstarStory({ operation: 'pause' });
+      sceneSnapshot = viewer.plugin?.state?.data?.getSnapshot?.();
       if (option.provider) await applyMolstarProviderPreset(viewer, option);
       else await reloadMolstarStyle(viewer, legacyStyle, serial);
-      if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+      if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
       await applyMolstarAppearance(viewer, appearance);
-      if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+      if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
       if (cameraSnapshot) {
         restoreMolstarCameraSnapshotNow(viewer, cameraSnapshot);
         await waitForMolstarPresetPreviewDraw(viewer);
-        if (serial !== molstarStyleApplySerial || activeViewer !== viewer) return;
+        if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
       }
+      updateMolstarPresentationConfig(value, appearance, legacyStyle);
+      if (wasStoryPlaying) await controlMolstarStory({ operation: 'play' });
       applied = true;
       setStatus(`[web] Applied Mol* ${option.label} preset`);
       setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
     } catch (error) {
-      if (serial !== molstarStyleApplySerial) return;
-      setStatus(`Mol* preset switch failed.\n\n${error?.message || String(error)}`, 'error');
+      if (activeViewer !== viewer) return;
+      if (serial !== molstarStyleApplySerial) {
+        if (wasStoryPlaying && !molstarStoryState().isPlaying) {
+          try { await controlMolstarStory({ operation: 'play' }); } catch (_) {}
+        }
+        return;
+      }
+      try {
+        updateMolstarPresentationConfig(previousPreset, previousAppearance, previousStyle);
+        const storyManager = viewer.plugin?.managers?.snapshot;
+        if (storyManager && molstarStoryState().available) {
+          applyMolstarStoryStyleToSnapshots(storyManager, previousStyle);
+        }
+        if (sceneSnapshot) {
+          await viewer.plugin.runTask(viewer.plugin.state.data.setSnapshot(sceneSnapshot));
+        }
+        await applyMolstarAppearance(viewer, previousAppearance);
+        restoreMolstarCameraSnapshotNow(viewer, rollbackCameraSnapshot);
+        if (wasStoryPlaying) await controlMolstarStory({ operation: 'play' });
+      } catch (restoreError) {
+        debug('Mol* preset rollback failed: ' + (restoreError?.message || String(restoreError)));
+      }
+      setStatus(`Couldn’t apply ${option.label}. The previous view was restored.`, 'error');
+      debug('Mol* preset switch failed: ' + (error?.message || String(error)));
     } finally {
       if (applied) fadeMolstarTransitionFrame(transitionFrame);
       else removeMolstarTransitionFrame(transitionFrame);
@@ -5437,7 +5464,7 @@
       const applyPreview = event => {
         if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
         const preset = preview?.dataset?.buretMolstarPreset;
-        if (!preset) return;
+        if (!preset || !preview.classList.contains('ready')) return;
         event.preventDefault();
         event.stopPropagation();
         cancelMolstarPresetPreviewClose();
@@ -5465,7 +5492,7 @@
   function moveMolstarPresetPreviewFocus(event, menu) {
     if (event.key !== 'Tab' || !menu) return false;
     const { preview } = molstarPresetPreviewElements();
-    if (!preview || preview.classList.contains('hidden') || preview.classList.contains('viewport-constrained')) return false;
+    if (!preview || preview.classList.contains('hidden') || preview.classList.contains('loading') || preview.classList.contains('viewport-constrained')) return false;
     if (!event.shiftKey && menu.contains(document.activeElement)) {
       event.preventDefault();
       preview.focus();

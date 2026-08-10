@@ -2115,7 +2115,7 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   outline-offset: -2px;
 }
 .buret-molstar-preset-menu .buret-tree-menu-item[aria-checked="true"] {
-  background: color-mix(in srgb, var(--buret-accent, #b45cff) 18%, var(--buret-molstar-row-background));
+  background: var(--buret-molstar-hover-background);
 }
 .buret-molstar-preset-current {
   display: none;
@@ -2152,7 +2152,7 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   outline-offset: -2px;
 }
 .buret-molstar-appearance-item[aria-checked="true"] {
-  background: color-mix(in srgb, var(--buret-accent, #b45cff) 18%, var(--buret-molstar-row-background));
+  background: var(--buret-molstar-hover-background);
 }
 .buret-molstar-preset-menu .buret-tree-menu-item[aria-checked="true"]:focus-visible,
 .buret-molstar-appearance-item[aria-checked="true"]:focus-visible {
@@ -2202,6 +2202,10 @@ body.buret-theme-light .buret-molstar-preset-menu-separator {
   user-select: none;
 }
 .buret-molstar-preset-preview.hidden { display: none; }
+.buret-molstar-preset-preview.loading {
+  visibility: hidden;
+  pointer-events: none;
+}
 .buret-molstar-preset-preview.viewport-constrained { display: none; }
 .buret-molstar-preset-preview.ready:hover {
   box-shadow: 0 22px 52px var(--buret-molstar-shadow);

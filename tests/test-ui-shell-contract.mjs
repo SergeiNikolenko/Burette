@@ -438,6 +438,7 @@ const pluginManifest = JSON.parse(await source('plugins/burette-agent/.codex-plu
 const desktopPackage = JSON.parse(await source('apps/desktop/package.json'));
 const viewerShell = previewShell;
 const viewer = previewViewer;
+const previewIndex = await source('PreviewExtension/Web/index.html');
 const commandDocuments = await source('apps/desktop/src-tauri/src/commands/documents.rs');
 const windowMutationBarrier = await source('apps/desktop/src/lib/window-mutation-barrier.ts');
 const tauriLib = await source('apps/desktop/src-tauri/src/lib.rs');
@@ -5451,6 +5452,8 @@ assert.match(previewViewer, /appearanceItem\.dataset\.buretMolstarAppearance/);
 assert.doesNotMatch(previewViewer, /data-buret-molstar-illustrative/);
 assert.match(previewRuntimeCss, /\.buret-molstar-appearance-group \{/);
 assert.match(previewRuntimeCss, /\.buret-molstar-appearance-item\[aria-checked="true"\] \.buret-molstar-appearance-indicator/);
+assert.match(previewRuntimeCss, /\.buret-molstar-preset-menu \.buret-tree-menu-item\[aria-checked="true"\] \{\s*background: var\(--buret-molstar-hover-background\);\s*\}/);
+assert.match(previewRuntimeCss, /\.buret-molstar-appearance-item\[aria-checked="true"\] \{\s*background: var\(--buret-molstar-hover-background\);\s*\}/);
 assert.match(previewRuntimeCss, /body\.buret-theme-light \.buret-molstar-preset-menu-separator \{/);
 assert.match(previewRuntimeCss, /--buret-menu-focus-ring: #D891FF;/);
 assert.match(previewRuntimeCss, /body\.buret-theme-light \{[^}]*--buret-menu-focus-ring: #6D2AA5;/);
@@ -5479,6 +5482,10 @@ assert.match(previewViewer, /preview\.dataset\.frameAspect = \(sourceWidth \/ so
 assert.match(previewShell, /data-buret-molstar-preset-preview-image/);
 assert.match(previewRuntimeCss, /\.buret-molstar-preset-preview-stage \{[^}]*opacity: 0;[^}]*pointer-events: none;/);
 assert.match(previewViewer, /showMolstarPresetPreviewShell\(item, molstarPresetOption\(preset\)\);/);
+assert.match(previewViewer, /preview\.classList\.add\('loading'\)/);
+assert.match(previewRuntimeCss, /\.buret-molstar-preset-preview\.loading \{\s*visibility: hidden;\s*pointer-events: none;\s*\}/);
+assert.match(previewViewer, /preview\?\.classList\.remove\('loading'\);\s*preview\?\.classList\.add\('ready'\)/);
+assert.match(previewViewer, /catch \(error\) \{[\s\S]*?hideFailedMolstarPresetPreview\(error, serial\);/);
 assert.match(previewViewer, /sourcePlugin\.state\.data\.getSnapshot\(\)/);
 assert.match(previewViewer, /applyViewerBackground\(viewer\);/);
 assert.match(previewViewer, /viewer\.plugin\.runTask\(viewer\.plugin\.state\.data\.setSnapshot\(snapshot\)\)/);
@@ -5523,11 +5530,26 @@ const applyMolstarPresetNowSource = previewViewer.slice(
   previewViewer.indexOf('async function applyConfiguredMolstarPreset'),
 );
 assert.match(applyMolstarPresetNowSource, /async function applyMolstarPresetNow\(preset, \{ preserveCamera = false \} = \{\}\)/);
-assert.match(applyMolstarPresetNowSource, /const cameraSnapshot = preserveCamera \? captureMolstarCameraSnapshot\(viewer\) : null/);
+assert.match(applyMolstarPresetNowSource, /const rollbackCameraSnapshot = captureMolstarCameraSnapshot\(viewer\);\s*const cameraSnapshot = preserveCamera \? rollbackCameraSnapshot : null/);
 assert.match(applyMolstarPresetNowSource, /if \(cameraSnapshot\) \{[\s\S]*restoreMolstarCameraSnapshotNow\(viewer, cameraSnapshot\);[\s\S]*await waitForMolstarPresetPreviewDraw\(viewer\);[\s\S]*\}/);
 assert.match(applyMolstarPresetNowSource, /const transitionFrame = captureMolstarTransitionFrame\(\);[\s\S]*?if \(applied\) fadeMolstarTransitionFrame\(transitionFrame\)/);
 assert.match(applyMolstarPresetNowSource, /const viewer = activeViewer/);
 assert.match(applyMolstarPresetNowSource, /activeViewer !== viewer/);
+assert.match(applyMolstarPresetNowSource, /const wasStoryPlaying = molstarStoryState\(\)\.isPlaying;/);
+assert.match(applyMolstarPresetNowSource, /if \(wasStoryPlaying\) await controlMolstarStory\(\{ operation: 'pause' \}\);/);
+assert.match(applyMolstarPresetNowSource, /sceneSnapshot = viewer\.plugin\?\.state\?\.data\?\.getSnapshot\?\.\(\);/);
+assert.ok(
+  applyMolstarPresetNowSource.indexOf('updateMolstarPresentationConfig(value, appearance, legacyStyle);')
+    > applyMolstarPresetNowSource.indexOf('await applyMolstarAppearance(viewer, appearance);'),
+  'the selected preset must be committed only after the scene applied successfully',
+);
+assert.match(applyMolstarPresetNowSource, /if \(sceneSnapshot\) \{\s*await viewer\.plugin\.runTask\(viewer\.plugin\.state\.data\.setSnapshot\(sceneSnapshot\)\);\s*\}/);
+assert.match(applyMolstarPresetNowSource, /updateMolstarPresentationConfig\(previousPreset, previousAppearance, previousStyle\);/);
+assert.match(applyMolstarPresetNowSource, /await applyMolstarAppearance\(viewer, previousAppearance\);/);
+assert.match(applyMolstarPresetNowSource, /restoreMolstarCameraSnapshotNow\(viewer, rollbackCameraSnapshot\);/);
+assert.match(previewIndex, /Preview could not be updated\./);
+assert.doesNotMatch(previewIndex, /el\.textContent = '\[web\] JavaScript error\\n\\n' \+ message/);
+assert.doesNotMatch(previewIndex, /el\.textContent = '\[web\] Unhandled promise rejection\\n\\n' \+ message/);
 assert.match(previewViewer, /if \(style === 'default' \|\| style === 'illustrative'\) void requestMolstarAppearance\(style\)/);
 assert.match(previewViewer, /const appearance = molstarPresetAppearance\(option, activeConfig \|\| window\.BuretteConfig \|\| \{\}\)/);
 assert.match(previewViewer, /void requestMolstarPreset\(preset\)/);
