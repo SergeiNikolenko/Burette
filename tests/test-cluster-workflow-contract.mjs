@@ -207,6 +207,19 @@ assert.match(gridViewer, /body\.type === 'chemicalSpaceSelectionChanged'/);
 assert.match(chemicalSpacePanel, /filterToSelection: tool === "lasso"/);
 assert.match(gridViewer, /chemicalSpaceFilterActive = body\.filterToSelection === true/);
 assert.match(gridViewer, /function filterByChemicalSpaceSelection/);
+assert.match(
+  gridViewer,
+  /function refreshRemoteChemicalSpaceSelection/,
+  "remote grids must page in every lasso-selected molecule, not filter the loaded window",
+);
+assert.match(workflow, /REPRESENTATION_UNAVAILABLE_ERROR_NAME = "RepresentationUnavailableError"/);
+assert.match(browserDevCompute, /representationServerError/);
+assert.match(
+  chemicalSpacePanel,
+  /ChemicalSpaceRepresentationUnavailable/,
+  "a missing model runtime must render the dedicated state with a way back to Morgan",
+);
+assert.match(chemicalSpacePanel, /isRepresentationUnavailableError\(cause\)/);
 assert.match(gridViewer, /body\.type === 'chemicalSpaceHoverChanged'/);
 assert.doesNotMatch(gridViewer, /chemicalSpacePreviewTimer/);
 assert.doesNotMatch(gridViewer, /syncChemicalSpaceHover/);
