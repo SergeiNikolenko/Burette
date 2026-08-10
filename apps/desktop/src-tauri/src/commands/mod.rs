@@ -1,5 +1,6 @@
 pub(crate) mod agent_integration;
 pub(crate) mod chemical_editors;
+pub(crate) mod chemical_space_models;
 pub(crate) mod conformer;
 pub(crate) mod descriptors;
 pub(crate) mod documents;

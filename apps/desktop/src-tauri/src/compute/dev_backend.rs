@@ -8,14 +8,14 @@ use burette_compute_core::{
     decode_native_mmff_parameters, ConformerEnginePackBuilder, ExtractedConformerParameters,
     Fingerprint2048, FINGERPRINT_BYTES,
 };
-use burette_compute_metal::{MetalTanimotoKnnExecution, MetalTanimotoRuntime};
+use burette_compute_metal::MetalTanimotoRuntime;
 use burette_compute_protocol::{
     AllGridScope, Backend, BackendPolicy, ComputeJobSchemaVersion, ConformerInitialization,
     ConformerResourceLimits, ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant,
     ExecutionPolicy, GridScope, GridSourceReference, MmffVariant, SchedulingPolicy,
     WorkflowTemplateId,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -25,9 +25,9 @@ use crate::preview::grid_store::GridAlignmentSourceRow;
 use super::{
     alignment_workflow::{execute_snapshot_alignment_with_run_id, GridAlignmentRequest},
     chemical_space::{
-        cluster_chemical_space_from_fingerprints,
-        execute_chemical_space_from_fingerprints_with_knn, ChemicalSpaceClusterRequest,
-        ChemicalSpaceRequest,
+        cluster_chemical_space_from_fingerprints, decode_knn_cache_payload,
+        encode_knn_cache_payload, execute_chemical_space_from_fingerprints_with_knn,
+        ChemicalSpaceClusterRequest, ChemicalSpaceKnnCachePayload, ChemicalSpaceRequest,
     },
     conformer_executor::execute_conformer_distance_geometry_with_service,
     conformer_plan::ConformerMoleculeIdentity,
@@ -94,7 +94,7 @@ struct DevConformerRecord {
 struct DevChemicalSpaceRequest {
     options: ChemicalSpaceRequest,
     records: Vec<DevChemicalSpaceRecord>,
-    knn_cache: Option<DevChemicalSpaceKnnCache>,
+    knn_cache: Option<ChemicalSpaceKnnCachePayload>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,14 +110,6 @@ struct DevChemicalSpaceRecord {
     source_record_id: u64,
     fingerprint_base64: Option<String>,
     error: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct DevChemicalSpaceKnnCache {
-    neighbors_per_vertex: usize,
-    source_indices_base64: String,
-    similarities_base64: String,
 }
 
 pub(crate) fn run() -> Result<(), String> {
@@ -225,7 +217,7 @@ fn execute_chemical_space(
     let cached_knn = input
         .knn_cache
         .as_ref()
-        .map(|cache| decode_knn_cache(cache, fingerprints.len()))
+        .map(|cache| decode_knn_cache_payload(cache, fingerprints.len()))
         .transpose()?;
     let execution = execute_chemical_space_from_fingerprints_with_knn(
         &fingerprints,
@@ -238,7 +230,7 @@ fn execute_chemical_space(
     .map_err(|error| error.to_string())?;
     Ok(json!({
         "embedding": execution.result,
-        "knnCache": encode_knn_cache(&execution.knn),
+        "knnCache": encode_knn_cache_payload(&execution.knn),
     }))
 }
 
@@ -286,52 +278,6 @@ fn execute_chemical_space_cluster(
         .map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())
-}
-
-fn encode_knn_cache(knn: &MetalTanimotoKnnExecution) -> DevChemicalSpaceKnnCache {
-    let mut source_indices = Vec::with_capacity(knn.source_indices.len() * 4);
-    for value in &knn.source_indices {
-        source_indices.extend_from_slice(&value.to_le_bytes());
-    }
-    let mut similarities = Vec::with_capacity(knn.similarities.len() * 4);
-    for value in &knn.similarities {
-        similarities.extend_from_slice(&value.to_le_bytes());
-    }
-    DevChemicalSpaceKnnCache {
-        neighbors_per_vertex: knn.neighbors_per_vertex,
-        source_indices_base64: STANDARD.encode(source_indices),
-        similarities_base64: STANDARD.encode(similarities),
-    }
-}
-
-fn decode_knn_cache(
-    cache: &DevChemicalSpaceKnnCache,
-    record_count: usize,
-) -> Result<MetalTanimotoKnnExecution, String> {
-    let expected_values = record_count
-        .checked_mul(cache.neighbors_per_vertex)
-        .ok_or("native chemical-space neighbor cache size overflowed")?;
-    let source_indices = STANDARD
-        .decode(&cache.source_indices_base64)
-        .map_err(|_| "native chemical-space neighbor indexes are not valid base64")?;
-    let similarities = STANDARD
-        .decode(&cache.similarities_base64)
-        .map_err(|_| "native chemical-space neighbor similarities are not valid base64")?;
-    if source_indices.len() != expected_values * 4 || similarities.len() != expected_values * 4 {
-        return Err("native chemical-space neighbor cache has an invalid shape".into());
-    }
-    Ok(MetalTanimotoKnnExecution {
-        source_indices: source_indices
-            .chunks_exact(4)
-            .map(|bytes| u32::from_le_bytes(bytes.try_into().expect("four-byte chunk")))
-            .collect(),
-        similarities: similarities
-            .chunks_exact(4)
-            .map(|bytes| f32::from_le_bytes(bytes.try_into().expect("four-byte chunk")))
-            .collect(),
-        neighbors_per_vertex: cache.neighbors_per_vertex,
-        gpu_time_ms: 0,
-    })
 }
 
 fn source_indexes(source: &DevComputeSource) -> Result<Vec<usize>, String> {
@@ -727,6 +673,7 @@ fn write_response(result: Value) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use burette_compute_metal::MetalTanimotoKnnExecution;
 
     const WATER: &str = "water\n  Burette\n\n  3  2  0  0  0  0  0  0  0  0999 V2000\n    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9572    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.2390    0.9270    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END\n";
 
@@ -769,8 +716,8 @@ mod tests {
             neighbors_per_vertex: 2,
             gpu_time_ms: 17,
         };
-        let encoded = encode_knn_cache(&knn);
-        let decoded = decode_knn_cache(&encoded, 3).expect("decoded neighbor cache");
+        let encoded = encode_knn_cache_payload(&knn);
+        let decoded = decode_knn_cache_payload(&encoded, 3).expect("decoded neighbor cache");
         assert_eq!(decoded.source_indices, knn.source_indices);
         assert_eq!(decoded.similarities, knn.similarities);
         assert_eq!(decoded.neighbors_per_vertex, knn.neighbors_per_vertex);

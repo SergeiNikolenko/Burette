@@ -731,20 +731,24 @@ impl MetalHost {
                 "Tanimoto top-K similarity",
             )?;
             let active_count = row_count * neighbors_per_vertex;
-            if selected_indices[..active_count]
+            let invalid = selected_indices[..active_count]
                 .iter()
                 .enumerate()
-                .any(|(offset, index)| {
+                .find(|(offset, index)| {
                     let row_index = row_start + offset / neighbors_per_vertex;
-                    *index as usize >= record_count
-                        || *index as usize == row_index
-                        || !selected_similarities[offset].is_finite()
-                        || !(0.0..=1.0).contains(&selected_similarities[offset])
-                })
-            {
-                return Err(MetalRuntimeError::Dispatch(
-                    "Metal Tanimoto top-K returned invalid neighbors".into(),
-                ));
+                    **index as usize >= record_count
+                        || **index as usize == row_index
+                        || !selected_similarities[*offset].is_finite()
+                        || !(0.0..=1.0).contains(&selected_similarities[*offset])
+                });
+            if let Some((offset, index)) = invalid {
+                let row_index = row_start + offset / neighbors_per_vertex;
+                return Err(MetalRuntimeError::Dispatch(format!(
+                    "Metal Tanimoto top-K returned invalid neighbors: row {row_index} rank {} \
+                     selected index {index} (records {record_count}) with similarity {}",
+                    offset % neighbors_per_vertex,
+                    selected_similarities[offset],
+                )));
             }
             source_indices.extend_from_slice(&selected_indices[..active_count]);
             similarities.extend_from_slice(&selected_similarities[..active_count]);

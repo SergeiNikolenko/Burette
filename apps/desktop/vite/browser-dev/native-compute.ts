@@ -135,11 +135,12 @@ async function runMolecularRepresentation(
     "Burette",
     "chemical-space-models",
   );
+  await mkdir(modelRoot, { recursive: true });
   const output = await runWithStdin(
     python,
     [script],
     input,
-    repoRoot,
+    modelRoot,
     MODEL_REQUEST_TIMEOUT_MS,
     {
       HF_HOME: process.env.HF_HOME?.trim() || join(modelRoot, "huggingface"),

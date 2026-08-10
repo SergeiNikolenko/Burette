@@ -395,7 +395,7 @@ export function AppLayout({
       const dockEl = rightDockOpen ? rightDockElementRef.current : null;
       const dockLeft = dockEl?.getBoundingClientRect().left;
       const cover = dockLeft === undefined ? 0 : Math.max(0, Math.round(iframe.getBoundingClientRect().right - dockLeft));
-      postMessageToViewerSource(win, { source: "burrete-grid-host", body: { type: "gridViewportCover", cover } });
+      postMessageToViewerSource(win, { source: "burette-grid-host", body: { type: "gridViewportCover", cover } });
     };
     post();
     const dockEl = rightDockElementRef.current;

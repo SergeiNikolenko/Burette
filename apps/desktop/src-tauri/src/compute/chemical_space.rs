@@ -1,9 +1,10 @@
 use std::{num::NonZeroUsize, time::Instant};
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use burette_compute_core::{
     build_tanimoto_umap_graph, build_tmap_layout, butina_clusters,
     ChemicalSpaceMethod as NativeChemicalSpaceMethod, Fingerprint2048, GraphBuildOptions,
-    TanimotoKnnOptions, UmapOptions,
+    TanimotoKnnOptions, UmapOptions, FINGERPRINT_BYTES,
 };
 use burette_compute_metal::{MetalTanimotoKnnExecution, MetalTanimotoRuntime};
 use burette_compute_protocol::{SimilarityCutoff, MAX_UNDIRECTED_SIMILARITY_EDGES};
@@ -118,6 +119,103 @@ impl ChemicalSpaceRequest {
     pub(crate) const fn requested_neighbors(&self) -> usize {
         self.neighbors
     }
+}
+
+/// Wire shape of a serialized kNN graph, shared by the browser-dev backend and
+/// the learned-representation flow: the Python model worker emits this exact
+/// payload, and both consumers decode it into a [`MetalTanimotoKnnExecution`].
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ChemicalSpaceKnnCachePayload {
+    pub(crate) neighbors_per_vertex: usize,
+    pub(crate) source_indices_base64: String,
+    pub(crate) similarities_base64: String,
+}
+
+pub(crate) fn encode_knn_cache_payload(
+    knn: &MetalTanimotoKnnExecution,
+) -> ChemicalSpaceKnnCachePayload {
+    let mut source_indices = Vec::with_capacity(knn.source_indices.len() * 4);
+    for value in &knn.source_indices {
+        source_indices.extend_from_slice(&value.to_le_bytes());
+    }
+    let mut similarities = Vec::with_capacity(knn.similarities.len() * 4);
+    for value in &knn.similarities {
+        similarities.extend_from_slice(&value.to_le_bytes());
+    }
+    ChemicalSpaceKnnCachePayload {
+        neighbors_per_vertex: knn.neighbors_per_vertex,
+        source_indices_base64: STANDARD.encode(source_indices),
+        similarities_base64: STANDARD.encode(similarities),
+    }
+}
+
+pub(crate) fn decode_knn_cache_payload(
+    cache: &ChemicalSpaceKnnCachePayload,
+    record_count: usize,
+) -> Result<MetalTanimotoKnnExecution, String> {
+    let expected_values = record_count
+        .checked_mul(cache.neighbors_per_vertex)
+        .ok_or("native chemical-space neighbor cache size overflowed")?;
+    let source_indices = STANDARD
+        .decode(&cache.source_indices_base64)
+        .map_err(|_| "native chemical-space neighbor indexes are not valid base64")?;
+    let similarities = STANDARD
+        .decode(&cache.similarities_base64)
+        .map_err(|_| "native chemical-space neighbor similarities are not valid base64")?;
+    if source_indices.len() != expected_values * 4 || similarities.len() != expected_values * 4 {
+        return Err("native chemical-space neighbor cache has an invalid shape".into());
+    }
+    Ok(MetalTanimotoKnnExecution {
+        source_indices: source_indices
+            .chunks_exact(4)
+            .map(|bytes| u32::from_le_bytes(bytes.try_into().expect("four-byte chunk")))
+            .collect(),
+        similarities: similarities
+            .chunks_exact(4)
+            .map(|bytes| f32::from_le_bytes(bytes.try_into().expect("four-byte chunk")))
+            .collect(),
+        neighbors_per_vertex: cache.neighbors_per_vertex,
+        gpu_time_ms: 0,
+    })
+}
+
+/// Embeds a learned representation whose neighbourhood graph was produced by
+/// the Python model worker. The vertices carry no real fingerprints, so the
+/// supplied kNN must match the effective neighbor count exactly — a mismatch
+/// must fail instead of silently recomputing Tanimoto over placeholder bits.
+pub(crate) fn execute_learned_chemical_space_from_knn(
+    source_record_ids: &[u64],
+    failed_records: usize,
+    runtime: &MetalTanimotoRuntime,
+    request: ChemicalSpaceRequest,
+    knn: &MetalTanimotoKnnExecution,
+) -> ComputeResult<ChemicalSpaceResult> {
+    let count = source_record_ids.len();
+    if count < 2 {
+        return Err(ComputeCoordinatorError::Validation(
+            "Chemical space requires at least two represented molecules".into(),
+        ));
+    }
+    let clamped_neighbors = request.neighbors.min(count - 1);
+    if knn.neighbors_per_vertex != clamped_neighbors
+        || knn.source_indices.len() != count * clamped_neighbors
+        || knn.similarities.len() != count * clamped_neighbors
+    {
+        return Err(ComputeCoordinatorError::Validation(
+            "The learned neighbor graph does not match the requested neighbor count".into(),
+        ));
+    }
+    let fingerprints = vec![Fingerprint2048::from_le_bytes([0u8; FINGERPRINT_BYTES]); count];
+    Ok(execute_chemical_space_from_fingerprints_with_knn(
+        &fingerprints,
+        source_record_ids,
+        failed_records,
+        runtime,
+        request,
+        Some(knn),
+    )?
+    .result)
 }
 
 pub(crate) fn execute_chemical_space(

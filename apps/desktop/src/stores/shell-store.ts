@@ -18,6 +18,8 @@ import {
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 import { workspaceStorageKey } from "../lib/window-scope";
 
+const MAX_DOCK_TAB_MEMORY_ENTRIES = 64;
+
 type ShellState = {
   sidebarOpen: boolean;
   sidebarWidth: number;
@@ -42,6 +44,11 @@ type ShellState = {
   hiddenProjectRoots: string[];
   pinnedStructurePaths: string[];
   sidebarQuery: string;
+  // Which workspace tab the docks are currently serving, plus the dock tab each
+  // workspace tab last had active. Session-scoped on purpose: workspace tab ids
+  // do not survive a restart, so none of this is persisted or snapshotted.
+  dockContextTabId: string | null;
+  dockTabMemory: Record<string, { right: DockTabKind; bottom: DockTabKind }>;
   toggleSidebar: () => void;
   closeSidebar: () => void;
   setSidebarWidth: (width: number) => void;
@@ -53,6 +60,7 @@ type ShellState = {
   setDockActiveTab: (area: DockArea, kind: DockTabKind) => void;
   setDockDocument: (area: DockArea, documentId: string | null) => void;
   setDockTool: (area: DockArea, tool: DockToolKind | null) => void;
+  activateDockContext: (tabId: string | null) => void;
   addDockDrop: (input: DockDropInput) => void;
   toggleProjectsOpen: () => void;
   setExpandedProjectIds: (projectIds: string[]) => void;
@@ -253,6 +261,8 @@ export const useShellStore = create<ShellState>()(
       hiddenProjectRoots: [],
       pinnedStructurePaths: [],
       sidebarQuery: "",
+      dockContextTabId: null,
+      dockTabMemory: {},
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       closeSidebar: () => set({ sidebarOpen: false }),
       setSidebarWidth: (width) => set({ sidebarWidth: normalizeSidebarWidth(width) }),
@@ -319,6 +329,32 @@ export const useShellStore = create<ShellState>()(
               bottomDockTool: null,
               bottomDockActiveTab: "files",
             }),
+      activateDockContext: (tabId) =>
+        set((state) => {
+          if (tabId === state.dockContextTabId) return state;
+          const memory = { ...state.dockTabMemory };
+          if (state.dockContextTabId) {
+            memory[state.dockContextTabId] = {
+              right: state.rightDockActiveTab,
+              bottom: state.bottomDockActiveTab,
+            };
+          }
+          for (const key of Object.keys(memory).slice(0, -MAX_DOCK_TAB_MEMORY_ENTRIES)) {
+            delete memory[key];
+          }
+          const remembered = tabId ? memory[tabId] : undefined;
+          return {
+            dockContextTabId: tabId,
+            dockTabMemory: memory,
+            // A document pinned into the dock belonged to the previous
+            // workspace tab; dropping the pin lets both docks follow the
+            // active document of the tab being entered.
+            rightDockDocumentId: null,
+            bottomDockDocumentId: null,
+            rightDockActiveTab: remembered?.right ?? state.rightDockActiveTab,
+            bottomDockActiveTab: remembered?.bottom ?? state.bottomDockActiveTab,
+          };
+        }),
       setDockTool: (area, tool) =>
         set((state) => area === "right"
           ? { rightDockOpen: true, rightDockDocumentId: null, rightDockTool: tool, rightDockActiveTab: "files" }
