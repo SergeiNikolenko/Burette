@@ -1890,13 +1890,6 @@ body:has(.msp-viewport-controls-buttons .msp-hover-box-wrapper:hover) .buret-gen
   display: none; align-items: center; gap: 4px; padding-left: 5px;
   border-left: 1px solid var(--buret-toolbar-border);
 }
-.buret-preview-dock-toggle {
-  width: 30px;
-  padding: 0;
-}
-body:not(.buret-preview-docks-enabled) .buret-preview-dock-toggle {
-  display: none;
-}
 .buret-preview-dock {
   position: fixed;
   z-index: 2147483644;

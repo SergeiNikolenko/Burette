@@ -4212,11 +4212,6 @@
       if (previewDockState.right) void refreshPreviewDockObserve();
       else window.clearTimeout(previewDockObserveTimer);
     }
-    updatePreviewDockButtons();
-  }
-
-  function togglePreviewDock(area) {
-    setPreviewDockOpen(area, !previewDockState[area]);
   }
 
   function previewDocksEnabled() {
@@ -4234,28 +4229,8 @@
     return enabled;
   }
 
-  function updatePreviewDockButtons() {
-    const toolbar = document.getElementById('buret-toolbar');
-    if (!toolbar) return;
-    for (const area of ['bottom', 'right']) {
-      const button = toolbar.querySelector(`[data-buret-dock-toggle="${area}"]`);
-      if (!button) continue;
-      const open = previewDockState[area] === true;
-      button.classList.toggle('active', open);
-      button.setAttribute('aria-label', `${open ? 'Hide' : 'Show'} ${area} dock`);
-      button.setAttribute('title', `${open ? 'Hide' : 'Show'} ${area} dock`);
-    }
-  }
-
   function bindPreviewDockControls(toolbar) {
-    if (!toolbar || !previewDocksEnabled() || toolbar.dataset.previewDockTogglesBound === '1') return;
-    toolbar.addEventListener('click', event => {
-      const button = event.target?.closest?.('[data-buret-dock-toggle]');
-      if (!button || !toolbar.contains(button)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      togglePreviewDock(button.getAttribute('data-buret-dock-toggle'));
-    });
+    if (!toolbar || !previewDocksEnabled() || toolbar.dataset.previewDockControlsBound === '1') return;
     document.addEventListener('click', event => {
       const close = event.target?.closest?.('[data-buret-dock-close]');
       if (!close) return;
@@ -4263,8 +4238,7 @@
       event.stopPropagation();
       setPreviewDockOpen(close.getAttribute('data-buret-dock-close'), false);
     });
-    toolbar.dataset.previewDockTogglesBound = '1';
-    updatePreviewDockButtons();
+    toolbar.dataset.previewDockControlsBound = '1';
   }
 
   function applyDefaultPreviewDocks(toolbar) {
@@ -5283,7 +5257,6 @@
     installViewerResizeObserver(viewer);
     updateToolbarVisibility();
     updateSdfPoseButton();
-    updatePreviewDockButtons();
     updateThemeButton();
     applyLayoutState(viewer);
   }
@@ -16599,10 +16572,19 @@
     applyDefaultDockingPoseControlsPosition(root);
   }
 
+  function defaultDockingPoseControlsTop(root, bounds) {
+    const toolbarRect = visibleRect('#buret-toolbar');
+    if (!toolbarRect) return bounds.top;
+    const width = root.offsetWidth || root.getBoundingClientRect().width || 180;
+    const overlapsToolbar = bounds.left < toolbarRect.right + FLOATING_LAYOUT_GAP
+      && bounds.left + width > toolbarRect.left - FLOATING_LAYOUT_GAP;
+    return overlapsToolbar ? Math.ceil(toolbarRect.bottom + FLOATING_LAYOUT_GAP) : bounds.top;
+  }
+
   function applyDefaultDockingPoseControlsPosition(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     root.dataset.defaultPosition = '1';
     const bounds = dockingPoseControlsBounds(mainRect);
-    moveDockingPoseControls(root, bounds.left, 12, mainRect);
+    moveDockingPoseControls(root, bounds.left, defaultDockingPoseControlsTop(root, bounds), mainRect);
   }
 
   function repositionDockingPoseControls(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
