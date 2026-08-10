@@ -37,6 +37,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   cancelChemicalSpaceModelRuntimeInstall,
+  chemicalSpaceScopeSignature,
   computeErrorMessage,
   fetchChemicalSpaceModelRuntimeStatus,
   invalidateChemicalSpaceFingerprintCache,
@@ -235,6 +236,9 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [learnedRepsInstalled, setLearnedRepsInstalled] = useState<boolean | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [visibleSourceIds, setVisibleSourceIds] = useState<Set<number> | null>(null);
+  // "all" embeds the whole collection and dims filtered-out molecules;
+  // "filtered" recomputes the embedding over just the filtered subset.
+  const [scope, setScope] = useState<"all" | "filtered">("all");
   const [hovered, setHovered] = useState<number | null>(null);
   const [preview, setPreview] = useState<MoleculePreview | null>(null);
   const [pointScale, setPointScale] = useState(1);
@@ -447,12 +451,28 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const indexing = indexStateMatchesDocument && indexState?.indexing === true;
   const indexReady = !isTauriRuntime()
     || (indexStateMatchesDocument && indexState?.indexReady === true && indexState?.indexError === null);
+  // A filter can only ever shrink the collection, so the confirmation gate and
+  // the run-size estimate follow the scoped subset when it is active.
+  const scopedSourceIds = useMemo(
+    () => (scope === "filtered" && visibleSourceIds
+      ? [...visibleSourceIds].sort((left, right) => left - right)
+      : null),
+    [scope, visibleSourceIds],
+  );
+  const scopeKey = useMemo(
+    () => (scopedSourceIds ? chemicalSpaceScopeSignature(scopedSourceIds) : "all"),
+    [scopedSourceIds],
+  );
+  const effectiveRecordCount = scopedSourceIds ? scopedSourceIds.length : recordCount;
+  useEffect(() => {
+    if (scope === "filtered" && !visibleSourceIds) setScope("all");
+  }, [scope, visibleSourceIds]);
   const largeRunConfirmationKey = documentInstanceKey === null
     ? null
-    : `${documentInstanceKey}:${sourceRevision}`;
+    : `${documentInstanceKey}:${sourceRevision}:${scopeKey}`;
   const needsConfirmation = indexReady
     && !indexing
-    && recordCount > AUTO_RUN_RECORD_LIMIT
+    && effectiveRecordCount > AUTO_RUN_RECORD_LIMIT
     && confirmedLargeRunDocumentKey !== largeRunConfirmationKey;
   // An unanswered probe holds the job back: the collection could be mid-index or
   // far past the auto-run limit, and both are decided by the answer.
@@ -470,7 +490,14 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       setProgress(null);
       return;
     }
-    const key = embeddingCacheKey(documentId, documentInstanceKey, sourceRevision, options);
+    if (scopedSourceIds && scopedSourceIds.length < 2) {
+      setResult(null);
+      setProgress(null);
+      setError("The active filters leave fewer than two molecules to embed.");
+      setErrorNeedsModelRuntime(false);
+      return;
+    }
+    const key = embeddingCacheKey(documentId, documentInstanceKey, sourceRevision, options, scopeKey);
     const cached = cachedCompletedEmbedding(key);
     if (cached) {
       setResult(cached);
@@ -487,9 +514,14 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setErrorNeedsModelRuntime(false);
     setProgress({ phase: "queued" });
     const workflow = isTauriRuntime()
-      ? runChemicalSpaceWorkflow(documentId, options, setProgress, controller.signal)
+      ? runChemicalSpaceWorkflow(documentId, options, setProgress, controller.signal, scopedSourceIds)
       : requestBrowserChemicalSpaceRecords(documentId, controller.signal)
-        .then((records) => runBrowserDevChemicalSpace(records, options, setProgress, controller.signal));
+        .then((records) => runBrowserDevChemicalSpace(
+          scopedBrowserRecords(records, scopedSourceIds),
+          options,
+          setProgress,
+          controller.signal,
+        ));
     void workflow
       .then((next) => {
         if (controller.signal.aborted) return;
@@ -515,7 +547,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         workflowControllerRef.current = null;
       }
     };
-  }, [computeBlockedByIndex, documentId, documentInstanceKey, needsConfirmation, options, sourceRevision]);
+  }, [computeBlockedByIndex, documentId, documentInstanceKey, needsConfirmation, options, scopeKey, scopedSourceIds, sourceRevision]);
 
   useEffect(() => {
     if (!documentId || clusteringMethod === "none" || computeBlockedByIndex || needsConfirmation) {
@@ -530,10 +562,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setClusterResult(null);
     const updateProgress = () => undefined;
     const workflow = isTauriRuntime()
-      ? runChemicalSpaceClusteringWorkflow(documentId, clusterCutoff, updateProgress, controller.signal)
+      ? runChemicalSpaceClusteringWorkflow(documentId, clusterCutoff, updateProgress, controller.signal, scopedSourceIds)
       : requestBrowserChemicalSpaceRecords(documentId, controller.signal)
         .then((records) => runBrowserDevChemicalSpaceClustering(
-          records,
+          scopedBrowserRecords(records, scopedSourceIds),
           clusterCutoff,
           updateProgress,
           controller.signal,
@@ -549,7 +581,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         if (!controller.signal.aborted) setClusterRunning(false);
       });
     return () => controller.abort();
-  }, [clusterCutoff, clusteringMethod, computeBlockedByIndex, documentId, needsConfirmation, sourceRevision]);
+  }, [clusterCutoff, clusteringMethod, computeBlockedByIndex, documentId, needsConfirmation, scopedSourceIds, sourceRevision]);
 
   useEffect(() => {
     if (!studyPlaying || !completedStudy) return;
@@ -696,9 +728,14 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setStudyRunning(true);
     try {
       const results = isTauriRuntime()
-        ? await runChemicalSpaceStudyWorkflow(documentId, frames, setProgress, controller.signal)
+        ? await runChemicalSpaceStudyWorkflow(documentId, frames, setProgress, controller.signal, scopedSourceIds)
         : await requestBrowserChemicalSpaceRecords(documentId, controller.signal)
-          .then((records) => runBrowserDevChemicalSpaceStudy(records, frames, setProgress, controller.signal));
+          .then((records) => runBrowserDevChemicalSpaceStudy(
+            scopedBrowserRecords(records, scopedSourceIds),
+            frames,
+            setProgress,
+            controller.signal,
+          ));
       if (controller.signal.aborted) return;
       const aligned = alignStudyResults(results);
       setCompletedStudy({ results: aligned });
@@ -824,6 +861,34 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                 <TooltipContent showArrow={false}>Draw a free-form selection linked to Grid</TooltipContent>
               </Tooltip>
             </ToggleGroup>
+            {visibleSourceIds || scope === "filtered" ? (
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                size="sm"
+                spacing={0}
+                value={scope}
+                aria-label="Embedding scope"
+                onValueChange={(value) => {
+                  if (value === "all" || value === "filtered") setScope(value);
+                }}
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <ToggleGroupItem value="all">All</ToggleGroupItem>
+                  </TooltipTrigger>
+                  <TooltipContent showArrow={false}>Embed every molecule and dim the filtered-out ones</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <ToggleGroupItem value="filtered" disabled={!visibleSourceIds}>
+                      {visibleSourceIds ? `Filtered · ${visibleSourceIds.size.toLocaleString()}` : "Filtered"}
+                    </ToggleGroupItem>
+                  </TooltipTrigger>
+                  <TooltipContent showArrow={false}>Recompute the map over just the filtered molecules</TooltipContent>
+                </Tooltip>
+              </ToggleGroup>
+            ) : null}
             {displayedResult ? (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -939,7 +1004,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               pointScale={pointScale}
               tmapLineScale={tmapLineScale}
               activityColors={activityColoring?.colors ?? null}
-              visibleSourceIds={visibleSourceIds}
+              visibleSourceIds={scope === "filtered" ? null : visibleSourceIds}
               cliffs={cliffs}
               tool={tool}
               onHover={(sourceRecordId) => {
@@ -980,7 +1045,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
             />
           ) : needsConfirmation ? (
             <ChemicalSpaceEmpty
-              message={`This collection has ${recordCount.toLocaleString()} molecules. Embedding it takes ${estimatedEmbeddingDuration(recordCount)} and runs the whole time.`}
+              message={`${scopedSourceIds ? "The filtered subset has" : "This collection has"} ${effectiveRecordCount.toLocaleString()} molecules. Embedding it takes ${estimatedEmbeddingDuration(effectiveRecordCount)} and runs the whole time.`}
               actionLabel="Calculate chemical space"
               onAction={() => setConfirmedLargeRunDocumentKey(largeRunConfirmationKey)}
             />
@@ -2094,8 +2159,18 @@ function embeddingCacheKey(
   documentInstanceKey: string,
   sourceRevision: number,
   options: ChemicalSpaceOptions,
+  scopeKey: string,
 ) {
-  return `${documentId}:${documentInstanceKey}:${sourceRevision}:${JSON.stringify(options)}`;
+  return `${documentId}:${documentInstanceKey}:${sourceRevision}:${scopeKey}:${JSON.stringify(options)}`;
+}
+
+function scopedBrowserRecords(
+  records: BrowserChemicalSpaceInputRecord[],
+  scopedSourceIds: number[] | null,
+) {
+  if (!scopedSourceIds) return records;
+  const wanted = new Set(scopedSourceIds);
+  return records.filter((record) => wanted.has(record.sourceRecordId));
 }
 
 function cachedCompletedEmbedding(key: string) {

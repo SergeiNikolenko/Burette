@@ -53,7 +53,7 @@ assert.match(workflow, /stage\.stageId === "tanimotoNeighbors"/);
 assert.match(workflow, /numericStage\?\.effectiveBackend === "nativeMetal"/);
 assert.match(workflow, /export async function runChemicalSpaceWorkflow/);
 assert.match(workflow, /export async function runChemicalSpaceStudyWorkflow/);
-assert.match(workflow, /preparedChemicalSpaceJobs\.get\(documentId\)/);
+assert.match(workflow, /preparedChemicalSpaceJobs\.get\(cacheKey\)/);
 assert.match(workflow, /invalidateChemicalSpaceFingerprintCache/);
 assert.match(workflow, /fingerprintBrowserChemicalSpaceRecords/);
 assert.match(workflow, /invoke<ChemicalSpaceResult>\("compute_execute_chemical_space"/);
@@ -267,6 +267,13 @@ assert.match(
 assert.match(chemicalSpacePanel, /chemicalSpaceVisibilityChanged/);
 assert.match(chemicalSpacePanel, /DIMMED_POINT_COLOR/);
 assert.match(chemicalSpace3d, /pointColors/);
+
+// The Filtered scope recomputes embeddings over just the filtered subset: the
+// prepared job is keyed and scoped by the subset's signature on every runtime.
+assert.match(workflow, /chemicalSpaceScopeSignature/);
+assert.match(workflow, /scopeSourceIds: number\[\] \| null = null/);
+assert.match(chemicalSpacePanel, /scopedBrowserRecords\(records, scopedSourceIds\)/);
+assert.match(chemicalSpacePanel, /Recompute the map over just the filtered molecules/);
 
 // The grid ignores every message whose source is not "burette-grid-host". The
 // pre-rename "burrete" spelling silently disconnected the filter panel from
@@ -492,7 +499,7 @@ assert.match(
 );
 assert.match(
   chemicalSpacePanel,
-  /recordCount > AUTO_RUN_RECORD_LIMIT[\s\S]*?confirmedLargeRunDocumentKey !== largeRunConfirmationKey/,
+  /effectiveRecordCount > AUTO_RUN_RECORD_LIMIT[\s\S]*?confirmedLargeRunDocumentKey !== largeRunConfirmationKey/,
 );
 assert.match(chemicalSpacePanel, /requestChemicalSpaceIndexState\(documentId, controller\.signal\)/);
 assert.match(chemicalSpacePanel, /applySourceRevision\(next\.sourceRevision\)/);
@@ -528,7 +535,7 @@ assert.match(
   /setStudyRunning\(false\)/u,
   "editing a Grid must cancel an in-flight parameter study before stale results can publish",
 );
-assert.match(chemicalSpacePanel, /`\$\{documentInstanceKey\}:\$\{sourceRevision\}`/);
+assert.match(chemicalSpacePanel, /`\$\{documentInstanceKey\}:\$\{sourceRevision\}:\$\{scopeKey\}`/);
 assert.ok(
   chemicalSpacePanel.indexOf("if (computeBlockedByIndex || needsConfirmation) {")
     < chemicalSpacePanel.indexOf("completedEmbeddings.get(key)"),
@@ -536,7 +543,7 @@ assert.ok(
 );
 assert.match(chemicalSpacePanel, /gridDocumentInstanceKey\(document\)/);
 assert.match(chemicalSpacePanel, /actionLabel="Calculate chemical space"/);
-assert.match(chemicalSpacePanel, /estimatedEmbeddingDuration\(recordCount\)/);
+assert.match(chemicalSpacePanel, /estimatedEmbeddingDuration\(effectiveRecordCount\)/);
 assert.match(chemicalSpacePanel, /rememberThroughput\(next\.sourceRecordIds\.length/);
 assert.match(chemicalSpacePanel, /MAX_COMPLETED_EMBEDDING_CACHE_ENTRIES = 6/);
 assert.match(chemicalSpacePanel, /MAX_COMPLETED_EMBEDDING_CACHE_RECORDS = 500_000/);

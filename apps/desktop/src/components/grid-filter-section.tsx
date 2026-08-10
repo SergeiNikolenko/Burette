@@ -180,7 +180,9 @@ function NumericFilter({
           onPointerCancel={endDrag}
         >
           <ChartContainer config={CHART_CONFIG} className="grid-filter-chart aspect-auto h-28 w-full">
-            <BarChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }} barCategoryGap={1}>
+            {/* The chart is pointer-driven and the slider below is the keyboard
+                path, so the surface must not grab focus and draw a focus ring. */}
+            <BarChart accessibilityLayer={false} data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }} barCategoryGap={1}>
               <XAxis dataKey="index" type="category" hide />
               <ChartTooltip
                 cursor={{ fill: "color-mix(in srgb, currentColor 8%, transparent)" }}

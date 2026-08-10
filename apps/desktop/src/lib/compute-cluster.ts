@@ -390,10 +390,16 @@ export async function runChemicalSpaceWorkflow(
   options: ChemicalSpaceOptions,
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
+  scopeSourceIds: number[] | null = null,
 ): Promise<ChemicalSpaceResult> {
   if (options.representation !== "morgan") {
     await ensureModelRuntimeInstalled();
-    const { records } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+    const { records } = await getPreparedChemicalSpaceJob(
+      documentId,
+      onProgress,
+      signal,
+      scopeSourceIds,
+    );
     throwIfAborted(signal);
     const represented = await representChemicalSpace(
       records,
@@ -405,7 +411,7 @@ export async function runChemicalSpaceWorkflow(
     onProgress({ phase: "embedding" });
     return executeLearnedChemicalSpace(records, represented, options);
   }
-  const { job } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+  const { job } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal, scopeSourceIds);
   throwIfAborted(signal);
   onProgress({ phase: "embedding" });
   return executePreparedChemicalSpace(job, options);
@@ -416,8 +422,9 @@ export async function runChemicalSpaceClusteringWorkflow(
   cutoff: number,
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
+  scopeSourceIds: number[] | null = null,
 ): Promise<ChemicalSpaceClusterResult> {
-  const { job } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+  const { job } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal, scopeSourceIds);
   throwIfAborted(signal);
   onProgress({ phase: "embedding" });
   return invoke<ChemicalSpaceClusterResult>("compute_cluster_chemical_space", {
@@ -435,6 +442,7 @@ export async function runChemicalSpaceStudyWorkflow(
   frames: ChemicalSpaceOptions[],
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
+  scopeSourceIds: number[] | null = null,
 ): Promise<ChemicalSpaceResult[]> {
   if (frames.length < 2 || frames.length > 24) {
     throw new Error("A parameter study requires between 2 and 24 frames.");
@@ -445,7 +453,12 @@ export async function runChemicalSpaceStudyWorkflow(
   }
   if (representation !== "morgan") {
     await ensureModelRuntimeInstalled();
-    const { records } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+    const { records } = await getPreparedChemicalSpaceJob(
+      documentId,
+      onProgress,
+      signal,
+      scopeSourceIds,
+    );
     throwIfAborted(signal);
     const represented = await representChemicalSpace(records, representation, onProgress, signal);
     const results: ChemicalSpaceResult[] = [];
@@ -457,7 +470,7 @@ export async function runChemicalSpaceStudyWorkflow(
     onProgress({ phase: "study", completedFrames: frames.length, totalFrames: frames.length });
     return results;
   }
-  const { job } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+  const { job } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal, scopeSourceIds);
   const results: ChemicalSpaceResult[] = [];
   for (let index = 0; index < frames.length; index += 1) {
     throwIfAborted(signal);
@@ -477,12 +490,34 @@ export async function runChemicalSpaceStudyWorkflow(
 }
 
 export function invalidateChemicalSpaceFingerprintCache(documentId: string) {
-  const pending = preparedChemicalSpaceJobs.get(documentId);
-  if (!pending) return;
-  preparedChemicalSpaceJobs.delete(documentId);
-  void pending
-    .then((prepared) => cancelComputeJob(prepared.job.jobId))
-    .catch(() => undefined);
+  const scopePrefix = `${documentId}::scope:`;
+  for (const key of [...preparedChemicalSpaceJobs.keys()]) {
+    if (key !== documentId && !key.startsWith(scopePrefix)) continue;
+    const pending = preparedChemicalSpaceJobs.get(key);
+    preparedChemicalSpaceJobs.delete(key);
+    if (pending) {
+      void pending
+        .then((prepared) => cancelComputeJob(prepared.job.jobId))
+        .catch(() => undefined);
+    }
+  }
+}
+
+// A stable fingerprint of a scope's membership, used to key prepared jobs and
+// completed embeddings per filtered subset.
+export function chemicalSpaceScopeSignature(sourceIds: number[]): string {
+  let hash = 2166136261 >>> 0;
+  for (const id of sourceIds) {
+    hash = Math.imul(hash ^ id, 16777619) >>> 0;
+  }
+  return `${sourceIds.length}-${hash.toString(16)}`;
+}
+
+function normalizedScope(scopeSourceIds: number[] | null | undefined): number[] | null {
+  if (!scopeSourceIds || scopeSourceIds.length === 0) return null;
+  return [...new Set(scopeSourceIds)]
+    .filter((index) => Number.isSafeInteger(index) && index >= 0)
+    .sort((left, right) => left - right);
 }
 
 export async function fingerprintBrowserChemicalSpaceRecords(
@@ -574,26 +609,31 @@ async function getPreparedChemicalSpaceJob(
   documentId: string,
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
+  scopeSourceIds: number[] | null = null,
 ) {
-  const cached = preparedChemicalSpaceJobs.get(documentId);
+  const scope = normalizedScope(scopeSourceIds);
+  const cacheKey = scope
+    ? `${documentId}::scope:${chemicalSpaceScopeSignature(scope)}`
+    : documentId;
+  const cached = preparedChemicalSpaceJobs.get(cacheKey);
   if (cached) {
-    preparedChemicalSpaceJobs.delete(documentId);
-    preparedChemicalSpaceJobs.set(documentId, cached);
+    preparedChemicalSpaceJobs.delete(cacheKey);
+    preparedChemicalSpaceJobs.set(cacheKey, cached);
     return cached;
   }
   const request = clusterPreparationRequest(
     documentId,
-    [],
+    scope ?? [],
     { numerator: 0, denominator: 1 },
     null,
     "gpuRequired",
   );
   const pending = prepareChemicalSpaceJobForDocument(request, onProgress, signal);
-  preparedChemicalSpaceJobs.set(documentId, pending);
+  preparedChemicalSpaceJobs.set(cacheKey, pending);
   trimPreparedChemicalSpaceJobs();
   void pending.catch(() => {
-    if (preparedChemicalSpaceJobs.get(documentId) === pending) {
-      preparedChemicalSpaceJobs.delete(documentId);
+    if (preparedChemicalSpaceJobs.get(cacheKey) === pending) {
+      preparedChemicalSpaceJobs.delete(cacheKey);
     }
   });
   return pending;
