@@ -58,8 +58,16 @@ After Stage 1 is green, split browser-dev handlers by endpoint group:
 - `msbuddy.ts`: `/__burette/msbuddy`;
 - `conformer-inline.ts`: `/__burette/generate-3d-conformer`;
 - `conformer-jobs.ts`: conformer status, prepare, run, and cancel endpoints;
-- `xtb.ts`: xTB status, install, run, and cancel endpoints;
-- `agent-session.ts`: `/__burette/agent-session/`.
+- `xtb.ts` and `xtb-runtime.ts`: xTB status, install, run, and cancel
+  endpoints;
+- `agent-session.ts`: `/__burette/agent-session/`;
+- `folding-results.ts`: `/__burette/folding-result`;
+- `mdsmooth.ts`: `/__burette/mdsmooth`;
+- `native-compute.ts`: `/__burette/native-compute` and
+  `/__burette/chemical-space-representation`;
+- `runtime-doctor.ts`: `/__burette/external-runtime-doctor`;
+- `file-discovery.ts`: bounded development folder discovery (`files.ts` also
+  serves `/__burette/trajectory-pair` and `/__burette/write-text-file`).
 
 Keep xTB and conformer job lifecycle logic in one slice each so process
 registration, cancellation, and cleanup stay auditable.
@@ -293,7 +301,7 @@ the high-risk runtime boundaries intact.
 | Renderer policy contract | Partial | Core renderer selection now has an explicit matrix test for Molstar/external xyzrender/grid-request/trajectory/external-only routing; browser-dev and Quick Look parity checks still need a higher-level surface test. |
 | External runtime doctor | Complete for current scope | A read-only Tauri/browser-dev doctor report now aggregates xyzrender, descriptor Python/RDKit, Datamol/RDKit conformer Python, CREST, PRISM, xTB, and Schrodinger status sources and is surfaced through trusted shell settings/command-palette actions. |
 | Diagnostics privacy | Partial | Diagnostics export action is extracted and diagnostics bundle local-path redaction is covered by Rust tests; broader privacy review for every copied artifact remains pending. |
-| Viewer runtime decomposition | Not started | `PreviewExtension/Web/viewer.js` remains untouched as planned until stronger contracts exist. |
+| Viewer runtime decomposition | Not started | `PreviewExtension/Web/viewer.js` remains undecomposed as planned until stronger contracts exist (the file itself keeps growing with feature work, and companions such as `viewer-shell.js`, `viewer-bootstrap.js`, and `trajectory-smoothing.js` now exist beside it). |
 | CSS split | Not started | No CSS mechanical split has been attempted. |
 
 ## Verification Discipline

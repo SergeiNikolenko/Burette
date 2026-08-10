@@ -18,6 +18,31 @@ from scientific validation.
 | Density and reflection data | Open `.ccp4`, `.mrc`, `.map`, `.mtz`, or a structure-factor `.cif` | CCP4-family maps use the native volume provider. MTZ amplitude/phase pairs produce 2Fo-Fc and signed Fo-Fc maps. CIF is routed to the structure-factor provider when `_refln.pdbx_FWT` and `_refln.pdbx_PHWT` are present. | Preserve unit cell, axes/origin, symmetry, and coefficient-column provenance. Difference density is rendered as separate positive and negative contours. |
 | Ligand MCCS superposition | Molstar Controls → Superposition → Ligands | Molstar 5.11 uses atom-name matching for identical compounds and maximum common connected subgraph otherwise, then selects the lowest-RMSD pose among compatible mappings. | Record matched-heavy-atom coverage, RMSD, truncation/time budget, aromaticity, bond-order, formal-charge, stereochemistry, and hydrogen policy. This remains an interactive Molstar workflow, not a typed Burette agent action. |
 
+## Product workflows on the Molstar runtime
+
+Beyond the typed actions above, these shipped product workflows are built on
+the same Molstar runtime:
+
+- **Dedicated Mesoscale viewer**: `molj`/`molx`/`mesozip` documents (and
+  CellPack/Petworld-style CIF paths) open in a separate Mesoscale Explorer
+  runtime (`PreviewExtension/Web/mesoscale.js`, contract
+  `apps/desktop/src/lib/mesoscale-contract.ts`) rather than the standard
+  viewer. See
+  [Mesoscale viewer implementation plan](mesoscale-viewer-implementation-plan.md)
+  for what shipped.
+- **Structure superposition**: the superposition panel
+  (`PreviewExtension/Web/superposition-panel.js`) drives auto,
+  residue-number, sequence, chain, and TM-align flows over the demo set below
+  and user structures.
+- **Maestro/PyMOL-style structure operations**: chain splitting, subset
+  extraction by atom serial, a selection toolkit, typed interactions, colour
+  presets, and angle/dihedral measurements (PR #534).
+- **Trajectory playback**: wiggle controls and smoothed playback
+  (`PreviewExtension/Web/trajectory-smoothing.js`), including
+  topology+trajectory pairs and trajectories without topology.
+- **Viewport rail**: screenshot menu and wiggle controls attached to the
+  viewport rail, plus scene history and an optimized lasso selection.
+
 ## Assembly symmetry object
 
 `Global Symmetry Icosahedral (I)` is not part of the polymer surface. Molstar's

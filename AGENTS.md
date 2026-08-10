@@ -1,8 +1,9 @@
 # Agent Dispatch
 
-Burette is a macOS desktop app, Finder Quick Look extension, and source-built
-iPhone preview app for molecular structure files. Keep this file as a
-dispatcher; load the focused doc for the surface you are changing.
+Burette is a macOS desktop app, Finder Quick Look extension, source-built
+iPhone preview app, and hosted public plugin for molecular structure files.
+Keep this file as a dispatcher; load the focused doc for the surface you are
+changing.
 
 ## Project Contracts
 
@@ -57,6 +58,9 @@ dispatcher; load the focused doc for the surface you are changing.
 | iPhone source app | `ios/BuretteMobile` | `ios/BuretteMobile/AGENTS.md` |
 | Agent CLI and sessions | `scripts/burette-agent.mjs`, `scripts/agent-preview.mjs` | `docs/agent-platform.md` |
 | Packaged MCP plugin | `plugins/burette-agent` | `plugins/burette-agent/AGENTS.md` |
+| Hosted public plugin and MCP | `apps/burette-public-plugin` | `docs/agent-platform.md` |
+| Native compute layer | `crates/burette-compute-*`, `compute/`, `apps/desktop/src-tauri/src/compute` | `docs/gpu-compute-status.md` |
+| Shared workspace packages | `packages/burette`, `packages/ketcher-agent-contract` | `docs/repository-layout.md` |
 | Release and repository tooling | `scripts`, `.codex/skills` | `docs/tools/index.md` |
 
 ## Common Routing
