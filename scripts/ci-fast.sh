@@ -6,6 +6,7 @@ cd "$ROOT"
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
+bun scripts/check-loopback-bind.mjs
 bun install --frozen-lockfile --ignore-scripts
 bun run check:js
 bun run check:vendor-assets
