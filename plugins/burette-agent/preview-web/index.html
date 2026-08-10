@@ -11,19 +11,20 @@
       function post(type, message) {
         try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burette.postMessage({ type: type, message: message || '' }); } catch (_) {}
       }
+      function reportRuntimeError(message) {
+        var el = document.getElementById('status');
+        if (el) { el.textContent = 'Preview could not be updated.'; el.classList.add('error'); el.classList.remove('hidden'); }
+        post('error', message);
+      }
       window.__mqlPost = post;
       window.addEventListener('error', function (event) {
         var message = (event.error && event.error.stack) || event.message || String(event);
-        var el = document.getElementById('status');
-        if (el) { el.textContent = '[web] JavaScript error\n\n' + message; el.classList.add('error'); el.classList.remove('hidden'); }
-        post('error', message);
+        reportRuntimeError(message);
       });
       window.addEventListener('unhandledrejection', function (event) {
         var reason = event.reason || {};
         var message = reason.stack || reason.message || String(reason);
-        var el = document.getElementById('status');
-        if (el) { el.textContent = '[web] Unhandled promise rejection\n\n' + message; el.classList.add('error'); el.classList.remove('hidden'); }
-        post('error', message);
+        reportRuntimeError(message);
       });
     })();
   </script>

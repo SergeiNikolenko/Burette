@@ -134,7 +134,11 @@ or unknown variables, then follows the same validation and safe-write path as
 `story-create`. The source descriptors live in `templates/mvs-story/` and are
 packaged under `assets/mvs-story-templates/`. They are starting points, not
 analysis engines: contacts, scores, alignment metrics, and biological claims
-must be supplied from explicit calculations or observations.
+must be supplied from explicit calculations or observations. In particular,
+the docking comparison requires one computed interaction-primitives resource,
+one matching receptor-residue annotation, and one evidence-qualified summary
+for each pose. Packaged docking Stories therefore cannot silently omit either
+the key-contact lines or the endpoint residues those lines refer to.
 
 `story-schema` exposes progressive MolViewSpec authoring help from the same
 installed Mol* runtime used by Story validation. Without `--node` it returns a
