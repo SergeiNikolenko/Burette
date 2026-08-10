@@ -25,7 +25,7 @@ or the hosted MCP widget is open.
 | Cmd+O | Open molecular structure files |
 | Cmd+Shift+O | Open most recent structure |
 | Cmd+S | Save the active text source or collection document (desktop app) |
-| Cmd+Shift+S | Save the active document as a new file (desktop app) |
+| Cmd+Shift+S | Save the active collection as a new file (desktop app) |
 | Cmd+F | Find: collection grid search, otherwise focus sidebar search (desktop app) |
 | Cmd+Z | Undo in the active context (workspace history, or grid undo when a collection document is active) |
 | Cmd+Shift+Z | Redo in the active context |

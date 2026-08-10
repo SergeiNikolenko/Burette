@@ -35,17 +35,17 @@ const keyboardShortcutRows: ShortcutRow[] = [
   },
   {
     command: "Save",
-    description: "Save the active text source or collection document.",
+    description: "Save the active text source or collection document (desktop app).",
     keybindings: ["⌘S"],
   },
   {
     command: "Save As",
-    description: "Save the active document as a new file.",
+    description: "Save the active collection as a new file (desktop app).",
     keybindings: ["⇧⌘S"],
   },
   {
     command: "Find",
-    description: "Search the active collection grid, otherwise focus sidebar search.",
+    description: "Search the active collection grid, otherwise focus sidebar search (desktop app).",
     keybindings: ["⌘F"],
   },
   {
@@ -110,7 +110,7 @@ const keyboardShortcutRows: ShortcutRow[] = [
   },
   {
     command: "Quit Burette",
-    description: "Quit after the exit preflight completes.",
+    description: "Quit after the exit preflight completes (desktop app).",
     keybindings: ["⌘Q"],
   },
   {
