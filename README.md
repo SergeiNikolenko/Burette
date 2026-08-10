@@ -21,14 +21,14 @@
 
 ## What Is Burette?
 
-Burette is a macOS desktop app, Finder Quick Look extension, and source-built
-iPhone preview app for molecular structure files. It is built for the small
+Burette is a macOS desktop app, Finder Quick Look extension, source-built
+iPhone preview app, and hosted public plugin for molecular structure files. It is built for the small
 daily loop of computational chemistry, structural biology, and cheminformatics
 work: open a structure, confirm what it is, switch renderer when needed,
 compare files in tabs, and recover quickly when Quick Look or renderer caches
 need maintenance.
 
-Use it in two ways:
+Use it in four ways:
 
 - **Finder previews:** select a molecular file in Finder and press Space.
 - **Desktop workspace:** open Burette directly to inspect files in tabs, browse
@@ -76,8 +76,9 @@ You can also download Burette from the GitHub Releases page:
 [Download the latest Burette release](https://github.com/SergeiNikolenko/Burette/releases/latest)
 
 1. Open the latest release.
-2. Download the `Burette-<version>.zip` file.
-3. Unzip it.
+2. Download the `Burette-<version>.zip` file (or the signed
+   `Burette-<version>.dmg` for drag-and-drop install).
+3. Unzip it (or open the DMG).
 4. Move `Burette.app` to your `Applications` folder.
 5. Open Burette once from `Applications`.
 
@@ -106,13 +107,15 @@ renderer.
 
 | Path | Formats | Notes |
 | --- | --- | --- |
-| Mol* interactive 3D | PDB, ENT, PDBQT, PQR, CIF, MMCIF, MCIF, BCIF, SDF, SD, MOL, MOL2, XYZ, GRO | Default path for most structure files. XYZ can also use `xyzrender`. |
-| RDKit molecule grids | SDF, SD, SMILES, SMI, CSV, TSV | Collection view with search, sorting, SMARTS filtering/highlighting, selection, append/merge, and export. |
-| External xyzrender | XYZ, CUB, CUBE, ABI, COM, FDF, IN, INP, LOG, NW, OUT, PSI4, QCIN, VASP, MAE, MAE.GZ, MAEGZ, CMS | Requires a local `xyzrender` executable. Used by default for single-frame XYZ and required for external-renderer-only formats. |
-| Molecular dynamics / topology | XTC, TRR, DCD, NCTRAJ, LAMMPSTRJ, TOP, PSF, PRMTOP | Registered as molecular files and routed to Mol* where supported by the runtime. |
-| OpenMM coordinate artifacts | XML, INPCRD, RST7, CRD, RST, STATE | Render as structures when standalone coordinates are present, with the raw text available in the document surfaces. System XML without positions falls back to text. |
-| OpenMM workflow artifacts | PAR, PRM, RTF, STR, KEY, CHK, CHECKPOINT | Open as text/workflow artifacts. Binary checkpoints show metadata because OpenMM checkpoint payloads are tied to the matching system, platform, version, and hardware context. |
-| FEP network workspace | GraphML | Opens a ligand network preview workspace rather than a standard molecule preview. |
+| Mol* interactive 3D | PDB, ENT, XPDB, PDBQT, PQR, CIF, MMCIF, MCIF, BCIF, MMTF, SDF, SD, MOL, MDL, MOL2, XYZ, GRO | Default path for most structure files. Also renders CCP4/MRC/MAP volumes, MTZ reflection maps, converted PH4 pharmacophores, and converted Schrödinger MAE/MAE.GZ/MAEGZ/CMS. |
+| Mesoscale viewer | MOLJ, MOLX, MESOZIP | Cell-scale crowded scenes open in a dedicated Mol* Mesoscale Explorer runtime; CellPack/Petworld-style CIF paths route there too. |
+| RDKit molecule grids | SDF, SD, SMILES, SMI, CSV, TSV, DWAR | Collection view with search, sorting, SMARTS filtering/highlighting, selection, append/merge, export, and native compute actions. CSV/TSV without molecule columns open as data tables. |
+| External xyzrender | XYZ, CUB, CUBE, ABI, COM, FDF, FHIAIMS, GMS, IN, INP, LOG, NW, OUT, PSI4, QCIN, VASP, XYZR | These convert to PDB and open in Mol* by default; a local `xyzrender` executable is the fallback renderer and can be selected explicitly. |
+| Molecular dynamics / topology | XTC, TRR, DCD, TNG, NCTRAJ, LAMMPSTRJ, TOP, PSF, PRMTOP, TPR, and ~25 more | Topology+trajectory pairs open with native trajectory controls; trajectories without a topology get a synthetic one. Smoothed playback is available. |
+| Mass spectrometry | MS, MAGMA, MGF, MSP, MZML, MZXML | Open in a dedicated spectrum viewer. |
+| OpenMM coordinate artifacts | XML, INPCRD, RST7, RESTRT, CRD, RST, STATE | Render as structures when standalone coordinates are present, with the raw text available in the document surfaces. System XML without positions falls back to text. |
+| OpenMM workflow artifacts | PAR, PRM, RTF, STR, KEY, CHK, CHECKPOINT, DMS, XVG, EDR, FASTA, FDEF, MSJ | Open as text/workflow artifacts. Binary checkpoints show metadata because OpenMM checkpoint payloads are tied to the matching system, platform, version, and hardware context. |
+| FEP network workspace | GraphML, EDGE | Opens a ligand network preview workspace rather than a standard molecule preview. |
 
 Multi-frame XYZ files stay in Mol* when Burette detects trajectory content so
 the native trajectory controls can show the available frames. When you rotate a
@@ -132,7 +135,9 @@ Opening Burette directly gives you a compact molecular workspace:
 - right and bottom docks for comparing structures, text files, Ketcher, grids,
   and workflow panels
 - "Open In" actions for Finder, the default app, or discovered chemistry editors
-- text-file viewing for logs, scripts, configs, and related project files
+- text and structure source viewing with live editing and save for logs,
+  scripts, configs, and molecular source files, plus rich Markdown and image
+  previews in mixed project folders
 
 ## iPhone Preview App
 
@@ -172,6 +177,14 @@ for structure triage:
 
 - `xyzrender` sheets for comparing SVG-rendered structures and exported artwork
 - docking and pose-review surfaces backed by the shared Mol* viewer runtime
+- structure superposition (auto, residue-number, sequence, chain, and TM-align
+  flows) and Maestro/PyMOL-style structure operations
+- native compute actions on Apple Silicon: molecular clustering, similarity
+  search, conformer generation, MMFF optimization, alignment and scoring,
+  semiempirical energies, and a Chemical Space panel with Metal-accelerated
+  embeddings, clustering, activity colouring, and cliffs
+- MolViewSpec Stories: ordered multi-state molecular explanations with typed
+  playback controls
 - FEP network GraphML previews with ligand cards and grid handoff
 - FEP setup panels for assembling ligand-network inputs
 
@@ -241,8 +254,10 @@ Burette settings cover:
 - Burette/Codex integration status
 - Quick Look reset, preview cache cleanup, logs, diagnostics, and maintenance
 
-Optional integrations include a local `xyzrender` executable, VESTA, and
-external chemistry editors discovered by macOS.
+Optional integrations include a local `xyzrender` executable, VESTA, external
+chemistry editors discovered by macOS, and managed or detected scientific
+runtimes (xTB via a managed Conda install or an existing binary, CREST,
+descriptor/RDKit and Datamol Python environments, and Schrödinger tools).
 
 ## Unsupported file or format?
 

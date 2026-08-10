@@ -25,9 +25,9 @@ contains only documents that describe the active project.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   Ketcher editing scope, artifacts, and checks.
 - [Mesoscale viewer implementation plan](mesoscale-viewer-implementation-plan.md):
-  desktop-first Mol* Mesoscale Explorer integration, runtime and format
-  boundaries, staged gates, scientific validation, performance budgets, and
-  separate Quick Look/iPhone acceptance.
+  shipped Mol* Mesoscale Explorer integration (#556) — the shipped-reality
+  summary, format/routing contract, and the historical staged plan it
+  supersedes.
 - [Molstar workflows](molstar-workflows.md): adopted Molstar 5.11 capabilities,
   typed actions, scientific validation boundaries, and session/story semantics.
 - [Performance architecture](performance.md): runtime profiles, caches, binary
