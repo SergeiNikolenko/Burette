@@ -220,6 +220,44 @@ assert.match(
   "a missing model runtime must render the dedicated state with a way back to Morgan",
 );
 assert.match(chemicalSpacePanel, /isRepresentationUnavailableError\(cause\)/);
+
+// Learned representations in the packaged app: the workflow feeds prepared-job
+// records into the Rust-managed model worker and embeds through the standalone
+// kNN command, and the panel offers a real install path with progress.
+assert.match(workflow, /chemical_space_represent_start/);
+assert.match(workflow, /chemical_space_represent_status/);
+assert.match(workflow, /chemical_space_represent_cancel/);
+assert.match(workflow, /compute_execute_learned_chemical_space/);
+assert.match(
+  workflow,
+  /sliceKnnCache\(\s*represented\.knnCache,\s*represented\.sourceRecordIds\.length,\s*options\.neighbors,\s*\)/,
+  "the worker's 64-neighbour cache must be sliced to the requested neighbours before embedding",
+);
+assert.match(chemicalSpacePanel, /Install model runtime \(\{status\.installSizeHint\}\)/);
+assert.match(chemicalSpacePanel, /Cancel installation/);
+const modelCommands = source("apps/desktop/src-tauri/src/commands/chemical_space_models.rs");
+assert.match(modelCommands, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/compute\/models\/chemical_space_representations\.py"\)/);
+assert.match(modelCommands, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/compute\/models\/requirements\.txt"\)/);
+assert.match(modelCommands, /BURETTE_PROGRESS\\t/);
+assert.match(computeCommands, /compute_execute_learned_chemical_space/);
+assert.match(computePermission, /compute_execute_learned_chemical_space/);
+const burettePermission = source("apps/desktop/src-tauri/permissions/burette.toml");
+for (const command of [
+  "chemical_space_model_runtime_status",
+  "chemical_space_model_runtime_install",
+  "chemical_space_model_runtime_cancel_install",
+  "chemical_space_represent_start",
+  "chemical_space_represent_status",
+  "chemical_space_represent_cancel",
+]) {
+  assert.ok(burettePermission.includes(`"${command}"`), `${command} must stay permitted`);
+}
+assert.match(chemicalSpace, /execute_learned_chemical_space_from_knn/);
+assert.match(
+  chemicalSpace,
+  /knn\.neighbors_per_vertex != clamped_neighbors/,
+  "a mismatched learned kNN must fail instead of recomputing Tanimoto over placeholder fingerprints",
+);
 assert.match(gridViewer, /body\.type === 'chemicalSpaceHoverChanged'/);
 assert.doesNotMatch(gridViewer, /chemicalSpacePreviewTimer/);
 assert.doesNotMatch(gridViewer, /syncChemicalSpaceHover/);

@@ -2,7 +2,16 @@ import { invoke } from "@tauri-apps/api/core";
 
 const FINGERPRINT_WORKER_TIMEOUT_MS = 120_000;
 const MAX_PREPARED_CHEMICAL_SPACE_JOBS = 4;
-const preparedChemicalSpaceJobs = new Map<string, Promise<ComputeJob>>();
+const REPRESENT_POLL_INTERVAL_MS = 500;
+const preparedChemicalSpaceJobs = new Map<string, Promise<PreparedChemicalSpace>>();
+
+type PreparedChemicalSpace = {
+  job: ComputeJob;
+  // The fingerprint chunks stream every molecular input through the frontend
+  // anyway, so the prepared job doubles as the record source for the learned
+  // model worker without a second collection read.
+  records: BrowserChemicalSpaceInputRecord[];
+};
 
 export type FingerprintInputFormat = "smiles" | "molblock" | "unsupportedIdcode";
 
@@ -381,9 +390,20 @@ export async function runChemicalSpaceWorkflow(
   signal?: AbortSignal,
 ): Promise<ChemicalSpaceResult> {
   if (options.representation !== "morgan") {
-    throw representationUnavailableError(PACKAGED_REPRESENTATION_UNAVAILABLE_MESSAGE);
+    await ensureModelRuntimeInstalled();
+    const { records } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+    throwIfAborted(signal);
+    const represented = await representChemicalSpace(
+      records,
+      options.representation,
+      onProgress,
+      signal,
+    );
+    throwIfAborted(signal);
+    onProgress({ phase: "embedding" });
+    return executeLearnedChemicalSpace(records, represented, options);
   }
-  const job = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+  const { job } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
   throwIfAborted(signal);
   onProgress({ phase: "embedding" });
   return executePreparedChemicalSpace(job, options);
@@ -395,7 +415,7 @@ export async function runChemicalSpaceClusteringWorkflow(
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
 ): Promise<ChemicalSpaceClusterResult> {
-  const job = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+  const { job } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
   throwIfAborted(signal);
   onProgress({ phase: "embedding" });
   return invoke<ChemicalSpaceClusterResult>("compute_cluster_chemical_space", {
@@ -414,13 +434,28 @@ export async function runChemicalSpaceStudyWorkflow(
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
 ): Promise<ChemicalSpaceResult[]> {
-  if (frames.some((frame) => frame.representation !== "morgan")) {
-    throw representationUnavailableError(PACKAGED_REPRESENTATION_UNAVAILABLE_MESSAGE);
-  }
   if (frames.length < 2 || frames.length > 24) {
     throw new Error("A parameter study requires between 2 and 24 frames.");
   }
-  const job = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+  const representation = frames[0].representation;
+  if (frames.some((frame) => frame.representation !== representation)) {
+    throw new Error("A parameter study must use one molecular representation.");
+  }
+  if (representation !== "morgan") {
+    await ensureModelRuntimeInstalled();
+    const { records } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+    throwIfAborted(signal);
+    const represented = await representChemicalSpace(records, representation, onProgress, signal);
+    const results: ChemicalSpaceResult[] = [];
+    for (let index = 0; index < frames.length; index += 1) {
+      throwIfAborted(signal);
+      onProgress({ phase: "study", completedFrames: index, totalFrames: frames.length });
+      results.push(await executeLearnedChemicalSpace(records, represented, frames[index]));
+    }
+    onProgress({ phase: "study", completedFrames: frames.length, totalFrames: frames.length });
+    return results;
+  }
+  const { job } = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
   const results: ChemicalSpaceResult[] = [];
   for (let index = 0; index < frames.length; index += 1) {
     throwIfAborted(signal);
@@ -444,7 +479,7 @@ export function invalidateChemicalSpaceFingerprintCache(documentId: string) {
   if (!pending) return;
   preparedChemicalSpaceJobs.delete(documentId);
   void pending
-    .then((job) => cancelComputeJob(job.jobId))
+    .then((prepared) => cancelComputeJob(prepared.job.jobId))
     .catch(() => undefined);
 }
 
@@ -497,7 +532,7 @@ async function prepareChemicalSpaceJob(
   worker: FingerprintWorkerClient,
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
-) {
+): Promise<PreparedChemicalSpace> {
   throwIfAborted(signal);
   let job = await invoke<ComputeJob>("compute_submit_job", { request });
   onProgress({ phase: "queued" });
@@ -506,6 +541,7 @@ async function prepareChemicalSpaceJob(
     expectedRevision: job.revision,
   });
   job = fingerprintStep.job;
+  const records: BrowserChemicalSpaceInputRecord[] = [];
   while (fingerprintStep.fingerprintChunk) {
     throwIfAborted(signal);
     const chunk = fingerprintStep.fingerprintChunk;
@@ -514,6 +550,14 @@ async function prepareChemicalSpaceJob(
       completedRecords: chunk.completedRecords,
       totalRecords: chunk.totalRecords,
     });
+    for (const record of chunk.records) {
+      records.push({
+        sourceRecordId: record.sourceRecordId,
+        moleculeContentSha256: record.moleculeContentSha256,
+        format: record.format,
+        input: record.input,
+      });
+    }
     const result = await worker.fingerprint(chunk, signal);
     fingerprintStep = await invoke<FingerprintExecutionStep>("compute_submit_fingerprint_chunk", { result });
     job = fingerprintStep.job;
@@ -521,7 +565,7 @@ async function prepareChemicalSpaceJob(
   if (!fingerprintStep.readyForCompute) {
     throw new Error("The fingerprint stage completed without a compute-ready result.");
   }
-  return job;
+  return { job, records };
 }
 
 async function getPreparedChemicalSpaceJob(
@@ -574,7 +618,7 @@ function trimPreparedChemicalSpaceJobs() {
     preparedChemicalSpaceJobs.delete(oldestKey);
     if (pending) {
       void pending
-        .then((job) => cancelComputeJob(job.jobId))
+        .then((prepared) => cancelComputeJob(prepared.job.jobId))
         .catch(() => undefined);
     }
   }
@@ -590,6 +634,189 @@ function executePreparedChemicalSpace(job: ComputeJob, options: ChemicalSpaceOpt
       maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
     },
   }).then((result) => ({ ...result, representation }));
+}
+
+export type ChemicalSpaceKnnCache = {
+  neighborsPerVertex: number;
+  sourceIndicesBase64: string;
+  similaritiesBase64: string;
+};
+
+export type LearnedRepresentation = {
+  engine: Exclude<ChemicalSpaceRepresentation, "morgan">;
+  backend: "metalMps";
+  sourceRecordIds: number[];
+  failedRecords: number;
+  dimensions: number;
+  representationTimeMs: number;
+  similarityGpuTimeMs: number;
+  knnCache: ChemicalSpaceKnnCache;
+};
+
+export type ChemicalSpaceModelRuntimeStatus = {
+  installed: boolean;
+  pythonPath: string | null;
+  source: "override" | "managed" | null;
+  installerAvailable: boolean;
+  installHint: string;
+  installSizeHint: string;
+  weightsNote: string;
+  installPhase: "idle" | "installing" | "completed" | "failed" | "cancelled";
+  installLine: string | null;
+  installError: string | null;
+};
+
+type RepresentProgress = {
+  stage?: ChemicalSpaceProgress["representationStage"];
+  completedRecords?: number;
+  totalRecords?: number;
+  percent?: number;
+};
+
+type RepresentJobStatus = {
+  running: boolean;
+  progress: RepresentProgress | null;
+  result: LearnedRepresentation | null;
+  error: string | null;
+};
+
+export function fetchChemicalSpaceModelRuntimeStatus(): Promise<ChemicalSpaceModelRuntimeStatus> {
+  return invoke<ChemicalSpaceModelRuntimeStatus>("chemical_space_model_runtime_status");
+}
+
+export function startChemicalSpaceModelRuntimeInstall(): Promise<void> {
+  return invoke("chemical_space_model_runtime_install");
+}
+
+export function cancelChemicalSpaceModelRuntimeInstall(): Promise<void> {
+  return invoke("chemical_space_model_runtime_cancel_install");
+}
+
+async function ensureModelRuntimeInstalled(): Promise<void> {
+  const status = await fetchChemicalSpaceModelRuntimeStatus();
+  if (!status.installed) {
+    throw representationUnavailableError(MODEL_RUNTIME_MISSING_MESSAGE);
+  }
+}
+
+async function representChemicalSpace(
+  records: BrowserChemicalSpaceInputRecord[],
+  engine: Exclude<ChemicalSpaceRepresentation, "morgan">,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+): Promise<LearnedRepresentation> {
+  const requestId = `represent-${crypto.randomUUID()}`;
+  onProgress({ phase: "representations", completedRecords: 0, totalRecords: records.length });
+  await invoke("chemical_space_represent_start", {
+    requestId,
+    engine,
+    records: records.map((record) => ({
+      sourceRecordId: record.sourceRecordId,
+      format: record.format,
+      input: record.input,
+    })),
+  });
+  while (true) {
+    if (signal?.aborted) {
+      await invoke("chemical_space_represent_cancel", { requestId }).catch(() => undefined);
+      throwIfAborted(signal);
+    }
+    const status = await invoke<RepresentJobStatus>("chemical_space_represent_status", {
+      requestId,
+    });
+    if (status.progress) {
+      onProgress({
+        phase: "representations",
+        representationStage: status.progress.stage,
+        completedRecords: status.progress.completedRecords,
+        totalRecords: status.progress.totalRecords,
+        percent: status.progress.percent,
+      });
+    }
+    if (!status.running) {
+      if (status.error) throw new Error(status.error);
+      const result = status.result;
+      if (!result) throw new Error("The model worker returned no result.");
+      if (result.backend !== "metalMps" || result.engine !== engine) {
+        throw new Error("The model worker returned an unattested result.");
+      }
+      return result;
+    }
+    await delay(REPRESENT_POLL_INTERVAL_MS);
+  }
+}
+
+function executeLearnedChemicalSpace(
+  records: BrowserChemicalSpaceInputRecord[],
+  represented: LearnedRepresentation,
+  options: ChemicalSpaceOptions,
+): Promise<ChemicalSpaceResult> {
+  const { representation, ...request } = options;
+  const failedRecords = Math.max(0, records.length - represented.sourceRecordIds.length);
+  return invoke<ChemicalSpaceResult>("compute_execute_learned_chemical_space", {
+    request: {
+      ...request,
+      maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
+    },
+    sourceRecordIds: represented.sourceRecordIds,
+    failedRecords,
+    knnCache: sliceKnnCache(
+      represented.knnCache,
+      represented.sourceRecordIds.length,
+      options.neighbors,
+    ),
+  }).then((result) => ({
+    ...result,
+    representation,
+    representationTimeMs: represented.representationTimeMs,
+    similarityGpuTimeMs: represented.similarityGpuTimeMs,
+  }));
+}
+
+export function sliceKnnCache(
+  cache: ChemicalSpaceKnnCache,
+  recordCount: number,
+  requestedNeighbors: number,
+): ChemicalSpaceKnnCache {
+  const neighbors = Math.min(requestedNeighbors, cache.neighborsPerVertex);
+  if (neighbors === cache.neighborsPerVertex) return cache;
+  const source = new Uint32Array(decodeKnnBase64(cache.sourceIndicesBase64).buffer);
+  const similarities = new Float32Array(decodeKnnBase64(cache.similaritiesBase64).buffer);
+  const slicedSource = new Uint32Array(recordCount * neighbors);
+  const slicedSimilarities = new Float32Array(recordCount * neighbors);
+  for (let row = 0; row < recordCount; row += 1) {
+    const sourceStart = row * cache.neighborsPerVertex;
+    const targetStart = row * neighbors;
+    slicedSource.set(source.subarray(sourceStart, sourceStart + neighbors), targetStart);
+    slicedSimilarities.set(
+      similarities.subarray(sourceStart, sourceStart + neighbors),
+      targetStart,
+    );
+  }
+  return {
+    neighborsPerVertex: neighbors,
+    sourceIndicesBase64: encodeKnnBase64(new Uint8Array(slicedSource.buffer)),
+    similaritiesBase64: encodeKnnBase64(new Uint8Array(slicedSimilarities.buffer)),
+  };
+}
+
+export function decodeKnnBase64(value: string) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+export function encodeKnnBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (let start = 0; start < bytes.length; start += 32_768) {
+    binary += String.fromCharCode(...bytes.subarray(start, start + 32_768));
+  }
+  return btoa(binary);
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, milliseconds);
+  });
 }
 
 function clusterPreparationRequest(
@@ -634,13 +861,13 @@ function clusterPreparationRequest(
   };
 }
 
-// Learned representations run through a Python model runtime that the packaged
-// desktop app does not ship yet. The panel turns this into a dedicated state
-// with a way back to Morgan instead of a dead-end Retry, so the error carries a
-// stable name for that classification.
+// Learned representations run through the managed Python model runtime. When
+// it is missing, the panel turns this into a dedicated state with an install
+// path and a way back to Morgan instead of a dead-end Retry, so the error
+// carries a stable name for that classification.
 export const REPRESENTATION_UNAVAILABLE_ERROR_NAME = "RepresentationUnavailableError";
-const PACKAGED_REPRESENTATION_UNAVAILABLE_MESSAGE =
-  "Learned representations are not included in this desktop build yet.";
+const MODEL_RUNTIME_MISSING_MESSAGE =
+  "The learned-model runtime is not installed.";
 
 export function representationUnavailableError(message: string): Error {
   const error = new Error(message);
@@ -650,9 +877,7 @@ export function representationUnavailableError(message: string): Error {
 
 export function isRepresentationUnavailableError(cause: unknown): boolean {
   if (cause instanceof Error && cause.name === REPRESENTATION_UNAVAILABLE_ERROR_NAME) return true;
-  const message = computeErrorMessage(cause).toLowerCase();
-  return message.includes("model runtime is not installed")
-    || message.includes("not included in this desktop build");
+  return computeErrorMessage(cause).toLowerCase().includes("model runtime is not installed");
 }
 
 export function computeErrorMessage(error: unknown): string {

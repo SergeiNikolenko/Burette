@@ -36,13 +36,17 @@ import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
+  cancelChemicalSpaceModelRuntimeInstall,
   computeErrorMessage,
+  fetchChemicalSpaceModelRuntimeStatus,
   invalidateChemicalSpaceFingerprintCache,
   isRepresentationUnavailableError,
   runChemicalSpaceClusteringWorkflow,
   runChemicalSpaceWorkflow,
   runChemicalSpaceStudyWorkflow,
+  startChemicalSpaceModelRuntimeInstall,
   type BrowserChemicalSpaceInputRecord,
+  type ChemicalSpaceModelRuntimeStatus,
   type ChemicalSpaceOptions,
   type ChemicalSpaceMethod,
   type ChemicalSpaceClusterResult,
@@ -225,8 +229,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [progress, setProgress] = useState<ChemicalSpaceProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   // A missing learned-model runtime is a configuration state, not a transient
-  // failure, so the panel offers a way back to Morgan instead of Retry.
+  // failure, so the panel offers installation and a way back to Morgan
+  // instead of Retry.
   const [errorNeedsModelRuntime, setErrorNeedsModelRuntime] = useState(false);
+  const [learnedRepsInstalled, setLearnedRepsInstalled] = useState<boolean | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [hovered, setHovered] = useState<number | null>(null);
   const [preview, setPreview] = useState<MoleculePreview | null>(null);
@@ -261,6 +267,18 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [confirmedLargeRunDocumentKey, setConfirmedLargeRunDocumentKey] = useState<string | null>(null);
   const [sourceRevision, setSourceRevision] = useState(0);
   const sourceRevisionRef = useRef(0);
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    void fetchChemicalSpaceModelRuntimeStatus()
+      .then((status) => {
+        if (!disposed) setLearnedRepsInstalled(status.installed);
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+    };
+  }, []);
   const workflowControllerRef = useRef<AbortController | null>(null);
   const studyControllerRef = useRef<AbortController | null>(null);
   const hoveredRef = useRef<number | null>(null);
@@ -731,7 +749,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
             >
               {CHEMICAL_SPACE_REPRESENTATIONS.map((representation) => (
                 <NativeSelectOption key={representation.value} value={representation.value}>
-                  {representation.value !== "morgan" && isTauriRuntime()
+                  {representation.value !== "morgan" && learnedRepsInstalled === false
                     ? `${representation.label} · not installed`
                     : representation.label}
                 </NativeSelectOption>
@@ -959,6 +977,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               <ChemicalSpaceRepresentationUnavailable
                 representation={representationLabel(options.representation)}
                 detail={error}
+                onInstalled={() => {
+                  setLearnedRepsInstalled(true);
+                  commitOptions({ ...draft });
+                }}
                 onUseMorgan={() => {
                   const next = { ...draft, representation: "morgan" as const };
                   setDraft(next);
@@ -1834,10 +1856,12 @@ function clusterMembersForSource(
 function ChemicalSpaceRepresentationUnavailable({
   representation,
   detail,
+  onInstalled,
   onUseMorgan,
 }: {
   representation: string;
   detail: string;
+  onInstalled: () => void;
   onUseMorgan: () => void;
 }) {
   return (
@@ -1849,9 +1873,107 @@ function ChemicalSpaceRepresentationUnavailable({
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
+        {isTauriRuntime() ? <ChemicalSpaceModelRuntimeInstall onInstalled={onInstalled} /> : null}
         <Button size="sm" variant="outline" onClick={onUseMorgan}>Use Morgan · Tanimoto</Button>
       </EmptyContent>
     </Empty>
+  );
+}
+
+// Self-contained install flow for the learned-model runtime: shows the
+// one-time download size up front, streams the installer's current line while
+// it runs, and supports cancellation. Completion hands control back to the
+// panel, which re-runs the interrupted workflow.
+function ChemicalSpaceModelRuntimeInstall({ onInstalled }: { onInstalled: () => void }) {
+  const [status, setStatus] = useState<ChemicalSpaceModelRuntimeStatus | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
+  const onInstalledRef = useRef(onInstalled);
+  onInstalledRef.current = onInstalled;
+  useEffect(() => {
+    let disposed = false;
+    void fetchChemicalSpaceModelRuntimeStatus()
+      .then((next) => {
+        if (disposed) return;
+        setStatus(next);
+        if (next.installPhase === "installing") setInstalling(true);
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (!installing) return;
+    let disposed = false;
+    const poll = window.setInterval(() => {
+      void fetchChemicalSpaceModelRuntimeStatus()
+        .then((next) => {
+          if (disposed) return;
+          setStatus(next);
+          if (next.installPhase === "completed" && next.installed) {
+            setInstalling(false);
+            onInstalledRef.current();
+          } else if (next.installPhase === "failed" || next.installPhase === "cancelled") {
+            setInstalling(false);
+            setInstallError(next.installError ?? "The model runtime installation failed.");
+          }
+        })
+        .catch(() => undefined);
+    }, 1_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(poll);
+    };
+  }, [installing]);
+  if (!status) return null;
+  if (installing) {
+    return (
+      <div className="flex w-full max-w-sm flex-col items-center gap-2">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Spinner /> Installing the model runtime…
+        </div>
+        {status.installLine ? (
+          <div className="w-full truncate text-center font-mono text-[10px] text-muted-foreground">
+            {status.installLine}
+          </div>
+        ) : null}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            void cancelChemicalSpaceModelRuntimeInstall().catch(() => undefined);
+          }}
+        >
+          Cancel installation
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex w-full max-w-sm flex-col items-center gap-2">
+      {status.installerAvailable ? (
+        <Button
+          size="sm"
+          onClick={() => {
+            setInstallError(null);
+            setInstalling(true);
+            void startChemicalSpaceModelRuntimeInstall().catch((cause) => {
+              setInstalling(false);
+              setInstallError(computeErrorMessage(cause));
+            });
+          }}
+        >
+          Install model runtime ({status.installSizeHint})
+        </Button>
+      ) : null}
+      <div className="text-center text-[11px] text-muted-foreground">
+        {status.installHint} {status.weightsNote}
+      </div>
+      {installError ? (
+        <div className="text-center text-[11px] text-destructive">{installError}</div>
+      ) : null}
+    </div>
   );
 }
 
