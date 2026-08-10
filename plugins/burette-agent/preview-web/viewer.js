@@ -20,7 +20,6 @@
   const MOLSTAR_TOUCH_CONTEXT_MENU_MOVE_THRESHOLD_PX = 12;
   const MOLSTAR_TOUCH_PICK_RADIUS_PX = 18;
   const MOLSTAR_TOUCH_PICK_STEP_PX = 6;
-  const MOLSTAR_SEMANTIC_TARGET_DWELL_MS = 160;
   const MOLSTAR_LASSO_MIN_POINTS = 4;
   const MOLSTAR_LASSO_MIN_DISTANCE_PX = 3;
   const MOLSTAR_LASSO_SAMPLE_STEP_PX = 8;
@@ -142,7 +141,7 @@
   let molstarWindowResizeHandler = null;
   let molstarContainerResizeCleanup = null;
   let molstarContextMenuCleanup = null;
-  let molstarSemanticCanvasTargetCleanup = null;
+  let molstarBrowserAnnotationTargetCleanup = null;
   let molstarSelectionPreviewCleanup = null;
   let molstarStoryStateCleanup = null;
   let molstarStoryPresentationRestoreInFlight = false;
@@ -24861,113 +24860,97 @@
     return chain ? `residue ${residue}, chain ${chain}` : `residue ${residue}`;
   }
 
-  // Mol* renders atoms into one WebGL canvas, so browser accessibility and
-  // annotation tools otherwise see only the canvas. After a short hover dwell,
-  // expose the current pick as one bounded DOM target at the same screen point.
-  // Fast clicks and camera drags still go directly to Mol*.
-  function installMolstarSemanticCanvasTarget(viewer) {
-    molstarSemanticCanvasTargetCleanup?.();
-    molstarSemanticCanvasTargetCleanup = null;
-    if (!viewer?.plugin) return;
-    let button = null;
-    let dwellTimer = 0;
-    let currentTarget = null;
-    let currentPick = null;
-    const clear = () => {
-      if (dwellTimer) window.clearTimeout(dwellTimer);
-      dwellTimer = 0;
-      button?.remove();
-      button = null;
-      currentTarget = null;
-      currentPick = null;
+  // Browser comments resolve annotations with elementFromPoint after temporarily
+  // disabling their own overlay. Mol* renders the whole scene into one canvas,
+  // so expose one transparent, semantic hit target only while comment mode is
+  // active. This never participates in the normal viewer interaction surface.
+  function installMolstarBrowserAnnotationTarget(viewer) {
+    molstarBrowserAnnotationTargetCleanup?.();
+    molstarBrowserAnnotationTargetCleanup = null;
+    const canvas = viewer?.plugin?.canvas3d?.webgl?.gl?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) return;
+    let annotationTarget = null;
+    let observedCommentRoot = null;
+    let commentRootObserver = null;
+    const clearTarget = () => {
+      annotationTarget?.remove();
+      annotationTarget = null;
     };
-    const selectCurrent = (event) => {
-      if (!currentTarget) return;
-      const pickingLevel = molstarSelectionLevel();
-      const loci = molstarContextPickingLevelLoci(currentTarget, pickingLevel);
-      const additive = event.metaKey || event.ctrlKey || event.shiftKey;
-      if (!selectMolstarContextPick({ ...currentTarget, loci }, { additive, applyGranularity: false })) return;
-      const label = molstarSemanticCanvasTargetLabel(currentTarget, pickingLevel);
-      button?.setAttribute('aria-pressed', 'true');
-      setStatus(`[web] Selected ${label}.`);
+    const activeBrowserCommentRoot = () => {
+      for (const child of document.documentElement.children) {
+        const root = child.shadowRoot?.querySelector?.('[data-browser-comment-root]');
+        if (!(root instanceof HTMLElement)) continue;
+        if (root.style.pointerEvents === 'auto') return root;
+      }
+      return null;
     };
-    const ensureButton = () => {
-      if (button) return button;
-      button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'buret-molstar-semantic-target';
-      button.addEventListener('pointerdown', event => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.stopPropagation();
+    const observeCommentRoot = root => {
+      if (root === observedCommentRoot) return;
+      commentRootObserver?.disconnect();
+      observedCommentRoot = root;
+      commentRootObserver = new MutationObserver(() => {
+        if (root.style.pointerEvents !== 'auto') clearTarget();
       });
-      button.addEventListener('click', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        selectCurrent(event);
-      });
-      button.addEventListener('contextmenu', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!currentPick) return;
-        molstarContextMenuPick = currentPick;
-        showMolstarContextMenu(event, currentPick);
-      });
-      document.body.appendChild(button);
-      return button;
+      commentRootObserver.observe(root, { attributes: true, attributeFilter: ['style'] });
     };
-    const showFromEvent = (event) => {
-      const pick = molstarContextPickFromEvent(event);
-      if (!pick) {
-        clear();
+    const ensureTarget = () => {
+      if (annotationTarget?.isConnected) return annotationTarget;
+      const target = document.createElement('div');
+      target.dataset.buretMolstarAnnotationTarget = 'true';
+      target.setAttribute('role', 'img');
+      Object.assign(target.style, {
+        position: 'fixed',
+        zIndex: '2147483646',
+        width: '24px',
+        height: '24px',
+        overflow: 'hidden',
+        padding: '0',
+        margin: '0',
+        border: '0',
+        color: 'transparent',
+        background: 'transparent',
+        fontSize: '0',
+        lineHeight: '0',
+        pointerEvents: 'auto',
+        transform: 'translate(-50%, -50%)'
+      });
+      document.body.appendChild(target);
+      annotationTarget = target;
+      return target;
+    };
+    const updateTarget = event => {
+      const commentRoot = activeBrowserCommentRoot();
+      if (!commentRoot || molstarLassoEnabled || (event.type !== 'pointerdown' && Number(event.buttons || 0) !== 0)) {
+        clearTarget();
         return;
       }
-      const target = molstarContextTargetForPick(pick);
-      if (!target?.atom || (!target.atomLoci && !target.loci)) {
-        clear();
+      observeCommentRoot(commentRoot);
+      const pick = molstarPickFromCanvasPoint(canvas, event.clientX, event.clientY);
+      const contextTarget = pick ? molstarContextTargetForPick(pick) : null;
+      if (!contextTarget?.atom || (!contextTarget.atomLoci && !contextTarget.loci)) {
+        clearTarget();
         return;
       }
-      const pickingLevel = molstarSelectionLevel();
-      const label = molstarSemanticCanvasTargetLabel(target, pickingLevel);
-      const targetButton = ensureButton();
-      currentTarget = target;
-      currentPick = pick;
-      targetButton.textContent = label;
-      targetButton.dataset.label = label;
-      targetButton.dataset.scope = target.scope || 'selection';
-      targetButton.setAttribute('aria-label', `Select ${label}`);
-      targetButton.setAttribute('aria-pressed', 'false');
-      targetButton.title = `Select ${label}`;
-      targetButton.style.left = `${Math.round(event.clientX)}px`;
-      targetButton.style.top = `${Math.round(event.clientY)}px`;
+      const label = molstarSemanticCanvasTargetLabel(contextTarget, molstarSelectionLevel());
+      const target = ensureTarget();
+      target.textContent = label;
+      target.dataset.label = label;
+      target.dataset.scope = contextTarget.scope || 'selection';
+      target.setAttribute('aria-label', `Mol* ${label}`);
+      target.style.left = `${Math.round(event.clientX)}px`;
+      target.style.top = `${Math.round(event.clientY)}px`;
     };
-    const onPointerMove = (event) => {
-      if (event.target instanceof Element && event.target.closest('.buret-molstar-semantic-target')) return;
-      if (dwellTimer) window.clearTimeout(dwellTimer);
-      dwellTimer = 0;
-      if (Number(event.buttons || 0) !== 0 || molstarLassoEnabled || !isMolstarContextMenuTarget(event.target)) {
-        clear();
-        return;
-      }
-      const sample = { clientX: event.clientX, clientY: event.clientY, target: event.target };
-      dwellTimer = window.setTimeout(() => {
-        dwellTimer = 0;
-        showFromEvent(sample);
-      }, MOLSTAR_SEMANTIC_TARGET_DWELL_MS);
-    };
-    const onPointerDown = (event) => {
-      if (!(event.target instanceof Element) || !event.target.closest('.buret-molstar-semantic-target')) clear();
-    };
-    document.addEventListener('pointermove', onPointerMove, true);
-    document.addEventListener('pointerdown', onPointerDown, true);
-    window.addEventListener('blur', clear);
-    window.addEventListener('resize', clear);
-    molstarSemanticCanvasTargetCleanup = () => {
-      document.removeEventListener('pointermove', onPointerMove, true);
-      document.removeEventListener('pointerdown', onPointerDown, true);
-      window.removeEventListener('blur', clear);
-      window.removeEventListener('resize', clear);
-      clear();
+    window.addEventListener('mousemove', updateTarget, true);
+    window.addEventListener('pointerdown', updateTarget, true);
+    window.addEventListener('blur', clearTarget);
+    window.addEventListener('resize', clearTarget);
+    molstarBrowserAnnotationTargetCleanup = () => {
+      window.removeEventListener('mousemove', updateTarget, true);
+      window.removeEventListener('pointerdown', updateTarget, true);
+      window.removeEventListener('blur', clearTarget);
+      window.removeEventListener('resize', clearTarget);
+      commentRootObserver?.disconnect();
+      clearTarget();
     };
   }
 
@@ -25176,8 +25159,8 @@
       molstarContextMenuCleanup();
       molstarContextMenuCleanup = null;
     }
-    molstarSemanticCanvasTargetCleanup?.();
-    molstarSemanticCanvasTargetCleanup = null;
+    molstarBrowserAnnotationTargetCleanup?.();
+    molstarBrowserAnnotationTargetCleanup = null;
     molstarStoryStateCleanup?.();
     molstarStoryStateCleanup = null;
     if (molstarWindowResizeHandler) {
@@ -25238,7 +25221,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
     installMolstarContextMenu(viewer);
-    installMolstarSemanticCanvasTarget(viewer);
+    installMolstarBrowserAnnotationTarget(viewer);
     installMolstarSelectionPreviewSync(viewer);
     installLeftPanelVisibilityGuard();
     scheduleLayoutStateReapply(viewer);
