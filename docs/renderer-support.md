@@ -6,38 +6,61 @@ runtime under `PreviewExtension/`.
 
 ## Renderer Modes
 
+The user-facing global renderer setting exposes `auto`, `molstar`, and
+`xyzrender-external`:
+
 - `auto`: choose the fastest compatible renderer for the file.
 - `molstar`: interactive Mol* preview.
 - `xyzrender-external`: call an external `xyzrender` executable when configured.
-- `grid`: collection preview for table-like molecule files.
+
+Per-document renderers are selected by the format registry rather than the
+global setting: `grid2d` (collection preview for table-like molecule files),
+the Mesoscale runtime, and the spectrum viewer.
 
 ## Format Support
 
 Mol* interactive preview is used for:
 
-- PDB, ENT, PDBQT, PQR
+- PDB, ENT, XPDB, PDBQT, PQR
 - CIF, MCIF, MMCIF, BCIF
 - SDF, SD
-- MOL, MOL2
+- MOL, MDL, MOL2
+- MMTF
 - XYZ and GRO when selected or resolved by policy
 - MolViewSpec scene files: MVSJ and MVSX
+- volume/density maps: CCP4, MRC, MAP
+- reflection data: MTZ (2Fo-Fc and signed Fo-Fc maps)
+- converted pharmacophore models: PH4
+- converted Schrödinger structures: MAE, MAE.GZ, MAEGZ, CMS
+- molecular dynamics trajectories with trajectory controls: topology plus
+  coordinate pairs (for example XTC/TRR next to a topology), and trajectories
+  without a topology through synthetic topology generation
 
-External `xyzrender` is used for text XYZ input when selected or when `auto`
-resolves to the default preview path. It is also the required path for
-external-renderer-only groups:
+Mesoscale documents (`molj`, `molx`, `.mesozip` packages, and
+CellPack/Petworld-style CIF paths) open in the dedicated Mesoscale runtime
+rather than the standard Mol* viewer.
 
-- CUB, CUBE
-- ABI, COM, FDF, IN, INP, NW, OUT, PSI4, QCIN
-- VASP
+External-renderer text formats (CUB/CUBE, ABI, COM, FDF, FHIAIMS, GMS, IN,
+INP, LOG, NW, OUT, PSI4, QCIN, VASP, XYZR) are converted to PDB through the
+required `text-coordinates-to-pdb` converter and open in Mol* on `auto`; the
+external `xyzrender` renderer is the registered fallback and is used when the
+conversion fails or when the user selects `xyzrender-external`.
 
 SDF, SMILES, CSV, TSV, and DataWarrior (`.dwar`) collection previews use the
-grid runtime. DataWarrior IDCode and coordinate columns are decoded locally with
-the bundled OpenChemLib runtime; ordinary table properties remain available for
-search, sorting, and inspection.
+`grid2d` runtime. DataWarrior IDCode and coordinate columns are decoded
+locally with the bundled OpenChemLib runtime; ordinary table properties remain
+available for search, sorting, and inspection. CSV/TSV files without molecule
+columns still open as generic delimited data tables in the same grid surface.
+
+Mass-spectrometry formats (MS, MAGMA, MGF, MSP, MZML, MZXML) open in the
+dedicated spectrum viewer.
+
+Coordinate-free computational outputs resolve to an explicit `not-renderable`
+document state instead of a blank viewer.
 
 OpenMM, Amber, and CHARMM coordinate artifacts render as structures when they
-contain standalone coordinates. This includes INPCRD, RST7, CRD, RST, STATE,
-and XML files with `<Position>` entries. Burette also opens the raw text in the
+contain standalone coordinates. This includes INPCRD, RST7, RESTRT, CRD, RST,
+STATE, and XML files with `<Position>` entries. Burette also opens the raw text in the
 document surfaces so the parsed coordinates remain inspectable. Parameter,
 topology, stream, key, and checkpoint artifacts that do not contain standalone
 coordinates open through the text-file surface instead. Binary checkpoint

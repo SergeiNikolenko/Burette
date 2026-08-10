@@ -1890,13 +1890,6 @@ body:has(.msp-viewport-controls-buttons .msp-hover-box-wrapper:hover) .buret-gen
   display: none; align-items: center; gap: 4px; padding-left: 5px;
   border-left: 1px solid var(--buret-toolbar-border);
 }
-.buret-preview-dock-toggle {
-  width: 30px;
-  padding: 0;
-}
-body:not(.buret-preview-docks-enabled) .buret-preview-dock-toggle {
-  display: none;
-}
 .buret-preview-dock {
   position: fixed;
   z-index: 2147483644;
@@ -2115,7 +2108,7 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   outline-offset: -2px;
 }
 .buret-molstar-preset-menu .buret-tree-menu-item[aria-checked="true"] {
-  background: color-mix(in srgb, var(--buret-accent, #b45cff) 18%, var(--buret-molstar-row-background));
+  background: var(--buret-molstar-hover-background);
 }
 .buret-molstar-preset-current {
   display: none;
@@ -2152,7 +2145,7 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   outline-offset: -2px;
 }
 .buret-molstar-appearance-item[aria-checked="true"] {
-  background: color-mix(in srgb, var(--buret-accent, #b45cff) 18%, var(--buret-molstar-row-background));
+  background: var(--buret-molstar-hover-background);
 }
 .buret-molstar-preset-menu .buret-tree-menu-item[aria-checked="true"]:focus-visible,
 .buret-molstar-appearance-item[aria-checked="true"]:focus-visible {
@@ -2202,6 +2195,10 @@ body.buret-theme-light .buret-molstar-preset-menu-separator {
   user-select: none;
 }
 .buret-molstar-preset-preview.hidden { display: none; }
+.buret-molstar-preset-preview.loading {
+  visibility: hidden;
+  pointer-events: none;
+}
 .buret-molstar-preset-preview.viewport-constrained { display: none; }
 .buret-molstar-preset-preview.ready:hover {
   box-shadow: 0 22px 52px var(--buret-molstar-shadow);
@@ -3478,6 +3475,17 @@ body.burette-mobile-host .buret-docking-poses button {
 }
 .buret-docking-poses-compact .buret-docking-pose-next {
   grid-column: 3;
+  grid-row: 2;
+}
+.buret-docking-poses-compact.buret-molstar-story .buret-docking-pose-main {
+  grid-template-columns: 28px repeat(4, minmax(0, 1fr));
+}
+.buret-docking-poses-compact.buret-molstar-story [data-buret-story-play] {
+  grid-column: 4;
+  grid-row: 2;
+}
+.buret-docking-poses-compact.buret-molstar-story .buret-molstar-story-open {
+  grid-column: 5;
   grid-row: 2;
 }
 .buret-docking-poses-compact .buret-trajectory-smooth-button {

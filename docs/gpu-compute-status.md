@@ -1,23 +1,26 @@
 # Native GPU Compute Layer Implementation Status
 
-Status: all requested workflow families are implemented in the native v20
-CPU/Metal layer and exposed through Grid, 3D, table, and report result surfaces. Exact 100k
-clustering, all conformer variants, MMFF94/MMFF94s optimization, mapped
-alignment/scoring, and all eight semiempirical method identities have focused
-CPU/reference and real-Apple-GPU evidence. Clustering, alignment/scoring, and
-semiempirical SCF and the complete conformer DG/ETK/MMFF/stereo Metal pipeline
-now run in the separately attested compute service rather than the UI process.
-A current v20 development package is built,
-hash-verified, signed ad hoc, installed, and passes real helper-process
-Tanimoto, fixed-pose shape/electrostatic scoring, RM1 SCF, DG embedding, ETK
-optimization, MMFF optimization, and stereo-validation dispatches on Apple M2
-Pro. Its desktop
-process launches from the installed bundle. Production release remains gated on
-external Developer ID/notarization credentials and final UI-triggered acceptance
-evidence; the current UI inspection attempt was blocked by a locked macOS
-session.
+Status: all requested workflow families are implemented in the native
+CPU/Metal layer (runtime **v22**, `burette-native-metal-v22` /
+`native-compute.v22.metallib`) and exposed through Grid, 3D, table, and report
+result surfaces. Exact 100k clustering, all conformer variants,
+MMFF94/MMFF94s optimization, mapped alignment/scoring, all eight semiempirical
+method identities, and the Chemical Space family (Metal UMAP embeddings,
+clustering, activity colouring, and cliffs — PR #502, the change that bumped
+the runtime to v22) have focused CPU/reference and real-Apple-GPU evidence.
+Clustering, alignment/scoring, semiempirical SCF, and the complete conformer
+DG/ETK/MMFF/stereo Metal pipeline run in the separately attested compute
+service rather than the UI process. The release pipeline now carries Developer
+ID signing and notarization when credentials are configured (see
+[Releasing](releasing.md)); shipped 2.x releases are built through that path.
 
-Updated: 2026-07-17
+The dated validation narrative below (marked 2026-07-17) records the v20
+acceptance slice and its machine-local evidence; treat its version strings,
+package names, and SHA values as that snapshot's evidence trail, not the
+current runtime identity.
+
+Updated: 2026-08-10 (v22 identity, Chemical Space, browser-dev backend);
+validation slice recorded 2026-07-17
 
 Target architecture:
 [Native GPU Compute Layer](superpowers/specs/2026-07-15-gpu-compute-platform-design.md)
@@ -274,9 +277,9 @@ implemented.
 | macOS desktop source build | `Cluster selected`, `Cluster filtered`, `Cluster all`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
 | Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, seven-term MMFF evaluation, fused automatic BFGS/L-BFGS MMFF optimization, and mapped Horn/RMSD/shape/ESP scoring on Apple M2 Pro |
-| Packaged development Metal | `Burette-gpucompute9a97v27.app` is installed at `/Users/nikolenko/Applications/Burette-gpucompute9a97v27.app`; it was clean-built from commit `84c019d7`, packages the hash-bound v20 runtime and one arm64 helper under `Contents/Helpers`, and passes helper handshake, runtime/helper SHA binding, replay rejection, one-shot transport recovery, real FD-based Tanimoto, alignment/shape/electrostatic, all eight semiempirical methods, DG, ETK, MMFF, stereo, the 32-case conformer corpus, and deep/strict ad-hoc signature verification on Apple M2 Pro |
-| Packaged production Metal | Pending external Developer ID signing, hardened-runtime verification, notarization, and UI-triggered installed-app acceptance evidence |
-| Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
+| Packaged development Metal | 2026-07-17 snapshot: `Burette-gpucompute9a97v27.app` was installed at `/Users/nikolenko/Applications/Burette-gpucompute9a97v27.app`, clean-built from commit `84c019d7`, packaging the hash-bound v20 runtime and one arm64 helper under `Contents/Helpers`; it passed helper handshake, runtime/helper SHA binding, replay rejection, one-shot transport recovery, real FD-based Tanimoto, alignment/shape/electrostatic, all eight semiempirical methods, DG, ETK, MMFF, stereo, the 32-case conformer corpus, and deep/strict ad-hoc signature verification on Apple M2 Pro |
+| Packaged production Metal | The release pipeline signs with Developer ID and notarizes when credentials are configured (`.github/workflows/release.yml`, `scripts/check-release-signature.sh`); 2.x releases ship through it |
+| Browser development | Chemical Space compute runs through the native `burette-compute-dev-backend` helper (`apps/desktop/vite/browser-dev/native-compute.ts`, `apps/desktop/src-tauri/src/compute/dev_backend.rs`); other compute families remain reported unavailable in browser-dev |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
 | iPhone source app | Rendering remains unchanged; no macOS Metal compute workflow is exposed |
 | Agent/plugin surface | Durable compute contracts exist internally, but no new public agent tool is released in this slice |
@@ -347,7 +350,8 @@ product increment; it is no longer required to read the user-facing report.
 | Fixed request/job/artifact contracts | `crates/burette-compute-protocol/` |
 | Exact fingerprint ABI, CPU Tanimoto/CSR, Butina | `crates/burette-compute-core/` |
 | Metal runtime, tiling, dispatch, GPU timings | `crates/burette-compute-metal/` |
-| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal`, `compute/metal/conformer-distance.v1.metal`, `compute/metal/conformer-optimize.v1.metal`, `compute/metal/conformer-stereo.v1.metal`, `compute/metal/conformer-etk.v1.metal`, `compute/metal/conformer-etk-optimize.v1.metal`, `compute/metal/mmff-energy.v1.metal` |
+| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal`, `compute/metal/conformer-distance.v1.metal`, `compute/metal/conformer-optimize.v1.metal`, `compute/metal/conformer-stereo.v1.metal`, `compute/metal/conformer-etk.v1.metal`, `compute/metal/conformer-etk-optimize.v1.metal`, `compute/metal/mmff-energy.v1.metal`, `compute/metal/alignment-score.v1.metal`, `compute/metal/pm6-d3.v2.metal`, `compute/metal/pm6-h4-hh.v1.metal`, `compute/metal/pm6-one-center-fock.v1.metal`, `compute/metal/pm6-pair-fock.v1.metal`, `compute/metal/rm1-eigen.v1.metal`, `compute/metal/rm1-fock.v1.metal`, `compute/metal/rm1-pair-rotate.v1.metal`, `compute/metal/umap.v1.metal` |
+| Chemical Space workflow | `compute/metal/umap.v1.metal` (+ `umap-kernel-contract.v1.json`), CPU reference `crates/burette-compute-core/src/umap.rs`, desktop workflow `apps/desktop/src-tauri/src/compute/chemical_space.rs`, model runner `compute/models/chemical_space_representations.py`, benchmark `docs/benchmarks/apple-m2-pro-chemical-space-10k.md` |
 | Frozen source verification and RDKit chunk sessions | `apps/desktop/src-tauri/src/compute/fingerprint_session.rs` |
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
 | Attested helper control/data plane and clustering/alignment/semiempirical dispatch | `apps/desktop/src-tauri/src/compute/service.rs`, `crates/burette-compute-protocol/src/control/worker.rs` |

@@ -57,14 +57,16 @@ result back to the user.
 
 | Surface | Path | Use |
 | --- | --- | --- |
-| Workspace opener | `bun scripts/burette-agent.mjs open` | Opens browser preview, browser-dev shell, or desktop app sessions. |
+| Workspace opener | `bun scripts/burette-agent.mjs open` | Opens browser preview, browser agent shell, or desktop app sessions. |
 | Workspace observer | `bun scripts/burette-agent.mjs observe` | Reads typed state from a session directory. |
 | Workspace action | `bun scripts/burette-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
+| Workspace facade tools | `burette.get_context` / `burette.open_workspace` / `burette.observe_workspace` / `burette.control_viewer` / `burette.render_panel` | Short MCP facade over the CLI for external agents, routed by the `external-agent-contract` skill. |
 | Ketcher surface | `burette.open_ketcher` / `burette.control_ketcher` | Opens and controls the active chemical editor with bounded, revision-checked actions. |
 | MolViewSpec Story | `story-schema` / `story-template-list` / `story-template-create` / `story-create` / `story-validate`; `burette.get_mvs_authoring_reference` / `burette.list_story_templates` / `burette.create_story_from_template` / `burette.create_story` / `burette.validate_story` / `burette.observe_story` / `burette.control_story` | Discovers the version-matched MVS schema, lists reusable scientific scaffolds, authors schema-valid multi-state MVSJ/MVSX, verifies resources, and exposes typed Story state and playback. |
 | Panel renderer | `bun scripts/burette-agent.mjs render-panel` | Opens bounded markdown/table/chart output in a docked panel. |
 | Tokenized preview | `bun scripts/agent-preview.mjs` | Starts typed browser preview sessions for direct observe/act checks. |
 | Router skill | `plugins/burette-agent/skills/index/SKILL.md` | Routes molecular workspace requests to the right focused skill. |
+| External agent contract | `plugins/burette-agent/skills/external-agent-contract/SKILL.md` | Operates the workspace through the short `burette.*` tool facade. |
 | User context | `plugins/burette-agent/skills/user-context/SKILL.md` | Performs scoped preflight and capability checks. |
 | Open workspace | `plugins/burette-agent/skills/open-workspace/SKILL.md` | Opens files in Browser, browser-shell, or desktop surfaces. |
 | Mol* scene | `plugins/burette-agent/skills/molstar-scene/SKILL.md` | Applies or reviews Mol* scene actions and MVS-like operations. |
@@ -85,9 +87,10 @@ do not invent a second local session protocol.
 
 | Mode | Use When | Notes |
 | --- | --- | --- |
-| `browser-dev-shell` | The user needs the normal app UI in the Browser: sidebar, tabs, docks, command palette, or shell workflows. | Starts a local browser-dev shell with agent-session endpoints. |
-| `browser-preview` | The user needs tokenized typed observe/act against a preview surface. | Use `--no-launch` when the Browser plugin should navigate the URL. |
-| `desktop-app` | The user explicitly asks for packaged/native app behavior. | Requires the installed app and a desktop agent session. |
+| `auto` | Default. The CLI picks the best available surface. | Used by the plugin skills unless a task pins a surface. |
+| `browser-agent-shell` | The user needs the normal app UI in the Browser: sidebar, tabs, docks, command palette, or shell workflows. | Starts a local browser-dev shell with agent-session endpoints. `browser-dev-shell` is accepted as a legacy alias and normalized to this mode. |
+| `browser-preview` | The user needs tokenized typed observe/act against a preview surface. | Prints the session URL; the Browser plugin navigates it. |
+| `desktop-app` | The user explicitly asks for packaged/native app behavior. | Requires the installed app and a desktop agent session. `--no-launch` skips launching the app when it is already running. |
 
 Browser means the in-app Browser plugin unless the user explicitly asks for an
 external browser. Computer/native UI control is a QA fallback, not the primary
@@ -131,7 +134,11 @@ or unknown variables, then follows the same validation and safe-write path as
 `story-create`. The source descriptors live in `templates/mvs-story/` and are
 packaged under `assets/mvs-story-templates/`. They are starting points, not
 analysis engines: contacts, scores, alignment metrics, and biological claims
-must be supplied from explicit calculations or observations.
+must be supplied from explicit calculations or observations. In particular,
+the docking comparison requires one computed interaction-primitives resource,
+one matching receptor-residue annotation, and one evidence-qualified summary
+for each pose. Packaged docking Stories therefore cannot silently omit either
+the key-contact lines or the endpoint residues those lines refer to.
 
 `story-schema` exposes progressive MolViewSpec authoring help from the same
 installed Mol* runtime used by Story validation. Without `--node` it returns a
@@ -145,7 +152,8 @@ guessing version-sensitive syntax.
 After opening, `observe_story` reports the current snapshot and ordered bounded
 metadata from Mol*'s snapshot manager. `control_story` supports next, previous,
 goto by index/key/id, play, and pause. The visible Story dock mirrors that state
-and exposes Previous, Play/Pause, and Next. Completion requires schema/resource
+and exposes Previous, Play/Pause, and Next; the Mol* viewer itself also carries
+Story step controls with hover previews. Completion requires schema/resource
 validation, ready workspace state, typed next/previous checks, and Browser
 verification of two nonblank steps.
 
@@ -194,8 +202,8 @@ added.
 
 | Symptom | Likely cause | Where to look first |
 | --- | --- | --- |
-| Skill opens the wrong surface | Router chose `browser-preview`, `browser-dev-shell`, or `desktop-app` incorrectly. | `plugins/burette-agent/skills/index/SKILL.md`, CLI `open` arguments |
-| MCP tool succeeds but the panel is empty | Widget snapshot is unbounded, malformed, or missing the expected artifact shape. | MCP registration output, `plugins/burette-agent/mcp/widget-assets/*`, `render-panel` payload |
+| Skill opens the wrong surface | Router chose `browser-preview`, `browser-agent-shell`, or `desktop-app` incorrectly. | `plugins/burette-agent/skills/index/SKILL.md`, CLI `open` arguments |
+| MCP tool succeeds but the panel is empty | Widget snapshot is unbounded, malformed, or missing the expected artifact shape. | MCP registration output, `plugins/burette-agent/mcp/registrations/*/register.mjs`, `render-panel` payload |
 | `observe` returns no active document | Wrong session directory, closed Browser tab, or desktop session not attached. | CLI `sessionDir`, shell logs, `apps/desktop/src/hooks/use-agent-session.ts` |
 | `act` times out | Action was sent to the shell when the active Mol* viewer was not ready, or the action contract changed. | Last `observe` result, `apps/desktop/src/hooks/use-agent-session.ts`, viewer bridge tests |
 | Story opens but has no steps | The input is a single-state MVS document, an old runtime is active, or Mol* did not install snapshots. | Run `story-validate`, then `observe_story`; confirm `kind: "multiple"` and restart after plugin updates. |

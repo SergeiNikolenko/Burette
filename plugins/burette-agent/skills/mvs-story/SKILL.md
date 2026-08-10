@@ -57,14 +57,18 @@ turn.
 
 - `structure-overview`: global fold to ligand context.
 - `binding-site-tour`: overview, pocket focus, and evidence-qualified interpretation.
-- `docking-pose-comparison`: receptor, two poses, and a consistently encoded overlay.
+- `docking-pose-comparison`: receptor, two poses with required computed key-interaction
+  primitive layers, matching endpoint-residue annotations, compact default-colored
+  ball-and-stick ligands, and a consistently encoded overlay.
 - `aligned-structure-comparison`: reference, candidate, and overlay; inputs must
   already share a coordinate frame.
 
 The template catalog declares variables, storyboard purpose/evidence, and
 caveats. Templates do not compute contacts, docking confidence, affinity,
-alignment, RMSD, or trajectory metrics. Add those claims only after a named
-calculation and include method status, units, and uncertainty in the step text.
+alignment, RMSD, or trajectory metrics. The docking comparison refuses to
+package without explicit interaction resources, endpoint-residue annotations,
+and evidence summaries for both poses, but those inputs still must come from a
+named calculation with method status, units, and uncertainty in the step text.
 
 ## Authoring Shape
 

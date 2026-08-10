@@ -302,7 +302,10 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .topbar, .chrome-leading-controls, .chrome-trailing-controls, .sidebar-toggle-root, .tab-strip, .tab-strip-spacer, .chrome-button, .new-tab, .tab-shell, .tab, .sidebar, .sidebar-footer, .project, .sidebar-search-row, .sidebar-search-action-row, .settings-sidebar, .settings-back-button, .settings-search, .settings-nav-item, .dock-panel { pointer-events: auto; }
 .chrome-leading-controls {
   position: absolute;
-  left: 92px;
+  /* The macOS traffic lights stay at their native position while the page
+     zooms, so the reserved gap shrinks by the zoom factor to keep a constant
+     on-screen clearance. */
+  left: calc(92px / var(--window-zoom, 1));
   top: 0;
   z-index: 5;
   height: var(--chrome-height);
@@ -7917,7 +7920,6 @@ input.structure-inspector-composition-search {
    the rows would switch layout ~26px before the column actually got narrow. */
 .settings-panel-content { width: min(672px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 96px 32px 80px; container: settings-panel / inline-size; }
 .agent-integration-content { width: min(760px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 96px 32px 80px; container-type: inline-size; }
-.settings-panel[data-settings-section="agent"] .settings-panel-content { width: min(760px, calc(100% - 64px)); }
 .agent-integration-panel[data-embedded] .agent-integration-content { width: 100%; margin: 0; padding: 0; }
 .settings-panel h1 { margin: 0 0 24px; color: var(--text-primary); font-size: 21px; font-weight: 400; letter-spacing: 0; }
 .agent-integration-panel h1 { margin: 0; color: var(--text-primary); font-size: 21px; font-weight: 400; letter-spacing: 0; }
@@ -8380,7 +8382,7 @@ img.settings-open-destination-icon {
   .settings-range-control input { width: 100%; }
 }
 @media (max-width: 760px) {
-  .chrome-leading-controls { left: 82px; }
+  .chrome-leading-controls { left: calc(82px / var(--window-zoom, 1)); }
   .topbar .tab-history-controls { display: none; }
   .sidebar-search-row { padding: 0 28px 0 32px; }
   .settings-panel-content { width: 100%; padding: 80px 16px 64px; }

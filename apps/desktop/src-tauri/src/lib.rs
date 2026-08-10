@@ -10,6 +10,7 @@ mod preview;
 mod startup;
 mod tray;
 mod windows;
+mod zoom;
 
 use commands::descriptors::DescriptorGridJobRegistry;
 use commands::recent_documents::RecentDocumentsRegistry;
@@ -62,6 +63,12 @@ pub fn run() {
         .manage(SourceEditRegistry::default())
         .manage(RecentDocumentsRegistry::default())
         .manage(startup::PendingOpenDocuments::default())
+        .manage(zoom::WindowZoom::default())
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                zoom::sync_on_page_load(webview);
+            }
+        })
         .setup(|app| {
             let compute_coordinator = app
                 .path()

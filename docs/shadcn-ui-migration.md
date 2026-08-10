@@ -10,13 +10,19 @@ shadcn/ui is used as source-owned primitives and composition guidance, not as a
 new product skin.
 
 The migration uses the Radix base because Burette already depends on Radix
-Dialog, Dropdown Menu, and Context Menu. It must not introduce a second
-incompatible primitive stack.
+Dialog, Dropdown Menu, and Context Menu. Two deliberate, scoped exceptions
+exist alongside it: the status toast layer is built on Base UI
+(`@base-ui/react/toast` in `apps/desktop/src/components/ui/toast.tsx`), and
+animated components come from the `animate-ui` registry
+(`apps/desktop/src/components/animate-ui/`). Do not add further primitive
+stacks beyond these.
 
-## Inspected Baseline
+## Inspected Baseline (historical)
 
 The inventory below reflects the React source under `apps/desktop/src` before
-the shadcn foundation was added.
+the shadcn foundation was added. It is kept as the migration baseline; several
+of its "current implementation" entries no longer exist (for example
+`notification-popup.tsx` was removed when the Base UI toast layer landed).
 
 | Surface | Current implementation | Migration target |
 | --- | --- | --- |
@@ -24,7 +30,7 @@ the shadcn foundation was added.
 | Dialogs and confirmations | Radix Dialog markup in `notification-popup.tsx` and `settings-panel/setting-control.tsx`; Ketcher export dialogs | Shared `Dialog` and `AlertDialog` compositions with `.app-shell` portal ownership |
 | Menus | `radix-menu.tsx`, `native-context-menu.ts`, editor and project menus | Shared `DropdownMenu` and `ContextMenu` wrappers while preserving the native-menu selection boundary |
 | Command palette | `command-palette/index.tsx` using `cmdk` and Radix Dialog directly | Shared `Command` inside `Dialog`, retaining current actions, keyboard navigation, and query contract |
-| Notifications and status | `notification-popup.tsx`, local status rows, custom error/status panels | `Sonner`, `Alert`, `Badge`, `Progress`, and `Spinner` where their interaction model matches |
+| Notifications and status | `notification-popup.tsx`, local status rows, custom error/status panels | Base UI toast layer (`ui/toast.tsx`, shipped — replaced the popup), `Alert`, `Badge`, `Progress`, and `Spinner` where their interaction model matches |
 | Shell chrome | `app-layout.tsx`, `sidebar/**`, `dock-panel.tsx`, `editor-area/editor-tabs.tsx` | Shared buttons, input groups, tabs, tooltips, popovers, separators, scroll areas, and collapsibles without changing layout or drag regions |
 | Inspectors and tools | `structure-info-panel.tsx`, `descriptor-panel.tsx`, `folding-results-panel.tsx`, `spectrum-viewer.tsx` | Feature components composed from shared fields, controls, cards, badges, progress, empty, and loading states |
 | Welcome and failure states | `welcome/**`, `error-boundary.tsx`, dock and folding empty/loading states | Shared `Empty`, `Alert`, `Skeleton`, `Spinner`, and `Button` compositions |
@@ -61,12 +67,14 @@ The migration may replace the surrounding React chrome for these surfaces, but
 not their rendering engines, message contracts, generated assets, or native
 behavior.
 
-## Foundation
+## Foundation (shipped)
 
-The component source of truth will live in
-`apps/desktop/src/components/ui`. `components.json` belongs in `apps/desktop`,
-and Tailwind CSS v4 is integrated into the existing Vite build. The `cn()`
-helper belongs in `apps/desktop/src/lib/utils.ts`.
+The component source of truth lives in `apps/desktop/src/components/ui`
+(27 primitives plus the shared portal container as of 2.1.x).
+`apps/desktop/components.json` configures the registry (style `radix-nova`,
+`iconLibrary: "hugeicons"`, the `@animate-ui` registry), Tailwind CSS v4 is
+integrated into the existing Vite build through `@tailwindcss/vite`, and the
+`cn()` helper lives in `apps/desktop/src/lib/utils.ts`.
 
 Generated primitives must map shadcn semantic tokens onto existing Burette
 variables such as `--bg-base`, `--fg-base`, `--surface-*`, `--line-*`,
@@ -80,19 +88,19 @@ unless a later measured requirement justifies them.
 
 ## Migration Stages
 
-1. **Foundation** — configure the Radix-based shadcn source layer, Tailwind v4,
-   aliases, semantic token bridge, `cn()`, and the first primitives needed by
-   settings.
-2. **Settings and forms** — migrate settings, preference controls, confirmation
-   flows, and agent integration status. Verify labels, descriptions, reset
-   behavior, disabled states, focus, and keyboard operation.
-3. **Dialogs, menus, notifications, and command** — consolidate Radix wrappers,
-   dialog titles/descriptions, menu items, tooltips/popovers, command palette,
-   and notification presentation. Preserve `.app-shell` portals and native
-   menu fallback.
-4. **Shell and inspectors** — migrate sidebar search, dock/inspector chrome,
-   toolbars, ordinary tab controls, scroll regions, and collapsible sections.
-   Specialized editor-tab behavior remains feature-owned.
+1. **Foundation** — *shipped.* The Radix-based shadcn source layer, Tailwind
+   v4, aliases, semantic token bridge, and `cn()` are in place (see Foundation
+   above).
+2. **Settings and forms** — *shipped.* Settings, preference controls, and
+   confirmation flows compose shadcn `Field`/`AlertDialog`/`Button`/`Card`
+   primitives (`settings-panel/setting-control.tsx`).
+3. **Dialogs, menus, notifications, and command** — *substantially shipped.*
+   Notification presentation moved to the Base UI toast layer with a
+   standalone details dialog; Radix menu wrappers and the command palette keep
+   their `.app-shell` portals and native-menu fallback.
+4. **Shell and inspectors** — *in progress.* The Inspector (Info dock) is
+   rebuilt as a section list; remaining dock/toolbar chrome migrates
+   incrementally. Specialized editor-tab behavior remains feature-owned.
 5. **States and small data views** — migrate welcome, error, empty, loading,
    progress, status, badges, and small tables.
 6. **Completion sweep** — migrate remaining ordinary controls, remove only CSS

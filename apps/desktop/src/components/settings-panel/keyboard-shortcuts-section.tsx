@@ -34,13 +34,28 @@ const keyboardShortcutRows: ShortcutRow[] = [
     keybindings: ["⇧⌘O"],
   },
   {
+    command: "Save",
+    description: "Save the active text source or collection document (desktop app).",
+    keybindings: ["⌘S"],
+  },
+  {
+    command: "Save As",
+    description: "Save the active collection as a new file (desktop app).",
+    keybindings: ["⇧⌘S"],
+  },
+  {
+    command: "Find",
+    description: "Search the active collection grid, otherwise focus sidebar search (desktop app).",
+    keybindings: ["⌘F"],
+  },
+  {
     command: "Undo",
-    description: "Undo the latest workspace or focused preview edit.",
+    description: "Undo in the active context: workspace history, or the collection grid when one is active.",
     keybindings: ["⌘Z"],
   },
   {
     command: "Redo",
-    description: "Redo the latest workspace or focused preview edit when available.",
+    description: "Redo in the active context.",
     keybindings: ["⇧⌘Z"],
   },
   {
@@ -59,6 +74,26 @@ const keyboardShortcutRows: ShortcutRow[] = [
     keybindings: ["⌥⌘B"],
   },
   {
+    command: "Zoom in",
+    description: "Scale all window content up one step.",
+    keybindings: ["⌘="],
+  },
+  {
+    command: "Zoom out",
+    description: "Scale all window content down one step.",
+    keybindings: ["⌘-"],
+  },
+  {
+    command: "Actual size",
+    description: "Reset window content scaling to 100%.",
+    keybindings: ["⌘0"],
+  },
+  {
+    command: "Toggle sidebar (browser)",
+    description: "Show or hide the sidebar in the browser runtime.",
+    keybindings: ["⌘\\"],
+  },
+  {
     command: "Open Settings",
     description: "Open the settings workspace.",
     keybindings: ["⌘,"],
@@ -74,6 +109,11 @@ const keyboardShortcutRows: ShortcutRow[] = [
     keybindings: ["⇧⌘W"],
   },
   {
+    command: "Quit Burette",
+    description: "Quit after the exit preflight completes (desktop app).",
+    keybindings: ["⌘Q"],
+  },
+  {
     command: "Select next tab",
     description: "Move to the next tab in the current window.",
     keybindings: ["⌃⇥"],
@@ -82,16 +122,6 @@ const keyboardShortcutRows: ShortcutRow[] = [
     command: "Select previous tab",
     description: "Move to the previous tab in the current window.",
     keybindings: ["⌃⇧⇥"],
-  },
-  {
-    command: "Undo",
-    description: "Undo in the active text editor or molecule collection.",
-    keybindings: ["⌘Z"],
-  },
-  {
-    command: "Redo",
-    description: "Redo in the active text editor or molecule collection.",
-    keybindings: ["⇧⌘Z"],
   },
   {
     command: "Reveal in Finder",

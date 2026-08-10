@@ -58,6 +58,13 @@ Tauri command access is controlled by:
 
 - `apps/desktop/src-tauri/capabilities/default.json`
 - `apps/desktop/src-tauri/permissions/burette.toml`
+- `apps/desktop/src-tauri/capabilities/compute.json`
+- `apps/desktop/src-tauri/permissions/compute.toml`
+
+The compute pair is a separate capability for the trusted `main` and
+`workspace-*` windows: it allowlists the `compute_*` commands (job submission
+and cancellation, artifact manifests, purge) without widening the default
+shell capability.
 
 When adding a Tauri command:
 
@@ -68,6 +75,19 @@ When adding a Tauri command:
    boundary.
 4. Add or update the focused Tauri/frontend bridge test when the command is a
    user-visible or agent-visible contract.
+
+## Preview Extension Entitlements
+
+The Finder Quick Look extension runs sandboxed with the entitlements declared
+in `PreviewExtension/BurettePreview.entitlements`:
+
+- `com.apple.security.app-sandbox`
+- `com.apple.security.files.user-selected.read-only`
+- `com.apple.security.files.user-selected.executable`
+- `com.apple.security.network.client`
+
+Keep the extension read-only over user files; do not add write entitlements or
+broaden file access for preview features.
 
 ## Browser And Agent Surfaces
 

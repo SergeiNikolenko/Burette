@@ -3,11 +3,11 @@
 ## Boundary
 
 Burette's Quick Look extension is built from `PreviewExtension/` through
-`Burette.xcodeproj`. The final local app must contain:
+`Burette.xcodeproj`. For the browser-dev Quick Look surface
+(`?quickLookFile=...`) and the difference between browser Quick Look and native
+Finder Quick Look, use [Testing surfaces](tools/testing-surfaces.md).
 
-For the browser-dev Quick Look surface (`?quickLookFile=...`) and the difference
-between browser Quick Look and native Finder Quick Look, use
-[Testing surfaces](tools/testing-surfaces.md).
+The final local app must contain:
 
 ```text
 build/Burette.app/Contents/PlugIns/BurettePreview.appex
@@ -102,8 +102,9 @@ Tail logs through the project helper:
 ./scripts/tail-log.sh
 ```
 
-The desktop app can export a local diagnostics bundle from Settings > System >
-Diagnostics or from the command palette. The exported `.diagnostics` directory
+The desktop app can export a local diagnostics bundle from Settings >
+Maintenance > Diagnostics (Export) or from the command palette
+(`Export Diagnostics`). The exported `.diagnostics` directory
 contains app logs, Quick Look logs, environment information, an app size report,
 web performance marks, recent UI or render errors, and the desktop
 `preview-trace.jsonl`. Quick Look also writes `preview-trace.jsonl` next to its

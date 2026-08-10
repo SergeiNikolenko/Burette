@@ -322,7 +322,12 @@ export function AppLayout({
   // How far the leading window controls reach: the tab strip starts past them
   // when the sidebar is narrower than they are (or closed). The sidebar's own
   // edge comes from `--sidebar-edge`, measured rather than stored.
-  const chromeLeadingInset = compactLeadingChrome ? 112 : 192;
+  // The desktop inset splits into 92px of native traffic-light clearance
+  // (constant on screen, so divided by the window zoom like
+  // `.chrome-leading-controls`) plus 100px of zoomable toggle-and-gap space.
+  const chromeLeadingInset = compactLeadingChrome
+    ? "112px"
+    : "calc(92px / var(--window-zoom, 1) + 100px)";
   const rightDockOpen = !settingsMode && !hostedMcpWidget && state.rightDockOpen;
   const bottomDockOpen = !settingsMode && !hostedMcpWidget && state.bottomDockOpen;
   // Toggle-animation hooks must come before the collapse/expand sync hooks:
@@ -414,7 +419,7 @@ export function AppLayout({
     ...buildThemeStyle(state.preferences, systemThemeMode),
     "--sidebar-layout-width": `${sidebarLayoutWidth}px`,
     "--right-dock-width": `${rightDockOpen ? rightDockWidth : 0}px`,
-    "--chrome-leading-inset": `${chromeLeadingInset}px`,
+    "--chrome-leading-inset": chromeLeadingInset,
     "--chrome-height": hostedMcpWidget ? "0px" : undefined,
   } as CSSProperties;
   const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);

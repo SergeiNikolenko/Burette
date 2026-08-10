@@ -395,12 +395,15 @@ assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_agen
 assert.match(agentIntegrationCommand, /#\[tauri::command\]\s+pub\(crate\) fn agent_integration_status/);
 assert.match(agentIntegrationCommand, /PLUGIN_RELATIVE_PATH: &str = "plugins\/burette-agent"/);
 assert.match(agentIntegrationCommand, /BURETTE_AGENT_PLUGIN_DIR/);
-assert.match(agentIntegrationCommand, /schema: "burette_agent_integration\.v1"/);
+assert.match(agentIntegrationCommand, /schema: "burette_agent_integration\.v2"/);
+assert.match(agentIntegrationCommand, /agent_installs/);
+assert.match(agentIntegrationCommand, /\.claude\/plugins/);
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecule-table\/widget\.html/);
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/trajectory-review\/widget\.html/);
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecular-report\/widget\.html/);
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecular-workspace\/widget\.html/);
-assert.match(agentIntegrationCommand, /find_codex_plugin_manifest/);
+assert.match(agentIntegrationCommand, /find_plugin_manifest/);
+assert.match(agentIntegrationCommand, /claude_registry_install/);
 assert.match(agentIntegrationCommand, /mcp\/lib\/server-bundle\.mjs/);
 assert.match(agentIntegrationCommand, /"scripts\/burette-agent\.mjs"/);
 assert.match(agentIntegrationCommand, /"browser-shell-dist\/index\.html"/);
@@ -1156,6 +1159,9 @@ assertSourceIncludesAll(nativeMenuSource, [
   'view.grid-properties',
   'view.grid-renderer-rdkit',
   'view.grid-renderer-xyzrender',
+  'view.zoom-actual',
+  'view.zoom-in',
+  'view.zoom-out',
   'view.command-palette',
   'structure.open-in-molstar',
   'structure.edit-in-ketcher',
@@ -1222,11 +1228,15 @@ for (const [id, accelerator] of [
   ['edit.find', 'CmdOrCtrl+F'],
   ['edit.undo-grid', 'CmdOrCtrl+Z'],
   ['edit.redo-grid', 'CmdOrCtrl+Shift+Z'],
+  ['view.zoom-actual', 'CmdOrCtrl+0'],
+  ['view.zoom-in', 'CmdOrCtrl+='],
+  ['view.zoom-out', 'CmdOrCtrl+-'],
   ['window.previous-tab', 'Ctrl+Shift+Tab'],
   ['window.next-tab', 'Ctrl+Tab'],
 ]) {
   assertMenuItemAccelerator(nativeMenuSource, id, accelerator);
 }
+assert.match(menuEvents, /crate::zoom::handle_menu_command/);
 assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+Shift\+N"\)/);
 assert.match(nativeMenuSource, /accelerator\("CmdOrCtrl\+P"\)/);
 assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+U"\)/);
