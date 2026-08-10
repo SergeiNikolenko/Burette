@@ -11,8 +11,8 @@ use crate::compute::{
     alignment_workflow::{GridAlignmentRequest, GridAlignmentResult},
     artifact_publisher::{ClusterPublicationStep, ConformerPublicationStep},
     chemical_space::{
-        ChemicalSpaceClusterRequest, ChemicalSpaceClusterResult, ChemicalSpaceRequest,
-        ChemicalSpaceResult,
+        ChemicalSpaceClusterRequest, ChemicalSpaceClusterResult, ChemicalSpaceKnnCachePayload,
+        ChemicalSpaceRequest, ChemicalSpaceResult,
     },
     cluster_executor::ClusterExecutionStep,
     conformer_session::ConformerSubmissionStep,
@@ -436,6 +436,32 @@ pub(crate) async fn compute_execute_chemical_space<R: Runtime>(
     let coordinator = coordinator.inner().clone();
     run_blocking(move || {
         coordinator.execute_chemical_space(&owner, job_id, expected_revision, request)
+    })
+    .await
+}
+
+/// Embeds a learned representation whose kNN graph came from the model worker.
+/// There is no prepared job to check a revision against; the payload is
+/// self-contained.
+#[tauri::command]
+pub(crate) async fn compute_execute_learned_chemical_space<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    request: ChemicalSpaceRequest,
+    source_record_ids: Vec<u64>,
+    failed_records: usize,
+    knn_cache: ChemicalSpaceKnnCachePayload,
+) -> Result<ChemicalSpaceResult, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || {
+        coordinator.execute_learned_chemical_space(
+            &owner,
+            request,
+            source_record_ids,
+            failed_records,
+            knn_cache,
+        )
     })
     .await
 }

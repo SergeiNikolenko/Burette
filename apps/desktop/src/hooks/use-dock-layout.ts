@@ -22,6 +22,7 @@ export function useDockLayout() {
   const setDockActiveTab = useShellStore((state) => state.setDockActiveTab);
   const setDockDocument = useShellStore((state) => state.setDockDocument);
   const setDockTool = useShellStore((state) => state.setDockTool);
+  const activateDockContext = useShellStore((state) => state.activateDockContext);
   const addDockDrop = useShellStore((state) => state.addDockDrop);
 
   return {
@@ -46,6 +47,7 @@ export function useDockLayout() {
     setDockActiveTab,
     setDockDocument,
     setDockTool,
+    activateDockContext,
     addDockDrop,
   };
 }

@@ -12,6 +12,15 @@ The worker rejects execution when Apple MPS is unavailable and sets
 `PYTORCH_ENABLE_MPS_FALLBACK=0`. Model inference and chunked cosine top-k run on
 MPS. SMILES parsing and Uni-Mol conformer preparation remain CPU preprocessing.
 
+The packaged desktop app installs a managed runtime on demand: the Chemical
+Space panel offers "Install model runtime" when a learned engine is selected,
+which drives `apps/desktop/src-tauri/src/commands/chemical_space_models.rs`
+(uv venv + pinned `requirements.txt`, staged and promoted into
+`~/Library/Application Support/Burette/model-python`). The worker script and
+requirements are embedded in the binary via `include_str!`, so packaged builds
+never read this directory. `BURETTE_CHEMICAL_SPACE_MODEL_PYTHON` overrides the
+managed environment in both the desktop app and browser dev.
+
 For browser development, create a dedicated environment and point the dev
 server at it:
 

@@ -53,7 +53,7 @@ assert.match(workflow, /stage\.stageId === "tanimotoNeighbors"/);
 assert.match(workflow, /numericStage\?\.effectiveBackend === "nativeMetal"/);
 assert.match(workflow, /export async function runChemicalSpaceWorkflow/);
 assert.match(workflow, /export async function runChemicalSpaceStudyWorkflow/);
-assert.match(workflow, /preparedChemicalSpaceJobs\.get\(documentId\)/);
+assert.match(workflow, /preparedChemicalSpaceJobs\.get\(cacheKey\)/);
 assert.match(workflow, /invalidateChemicalSpaceFingerprintCache/);
 assert.match(workflow, /fingerprintBrowserChemicalSpaceRecords/);
 assert.match(workflow, /invoke<ChemicalSpaceResult>\("compute_execute_chemical_space"/);
@@ -207,6 +207,107 @@ assert.match(gridViewer, /body\.type === 'chemicalSpaceSelectionChanged'/);
 assert.match(chemicalSpacePanel, /filterToSelection: tool === "lasso"/);
 assert.match(gridViewer, /chemicalSpaceFilterActive = body\.filterToSelection === true/);
 assert.match(gridViewer, /function filterByChemicalSpaceSelection/);
+assert.match(
+  gridViewer,
+  /function refreshRemoteChemicalSpaceSelection/,
+  "remote grids must page in every lasso-selected molecule, not filter the loaded window",
+);
+assert.match(workflow, /REPRESENTATION_UNAVAILABLE_ERROR_NAME = "RepresentationUnavailableError"/);
+assert.match(browserDevCompute, /representationServerError/);
+assert.match(
+  chemicalSpacePanel,
+  /ChemicalSpaceRepresentationUnavailable/,
+  "a missing model runtime must render the dedicated state with a way back to Morgan",
+);
+assert.match(chemicalSpacePanel, /isRepresentationUnavailableError\(cause\)/);
+
+// Learned representations in the packaged app: the workflow feeds prepared-job
+// records into the Rust-managed model worker and embeds through the standalone
+// kNN command, and the panel offers a real install path with progress.
+assert.match(workflow, /chemical_space_represent_start/);
+assert.match(workflow, /chemical_space_represent_status/);
+assert.match(workflow, /chemical_space_represent_cancel/);
+assert.match(workflow, /compute_execute_learned_chemical_space/);
+assert.match(
+  workflow,
+  /sliceKnnCache\(\s*represented\.knnCache,\s*represented\.sourceRecordIds\.length,\s*options\.neighbors,\s*\)/,
+  "the worker's 64-neighbour cache must be sliced to the requested neighbours before embedding",
+);
+assert.match(chemicalSpacePanel, /Install model runtime \(\{status\.installSizeHint\}\)/);
+assert.match(chemicalSpacePanel, /Cancel installation/);
+const modelCommands = source("apps/desktop/src-tauri/src/commands/chemical_space_models.rs");
+assert.match(modelCommands, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/compute\/models\/chemical_space_representations\.py"\)/);
+assert.match(modelCommands, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/compute\/models\/requirements\.txt"\)/);
+assert.match(modelCommands, /BURETTE_PROGRESS\\t/);
+assert.match(modelCommands, /fs::create_dir_all\(&weights\)/);
+assert.match(modelCommands, /\.current_dir\(&weights\)/);
+assert.match(browserDevRoute, /await mkdir\(modelRoot, \{ recursive: true \}\)/);
+assert.match(browserDevRoute, /input,\s*modelRoot,\s*MODEL_REQUEST_TIMEOUT_MS/);
+assert.match(computeCommands, /compute_execute_learned_chemical_space/);
+assert.match(computePermission, /compute_execute_learned_chemical_space/);
+const burettePermission = source("apps/desktop/src-tauri/permissions/burette.toml");
+for (const command of [
+  "chemical_space_model_runtime_status",
+  "chemical_space_model_runtime_install",
+  "chemical_space_model_runtime_cancel_install",
+  "chemical_space_represent_start",
+  "chemical_space_represent_status",
+  "chemical_space_represent_cancel",
+]) {
+  assert.ok(burettePermission.includes(`"${command}"`), `${command} must stay permitted`);
+}
+assert.match(chemicalSpace, /execute_learned_chemical_space_from_knn/);
+
+// Grid filters mirror onto the map: the grid pushes its post-filter (but
+// pre-lasso) visibility set, remote grids page it in like the SMARTS scan,
+// and both canvases dim everything outside it.
+assert.match(gridViewer, /function postChemicalSpaceVisibility/);
+assert.match(gridViewer, /function collectRemoteChemicalSpaceVisibility/);
+assert.match(
+  gridViewer,
+  /let visibilityRows = filterByTableColumnControls\(filterByDescriptorControls\(filterBySMARTS\(textRows\)\)\)/,
+  "map visibility must exclude the lasso's own selection filter",
+);
+assert.match(chemicalSpacePanel, /chemicalSpaceVisibilityChanged/);
+assert.match(chemicalSpacePanel, /DIMMED_POINT_COLOR/);
+assert.match(chemicalSpace3d, /pointColors/);
+
+// The Filtered scope recomputes embeddings over just the filtered subset: the
+// prepared job is keyed and scoped by the subset's signature on every runtime.
+assert.match(workflow, /chemicalSpaceScopeSignature/);
+assert.match(workflow, /scopeSourceIds: number\[\] \| null = null/);
+assert.match(chemicalSpacePanel, /scopedBrowserRecords\(records, scopedSourceIds\)/);
+assert.match(chemicalSpacePanel, /Recompute the map over just the filtered molecules/);
+// An empty filtered scope normalizes to null ("all records") in the workflow
+// layer, so every effect that prepares a job must reject scopes below two
+// molecules — embedding, clustering, and studies alike.
+for (const guarded of [
+  /if \(scopedSourceIds && scopedSourceIds\.length < 2\) \{/,
+  /const scopeTooSmall = scopedSourceIds !== null && scopedSourceIds\.length < 2;/,
+]) {
+  assert.match(chemicalSpacePanel, guarded);
+}
+
+// The grid ignores every message whose source is not "burette-grid-host". The
+// pre-rename "burrete" spelling silently disconnected the filter panel from
+// the grid, so no sender may ever use it again.
+for (const file of [
+  "apps/desktop/src/hooks/use-app-grid-filter-model.ts",
+  "apps/desktop/src/components/app-layout.tsx",
+  "apps/desktop/src/components/chemical-space-panel.tsx",
+  "apps/desktop/src/hooks/use-app-grid-runtime-messages.ts",
+]) {
+  assert.doesNotMatch(
+    source(file),
+    /burrete-grid-host|burrete-host/,
+    `${file} must address the grid with the renamed message source`,
+  );
+}
+assert.match(
+  chemicalSpace,
+  /knn\.neighbors_per_vertex != clamped_neighbors/,
+  "a mismatched learned kNN must fail instead of recomputing Tanimoto over placeholder fingerprints",
+);
 assert.match(gridViewer, /body\.type === 'chemicalSpaceHoverChanged'/);
 assert.doesNotMatch(gridViewer, /chemicalSpacePreviewTimer/);
 assert.doesNotMatch(gridViewer, /syncChemicalSpaceHover/);
@@ -250,8 +351,13 @@ assert.match(chemicalSpacePanel, /adaptivePointRadius/);
 assert.match(chemicalSpace3d, /adaptivePointScale/);
 assert.match(browserDevCompute, /runBrowserDevChemicalSpaceStudy/);
 assert.match(browserDevCompute, /browserFingerprintCache\.get\(key\)/);
-for (const engine of ["chemberta", "molformer", "unimol2-84m", "unimol-v1"]) {
+for (const engine of ["molformer", "unimol2-84m"]) {
   assert.match(chemicalSpacePanel, new RegExp(`value: "${engine}"`));
+}
+for (const engine of ["chemberta", "unimol-v1"]) {
+  assert.doesNotMatch(chemicalSpacePanel, new RegExp(`value: "${engine}"`));
+}
+for (const engine of ["chemberta", "molformer", "unimol2-84m", "unimol-v1"]) {
   assert.match(representationWorker, new RegExp(`"${engine}"`));
 }
 assert.match(browserDevCompute, /browserRepresentationCache\.get\(key\)/);
@@ -411,7 +517,7 @@ assert.match(
 );
 assert.match(
   chemicalSpacePanel,
-  /recordCount > AUTO_RUN_RECORD_LIMIT[\s\S]*?confirmedLargeRunDocumentKey !== largeRunConfirmationKey/,
+  /effectiveRecordCount > AUTO_RUN_RECORD_LIMIT[\s\S]*?confirmedLargeRunDocumentKey !== largeRunConfirmationKey/,
 );
 assert.match(chemicalSpacePanel, /requestChemicalSpaceIndexState\(documentId, controller\.signal\)/);
 assert.match(chemicalSpacePanel, /applySourceRevision\(next\.sourceRevision\)/);
@@ -447,7 +553,7 @@ assert.match(
   /setStudyRunning\(false\)/u,
   "editing a Grid must cancel an in-flight parameter study before stale results can publish",
 );
-assert.match(chemicalSpacePanel, /`\$\{documentInstanceKey\}:\$\{sourceRevision\}`/);
+assert.match(chemicalSpacePanel, /`\$\{documentInstanceKey\}:\$\{sourceRevision\}:\$\{scopeKey\}`/);
 assert.ok(
   chemicalSpacePanel.indexOf("if (computeBlockedByIndex || needsConfirmation) {")
     < chemicalSpacePanel.indexOf("completedEmbeddings.get(key)"),
@@ -455,7 +561,7 @@ assert.ok(
 );
 assert.match(chemicalSpacePanel, /gridDocumentInstanceKey\(document\)/);
 assert.match(chemicalSpacePanel, /actionLabel="Calculate chemical space"/);
-assert.match(chemicalSpacePanel, /estimatedEmbeddingDuration\(recordCount\)/);
+assert.match(chemicalSpacePanel, /estimatedEmbeddingDuration\(effectiveRecordCount\)/);
 assert.match(chemicalSpacePanel, /rememberThroughput\(next\.sourceRecordIds\.length/);
 assert.match(chemicalSpacePanel, /MAX_COMPLETED_EMBEDDING_CACHE_ENTRIES = 6/);
 assert.match(chemicalSpacePanel, /MAX_COMPLETED_EMBEDDING_CACHE_RECORDS = 500_000/);

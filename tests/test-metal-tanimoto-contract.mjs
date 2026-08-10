@@ -276,6 +276,15 @@ assert.match(
   alignmentSource,
   new RegExp(`kernel\\s+void\\s+${alignmentContract.kernel}\\s*\\(`, "u"),
 );
+// Metal fast-math turns the top-K similarity division into a reciprocal that
+// can land one ULP above 1.0 for identical fingerprints (duplicates are common
+// in SAR sets), and the host validator rejects similarities outside 0..=1.
+// The kernel must clamp the ratio.
+assert.match(
+  source,
+  /min\(1\.0f,\s*\n?\s*static_cast<float>\(selectedIntersections\[rank\]\)/u,
+  "the top-K similarity ratio must stay clamped to 1.0",
+);
 assert.equal(alignmentContract.pairDescriptor.byteLength, 64);
 assert.equal(alignmentContract.mapping.byteLength, 16);
 assert.match(alignmentContract.dispatch.materialization, /no poses x references x atoms tensor/u);
