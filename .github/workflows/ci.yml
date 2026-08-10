@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+env:
+  BURETTE_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+
 jobs:
   changes:
     name: Detect Build Scope
