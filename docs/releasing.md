@@ -18,6 +18,9 @@ The Release workflow (`.github/workflows/release.yml`) runs on:
 
 Merged PRs do not create releases by themselves; a maintainer cuts a release
 by bumping the version and pushing the tag (or dispatching the workflow).
+Version bumps still happen per PR: the Native Bundle Build PR check runs
+`scripts/check-release-version.mjs`, which requires any PR that touches
+native build scope to advance the version past the last release.
 
 ## Version Discipline
 
