@@ -25,7 +25,7 @@ or the hosted MCP widget is open.
 | Cmd+O | Open molecular structure files |
 | Cmd+Shift+O | Open most recent structure |
 | Cmd+S | Save the active text source or collection document (desktop app) |
-| Cmd+Shift+S | Save the active document as a new file (desktop app) |
+| Cmd+Shift+S | Save the active collection as a new file (desktop app) |
 | Cmd+F | Find: collection grid search, otherwise focus sidebar search (desktop app) |
 | Cmd+Z | Undo in the active context (workspace history, or grid undo when a collection document is active) |
 | Cmd+Shift+Z | Redo in the active context |
@@ -79,7 +79,7 @@ These actions are available from the command palette.
 | Settings | Open Settings |
 | Ketcher | Open the Ketcher sketcher tab |
 | FEP Network Preview | Open a GraphML ligand-network preview |
-| Codex Agent | Open the Codex agent surface |
+| Agents | Open the agent plugin status panel |
 | Hide Sidebar / Show Sidebar | Toggle sidebar |
 | Close Active Tab | Close the selected tab |
 | Close All Tabs | Close all workspace tabs |
