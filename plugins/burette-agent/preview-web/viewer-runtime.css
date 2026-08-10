@@ -4915,6 +4915,7 @@ body:not(.burette-mobile-host) .buret-representation-type-item[data-current="tru
 }
 body:not(.burette-mobile-host) .buret-representation-type-action-menu {
   min-width: 176px;
+}
 .buret-superposition-context-submenu .buret-tree-menu-icon {
   display: none;
 }
