@@ -3477,6 +3477,17 @@ body.burette-mobile-host .buret-docking-poses button {
   grid-column: 3;
   grid-row: 2;
 }
+.buret-docking-poses-compact.buret-molstar-story .buret-docking-pose-main {
+  grid-template-columns: 28px repeat(4, minmax(0, 1fr));
+}
+.buret-docking-poses-compact.buret-molstar-story [data-buret-story-play] {
+  grid-column: 4;
+  grid-row: 2;
+}
+.buret-docking-poses-compact.buret-molstar-story .buret-molstar-story-open {
+  grid-column: 5;
+  grid-row: 2;
+}
 .buret-docking-poses-compact .buret-trajectory-smooth-button {
   grid-area: auto / 1 / auto / -1;
 }

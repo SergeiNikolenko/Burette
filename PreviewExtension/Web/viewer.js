@@ -969,6 +969,7 @@
     const isStep = operation === 'next' || operation === 'previous' || operation === 'goto';
     const config = activeConfig || window.BuretteConfig || {};
     const style = configuredMolstarStyle(config);
+    const appearance = configuredMolstarAppearance(config);
     // Composite styles and Mol* provider presets cannot be written into the
     // snapshot, so they go on after the step with rendering held. `Illustrative`
     // is not among them: it is post-processing on the canvas, which the snapshot
@@ -979,7 +980,7 @@
     const sourceCamera = animatesRestyledStep ? captureMolstarCameraSnapshot(activeViewer) : null;
     let targetCamera = null;
     const canvas3d = activeViewer?.plugin?.canvas3d;
-    if (isStep || operation === 'play') applyMolstarStoryStyleToSnapshots(manager, style);
+    if (isStep || operation === 'play') applyMolstarStoryStyleToSnapshots(manager, style, appearance);
     // A composite representation is rebuilt while rendering is paused. Letting
     // Mol* animate the snapshot camera during that pause consumes the transition
     // invisibly and leaves a single jump when rendering resumes. Swap instantly,
@@ -1057,13 +1058,17 @@
   // the same way must agree on it. Random versions made every step rebuild the
   // whole receptor - measured at 957 ms per step against 248 ms when the versions
   // line up.
-  function molstarStoryTransformVersion(transform, style) {
-    return stableTextHash(`${transform.ref}:${style}`).padEnd(32, '0');
+  function molstarStoryTransformVersion(transform, style, appearance) {
+    return stableTextHash(`${transform.ref}:${style}:${appearance}`).padEnd(32, '0');
   }
 
-  function applyMolstarStoryStyleToSnapshots(manager, style) {
+  function applyMolstarStoryStyleToSnapshots(manager, style, appearance) {
     const uniform = MOLSTAR_UNIFORM_STYLE_REPRESENTATION[style];
-    const overrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES[style];
+    const styleOverrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES[style] || {};
+    const appearanceOverride = normalizeMolstarAppearance(appearance) === 'illustrative'
+      ? { ignoreLight: true }
+      : { ignoreLight: false };
+    const overrides = { ...styleOverrides, ...appearanceOverride };
     for (const entry of manager?.state?.entries || []) {
       const transforms = entry?.snapshot?.data?.tree?.transforms;
       if (!Array.isArray(transforms)) continue;
@@ -1077,12 +1082,6 @@
           });
         }
         const authored = molstarStoryAuthoredRepresentations.get(transform);
-        if (!uniform && !overrides) {
-          transform.params.type = authored.type;
-          transform.params.colorTheme = authored.colorTheme;
-          transform.version = authored.version;
-          continue;
-        }
         // Only the new type's own parameters: representation parameters are
         // per-type, and carrying the authored ones across made Mol* fall back to
         // some other representation entirely. An override keeps the authored
@@ -1096,7 +1095,7 @@
         // state gets the same version for the same node, including a node that
         // already drew this type: leaving that one on its authored version made
         // the versions disagree between states and rebuilt it on every step.
-        transform.version = molstarStoryTransformVersion(transform, style);
+        transform.version = molstarStoryTransformVersion(transform, style, appearance);
       }
     }
   }
@@ -4333,6 +4332,14 @@
       setStatus('Mol* appearance can be changed after the viewer loads.', 'error');
       return;
     }
+    const storyManager = viewer.plugin?.managers?.snapshot;
+    if (storyManager && molstarStoryState().available) {
+      applyMolstarStoryStyleToSnapshots(
+        storyManager,
+        configuredMolstarStyle(activeConfig || window.BuretteConfig || {}),
+        value
+      );
+    }
     const serial = ++molstarStyleApplySerial;
     setStatus(`[web] Applying Mol* ${value} appearance…`);
     try {
@@ -4382,7 +4389,7 @@
       if (wasStoryPlaying) await controlMolstarStory({ operation: 'pause' });
       sceneSnapshot = viewer.plugin?.state?.data?.getSnapshot?.();
       if (option.provider) await applyMolstarProviderPreset(viewer, option);
-      else await reloadMolstarStyle(viewer, legacyStyle, serial);
+      else await reloadMolstarStyle(viewer, legacyStyle, serial, appearance);
       if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
       await applyMolstarAppearance(viewer, appearance);
       if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
@@ -4410,7 +4417,7 @@
         });
         const storyManager = viewer.plugin?.managers?.snapshot;
         if (storyManager && molstarStoryState().available) {
-          applyMolstarStoryStyleToSnapshots(storyManager, previousStyle);
+          applyMolstarStoryStyleToSnapshots(storyManager, previousStyle, previousAppearance);
         }
         if (sceneSnapshot) {
           await viewer.plugin.runTask(viewer.plugin.state.data.setSnapshot(sceneSnapshot));
@@ -4496,7 +4503,7 @@
     }
   }
 
-  async function reloadMolstarStyle(viewer, style, serial) {
+  async function reloadMolstarStyle(viewer, style, serial, appearance = configuredMolstarAppearance(activeConfig || window.BuretteConfig || {})) {
     const prepared = activeMolstarPrepared;
     if (!prepared) {
       await applyMolstarStyle(viewer, style);
@@ -4509,7 +4516,7 @@
     if (molstarStoryState().available) {
       const normalized = normalizeMolstarStyle(style);
       const manager = viewer?.plugin?.managers?.snapshot;
-      applyMolstarStoryStyleToSnapshots(manager, normalized);
+      applyMolstarStoryStyleToSnapshots(manager, normalized, appearance);
       // Restyling a Story goes through its snapshots, so the scene on screen is
       // rebuilt the same way a step builds it. Applying the style over the scene
       // instead would leave the current state looking unlike every other one.
@@ -16534,9 +16541,13 @@
     // corner toggle, so it sits right next to that button instead of on top of it.
     const cornerRect = visibleRect('#buret-viewport-corner');
     const clearedLeft = cornerRect ? Math.max(left, Math.ceil(cornerRect.right + 8)) : left;
+    const viewportRailRect = visibleRect('#buret-viewport-rail');
+    const clearedRight = viewportRailRect
+      ? Math.min(right, Math.floor(viewportRailRect.left - FLOATING_LAYOUT_GAP))
+      : right;
     return {
       left: clearedLeft,
-      right: Math.max(clearedLeft, right),
+      right: Math.max(clearedLeft, clearedRight),
       top: margin,
       bottom: window.innerHeight - margin
     };
@@ -25241,6 +25252,10 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       45000,
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
+    // MVSX snapshots can carry an authored canvas color. Restore the active
+    // Burette theme after the snapshot has finished loading.
+    applyBackgroundMode();
+    applyViewerBackground(viewer);
     observeMolstarStoryState(viewer);
     applyLayoutState(viewer);
     scheduleLayoutStateReapply(viewer);

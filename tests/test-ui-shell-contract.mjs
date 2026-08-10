@@ -5556,7 +5556,7 @@ assert.match(previewViewer, /void requestMolstarPreset\(preset, \{ preserveCamer
 assert.match(previewViewer, /plugin\.managers\.structure\.component\.applyPreset\(structures, provider\)/);
 assert.match(applyMolstarPresetNowSource, /await applyMolstarAppearance\(viewer, appearance\)/);
 assert.match(previewViewer, /function requestMolstarStyle\(style\)/);
-assert.match(previewViewer, /async function reloadMolstarStyle\(viewer, style, serial\)/);
+assert.match(previewViewer, /async function reloadMolstarStyle\(viewer, style, serial, appearance = configuredMolstarAppearance\(activeConfig \|\| window\.BuretteConfig \|\| \{\}\)\)/);
 assert.match(previewViewer, /function captureMolstarCameraSnapshot\(viewer\)/);
 assert.match(previewViewer, /function restoreMolstarCameraSnapshot\(viewer, snapshot\)/);
 assert.match(previewViewer, /const cameraSnapshot = captureMolstarCameraSnapshot\(viewer\);[\s\S]*?await plugin\.clear\(\);/);
@@ -5834,6 +5834,14 @@ assert.match(disposeActiveMolstarViewerSource, /molstarStyleApplySerial \+= 1;/)
 assert.match(disposeActiveMolstarViewerSource, /disposeMolstarPresetPreview\(\);[\s\S]*?setMolstarStructureDirty\(false\);/);
 assert.match(disposeActiveMolstarViewerSource, /disposeMolstarPresetPreview\(\);\s*cancelViewportTrajectoryAnimation\(\);/);
 assert.match(previewViewer, /function startMolstar\(config, cb\)/);
+const startMolstarSource = previewViewer.slice(
+  previewViewer.indexOf('async function startMolstar(config, cb)'),
+  previewViewer.indexOf('async function start()'),
+);
+assert.match(
+  startMolstarSource,
+  /await withTimeout\(\s*loadPreparedStructure\(viewer, prepared\),[\s\S]*?\);[\s\S]*?applyBackgroundMode\(\);\s*applyViewerBackground\(viewer\);\s*observeMolstarStoryState\(viewer\);/,
+);
 assert.match(previewViewer, /if \(toolbar\.dataset\.panelTogglesBound !== '1'\)/);
 assert.match(previewViewer, /if \(toolbar\.dataset\.dragBound === '1'\) return;/);
 assert.match(previewViewer, /function rendererChoiceUnavailable\(value, format, config, xyzrenderAvailable\)/);
@@ -5942,8 +5950,8 @@ assert.match(previewViewer, /action\.preview === true\s*&& \(serial !== molstarS
 assert.match(previewViewer, /\? molstarStoryResult\('story_control'\)\s*: applyMolstarStoryControl\(action\)/);
 assert.match(previewViewer, /MOLSTAR_STORY_REPORT_INTERVAL_MS = 120/);
 assert.match(previewViewer, /function syncMolstarStoryUi\(\)/);
-assert.match(previewViewer, /function applyMolstarStoryStyleToSnapshots\(manager, style\)/);
-assert.match(previewViewer, /transform.version = molstarStoryTransformVersion\(transform, style\)/);
+assert.match(previewViewer, /function applyMolstarStoryStyleToSnapshots\(manager, style, appearance\)/);
+assert.match(previewViewer, /transform.version = molstarStoryTransformVersion\(transform, style, appearance\)/);
 assert.match(previewViewer, /function molstarStoryPresetOverride\(config\)/);
 assert.match(previewViewer, /if \(config\?\.molstarPresentationOverride !== true\) return null;/);
 assert.match(previewViewer, /function molstarStoryPresentationRequiresRebuild\(config\)/);
@@ -5990,8 +5998,15 @@ assert.match(previewViewer, /await applyMolstarNonIllustrativePostprocessing\(vi
 assert.match(previewViewer, /return controlMolstarStory\(\{ \.\.\.args, operation: args\.operation \|\| args\.action \}\);/);
 // A queued preview is re-checked when it reaches the front of the queue.
 assert.match(previewViewer, /action\.stillWanted\?\.\(\) === false/);
-assert.match(previewViewer, /const overrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES\[style\]/);
-assert.match(previewViewer, /if \(!uniform && !overrides\) \{/);
+assert.match(previewViewer, /const styleOverrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES\[style\] \|\| \{\};/);
+assert.match(previewViewer, /const appearanceOverride = normalizeMolstarAppearance\(appearance\) === 'illustrative'\s*\? \{ ignoreLight: true \}\s*: \{ ignoreLight: false \};/);
+assert.match(previewViewer, /const overrides = \{ \.\.\.styleOverrides, \.\.\.appearanceOverride \};/);
+assert.match(previewViewer, /function molstarStoryTransformVersion\(transform, style, appearance\)/);
+assert.match(previewViewer, /stableTextHash\(`\$\{transform\.ref\}:\$\{style\}:\$\{appearance\}`\)/);
+assert.match(previewViewer, /applyMolstarStoryStyleToSnapshots\(manager, style, appearance\)/);
+assert.match(previewViewer, /applyMolstarStoryStyleToSnapshots\(storyManager, previousStyle, previousAppearance\)/);
+assert.match(previewViewer, /applyMolstarStoryStyleToSnapshots\(manager, normalized, appearance\)/);
+assert.match(previewViewer, /const storyManager = viewer\.plugin\?\.managers\?\.snapshot;\s*if \(storyManager && molstarStoryState\(\)\.available\) \{\s*applyMolstarStoryStyleToSnapshots\(\s*storyManager,\s*configuredMolstarStyle\(activeConfig \|\| window\.BuretteConfig \|\| \{\}\),\s*value\s*\);\s*\}/);
 assert.match(previewViewer, /\{ name: authored\.type\?\.name, params: \{ \.\.\.\(authored\.type\?\.params \|\| \{\}\), \.\.\.overrides \} \}/);
 // A preset selected from Burette's menu is a user override, unlike the initial
 // Automatic config. Provider-backed presets therefore survive Story snapshots.
@@ -6823,7 +6838,13 @@ assert.match(previewViewer, /const DOCKING_POSE_POSITION_VERSION = '8'/);
 assert.match(previewViewer, /function dockingPoseControlsBounds\(mainRect = visibleRect\('\.msp-plugin \.msp-layout-main'\)\)/);
 assert.match(previewViewer, /const left = mainRect \? Math\.max\(margin, Math\.ceil\(mainRect\.left \+ margin\)\) : margin;/);
 assert.match(previewViewer, /const right = mainRect \? Math\.min\(window\.innerWidth - margin, Math\.floor\(mainRect\.right - margin\)\) : window\.innerWidth - margin;/);
+assert.match(previewViewer, /const viewportRailRect = visibleRect\('#buret-viewport-rail'\);/);
+assert.match(previewViewer, /const clearedRight = viewportRailRect\s*\? Math\.min\(right, Math\.floor\(viewportRailRect\.left - FLOATING_LAYOUT_GAP\)\)\s*: right;/);
+assert.match(previewViewer, /right: Math\.max\(clearedLeft, clearedRight\),/);
 assert.match(previewViewer, /const availableWidth = Math\.max\(180, Math\.floor\(bounds\.right - bounds\.left\)\);\s*root\.style\.maxWidth = availableWidth \+ 'px';/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses-compact\.buret-molstar-story \.buret-docking-pose-main\s*\{[\s\S]*?grid-template-columns: 28px repeat\(4, minmax\(0, 1fr\)\);/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses-compact\.buret-molstar-story \[data-buret-story-play\][\s\S]*?grid-column: 4;[\s\S]*?grid-row: 2;/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses-compact\.buret-molstar-story \.buret-molstar-story-open[\s\S]*?grid-column: 5;[\s\S]*?grid-row: 2;/);
 assert.match(previewViewer, /function defaultDockingPoseControlsTop\(root, bounds\)/);
 assert.match(previewViewer, /const overlapsToolbar = bounds\.left < toolbarRect\.right \+ FLOATING_LAYOUT_GAP\s*&& bounds\.left \+ width > toolbarRect\.left - FLOATING_LAYOUT_GAP;/);
 assert.match(previewViewer, /return overlapsToolbar \? Math\.ceil\(toolbarRect\.bottom \+ FLOATING_LAYOUT_GAP\) : bounds\.top;/);
