@@ -13,8 +13,8 @@ grep -n 'burette' scripts/preview-content-type.mjs || true
 echo "Trash check:"
 case "$ROOT" in *"/.Trash/"*|*"/Library/Mobile Documents/.Trash/"*) echo "ERROR: project is inside Trash"; exit 1;; *) echo "OK: not in Trash";; esac
 echo "Expected app markers:"
-PKG_VERSION="$(sed -n 's/.*"version": "\([0-9.]*\)".*/\1/p' package.json | head -1)"
-TAURI_VERSION="$(sed -n 's/.*"version": "\([0-9.]*\)".*/\1/p' apps/desktop/src-tauri/tauri.conf.json | head -1)"
+PKG_VERSION="$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' package.json | head -1)"
+TAURI_VERSION="$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' apps/desktop/src-tauri/tauri.conf.json | head -1)"
 if [ -n "$PKG_VERSION" ] && [ "$PKG_VERSION" = "$TAURI_VERSION" ]; then
   echo "OK version markers ($PKG_VERSION)"
 else

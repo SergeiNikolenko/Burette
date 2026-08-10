@@ -3,11 +3,14 @@
 Canonical shortcut reference for Burette.
 
 Desktop builds register these shortcuts as native macOS menu accelerators in
-`apps/desktop/src-tauri/src/menu/build.rs`; the browser-dev runtime mirrors
-them in the webview handler `apps/desktop/src/hooks/use-keyboard-shortcuts.ts`.
-The in-app list under Help > Keyboard Shortcuts is generated from
-`apps/desktop/src/components/settings-panel/keyboard-shortcuts-section.tsx` and
-must stay consistent with this file.
+`apps/desktop/src-tauri/src/menu/build.rs`. The browser-dev runtime implements
+a subset in the webview handler
+`apps/desktop/src/hooks/use-keyboard-shortcuts.ts`; rows marked
+"(desktop app)" have no webview handler, and shortcuts missing from the
+handler (for example Cmd+Shift+W) fall back to normal browser behavior in
+browser-dev. The in-app list under Help > Keyboard Shortcuts is a third
+inventory (`apps/desktop/src/components/settings-panel/keyboard-shortcuts-section.tsx`);
+keep all three aligned when changing shortcuts.
 
 ## Global
 
@@ -21,9 +24,9 @@ or the hosted MCP widget is open.
 | Cmd+T | Open a new launcher tab |
 | Cmd+O | Open molecular structure files |
 | Cmd+Shift+O | Open most recent structure |
-| Cmd+S | Save the active text source or collection document |
-| Cmd+Shift+S | Save the active document as a new file |
-| Cmd+F | Find: collection grid search, otherwise focus sidebar search |
+| Cmd+S | Save the active text source or collection document (desktop app) |
+| Cmd+Shift+S | Save the active document as a new file (desktop app) |
+| Cmd+F | Find: collection grid search, otherwise focus sidebar search (desktop app) |
 | Cmd+Z | Undo in the active context (workspace history, or grid undo when a collection document is active) |
 | Cmd+Shift+Z | Redo in the active context |
 | Cmd+B | Toggle sidebar |
@@ -33,7 +36,7 @@ or the hosted MCP widget is open.
 | Cmd+, | Open Settings |
 | Cmd+W | Close the active tab |
 | Cmd+Shift+W | Close the active window |
-| Cmd+Q | Quit Burette (runs the exit preflight) |
+| Cmd+Q | Quit Burette (runs the exit preflight; desktop app) |
 | Control+Tab | Select the next tab |
 | Control+Shift+Tab | Select the previous tab |
 | Cmd+Shift+R | Reveal active structure in Finder |
