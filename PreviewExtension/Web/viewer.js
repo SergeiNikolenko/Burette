@@ -966,12 +966,13 @@
     // style. Rendering is held across the swap so the first frame drawn is already
     // the finished scene. Playback keeps rendering; it is a continuous animation.
     const isStep = operation === 'next' || operation === 'previous' || operation === 'goto';
-    const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
-    // Styles built from more than one representation cannot be written into the
+    const config = activeConfig || window.BuretteConfig || {};
+    const style = configuredMolstarStyle(config);
+    // Composite styles and Mol* provider presets cannot be written into the
     // snapshot, so they go on after the step with rendering held. `Illustrative`
     // is not among them: it is post-processing on the canvas, which the snapshot
     // no longer carries, so it survives a step untouched.
-    const restyles = isStep && MOLSTAR_STORY_REBUILT_STYLES.has(style);
+    const restyles = isStep && molstarStoryPresentationRequiresRebuild(config);
     const animatesRestyledStep = restyles
       && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches !== true;
     const sourceCamera = animatesRestyledStep ? captureMolstarCameraSnapshot(activeViewer) : null;
@@ -1112,6 +1113,16 @@
     }
   }
 
+  function molstarStoryPresetOverride(config) {
+    if (config?.molstarPresentationOverride !== true) return null;
+    return molstarPresetOption(configuredMolstarPreset(config));
+  }
+
+  function molstarStoryPresentationRequiresRebuild(config) {
+    return Boolean(molstarStoryPresetOverride(config)?.provider)
+      || MOLSTAR_STORY_REBUILT_STYLES.has(configuredMolstarStyle(config));
+  }
+
   // The restore has to wait for the step to finish building: applying a style
   // while Mol* is still assembling the snapshot competes with it and leaves the
   // canvas empty, which is what happened when the first state was restyled
@@ -1134,10 +1145,16 @@
   // step. `default` means "show the scene as authored", so it is left alone.
   async function restoreMolstarStoryPresentation(viewer = activeViewer) {
     if (!viewer || viewer !== activeViewer || molstarStoryPresentationRestoreInFlight) return;
-    const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
+    const config = activeConfig || window.BuretteConfig || {};
+    const style = configuredMolstarStyle(config);
+    const appearance = configuredMolstarAppearance(config);
+    const option = molstarStoryPresetOverride(config);
+    const legacyAppearance = style === 'illustrative' || style === 'illustrative-surface' ? 'illustrative' : 'default';
     molstarStoryPresentationRestoreInFlight = true;
     try {
-      if (style !== 'default') await applyMolstarStyle(viewer, style);
+      if (option?.provider) await applyMolstarProviderPreset(viewer, option);
+      else if (style !== 'default') await applyMolstarStyle(viewer, style);
+      if (option?.provider || appearance !== legacyAppearance) await applyMolstarAppearance(viewer, appearance);
       applyBackgroundMode();
       applyViewerBackground(viewer);
     } catch (error) {
@@ -1199,10 +1216,11 @@
       if (!currentId || currentId === molstarStoryRestoredStateId) return;
       const isFirstState = molstarStoryRestoredStateId === null;
       molstarStoryRestoredStateId = currentId;
-      // Only a composite style needs a pass over the built scene, and a step
-      // driven through the controls has already done it with rendering held.
-      const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
-      if (!isFirstState && !molstarStoryStepInFlight && MOLSTAR_STORY_REBUILT_STYLES.has(style)) {
+      // Composite styles and user-selected Mol* providers need a pass over the
+      // built scene; a step driven through our controls already did that while
+      // rendering was held.
+      const config = activeConfig || window.BuretteConfig || {};
+      if (!isFirstState && !molstarStoryStepInFlight && molstarStoryPresentationRequiresRebuild(config)) {
         scheduleMolstarStoryPresentationRestore(viewer);
       }
     });
@@ -4287,13 +4305,14 @@
     await plugin.managers.structure.component.applyPreset(structures, provider);
   }
 
-  function updateMolstarPresentationConfig(preset, appearance, legacyStyle) {
+  function updateMolstarPresentationConfig(preset, appearance, legacyStyle, { userOverride = true } = {}) {
     molstarPresetPreviewSceneRevision += 1;
     activeConfig = {
       ...(activeConfig || window.BuretteConfig || {}),
       molstarPreset: preset,
       molstarAppearance: appearance,
-      molstarStyle: legacyStyle
+      molstarStyle: legacyStyle,
+      molstarPresentationOverride: userOverride
     };
     window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
     if (activeMolstarPrepared?.molstarStyleOverride) {
@@ -4385,7 +4404,9 @@
         return;
       }
       try {
-        updateMolstarPresentationConfig(previousPreset, previousAppearance, previousStyle);
+        updateMolstarPresentationConfig(previousPreset, previousAppearance, previousStyle, {
+          userOverride: previousConfig.molstarPresentationOverride === true
+        });
         const storyManager = viewer.plugin?.managers?.snapshot;
         if (storyManager && molstarStoryState().available) {
           applyMolstarStoryStyleToSnapshots(storyManager, previousStyle);

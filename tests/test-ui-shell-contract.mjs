@@ -5543,7 +5543,7 @@ assert.ok(
   'the selected preset must be committed only after the scene applied successfully',
 );
 assert.match(applyMolstarPresetNowSource, /if \(sceneSnapshot\) \{\s*await viewer\.plugin\.runTask\(viewer\.plugin\.state\.data\.setSnapshot\(sceneSnapshot\)\);\s*\}/);
-assert.match(applyMolstarPresetNowSource, /updateMolstarPresentationConfig\(previousPreset, previousAppearance, previousStyle\);/);
+assert.match(applyMolstarPresetNowSource, /updateMolstarPresentationConfig\(previousPreset, previousAppearance, previousStyle, \{\s*userOverride: previousConfig\.molstarPresentationOverride === true\s*\}\);/);
 assert.match(applyMolstarPresetNowSource, /await applyMolstarAppearance\(viewer, previousAppearance\);/);
 assert.match(applyMolstarPresetNowSource, /restoreMolstarCameraSnapshotNow\(viewer, rollbackCameraSnapshot\);/);
 assert.match(previewIndex, /Preview could not be updated\./);
@@ -5944,7 +5944,12 @@ assert.match(previewViewer, /MOLSTAR_STORY_REPORT_INTERVAL_MS = 120/);
 assert.match(previewViewer, /function syncMolstarStoryUi\(\)/);
 assert.match(previewViewer, /function applyMolstarStoryStyleToSnapshots\(manager, style\)/);
 assert.match(previewViewer, /transform.version = molstarStoryTransformVersion\(transform, style\)/);
-assert.match(previewViewer, /if \(style !== 'default'\) await applyMolstarStyle\(viewer, style\)/);
+assert.match(previewViewer, /function molstarStoryPresetOverride\(config\)/);
+assert.match(previewViewer, /if \(config\?\.molstarPresentationOverride !== true\) return null;/);
+assert.match(previewViewer, /function molstarStoryPresentationRequiresRebuild\(config\)/);
+assert.match(previewViewer, /return Boolean\(molstarStoryPresetOverride\(config\)\?\.provider\)\s*\|\| MOLSTAR_STORY_REBUILT_STYLES\.has\(configuredMolstarStyle\(config\)\);/);
+assert.match(previewViewer, /if \(option\?\.provider\) await applyMolstarProviderPreset\(viewer, option\);\s*else if \(style !== 'default'\) await applyMolstarStyle\(viewer, style\);/);
+assert.match(previewViewer, /if \(option\?\.provider \|\| appearance !== legacyAppearance\) await applyMolstarAppearance\(viewer, appearance\);/);
 // Restyling a Story rebuilds it from its own snapshots, so the state on screen
 // ends up looking like every other state - and the reload that would have wiped
 // the snapshots never happens.
@@ -5970,8 +5975,8 @@ assert.match(previewViewer, /MOLSTAR_STORY_DETAILS_DWELL_MS = 500/);
 assert.match(previewViewer, /canvas3d\?\.pause\?\.\(true\)/);
 assert.match(previewViewer, /await waitForMolstarIdle\(activeViewer\);/);
 assert.match(previewViewer, /await restoreMolstarStoryPresentation\(activeViewer\);/);
-assert.match(previewViewer, /if \(!isFirstState && !molstarStoryStepInFlight && MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)\)/);
-assert.match(previewViewer, /const restyles = isStep && MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)/);
+assert.match(previewViewer, /if \(!isFirstState && !molstarStoryStepInFlight && molstarStoryPresentationRequiresRebuild\(config\)\)/);
+assert.match(previewViewer, /const restyles = isStep && molstarStoryPresentationRequiresRebuild\(config\)/);
 // `Illustrative` flattens shading through `ignoreLight` on each representation,
 // so it has to ride along in the snapshots or a step brings lit shading back.
 assert.match(previewViewer, /illustrative: \{ ignoreLight: true \}/);
@@ -5988,6 +5993,10 @@ assert.match(previewViewer, /action\.stillWanted\?\.\(\) === false/);
 assert.match(previewViewer, /const overrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES\[style\]/);
 assert.match(previewViewer, /if \(!uniform && !overrides\) \{/);
 assert.match(previewViewer, /\{ name: authored\.type\?\.name, params: \{ \.\.\.\(authored\.type\?\.params \|\| \{\}\), \.\.\.overrides \} \}/);
+// A preset selected from Burette's menu is a user override, unlike the initial
+// Automatic config. Provider-backed presets therefore survive Story snapshots.
+assert.match(previewViewer, /function updateMolstarPresentationConfig\(preset, appearance, legacyStyle, \{ userOverride = true \} = \{\}\)/);
+assert.match(previewViewer, /molstarPresentationOverride: userOverride/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses\.buret-molstar-story \{\s*border-radius: 12px;/);
 assert.match(previewViewer, /function renderMolstarStoryMarkdown\(container, markdown\)/);
 assert.match(previewRuntimeCss, /\.buret-story-hover-card \{/);
