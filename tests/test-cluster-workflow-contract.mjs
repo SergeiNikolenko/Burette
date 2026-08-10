@@ -347,8 +347,13 @@ assert.match(chemicalSpacePanel, /adaptivePointRadius/);
 assert.match(chemicalSpace3d, /adaptivePointScale/);
 assert.match(browserDevCompute, /runBrowserDevChemicalSpaceStudy/);
 assert.match(browserDevCompute, /browserFingerprintCache\.get\(key\)/);
-for (const engine of ["chemberta", "molformer", "unimol2-84m", "unimol-v1"]) {
+for (const engine of ["molformer", "unimol2-84m"]) {
   assert.match(chemicalSpacePanel, new RegExp(`value: "${engine}"`));
+}
+for (const engine of ["chemberta", "unimol-v1"]) {
+  assert.doesNotMatch(chemicalSpacePanel, new RegExp(`value: "${engine}"`));
+}
+for (const engine of ["chemberta", "molformer", "unimol2-84m", "unimol-v1"]) {
   assert.match(representationWorker, new RegExp(`"${engine}"`));
 }
 assert.match(browserDevCompute, /browserRepresentationCache\.get\(key\)/);

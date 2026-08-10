@@ -138,15 +138,16 @@ const DEFAULT_OPTIONS: ChemicalSpaceOptions = {
   negativeSampleRate: 5,
   randomSeed: 42,
 };
+// ChemBERTa and Uni-Mol v1 stay supported by the worker for old documents,
+// but the picker offers only the representations worth choosing today:
+// Morgan for SAR work, MoLFormer for learned 2D chemistry, Uni-Mol2 for 3D.
 const CHEMICAL_SPACE_REPRESENTATIONS: Array<{
   value: ChemicalSpaceRepresentation;
   label: string;
 }> = [
   { value: "morgan", label: "Morgan · Tanimoto" },
-  { value: "chemberta", label: "ChemBERTa 77M" },
   { value: "molformer", label: "MoLFormer XL" },
   { value: "unimol2-84m", label: "Uni-Mol2 84M" },
-  { value: "unimol-v1", label: "Uni-Mol v1" },
 ];
 const CHEMICAL_SPACE_METHODS: Array<{ value: ChemicalSpaceMethod; label: string }> = [
   { value: "umap", label: "UMAP" },
