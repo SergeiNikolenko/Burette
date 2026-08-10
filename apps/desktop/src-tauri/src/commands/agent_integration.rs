@@ -5,9 +5,10 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const PLUGIN_NAME: &str = "burette";
+const PLUGIN_NAMES: [&str; 2] = ["burette", "burrete"];
 const PLUGIN_RELATIVE_PATH: &str = "plugins/burette-agent";
 const MANIFEST_RELATIVE_PATH: &str = ".codex-plugin/plugin.json";
+const CLAUDE_MANIFEST_RELATIVE_PATH: &str = ".claude-plugin/plugin.json";
 const COMPATIBILITY_RELATIVE_PATH: &str = "compatibility.json";
 
 #[derive(Serialize)]
@@ -17,7 +18,7 @@ pub(crate) struct AgentIntegrationStatus {
     state: String,
     app_version: &'static str,
     bundled_plugin: PluginBundleStatus,
-    codex_install: CodexInstallStatus,
+    agent_installs: Vec<AgentInstallStatus>,
     checks: Vec<AgentIntegrationCheck>,
 }
 
@@ -42,7 +43,9 @@ pub(crate) struct CompatibilitySummary {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct CodexInstallStatus {
+pub(crate) struct AgentInstallStatus {
+    id: &'static str,
+    label: &'static str,
     state: String,
     version: Option<String>,
     path: Option<String>,
@@ -74,7 +77,7 @@ pub(crate) fn agent_integration_status() -> AgentIntegrationStatus {
             ));
             PluginBundleStatus {
                 state: "missing".to_string(),
-                name: PLUGIN_NAME.to_string(),
+                name: PLUGIN_NAMES[0].to_string(),
                 version: None,
                 path: None,
                 display_name: None,
@@ -83,23 +86,31 @@ pub(crate) fn agent_integration_status() -> AgentIntegrationStatus {
         }
     };
 
-    let codex_install = codex_install_status(bundled_plugin.version.as_deref());
+    let agent_installs = agent_install_statuses(bundled_plugin.version.as_deref());
     let state = if bundled_plugin.state != "ready" {
         "broken"
-    } else if codex_install.state == "update_available" {
+    } else if agent_installs.iter().any(|agent| agent.state == "current") {
+        "ready"
+    } else if agent_installs
+        .iter()
+        .any(|agent| agent.state == "update_available")
+    {
         "update_available"
-    } else if codex_install.state == "not_installed" {
+    } else if agent_installs
+        .iter()
+        .any(|agent| agent.state == "not_installed")
+    {
         "install_available"
     } else {
         "ready"
     };
 
     AgentIntegrationStatus {
-        schema: "burette_agent_integration.v1",
+        schema: "burette_agent_integration.v2",
         state: state.to_string(),
         app_version: env!("CARGO_PKG_VERSION"),
         bundled_plugin,
-        codex_install,
+        agent_installs,
         checks,
     }
 }
@@ -107,9 +118,12 @@ pub(crate) fn agent_integration_status() -> AgentIntegrationStatus {
 fn bundle_status(path: &Path, checks: &mut Vec<AgentIntegrationCheck>) -> PluginBundleStatus {
     let manifest_path = path.join(MANIFEST_RELATIVE_PATH);
     let manifest = read_json(&manifest_path);
-    let manifest_ok = manifest
-        .as_ref()
-        .is_some_and(|value| value.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME));
+    let manifest_ok = manifest.as_ref().is_some_and(|value| {
+        value
+            .get("name")
+            .and_then(Value::as_str)
+            .is_some_and(is_plugin_name)
+    });
     checks.push(path_check(
         "manifest",
         "Plugin manifest",
@@ -188,7 +202,7 @@ fn bundle_status(path: &Path, checks: &mut Vec<AgentIntegrationCheck>) -> Plugin
 
     PluginBundleStatus {
         state: if ready { "ready" } else { "broken" }.to_string(),
-        name: PLUGIN_NAME.to_string(),
+        name: PLUGIN_NAMES[0].to_string(),
         version,
         path: Some(path.to_string_lossy().to_string()),
         display_name,
@@ -196,38 +210,73 @@ fn bundle_status(path: &Path, checks: &mut Vec<AgentIntegrationCheck>) -> Plugin
     }
 }
 
-fn codex_install_status(bundled_version: Option<&str>) -> CodexInstallStatus {
+fn agent_install_statuses(bundled_version: Option<&str>) -> Vec<AgentInstallStatus> {
     let Some(home) = env::var_os("HOME").map(PathBuf::from) else {
-        return CodexInstallStatus {
-            state: "unknown".to_string(),
-            version: None,
-            path: None,
-            message: "HOME is not available, so the Codex plugin cache cannot be inspected."
-                .to_string(),
-        };
+        let message = "HOME is not available, so local agent plugin installs cannot be inspected.";
+        return vec![
+            unknown_install("codex", "Codex", message),
+            unknown_install("claude-code", "Claude Code", message),
+        ];
     };
-    let cache = home.join(".codex/plugins/cache");
-    if !cache.exists() {
-        return CodexInstallStatus {
+
+    vec![
+        agent_install_status(
+            "codex",
+            "Codex",
+            &home.join(".codex/plugins"),
+            None,
+            bundled_version,
+        ),
+        agent_install_status(
+            "claude-code",
+            "Claude Code",
+            &home.join(".claude/plugins"),
+            claude_registry_install(&home).as_ref(),
+            bundled_version,
+        ),
+    ]
+}
+
+fn agent_install_status(
+    id: &'static str,
+    label: &'static str,
+    plugins_root: &Path,
+    registry_install: Option<&InstalledPluginManifest>,
+    bundled_version: Option<&str>,
+) -> AgentInstallStatus {
+    if !plugins_root.exists() && registry_install.is_none() {
+        return AgentInstallStatus {
+            id,
+            label,
             state: "not_installed".to_string(),
             version: None,
             path: None,
-            message: "No Codex plugin cache was found for this user.".to_string(),
+            message: format!("No {label} plugin directory was found for this user."),
         };
     }
 
-    let Some(installed) = find_codex_plugin_manifest(&cache) else {
-        return CodexInstallStatus {
+    let found = registry_install
+        .map(|install| InstalledPluginManifest {
+            path: install.path.clone(),
+            manifest: install.manifest.clone(),
+        })
+        .or_else(|| find_plugin_manifest(plugins_root));
+    let Some(installed) = found else {
+        return AgentInstallStatus {
+            id,
+            label,
             state: "not_installed".to_string(),
             version: None,
             path: None,
-            message: "Burette is not installed in the local Codex plugin cache.".to_string(),
+            message: format!("Burette is not installed in the local {label} plugins."),
         };
     };
+
     let version = installed
         .manifest
         .get("version")
         .and_then(Value::as_str)
+        .filter(|value| !value.is_empty() && *value != "unknown")
         .map(ToOwned::to_owned);
     let state = match (bundled_version, version.as_deref()) {
         (Some(bundled), Some(current)) if bundled == current => "current",
@@ -235,17 +284,56 @@ fn codex_install_status(bundled_version: Option<&str>) -> CodexInstallStatus {
         _ => "unknown",
     };
     let message = match state {
-        "current" => "The local Codex cache has the same plugin version as this Burette bundle.",
-        "update_available" => "The local Codex cache has a different Burette plugin version.",
-        _ => "Codex has a Burette plugin manifest, but the version could not be compared.",
+        "current" => format!("{label} has the same plugin version as this Burette bundle."),
+        "update_available" => format!("{label} has a different Burette plugin version."),
+        _ => format!("{label} has a Burette plugin, but the version could not be compared."),
     };
 
-    CodexInstallStatus {
+    AgentInstallStatus {
+        id,
+        label,
         state: state.to_string(),
         version,
         path: Some(installed.path.to_string_lossy().to_string()),
+        message,
+    }
+}
+
+fn unknown_install(id: &'static str, label: &'static str, message: &str) -> AgentInstallStatus {
+    AgentInstallStatus {
+        id,
+        label,
+        state: "unknown".to_string(),
+        version: None,
+        path: None,
         message: message.to_string(),
     }
+}
+
+fn claude_registry_install(home: &Path) -> Option<InstalledPluginManifest> {
+    let registry = read_json(&home.join(".claude/plugins/installed_plugins.json"))?;
+    let plugins = registry.get("plugins")?.as_object()?;
+    for (key, installs) in plugins {
+        let name = key.split('@').next().unwrap_or_default();
+        if !is_plugin_name(name) {
+            continue;
+        }
+        let install = installs.as_array()?.first()?;
+        let install_path = PathBuf::from(install.get("installPath")?.as_str()?);
+        let manifest = read_json(&install_path.join(CLAUDE_MANIFEST_RELATIVE_PATH))
+            .or_else(|| read_json(&install_path.join(MANIFEST_RELATIVE_PATH)))
+            .or_else(|| {
+                install
+                    .get("version")
+                    .cloned()
+                    .map(|version| serde_json::json!({ "name": name, "version": version }))
+            })?;
+        return Some(InstalledPluginManifest {
+            path: install_path,
+            manifest,
+        });
+    }
+    None
 }
 
 struct InstalledPluginManifest {
@@ -253,21 +341,29 @@ struct InstalledPluginManifest {
     manifest: Value,
 }
 
-fn find_codex_plugin_manifest(cache: &Path) -> Option<InstalledPluginManifest> {
-    let mut queue = VecDeque::from([cache.to_path_buf()]);
+fn find_plugin_manifest(root: &Path) -> Option<InstalledPluginManifest> {
+    let mut candidates = Vec::new();
+    let mut queue = VecDeque::from([root.to_path_buf()]);
     let mut visited = 0usize;
     while let Some(directory) = queue.pop_front() {
         visited += 1;
         if visited > 2_000 {
-            return None;
+            break;
         }
-        let manifest_path = directory.join(MANIFEST_RELATIVE_PATH);
-        if let Some(manifest) = read_json(&manifest_path) {
-            if manifest.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME) {
-                return Some(InstalledPluginManifest {
-                    path: directory,
-                    manifest,
-                });
+        for manifest_relative in [MANIFEST_RELATIVE_PATH, CLAUDE_MANIFEST_RELATIVE_PATH] {
+            let manifest_path = directory.join(manifest_relative);
+            if let Some(manifest) = read_json(&manifest_path) {
+                if manifest
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .is_some_and(is_plugin_name)
+                {
+                    candidates.push(InstalledPluginManifest {
+                        path: directory.clone(),
+                        manifest,
+                    });
+                    break;
+                }
             }
         }
         let Ok(entries) = fs::read_dir(&directory) else {
@@ -280,7 +376,30 @@ fn find_codex_plugin_manifest(cache: &Path) -> Option<InstalledPluginManifest> {
             }
         }
     }
-    None
+    // A migrated setup can retain a legacy `burrete` install next to the
+    // canonical `burette` one; prefer the canonical name, then the highest
+    // version, so a stale alias cannot shadow the active install.
+    candidates.into_iter().max_by_key(|candidate| {
+        let canonical = candidate.manifest.get("name").and_then(Value::as_str) == Some("burette");
+        let version = candidate
+            .manifest
+            .get("version")
+            .and_then(Value::as_str)
+            .map(version_key)
+            .unwrap_or_default();
+        (canonical, version)
+    })
+}
+
+fn version_key(version: &str) -> Vec<u64> {
+    version
+        .split(['.', '-'])
+        .map(|part| part.parse::<u64>().unwrap_or(0))
+        .collect()
+}
+
+fn is_plugin_name(name: &str) -> bool {
+    PLUGIN_NAMES.contains(&name)
 }
 
 fn find_bundled_plugin_root() -> Option<PathBuf> {
