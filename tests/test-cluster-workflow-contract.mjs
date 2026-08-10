@@ -239,6 +239,10 @@ const modelCommands = source("apps/desktop/src-tauri/src/commands/chemical_space
 assert.match(modelCommands, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/compute\/models\/chemical_space_representations\.py"\)/);
 assert.match(modelCommands, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/compute\/models\/requirements\.txt"\)/);
 assert.match(modelCommands, /BURETTE_PROGRESS\\t/);
+assert.match(modelCommands, /fs::create_dir_all\(&weights\)/);
+assert.match(modelCommands, /\.current_dir\(&weights\)/);
+assert.match(browserDevRoute, /await mkdir\(modelRoot, \{ recursive: true \}\)/);
+assert.match(browserDevRoute, /input,\s*modelRoot,\s*MODEL_REQUEST_TIMEOUT_MS/);
 assert.match(computeCommands, /compute_execute_learned_chemical_space/);
 assert.match(computePermission, /compute_execute_learned_chemical_space/);
 const burettePermission = source("apps/desktop/src-tauri/permissions/burette.toml");
