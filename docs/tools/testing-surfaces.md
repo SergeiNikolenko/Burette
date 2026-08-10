@@ -40,8 +40,11 @@ port, starts `vp dev`, writes a session directory, and prints JSON with `url`,
 `sessionDir`, `logPath`, and `processId`.
 
 ```bash
-bun scripts/burette-agent.mjs open --mode browser-dev-shell samples/mini.pdb
+bun scripts/burette-agent.mjs open --mode browser-agent-shell samples/mini.pdb
 ```
+
+`--mode browser-dev-shell` is accepted as a legacy alias and normalized to
+`browser-agent-shell`; use the canonical name in new material.
 
 Then navigate the in-app Browser to `result.url` from the JSON output.
 Machine-readable checks use the returned session directory:
@@ -182,6 +185,9 @@ bun run test:agent
 bun run test:update
 bun run test:ui
 bun run test:tauri-structure
+bun run test:plugin
+bun run test:mesoscale
+bun run test:compute-metal
 ```
 
 For all repository contract tests and static checks without a production build:
