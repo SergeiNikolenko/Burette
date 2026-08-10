@@ -99,8 +99,8 @@ export function buildShellCommands(
     {
       id: "open-agent-integration",
       group: "Suggested",
-      label: "Codex Agent",
-      description: "Open MCP plugin status",
+      label: "Agents",
+      description: "Open agent plugin status",
       run: () => actions.openSettingsSection("agent"),
     },
     {
