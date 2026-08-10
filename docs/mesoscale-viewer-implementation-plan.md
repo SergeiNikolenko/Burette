@@ -1,8 +1,42 @@
 # Mesoscale Viewer Implementation Plan
 
-Status: implementation-ready plan, validated against Burette `v2.1.9`, Mol*
+Status: **shipped** — the Mesoscale viewer landed in PR #556 (with Mol* 5.11
+adopted in #551). The plan below is the historical planning record; where it
+disagrees with the shipped implementation, the implementation wins.
+
+## Shipped Reality (differences from the plan)
+
+- Runtime source lives in `apps/desktop/src/preview-mesoscale/` (not
+  `packages/mesoscale-runtime/`), built by `scripts/build-mesoscale-runtime.mjs`
+  into `PreviewExtension/Web/mesoscale.js`.
+- Burette pins `molstar` `5.11.0`, and `scripts/vendor-molstar.mjs` builds a
+  custom self-vendored bundle from `scripts/molstar-viewer-entry.js` instead of
+  copying the upstream viewer bundle.
+- Document routing (`apps/desktop/src/lib/mesoscale-documents.ts`): the
+  extensions `molj`, `molx`, and `mesozip` route unconditionally to the
+  mesoscale runtime; `cif`/`bcif`/`mmcif`/`mcif` route to it only when the file
+  path contains `cellpack`, `petworld`, or `mesoscale`. There is no
+  content-based CIF classification and no ambiguity dialog.
+- Packages use the dedicated `.mesozip` extension registered in
+  `config/preview-formats.json` and `tauri.conf.json`, not generic `.zip`.
+- The bridge contract is `burette-mesoscale/v2`
+  (`apps/desktop/src/lib/mesoscale-contract.ts`) with kinds `summary`,
+  `hierarchy-page`, `selection`, `export`, `failure`, `capabilities`,
+  `context-menu`, and layout messages; exports are `png|molx|molj` (no MP4).
+- `desktop-mesoscale` and `quicklook-mesoscale` asset profiles shipped
+  together; Quick Look (`PreviewViewController.swift`) and the iPhone app
+  (`ios/BuretteMobile/MobilePreviewRuntime.swift`) both route `mesozip`.
+- The shipped test suite is `bun run test:mesoscale`
+  (`tests/test-mesoscale-*.mjs` with the `tests/fixtures/mesoscale/` package
+  fixture and oracle), not the plan's proposed test file names.
+- Not shipped from the plan: agent-session/CLI mesoscale observe-act coverage
+  and MP4 export.
+
+---
+
+Original plan (historical), validated against Burette `v2.1.9`, Mol*
 `v5.10.1` in the repository, and upstream Mol* Mesoscale Explorer `v5.11.0` on
-2026-07-28.
+2026-07-28:
 
 ## Outcome
 
