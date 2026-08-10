@@ -11,8 +11,17 @@ type AgentIntegrationCheck = {
   detail: string;
 };
 
+type AgentInstallStatus = {
+  id: string;
+  label: string;
+  state: "current" | "not_installed" | "update_available" | "unknown" | string;
+  version: string | null;
+  path: string | null;
+  message: string;
+};
+
 type AgentIntegrationStatus = {
-  schema: "burette_agent_integration.v1";
+  schema: "burette_agent_integration.v2";
   state: "ready" | "install_available" | "update_available" | "broken" | string;
   appVersion: string;
   bundledPlugin: {
@@ -27,12 +36,7 @@ type AgentIntegrationStatus = {
       controlApi: string | null;
     } | null;
   };
-  codexInstall: {
-    state: "current" | "not_installed" | "update_available" | "unknown" | string;
-    version: string | null;
-    path: string | null;
-    message: string;
-  };
+  agentInstalls: AgentInstallStatus[];
   checks: AgentIntegrationCheck[];
 };
 
@@ -48,7 +52,9 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
     setError(null);
     try {
       if (!isTauriRuntime()) {
-        setStatus(browserPreviewStatus);
+        const response = await fetch("/__burette/agent-integration");
+        if (!response.ok) throw new Error(`Agent integration status failed: ${response.status}`);
+        setStatus((await response.json()) as AgentIntegrationStatus);
         return;
       }
       const next = await invoke<AgentIntegrationStatus>("agent_integration_status");
@@ -74,8 +80,8 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
     <div className="agent-integration-content">
       <header className="agent-integration-header">
         <div>
-          <h1>Codex Agent</h1>
-          <p>Status for the bundled plugin used by Codex MCP tools.</p>
+          <h1>Agents</h1>
+          <p>Status for the bundled Burette agent plugin and local agent installs.</p>
         </div>
         <div className="agent-integration-actions">
           <button type="button" className="settings-action-button" onClick={() => void refresh()} disabled={refreshing}>
@@ -103,7 +109,10 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
       <section className="agent-integration-section" aria-label="Connection status">
         <h2>Connection</h2>
         <div className="settings-card">
-          <StatusRow label="Codex plugin" value={codexSummary(status)} state={status?.codexInstall.state ?? "unknown"} />
+          {(status?.agentInstalls ?? []).map((agent) => (
+            <StatusRow key={agent.id} label={`${agent.label} plugin`} value={agentSummary(agent)} state={agent.state} />
+          ))}
+          {!status ? <StatusRow label="Agent plugins" value="Checking local agent installs." state="unknown" /> : null}
           <StatusRow label="MCP server" value={checkSummary(status, "mcp", "MCP server entry point is bundled.")} state={checkState(status, "mcp")} />
           <StatusRow label="Browser shell" value={checkSummary(status, "browser-shell", "Browser shell assets are bundled.")} state={checkState(status, "browser-shell")} />
           <StatusRow label="Skills" value={checkSummary(status, "skills", "Workflow skills are bundled.")} state={checkState(status, "skills")} />
@@ -149,38 +158,6 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
   );
 }
 
-const browserPreviewStatus: AgentIntegrationStatus = {
-  schema: "burette_agent_integration.v1",
-  state: "ready",
-  appVersion: "browser-dev",
-  bundledPlugin: {
-    state: "ready",
-    name: "burette",
-    version: "0.2.2",
-    path: browserPreviewPluginPath(),
-    displayName: "Burette",
-    compatibility: {
-      app: "desktop runtime",
-      agentCli: "structured CLI contract",
-      controlApi: "Burette Control API",
-    },
-  },
-  codexInstall: {
-    state: "unknown",
-    version: null,
-    path: null,
-    message: "Open the packaged app to inspect the local Codex plugin installation.",
-  },
-  checks: [
-    {
-      id: "browser-preview",
-      label: "Browser preview",
-      state: "ok",
-      detail: "Settings UI is running in browser preview; native install checks are available in the desktop app.",
-    },
-  ],
-};
-
 function StatusRow({ label, value, state }: { label: string; value: string; state: string }) {
   return (
     <div className="agent-status-row">
@@ -199,28 +176,28 @@ function integrationSummary(status: AgentIntegrationStatus | null, error: string
   if (error) {
     return {
       title: "Status unavailable",
-      detail: "Burette could not read the local Codex agent integration.",
+      detail: "Burette could not read the local agent integration.",
       state: "missing",
     };
   }
   if (!status) {
     return {
       title: "Checking agent status",
-      detail: "Burette is inspecting the bundled plugin and local Codex cache.",
+      detail: "Burette is inspecting the bundled plugin and local agent installs.",
       state: "unknown",
     };
   }
   if (status.state === "update_available") {
     return {
-      title: "Codex plugin needs an update",
-      detail: "The app bundle contains a different plugin version than the one currently installed in Codex.",
+      title: "An agent plugin needs an update",
+      detail: "The app bundle contains a different plugin version than one installed in a local agent.",
       state: status.state,
     };
   }
   if (status.state === "install_available") {
     return {
-      title: "Codex plugin is not installed",
-      detail: "Burette includes the plugin bundle; app updates can sync it into the local Codex cache.",
+      title: "The agent plugin is not installed",
+      detail: "Burette includes the plugin bundle; install it into Codex or Claude Code to control this workspace.",
       state: status.state,
     };
   }
@@ -232,8 +209,8 @@ function integrationSummary(status: AgentIntegrationStatus | null, error: string
     };
   }
   return {
-    title: "Codex agent is ready",
-    detail: "Codex can use the Burette MCP server, skills, and Browser shell assets from this app bundle.",
+    title: "Agent plugin is ready",
+    detail: "Agents can use the Burette MCP server, skills, and Browser shell assets from this app bundle.",
     state: status.state,
   };
 }
@@ -245,10 +222,9 @@ function bundleSummary(status: AgentIntegrationStatus | null) {
   return `${version} bundled with Burette.`;
 }
 
-function codexSummary(status: AgentIntegrationStatus | null) {
-  if (!status) return "Checking Codex cache.";
-  if (status.codexInstall.version) return `${status.codexInstall.message} Installed v${status.codexInstall.version}.`;
-  return status.codexInstall.message;
+function agentSummary(agent: AgentInstallStatus) {
+  if (agent.version) return `${agent.message} Installed v${agent.version}.`;
+  return agent.message;
 }
 
 function checkSummary(status: AgentIntegrationStatus | null, id: string, readyText: string) {
@@ -264,11 +240,6 @@ function checkState(status: AgentIntegrationStatus | null, id: string) {
 
 function findCheck(status: AgentIntegrationStatus | null, id: string) {
   return status?.checks.find((check) => check.id === id) ?? null;
-}
-
-function browserPreviewPluginPath() {
-  const repoRoot = String(import.meta.env.BURETTE_REPO_ROOT || "").trim().replace(/\/+$/u, "");
-  return repoRoot ? `${repoRoot}/plugins/burette-agent` : null;
 }
 
 function appSummary(status: AgentIntegrationStatus | null) {

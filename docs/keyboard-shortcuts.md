@@ -79,7 +79,7 @@ These actions are available from the command palette.
 | Settings | Open Settings |
 | Ketcher | Open the Ketcher sketcher tab |
 | FEP Network Preview | Open a GraphML ligand-network preview |
-| Codex Agent | Open the Codex agent surface |
+| Agents | Open the agent plugin status panel |
 | Hide Sidebar / Show Sidebar | Toggle sidebar |
 | Close Active Tab | Close the selected tab |
 | Close All Tabs | Close all workspace tabs |

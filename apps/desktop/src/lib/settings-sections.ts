@@ -43,7 +43,7 @@ export const settingsNavGroups: SettingsNavGroup[] = [
   {
     title: "Integrations",
     items: [
-      { id: "agent", label: "Codex Agent", description: "MCP plugin status and diagnostics" },
+      { id: "agent", label: "Agents", description: "Agent plugin status and diagnostics" },
     ],
   },
   {
