@@ -8,14 +8,6 @@
     app.insertAdjacentHTML('afterend', `
       <div id="buret-toolbar" role="toolbar" aria-label="Burette preview controls">
         <div class="buret-toolbar-content" data-buret-toolbar-content>
-          <button class="buret-button buret-preview-dock-toggle" type="button" data-buret-dock-toggle="bottom" aria-label="Show bottom dock" title="Show bottom dock">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5v-13Zm2 0v10h12v-10a.5.5 0 0 0-.5-.5h-11a.5.5 0 0 0-.5.5Zm0 13a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5V17H6v1.5Z" fill="currentColor"/></svg>
-            <span class="buret-tooltip" role="tooltip">Show bottom dock</span>
-          </button>
-          <button class="buret-button buret-preview-dock-toggle" type="button" data-buret-dock-toggle="right" aria-label="Show right dock" title="Show right dock">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 4A2.5 2.5 0 0 0 3 6.5v11A2.5 2.5 0 0 0 5.5 20h13a2.5 2.5 0 0 0 2.5-2.5v-11A2.5 2.5 0 0 0 18.5 4h-13ZM5 6.5a.5.5 0 0 1 .5-.5H15v12H5.5a.5.5 0 0 1-.5-.5v-11Zm12 11.5V6h1.5a.5.5 0 0 1 .5.5v11a.5.5 0 0 1-.5.5H17Z" fill="currentColor"/></svg>
-            <span class="buret-tooltip" role="tooltip">Show right dock</span>
-          </button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L<span class="buret-tooltip" role="tooltip">Toggle Mol* left object tree</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R<span class="buret-tooltip" role="tooltip">Toggle Mol* right properties panel</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq<span class="buret-tooltip" role="tooltip">Toggle sequence panel</span></button>
