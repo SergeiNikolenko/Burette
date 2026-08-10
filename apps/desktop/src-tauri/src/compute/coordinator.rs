@@ -36,8 +36,9 @@ use crate::compute::{
         AnalysisPublicationStep, ClusterPublicationStep, ConformerPublicationStep,
     },
     chemical_space::{
-        cluster_chemical_space_from_fingerprints, execute_chemical_space,
-        ChemicalSpaceClusterRequest, ChemicalSpaceClusterResult, ChemicalSpaceRequest,
+        cluster_chemical_space_from_fingerprints, decode_knn_cache_payload, execute_chemical_space,
+        execute_learned_chemical_space_from_knn, ChemicalSpaceClusterRequest,
+        ChemicalSpaceClusterResult, ChemicalSpaceKnnCachePayload, ChemicalSpaceRequest,
         ChemicalSpaceResult,
     },
     cluster_executor::{
@@ -251,6 +252,39 @@ impl ComputeCoordinator {
                 .insert(cache_key, execution.knn.clone());
         }
         Ok(execution.result)
+    }
+
+    /// Embeds a learned representation produced by the Python model worker.
+    /// Unlike [`Self::execute_chemical_space`] there is no prepared fingerprint
+    /// job: the neighbourhood graph arrives fully formed from the worker, so
+    /// this only needs the Metal runtime.
+    pub(crate) fn execute_learned_chemical_space(
+        &self,
+        owner: &str,
+        request: ChemicalSpaceRequest,
+        source_record_ids: Vec<u64>,
+        failed_records: usize,
+        knn_cache: ChemicalSpaceKnnCachePayload,
+    ) -> ComputeResult<ChemicalSpaceResult> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let runtime = match &ready.native_metal {
+            NativeMetalState::Available(runtime) => runtime,
+            NativeMetalState::Unavailable { message, .. } => {
+                return Err(ComputeCoordinatorError::Unavailable(format!(
+                    "Chemical-space Metal runtime is unavailable: {message}"
+                )))
+            }
+        };
+        let knn = decode_knn_cache_payload(&knn_cache, source_record_ids.len())
+            .map_err(ComputeCoordinatorError::Validation)?;
+        execute_learned_chemical_space_from_knn(
+            &source_record_ids,
+            failed_records,
+            runtime,
+            request,
+            &knn,
+        )
     }
 
     pub(crate) fn cluster_chemical_space(

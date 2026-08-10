@@ -272,9 +272,13 @@ kernel void burette_tanimoto_top_k_batch_v1(
 
     for (uint rank = 0; rank < config.neighborCount; ++rank) {
         outputIndices[outputOffset + rank] = selectedIndices[rank];
+        // Metal compiles this division with fast math, and for identical
+        // fingerprints (intersection == union) the reciprocal form can land
+        // one ULP above 1.0. Tanimoto is bounded by 1, so clamp it.
         outputSimilarities[outputOffset + rank] = selectedUnions[rank] == 0
             ? 0.0f
-            : static_cast<float>(selectedIntersections[rank]) /
-                static_cast<float>(selectedUnions[rank]);
+            : min(1.0f,
+                  static_cast<float>(selectedIntersections[rank]) /
+                      static_cast<float>(selectedUnions[rank]));
     }
 }

@@ -40,7 +40,7 @@ export function useAppGridFilterModel(
     const documentId = activeDocument?.id;
     if (!documentId) return;
     postMessageToViewerSource(sourcesRef.current[documentId] ?? null, {
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body,
     });
   }, [activeDocument, postMessageToViewerSource]);
