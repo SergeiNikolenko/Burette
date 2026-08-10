@@ -20,6 +20,7 @@
   const MOLSTAR_TOUCH_CONTEXT_MENU_MOVE_THRESHOLD_PX = 12;
   const MOLSTAR_TOUCH_PICK_RADIUS_PX = 18;
   const MOLSTAR_TOUCH_PICK_STEP_PX = 6;
+  const MOLSTAR_SEMANTIC_TARGET_DWELL_MS = 160;
   const MOLSTAR_LASSO_MIN_POINTS = 4;
   const MOLSTAR_LASSO_MIN_DISTANCE_PX = 3;
   const MOLSTAR_LASSO_SAMPLE_STEP_PX = 8;
@@ -141,6 +142,7 @@
   let molstarWindowResizeHandler = null;
   let molstarContainerResizeCleanup = null;
   let molstarContextMenuCleanup = null;
+  let molstarSemanticCanvasTargetCleanup = null;
   let molstarSelectionPreviewCleanup = null;
   let molstarStoryStateCleanup = null;
   let molstarStoryPresentationRestoreInFlight = false;
@@ -20098,8 +20100,11 @@
     const residues = ah.residues || {};
     const chains = ah.chains || {};
     const labelEntityId = molstarContextValueAt(chains.label_entity_id, chainIndex);
-    const labelCompId = molstarContextValueAt(residues.label_comp_id, residueIndex);
-    const authCompId = molstarContextValueAt(residues.auth_comp_id, residueIndex) || labelCompId;
+    const labelCompId = molstarContextValueAt(atoms.label_comp_id, atomIndex)
+      || molstarContextValueAt(residues.label_comp_id, residueIndex);
+    const authCompId = molstarContextValueAt(atoms.auth_comp_id, atomIndex)
+      || molstarContextValueAt(residues.auth_comp_id, residueIndex)
+      || labelCompId;
     const entityType = molstarContextEntityType(model, labelEntityId);
     return {
       model,
@@ -24845,6 +24850,127 @@
     };
   }
 
+  function molstarSemanticCanvasTargetLabel(target, pickingLevel) {
+    if (!target?.atom) return String(target?.label || 'molecule');
+    if (pickingLevel === 'atom' || pickingLevel === 'element') return molstarContextAtomLabel(target);
+    if (pickingLevel === 'chain') return molstarContextChainLabel(target.atom);
+    const comp = String(target.atom.auth_comp_id || target.atom.label_comp_id || '').trim();
+    const seq = String(target.atom.auth_seq_id ?? target.atom.label_seq_id ?? '').trim();
+    const chain = molstarContextChainId(target.atom);
+    const residue = [comp, seq].filter(Boolean).join(' ') || target.label || 'residue';
+    return chain ? `residue ${residue}, chain ${chain}` : `residue ${residue}`;
+  }
+
+  // Mol* renders atoms into one WebGL canvas, so browser accessibility and
+  // annotation tools otherwise see only the canvas. After a short hover dwell,
+  // expose the current pick as one bounded DOM target at the same screen point.
+  // Fast clicks and camera drags still go directly to Mol*.
+  function installMolstarSemanticCanvasTarget(viewer) {
+    molstarSemanticCanvasTargetCleanup?.();
+    molstarSemanticCanvasTargetCleanup = null;
+    if (!viewer?.plugin) return;
+    let button = null;
+    let dwellTimer = 0;
+    let currentTarget = null;
+    let currentPick = null;
+    const clear = () => {
+      if (dwellTimer) window.clearTimeout(dwellTimer);
+      dwellTimer = 0;
+      button?.remove();
+      button = null;
+      currentTarget = null;
+      currentPick = null;
+    };
+    const selectCurrent = (event) => {
+      if (!currentTarget) return;
+      const pickingLevel = molstarSelectionLevel();
+      const loci = molstarContextPickingLevelLoci(currentTarget, pickingLevel);
+      const additive = event.metaKey || event.ctrlKey || event.shiftKey;
+      if (!selectMolstarContextPick({ ...currentTarget, loci }, { additive, applyGranularity: false })) return;
+      const label = molstarSemanticCanvasTargetLabel(currentTarget, pickingLevel);
+      button?.setAttribute('aria-pressed', 'true');
+      setStatus(`[web] Selected ${label}.`);
+    };
+    const ensureButton = () => {
+      if (button) return button;
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-molstar-semantic-target';
+      button.addEventListener('pointerdown', event => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      button.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        selectCurrent(event);
+      });
+      button.addEventListener('contextmenu', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!currentPick) return;
+        molstarContextMenuPick = currentPick;
+        showMolstarContextMenu(event, currentPick);
+      });
+      document.body.appendChild(button);
+      return button;
+    };
+    const showFromEvent = (event) => {
+      const pick = molstarContextPickFromEvent(event);
+      if (!pick) {
+        clear();
+        return;
+      }
+      const target = molstarContextTargetForPick(pick);
+      if (!target?.atom || (!target.atomLoci && !target.loci)) {
+        clear();
+        return;
+      }
+      const pickingLevel = molstarSelectionLevel();
+      const label = molstarSemanticCanvasTargetLabel(target, pickingLevel);
+      const targetButton = ensureButton();
+      currentTarget = target;
+      currentPick = pick;
+      targetButton.textContent = label;
+      targetButton.dataset.label = label;
+      targetButton.dataset.scope = target.scope || 'selection';
+      targetButton.setAttribute('aria-label', `Select ${label}`);
+      targetButton.setAttribute('aria-pressed', 'false');
+      targetButton.title = `Select ${label}`;
+      targetButton.style.left = `${Math.round(event.clientX)}px`;
+      targetButton.style.top = `${Math.round(event.clientY)}px`;
+    };
+    const onPointerMove = (event) => {
+      if (event.target instanceof Element && event.target.closest('.buret-molstar-semantic-target')) return;
+      if (dwellTimer) window.clearTimeout(dwellTimer);
+      dwellTimer = 0;
+      if (Number(event.buttons || 0) !== 0 || molstarLassoEnabled || !isMolstarContextMenuTarget(event.target)) {
+        clear();
+        return;
+      }
+      const sample = { clientX: event.clientX, clientY: event.clientY, target: event.target };
+      dwellTimer = window.setTimeout(() => {
+        dwellTimer = 0;
+        showFromEvent(sample);
+      }, MOLSTAR_SEMANTIC_TARGET_DWELL_MS);
+    };
+    const onPointerDown = (event) => {
+      if (!(event.target instanceof Element) || !event.target.closest('.buret-molstar-semantic-target')) clear();
+    };
+    document.addEventListener('pointermove', onPointerMove, true);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('blur', clear);
+    window.addEventListener('resize', clear);
+    molstarSemanticCanvasTargetCleanup = () => {
+      document.removeEventListener('pointermove', onPointerMove, true);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('blur', clear);
+      window.removeEventListener('resize', clear);
+      clear();
+    };
+  }
+
   function subscribeMolstarPreviewEvent(source, update, disposers) {
     if (!source || typeof source.subscribe !== 'function') return;
     try {
@@ -25050,6 +25176,8 @@
       molstarContextMenuCleanup();
       molstarContextMenuCleanup = null;
     }
+    molstarSemanticCanvasTargetCleanup?.();
+    molstarSemanticCanvasTargetCleanup = null;
     molstarStoryStateCleanup?.();
     molstarStoryStateCleanup = null;
     if (molstarWindowResizeHandler) {
@@ -25110,6 +25238,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
     installMolstarContextMenu(viewer);
+    installMolstarSemanticCanvasTarget(viewer);
     installMolstarSelectionPreviewSync(viewer);
     installLeftPanelVisibilityGuard();
     scheduleLayoutStateReapply(viewer);

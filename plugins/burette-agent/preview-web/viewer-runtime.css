@@ -140,6 +140,30 @@ body .msp-plugin .msp-plugin-content {
 .buret-molstar-transition-frame.fade-out {
   opacity: 0;
 }
+.buret-molstar-semantic-target {
+  position: fixed;
+  z-index: 17;
+  width: 22px;
+  height: 22px;
+  overflow: hidden;
+  padding: 0;
+  border: 2px solid var(--buret-molstar-accent);
+  border-radius: 999px;
+  color: transparent;
+  background: color-mix(in srgb, var(--buret-molstar-accent) 16%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--buret-shell-background) 72%, transparent);
+  font-size: 0;
+  line-height: 0;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+.buret-molstar-semantic-target:hover,
+.buret-molstar-semantic-target:focus-visible,
+.buret-molstar-semantic-target[aria-pressed="true"] {
+  outline: 2px solid var(--buret-menu-focus-ring);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--buret-molstar-accent) 32%, transparent);
+}
 body .msp-plugin .msp-layout-standard,
 body .msp-plugin .msp-layout-top,
 body .msp-plugin .msp-layout-bottom,

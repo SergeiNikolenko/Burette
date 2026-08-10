@@ -6306,6 +6306,17 @@ assert.match(previewViewer, /const clearMolstarHoverHighlights = \(\) => \{[\s\S
 assert.match(previewViewer, /const suppressAtomModeHover = \(event\) => \{[\s\S]*?if \(!menuIsInAtomMode\(\)\) return;[\s\S]*?if \(Number\(event\.buttons \|\| 0\) !== 0\) return;[\s\S]*?clearMolstarHoverHighlights\(\);/);
 assert.match(previewViewer, /document\.addEventListener\('pointermove', suppressAtomModeHover, true\)/);
 assert.match(previewViewer, /document\.addEventListener\('mousemove', suppressAtomModeHover, true\)/);
+assert.match(previewViewer, /function installMolstarSemanticCanvasTarget\(viewer\)/);
+assert.match(previewViewer, /const labelCompId = molstarContextValueAt\(atoms\.label_comp_id, atomIndex\)/);
+assert.match(previewViewer, /button\.className = 'buret-molstar-semantic-target'/);
+assert.match(previewViewer, /targetButton\.setAttribute\('aria-label', `Select \$\{label\}`\)/);
+assert.match(previewViewer, /const pick = molstarContextPickFromEvent\(event\)/);
+assert.match(previewViewer, /const target = molstarContextTargetForPick\(pick\)/);
+assert.match(previewViewer, /const loci = molstarContextPickingLevelLoci\(currentTarget, pickingLevel\)/);
+assert.match(previewViewer, /selectMolstarContextPick\(\{ \.\.\.currentTarget, loci \}, \{ additive, applyGranularity: false \}\)/);
+assert.match(previewViewer, /installMolstarSemanticCanvasTarget\(viewer\);/);
+assert.match(previewViewer, /molstarSemanticCanvasTargetCleanup\?\.\(\);/);
+assert.match(previewRuntimeCss, /\.buret-molstar-semantic-target \{/);
 assert.match(previewViewer, /const selectAtomFromEvent = \(event\) => \{/);
 assert.match(previewViewer, /selectMolstarContextPick\(\{ \.\.\.target, loci: target\.atomLoci \}, \{ additive: true, applyGranularity: false \}\)/);
 assert.match(previewViewer, /if \(event\.button === 0 && menuIsInAtomMode\(\) && isMolstarContextMenuTarget\(target\)\) \{/);
