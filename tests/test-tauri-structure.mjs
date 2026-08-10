@@ -1156,6 +1156,9 @@ assertSourceIncludesAll(nativeMenuSource, [
   'view.grid-properties',
   'view.grid-renderer-rdkit',
   'view.grid-renderer-xyzrender',
+  'view.zoom-actual',
+  'view.zoom-in',
+  'view.zoom-out',
   'view.command-palette',
   'structure.open-in-molstar',
   'structure.edit-in-ketcher',
@@ -1222,11 +1225,15 @@ for (const [id, accelerator] of [
   ['edit.find', 'CmdOrCtrl+F'],
   ['edit.undo-grid', 'CmdOrCtrl+Z'],
   ['edit.redo-grid', 'CmdOrCtrl+Shift+Z'],
+  ['view.zoom-actual', 'CmdOrCtrl+0'],
+  ['view.zoom-in', 'CmdOrCtrl+='],
+  ['view.zoom-out', 'CmdOrCtrl+-'],
   ['window.previous-tab', 'Ctrl+Shift+Tab'],
   ['window.next-tab', 'Ctrl+Tab'],
 ]) {
   assertMenuItemAccelerator(nativeMenuSource, id, accelerator);
 }
+assert.match(menuEvents, /crate::zoom::handle_menu_command/);
 assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+Shift\+N"\)/);
 assert.match(nativeMenuSource, /accelerator\("CmdOrCtrl\+P"\)/);
 assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+U"\)/);

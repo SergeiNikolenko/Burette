@@ -302,7 +302,10 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .topbar, .chrome-leading-controls, .chrome-trailing-controls, .sidebar-toggle-root, .tab-strip, .tab-strip-spacer, .chrome-button, .new-tab, .tab-shell, .tab, .sidebar, .sidebar-footer, .project, .sidebar-search-row, .sidebar-search-action-row, .settings-sidebar, .settings-back-button, .settings-search, .settings-nav-item, .dock-panel { pointer-events: auto; }
 .chrome-leading-controls {
   position: absolute;
-  left: 92px;
+  /* The macOS traffic lights stay at their native position while the page
+     zooms, so the reserved gap shrinks by the zoom factor to keep a constant
+     on-screen clearance. */
+  left: calc(92px / var(--window-zoom, 1));
   top: 0;
   z-index: 5;
   height: var(--chrome-height);
@@ -8380,7 +8383,7 @@ img.settings-open-destination-icon {
   .settings-range-control input { width: 100%; }
 }
 @media (max-width: 760px) {
-  .chrome-leading-controls { left: 82px; }
+  .chrome-leading-controls { left: calc(82px / var(--window-zoom, 1)); }
   .topbar .tab-history-controls { display: none; }
   .sidebar-search-row { padding: 0 28px 0 32px; }
   .settings-panel-content { width: 100%; padding: 80px 16px 64px; }

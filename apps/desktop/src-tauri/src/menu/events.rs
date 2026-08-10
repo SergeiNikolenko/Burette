@@ -150,6 +150,10 @@ pub(crate) fn handle_event<R: Runtime>(app: &tauri::AppHandle<R>, id: &str) {
         return;
     }
 
+    if crate::zoom::handle_menu_command(app, id) {
+        return;
+    }
+
     if is_recent_menu_item_id(id) {
         if let Some(path) = recent_path(app, id) {
             let preferred_label = crate::windows::focused_window_label(app);
