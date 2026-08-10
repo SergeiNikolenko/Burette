@@ -2526,9 +2526,15 @@
     resetGridWindowForNewResultSet();
     if (state.remoteMode) {
       if (state.chemicalSpaceFilterActive) {
-        state.rows = filterByChemicalSpaceSelection(state.rows);
-        state.totalRows = state.rows.length;
-        render(cfg);
+        const loaded = new Set(state.rows.map(row => Number(row.index)));
+        const allLoaded = [...state.selected].every(index => loaded.has(Number(index)));
+        if (allLoaded) {
+          state.rows = filterByChemicalSpaceSelection(state.rows);
+          state.totalRows = state.rows.length;
+          render(cfg);
+          return;
+        }
+        void refreshRemoteChemicalSpaceSelection(cfg);
         return;
       }
       void refreshRemote(cfg);
@@ -2811,6 +2817,61 @@
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
       await renderVirtualWindow(cfg, token, { force: true });
       scheduleIndexPoll(cfg);
+    } catch (error) {
+      const message = error?.message || String(error);
+      setStatus(message, 'error');
+    } finally {
+      state.remoteLoading = false;
+    }
+  }
+
+  // A chemical-space lasso can select molecules far past the loaded window, so
+  // filtering the fetched rows alone showed a handful of the selection. Page
+  // through the collection like the SMARTS scan does and keep every selected row.
+  async function refreshRemoteChemicalSpaceSelection(cfg) {
+    const token = ++state.token;
+    const wanted = new Set([...state.selected].map(Number));
+    state.smartsError = '';
+    state.smartsMatches = new Map();
+    state.rows = [];
+    invalidateTableColumnCatalog();
+    state.totalRows = 0;
+    state.renderedCount = 0;
+    state.visibleCount = 0;
+    const grid = document.getElementById('grid');
+    if (grid) grid.innerHTML = '';
+    updateChrome(cfg);
+    try {
+      state.remoteLoading = true;
+      const matches = [];
+      let offset = 0;
+      let total = null;
+      const limit = Math.max(120, loadBatchSize(cfg));
+      while ((total === null || offset < total) && matches.length < wanted.size) {
+        if (token !== state.token) return;
+        const result = await hostRequest('gridFetchPage', gridFetchPayload({
+          query: state.query || '',
+          sort: state.sort || 'index',
+          offset,
+          limit
+        }));
+        const pageRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
+        applyGridPageState(result);
+        total = Number(result.totalRows || 0);
+        for (const row of pageRows) {
+          if (wanted.has(Number(row.index))) matches.push(row);
+        }
+        offset += pageRows.length;
+        if (!pageRows.length) break;
+        setStatus(`[grid] Loading selection ${matches.length.toLocaleString()} / ${wanted.size.toLocaleString()} molecules...`);
+      }
+      if (token !== state.token) return;
+      state.rows = matches;
+      invalidateTableColumnCatalog();
+      state.totalRows = matches.length;
+      state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
+      await renderVirtualWindow(cfg, token, { force: true });
+      setStatus(`[grid] Showing ${matches.length.toLocaleString()} selected molecule${matches.length === 1 ? '' : 's'}.`);
     } catch (error) {
       const message = error?.message || String(error);
       setStatus(message, 'error');
