@@ -7920,7 +7920,6 @@ input.structure-inspector-composition-search {
    the rows would switch layout ~26px before the column actually got narrow. */
 .settings-panel-content { width: min(672px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 96px 32px 80px; container: settings-panel / inline-size; }
 .agent-integration-content { width: min(760px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 96px 32px 80px; container-type: inline-size; }
-.settings-panel[data-settings-section="agent"] .settings-panel-content { width: min(760px, calc(100% - 64px)); }
 .agent-integration-panel[data-embedded] .agent-integration-content { width: 100%; margin: 0; padding: 0; }
 .settings-panel h1 { margin: 0 0 24px; color: var(--text-primary); font-size: 21px; font-weight: 400; letter-spacing: 0; }
 .agent-integration-panel h1 { margin: 0; color: var(--text-primary); font-size: 21px; font-weight: 400; letter-spacing: 0; }

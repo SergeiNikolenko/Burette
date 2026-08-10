@@ -395,12 +395,15 @@ assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_agen
 assert.match(agentIntegrationCommand, /#\[tauri::command\]\s+pub\(crate\) fn agent_integration_status/);
 assert.match(agentIntegrationCommand, /PLUGIN_RELATIVE_PATH: &str = "plugins\/burette-agent"/);
 assert.match(agentIntegrationCommand, /BURETTE_AGENT_PLUGIN_DIR/);
-assert.match(agentIntegrationCommand, /schema: "burette_agent_integration\.v1"/);
+assert.match(agentIntegrationCommand, /schema: "burette_agent_integration\.v2"/);
+assert.match(agentIntegrationCommand, /agent_installs/);
+assert.match(agentIntegrationCommand, /\.claude\/plugins/);
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecule-table\/widget\.html/);
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/trajectory-review\/widget\.html/);
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecular-report\/widget\.html/);
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecular-workspace\/widget\.html/);
-assert.match(agentIntegrationCommand, /find_codex_plugin_manifest/);
+assert.match(agentIntegrationCommand, /find_plugin_manifest/);
+assert.match(agentIntegrationCommand, /claude_registry_install/);
 assert.match(agentIntegrationCommand, /mcp\/lib\/server-bundle\.mjs/);
 assert.match(agentIntegrationCommand, /"scripts\/burette-agent\.mjs"/);
 assert.match(agentIntegrationCommand, /"browser-shell-dist\/index\.html"/);
