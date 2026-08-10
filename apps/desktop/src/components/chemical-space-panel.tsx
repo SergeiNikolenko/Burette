@@ -554,7 +554,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   }, [computeBlockedByIndex, documentId, documentInstanceKey, needsConfirmation, options, scopeKey, scopedSourceIds, sourceRevision]);
 
   useEffect(() => {
-    if (!documentId || clusteringMethod === "none" || computeBlockedByIndex || needsConfirmation) {
+    // An empty filtered scope must not fall through to the whole collection:
+    // preparing a job with no source indexes means "all records".
+    const scopeTooSmall = scopedSourceIds !== null && scopedSourceIds.length < 2;
+    if (!documentId || clusteringMethod === "none" || computeBlockedByIndex || needsConfirmation || scopeTooSmall) {
       setClusterResult(null);
       setClusterError(null);
       setClusterRunning(false);
@@ -716,6 +719,11 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     : result;
   const runStudy = async () => {
     if (computeBlockedByIndex || needsConfirmation) return;
+    if (scopedSourceIds && scopedSourceIds.length < 2) {
+      setError("The active filters leave fewer than two molecules to embed.");
+      setErrorNeedsModelRuntime(false);
+      return;
+    }
     studyControllerRef.current?.abort();
     const controller = new AbortController();
     studyControllerRef.current = controller;

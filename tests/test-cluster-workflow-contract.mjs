@@ -274,6 +274,15 @@ assert.match(workflow, /chemicalSpaceScopeSignature/);
 assert.match(workflow, /scopeSourceIds: number\[\] \| null = null/);
 assert.match(chemicalSpacePanel, /scopedBrowserRecords\(records, scopedSourceIds\)/);
 assert.match(chemicalSpacePanel, /Recompute the map over just the filtered molecules/);
+// An empty filtered scope normalizes to null ("all records") in the workflow
+// layer, so every effect that prepares a job must reject scopes below two
+// molecules — embedding, clustering, and studies alike.
+for (const guarded of [
+  /if \(scopedSourceIds && scopedSourceIds\.length < 2\) \{/,
+  /const scopeTooSmall = scopedSourceIds !== null && scopedSourceIds\.length < 2;/,
+]) {
+  assert.match(chemicalSpacePanel, guarded);
+}
 
 // The grid ignores every message whose source is not "burette-grid-host". The
 // pre-rename "burrete" spelling silently disconnected the filter panel from

@@ -1,0 +1,7 @@
+2026-08-11 01:06:20 | unimol_tools/weights/weighthub.py | 50 | WARNING | Uni-Mol Tools | [93m[93mUsing custom weight directory from UNIMOL_WEIGHT_DIR: /Users/nikolenko/Library/Application Support/Burette/chemical-space-models/unimol[0m[0m
+2026-08-11 01:06:20 | unimol_tools/weights/weighthub.py | 95 | INFO | Uni-Mol Tools | Downloading modelzoo/84M/checkpoint.pt
+2026-08-11 01:06:33 | unimol_tools/models/unimolv2.py | 176 | INFO | Uni-Mol Tools | Loading pretrained weights from /Users/nikolenko/Library/Application Support/Burette/chemical-space-models/unimol/modelzoo/84M/checkpoint.pt
+2026-08-11 01:06:34 | unimol_tools/data/conformer.py | 459 | INFO | Uni-Mol Tools | Start generating conformers...
+2026-08-11 01:06:46 | unimol_tools/data/conformer.py | 473 | INFO | Uni-Mol Tools | Succeeded in generating conformers for 100.00% of molecules.
+2026-08-11 01:06:46 | unimol_tools/data/conformer.py | 490 | INFO | Uni-Mol Tools | Succeeded in generating 3d conformers for 100.00% of molecules.
+2026-08-11 01:06:46 | unimol_tools/tasks/trainer.py | 103 | INFO | Uni-Mol Tools | Using CPU.
