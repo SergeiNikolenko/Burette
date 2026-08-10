@@ -30,7 +30,8 @@ BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
 Both native build commands verify that `xcrun metal` is executable before
 starting the frontend or Rust build. If Xcode reports a missing MetalToolchain,
 install the component with `xcodebuild -downloadComponent MetalToolchain` and
-rerun the build.
+rerun the build. If Xcode reports the component as installed but `xcrun` still
+cannot execute it, refresh the tool lookup with `xcrun --kill-cache`.
 
 Preview checks:
 

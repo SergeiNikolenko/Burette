@@ -7,11 +7,17 @@ import { spawnSync } from 'node:child_process';
 const root = path.resolve(import.meta.dirname, '..');
 const preflight = path.join(root, 'scripts', 'check-metal-toolchain.sh');
 
-function runWithFakeXcrun(body) {
+function runWithFakeTools(xcrunBody, componentStatus = 'not installed') {
   const fakeBin = mkdtempSync(path.join(tmpdir(), 'burette-metal-toolchain-'));
   const fakeXcrun = path.join(fakeBin, 'xcrun');
-  writeFileSync(fakeXcrun, `#!/usr/bin/env bash\n${body}\n`);
+  const fakeXcodebuild = path.join(fakeBin, 'xcodebuild');
+  writeFileSync(fakeXcrun, `#!/usr/bin/env bash\n${xcrunBody}\n`);
+  writeFileSync(
+    fakeXcodebuild,
+    `#!/usr/bin/env bash\necho "Status: ${componentStatus}"\n`,
+  );
   chmodSync(fakeXcrun, 0o755);
+  chmodSync(fakeXcodebuild, 0o755);
   try {
     return spawnSync('bash', [preflight], {
       cwd: root,
@@ -24,7 +30,7 @@ function runWithFakeXcrun(body) {
 }
 
 {
-  const result = runWithFakeXcrun(
+  const result = runWithFakeTools(
     'echo "error: cannot execute tool metal due to missing Metal Toolchain" >&2; exit 1',
   );
 
@@ -33,9 +39,19 @@ function runWithFakeXcrun(body) {
 }
 
 {
-  const result = runWithFakeXcrun('echo "Apple metal version 32023.850"; exit 0');
+  const result = runWithFakeTools('echo "Apple metal version 32023.850"; exit 0');
 
   assert.equal(result.status, 0);
+}
+
+{
+  const result = runWithFakeTools(
+    'echo "error: cannot execute tool metal due to missing Metal Toolchain" >&2; exit 1',
+    'installed',
+  );
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /xcrun --kill-cache/);
 }
 
 {
