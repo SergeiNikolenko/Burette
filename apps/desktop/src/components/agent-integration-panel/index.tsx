@@ -53,7 +53,13 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
     try {
       if (!isTauriRuntime()) {
         const response = await fetch("/__burette/agent-integration");
-        if (!response.ok) throw new Error(`Agent integration status failed: ${response.status}`);
+        const isJson = response.headers.get("content-type")?.includes("application/json") ?? false;
+        if (!response.ok || !isJson) {
+          // Static shells (for example the packaged browser agent shell) do
+          // not serve the status endpoint; report that instead of erroring.
+          setStatus(unservedSurfaceStatus);
+          return;
+        }
         setStatus((await response.json()) as AgentIntegrationStatus);
         return;
       }
@@ -158,6 +164,30 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
   );
 }
 
+const unservedSurfaceStatus: AgentIntegrationStatus = {
+  schema: "burette_agent_integration.v2",
+  state: "ready",
+  appVersion: "browser shell",
+  bundledPlugin: {
+    state: "ready",
+    name: "burette",
+    version: null,
+    path: null,
+    displayName: "Burette",
+    compatibility: null,
+  },
+  agentInstalls: [],
+  checks: [
+    {
+      id: "unserved-surface",
+      label: "Status endpoint",
+      state: "unknown",
+      detail:
+        "This surface does not serve agent integration status; open the desktop app or a browser-dev shell for live checks.",
+    },
+  ],
+};
+
 function StatusRow({ label, value, state }: { label: string; value: string; state: string }) {
   return (
     <div className="agent-status-row">
@@ -197,7 +227,7 @@ function integrationSummary(status: AgentIntegrationStatus | null, error: string
   if (status.state === "install_available") {
     return {
       title: "The agent plugin is not installed",
-      detail: "Burette includes the plugin bundle; install it into Codex or Claude Code to control this workspace.",
+      detail: "Burette includes the plugin bundle; run the repository's bun run install:plugin to install it into Codex.",
       state: status.state,
     };
   }
@@ -259,7 +289,8 @@ function badgeLabel(state: string) {
   if (state === "ready") return "Ready";
   if (state === "current") return "Current";
   if (state === "update_available") return "Update";
-  if (state === "not_installed" || state === "install_available") return "Install";
+  if (state === "not_installed") return "Not installed";
+  if (state === "install_available") return "Install";
   if (state === "missing") return "Missing";
   if (state === "broken") return "Broken";
   return "Unknown";

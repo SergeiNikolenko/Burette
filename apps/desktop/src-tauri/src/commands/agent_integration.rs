@@ -342,12 +342,13 @@ struct InstalledPluginManifest {
 }
 
 fn find_plugin_manifest(root: &Path) -> Option<InstalledPluginManifest> {
+    let mut candidates = Vec::new();
     let mut queue = VecDeque::from([root.to_path_buf()]);
     let mut visited = 0usize;
     while let Some(directory) = queue.pop_front() {
         visited += 1;
         if visited > 2_000 {
-            return None;
+            break;
         }
         for manifest_relative in [MANIFEST_RELATIVE_PATH, CLAUDE_MANIFEST_RELATIVE_PATH] {
             let manifest_path = directory.join(manifest_relative);
@@ -357,10 +358,11 @@ fn find_plugin_manifest(root: &Path) -> Option<InstalledPluginManifest> {
                     .and_then(Value::as_str)
                     .is_some_and(is_plugin_name)
                 {
-                    return Some(InstalledPluginManifest {
-                        path: directory,
+                    candidates.push(InstalledPluginManifest {
+                        path: directory.clone(),
                         manifest,
                     });
+                    break;
                 }
             }
         }
@@ -374,7 +376,26 @@ fn find_plugin_manifest(root: &Path) -> Option<InstalledPluginManifest> {
             }
         }
     }
-    None
+    // A migrated setup can retain a legacy `burrete` install next to the
+    // canonical `burette` one; prefer the canonical name, then the highest
+    // version, so a stale alias cannot shadow the active install.
+    candidates.into_iter().max_by_key(|candidate| {
+        let canonical = candidate.manifest.get("name").and_then(Value::as_str) == Some("burette");
+        let version = candidate
+            .manifest
+            .get("version")
+            .and_then(Value::as_str)
+            .map(version_key)
+            .unwrap_or_default();
+        (canonical, version)
+    })
+}
+
+fn version_key(version: &str) -> Vec<u64> {
+    version
+        .split(['.', '-'])
+        .map(|part| part.parse::<u64>().unwrap_or(0))
+        .collect()
 }
 
 fn is_plugin_name(name: &str) -> bool {

@@ -176,17 +176,19 @@ function claudeRegistryInstall(): { path: string; version: string | null } | nul
 }
 
 function findPluginManifest(root: string): { path: string; version: string | null } | null {
+  const candidates: Array<{ path: string; name: string; version: string | null }> = [];
   const queue = [root];
   let visited = 0;
   while (queue.length > 0) {
     const directory = queue.shift()!;
     visited += 1;
-    if (visited > 2_000) return null;
+    if (visited > 2_000) break;
     for (const manifestRelative of MANIFEST_RELATIVE_PATHS) {
       const manifest = readJson(join(directory, manifestRelative));
       const name = textField(manifest?.name);
       if (name && PLUGIN_NAMES.has(name)) {
-        return { path: directory, version: normalizeVersion(textField(manifest?.version)) };
+        candidates.push({ path: directory, name, version: normalizeVersion(textField(manifest?.version)) });
+        break;
       }
     }
     let entries;
@@ -199,7 +201,27 @@ function findPluginManifest(root: string): { path: string; version: string | nul
       if (entry.isDirectory()) queue.push(join(directory, entry.name));
     }
   }
-  return null;
+  // A migrated setup can retain a legacy `burrete` install next to the
+  // canonical `burette` one; prefer the canonical name, then the highest
+  // version, so a stale alias cannot shadow the active install.
+  candidates.sort((left, right) => {
+    const canonical = Number(right.name === "burette") - Number(left.name === "burette");
+    if (canonical !== 0) return canonical;
+    return compareVersions(right.version, left.version);
+  });
+  const best = candidates[0];
+  return best ? { path: best.path, version: best.version } : null;
+}
+
+function compareVersions(left: string | null, right: string | null) {
+  const parse = (value: string | null) => (value ?? "").split(/[.-]/u).map((part) => Number.parseInt(part, 10) || 0);
+  const a = parse(left);
+  const b = parse(right);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const delta = (a[index] ?? 0) - (b[index] ?? 0);
+    if (delta !== 0) return delta;
+  }
+  return 0;
 }
 
 function pushPathCheck(
