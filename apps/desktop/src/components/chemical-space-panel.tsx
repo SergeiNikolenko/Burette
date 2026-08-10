@@ -234,6 +234,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [errorNeedsModelRuntime, setErrorNeedsModelRuntime] = useState(false);
   const [learnedRepsInstalled, setLearnedRepsInstalled] = useState<boolean | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [visibleSourceIds, setVisibleSourceIds] = useState<Set<number> | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
   const [preview, setPreview] = useState<MoleculePreview | null>(null);
   const [pointScale, setPointScale] = useState(1);
@@ -268,7 +269,6 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [sourceRevision, setSourceRevision] = useState(0);
   const sourceRevisionRef = useRef(0);
   useEffect(() => {
-    if (!isTauriRuntime()) return;
     let disposed = false;
     void fetchChemicalSpaceModelRuntimeStatus()
       .then((status) => {
@@ -323,6 +323,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setErrorNeedsModelRuntime(false);
     setProgress(null);
     setSelected(new Set());
+    setVisibleSourceIds(null);
     setHovered(null);
     setPreview(null);
     setTmapLineScale(DEFAULT_TMAP_LINE_SCALE);
@@ -597,6 +598,16 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           setIndexState((current) => current
             ? { ...current, recordsTotal }
             : current);
+        }
+      }
+      if (data.body.type === "chemicalSpaceVisibilityChanged") {
+        if (data.body.kind === "filtered" && Array.isArray(data.body.sourceRecordIds)) {
+          setVisibleSourceIds(new Set(data.body.sourceRecordIds
+            .slice(0, GRID_SELECTION_BRIDGE_LIMIT)
+            .map(Number)
+            .filter((index) => Number.isSafeInteger(index) && index >= 0)));
+        } else {
+          setVisibleSourceIds(null);
         }
       }
       if (data.body.type === "gridHoverChanged") {
@@ -886,11 +897,11 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               </Tooltip>
             ) : null}
             {activityColumns.length > 0 ? (
-              <Field orientation="horizontal" className="min-w-0 max-w-44 flex-1 gap-2">
+              <Field orientation="horizontal" className="min-w-0 max-w-80 flex-1 gap-2">
                 <FieldLabel className="chemical-space-control-name shrink-0 text-xs text-muted-foreground">Activity</FieldLabel>
                 <NativeSelect
                   size="sm"
-                  className="min-w-10 flex-1"
+                  className="min-w-28 flex-1"
                   aria-label="Activity colour column"
                   value={activityColumnId ?? ""}
                   onChange={(event) => setActivityColumnId(event.currentTarget.value || null)}
@@ -928,6 +939,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               pointScale={pointScale}
               tmapLineScale={tmapLineScale}
               activityColors={activityColoring?.colors ?? null}
+              visibleSourceIds={visibleSourceIds}
               cliffs={cliffs}
               tool={tool}
               onHover={(sourceRecordId) => {
@@ -976,7 +988,6 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
             errorNeedsModelRuntime ? (
               <ChemicalSpaceRepresentationUnavailable
                 representation={representationLabel(options.representation)}
-                detail={error}
                 onInstalled={() => {
                   setLearnedRepsInstalled(true);
                   commitOptions({ ...draft });
@@ -1321,10 +1332,10 @@ function ActivityLegend({
     .join(", ")})`;
   const format = (value: number) => (Number.isInteger(value) ? String(value) : value.toPrecision(3));
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 rounded-md border border-border bg-background/85 px-2 py-1.5 text-[10px] shadow-sm backdrop-blur">
-      <div className="mb-1 font-medium text-foreground">{label}</div>
-      <div className="h-2 w-28 rounded-sm" style={{ background: gradient }} />
-      <div className="mt-1 flex w-28 justify-between font-mono text-muted-foreground">
+    <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-border bg-background/85 px-3 py-2 text-xs shadow-sm backdrop-blur">
+      <div className="mb-1.5 font-medium text-foreground">{label}</div>
+      <div className="h-3 w-48 rounded-sm" style={{ background: gradient }} />
+      <div className="mt-1 flex w-48 justify-between font-mono text-muted-foreground">
         <span>{format(coloring.min)}</span>
         <span>{format(coloring.max)}</span>
       </div>
@@ -1353,11 +1364,16 @@ type ChemicalSpaceCanvasProps = {
   pointScale: number;
   tmapLineScale: number;
   activityColors: Map<number, string> | null;
+  // Molecules passing the grid's filters; null when no filter is active.
+  // Everything outside the set renders dimmed so the map mirrors the grid.
+  visibleSourceIds: Set<number> | null;
   cliffs: ActivityCliff[];
   tool: "navigate" | "lasso";
   onHover: (sourceRecordId: number | null) => void;
   onSelect: (sourceRecordIds: number[]) => void;
 };
+
+const DIMMED_POINT_COLOR = "#71717a";
 
 function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
   const normalized = useMemo(
@@ -1369,12 +1385,16 @@ function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
     [props.clusters, props.result.sourceRecordIds],
   );
   const pointColors3D = useMemo(
-    () => props.activityColors
-      ? props.result.sourceRecordIds.map(
-        (sourceRecordId) => props.activityColors?.get(sourceRecordId) ?? null,
-      )
-      : null,
-    [props.activityColors, props.result.sourceRecordIds],
+    () => {
+      if (!props.activityColors && !props.visibleSourceIds) return null;
+      return props.result.sourceRecordIds.map((sourceRecordId) => {
+        if (props.visibleSourceIds && !props.visibleSourceIds.has(sourceRecordId)) {
+          return DIMMED_POINT_COLOR;
+        }
+        return props.activityColors?.get(sourceRecordId) ?? null;
+      });
+    },
+    [props.activityColors, props.result.sourceRecordIds, props.visibleSourceIds],
   );
   const cliffEdges3D = useMemo(
     () => props.cliffs.map((cliff) => [cliff.indexA, cliff.indexB] as [number, number]),
@@ -1416,6 +1436,7 @@ function ChemicalSpace2D({
   pointScale,
   tmapLineScale,
   activityColors,
+  visibleSourceIds,
   cliffs,
   tool,
   onHover,
@@ -1529,6 +1550,10 @@ function ChemicalSpace2D({
     const pointColor = styles.color || "#f5f5f7";
     const ringColor = pointColor;
     const basePointRadius = adaptivePointRadius(result.successfulRecords);
+    // Points share the camera's sense of depth: zooming in grows them, zooming
+    // out shrinks them. The square root keeps the growth gentler than the
+    // coordinate scale so dense regions stay readable.
+    const zoomPointScale = Math.max(0.6, Math.min(2.6, Math.sqrt(camera.zoom)));
     const basePointOpacity = adaptivePointOpacity(result.successfulRecords);
     if (result.treeEdges.length > 0) {
       context.beginPath();
@@ -1573,13 +1598,16 @@ function ChemicalSpace2D({
       if (point.x < 0 || point.x > viewport.width || point.y < 0 || point.y > viewport.height) continue;
       const active = selected.has(point.sourceRecordId);
       const hot = hovered === point.sourceRecordId;
+      const dimmed = !active && !hot
+        && visibleSourceIds !== null
+        && !visibleSourceIds.has(point.sourceRecordId);
       const aggregateCount = screenIndex.renderPointCounts.get(point.sourceRecordId) ?? 1;
       const aggregateScale = 1 + Math.min(0.7, Math.log2(aggregateCount) * 0.12);
       context.beginPath();
       context.arc(
         point.x,
         point.y,
-        basePointRadius * pointScale * aggregateScale,
+        basePointRadius * pointScale * zoomPointScale * aggregateScale,
         0,
         Math.PI * 2,
       );
@@ -1587,12 +1615,18 @@ function ChemicalSpace2D({
       const activityColor = activityColors?.get(point.sourceRecordId) ?? null;
       context.fillStyle = active || hot
         ? selectedColor
-        : activityColor
-          ? activityColor
-          : clusterId === null
-            ? pointColor
-            : CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
-      context.globalAlpha = active || hot ? 1 : Math.min(1, basePointOpacity * (1 + Math.log2(aggregateCount) * 0.08));
+        : dimmed
+          ? DIMMED_POINT_COLOR
+          : activityColor
+            ? activityColor
+            : clusterId === null
+              ? pointColor
+              : CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
+      context.globalAlpha = active || hot
+        ? 1
+        : dimmed
+          ? Math.min(0.18, basePointOpacity)
+          : Math.min(1, basePointOpacity * (1 + Math.log2(aggregateCount) * 0.08));
       context.fill();
       if (hot) {
         context.lineWidth = 1.5;
@@ -1616,7 +1650,7 @@ function ChemicalSpace2D({
     for (const point of highlightedPoints) {
       const hot = hovered === point.sourceRecordId;
       context.beginPath();
-      context.arc(point.x, point.y, basePointRadius * pointScale, 0, Math.PI * 2);
+      context.arc(point.x, point.y, basePointRadius * pointScale * zoomPointScale, 0, Math.PI * 2);
       context.fillStyle = selectedColor;
       context.globalAlpha = hot ? 1 : 0.9;
       context.fill();
@@ -1637,7 +1671,7 @@ function ChemicalSpace2D({
       context.stroke();
       context.setLineDash([]);
     }
-  }, [activityColors, camera, cliffs, clusterBySource, hovered, lasso, pointScale, projected, result.successfulRecords, result.treeEdges, screenIndex, selected, sourceIndexById, tmapLineScale, viewport]);
+  }, [activityColors, camera, cliffs, clusterBySource, hovered, lasso, pointScale, projected, result.successfulRecords, result.treeEdges, screenIndex, selected, sourceIndexById, tmapLineScale, viewport, visibleSourceIds]);
 
   const localPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1788,9 +1822,11 @@ function ChemicalSpace2D({
           {preview.smiles ? <div className="truncate font-mono text-[10px] text-muted-foreground">{preview.smiles}</div> : null}
         </div>
       ) : null}
-      <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
-        {selected.size.toLocaleString()} selected · WASD or drag to pan · wheel to zoom
-      </div>
+      {selected.size > 0 ? (
+        <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
+          {selected.size.toLocaleString()} selected
+        </div>
+      ) : null}
       {clusters ? <ClusterLegend clusters={clusters} /> : null}
     </div>
   );
@@ -1855,25 +1891,24 @@ function clusterMembersForSource(
 
 function ChemicalSpaceRepresentationUnavailable({
   representation,
-  detail,
   onInstalled,
   onUseMorgan,
 }: {
   representation: string;
-  detail: string;
   onInstalled: () => void;
   onUseMorgan: () => void;
 }) {
   return (
     <Empty className="h-full min-h-40">
       <EmptyHeader>
-        <EmptyTitle>{representation} is not installed</EmptyTitle>
+        <EmptyTitle>{representation} needs the model runtime</EmptyTitle>
         <EmptyDescription>
-          {detail} Morgan · Tanimoto runs natively on Metal and needs no download.
+          Learned representations run on a one-time download.
+          Morgan · Tanimoto works right away without one.
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
-        {isTauriRuntime() ? <ChemicalSpaceModelRuntimeInstall onInstalled={onInstalled} /> : null}
+        <ChemicalSpaceModelRuntimeInstall onInstalled={onInstalled} />
         <Button size="sm" variant="outline" onClick={onUseMorgan}>Use Morgan · Tanimoto</Button>
       </EmptyContent>
     </Empty>

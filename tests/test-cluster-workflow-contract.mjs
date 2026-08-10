@@ -253,6 +253,36 @@ for (const command of [
   assert.ok(burettePermission.includes(`"${command}"`), `${command} must stay permitted`);
 }
 assert.match(chemicalSpace, /execute_learned_chemical_space_from_knn/);
+
+// Grid filters mirror onto the map: the grid pushes its post-filter (but
+// pre-lasso) visibility set, remote grids page it in like the SMARTS scan,
+// and both canvases dim everything outside it.
+assert.match(gridViewer, /function postChemicalSpaceVisibility/);
+assert.match(gridViewer, /function collectRemoteChemicalSpaceVisibility/);
+assert.match(
+  gridViewer,
+  /let visibilityRows = filterByTableColumnControls\(filterByDescriptorControls\(filterBySMARTS\(textRows\)\)\)/,
+  "map visibility must exclude the lasso's own selection filter",
+);
+assert.match(chemicalSpacePanel, /chemicalSpaceVisibilityChanged/);
+assert.match(chemicalSpacePanel, /DIMMED_POINT_COLOR/);
+assert.match(chemicalSpace3d, /pointColors/);
+
+// The grid ignores every message whose source is not "burette-grid-host". The
+// pre-rename "burrete" spelling silently disconnected the filter panel from
+// the grid, so no sender may ever use it again.
+for (const file of [
+  "apps/desktop/src/hooks/use-app-grid-filter-model.ts",
+  "apps/desktop/src/components/app-layout.tsx",
+  "apps/desktop/src/components/chemical-space-panel.tsx",
+  "apps/desktop/src/hooks/use-app-grid-runtime-messages.ts",
+]) {
+  assert.doesNotMatch(
+    source(file),
+    /burrete-grid-host|burrete-host/,
+    `${file} must address the grid with the renamed message source`,
+  );
+}
 assert.match(
   chemicalSpace,
   /knn\.neighbors_per_vertex != clamped_neighbors/,

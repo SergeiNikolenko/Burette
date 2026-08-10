@@ -108,6 +108,7 @@
     hiddenRows: new Set(),
     selected: new Set(),
     chemicalSpaceFilterActive: false,
+    lastChemicalSpaceVisibility: null,
     ketcherOpenPendingUntil: 0,
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
@@ -494,6 +495,9 @@
       if (body.type === 'chemicalSpaceRequestState') {
         state.menuStateSignature = '';
         notifyGridMenuState(config());
+        if (state.lastChemicalSpaceVisibility) {
+          post('chemicalSpaceVisibilityChanged', '', state.lastChemicalSpaceVisibility);
+        }
         return;
       }
       if (body.type === 'chemicalSpaceRequestRecords') {
@@ -2545,23 +2549,82 @@
     const textRows = query
       ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(query))
       : allRows.slice();
-    state.rows = filterByChemicalSpaceSelection(
-      filterByTableColumnControls(filterByDescriptorControls(filterBySMARTS(textRows)))
-    );
+    // The pre-selection set is what the Chemical Space map dims against: the
+    // lasso's own selection filter must not feed back into map visibility.
+    let visibilityRows = filterByTableColumnControls(filterByDescriptorControls(filterBySMARTS(textRows)));
+    state.rows = filterByChemicalSpaceSelection(visibilityRows);
     if (shouldFallbackSMARTSToTextSearch()) {
       const fallbackQuery = normalize(state.query);
       state.smartsError = '';
       state.smartsMatches = new Map();
-      state.rows = fallbackQuery
+      const fallbackRows = fallbackQuery
         ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(fallbackQuery))
         : allRows.slice();
-      state.rows = filterByChemicalSpaceSelection(
-        filterByTableColumnControls(filterByDescriptorControls(state.rows))
-      );
+      visibilityRows = filterByTableColumnControls(filterByDescriptorControls(fallbackRows));
+      state.rows = filterByChemicalSpaceSelection(visibilityRows);
     }
     state.rows.sort((a, b) => compareWithDescriptorSort(a, b));
     state.totalRows = state.rows.length;
     render(cfg);
+    postChemicalSpaceVisibility(visibilityRows);
+  }
+
+  function chemicalSpaceGridFiltersActive() {
+    return !!state.query.trim()
+      || !!state.smarts.trim()
+      || remoteTableColumnFilters().length > 0
+      || mergedDescriptorFilters().length > 0
+      || mergedAnalysisFilters().length > 0;
+  }
+
+  function postChemicalSpaceVisibility(rows) {
+    if (!chemicalSpaceGridFiltersActive()) {
+      state.lastChemicalSpaceVisibility = { kind: 'all' };
+      post('chemicalSpaceVisibilityChanged', '', state.lastChemicalSpaceVisibility);
+      return;
+    }
+    const sourceRecordIds = [];
+    for (const row of rows) {
+      if (sourceRecordIds.length >= GRID_SELECTION_BRIDGE_LIMIT) break;
+      const index = Number(row?.index);
+      if (Number.isSafeInteger(index) && index >= 0) sourceRecordIds.push(index);
+    }
+    state.lastChemicalSpaceVisibility = { kind: 'filtered', sourceRecordIds };
+    post('chemicalSpaceVisibilityChanged', '', state.lastChemicalSpaceVisibility);
+  }
+
+  // Remote grids only hold the scrolled-in window, so a complete visibility
+  // set has to page through the host like the SMARTS scan does.
+  async function collectRemoteChemicalSpaceVisibility(cfg, token) {
+    try {
+      const sourceRecordIds = [];
+      let offset = 0;
+      let total = null;
+      const limit = Math.max(120, loadBatchSize(cfg));
+      while (total === null || offset < total) {
+        if (token !== state.token) return;
+        const result = await hostRequest('gridFetchPage', gridFetchPayload({
+          query: state.query || '',
+          sort: 'index',
+          offset,
+          limit
+        }));
+        const pageRows = Array.isArray(result.rows) ? result.rows : [];
+        total = Number(result.totalRows || 0);
+        for (const row of pageRows) {
+          const index = Number(row?.index);
+          if (Number.isSafeInteger(index) && index >= 0) sourceRecordIds.push(index);
+          if (sourceRecordIds.length >= GRID_SELECTION_BRIDGE_LIMIT) break;
+        }
+        offset += pageRows.length;
+        if (!pageRows.length || sourceRecordIds.length >= GRID_SELECTION_BRIDGE_LIMIT) break;
+      }
+      if (token !== state.token) return;
+      state.lastChemicalSpaceVisibility = { kind: 'filtered', sourceRecordIds };
+      post('chemicalSpaceVisibilityChanged', '', state.lastChemicalSpaceVisibility);
+    } catch (_) {
+      // Keep the previous visibility rather than flashing everything visible.
+    }
   }
 
   function filterByChemicalSpaceSelection(rows) {
@@ -2799,6 +2862,7 @@
           state.totalRows = matches.length;
           state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
           await renderVirtualWindow(cfg, token, { force: true });
+          postChemicalSpaceVisibility(state.rows);
           return;
         }
         state.smartsError = '';
@@ -2817,6 +2881,11 @@
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
       await renderVirtualWindow(cfg, token, { force: true });
       scheduleIndexPoll(cfg);
+      if (!chemicalSpaceGridFiltersActive() || state.rows.length >= state.totalRows) {
+        postChemicalSpaceVisibility(state.rows);
+      } else {
+        void collectRemoteChemicalSpaceVisibility(cfg, token);
+      }
     } catch (error) {
       const message = error?.message || String(error);
       setStatus(message, 'error');

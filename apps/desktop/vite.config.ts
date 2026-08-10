@@ -42,6 +42,7 @@ import {
 } from "./vite/browser-dev/folding-results";
 import { registerBrowserDevMsbuddyRoutes } from "./vite/browser-dev/msbuddy";
 import { registerBrowserDevMdsmoothRoute } from "./vite/browser-dev/mdsmooth";
+import { registerBrowserDevModelRuntimeRoutes } from "./vite/browser-dev/model-runtime";
 import { registerBrowserDevNativeComputeRoute } from "./vite/browser-dev/native-compute";
 import { registerBrowserDevRuntimeDoctorRoute } from "./vite/browser-dev/runtime-doctor";
 import { registerBrowserDevXtbRoutes } from "./vite/browser-dev/xtb";
@@ -3655,6 +3656,7 @@ export function browserDevXyzrenderPlugin() {
       registerBrowserDevAgentSessionRoute(server);
       registerBrowserDevAppIconRoute(server, BROWSER_DEV_APP_ICONS, execFileAsync);
       registerBrowserDevNativeComputeRoute(server, repoRoot);
+      registerBrowserDevModelRuntimeRoutes(server, repoRoot);
       registerBrowserDevFileContentRoutes(server, fileRoutes);
       registerBrowserDevFoldingResultRoute(server, { isDevFileReadAllowed });
       registerBrowserDevDesmondPreviewRoute(server, {

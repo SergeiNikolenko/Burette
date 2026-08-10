@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import { isTauriRuntime } from "./tauri";
+
 const FINGERPRINT_WORKER_TIMEOUT_MS = 120_000;
 const MAX_PREPARED_CHEMICAL_SPACE_JOBS = 4;
 const REPRESENT_POLL_INTERVAL_MS = 500;
@@ -656,7 +658,7 @@ export type LearnedRepresentation = {
 export type ChemicalSpaceModelRuntimeStatus = {
   installed: boolean;
   pythonPath: string | null;
-  source: "override" | "managed" | null;
+  source: "override" | "managed" | "dev" | null;
   installerAvailable: boolean;
   installHint: string;
   installSizeHint: string;
@@ -680,16 +682,40 @@ type RepresentJobStatus = {
   error: string | null;
 };
 
-export function fetchChemicalSpaceModelRuntimeStatus(): Promise<ChemicalSpaceModelRuntimeStatus> {
-  return invoke<ChemicalSpaceModelRuntimeStatus>("chemical_space_model_runtime_status");
+// The desktop app answers these through Tauri commands, browser dev through
+// its vite middleware — both speak the same status shape so the panel renders
+// one install flow everywhere.
+export async function fetchChemicalSpaceModelRuntimeStatus(): Promise<ChemicalSpaceModelRuntimeStatus> {
+  if (isTauriRuntime()) {
+    return invoke<ChemicalSpaceModelRuntimeStatus>("chemical_space_model_runtime_status");
+  }
+  const response = await fetch("/__burette/chemical-space-model-runtime", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`The model runtime status request failed with status ${response.status}.`);
+  }
+  return await response.json() as ChemicalSpaceModelRuntimeStatus;
 }
 
-export function startChemicalSpaceModelRuntimeInstall(): Promise<void> {
-  return invoke("chemical_space_model_runtime_install");
+export async function startChemicalSpaceModelRuntimeInstall(): Promise<void> {
+  if (isTauriRuntime()) {
+    await invoke("chemical_space_model_runtime_install");
+    return;
+  }
+  const response = await fetch("/__burette/chemical-space-model-runtime/install", {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(`The model runtime installation failed to start (status ${response.status}).`);
+  }
 }
 
-export function cancelChemicalSpaceModelRuntimeInstall(): Promise<void> {
-  return invoke("chemical_space_model_runtime_cancel_install");
+export async function cancelChemicalSpaceModelRuntimeInstall(): Promise<void> {
+  if (isTauriRuntime()) {
+    await invoke("chemical_space_model_runtime_cancel_install");
+    return;
+  }
+  await fetch("/__burette/chemical-space-model-runtime/cancel-install", { method: "POST" })
+    .catch(() => undefined);
 }
 
 async function ensureModelRuntimeInstalled(): Promise<void> {

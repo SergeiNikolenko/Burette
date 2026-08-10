@@ -621,7 +621,8 @@ fn stream_lines(stream: impl Read, publish: bool) -> String {
     let mut tail = String::new();
     for line in BufReader::new(stream).lines() {
         let Ok(line) = line else { break };
-        let trimmed = line.trim();
+        let plain = strip_ansi(&line);
+        let trimmed = plain.trim();
         if trimmed.is_empty() {
             continue;
         }
@@ -634,6 +635,28 @@ fn stream_lines(stream: impl Read, publish: bool) -> String {
         }
     }
     tail
+}
+
+/// uv colors its output even when piped, and those escape codes would show up
+/// verbatim in the install status line.
+fn strip_ansi(line: &str) -> String {
+    let mut plain = String::with_capacity(line.len());
+    let mut chars = line.chars().peekable();
+    while let Some(character) = chars.next() {
+        if character != '\u{1b}' {
+            plain.push(character);
+            continue;
+        }
+        if chars.peek() == Some(&'[') {
+            chars.next();
+            for follower in chars.by_ref() {
+                if follower.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        }
+    }
+    plain
 }
 
 fn wait_with_deadline(

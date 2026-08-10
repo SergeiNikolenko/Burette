@@ -733,10 +733,11 @@ export function ChemicalSpace3D({
           {preview.smiles ? <div className="truncate font-mono text-[10px] text-muted-foreground">{preview.smiles}</div> : null}
         </div>
       ) : null}
-      <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
-        {selecting ? "Selecting molecules…" : `${selected.size.toLocaleString()} selected`}
-        {" · drag to orbit · WASD+QE to fly · wheel to zoom"}
-      </div>
+      {selecting || selected.size > 0 ? (
+        <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
+          {selecting ? "Selecting molecules…" : `${selected.size.toLocaleString()} selected`}
+        </div>
+      ) : null}
       {hasClusters ? (
         <div className="pointer-events-none absolute right-2 top-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
           Colored by Butina cluster
