@@ -216,6 +216,8 @@ try {
           'optimizeGeometry',
           'semiempiricalRm1',
           'alignPoses',
+          'chemicalSpace',
+          'chemicalSpaceCluster',
         ]);
       }
       const invalidNativeComputeResponse = await fetch(new URL('/__burette/native-compute', prebuiltPayload.result.url), {
