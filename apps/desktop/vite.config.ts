@@ -19,6 +19,7 @@ import {
   registerBrowserDevAppIconRoute,
   registerBrowserDevRdkitWasmRoute,
 } from "./vite/browser-dev/assets";
+import { registerBrowserDevAgentIntegrationRoute } from "./vite/browser-dev/agent-integration";
 import { registerBrowserDevAgentSessionRoute } from "./vite/browser-dev/agent-session";
 import { registerBrowserDevConformerJobRoutes } from "./vite/browser-dev/conformer-jobs";
 import { registerBrowserDevInlineConformerRoute } from "./vite/browser-dev/conformer-inline";
@@ -3653,6 +3654,7 @@ export function browserDevXyzrenderPlugin() {
         xyzrenderStatus: browserDevXyzrenderStatus,
       });
       registerBrowserDevAgentSessionRoute(server);
+      registerBrowserDevAgentIntegrationRoute(server, { repoRoot });
       registerBrowserDevAppIconRoute(server, BROWSER_DEV_APP_ICONS, execFileAsync);
       registerBrowserDevNativeComputeRoute(server, repoRoot);
       registerBrowserDevFileContentRoutes(server, fileRoutes);
