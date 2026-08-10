@@ -6,8 +6,12 @@ import type {
 } from "./compute-conformer";
 import type { ConformerGenerationResult } from "./conformer-generation";
 import {
+  encodeKnnBase64,
   fingerprintBrowserChemicalSpaceRecords,
+  representationUnavailableError,
+  sliceKnnCache,
   type BrowserChemicalSpaceInputRecord,
+  type ChemicalSpaceKnnCache,
   type ChemicalSpaceOptions,
   type ChemicalSpaceClusterResult,
   type ChemicalSpaceProgress,
@@ -31,11 +35,7 @@ const REPRESENTATION_FETCH_RETRY_DELAY_MS = 400;
 const browserFingerprintCache = new Map<string, Promise<FingerprintOutputRecord[]>>();
 const browserRepresentationCache = new Map<string, Promise<LearnedRepresentationResult>>();
 
-type KnnCache = {
-  neighborsPerVertex: number;
-  sourceIndicesBase64: string;
-  similaritiesBase64: string;
-};
+type KnnCache = ChemicalSpaceKnnCache;
 
 type LearnedRepresentationResult = {
   engine: Exclude<ChemicalSpaceRepresentation, "morgan">;
@@ -222,7 +222,7 @@ function prepareBrowserChemicalSpaceRepresentation(
       | (LearnedRepresentationResult & { error?: unknown })
       | null;
     if (!response.ok || !payload) {
-      throw new Error(
+      throw representationServerError(
         typeof payload?.error === "string"
           ? payload.error
           : `Metal representation request failed with status ${response.status}`,
@@ -244,6 +244,12 @@ function prepareBrowserChemicalSpaceRepresentation(
     if (browserRepresentationCache.get(key) === pending) browserRepresentationCache.delete(key);
   });
   return pending;
+}
+
+function representationServerError(message: string): Error {
+  return /model runtime is not installed/iu.test(message)
+    ? representationUnavailableError(message)
+    : new Error(message);
 }
 
 async function fetchRepresentationWithRetry<T>(
@@ -298,7 +304,7 @@ async function readRepresentationStream(
     } else if (event.type === "result") {
       result = event.result;
     } else if (event.type === "error") {
-      throw new Error(event.error);
+      throw representationServerError(event.error);
     }
   };
   while (true) {
@@ -439,45 +445,9 @@ let cachedZeroFingerprintBase64 = "";
 
 function zeroFingerprintBase64() {
   if (!cachedZeroFingerprintBase64) {
-    cachedZeroFingerprintBase64 = encodeBase64(new Uint8Array(256));
+    cachedZeroFingerprintBase64 = encodeKnnBase64(new Uint8Array(256));
   }
   return cachedZeroFingerprintBase64;
-}
-
-function sliceKnnCache(cache: KnnCache, recordCount: number, requestedNeighbors: number): KnnCache {
-  const neighbors = Math.min(requestedNeighbors, cache.neighborsPerVertex);
-  if (neighbors === cache.neighborsPerVertex) return cache;
-  const source = new Uint32Array(decodeBase64(cache.sourceIndicesBase64).buffer);
-  const similarities = new Float32Array(decodeBase64(cache.similaritiesBase64).buffer);
-  const slicedSource = new Uint32Array(recordCount * neighbors);
-  const slicedSimilarities = new Float32Array(recordCount * neighbors);
-  for (let row = 0; row < recordCount; row += 1) {
-    const sourceStart = row * cache.neighborsPerVertex;
-    const targetStart = row * neighbors;
-    slicedSource.set(source.subarray(sourceStart, sourceStart + neighbors), targetStart);
-    slicedSimilarities.set(
-      similarities.subarray(sourceStart, sourceStart + neighbors),
-      targetStart,
-    );
-  }
-  return {
-    neighborsPerVertex: neighbors,
-    sourceIndicesBase64: encodeBase64(new Uint8Array(slicedSource.buffer)),
-    similaritiesBase64: encodeBase64(new Uint8Array(slicedSimilarities.buffer)),
-  };
-}
-
-function decodeBase64(value: string) {
-  const binary = atob(value);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-}
-
-function encodeBase64(bytes: Uint8Array) {
-  let binary = "";
-  for (let start = 0; start < bytes.length; start += 32_768) {
-    binary += String.fromCharCode(...bytes.subarray(start, start + 32_768));
-  }
-  return btoa(binary);
 }
 
 function trimCache<Key, Value>(cache: Map<Key, Value>, limit: number) {

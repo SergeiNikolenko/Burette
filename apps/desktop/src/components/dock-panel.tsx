@@ -313,16 +313,20 @@ function DockPanelContent({
   const dockStructureDocument = dockDocument ?? activeDocument;
   const chemicalSpaceDocument = resolveChemicalSpaceDocument(state, dockDocument);
   const activeTextDocument = activeTextDocumentFromState(state);
+  // Without an explicit pin the dock serves the active document, so the Files
+  // list must mark that document rather than nothing.
+  const effectiveDockDocument = dockDocument ?? (dockDocumentId || dockTool ? null : activeDocument);
+  const effectiveDockTextDocument = dockTextDocument ?? (dockDocumentId || dockTool ? null : activeTextDocument);
   const fileEntries = activeTabKind === "files"
     ? dockFileEntries({
         dockDrops,
         documents: state.documents,
         textDocuments: state.textDocuments,
-        activeDocumentId: dockDocumentId,
+        activeDocumentId: dockDocumentId ?? effectiveDockDocument?.id ?? effectiveDockTextDocument?.id ?? null,
         activeTool: dockTool,
       })
     : [];
-  const activeFileEntryKey = activeDockFileEntryKey(dockDocument, dockTextDocument, dockTool);
+  const activeFileEntryKey = activeDockFileEntryKey(effectiveDockDocument, effectiveDockTextDocument, dockTool);
   if (activeTabKind === "scene") {
     return isMesoscaleViewerDocument(dockStructureDocument)
       ? <MesoscaleScenePanel document={dockStructureDocument} />

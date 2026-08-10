@@ -138,7 +138,7 @@ export function ChemicalSpace3D({
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.domElement.className = "size-full touch-none outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-foreground/30";
     renderer.domElement.setAttribute("aria-label", `Interactive 3D ${methodLabel} chemical-space map`);
-    renderer.domElement.setAttribute("aria-keyshortcuts", "W A S D");
+    renderer.domElement.setAttribute("aria-keyshortcuts", "W A S D Q E");
     renderer.domElement.setAttribute("role", "application");
     host.append(renderer.domElement);
 
@@ -318,6 +318,17 @@ export function ChemicalSpace3D({
       renderView();
     };
     const refineCameraLod = async (generation: number) => {
+      // Camera-aware culling only pays off past the render budget. Below it the
+      // full set is already on the GPU, and swapping it for a frustum subset
+      // makes points pop in and out on every orbit or zoom.
+      if (positionsRef.current.length <= MAX_3D_RENDER_POINTS) {
+        if (displayedIndices.length !== positionsRef.current.length) {
+          applyDisplayedIndices(
+            representativePointIndices(positionsRef.current.length, MAX_3D_RENDER_POINTS),
+          );
+        }
+        return;
+      }
       const nextIndices = await cameraAwarePointIndices(
         positionsRef.current,
         projectionSnapshot(),
@@ -511,7 +522,7 @@ export function ChemicalSpace3D({
     };
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
-      if (!["w", "a", "s", "d"].includes(key)) return;
+      if (!["w", "a", "s", "d", "q", "e"].includes(key)) return;
       event.preventDefault();
       const distance = camera.position.distanceTo(controls.target);
       const step = Math.max(0.025, distance * (event.shiftKey ? 0.08 : 0.035));
@@ -520,10 +531,12 @@ export function ChemicalSpace3D({
       const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
       const up = new THREE.Vector3().crossVectors(right, forward).normalize();
       const delta = new THREE.Vector3();
-      if (key === "w") delta.addScaledVector(up, step);
-      if (key === "s") delta.addScaledVector(up, -step);
+      if (key === "w") delta.addScaledVector(forward, step);
+      if (key === "s") delta.addScaledVector(forward, -step);
       if (key === "a") delta.addScaledVector(right, -step);
       if (key === "d") delta.addScaledVector(right, step);
+      if (key === "q") delta.addScaledVector(up, -step);
+      if (key === "e") delta.addScaledVector(up, step);
       camera.position.add(delta);
       controls.target.add(delta);
       scheduleViewRender();
@@ -720,10 +733,11 @@ export function ChemicalSpace3D({
           {preview.smiles ? <div className="truncate font-mono text-[10px] text-muted-foreground">{preview.smiles}</div> : null}
         </div>
       ) : null}
-      <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
-        {selecting ? "Selecting molecules…" : `${selected.size.toLocaleString()} selected`}
-        {" · drag to orbit · WASD to pan · wheel to zoom"}
-      </div>
+      {selecting || selected.size > 0 ? (
+        <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
+          {selecting ? "Selecting molecules…" : `${selected.size.toLocaleString()} selected`}
+        </div>
+      ) : null}
       {hasClusters ? (
         <div className="pointer-events-none absolute right-2 top-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
           Colored by Butina cluster
