@@ -210,7 +210,7 @@ function runStep(command: string, args: string[]) {
       for (const line of chunk.toString("utf8").split("\n")) {
         // uv colors its output even when piped; escape codes would show up
         // verbatim in the install status line.
-        const trimmed = line.replace(/\[[0-9;]*[A-Za-z]/g, "").trim();
+        const trimmed = line.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").trim();
         if (!trimmed) continue;
         install.line = trimmed;
         if (tail.length < 16_384) tail += `${trimmed}\n`;
