@@ -17,6 +17,18 @@ import {
 import { instantiateMvsStoryTemplate, listMvsStoryTemplates } from "../scripts/mvs-story-templates.mjs";
 import { getOfficialMvsAuthoringReference } from "../scripts/mvs-schema-validator.mjs";
 
+function findNodes(root, kind) {
+  const nodes = [];
+  const visit = value => {
+    if (Array.isArray(value)) return value.forEach(visit);
+    if (!value || typeof value !== "object") return;
+    if (value.kind === kind) nodes.push(value);
+    Object.values(value).forEach(visit);
+  };
+  visit(root);
+  return nodes;
+}
+
 const root = {
   kind: "root",
   children: [{
@@ -121,6 +133,42 @@ for (const template of templates) {
   assert.equal(instantiated.summary.stepCount, template.storyboard.length);
   assert.equal(validateMvsStory(instantiated.story).ok, true, template.id);
 }
+const dockingTemplate = templates.find(template => template.id === "docking-pose-comparison");
+assert.deepEqual(
+  dockingTemplate.variables.filter(variable => variable.required && variable.name.includes("interactions")).map(variable => variable.name),
+  [
+    "pose_a_interactions_url",
+    "pose_b_interactions_url",
+    "pose_a_interactions_summary",
+    "pose_b_interactions_summary",
+  ],
+);
+assert.deepEqual(
+  dockingTemplate.variables.filter(variable => variable.required && variable.name.includes("residues_url")).map(variable => variable.name),
+  ["pose_a_residues_url", "pose_b_residues_url"],
+);
+const dockingVariables = Object.fromEntries(dockingTemplate.variables
+  .filter(variable => variable.required)
+  .map(variable => [variable.name, variable.example]));
+const dockingStory = (await instantiateMvsStoryTemplate("docking-pose-comparison", dockingVariables)).story;
+for (const [key, expectedInteractionUrls] of [
+  ["pose-a", ["pose-a-interactions.json"]],
+  ["pose-b", ["pose-b-interactions.json"]],
+]) {
+  const snapshot = dockingStory.snapshots.find(candidate => candidate.metadata.key === key);
+  const interactionLayers = snapshot.root.children.filter(node => node.kind === "primitives_from_uri");
+  const residueLayers = findNodes(snapshot.root, "component_from_uri");
+  const residueTooltips = findNodes(snapshot.root, "tooltip_from_uri");
+  assert.deepEqual(interactionLayers.map(node => node.params.uri), expectedInteractionUrls, `${key} must keep its key-interaction layers visible`);
+  assert.equal(interactionLayers.every(node => node.params.format === "mvs-node-json"), true);
+  assert.deepEqual(residueLayers.map(node => node.params.uri), [`${key}-residues.json`], `${key} must render the receptor residues at interaction endpoints`);
+  assert.equal(residueLayers.every(node => node.children.some(child => child.kind === "representation" && child.params.type === "ball_and_stick")), true);
+  assert.deepEqual(residueTooltips.map(node => node.params.uri), [`${key}-residues.json`], `${key} must identify visible interaction residues on hover`);
+  assert.match(snapshot.metadata.description, /Key interactions|required key-interaction layers/);
+}
+const dockingComparison = dockingStory.snapshots.find(candidate => candidate.metadata.key === "comparison");
+assert.equal(dockingComparison.root.children.some(node => node.kind === "primitives_from_uri"), false, "the overlay keeps geometry readable instead of duplicating both interaction layers");
+assert.match(dockingComparison.metadata.description, /dedicated pose steps show the required 3D key-interaction layers/);
 await assert.rejects(
   instantiateMvsStoryTemplate("binding-site-tour", { protein_url: "protein.pdb" }),
   error => error.code === "MISSING_TEMPLATE_VARIABLE" && error.details.variable === "ligand_url",
@@ -145,6 +193,104 @@ try {
   const mvsj = path.join(temp, "protein-tour.mvsj");
   const mvsx = path.join(temp, "protein-tour.mvsx");
   const asset = path.resolve("samples/mini.pdb");
+  const ligandAsset = path.resolve("samples/mini.sdf");
+  const interactionPrimitive = path.join(temp, "interactions.json");
+  const emptyInteractionPrimitive = path.join(temp, "empty-interactions.json");
+  const interactionResidues = path.join(temp, "interaction-residues.json");
+  const emptyInteractionResidues = path.join(temp, "empty-interaction-residues.json");
+  await writeFile(interactionPrimitive, `${JSON.stringify({
+    kind: "primitives",
+    params: { opacity: 0.92 },
+    children: [{
+      kind: "primitive",
+      params: {
+        kind: "distance_measurement",
+        start: [0, 0, 0],
+        end: [1, 1, 1],
+        radius: 0.035,
+        dash_length: 0.12,
+        color: "#2563EB",
+        label_template: "H-bond candidate · THR101 · {{distance}}",
+        label_color: "#2563EB",
+      },
+    }],
+  }, null, 2)}\n`);
+  await writeFile(emptyInteractionPrimitive, `${JSON.stringify({ kind: "primitives", params: {}, children: [] }, null, 2)}\n`);
+  await writeFile(interactionResidues, `${JSON.stringify([{ auth_asym_id: "A", auth_seq_id: 101 }], null, 2)}\n`);
+  await writeFile(emptyInteractionResidues, "[]\n");
+
+  await assert.rejects(
+    writeMvsStoryFile({
+      story: dockingStory,
+      outputPath: path.join(temp, "docking-without-interactions.mvsx"),
+      assets: {
+        "receptor.pdb": asset,
+        "pose-a.sdf": ligandAsset,
+        "pose-b.sdf": ligandAsset,
+      },
+    }),
+    error => error.code === "INVALID_STORY"
+      && error.details.issues.some(issue => issue.code === "MISSING_RESOURCE" && issue.details.resource === "pose-a-interactions.json"),
+  );
+  await assert.rejects(
+    writeMvsStoryFile({
+      story: dockingStory,
+      outputPath: path.join(temp, "docking-with-empty-interactions.mvsx"),
+      assets: {
+        "receptor.pdb": asset,
+        "pose-a.sdf": ligandAsset,
+        "pose-b.sdf": ligandAsset,
+        "pose-a-interactions.json": emptyInteractionPrimitive,
+        "pose-b-interactions.json": interactionPrimitive,
+        "pose-a-residues.json": interactionResidues,
+        "pose-b-residues.json": interactionResidues,
+      },
+    }),
+    error => error.code === "INVALID_PRIMITIVE_RESOURCE"
+      && error.details.resource === "pose-a-interactions.json",
+  );
+  await assert.rejects(
+    writeMvsStoryFile({
+      story: dockingStory,
+      outputPath: path.join(temp, "docking-with-empty-residues.mvsx"),
+      assets: {
+        "receptor.pdb": asset,
+        "pose-a.sdf": ligandAsset,
+        "pose-b.sdf": ligandAsset,
+        "pose-a-interactions.json": interactionPrimitive,
+        "pose-b-interactions.json": interactionPrimitive,
+        "pose-a-residues.json": emptyInteractionResidues,
+        "pose-b-residues.json": interactionResidues,
+      },
+    }),
+    error => error.code === "INVALID_ANNOTATION_RESOURCE"
+      && error.details.resource === "pose-a-residues.json",
+  );
+  const dockingArchive = path.join(temp, "docking-with-interactions.mvsx");
+  await writeMvsStoryFile({
+    story: dockingStory,
+    outputPath: dockingArchive,
+    assets: {
+      "receptor.pdb": asset,
+      "pose-a.sdf": ligandAsset,
+      "pose-b.sdf": ligandAsset,
+      "pose-a-interactions.json": interactionPrimitive,
+      "pose-b-interactions.json": interactionPrimitive,
+      "pose-a-residues.json": interactionResidues,
+      "pose-b-residues.json": interactionResidues,
+    },
+  });
+  const validatedDockingArchive = await validateMvsStoryFile(dockingArchive);
+  assert.equal(validatedDockingArchive.ok, true, JSON.stringify(validatedDockingArchive.issues));
+  assert.deepEqual(validatedDockingArchive.resourceNames.sort(), [
+    "pose-a-interactions.json",
+    "pose-a-residues.json",
+    "pose-a.sdf",
+    "pose-b-interactions.json",
+    "pose-b-residues.json",
+    "pose-b.sdf",
+    "receptor.pdb",
+  ]);
 
   const templateList = spawnSync(process.execPath, ["scripts/burette-agent.mjs", "story-template-list"], { encoding: "utf8" });
   assert.equal(templateList.status, 0, templateList.stderr);
@@ -170,7 +316,7 @@ try {
     "--var", "ligand_url=ligand.sdf",
     "--var", "complex_label=Template smoke",
     "--asset", `protein.pdb=${asset}`,
-    "--asset", `ligand.sdf=${path.resolve("samples/mini.sdf")}`,
+    "--asset", `ligand.sdf=${ligandAsset}`,
   ], { encoding: "utf8" });
   assert.equal(templateCreate.status, 0, templateCreate.stderr);
   assert.equal(JSON.parse(templateCreate.stdout).result.template.id, "binding-site-tour");

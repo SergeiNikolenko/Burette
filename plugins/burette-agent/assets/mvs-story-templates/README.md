@@ -19,7 +19,7 @@ Available templates:
 | --- | --- |
 | `structure-overview` | Global fold followed by ligand context. |
 | `binding-site-tour` | Complex overview, pocket focus, and evidence-qualified interpretation. |
-| `docking-pose-comparison` | Receptor context, two independently shown poses, and a consistent overlay. |
+| `docking-pose-comparison` | Receptor context, two poses with required computed interaction layers, and a consistent overlay. |
 | `aligned-structure-comparison` | Reference, candidate, and overlay for structures already in one coordinate frame. |
 
 List and instantiate them through the stable agent CLI:
@@ -40,3 +40,12 @@ descriptions with observed evidence and may add residue selectors, labels,
 measurements, primitives, and cameras only from declared inputs or completed
 calculations. Docking scores must remain method-specific ranking outputs rather
 than being relabeled as measured binding affinities.
+
+The docking comparison additionally requires one non-empty `mvs-node-json`
+primitives resource, one non-empty receptor-residue annotation, and one
+evidence-qualified interaction summary per pose. Contact residues are rendered
+as ball-and-stick at the line endpoints; ligands use a compact element-aware
+ball-and-stick representation. Those inputs must identify the calculation
+method and keep uncertain geometry labelled as a candidate or generic contact;
+the template displays the results but does not infer biochemical interactions
+from visual proximity.
