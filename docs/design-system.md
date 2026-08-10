@@ -80,6 +80,20 @@ The shell is a workspace, not a brand canvas.
   discoverable on hover/focus.
 - Empty states should offer the next useful file action, not generic product
   copy.
+- The right (Inspector) and bottom docks start hidden by default
+  (`apps/desktop/src/stores/shell-store.ts`); features must not assume a dock
+  is visible.
+- The Inspector presents document information as one scrollable section list
+  (`apps/desktop/src/components/structure-info-panel.tsx`), not as nested
+  tabbed panels.
+
+### Status And Notifications
+
+- Transient status messages use the Base UI toast layer
+  (`apps/desktop/src/components/ui/toast.tsx`): notices stack and auto-dismiss,
+  errors persist until dismissed, and long details open in a standalone dialog
+  (`apps/desktop/src/components/status-details-dialog.tsx`).
+- Do not reintroduce blocking status popups for routine progress.
 
 ### Settings And Maintenance
 
@@ -89,6 +103,8 @@ The shell is a workspace, not a brand canvas.
   and update checks are part of the product, not hidden admin tools.
 - Settings should expose real runtime preferences. Avoid controls that do not map
   to current behavior.
+- Theme choices support hover preview: hovering a theme option previews it live
+  in the viewer before committing.
 
 ### Molecular And Workflow Panels
 

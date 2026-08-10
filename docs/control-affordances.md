@@ -22,6 +22,9 @@ domain-specific must expose a short explanation on hover and keyboard focus.
 - Keep existing web icon libraries for browser/runtime surfaces unless the task
   explicitly migrates the icon system. Do not mix icon systems opportunistically
   in one surface.
+- The shadcn component registry is configured with `hugeicons` as its icon
+  library (`apps/desktop/components.json`); use it for new shadcn-based shell
+  components.
 - Use product-specific or molecular icons only when SF Symbols does not express
   the domain concept clearly.
 - Do not use text-in-a-rounded-rectangle as a pseudo-icon when a recognizable
@@ -47,8 +50,20 @@ Use plain, action-oriented copy. Prefer "Open selected molecules in Molstar" or
 
 - React shell buttons should use `ShortcutTooltip` from
   `apps/desktop/src/components/shortcut-tooltip.tsx`.
-- Radix menu items should use `detail` on `MenuItemSpec` when the menu choice
-  needs explanation.
+- Radix menu items use `MenuItemSpec` affordances from
+  `apps/desktop/src/components/menu-types.ts`: `detail` renders a second
+  explanatory line (and widens the menu), `tooltip` shows on hover without
+  changing the menu size. Prefer `detail` when the choice needs explanation
+  before opening it, `tooltip` for supplementary hints.
+- shadcn-based surfaces (for example the Chemical Space panel) use the Radix
+  tooltip primitive in `apps/desktop/src/components/ui/tooltip.tsx`.
+- The native macOS menu bar (`apps/desktop/src-tauri/src/menu/build.rs`) has no
+  tooltips; it must carry full, stateful item labels instead. Contextual
+  renames (for example grid Undo/Redo) live in
+  `apps/desktop/src-tauri/src/menu/state.rs`.
+- The grid toolbar consolidates row actions behind the `ActionsMenu` in
+  `apps/desktop/src/preview-grid/grid-ui.tsx`; menu entries there follow the
+  same detail/tooltip copy rules.
 - Preview runtime controls in `PreviewExtension/Web/viewer-shell.js` should use
   the `.buret-tooltip` element styled by `PreviewExtension/Web/viewer-runtime.css`.
 - Grid controls in `apps/desktop/src/preview-grid/grid-ui.tsx` should use
