@@ -207,6 +207,15 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let command_palette = MenuItemBuilder::with_id("view.command-palette", "Command Palette…")
         .accelerator("CmdOrCtrl+P")
         .build(app)?;
+    let zoom_actual = MenuItemBuilder::with_id("view.zoom-actual", "Actual Size")
+        .accelerator("CmdOrCtrl+0")
+        .build(app)?;
+    let zoom_in = MenuItemBuilder::with_id("view.zoom-in", "Zoom In")
+        .accelerator("CmdOrCtrl+=")
+        .build(app)?;
+    let zoom_out = MenuItemBuilder::with_id("view.zoom-out", "Zoom Out")
+        .accelerator("CmdOrCtrl+-")
+        .build(app)?;
     let view_menu = SubmenuBuilder::new(app, "View")
         .items(&[
             &show_sidebar,
@@ -217,6 +226,10 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &table,
             &properties,
             &molecule_renderer,
+            &PredefinedMenuItem::separator(app)?,
+            &zoom_actual,
+            &zoom_in,
+            &zoom_out,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::fullscreen(app, None)?,
             &PredefinedMenuItem::separator(app)?,

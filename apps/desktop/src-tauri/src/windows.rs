@@ -151,6 +151,7 @@ fn create_workspace_window<R: Runtime>(
         return Err("Workspace creation was cancelled during an exit transition.".into());
     }
     attach_window_cleanup(app, &window);
+    crate::zoom::apply_current_zoom(&window);
     Ok(window)
 }
 

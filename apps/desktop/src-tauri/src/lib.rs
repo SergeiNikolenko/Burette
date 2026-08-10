@@ -10,6 +10,7 @@ mod preview;
 mod startup;
 mod tray;
 mod windows;
+mod zoom;
 
 use commands::descriptors::DescriptorGridJobRegistry;
 use commands::recent_documents::RecentDocumentsRegistry;
@@ -62,6 +63,7 @@ pub fn run() {
         .manage(SourceEditRegistry::default())
         .manage(RecentDocumentsRegistry::default())
         .manage(startup::PendingOpenDocuments::default())
+        .manage(zoom::WindowZoom::default())
         .setup(|app| {
             let compute_coordinator = app
                 .path()
