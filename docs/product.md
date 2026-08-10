@@ -7,7 +7,7 @@ iPhone app, and the agent/plugin surface.
 
 ## Current Product
 
-Burette is a molecular file workspace with four connected surfaces:
+Burette is a molecular file workspace with five connected surfaces:
 
 - Finder Quick Look previews for molecular files.
 - A compact macOS desktop workspace for opening, comparing, editing, and
@@ -16,6 +16,9 @@ Burette is a molecular file workspace with four connected surfaces:
   document handoff.
 - Agent/plugin tooling for typed observe/action workflows, reports, and bounded
   molecular workspace automation.
+- A hosted public plugin (`apps/burette-public-plugin`) with a public MCP
+  endpoint that previews authorized attachments and public PDB entries in a
+  sandboxed Burette workspace.
 
 The product is a local molecular workspace for inspection, workflow handoff,
 and a curated set of reproducible native compute operations. It is not a cloud
@@ -28,11 +31,12 @@ The Apple Silicon Compute Layer is under active implementation. The first
 desktop source workflow now runs from immutable Grid scope through a pinned
 RDKit worker, checked CPU/Metal Tanimoto neighbor construction, deterministic
 Butina, immutable artifacts, and typed Grid results. Real Metal command-buffer
-dispatch exists, and the current v20 development package compiles, bundles,
-hash-verifies, installs, launches, and dispatches its precompiled runtime on an
-Apple M2 Pro. Production distribution remains gated on external Developer ID/
-hardened-runtime signing, notarization, and final UI-triggered acceptance
-evidence.
+dispatch exists; the packaged runtime identity is v22
+(`burette-native-metal-v22`), which added the Chemical Space family (Metal
+UMAP embeddings, clustering, activity colouring, cliffs). Releases ship
+through the Developer ID signing and notarization pipeline when credentials
+are configured; see [gpu-compute-status.md](gpu-compute-status.md) for the
+current per-family status.
 
 | Workflow family | Product status |
 | --- | --- |
@@ -93,8 +97,9 @@ and a way to recover when renderer or Quick Look infrastructure needs attention.
   predictable menus, keyboard access, stable window behavior, familiar controls,
   and clear recovery actions.
 - **Surface truth matters.** Finder Quick Look, desktop app, browser-dev,
-  tokenized browser preview, iPhone app, and agent sessions are separate
-  runtimes. Product claims must say which surface is supported.
+  tokenized browser preview, iPhone app, hosted public plugin, and agent
+  sessions are separate runtimes. Product claims must say which surface is
+  supported.
 - **File workflows beat dashboards.** Burette is organized around files,
   project folders, tabs, previews, and handoff, not hero metrics or abstract
   workspace cards.
