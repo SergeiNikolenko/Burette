@@ -924,6 +924,20 @@
     }
   }
 
+  // A MolViewSpec focus camera is queued after the state task reports idle, even
+  // when its transition is instant. Rendering remains paused while the focus
+  // settles, so capture the final camera before resuming the rebuilt scene.
+  async function waitForMolstarStoryCameraTarget(viewer, timeoutMs = 700) {
+    const startedAt = Date.now();
+    let targetSnapshot = null;
+    while (Date.now() - startedAt < timeoutMs) {
+      await new Promise(resolve => window.setTimeout(resolve, 16));
+      const nextSnapshot = captureMolstarCameraSnapshot(viewer);
+      if (nextSnapshot) targetSnapshot = nextSnapshot;
+    }
+    return targetSnapshot;
+  }
+
   // Steps overlap easily - hovering down the list, holding Next, an agent call
   // arriving mid-transition - and overlapping them means competing snapshot
   // applies and unbalanced render pauses, which looks like the viewer tearing
@@ -958,9 +972,18 @@
     // is not among them: it is post-processing on the canvas, which the snapshot
     // no longer carries, so it survives a step untouched.
     const restyles = isStep && MOLSTAR_STORY_REBUILT_STYLES.has(style);
+    const animatesRestyledStep = restyles
+      && action.preview !== true
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches !== true;
+    const sourceCamera = animatesRestyledStep ? captureMolstarCameraSnapshot(activeViewer) : null;
+    let targetCamera = null;
     const canvas3d = activeViewer?.plugin?.canvas3d;
     if (isStep || operation === 'play') applyMolstarStoryStyleToSnapshots(manager, style);
-    if (isStep) setMolstarStoryTransition(manager, action.preview === true ? 0 : MOLSTAR_STORY_TRANSITION_MS);
+    // A composite representation is rebuilt while rendering is paused. Letting
+    // Mol* animate the snapshot camera during that pause consumes the transition
+    // invisibly and leaves a single jump when rendering resumes. Swap instantly,
+    // then animate between the captured cameras once the finished scene can draw.
+    if (isStep) setMolstarStoryTransition(manager, restyles || action.preview === true ? 0 : MOLSTAR_STORY_TRANSITION_MS);
     if (restyles) {
       molstarStoryStepInFlight = true;
       canvas3d?.pause?.(true);
@@ -983,7 +1006,9 @@
       }
       if (restyles) {
         await waitForMolstarIdle(activeViewer);
+        if (sourceCamera) targetCamera = await waitForMolstarStoryCameraTarget(activeViewer);
         await restoreMolstarStoryPresentation(activeViewer);
+        if (targetCamera) restoreMolstarCameraSnapshotNow(activeViewer, sourceCamera);
       }
     } finally {
       if (restyles) {
@@ -991,6 +1016,10 @@
         canvas3d?.resume?.();
         canvas3d?.requestDraw?.();
       }
+    }
+    if (targetCamera) {
+      canvas3d?.requestCameraReset?.({ snapshot: targetCamera, durationMs: MOLSTAR_STORY_TRANSITION_MS });
+      canvas3d?.requestDraw?.();
     }
     const result = molstarStoryResult('story_control');
     molstarStoryReportedAt = 0;
@@ -1078,7 +1107,7 @@
     const instant = durationMs <= 0 || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
     for (const entry of manager?.state?.entries || []) {
       const camera = entry?.snapshot?.camera;
-      if (!camera?.current) continue;
+      if (!camera?.current && !camera?.focus) continue;
       camera.transitionStyle = instant ? 'instant' : 'animate';
       camera.transitionDurationInMs = instant ? 0 : durationMs;
     }
@@ -8722,11 +8751,12 @@
     spin: { value: 0.1, min: 0.01, max: 1, step: 0.01, params: { axis: [0, -1, 0] } },
     rock: { value: 0.3, min: 0.02, max: 1.5, step: 0.02, params: { angle: 10, axis: [0, -1, 0] } }
   };
-  // The plugin ships timed camera spin and rock too; the Motion switch covers the
-  // same ground without a stopwatch, so they are not listed twice.
-  const VIEWPORT_MOTION_ANIMATIONS = new Set([
-    'built-in.animate-camera-spin',
-    'built-in.animate-camera-rock'
+  // Mol* also exposes framework-level animations for snapshots, state trees and
+  // time transforms. In Burette those either duplicate Story/Motion or do nothing
+  // without hidden plugin state. A trajectory is the one contextual task that
+  // belongs here, and its applicability check keeps it out of ordinary scenes.
+  const VIEWPORT_CONTEXT_ANIMATIONS = new Set([
+    'built-in.animate-model-index'
   ]);
   const VIEWPORT_ICON = {
     camera: ['M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z', 'M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'],
@@ -8930,9 +8960,8 @@
     viewportScreenshotToggle(menu, 'Crop to content', 'screenshot-crop', helper.cropParams?.auto === true);
   }
 
-  // Mol*'s own animation button offered both a trackball that keeps turning and
-  // the plugin's timed animations. The rail keeps both, split by how they end:
-  // motion runs until it is switched off, the rest play once and stop themselves.
+  // Motion and wiggle are always explicit. A task animation appears only when the
+  // active document supplies its context, currently a trajectory with frames.
   function viewportAnimateMenu(menu) {
     viewportMotionControls(menu);
     const plugin = viewportPlugin();
@@ -8941,8 +8970,7 @@
       || activeTrajectoryPlaybackControl?.isPlaying() === true;
     const animations = (manager?.animations || [])
       .map((animation, index) => ({ animation, index }))
-      // Camera spin and rock are the Motion switch above, only on a timer.
-      .filter(entry => !VIEWPORT_MOTION_ANIMATIONS.has(entry.animation?.name))
+      .filter(entry => VIEWPORT_CONTEXT_ANIMATIONS.has(entry.animation?.name))
       .map(entry => ({ ...entry, applicability: viewportAnimationApplicability(entry.animation, plugin) }))
       .filter(entry => entry.animation?.display?.name)
       // Every one of these needs something the scene may not have - a trajectory,
@@ -17433,10 +17461,12 @@
     positionMolstarStoryDetails(card, anchor);
   }
 
-  // Hovering a state moves to it, so the list doubles as a preview. The dwell
-  // keeps a pointer travelling down the list from applying every state it
-  // crosses.
+  // Hovering a lightweight state moves to it, so the list doubles as a preview.
+  // Composite styles are click-only: their geometry can finish rebuilding after
+  // the pointer leaves and then race the state the user actually clicked.
   function scheduleMolstarStoryPreview(anchor) {
+    const style = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
+    if (MOLSTAR_STORY_REBUILT_STYLES.has(style)) return;
     if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
     molstarStoryPreviewTimer = window.setTimeout(() => {
       molstarStoryPreviewTimer = 0;

@@ -5228,10 +5228,11 @@ assert.match(previewViewer, /function restoreMolstarMoleculePreview\(\)/);
 assert.match(previewViewer, /data-buret-molecule-preview-action="minimize"/);
 assert.match(previewRuntimeCss, /\.buret-molecule-preview-chip \{/);
 assert.match(structureInfoPanel, /setActiveActionKey\(\(current\) => current && current\.includes\("focus_ligand"\) \? null : current\)/);
-assert.match(previewViewer, /const VIEWPORT_MOTION_ANIMATIONS = new Set\(\[/);
-assert.match(previewViewer, /'built-in\.animate-camera-spin'/);
-// Every plugin animation needs something the scene may not have, so a plain
-// structure used to show a block of nothing but greyed rows.
+assert.match(previewViewer, /const VIEWPORT_CONTEXT_ANIMATIONS = new Set\(\[\s*'built-in\.animate-model-index'\s*\]\)/);
+// Raw Mol* animations either duplicate Motion or Story, or depend on plugin
+// state with no visible effect in an ordinary structure. Only a real trajectory
+// gets a task animation row.
+assert.match(previewViewer, /\.filter\(entry => VIEWPORT_CONTEXT_ANIMATIONS\.has\(entry\.animation\?\.name\)\)/);
 assert.match(previewViewer, /\.filter\(entry => entry\.applicability\.canApply\);/);
 assert.doesNotMatch(previewViewer, /\.filter\(entry => entry\.applicability\.canApply \|\| entry\.applicability\.reason\)/);
 // The rail's screenshot button carries Mol*'s own capture settings.
@@ -5920,10 +5921,18 @@ assert.match(previewViewer, /type: 'openStructureStory'/);
 // their canvas settings, and a style the user picked is re-applied on top.
 assert.match(previewViewer, /function detachMolstarStoryPresentation\(manager\)/);
 assert.match(previewViewer, /snapshot\.canvas3d = undefined/);
+assert.match(previewViewer, /if \(!camera\?\.current && !camera\?\.focus\) continue;/);
 assert.match(previewViewer, /camera\.transitionDurationInMs = instant \? 0 : durationMs/);
-// Hover previews jump straight to the state; a camera flight per state as the
-// pointer crosses the list reads as the viewer lurching about.
-assert.match(previewViewer, /if \(isStep\) setMolstarStoryTransition\(manager, action\.preview === true \? 0 : MOLSTAR_STORY_TRANSITION_MS\)/);
+// Composite styles rebuild their geometry with rendering paused. Their snapshot
+// swap is instant, then the camera animates only after the finished scene resumes.
+assert.match(previewViewer, /if \(isStep\) setMolstarStoryTransition\(manager, restyles \|\| action\.preview === true \? 0 : MOLSTAR_STORY_TRANSITION_MS\)/);
+assert.match(previewViewer, /const sourceCamera = animatesRestyledStep \? captureMolstarCameraSnapshot\(activeViewer\) : null/);
+assert.match(previewViewer, /async function waitForMolstarStoryCameraTarget\(viewer, timeoutMs = 700\)/);
+assert.match(previewViewer, /while \(Date\.now\(\) - startedAt < timeoutMs\)/);
+assert.match(previewViewer, /if \(nextSnapshot\) targetSnapshot = nextSnapshot/);
+assert.match(previewViewer, /return targetSnapshot/);
+assert.match(previewViewer, /targetCamera = await waitForMolstarStoryCameraTarget\(activeViewer\);\s*await restoreMolstarStoryPresentation\(activeViewer\);\s*if \(targetCamera\) restoreMolstarCameraSnapshotNow\(activeViewer, sourceCamera\)/);
+assert.match(previewViewer, /canvas3d\?\.resume\?\.\(\);[\s\S]*canvas3d\?\.requestCameraReset\?\.\(\{ snapshot: targetCamera, durationMs: MOLSTAR_STORY_TRANSITION_MS \}\)/);
 // Overlapping steps mean competing snapshot applies and unbalanced render
 // pauses, so steps run one at a time and superseded ones are dropped.
 assert.match(previewViewer, /action\.preview === true\s*&& \(serial !== molstarStoryStepRequested \|\| action\.stillWanted\?\.\(\) === false\)/);
@@ -5947,15 +5956,18 @@ assert.match(previewViewer, /root\.className = 'buret-docking-poses buret-dockin
 assert.match(previewViewer, /if \(document\.querySelector\('\.buret-docking-poses:not\(\.buret-molstar-story\)'\)\) return;/);
 assert.match(previewViewer, /previousRoot && updateMolstarStoryControls\(previousRoot, entries, story\.isPlaying\)\) return/);
 assert.match(previewViewer, /root\.__buretStoryDragCleanup = initDockingPoseControlsDrag\(root\)/);
-// Hovering a state previews it; the description trails behind so it does not
-// flash while the pointer crosses the list.
+// A composite style does not preview scenes on hover: rebuilding a surface can
+// finish after the pointer has left and then race the user's click. Its details
+// card still trails behind so crossing the list does not flash it.
 assert.match(previewViewer, /button\.addEventListener\('pointerenter', event => \{\s*if \(event\.pointerType === 'touch'\) return;\s*scheduleMolstarStoryPreview\(button\);\s*scheduleMolstarStoryDetails\(button\);\s*\}\)/);
+assert.match(previewViewer, /function scheduleMolstarStoryPreview\(anchor\) \{\s*const style = configuredMolstarStyle\(activeConfig \|\| window\.BuretteConfig \|\| \{\}\);\s*if \(MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)\) return;/);
 assert.match(previewViewer, /MOLSTAR_STORY_PREVIEW_DWELL_MS = 240/);
 assert.match(previewViewer, /MOLSTAR_STORY_DETAILS_DWELL_MS = 500/);
 // The style swap happens with rendering held, so no frame shows the authored
 // style before the user's own style lands.
 assert.match(previewViewer, /canvas3d\?\.pause\?\.\(true\)/);
-assert.match(previewViewer, /await waitForMolstarIdle\(activeViewer\);\s*await restoreMolstarStoryPresentation\(activeViewer\);/);
+assert.match(previewViewer, /await waitForMolstarIdle\(activeViewer\);/);
+assert.match(previewViewer, /await restoreMolstarStoryPresentation\(activeViewer\);/);
 assert.match(previewViewer, /if \(!isFirstState && !molstarStoryStepInFlight && MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)\)/);
 assert.match(previewViewer, /const restyles = isStep && MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)/);
 // `Illustrative` flattens shading through `ignoreLight` on each representation,
