@@ -43,6 +43,16 @@ fn apply_zoom_to_window<R: Runtime>(window: &tauri::WebviewWindow<R>, factor: f6
             window.label()
         );
     }
+    // Native chrome (macOS traffic lights) does not scale with the webview
+    // zoom, so the frontend compensates its reserved areas via this variable.
+    let script =
+        format!("document.documentElement.style.setProperty('--window-zoom', '{factor}');");
+    if let Err(error) = window.eval(script) {
+        eprintln!(
+            "failed to sync the zoom css variable on window {}: {error}",
+            window.label()
+        );
+    }
 }
 
 /// Handles the View menu zoom commands. Returns `false` for unrelated ids so
@@ -66,6 +76,15 @@ pub(crate) fn handle_menu_command<R: Runtime>(app: &tauri::AppHandle<R>, command
         apply_zoom_to_window(window, factor);
     }
     true
+}
+
+/// Re-syncs the shared zoom factor after a page load, so freshly loaded
+/// documents pick up both the webview zoom and the css compensation variable.
+pub(crate) fn sync_on_page_load<R: Runtime>(webview: &tauri::Webview<R>) {
+    let Some(window) = webview.app_handle().get_webview_window(webview.label()) else {
+        return;
+    };
+    apply_current_zoom(&window);
 }
 
 /// Brings a newly created window to the shared zoom factor.

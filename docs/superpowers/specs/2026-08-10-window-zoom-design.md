@@ -87,6 +87,28 @@ native-menu state sync machinery.
 `FORWARDED_COMMANDS` lookup, in the same style as the `file.new-window`
 special case. The zoom ids are not added to `FORWARDED_COMMANDS`.
 
+### Native chrome alignment
+
+The macOS traffic lights are native overlay chrome pinned at a fixed logical
+position (`windows.rs` sets `traffic_light_position(20, 29)`); `pageZoom`
+scales the web content but not them. The frontend reserves room for the
+buttons in `.chrome-leading-controls` with a fixed pixel inset, which would
+otherwise scale with the zoom and drift away from the buttons (VS Code-style
+behavior applies: native chrome stays put while content scales).
+
+To keep the on-screen clearance constant, the Rust side mirrors the current
+factor into the webview as a CSS variable — `apply_zoom_to_window` runs
+`document.documentElement.style.setProperty('--window-zoom', factor)` after
+`set_zoom`, and a `Builder::on_page_load(Finished)` hook re-syncs both the
+zoom and the variable after any page (re)load. The stylesheet divides the
+reserved inset by the factor: `left: calc(92px / var(--window-zoom, 1))`
+(and the 82px narrow-viewport variant). The tab strip's
+`--chrome-leading-inset` (app-layout.tsx) splits the same way — 92px of
+native clearance divided by the factor plus 100px of zoomable toggle space —
+so the strip keeps clearing the pinned controls at zoomed-out levels. In the
+browser shell the variable is never set and the fallback of `1` preserves the
+original layout.
+
 ## Error handling
 
 - `set_zoom` failure on one window: log a warning with the window label and
