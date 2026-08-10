@@ -50,13 +50,17 @@ if (mismatchedMarketingVersion) {
 
 if (process.env.GITHUB_EVENT_NAME === 'pull_request' && process.env.GITHUB_BASE_REF) {
   const base = process.env.GITHUB_BASE_REF;
-  try {
-    git(['fetch', '--quiet', 'origin', `+refs/heads/${base}:refs/remotes/origin/${base}`, '--tags']);
-  } catch (error) {
-    fail(`could not fetch base branch ${base}: ${error.stderr || error.message}`);
+  let baseRevision = process.env.BURETTE_PR_BASE_SHA?.trim();
+  if (!baseRevision) {
+    try {
+      git(['fetch', '--quiet', 'origin', `+refs/heads/${base}:refs/remotes/origin/${base}`, '--tags']);
+    } catch (error) {
+      fail(`could not fetch base branch ${base}: ${error.stderr || error.message}`);
+    }
+    baseRevision = `origin/${base}`;
   }
 
-  const basePackage = JSON.parse(git(['show', `origin/${base}:package.json`]));
+  const basePackage = JSON.parse(git(['show', `${baseRevision}:package.json`]));
   if (basePackage.version === packageVersion) {
     fail(`every merged PR creates a release, so this PR must bump package.json beyond ${basePackage.version}`);
   }
