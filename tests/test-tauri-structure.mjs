@@ -917,6 +917,8 @@ assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.r
 assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.executable/);
 assert.match(appInfoPlist, /<key>LSUIElement<\/key>\s*<false\/>/);
 assert.match(releaseVersionCheck, /semver release or prerelease/);
+assert.match(releaseVersionCheck, /process\.env\.BURETTE_PR_BASE_SHA/);
+assert.match(ciWorkflow, /BURETTE_PR_BASE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
 assert.doesNotMatch(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Alternate<\/string>/);
 assert.match(appMetadata, /<key>CFBundleTypeName<\/key>\s*<string>Molecular grid tables<\/string>/);
 assert.match(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Owner<\/string>/);
