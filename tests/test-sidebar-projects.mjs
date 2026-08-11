@@ -51,6 +51,18 @@ const recentStructures = [
 
 const projects = buildSidebarProjects({
   documents,
+  textDocuments: [
+    {
+      id: "text-1",
+      path: "/Users/test/Matcha/notes/readme.md",
+      title: "readme.md",
+      extension: "md",
+      language: "markdown",
+      byteCount: 24,
+      content: "# Notes",
+      truncated: false,
+    },
+  ],
   recentStructures,
   projectRoots: ["/Users/test/Matcha", "/Users/test/Burette", "/Users/test/Empty"],
   activeDocumentId: "doc-1",
@@ -67,7 +79,7 @@ assert.ok(matchaProject);
 assert.equal(buretteProject.items[0].relativePath, "mini.sdf");
 assert.equal(emptyProject.items.length, 0);
 assert.equal(matchaProject.isActive, true);
-assert.equal(matchaProject.items.length, 3);
+assert.equal(matchaProject.items.length, 4);
 assert.deepEqual(
   matchaProject.items.map((item) => ({ path: item.path, relativePath: item.relativePath, source: item.source, isPinned: item.isPinned })),
   [
@@ -80,6 +92,12 @@ assert.deepEqual(
     {
       path: "/Users/test/Matcha/ligands/mini.pdb",
       relativePath: "ligands/mini.pdb",
+      source: "open",
+      isPinned: false,
+    },
+    {
+      path: "/Users/test/Matcha/notes/readme.md",
+      relativePath: "notes/readme.md",
       source: "open",
       isPinned: false,
     },

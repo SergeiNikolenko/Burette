@@ -442,6 +442,12 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         <InspectorHeaderStats document={document} summary={compositionSummary} pending={compositionPending} />
       </section>
 
+      {gridFilterModel ? (
+        <Suspense fallback={null}>
+          <GridFilterSection model={gridFilterModel} actions={actions} />
+        </Suspense>
+      ) : null}
+
       {assemblySymmetry.available ? (
         <AssemblySymmetryCard
           shown={assemblySymmetry.shown}
@@ -487,13 +493,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
 
       {!hostedMcpWidget && !trajectoryDocument && !derivedTopology && !virtualScene ? <>
         {/* The conformer card and the standalone descriptor card are gone: both
-            are tool rows inside Tools now. GridFilterSection is lazy upstream,
-            so it keeps the Suspense boundary main gave it. */}
-        {gridFilterModel ? (
-          <Suspense fallback={null}>
-            <GridFilterSection model={gridFilterModel} actions={actions} />
-          </Suspense>
-        ) : null}
+            are tool rows inside Tools now. */}
         <InspectorEngineCard
           className="structure-inspector-xtb-card"
           title="Tools"
