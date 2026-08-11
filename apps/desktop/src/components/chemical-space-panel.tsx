@@ -8,17 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Empty,
   EmptyContent,
@@ -29,6 +22,7 @@ import {
 } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
@@ -102,7 +96,6 @@ type StudyState = {
 type CompletedStudy = {
   results: ChemicalSpaceResult[];
 };
-type ClusteringMethod = "none" | "butina";
 type GridIndexState = {
   recordsIndexed: number;
   recordsTotal: number;
@@ -166,6 +159,9 @@ const MAX_COMPLETED_EMBEDDING_CACHE_ENTRIES = 6;
 const MAX_COMPLETED_EMBEDDING_CACHE_RECORDS = 500_000;
 const GRID_SELECTION_BRIDGE_LIMIT = 100_000;
 const MAX_MOLECULE_PREVIEW_BASE64_BYTES = 350_000;
+// Enough to hold the pair on screen plus the ones just looked at, and small
+// enough that a long session does not accumulate megabytes of SVG.
+const MAX_CACHED_MOLECULE_PREVIEWS = 24;
 const MAX_LASSO_POINTS = 1_024;
 const MAX_HIGHLIGHT_POINTS = 4_096;
 const MAX_VISIBLE_EDGES = 30_000;
@@ -177,6 +173,17 @@ const CLUSTER_COLORS = [
   "#38bdf8", "#fb7185", "#4ade80", "#facc15", "#f97316",
   "#22d3ee", "#a3e635", "#f472b6", "#60a5fa", "#fbbf24",
 ] as const;
+// Grouping is one button, so the panel picks the cutoff itself. Tanimoto ≥ 0.65
+// over Morgan fingerprints is the usual Butina working point; from there the run
+// retunes while the split stays degenerate. One group holding nearly half the
+// collection says nothing, and neither does a collection that is mostly singles.
+const CLUSTER_START_CUTOFF = 0.65;
+const CLUSTER_CUTOFF_STEP = 0.05;
+const CLUSTER_MIN_CUTOFF = 0.3;
+const CLUSTER_MAX_CUTOFF = 0.95;
+const CLUSTER_DOMINANT_SHARE = 0.4;
+const CLUSTER_SINGLETON_SHARE = 0.6;
+const CLUSTER_AUTO_ATTEMPTS = 4;
 const DEFAULT_STUDY: StudyState = {
   parameter: "minDist",
   range: [0.02, 0.6],
@@ -246,6 +253,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [scope, setScope] = useState<"all" | "filtered">("all");
   const [hovered, setHovered] = useState<number | null>(null);
   const [preview, setPreview] = useState<MoleculePreview | null>(null);
+  const [moleculePreviews, setMoleculePreviews] = useState<Map<number, MoleculePreview>>(new Map());
   const [pointScale, setPointScale] = useState(1);
   const [tmapLineScale, setTmapLineScale] = useState(DEFAULT_TMAP_LINE_SCALE);
   const [tool, setTool] = useState<"navigate" | "lasso">("navigate");
@@ -254,8 +262,12 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [studyPosition, setStudyPosition] = useState(0);
   const [studyPlaying, setStudyPlaying] = useState(false);
   const [studyRunning, setStudyRunning] = useState(false);
-  const [clusteringMethod, setClusteringMethod] = useState<ClusteringMethod>("none");
-  const [clusterCutoff, setClusterCutoff] = useState(0.6);
+  const [studyOpen, setStudyOpen] = useState(false);
+  // "auto" lets the run tune its own cutoff; the coarser/finer nudges pin one
+  // and switch to "manual" so a later run does not tune it back.
+  const [clusterMode, setClusterMode] = useState<"off" | "auto" | "manual">("off");
+  const [clusterCutoff, setClusterCutoff] = useState(CLUSTER_START_CUTOFF);
+  const [clusterAppliedCutoff, setClusterAppliedCutoff] = useState(CLUSTER_START_CUTOFF);
   const [clusterResult, setClusterResult] = useState<ChemicalSpaceClusterResult | null>(null);
   const [clusterError, setClusterError] = useState<string | null>(null);
   const [clusterRunning, setClusterRunning] = useState(false);
@@ -335,6 +347,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setVisibleSourceIds(null);
     setHovered(null);
     setPreview(null);
+    setMoleculePreviews(new Map());
     setTmapLineScale(DEFAULT_TMAP_LINE_SCALE);
     setCompletedStudy(null);
     setStudyPosition(0);
@@ -558,7 +571,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     // An empty filtered scope must not fall through to the whole collection:
     // preparing a job with no source indexes means "all records".
     const scopeTooSmall = scopedSourceIds !== null && scopedSourceIds.length < 2;
-    if (!documentId || clusteringMethod === "none" || computeBlockedByIndex || needsConfirmation || scopeTooSmall) {
+    if (!documentId || clusterMode === "off" || computeBlockedByIndex || needsConfirmation || scopeTooSmall) {
       setClusterResult(null);
       setClusterError(null);
       setClusterRunning(false);
@@ -569,27 +582,52 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setClusterError(null);
     setClusterResult(null);
     const updateProgress = () => undefined;
-    const workflow = isTauriRuntime()
-      ? runChemicalSpaceClusteringWorkflow(documentId, clusterCutoff, updateProgress, controller.signal, scopedSourceIds)
-      : requestBrowserChemicalSpaceRecords(documentId, controller.signal)
-        .then((records) => runBrowserDevChemicalSpaceClustering(
-          scopedBrowserRecords(records, scopedSourceIds),
-          clusterCutoff,
+    const clusterAt = async (cutoff: number) => {
+      if (isTauriRuntime()) {
+        return runChemicalSpaceClusteringWorkflow(
+          documentId,
+          cutoff,
           updateProgress,
           controller.signal,
-        ));
-    void workflow
-      .then((next) => {
-        if (!controller.signal.aborted) setClusterResult(next);
-      })
-      .catch((cause) => {
+          scopedSourceIds,
+        );
+      }
+      const records = await requestBrowserChemicalSpaceRecords(documentId, controller.signal);
+      return runBrowserDevChemicalSpaceClustering(
+        scopedBrowserRecords(records, scopedSourceIds),
+        cutoff,
+        updateProgress,
+        controller.signal,
+      );
+    };
+    void (async () => {
+      try {
+        let cutoff = clusterCutoff;
+        let next = await clusterAt(cutoff);
+        // Retuning is cheap next to the O(N²) similarity pass the GPU just ran,
+        // so auto mode spends a few passes rather than handing back a split that
+        // is one giant group or nothing but singles.
+        for (let attempt = 1; clusterMode === "auto" && attempt < CLUSTER_AUTO_ATTEMPTS; attempt += 1) {
+          const verdict = clusterVerdict(next);
+          if (verdict === "balanced") break;
+          const tuned = verdict === "tooCoarse"
+            ? cutoff + CLUSTER_CUTOFF_STEP
+            : cutoff - CLUSTER_CUTOFF_STEP;
+          if (tuned < CLUSTER_MIN_CUTOFF || tuned > CLUSTER_MAX_CUTOFF) break;
+          cutoff = tuned;
+          next = await clusterAt(cutoff);
+        }
+        if (controller.signal.aborted) return;
+        setClusterAppliedCutoff(cutoff);
+        setClusterResult(next);
+      } catch (cause) {
         if (!controller.signal.aborted) setClusterError(computeErrorMessage(cause));
-      })
-      .finally(() => {
+      } finally {
         if (!controller.signal.aborted) setClusterRunning(false);
-      });
+      }
+    })();
     return () => controller.abort();
-  }, [clusterCutoff, clusteringMethod, computeBlockedByIndex, documentId, needsConfirmation, scopedSourceIds, sourceRevision]);
+  }, [clusterCutoff, clusterMode, computeBlockedByIndex, documentId, needsConfirmation, scopedSourceIds, sourceRevision]);
 
   useEffect(() => {
     if (!studyPlaying || !completedStudy) return;
@@ -658,7 +696,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       }
       if (data.body.type === "chemicalSpaceMoleculePreview") {
         const index = Number(data.body.sourceRecordId);
-        if (!Number.isSafeInteger(index) || index < 0 || index !== hoveredRef.current) {
+        if (!Number.isSafeInteger(index) || index < 0) {
           setPreview(null);
           return;
         }
@@ -666,12 +704,29 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           && data.body.svgBase64.length <= MAX_MOLECULE_PREVIEW_BASE64_BYTES
           ? data.body.svgBase64
           : "";
-        setPreview({
+        const molecule: MoleculePreview = {
           sourceRecordId: index,
           name: typeof data.body.name === "string" ? data.body.name : `Molecule ${index + 1}`,
           smiles: typeof data.body.smiles === "string" ? data.body.smiles : "",
           svgUrl: svgBase64 ? `data:image/svg+xml;base64,${svgBase64}` : null,
+        };
+        // Both halves of a cliff pair have to be on screen at once, so answers
+        // are kept by molecule rather than only for whatever is hovered.
+        setMoleculePreviews((current) => {
+          const next = new Map(current);
+          next.delete(index);
+          next.set(index, molecule);
+          for (const oldest of next.keys()) {
+            if (next.size <= MAX_CACHED_MOLECULE_PREVIEWS) break;
+            next.delete(oldest);
+          }
+          return next;
         });
+        if (index !== hoveredRef.current) {
+          setPreview(null);
+          return;
+        }
+        setPreview(molecule);
       }
     };
     window.addEventListener("message", onMessage);
@@ -778,6 +833,40 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       : []),
     [cliffsEnabled, displayedResult, activityColumnId, activityValues, cliffMinSimilarity, cliffMinDelta],
   );
+  // Every molecule's strongest cliff. Edges alone could not carry this: they
+  // join fingerprint neighbours, while the map places molecules by UMAP, so a
+  // cliff routinely draws as a chord across the whole view.
+  const cliffScores = useMemo(() => {
+    const strongest = new Map<number, number>();
+    for (const cliff of cliffs) {
+      strongest.set(cliff.sourceA, Math.max(strongest.get(cliff.sourceA) ?? 0, cliff.sali));
+      strongest.set(cliff.sourceB, Math.max(strongest.get(cliff.sourceB) ?? 0, cliff.sali));
+    }
+    return strongest;
+  }, [cliffs]);
+  const rankedClusters = useMemo(() => rankClustersBySize(clusterResult), [clusterResult]);
+  // The bare cluster count hides what a chemist needs to judge the split, so the
+  // button reports the shape of it instead.
+  const clusterSummary = useMemo(() => {
+    if (!rankedClusters) return null;
+    const sizes = [...clusterSizes(rankedClusters).values()];
+    const singles = sizes.filter((size) => size === 1).length;
+    return `${rankedClusters.clusterCount} group${rankedClusters.clusterCount === 1 ? "" : "s"}`
+      + ` · biggest ${Math.max(...sizes)}`
+      + (singles > 0 ? ` · ${singles} single${singles === 1 ? "" : "s"}` : "");
+  }, [rankedClusters]);
+  const embeddingDirty = (Object.keys(draft) as Array<keyof ChemicalSpaceOptions>)
+    .some((key) => draft[key] !== options[key]);
+  // Auto mode leaves clusterCutoff at the value the run started from, so the
+  // cutoff worth showing is the one it settled on.
+  const clusterCutoffShown = clusterMode === "manual" ? clusterCutoff : clusterAppliedCutoff;
+  // Nudging steps away from whatever the run settled on, and pins it: the point
+  // of asking for coarser groups is that the next run must not tune it back.
+  const nudgeClusterCutoff = (delta: number) => {
+    const next = Math.round((clusterCutoffShown + delta) * 100) / 100;
+    setClusterCutoff(Math.min(CLUSTER_MAX_CUTOFF, Math.max(CLUSTER_MIN_CUTOFF, next)));
+    setClusterMode("manual");
+  };
   const activityColumnLabel = activityColumns.find((column) => column.id === activityColumnId)?.label ?? "activity";
   const cliffDeltaMax = activityColoring && activityColoring.max > activityColoring.min
     ? Math.round((activityColoring.max - activityColoring.min) * 100) / 100
@@ -788,6 +877,16 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   useEffect(() => {
     setActiveCliffIndex(null);
   }, [cliffs]);
+  // A selected pair has to show both structures, so ask the grid for whichever
+  // half is not cached yet. The reply lands in the cache and re-renders it.
+  const activeCliff = activeCliffIndex === null ? null : cliffs[activeCliffIndex] ?? null;
+  useEffect(() => {
+    if (!activeCliff) return;
+    for (const sourceRecordId of [activeCliff.sourceA, activeCliff.sourceB]) {
+      if (moleculePreviews.has(sourceRecordId)) continue;
+      postToGrid({ type: "chemicalSpaceHoverChanged", sourceRecordId });
+    }
+  }, [activeCliff, moleculePreviews, postToGrid]);
   const selectCliffPair = useCallback((cliffIndex: number) => {
     const cliff = cliffsRef.current[cliffIndex];
     if (!cliff) return;
@@ -1021,7 +1120,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           {displayedResult ? (
             <ChemicalSpaceCanvas
               result={displayedResult}
-              clusters={clusteringMethod === "butina" ? clusterResult : null}
+              clusters={rankedClusters}
               selected={selected}
               hovered={hovered}
               preview={preview}
@@ -1030,6 +1129,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               activityColors={activityColoring?.colors ?? null}
               visibleSourceIds={scope === "filtered" ? null : visibleSourceIds}
               cliffs={cliffs}
+              cliffScores={cliffScores}
               activeCliffIndex={activeCliffIndex}
               onSelectCliff={selectCliffPair}
               tool={tool}
@@ -1043,7 +1143,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               }}
               onSelect={(sourceRecordIds) => {
                 const expanded = tool === "navigate" && sourceRecordIds.length === 1
-                  ? clusterMembersForSource(clusterResult, sourceRecordIds[0])
+                  ? clusterMembersForSource(rankedClusters, sourceRecordIds[0])
                   : sourceRecordIds;
                 const bounded = expanded.slice(0, GRID_SELECTION_BRIDGE_LIMIT);
                 setSelected(new Set(bounded));
@@ -1109,51 +1209,74 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               direction={activityDirection}
             />
           ) : null}
-          {displayedResult && cliffsEnabled && cliffs.length > 0 ? (
+          {displayedResult && cliffsEnabled ? (
             <CliffTable
               cliffs={cliffs}
               activityLabel={activityColumnLabel}
               activeCliffIndex={activeCliffIndex}
               onSelectPair={selectCliffPair}
+              minSimilarity={cliffMinSimilarity}
+              onMinSimilarityChange={setCliffMinSimilarity}
+              minDelta={Math.min(cliffMinDelta, cliffDeltaMax)}
+              onMinDeltaChange={setCliffMinDelta}
+              deltaMax={cliffDeltaMax}
+              deltaStep={cliffDeltaStep}
+              previews={moleculePreviews}
+              activityValues={activityValues}
             />
           ) : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-3 border-t border-border px-3 py-2">
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger asChild>
+          <Popover>
+            <PopoverTrigger asChild>
               <Button className="shrink-0" variant="ghost" size="sm">
-                {methodLabel(draft.method)} parameters
+                Embedding
+                {embeddingDirty ? (
+                  <span
+                    className="ml-0.5 size-1.5 rounded-full bg-primary"
+                    aria-label="Edited, not rebuilt yet"
+                  />
+                ) : null}
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
+            </PopoverTrigger>
+            <PopoverContent
               align="start"
               side="top"
               sideOffset={8}
               container={portalContainer}
-              className="max-h-[min(70vh,32rem)] w-72"
+              className="max-h-[min(70vh,32rem)] w-72 overflow-y-auto"
             >
-              <DropdownMenuLabel className="flex flex-col gap-0.5 px-2 py-1.5">
-                <span className="text-sm font-medium text-foreground">
-                  {methodLabel(draft.method)} parameters
-                </span>
-                <span className="font-normal">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium text-foreground">{methodLabel(draft.method)}</span>
+                <span className="text-xs text-muted-foreground">
                   {draft.method === "tmap"
                     ? `k=${draft.neighbors} · Metal kNN → minimum spanning tree`
                     : `k=${draft.neighbors} · min dist=${draft.minDist.toFixed(2)}`}
                 </span>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup className="px-2 py-1.5">
-                <FieldGroup className="gap-3">
-                  <ParameterField label="Neighbors" value={draft.neighbors}>
-                    <Slider tone="neutral" min={2} max={64} step={1} value={[draft.neighbors]} onValueChange={([neighbors]) => setDraft((value) => ({ ...value, neighbors }))} />
+              </div>
+              <FieldGroup className="gap-3">
+                <ParameterField label="Neighbors" value={draft.neighbors}>
+                  <Slider tone="neutral" min={2} max={64} step={1} value={[draft.neighbors]} onValueChange={([neighbors]) => setDraft((value) => ({ ...value, neighbors }))} />
+                </ParameterField>
+                {draft.method !== "tmap" ? (
+                  <ParameterField label="Minimum distance" value={draft.minDist.toFixed(2)}>
+                    <Slider tone="neutral" min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
                   </ParameterField>
-                  {draft.method !== "tmap" ? (
-                    <>
-                      <ParameterField label="Minimum distance" value={draft.minDist.toFixed(2)}>
-                        <Slider tone="neutral" min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
-                      </ParameterField>
+                ) : null}
+              </FieldGroup>
+              {/* Spread, epochs and learning rate are for someone debugging an
+                  embedding, not for daily work, so they start folded away. */}
+              {draft.method !== "tmap" ? (
+                <Collapsible className="group/advanced">
+                  <CollapsibleTrigger asChild>
+                    <Button className="w-full justify-between px-1" variant="ghost" size="xs">
+                      Advanced
+                      <ChevronDown className="transition-transform group-data-[state=open]/advanced:rotate-180" />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <FieldGroup className="gap-3 pt-2">
                       <ParameterField label="Cluster spread" value={draft.spread.toFixed(1)}>
                         <Slider tone="neutral" min={1} max={3} step={0.1} value={[draft.spread]} onValueChange={([spread]) => setDraft((value) => ({ ...value, spread }))} />
                       </ParameterField>
@@ -1163,14 +1286,17 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                       <ParameterField label="Learning rate" value={draft.learningRate.toFixed(1)}>
                         <Slider tone="neutral" min={0.1} max={3} step={0.1} value={[draft.learningRate]} onValueChange={([learningRate]) => setDraft((value) => ({ ...value, learningRate }))} />
                       </ParameterField>
-                    </>
-                  ) : null}
-                </FieldGroup>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem
-                  onSelect={() => {
+                    </FieldGroup>
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : null}
+              {/* Editing a slider only stages the change; this footer is the one
+                  place that applies it, so the button lights up when it matters. */}
+              <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => {
                     setTmapLineScale(DEFAULT_TMAP_LINE_SCALE);
                     setDraft((current) => ({
                       ...DEFAULT_OPTIONS,
@@ -1181,138 +1307,212 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                   }}
                 >
                   Reset to defaults
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled={Boolean(progress)} onSelect={() => commitOptions({ ...draft })}>
+                </Button>
+                <Button
+                  size="xs"
+                  disabled={!embeddingDirty || Boolean(progress)}
+                  onClick={() => commitOptions({ ...draft })}
+                >
                   Rebuild on Metal
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Clustering</DropdownMenuLabel>
-              <DropdownMenuGroup className="px-2 py-1.5">
-                <FieldGroup className="gap-3">
-                  <Field>
-                    <FieldLabel htmlFor="chemical-space-clustering">Method</FieldLabel>
-                    <NativeSelect
-                      id="chemical-space-clustering"
-                      size="sm"
-                      value={clusteringMethod}
-                      onChange={(event) => setClusteringMethod(event.currentTarget.value as ClusteringMethod)}
-                    >
-                      <NativeSelectOption value="none">None</NativeSelectOption>
-                      <NativeSelectOption value="butina">Butina · Tanimoto</NativeSelectOption>
-                    </NativeSelect>
-                  </Field>
-                  {clusteringMethod === "butina" ? (
-                    <ParameterField label="Tanimoto cutoff" value={clusterCutoff.toFixed(2)}>
-                      <Slider
-                        tone="neutral"
-                        min={0.3}
-                        max={0.95}
-                        step={0.01}
-                        value={[clusterCutoff]}
-                        onValueChange={([cutoff]) => setClusterCutoff(cutoff)}
-                      />
-                    </ParameterField>
-                  ) : null}
-                </FieldGroup>
-              </DropdownMenuGroup>
-              {clusteringMethod === "butina" ? (
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button className="shrink-0" variant="ghost" size="sm">
+                {clusterMode === "off" || !rankedClusters
+                  ? "Grouping"
+                  : `Grouping · ${rankedClusters.clusterCount}`}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              side="top"
+              sideOffset={8}
+              container={portalContainer}
+              className="w-72"
+              data-testid="chemical-space-cluster-controls"
+            >
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium text-foreground">Butina · Tanimoto</span>
+                <span className="text-xs text-muted-foreground">
+                  {clusterMode === "off"
+                    ? "Collects molecules that share a series into groups."
+                    : `Tanimoto ≥ ${clusterCutoffShown.toFixed(2)}${clusterMode === "auto" ? " · chosen for you" : ""}`}
+                </span>
+              </div>
+              {clusterMode === "off" ? (
+                <Button
+                  size="xs"
+                  onClick={() => {
+                    setClusterCutoff(CLUSTER_START_CUTOFF);
+                    setClusterMode("auto");
+                  }}
+                >
+                  Group similar
+                </Button>
+              ) : (
                 <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>
+                  <p className="text-xs text-muted-foreground">
                     {clusterRunning
-                      ? "Clustering on Metal…"
-                      : clusterError
-                        ? clusterError
-                        : `${clusterResult?.clusterCount ?? 0} clusters · click a point to select its cluster`}
-                  </DropdownMenuLabel>
-                </>
-              ) : null}
-              {activityColumnId ? (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Activity cliffs</DropdownMenuLabel>
-                  <DropdownMenuGroup className="px-2 py-1.5">
-                    <FieldGroup className="gap-3">
-                      <Field orientation="horizontal" className="items-center justify-between">
-                        <FieldLabel htmlFor="chemical-space-cliffs" className="text-xs">Discover cliffs</FieldLabel>
-                        <input
-                          id="chemical-space-cliffs"
-                          type="checkbox"
-                          className="size-3.5 accent-primary"
-                          checked={cliffsEnabled}
-                          onChange={(event) => setCliffsEnabled(event.currentTarget.checked)}
-                        />
-                      </Field>
-                      {cliffsEnabled ? (
-                        <>
-                          <ParameterField label="Min similarity" value={cliffMinSimilarity.toFixed(2)}>
-                            <Slider tone="neutral" min={0.3} max={0.95} step={0.01} value={[cliffMinSimilarity]} onValueChange={([value]) => setCliffMinSimilarity(value)} />
-                          </ParameterField>
-                          <ParameterField label={`Min Δ ${activityColumnLabel}`} value={cliffMinDelta.toFixed(2)}>
-                            <Slider tone="neutral" min={0} max={cliffDeltaMax} step={cliffDeltaStep} value={[Math.min(cliffMinDelta, cliffDeltaMax)]} onValueChange={([value]) => setCliffMinDelta(value)} />
-                          </ParameterField>
-                          <span className="text-[11px] text-muted-foreground">
-                            SALI = Δactivity / (1 − Tanimoto) · {cliffs.length} pair{cliffs.length === 1 ? "" : "s"}
-                          </span>
-                        </>
-                      ) : null}
-                    </FieldGroup>
-                  </DropdownMenuGroup>
-                </>
-              ) : null}
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Parameter study</DropdownMenuLabel>
-              <DropdownMenuGroup className="px-2 py-1.5">
-                <FieldGroup className="gap-3">
-                  <Field>
-                    <FieldLabel htmlFor="chemical-space-study-parameter">Parameter</FieldLabel>
-                    <NativeSelect
-                      id="chemical-space-study-parameter"
-                      size="sm"
-                      value={study.parameter}
-                      onChange={(event) => setStudy(studyDefaults(event.currentTarget.value as StudyParameter))}
+                      ? "Grouping on Metal…"
+                      : clusterError ?? clusterSummary ?? "No groups"}
+                  </p>
+                  {/* The nudges are the cutoff for anyone who would rather not
+                      think in Tanimoto; the slider below is the same knob, named. */}
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      className="flex-1"
+                      size="xs"
+                      variant="outline"
+                      disabled={clusterRunning || clusterCutoffShown - CLUSTER_CUTOFF_STEP < CLUSTER_MIN_CUTOFF}
+                      onClick={() => nudgeClusterCutoff(-CLUSTER_CUTOFF_STEP)}
                     >
-                      <NativeSelectOption value="neighbors">Neighbors</NativeSelectOption>
-                      {draft.method !== "tmap" ? (
-                        <>
-                          <NativeSelectOption value="minDist">Minimum distance</NativeSelectOption>
-                          <NativeSelectOption value="learningRate">Learning rate</NativeSelectOption>
-                        </>
-                      ) : null}
-                    </NativeSelect>
-                  </Field>
-                  <ParameterField
-                    label="Sweep range"
-                    value={`${formatStudyValue(study.parameter, study.range[0])}–${formatStudyValue(study.parameter, study.range[1])}`}
+                      Coarser
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      size="xs"
+                      variant="outline"
+                      disabled={clusterRunning || clusterCutoffShown + CLUSTER_CUTOFF_STEP > CLUSTER_MAX_CUTOFF}
+                      onClick={() => nudgeClusterCutoff(CLUSTER_CUTOFF_STEP)}
+                    >
+                      Finer
+                    </Button>
+                  </div>
+                  <Collapsible className="group/cutoff">
+                    <CollapsibleTrigger asChild>
+                      <Button className="w-full justify-between px-1" variant="ghost" size="xs">
+                        Advanced
+                        <ChevronDown className="transition-transform group-data-[state=open]/cutoff:rotate-180" />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="pt-2">
+                        <ParameterField label="Tanimoto ≥" value={clusterCutoffShown.toFixed(2)}>
+                          <Slider
+                            tone="neutral"
+                            min={CLUSTER_MIN_CUTOFF}
+                            max={CLUSTER_MAX_CUTOFF}
+                            step={0.01}
+                            value={[clusterCutoffShown]}
+                            onValueChange={([value]) => {
+                              setClusterCutoff(value);
+                              setClusterMode("manual");
+                            }}
+                          />
+                        </ParameterField>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                  <Button
+                    className="w-full"
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => setClusterMode("off")}
                   >
-                    <Slider
-                      tone="neutral"
-                      {...studySliderBounds(study.parameter)}
-                      value={study.range}
-                      onValueChange={(range) => setStudy((value) => ({ ...value, range: range as [number, number] }))}
-                    />
-                  </ParameterField>
-                  <ParameterField label="Frames" value={study.frames}>
-                    <Slider
-                      tone="neutral"
-                      min={3}
-                      max={16}
-                      step={1}
-                      value={[study.frames]}
-                      onValueChange={([frames]) => setStudy((value) => ({ ...value, frames }))}
-                    />
-                  </ParameterField>
-                </FieldGroup>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem disabled={Boolean(progress)} onSelect={() => void runStudy()}>
-                  Run animated study on Metal
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                    Clear grouping
+                  </Button>
+                </>
+              )}
+            </PopoverContent>
+          </Popover>
+          {/* Kept in the bar even without an activity column: a button that
+              vanishes reads as a feature that disappeared, so it names the
+              missing piece instead. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                className="shrink-0 aria-disabled:opacity-[var(--shadcn-disabled-opacity)]"
+                variant={cliffsEnabled ? "outline" : "ghost"}
+                size="sm"
+                aria-pressed={cliffsEnabled}
+                aria-disabled={!activityColumnId || undefined}
+                onClick={() => {
+                  if (!activityColumnId) return;
+                  setCliffsEnabled((value) => !value);
+                }}
+              >
+                {cliffsEnabled ? `Cliffs · ${cliffs.length}` : "Find cliffs"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent showArrow={false}>
+              {activityColumnId
+                ? "Pairs that look alike but differ sharply in activity"
+                : "Pick an Activity column first — a cliff is a jump in that value"}
+            </TooltipContent>
+          </Tooltip>
+          <Popover open={studyOpen} onOpenChange={setStudyOpen}>
+            <PopoverTrigger asChild>
+              <Button className="shrink-0" variant="ghost" size="sm">Study</Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              side="top"
+              sideOffset={8}
+              container={portalContainer}
+              className="w-72"
+            >
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium text-foreground">Parameter study</span>
+                <span className="text-xs text-muted-foreground">
+                  Sweeps one parameter and animates the maps it produces.
+                </span>
+              </div>
+              <FieldGroup className="gap-3">
+                <Field>
+                  <FieldLabel htmlFor="chemical-space-study-parameter">Parameter</FieldLabel>
+                  <NativeSelect
+                    id="chemical-space-study-parameter"
+                    size="sm"
+                    value={study.parameter}
+                    onChange={(event) => setStudy(studyDefaults(event.currentTarget.value as StudyParameter))}
+                  >
+                    <NativeSelectOption value="neighbors">Neighbors</NativeSelectOption>
+                    {draft.method !== "tmap" ? (
+                      <>
+                        <NativeSelectOption value="minDist">Minimum distance</NativeSelectOption>
+                        <NativeSelectOption value="learningRate">Learning rate</NativeSelectOption>
+                      </>
+                    ) : null}
+                  </NativeSelect>
+                </Field>
+                <ParameterField
+                  label="Sweep range"
+                  value={`${formatStudyValue(study.parameter, study.range[0])}–${formatStudyValue(study.parameter, study.range[1])}`}
+                >
+                  <Slider
+                    tone="neutral"
+                    {...studySliderBounds(study.parameter)}
+                    value={study.range}
+                    onValueChange={(range) => setStudy((value) => ({ ...value, range: range as [number, number] }))}
+                  />
+                </ParameterField>
+                <ParameterField label="Frames" value={study.frames}>
+                  <Slider
+                    tone="neutral"
+                    min={3}
+                    max={16}
+                    step={1}
+                    value={[study.frames]}
+                    onValueChange={([frames]) => setStudy((value) => ({ ...value, frames }))}
+                  />
+                </ParameterField>
+              </FieldGroup>
+              <Button
+                className="w-full"
+                size="xs"
+                disabled={Boolean(progress)}
+                onClick={() => {
+                  setStudyOpen(false);
+                  void runStudy();
+                }}
+              >
+                Run animated study on Metal
+              </Button>
+            </PopoverContent>
+          </Popover>
           {studyRunning ? (
             <div
               className="flex min-w-0 flex-1 items-center gap-2"
@@ -1371,13 +1571,30 @@ function CliffTable({
   activityLabel,
   activeCliffIndex,
   onSelectPair,
+  minSimilarity,
+  onMinSimilarityChange,
+  minDelta,
+  onMinDeltaChange,
+  deltaMax,
+  deltaStep,
+  previews,
+  activityValues,
 }: {
   cliffs: ActivityCliff[];
   activityLabel: string;
   activeCliffIndex: number | null;
   onSelectPair: (cliffIndex: number) => void;
+  minSimilarity: number;
+  onMinSimilarityChange: (value: number) => void;
+  minDelta: number;
+  onMinDeltaChange: (value: number) => void;
+  deltaMax: number;
+  deltaStep: number;
+  previews: Map<number, MoleculePreview>;
+  activityValues: Map<number, number>;
 }) {
   const [sortBy, setSortBy] = useState<"sali" | "delta" | "similarity">("sali");
+  const activeCliff = activeCliffIndex === null ? null : cliffs[activeCliffIndex] ?? null;
   const sorted = useMemo(
     () => cliffs
       .map((cliff, cliffIndex) => ({ cliff, cliffIndex }))
@@ -1399,6 +1616,71 @@ function CliffTable({
         <span>Activity cliffs · {activityLabel}</span>
         <span className="text-muted-foreground">{cliffs.length}</span>
       </div>
+      {/* The thresholds live with the result they filter. Keeping them in a
+          global menu meant tightening them until the table emptied also took
+          the controls away, with no way back. */}
+      <div className="flex flex-col gap-1.5 border-b border-border px-2 py-1.5">
+        <label className="flex items-center gap-2 text-[10px] text-muted-foreground">
+          <span className="w-16 shrink-0">min sim</span>
+          <Slider
+            className="flex-1"
+            tone="neutral"
+            min={0.3}
+            max={0.95}
+            step={0.01}
+            value={[minSimilarity]}
+            onValueChange={([value]) => onMinSimilarityChange(value)}
+          />
+          <span className="w-7 shrink-0 text-right font-mono">{minSimilarity.toFixed(2)}</span>
+        </label>
+        <label className="flex items-center gap-2 text-[10px] text-muted-foreground">
+          <span className="w-16 shrink-0 truncate">min Δ</span>
+          <Slider
+            className="flex-1"
+            tone="neutral"
+            min={0}
+            max={deltaMax}
+            step={deltaStep}
+            value={[minDelta]}
+            onValueChange={([value]) => onMinDeltaChange(value)}
+          />
+          <span className="w-7 shrink-0 text-right font-mono">{minDelta.toFixed(2)}</span>
+        </label>
+      </div>
+      {/* A cliff is a question about two structures, so the selected pair is
+          drawn the way DataWarrior's structure-pair document shows it: both
+          molecules, both activities, and what separates them. Row numbers alone
+          tell a chemist nothing about which change caused the jump. */}
+      {activeCliff ? (
+        <div className="flex flex-col gap-1 border-b border-border px-2 py-1.5">
+          <div className="grid grid-cols-2 gap-1">
+            {[activeCliff.sourceA, activeCliff.sourceB].map((sourceRecordId) => {
+              const molecule = previews.get(sourceRecordId) ?? null;
+              const activity = activityValues.get(sourceRecordId);
+              return (
+                <div key={sourceRecordId} className="flex min-w-0 flex-col gap-0.5">
+                  {molecule?.svgUrl ? (
+                    <img className="h-20 w-full rounded bg-white object-contain" src={molecule.svgUrl} alt="" />
+                  ) : (
+                    <div className="h-20 w-full animate-pulse rounded bg-muted" />
+                  )}
+                  <span className="truncate text-[10px] text-foreground">
+                    {molecule?.name ?? `#${sourceRecordId + 1}`}
+                  </span>
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {activity === undefined ? "—" : activity.toFixed(2)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
+            <span>sim {activeCliff.similarity.toFixed(2)}</span>
+            <span>Δ {activeCliff.delta.toFixed(2)}</span>
+            <span>SALI {activeCliff.sali.toFixed(1)}</span>
+          </div>
+        </div>
+      ) : null}
       <div className="grid grid-cols-[1fr_2.2rem_2.6rem_2.8rem] gap-1 border-b border-border px-2 py-1">
         <span className="text-muted-foreground">pair</span>
         {header("similarity", "sim")}
@@ -1406,6 +1688,11 @@ function CliffTable({
         {header("sali", "SALI")}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {sorted.length === 0 ? (
+          <p className="px-2 py-3 text-center text-[11px] text-muted-foreground">
+            No pair clears both thresholds.
+          </p>
+        ) : null}
         {sorted.map(({ cliff, cliffIndex }) => (
           <button
             key={`${cliff.sourceA}-${cliff.sourceB}`}
@@ -1476,6 +1763,10 @@ type ChemicalSpaceCanvasProps = {
   // Everything outside the set renders dimmed so the map mirrors the grid.
   visibleSourceIds: Set<number> | null;
   cliffs: ActivityCliff[];
+  // Strongest SALI each molecule takes part in. DataWarrior reads a cliff off
+  // marker size rather than off an edge, which is the only encoding that
+  // survives a layout the cliff graph did not produce.
+  cliffScores: Map<number, number>;
   activeCliffIndex: number | null;
   onSelectCliff: (cliffIndex: number) => void;
   tool: "navigate" | "lasso";
@@ -1550,6 +1841,7 @@ function ChemicalSpace2D({
   activityColors,
   visibleSourceIds,
   cliffs,
+  cliffScores,
   activeCliffIndex,
   onSelectCliff,
   tool,
@@ -1680,7 +1972,12 @@ function ChemicalSpace2D({
     baseContext.clearRect(0, 0, viewport.width, viewport.height);
     const styles = getComputedStyle(canvas);
     const selectedColor = styles.getPropertyValue("--primary").trim() || "#af52de";
-    const pointColor = styles.color || "#f5f5f7";
+    // The inherited foreground is solid #0d0d0d in the light theme, which renders a
+    // dense map as an ink blot. The secondary text tone carries its own alpha and
+    // stays legible on either background.
+    const pointColor = styles.getPropertyValue("--text-muted").trim()
+      || styles.color
+      || "#f5f5f7";
     const ringColor = pointColor;
     const basePointRadius = adaptivePointRadius(result.successfulRecords);
     // Points share the camera's sense of depth: zooming in grows them, zooming
@@ -1688,6 +1985,8 @@ function ChemicalSpace2D({
     // coordinate scale so dense regions stay readable.
     const zoomPointScale = Math.max(0.6, Math.min(2.6, Math.sqrt(camera.zoom)));
     const basePointOpacity = adaptivePointOpacity(result.successfulRecords);
+    // Cliffs arrive sorted by SALI, so the head of the list is the scale.
+    const strongestCliff = cliffs[0]?.sali ?? 0;
     if (result.treeEdges.length > 0) {
       baseContext.beginPath();
       const edgeStep = Math.max(1, Math.ceil(result.treeEdges.length / MAX_VISIBLE_EDGES));
@@ -1707,7 +2006,7 @@ function ChemicalSpace2D({
       baseContext.stroke();
     }
     if (cliffs.length > 0) {
-      const maxSali = cliffs[0]?.sali || 1;
+      const maxSali = strongestCliff || 1;
       const drawCliff = (cliffIndex: number, muted: boolean) => {
         const cliff = cliffs[cliffIndex];
         const leftBase = projected[cliff.indexA];
@@ -1721,8 +2020,11 @@ function ChemicalSpace2D({
         baseContext.moveTo(left.x, left.y);
         baseContext.lineTo(right.x, right.y);
         baseContext.strokeStyle = activeEdge ? "#f87171" : "#ef4444";
-        baseContext.globalAlpha = (0.35 + intensity * 0.5) * (muted ? 0.15 : 1);
-        baseContext.lineWidth = 1 + intensity * 2.5 + (activeEdge ? 1.5 : 0);
+        // Marker size now carries the cliff, so the edge only has to say which
+        // molecules pair up; drawn as heavily as before it read as a web of
+        // chords over a layout that never placed those molecules together.
+        baseContext.globalAlpha = (activeEdge ? 0.75 : 0.12 + intensity * 0.2) * (muted ? 0.3 : 1);
+        baseContext.lineWidth = 0.75 + intensity * 0.75 + (activeEdge ? 1.75 : 0);
         baseContext.stroke();
       };
       const visibleCliffCount = Math.min(cliffs.length, MAX_VISIBLE_CLIFF_EDGES);
@@ -1741,11 +2043,18 @@ function ChemicalSpace2D({
       const dimmed = visibleSourceIds !== null && !visibleSourceIds.has(point.sourceRecordId);
       const aggregateCount = screenIndex.renderPointCounts.get(point.sourceRecordId) ?? 1;
       const aggregateScale = 1 + Math.min(0.7, Math.log2(aggregateCount) * 0.12);
+      const cliffScore = cliffScores.get(point.sourceRecordId);
+      // Linear in SALI, as DataWarrior sizes its markers. A square root would be
+      // kinder to the tail, but the tail is most of the list: half the map grew
+      // and nothing stood out.
+      const cliffScale = cliffScore && strongestCliff > 0
+        ? 1 + 1.8 * (cliffScore / strongestCliff)
+        : 1;
       baseContext.beginPath();
       baseContext.arc(
         point.x,
         point.y,
-        basePointRadius * pointScale * zoomPointScale * aggregateScale,
+        basePointRadius * pointScale * zoomPointScale * aggregateScale * cliffScale,
         0,
         Math.PI * 2,
       );
@@ -1755,9 +2064,9 @@ function ChemicalSpace2D({
         ? DIMMED_POINT_COLOR
         : activityColor
           ? activityColor
-          : clusterId === null
+          : clusterId === null || clusterId >= CLUSTER_COLORS.length
             ? pointColor
-            : CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
+            : CLUSTER_COLORS[clusterId];
       baseContext.globalAlpha = dimmed
         ? Math.min(0.18, basePointOpacity)
         : Math.min(1, basePointOpacity * (1 + Math.log2(aggregateCount) * 0.08));
@@ -2058,7 +2367,7 @@ function ClusterLegend({ clusters }: { clusters: ChemicalSpaceClusterResult }) {
           <div key={clusterId} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
             <span
               className="size-2 rounded-full"
-              style={{ backgroundColor: CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length] }}
+              style={{ backgroundColor: CLUSTER_COLORS[clusterId] ?? DIMMED_POINT_COLOR }}
             />
             <span>#{clusterId + 1}</span>
             <span className="font-mono">{count}</span>
@@ -2072,6 +2381,47 @@ function ClusterLegend({ clusters }: { clusters: ChemicalSpaceClusterResult }) {
       ) : null}
     </div>
   );
+}
+
+function clusterSizes(clusters: ChemicalSpaceClusterResult): Map<number, number> {
+  const sizes = new Map<number, number>();
+  for (const clusterId of clusters.clusterIds) {
+    sizes.set(clusterId, (sizes.get(clusterId) ?? 0) + 1);
+  }
+  return sizes;
+}
+
+// Butina hands back clusters in discovery order, so the palette wrapped every
+// tenth group onto the same colour and "#7" meant nothing. Renumbering by size
+// makes the ten colours mean the ten biggest groups, and the tail reads neutral.
+function rankClustersBySize(
+  clusters: ChemicalSpaceClusterResult | null,
+): ChemicalSpaceClusterResult | null {
+  if (!clusters) return null;
+  const ranked = [...clusterSizes(clusters).entries()]
+    .sort((left, right) => right[1] - left[1] || left[0] - right[0])
+    .map(([clusterId]) => clusterId);
+  const rankById = new Map(ranked.map((clusterId, rank) => [clusterId, rank]));
+  return {
+    ...clusters,
+    clusterIds: clusters.clusterIds.map((clusterId) => rankById.get(clusterId) ?? clusterId),
+    representativeSourceRecordIds: ranked.map(
+      (clusterId) => clusters.representativeSourceRecordIds[clusterId],
+    ),
+  };
+}
+
+// Auto mode stops as soon as the split is worth reading; the two failure modes
+// pull the cutoff in opposite directions.
+function clusterVerdict(clusters: ChemicalSpaceClusterResult): "balanced" | "tooCoarse" | "tooFine" {
+  const total = clusters.clusterIds.length;
+  if (total === 0) return "balanced";
+  const sizes = [...clusterSizes(clusters).values()];
+  const biggest = Math.max(...sizes);
+  const singles = sizes.filter((size) => size === 1).length;
+  if (biggest / total > CLUSTER_DOMINANT_SHARE) return "tooCoarse";
+  if (singles / total > CLUSTER_SINGLETON_SHARE) return "tooFine";
+  return "balanced";
 }
 
 function alignedClusterIds(
@@ -2898,8 +3248,24 @@ function computeActivityCliffs(
     if (activityA === undefined || activityB === undefined) continue;
     const delta = Math.abs(activityA - activityB);
     if (delta < minDelta) continue;
-    const sali = delta / Math.max(1e-6, 1 - similarity);
+    const gap = 1 - similarity;
+    // Pairs the descriptor cannot separate (stereo isomers, tautomers, repeated
+    // measurements) leave no gap to divide by. Equal activity is no cliff at all;
+    // otherwise the pair is a genuine landscape singularity, marked for capping.
+    const sali = gap > 0 ? delta / gap : delta > 0 ? Number.POSITIVE_INFINITY : 0;
     cliffs.push({ sourceA, sourceB, indexA, indexB, similarity, delta, sali });
+  }
+  // DataWarrior pins those singularities to twice the strongest finite SALI so
+  // they stay on top without saturating the scale. Clamping the divisor instead
+  // scored them near 1e6, which buried every real cliff and flattened the edge
+  // shading, since the map reads intensity as sali / cliffs[0].sali.
+  const maxFiniteSali = cliffs.reduce(
+    (max, cliff) => (Number.isFinite(cliff.sali) && cliff.sali > max ? cliff.sali : max),
+    0,
+  );
+  for (const cliff of cliffs) {
+    // Δ keeps the ranking meaningful when every retained pair is a singularity.
+    if (cliff.sali === Number.POSITIVE_INFINITY) cliff.sali = 2 * maxFiniteSali || cliff.delta;
   }
   cliffs.sort((left, right) => right.sali - left.sali);
   return cliffs.slice(0, MAX_CLIFF_RESULTS);
