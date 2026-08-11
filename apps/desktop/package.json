@@ -23,6 +23,6 @@
     "motion": "^12.42.2",
     "radix-ui": "^1.6.4",
     "raphael": "2.3.0",
-    "recharts": "3.8.0"
+    "recharts": "3.10.1"
   }
 }
