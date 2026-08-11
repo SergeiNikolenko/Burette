@@ -1,6 +1,6 @@
 {
   "name": "burette",
-  "version": "2.1.30",
+  "version": "2.2.0",
   "description": "CLI installer for the Burette macOS app and Quick Look extension.",
   "license": "MIT",
   "type": "module",
