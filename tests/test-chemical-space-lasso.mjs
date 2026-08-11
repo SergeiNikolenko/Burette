@@ -77,6 +77,30 @@ assert.ok(
   panned.renderPoints.some((point) => point.sourceRecordId === 22),
   "panning must query molecules outside the initial viewport",
 );
+
+// Dragging may translate the cloud but must never reshuffle it. Screen-anchored
+// buckets used to hand a third of the cells to a different molecule per pixel of
+// pan, which is what made the map shimmer under the cursor.
+const clustered = buildSpatialPointIndex(Array.from({ length: 400 }, (_, index) => ({
+  x: 40 + (index % 20) * 3.7 + (index % 7) * 0.4,
+  y: 40 + Math.floor(index / 20) * 3.1 + (index % 5) * 0.3,
+  depth: 0,
+  sourceRecordId: index,
+})));
+const drawnAfterPan = (panX) => new Set(buildCameraScreenPointIndex(
+  clustered,
+  { width: 320, height: 240 },
+  { zoom: 1, panX, panY: 0 },
+).renderPoints.map((point) => point.sourceRecordId));
+const drawnAtRest = drawnAfterPan(0);
+assert.ok(drawnAtRest.size < 400, "the sample must aggregate, or the pan check proves nothing");
+for (const offset of [1, 2, 5]) {
+  assert.deepEqual(
+    drawnAfterPan(offset),
+    drawnAtRest,
+    `panning ${offset}px must redraw the same molecules`,
+  );
+}
 assert.deepEqual(
   new Set(sourceRecordIdsInSpatialPolygon(denseSpatial, [
     { x: 49, y: 49 },
