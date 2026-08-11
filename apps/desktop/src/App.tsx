@@ -285,6 +285,20 @@ export default function App() {
     setGridColumnFilter,
     clearGridColumnFilters,
   } = useAppGridFilterModel(activeDocument, documents, postMessageToViewerSource);
+  const openedGridFilterDockRef = useRef<string | null>(null);
+  useEffect(() => {
+    const documentId = activeDocument?.renderer === "grid2d" && activeGridFilterModel?.columns.length
+      ? activeDocument.id
+      : null;
+    if (!documentId) {
+      openedGridFilterDockRef.current = null;
+      return;
+    }
+    if (openedGridFilterDockRef.current === documentId) return;
+    openedGridFilterDockRef.current = documentId;
+    setDockOpen("right", true);
+    setDockActiveTab("right", "inspector");
+  }, [activeDocument, activeGridFilterModel?.columns.length, setDockActiveTab, setDockOpen]);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [viewerLigandSelections, setViewerLigandSelections] = useState<Record<string, ViewerLigandSelection | null>>({});
   const [structureOverlayModes, setStructureOverlayModes] = useState<Record<string, StructureOverlayMode>>({});
@@ -408,16 +422,18 @@ export default function App() {
     openQuickLookDocument,
     pushErrorStatus,
   });
+  const activeTextDocument = useAppActiveTextDocument({ activeTab, textDocuments });
   const {
     activeProject,
     setWorkspacePath,
     sidebarProjects,
     workspacePath,
   } = useAppSidebarProjects({
-    activeDocumentId: activeDocument?.id ?? null,
+    activeDocumentId: activeDocument?.id ?? activeTextDocument?.id ?? null,
     browserDevExplicitFolders,
     browserDevHasExplicitWorkspace: browserDevHasExplicitWorkspaceQuery,
     documents,
+    textDocuments,
     expandedProjectIds,
     hiddenProjectRoots,
     pinnedProjectRoots,
@@ -432,7 +448,6 @@ export default function App() {
     sidebarQuery,
   });
 
-  const activeTextDocument = useAppActiveTextDocument({ activeTab, textDocuments });
   const sourceEditing = useSourceEditingController({
     activeDocument,
     preferences,

@@ -6,7 +6,7 @@ import type { GridFilterColumn, GridFilterModel, ShellActions } from "./types";
 
 const MAX_COLUMNS = 40;
 
-const CHART_CONFIG = { count: { label: "Molecules", color: "var(--accent)" } } satisfies ChartConfig;
+const CHART_CONFIG = { count: { label: "Rows", color: "var(--accent)" } } satisfies ChartConfig;
 
 function formatNumber(value: number) {
   if (Number.isInteger(value)) return String(value);
@@ -193,7 +193,7 @@ function NumericFilter({
                       const bin = payload?.[0]?.payload as Bin | undefined;
                       return bin ? `${formatNumber(bin.start)} – ${formatNumber(bin.end)}` : "";
                     }}
-                    formatter={(value) => `${Number(value).toLocaleString()} molecules`}
+                    formatter={(value) => `${Number(value).toLocaleString()} rows`}
                   />
                 }
               />
@@ -330,7 +330,7 @@ export function GridFilterSection({ model, actions }: { model: GridFilterModel; 
       </div>
       {open ? <>
       <div className="grid-filter-count">
-        {model.visible.toLocaleString()} of {model.total.toLocaleString()} molecules
+        {model.visible.toLocaleString()} of {model.total.toLocaleString()} rows
       </div>
       <input
         type="search"

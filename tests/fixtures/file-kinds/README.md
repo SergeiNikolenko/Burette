@@ -7,9 +7,10 @@ something to open and close while judging the sidebar icons.
 They do not all become sidebar rows, and that is a property of the app rather
 than of these files. The project scan in `list_project_structure_files`
 (`apps/desktop/src-tauri/src/commands/documents.rs`) admits a file only if its
-extension is a registered preview format whose strategy is not `text`, and text
-files open into a separate `textDocuments` store that the sidebar never reads.
-The "row" column below says which side of that line each file falls on.
+extension is a registered preview format whose strategy is not `text`. Text
+files are absent from the initial folder scan, but appear in the sidebar after
+they are opened from their separate `textDocuments` store. The "row" column
+below describes the initial folder scan.
 
 | File | Kind | Row | Notes |
 | --- | --- | --- | --- |

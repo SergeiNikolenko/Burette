@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { buildSidebarProjects, type SidebarProjectStructure } from "../lib/sidebar-projects";
 import { scanBrowserDevFolders } from "../lib/browser-dev-startup";
 import { isTauriRuntime } from "../lib/tauri";
-import type { RecentStructure, ViewerDocument } from "../types";
+import type { RecentStructure, TextFileDocument, ViewerDocument } from "../types";
 import {
   isWebDemoWorkspace,
   subscribeWebDemoWorkspace,
@@ -50,6 +50,7 @@ type UseAppSidebarProjectsArgs = {
   browserDevExplicitFolders: string[];
   browserDevHasExplicitWorkspace: boolean;
   documents: ViewerDocument[];
+  textDocuments: TextFileDocument[];
   expandedProjectIds: string[];
   hiddenProjectRoots: string[];
   pinnedProjectRoots: string[];
@@ -72,6 +73,7 @@ export function useAppSidebarProjects({
   browserDevExplicitFolders,
   browserDevHasExplicitWorkspace,
   documents,
+  textDocuments,
   expandedProjectIds,
   hiddenProjectRoots,
   pinnedProjectRoots,
@@ -135,6 +137,7 @@ export function useAppSidebarProjects({
 
   const sidebarProjects = useMemo(() => buildSidebarProjects({
     documents,
+    textDocuments,
     recentStructures: sidebarRecentStructures,
     projectRoots: sidebarProjectRoots,
     projectStructures: sidebarProjectStructures,
@@ -143,7 +146,7 @@ export function useAppSidebarProjects({
     activeDocumentId,
     hiddenProjectRoots,
     pinnedStructurePaths,
-  }), [activeDocumentId, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, sidebarProjectRoots, sidebarProjectStructures, sidebarRecentStructures]);
+  }), [activeDocumentId, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, sidebarProjectRoots, sidebarProjectStructures, sidebarRecentStructures, textDocuments]);
 
   useEffect(() => {
     if (!isTauriRuntime()) {
