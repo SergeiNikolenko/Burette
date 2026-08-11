@@ -133,6 +133,7 @@ const [
   settingControl,
   dockPanel,
   structureInfoPanel,
+  gridFilterSection,
   foldingResultsPanel,
   foldingResultsLib,
   closeIcon,
@@ -340,6 +341,7 @@ const [
   source('apps/desktop/src/components/settings-panel/setting-control.tsx'),
   source('apps/desktop/src/components/dock-panel.tsx'),
   source('apps/desktop/src/components/structure-info-panel.tsx'),
+  source('apps/desktop/src/components/grid-filter-section.tsx'),
   source('apps/desktop/src/components/folding-results-panel.tsx'),
   source('apps/desktop/src/lib/folding-results.ts'),
   source('apps/desktop/src/components/close-icon.tsx'),
@@ -1308,7 +1310,8 @@ assert.match(appOpenDropControllerHook, /useOpenEvents\(openPaths, pushErrorStat
 assert.doesNotMatch(app, /isTauriRuntime\(\) && !startupOpenSettled/);
 assert.match(app, /useAppSidebarProjects/);
 assert.match(appSidebarProjectsHook, /buildSidebarProjects/);
-assert.match(appSidebarProjectsHook, /buildSidebarProjects\(\{\s*documents,\s*recentStructures: sidebarRecentStructures,/);
+assert.match(appSidebarProjectsHook, /buildSidebarProjects\(\{\s*documents,\s*textDocuments,\s*recentStructures: sidebarRecentStructures,/);
+assert.match(app, /activeDocumentId: activeDocument\?\.id \?\? activeTextDocument\?\.id \?\? null/);
 assert.doesNotMatch(app, /recentStructures:\s*documents\.length === 0 \? recentStructures : \[\]/);
 assert.doesNotMatch(app, /from "\.\/lib\/temporary-documents"/);
 assert.doesNotMatch(app, /!isTemporaryDocumentPath\(activeTab\.location\.path\)/);
@@ -2641,6 +2644,15 @@ assert.match(structureInfoPanel, /<ToggleGroup\s+type="single"/);
 // A radio group is never empty: re-clicking the active option must not clear it.
 assert.match(structureInfoPanel, /onValueChange=\{\(next\) => \{ if \(next\) onChange\(next\); \}\}/);
 assert.match(structureInfoPanel, /<Badge variant="secondary">\{brief\.format\}<\/Badge>/);
+assert.ok(
+  structureInfoPanel.indexOf("<GridFilterSection model={gridFilterModel} actions={actions} />")
+    < structureInfoPanel.indexOf("{assemblySymmetry.available ? ("),
+  "grid filters should be the first inspector section after the document header",
+);
+assert.match(app, /activeDocument\?\.renderer === "grid2d" && activeGridFilterModel\?\.columns\.length/);
+assert.match(app, /setDockOpen\("right", true\);\s*setDockActiveTab\("right", "inspector"\);/);
+assert.match(gridFilterSection, /CHART_CONFIG = \{ count: \{ label: "Rows"/);
+assert.match(gridFilterSection, /model\.visible\.toLocaleString\(\)\} of \{model\.total\.toLocaleString\(\)\} rows/);
 // The scene stepper is identified by the scene itself, not by the parser failing.
 assert.match(structureInfoPanel, /if \(sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT\)/);
 assert.match(structureInfoPanel, /function InlineSettingsSection\(\{ title, children \}/);
@@ -3784,7 +3796,10 @@ assert.match(sidebarProjects, /hiddenProjectRoots = \[\]/);
 assert.match(sidebarProjects, /const hiddenRoots = dedupeRoots\(hiddenProjectRoots\.filter\(\(root\) => !isTemporaryDocumentPath\(root\)\)\)/);
 assert.match(sidebarProjects, /if \(!explicitRootPath && resolveProjectRoot\(normalizedPath, hiddenProjectRoots\)\) return;/);
 assert.match(sidebarProjects, /const projectDocuments = documents\.filter\(isPersistentViewerDocument\)/);
-assert.match(sidebarProjects, /const openPaths = new Set\(projectDocuments\.map\(\(document\) => normalizePath\(document\.path\)\)\)/);
+assert.match(sidebarProjects, /const projectTextDocuments = textDocuments\.filter\(\(document\) => !isTemporaryDocumentPath\(document\.path\)\)/);
+assert.match(sidebarProjects, /const projectDocumentPaths = new Set\(projectDocuments\.map/);
+assert.match(sidebarProjects, /const openPaths = new Set\(\[\s*\.\.\.projectDocumentPaths,[\s\S]*\.\.\.projectTextDocuments\.map/);
+assert.match(sidebarProjects, /renderer: "renderer" in structure \? structure\.renderer : "text"/);
 assert.match(sidebarProjects, /for \(const document of projectDocuments\)/);
 assert.match(sidebarProjects, /recentStructures\.filter\(\(structure\) => !isTemporaryDocumentPath\(structure\.path\)\)/);
 assert.match(sidebarProjects, /function compareProjects\(left: SidebarProject, right: SidebarProject\) \{\s*if \(left\.isPinned !== right\.isPinned\) return left\.isPinned \? -1 : 1;\s*return left\.title\.localeCompare\(right\.title\);\s*\}/);

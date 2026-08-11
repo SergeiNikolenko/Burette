@@ -1,4 +1,4 @@
-import type { RecentStructure, ViewerDocument } from "../types";
+import type { RecentStructure, TextFileDocument, ViewerDocument } from "../types";
 import { isPersistentViewerDocument, isTemporaryDocumentPath, normalizeDocumentPath } from "./temporary-documents";
 
 export type SidebarProjectItem = {
@@ -38,6 +38,7 @@ type SidebarStructure = SidebarProjectStructure;
 
 export function buildSidebarProjects({
   documents,
+  textDocuments = [],
   recentStructures,
   projectRoots,
   projectStructures = [],
@@ -48,6 +49,7 @@ export function buildSidebarProjects({
   pinnedStructurePaths = [],
 }: {
   documents: ViewerDocument[];
+  textDocuments?: TextFileDocument[];
   recentStructures: RecentStructure[];
   projectRoots: string[];
   projectStructures?: SidebarProjectStructure[];
@@ -70,7 +72,12 @@ export function buildSidebarProjects({
       .map((path) => normalizePath(path)),
   );
   const projectDocuments = documents.filter(isPersistentViewerDocument);
-  const openPaths = new Set(projectDocuments.map((document) => normalizePath(document.path)));
+  const projectTextDocuments = textDocuments.filter((document) => !isTemporaryDocumentPath(document.path));
+  const projectDocumentPaths = new Set(projectDocuments.map((document) => normalizePath(document.path)));
+  const openPaths = new Set([
+    ...projectDocumentPaths,
+    ...projectTextDocuments.map((document) => normalizePath(document.path)),
+  ]);
   const knownPaths = new Set(openPaths);
   const projects = new Map<string, SidebarProject>();
 
@@ -80,6 +87,15 @@ export function buildSidebarProjects({
   }
 
   for (const document of projectDocuments) {
+    addStructureToProjects(projects, normalizedRoots, hiddenRoots, pinnedPaths, {
+      structure: document,
+      activeDocumentId,
+      source: "open",
+    });
+  }
+
+  for (const document of projectTextDocuments) {
+    if (projectDocumentPaths.has(normalizePath(document.path))) continue;
     addStructureToProjects(projects, normalizedRoots, hiddenRoots, pinnedPaths, {
       structure: document,
       activeDocumentId,
@@ -163,7 +179,7 @@ function addStructureToProjects(
     activeDocumentId,
     source,
   }: {
-    structure: ViewerDocument | SidebarStructure;
+    structure: ViewerDocument | TextFileDocument | SidebarStructure;
     activeDocumentId: string | null;
     source: "open" | "recent" | "project";
   },
@@ -184,7 +200,7 @@ function addStructureToProjects(
     title: itemTitle,
     relativePath,
     extension: "extension" in structure ? structure.extension : "",
-    renderer: structure.renderer,
+    renderer: "renderer" in structure ? structure.renderer : "text",
     byteCount: structure.byteCount,
     openedAt: source === "recent" && "openedAt" in structure ? structure.openedAt ?? null : null,
     source,
