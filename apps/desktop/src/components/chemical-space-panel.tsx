@@ -824,10 +824,13 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   }, [rankedClusters]);
   const embeddingDirty = (Object.keys(draft) as Array<keyof ChemicalSpaceOptions>)
     .some((key) => draft[key] !== options[key]);
+  // Auto mode leaves clusterCutoff at the value the run started from, so the
+  // cutoff worth showing is the one it settled on.
+  const clusterCutoffShown = clusterMode === "manual" ? clusterCutoff : clusterAppliedCutoff;
   // Nudging steps away from whatever the run settled on, and pins it: the point
   // of asking for coarser groups is that the next run must not tune it back.
   const nudgeClusterCutoff = (delta: number) => {
-    const next = Math.round((clusterAppliedCutoff + delta) * 100) / 100;
+    const next = Math.round((clusterCutoffShown + delta) * 100) / 100;
     setClusterCutoff(Math.min(CLUSTER_MAX_CUTOFF, Math.max(CLUSTER_MIN_CUTOFF, next)));
     setClusterMode("manual");
   };
@@ -1269,55 +1272,131 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               </div>
             </PopoverContent>
           </Popover>
-          {clusterMode === "off" ? (
-            <Button
-              className="shrink-0"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setClusterCutoff(CLUSTER_START_CUTOFF);
-                setClusterMode("auto");
-              }}
-            >
-              Group similar
-            </Button>
-          ) : (
-            <div className="flex shrink-0 items-center gap-1.5" data-testid="chemical-space-cluster-controls">
-              <span className="text-xs text-muted-foreground">
-                {clusterRunning
-                  ? "Grouping on Metal…"
-                  : clusterError ?? clusterSummary ?? "No groups"}
-              </span>
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={clusterRunning || clusterAppliedCutoff - CLUSTER_CUTOFF_STEP < CLUSTER_MIN_CUTOFF}
-                onClick={() => nudgeClusterCutoff(-CLUSTER_CUTOFF_STEP)}
-              >
-                Coarser
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button className="shrink-0" variant="ghost" size="sm">
+                {clusterMode === "off" || !rankedClusters
+                  ? "Grouping"
+                  : `Grouping · ${rankedClusters.clusterCount}`}
               </Button>
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={clusterRunning || clusterAppliedCutoff + CLUSTER_CUTOFF_STEP > CLUSTER_MAX_CUTOFF}
-                onClick={() => nudgeClusterCutoff(CLUSTER_CUTOFF_STEP)}
-              >
-                Finer
-              </Button>
-              <Button size="xs" variant="ghost" onClick={() => setClusterMode("off")}>Clear</Button>
-            </div>
-          )}
-          {activityColumnId ? (
-            <Button
-              className="shrink-0"
-              variant={cliffsEnabled ? "outline" : "ghost"}
-              size="sm"
-              aria-pressed={cliffsEnabled}
-              onClick={() => setCliffsEnabled((value) => !value)}
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              side="top"
+              sideOffset={8}
+              container={portalContainer}
+              className="w-72"
+              data-testid="chemical-space-cluster-controls"
             >
-              {cliffsEnabled ? `Cliffs · ${cliffs.length}` : "Find cliffs"}
-            </Button>
-          ) : null}
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium text-foreground">Butina · Tanimoto</span>
+                <span className="text-xs text-muted-foreground">
+                  {clusterMode === "off"
+                    ? "Collects molecules that share a series into groups."
+                    : `Tanimoto ≥ ${clusterCutoffShown.toFixed(2)}${clusterMode === "auto" ? " · chosen for you" : ""}`}
+                </span>
+              </div>
+              {clusterMode === "off" ? (
+                <Button
+                  size="xs"
+                  onClick={() => {
+                    setClusterCutoff(CLUSTER_START_CUTOFF);
+                    setClusterMode("auto");
+                  }}
+                >
+                  Group similar
+                </Button>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    {clusterRunning
+                      ? "Grouping on Metal…"
+                      : clusterError ?? clusterSummary ?? "No groups"}
+                  </p>
+                  {/* The nudges are the cutoff for anyone who would rather not
+                      think in Tanimoto; the slider below is the same knob, named. */}
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      className="flex-1"
+                      size="xs"
+                      variant="outline"
+                      disabled={clusterRunning || clusterCutoffShown - CLUSTER_CUTOFF_STEP < CLUSTER_MIN_CUTOFF}
+                      onClick={() => nudgeClusterCutoff(-CLUSTER_CUTOFF_STEP)}
+                    >
+                      Coarser
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      size="xs"
+                      variant="outline"
+                      disabled={clusterRunning || clusterCutoffShown + CLUSTER_CUTOFF_STEP > CLUSTER_MAX_CUTOFF}
+                      onClick={() => nudgeClusterCutoff(CLUSTER_CUTOFF_STEP)}
+                    >
+                      Finer
+                    </Button>
+                  </div>
+                  <Collapsible className="group/cutoff">
+                    <CollapsibleTrigger asChild>
+                      <Button className="w-full justify-between px-1" variant="ghost" size="xs">
+                        Advanced
+                        <ChevronDown className="transition-transform group-data-[state=open]/cutoff:rotate-180" />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="pt-2">
+                        <ParameterField label="Tanimoto ≥" value={clusterCutoffShown.toFixed(2)}>
+                          <Slider
+                            tone="neutral"
+                            min={CLUSTER_MIN_CUTOFF}
+                            max={CLUSTER_MAX_CUTOFF}
+                            step={0.01}
+                            value={[clusterCutoffShown]}
+                            onValueChange={([value]) => {
+                              setClusterCutoff(value);
+                              setClusterMode("manual");
+                            }}
+                          />
+                        </ParameterField>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                  <Button
+                    className="w-full"
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => setClusterMode("off")}
+                  >
+                    Clear grouping
+                  </Button>
+                </>
+              )}
+            </PopoverContent>
+          </Popover>
+          {/* Kept in the bar even without an activity column: a button that
+              vanishes reads as a feature that disappeared, so it names the
+              missing piece instead. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                className="shrink-0 aria-disabled:opacity-[var(--shadcn-disabled-opacity)]"
+                variant={cliffsEnabled ? "outline" : "ghost"}
+                size="sm"
+                aria-pressed={cliffsEnabled}
+                aria-disabled={!activityColumnId || undefined}
+                onClick={() => {
+                  if (!activityColumnId) return;
+                  setCliffsEnabled((value) => !value);
+                }}
+              >
+                {cliffsEnabled ? `Cliffs · ${cliffs.length}` : "Find cliffs"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent showArrow={false}>
+              {activityColumnId
+                ? "Pairs that look alike but differ sharply in activity"
+                : "Pick an Activity column first — a cliff is a jump in that value"}
+            </TooltipContent>
+          </Tooltip>
           <Popover open={studyOpen} onOpenChange={setStudyOpen}>
             <PopoverTrigger asChild>
               <Button className="shrink-0" variant="ghost" size="sm">Study</Button>

@@ -74,7 +74,7 @@ assert.match(
 assert.match(chemicalSpacePanel, /result\.treeEdges/);
 // Clustering is one button: no algorithm picker, no raw Tanimoto slider. The
 // run tunes its own cutoff and reports the shape of the split instead.
-assert.doesNotMatch(chemicalSpacePanel, /Butina · Tanimoto|Tanimoto cutoff/);
+assert.doesNotMatch(chemicalSpacePanel, /NativeSelectOption value="butina"|Tanimoto cutoff/);
 assert.match(chemicalSpacePanel, /Group similar/);
 assert.match(chemicalSpacePanel, /CLUSTER_START_CUTOFF = 0\.65/);
 assert.match(chemicalSpacePanel, /function clusterVerdict/);
