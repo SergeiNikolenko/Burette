@@ -133,6 +133,7 @@ const [
   settingControl,
   dockPanel,
   structureInfoPanel,
+  gridFilterSection,
   foldingResultsPanel,
   foldingResultsLib,
   closeIcon,
@@ -340,6 +341,7 @@ const [
   source('apps/desktop/src/components/settings-panel/setting-control.tsx'),
   source('apps/desktop/src/components/dock-panel.tsx'),
   source('apps/desktop/src/components/structure-info-panel.tsx'),
+  source('apps/desktop/src/components/grid-filter-section.tsx'),
   source('apps/desktop/src/components/folding-results-panel.tsx'),
   source('apps/desktop/src/lib/folding-results.ts'),
   source('apps/desktop/src/components/close-icon.tsx'),
@@ -2649,6 +2651,8 @@ assert.ok(
 );
 assert.match(app, /activeDocument\?\.renderer === "grid2d" && activeGridFilterModel\?\.columns\.length/);
 assert.match(app, /setDockOpen\("right", true\);\s*setDockActiveTab\("right", "inspector"\);/);
+assert.match(gridFilterSection, /CHART_CONFIG = \{ count: \{ label: "Rows"/);
+assert.match(gridFilterSection, /model\.visible\.toLocaleString\(\)\} of \{model\.total\.toLocaleString\(\)\} rows/);
 // The scene stepper is identified by the scene itself, not by the parser failing.
 assert.match(structureInfoPanel, /if \(sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT\)/);
 assert.match(structureInfoPanel, /function InlineSettingsSection\(\{ title, children \}/);
