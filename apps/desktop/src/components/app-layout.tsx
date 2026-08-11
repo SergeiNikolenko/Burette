@@ -626,7 +626,11 @@ export function AppLayout({
                       if (open !== bottomDockOpenRef.current) actions.setDockOpen("bottom", open);
                     }}
                   >
-                    <ResizablePanel id="main" className="main-panel" style={CLIPPED_PANEL_STYLE}>
+                    {/* A pixel floor, not a share of the window: the dock's own
+                        percentage cap used to stop the drag at 30% of main, which
+                        on a tall window left far more document than anyone wanted
+                        while working in the dock. */}
+                    <ResizablePanel id="main" className="main-panel" style={CLIPPED_PANEL_STYLE} minSize="140px">
                       <section className="main-stage">
                         <ViewerArea state={layoutState} actions={actions} />
                       </section>
@@ -643,7 +647,7 @@ export function AppLayout({
                       collapsedSize="0px"
                       defaultSize={`${initialBottomDockSize}px`}
                       minSize="180px"
-                      maxSize="70%"
+                      maxSize="92%"
                       groupResizeBehavior="preserve-pixel-size"
                     >
                       {/* Always mounted: DockPanel renders its own closed state

@@ -96,7 +96,10 @@ export function buildCameraScreenPointIndex(
       candidates,
     );
   }
-  return bucketRenderCandidates(candidates, renderCellSize);
+  // Buckets are measured in base units so the grid rides with the data instead
+  // of the screen. Panning then keeps picking the same molecule per cell; only
+  // zooming, which changes what a cell covers, may pick a different one.
+  return bucketRenderCandidates(candidates, renderCellSize / camera.zoom);
 }
 
 // Kept as a small compatibility surface for callers/tests that already hold
@@ -218,13 +221,12 @@ function collectRenderCandidates(
   candidates: RenderCandidate[],
 ) {
   if (!boundsIntersect(node.bounds, visibleBounds)) return;
-  const fullyVisible = boundsContain(visibleBounds, node.bounds);
   const screenWidth = (node.bounds.maxX - node.bounds.minX) * camera.zoom;
   const screenHeight = (node.bounds.maxY - node.bounds.minY) * camera.zoom;
-  if (
-    fullyVisible
-    && Math.max(screenWidth, screenHeight) <= renderCellSize
-  ) {
+  // Collapsing depends on the node's size alone, never on where the viewport
+  // sits. Requiring full visibility made a cluster expand into its members the
+  // moment a drag pushed it against an edge, which read as points popping.
+  if (Math.max(screenWidth, screenHeight) <= renderCellSize) {
     candidates.push({
       basePoint: node.representative,
       screenPoint: screenPointForCamera(node.representative, viewport, camera),
@@ -257,18 +259,18 @@ function collectRenderCandidates(
 
 function bucketRenderCandidates(
   candidates: RenderCandidate[],
-  renderCellSize: number,
+  baseCellSize: number,
 ): ScreenPointIndex {
   const renderBuckets = new Map<string, RenderCandidate>();
   const renderBucketCounts = new Map<string, number>();
   for (const candidate of candidates) {
-    const key = bucketKey(candidate.screenPoint, renderCellSize);
+    const key = bucketKey(candidate.basePoint, baseCellSize);
     renderBucketCounts.set(key, (renderBucketCounts.get(key) ?? 0) + candidate.count);
     const current = renderBuckets.get(key);
     if (
       !current
-      || distanceToCellCenter(candidate.screenPoint, renderCellSize)
-        < distanceToCellCenter(current.screenPoint, renderCellSize)
+      || distanceToCellCenter(candidate.basePoint, baseCellSize)
+        < distanceToCellCenter(current.basePoint, baseCellSize)
     ) {
       renderBuckets.set(key, candidate);
     }
@@ -532,15 +534,6 @@ function boundsIntersect(left: Bounds, right: Bounds) {
     || left.minX > right.maxX
     || left.maxY < right.minY
     || left.minY > right.maxY
-  );
-}
-
-function boundsContain(outer: Bounds, inner: Bounds) {
-  return (
-    inner.minX >= outer.minX
-    && inner.maxX <= outer.maxX
-    && inner.minY >= outer.minY
-    && inner.maxY <= outer.maxY
   );
 }
 
