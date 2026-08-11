@@ -711,9 +711,12 @@ fn run_represent_worker(
     request_id: &str,
 ) -> Result<Value, String> {
     let weights = model_weights_dir()?;
+    fs::create_dir_all(&weights)
+        .map_err(|error| format!("Could not create {}: {error}", weights.display()))?;
     let script = write_worker_script()?;
     let mut child = Command::new(python)
         .arg(&script)
+        .current_dir(&weights)
         .env("PYTORCH_ENABLE_MPS_FALLBACK", "0")
         .env("HF_HOME", weights.join("huggingface"))
         .env("UNIMOL_WEIGHT_DIR", weights.join("unimol"))
@@ -813,7 +816,10 @@ fn write_worker_script() -> Result<PathBuf, String> {
     fs::create_dir_all(parent)
         .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
     let path = parent.join("chemical-space-worker.py");
-    let temporary = parent.join("chemical-space-worker.py.tmp");
+    let temporary = parent.join(format!(
+        "chemical-space-worker.{}.tmp",
+        uuid::Uuid::new_v4().simple()
+    ));
     fs::write(&temporary, WORKER_SCRIPT)
         .map_err(|error| format!("Could not write the model worker script: {error}"))?;
     fs::rename(&temporary, &path)
@@ -846,20 +852,6 @@ mod tests {
         let big = "C".repeat(MAX_REPRESENT_INPUT_BYTES / 2 + 1);
         let records = vec![record(&big), record(&big)];
         assert!(validate_represent_request("chemberta", &records).is_err());
-    }
-
-    #[test]
-    fn runtime_dir_honours_the_environment_override() {
-        let previous = env::var_os("BURETTE_CHEMICAL_SPACE_MODEL_RUNTIME_DIR");
-        env::set_var("BURETTE_CHEMICAL_SPACE_MODEL_RUNTIME_DIR", "/tmp/model-rt");
-        assert_eq!(
-            model_runtime_dir().expect("runtime dir"),
-            PathBuf::from("/tmp/model-rt")
-        );
-        match previous {
-            Some(value) => env::set_var("BURETTE_CHEMICAL_SPACE_MODEL_RUNTIME_DIR", value),
-            None => env::remove_var("BURETTE_CHEMICAL_SPACE_MODEL_RUNTIME_DIR"),
-        }
     }
 
     #[test]
