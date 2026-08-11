@@ -159,6 +159,9 @@ const MAX_COMPLETED_EMBEDDING_CACHE_ENTRIES = 6;
 const MAX_COMPLETED_EMBEDDING_CACHE_RECORDS = 500_000;
 const GRID_SELECTION_BRIDGE_LIMIT = 100_000;
 const MAX_MOLECULE_PREVIEW_BASE64_BYTES = 350_000;
+// Enough to hold the pair on screen plus the ones just looked at, and small
+// enough that a long session does not accumulate megabytes of SVG.
+const MAX_CACHED_MOLECULE_PREVIEWS = 24;
 const MAX_LASSO_POINTS = 1_024;
 const MAX_HIGHLIGHT_POINTS = 4_096;
 const MAX_VISIBLE_EDGES = 30_000;
@@ -250,6 +253,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [scope, setScope] = useState<"all" | "filtered">("all");
   const [hovered, setHovered] = useState<number | null>(null);
   const [preview, setPreview] = useState<MoleculePreview | null>(null);
+  const [moleculePreviews, setMoleculePreviews] = useState<Map<number, MoleculePreview>>(new Map());
   const [pointScale, setPointScale] = useState(1);
   const [tmapLineScale, setTmapLineScale] = useState(DEFAULT_TMAP_LINE_SCALE);
   const [tool, setTool] = useState<"navigate" | "lasso">("navigate");
@@ -343,6 +347,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setVisibleSourceIds(null);
     setHovered(null);
     setPreview(null);
+    setMoleculePreviews(new Map());
     setTmapLineScale(DEFAULT_TMAP_LINE_SCALE);
     setCompletedStudy(null);
     setStudyPosition(0);
@@ -691,7 +696,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       }
       if (data.body.type === "chemicalSpaceMoleculePreview") {
         const index = Number(data.body.sourceRecordId);
-        if (!Number.isSafeInteger(index) || index < 0 || index !== hoveredRef.current) {
+        if (!Number.isSafeInteger(index) || index < 0) {
           setPreview(null);
           return;
         }
@@ -699,12 +704,29 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           && data.body.svgBase64.length <= MAX_MOLECULE_PREVIEW_BASE64_BYTES
           ? data.body.svgBase64
           : "";
-        setPreview({
+        const molecule: MoleculePreview = {
           sourceRecordId: index,
           name: typeof data.body.name === "string" ? data.body.name : `Molecule ${index + 1}`,
           smiles: typeof data.body.smiles === "string" ? data.body.smiles : "",
           svgUrl: svgBase64 ? `data:image/svg+xml;base64,${svgBase64}` : null,
+        };
+        // Both halves of a cliff pair have to be on screen at once, so answers
+        // are kept by molecule rather than only for whatever is hovered.
+        setMoleculePreviews((current) => {
+          const next = new Map(current);
+          next.delete(index);
+          next.set(index, molecule);
+          for (const oldest of next.keys()) {
+            if (next.size <= MAX_CACHED_MOLECULE_PREVIEWS) break;
+            next.delete(oldest);
+          }
+          return next;
         });
+        if (index !== hoveredRef.current) {
+          setPreview(null);
+          return;
+        }
+        setPreview(molecule);
       }
     };
     window.addEventListener("message", onMessage);
@@ -811,6 +833,17 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       : []),
     [cliffsEnabled, displayedResult, activityColumnId, activityValues, cliffMinSimilarity, cliffMinDelta],
   );
+  // Every molecule's strongest cliff. Edges alone could not carry this: they
+  // join fingerprint neighbours, while the map places molecules by UMAP, so a
+  // cliff routinely draws as a chord across the whole view.
+  const cliffScores = useMemo(() => {
+    const strongest = new Map<number, number>();
+    for (const cliff of cliffs) {
+      strongest.set(cliff.sourceA, Math.max(strongest.get(cliff.sourceA) ?? 0, cliff.sali));
+      strongest.set(cliff.sourceB, Math.max(strongest.get(cliff.sourceB) ?? 0, cliff.sali));
+    }
+    return strongest;
+  }, [cliffs]);
   const rankedClusters = useMemo(() => rankClustersBySize(clusterResult), [clusterResult]);
   // The bare cluster count hides what a chemist needs to judge the split, so the
   // button reports the shape of it instead.
@@ -844,6 +877,16 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   useEffect(() => {
     setActiveCliffIndex(null);
   }, [cliffs]);
+  // A selected pair has to show both structures, so ask the grid for whichever
+  // half is not cached yet. The reply lands in the cache and re-renders it.
+  const activeCliff = activeCliffIndex === null ? null : cliffs[activeCliffIndex] ?? null;
+  useEffect(() => {
+    if (!activeCliff) return;
+    for (const sourceRecordId of [activeCliff.sourceA, activeCliff.sourceB]) {
+      if (moleculePreviews.has(sourceRecordId)) continue;
+      postToGrid({ type: "chemicalSpaceHoverChanged", sourceRecordId });
+    }
+  }, [activeCliff, moleculePreviews, postToGrid]);
   const selectCliffPair = useCallback((cliffIndex: number) => {
     const cliff = cliffsRef.current[cliffIndex];
     if (!cliff) return;
@@ -1086,6 +1129,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               activityColors={activityColoring?.colors ?? null}
               visibleSourceIds={scope === "filtered" ? null : visibleSourceIds}
               cliffs={cliffs}
+              cliffScores={cliffScores}
               activeCliffIndex={activeCliffIndex}
               onSelectCliff={selectCliffPair}
               tool={tool}
@@ -1177,6 +1221,8 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               onMinDeltaChange={setCliffMinDelta}
               deltaMax={cliffDeltaMax}
               deltaStep={cliffDeltaStep}
+              previews={moleculePreviews}
+              activityValues={activityValues}
             />
           ) : null}
         </div>
@@ -1531,6 +1577,8 @@ function CliffTable({
   onMinDeltaChange,
   deltaMax,
   deltaStep,
+  previews,
+  activityValues,
 }: {
   cliffs: ActivityCliff[];
   activityLabel: string;
@@ -1542,8 +1590,11 @@ function CliffTable({
   onMinDeltaChange: (value: number) => void;
   deltaMax: number;
   deltaStep: number;
+  previews: Map<number, MoleculePreview>;
+  activityValues: Map<number, number>;
 }) {
   const [sortBy, setSortBy] = useState<"sali" | "delta" | "similarity">("sali");
+  const activeCliff = activeCliffIndex === null ? null : cliffs[activeCliffIndex] ?? null;
   const sorted = useMemo(
     () => cliffs
       .map((cliff, cliffIndex) => ({ cliff, cliffIndex }))
@@ -1596,6 +1647,40 @@ function CliffTable({
           <span className="w-7 shrink-0 text-right font-mono">{minDelta.toFixed(2)}</span>
         </label>
       </div>
+      {/* A cliff is a question about two structures, so the selected pair is
+          drawn the way DataWarrior's structure-pair document shows it: both
+          molecules, both activities, and what separates them. Row numbers alone
+          tell a chemist nothing about which change caused the jump. */}
+      {activeCliff ? (
+        <div className="flex flex-col gap-1 border-b border-border px-2 py-1.5">
+          <div className="grid grid-cols-2 gap-1">
+            {[activeCliff.sourceA, activeCliff.sourceB].map((sourceRecordId) => {
+              const molecule = previews.get(sourceRecordId) ?? null;
+              const activity = activityValues.get(sourceRecordId);
+              return (
+                <div key={sourceRecordId} className="flex min-w-0 flex-col gap-0.5">
+                  {molecule?.svgUrl ? (
+                    <img className="h-20 w-full rounded bg-white object-contain" src={molecule.svgUrl} alt="" />
+                  ) : (
+                    <div className="h-20 w-full animate-pulse rounded bg-muted" />
+                  )}
+                  <span className="truncate text-[10px] text-foreground">
+                    {molecule?.name ?? `#${sourceRecordId + 1}`}
+                  </span>
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {activity === undefined ? "—" : activity.toFixed(2)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
+            <span>sim {activeCliff.similarity.toFixed(2)}</span>
+            <span>Δ {activeCliff.delta.toFixed(2)}</span>
+            <span>SALI {activeCliff.sali.toFixed(1)}</span>
+          </div>
+        </div>
+      ) : null}
       <div className="grid grid-cols-[1fr_2.2rem_2.6rem_2.8rem] gap-1 border-b border-border px-2 py-1">
         <span className="text-muted-foreground">pair</span>
         {header("similarity", "sim")}
@@ -1678,6 +1763,10 @@ type ChemicalSpaceCanvasProps = {
   // Everything outside the set renders dimmed so the map mirrors the grid.
   visibleSourceIds: Set<number> | null;
   cliffs: ActivityCliff[];
+  // Strongest SALI each molecule takes part in. DataWarrior reads a cliff off
+  // marker size rather than off an edge, which is the only encoding that
+  // survives a layout the cliff graph did not produce.
+  cliffScores: Map<number, number>;
   activeCliffIndex: number | null;
   onSelectCliff: (cliffIndex: number) => void;
   tool: "navigate" | "lasso";
@@ -1752,6 +1841,7 @@ function ChemicalSpace2D({
   activityColors,
   visibleSourceIds,
   cliffs,
+  cliffScores,
   activeCliffIndex,
   onSelectCliff,
   tool,
@@ -1895,6 +1985,8 @@ function ChemicalSpace2D({
     // coordinate scale so dense regions stay readable.
     const zoomPointScale = Math.max(0.6, Math.min(2.6, Math.sqrt(camera.zoom)));
     const basePointOpacity = adaptivePointOpacity(result.successfulRecords);
+    // Cliffs arrive sorted by SALI, so the head of the list is the scale.
+    const strongestCliff = cliffs[0]?.sali ?? 0;
     if (result.treeEdges.length > 0) {
       baseContext.beginPath();
       const edgeStep = Math.max(1, Math.ceil(result.treeEdges.length / MAX_VISIBLE_EDGES));
@@ -1914,7 +2006,7 @@ function ChemicalSpace2D({
       baseContext.stroke();
     }
     if (cliffs.length > 0) {
-      const maxSali = cliffs[0]?.sali || 1;
+      const maxSali = strongestCliff || 1;
       const drawCliff = (cliffIndex: number, muted: boolean) => {
         const cliff = cliffs[cliffIndex];
         const leftBase = projected[cliff.indexA];
@@ -1928,8 +2020,11 @@ function ChemicalSpace2D({
         baseContext.moveTo(left.x, left.y);
         baseContext.lineTo(right.x, right.y);
         baseContext.strokeStyle = activeEdge ? "#f87171" : "#ef4444";
-        baseContext.globalAlpha = (0.35 + intensity * 0.5) * (muted ? 0.15 : 1);
-        baseContext.lineWidth = 1 + intensity * 2.5 + (activeEdge ? 1.5 : 0);
+        // Marker size now carries the cliff, so the edge only has to say which
+        // molecules pair up; drawn as heavily as before it read as a web of
+        // chords over a layout that never placed those molecules together.
+        baseContext.globalAlpha = (activeEdge ? 0.75 : 0.12 + intensity * 0.2) * (muted ? 0.3 : 1);
+        baseContext.lineWidth = 0.75 + intensity * 0.75 + (activeEdge ? 1.75 : 0);
         baseContext.stroke();
       };
       const visibleCliffCount = Math.min(cliffs.length, MAX_VISIBLE_CLIFF_EDGES);
@@ -1948,11 +2043,18 @@ function ChemicalSpace2D({
       const dimmed = visibleSourceIds !== null && !visibleSourceIds.has(point.sourceRecordId);
       const aggregateCount = screenIndex.renderPointCounts.get(point.sourceRecordId) ?? 1;
       const aggregateScale = 1 + Math.min(0.7, Math.log2(aggregateCount) * 0.12);
+      const cliffScore = cliffScores.get(point.sourceRecordId);
+      // Linear in SALI, as DataWarrior sizes its markers. A square root would be
+      // kinder to the tail, but the tail is most of the list: half the map grew
+      // and nothing stood out.
+      const cliffScale = cliffScore && strongestCliff > 0
+        ? 1 + 1.8 * (cliffScore / strongestCliff)
+        : 1;
       baseContext.beginPath();
       baseContext.arc(
         point.x,
         point.y,
-        basePointRadius * pointScale * zoomPointScale * aggregateScale,
+        basePointRadius * pointScale * zoomPointScale * aggregateScale * cliffScale,
         0,
         Math.PI * 2,
       );
