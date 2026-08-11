@@ -92,7 +92,7 @@
     "molstar": "5.11.0",
     "openchemlib": "9.24.0",
     "plotly.js-basic-dist-min": "^3.6.0",
-    "radix-ui": "^1.6.4",
+    "radix-ui": "^1.6.7",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-resizable-panels": "^4",
