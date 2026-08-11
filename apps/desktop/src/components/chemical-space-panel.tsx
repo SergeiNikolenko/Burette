@@ -1680,7 +1680,12 @@ function ChemicalSpace2D({
     baseContext.clearRect(0, 0, viewport.width, viewport.height);
     const styles = getComputedStyle(canvas);
     const selectedColor = styles.getPropertyValue("--primary").trim() || "#af52de";
-    const pointColor = styles.color || "#f5f5f7";
+    // The inherited foreground is solid #0d0d0d in the light theme, which renders a
+    // dense map as an ink blot. The secondary text tone carries its own alpha and
+    // stays legible on either background.
+    const pointColor = styles.getPropertyValue("--text-muted").trim()
+      || styles.color
+      || "#f5f5f7";
     const ringColor = pointColor;
     const basePointRadius = adaptivePointRadius(result.successfulRecords);
     // Points share the camera's sense of depth: zooming in grows them, zooming
