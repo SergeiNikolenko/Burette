@@ -72,8 +72,16 @@ assert.match(
   /\{ value: "umap", label: "UMAP" \},\s*\{ value: "tmap", label: "TMAP" \}/,
 );
 assert.match(chemicalSpacePanel, /result\.treeEdges/);
-assert.match(chemicalSpacePanel, /Butina · Tanimoto/);
-assert.match(chemicalSpacePanel, /Tanimoto cutoff/);
+// Clustering is one button: no algorithm picker, no raw Tanimoto slider. The
+// run tunes its own cutoff and reports the shape of the split instead.
+assert.doesNotMatch(chemicalSpacePanel, /Butina · Tanimoto|Tanimoto cutoff/);
+assert.match(chemicalSpacePanel, /Group similar/);
+assert.match(chemicalSpacePanel, /CLUSTER_START_CUTOFF = 0\.65/);
+assert.match(chemicalSpacePanel, /function clusterVerdict/);
+assert.match(chemicalSpacePanel, /biggest \/ total > CLUSTER_DOMINANT_SHARE/);
+assert.match(chemicalSpacePanel, /singles \/ total > CLUSTER_SINGLETON_SHARE/);
+assert.match(chemicalSpacePanel, /function rankClustersBySize/);
+assert.match(chemicalSpacePanel, /data-testid="chemical-space-cluster-controls"/);
 assert.match(chemicalSpacePanel, /clusterMembersForSource/);
 assert.match(chemicalSpace3d, /vertexColors: true/);
 assert.match(chemicalSpacePanel, /isKnownViewerMessageSource\(event\.source, documentId\)/);
@@ -327,16 +335,20 @@ assert.match(desktopStyles, /@keyframes burette-progress-indeterminate/);
 assert.doesNotMatch(chemicalSpacePanel, /studyParameterLabel/);
 assert.ok(
   chemicalSpacePanel.indexOf('data-testid="parameter-study-timeline"')
-    > chemicalSpacePanel.indexOf("{methodLabel(draft.method)} parameters"),
+    > chemicalSpacePanel.indexOf("<PopoverTrigger asChild>"),
 );
 assert.match(chemicalSpacePanel, /label="Cluster spread" value=\{draft\.spread\.toFixed\(1\)\}/);
 assert.match(chemicalSpacePanel, /min=\{1\} max=\{3\} step=\{0\.1\} value=\{\[draft\.spread\]\}/);
-assert.match(chemicalSpacePanel, /from "@\/components\/ui\/dropdown-menu"/);
-assert.match(chemicalSpacePanel, /<DropdownMenu modal=\{false\}>/);
-assert.match(chemicalSpacePanel, /<DropdownMenuGroup/);
-assert.match(chemicalSpacePanel, />\s*Reset to defaults\s*<\/DropdownMenuItem>/);
-assert.match(chemicalSpacePanel, />\s*Rebuild on Metal\s*<\/DropdownMenuItem>/);
-assert.match(chemicalSpacePanel, />\s*Run animated study on Metal\s*<\/DropdownMenuItem>/);
+// A menu closes on selection and hid the map behind itself; settings live in a
+// popover, and each concern owns its own toolbar button.
+assert.doesNotMatch(chemicalSpacePanel, /DropdownMenu/);
+assert.match(chemicalSpacePanel, /from "@\/components\/ui\/popover"/);
+assert.match(chemicalSpacePanel, /from "@\/components\/ui\/collapsible"/);
+assert.match(chemicalSpacePanel, />\s*Reset to defaults\s*<\/Button>/);
+assert.match(chemicalSpacePanel, />\s*Rebuild on Metal\s*<\/Button>/);
+assert.match(chemicalSpacePanel, />\s*Run animated study on Metal\s*<\/Button>/);
+// Editing a slider only stages the change, so the commit button has to say so.
+assert.match(chemicalSpacePanel, /disabled=\{!embeddingDirty \|\| Boolean\(progress\)\}/);
 assert.match(chemicalSpacePanel, /data-testid="chemical-space-visual-controls"/);
 assert.match(chemicalSpacePanel, /aria-label="TMAP tree line width"/);
 assert.doesNotMatch(chemicalSpacePanel, /TMAP tree edge length|tmapEdgeScale/);
@@ -480,7 +492,7 @@ assert.match(representativeExport, /table_only_record_count/);
 assert.match(chemicalSpacePanel, /if \(computeBlockedByIndex \|\| needsConfirmation\) return;/);
 assert.match(
   chemicalSpacePanel,
-  /clusteringMethod === "none" \|\| computeBlockedByIndex \|\| needsConfirmation/,
+  /clusterMode === "off" \|\| computeBlockedByIndex \|\| needsConfirmation/,
   "large-collection confirmation must gate clustering as well as embedding",
 );
 // An unanswered probe must gate too: indexState is null on first render, so

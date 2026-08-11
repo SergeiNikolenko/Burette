@@ -201,11 +201,15 @@ export function ChemicalSpace3D({
       displayedIndices.flatMap((index) => {
         const clusterId = ids[index] ?? null;
         const override = pointColorsRef.current[index] ?? null;
+        // Cluster ids arrive ranked by size, so the palette covers the biggest
+        // groups and everything past it stays neutral rather than borrowing a
+        // colour that already means another group.
+        const clusterColor = clusterId === null ? undefined : clusterColors[clusterId];
         const color = override
           ? new THREE.Color(override)
-          : clusterId === null
+          : clusterColor === undefined
             ? pointColor
-            : new THREE.Color(clusterColors[clusterId % clusterColors.length]);
+            : new THREE.Color(clusterColor);
         return [color.r, color.g, color.b];
       });
     geometry.setAttribute(
