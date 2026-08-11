@@ -94,6 +94,7 @@ export function ChemicalSpace3D({
   const onHoverRef = useRef(onHover);
   const onSelectRef = useRef(onSelect);
   const previewRef = useRef(preview);
+  const cameraPoseRef = useRef<{ position: number[]; target: number[] } | null>(null);
   const positionsRef = useRef(positions);
   const selectedRef = useRef(selected);
   const hoveredRef = useRef(hovered);
@@ -131,7 +132,7 @@ export function ChemicalSpace3D({
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
-    camera.position.set(2.4, 1.7, 2.6);
+    camera.position.fromArray(cameraPoseRef.current?.position ?? [2.4, 1.7, 2.6]);
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -148,7 +149,8 @@ export function ChemicalSpace3D({
     controls.enableZoom = false;
     controls.minDistance = 0.15;
     controls.maxDistance = 12;
-    controls.target.set(0, 0, 0);
+    controls.target.fromArray(cameraPoseRef.current?.target ?? [0, 0, 0]);
+    controls.update();
 
     const primaryColor = semanticColor(host, "text-primary", "#af52de");
     const foregroundColor = semanticColor(host, "text-foreground", "#f5f5f7");
@@ -589,6 +591,14 @@ export function ChemicalSpace3D({
     scheduleLodRefinement(0);
 
     return () => {
+      // The scene is rebuilt whenever the molecule set or the tree topology
+      // changes identity, which a parameter study does at every frame boundary.
+      // Losing the camera there meant the view snapped back mid-gesture, so the
+      // pose outlives the scene that held it.
+      cameraPoseRef.current = {
+        position: camera.position.toArray(),
+        target: controls.target.toArray(),
+      };
       runtimeRef.current = null;
       lodGeneration += 1;
       selectionGeneration += 1;
