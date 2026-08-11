@@ -134,7 +134,12 @@ assert.match(chemicalSpace, /const MAX_NEIGHBOR_EDGES: usize = 200_000/);
 assert.match(chemicalSpace, /let edge_limit = MAX_NEIGHBOR_EDGES/);
 assert.match(workflow, /neighborEdges: Array<\[number, number\]>/);
 assert.match(chemicalSpacePanel, /function computeActivityCliffs/);
-assert.match(chemicalSpacePanel, /delta \/ Math\.max\(1e-6, 1 - similarity\)/);
+// A descriptor-identical pair leaves no similarity gap to divide by. Clamping
+// the divisor scored those near 1e6, which buried every real cliff and flattened
+// the edge shading; they are capped at twice the strongest finite SALI instead.
+assert.doesNotMatch(chemicalSpacePanel, /Math\.max\(1e-6, 1 - similarity\)/);
+assert.match(chemicalSpacePanel, /const sali = gap > 0 \? delta \/ gap : delta > 0 \? Number\.POSITIVE_INFINITY : 0;/);
+assert.match(chemicalSpacePanel, /cliff\.sali = 2 \* maxFiniteSali \|\| cliff\.delta;/);
 assert.match(chemicalSpacePanel, /<CliffTable/);
 assert.match(chemicalSpace3d, /updateCliffs/);
 const corePositions = Array.from({ length: 92 }, (_, index) => {

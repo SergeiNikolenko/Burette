@@ -2898,8 +2898,24 @@ function computeActivityCliffs(
     if (activityA === undefined || activityB === undefined) continue;
     const delta = Math.abs(activityA - activityB);
     if (delta < minDelta) continue;
-    const sali = delta / Math.max(1e-6, 1 - similarity);
+    const gap = 1 - similarity;
+    // Pairs the descriptor cannot separate (stereo isomers, tautomers, repeated
+    // measurements) leave no gap to divide by. Equal activity is no cliff at all;
+    // otherwise the pair is a genuine landscape singularity, marked for capping.
+    const sali = gap > 0 ? delta / gap : delta > 0 ? Number.POSITIVE_INFINITY : 0;
     cliffs.push({ sourceA, sourceB, indexA, indexB, similarity, delta, sali });
+  }
+  // DataWarrior pins those singularities to twice the strongest finite SALI so
+  // they stay on top without saturating the scale. Clamping the divisor instead
+  // scored them near 1e6, which buried every real cliff and flattened the edge
+  // shading, since the map reads intensity as sali / cliffs[0].sali.
+  const maxFiniteSali = cliffs.reduce(
+    (max, cliff) => (Number.isFinite(cliff.sali) && cliff.sali > max ? cliff.sali : max),
+    0,
+  );
+  for (const cliff of cliffs) {
+    // Δ keeps the ranking meaningful when every retained pair is a singularity.
+    if (cliff.sali === Number.POSITIVE_INFINITY) cliff.sali = 2 * maxFiniteSali || cliff.delta;
   }
   cliffs.sort((left, right) => right.sali - left.sali);
   return cliffs.slice(0, MAX_CLIFF_RESULTS);
