@@ -23,6 +23,24 @@ assert.doesNotMatch(
   /sourceRecordIds\.join\(/u,
   "3D renders must not allocate an O(N) dependency string",
 );
+// A parameter study hands the scene a new molecule array at every frame
+// boundary, which tears the WebGL scene down and builds a fresh one. Without
+// carrying the pose across, the view snapped back to its default mid-gesture.
+assert.match(
+  source,
+  /cameraPoseRef\.current = \{[\s\S]*?position: camera\.position\.toArray\(\)/u,
+  "the camera pose must be saved when the scene is torn down",
+);
+assert.match(
+  source,
+  /camera\.position\.fromArray\(cameraPoseRef\.current\?\.position \?\? \[2\.4, 1\.7, 2\.6\]\)/u,
+  "a rebuilt scene must restore the saved camera pose",
+);
+assert.match(
+  source,
+  /controls\.target\.fromArray\(cameraPoseRef\.current\?\.target \?\? \[0, 0, 0\]\)/u,
+  "a rebuilt scene must restore the saved orbit target",
+);
 assert.match(
   source,
   /const hasClusters = useMemo\([\s\S]*clusterIds\.some\(/u,
