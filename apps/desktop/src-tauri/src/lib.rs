@@ -71,7 +71,12 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            app.manage(window_state::WindowStateRegistry::load(app.handle())?);
+            let window_state = window_state::WindowStateRegistry::load(app.handle())
+                .unwrap_or_else(|error| {
+                    eprintln!("workspace window persistence is unavailable: {error}");
+                    window_state::WindowStateRegistry::unavailable()
+                });
+            app.manage(window_state);
             let compute_coordinator = app
                 .path()
                 .app_data_dir()

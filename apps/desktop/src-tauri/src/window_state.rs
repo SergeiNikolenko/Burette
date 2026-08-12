@@ -48,7 +48,7 @@ impl Default for WindowManifest {
 }
 
 pub(crate) struct WindowStateRegistry {
-    path: PathBuf,
+    path: Option<PathBuf>,
     manifest: Mutex<WindowManifest>,
 }
 
@@ -67,9 +67,16 @@ impl WindowStateRegistry {
             .map(normalize_manifest)
             .unwrap_or_default();
         Ok(Self {
-            path,
+            path: Some(path),
             manifest: Mutex::new(manifest),
         })
+    }
+
+    pub(crate) fn unavailable() -> Self {
+        Self {
+            path: None,
+            manifest: Mutex::new(WindowManifest::default()),
+        }
     }
 
     pub(crate) fn restoration_order(&self) -> (Vec<String>, Option<String>) {
@@ -278,10 +285,13 @@ impl WindowStateRegistry {
     }
 
     fn write(&self, manifest: &WindowManifest) -> io::Result<()> {
+        let Some(path) = self.path.as_ref() else {
+            return Ok(());
+        };
         let bytes = serde_json::to_vec_pretty(manifest)?;
-        let temporary = self.path.with_extension("json.tmp");
+        let temporary = path.with_extension("json.tmp");
         fs::write(&temporary, bytes)?;
-        fs::rename(temporary, &self.path)
+        fs::rename(temporary, path)
     }
 }
 
@@ -345,18 +355,19 @@ fn visible_geometry(saved: WindowGeometry, monitors: &[Monitor]) -> WindowGeomet
         .iter()
         .map(|monitor| monitor.work_area())
         .max_by_key(|area| {
-            intersection_area(
+            let (width, height) = intersection_size(
                 saved,
                 area.position.x,
                 area.position.y,
                 area.size.width,
                 area.size.height,
-            )
+            );
+            i64::from(width) * i64::from(height)
         })
     else {
         return saved;
     };
-    let intersection = intersection_area(
+    let (visible_width, visible_height) = intersection_size(
         saved,
         work_area.position.x,
         work_area.position.y,
@@ -365,7 +376,7 @@ fn visible_geometry(saved: WindowGeometry, monitors: &[Monitor]) -> WindowGeomet
     );
     let width = saved.width.min(work_area.size.width);
     let height = saved.height.min(work_area.size.height);
-    if intersection >= i64::from(MIN_VISIBLE_WIDTH * MIN_VISIBLE_HEIGHT) {
+    if visible_width >= MIN_VISIBLE_WIDTH && visible_height >= MIN_VISIBLE_HEIGHT {
         return WindowGeometry {
             width,
             height,
@@ -388,18 +399,29 @@ fn intersection_area(
     area_width: u32,
     area_height: u32,
 ) -> i64 {
+    let (width, height) = intersection_size(geometry, area_x, area_y, area_width, area_height);
+    i64::from(width) * i64::from(height)
+}
+
+fn intersection_size(
+    geometry: WindowGeometry,
+    area_x: i32,
+    area_y: i32,
+    area_width: u32,
+    area_height: u32,
+) -> (i32, i32) {
     let left = i64::from(geometry.x).max(i64::from(area_x));
     let top = i64::from(geometry.y).max(i64::from(area_y));
     let right = (i64::from(geometry.x) + i64::from(geometry.width))
         .min(i64::from(area_x) + i64::from(area_width));
     let bottom = (i64::from(geometry.y) + i64::from(geometry.height))
         .min(i64::from(area_y) + i64::from(area_height));
-    (right - left).max(0) * (bottom - top).max(0)
+    ((right - left).max(0) as i32, (bottom - top).max(0) as i32)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{intersection_area, merge_geometry, WindowGeometry};
+    use super::{intersection_area, intersection_size, merge_geometry, WindowGeometry};
 
     fn geometry(x: i32, y: i32, width: u32, height: u32) -> WindowGeometry {
         WindowGeometry {
@@ -425,6 +447,14 @@ mod tests {
         assert_eq!(
             intersection_area(geometry(3000, 2000, 600, 400), 0, 0, 1920, 1080),
             0
+        );
+    }
+
+    #[test]
+    fn thin_visible_strip_does_not_meet_both_visibility_thresholds() {
+        assert_eq!(
+            intersection_size(geometry(1912, 100, 600, 760), 0, 0, 1920, 1080),
+            (8, 760)
         );
     }
 
