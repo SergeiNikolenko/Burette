@@ -22,61 +22,8 @@ globalThis.window = { localStorage: globalThis.localStorage };
 
 const { getShellStoreSnapshot, useShellStore } = await import("../apps/desktop/src/stores/shell-store.ts");
 
-const initial = useShellStore.getState();
-assert.equal(initial.rightDockOpen, false);
-assert.deepEqual(initial.rightDockTabs.map((tab) => tab.kind), [
-  "inspector",
-  "text",
-  "files",
-]);
-assert.deepEqual(initial.bottomDockTabs.map((tab) => tab.kind), [
-  "files",
-  "chemical-space",
-  "jobs",
-]);
-useShellStore.getState().openDockTab("right", "descriptors");
-assert.deepEqual(useShellStore.getState().rightDockTabs.map((tab) => tab.kind), [
-  "inspector",
-  "text",
-  "files",
-]);
-
-useShellStore.setState({
-  bottomDockOpen: false,
-  bottomDockTabs: [{ id: "dock-files", kind: "files" }],
-});
-useShellStore.getState().setDockOpen("bottom", true);
-assert.deepEqual(useShellStore.getState().bottomDockTabs.map((tab) => tab.kind), [
-  "files",
-  "chemical-space",
-  "jobs",
-]);
-
 const restoredSnapshot = getShellStoreSnapshot();
-restoredSnapshot.rightDockOpen = true;
-restoredSnapshot.rightDockTabs = [
-  { id: "dock-inspector", kind: "inspector" },
-  { id: "dock-chemical-space", kind: "chemical-space" },
-  { id: "dock-text", kind: "text" },
-  { id: "dock-files", kind: "files" },
-];
-restoredSnapshot.bottomDockOpen = true;
-restoredSnapshot.bottomDockTabs = [
-  { id: "dock-files", kind: "files" },
-  { id: "dock-jobs", kind: "jobs" },
-];
 useShellStore.getState().restoreSnapshot(restoredSnapshot);
-assert.deepEqual(useShellStore.getState().rightDockTabs.map((tab) => tab.kind), [
-  "inspector",
-  "text",
-  "files",
-  "chemical-space",
-]);
-assert.deepEqual(useShellStore.getState().bottomDockTabs.map((tab) => tab.kind), [
-  "files",
-  "chemical-space",
-  "jobs",
-]);
 
 useShellStore.setState({
   projectRoots: ["/tmp/live-project", "/tmp/missing-project"],
@@ -150,17 +97,5 @@ assert.deepEqual(useShellStore.getState().projectNameOverrides, {
   "/tmp/live-project": "Live Project",
   "/tmp/implicit-project": "Implicit Project",
 });
-
-useShellStore.setState({ dockDroppedStructures: [] });
-useShellStore.getState().addDockDrop({
-  area: "bottom",
-  tabKind: "jobs",
-  payload: {
-    paths: ["/tmp/mini.pdb"],
-    records: [],
-    items: [{ kind: "file", title: "mini.pdb", path: "/tmp/mini.pdb" }],
-  },
-});
-assert.deepEqual(useShellStore.getState().dockDroppedStructures.map((item) => item.title), ["mini.pdb"]);
 
 console.log("shell store behavior tests passed");

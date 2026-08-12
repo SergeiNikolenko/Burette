@@ -717,6 +717,11 @@ pub(crate) fn authorize_exit<R: Runtime>(
     if permit.live_windows != live_windows {
         return Err("The app window set changed after exit validation.".into());
     }
+    if let Some(registry) = app.try_state::<crate::window_state::WindowStateRegistry>() {
+        if let Err(error) = registry.capture_open_windows(app) {
+            eprintln!("failed to persist workspace windows before exit: {error}");
+        }
+    }
     let guard = app
         .try_state::<QuitGuard>()
         .ok_or_else(|| "quit guard is not configured".to_string())?;

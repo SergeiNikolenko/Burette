@@ -40,6 +40,10 @@ const {
   useShellStore,
 } = await import("../apps/desktop/src/stores/shell-store.ts");
 const {
+  getTabWorkspace,
+  useTabWorkspaceStore,
+} = await import("../apps/desktop/src/stores/tab-workspace-store.ts");
+const {
   configureWorkspaceHistoryExtras,
   useWorkspaceHistoryStore,
 } = await import("../apps/desktop/src/stores/workspace-history-store.ts");
@@ -72,6 +76,7 @@ function resetStores() {
     recentStructures: [],
   });
   useShellStore.getState().restoreSnapshot(initialShell);
+  useTabWorkspaceStore.setState({ workspaces: {} });
   useSettingsStore.getState().restoreSnapshot({ preferences: defaultPreferences });
   configureWorkspaceHistoryExtras({});
   useWorkspaceHistoryStore.getState().clearWorkspaceHistory();
@@ -91,12 +96,18 @@ assert.equal(useMoleculeStore.getState().activeDocumentId, "doc-1");
 
 resetStores();
 useMoleculeStore.getState().addDocuments([document("doc-2", "/tmp/two.pdb")]);
+const closedTabId = useMoleculeStore.getState().activeTabId;
+useTabWorkspaceStore.getState().setDockOpen(closedTabId, "right", true);
+useTabWorkspaceStore.getState().setDockSize(closedTabId, "right", 512);
 useWorkspaceHistoryStore.getState().withWorkspaceHistory("Close document", "documents", () => {
   useMoleculeStore.getState().closeActiveDocument();
 });
 assert.equal(useMoleculeStore.getState().documents.length, 0);
+assert.equal(useTabWorkspaceStore.getState().workspaces[closedTabId], undefined);
 assert.equal(useWorkspaceHistoryStore.getState().undoWorkspaceAction(), true);
 assert.equal(useMoleculeStore.getState().activeDocumentId, "doc-2");
+assert.equal(getTabWorkspace(closedTabId).right.open, true);
+assert.equal(getTabWorkspace(closedTabId).right.size, 512);
 
 resetStores();
 useWorkspaceHistoryStore.getState().withWorkspaceHistory("Change renderer", "settings", () => {
@@ -197,5 +208,12 @@ resetStores();
 useWorkspaceHistoryStore.getState().withWorkspaceHistory("No-op", "layout", () => {});
 assert.equal(useWorkspaceHistoryStore.getState().undoStack.length, 0);
 assert.deepEqual(getMoleculeStoreSnapshot().documents, []);
+
+for (let index = 0; index < 120; index += 1) {
+  useWorkspaceHistoryStore.getState().withWorkspaceHistory(`Resize sidebar ${index}`, "layout", () => {
+    useShellStore.getState().setSidebarWidth(240 + index);
+  });
+}
+assert.equal(useWorkspaceHistoryStore.getState().undoStack.length, 100);
 
 console.log("workspace history store tests passed");

@@ -5,6 +5,8 @@ const TEMPORARY_DOCUMENT_PROTOCOLS = [
   "burette-collection://",
   "burette-context://",
   "burette-docking://",
+  "burette-ketcher-export://",
+  "burette-compute-report://",
 ];
 
 const TEMPORARY_VIEWER_SEGMENTS = [

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { browserDevRuntimeNeedsRefresh } from "../lib/browser-dev-documents";
 import {
   browserDevDockingFromLocation,
@@ -9,7 +10,7 @@ import { dockingRequestForDrop, isMolstarCoordinateTrajectorySource } from "../l
 import { parentDirectory } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
-import type { MoleculeTab } from "../stores/molecule-store";
+import { useMoleculeStore, type MoleculeTab } from "../stores/molecule-store";
 import type { DockingSceneMode, ViewerDocument } from "../types";
 import { isWebDemoWorkspace, webDemoProjectRoot } from "../lib/web-demo-workspace";
 
@@ -128,10 +129,15 @@ export function useAppStartupEffects({
     if (paths.length === 0) return;
     openedPersistedTabsRef.current = true;
     const restoreTabId = activeTabId;
-    void Promise.resolve(openPaths(paths)).then(() => {
-      if (restoreTabId) setActiveTab(restoreTabId);
-    });
-  }, [activeTabId, documents.length, openPaths, setActiveTab, tabs]);
+    void invoke<string[]>("existing_paths", { paths }).then(async (existingPaths) => {
+      useMoleculeStore.getState().pruneMissingFileTabs(paths, existingPaths);
+      if (existingPaths.length === 0) return;
+      await openPaths(existingPaths);
+      if (restoreTabId && useMoleculeStore.getState().tabs.some((tab) => tab.id === restoreTabId)) {
+        setActiveTab(restoreTabId);
+      }
+    }).catch((error) => pushErrorStatus(error, "Restore saved tabs failed"));
+  }, [activeTabId, documents.length, openPaths, pushErrorStatus, setActiveTab, tabs]);
 
   useEffect(() => {
     if (isTauriRuntime()) return;
