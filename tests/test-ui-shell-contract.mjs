@@ -7360,8 +7360,9 @@ assert.match(gridUi, /function ControlTooltip\(\{ label \}: \{ label: string \}\
 // Save stays on the toolbar; Save As and Undo moved into the overflow menu,
 // all three carrying their hint through the button `title` from grid-viewer.
 assert.match(gridUi, /id="save-grid"[\s\S]*?title=\{props\.saveTitle\}/);
-assert.match(gridUi, /id="save-grid-as"[\s\S]*?title=\{props\.saveAsTitle\}/);
-assert.match(gridUi, /id="undo-grid-edit"[\s\S]*?title=\{props\.undoTitle\}/);
+assert.match(gridUi, /id="save-grid-as"[\s\S]*?aria-description=\{props\.saveAsTitle\}/);
+assert.match(gridUi, /id="undo-grid-edit"[\s\S]*?aria-description=\{props\.undoTitle\}/);
+assert.doesNotMatch(gridUi, /className="ab-item"[\s\S]{0,240}?title=/);
 assert.match(gridViewer, /saveAsTitle: !editing[\s\S]*?'Save this collection as a new file'/);
 assert.match(gridUi, /ariaLabel="Grid view mode"/);
 assert.match(gridUi, /dataAttribute="buret-grid-view-mode"/);
@@ -7617,6 +7618,12 @@ assert.match(gridViewer, /syncRdkitCoordinatesControl\(\);\s*syncGridEditControl
 assert.match(gridViewer, /document\.getElementById\('footer'\)\.textContent = footerText/);
 assert.match(gridViewer, /function hasMolblockInputCoordinates\(value\)/);
 assert.match(gridViewer, /Math\.abs\(x\) > 1e-6 \|\| Math\.abs\(y\) > 1e-6 \|\| Math\.abs\(z\) > 1e-6/);
+assert.match(gridViewer, /function hasMolblockInput3DCoordinates\(value\)/);
+assert.match(gridViewer, /selectedInput3d: selectedRowsHaveInput3dCoordinates\(\)/);
+assert.match(gridViewer, /rows\.every\(row => hasMolblockInput3DCoordinates\(row\.molblock\)\)/);
+assert.match(gridUi, /selectedInput3d: boolean/);
+assert.match(gridUi, /disabled=\{props\.generating3d \|\| noSelection \|\| !props\.selectedInput3d\}/);
+assert.match(gridUi, /disabled=\{props\.evaluatingSemiempirical \|\| noSelection \|\| !props\.selectedInput3d\}/);
 assert.match(gridViewer, /store\(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, state\.rdkitUseInputCoords \? 'true' : 'false'\)/);
 assert.match(gridViewer, /state\.svgCache\.clear\(\)/);
 assert.match(gridViewer, /function selectAllRows\(cfg\)/);
@@ -7827,8 +7834,8 @@ assert.match(appGridConformerMessagesHook, /reply\("gridGenerate3DError"/);
 assert.match(appGridConformerMessagesHook, /invoke<ConformerGenerationResult>\("generate_3d_conformer", \{ request \}\)/);
 assert.match(appGridConformerMessagesHook, /generateBrowserDev3DConformer\(request\)/);
 assert.match(appGridConformerMessagesHook, /\.\.\.conformerGenerationPreferences\(preferences\)/);
-assert.match(appGridConformerMessagesHook, /generatedTexts\.push\(generated3DPoseSetText\(text, extension, conformer\.text, "single"\)\.trimEnd\(\)\)/);
-assert.match(appGridConformerMessagesHook, /Generated 3D for \$\{generatedTexts\.length\} molecule/);
+assert.match(appGridConformerMessagesHook, /generatedCount \+= 1/);
+assert.match(appGridConformerMessagesHook, /Generated 3D for \$\{generatedCount\} molecule/);
 assert.match(appKetcherViewerMessagesHook, /body\?\.type === "openSdfKetcherDocument"/);
 assert.match(appSdfViewerMessagesHook, /const controlLabel = bodyString\(body\.controlLabel\)\.trim\(\) \|\| "Molecule"/);
 assert.match(appSdfViewerMessagesHook, /reloadOptions: \{ sdfPoseControlLabel: controlLabel \}/);
