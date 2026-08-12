@@ -102,7 +102,10 @@ const SDF_CONTEXT_STYLE_OPTIONS = [
 type SdfContextStyleOption = typeof SDF_CONTEXT_STYLE_OPTIONS[number];
 type SdfContextStyle = SdfContextStyleOption["value"];
 type SdfContextColor = "gray" | "colored";
-const XYZ_FRAME_CONTEXT_STYLE_OPTIONS = [
+// Small molecules have no polymer chains, so a cartoon representation falls
+// back to ball-and-stick inside the viewer; offering the button would just be
+// a second Ball+Stick. XYZ frames and SDF collections both use this subset.
+const SMALL_MOLECULE_CONTEXT_STYLE_OPTIONS = [
   { value: "line", label: "Line" },
   { value: "ball-and-stick", label: "Ball+Stick" },
   { value: "spacefill", label: "Spacefill" },
@@ -110,6 +113,7 @@ const XYZ_FRAME_CONTEXT_STYLE_OPTIONS = [
   { value: "match", label: "Match" },
 ] as const satisfies readonly SdfContextStyleOption[];
 const SDF_CONTEXT_OPACITY_DEFAULT = 0.4;
+const SDF_CONTEXT_OPACITY_SEND_DELAY_MS = 150;
 const SDF_CONTEXT_OPACITY_MIN = 0.04;
 const SDF_CONTEXT_OPACITY_MAX = 1;
 const SDF_CONTEXT_STYLE_DEFAULT: SdfContextStyle = "match";
@@ -1429,6 +1433,7 @@ function structureContextStyleCardFor(
       detail: "Context molecules",
       styleAriaLabel: "All background style",
       opacityAriaLabel: "All background opacity",
+      styleOptions: SMALL_MOLECULE_CONTEXT_STYLE_OPTIONS,
     };
   }
   const maestroEntryCount = maestroPreviewEntryCount(summary);
@@ -1447,7 +1452,7 @@ function structureContextStyleCardFor(
       detail: "Background frames",
       styleAriaLabel: "All background frame style",
       opacityAriaLabel: "All background frame opacity",
-      styleOptions: isXyzStructureDocument(document) ? XYZ_FRAME_CONTEXT_STYLE_OPTIONS : undefined,
+      styleOptions: isXyzStructureDocument(document) ? SMALL_MOLECULE_CONTEXT_STYLE_OPTIONS : undefined,
     };
   }
   return null;
@@ -1788,6 +1793,9 @@ function normalizeSdfContextStyle(value: string | null | undefined): SdfContextS
 }
 
 function normalizeSdfContextOpacity(value: string | number | null | undefined) {
+  // Number(null) and Number("") are 0, which would clamp a missing stored
+  // preference to the 4% floor instead of the intended 40% default.
+  if (value == null || value === "") return SDF_CONTEXT_OPACITY_DEFAULT;
   const opacity = Number(value);
   if (!Number.isFinite(opacity)) return SDF_CONTEXT_OPACITY_DEFAULT;
   return Math.max(SDF_CONTEXT_OPACITY_MIN, Math.min(SDF_CONTEXT_OPACITY_MAX, opacity));
@@ -1948,16 +1956,27 @@ function SdfContextStyleCard({
       style,
     });
   };
+  // Dragging the slider fires input events for every pixel, and each viewer
+  // action rebuilds the whole background layer - so the send (not the local
+  // state) is debounced to the last value of the gesture.
+  const opacitySendTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (opacitySendTimer.current !== null) window.clearTimeout(opacitySendTimer.current);
+  }, [document.id]);
   const applyOpacity = (nextOpacity: number) => {
     const normalized = normalizeSdfContextOpacity(nextOpacity);
     setOpacity(normalized);
     writeSdfContextOpacityPreference(document, normalized);
-    actions.runStructureViewerAction(document, {
-      type: "set_sdf_context_opacity",
-      label: `All background opacity: ${Math.round(normalized * 100)}%`,
-      notify: false,
-      opacity: normalized,
-    });
+    if (opacitySendTimer.current !== null) window.clearTimeout(opacitySendTimer.current);
+    opacitySendTimer.current = window.setTimeout(() => {
+      opacitySendTimer.current = null;
+      actions.runStructureViewerAction(document, {
+        type: "set_sdf_context_opacity",
+        label: `All background opacity: ${Math.round(normalized * 100)}%`,
+        notify: false,
+        opacity: normalized,
+      });
+    }, SDF_CONTEXT_OPACITY_SEND_DELAY_MS);
   };
   const applyColor = (nextColor: SdfContextColor) => {
     const normalized = normalizeSdfContextColor(nextColor);
