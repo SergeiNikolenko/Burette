@@ -176,9 +176,9 @@ assert.equal(opened.activeDocumentId, "opened-doc");
 resetStore();
 useMoleculeStore.getState().restoreSession(
   [
-    { location: { kind: "ketcher" }, back: [], forward: [] },
-    { location: { kind: "settings" }, back: [], forward: [] },
-    { location: { kind: "ketcher", draftMolfile: "mol" }, back: [], forward: [] },
+    { id: "session-ketcher-a", location: { kind: "ketcher" }, back: [], forward: [] },
+    { id: "session-settings", location: { kind: "settings" }, back: [], forward: [] },
+    { id: "session-ketcher-b", location: { kind: "ketcher", draftMolfile: "mol" }, back: [], forward: [] },
   ],
   2,
 );
@@ -186,6 +186,7 @@ useMoleculeStore.getState().restoreSession(
 const restored = useMoleculeStore.getState();
 assert.equal(restored.tabs.filter((tab) => tab.location.kind === "ketcher").length, 1);
 assert.equal(restored.tabs.length, 2);
+assert.equal(restored.activeTabId, "session-ketcher-b");
 assert.equal(restored.tabs.find((tab) => tab.id === restored.activeTabId)?.location.kind, "ketcher");
 assert.equal(restored.activeDocumentId, null);
 
@@ -199,6 +200,12 @@ useMoleculeStore.setState({
       back: [],
       forward: [],
     },
+    {
+      id: "tab-temporary-file",
+      location: { kind: "file", documentId: "temporary-doc", path: "burette-context://temporary.pdb" },
+      back: [],
+      forward: [],
+    },
     { id: "tab-settings", location: { kind: "settings" }, back: [], forward: [] },
     { id: "tab-ketcher", location: { kind: "ketcher" }, back: [], forward: [] },
   ],
@@ -209,7 +216,8 @@ useMoleculeStore.setState({
 
 const persisted = JSON.parse(storage.get("burette.molecule.session"));
 assert.deepEqual(persisted.state.documents, []);
-assert.equal(persisted.state.tabs.some((tab) => tab.location.kind === "file"), false);
+assert.equal(persisted.state.tabs.some((tab) => tab.id === "tab-file"), true);
+assert.equal(persisted.state.tabs.some((tab) => tab.id === "tab-temporary-file"), false);
 assert.equal(persisted.state.tabs.some((tab) => tab.location.kind === "settings"), false);
 assert.equal(persisted.state.tabs.some((tab) => tab.location.kind === "ketcher"), true);
 
@@ -241,6 +249,34 @@ assert.equal(rehydrated.tabs.some((tab) => tab.location.kind === "settings"), fa
 assert.equal(rehydrated.tabs.some((tab) => tab.location.kind === "ketcher"), true);
 assert.equal(rehydrated.tabs.find((tab) => tab.id === rehydrated.activeTabId)?.location.kind, "file");
 assert.equal(rehydrated.activeDocumentId, null);
+
+useMoleculeStore.getState().pruneMissingFileTabs(
+  ["/tmp/legacy.pdb"],
+  [],
+);
+assert.equal(useMoleculeStore.getState().tabs.some((tab) => tab.id === "legacy-file"), false);
+assert.equal(useMoleculeStore.getState().tabs.some((tab) => tab.id === "legacy-ketcher"), true);
+
+resetStore();
+useMoleculeStore.setState({
+  tabs: [
+    {
+      id: "virtual-export",
+      location: { kind: "file", documentId: "virtual", path: "burette-ketcher-export://draft/result.sdf" },
+      back: [],
+      forward: [],
+    },
+    {
+      id: "virtual-report",
+      location: { kind: "text-file", documentId: "report", path: "burette-compute-report://job/report.txt" },
+      back: [],
+      forward: [],
+    },
+  ],
+  activeTabId: "virtual-export",
+});
+const virtualPersisted = JSON.parse(storage.get("burette.molecule.session"));
+assert.deepEqual(virtualPersisted.state.tabs, []);
 
 resetStore();
 const manyDocuments = Array.from({ length: 14 }, (_, index) => (

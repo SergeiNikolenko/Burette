@@ -9,6 +9,7 @@ mod menu;
 mod preview;
 mod startup;
 mod tray;
+mod window_state;
 mod windows;
 mod zoom;
 
@@ -70,6 +71,12 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            let window_state = window_state::WindowStateRegistry::load(app.handle())
+                .unwrap_or_else(|error| {
+                    eprintln!("workspace window persistence is unavailable: {error}");
+                    window_state::WindowStateRegistry::unavailable()
+                });
+            app.manage(window_state);
             let compute_coordinator = app
                 .path()
                 .app_data_dir()
@@ -113,14 +120,10 @@ pub fn run() {
             } else {
                 let initial_app = app.handle().clone();
                 let initial_workspace = move || {
-                    if startup_paths.is_empty() {
-                        if let Err(error) = windows::focus_or_create_workspace_window(
-                            &initial_app,
-                            Some(windows::MAIN_WINDOW_LABEL),
-                        ) {
-                            eprintln!("failed to create the initial Burette workspace: {error}");
-                        }
-                    } else {
+                    if let Err(error) = windows::restore_workspace_windows(&initial_app) {
+                        eprintln!("failed to restore Burette workspaces: {error}");
+                    }
+                    if !startup_paths.is_empty() {
                         show_and_emit_open_documents(&initial_app, startup_paths);
                     }
                 };

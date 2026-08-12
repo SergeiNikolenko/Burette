@@ -14,6 +14,11 @@ import {
   useShellStore,
   type ShellStoreSnapshot,
 } from "./shell-store";
+import {
+  getTabWorkspaceStoreSnapshot,
+  useTabWorkspaceStore,
+  type TabWorkspaceSnapshot,
+} from "./tab-workspace-store";
 
 export type WorkspaceHistoryGroup =
   | "navigation"
@@ -29,6 +34,7 @@ export type WorkspaceHistoryGroup =
 export type WorkspaceHistorySnapshot = {
   molecule: MoleculeStoreSnapshot;
   shell: ShellStoreSnapshot;
+  tabWorkspace: TabWorkspaceSnapshot;
   settings: SettingsStoreSnapshot;
   extras: Record<string, unknown>;
 };
@@ -71,6 +77,8 @@ type WorkspaceHistoryState = {
   clearWorkspaceHistory: () => void;
 };
 
+const MAX_WORKSPACE_HISTORY_ENTRIES = 100;
+
 let entrySequence = 0;
 let extraAdapter: WorkspaceHistoryExtraAdapter = {
   capture: () => ({}),
@@ -90,6 +98,7 @@ function captureWorkspaceSnapshot(): WorkspaceHistorySnapshot {
   return {
     molecule: getMoleculeStoreSnapshot(),
     shell: getShellStoreSnapshot(),
+    tabWorkspace: getTabWorkspaceStoreSnapshot(),
     settings: getSettingsStoreSnapshot(),
     extras: extraAdapter.capture(),
   };
@@ -98,6 +107,7 @@ function captureWorkspaceSnapshot(): WorkspaceHistorySnapshot {
 function restoreWorkspaceSnapshot(snapshot: WorkspaceHistorySnapshot) {
   useMoleculeStore.getState().restoreSnapshot(snapshot.molecule);
   useShellStore.getState().restoreSnapshot(snapshot.shell);
+  useTabWorkspaceStore.getState().restoreSnapshot(snapshot.tabWorkspace ?? { workspaces: {} });
   useSettingsStore.getState().restoreSnapshot(snapshot.settings);
   extraAdapter.restore(snapshot.extras);
 }
@@ -121,7 +131,7 @@ function entryFromSnapshots(
 
 function pushUndoEntry(entry: WorkspaceHistoryEntry) {
   useWorkspaceHistoryStore.setState((state) => ({
-    undoStack: [...state.undoStack, entry],
+    undoStack: [...state.undoStack, entry].slice(-MAX_WORKSPACE_HISTORY_ENTRIES),
     redoStack: [],
     canUndo: true,
     canRedo: false,
@@ -194,7 +204,7 @@ export const useWorkspaceHistoryStore = create<WorkspaceHistoryState>()((set, ge
     } finally {
       set((state) => {
         const undoStack = state.undoStack.slice(0, -1);
-        const redoStack = [...state.redoStack, entry];
+        const redoStack = [...state.redoStack, entry].slice(-MAX_WORKSPACE_HISTORY_ENTRIES);
         return {
           undoStack,
           redoStack,
@@ -215,7 +225,7 @@ export const useWorkspaceHistoryStore = create<WorkspaceHistoryState>()((set, ge
     } finally {
       set((state) => {
         const redoStack = state.redoStack.slice(0, -1);
-        const undoStack = [...state.undoStack, entry];
+        const undoStack = [...state.undoStack, entry].slice(-MAX_WORKSPACE_HISTORY_ENTRIES);
         return {
           undoStack,
           redoStack,
@@ -238,4 +248,3 @@ export const useWorkspaceHistoryStore = create<WorkspaceHistoryState>()((set, ge
     });
   },
 }));
-

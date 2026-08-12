@@ -90,6 +90,7 @@ const [
   settingsStore,
   settingsHook,
   shellStore,
+  tabWorkspaceStore,
   structureBrief,
   structureComposition,
   structureText,
@@ -298,6 +299,7 @@ const [
   source('apps/desktop/src/stores/settings-store.ts'),
   source('apps/desktop/src/hooks/use-settings.ts'),
   source('apps/desktop/src/stores/shell-store.ts'),
+  source('apps/desktop/src/stores/tab-workspace-store.ts'),
   source('apps/desktop/src/lib/structure-brief.ts'),
   source('apps/desktop/src/lib/structure-composition.ts'),
   source('apps/desktop/src/lib/structure-text.ts'),
@@ -504,8 +506,10 @@ assert.match(sidebarHook, /export function useSidebar\(/);
 assert.match(sidebarHook, /from "\.\.\/stores\/shell-store"/);
 assert.match(sidebarHook, /sidebarWidth/);
 assert.match(shellStore, /sidebarWidth: 240/);
-assert.match(shellStore, /rightDockOpen: false/);
-assert.match(shellStore, /bottomDockOpen: false/);
+assert.doesNotMatch(shellStore, /rightDockOpen:/);
+assert.doesNotMatch(shellStore, /bottomDockOpen:/);
+assert.match(tabWorkspaceStore, /right: defaultDockArea\("right"\)/);
+assert.match(tabWorkspaceStore, /bottom: defaultDockArea\("bottom"\)/);
 assert.match(viewerFrame, /"data-renderer": document\.renderer/);
 assert.match(appViewerReloadActionsHook, /activeViewerIframeForDocument\(document\.id\)/);
 assert.doesNotMatch(appViewerReloadActionsHook, /activeViewerIframeForDocument\(document\.id,\s*document\.renderer\)/);
@@ -1303,7 +1307,9 @@ assert.match(appStartupEffectsHook, /paths\.length !== 2 \|\| !paths\.some\(isMo
 assert.match(appStartupEffectsHook, /dockingRequestForDrop\(paths\[0\], paths\.slice\(1\)\)/);
 assert.match(appStartupEffectsHook, /await openDockingDocument\(trajectoryDockingRequest\.receptorPath, trajectoryDockingRequest\.ligandPaths\)/);
 assert.match(appStartupEffectsHook, /openedPersistedTabsRef/);
-assert.match(appStartupEffectsHook, /void Promise\.resolve\(openPaths\(paths\)\)\.then\(\(\) => \{/);
+assert.match(appStartupEffectsHook, /invoke<string\[\]>\("existing_paths", \{ paths \}\)/);
+assert.match(appStartupEffectsHook, /pruneMissingFileTabs\(paths, existingPaths\)/);
+assert.match(appStartupEffectsHook, /await openPaths\(existingPaths\)/);
 assert.match(app, /useAppOpenDropController\(\{/);
 assert.equal((appOpenDropControllerHook.match(/useOpenEvents\(/g) || []).length, 1);
 assert.match(appOpenDropControllerHook, /useOpenEvents\(openPaths, pushErrorStatus\)/);
@@ -1404,7 +1410,7 @@ assert.match(appStartupEffectsHook, /for \(const root of browserDevProjectRoots\
 assert.match(appStartupEffectsHook, /function uniqueParentDirectories\(paths: string\[\]\)/);
 assert.match(appStartupEffectsHook, /function commonParentDirectory\(paths: string\[\]\)/);
 assert.match(appStartupEffectsHook, /!isTauriRuntime\(\) \|\| documents\.length === 0/);
-assert.match(appStartupEffectsHook, /void Promise\.resolve\(openPaths\(paths\)\)\.then\(\(\) => \{/);
+assert.match(appStartupEffectsHook, /invoke<string\[\]>\("existing_paths", \{ paths \}\)/);
 assert.match(openEventsHook, /return startupOpenSettled/);
 assert.match(openEventsHook, /openPendingDocuments\(\{ replace: true \}, true\)/);
 assert.match(appLayout, /from "\.\/editor-area"/);
@@ -2917,8 +2923,8 @@ assert.doesNotMatch(structureInfoPanel, /selectedEntity\.action\.type === "focus
 assert.doesNotMatch(structureInfoPanel, /Select residues/);
 assert.match(styles, /\.structure-brief-action-entry\[data-selected="true"\] \.structure-brief-action-row,/);
 assert.match(dock, /payload: StructureDragPayload/);
-assert.match(shellStore, /payload: \{ paths: \[path\], records: \[\] \}/);
-assert.match(shellStore, /payload: \{ paths: \[\], records: \[record\] \}/);
+assert.match(tabWorkspaceStore, /payload: \{ paths: \[path\], records: \[\] \}/);
+assert.match(tabWorkspaceStore, /payload: \{ paths: \[\], records: \[record\] \}/);
 assert.match(dockPanel, /className="dock-panel-inner"/);
 assert.match(dockPanel, /readBrowserDevVirtualTextDocument/);
 assert.match(dockPanel, /const virtualText = readBrowserDevVirtualTextDocument\(activeDocument\.path\);/);
