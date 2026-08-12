@@ -258,6 +258,31 @@ assert.ok(duplicateTitleSdfComposition);
 assert.equal(rowValue(duplicateTitleSdfComposition.componentRows, "Molecule 1"), "1 atom / 0 bonds");
 assert.equal(rowValue(duplicateTitleSdfComposition.componentRows, "Molecule 2"), "1 atom / 0 bonds");
 
+// The V2000 counts line is fixed-width: 100+ atoms and 100+ bonds fuse into
+// "120119", which a whitespace split misreads as zero atoms.
+const fusedCountsSdfComposition = parseStructureComposition([
+  "Big molecule",
+  "  Burette",
+  "",
+  "120119  0  0  0  0  0  0  0  0999 V2000",
+  "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0",
+  "M  END",
+  "$$$$",
+  "Small molecule",
+  "  Burette",
+  "",
+  "  2  1  0  0  0  0            999 V2000",
+  "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0",
+  "    1.2000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0",
+  "  1  2  1  0  0  0  0",
+  "M  END",
+  "$$$$",
+].join("\n"), "sdf");
+assert.ok(fusedCountsSdfComposition);
+assert.equal(rowValue(fusedCountsSdfComposition.componentRows, "Big molecule"), "120 atoms / 119 bonds");
+assert.equal(rowValue(fusedCountsSdfComposition.componentRows, "Small molecule"), "2 atoms / 1 bond");
+assert.equal(rowValue(fusedCountsSdfComposition.rows, "Atoms"), "122");
+
 for (const extension of ["csv", "tsv"]) {
   assert.equal(documentKind(document(extension)), "Molecule collection", extension);
   assert.equal(rowValue(usefulElements(document(extension)), "Table"), "Rows and columns available in grid", extension);
