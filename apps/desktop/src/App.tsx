@@ -226,15 +226,8 @@ export default function App() {
     setDockActiveTab,
     setDockDocument,
     setDockTool,
-    activateDockContext,
     addDockDrop,
-  } = useDockLayout();
-  // Both docks serve the active workspace tab: entering a tab drops any
-  // document pin left behind by the previous one and restores the dock tools
-  // that tab last had open.
-  useEffect(() => {
-    activateDockContext(activeTabId ?? null);
-  }, [activateDockContext, activeTabId]);
+  } = useDockLayout(activeTabId);
   const { toggleDockTab } = useAppDockActions({
     bottomDockActiveTab,
     bottomDockOpen,

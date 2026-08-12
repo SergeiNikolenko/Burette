@@ -105,14 +105,6 @@ type PersistedShellState = Pick<
   ShellState,
   | "sidebarOpen"
   | "sidebarWidth"
-  | "rightDockOpen"
-  | "rightDockWidth"
-  | "rightDockTabs"
-  | "rightDockActiveTab"
-  | "bottomDockOpen"
-  | "bottomDockHeight"
-  | "bottomDockTabs"
-  | "bottomDockActiveTab"
   | "projectsOpen"
   | "projectRoots"
   | "pinnedProjectRoots"
@@ -531,14 +523,6 @@ export const useShellStore = create<ShellState>()(
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         sidebarWidth: state.sidebarWidth,
-        rightDockOpen: state.rightDockOpen,
-        rightDockWidth: state.rightDockWidth,
-        rightDockTabs: normalizeDockTabs("right", state.rightDockTabs),
-        rightDockActiveTab: normalizeDockActiveTab("right", normalizeDockTabs("right", state.rightDockTabs), state.rightDockActiveTab),
-        bottomDockOpen: state.bottomDockOpen,
-        bottomDockHeight: state.bottomDockHeight,
-        bottomDockTabs: persistentDockTabs("bottom", state.bottomDockTabs),
-        bottomDockActiveTab: normalizeDockActiveTab("bottom", persistentDockTabs("bottom", state.bottomDockTabs), state.bottomDockActiveTab),
         projectsOpen: state.projectsOpen,
         projectRoots: persistentRoots(state.projectRoots),
         pinnedProjectRoots: persistentRoots(state.pinnedProjectRoots),
@@ -548,12 +532,6 @@ export const useShellStore = create<ShellState>()(
       }),
       merge: (persisted, current) => {
         const stored = persisted as Partial<PersistedShellState> | undefined;
-        const rightDockOpen = stored?.rightDockOpen ?? current.rightDockOpen;
-        const normalizedRightDockTabs = normalizeDockTabs("right", stored?.rightDockTabs ?? current.rightDockTabs);
-        const rightDockTabs = rightDockOpen ? ensureDefaultDockTabs("right", normalizedRightDockTabs) : normalizedRightDockTabs;
-        const bottomDockOpen = stored?.bottomDockOpen ?? current.bottomDockOpen;
-        const normalizedBottomDockTabs = persistentDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs);
-        const bottomDockTabs = bottomDockOpen ? ensureDefaultDockTabs("bottom", normalizedBottomDockTabs) : normalizedBottomDockTabs;
         const projectRoots = persistentRoots(stored?.projectRoots ?? current.projectRoots);
         const pinnedProjectRoots = persistentRoots(stored?.pinnedProjectRoots ?? current.pinnedProjectRoots)
           .filter((root) => projectRoots.includes(root));
@@ -563,22 +541,6 @@ export const useShellStore = create<ShellState>()(
           ...current,
           sidebarOpen: stored?.sidebarOpen ?? current.sidebarOpen,
           sidebarWidth: normalizeSidebarWidth(stored?.sidebarWidth ?? current.sidebarWidth),
-          rightDockOpen,
-          rightDockWidth: normalizeRightDockWidth(stored?.rightDockWidth ?? current.rightDockWidth),
-          rightDockTabs,
-          rightDockActiveTab: normalizeDockActiveTab(
-            "right",
-            rightDockTabs,
-            stored?.rightDockActiveTab ?? current.rightDockActiveTab,
-          ),
-          bottomDockOpen,
-          bottomDockHeight: normalizeBottomDockHeight(stored?.bottomDockHeight ?? current.bottomDockHeight),
-          bottomDockTabs,
-          bottomDockActiveTab: normalizeDockActiveTab(
-            "bottom",
-            bottomDockTabs,
-            stored?.bottomDockActiveTab ?? current.bottomDockActiveTab,
-          ),
           projectsOpen: stored?.projectsOpen ?? current.projectsOpen,
           projectRoots,
           pinnedProjectRoots,
