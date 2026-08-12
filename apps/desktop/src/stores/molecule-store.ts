@@ -41,6 +41,7 @@ export type MoleculeTab = {
 };
 
 export type SessionTab = {
+  id?: string;
   location: SerializedLocation;
   back: SerializedLocation[];
   forward: SerializedLocation[];
@@ -84,6 +85,7 @@ type MoleculeState = {
   closeDocument: (id: string) => void;
   closeActiveDocument: () => void;
   closeAllDocuments: () => void;
+  pruneMissingFileTabs: (checkedPaths: string[], existingPaths: string[]) => void;
   restoreSession: (tabs: SessionTab[], activeIndex: number | null) => void;
   restoreSnapshot: (snapshot: MoleculeStoreSnapshot) => void;
 };
@@ -284,11 +286,13 @@ function recentStructuresForMigration(
 function persistedTabs(tabs: MoleculeTab[]) {
   return tabs.filter((tab) => (
     tab.location.kind !== "settings" &&
-    tab.location.kind !== "file" &&
-    tab.location.kind !== "text-file" &&
     tab.location.kind !== "fep-setup" &&
     tab.location.kind !== "fep-network" &&
-    tab.location.kind !== "pose-review"
+    tab.location.kind !== "pose-review" &&
+    (
+      (tab.location.kind !== "file" && tab.location.kind !== "text-file") ||
+      !isTemporaryDocumentPath(tab.location.path)
+    )
   ));
 }
 
@@ -349,13 +353,14 @@ function serializeTab(tab: MoleculeTab): SessionTab | null {
   const location = serializeLocation(tab.location);
   if (!location) return null;
   return {
+    id: tab.id,
     location,
     back: tab.back.map(serializeLocation).filter((location): location is SerializedLocation => location !== null),
     forward: tab.forward.map(serializeLocation).filter((location): location is SerializedLocation => location !== null),
   };
 }
 
-function hydrateTab(tab: SessionTab, id = createTabId()): MoleculeTab | null {
+function hydrateTab(tab: SessionTab, id = tab.id ?? createTabId()): MoleculeTab | null {
   const location = deserializeLocation(tab.location);
   if (!location) return null;
   return {
@@ -862,6 +867,22 @@ export const useMoleculeStore = create<MoleculeState>()(
         const tab = createLauncherTab();
         return set({ documents: [], textDocuments: [], tabs: [tab], activeTabId: tab.id, activeDocumentId: null });
       },
+      pruneMissingFileTabs: (checkedPaths, existingPaths) =>
+        set((state) => {
+          const checked = new Set(checkedPaths);
+          const existing = new Set(existingPaths);
+          const tabs = ensureTabs(state.tabs.filter((tab) => (
+            (tab.location.kind !== "file" && tab.location.kind !== "text-file")
+            || !checked.has(tab.location.path)
+            || existing.has(tab.location.path)
+          )));
+          const activeTabId = activeTabIdOrFirst(tabs, state.activeTabId);
+          return {
+            tabs,
+            activeTabId,
+            activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, state.documents),
+          };
+        }),
       restoreSession: (sessionTabs, activeIndex) =>
         set((state) => {
           const hydratedTabs = ensureTabs(sessionTabs.map((tab) => hydrateTab(tab)).filter((tab): tab is MoleculeTab => tab !== null));
