@@ -1683,6 +1683,7 @@
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
   let xyzFrameAlignment = null;
+  let sdfCollectionAlignment = null;
   let activeDockingPoseCollectionState = null;
   let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
@@ -1841,6 +1842,9 @@
   }
 
   function normalizeSdfCollectionContextOpacity(value) {
+    // Number(null) and Number('') are 0, which would clamp a missing stored
+    // preference to the 4% floor instead of the intended 40% default.
+    if (value == null || value === '') return 0.4;
     const opacity = Number(value);
     if (!Number.isFinite(opacity)) return 0.4;
     return Math.max(0.04, Math.min(1, opacity));
@@ -14219,8 +14223,44 @@
     return builder?.struct?.generator?.all?.() || builder?.struct?.generator?.all || null;
   }
 
-  async function applySdfCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
+  // Scene visibility rebuilds clear() the plugin and reload every layer, so two
+  // overlapping rebuilds corrupt the scene: each clears the other's half-loaded
+  // layers and both then append theirs, stacking duplicate structures and
+  // representations. Every externally triggered rebuild (context style/opacity/
+  // color actions, pose stepping, toolbar toggles) is serialized through this
+  // queue; callers that already run inside a rebuild use the *Now variants.
+  let molstarSceneRebuildChain = Promise.resolve();
+  function queueMolstarSceneRebuild(run) {
+    const job = molstarSceneRebuildChain.then(() => run(), () => run());
+    molstarSceneRebuildChain = job.then(() => undefined, () => undefined);
+    return job;
+  }
+
+  function applySdfCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
+    return queueMolstarSceneRebuild(() => applySdfCollectionVisibilityNow(viewer, prepared, activePose, options));
+  }
+
+  function applySdfCollectionAlignmentLayers(prepared, layers) {
+    prepared.data = layers.data;
+    prepared.collectionResidues = layers.residues;
+    prepared.collectionSinglePdbs = layers.singlePdbs;
+    prepared.collectionMolecules = layers.molecules;
+  }
+
+  // A theme or format reload rebuilds `prepared` from the raw file, which
+  // silently drops the aligned collection the user toggled on; when the stored
+  // alignment still matches this document, put the aligned layers back before
+  // the scene is built so the button and the scene cannot disagree.
+  function restoreSdfCollectionAlignment(prepared) {
+    if (!sdfCollectionAlignment || prepared?.kind !== 'sdf-collection') return;
+    if (prepared.collectionMolecules === sdfCollectionAlignment.collection.molecules) return;
+    if (xyzFrameOverlayRawSignature(rawStructureData(activeConfig)) !== sdfCollectionAlignment.signature) return;
+    applySdfCollectionAlignmentLayers(prepared, sdfCollectionAlignment.collection);
+  }
+
+  async function applySdfCollectionVisibilityNow(viewer, prepared, activePose = 0, options = {}) {
     if (!viewer || prepared?.kind !== 'sdf-collection') return;
+    restoreSdfCollectionAlignment(prepared);
     const plugin = viewer.plugin;
     if (!plugin?.builders?.data?.rawData || !plugin?.builders?.structure?.parseTrajectory || !plugin?.builders?.structure?.hierarchy?.applyPreset) {
       throw new Error('Mol* structure builders are not available in this runtime.');
@@ -14320,7 +14360,11 @@
     ]);
   }
 
-  async function applyDockingPoseCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
+  function applyDockingPoseCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
+    return queueMolstarSceneRebuild(() => applyDockingPoseCollectionVisibilityNow(viewer, prepared, activePose, options));
+  }
+
+  async function applyDockingPoseCollectionVisibilityNow(viewer, prepared, activePose = 0, options = {}) {
     if (!viewer || prepared?.kind !== 'docking' || prepared?.dockingSceneMode) return;
     const plugin = viewer.plugin;
     if (!plugin?.builders?.data?.rawData || !plugin?.builders?.structure?.parseTrajectory || !plugin?.builders?.structure?.hierarchy?.applyPreset) {
@@ -14388,7 +14432,11 @@
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
   }
 
-  async function applyXyzFrameOverlayVisibility(viewer, prepared, activePose = 0, options = {}) {
+  function applyXyzFrameOverlayVisibility(viewer, prepared, activePose = 0, options = {}) {
+    return queueMolstarSceneRebuild(() => applyXyzFrameOverlayVisibilityNow(viewer, prepared, activePose, options));
+  }
+
+  async function applyXyzFrameOverlayVisibilityNow(viewer, prepared, activePose = 0, options = {}) {
     if (!viewer || prepared?.xyzFrameOverlayAvailable !== true) return;
     const plugin = viewer.plugin;
     if (!plugin?.builders?.data?.rawData || !plugin?.builders?.structure?.parseTrajectory || !plugin?.builders?.structure?.hierarchy?.applyPreset) {
@@ -14700,7 +14748,11 @@
     return true;
   }
 
-  async function applyDockingSceneVisibility(viewer, prepared, activePose = 0, options = {}) {
+  function applyDockingSceneVisibility(viewer, prepared, activePose = 0, options = {}) {
+    return queueMolstarSceneRebuild(() => applyDockingSceneVisibilityNow(viewer, prepared, activePose, options));
+  }
+
+  async function applyDockingSceneVisibilityNow(viewer, prepared, activePose = 0, options = {}) {
     if (!viewer || prepared?.kind !== 'docking' || !prepared.dockingSceneMode) return;
     const plugin = viewer.plugin;
     if (activeSdfPoseMode !== 'all' && await applyDockingSceneSinglePose(viewer, prepared, activePose, options)) return;
@@ -14815,7 +14867,11 @@
       return themed({ type: 'spacefill', typeParams: withAlpha({ sizeFactor: ghost ? 0.28 : 0.45 }) });
     }
     if (normalized === 'molecular-surface') {
-      return themed({ type: 'molecular-surface', typeParams: withAlpha({ alpha: ghost ? 0.16 : 0.72 }) });
+      // A translucent background surface over a whole collection is re-sorted
+      // every frame; a coarser grid keeps it interactive without visibly
+      // changing a faded backdrop.
+      const typeParams = withAlpha({ alpha: ghost ? 0.16 : 0.72 });
+      return themed({ type: 'molecular-surface', typeParams: ghost ? { ...typeParams, resolution: 2 } : typeParams });
     }
     return themed({ type: 'ball-and-stick', typeParams: withAlpha({ sizeFactor: ghost ? 0.095 : 0.16 }) });
   }
@@ -15631,12 +15687,12 @@
       return;
     }
     if (prepared.kind === 'sdf-collection') {
-      await applySdfCollectionVisibility(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount));
+      await applySdfCollectionVisibilityNow(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount));
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
     if (prepared.xyzFrameOverlayAvailable === true && (activeSdfPoseMode === 'all' || prepared.nativeTrajectoryControls !== true)) {
-      await applyXyzFrameOverlayVisibility(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount || prepared.xyzFrameCount));
+      await applyXyzFrameOverlayVisibilityNow(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount || prepared.xyzFrameCount));
       return;
     }
     if (prepared.loadPreset === 'all-models') {
@@ -15910,12 +15966,12 @@
     const plugin = viewer.plugin;
     activeDockingPrepared = prepared;
     if (prepared.dockingSceneMode) {
-      await applyDockingSceneVisibility(viewer, prepared, prepared.activePose);
+      await applyDockingSceneVisibilityNow(viewer, prepared, prepared.activePose);
       installDockingPoseControls(viewer, prepared);
       return;
     }
     if (prepared.sdfPoseOverlayAvailable === true) {
-      await applyDockingPoseCollectionVisibility(viewer, prepared, prepared.activePose);
+      await applyDockingPoseCollectionVisibilityNow(viewer, prepared, prepared.activePose);
       installDockingPoseControls(viewer, prepared);
       return;
     }
@@ -17745,6 +17801,15 @@
     let loopTimer = null;
     let loopActive = Boolean(playbackRestore?.playing);
     let loopBusy = false;
+    // Every loop tick rebuilds the active layer through a Mol* state
+    // transaction, which starves camera drags of main-thread time; while the
+    // pointer is held down on the viewport the loop skips ticks (the elapsed-
+    // time frame math catches the playhead up afterwards).
+    let loopPointerHeld = false;
+    const onLoopPointerDown = (event) => {
+      if (event.target instanceof Element && event.target.closest('.msp-viewport')) loopPointerHeld = true;
+    };
+    const onLoopPointerUp = () => { loopPointerHeld = false; };
     let loopEpoch = 0;
     let loopStartedAt = 0;
     let loopStartPose = activePose;
@@ -17852,7 +17917,22 @@
         || xyzFrameAlignmentGain(xyzCandidateFrames) > XYZ_ALIGNMENT_GAIN_THRESHOLD)
       ? xyzCandidateFrames
       : null;
-    const align = prepared.dockingSceneMode || xyzAlignFrames ? document.createElement('button') : null;
+    // The toolbar often receives a control summary from trajectoryControlsForPrepared
+    // rather than the loaded prepared object, and rebuilds run against the real one -
+    // so alignment reads and mutates activeMolstarPrepared, not the summary.
+    const sdfAlignTarget = prepared.kind === 'sdf-collection'
+      ? (activeMolstarPrepared?.kind === 'sdf-collection' ? activeMolstarPrepared : prepared)
+      : null;
+    let sdfAlignSignature = '';
+    if (sdfAlignTarget && Array.isArray(sdfAlignTarget.collectionMolecules)) {
+      try { sdfAlignSignature = xyzFrameOverlayRawSignature(rawStructureData(activeConfig)); } catch (_) {}
+    }
+    const sdfCollectionAlignFrames = sdfAlignSignature
+      ? sdfAlignTarget.collectionMolecules.map(molecule => ({
+        atoms: (molecule.atoms || []).map(atom => ({ symbol: atom.element, x: atom.x, y: atom.y, z: atom.z }))
+      }))
+      : null;
+    const align = prepared.dockingSceneMode || xyzAlignFrames || sdfCollectionAlignFrames ? document.createElement('button') : null;
     const storyAvailable = structureSceneStoryAvailable(prepared);
     const story = storyAvailable ? document.createElement('button') : null;
     const storyPanel = storyAvailable ? document.createElement('aside') : null;
@@ -17912,12 +17992,16 @@
     }
     const alignmentSupported = Boolean(align) && (xyzAlignFrames
       ? xyzFramesAlignable(xyzAlignFrames)
-      : Boolean(prepared.dockingSceneMode)
-        && prepared.poses.length > 1
-        && window.molstar?.BuretteSuperposition?.version === 1);
+      : sdfCollectionAlignFrames
+        ? xyzFramesAlignable(sdfCollectionAlignFrames)
+        : Boolean(prepared.dockingSceneMode)
+          && prepared.poses.length > 1
+          && window.molstar?.BuretteSuperposition?.version === 1);
     const alignmentOn = xyzAlignFrames
       ? xyzFrameAlignment?.signature === xyzAlignSignature
-      : prepared.structureAlignmentEnabled === true;
+      : sdfCollectionAlignFrames
+        ? sdfCollectionAlignment?.signature === sdfAlignSignature
+        : prepared.structureAlignmentEnabled === true;
     if (align) {
       align.type = 'button';
       align.className = 'buret-docking-pose-align';
@@ -17926,10 +18010,14 @@
       align.title = !alignmentSupported
         ? (xyzAlignFrames
           ? 'Alignment needs every structure to list the same atoms in the same order'
-          : 'Superposition needs two or more loaded structures')
+          : sdfCollectionAlignFrames
+            ? 'Alignment needs every molecule to list the same atoms in the same order'
+            : 'Superposition needs two or more loaded structures')
         : xyzAlignFrames
           ? 'Superimpose every structure onto the first one by atom order'
-          : 'Automatically superimpose every structure onto the first one';
+          : sdfCollectionAlignFrames
+            ? 'Superimpose every molecule onto the first one by atom order'
+            : 'Automatically superimpose every structure onto the first one';
       align.disabled = !alignmentSupported;
       align.setAttribute('aria-pressed', alignmentOn ? 'true' : 'false');
     }
@@ -18130,7 +18218,7 @@
       loopTimer = window.setTimeout(() => {
         loopTimer = null;
         if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
-        if (loopBusy) {
+        if (loopBusy || loopPointerHeld) {
           scheduleLoopStep(undefined, expectedLoopEpoch);
           return;
         }
@@ -18320,6 +18408,64 @@
         }
       };
       align.addEventListener('click', () => { void toggleXyzAlignment(); });
+    } else if (align && alignmentSupported && sdfCollectionAlignFrames) {
+      const toggleSdfCollectionAlignment = () => {
+        align.disabled = true;
+        const enabling = sdfCollectionAlignment?.signature !== sdfAlignSignature;
+        try {
+          let result = null;
+          if (enabling) {
+            result = alignXyzFramesToFirst(sdfCollectionAlignFrames);
+            const alignedMolecules = sdfAlignTarget.collectionMolecules.map((molecule, index) => ({
+              ...molecule,
+              atoms: (molecule.atoms || []).map((atom, atomIndex) => {
+                const moved = result.frames[index].atoms[atomIndex];
+                return { ...atom, x: moved.x, y: moved.y, z: moved.z };
+              })
+            }));
+            const collection = sdfMoleculesToPdbCollection(alignedMolecules, sdfAlignTarget.label);
+            if (!collection) throw new Error('Could not rebuild the aligned molecule collection.');
+            sdfCollectionAlignment = {
+              signature: sdfAlignSignature,
+              collection,
+              original: {
+                data: sdfAlignTarget.data,
+                residues: sdfAlignTarget.collectionResidues,
+                singlePdbs: sdfAlignTarget.collectionSinglePdbs,
+                molecules: sdfAlignTarget.collectionMolecules
+              }
+            };
+            applySdfCollectionAlignmentLayers(sdfAlignTarget, collection);
+          } else {
+            const original = sdfCollectionAlignment?.original;
+            if (original) applySdfCollectionAlignmentLayers(sdfAlignTarget, original);
+            sdfCollectionAlignment = null;
+          }
+          resetSdfCollectionVisibilityState(viewer);
+          return applySdfCollectionVisibility(viewer, sdfAlignTarget, activePose, { focus: true }).then(() => {
+            align.textContent = enabling ? 'Aligned' : 'Align';
+            align.classList.toggle('active', enabling);
+            align.setAttribute('aria-pressed', enabling ? 'true' : 'false');
+            if (result) {
+              align.title = `Superimposed onto the first molecule by atom order · ${result.atomCount} atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
+              setStatus(`[web] Aligned ${sdfCollectionAlignFrames.length} molecules onto the first one by atom order (${result.atomCount} atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
+            } else {
+              align.title = 'Superimpose every molecule onto the first one by atom order';
+              setStatus('[web] Restored original molecule coordinates.');
+            }
+            setTimeout(hideStatus, 2200);
+          }).catch(error => {
+            if (enabling) sdfCollectionAlignment = null;
+            setStatus(`[web] Could not align molecules.\n\n${error?.message || String(error)}`, 'error');
+          }).finally(() => { align.disabled = false; });
+        } catch (error) {
+          if (enabling) sdfCollectionAlignment = null;
+          align.disabled = false;
+          setStatus(`[web] Could not align molecules.\n\n${error?.message || String(error)}`, 'error');
+          return Promise.resolve();
+        }
+      };
+      align.addEventListener('click', () => { void toggleSdfCollectionAlignment(); });
     } else if (align && alignmentSupported) {
       structureAlignmentControl = createStructureSuperpositionController(
         viewer,
@@ -18504,7 +18650,15 @@
       }
     };
     window.addEventListener('keydown', onKeyDown);
-    dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerdown', onLoopPointerDown, true);
+    window.addEventListener('pointerup', onLoopPointerUp, true);
+    window.addEventListener('pointercancel', onLoopPointerUp, true);
+    dockingPoseKeydownDisposer = () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerdown', onLoopPointerDown, true);
+      window.removeEventListener('pointerup', onLoopPointerUp, true);
+      window.removeEventListener('pointercancel', onLoopPointerUp, true);
+    };
     mainRow.append(animation, previous, label, next);
     const smoothAvailable = !xyzAlignFrames
       && (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);

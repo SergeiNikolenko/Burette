@@ -3237,6 +3237,10 @@ body.burette-mobile-host .buret-docking-poses button {
 }
 .buret-docking-poses.buret-docking-poses-animation-open .buret-docking-pose-animation {
   position: static;
+  /* max-content is only for the closed absolute state; once the row is back in
+     the flow it must take the control's width or the slider collapses to its
+     44px minimum instead of filling the space next to the FPS field. */
+  width: auto;
   max-height: 34px;
   margin-top: 6px;
   opacity: 1;

@@ -1935,7 +1935,10 @@
       documentId: cfg?.documentId || null,
       title,
       extension: 'sdf',
-      textBase64: textToBase64(records.join('\n')),
+      // Records already end with '\n$$$$\n'; joining with '\n' would leave a
+      // blank line after each delimiter, shifting every following record's
+      // header block down one line and losing the molecule names.
+      textBase64: textToBase64(records.join('')),
       controlLabel: 'Molecule',
       receptorPath: receptorPath || null
     });
@@ -2385,10 +2388,41 @@
       return (await Promise.all((rows || []).map(row => sdfRecordTextForMolstar(row))))
         .filter(text => typeof text === 'string' && text.trim().length > 0);
     }
+    // generate_aligned_coords() replaces conformers with a flat 2D depiction,
+    // which destroys docking poses and 3D overlays - records that already
+    // carry 3D coordinates go to Molstar untouched.
+    if (rows.every(row => sdfRowHasEmbedded3dCoordinates(row))) {
+      const original = (await Promise.all(rows.map(row => sdfRecordTextForMolstar(row))))
+        .filter(text => typeof text === 'string' && text.trim().length > 0);
+      if (original.length) return original;
+    }
     const aligned = await alignedSdfRecordTextsForMolstar(rows);
     if (aligned.length) return aligned;
     return (await Promise.all(rows.map(row => sdfRecordTextForMolstar(row))))
       .filter(text => typeof text === 'string' && text.trim().length > 0);
+  }
+
+  function sdfRowHasEmbedded3dCoordinates(row) {
+    const record = gridDragRecord(row);
+    if (!record || record.inputExtension !== 'sdf') return false;
+    const lines = String(record.text || '').split(/\r?\n/u);
+    const countsIndex = lines.findIndex(line => /\bV(2000|3000)\b/u.test(line));
+    if (countsIndex < 0) return false;
+    if (/\bV3000\b/u.test(lines[countsIndex])) {
+      return lines.some(line => {
+        if (!/^\s*M\s+V30\s+\d+\s+\S+\s+/u.test(line)) return false;
+        const z = Number(line.trim().split(/\s+/u)[6]);
+        return Number.isFinite(z) && Math.abs(z) > 1e-6;
+      });
+    }
+    const atomCount = Number.parseInt(lines[countsIndex].slice(0, 3).trim() || lines[countsIndex].trim().split(/\s+/u)[0], 10);
+    if (!Number.isFinite(atomCount) || atomCount <= 0) return false;
+    return lines.slice(countsIndex + 1, countsIndex + 1 + atomCount).some(line => {
+      const parts = line.trim().split(/\s+/u);
+      if (parts.length < 4) return false;
+      const z = Number(parts[2]);
+      return Number.isFinite(z) && Math.abs(z) > 1e-6;
+    });
   }
 
   async function alignedSdfRecordTextsForMolstar(rows) {

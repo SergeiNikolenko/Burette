@@ -2686,9 +2686,12 @@ assert.match(structureInfoPanel, /const SDF_CONTEXT_STYLE_OPTIONS = \[/);
 assert.match(structureInfoPanel, /\{ value: "line", label: "Line" \}/);
 assert.match(structureInfoPanel, /\{ value: "cartoon", label: "Cartoon" \}/);
 assert.match(structureInfoPanel, /\{ value: "match", label: "Match" \}/);
-assert.match(structureInfoPanel, /const XYZ_FRAME_CONTEXT_STYLE_OPTIONS = \[/);
+assert.match(structureInfoPanel, /const SMALL_MOLECULE_CONTEXT_STYLE_OPTIONS = \[/);
 assert.match(structureInfoPanel, /\{ value: "molecular-surface", label: "Surface" \},\s*\{ value: "match", label: "Match" \},\s*\] as const satisfies readonly SdfContextStyleOption\[\]/);
-assert.match(structureInfoPanel, /styleOptions: isXyzStructureDocument\(document\) \? XYZ_FRAME_CONTEXT_STYLE_OPTIONS : undefined/);
+assert.match(structureInfoPanel, /styleOptions: isXyzStructureDocument\(document\) \? SMALL_MOLECULE_CONTEXT_STYLE_OPTIONS : undefined/);
+// Cartoon falls back to ball-and-stick for small molecules, so SDF collections
+// offer the small-molecule subset instead of a second Ball+Stick button.
+assert.match(structureInfoPanel, /detail: "Context molecules",[\s\S]*?styleOptions: SMALL_MOLECULE_CONTEXT_STYLE_OPTIONS,/);
 assert.doesNotMatch(structureInfoPanel, /option\.value !== "match" && option\.value !== "cartoon" && option\.value !== "spacefill"/);
 assert.match(structureInfoPanel, /const SDF_CONTEXT_OPACITY_MAX = 1/);
 assert.match(structureInfoPanel, /const INFO_TRAJECTORY_CONTROL_LIMIT = 200/);
@@ -5930,7 +5933,7 @@ assert.match(previewViewer, /kind: 'docking'/);
 assert.match(previewViewer, /function loadDockingPreparedStructure\(viewer, prepared\)/);
 assert.match(previewViewer, /const hasStoryKey = entries\.some\(entry => typeof entry\?\.key === 'string' && entry\.key\.trim\(\)\)/);
 assert.match(previewViewer, /activeMolstarPrepared\.mvsKind === 'multiple' \|\| entries\.length > 1 \|\| hasStoryKey/);
-assert.match(previewViewer, /if \(prepared\.dockingSceneMode\) \{\s*await applyDockingSceneVisibility\(viewer, prepared, prepared\.activePose\);\s*installDockingPoseControls\(viewer, prepared\);\s*return;\s*\}/);
+assert.match(previewViewer, /if \(prepared\.dockingSceneMode\) \{\s*await applyDockingSceneVisibilityNow\(viewer, prepared, prepared\.activePose\);\s*installDockingPoseControls\(viewer, prepared\);\s*return;\s*\}/);
 assert.match(previewViewer, /function installDockingPoseControls\(viewer, prepared\)/);
 assert.match(previewViewer, /className = 'buret-docking-poses'/);
 assert.match(previewViewer, /document\.body\.classList\.add\('buret-docking-pose-controls-active'\)/);
@@ -6588,11 +6591,11 @@ for (const runtimeSource of [previewViewer]) {
   assert.match(runtimeSource, /function xyzFrameBackgroundLayerOpacity\(contextOpacity, layerCount\)/);
   assert.match(runtimeSource, /return 1 - Math\.pow\(1 - opacity, 1 \/ count\)/);
   assert.match(runtimeSource, /function readXyzFrameContextColor\(config\)/);
-  assert.match(runtimeSource, /async function applySdfCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\)[\s\S]*?const contextColor = options\.contextColor \?\? readSdfCollectionContextColor\(activeConfig\)/);
+  assert.match(runtimeSource, /async function applySdfCollectionVisibilityNow\(viewer, prepared, activePose = 0, options = \{\}\)[\s\S]*?const contextColor = options\.contextColor \?\? readSdfCollectionContextColor\(activeConfig\)/);
   assert.match(runtimeSource, /async function applyXyzFrameMolstarStyle\(viewer, style, structures = null, alpha = 1, colorMode = 'gray', minAlpha = 0\.04\)/);
   assert.match(runtimeSource, /const foregroundStyle = xyzFrameForegroundStyle\(style\)/);
   assert.match(runtimeSource, /const resolvedContextStyle = xyzFrameBackgroundStyle\(contextStyle, foregroundStyle\)/);
-  assert.match(runtimeSource, /async function applyXyzFrameOverlayVisibility\(viewer, prepared, activePose = 0, options = \{\}\)[\s\S]*?const contextColor = options\.contextColor \?\? readXyzFrameContextColor\(activeConfig\)/);
+  assert.match(runtimeSource, /async function applyXyzFrameOverlayVisibilityNow\(viewer, prepared, activePose = 0, options = \{\}\)[\s\S]*?const contextColor = options\.contextColor \?\? readXyzFrameContextColor\(activeConfig\)/);
   assert.match(runtimeSource, /if \(activeSdfPoseMode !== 'all' \|\| !structureOverlayToggleAvailable\(prepared\)\) \{[\s\S]*?resetXyzFrameOverlayState\(viewer\);[\s\S]*?const activeEntry = xyzFrameEntry\(frames\[activeIndex\]/);
   assert.match(runtimeSource, /await loadMolstarEntryWithStructureRefs\(viewer, activeEntry, \{ representationPreset: 'empty' \}\)/);
   assert.match(runtimeSource, /await applyXyzFrameMolstarStyle\(viewer, foregroundStyle, activeStructures, 1, 'colored'\)/);
@@ -6613,7 +6616,7 @@ for (const runtimeSource of [previewViewer]) {
 }
 assert.match(previewViewer, /const label = prepared\?\.controlLabel \|\| \(activeConfig\?\.sdfPosePager === true \? 'Pose' : 'Model'\)/);
 assert.match(previewViewer, /installDockingPoseControls\(viewer, trajectoryControlsForPrepared\(prepared\)\)/);
-assert.match(previewViewer, /if \(prepared\.xyzFrameOverlayAvailable === true && \(activeSdfPoseMode === 'all' \|\| prepared\.nativeTrajectoryControls !== true\)\) \{\s*await applyXyzFrameOverlayVisibility\(viewer, prepared, readTrajectoryControlIndex\(activeConfig, prepared, prepared\.poseCount \|\| prepared\.xyzFrameCount\)\);\s*return;\s*\}/);
+assert.match(previewViewer, /if \(prepared\.xyzFrameOverlayAvailable === true && \(activeSdfPoseMode === 'all' \|\| prepared\.nativeTrajectoryControls !== true\)\) \{\s*await applyXyzFrameOverlayVisibilityNow\(viewer, prepared, readTrajectoryControlIndex\(activeConfig, prepared, prepared\.poseCount \|\| prepared\.xyzFrameCount\)\);\s*return;\s*\}/);
 assert.match(previewViewer, /async function reloadActiveMolstarStructure\(\)/);
 assert.match(previewViewer, /const prepared = structureDataForMolstar\(config\)/);
 assert.match(previewViewer, /activeMolstarPrepared\?\.kind === 'docking' && activeMolstarPrepared\?\.dockingSceneMode[\s\S]*await applyDockingSceneVisibility\(activeViewer, activeMolstarPrepared, activePose, \{ focus: false \}\);/);
@@ -6675,6 +6678,50 @@ assert.match(previewViewer, /const SDF_CONTEXT_OPACITY_STORAGE_KEY = 'buret\.sdf
 assert.match(previewViewer, /function normalizeSdfCollectionContextStyle\(value\)/);
 assert.match(previewViewer, /\['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'match'\]\.includes\(normalized\)/);
 assert.match(previewViewer, /function normalizeSdfCollectionContextOpacity\(value\)/);
+// Number(null) is 0, so a missing stored preference must return the 40%
+// default instead of clamping to the 4% floor - on both sides of the bridge.
+assert.match(previewViewer, /function normalizeSdfCollectionContextOpacity\(value\) \{[\s\S]*?if \(value == null \|\| value === ''\) return 0\.4;/);
+assert.match(structureInfoPanel, /function normalizeSdfContextOpacity\(value: string \| number \| null \| undefined\) \{[\s\S]*?if \(value == null \|\| value === ""\) return SDF_CONTEXT_OPACITY_DEFAULT;/);
+// Scene rebuilds clear() the plugin and reload every layer, so concurrent
+// rebuilds (slider drags, rapid style clicks) must run through one queue -
+// while loadPreparedStructure keeps calling the *Now variants to avoid
+// deadlocking the queue from inside a running rebuild.
+assert.match(previewViewer, /function queueMolstarSceneRebuild\(run\)/);
+assert.match(previewViewer, /function applySdfCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applySdfCollectionVisibilityNow\(viewer, prepared, activePose, options\)\);/);
+assert.match(previewViewer, /function applyDockingPoseCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose, options\)\);/);
+assert.match(previewViewer, /function applyXyzFrameOverlayVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyXyzFrameOverlayVisibilityNow\(viewer, prepared, activePose, options\)\);/);
+assert.match(previewViewer, /function applyDockingSceneVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyDockingSceneVisibilityNow\(viewer, prepared, activePose, options\)\);/);
+assert.match(previewViewer, /if \(prepared\.kind === 'sdf-collection'\) \{\s*await applySdfCollectionVisibilityNow\(viewer, prepared,/);
+assert.match(previewViewer, /await applyXyzFrameOverlayVisibilityNow\(viewer, prepared, readTrajectoryControlIndex\(/);
+assert.match(previewViewer, /if \(prepared\.dockingSceneMode\) \{\s*await applyDockingSceneVisibilityNow\(viewer, prepared, prepared\.activePose\);/);
+assert.match(previewViewer, /if \(prepared\.sdfPoseOverlayAvailable === true\) \{\s*await applyDockingPoseCollectionVisibilityNow\(viewer, prepared, prepared\.activePose\);/);
+// The slider fires per pixel; the send is debounced while local state and the
+// stored preference update immediately.
+assert.match(structureInfoPanel, /const SDF_CONTEXT_OPACITY_SEND_DELAY_MS = 150/);
+assert.match(structureInfoPanel, /opacitySendTimer\.current = window\.setTimeout\(\(\) => \{[\s\S]*?type: "set_sdf_context_opacity",[\s\S]*?opacity: normalized,[\s\S]*?\}, SDF_CONTEXT_OPACITY_SEND_DELAY_MS\)/);
+// A ghost background surface over a whole collection would be re-sorted every
+// frame at full grid resolution; the coarser grid keeps it interactive.
+assert.match(previewViewer, /type: 'molecular-surface', typeParams: ghost \? \{ \.\.\.typeParams, resolution: 2 \} : typeParams/);
+// SDF collections get the same atom-order Align toggle the XYZ overlay has:
+// enabled for homogeneous collections (conformers/poses of one molecule),
+// visible-but-disabled with an explanation otherwise, and re-applied when a
+// reload rebuilds `prepared` from the raw file.
+assert.match(previewViewer, /const sdfCollectionAlignFrames = sdfAlignSignature/);
+assert.match(previewViewer, /const align = prepared\.dockingSceneMode \|\| xyzAlignFrames \|\| sdfCollectionAlignFrames \? document\.createElement\('button'\) : null/);
+assert.match(previewViewer, /sdfCollectionAlignFrames\s*\? xyzFramesAlignable\(sdfCollectionAlignFrames\)/);
+assert.match(previewViewer, /'Alignment needs every molecule to list the same atoms in the same order'/);
+assert.match(previewViewer, /else if \(align && alignmentSupported && sdfCollectionAlignFrames\) \{/);
+assert.match(previewViewer, /function restoreSdfCollectionAlignment\(prepared\)/);
+assert.match(previewViewer, /restoreSdfCollectionAlignment\(prepared\);/);
+// Loop ticks rebuild the active layer through Mol* state transactions, which
+// starves camera drags; while the pointer is held on the viewport the loop
+// skips ticks and the elapsed-time frame math catches up afterwards.
+assert.match(previewViewer, /let loopPointerHeld = false/);
+assert.match(previewViewer, /if \(loopBusy \|\| loopPointerHeld\) \{/);
+assert.match(previewViewer, /window\.addEventListener\('pointerdown', onLoopPointerDown, true\)/);
+// The playback row keeps max-content only while closed; open it must take the
+// control's width or the slider collapses to its 44px minimum.
+assert.match(previewRuntimeCss, /buret-docking-poses-animation-open \.buret-docking-pose-animation \{\s*position: static;[\s\S]*?width: auto;/);
 assert.match(previewViewer, /if \(!Number\.isFinite\(opacity\)\) return 0\.4/);
 assert.match(previewViewer, /function readSdfCollectionContextStyle\(config\)/);
 assert.match(previewViewer, /function readSdfCollectionContextOpacity\(config\)/);
@@ -6708,7 +6755,7 @@ assert.match(previewViewer, /await applySdfCollectionMolstarStyle\(\s*viewer,\s*
 assert.match(previewViewer, /const structures = await loadSdfCollectionPdbLayer\(viewer, activeData, label\)/);
 assert.match(previewViewer, /await applySdfCollectionMolstarStyle\(viewer, style, structures, 1, 'colored'\)/);
 assert.match(previewViewer, /function dockingPoseCollectionStateKey\(prepared, style, allMode, contextStyle, contextOpacity, contextColor\)/);
-assert.match(previewViewer, /async function applyDockingPoseCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\)/);
+assert.match(previewViewer, /async function applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose = 0, options = \{\}\)/);
 assert.match(previewViewer, /const allMode = activeSdfPoseMode === 'all' && prepared\.sdfPoseOverlayAvailable === true/);
 assert.match(previewViewer, /backgroundStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\)/);
 assert.match(previewViewer, /async function loadMolstarEntry\(viewer, entry, presetOptions = undefined\)/);
@@ -6717,7 +6764,7 @@ assert.match(previewViewer, /async function loadMolstarEntryWithStructureRefs\(v
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, entry, presetOptions\)/);
 assert.match(previewViewer, /const before = molstarStructureCellRefs\(viewer\);\s*await loadMolstarEntry\(viewer, entry, presetOptions\);/);
 assert.match(previewViewer, /\.filter\(structure => !before\.has\(structure\?\.cell\?\.transform\?\.ref\)\)/);
-assert.match(previewViewer, /async function applyDockingSceneVisibility\(viewer, prepared, activePose = 0, options = \{\}\)/);
+assert.match(previewViewer, /async function applyDockingSceneVisibilityNow\(viewer, prepared, activePose = 0, options = \{\}\)/);
 assert.match(previewViewer, /const resolvedContextStyle = dockingSceneBackgroundStyle\(contextStyle, style\)/);
 assert.match(previewViewer, /const backgroundEntries = poses\.filter\(\(_, index\) => index !== activeIndex\)/);
 assert.match(previewViewer, /if \(resolvedContextStyle === 'default' \|\| resolvedContextStyle === 'illustrative'\) \{/);
@@ -6744,7 +6791,7 @@ assert.doesNotMatch(previewViewer, /if \(normalized === 'illustrative' \|\| norm
 assert.match(previewViewer, /if \(normalized === 'default' \|\| normalized === 'illustrative' \|\| normalized === 'cartoon' \|\| normalized === 'polymer-ligand'\) \{\s*await applyMolstarPolymerLigandRepresentationToStructures\(/s);
 assert.match(previewViewer, /await applyMolstarRepresentationsToStructures\(viewer, targets, sdfCollectionRepresentationForStyle\(normalized, alpha, colorMode\)\)/);
 assert.match(previewViewer, /if \(normalized === 'spacefill'\) \{\s*return themed\(\{ type: 'spacefill'/s);
-assert.match(previewViewer, /if \(normalized === 'molecular-surface'\) \{\s*return themed\(\{ type: 'molecular-surface'/s);
+assert.match(previewViewer, /if \(normalized === 'molecular-surface'\) \{[\s\S]*?return themed\(\{ type: 'molecular-surface'/);
 assert.doesNotMatch(previewViewer, /visuals: \['structure-gaussian-surface-mesh'\]/);
 assert.match(previewViewer, /function sdfCollectionAlphaHelpers\(alpha = 1, colorMode = 'gray', minAlpha = 0\.04\)/);
 assert.match(previewViewer, /const ghost = Number\.isFinite\(Number\(alpha\)\) && Number\(alpha\) < 1/);
@@ -7799,13 +7846,20 @@ assert.match(gridViewer, /\['sdf', 'sd', 'mol', 'smi', 'smiles'\]\.includes/);
 assert.match(gridViewer, /function setGridGenerate3DPending\(pending\)/);
 assert.match(gridViewer, /function syncGridGenerate3DControls\(\)/);
 assert.match(gridViewer, /documentId: cfg\?\.documentId \|\| null/);
-assert.match(gridViewer, /textBase64: textToBase64\(records\.join\('\\n'\)\)/);
+// Records already end with '\n$$$$\n'; joining with '\n' left a blank line
+// after each delimiter, shifting the next record's header and losing names.
+assert.match(gridViewer, /textBase64: textToBase64\(records\.join\(''\)\)/);
+assert.doesNotMatch(gridViewer, /records\.join\('\\n'\)/);
 assert.match(gridViewer, /controlLabel: 'Molecule'/);
 assert.match(gridViewer, /receptorPath: receptorPath \|\| null/);
 assert.match(gridViewer, /function selectedMolstarRows\(\)/);
 assert.match(gridViewer, /function sdfRecordTextForMolstar\(row\)/);
 assert.match(gridViewer, /function smilesRecordTextForMolstar\(row\)/);
 assert.match(gridViewer, /function sdfRecordTextsForMolstar\(rows\)/);
+// generate_aligned_coords() flattens conformers to a 2D depiction, so records
+// that already carry 3D coordinates are exported to Molstar untouched.
+assert.match(gridViewer, /function sdfRowHasEmbedded3dCoordinates\(row\)/);
+assert.match(gridViewer, /if \(rows\.every\(row => sdfRowHasEmbedded3dCoordinates\(row\)\)\) \{/);
 assert.match(gridViewer, /function alignedSdfRecordTextsForMolstar\(rows\)/);
 assert.match(gridViewer, /function rdkitMolForMolstarRow\(rdkit, row\)/);
 assert.match(gridViewer, /function alignedMolblockForMolstar\(mol, templateMol\)/);
