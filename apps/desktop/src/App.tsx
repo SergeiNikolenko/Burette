@@ -783,8 +783,10 @@ export default function App() {
     chooseDropAction,
   } = useAppDropActions({
     addProjectRoot,
+    expandedProjectIds,
     pushErrorStatus,
     pushStatus,
+    setExpandedProjectIds,
     setWorkspacePath,
   });
 
