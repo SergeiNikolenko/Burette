@@ -10,6 +10,7 @@ import type { DockDropInput } from "../lib/dock";
 import { buildFileDropPreview } from "../lib/drop-preview";
 import type { DropPreviewTarget, FileDropPreview } from "../lib/drop-preview";
 import { describeDropTargetElement } from "../lib/drop-target";
+import { parentDirectory } from "../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
@@ -386,6 +387,12 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       const classified = await invoke<ClassifiedOpenPaths>("classify_open_paths", { paths: payload.paths });
       if (classified.directories.length > 0) {
         addProjectRoots?.(classified.directories);
+      }
+      if (target.kind === "sidebar") {
+        const sidebarProjectRoots = classified.files
+          .map(parentDirectory)
+          .filter((path): path is string => Boolean(path));
+        addProjectRoots?.(sidebarProjectRoots);
       }
       if (classified.errors.length > 0) {
         pushStatus(classified.errors.join("; "), "error");
