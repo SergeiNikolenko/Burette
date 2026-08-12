@@ -569,6 +569,27 @@
         setStatus('[grid] Generating 3D conformers.');
         return;
       }
+      if (body.type === 'gridGenerate3DResult') {
+        const patches = Array.isArray(body.rows) ? body.rows : [];
+        const rows = state.remoteMode ? state.rows : state.all;
+        const patchable = patches
+          .map(patch => ({
+            patch,
+            row: rows.find(row => Number(row.index) === Number(patch?.sourceIndex))
+          }))
+          .filter(item => item.row && hasMolblockInput3DCoordinates(item.patch?.molblock));
+        if (patchable.length) pushUndoSnapshot('Generate 3D');
+        for (const { patch, row } of patchable) {
+          replaceGridRow(row, {
+            name: row.name,
+            molblock: String(patch.molblock).trimEnd(),
+            smiles: row.smiles,
+            props: row.props || {}
+          }, config(), { undo: false });
+        }
+        refreshGridControls(config());
+        return;
+      }
       if (body.type === 'gridAlignmentStarted') {
         state.aligningPoses = true;
         refreshGridControls(config());
@@ -1395,6 +1416,7 @@
       similarityQuerySelected: state.selected.size === 1,
       clusterCutoff: state.clusterCutoff,
       selectedCount: state.selected.size,
+      selectedInput3d: selectedRowsHaveInput3dCoordinates(),
       ...gridEditState(),
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
@@ -2008,6 +2030,13 @@
       .sort((a, b) => Number(a.index) - Number(b.index));
   }
 
+  function selectedRowsHaveInput3dCoordinates() {
+    const rows = selectedMolstarRows();
+    return rows.length > 0
+      && rows.length === state.selected.size
+      && rows.every(row => hasMolblockInput3DCoordinates(row.molblock));
+  }
+
   function requestSelected3DGeneration(cfg) {
     const rows = selectedMolstarRows();
     if (!rows.length) {
@@ -2019,8 +2048,8 @@
 
   function requestSelectedGeometryOptimization(cfg) {
     const rows = selectedMolstarRows();
-    if (!rows.length) {
-      setStatus('[grid] Select one or more molecules with input 3D coordinates first.');
+    if (!rows.length || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
+      setStatus('[grid] Generate 3D coordinates for every selected molecule before optimizing geometry.', 'error');
       return;
     }
     const molecules = rows.map(row => gridConformerGenerationInput(row)).filter(Boolean);
@@ -2044,6 +2073,10 @@
       setStatus('[grid] Select at least two 3D poses. The first selected row is the reference.', 'error');
       return;
     }
+    if (!rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
+      setStatus('[grid] Generate 3D coordinates for every selected molecule before aligning poses.', 'error');
+      return;
+    }
     state.aligningPoses = true;
     refreshGridControls(cfg);
     post('alignGridPoses', '[grid] Align and compare selected poses.', {
@@ -2057,8 +2090,8 @@
     if (state.evaluatingSemiempirical) return;
     const rows = selectedMolstarRows();
     const methodLabel = state.semiempiricalMethod === 'AM1_STAR' ? 'AM1*' : state.semiempiricalMethod;
-    if (!rows.length) {
-      setStatus(`[grid] Select at least one molecule with explicit coordinates before calculating ${methodLabel}.`, 'error');
+    if (!rows.length || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
+      setStatus(`[grid] Generate 3D coordinates for every selected molecule before calculating ${methodLabel}.`, 'error');
       return;
     }
     state.evaluatingSemiempirical = true;
@@ -2110,6 +2143,7 @@
     return {
       title: record.path,
       extension: record.inputExtension,
+      sourceIndex: Number(row.index),
       textBase64: textToBase64(text)
     };
   }
@@ -6840,6 +6874,27 @@
       const z = Number(parts[2]);
       return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)
         && (Math.abs(x) > 1e-6 || Math.abs(y) > 1e-6 || Math.abs(z) > 1e-6);
+    });
+  }
+
+  function hasMolblockInput3DCoordinates(value) {
+    if (!hasMolblockInputCoordinates(value)) return false;
+    const lines = String(value || '').split(/\r?\n/u);
+    const countsIndex = lines.findIndex(line => /\bV(2000|3000)\b/u.test(line) || /^\s*\d+\s+\d+\s+/u.test(line));
+    if (countsIndex < 0) return false;
+    if (/\b3D\b/u.test(lines[countsIndex - 2] || '')) return true;
+    if (/\bV3000\b/u.test(lines[countsIndex])) {
+      return lines.some(line => {
+        if (!/^\s*M\s+V30\s+\d+\s+\S+\s+/u.test(line)) return false;
+        const z = Number(line.trim().split(/\s+/u)[6]);
+        return Number.isFinite(z) && Math.abs(z) > 1e-6;
+      });
+    }
+    const atomCount = Number.parseInt(lines[countsIndex].slice(0, 3).trim(), 10);
+    if (!Number.isFinite(atomCount) || atomCount <= 0) return false;
+    return lines.slice(countsIndex + 1, countsIndex + 1 + atomCount).some(line => {
+      const z = Number(line.trim().split(/\s+/u)[2]);
+      return Number.isFinite(z) && Math.abs(z) > 1e-6;
     });
   }
 

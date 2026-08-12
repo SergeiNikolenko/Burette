@@ -57,6 +57,7 @@ type GridControlProps = {
   similarityQuerySelected: boolean;
   clusterCutoff: number;
   selectedCount: number;
+  selectedInput3d: boolean;
   // Collection edit state. grid-viewer also writes these onto the buttons by id,
   // but the overflow menu only exists in the DOM while it is open, so its items
   // have to render the right state from props on the way in.
@@ -251,6 +252,7 @@ function XyzrenderStyleControl(props: GridControlProps) {
 
 function ComputeSection(props: GridControlProps & { onRun: (action: () => void) => void }) {
   const noSelection = props.selectedCount === 0;
+  const needs3d = !noSelection && !props.selectedInput3d;
   return (
     <>
       <div className="ab-group">Compute · <span className="ab-group-accent">Metal GPU</span></div>
@@ -261,7 +263,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
           type="button"
           role="menuitem"
           disabled={props.generating3d || noSelection}
-          title="Generate and selected-MMFF-optimize conformers for selected molecules"
+          aria-description="Generate and selected-MMFF-optimize conformers for selected molecules"
           onClick={() => props.onRun(props.onGenerate3D)}
         >
           {ICONS.generate3d}
@@ -283,8 +285,8 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
           className="ab-item"
           type="button"
           role="menuitem"
-          disabled={props.generating3d || noSelection}
-          title="Optimize selected input 3D coordinates with the chosen MMFF variant on Metal"
+          disabled={props.generating3d || noSelection || !props.selectedInput3d}
+          aria-description={needs3d ? "Generate 3D coordinates for every selected molecule first" : "Optimize selected input 3D coordinates with the chosen MMFF variant on Metal"}
           onClick={() => props.onRun(props.onOptimizeGeometry)}
         >
           {ICONS.optimize}
@@ -305,9 +307,9 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
             className="ab-item"
             type="button"
             role="menuitem"
-            disabled={props.evaluatingSemiempirical || noSelection}
+            disabled={props.evaluatingSemiempirical || noSelection || !props.selectedInput3d}
             aria-busy={props.evaluatingSemiempirical ? "true" : "false"}
-            title="Calculate native semi-empirical energies and atomic charges and write them to Grid"
+            aria-description={needs3d ? "Generate 3D coordinates for every selected molecule first" : "Calculate native semi-empirical energies and atomic charges and write them to Grid"}
             onClick={() => props.onRun(props.onEvaluateSemiempirical)}
           >
             {ICONS.energy}
@@ -331,9 +333,9 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
           className="ab-item"
           type="button"
           role="menuitem"
-          disabled={props.aligningPoses || props.selectedCount < 2}
+          disabled={props.aligningPoses || props.selectedCount < 2 || !props.selectedInput3d}
           aria-busy={props.aligningPoses ? "true" : "false"}
-          title="Align selected 3D poses to the first selected row on Metal and write scores to Grid"
+          aria-description={needs3d ? "Generate 3D coordinates for every selected molecule first" : "Align selected 3D poses to the first selected row on Metal and write scores to Grid"}
           onClick={() => props.onRun(props.onAlignSelectedPoses)}
         >
           {ICONS.align}
@@ -347,7 +349,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
           type="button"
           role="menuitem"
           disabled={noSelection}
-          title="Calculate Mordred descriptors for the selected molecules and write them to Grid"
+          aria-description="Calculate Mordred descriptors for the selected molecules and write them to Grid"
           onClick={() => props.onRun(props.onCalculateSelectedDescriptors)}
         >
           {ICONS.descriptors}
@@ -373,7 +375,7 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
           role="menuitem"
           disabled={props.findingSimilar}
           aria-busy={props.clustering ? "true" : "false"}
-          title="Cluster selected, filtered, or all molecules"
+          aria-description="Cluster selected, filtered, or all molecules"
           onClick={() => props.onRun(props.onCluster)}
         >
           {ICONS.cluster}
@@ -406,7 +408,7 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
           role="menuitem"
           disabled={clusterBusy || !props.clusterRepresentativesAvailable || !props.similarityQuerySelected}
           aria-busy={props.findingSimilar ? "true" : "false"}
-          title="Find the top 50 matches to the single selected molecule in the latest clustered snapshot"
+          aria-description="Find the top 50 matches to the single selected molecule in the latest clustered snapshot"
           onClick={() => props.onRun(props.onFindSimilar)}
         >
           {ICONS.findSimilar}
@@ -427,7 +429,7 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
             || !props.clusterRepresentativesAvailable
           }
           aria-busy={props.exportingClusterRepresentatives ? "true" : "false"}
-          title="Export the immutable representative subset, structures, table, and provenance report"
+          aria-description="Export the immutable representative subset, structures, table, and provenance report"
           onClick={() => props.onRun(props.onExportClusterRepresentatives)}
         >
           {ICONS.exportDiverse}
@@ -452,7 +454,7 @@ function SelectionSection(props: GridControlProps & { onRun: (action: () => void
           className="ab-item"
           type="button"
           role="menuitem"
-          title="Select all visible molecules"
+          aria-description="Select all visible molecules"
           onClick={() => props.onRun(props.onSelectAll)}
         >
           {ICONS.selectAll}
@@ -466,7 +468,7 @@ function SelectionSection(props: GridControlProps & { onRun: (action: () => void
           type="button"
           role="menuitem"
           disabled={noSelection}
-          title="Clear selected molecules"
+          aria-description="Clear selected molecules"
           onClick={() => props.onRun(props.onClearSelection)}
         >
           {ICONS.clearSelection}
@@ -479,7 +481,7 @@ function SelectionSection(props: GridControlProps & { onRun: (action: () => void
           type="button"
           role="menuitem"
           disabled={noSelection}
-          title="Copy selected molecule records"
+          aria-description="Copy selected molecule records"
           onClick={() => props.onRun(props.onCopySelected)}
         >
           {ICONS.copy}
@@ -632,7 +634,7 @@ function HeaderActions(props: GridControlProps) {
                 type="button"
                 role="menuitem"
                 disabled={!props.saveAsEnabled}
-                title={props.saveAsTitle}
+                aria-description={props.saveAsTitle}
                 onClick={() => onRun(props.onSaveGridAs)}
               >
                 <span className="ab-item-title">Save As...</span>
@@ -645,7 +647,7 @@ function HeaderActions(props: GridControlProps) {
                 type="button"
                 role="menuitem"
                 disabled={!props.undoEnabled}
-                title={props.undoTitle}
+                aria-description={props.undoTitle}
                 onClick={() => onRun(props.onUndoGridEdit)}
               >
                 <span className="ab-item-title">Undo</span>
@@ -659,7 +661,7 @@ function HeaderActions(props: GridControlProps) {
                 className="ab-item"
                 type="button"
                 role="menuitem"
-                title="Export visible molecules as SMILES"
+                aria-description="Export visible molecules as SMILES"
                 onClick={() => onRun(props.onExportSmiles)}
               >
                 <span className="ab-item-title">Export SMILES</span>
@@ -672,7 +674,7 @@ function HeaderActions(props: GridControlProps) {
                 className="ab-item"
                 type="button"
                 role="menuitem"
-                title="Export visible table data as CSV"
+                aria-description="Export visible table data as CSV"
                 onClick={() => onRun(props.onExportCSV)}
               >
                 <span className="ab-item-title">Export CSV</span>
@@ -688,7 +690,7 @@ function HeaderActions(props: GridControlProps) {
                 type="button"
                 role="menuitem"
                 disabled={props.selectedCount === 0}
-                title="Copy selected molecule records"
+                aria-description="Copy selected molecule records"
                 onClick={() => onRun(props.onCopySelected)}
               >
                 <span className="ab-item-title">Copy selected</span>

@@ -32,6 +32,23 @@ pub(crate) fn validate_conformer_reference(
     }
     let conformer_count = distance.conformer_count();
     let passed_count = stereo.passed_count;
+    validate_conformer_counts(conformer_count, passed_count)
+}
+
+fn validate_conformer_counts(
+    conformer_count: usize,
+    passed_count: usize,
+) -> ComputeResult<ConformerReferenceValidation> {
+    if passed_count > conformer_count {
+        return Err(protocol(
+            "conformer CPU reference passed count exceeds the conformer count",
+        ));
+    }
+    if passed_count == 0 {
+        return Err(protocol(
+            "conformer generation did not produce any valid conformers",
+        ));
+    }
     Ok(ConformerReferenceValidation {
         conformer_count,
         passed_count,
@@ -92,5 +109,14 @@ mod tests {
         let error = validate_etk_energy_batch(&positions, 1, &[1.0], terms)
             .expect_err("mismatched ETK energy must fail closed");
         assert!(error.to_string().contains("observed=1.000000"));
+    }
+
+    #[test]
+    fn zero_successful_conformers_fail_closed() {
+        let error = validate_conformer_counts(4, 0)
+            .expect_err("an all-failed conformer batch must not reach publication");
+        assert!(error
+            .to_string()
+            .contains("did not produce any valid conformers"));
     }
 }
