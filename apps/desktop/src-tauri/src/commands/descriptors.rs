@@ -620,7 +620,7 @@ pub(crate) fn descriptor_start_grid<R: Runtime>(
     request: DescriptorGridRunRequest,
 ) -> Result<DescriptorGridJobStatus, String> {
     let document_id = crate::windows::runtime_document_id(window.label(), &request.document_id);
-    let python_path = resolve_python_executable()?;
+    let python_path = resolve_descriptor_engine_python()?;
     let row_indexes = normalize_row_indexes(request.row_indexes);
     let total_rows = if row_indexes.is_empty() {
         registry.descriptor_source_row_count(&document_id)?
@@ -1111,6 +1111,32 @@ fn run_external_command(path: &Path, args: &[&str], timeout: Duration) -> Result
     }
 }
 
+// resolve_python_executable only checks that a python3 binary exists and is
+// executable, so a machine without the managed runtime resolves to a system
+// interpreter and the run dies on its first batch with "No module named
+// 'rdkit'" - inside the worker thread, where the caller never sees it. A grid
+// run is long enough to be worth one status probe up front so the failure
+// arrives as an actionable message instead.
+fn resolve_descriptor_engine_python() -> Result<PathBuf, String> {
+    let python_path = resolve_python_executable()?;
+    match run_descriptor_runner(
+        &python_path,
+        json!({ "mode": "status" }),
+        DESCRIPTOR_STATUS_TIMEOUT,
+    ) {
+        Ok(payload) if payload.get("ok").and_then(Value::as_bool) == Some(true) => Ok(python_path),
+        Ok(payload) => Err(format!(
+            "{}. {}",
+            payload
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("Descriptor runtime could not import RDKit or Mordred"),
+            descriptor_install_hint()
+        )),
+        Err(error) => Err(format!("{error}. {}", descriptor_install_hint())),
+    }
+}
+
 fn resolve_python_executable() -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
     if let Some(path) = env::var_os("BURETTE_DESCRIPTOR_PYTHON") {
@@ -1228,8 +1254,10 @@ fn is_executable(path: &Path) -> bool {
     path.is_file()
 }
 
+// The Descriptors dock panel this used to point at was removed, leaving the
+// environment variable as the only route a reader can actually take.
 fn descriptor_install_hint() -> String {
-    "Install a uv-managed descriptor runtime from the Descriptors panel, or set BURETTE_DESCRIPTOR_PYTHON to a Python interpreter with RDKit and mordredcommunity.".into()
+    "Set BURETTE_DESCRIPTOR_PYTHON to a Python interpreter with RDKit and mordredcommunity installed.".into()
 }
 
 fn current_time_millis() -> u64 {
