@@ -2389,9 +2389,10 @@
         .filter(text => typeof text === 'string' && text.trim().length > 0);
     }
     // generate_aligned_coords() replaces conformers with a flat 2D depiction,
-    // which destroys docking poses and 3D overlays - records that already
-    // carry 3D coordinates go to Molstar untouched.
-    if (rows.every(row => sdfRowHasEmbedded3dCoordinates(row))) {
+    // which destroys docking poses and 3D overlays - if any selected record
+    // carries 3D coordinates the whole batch goes to Molstar untouched, or a
+    // 2D template row would flatten the 3D rows behind it.
+    if (rows.some(row => sdfRowHasEmbedded3dCoordinates(row))) {
       const original = (await Promise.all(rows.map(row => sdfRecordTextForMolstar(row))))
         .filter(text => typeof text === 'string' && text.trim().length > 0);
       if (original.length) return original;

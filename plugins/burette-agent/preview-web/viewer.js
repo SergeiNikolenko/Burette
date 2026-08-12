@@ -11065,6 +11065,19 @@
     return frames.every(frame => xyzFrameElementSignature(frame) === signature);
   }
 
+  // Matching element order is not enough for SDF collections: two isomers can
+  // share the element sequence with different bonding, and superimposing them
+  // by atom order reports a chemically meaningless RMSD.
+  function sdfCollectionBondSignature(molecule) {
+    return (molecule?.bonds || []).map(bond => `${bond.a}-${bond.b}:${bond.order}`).join(',');
+  }
+
+  function sdfCollectionTopologyUniform(molecules) {
+    if (!Array.isArray(molecules) || molecules.length < 2) return false;
+    const signature = sdfCollectionBondSignature(molecules[0]);
+    return molecules.every(molecule => sdfCollectionBondSignature(molecule) === signature);
+  }
+
   const XYZ_ALIGNMENT_GAIN_THRESHOLD = 0.5;
 
   function xyzFrameAlignmentGain(frames) {
@@ -17999,7 +18012,7 @@
     const alignmentSupported = Boolean(align) && (xyzAlignFrames
       ? xyzFramesAlignable(xyzAlignFrames)
       : sdfCollectionAlignFrames
-        ? xyzFramesAlignable(sdfCollectionAlignFrames)
+        ? xyzFramesAlignable(sdfCollectionAlignFrames) && sdfCollectionTopologyUniform(sdfAlignTarget.collectionMolecules)
         : Boolean(prepared.dockingSceneMode)
           && prepared.poses.length > 1
           && window.molstar?.BuretteSuperposition?.version === 1);
@@ -18461,15 +18474,23 @@
             }
             setTimeout(hideStatus, 2200);
           }).catch(error => {
-            if (enabling) sdfCollectionAlignment = null;
+            revertFailedSdfCollectionAlignment(enabling);
             setStatus(`[web] Could not align molecules.\n\n${error?.message || String(error)}`, 'error');
           }).finally(() => { align.disabled = false; });
         } catch (error) {
-          if (enabling) sdfCollectionAlignment = null;
+          revertFailedSdfCollectionAlignment(enabling);
           align.disabled = false;
           setStatus(`[web] Could not align molecules.\n\n${error?.message || String(error)}`, 'error');
           return Promise.resolve();
         }
+      };
+      // A rebuild that fails after the aligned layers were swapped in must put
+      // the originals back, or the button reads "Align" while the scene keeps
+      // aligned coordinates and the next toggle records them as the original.
+      const revertFailedSdfCollectionAlignment = (enabling) => {
+        if (!enabling) return;
+        if (sdfCollectionAlignment?.original) applySdfCollectionAlignmentLayers(sdfAlignTarget, sdfCollectionAlignment.original);
+        sdfCollectionAlignment = null;
       };
       align.addEventListener('click', () => { void toggleSdfCollectionAlignment(); });
     } else if (align && alignmentSupported) {

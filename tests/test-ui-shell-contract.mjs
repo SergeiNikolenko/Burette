@@ -6708,7 +6708,14 @@ assert.match(previewViewer, /type: 'molecular-surface', typeParams: ghost \? \{ 
 // reload rebuilds `prepared` from the raw file.
 assert.match(previewViewer, /const sdfCollectionAlignFrames = sdfAlignSignature/);
 assert.match(previewViewer, /const align = prepared\.dockingSceneMode \|\| xyzAlignFrames \|\| sdfCollectionAlignFrames \? document\.createElement\('button'\) : null/);
-assert.match(previewViewer, /sdfCollectionAlignFrames\s*\? xyzFramesAlignable\(sdfCollectionAlignFrames\)/);
+// Element order alone is not enough: isomers share the element sequence with
+// different bonding, so SDF alignment also requires uniform bond topology.
+assert.match(previewViewer, /sdfCollectionAlignFrames\s*\? xyzFramesAlignable\(sdfCollectionAlignFrames\) && sdfCollectionTopologyUniform\(sdfAlignTarget\.collectionMolecules\)/);
+assert.match(previewViewer, /function sdfCollectionTopologyUniform\(molecules\)/);
+// A rebuild that fails after aligned layers were swapped in must restore the
+// originals, or the scene keeps aligned coordinates behind an "Align" button.
+assert.match(previewViewer, /const revertFailedSdfCollectionAlignment = \(enabling\) => \{/);
+assert.match(previewViewer, /if \(sdfCollectionAlignment\?\.original\) applySdfCollectionAlignmentLayers\(sdfAlignTarget, sdfCollectionAlignment\.original\);/);
 assert.match(previewViewer, /'Alignment needs every molecule to list the same atoms in the same order'/);
 assert.match(previewViewer, /else if \(align && alignmentSupported && sdfCollectionAlignFrames\) \{/);
 assert.match(previewViewer, /function restoreSdfCollectionAlignment\(prepared\)/);
@@ -7856,10 +7863,11 @@ assert.match(gridViewer, /function selectedMolstarRows\(\)/);
 assert.match(gridViewer, /function sdfRecordTextForMolstar\(row\)/);
 assert.match(gridViewer, /function smilesRecordTextForMolstar\(row\)/);
 assert.match(gridViewer, /function sdfRecordTextsForMolstar\(rows\)/);
-// generate_aligned_coords() flattens conformers to a 2D depiction, so records
-// that already carry 3D coordinates are exported to Molstar untouched.
+// generate_aligned_coords() flattens conformers to a 2D depiction; if any
+// selected record carries 3D coordinates the whole batch skips the 2D align,
+// or a 2D template row would flatten the 3D rows behind it.
 assert.match(gridViewer, /function sdfRowHasEmbedded3dCoordinates\(row\)/);
-assert.match(gridViewer, /if \(rows\.every\(row => sdfRowHasEmbedded3dCoordinates\(row\)\)\) \{/);
+assert.match(gridViewer, /if \(rows\.some\(row => sdfRowHasEmbedded3dCoordinates\(row\)\)\) \{/);
 assert.match(gridViewer, /function alignedSdfRecordTextsForMolstar\(rows\)/);
 assert.match(gridViewer, /function rdkitMolForMolstarRow\(rdkit, row\)/);
 assert.match(gridViewer, /function alignedMolblockForMolstar\(mol, templateMol\)/);
