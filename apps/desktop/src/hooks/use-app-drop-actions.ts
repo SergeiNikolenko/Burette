@@ -7,15 +7,19 @@ type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => 
 
 type UseAppDropActionsOptions = {
   addProjectRoot: (path: string) => void;
+  expandedProjectIds: string[];
   pushErrorStatus: PushErrorStatus;
   pushStatus: PushStatus;
+  setExpandedProjectIds: (projectIds: string[]) => void;
   setWorkspacePath: (path: string | null) => void;
 };
 
 export function useAppDropActions({
   addProjectRoot,
+  expandedProjectIds,
   pushErrorStatus,
   pushStatus,
+  setExpandedProjectIds,
   setWorkspacePath,
 }: UseAppDropActionsOptions) {
   const chooseDropAction = useCallback((
@@ -43,9 +47,13 @@ export function useAppDropActions({
     const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
     if (cleanPaths.length === 0) return;
     for (const path of cleanPaths) addProjectRoot(path);
+    setExpandedProjectIds([
+      ...expandedProjectIds,
+      ...cleanPaths.map((path) => `project:${path}`),
+    ]);
     setWorkspacePath(cleanPaths[0]);
     pushStatus("Project folder added");
-  }, [addProjectRoot, pushStatus, setWorkspacePath]);
+  }, [addProjectRoot, expandedProjectIds, pushStatus, setExpandedProjectIds, setWorkspacePath]);
 
   return {
     addDroppedProjectRoots,
