@@ -1109,7 +1109,18 @@ function parseMolCounts(text: string) {
 }
 
 function parseV2000MolCountsLine(line: string) {
-  const match = line.match(/^\s*(\d{1,3})\s+(\d{1,3})\b.*\bV2000\b/);
+  if (!/\bV2000\b/.test(line)) return null;
+  // The counts line is fixed-width (3 columns each), so atom and bond counts
+  // of 100+ fuse together ("120119  0…") and never match a whitespace split.
+  const fixedAtoms = line.slice(0, 3);
+  const fixedBonds = line.slice(3, 6);
+  if (/^\s*\d+\s*$/.test(fixedAtoms) && /^\s*\d+\s*$/.test(fixedBonds)) {
+    return {
+      atoms: Number.parseInt(fixedAtoms, 10),
+      bonds: Number.parseInt(fixedBonds, 10),
+    };
+  }
+  const match = line.match(/^\s*(\d{1,3})\s+(\d{1,3})\b/);
   if (!match) return null;
   return {
     atoms: Number.parseInt(match[1], 10),
