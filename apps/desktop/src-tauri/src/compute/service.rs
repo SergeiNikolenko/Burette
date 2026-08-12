@@ -11,7 +11,7 @@ use std::{
     process::{Child, ChildStdin, Command, Stdio},
     sync::{mpsc, Mutex},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -49,6 +49,7 @@ const EXCHANGE_FD_ENV: &str = "BURETTE_COMPUTE_EXCHANGE_FD";
 const CHILD_EXCHANGE_FD: RawFd = 3;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const KERNEL_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
+const CONFORMER_KERNEL_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const GRAPH_INPUT_MAGIC: &[u8; 4] = b"BTG1";
 const GRAPH_OUTPUT_MAGIC: &[u8; 4] = b"BTO1";
 const GRAPH_INPUT_HEADER_BYTES: u64 = 44;
@@ -89,6 +90,7 @@ struct ComputeServiceConnection {
     responses: Mutex<mpsc::Receiver<Result<WorkerControlResponse, String>>>,
     exchange_socket: Mutex<UnixStream>,
     request_lock: Mutex<()>,
+    conformer_started_at: Mutex<BTreeMap<Uuid, Instant>>,
     session_token: SessionToken,
     worker_id: Uuid,
 }
@@ -243,6 +245,11 @@ impl ComputeServiceClient {
                                 "compute service transport failed ({first_error}); restart failed: {restart_error}"
                             )
                         })?;
+                if !should_retry_transport_failure(&first_error) {
+                    return Err(format!(
+                        "{first_error}; compute service restarted without replaying the timed-out operation"
+                    ));
+                }
                 operation(&connection).map_err(|retry_error| {
                     format!(
                         "compute service transport failed ({first_error}); retry failed: {retry_error}"
@@ -273,6 +280,36 @@ fn is_transport_failure(message: &str) -> bool {
         || message.contains("failed to write frame")
         || message.contains("Broken pipe")
         || message.contains("receiving on a closed channel")
+}
+
+fn should_retry_transport_failure(message: &str) -> bool {
+    is_transport_failure(message) && !message.starts_with("compute service response timed out:")
+}
+
+fn is_conformer_operation(operation: WorkerOperation) -> bool {
+    matches!(
+        operation,
+        WorkerOperation::MmffOptimizeV1
+            | WorkerOperation::ConformerDistanceV1
+            | WorkerOperation::ConformerEtkV1
+            | WorkerOperation::ConformerStereoV1
+    )
+}
+
+fn conformer_request_timeout(
+    started_at: &mut BTreeMap<Uuid, Instant>,
+    job_id: Uuid,
+    now: Instant,
+) -> Result<Duration, String> {
+    started_at.retain(|existing_job_id, started| {
+        *existing_job_id == job_id
+            || now.saturating_duration_since(*started) < CONFORMER_KERNEL_REQUEST_TIMEOUT
+    });
+    let started = *started_at.entry(job_id).or_insert(now);
+    CONFORMER_KERNEL_REQUEST_TIMEOUT
+        .checked_sub(now.saturating_duration_since(started))
+        .filter(|remaining| !remaining.is_zero())
+        .ok_or_else(|| "interactive conformer compute exceeded its 30 second deadline".to_string())
 }
 
 impl ComputeServiceConnection {
@@ -336,6 +373,7 @@ impl ComputeServiceConnection {
             responses: Mutex::new(receiver),
             exchange_socket: Mutex::new(exchange_socket),
             request_lock: Mutex::new(()),
+            conformer_started_at: Mutex::new(BTreeMap::new()),
             session_token,
             worker_id: Uuid::nil(),
         };
@@ -522,6 +560,7 @@ impl ComputeServiceConnection {
         input: &[u8],
         max_output_bytes: u64,
     ) -> Result<(Vec<u8>, u64), String> {
+        let request_timeout = self.kernel_request_timeout(job_id, operation)?;
         let exchange_id = Uuid::new_v4();
         let capability =
             JobCapabilityToken::new(format!("job-capability.v1.{}", random_base64url()?))
@@ -563,7 +602,7 @@ impl ComputeServiceConnection {
                 exchange,
                 operation,
             },
-            KERNEL_REQUEST_TIMEOUT,
+            request_timeout,
         )?;
         let (output_bytes, output_sha256, gpu_time_ms) = match result {
             WorkerResult::KernelCompleted {
@@ -596,6 +635,21 @@ impl ComputeServiceConnection {
 
     fn request(&self, command: WorkerCommand) -> Result<WorkerResult, String> {
         self.request_with_timeout(command, REQUEST_TIMEOUT)
+    }
+
+    fn kernel_request_timeout(
+        &self,
+        job_id: Uuid,
+        operation: WorkerOperation,
+    ) -> Result<Duration, String> {
+        if !is_conformer_operation(operation) {
+            return Ok(KERNEL_REQUEST_TIMEOUT);
+        }
+        let mut started_at = self
+            .conformer_started_at
+            .lock()
+            .map_err(|_| "compute service conformer deadline lock is poisoned".to_string())?;
+        conformer_request_timeout(&mut started_at, job_id, Instant::now())
     }
 
     fn request_with_timeout(
@@ -1953,6 +2007,48 @@ mod tests {
     fn graph_options() -> GraphBuildOptions {
         GraphBuildOptions::try_new(NonZeroUsize::new(2).unwrap(), 32, 8 * 1024 * 1024)
             .expect("valid graph options")
+    }
+
+    #[test]
+    fn conformer_kernels_share_one_interactive_deadline() {
+        for operation in [
+            WorkerOperation::MmffOptimizeV1,
+            WorkerOperation::ConformerDistanceV1,
+            WorkerOperation::ConformerEtkV1,
+            WorkerOperation::ConformerStereoV1,
+        ] {
+            assert!(is_conformer_operation(operation));
+        }
+        assert!(!is_conformer_operation(WorkerOperation::SemiempiricalScfV1));
+
+        let job_id = Uuid::new_v4();
+        let started = Instant::now();
+        let mut deadlines = BTreeMap::new();
+        assert_eq!(
+            conformer_request_timeout(&mut deadlines, job_id, started).expect("initial deadline"),
+            CONFORMER_KERNEL_REQUEST_TIMEOUT
+        );
+        assert_eq!(
+            conformer_request_timeout(&mut deadlines, job_id, started + Duration::from_secs(12))
+                .expect("remaining deadline"),
+            Duration::from_secs(18)
+        );
+        assert!(conformer_request_timeout(
+            &mut deadlines,
+            job_id,
+            started + CONFORMER_KERNEL_REQUEST_TIMEOUT
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn timed_out_kernel_restarts_without_replaying_the_operation() {
+        let timeout = "compute service response timed out: timed out waiting on channel";
+        assert!(is_transport_failure(timeout));
+        assert!(!should_retry_transport_failure(timeout));
+        assert!(should_retry_transport_failure(
+            "compute service failed to write frame: Broken pipe"
+        ));
     }
 
     #[test]

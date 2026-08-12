@@ -1,10 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback } from "react";
-import { generateBrowserDev3DConformer, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
-import { conformerGenerationPreferences, generated3DPoseSetText, type ConformerGenerationResult } from "../lib/conformer-generation";
+import { generateBrowserDev3DConformer } from "../lib/browser-dev-documents";
+import { conformerGenerationPreferences, type ConformerGenerationResult } from "../lib/conformer-generation";
 import { pathExtension } from "../lib/file-routing";
 import { isTauriRuntime } from "../lib/tauri";
 import { runConformerWorkflow, type ConformerVariant, type MmffVariant } from "../lib/compute-conformer";
+import { statusErrorMessage } from "./use-app-status";
 import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 import type { ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
@@ -70,9 +71,14 @@ function decodeBase64Text(textBase64: string) {
   return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
 }
 
+function conformerMolblock(text: string) {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const end = lines.findIndex((line) => line.trim() === "M  END");
+  return end >= 0 ? lines.slice(0, end + 1).join("\n").trimEnd() : "";
+}
+
 export function useAppGridConformerMessages({
   openDocumentsInActiveTab,
-  openDocuments,
   openTextDocuments,
   postMessageToViewerSource,
   preferences,
@@ -125,7 +131,7 @@ export function useAppGridConformerMessages({
           backend: result.backend,
         });
       }).catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = statusErrorMessage(error);
         reply("gridSemiempiricalError", { error: message });
         pushErrorStatus(error, `Grid ${method.replace("_STAR", "*")} evaluation failed`);
       });
@@ -183,7 +189,7 @@ export function useAppGridConformerMessages({
           backend: result.backend,
         });
       })().catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = statusErrorMessage(error);
         reply("gridAlignmentError", { error: message });
         pushErrorStatus(error, "Grid pose alignment failed");
       });
@@ -192,8 +198,7 @@ export function useAppGridConformerMessages({
     if (body?.type !== "generate3dGridSelection" && body?.type !== "optimizeGeometryGridSelection") return false;
 
     const molecules = Array.isArray(body.molecules) ? body.molecules : [];
-    const title = bodyString(body.title).trim() || "selected-3d-molecules.sdf";
-    const reply = (type: "gridGenerate3DStarted" | "gridGenerate3DFinished" | "gridGenerate3DError", payload: Record<string, unknown> = {}) => {
+    const reply = (type: "gridGenerate3DStarted" | "gridGenerate3DResult" | "gridGenerate3DFinished" | "gridGenerate3DError", payload: Record<string, unknown> = {}) => {
       postMessageToViewerSource(source, {
         source: "burette-grid-host",
         body: { type, ...payload },
@@ -221,40 +226,43 @@ export function useAppGridConformerMessages({
           : "ETKDGv3";
         const requestedMmffVariant = bodyString(body.mmffVariant) as MmffVariant;
         const mmffVariant: MmffVariant = requestedMmffVariant === "MMFF94" ? "MMFF94" : "MMFF94s";
-        const result = await runConformerWorkflow(documentId, sourceIndexes, (phase) => {
-          const labels = {
-            extracting: optimizeInputGeometry ? "Extracting input geometry and MMFF parameters..." : "Extracting conformer constraints...",
-            embedding: optimizeInputGeometry ? `${mmffVariant}-optimizing input geometry...` : `Generating ${conformerVariant} and ${mmffVariant}-optimizing conformers...`,
-            stereo: "Validating stereochemistry on Metal...",
-            validation: "Checking CPU reference parity...",
-            publishing: "Publishing conformers and updating Grid...",
-          } as const;
-          pushStatus(labels[phase]);
-        }, {
-          variant: conformerVariant,
-          initialization: optimizeInputGeometry ? "inputGeometry" : "generated",
-          mmffVariant,
-          conformersPerMolecule: optimizeInputGeometry ? 1 : 16,
-        });
-        void openTextDocuments([result.reportPath], { background: true });
-        await openDocuments(
-          [result.primaryOpenPath],
-          {},
-          { rendererMode: "molstar" },
-        );
-        pushStatus(
-          optimizeInputGeometry
-            ? `Processed and validated ${result.passedCount.toLocaleString()} input geometries with ${mmffVariant} via Metal GPU; per-row convergence status and energy were written to Grid and the results opened in Molstar.`
-            : `Generated ${conformerVariant} and ${mmffVariant}-ranked ${result.passedCount.toLocaleString()} valid conformers via Metal GPU and opened the ensemble in Molstar.`,
-          result.gridApplied ? "success" : "error",
-          result.gridWarning ? [result.gridWarning] : undefined,
-        );
-        return;
+        try {
+          const result = await runConformerWorkflow(documentId, sourceIndexes, (phase) => {
+            const labels = {
+              extracting: optimizeInputGeometry ? "Extracting input geometry and MMFF parameters..." : "Extracting conformer constraints...",
+              embedding: optimizeInputGeometry ? `${mmffVariant}-optimizing input geometry...` : `Generating ${conformerVariant} and ${mmffVariant}-optimizing conformers...`,
+              stereo: "Validating stereochemistry on Metal...",
+              validation: "Checking CPU reference parity...",
+              publishing: "Publishing conformers and updating Grid...",
+            } as const;
+            pushStatus(labels[phase]);
+          }, {
+            variant: conformerVariant,
+            initialization: optimizeInputGeometry ? "inputGeometry" : "generated",
+            mmffVariant,
+            conformersPerMolecule: 1,
+          });
+          void openTextDocuments([result.reportPath], { background: true });
+          pushStatus(
+            optimizeInputGeometry
+              ? `Processed and validated ${result.passedCount.toLocaleString()} input geometries with ${mmffVariant} via Metal GPU; per-row convergence status and energy were written to Grid.`
+              : `Generated and ${mmffVariant}-optimized ${result.passedCount.toLocaleString()} valid 3D geometries with ${conformerVariant} via Metal GPU and wrote them to Grid.`,
+            result.gridApplied ? "success" : "error",
+            result.gridWarning ? [result.gridWarning] : undefined,
+          );
+          return;
+        } catch (error) {
+          if (optimizeInputGeometry) throw error;
+          pushStatus(
+            `Metal 3D generation failed; retrying the selected molecules with RDKit CPU. ${statusErrorMessage(error)}`,
+          );
+        }
       }
       if (optimizeInputGeometry) {
         throw new Error("Input geometry optimization requires the native desktop Metal runtime.");
       }
-      const generatedTexts: string[] = [];
+      let generatedCount = 0;
+      const generatedRows: Array<{ sourceIndex: number; molblock: string }> = [];
       const errors: string[] = [];
       for (const molecule of molecules) {
         const item = molecule && typeof molecule === "object" ? molecule as Record<string, unknown> : {};
@@ -278,41 +286,30 @@ export function useAppGridConformerMessages({
           const conformer = isTauriRuntime()
             ? await invoke<ConformerGenerationResult>("generate_3d_conformer", { request })
             : await generateBrowserDev3DConformer(request);
-          generatedTexts.push(generated3DPoseSetText(text, extension, conformer.text, "single").trimEnd());
+          generatedCount += 1;
+          const molblock = conformerMolblock(conformer.text);
+          const sourceIndex = Number(item.sourceIndex);
+          if (molblock && Number.isSafeInteger(sourceIndex)) {
+            generatedRows.push({ sourceIndex, molblock });
+          }
         } catch (error) {
-          errors.push(`${itemTitle}: ${error instanceof Error ? error.message : String(error)}`);
+          errors.push(`${itemTitle}: ${statusErrorMessage(error)}`);
         }
       }
-      if (!generatedTexts.length) {
+      if (!generatedCount) {
         throw new Error(errors.length ? errors.join("; ") : "3D generation did not return any structures.");
       }
-      const text = `${generatedTexts.join("\n")}\n`;
-      const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
-      const generatedDocument = isTauriRuntime()
-        ? await invoke<ViewerDocument>("open_text_structure", {
-            request: { title, extension: "sdf", text },
-            preferences: molstarPreferences,
-            reloadOptions: {},
-          })
-        : await openBrowserDevTextDocument(
-            title,
-            "sdf",
-            text,
-            molstarPreferences,
-            {},
-          );
-      openDocumentsInActiveTab([generatedDocument]);
-      rememberRecentStructures([generatedDocument]);
+      if (generatedRows.length) reply("gridGenerate3DResult", { rows: generatedRows });
       const suffix = errors.length ? ` ${errors.length} failed.` : "";
-      pushStatus(`Generated 3D for ${generatedTexts.length} molecule${generatedTexts.length === 1 ? "" : "s"} and opened it in Molstar.${suffix}`);
+      pushStatus(`Generated 3D for ${generatedCount} molecule${generatedCount === 1 ? "" : "s"} and wrote it to Grid.${suffix}`);
     })()
       .catch((error) => {
-        reply("gridGenerate3DError", { error: error instanceof Error ? error.message : String(error) });
+        reply("gridGenerate3DError", { error: statusErrorMessage(error) });
         pushErrorStatus(error, "Grid 3D generation failed");
       })
       .finally(() => reply("gridGenerate3DFinished"));
     return true;
-  }, [openDocuments, openDocumentsInActiveTab, openTextDocuments, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [openDocumentsInActiveTab, openTextDocuments, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   return { handleGridConformerMessage };
 }

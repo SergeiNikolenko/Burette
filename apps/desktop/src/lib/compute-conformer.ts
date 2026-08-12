@@ -216,11 +216,17 @@ export async function runConformerWorkflow(
       backend,
     };
   } catch (error) {
-    if (job && !["succeeded", "succeededWithFailures", "failed", "cancelled"].includes(job.state)) {
-      await invoke("compute_cancel_job", {
-        jobId: job.jobId,
-        expectedRevision: job.revision,
-      }).catch(() => undefined);
+    if (job) {
+      const activeJob = job;
+      const latest = await invoke<ConformerComputeJob>("compute_get_job", {
+        jobId: activeJob.jobId,
+      }).catch(() => activeJob);
+      if (!["succeeded", "succeededWithFailures", "failed", "cancelled"].includes(latest.state)) {
+        await invoke("compute_cancel_job", {
+          jobId: latest.jobId,
+          expectedRevision: latest.revision,
+        }).catch(() => undefined);
+      }
     }
     throw error;
   }

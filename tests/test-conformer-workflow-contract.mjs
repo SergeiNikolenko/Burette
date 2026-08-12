@@ -39,6 +39,19 @@ assert.match(nativeConformerWorkflow, /workflowTemplate: "conformer\.v1"/);
 assert.match(nativeConformerWorkflow, /initialization: options\.initialization/);
 assert.match(nativeConformerWorkflow, /mmffVariant: options\.mmffVariant/);
 assert.match(nativeConformerWorkflow, /backendPolicy: "gpuRequired"/);
+assert.match(nativeConformerWorkflow, /compute_get_job/);
+assert.match(nativeConformerWorkflow, /latest\.revision/);
+assert.match(gridConformerMessages, /statusErrorMessage\(error\)/);
+assert.match(gridConformerMessages, /conformersPerMolecule: 1/);
+assert.doesNotMatch(gridConformerMessages, /conformersPerMolecule: optimizeInputGeometry \? 1 : 16/);
+assert.match(gridConformerMessages, /Metal 3D generation failed; retrying the selected molecules with RDKit CPU/);
+assert.match(gridConformerMessages, /reply\("gridGenerate3DResult", \{ rows: generatedRows \}\)/);
+assert.match(gridViewer, /sourceIndex: Number\(row\.index\)/);
+assert.match(gridConformerMessages, /const sourceIndex = Number\(item\.sourceIndex\)/);
+assert.doesNotMatch(gridConformerMessages, /openDocumentsInActiveTab\(\[generatedDocument\]\)/);
+assert.match(gridConformerMessages, /Generated 3D for.*wrote it to Grid/);
+assert.match(gridViewer, /body\.type === 'gridGenerate3DResult'/);
+assert.match(gridViewer, /pushUndoSnapshot\('Generate 3D'\)/);
 for (const command of [
   "compute_execute_conformer_distance",
   "compute_execute_conformer_stereo",
@@ -47,7 +60,7 @@ for (const command of [
 ]) {
   assert.match(nativeConformerWorkflow, new RegExp(command));
 }
-assert.match(gridConformerMessages, /openDocuments\([\s\S]*result\.primaryOpenPath[\s\S]*rendererMode: "molstar"/);
+assert.doesNotMatch(gridConformerMessages, /openDocuments\([\s\S]*result\.primaryOpenPath[\s\S]*rendererMode: "molstar"/);
 assert.match(gridConformerMessages, /openTextDocuments\(\[result\.reportPath\], \{ background: true \}\)/);
 assert.match(conformerWorker, /extract_mmff_parameters/);
 assert.match(conformerWorker, /mmff_extractor_abi_version/);
