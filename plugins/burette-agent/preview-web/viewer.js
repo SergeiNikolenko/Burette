@@ -14254,7 +14254,13 @@
   function restoreSdfCollectionAlignment(prepared) {
     if (!sdfCollectionAlignment || prepared?.kind !== 'sdf-collection') return;
     if (prepared.collectionMolecules === sdfCollectionAlignment.collection.molecules) return;
-    if (xyzFrameOverlayRawSignature(rawStructureData(activeConfig)) !== sdfCollectionAlignment.signature) return;
+    let signature = '';
+    try {
+      signature = xyzFrameOverlayRawSignature(rawStructureData(activeConfig));
+    } catch (_) {
+      return;
+    }
+    if (signature !== sdfCollectionAlignment.signature) return;
     applySdfCollectionAlignmentLayers(prepared, sdfCollectionAlignment.collection);
   }
 
