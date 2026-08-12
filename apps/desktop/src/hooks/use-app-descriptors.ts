@@ -1,7 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import {
   calculateGridDescriptors as runGridDescriptorCalculation,
+  gridDescriptorJobStatus,
   type DescriptorSourcePayload,
   type GridDescriptorControls,
   type GridDescriptorJobStatus,
@@ -13,6 +14,10 @@ import type { ViewerDocument } from "../types";
 
 export const GRID_DESCRIPTOR_JOB_EVENT = "burette-grid-descriptor-job";
 
+// The desktop command only starts the worker thread and returns immediately, so
+// the job has to be followed to know when it finished, failed, or wrote columns.
+const GRID_DESCRIPTOR_POLL_MS = 1200;
+
 type UseAppDescriptorsArgs = {
   documents: ViewerDocument[];
   pushStatus: (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
@@ -23,6 +28,10 @@ export function useAppDescriptors({
   pushStatus,
 }: UseAppDescriptorsArgs) {
   const [descriptorSource, setDescriptorSource] = useState<DescriptorSourcePayload | null>(null);
+  // Re-running the menu command against a collection that is already being
+  // processed returns the running job rather than starting a second one, so a
+  // second follower would only duplicate every status event.
+  const followedJobsRef = useRef(new Set<string>());
 
   const openDescriptorSource = useCallback((source: DescriptorSourcePayload) => {
     setDescriptorSource(source);
@@ -68,6 +77,58 @@ export function useAppDescriptors({
     pushStatus(`Applied descriptors to ${rows.length.toLocaleString()} grid row${rows.length === 1 ? "" : "s"}`);
   }, [pushStatus]);
 
+  // A desktop run writes descriptor values straight into the collection
+  // database, so the grid only learns about the new columns by re-reading a
+  // page. Unlike the calls above this one can land long after the run started,
+  // when the document may no longer be on screen - the values keep until the
+  // grid is next paged, so a missing frame is not an error worth reporting.
+  const notifyGridDescriptorRunFinished = useCallback((documentId: string, descriptorIdCount: number) => {
+    activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
+      source: "burette-grid-host",
+      body: {
+        type: "gridDescriptorFinished",
+        documentId,
+        descriptorIdCount,
+      },
+    }, "*");
+  }, []);
+
+  // Follows a started run to completion. Every snapshot is republished so the
+  // status row in the Info panel tracks the worker, and the run only reports an
+  // outcome once - a failed run raises the error toast that a silent job never
+  // could.
+  const followGridDescriptorJob = useCallback(async (documentId: string) => {
+    if (followedJobsRef.current.has(documentId)) return;
+    followedJobsRef.current.add(documentId);
+    try {
+      for (;;) {
+        await new Promise((resolve) => window.setTimeout(resolve, GRID_DESCRIPTOR_POLL_MS));
+        const status = await gridDescriptorJobStatus(documentId);
+        publishGridDescriptorJobFor(documentId, status);
+        if (status.running) continue;
+        // A run that fails or is cancelled part way still leaves the batches it
+        // already stored, so the grid is told to re-read whenever anything landed.
+        // A molecule that cannot be parsed stores an error descriptor and counts
+        // as failed rather than calculated, so the gate is every processed row -
+        // those errors are the run's answer for that molecule and belong on screen.
+        if (status.processedRows > 0) {
+          notifyGridDescriptorRunFinished(documentId, status.summary?.descriptorIdCount ?? 0);
+        }
+        pushStatus(
+          status.message || "Descriptor calculation finished",
+          status.status === "failed" ? "error" : status.status === "completed" ? "success" : "info",
+        );
+        return;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      publishGridDescriptorJob(failedGridDescriptorJob(documentId, message));
+      pushStatus(`Descriptor calculation failed: ${message}`, "error");
+    } finally {
+      followedJobsRef.current.delete(documentId);
+    }
+  }, [notifyGridDescriptorRunFinished, pushStatus]);
+
   const calculateGridDescriptors = useCallback((documentId: string, options: GridDescriptorRunOptions = {}) => {
     const targetDocument = documents.find((document) => document.id === documentId);
     if (!targetDocument) {
@@ -101,30 +162,22 @@ export function useAppDescriptors({
       : "Calculating descriptors for all molecules");
     void runGridDescriptorCalculation(documentId, targetDocument.path, targetCount ? { rowIndexes } : {})
       .then((status) => {
-        publishGridDescriptorJob(status);
+        publishGridDescriptorJobFor(documentId, status);
+        // Browser-dev computes inline and answers with the finished rows; the
+        // desktop command only starts a worker and has to be followed.
         if (status.rows?.length) applyGridDescriptorResults(documentId, status.rows);
-        if (!status.running) {
-          pushStatus(status.message || "Descriptor calculation finished", status.status === "failed" ? "error" : "success");
+        if (status.running) {
+          void followGridDescriptorJob(documentId);
+          return;
         }
+        pushStatus(status.message || "Descriptor calculation finished", status.status === "failed" ? "error" : "success");
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
-        publishGridDescriptorJob({
-          documentId,
-          status: "failed",
-          running: false,
-          totalRows: targetCount,
-          processedRows: 0,
-          calculatedRows: 0,
-          failedRows: 0,
-          message,
-          startedAtMs: Date.now(),
-          finishedAtMs: Date.now(),
-          summary: null,
-        });
+        publishGridDescriptorJob(failedGridDescriptorJob(documentId, message, targetCount));
         pushStatus(`Descriptor calculation failed: ${message}`, "error");
       });
-  }, [applyGridDescriptorResults, documents, pushStatus]);
+  }, [applyGridDescriptorResults, documents, followGridDescriptorJob, pushStatus]);
 
   return {
     applyGridDescriptorControls,
@@ -138,4 +191,29 @@ export function useAppDescriptors({
 
 function publishGridDescriptorJob(status: GridDescriptorJobStatus) {
   window.dispatchEvent(new CustomEvent<GridDescriptorJobStatus>(GRID_DESCRIPTOR_JOB_EVENT, { detail: status }));
+}
+
+// The desktop commands key jobs by a window-namespaced id - runtime_document_id
+// builds "<window label>:<document id>" - and echo that back in the snapshot,
+// while every consumer filters on the document id it started with. Publishing
+// the snapshot unchanged means the status row never matches it and stays stuck
+// on the event the run published locally.
+function publishGridDescriptorJobFor(documentId: string, status: GridDescriptorJobStatus) {
+  publishGridDescriptorJob({ ...status, documentId });
+}
+
+function failedGridDescriptorJob(documentId: string, message: string, totalRows = 0): GridDescriptorJobStatus {
+  return {
+    documentId,
+    status: "failed",
+    running: false,
+    totalRows,
+    processedRows: 0,
+    calculatedRows: 0,
+    failedRows: 0,
+    message,
+    startedAtMs: Date.now(),
+    finishedAtMs: Date.now(),
+    summary: null,
+  };
 }
