@@ -60,7 +60,12 @@ assert.match(descriptors, /followedJobsRef\.current\.delete\(documentId\)/);
 // first batch inside the worker thread, where the caller never sees it.
 assert.match(descriptorCommands, /fn resolve_descriptor_engine_python\(\) -> Result<PathBuf, String>/);
 assert.match(descriptorCommands, /let python_path = resolve_descriptor_engine_python\(\)\?;/);
-assert.match(descriptorCommands, /json!\(\{ "mode": "status" \}\),\s*DESCRIPTOR_STATUS_TIMEOUT,/);
+// The probe reuses the runtime status command, so "available" stays the single
+// definition of whether the engine can actually run.
+assert.match(
+  descriptorCommands,
+  /fn resolve_descriptor_engine_python[\s\S]{0,300}?descriptor_runtime_status\(\);[\s\S]{0,200}?status\.available/,
+);
 // The hint is the only actionable route left now that the Descriptors panel is
 // gone, so it must not send readers back to a panel that no longer exists.
 assert.doesNotMatch(descriptorCommands, /from the Descriptors panel/);

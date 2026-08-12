@@ -1118,22 +1118,10 @@ fn run_external_command(path: &Path, args: &[&str], timeout: Duration) -> Result
 // run is long enough to be worth one status probe up front so the failure
 // arrives as an actionable message instead.
 fn resolve_descriptor_engine_python() -> Result<PathBuf, String> {
-    let python_path = resolve_python_executable()?;
-    match run_descriptor_runner(
-        &python_path,
-        json!({ "mode": "status" }),
-        DESCRIPTOR_STATUS_TIMEOUT,
-    ) {
-        Ok(payload) if payload.get("ok").and_then(Value::as_bool) == Some(true) => Ok(python_path),
-        Ok(payload) => Err(format!(
-            "{}. {}",
-            payload
-                .get("error")
-                .and_then(Value::as_str)
-                .unwrap_or("Descriptor runtime could not import RDKit or Mordred"),
-            descriptor_install_hint()
-        )),
-        Err(error) => Err(format!("{error}. {}", descriptor_install_hint())),
+    let status = descriptor_runtime_status();
+    match status.python_path {
+        Some(python_path) if status.available => Ok(PathBuf::from(python_path)),
+        _ => Err(format!("{}. {}", status.message, status.install_hint)),
     }
 }
 
