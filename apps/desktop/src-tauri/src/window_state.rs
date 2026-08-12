@@ -392,6 +392,7 @@ fn visible_geometry(saved: WindowGeometry, monitors: &[Monitor]) -> WindowGeomet
     }
 }
 
+#[cfg(test)]
 fn intersection_area(
     geometry: WindowGeometry,
     area_x: i32,
