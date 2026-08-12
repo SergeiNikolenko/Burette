@@ -1,41 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import {
-  type DockArea,
-  type DockDropInput,
-  type DockDroppedStructure,
-  type DockTab,
-  type DockTabKind,
-  type DockToolKind,
-  createDockTab,
-  dockTabCatalog,
-  ensureDefaultDockTabs,
-  firstDockTabKind,
-  normalizeDockActiveTab,
-  normalizeDockTabs,
-  persistentDockTabs,
-} from "../lib/dock";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 import { workspaceStorageKey } from "../lib/window-scope";
-
-const MAX_DOCK_TAB_MEMORY_ENTRIES = 64;
 
 type ShellState = {
   sidebarOpen: boolean;
   sidebarWidth: number;
-  rightDockOpen: boolean;
-  rightDockWidth: number;
-  rightDockTabs: DockTab[];
-  rightDockActiveTab: DockTabKind;
-  rightDockDocumentId: string | null;
-  rightDockTool: DockToolKind | null;
-  bottomDockOpen: boolean;
-  bottomDockHeight: number;
-  bottomDockTabs: DockTab[];
-  bottomDockActiveTab: DockTabKind;
-  bottomDockDocumentId: string | null;
-  bottomDockTool: DockToolKind | null;
-  dockDroppedStructures: DockDroppedStructure[];
   projectsOpen: boolean;
   projectRoots: string[];
   pinnedProjectRoots: string[];
@@ -44,24 +14,9 @@ type ShellState = {
   hiddenProjectRoots: string[];
   pinnedStructurePaths: string[];
   sidebarQuery: string;
-  // Which workspace tab the docks are currently serving, plus the dock tab each
-  // workspace tab last had active. Session-scoped on purpose: workspace tab ids
-  // do not survive a restart, so none of this is persisted or snapshotted.
-  dockContextTabId: string | null;
-  dockTabMemory: Record<string, { right: DockTabKind; bottom: DockTabKind }>;
   toggleSidebar: () => void;
   closeSidebar: () => void;
   setSidebarWidth: (width: number) => void;
-  toggleDock: (area: DockArea) => void;
-  setDockOpen: (area: DockArea, open: boolean) => void;
-  setDockSize: (area: DockArea, size: number) => void;
-  openDockTab: (area: DockArea, kind: DockTabKind) => void;
-  closeDockTab: (area: DockArea, tabId: string) => void;
-  setDockActiveTab: (area: DockArea, kind: DockTabKind) => void;
-  setDockDocument: (area: DockArea, documentId: string | null) => void;
-  setDockTool: (area: DockArea, tool: DockToolKind | null) => void;
-  activateDockContext: (tabId: string | null) => void;
-  addDockDrop: (input: DockDropInput) => void;
   toggleProjectsOpen: () => void;
   setExpandedProjectIds: (projectIds: string[]) => void;
   addProjectRoot: (root: string) => void;
@@ -79,19 +34,6 @@ type ShellState = {
 export type ShellStoreSnapshot = {
   sidebarOpen: boolean;
   sidebarWidth: number;
-  rightDockOpen: boolean;
-  rightDockWidth: number;
-  rightDockTabs: DockTab[];
-  rightDockActiveTab: DockTabKind;
-  rightDockDocumentId: string | null;
-  rightDockTool: DockToolKind | null;
-  bottomDockOpen: boolean;
-  bottomDockHeight: number;
-  bottomDockTabs: DockTab[];
-  bottomDockActiveTab: DockTabKind;
-  bottomDockDocumentId: string | null;
-  bottomDockTool: DockToolKind | null;
-  dockDroppedStructures: DockDroppedStructure[];
   projectsOpen: boolean;
   projectRoots: string[];
   pinnedProjectRoots: string[];
@@ -146,57 +88,8 @@ function normalizeSidebarWidth(width: number) {
   return Math.max(220, Math.min(420, Math.round(width)));
 }
 
-function normalizeRightDockWidth(width: number) {
-  return Math.max(260, Math.min(960, Math.round(width)));
-}
-
-function normalizeBottomDockHeight(height: number) {
-  return Math.max(180, Math.min(720, Math.round(height)));
-}
-
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function dockTabState(area: DockArea, state: ShellState) {
-  return area === "right"
-    ? { tabs: state.rightDockTabs, activeTab: state.rightDockActiveTab }
-    : { tabs: state.bottomDockTabs, activeTab: state.bottomDockActiveTab };
-}
-
-function dockDropItems(input: DockDropInput): DockDroppedStructure[] {
-  const now = Date.now();
-  const payloadPaths = new Set(input.payload.paths.map(normalizeRoot));
-  const paths = input.payload.paths.map((path, index) => ({
-    id: `${now}-${input.area}-${input.tabKind}-path-${index}-${path}`,
-    area: input.area,
-    tabKind: input.tabKind,
-    title: path.split(/[\\/]/u).pop() || path,
-    detail: path,
-    addedAt: now + index,
-    payload: { paths: [path], records: [] },
-  }));
-  const records = input.payload.records.map((record, index) => ({
-    id: `${now}-${input.area}-${input.tabKind}-record-${index}-${record.path}`,
-    area: input.area,
-    tabKind: input.tabKind,
-    title: record.path,
-    detail: `${record.inputExtension.toUpperCase()} inline structure`,
-    addedAt: now + paths.length + index,
-    payload: { paths: [], records: [record] },
-  }));
-  const items = (input.payload.items ?? [])
-    .filter((item) => !item.path || !payloadPaths.has(normalizeRoot(item.path)))
-    .map((item, index) => ({
-      id: `${now}-${input.area}-${input.tabKind}-item-${index}-${item.kind}-${item.title}`,
-      area: input.area,
-      tabKind: input.tabKind,
-      title: item.title,
-      detail: item.detail ?? item.path ?? item.kind,
-      addedAt: now + paths.length + records.length + index,
-      payload: { paths: item.path ? [item.path] : [], records: [], items: [item] },
-    }));
-  return [...paths, ...records, ...items];
 }
 
 export function getShellStoreSnapshot(): ShellStoreSnapshot {
@@ -204,19 +97,6 @@ export function getShellStoreSnapshot(): ShellStoreSnapshot {
   return cloneJson({
     sidebarOpen: state.sidebarOpen,
     sidebarWidth: state.sidebarWidth,
-    rightDockOpen: state.rightDockOpen,
-    rightDockWidth: state.rightDockWidth,
-    rightDockTabs: state.rightDockTabs,
-    rightDockActiveTab: state.rightDockActiveTab,
-    rightDockDocumentId: state.rightDockDocumentId,
-    rightDockTool: state.rightDockTool,
-    bottomDockOpen: state.bottomDockOpen,
-    bottomDockHeight: state.bottomDockHeight,
-    bottomDockTabs: state.bottomDockTabs,
-    bottomDockActiveTab: state.bottomDockActiveTab,
-    bottomDockDocumentId: state.bottomDockDocumentId,
-    bottomDockTool: state.bottomDockTool,
-    dockDroppedStructures: state.dockDroppedStructures,
     projectsOpen: state.projectsOpen,
     projectRoots: state.projectRoots,
     pinnedProjectRoots: state.pinnedProjectRoots,
@@ -232,19 +112,6 @@ export const useShellStore = create<ShellState>()(
     (set) => ({
       sidebarOpen: true,
       sidebarWidth: 240,
-      rightDockOpen: false,
-      rightDockWidth: 360,
-      rightDockTabs: normalizeDockTabs("right", undefined),
-      rightDockActiveTab: firstDockTabKind("right"),
-      rightDockDocumentId: null,
-      rightDockTool: null,
-      bottomDockOpen: false,
-      bottomDockHeight: 260,
-      bottomDockTabs: normalizeDockTabs("bottom", undefined),
-      bottomDockActiveTab: firstDockTabKind("bottom"),
-      bottomDockDocumentId: null,
-      bottomDockTool: null,
-      dockDroppedStructures: [],
       projectsOpen: true,
       projectRoots: [],
       pinnedProjectRoots: [],
@@ -253,126 +120,9 @@ export const useShellStore = create<ShellState>()(
       hiddenProjectRoots: [],
       pinnedStructurePaths: [],
       sidebarQuery: "",
-      dockContextTabId: null,
-      dockTabMemory: {},
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       closeSidebar: () => set({ sidebarOpen: false }),
       setSidebarWidth: (width) => set({ sidebarWidth: normalizeSidebarWidth(width) }),
-      toggleDock: (area) => set((state) => (
-        area === "right"
-          ? {
-              rightDockOpen: !state.rightDockOpen,
-              ...(state.rightDockOpen ? {} : {
-                rightDockTabs: ensureDefaultDockTabs("right", state.rightDockTabs),
-              }),
-            }
-          : {
-              bottomDockOpen: !state.bottomDockOpen,
-              ...(state.bottomDockOpen ? {} : {
-                bottomDockTabs: ensureDefaultDockTabs("bottom", state.bottomDockTabs),
-              }),
-            }
-      )),
-      setDockOpen: (area, open) => set((state) => area === "right"
-        ? {
-            rightDockOpen: open,
-            ...(open ? { rightDockTabs: ensureDefaultDockTabs("right", state.rightDockTabs) } : {}),
-          }
-        : {
-            bottomDockOpen: open,
-            ...(open ? { bottomDockTabs: ensureDefaultDockTabs("bottom", state.bottomDockTabs) } : {}),
-          }),
-      setDockSize: (area, size) => set(area === "right"
-        ? { rightDockWidth: normalizeRightDockWidth(size) }
-        : { bottomDockHeight: normalizeBottomDockHeight(size) }),
-      openDockTab: (area, kind) =>
-        set((state) => {
-          if (!dockTabCatalog(area).includes(kind)) return state;
-          const current = dockTabState(area, state);
-          const tabs = current.tabs.some((tab) => tab.kind === kind) ? current.tabs : [...current.tabs, createDockTab(kind)];
-          return area === "right"
-            ? { rightDockOpen: true, rightDockTabs: tabs, rightDockActiveTab: kind }
-            : { bottomDockOpen: true, bottomDockTabs: tabs, bottomDockActiveTab: kind };
-        }),
-      closeDockTab: (area, tabId) =>
-        set((state) => {
-          const current = dockTabState(area, state);
-          const tabs = normalizeDockTabs(area, current.tabs.filter((tab) => tab.id !== tabId));
-          const activeTab = tabs.some((tab) => tab.kind === current.activeTab) ? current.activeTab : tabs[0].kind;
-          return area === "right"
-            ? { rightDockTabs: tabs, rightDockActiveTab: activeTab }
-            : { bottomDockTabs: tabs, bottomDockActiveTab: activeTab };
-        }),
-      setDockActiveTab: (area, kind) =>
-        set((state) => {
-          const current = dockTabState(area, state);
-          if (!current.tabs.some((tab) => tab.kind === kind)) return state;
-          return area === "right"
-            ? { rightDockActiveTab: kind }
-            : { bottomDockActiveTab: kind };
-        }),
-      setDockDocument: (area, documentId) =>
-        set((state) => area === "right"
-          ? { rightDockOpen: true, rightDockDocumentId: documentId, rightDockTool: null, rightDockActiveTab: "files" }
-          : {
-              bottomDockOpen: true,
-              bottomDockTabs: ensureDefaultDockTabs("bottom", state.bottomDockTabs),
-              bottomDockDocumentId: documentId,
-              bottomDockTool: null,
-              bottomDockActiveTab: "files",
-            }),
-      activateDockContext: (tabId) =>
-        set((state) => {
-          if (tabId === state.dockContextTabId) return state;
-          const memory = { ...state.dockTabMemory };
-          if (state.dockContextTabId) {
-            memory[state.dockContextTabId] = {
-              right: state.rightDockActiveTab,
-              bottom: state.bottomDockActiveTab,
-            };
-          }
-          for (const key of Object.keys(memory).slice(0, -MAX_DOCK_TAB_MEMORY_ENTRIES)) {
-            delete memory[key];
-          }
-          const remembered = tabId ? memory[tabId] : undefined;
-          return {
-            dockContextTabId: tabId,
-            dockTabMemory: memory,
-            // A document pinned into the dock belonged to the previous
-            // workspace tab; dropping the pin lets both docks follow the
-            // active document of the tab being entered.
-            rightDockDocumentId: null,
-            bottomDockDocumentId: null,
-            rightDockActiveTab: remembered?.right ?? state.rightDockActiveTab,
-            bottomDockActiveTab: remembered?.bottom ?? state.bottomDockActiveTab,
-          };
-        }),
-      setDockTool: (area, tool) =>
-        set((state) => area === "right"
-          ? { rightDockOpen: true, rightDockDocumentId: null, rightDockTool: tool, rightDockActiveTab: "files" }
-          : {
-              bottomDockOpen: true,
-              bottomDockTabs: ensureDefaultDockTabs("bottom", state.bottomDockTabs),
-              bottomDockDocumentId: null,
-              bottomDockTool: tool,
-              bottomDockActiveTab: "files",
-            }),
-      addDockDrop: (input) =>
-        set((state) => {
-          if (!dockTabCatalog(input.area).includes(input.tabKind)) return state;
-          const items = dockDropItems(input);
-          if (items.length === 0) return state;
-          const current = dockTabState(input.area, state);
-          const tabs = current.tabs.some((tab) => tab.kind === input.tabKind)
-            ? current.tabs
-            : [...current.tabs, createDockTab(input.tabKind)];
-          return {
-            ...(input.area === "right"
-              ? { rightDockOpen: true, rightDockTabs: tabs, rightDockActiveTab: input.tabKind }
-              : { bottomDockOpen: true, bottomDockTabs: tabs, bottomDockActiveTab: input.tabKind }),
-            dockDroppedStructures: [...items, ...state.dockDroppedStructures].slice(0, 60),
-          };
-        }),
       toggleProjectsOpen: () => set((state) => ({ projectsOpen: !state.projectsOpen })),
       setExpandedProjectIds: (projectIds) => set({ expandedProjectIds: Array.from(new Set(projectIds)) }),
       addProjectRoot: (root) =>
@@ -481,33 +231,12 @@ export const useShellStore = create<ShellState>()(
         })),
       restoreSnapshot: (snapshot) =>
         set(() => {
-          const normalizedRightDockTabs = normalizeDockTabs("right", cloneJson(snapshot.rightDockTabs));
-          const rightDockTabs = snapshot.rightDockOpen
-            ? ensureDefaultDockTabs("right", normalizedRightDockTabs)
-            : normalizedRightDockTabs;
-          const normalizedBottomDockTabs = persistentDockTabs("bottom", cloneJson(snapshot.bottomDockTabs));
-          const bottomDockTabs = snapshot.bottomDockOpen
-            ? ensureDefaultDockTabs("bottom", normalizedBottomDockTabs)
-            : normalizedBottomDockTabs;
           const projectRoots = persistentRoots(snapshot.projectRoots);
           const pinnedProjectRoots = persistentRoots(snapshot.pinnedProjectRoots)
             .filter((root) => projectRoots.includes(root));
           return {
             sidebarOpen: snapshot.sidebarOpen,
             sidebarWidth: normalizeSidebarWidth(snapshot.sidebarWidth),
-            rightDockOpen: snapshot.rightDockOpen,
-            rightDockWidth: normalizeRightDockWidth(snapshot.rightDockWidth),
-            rightDockTabs,
-            rightDockActiveTab: normalizeDockActiveTab("right", rightDockTabs, snapshot.rightDockActiveTab),
-            rightDockDocumentId: snapshot.rightDockDocumentId,
-            rightDockTool: snapshot.rightDockTool,
-            bottomDockOpen: snapshot.bottomDockOpen,
-            bottomDockHeight: normalizeBottomDockHeight(snapshot.bottomDockHeight),
-            bottomDockTabs,
-            bottomDockActiveTab: normalizeDockActiveTab("bottom", bottomDockTabs, snapshot.bottomDockActiveTab),
-            bottomDockDocumentId: snapshot.bottomDockDocumentId,
-            bottomDockTool: snapshot.bottomDockTool,
-            dockDroppedStructures: cloneJson(snapshot.dockDroppedStructures),
             projectsOpen: snapshot.projectsOpen,
             projectRoots,
             pinnedProjectRoots,
