@@ -8,6 +8,7 @@ use tauri::{
 
 use crate::commands::source_editing::{OpenedSourceRegistry, SourceEditRegistry};
 use crate::preview::grid_store::GridRuntimeRegistry;
+use crate::window_state::WindowStateRegistry;
 
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
 pub(crate) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-";
@@ -104,6 +105,44 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
     Ok(label)
 }
 
+pub(crate) fn restore_workspace_windows<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<(), String> {
+    show_workspace_application(app)?;
+    let registry = app.state::<WindowStateRegistry>();
+    let (mut labels, active_label) = registry.restoration_order();
+    if labels.is_empty() {
+        labels.push(MAIN_WINDOW_LABEL.to_string());
+    }
+    let mut restored = Vec::new();
+    for label in labels {
+        if app.get_webview_window(&label).is_some() {
+            continue;
+        }
+        match create_workspace_window(app, label.clone()) {
+            Ok(window) => {
+                window.show().map_err(|error| error.to_string())?;
+                normalize_workspace_window(&window);
+                registry.apply_window_mode(&window);
+                restored.push(window);
+            }
+            Err(error) if label != MAIN_WINDOW_LABEL => {
+                eprintln!("failed to restore workspace window {label}: {error}");
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    let focus_label = active_label
+        .filter(|label| app.get_webview_window(label).is_some())
+        .or_else(|| restored.first().map(|window| window.label().to_string()))
+        .unwrap_or_else(|| MAIN_WINDOW_LABEL.to_string());
+    if let Some(window) = app.get_webview_window(&focus_label) {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+    Ok(())
+}
+
 fn show_workspace_application<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -150,6 +189,11 @@ fn create_workspace_window<R: Runtime>(
         let _ = window.destroy();
         return Err("Workspace creation was cancelled during an exit transition.".into());
     }
+    let registry = app.state::<WindowStateRegistry>();
+    if let Err(error) = registry.ensure_window(&label) {
+        eprintln!("failed to persist workspace window {label}: {error}");
+    }
+    registry.apply_geometry(&window);
     attach_window_cleanup(app, &window);
     crate::zoom::apply_current_zoom(&window);
     Ok(window)
@@ -160,8 +204,16 @@ pub(crate) fn attach_window_cleanup<R: Runtime>(
     window: &WebviewWindow<R>,
 ) {
     let app = app.clone();
+    let event_window = window.clone();
     let label = window.label().to_string();
     window.on_window_event(move |event| {
+        if let Some(registry) = app.try_state::<WindowStateRegistry>() {
+            registry.handle_event(
+                &event_window,
+                event,
+                !crate::menu::should_prevent_exit(&app),
+            );
+        }
         if matches!(event, tauri::WindowEvent::Destroyed) {
             let _ = app
                 .state::<GridRuntimeRegistry>()
