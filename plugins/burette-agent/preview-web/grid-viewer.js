@@ -560,6 +560,10 @@
         applyDescriptorGridResults(body, config());
         return;
       }
+      if (body.type === 'gridDescriptorFinished') {
+        applyDescriptorGridRunFinished(body, config());
+        return;
+      }
       if (body.type === 'gridGenerate3DStarted') {
         setGridGenerate3DPending(true);
         setStatus('[grid] Generating 3D conformers.');
@@ -1683,6 +1687,18 @@
     state.descriptorFilters = normalizeDescriptorFilters(body.filters || body.descriptorFilters);
     state.descriptorSort = normalizeDescriptorSort(body.descriptorSort);
     setStatus('[grid] Descriptor controls applied.');
+    if (state.remoteMode) void refreshRemote(cfg);
+    else refresh(cfg);
+  }
+
+  // A desktop run writes descriptor values into the collection database instead
+  // of handing them back row by row, so the columns only appear once a page is
+  // re-read; descriptorIds ride along with the page payload.
+  function applyDescriptorGridRunFinished(body, cfg) {
+    const added = Math.max(0, Number(body.descriptorIdCount || 0));
+    setStatus(added > 0
+      ? `[grid] Descriptors ready: ${added.toLocaleString()} column${added === 1 ? '' : 's'}.`
+      : '[grid] Descriptor calculation finished.');
     if (state.remoteMode) void refreshRemote(cfg);
     else refresh(cfg);
   }
