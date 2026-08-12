@@ -104,11 +104,14 @@ export function useAppDescriptors({
       for (;;) {
         await new Promise((resolve) => window.setTimeout(resolve, GRID_DESCRIPTOR_POLL_MS));
         const status = await gridDescriptorJobStatus(documentId);
-        publishGridDescriptorJob(status);
+        publishGridDescriptorJobFor(documentId, status);
         if (status.running) continue;
         // A run that fails or is cancelled part way still leaves the batches it
         // already stored, so the grid is told to re-read whenever anything landed.
-        if (status.calculatedRows > 0) {
+        // A molecule that cannot be parsed stores an error descriptor and counts
+        // as failed rather than calculated, so the gate is every processed row -
+        // those errors are the run's answer for that molecule and belong on screen.
+        if (status.processedRows > 0) {
           notifyGridDescriptorRunFinished(documentId, status.summary?.descriptorIdCount ?? 0);
         }
         pushStatus(
@@ -159,7 +162,7 @@ export function useAppDescriptors({
       : "Calculating descriptors for all molecules");
     void runGridDescriptorCalculation(documentId, targetDocument.path, targetCount ? { rowIndexes } : {})
       .then((status) => {
-        publishGridDescriptorJob(status);
+        publishGridDescriptorJobFor(documentId, status);
         // Browser-dev computes inline and answers with the finished rows; the
         // desktop command only starts a worker and has to be followed.
         if (status.rows?.length) applyGridDescriptorResults(documentId, status.rows);
@@ -188,6 +191,15 @@ export function useAppDescriptors({
 
 function publishGridDescriptorJob(status: GridDescriptorJobStatus) {
   window.dispatchEvent(new CustomEvent<GridDescriptorJobStatus>(GRID_DESCRIPTOR_JOB_EVENT, { detail: status }));
+}
+
+// The desktop commands key jobs by a window-namespaced id - runtime_document_id
+// builds "<window label>:<document id>" - and echo that back in the snapshot,
+// while every consumer filters on the document id it started with. Publishing
+// the snapshot unchanged means the status row never matches it and stays stuck
+// on the event the run published locally.
+function publishGridDescriptorJobFor(documentId: string, status: GridDescriptorJobStatus) {
+  publishGridDescriptorJob({ ...status, documentId });
 }
 
 function failedGridDescriptorJob(documentId: string, message: string, totalRows = 0): GridDescriptorJobStatus {

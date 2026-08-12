@@ -25,7 +25,7 @@ const jobStatusCard = source("apps/desktop/src/components/grid-descriptor-status
 assert.match(descriptors, /gridDescriptorJobStatus/);
 assert.match(descriptors, /if \(status\.running\) \{\s*void followGridDescriptorJob\(documentId\);/);
 assert.match(descriptors, /const status = await gridDescriptorJobStatus\(documentId\);/);
-assert.match(descriptors, /publishGridDescriptorJob\(status\);\s*if \(status\.running\) continue;/);
+assert.match(descriptors, /publishGridDescriptorJobFor\(documentId, status\);\s*if \(status\.running\) continue;/);
 
 // Browser-dev computes inline and answers with rows; that path must not start a
 // follower, and must keep applying the rows it was given.
@@ -38,9 +38,21 @@ assert.match(
   /status\.status === "failed" \? "error" : status\.status === "completed" \? "success" : "info"/,
 );
 
+// The desktop commands key jobs by runtime_document_id ("<window>:<id>") and
+// echo that back, while every consumer filters on the id the run started with,
+// so a snapshot published unchanged is silently dropped and the status row
+// sticks on the locally published event.
+assert.match(descriptors, /function publishGridDescriptorJobFor\(documentId: string, status: GridDescriptorJobStatus\)/);
+assert.match(descriptors, /publishGridDescriptorJob\(\{ \.\.\.status, documentId \}\)/);
+assert.doesNotMatch(descriptors, /publishGridDescriptorJob\(status\)/);
+assert.match(descriptorCommands, /runtime_document_id\(window\.label\(\), &document_id\)/);
+
 // Values are written into the collection database, not handed back row by row,
-// so the grid is told to re-read whenever a run actually stored something.
-assert.match(descriptors, /if \(status\.calculatedRows > 0\) \{\s*notifyGridDescriptorRunFinished\(/);
+// so the grid is told to re-read whenever a run actually stored something. A
+// molecule that cannot be parsed stores an error descriptor and counts as
+// failed, not calculated, so gating on calculatedRows would hide a run whose
+// every row failed.
+assert.match(descriptors, /if \(status\.processedRows > 0\) \{\s*notifyGridDescriptorRunFinished\(/);
 assert.match(descriptors, /type: "gridDescriptorFinished"/);
 assert.match(gridViewer, /body\.type === 'gridDescriptorFinished'/);
 assert.match(gridViewer, /function applyDescriptorGridRunFinished\(body, cfg\) \{/);
