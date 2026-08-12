@@ -1303,7 +1303,9 @@ assert.match(appStartupEffectsHook, /paths\.length !== 2 \|\| !paths\.some\(isMo
 assert.match(appStartupEffectsHook, /dockingRequestForDrop\(paths\[0\], paths\.slice\(1\)\)/);
 assert.match(appStartupEffectsHook, /await openDockingDocument\(trajectoryDockingRequest\.receptorPath, trajectoryDockingRequest\.ligandPaths\)/);
 assert.match(appStartupEffectsHook, /openedPersistedTabsRef/);
-assert.match(appStartupEffectsHook, /void Promise\.resolve\(openPaths\(paths\)\)\.then\(\(\) => \{/);
+assert.match(appStartupEffectsHook, /invoke<string\[\]>\("existing_paths", \{ paths \}\)/);
+assert.match(appStartupEffectsHook, /pruneMissingFileTabs\(paths, existingPaths\)/);
+assert.match(appStartupEffectsHook, /await openPaths\(existingPaths\)/);
 assert.match(app, /useAppOpenDropController\(\{/);
 assert.equal((appOpenDropControllerHook.match(/useOpenEvents\(/g) || []).length, 1);
 assert.match(appOpenDropControllerHook, /useOpenEvents\(openPaths, pushErrorStatus\)/);
@@ -1404,7 +1406,7 @@ assert.match(appStartupEffectsHook, /for \(const root of browserDevProjectRoots\
 assert.match(appStartupEffectsHook, /function uniqueParentDirectories\(paths: string\[\]\)/);
 assert.match(appStartupEffectsHook, /function commonParentDirectory\(paths: string\[\]\)/);
 assert.match(appStartupEffectsHook, /!isTauriRuntime\(\) \|\| documents\.length === 0/);
-assert.match(appStartupEffectsHook, /void Promise\.resolve\(openPaths\(paths\)\)\.then\(\(\) => \{/);
+assert.match(appStartupEffectsHook, /invoke<string\[\]>\("existing_paths", \{ paths \}\)/);
 assert.match(openEventsHook, /return startupOpenSettled/);
 assert.match(openEventsHook, /openPendingDocuments\(\{ replace: true \}, true\)/);
 assert.match(appLayout, /from "\.\/editor-area"/);
