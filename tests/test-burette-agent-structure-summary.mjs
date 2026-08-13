@@ -43,7 +43,18 @@ assert.match(oneHtbPdb.summaryLine, /4 ligand instances/);
 
 const miniCif = await summarizeStructureFile("samples/mini.cif");
 assert.equal(miniCif.format, "CIF");
-assert.ok(miniCif.counts.atomSiteRows > 0);
+assert.equal(miniCif.counts.atoms, 4);
+assert.equal(miniCif.counts.residues, 1);
+assert.equal(miniCif.counts.chains, 1);
+assert.equal(miniCif.components.chains[0].id, "A");
+assert.deepEqual(miniCif.components.elements, { N: 1, C: 2, O: 1 });
+
+const miniSdf = await summarizeStructureFile("samples/mini.sdf");
+assert.equal(miniSdf.format, "SDF");
+assert.equal(miniSdf.counts.molecules, 2);
+assert.equal(miniSdf.counts.atoms, 9);
+assert.equal(miniSdf.counts.bonds, 8);
+assert.deepEqual(miniSdf.components.elements, { O: 1, H: 2, C: 6 });
 
 const fixtureDir = await mkdtemp(path.join(tmpdir(), "burette-summary-"));
 

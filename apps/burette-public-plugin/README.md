@@ -147,8 +147,8 @@ build output and are not committed.
 
 ## Submission materials
 
-- `chatgpt-app-submission.json` — listing suggestions and exactly seven positive
-  plus three negative review tests.
+- `chatgpt-app-submission.json` — listing suggestions and exactly five independent
+  positive plus three negative review tests.
 - `submission/skills/preview-molecular-structures/SKILL.md` — public bundled
   skill for the plugin submission.
 - `submission/portal-copy.md` — starter prompts, release notes, and portal

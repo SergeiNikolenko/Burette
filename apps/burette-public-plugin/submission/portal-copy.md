@@ -47,11 +47,13 @@ account, and do not control local files or desktop sessions.
 
 ## Release notes
 
-Initial public plugin-plus-skills submission. Burette provides a no-auth hosted
-MCP server for supported molecular attachments, explicit RCSB PDB lookups, and
-an isolated revisioned Ketcher editor. Results include bounded structure
-summaries and an interactive, CSP-compatible Burette preview/editor. No
-reviewer account or credentials are required.
+Resubmission after review-case corrections. Burette now reports verified chain,
+residue, atom, bond, and element counts for the submitted PDB, mmCIF, and SDF
+fixtures; every structured tool result declares an output schema; and the five
+positive review cases are independent. The no-auth MCP server still provides
+supported molecular attachments, explicit RCSB PDB lookups, an isolated
+revisioned Ketcher editor, and interactive CSP-compatible previews. No reviewer
+account or credentials are required.
 
 ## Availability
 
@@ -71,6 +73,10 @@ supported.
 
 ## Portal prerequisites
 
+- Open the rejected submission ID from the review email and confirm that it is
+  the same app as the personal ChatGPT card before changing or resubmitting it.
+- Rename the existing ChatGPT card from the legacy spelling `Burrete` to
+  `Burette`, and verify that the refreshed card shows the current listing copy.
 - Select the verified developer or business identity that matches the public
   website and policies.
 - Submit from the same OpenAI organization and a global-data-residency project.
@@ -80,9 +86,13 @@ supported.
   contracts, annotations, and the viewer resources.
 - Put the portal's exact domain token in `OPENAI_APPS_CHALLENGE`, deploy, and
   complete domain verification before submitting for review.
-- Test all five tools in ChatGPT Developer Mode on web and mobile, including
-  viewer controls, structure interaction, Ketcher revision conflicts, and
-  resizing of the inline preview/editor.
+- Run every submitted test case independently in a fresh ChatGPT conversation
+  on web and mobile. Record the exact text result and verify the widget is
+  nonblank and interactive before resubmitting.
+- Separately test all five tools in ChatGPT Developer Mode on web and mobile,
+  including `render_molecular_scene` selection/focus/visibility, the two-step
+  `open_ketcher` then `control_ketcher` edit/export flow, Ketcher revision
+  conflicts, and resizing of the inline preview/editor.
 - Capture the required submission screenshots from the real ChatGPT widget
   after the Developer Mode checks; do not substitute a direct shell URL or a
   local preview for the final portal screenshots.

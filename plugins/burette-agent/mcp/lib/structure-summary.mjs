@@ -250,6 +250,7 @@ function summarizeAtomRecords(base, records, modelCount, format) {
         atoms: waterAtoms,
       },
       ions,
+      elements: Object.fromEntries(elements),
     },
     notes: [
       "Residue classes are inferred from coordinate records and common residue names.",
@@ -301,50 +302,40 @@ function summarizeSdf(base, text) {
   let atomTotal = 0;
   let bondTotal = 0;
   const titles = [];
+  const elements = new Map();
   for (const molecule of molecules) {
     titles.push(molecule.split(/\r?\n/, 1)[0]?.trim() || "Untitled molecule");
     const counts = parseMolCounts(molecule);
     atomTotal += counts.atoms;
     bondTotal += counts.bonds;
+    for (const [element, count] of counts.elements) increment(elements, element, count);
   }
   return {
     ...base,
     format: "SDF",
     kind: molecules.length > 1 ? "Molecule collection" : "Small molecule",
     summaryLine: `SDF ${molecules.length > 1 ? "collection" : "molecule"}, ${formatInteger(molecules.length)} ${plural(molecules.length, "molecule")}, ${formatInteger(atomTotal)} atoms`,
-    counts: { molecules: molecules.length, atoms: atomTotal, bonds: bondTotal },
+    counts: { molecules: molecules.length, atoms: atomTotal, bonds: bondTotal, elements: elements.size },
     rows: [
       { label: "Molecules", value: formatInteger(molecules.length) },
       { label: "Atoms", value: formatInteger(atomTotal) },
       { label: "Bonds", value: formatInteger(bondTotal) },
+      { label: "Elements", value: formatNameCounts(elements, 8) },
     ],
     components: {
       molecules: titles.slice(0, 50).map((title, index) => ({ index, title })),
+      elements: Object.fromEntries(elements),
     },
     notes: ["SDF molecule counts are parsed from molfile count lines."],
   };
 }
 
 function summarizeCif(base, text) {
-  const atomSiteLines = text.split(/\r?\n/).filter((line) => {
-    const trimmed = line.trim();
-    return trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("_") && !trimmed.startsWith("loop_");
-  });
-  const likelyAtomRows = atomSiteLines.filter((line) => /\b(ATOM|HETATM)\b/.test(line));
-  const atoms = likelyAtomRows.length;
-  return {
-    ...base,
-    format: "CIF",
-    kind: atoms > 0 ? "Macromolecule" : "Molecular file",
-    summaryLine: atoms > 0 ? `CIF macromolecule, ${formatInteger(atoms)} atom_site rows` : "CIF molecular file",
-    counts: { atomSiteRows: atoms },
-    rows: [
-      { label: "Atom sites", value: atoms > 0 ? formatInteger(atoms) : "Not detected" },
-      { label: "Lines", value: formatInteger(base.lineCount) },
-    ],
-    components: {},
-    notes: ["CIF summary is intentionally lightweight; open the file in Burette for detailed residue grouping."],
-  };
+  const records = parseCifAtomSiteRecords(text);
+  if (records.length === 0) {
+    return emptyParsedSummary(base, "CIF", "Molecular file", "No atom_site rows were detected.");
+  }
+  return summarizeAtomRecords(base, records, new Set(records.map((record) => record.model)).size || 1, "CIF");
 }
 
 function summarizeMlipCfg(base, text) {
@@ -414,11 +405,77 @@ function classifyResidue(residue) {
 
 function parseMolCounts(block) {
   const lines = block.split(/\r?\n/);
-  const countsLine = lines[3] ?? "";
+  const countsIndex = lines.findIndex((line) => /\bV(?:2000|3000)\b/.test(line));
+  const countsLine = countsIndex >= 0 ? lines[countsIndex] : "";
+  const atoms = Number.parseInt(countsLine.slice(0, 3).trim(), 10) || 0;
+  const bonds = Number.parseInt(countsLine.slice(3, 6).trim(), 10) || 0;
+  const elements = new Map();
+  for (const line of lines.slice(countsIndex + 1, countsIndex + 1 + atoms)) {
+    const element = normalizeElement(line.slice(31, 34).trim() || line.trim().split(/\s+/)[3]);
+    if (element) increment(elements, element, 1);
+  }
   return {
-    atoms: Number.parseInt(countsLine.slice(0, 3).trim(), 10) || 0,
-    bonds: Number.parseInt(countsLine.slice(3, 6).trim(), 10) || 0,
+    atoms,
+    bonds,
+    elements,
   };
+}
+
+function parseCifAtomSiteRecords(text) {
+  const lines = text.split(/\r?\n/);
+  for (let loopIndex = 0; loopIndex < lines.length; loopIndex += 1) {
+    if (lines[loopIndex].trim().toLowerCase() !== "loop_") continue;
+    const headers = [];
+    let cursor = loopIndex + 1;
+    while (cursor < lines.length && lines[cursor].trim().startsWith("_")) {
+      headers.push(lines[cursor].trim().split(/\s+/, 1)[0]);
+      cursor += 1;
+    }
+    if (!headers.some((header) => header.startsWith("_atom_site."))) continue;
+
+    const indexes = Object.fromEntries(headers.map((header, index) => [header, index]));
+    const records = [];
+    while (cursor < lines.length) {
+      const line = lines[cursor].trim();
+      if (!line || line.startsWith("#") || line === "loop_" || line.startsWith("_")) break;
+      const values = tokenizeCifRow(line);
+      if (values.length >= headers.length) {
+        const value = (...names) => {
+          const name = names.find((candidate) => indexes[candidate] !== undefined);
+          return name ? values[indexes[name]] : "";
+        };
+        const group = value("_atom_site.group_PDB").toUpperCase();
+        if (group === "ATOM" || group === "HETATM") {
+          records.push({
+            group,
+            atomName: cifValue(value("_atom_site.auth_atom_id", "_atom_site.label_atom_id")) || "?",
+            resName: (cifValue(value("_atom_site.auth_comp_id", "_atom_site.label_comp_id")) || "UNK").toUpperCase(),
+            chain: cifValue(value("_atom_site.auth_asym_id", "_atom_site.label_asym_id")) || "-",
+            seq: cifValue(value("_atom_site.auth_seq_id", "_atom_site.label_seq_id")) || "?",
+            icode: cifValue(value("_atom_site.pdbx_PDB_ins_code")),
+            element: normalizeElement(cifValue(value("_atom_site.type_symbol"))),
+            model: cifValue(value("_atom_site.pdbx_PDB_model_num")) || "1",
+          });
+        }
+      }
+      cursor += 1;
+    }
+    return records;
+  }
+  return [];
+}
+
+function tokenizeCifRow(line) {
+  return line.match(/'(?:[^']|'')*'|"(?:[^"]|"")*"|\S+/g)?.map((value) => {
+    if ((value.startsWith("'") && value.endsWith("'")) || (value.startsWith('"') && value.endsWith('"'))) {
+      return value.slice(1, -1);
+    }
+    return value;
+  }) ?? [];
+}
+
+function cifValue(value) {
+  return value === "." || value === "?" ? "" : String(value || "");
 }
 
 function parseQuantumEspressoAtoms(text) {
