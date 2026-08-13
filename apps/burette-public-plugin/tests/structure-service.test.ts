@@ -46,6 +46,29 @@ describe("public structure preparation", () => {
     expect(prepared.viewer.format).toBe("sdf");
   });
 
+  test("returns review-facing chain and element details for the submitted fixtures", async () => {
+    const cif = prepareStructureText(
+      await readFile(new URL("../../../samples/mini.cif", import.meta.url), "utf8"),
+      "mini.cif",
+      "attachment",
+    );
+    expect(cif.summary.counts).toMatchObject({ atoms: 4, residues: 1, chains: 1 });
+    expect(cif.summary.components.chains?.[0]?.id).toBe("A");
+    expect(cif.summary.components.elements).toEqual({ N: 1, C: 2, O: 1 });
+
+    const sdfText = await readFile(new URL("../../../samples/mini.sdf", import.meta.url), "utf8");
+    for (const block of sdfText.split(/\$\$\$\$/u).filter((value) => value.trim())) {
+      expect(block.trimStart().split(/\r?\n/u)[3]).toMatch(/\bV(?:2000|3000)\b/u);
+    }
+    const sdf = prepareStructureText(
+      sdfText,
+      "mini.sdf",
+      "attachment",
+    );
+    expect(sdf.summary.counts).toMatchObject({ molecules: 2, atoms: 9, bonds: 8 });
+    expect(sdf.summary.components.elements).toEqual({ O: 1, H: 2, C: 6 });
+  });
+
   test("rejects unsupported formats", () => {
     expect(() => prepareStructureText("hello", "notes.txt", "attachment")).toThrow(
       StructureServiceError,

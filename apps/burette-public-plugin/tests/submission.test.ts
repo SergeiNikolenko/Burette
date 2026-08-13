@@ -52,17 +52,21 @@ describe("plugin submission bundle", () => {
     }
   });
 
-  test("provides exactly seven positive and three negative review cases", () => {
-    expect(submission.test_cases).toHaveLength(7);
+  test("provides exactly five independent positive and three negative review cases", () => {
+    expect(submission.test_cases).toHaveLength(5);
     expect(submission.negative_test_cases).toHaveLength(3);
     for (const testCase of submission.test_cases) {
       expect(publicToolNames as readonly string[]).toContain(
         testCase.tools_triggered,
       );
     }
-    for (const toolName of publicToolNames) {
-      expect(submission.test_cases.map((testCase) => testCase.tools_triggered)).toContain(toolName);
-    }
+    expect(submission.test_cases.map((testCase) => testCase.tools_triggered)).toEqual([
+      "preview_molecular_file",
+      "preview_molecular_file",
+      "preview_molecular_file",
+      "preview_pdb_structure",
+      "open_ketcher",
+    ]);
     for (const testCase of submission.negative_test_cases) {
       expect(testCase.tools_triggered).toBeNull();
     }

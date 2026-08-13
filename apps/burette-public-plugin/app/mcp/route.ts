@@ -75,6 +75,64 @@ const ketcherActionInputSchema = z.object({
   suggestedBasename: z.string().trim().max(255).optional(),
 }).strict();
 
+const ketcherErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+}).strict();
+
+const ketcherSnapshotSchema = z.object({
+  apiVersion: z.literal(KETCHER_AGENT_API_VERSION),
+  surfaceId: z.string(),
+  phase: z.enum(["loading", "ready", "applying", "exporting", "recovering", "error", "disposed"]),
+  structureRevision: z.number().int().nonnegative(),
+  interactionRevision: z.number().int().nonnegative(),
+  persistedRevision: z.number().int().nonnegative(),
+  dirty: z.boolean(),
+  structure: z.object({
+    kind: z.enum(["empty", "molecule", "reaction"]),
+    atomCount: z.number().int().nonnegative(),
+    bondCount: z.number().int().nonnegative(),
+    componentCount: z.number().int().nonnegative(),
+    smiles: z.string().nullable(),
+    reactionSmiles: z.string().nullable(),
+    smilesOmitted: z.boolean(),
+    reactionSmilesOmitted: z.boolean(),
+  }).strict(),
+  selectedAtoms: z.array(z.number().int().nonnegative()).max(256),
+  selectedAtomCount: z.number().int().nonnegative(),
+  selectionTruncated: z.boolean(),
+  highlightedAtoms: z.array(z.number().int().nonnegative()).max(256),
+  highlightedAtomCount: z.number().int().nonnegative(),
+  highlightTruncated: z.boolean(),
+  lastAction: z.unknown().nullable(),
+  capabilities: z.record(z.string(), z.boolean()),
+}).strict();
+
+const openKetcherOutputSchema = {
+  ok: z.boolean(),
+  surfaceId: z.string().optional(),
+  ketcher: ketcherSnapshotSchema.nullable().optional(),
+  error: ketcherErrorSchema.optional(),
+};
+
+const hostedKetcherActionResultSchema = z.object({
+  ok: z.boolean(),
+  command: z.string(),
+  actionId: z.string().optional(),
+  result: z.record(z.string(), z.unknown()).optional(),
+  snapshot: ketcherSnapshotSchema.optional(),
+  error: ketcherErrorSchema.optional(),
+}).strict();
+
+const controlKetcherOutputSchema = {
+  ok: z.boolean(),
+  surfaceId: z.string().optional(),
+  result: hostedKetcherActionResultSchema.optional(),
+  snapshot: ketcherSnapshotSchema.nullable().optional(),
+  action: ketcherActionInputSchema.optional(),
+  error: ketcherErrorSchema.optional(),
+};
+
 function toolError(error: unknown) {
   const message =
     error instanceof StructureServiceError
@@ -145,6 +203,7 @@ function createServer(): McpServer {
       inputSchema: {
         structure: ketcherStructureSchema.optional(),
       },
+      outputSchema: openKetcherOutputSchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -199,6 +258,7 @@ function createServer(): McpServer {
       inputSchema: {
         action: ketcherActionInputSchema,
       },
+      outputSchema: controlKetcherOutputSchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,

@@ -11,14 +11,17 @@
 - **Terms:** https://burette-landing.vercel.app/terms
 - **Logo:** `plugins/burette-agent/assets/app-icon.png` in the main Burette
   repository (512 × 512 PNG)
-- **ChatGPT web screenshot:** `submission/screenshots/chatgpt-pdb-viewer-web.jpg`
-  captured from the production v21 widget in a real ChatGPT conversation after
-  refreshing the developer connector.
-- **Live ChatGPT proof:** https://chatgpt.com/c/6a57781a-b1b0-83ea-bb65-4c5b13bcc3a8
+- **ChatGPT web screenshot:** capture a new screenshot from the production v21
+  widget in a fresh ChatGPT conversation after deploying this resubmission and
+  rescanning the MCP endpoint.
+- **Live ChatGPT proof:** replace this field with a fresh reviewer-accessible
+  conversation URL created from the rescanned production plugin.
 - **Desktop demo video:** https://burette-landing.vercel.app/assets/burette-chatgpt-plugin-demo.mp4
-- **Physical iPhone demo video:** https://burette-landing.vercel.app/assets/burette-chatgpt-plugin-demo-iphone.mp4
-- **Mobile verification:** the same production v21 plugin was confirmed working
-  on a physical iPhone on July 15, 2026.
+- **Physical iPhone demo video:** record and upload a fresh run after the
+  production resubmission build is deployed.
+- **Mobile verification:** verify the rescanned production version on a
+  physical iPhone before resubmitting; do not reuse the July 15 evidence as
+  proof of the new version.
 
 ### Long description
 
@@ -47,11 +50,13 @@ account, and do not control local files or desktop sessions.
 
 ## Release notes
 
-Initial public plugin-plus-skills submission. Burette provides a no-auth hosted
-MCP server for supported molecular attachments, explicit RCSB PDB lookups, and
-an isolated revisioned Ketcher editor. Results include bounded structure
-summaries and an interactive, CSP-compatible Burette preview/editor. No
-reviewer account or credentials are required.
+Resubmission after review-case corrections. Burette now reports verified chain,
+residue, atom, bond, and element counts for the submitted PDB, mmCIF, and SDF
+fixtures; every structured tool result declares an output schema; and the five
+positive review cases are independent. The no-auth MCP server still provides
+supported molecular attachments, explicit RCSB PDB lookups, an isolated
+revisioned Ketcher editor, and interactive CSP-compatible previews. No reviewer
+account or credentials are required.
 
 ## Availability
 
@@ -71,6 +76,10 @@ supported.
 
 ## Portal prerequisites
 
+- Open the rejected submission ID from the review email and confirm that it is
+  the same app as the personal ChatGPT card before changing or resubmitting it.
+- Rename the existing ChatGPT card from the legacy spelling `Burrete` to
+  `Burette`, and verify that the refreshed card shows the current listing copy.
 - Select the verified developer or business identity that matches the public
   website and policies.
 - Submit from the same OpenAI organization and a global-data-residency project.
@@ -80,9 +89,13 @@ supported.
   contracts, annotations, and the viewer resources.
 - Put the portal's exact domain token in `OPENAI_APPS_CHALLENGE`, deploy, and
   complete domain verification before submitting for review.
-- Test all five tools in ChatGPT Developer Mode on web and mobile, including
-  viewer controls, structure interaction, Ketcher revision conflicts, and
-  resizing of the inline preview/editor.
+- Run every submitted test case independently in a fresh ChatGPT conversation
+  on web and mobile. Record the exact text result and verify the widget is
+  nonblank and interactive before resubmitting.
+- Separately test all five tools in ChatGPT Developer Mode on web and mobile,
+  including `render_molecular_scene` selection/focus/visibility, the two-step
+  `open_ketcher` then `control_ketcher` edit/export flow, Ketcher revision
+  conflicts, and resizing of the inline preview/editor.
 - Capture the required submission screenshots from the real ChatGPT widget
   after the Developer Mode checks; do not substitute a direct shell URL or a
   local preview for the final portal screenshots.
