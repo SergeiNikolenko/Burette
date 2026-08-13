@@ -21,6 +21,7 @@ import {
 } from "./compute-cluster";
 import type { StandaloneAlignmentResult, StandaloneComputeSource, StandaloneSemiempiricalResult } from "./standalone-compute";
 import { stableTextDocumentId } from "./file-export";
+import { attachSharedRun, stopSharedRuns, type SharedRunStore } from "./shared-progress-run";
 import type { TextFileDocument } from "../types";
 
 type BrowserDevNativeComputeOperation = "generate3d" | "generateEnsemble" | "optimizeGeometry" | "semiempiricalRm1" | "alignPoses" | "chemicalSpace" | "chemicalSpaceCluster";
@@ -33,7 +34,10 @@ type BrowserDevNativeComputeResponse<T> = {
 const MAX_BROWSER_FINGERPRINT_CACHE_ENTRIES = 4;
 const REPRESENTATION_FETCH_RETRY_DELAY_MS = 400;
 const browserFingerprintCache = new Map<string, Promise<FingerprintOutputRecord[]>>();
-const browserRepresentationCache = new Map<string, Promise<LearnedRepresentationResult>>();
+// Same rule as the desktop path: the model run belongs to the records, not to
+// whoever started it, so changing the embedder or leaving the panel detaches
+// from it instead of cancelling the request half-way.
+const browserRepresentationRuns: SharedRunStore<LearnedRepresentationResult, ChemicalSpaceProgress> = new Map();
 
 type KnnCache = ChemicalSpaceKnnCache;
 
@@ -200,50 +204,51 @@ function prepareBrowserChemicalSpaceRepresentation(
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
 ) {
-  const key = `${engine}:${browserFingerprintCacheKey(records)}`;
-  const cached = browserRepresentationCache.get(key);
-  if (cached) {
-    browserRepresentationCache.delete(key);
-    browserRepresentationCache.set(key, cached);
-    return cached;
-  }
-  onProgress({ phase: "representations", completedRecords: 0, totalRecords: records.length });
-  const pending = fetchRepresentationWithRetry(async () => {
-    const response = await fetch("/__burette/chemical-space-representation", {
-      method: "POST",
-      headers: { "Content-Type": "application/json; charset=utf-8" },
-      body: JSON.stringify({ operation: "represent", engine, neighbors: 64, records }),
-      signal,
-    });
-    if (response.headers.get("Content-Type")?.includes("application/x-ndjson")) {
-      return readRepresentationStream(response, engine, onProgress);
-    }
-    const payload = await response.json().catch(() => null) as
-      | (LearnedRepresentationResult & { error?: unknown })
-      | null;
-    if (!response.ok || !payload) {
-      throw representationServerError(
-        typeof payload?.error === "string"
-          ? payload.error
-          : `Metal representation request failed with status ${response.status}`,
-      );
-    }
-    if (payload.backend !== "metalMps" || payload.engine !== engine) {
-      throw new Error("Metal representation worker returned an unattested result.");
-    }
-    onProgress({
-      phase: "representations",
-      completedRecords: records.length,
-      totalRecords: records.length,
-    });
-    return payload;
-  }, signal);
-  browserRepresentationCache.set(key, pending);
-  trimCache(browserRepresentationCache, MAX_BROWSER_FINGERPRINT_CACHE_ENTRIES);
-  void pending.catch(() => {
-    if (browserRepresentationCache.get(key) === pending) browserRepresentationCache.delete(key);
+  return attachSharedRun({
+    runs: browserRepresentationRuns,
+    key: `${engine}:${browserFingerprintCacheKey(records)}`,
+    maxRuns: MAX_BROWSER_FINGERPRINT_CACHE_ENTRIES,
+    onProgress,
+    signal,
+    abortError,
+    start: (report, runSignal) => {
+      report({ phase: "representations", completedRecords: 0, totalRecords: records.length });
+      return fetchRepresentationWithRetry(async () => {
+        const response = await fetch("/__burette/chemical-space-representation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+          body: JSON.stringify({ operation: "represent", engine, neighbors: 64, records }),
+          signal: runSignal,
+        });
+        if (response.headers.get("Content-Type")?.includes("application/x-ndjson")) {
+          return readRepresentationStream(response, engine, report);
+        }
+        const payload = await response.json().catch(() => null) as
+          | (LearnedRepresentationResult & { error?: unknown })
+          | null;
+        if (!response.ok || !payload) {
+          throw representationServerError(
+            typeof payload?.error === "string"
+              ? payload.error
+              : `Metal representation request failed with status ${response.status}`,
+          );
+        }
+        if (payload.backend !== "metalMps" || payload.engine !== engine) {
+          throw new Error("Metal representation worker returned an unattested result.");
+        }
+        report({
+          phase: "representations",
+          completedRecords: records.length,
+          totalRecords: records.length,
+        });
+        return payload;
+      }, runSignal);
+    },
   });
-  return pending;
+}
+
+export function stopBrowserChemicalSpaceRepresentations() {
+  stopSharedRuns(browserRepresentationRuns, "");
 }
 
 function representationServerError(message: string): Error {
@@ -448,14 +453,6 @@ function zeroFingerprintBase64() {
     cachedZeroFingerprintBase64 = encodeKnnBase64(new Uint8Array(256));
   }
   return cachedZeroFingerprintBase64;
-}
-
-function trimCache<Key, Value>(cache: Map<Key, Value>, limit: number) {
-  while (cache.size > limit) {
-    const oldestKey = cache.keys().next().value;
-    if (oldestKey === undefined) break;
-    cache.delete(oldestKey);
-  }
 }
 
 export async function runBrowserDevMetalConformer(

@@ -98,6 +98,9 @@ export function DescriptorPanel({ state, actions }: DescriptorPanelProps) {
           available: false,
           message: statusError instanceof Error ? statusError.message : String(statusError),
           installHint: "Install a uv-managed Python runtime with RDKit and mordredcommunity.",
+          installerAvailable: false,
+          installSizeHint: "",
+          installPhase: "idle",
         });
       })
       .finally(() => setRuntimeLoading(false));
@@ -259,15 +262,7 @@ export function DescriptorPanel({ state, actions }: DescriptorPanelProps) {
     setRuntimeInstalling(true);
     setError(null);
     void installDescriptorRuntime()
-      .then((installResult) => {
-        setRuntime({
-          available: true,
-          pythonPath: installResult.pythonPath,
-          mordredVersion: null,
-          rdkitVersion: null,
-          message: installResult.message,
-          installHint: "",
-        });
+      .then(() => {
         refreshRuntime();
       })
       .catch((installError) => {

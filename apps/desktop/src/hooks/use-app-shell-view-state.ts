@@ -83,9 +83,13 @@ type ChemistryShellViewState = Pick<
   | "conformerStatus"
   | "conformerSettings"
   | "conformerJobs"
+  | "databaseJobs"
   | "xtbStatus"
   | "xtbSettings"
   | "xtbJobs"
+  | "derivedColumnJobs"
+  | "rgroupRuntimeAvailable"
+  | "hoveredGridRows"
 >;
 
 type SettingsShellViewState = Pick<ShellViewState, "preferences" | "update">;
@@ -196,9 +200,13 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
       conformerStatus: state.conformerStatus,
       conformerSettings: state.conformerSettings,
       conformerJobs: state.conformerJobs,
+      databaseJobs: state.databaseJobs,
       xtbStatus: state.xtbStatus,
       xtbSettings: state.xtbSettings,
       xtbJobs: state.xtbJobs,
+      derivedColumnJobs: state.derivedColumnJobs,
+      rgroupRuntimeAvailable: state.rgroupRuntimeAvailable,
+      hoveredGridRows: state.hoveredGridRows,
     },
     settings: {
       preferences: state.preferences,

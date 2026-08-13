@@ -1,7 +1,9 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { AppLayout } from "./components/app-layout";
+import { DatabaseQueryDialog } from "./components/database-query-dialog";
 import { StatusDetailsDialog } from "./components/status-details-dialog";
 import type { StructureOverlayMode, ViewerLigandSelection } from "./components/types";
+import type { HoveredGridRow } from "./types";
 import { Toaster } from "./components/ui/toast";
 import { WindowTitle } from "./components/window-title";
 import {
@@ -16,6 +18,17 @@ import { useAppBrowserDevStartup } from "./hooks/use-app-browser-dev-startup";
 import { useAppAgentSessionActions } from "./hooks/use-app-agent-session-actions";
 import { useAppChemistryJobs } from "./hooks/use-app-chemistry-jobs";
 import { useAppConformerWorkflows } from "./hooks/use-app-conformer-workflows";
+import { CalculatePropertiesDialog, type CalculatePropertiesRequest } from "./components/calculate-properties-dialog";
+import { CorrelationMatrixDialog, type CorrelationMatrixRequest } from "./components/correlation-matrix-dialog";
+import { CalculatedColumnDialog, type CalculatedColumnRequest } from "./components/calculated-column-dialog";
+import { MergeColumnsDialog, type MergeColumnsRequest } from "./components/merge-columns-dialog";
+import { SetValueRangeDialog, type SetValueRangeRequest } from "./components/set-value-range-dialog";
+import { SplitValueRowsDialog, type SplitValueRowsRequest } from "./components/split-value-rows-dialog";
+import { PerformReactionDialog, type PerformReactionRequest } from "./components/perform-reaction-dialog";
+import { SubstructureCountDialog, type SubstructureCountRequest } from "./components/substructure-count-dialog";
+import { RGroupDecompositionDialog, type RGroupDecompositionRequest } from "./components/rgroup-decomposition-dialog";
+import { requestGridColumns, useAppDerivedColumns } from "./hooks/use-app-derived-columns";
+import { useAppDatabase } from "./hooks/use-app-database";
 import { useAppDescriptors } from "./hooks/use-app-descriptors";
 import { useAppDiagnostics } from "./hooks/use-app-diagnostics";
 import { useAppDockActions } from "./hooks/use-app-dock-actions";
@@ -259,6 +272,24 @@ export default function App() {
     if (active) shell.dataset.structureDragActive = "true";
     else delete shell.dataset.structureDragActive;
   }, []);
+
+  // A native drag whose dragend never reaches us (dropped over an iframe or
+  // released outside the window) used to leave the lilac dock drop-highlight
+  // painted forever. Any drag-ending gesture clears the flag.
+  useEffect(() => {
+    if (!structureDragActive) return undefined;
+    const clear = () => setStructureDragActiveState(false);
+    window.addEventListener("dragend", clear);
+    window.addEventListener("drop", clear);
+    window.addEventListener("mouseup", clear);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("dragend", clear);
+      window.removeEventListener("drop", clear);
+      window.removeEventListener("mouseup", clear);
+      window.removeEventListener("blur", clear);
+    };
+  }, [structureDragActive]);
   const { status, statusDetails, dismissStatusDetails, pushStatus, pushErrorStatus, recentErrorsRef } = useAppStatus();
   const {
     clearDirtyGridDocuments,
@@ -381,6 +412,141 @@ export default function App() {
     documents,
     pushStatus,
   });
+  const {
+    addDerivedGridColumn,
+    addCalculatedGridColumn,
+    mergeGridColumns,
+    setGridColumnValueRange,
+    splitGridValueRows,
+    addPropertyGridColumns,
+    addReactionProductColumn,
+    addScaffoldGridColumns,
+    addSubstructureCountColumn,
+    decomposeGridRGroups,
+    findSimilarInFile,
+    validateSubstructureQuery,
+    deleteDuplicateGridRows,
+    mergeEquivalentGridRows,
+    clearDerivedColumnJobs,
+    derivedColumnJobs,
+    rgroupRuntimeAvailable,
+  } = useAppDerivedColumns({
+    documents,
+    pushStatus,
+  });
+  const [hoveredGridRows, setHoveredGridRows] = useState<Record<string, HoveredGridRow | null>>({});
+  const updateHoveredGridRow = useCallback((documentId: string, row: HoveredGridRow | null) => {
+    setHoveredGridRows((previous) => (previous[documentId] === row ? previous : { ...previous, [documentId]: row }));
+  }, []);
+  const [calculatePropertiesRequest, setCalculatePropertiesRequest] = useState<CalculatePropertiesRequest | null>(null);
+  const [correlationMatrixRequest, setCorrelationMatrixRequest] = useState<CorrelationMatrixRequest | null>(null);
+  const [calculatedColumnRequest, setCalculatedColumnRequest] = useState<CalculatedColumnRequest | null>(null);
+  const [mergeColumnsRequest, setMergeColumnsRequest] = useState<MergeColumnsRequest | null>(null);
+  const openMergeColumns = useCallback(async (documentId: string) => {
+    const target = documents.find((document) => document.id === documentId);
+    if (!target) return;
+    try {
+      const columns = await requestGridColumns(documentId);
+      if (columns.length < 2) {
+        pushStatus(`${target.title} has fewer than two columns to merge.`, "error");
+        return;
+      }
+      setMergeColumnsRequest({ documentId, documentTitle: target.title, columns });
+    } catch (error) {
+      pushStatus(error instanceof Error ? error.message : String(error), "error");
+    }
+  }, [documents, pushStatus]);
+  const [setValueRangeRequest, setSetValueRangeRequest] = useState<SetValueRangeRequest | null>(null);
+  // The grid owns the column catalog, so the dialog is opened with the columns
+  // it will offer rather than with a filter model a paged collection leaves empty.
+  const openSetValueRange = useCallback(async (documentId: string) => {
+    const target = documents.find((document) => document.id === documentId);
+    if (!target) return;
+    try {
+      const columns = (await requestGridColumns(documentId)).filter((column) => column.type === "number");
+      if (columns.length === 0) {
+        pushStatus(`${target.title} has no numeric column to limit.`, "error");
+        return;
+      }
+      setSetValueRangeRequest({ documentId, documentTitle: target.title, columns });
+    } catch (error) {
+      pushStatus(error instanceof Error ? error.message : String(error), "error");
+    }
+  }, [documents, pushStatus]);
+  const [splitValueRowsRequest, setSplitValueRowsRequest] = useState<SplitValueRowsRequest | null>(null);
+  // Only the collection's own data columns can hold several values in one cell:
+  // a computed column is one value per row by construction.
+  const openSplitValueRows = useCallback(async (documentId: string) => {
+    const target = documents.find((document) => document.id === documentId);
+    if (!target) return;
+    try {
+      const columns = (await requestGridColumns(documentId)).filter((column) => column.kind === "property");
+      if (columns.length === 0) {
+        pushStatus(`${target.title} has no data column to split.`, "error");
+        return;
+      }
+      setSplitValueRowsRequest({ documentId, documentTitle: target.title, columns });
+    } catch (error) {
+      pushStatus(error instanceof Error ? error.message : String(error), "error");
+    }
+  }, [documents, pushStatus]);
+  const [performReactionRequest, setPerformReactionRequest] = useState<PerformReactionRequest | null>(null);
+  const openPerformReaction = useCallback((documentId: string) => {
+    const target = documents.find((document) => document.id === documentId);
+    if (!target) return;
+    setPerformReactionRequest({ documentId, documentTitle: target.title });
+  }, [documents]);
+  const openCalculatedColumn = useCallback(async (documentId: string, seed?: { formula: string; label: string }) => {
+    const target = documents.find((document) => document.id === documentId);
+    if (!target) return;
+    try {
+      const columns = (await requestGridColumns(documentId)).filter((column) => column.type === "number");
+      if (columns.length === 0) {
+        pushStatus(`${target.title} has no numeric column to calculate from.`, "error");
+        return;
+      }
+      setCalculatedColumnRequest({
+        documentId,
+        documentTitle: target.title,
+        columns,
+        seedFormula: seed?.formula,
+        seedLabel: seed?.label,
+      });
+    } catch (error) {
+      pushStatus(error instanceof Error ? error.message : String(error), "error");
+    }
+  }, [documents, pushStatus]);
+  const openCorrelationMatrix = useCallback(async (documentId: string) => {
+    const target = documents.find((document) => document.id === documentId);
+    if (!target) return;
+    try {
+      const columns = (await requestGridColumns(documentId)).filter((column) => column.type === "number");
+      if (columns.length < 2) {
+        pushStatus(`${target.title} has fewer than two numeric columns to correlate.`, "error");
+        return;
+      }
+      setCorrelationMatrixRequest({ documentId, documentTitle: target.title, columns });
+    } catch (error) {
+      pushStatus(error instanceof Error ? error.message : String(error), "error");
+    }
+  }, [documents, pushStatus]);
+  const openCalculateProperties = useCallback((documentId: string) => {
+    const target = documents.find((document) => document.id === documentId);
+    if (!target) return;
+    setCalculatePropertiesRequest({ documentId, documentTitle: target.title });
+  }, [documents]);
+  const [substructureCountRequest, setSubstructureCountRequest] = useState<SubstructureCountRequest | null>(null);
+  const openSubstructureCount = useCallback((documentId: string) => {
+    const target = documents.find((document) => document.id === documentId);
+    if (!target) return;
+    setSubstructureCountRequest({ documentId, documentTitle: target.title });
+  }, [documents]);
+  const [rgroupDecompositionRequest, setRGroupDecompositionRequest] = useState<RGroupDecompositionRequest | null>(null);
+  const openRGroupDecomposition = useCallback((documentId: string) => {
+    const target = documents.find((document) => document.id === documentId);
+    if (!target) return;
+    setRGroupDecompositionRequest({ documentId, documentTitle: target.title });
+  }, [documents]);
   const {
     pendingViewerReloadOptionsRef,
     pendingViewerReloadDocumentIdRef,
@@ -759,6 +925,22 @@ export default function App() {
   });
 
   const {
+    clearDatabaseJobs,
+    closeDatabaseQuery,
+    databaseJobs,
+    databaseQuery,
+    openDatabaseQuery,
+    runDatabaseQuery,
+  } = useAppDatabase({
+    activeDocument,
+    addDocuments,
+    appendGridRecords,
+    preferences,
+    pushErrorStatus,
+    pushStatus,
+  });
+
+  const {
     currentFepSetupRequest,
     openFepNetworkPreview,
     openFepSetupWorkspace,
@@ -830,6 +1012,8 @@ export default function App() {
     addBackgroundDocuments,
     addDocuments,
     calculateGridDescriptors,
+    deleteDuplicateGridRows,
+    updateHoveredGridRow,
     closeGridRuntime,
     documents,
     forgetDirtyGridDocument,
@@ -889,6 +1073,21 @@ export default function App() {
     applyKetcherToGridRow,
     backToApp,
     calculateGridDescriptors,
+    addDerivedGridColumn,
+    clearDerivedColumnJobs,
+    openCalculateProperties,
+    deleteDuplicateGridRows,
+    mergeEquivalentGridRows,
+    openCorrelationMatrix,
+    openCalculatedColumn,
+    openMergeColumns,
+    openSetValueRange,
+    openSplitValueRows,
+    openPerformReaction,
+    addScaffoldGridColumns,
+    openSubstructureCount,
+    findSimilarInFile,
+    openRGroupDecomposition,
     canNavigateBack,
     canNavigateForward,
     cancelConformerJob,
@@ -901,6 +1100,8 @@ export default function App() {
     chooseFiles,
     chooseWorkspace,
     clearCache,
+    clearDatabaseJobs,
+    openDatabaseQuery,
     clearDescriptorSource,
     clearDirtyGridDocuments,
     clearKetcherImportRequest,
@@ -1062,12 +1263,16 @@ export default function App() {
     conformerStatus,
     conformerSettings,
     conformerJobs,
+    databaseJobs,
     viewerLigandSelections,
     structureStories,
     structureOverlayMode: activeDocument ? structureOverlayModes[activeDocument.id] ?? "single" : "single",
     xtbStatus,
     xtbSettings,
     xtbJobs,
+    derivedColumnJobs,
+    rgroupRuntimeAvailable,
+    hoveredGridRows,
     update,
     buildInfo,
   });
@@ -1120,6 +1325,62 @@ export default function App() {
       ) : null}
       <Toaster />
       <StatusDetailsDialog request={statusDetails} onDismiss={dismissStatusDetails} />
+      <CalculatedColumnDialog
+        request={calculatedColumnRequest}
+        onDismiss={() => setCalculatedColumnRequest(null)}
+        onRun={(documentId, label, formula) => {
+          addCalculatedGridColumn(documentId, label, formula,
+            (activeGridFilterModel?.columns ?? [])
+              .filter((column) => column.type === "number")
+              .map((column) => ({ id: column.id, label: column.label })));
+        }}
+      />
+      <MergeColumnsDialog
+        request={mergeColumnsRequest}
+        onDismiss={() => setMergeColumnsRequest(null)}
+        onRun={(documentId, label, separator, columns) => mergeGridColumns(documentId, label, separator, columns)}
+      />
+      <SetValueRangeDialog
+        request={setValueRangeRequest}
+        onDismiss={() => setSetValueRangeRequest(null)}
+        onRun={setGridColumnValueRange}
+      />
+      <SplitValueRowsDialog
+        request={splitValueRowsRequest}
+        onDismiss={() => setSplitValueRowsRequest(null)}
+        onRun={splitGridValueRows}
+      />
+      <PerformReactionDialog
+        request={performReactionRequest}
+        onDismiss={() => setPerformReactionRequest(null)}
+        onRun={addReactionProductColumn}
+      />
+      <CorrelationMatrixDialog
+        request={correlationMatrixRequest}
+        onDismiss={() => setCorrelationMatrixRequest(null)}
+      />
+      <SubstructureCountDialog
+        request={substructureCountRequest}
+        validateQuery={validateSubstructureQuery}
+        onDismiss={() => setSubstructureCountRequest(null)}
+        onRun={addSubstructureCountColumn}
+      />
+      <RGroupDecompositionDialog
+        request={rgroupDecompositionRequest}
+        onDismiss={() => setRGroupDecompositionRequest(null)}
+        onRun={decomposeGridRGroups}
+      />
+      <CalculatePropertiesDialog
+        request={calculatePropertiesRequest}
+        onDismiss={() => setCalculatePropertiesRequest(null)}
+        onRun={(documentId, propertyIds, options) => {
+          if (propertyIds.length > 0) {
+            addPropertyGridColumns(documentId, propertyIds, { largestFragment: options.largestFragment });
+          }
+          if (options.mordred) calculateGridDescriptors(documentId);
+        }}
+      />
+      <DatabaseQueryDialog query={databaseQuery} onDismiss={closeDatabaseQuery} onSubmit={runDatabaseQuery} />
     </SourceEditingProvider>
   );
 }

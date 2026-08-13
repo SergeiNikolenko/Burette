@@ -14,7 +14,16 @@ function functionSource(name) {
 function materializer(state) {
   return new Function(
     "state",
-    `${functionSource("applyVirtualGridEdits")}\n${functionSource("materializeRemoteCollectionRows")}\nreturn materializeRemoteCollectionRows;`,
+    [
+      functionSource("applyVirtualGridEdits"),
+      functionSource("materializeRemoteCollectionRows"),
+      // A value range is applied where rows are materialised, so the saved
+      // collection carries the limits the table showed.
+      functionSource("applyColumnValueRanges"),
+      functionSource("clampTextToValueRange"),
+      functionSource("clampToValueRange"),
+      "return materializeRemoteCollectionRows;",
+    ].join("\n"),
   )(state);
 }
 
@@ -23,6 +32,7 @@ function state(overrides = {}) {
     hiddenRows: new Set(),
     rowPatches: new Map(),
     insertedRows: [],
+    columnValueRanges: new Map(),
     ...overrides,
   };
 }
@@ -68,6 +78,18 @@ const duplicate = { index: 1, name: "Base copy", smiles: "CC", props: {} };
       props: { source: "edited" },
     },
   ]);
+}
+
+{
+  const current = state({ columnValueRanges: new Map([["prop:IC50", { min: 0, max: 9 }]]) });
+  assert.deepEqual(
+    materializer(current)([
+      { index: 0, name: "High", smiles: "CC", props: { IC50: "12.5", Note: "kept" } },
+      { index: 1, name: "Blank", smiles: "CO", props: { IC50: "" } },
+    ]).map((row) => row.props),
+    [{ IC50: "9", Note: "kept" }, { IC50: "" }],
+    "a value range must reach the saved collection without touching empty cells or other columns",
+  );
 }
 
 {

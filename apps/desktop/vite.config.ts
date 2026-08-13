@@ -136,6 +136,7 @@ const DESCRIPTOR_STATUS_TIMEOUT_MS = 10_000;
 const DESCRIPTOR_RUN_TIMEOUT_MS = 30_000;
 const DESCRIPTOR_GRID_BATCH_TIMEOUT_MS = 300_000;
 const DESCRIPTOR_INSTALL_TIMEOUT_MS = 600_000;
+const DESCRIPTOR_INSTALL_SIZE_HINT = "~500 MB";
 const CONFORMER_PYTHON_STATUS_TIMEOUT_MS = 10_000;
 const MSBUDDY_RUN_TIMEOUT_MS = 180_000;
 const runningBrowserDevJobs = new Map<string, ChildProcess>();
@@ -1095,7 +1096,9 @@ function resolveExecutable(name: string, preferredPaths: string[] = []) {
 }
 
 function browserDevDescriptorInstallHint() {
-  return "Install a uv-managed descriptor runtime from the Descriptors panel, or set BURETTE_DESCRIPTOR_PYTHON to a Python interpreter with RDKit and mordredcommunity.";
+  return resolveExecutable("uv")
+    ? "The runtime installs through uv into Application Support/Burette/descriptor-python."
+    : "Managed installation requires the uv package manager. Install uv (https://docs.astral.sh/uv) or set BURETTE_DESCRIPTOR_PYTHON to a Python interpreter with RDKit and mordredcommunity.";
 }
 
 function browserDevDescriptorPythonCandidates() {
@@ -1142,6 +1145,8 @@ async function browserDevDescriptorPython() {
 }
 
 async function browserDevDescriptorStatus(timeoutMs = DESCRIPTOR_STATUS_TIMEOUT_MS) {
+  const installerAvailable = Boolean(resolveExecutable("uv"));
+  const install = { ...browserDevDescriptorInstallState };
   for (const pythonPath of browserDevDescriptorPythonCandidates()) {
     try {
       const output = await runBrowserDevDescriptorRunner(pythonPath, { mode: "status" }, timeoutMs);
@@ -1152,7 +1157,11 @@ async function browserDevDescriptorStatus(timeoutMs = DESCRIPTOR_STATUS_TIMEOUT_
           pythonPath,
           mordredVersion: typeof payload.mordredVersion === "string" ? payload.mordredVersion : null,
           rdkitVersion: typeof payload.rdkitVersion === "string" ? payload.rdkitVersion : null,
-          installHint: null,
+          message: "Descriptor runtime is available",
+          installHint: browserDevDescriptorInstallHint(),
+          installerAvailable,
+          installSizeHint: DESCRIPTOR_INSTALL_SIZE_HINT,
+          ...install,
         };
       }
     } catch (_) {
@@ -1164,33 +1173,106 @@ async function browserDevDescriptorStatus(timeoutMs = DESCRIPTOR_STATUS_TIMEOUT_
     pythonPath: browserDevDescriptorPythonCandidates()[0] ?? null,
     mordredVersion: null,
     rdkitVersion: null,
+    message: "Descriptor runtime could not import RDKit or Mordred",
     installHint: browserDevDescriptorInstallHint(),
+    installerAvailable,
+    installSizeHint: DESCRIPTOR_INSTALL_SIZE_HINT,
+    ...install,
   };
 }
 
+// Mirrors the desktop command: the POST starts the install and returns, and the
+// dialog polls the status for the phase, the current step and the failure.
+const browserDevDescriptorInstallState: {
+  installPhase: "idle" | "installing" | "completed" | "failed" | "cancelled";
+  installLine: string | null;
+  installError: string | null;
+} = { installPhase: "idle", installLine: null, installError: null };
+let browserDevDescriptorInstallChild: ReturnType<typeof spawn> | null = null;
+let browserDevDescriptorInstallCancelled = false;
+
 async function installBrowserDevDescriptorRuntime() {
+  if (browserDevDescriptorInstallState.installPhase === "installing") return { ok: true };
+  browserDevDescriptorInstallState.installPhase = "installing";
+  browserDevDescriptorInstallState.installLine = "Preparing the descriptor runtime installation…";
+  browserDevDescriptorInstallState.installError = null;
+  browserDevDescriptorInstallCancelled = false;
+  void runBrowserDevDescriptorInstall()
+    .then(() => {
+      browserDevDescriptorInstallState.installPhase = "completed";
+      browserDevDescriptorInstallState.installLine = "Descriptor runtime installed.";
+      browserDevDescriptorInstallState.installError = null;
+    })
+    .catch((error: unknown) => {
+      browserDevDescriptorInstallState.installPhase = browserDevDescriptorInstallCancelled ? "cancelled" : "failed";
+      browserDevDescriptorInstallState.installLine = null;
+      browserDevDescriptorInstallState.installError = error instanceof Error ? error.message : String(error);
+    })
+    .finally(() => {
+      browserDevDescriptorInstallChild = null;
+    });
+  return { ok: true };
+}
+
+async function runBrowserDevDescriptorInstall() {
   const uv = resolveExecutable("uv");
   if (!uv) {
     throw new Error("uv is required to install the browser-dev descriptor runtime.");
   }
   await mkdir(BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR, { recursive: true });
-  await execFileAsync(uv, ["venv", BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR], {
-    timeout: DESCRIPTOR_INSTALL_TIMEOUT_MS,
-    maxBuffer: 1024 * 1024,
-  });
+  browserDevDescriptorInstallState.installLine = "Creating the Python environment…";
+  await runBrowserDevDescriptorInstallStep(uv, ["venv", BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR]);
+  throwIfBrowserDevDescriptorInstallCancelled();
   const pythonPath = join(BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR, "bin", "python3");
-  await execFileAsync(uv, ["pip", "install", "--python", pythonPath, "rdkit", "mordredcommunity"], {
-    timeout: DESCRIPTOR_INSTALL_TIMEOUT_MS,
-    maxBuffer: 4 * 1024 * 1024,
-  });
+  browserDevDescriptorInstallState.installLine = "Downloading RDKit and mordredcommunity…";
+  await runBrowserDevDescriptorInstallStep(uv, ["pip", "install", "--python", pythonPath, "rdkit", "mordredcommunity"]);
+  throwIfBrowserDevDescriptorInstallCancelled();
   // A freshly created venv compiles RDKit and mordred on their first import,
   // which outruns the probe budget used for ordinary status checks.
-  const status = await browserDevDescriptorStatus(DESCRIPTOR_INSTALL_TIMEOUT_MS);
-  return {
-    ok: status.available,
-    pythonPath,
-    message: status.available ? "Descriptor runtime installed." : browserDevDescriptorInstallHint(),
-  };
+  browserDevDescriptorInstallState.installLine = "Validating the installed runtime…";
+  const payload = parseBrowserDevDescriptorRunnerOutput(
+    await runBrowserDevDescriptorRunner(pythonPath, { mode: "status" }, DESCRIPTOR_INSTALL_TIMEOUT_MS),
+  );
+  if (payload.ok !== true) throw new Error(browserDevDescriptorInstallHint());
+}
+
+// Killing the running child only cancels a step that is still in flight; a
+// cancel that lands between steps has to stop the next one from starting.
+function throwIfBrowserDevDescriptorInstallCancelled() {
+  if (browserDevDescriptorInstallCancelled) {
+    throw new Error("The descriptor runtime installation was cancelled.");
+  }
+}
+
+function runBrowserDevDescriptorInstallStep(uv: string, args: string[]) {
+  return new Promise<void>((resolveStep, rejectStep) => {
+    const child = spawn(uv, args, { stdio: ["ignore", "pipe", "pipe"] });
+    browserDevDescriptorInstallChild = child;
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr = `${stderr}${chunk.toString("utf8")}`.slice(-4096);
+    });
+    const timeout = setTimeout(() => {
+      child.kill();
+      rejectStep(new Error(`uv ${args[0]} timed out.`));
+    }, DESCRIPTOR_INSTALL_TIMEOUT_MS);
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      rejectStep(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (code === 0) resolveStep();
+      else rejectStep(new Error(`uv ${args[0]} failed with code ${code}: ${stderr.trim()}`));
+    });
+  });
+}
+
+async function cancelBrowserDevDescriptorInstall() {
+  if (browserDevDescriptorInstallState.installPhase !== "installing") return { ok: true };
+  browserDevDescriptorInstallCancelled = true;
+  browserDevDescriptorInstallChild?.kill();
+  return { ok: true };
 }
 
 function runBrowserDevDescriptorRunner(pythonPath: string, payload: Record<string, unknown>, timeoutMs: number): Promise<string> {
@@ -3627,6 +3709,7 @@ export function browserDevXyzrenderPlugin() {
       registerBrowserDevDescriptorRoutes(server, {
         calculate: calculateBrowserDevDescriptors,
         calculateGrid: calculateBrowserDevGridDescriptors,
+        cancelInstall: cancelBrowserDevDescriptorInstall,
         gridJobs: browserDevDescriptorJobs,
         gridSummary: browserDevDescriptorGridSummary,
         install: installBrowserDevDescriptorRuntime,

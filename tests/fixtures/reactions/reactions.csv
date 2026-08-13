@@ -1,0 +1,4 @@
+id,rxn,yield
+RXN-1,CC(=O)O.NCC>>CCNC(C)=O,88
+RXN-2,c1ccccc1C(=O)O.CCO>>CCOC(=O)c1ccccc1,61
+RXN-3,Brc1ccccc1.OB(O)c1ccncc1>[Pd]>c1ccc(-c2ccncc2)cc1,74

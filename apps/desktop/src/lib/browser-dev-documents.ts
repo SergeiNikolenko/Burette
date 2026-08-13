@@ -1,4 +1,4 @@
-import { collectionExtension, mergeCollectionSources, parseSdfCollectionRecords } from "./collection-documents";
+import { collectionExtension, mergeCollectionSources, parseReactionCollectionRecords, parseSdfCollectionRecords } from "./collection-documents";
 import { runBrowserDevMetalConformer } from "./browser-dev-compute";
 import { parseDataWarrior } from "./datawarrior";
 import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
@@ -110,7 +110,7 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v168";
+const GRID_ASSET_VERSION = "grid-ui-v182";
 const VIEWER_ASSET_VERSION = "viewer-ui-v70";
 const MESOSCALE_ASSET_VERSION = "mesoscale-ui-v1";
 // One cache-buster per page load, not per render: the viewer iframe is keyed by
@@ -1632,6 +1632,10 @@ function gridPayload(path: string, extension: string, text: string) {
   if (extension === "dwar") {
     const records = parseDataWarrior(text);
     return records.length > 0 ? { format: "dwar", records } : null;
+  }
+  if (extension === "rxn" || extension === "rdf") {
+    const records = parseReactionCollectionRecords(text, extension);
+    return records.length > 0 ? { format: extension, records } : null;
   }
   return null;
 }

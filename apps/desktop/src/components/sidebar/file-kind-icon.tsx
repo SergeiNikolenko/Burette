@@ -58,6 +58,9 @@ const FILE_KIND_BY_EXTENSION: Record<string, FileKind> = {
   csv: "table",
   tsv: "table",
   dwar: "table",
+  // Reaction collections open as a grid, so they read as a table too.
+  rxn: "table",
+  rdf: "table",
 
   // Trajectories and restart frames
   xtc: "trajectory",

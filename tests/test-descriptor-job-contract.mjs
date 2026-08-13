@@ -87,4 +87,38 @@ assert.match(descriptorCommands, /BURETTE_DESCRIPTOR_PYTHON/);
 // consumer of the events the follower publishes.
 assert.match(jobStatusCard, /GRID_DESCRIPTOR_JOB_EVENT/);
 
+// descriptor_runtime_install had no caller at all, so a machine without the
+// Python runtime had no route to one. Calculate Properties owns that route now,
+// and the command follows the model runtime: it starts a worker thread and
+// returns, publishes phase/line/error through the status command, and can be
+// cancelled through the pid the running step registers.
+assert.match(descriptorCommands, /pub\(crate\) fn descriptor_runtime_install\(\) -> Result<\(\), String>/);
+assert.match(descriptorCommands, /pub\(crate\) fn descriptor_runtime_cancel_install\(\) -> Result<\(\), String>/);
+assert.match(descriptorCommands, /thread::spawn\(\|\| \{\s*let outcome = run_managed_descriptor_install\(\);/);
+assert.match(descriptorCommands, /state\.phase = DescriptorInstallPhase::Completed;/);
+assert.match(descriptorCommands, /Err\(error\) if state\.cancel_requested => \{\s*state\.phase = DescriptorInstallPhase::Cancelled;/);
+assert.match(descriptorCommands, /state\.phase = DescriptorInstallPhase::Failed;/);
+assert.match(descriptorCommands, /install_phase: install\.phase\.as_str\(\)/);
+assert.match(descriptorCommands, /install_line: install\.line/);
+assert.match(descriptorCommands, /install_error: install\.error/);
+assert.match(descriptorCommands, /let installer_available = resolve_uv_executable\(\)\.is_ok\(\);/);
+assert.match(descriptorCommands, /state\.child_pid = Some\(child\.id\(\)\);/);
+assert.match(descriptorCommands, /crate::commands::chemical_space_models::kill_process\(pid\)/);
+// A fresh environment compiles RDKit and Mordred on first import, so the probe
+// that decides Completed against Failed gets the install budget, not the status
+// budget - otherwise a good install reports as broken.
+assert.match(
+  descriptorCommands,
+  /set_descriptor_install_line\("Validating the installed runtime…"\);[\s\S]{0,200}?DESCRIPTOR_INSTALL_TIMEOUT,/,
+);
+const descriptorsLib = source("apps/desktop/src/lib/descriptors.ts");
+assert.match(descriptorsLib, /export async function installDescriptorRuntime\(\): Promise<void>/);
+assert.match(descriptorsLib, /export async function cancelDescriptorRuntimeInstall\(\): Promise<void>/);
+assert.match(descriptorsLib, /invoke\("descriptor_runtime_cancel_install"\)/);
+assert.match(descriptorsLib, /"\/__burette\/descriptors\/cancel-install"/);
+const burettePermission = source("apps/desktop/src-tauri/permissions/burette.toml");
+for (const command of ["descriptor_runtime_status", "descriptor_runtime_install", "descriptor_runtime_cancel_install"]) {
+  assert.ok(burettePermission.includes(`"${command}"`), `${command} must stay permitted`);
+}
+
 console.log("descriptor job contract OK");

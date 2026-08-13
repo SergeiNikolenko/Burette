@@ -252,7 +252,7 @@ fn grid_html(
 }
 
 fn versioned_asset_url(path: &Path) -> String {
-    format!("{}?v=grid-ui-v33", asset_url(path))
+    format!("{}?v=grid-ui-v48", asset_url(path))
 }
 
 fn grid_can_preview(extension: &str) -> bool {
@@ -262,8 +262,14 @@ fn grid_can_preview(extension: &str) -> bool {
     )
 }
 
+// The extensions the format registry marks `requiresPreview`: a source that
+// only ever opens as a grid says so plainly when it holds no records, instead
+// of falling through to a viewer that cannot read it either.
 pub(crate) fn grid_requires_preview(extension: &str) -> bool {
-    matches!(extension, "csv" | "dwar" | "smi" | "smiles" | "tsv")
+    matches!(
+        extension,
+        "csv" | "dwar" | "rdf" | "rxn" | "smi" | "smiles" | "tsv"
+    )
 }
 
 #[cfg(test)]

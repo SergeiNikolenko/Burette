@@ -16,6 +16,7 @@ function sameState(left: GridNativeMenuState | undefined, right: GridNativeMenuS
     && left.showProperties === right.showProperties
     && left.cardRenderer === right.cardRenderer
     && left.hasMolecules === right.hasMolecules
+    && left.hasReactions === right.hasReactions
     && left.saveEnabled === right.saveEnabled
     && left.exportEnabled === right.exportEnabled
     && left.selectionEnabled === right.selectionEnabled

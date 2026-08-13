@@ -28,7 +28,7 @@ import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel"
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
-import type { ConformerJob, TextFileDocument, ViewerDocument, ViewerReloadOptions, XtbJob, XyzrenderControls } from "../types";
+import type { ConformerJob, DatabaseJob, DerivedColumnJob, TextFileDocument, ViewerDocument, ViewerReloadOptions, XtbJob, XyzrenderControls } from "../types";
 import { isMesoscaleViewerDocument } from "../lib/mesoscale-documents";
 import { MesoscaleScenePanel } from "./mesoscale/mesoscale-scene-panel";
 import { MesoscaleInfoPanel } from "./mesoscale/mesoscale-info-panel";
@@ -311,6 +311,7 @@ function DockPanelContent({
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockStructureDocument = dockDocument ?? activeDocument;
+  const hoveredGridRow = state.hoveredGridRows[(dockDocument ?? activeDocument)?.id ?? ""] ?? null;
   const chemicalSpaceDocument = resolveChemicalSpaceDocument(state, dockDocument);
   const activeTextDocument = activeTextDocumentFromState(state);
   // Without an explicit pin the dock serves the active document, so the Files
@@ -449,6 +450,7 @@ function DockPanelContent({
     return (
       <StructureInfoPanel
         document={dockStructureDocument}
+        hoveredGridRow={hoveredGridRow}
         gridFilterModel={state.gridFilterModel}
         textDocument={activeTextDocument}
         dockDrops={dockDrops}
@@ -468,7 +470,7 @@ function DockPanelContent({
   if (activeTabKind === "chemical-space") {
     return (
       <Suspense fallback={null}>
-        <ChemicalSpacePanel document={chemicalSpaceDocument} />
+        <ChemicalSpacePanel document={chemicalSpaceDocument} inspectorOpen={state.rightDockOpen && state.rightDockActiveTab === "inspector"} />
       </Suspense>
     );
   }
@@ -493,7 +495,7 @@ function DockPanelContent({
     );
   }
   if (activeTabKind === "jobs") {
-    const jobCount = state.conformerJobs.length + state.xtbJobs.length;
+    const jobCount = state.conformerJobs.length + state.xtbJobs.length + state.derivedColumnJobs.length + state.databaseJobs.length;
     return (
       <div className="dock-content">
         <div className="dock-jobs-toolbar">
@@ -505,13 +507,17 @@ function DockPanelContent({
             onClick={() => {
               actions.clearConformerJobs();
               actions.clearXtbJobs();
+              actions.clearDerivedColumnJobs();
+              actions.clearDatabaseJobs();
             }}
           >
             Clear
           </button>
         </div>
+        <DatabaseJobList jobs={state.databaseJobs} actions={actions} />
         <ConformerJobList jobs={state.conformerJobs} actions={actions} />
-        <XtbJobList jobs={state.xtbJobs} actions={actions} emptyLabel={state.conformerJobs.length === 0 ? "No jobs yet" : "No xTB jobs yet"} />
+        <DerivedColumnJobList jobs={state.derivedColumnJobs} />
+        <XtbJobList jobs={state.xtbJobs} actions={actions} emptyLabel={state.conformerJobs.length === 0 && state.derivedColumnJobs.length === 0 && state.databaseJobs.length === 0 ? "No jobs yet" : "No xTB jobs yet"} />
         <DockDropList items={dockDrops} actions={actions} emptyLabel="No job inputs" />
       </div>
     );
@@ -1203,6 +1209,114 @@ function JobMenuChevronIcon() {
     <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
       <path d="M2.75 4.5 6 7.75 9.25 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+function DerivedColumnJobList({ jobs }: { jobs: DerivedColumnJob[] }) {
+  if (jobs.length === 0) return null;
+  return (
+    <div className="dock-drop-list">
+      {jobs.map((job) => {
+        const progress = job.status === "running"
+          ? `${job.processedRows.toLocaleString()}${job.totalRows > 0 ? ` of ${job.totalRows.toLocaleString()}` : ""} rows`
+          : job.status === "failed"
+            ? job.error || "Failed"
+            : `${(job.processedRows - job.failedRows).toLocaleString()} value${job.processedRows - job.failedRows === 1 ? "" : "s"}${job.failedRows > 0 ? ` · ${job.failedRows.toLocaleString()} failed` : ""}`;
+        return (
+          <div className="dock-drop-item dock-xtb-job-item" key={job.id} data-status={job.status}>
+            <div className="dock-drop-item-header">
+              <div className="dock-drop-item-title">
+                <strong>{job.columnLabel}</strong>
+                <span className="dock-job-meta">
+                  <span className="dock-job-status">{job.status === "running" ? <span className="dock-job-spinner" aria-hidden="true" /> : null}{job.status}</span>
+                  {" · "}
+                  {job.documentTitle}
+                  {" · "}
+                  {progress}
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// A database search is one request with one answer, so the row carries the query
+// and its outcome rather than the log and cancel controls the runtime jobs need.
+// Provider caveats - "COD has no structures", "these hits carry no activity" -
+// are on the row, because the toast that first announced them is long gone by the
+// time the collection raises a question.
+function DatabaseJobList({
+  jobs,
+  actions,
+}: {
+  jobs: DatabaseJob[];
+  actions: ShellActions;
+}) {
+  if (jobs.length === 0) return null;
+  return (
+    <div className="dock-drop-list">
+      {jobs.map((job) => {
+        const documentId = job.documentId;
+        const openResult = () => {
+          if (documentId) actions.selectDocument(documentId);
+        };
+        return (
+          <div
+            className="dock-drop-item dock-xtb-job-item"
+            key={job.id}
+            data-status={job.status}
+            data-has-primary-result={documentId ? true : undefined}
+            role={documentId ? "button" : undefined}
+            tabIndex={documentId ? 0 : undefined}
+            onClick={documentId ? openResult : undefined}
+            onKeyDown={documentId ? (event) => {
+              if (event.target !== event.currentTarget) return;
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              openResult();
+            } : undefined}
+          >
+            <div className="dock-drop-item-header">
+              <div className="dock-drop-item-title">
+                <strong>{job.title}</strong>
+                <span className="dock-job-meta">
+                  <span className="dock-job-status">
+                    {job.status === "running" ? <span className="dock-job-spinner" aria-hidden="true" /> : null}
+                    {job.status}
+                  </span>
+                  {" · "}
+                  {job.status === "success" && job.recordCount !== undefined
+                    ? `${job.recordCount.toLocaleString()} record${job.recordCount === 1 ? "" : "s"}`
+                    : job.query}
+                </span>
+              </div>
+              {documentId ? (
+                <div className="dock-inline-action-row">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="xs"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openResult();
+                    }}
+                  >
+                    Open
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+            {job.error ? <span>{job.error}</span> : null}
+            {(job.warnings ?? []).map((warning) => (
+              <span key={warning} className="dock-job-note">{warning}</span>
+            ))}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

@@ -695,7 +695,7 @@ fn truncate_tail(text: &str) -> String {
     format!("…{}", &trimmed[boundary..])
 }
 
-fn kill_process(pid: u32) {
+pub(crate) fn kill_process(pid: u32) {
     #[cfg(unix)]
     unsafe {
         libc::kill(pid as i32, libc::SIGKILL);

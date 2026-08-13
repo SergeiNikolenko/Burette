@@ -2392,11 +2392,23 @@ fn remote_structure_extension(title: &str) -> Result<String, String> {
     Ok(extension)
 }
 
-fn reject_private_fetch_target(url: &url::Url) -> Result<(), String> {
+// Shared with the Database commands: every outbound request in the app resolves
+// its target through this guard, so no provider URL - or redirect - can be aimed
+// at a service on the machine or the local network.
+pub(crate) fn reject_private_fetch_target(url: &url::Url) -> Result<(), String> {
     let host = url
         .host_str()
         .ok_or_else(|| "Remote structure URL must include a host".to_string())?;
-    let normalized_host = host.trim().trim_end_matches('.').to_lowercase();
+    // An IPv6 literal arrives inside brackets ("[::1]"), which no IP parser
+    // accepts. Left as it was, ::1 and every other literal address failed both the
+    // parse and the name lookup below and sailed past the guard into curl, which
+    // understands the bracket form perfectly well.
+    let normalized_host = host
+        .trim()
+        .trim_end_matches('.')
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_lowercase();
     if normalized_host == "localhost" {
         return Err("Localhost URLs are not supported for remote structure fetch".to_string());
     }

@@ -373,6 +373,529 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
 .chrome-button { width: 32px; color: var(--text-icon-muted); }
+.activity-indicator {
+  width: 28px;
+}
+.activity-indicator-spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--text-icon-muted) 30%, transparent);
+  border-top-color: var(--text-secondary);
+  animation: activity-indicator-spin 0.9s linear infinite;
+}
+.activity-indicator-count {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  border-radius: 6px;
+  background: var(--accent, #4c8dff);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+}
+@keyframes activity-indicator-spin {
+  to { transform: rotate(360deg); }
+}
+.correlation-matrix-dialog {
+  width: min(860px, calc(100vw - 48px));
+}
+.correlation-matrix-target {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.correlation-matrix-message {
+  padding: 20px 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: center;
+}
+.correlation-matrix-scroll {
+  overflow: auto;
+  max-height: min(56vh, 460px);
+}
+.correlation-matrix-table {
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.correlation-matrix-table th {
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: right;
+  white-space: nowrap;
+  padding: 2px 6px;
+}
+.correlation-matrix-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-base);
+  text-align: center;
+}
+.correlation-matrix-table tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg-base);
+}
+.correlation-matrix-table td {
+  min-width: 46px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  text-align: center;
+}
+.calculate-properties-dialog {
+  width: min(560px, calc(100vw - 48px));
+}
+.calculate-properties-target {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.calculate-properties-group {
+  margin: 0 0 12px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 8px;
+}
+.calculate-properties-group legend {
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.calculate-properties-group-toggle {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.calculate-properties-group-toggle:hover { color: var(--text-primary, inherit); }
+.calculate-properties-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 2px 10px;
+}
+.calculate-properties-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+.calculate-properties-runtime {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.calculate-properties-runtime[data-tone="ready"] { color: var(--text-secondary); }
+.calculate-properties-runtime-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.calculate-properties-runtime-line {
+  flex-basis: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+}
+.calculate-properties-runtime-hint {
+  flex-basis: 100%;
+}
+.calculate-properties-runtime-error {
+  flex-basis: 100%;
+  color: var(--danger, #e5484d);
+}
+.calculate-properties-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+}
+.calculate-properties-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.calculate-properties-actions {
+  display: flex;
+  gap: 8px;
+}
+.calculate-properties-run {
+  font-weight: 600;
+}
+/* The dialogs that define a column - a formula, a SMARTS query, an R-group
+   core - share one field and chip vocabulary. Without these the label and its
+   input sit on one line and the chips run together into a wall of words. */
+.calculated-column-dialog {
+  width: min(520px, calc(100vw - 48px));
+}
+.calculated-column-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.calculated-column-field input,
+.calculated-column-field textarea {
+  padding: 6px 8px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 6px;
+  background: var(--surface-input, transparent);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+  font-size: 12px;
+}
+.calculated-column-field textarea {
+  resize: vertical;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.calculated-column-problem {
+  margin: -6px 0 12px;
+  font-size: 11px;
+  color: var(--text-danger, #c0392b);
+}
+.calculated-column-help {
+  border-top: 1px solid var(--line-subtler);
+  padding-top: 10px;
+}
+.calculated-column-help-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.calculated-column-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.calculated-column-chip {
+  padding: 3px 8px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.calculated-column-chip:hover {
+  border-color: var(--line-subtle);
+}
+.calculated-column-empty,
+.calculated-column-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+/* DataWarrior-style full-size preview of the row under the pointer. Sticky to
+   the bottom of the inspector scroll so it stays in view while filters above
+   grow long. */
+/* Doubled class beats .structure-brief-card's translucent --surface-card:
+   this card floats over the filter histograms while sticky, so it must be
+   fully opaque. Negative margins flush it to the panel edges so nothing
+   scrolls past its rounded corners. */
+.structure-brief-card.grid-hover-molecule {
+  position: sticky;
+  bottom: -12px;
+  z-index: 3;
+  margin: 0 -12px -12px;
+  padding: 8px 12px 12px;
+  border-radius: var(--control-radius) var(--control-radius) 0 0;
+  border-bottom: 0;
+  background: var(--bg-base);
+  box-shadow: 0 -6px 18px color-mix(in srgb, var(--fg-base) 8%, transparent);
+  overflow: hidden;
+}
+/* The same handle chrome the dock panels use, docked to the card's top edge. */
+.grid-hover-molecule-resize.resizable-handle-horizontal {
+  margin: -8px -8px 0;
+  flex: 0 0 14px;
+}
+.grid-hover-molecule-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.grid-hover-molecule-name {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-hover-molecule-index {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+/* The drawing carries no frame of its own: it is asked for at this box's
+   measured size, so it fills the width edge to edge and the card's own border
+   is the only one around it. */
+.grid-hover-molecule-svg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin-top: 2px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+/* The drawing opens the row in Ketcher, so it lights up like the control it is
+   - just enough to invite the click without framing the structure again. */
+.grid-hover-molecule-svg:hover,
+.grid-hover-molecule-svg:focus-visible {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  outline: none;
+}
+.grid-hover-molecule-drawing,
+.grid-hover-molecule-svg svg {
+  width: 100%;
+  height: 100%;
+}
+.grid-hover-molecule-empty {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+/* Formula, weight and cLogP stay visible whether or not the data section is
+   open - DataWarrior's detail view never hides them either. */
+.grid-hover-molecule-spec {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-subtler);
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-hover-molecule-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-icon-muted);
+}
+.grid-hover-molecule-close:hover {
+  background: color-mix(in srgb, var(--fg-base) 8%, transparent);
+  color: var(--text-secondary);
+}
+.grid-hover-molecule-props-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-subtler);
+}
+/* The spec line already drew the rule above this bar. */
+.grid-hover-molecule-spec + .grid-hover-molecule-props-bar {
+  margin-top: 2px;
+  padding-top: 0;
+  border-top: 0;
+}
+.grid-hover-molecule-props-title {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+.grid-hover-molecule-props-resize {
+  flex: 1 1 auto;
+  margin: 0;
+  height: 12px;
+}
+.grid-hover-molecule-props-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-icon-muted);
+}
+.grid-hover-molecule-props-toggle:hover {
+  background: color-mix(in srgb, var(--fg-base) 8%, transparent);
+  color: var(--text-secondary);
+}
+.grid-hover-molecule-props {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+  overflow-y: auto;
+}
+/* Compact variant of the dock metric tile: same anatomy, denser type. */
+.grid-hover-molecule-prop.dock-metric {
+  padding: 6px 8px;
+  gap: 1px;
+}
+.grid-hover-molecule-prop.dock-metric span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-hover-molecule-prop.dock-metric strong {
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* Value tones. The app's palette is one accent, so context is carried by
+   weight, a dot, and a caret rather than a second hue - and never by colour
+   alone, so the meaning survives a greyscale or colour-blind reading. */
+.grid-hover-molecule-prop.dock-metric strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.grid-hover-molecule-prop[data-tone="flag-on"] strong::before,
+.grid-hover-molecule-prop[data-tone="flag-off"] strong::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.grid-hover-molecule-prop[data-tone="flag-on"] strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+.grid-hover-molecule-prop[data-tone="flag-on"] strong::before {
+  background: var(--accent);
+}
+.grid-hover-molecule-prop[data-tone="flag-off"] strong {
+  color: var(--text-muted);
+}
+.grid-hover-molecule-prop[data-tone="flag-off"] strong::before {
+  border: 1px solid var(--text-icon-muted);
+}
+.grid-hover-molecule-prop[data-tone^="outlier"] {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line-subtler));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-card));
+}
+.grid-hover-molecule-prop[data-tone^="outlier"] strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+.grid-hover-molecule-prop-mark {
+  font-size: 8px;
+  line-height: 1;
+  opacity: 0.85;
+}
+/* Where this molecule sits inside the column's range. */
+.grid-hover-molecule-prop-track {
+  position: relative;
+  display: block;
+  height: 3px;
+  margin-top: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg-base) 9%, transparent);
+}
+.grid-hover-molecule-prop-track > span {
+  position: absolute;
+  top: -1px;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 65%, transparent);
+}
+.grid-hover-molecule-prop[data-tone^="outlier"] .grid-hover-molecule-prop-track > span {
+  background: var(--accent);
+}
+/* What a collapsed preview leaves behind: a full-width strip flush with the
+   panel's bottom edge, its grip hidden until the pointer comes near. Pull it
+   up to bring the card back at the height you pull to; click to get the last
+   height back. Mirrors the house resize grip so the gesture reads as familiar. */
+.grid-hover-molecule-strap {
+  position: sticky;
+  bottom: -12px;
+  z-index: 3;
+  display: block;
+  width: calc(100% + 24px);
+  margin: 0 -12px -12px;
+  padding: 0;
+  height: 16px;
+  border: 0;
+  background: transparent;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.grid-hover-molecule-strap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--bg-base);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.grid-hover-molecule-strap:hover::before,
+.grid-hover-molecule-strap:focus-visible::before {
+  opacity: 1;
+}
+.grid-hover-molecule-strap-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--text-muted);
+  opacity: 0;
+  transition: opacity 140ms ease, width 140ms ease;
+  pointer-events: none;
+}
+.grid-hover-molecule-strap:hover .grid-hover-molecule-strap-grip,
+.grid-hover-molecule-strap:focus-visible .grid-hover-molecule-strap-grip {
+  opacity: 1;
+  width: 56px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .activity-indicator-spinner { animation-duration: 2.4s; }
+}
 .open-editor-trigger {
   width: auto;
   min-width: 56px;
@@ -2517,7 +3040,7 @@ img.radix-menu-item-icon {
   text-align: center;
 }
 .structure-brief {
-  gap: 6px;
+  gap: 10px;
   grid-auto-rows: max-content;
 }
 .structure-inspector-header {
@@ -7758,6 +8281,44 @@ input.structure-inspector-composition-search {
   gap: 8px;
   padding: 0 16px 16px;
 }
+.database-query-form {
+  display: grid;
+  gap: 12px;
+}
+.database-query-field {
+  display: grid;
+  gap: 6px;
+}
+.database-query-field [data-slot="native-select-wrapper"] {
+  width: 100%;
+}
+.database-query-statement {
+  min-height: 84px;
+  resize: vertical;
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--text-primary);
+  padding: 6px 8px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.database-query-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.database-query-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+.dock-job-note {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
 [cmdk-overlay] {
   position: fixed;
   inset: 0;
@@ -8525,9 +9086,9 @@ img.settings-open-destination-icon {
    once, so a filter never sits in a box inside a box. */
 .grid-filter-list {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   align-content: start;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 .grid-filter-more {
   padding: 6px 2px;
@@ -8537,8 +9098,9 @@ img.settings-open-destination-icon {
 .grid-filter-card {
   display: grid;
   gap: 8px;
-  border-radius: 8px;
-  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line-subtler);
+  padding: 12px;
   background: var(--control-fill, rgba(255, 255, 255, 0.05));
 }
 .grid-filter-card.active {
@@ -8582,9 +9144,10 @@ img.settings-open-destination-icon {
   touch-action: none;
   user-select: none;
 }
-/* Recharts marks its surface focusable; the chart is driven by dragging, so
-   drop the browser's focus ring that showed as an orange box around it. */
-.grid-filter-chart-wrap .recharts-surface {
+/* Recharts marks every surface focusable; our charts are pointer-driven, so
+   the browser's focus ring only ever showed up as a stray orange box around
+   histograms and plots. Dropped globally. */
+.recharts-surface {
   outline: none;
 }
 .grid-filter-chart {

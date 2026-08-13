@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+    Arc, Mutex, OnceLock,
 };
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -27,6 +27,7 @@ const DESCRIPTOR_GRID_BATCH_SIZE: usize = 16;
 const DESCRIPTOR_GRID_BATCH_TIMEOUT: Duration = Duration::from_secs(300);
 const DESCRIPTOR_STATUS_TIMEOUT: Duration = Duration::from_secs(10);
 const DESCRIPTOR_INSTALL_TIMEOUT: Duration = Duration::from_secs(600);
+const DESCRIPTOR_INSTALL_SIZE_HINT: &str = "~500 MB";
 
 const DESCRIPTOR_RUNNER: &str = r#"
 import io
@@ -290,13 +291,68 @@ pub(crate) struct DescriptorRuntimeStatus {
     rdkit_version: Option<String>,
     message: String,
     install_hint: String,
+    installer_available: bool,
+    install_size_hint: &'static str,
+    install_phase: &'static str,
+    install_line: Option<String>,
+    install_error: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct DescriptorRuntimeInstallResult {
-    python_path: String,
-    message: String,
+/// The managed install runs for minutes, so it cannot be the body of the
+/// command the dialog awaits. It mirrors the learned-model runtime: the command
+/// starts a worker thread and returns, and the caller polls
+/// `descriptor_runtime_status` for the phase, the current step and the failure.
+#[derive(Clone, Debug, Default)]
+struct DescriptorInstallState {
+    phase: DescriptorInstallPhase,
+    line: Option<String>,
+    error: Option<String>,
+    child_pid: Option<u32>,
+    cancel_requested: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum DescriptorInstallPhase {
+    #[default]
+    Idle,
+    Installing,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl DescriptorInstallPhase {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Installing => "installing",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+fn descriptor_install_state() -> &'static Mutex<DescriptorInstallState> {
+    static DESCRIPTOR_INSTALL_STATE: OnceLock<Mutex<DescriptorInstallState>> = OnceLock::new();
+    DESCRIPTOR_INSTALL_STATE.get_or_init(|| Mutex::new(DescriptorInstallState::default()))
+}
+
+fn set_descriptor_install_line(line: &str) {
+    if let Ok(mut state) = descriptor_install_state().lock() {
+        state.line = Some(line.to_string());
+    }
+}
+
+fn descriptor_install_cancelled() -> Result<(), String> {
+    let cancelled = descriptor_install_state()
+        .lock()
+        .map(|state| state.cancel_requested)
+        .unwrap_or(false);
+    if cancelled {
+        return Err("The descriptor runtime installation was cancelled.".into());
+    }
+    Ok(())
 }
 
 impl DescriptorGridJobRegistry {
@@ -455,7 +511,12 @@ impl DescriptorGridJobStateKind {
 
 #[tauri::command]
 pub(crate) fn descriptor_runtime_status() -> DescriptorRuntimeStatus {
-    match resolve_python_executable() {
+    let install = descriptor_install_state()
+        .lock()
+        .map(|state| state.clone())
+        .unwrap_or_default();
+    let installer_available = resolve_uv_executable().is_ok();
+    let probe = match resolve_python_executable() {
         Ok(python_path) => match run_descriptor_runner(
             &python_path,
             json!({ "mode": "status" }),
@@ -474,43 +535,114 @@ pub(crate) fn descriptor_runtime_status() -> DescriptorRuntimeStatus {
                         .and_then(Value::as_str)
                         .map(str::to_string),
                     message: "Descriptor runtime is available".into(),
-                    install_hint: descriptor_install_hint(),
+                    ..descriptor_runtime_status_defaults()
                 }
             }
             Ok(payload) => DescriptorRuntimeStatus {
-                available: false,
                 python_path: Some(python_path.to_string_lossy().to_string()),
-                mordred_version: None,
-                rdkit_version: None,
                 message: payload
                     .get("error")
                     .and_then(Value::as_str)
                     .unwrap_or("Descriptor runtime could not import RDKit or Mordred")
                     .to_string(),
-                install_hint: descriptor_install_hint(),
+                ..descriptor_runtime_status_defaults()
             },
             Err(error) => DescriptorRuntimeStatus {
-                available: false,
                 python_path: Some(python_path.to_string_lossy().to_string()),
-                mordred_version: None,
-                rdkit_version: None,
                 message: error,
-                install_hint: descriptor_install_hint(),
+                ..descriptor_runtime_status_defaults()
             },
         },
         Err(error) => DescriptorRuntimeStatus {
-            available: false,
-            python_path: None,
-            mordred_version: None,
-            rdkit_version: None,
             message: error,
-            install_hint: descriptor_install_hint(),
+            ..descriptor_runtime_status_defaults()
         },
+    };
+    DescriptorRuntimeStatus {
+        install_hint: descriptor_install_hint(),
+        installer_available,
+        install_phase: install.phase.as_str(),
+        install_line: install.line,
+        install_error: install.error,
+        ..probe
+    }
+}
+
+fn descriptor_runtime_status_defaults() -> DescriptorRuntimeStatus {
+    DescriptorRuntimeStatus {
+        available: false,
+        python_path: None,
+        mordred_version: None,
+        rdkit_version: None,
+        message: String::new(),
+        install_hint: String::new(),
+        installer_available: false,
+        install_size_hint: DESCRIPTOR_INSTALL_SIZE_HINT,
+        install_phase: DescriptorInstallPhase::Idle.as_str(),
+        install_line: None,
+        install_error: None,
     }
 }
 
 #[tauri::command]
-pub(crate) fn descriptor_runtime_install() -> Result<DescriptorRuntimeInstallResult, String> {
+pub(crate) fn descriptor_runtime_install() -> Result<(), String> {
+    {
+        let mut state = descriptor_install_state()
+            .lock()
+            .map_err(|_| "The descriptor runtime installer lock is unavailable.".to_string())?;
+        if state.phase == DescriptorInstallPhase::Installing {
+            return Ok(());
+        }
+        *state = DescriptorInstallState {
+            phase: DescriptorInstallPhase::Installing,
+            line: Some("Preparing the descriptor runtime installation…".into()),
+            ..DescriptorInstallState::default()
+        };
+    }
+    thread::spawn(|| {
+        let outcome = run_managed_descriptor_install();
+        let mut state = match descriptor_install_state().lock() {
+            Ok(state) => state,
+            Err(_) => return,
+        };
+        state.child_pid = None;
+        match outcome {
+            Ok(()) => {
+                state.phase = DescriptorInstallPhase::Completed;
+                state.line = Some("Descriptor runtime installed.".into());
+                state.error = None;
+            }
+            Err(error) if state.cancel_requested => {
+                state.phase = DescriptorInstallPhase::Cancelled;
+                state.line = None;
+                state.error = Some(error);
+            }
+            Err(error) => {
+                state.phase = DescriptorInstallPhase::Failed;
+                state.line = None;
+                state.error = Some(error);
+            }
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn descriptor_runtime_cancel_install() -> Result<(), String> {
+    let mut state = descriptor_install_state()
+        .lock()
+        .map_err(|_| "The descriptor runtime installer lock is unavailable.".to_string())?;
+    if state.phase != DescriptorInstallPhase::Installing {
+        return Ok(());
+    }
+    state.cancel_requested = true;
+    if let Some(pid) = state.child_pid {
+        crate::commands::chemical_space_models::kill_process(pid);
+    }
+    Ok(())
+}
+
+fn run_managed_descriptor_install() -> Result<(), String> {
     let uv_path = resolve_uv_executable()?;
     let runtime_dir = descriptor_runtime_dir()?;
     fs::create_dir_all(&runtime_dir).map_err(|err| {
@@ -521,36 +653,35 @@ pub(crate) fn descriptor_runtime_install() -> Result<DescriptorRuntimeInstallRes
     })?;
     let python_path = runtime_dir.join("bin").join("python3");
     if python_path.is_file() {
+        set_descriptor_install_line("Checking the existing descriptor runtime…");
         if let Ok(payload) = run_descriptor_runner(
             &python_path,
             json!({ "mode": "status" }),
             DESCRIPTOR_STATUS_TIMEOUT,
         ) {
             if payload.get("ok").and_then(Value::as_bool) == Some(true) {
-                return Ok(DescriptorRuntimeInstallResult {
-                    python_path: python_path.to_string_lossy().to_string(),
-                    message:
-                        "Descriptor runtime is already installed with RDKit and mordredcommunity"
-                            .into(),
-                });
+                return Ok(());
             }
         }
     } else {
+        set_descriptor_install_line("Creating the Python environment…");
         let runtime_dir_arg = runtime_dir.to_string_lossy().to_string();
-        run_external_command(
+        run_descriptor_install_step(
             &uv_path,
             &["venv", runtime_dir_arg.as_str()],
             DESCRIPTOR_INSTALL_TIMEOUT,
         )?;
     }
+    descriptor_install_cancelled()?;
     if !python_path.is_file() {
         return Err(format!(
             "uv created a descriptor runtime without {}",
             python_path.display()
         ));
     }
+    set_descriptor_install_line("Downloading RDKit and mordredcommunity…");
     let python_arg = python_path.to_string_lossy().to_string();
-    run_external_command(
+    run_descriptor_install_step(
         &uv_path,
         &[
             "pip",
@@ -562,10 +693,24 @@ pub(crate) fn descriptor_runtime_install() -> Result<DescriptorRuntimeInstallRes
         ],
         DESCRIPTOR_INSTALL_TIMEOUT,
     )?;
-    Ok(DescriptorRuntimeInstallResult {
-        python_path: python_path.to_string_lossy().to_string(),
-        message: "Descriptor runtime installed with RDKit and mordredcommunity".into(),
-    })
+    descriptor_install_cancelled()?;
+    // A freshly created environment compiles RDKit and Mordred on their first
+    // import, which outruns the budget an ordinary status probe gets, so the
+    // validation that decides Completed against Failed gets the install budget.
+    set_descriptor_install_line("Validating the installed runtime…");
+    let payload = run_descriptor_runner(
+        &python_path,
+        json!({ "mode": "status" }),
+        DESCRIPTOR_INSTALL_TIMEOUT,
+    )?;
+    if payload.get("ok").and_then(Value::as_bool) != Some(true) {
+        return Err(payload
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or("The installed descriptor runtime could not import RDKit or Mordred")
+            .to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1004,20 +1149,32 @@ fn run_descriptor_runner(
     payload: Value,
     timeout: Duration,
 ) -> Result<Value, String> {
+    run_python_script(python_path, DESCRIPTOR_RUNNER, payload, timeout)
+}
+
+// The one way this app runs a managed-Python helper: feed the script a JSON
+// payload on stdin and read one JSON line back. R-group decomposition brings
+// its own script and reuses this transport rather than a second copy of it.
+pub(crate) fn run_python_script(
+    python_path: &Path,
+    script: &str,
+    payload: Value,
+    timeout: Duration,
+) -> Result<Value, String> {
     let input = serde_json::to_vec(&payload).map_err(|err| err.to_string())?;
     let mut child = Command::new(python_path)
         .arg("-c")
-        .arg(DESCRIPTOR_RUNNER)
+        .arg(script)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .env("PYTHONNOUSERSITE", "1")
         .spawn()
-        .map_err(|err| format!("Failed to launch descriptor runtime: {err}"))?;
+        .map_err(|err| format!("Failed to launch the Python runtime: {err}"))?;
     if let Some(mut stdin) = child.stdin.take() {
         stdin
             .write_all(&input)
-            .map_err(|err| format!("Failed to send descriptor input: {err}"))?;
+            .map_err(|err| format!("Failed to send input to the Python runtime: {err}"))?;
     }
     let start = Instant::now();
     loop {
@@ -1025,7 +1182,7 @@ fn run_descriptor_runner(
             let output = child.wait_with_output().map_err(|err| err.to_string())?;
             if !output.status.success() {
                 return Err(format!(
-                    "Descriptor runtime exited with status {}: {}",
+                    "The Python runtime exited with status {}: {}",
                     output.status,
                     String::from_utf8_lossy(&output.stderr).trim()
                 ));
@@ -1037,7 +1194,7 @@ fn run_descriptor_runner(
             let _ = child.kill();
             let _ = child.wait();
             return Err(format!(
-                "Descriptor runtime timed out after {} seconds",
+                "The Python runtime timed out after {} seconds",
                 timeout.as_secs()
             ));
         }
@@ -1069,17 +1226,30 @@ fn parse_descriptor_runner_output(stdout: &str) -> Result<Value, String> {
     ))
 }
 
-fn run_external_command(path: &Path, args: &[&str], timeout: Duration) -> Result<(), String> {
+/// Runs one installer step. The child pid is published to the install state so
+/// `descriptor_runtime_cancel_install` can end a download that is already in
+/// flight instead of leaving the caller to wait out the timeout.
+fn run_descriptor_install_step(
+    path: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<(), String> {
     let mut child = Command::new(path)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|err| format!("Failed to launch {}: {err}", path.display()))?;
+    if let Ok(mut state) = descriptor_install_state().lock() {
+        state.child_pid = Some(child.id());
+    }
     let start = Instant::now();
     loop {
         if child.try_wait().map_err(|err| err.to_string())?.is_some() {
             let output = child.wait_with_output().map_err(|err| err.to_string())?;
+            if let Ok(mut state) = descriptor_install_state().lock() {
+                state.child_pid = None;
+            }
             if output.status.success() {
                 return Ok(());
             }
@@ -1101,6 +1271,9 @@ fn run_external_command(path: &Path, args: &[&str], timeout: Duration) -> Result
         if start.elapsed() >= timeout {
             let _ = child.kill();
             let _ = child.wait();
+            if let Ok(mut state) = descriptor_install_state().lock() {
+                state.child_pid = None;
+            }
             return Err(format!(
                 "{} timed out after {} seconds",
                 path.display(),
@@ -1125,7 +1298,7 @@ fn resolve_descriptor_engine_python() -> Result<PathBuf, String> {
     }
 }
 
-fn resolve_python_executable() -> Result<PathBuf, String> {
+pub(crate) fn resolve_python_executable() -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
     if let Some(path) = env::var_os("BURETTE_DESCRIPTOR_PYTHON") {
         candidates.push(PathBuf::from(path));
@@ -1242,10 +1415,14 @@ fn is_executable(path: &Path) -> bool {
     path.is_file()
 }
 
-// The Descriptors dock panel this used to point at was removed, leaving the
-// environment variable as the only route a reader can actually take.
-fn descriptor_install_hint() -> String {
-    "Set BURETTE_DESCRIPTOR_PYTHON to a Python interpreter with RDKit and mordredcommunity installed.".into()
+// Calculate Properties can install the runtime itself when uv is on the
+// machine; without uv the environment variable is the only route left.
+pub(crate) fn descriptor_install_hint() -> String {
+    if resolve_uv_executable().is_ok() {
+        "The runtime installs through uv into Application Support/Burette/descriptor-python.".into()
+    } else {
+        "Managed installation requires the uv package manager. Install uv (https://docs.astral.sh/uv) or set BURETTE_DESCRIPTOR_PYTHON to a Python interpreter with RDKit and mordredcommunity installed.".into()
+    }
 }
 
 fn current_time_millis() -> u64 {

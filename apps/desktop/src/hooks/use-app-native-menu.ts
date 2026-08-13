@@ -20,8 +20,9 @@ import {
   isAbsoluteNativeFilePath,
   nativeOpenDocumentPaths,
 } from "../lib/native-menu-paths";
+import type { DerivedColumnKind } from "../lib/derived-columns";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
-import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
+import { postGridCommand } from "../lib/viewer-bridge";
 import {
   resumeWindowMutations,
   sealWindowMutations,
@@ -30,6 +31,21 @@ import type { ViewerPreferences, ViewerReloadOptions } from "../types";
 import { useMenuEvents } from "./use-menu-events";
 
 const PROJECT_URL = "https://github.com/SergeiNikolenko/Burette";
+const ADD_COLUMN_COMMAND_KINDS: Record<string, DerivedColumnKind> = {
+  "collection.add-column.formula": "formula",
+  "collection.add-column.smiles": "canonical-smiles",
+  "collection.add-column.inchi": "inchi",
+  "collection.add-column.inchikey": "inchikey",
+  "collection.add-column.idcode": "idcode",
+  // Transform writes a column the same way Add Column does, so it dispatches
+  // through the same map rather than growing a parallel one.
+  "collection.transform.largest-fragment": "largest-fragment",
+  "collection.reaction.add-smiles": "reaction-smiles",
+  "collection.reaction.extract-reactants": "reaction-reactants",
+  "collection.reaction.extract-catalysts": "reaction-catalysts",
+  "collection.reaction.extract-products": "reaction-products",
+  "collection.reaction.extract-transformation": "reaction-transformation",
+};
 const GENERATE_3D_EXTENSIONS = new Set(["sdf", "sd", "mol", "smi", "smiles"]);
 const DIRECT_XTB_EXTENSIONS = new Set(["sdf", "sd", "mol", "xyz", "pdb"]);
 const CREST_OPENBABEL_EXTENSIONS = new Set(["sdf", "sd", "mol", "mol2", "pdb", "pdbqt", "ent", "cif", "mmcif", "mcif"]);
@@ -58,12 +74,7 @@ type UseAppNativeMenuOptions = {
   saveActiveSource: () => void | Promise<void>;
 };
 
-function postGridMenuCommand(documentId: string, command: string) {
-  activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
-    source: "burette-grid-host",
-    body: { type: "gridMenuCommand", command },
-  }, "*");
-}
+const postGridMenuCommand = postGridCommand;
 
 async function openExternalUrl(url: string) {
   await invoke("open_external_url", { url });
@@ -208,6 +219,7 @@ export function useAppNativeMenu({
     selectedMoleculeCount,
     selectedGridRowCount: isGrid ? gridMenuState?.selectedCount ?? 0 : 0,
     gridHasMolecules: Boolean(isGrid && gridMenuState?.hasMolecules),
+    gridHasReactions: Boolean(isGrid && gridMenuState?.hasReactions),
     gridDirty: Boolean(isGrid && gridMenuState?.dirty),
     gridExportEnabled: Boolean(isGrid && gridMenuState?.exportEnabled),
     gridSelectionEnabled: Boolean(isGrid && gridMenuState?.selectionEnabled),
@@ -219,9 +231,10 @@ export function useAppNativeMenu({
     canRunCrest,
     canRunPrism,
     canRunXtb,
+    rgroupRuntimeAvailable: state.rgroupRuntimeAvailable,
     openDocumentPaths,
     recentDocuments: null,
-  }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closableTabCount, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
+  }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closableTabCount, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.rgroupRuntimeAvailable, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
   const nativeStateRef = useRef<NativeMenuState>({ ...nativeState, recentDocuments });
   const closingWindowRef = useRef(false);
   const getWindowDocumentDirtySnapshotRef = useRef(getWindowDocumentDirtySnapshot);
@@ -402,9 +415,87 @@ export function useAppNativeMenu({
       case "collection.copy-selected":
       case "collection.select-all":
       case "collection.clear-selection":
-      case "collection.calculate-descriptors":
         if (command === "edit.find" && !isGrid) actions.focusSidebarSearch();
         else gridCommand();
+        return;
+      case "collection.calculate-descriptors":
+        // Opens the Calculate Properties dialog; the Mordred descriptor run is
+        // one of its options rather than the whole command.
+        if (activeDocument && isGrid) actions.openCalculateProperties(activeDocument.id);
+        return;
+      case "collection.add-column.formula":
+      case "collection.add-column.smiles":
+      case "collection.add-column.inchi":
+      case "collection.add-column.inchikey":
+      case "collection.add-column.idcode":
+      case "collection.transform.largest-fragment":
+      case "collection.reaction.add-smiles":
+      case "collection.reaction.extract-reactants":
+      case "collection.reaction.extract-catalysts":
+      case "collection.reaction.extract-products":
+      case "collection.reaction.extract-transformation": {
+        if (!activeDocument || !isGrid) return;
+        const kind = ADD_COLUMN_COMMAND_KINDS[command];
+        if (kind) actions.addDerivedGridColumn(activeDocument.id, kind);
+        return;
+      }
+      case "collection.delete-rows.selected":
+        // The grid owns the selection, so it performs this one itself.
+        if (isGrid) gridCommand();
+        return;
+      case "collection.delete-rows.duplicates":
+        if (activeDocument && isGrid) actions.deleteDuplicateGridRows(activeDocument.id);
+        return;
+      case "analyze.chemical-space":
+        if (isGrid) actions.openDockTab("bottom", "chemical-space");
+        return;
+      case "analyze.scaffolds":
+        if (activeDocument && isGrid) actions.addScaffoldGridColumns(activeDocument.id);
+        return;
+      case "analyze.substructure-count":
+        if (activeDocument && isGrid) actions.openSubstructureCount(activeDocument.id);
+        return;
+      case "analyze.find-similar":
+        if (activeDocument && isGrid) await actions.findSimilarInFile(activeDocument.id);
+        return;
+      case "analyze.rgroups":
+        if (activeDocument && isGrid) actions.openRGroupDecomposition(activeDocument.id);
+        return;
+      case "collection.add-column.calculated":
+        if (activeDocument && isGrid) actions.openCalculatedColumn(activeDocument.id);
+        return;
+      case "collection.merge-columns":
+        if (activeDocument && isGrid) actions.openMergeColumns(activeDocument.id);
+        return;
+      case "collection.transform.value-range":
+        // Limits a column the grid already holds, so the dialog opens with the
+        // grid's own column catalog and the grid applies the range itself.
+        if (activeDocument && isGrid) actions.openSetValueRange(activeDocument.id);
+        return;
+      case "collection.transform.split-rows":
+        if (activeDocument && isGrid) actions.openSplitValueRows(activeDocument.id);
+        return;
+      case "collection.merge-rows":
+        // No dialog: what counts as equivalent is the identity Delete Duplicate
+        // Molecules already uses, and the merge is one undo entry.
+        if (activeDocument && isGrid) actions.mergeEquivalentGridRows(activeDocument.id);
+        return;
+      case "collection.reaction.perform":
+        // Runs a reaction over the collection's molecules, so it opens a dialog
+        // for the reaction rather than reading one off the rows.
+        if (activeDocument && isGrid) actions.openPerformReaction(activeDocument.id);
+        return;
+      case "collection.transform.logarithmic":
+        // The same dialog, opened with the transform already written: naming the
+        // column and picking which one to take the logarithm of is the only part
+        // left, and the formula editor validates it the way it validates any
+        // other computed column.
+        if (activeDocument && isGrid) {
+          actions.openCalculatedColumn(activeDocument.id, { formula: "log10()", label: "log10" });
+        }
+        return;
+      case "analyze.correlation-matrix":
+        if (activeDocument && isGrid) actions.openCorrelationMatrix(activeDocument.id);
         return;
       case "file.close-tab":
         await actions.closeActiveDocument();
@@ -419,6 +510,15 @@ export function useAppNativeMenu({
       case "file.close-window":
         await getCurrentWindow().close();
         return;
+      case "database.search-chembl": actions.openDatabaseQuery("chembl"); return;
+      case "database.chembl-actives": actions.openDatabaseQuery("chembl-actives"); return;
+      case "database.search-cod": actions.openDatabaseQuery("cod"); return;
+      case "database.retrieve-wikipedia": actions.openDatabaseQuery("wikipedia"); return;
+      case "database.search-building-blocks": actions.openDatabaseQuery("building-blocks"); return;
+      case "database.search-chemspace": actions.openDatabaseQuery("chemspace"); return;
+      case "database.search-google-patents": actions.openDatabaseQuery("patents"); return;
+      case "database.retrieve-url": actions.openDatabaseQuery("url"); return;
+      case "database.retrieve-sql": actions.openDatabaseQuery("sql"); return;
       case "view.toggle-sidebar": actions.toggleSidebar(); return;
       case "view.toggle-inspector": actions.toggleDock("right"); return;
       case "view.toggle-bottom-panel": actions.toggleDock("bottom"); return;

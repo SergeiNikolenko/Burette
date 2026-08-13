@@ -858,6 +858,8 @@ fn grid_format(extension: &str) -> Option<&'static str> {
         "tsv" => Some("tsv"),
         "smi" | "smiles" => Some("smiles"),
         "sdf" | "sd" => Some("sdf"),
+        "rxn" => Some("rxn"),
+        "rdf" => Some("rdf"),
         _ => None,
     }
 }
@@ -1576,6 +1578,13 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
              );
              create index if not exists descriptor_values_descriptor_real
                  on descriptor_values(descriptor_id, value_real);
+             create table if not exists derived_columns (
+                 column_id text primary key,
+                 label text not null,
+                 kind text not null,
+                 params_json text,
+                 created_at_ms integer not null
+             );
              insert or ignore into grid_index_state (id, records_indexed, index_ready) values (1, 0, 0);",
         )
         .map_err(|err| err.to_string())?;
@@ -1898,6 +1907,67 @@ pub(crate) fn replace_descriptor_values_in_database(
     tx.commit().map_err(|err| err.to_string())
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct DerivedValueInput {
+    pub(crate) row_id: i64,
+    pub(crate) value_real: Option<f64>,
+    pub(crate) value_text: Option<String>,
+    pub(crate) error_text: Option<String>,
+}
+
+// Derived columns ride the descriptor_values channel: values land as rows keyed
+// by their column id so pages, filters, sorting, and export pick them up with
+// no extra plumbing, while derived_columns keeps the recompute recipe. Unlike
+// replace_descriptor_values_in_database this touches only its own column.
+pub(crate) fn store_derived_values_in_database(
+    connection: &mut Connection,
+    column_id: &str,
+    label: &str,
+    kind: &str,
+    params_json: Option<&str>,
+    values: &[DerivedValueInput],
+) -> Result<usize, String> {
+    let tx = connection.transaction().map_err(|err| err.to_string())?;
+    let updated_at_ms = current_time_millis();
+    tx.execute(
+        "insert into derived_columns (column_id, label, kind, params_json, created_at_ms)
+         values (?1, ?2, ?3, ?4, ?5)
+         on conflict(column_id) do update set label = ?2, kind = ?3, params_json = ?4",
+        params![column_id, label, kind, params_json, updated_at_ms],
+    )
+    .map_err(|err| err.to_string())?;
+    let mut stored = 0usize;
+    {
+        let mut statement = tx
+            .prepare(
+                "insert or replace into descriptor_values (
+                   molecule_id, descriptor_id, label, value_real, value_text,
+                   missing_kind, error_text, updated_at_ms
+                 )
+                 values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )
+            .map_err(|err| err.to_string())?;
+        for value in values {
+            let missing_kind = value.error_text.as_ref().map(|_| "error");
+            statement
+                .execute(params![
+                    value.row_id,
+                    column_id,
+                    label,
+                    value.value_real,
+                    value.value_text,
+                    missing_kind,
+                    value.error_text,
+                    updated_at_ms,
+                ])
+                .map_err(|err| err.to_string())?;
+            stored += 1;
+        }
+    }
+    tx.commit().map_err(|err| err.to_string())?;
+    Ok(stored)
+}
+
 pub(crate) fn descriptor_run_summary_in_database(
     database_path: &Path,
 ) -> Result<GridDescriptorRunSummary, String> {
@@ -2006,6 +2076,8 @@ fn parse_grid_batch_with_options(
         )),
         "smi" | "smiles" => Ok(parse_smiles_batch(text, cursor, start_index, max_records)),
         "sdf" | "sd" => Ok(parse_sdf_batch(text, cursor, start_index, max_records)),
+        "rxn" => Ok(parse_rxn_batch(text, cursor, start_index)),
+        "rdf" => Ok(parse_rdf_batch(text, cursor, start_index, max_records)),
         _ => Err(format!("unsupported grid extension: {extension}")),
     }
 }
@@ -2455,6 +2527,179 @@ fn parse_sdf_batch(
     let complete = offset >= text.len();
     if complete {
         if let Some(record) = finish_sdf_record(&current, current_has_content, next_index) {
+            records.push(record);
+            next_index += 1;
+        }
+    }
+    ParsedGridBatch {
+        records,
+        next_cursor: GridCursor {
+            offset,
+            ..GridCursor::default()
+        },
+        next_index,
+        complete,
+    }
+}
+
+// MDL reaction sources. A .rxn file carries exactly one `$RXN` block; an .rdf
+// file carries a sequence of them, each introduced by `$RFMT` and followed by
+// `$DTYPE`/`$DATUM` field pairs. The reaction block is stored verbatim as the
+// record's molblock: RDKit draws a reaction straight from it, and the reaction
+// columns read its parts from there.
+fn reaction_record(
+    block: &[String],
+    props: BTreeMap<String, String>,
+    index: usize,
+) -> Option<GridInputRecord> {
+    let text = block.join("\n");
+    if text.trim().is_empty() {
+        return None;
+    }
+    let named_prop = ["Name", "NAME", "ID", "Id", "id"]
+        .into_iter()
+        .find_map(|key| props.get(key))
+        .map(String::as_str)
+        .filter(|value| !value.trim().is_empty());
+    // Line 2 of an RXN block is its name line; the two lines after it are the
+    // program stamp and a comment, which are never a useful row title.
+    let block_name = block
+        .get(1)
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty());
+    let name = named_prop
+        .or(block_name)
+        .map(|value| clipped(value, 160))
+        .unwrap_or_else(|| format!("Reaction {}", index + 1));
+    Some(GridInputRecord {
+        index,
+        name,
+        smiles: None,
+        molblock: Some(clipped(&text, 250_000)),
+        idcode: None,
+        idcoordinates: None,
+        props,
+        source_byte_start: None,
+        source_byte_end: None,
+    })
+}
+
+fn parse_rxn_batch(text: &str, cursor: GridCursor, start_index: usize) -> ParsedGridBatch {
+    let records = if cursor.offset > 0 {
+        Vec::new()
+    } else {
+        let lines: Vec<String> = text
+            .split_inclusive(['\n', '\r'])
+            .map(|line| line.trim_end_matches(['\n', '\r']).to_string())
+            .collect();
+        // A .rxn file opens with `$RXN`. Without this check any text file that
+        // happens to carry the extension would become one row holding a molblock
+        // that no renderer can read, which reads as a broken reaction rather than
+        // as the wrong file. The .rdf path cannot share the check: an `$MFMT`
+        // record there is a plain molecule and legitimately has no `$RXN` line.
+        let is_rxn = lines
+            .iter()
+            .find(|line| !line.trim().is_empty())
+            .is_some_and(|line| line.trim_start().starts_with("$RXN"));
+        if is_rxn {
+            reaction_record(&lines, BTreeMap::new(), start_index)
+                .into_iter()
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+    let next_index = start_index + records.len();
+    ParsedGridBatch {
+        records,
+        next_cursor: GridCursor {
+            offset: text.len(),
+            ..GridCursor::default()
+        },
+        next_index,
+        complete: true,
+    }
+}
+
+fn parse_rdf_batch(
+    text: &str,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+) -> ParsedGridBatch {
+    let mut offset = cursor.offset.min(text.len());
+    let mut records = Vec::new();
+    let mut next_index = start_index;
+    let mut block: Vec<String> = Vec::new();
+    let mut props: BTreeMap<String, String> = BTreeMap::new();
+    let mut field: Option<String> = None;
+    let mut in_structure = false;
+    let mut started = false;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        let trimmed = line.trim();
+        if trimmed.starts_with("$RFMT") || trimmed.starts_with("$MFMT") {
+            if started {
+                if let Some(record) =
+                    reaction_record(&block, std::mem::take(&mut props), next_index)
+                {
+                    records.push(record);
+                    next_index += 1;
+                }
+                block.clear();
+                props.clear();
+                field = None;
+                in_structure = false;
+            }
+            // The offset is only advanced past the marker once the batch has
+            // room for the record it introduces, so the next batch resumes here.
+            if records.len() >= max_records {
+                break;
+            }
+            started = true;
+            offset = next_offset;
+            continue;
+        }
+        offset = next_offset;
+        if !started {
+            continue;
+        }
+        if let Some(name) = trimmed.strip_prefix("$DTYPE ") {
+            // The fields follow the structure, so the block is finished here.
+            in_structure = false;
+            field = Some(clipped(name.trim(), 80)).filter(|value| !value.is_empty());
+            continue;
+        }
+        if let Some(value) = trimmed.strip_prefix("$DATUM ") {
+            if let Some(name) = field.clone() {
+                props.insert(name, clipped(value.trim(), 4096));
+            }
+            continue;
+        }
+        if trimmed.starts_with("$RXN") {
+            in_structure = true;
+            block.push(line.to_string());
+            continue;
+        }
+        if trimmed.starts_with("$MOL") {
+            // Inside a reaction block `$MOL` separates its components and has to
+            // stay; before one it is the marker that opens a molecule record.
+            if in_structure {
+                block.push(line.to_string());
+            } else {
+                in_structure = true;
+            }
+            continue;
+        }
+        if trimmed.starts_with('$') {
+            continue;
+        }
+        if in_structure {
+            block.push(line.to_string());
+        }
+    }
+    let complete = offset >= text.len();
+    if complete && started {
+        if let Some(record) = reaction_record(&block, props, next_index) {
             records.push(record);
             next_index += 1;
         }
@@ -3131,7 +3376,9 @@ fn decode_saved_grid_cell(value: &str) -> String {
 }
 
 fn is_smiles_column(value: &str) -> bool {
-    value == "smile" || value.contains("smiles")
+    // "reaction_smiles" already carries "smiles"; a column called plainly "rxn"
+    // or "reaction" is matched exactly so that "reaction_id" stays a data column.
+    value == "smile" || value.contains("smiles") || value == "rxn" || value == "reaction"
 }
 
 fn resolve_smiles_columns(
@@ -3220,7 +3467,7 @@ fn infer_smiles_columns_from_source(
                 continue;
             }
             values[column_index] += 1;
-            if looks_like_smiles(value) {
+            if looks_like_smiles(value) || looks_like_reaction_smiles(value) {
                 smiles_values[column_index] += 1;
             }
         }
@@ -3382,6 +3629,21 @@ fn looks_like_smiles(value: &str) -> bool {
         }
     }
     has_atom && (!has_aromatic_atom || has_structural_marker)
+}
+
+// A reaction SMILES is `reactants>agents>products`; the agent part is often
+// empty. Each side is a normal SMILES, so the components are validated with the
+// same reader the molecule columns use.
+fn looks_like_reaction_smiles(value: &str) -> bool {
+    let trimmed = value.trim();
+    let parts: Vec<&str> = trimmed.split('>').collect();
+    if parts.len() != 3 || parts[0].trim().is_empty() || parts[2].trim().is_empty() {
+        return false;
+    }
+    parts
+        .iter()
+        .filter(|part| !part.trim().is_empty())
+        .all(|part| part.split('.').all(looks_like_smiles))
 }
 
 fn is_inchi_key(value: &str) -> bool {
@@ -4522,6 +4784,177 @@ mod tests {
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }
 
+    fn reaction_page(database_path: &Path) -> GridPageResult {
+        fetch_page(
+            database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch reaction page")
+    }
+
+    // Real MDL fixtures, shared with the node reaction tests.
+    const AMIDATION_RXN: &str =
+        include_str!("../../../../../tests/fixtures/reactions/amidation.rxn");
+    const THREE_REACTIONS_RDF: &str =
+        include_str!("../../../../../tests/fixtures/reactions/three-reactions.rdf");
+
+    // A file that only carries the extension is the wrong file, not a broken
+    // reaction: it must not become a row holding a molblock no renderer reads.
+    #[test]
+    fn text_without_a_reaction_header_produces_no_rxn_row() {
+        let runtime_dir = temp_runtime_dir();
+        let built = build_grid_store(
+            &runtime_dir,
+            "rxn",
+            b"smiles,name\nCCO,ethanol\nCCN,ethylamine\n",
+        )
+        .expect("build grid store");
+        // No record means no collection at all, so the file falls through to the
+        // preview that can actually read it instead of opening as one dead row.
+        assert!(built.is_none());
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    // The RXN block reaches the row whole: the grid draws a reaction from it and
+    // the reaction columns read its parts, so losing a line here loses both.
+    #[test]
+    fn ingests_a_reaction_file_as_one_row() {
+        let runtime_dir = temp_runtime_dir();
+        let rxn = AMIDATION_RXN;
+
+        let (database_path, summary) = build_store(&runtime_dir, "rxn", rxn.as_bytes());
+        assert_eq!(summary.format, "rxn");
+        assert!(summary.has_molecules);
+        assert_eq!(summary.records_total, 1);
+
+        let page = reaction_page(&database_path);
+        assert_eq!(page.total_rows, 1);
+        assert_eq!(page.rows[0].name, "Amidation");
+        let molblock = page.rows[0].molblock.as_deref().unwrap_or_default();
+        assert!(molblock.starts_with("$RXN"), "row keeps the reaction block");
+        assert_eq!(molblock.matches("$MOL").count(), 3);
+        assert_eq!(page.rows[0].smiles, None);
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn ingests_an_rdfile_as_one_row_per_reaction() {
+        let runtime_dir = temp_runtime_dir();
+
+        let (database_path, summary) =
+            build_store(&runtime_dir, "rdf", THREE_REACTIONS_RDF.as_bytes());
+        assert_eq!(summary.format, "rdf");
+        assert_eq!(summary.records_total, 3);
+
+        let page = reaction_page(&database_path);
+        assert_eq!(page.total_rows, 3);
+        // The $DTYPE/$DATUM fields become row properties, and an ID field names
+        // the row the way an SDF Name field does.
+        assert_eq!(page.rows[0].name, "RXN-1");
+        assert_eq!(page.rows[1].name, "RXN-2");
+        assert_eq!(
+            page.rows[0].props.get("Yield").map(String::as_str),
+            Some("88")
+        );
+        assert_eq!(
+            page.rows[1].props.get("Yield").map(String::as_str),
+            Some("61")
+        );
+        for row in &page.rows {
+            let molblock = row.molblock.as_deref().unwrap_or_default();
+            assert!(molblock.starts_with("$RXN"));
+            assert!(!molblock.contains("$DTYPE"), "fields stay out of the block");
+            // The `$MOL` separators inside the reaction block are what divide its
+            // components; dropping them as RDfile markers would fuse them.
+            assert!(
+                molblock.matches("$MOL").count() >= 3,
+                "the reaction keeps its component separators"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    // Batching an RDfile has to resume at a record boundary, the way the SDF
+    // parser does; a cursor left mid-record would duplicate or drop reactions.
+    #[test]
+    fn rdfile_batches_resume_at_the_next_record() {
+        let mut rdf = String::from("$RDFILE 1\n");
+        for index in 0..5 {
+            rdf.push_str(&format!(
+                "$RFMT\n$RXN\nReaction {index}\n  Burette\n\n  1  1\n$MOL\nM  END\n$DTYPE ID\n$DATUM R{index}\n"
+            ));
+        }
+
+        let first = parse_rdf_batch(&rdf, GridCursor::default(), 0, 2);
+        assert_eq!(first.records.len(), 2);
+        assert_eq!(first.next_index, 2);
+        assert!(!first.complete);
+        assert_eq!(first.records[0].name, "R0");
+
+        let second = parse_rdf_batch(&rdf, first.next_cursor, first.next_index, 2);
+        assert_eq!(second.records.len(), 2);
+        assert_eq!(second.records[0].name, "R2");
+
+        let third = parse_rdf_batch(&rdf, second.next_cursor, second.next_index, 2);
+        assert_eq!(third.records.len(), 1);
+        assert_eq!(third.records[0].name, "R4");
+        assert!(third.complete);
+    }
+
+    // A reaction SMILES column has to be found the way a molecule SMILES column
+    // is, both by its header and by its values.
+    #[test]
+    fn ingests_a_reaction_smiles_csv_column() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "id,rxn,yield\n\
+                   R-1,CC(=O)O.NCC>>CCNC(C)=O,88\n\
+                   R-2,c1ccccc1C(=O)O.CCO>>CCOC(=O)c1ccccc1,61\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert!(summary.has_molecules);
+        let page = reaction_page(&database_path);
+        assert_eq!(page.total_rows, 2);
+        assert_eq!(
+            page.rows[0].smiles.as_deref(),
+            Some("CC(=O)O.NCC>>CCNC(C)=O")
+        );
+
+        let unnamed = temp_runtime_dir();
+        let inferred = "id,structure_column,yield\n\
+                        R-1,CC(=O)O.NCC>>CCNC(C)=O,88\n\
+                        R-2,c1ccccc1C(=O)O.CCO>>CCOC(=O)c1ccccc1,61\n";
+        let (inferred_path, inferred_summary) = build_store(&unnamed, "csv", inferred.as_bytes());
+        assert!(inferred_summary.has_molecules, "values alone identify it");
+        assert_eq!(
+            reaction_page(&inferred_path).rows[0].smiles.as_deref(),
+            Some("CC(=O)O.NCC>>CCNC(C)=O")
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+        let _ = std::fs::remove_dir_all(&unnamed);
+    }
+
+    #[test]
+    fn reaction_smiles_detection_rejects_plain_text() {
+        assert!(looks_like_reaction_smiles("CC(=O)O.NCC>>CCNC(C)=O"));
+        assert!(looks_like_reaction_smiles("CCO>[Pd]>CCO"));
+        assert!(!looks_like_reaction_smiles("CCO"));
+        assert!(!looks_like_reaction_smiles(">>"));
+        assert!(!looks_like_reaction_smiles("greater > than"));
+        assert!(!looks_like_reaction_smiles("a>b>c"));
+    }
+
     #[test]
     fn ingests_generic_csv_as_table_rows() {
         let runtime_dir = temp_runtime_dir();
@@ -4873,6 +5306,123 @@ mod tests {
         let identity = grid_identity::read_source_identity(&connection)
             .expect("read completed source identity");
         assert_eq!(identity.source_revision, 1);
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn stores_and_reads_derived_column_values() {
+        let runtime_dir = temp_runtime_dir();
+        let (database_path, summary) = build_store(
+            &runtime_dir,
+            "smi",
+            b"CCO Ethanol\nCC(=O)Oc1ccccc1C(=O)O Aspirin\n",
+        );
+        assert_eq!(summary.records_total, 2);
+        wait_for_index_ready(&database_path);
+
+        let mut connection = open_descriptor_source(&database_path).expect("open source");
+        let rows = descriptor_source_row_batch(&connection, -1, 10).expect("source rows");
+        assert_eq!(rows.len(), 2);
+
+        let values = rows
+            .iter()
+            .map(|row| DerivedValueInput {
+                row_id: row.row_id,
+                value_real: None,
+                value_text: Some(format!("formula-of-{}", row.name)),
+                error_text: None,
+            })
+            .collect::<Vec<_>>();
+        let stored = store_derived_values_in_database(
+            &mut connection,
+            "Formula",
+            "Molecular Formula",
+            "formula",
+            None,
+            &values,
+        )
+        .expect("store derived values");
+        assert_eq!(stored, 2);
+
+        // A second column must not disturb the first, and a per-row error is a
+        // stored answer, not a hole.
+        let second = vec![DerivedValueInput {
+            row_id: rows[0].row_id,
+            value_real: None,
+            value_text: None,
+            error_text: Some("parse failed".into()),
+        }];
+        store_derived_values_in_database(&mut connection, "InChI", "InChI", "inchi", None, &second)
+            .expect("store second column");
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page with derived columns");
+        assert!(page.descriptor_ids.contains(&"Formula".to_string()));
+        assert!(page.descriptor_ids.contains(&"InChI".to_string()));
+        let formula_cell = page.rows[0]
+            .descriptors
+            .get("Formula")
+            .expect("formula cell on first row");
+        assert_eq!(formula_cell.label, "Molecular Formula");
+        assert_eq!(
+            formula_cell.value,
+            Some(serde_json::Value::String("formula-of-Ethanol".into()))
+        );
+        let inchi_cell = page.rows[0]
+            .descriptors
+            .get("InChI")
+            .expect("inchi error cell on first row");
+        assert_eq!(inchi_cell.error_text.as_deref(), Some("parse failed"));
+        assert!(page.rows[1].descriptors.contains_key("Formula"));
+        assert!(!page.rows[1].descriptors.contains_key("InChI"));
+
+        // Re-storing a row overwrites in place instead of duplicating.
+        let overwrite = vec![DerivedValueInput {
+            row_id: rows[0].row_id,
+            value_real: None,
+            value_text: Some("overwritten".into()),
+            error_text: None,
+        }];
+        store_derived_values_in_database(
+            &mut connection,
+            "Formula",
+            "Molecular Formula",
+            "formula",
+            None,
+            &overwrite,
+        )
+        .expect("overwrite derived value");
+        let count: i64 = connection
+            .query_row(
+                "select count(*) from descriptor_values where descriptor_id = 'Formula'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count formula rows");
+        assert_eq!(count, 2);
+
+        let (label, kind): (String, String) = connection
+            .query_row(
+                "select label, kind from derived_columns where column_id = 'Formula'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("derived column meta");
+        assert_eq!(label, "Molecular Formula");
+        assert_eq!(kind, "formula");
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }

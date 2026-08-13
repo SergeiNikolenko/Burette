@@ -201,7 +201,13 @@ assert.ok(normalizedRadii.at(-1) > 1, "outliers should remain distinguishable fr
 assert.ok(normalizedRadii.at(-1) <= 1.45, "outliers should remain within the visible scene");
 assert.doesNotMatch(chemicalSpacePanel, /MOLECULE_PREVIEW_HOVER_DELAY_MS/);
 assert.doesNotMatch(chemicalSpacePanel, /previewHoverReadyFor/);
-assert.match(chemicalSpacePanel, /preview=\{preview\}/);
+// The floating preview is suppressed while the inspector shows the same
+// molecule, so the canvas receives the card only when it is the only surface -
+// and putting the inspector card away with its close button hands the job back,
+// which the open tab alone cannot tell you.
+assert.match(chemicalSpacePanel, /preview=\{inspectorShowsMolecule \? null : preview\}/);
+assert.match(chemicalSpacePanel, /const inspectorShowsMolecule = inspectorOpen && !previewCardHidden;/);
+assert.match(chemicalSpacePanel, /window\.addEventListener\(HOVER_CARD_VISIBILITY_EVENT, handle\)/);
 assert.match(chemicalSpace3d, /new THREE\.WebGLRenderer/);
 assert.match(chemicalSpace3d, /new THREE\.PerspectiveCamera/);
 assert.match(chemicalSpace3d, /new OrbitControls/);
@@ -377,7 +383,7 @@ for (const engine of ["chemberta", "unimol-v1"]) {
 for (const engine of ["chemberta", "molformer", "unimol2-84m", "unimol-v1"]) {
   assert.match(representationWorker, new RegExp(`"${engine}"`));
 }
-assert.match(browserDevCompute, /browserRepresentationCache\.get\(key\)/);
+assert.match(browserDevCompute, /const browserRepresentationRuns: SharedRunStore</);
 assert.match(browserDevCompute, /neighbors: 64/);
 assert.match(browserDevCompute, /REPRESENTATION_FETCH_RETRY_DELAY_MS = 400/);
 assert.match(browserDevCompute, /fetchRepresentationWithRetry/);
@@ -600,5 +606,58 @@ assert.doesNotMatch(
 assert.match(gridViewerSource, /function postChemicalSpaceIndexState\(requestId\)/);
 assert.match(gridViewerSource, /sourceRevision: state\.sourceRevision/u);
 assert.match(gridViewerSource, /state\.sourceRevision \+= 1/u);
+
+// Model inference is cached apart from the projection so that changing the
+// embedder or a parameter reuses the vectors. The run outlives the caller that
+// started it: only an explicit stop, or the source changing, ends one early -
+// if the caller's signal ever reached representChemicalSpace again, switching
+// representation mid-flight would silently throw the work away.
+const sharedRun = source("apps/desktop/src/lib/shared-progress-run.ts");
+// The run is started with its own signal and the caller only races it, so a
+// caller that walks away detaches instead of cancelling.
+assert.match(sharedRun, /start\(\(progress\) => \{/);
+assert.match(sharedRun, /\}, controller\.signal\);/);
+assert.match(sharedRun, /return rejectOnAbort\(attached\.promise, signal, abortError\)/);
+assert.match(sharedRun, /if \(run\.lastProgress !== null\) onProgress\(run\.lastProgress\);/);
+assert.match(sharedRun, /const oldestSettled = \[\.\.\.runs\.entries\(\)\]\.find\(\(\[, run\]\) => run\.settled\);/);
+assert.match(workflow, /function sharedRepresentChemicalSpace\(/);
+assert.match(workflow, /export function stopChemicalSpaceRepresentations\(documentId: string\)/);
+assert.match(workflow, /start: \(report, runSignal\) => representChemicalSpace\(records, engine, report, runSignal\)/);
+assert.doesNotMatch(
+  workflow,
+  /await representChemicalSpace\(/,
+  "callers must go through the shared run, or a detached caller cancels the model",
+);
+// Browser dev speaks one long request instead of start/poll, and needs the same
+// rule: the fetch must ride the run's signal, never the caller's.
+assert.match(browserDevCompute, /runs: browserRepresentationRuns,/);
+assert.match(browserDevCompute, /signal: runSignal,/);
+assert.match(browserDevCompute, /export function stopBrowserChemicalSpaceRepresentations\(\)/);
+assert.doesNotMatch(
+  browserDevCompute,
+  /body: JSON\.stringify\(\{ operation: "represent"[^}]*\}\),\s*\n\s*signal,/,
+  "the representation request must not carry the caller's abort signal",
+);
+const invalidationStart = workflow.indexOf("export function invalidateChemicalSpaceFingerprintCache");
+assert.match(
+  workflow.slice(invalidationStart, invalidationStart + 400),
+  /stopChemicalSpaceRepresentations\(documentId\);/,
+);
+assert.match(chemicalSpacePanel, /if \(documentId\) stopChemicalSpaceRepresentations\(documentId\);/);
+
+// A lasso answers with the fragment its molecules share. The selection is
+// announced from the one place that ever posts it, so the inspector cannot
+// miss a selection the grid was told about.
+const scaffoldCard = source("apps/desktop/src/components/grid-selection-scaffold.tsx");
+assert.match(chemicalSpacePanel, /if \(body\.type === "chemicalSpaceSelectionChanged"\) \{/);
+assert.match(chemicalSpacePanel, /new CustomEvent\("burette:chemical-space-selection"/);
+assert.match(scaffoldCard, /export function useSelectionScaffold\(documentId: string\): ScaffoldState/);
+assert.match(scaffoldCard, /window\.addEventListener\("burette:chemical-space-selection", handle\)/);
+assert.match(scaffoldCard, /foldCommonScaffold\(/);
+assert.match(scaffoldCard, /MAX_SCAFFOLD_MOLECULES = 5_000/);
+assert.match(scaffoldCard, /MEANINGFUL_SCAFFOLD_ATOMS = 6/);
+// Records are the whole collection and the scaffold search reuses them, so an
+// edited source has to drop them along with every other cached view of it.
+assert.match(chemicalSpacePanel, /invalidateScaffoldRecords\(documentId\);/);
 
 console.log("cluster workflow contract tests passed");

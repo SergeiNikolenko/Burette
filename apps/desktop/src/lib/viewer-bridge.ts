@@ -36,6 +36,16 @@ export function postMessageToViewerSource(source: MessageEventSource | null, pay
   iframe?.contentWindow?.postMessage(payload, "*");
 }
 
+// The one place that names the grid host channel. Commands normally act on the
+// grid's selection; `rowIndex` lets a caller that already knows its row - the
+// molecule preview card - name it instead.
+export function postGridCommand(documentId: string, command: string, rowIndex?: number) {
+  activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
+    source: "burette-grid-host",
+    body: { type: "gridMenuCommand", command, ...(rowIndex === undefined ? {} : { rowIndex }) },
+  }, "*");
+}
+
 export function activeViewerIframeForDocument(documentId: string, renderer?: string) {
   const escapedId = CSS.escape(documentId);
   const rendererSelector = renderer ? `[data-renderer="${CSS.escape(renderer)}"]` : "";

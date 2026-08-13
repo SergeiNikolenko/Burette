@@ -46,6 +46,7 @@ pub(crate) struct NativeMenuState {
     selected_molecule_count: usize,
     selected_grid_row_count: usize,
     grid_has_molecules: bool,
+    grid_has_reactions: bool,
     grid_dirty: bool,
     grid_export_enabled: bool,
     grid_selection_enabled: bool,
@@ -57,6 +58,7 @@ pub(crate) struct NativeMenuState {
     can_run_crest: bool,
     can_run_prism: bool,
     can_run_xtb: bool,
+    rgroup_runtime_available: bool,
     open_document_paths: Vec<String>,
     recent_documents: Option<Vec<RecentMenuDocument>>,
 }
@@ -723,6 +725,127 @@ pub(super) fn sync_native_menu<R: Runtime>(
         "collection.calculate-descriptors",
         state.is_grid && state.grid_has_molecules && !state.grid_dirty,
     )?;
+    let can_add_derived_column = state.is_grid && state.grid_has_molecules && !state.grid_dirty;
+    set_enabled(&app, "collection.delete-rows", can_add_derived_column)?;
+    set_enabled(
+        &app,
+        "collection.delete-rows.selected",
+        has_grid_selection && !state.grid_dirty,
+    )?;
+    set_enabled(
+        &app,
+        "collection.delete-rows.duplicates",
+        can_add_derived_column,
+    )?;
+    // The transforms that write a derived column live and die with the same
+    // channel every other computed column uses.
+    for id in [
+        "collection.transform.largest-fragment",
+        "collection.transform.logarithmic",
+        "collection.merge-columns",
+        // Merging equivalent rows reads every structure out of the collection
+        // database to compare them, so it needs the same molecules and the same
+        // saved edits an added column does.
+        "collection.merge-rows",
+    ] {
+        set_enabled(&app, id, can_add_derived_column)?;
+    }
+    // Set Value Range limits a column the grid already holds. It needs neither
+    // structures nor a collection whose edits are saved, so it stays reachable
+    // after an edit has made the grid dirty - and so does the submenu, which
+    // opens whenever anything inside it can run.
+    set_enabled(&app, "collection.transform.value-range", state.is_grid)?;
+    // Splitting rows rewrites cells the grid holds and adds rows beside them,
+    // which is the grid's own virtual edit layer rather than the collection
+    // database, so it follows the same rule.
+    set_enabled(&app, "collection.transform.split-rows", state.is_grid)?;
+    set_enabled(&app, "collection.transform", state.is_grid)?;
+    // The reaction columns only mean anything for a collection that holds
+    // reactions, so they follow what the grid reports. Perform Reaction is the
+    // other way round: it runs a reaction over molecules, so it lives with the
+    // rest of the derived columns, and the submenu opens for either.
+    let can_add_reaction_column = state.is_grid && state.grid_has_reactions && !state.grid_dirty;
+    for id in [
+        "collection.reaction.add-smiles",
+        "collection.reaction.extract-reactants",
+        "collection.reaction.extract-catalysts",
+        "collection.reaction.extract-products",
+        "collection.reaction.extract-transformation",
+    ] {
+        set_enabled(&app, id, can_add_reaction_column)?;
+    }
+    set_enabled(&app, "collection.reaction.perform", can_add_derived_column)?;
+    set_enabled(
+        &app,
+        "collection.reaction",
+        can_add_reaction_column || can_add_derived_column,
+    )?;
+    for id in [
+        "collection.add-column",
+        "collection.add-column.formula",
+        "collection.add-column.smiles",
+        "collection.add-column.inchi",
+        "collection.add-column.inchikey",
+        "collection.add-column.idcode",
+        "collection.add-column.calculated",
+    ] {
+        set_enabled(&app, id, can_add_derived_column)?;
+    }
+
+    set_enabled(&app, "analyze.menu", true)?;
+    set_enabled(
+        &app,
+        "analyze.chemical-space",
+        state.is_grid && state.grid_has_molecules,
+    )?;
+    set_enabled(
+        &app,
+        "analyze.correlation-matrix",
+        state.is_grid && state.grid_has_molecules,
+    )?;
+    // The SAR analyses all write derived columns, so they follow the same rule
+    // Add Column does: a grid with molecules whose edits are already saved.
+    for id in [
+        "analyze.scaffolds",
+        "analyze.substructure-count",
+        "analyze.find-similar",
+    ] {
+        set_enabled(&app, id, can_add_derived_column)?;
+    }
+    // R-group decomposition is the one analysis with an external dependency.
+    // Rather than failing at click time, the item says what is missing and
+    // stays out of reach until the managed Python RDKit runtime answers.
+    set_enabled(
+        &app,
+        "analyze.rgroups",
+        can_add_derived_column && state.rgroup_runtime_available,
+    )?;
+    set_text(
+        &app,
+        "analyze.rgroups",
+        if state.rgroup_runtime_available {
+            "Decompose R-Groups…"
+        } else {
+            "Decompose R-Groups (Needs Python RDKit)"
+        },
+    )?;
+
+    set_enabled(&app, "database.menu", true)?;
+    set_enabled(&app, "database.search-chembl", true)?;
+    // Actives are folded into the collection on screen, so there has to be one
+    // with molecules in it before the item means anything.
+    set_enabled(
+        &app,
+        "database.chembl-actives",
+        state.is_grid && state.grid_has_molecules,
+    )?;
+    set_enabled(&app, "database.search-cod", true)?;
+    set_enabled(&app, "database.retrieve-wikipedia", true)?;
+    set_enabled(&app, "database.search-building-blocks", true)?;
+    set_enabled(&app, "database.search-chemspace", true)?;
+    set_enabled(&app, "database.search-google-patents", true)?;
+    set_enabled(&app, "database.retrieve-url", true)?;
+    set_enabled(&app, "database.retrieve-sql", true)?;
 
     let can_cycle_tabs = state.tab_count > 1;
     set_enabled(&app, "window.previous-tab", can_cycle_tabs)?;
@@ -760,6 +883,8 @@ pub(super) fn reset_native_menu_for_no_windows<R: Runtime>(
         "view.grid-renderer-xyzrender",
         "structure.menu",
         "collection.menu",
+        "analyze.menu",
+        "database.chembl-actives",
         "window.previous-tab",
         "window.next-tab",
     ] {
@@ -1260,6 +1385,7 @@ mod tests {
             "selectedMoleculeCount": 1,
             "selectedGridRowCount": 1,
             "gridHasMolecules": true,
+            "gridHasReactions": false,
             "gridDirty": false,
             "gridExportEnabled": true,
             "gridSelectionEnabled": true,
@@ -1271,6 +1397,7 @@ mod tests {
             "canRunCrest": false,
             "canRunPrism": false,
             "canRunXtb": false,
+            "rgroupRuntimeAvailable": false,
             "openDocumentPaths": ["/tmp/molecules.sdf"],
             "recentDocuments": null
         })
