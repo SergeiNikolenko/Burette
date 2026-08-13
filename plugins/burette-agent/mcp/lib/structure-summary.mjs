@@ -407,6 +407,7 @@ function parseMolCounts(block) {
   const lines = block.split(/\r?\n/);
   const countsIndex = lines.findIndex((line) => /\bV(?:2000|3000)\b/.test(line));
   const countsLine = countsIndex >= 0 ? lines[countsIndex] : "";
+  if (/\bV3000\b/.test(countsLine)) return parseV3000Counts(lines, countsIndex);
   const atoms = Number.parseInt(countsLine.slice(0, 3).trim(), 10) || 0;
   const bonds = Number.parseInt(countsLine.slice(3, 6).trim(), 10) || 0;
   const elements = new Map();
@@ -419,6 +420,24 @@ function parseMolCounts(block) {
     bonds,
     elements,
   };
+}
+
+function parseV3000Counts(lines, countsIndex) {
+  const countsRecord = lines.find((line, index) => index > countsIndex && /\bM\s+V30\s+COUNTS\b/.test(line));
+  const fields = countsRecord?.trim().split(/\s+/) ?? [];
+  const atoms = Number.parseInt(fields[3], 10) || 0;
+  const bonds = Number.parseInt(fields[4], 10) || 0;
+  const elements = new Map();
+  const atomBlockStart = lines.findIndex((line, index) => index > countsIndex && /\bM\s+V30\s+BEGIN\s+ATOM\b/.test(line));
+  if (atomBlockStart >= 0) {
+    for (let index = atomBlockStart + 1; index < lines.length; index += 1) {
+      if (/\bM\s+V30\s+END\s+ATOM\b/.test(lines[index])) break;
+      const match = /^\s*M\s+V30\s+\d+\s+(\S+)/.exec(lines[index]);
+      const element = normalizeElement(match?.[1] ?? "");
+      if (element) increment(elements, element, 1);
+    }
+  }
+  return { atoms, bonds, elements };
 }
 
 function parseCifAtomSiteRecords(text) {

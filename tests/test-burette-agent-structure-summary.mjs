@@ -56,6 +56,29 @@ assert.equal(miniSdf.counts.atoms, 9);
 assert.equal(miniSdf.counts.bonds, 8);
 assert.deepEqual(miniSdf.components.elements, { O: 1, H: 2, C: 6 });
 
+const v3000Sdf = summarizeStructureText({
+  fileName: "methane-v3000.sdf",
+  text: `Methane
+  Burette
+
+  0  0  0     0  0            999 V3000
+M  V30 BEGIN CTAB
+M  V30 COUNTS 1 0 0 0 0
+M  V30 BEGIN ATOM
+M  V30 1 C 0.0 0.0 0.0 0
+M  V30 END ATOM
+M  V30 BEGIN BOND
+M  V30 END BOND
+M  V30 END CTAB
+M  END
+$$$$
+`,
+});
+assert.equal(v3000Sdf.counts.molecules, 1);
+assert.equal(v3000Sdf.counts.atoms, 1);
+assert.equal(v3000Sdf.counts.bonds, 0);
+assert.deepEqual(v3000Sdf.components.elements, { C: 1 });
+
 const fixtureDir = await mkdtemp(path.join(tmpdir(), "burette-summary-"));
 
 const mlipCfgPath = path.join(fixtureDir, "mlip.cfg");
