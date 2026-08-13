@@ -11,14 +11,17 @@
 - **Terms:** https://burette-landing.vercel.app/terms
 - **Logo:** `plugins/burette-agent/assets/app-icon.png` in the main Burette
   repository (512 × 512 PNG)
-- **ChatGPT web screenshot:** `submission/screenshots/chatgpt-pdb-viewer-web.jpg`
-  captured from the production v21 widget in a real ChatGPT conversation after
-  refreshing the developer connector.
-- **Live ChatGPT proof:** https://chatgpt.com/c/6a57781a-b1b0-83ea-bb65-4c5b13bcc3a8
+- **ChatGPT web screenshot:** capture a new screenshot from the production v21
+  widget in a fresh ChatGPT conversation after deploying this resubmission and
+  rescanning the MCP endpoint.
+- **Live ChatGPT proof:** replace this field with a fresh reviewer-accessible
+  conversation URL created from the rescanned production plugin.
 - **Desktop demo video:** https://burette-landing.vercel.app/assets/burette-chatgpt-plugin-demo.mp4
-- **Physical iPhone demo video:** https://burette-landing.vercel.app/assets/burette-chatgpt-plugin-demo-iphone.mp4
-- **Mobile verification:** the same production v21 plugin was confirmed working
-  on a physical iPhone on July 15, 2026.
+- **Physical iPhone demo video:** record and upload a fresh run after the
+  production resubmission build is deployed.
+- **Mobile verification:** verify the rescanned production version on a
+  physical iPhone before resubmitting; do not reuse the July 15 evidence as
+  proof of the new version.
 
 ### Long description
 
