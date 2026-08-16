@@ -237,7 +237,10 @@ run_bundled_xyzrender_help() {
 
   site_packages="$(find "$runtime/lib" -maxdepth 2 -type d -name site-packages | head -n 1)"
   [[ -n "$site_packages" && -d "$site_packages" ]] || return 1
-  PYTHONNOUSERSITE=1 PYTHONPATH="$site_packages" "$python" -m xyzrender.cli --help >/dev/null &
+  # This check runs twice after the bundle is sealed; a bare import would write
+  # __pycache__ into the signed app and break the strict verification with
+  # "file added" - the nightly's eternal failure.
+  PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$site_packages" "$python" -m xyzrender.cli --help >/dev/null &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     if (( elapsed >= timeout_seconds )); then
