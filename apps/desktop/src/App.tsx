@@ -23,6 +23,8 @@ import { CorrelationMatrixDialog, type CorrelationMatrixRequest } from "./compon
 import { CalculatedColumnDialog, type CalculatedColumnRequest } from "./components/calculated-column-dialog";
 import { MergeColumnsDialog, type MergeColumnsRequest } from "./components/merge-columns-dialog";
 import { SetValueRangeDialog, type SetValueRangeRequest } from "./components/set-value-range-dialog";
+import { BinsColumnDialog, type BinsColumnRequest } from "./components/bins-column-dialog";
+import { DeleteColumnsDialog, type DeleteColumnsRequest } from "./components/delete-columns-dialog";
 import { SplitValueRowsDialog, type SplitValueRowsRequest } from "./components/split-value-rows-dialog";
 import { PerformReactionDialog, type PerformReactionRequest } from "./components/perform-reaction-dialog";
 import { SubstructureCountDialog, type SubstructureCountRequest } from "./components/substructure-count-dialog";
@@ -415,6 +417,8 @@ export default function App() {
   const {
     addDerivedGridColumn,
     addCalculatedGridColumn,
+    addRowNumberGridColumn,
+    addBinnedGridColumn,
     mergeGridColumns,
     setGridColumnValueRange,
     splitGridValueRows,
@@ -469,6 +473,38 @@ export default function App() {
         return;
       }
       setSetValueRangeRequest({ documentId, documentTitle: target.title, columns });
+    } catch (error) {
+      pushStatus(error instanceof Error ? error.message : String(error), "error");
+    }
+  }, [documents, pushStatus]);
+  const [binsColumnRequest, setBinsColumnRequest] = useState<BinsColumnRequest | null>(null);
+  const openBinsColumn = useCallback(async (documentId: string) => {
+    const target = documents.find((document) => document.id === documentId);
+    if (!target) return;
+    try {
+      const columns = (await requestGridColumns(documentId)).filter((column) => column.type === "number");
+      if (columns.length === 0) {
+        pushStatus(`${target.title} has no numeric column to bin.`, "error");
+        return;
+      }
+      setBinsColumnRequest({ documentId, documentTitle: target.title, columns });
+    } catch (error) {
+      pushStatus(error instanceof Error ? error.message : String(error), "error");
+    }
+  }, [documents, pushStatus]);
+  const [deleteColumnsRequest, setDeleteColumnsRequest] = useState<DeleteColumnsRequest | null>(null);
+  // Only the file's own data columns can be deleted: computed columns have
+  // their own lifecycle and the structure columns are the collection.
+  const openDeleteColumns = useCallback(async (documentId: string) => {
+    const target = documents.find((document) => document.id === documentId);
+    if (!target) return;
+    try {
+      const columns = (await requestGridColumns(documentId)).filter((column) => column.kind === "property");
+      if (columns.length === 0) {
+        pushStatus(`${target.title} has no data column to delete.`, "error");
+        return;
+      }
+      setDeleteColumnsRequest({ documentId, documentTitle: target.title, columns });
     } catch (error) {
       pushStatus(error instanceof Error ? error.message : String(error), "error");
     }
@@ -1083,6 +1119,9 @@ export default function App() {
     openMergeColumns,
     openSetValueRange,
     openSplitValueRows,
+    openBinsColumn,
+    openDeleteColumns,
+    addRowNumberGridColumn,
     openPerformReaction,
     addScaffoldGridColumns,
     openSubstructureCount,
@@ -1344,6 +1383,25 @@ export default function App() {
         request={setValueRangeRequest}
         onDismiss={() => setSetValueRangeRequest(null)}
         onRun={setGridColumnValueRange}
+      />
+      <BinsColumnDialog
+        request={binsColumnRequest}
+        onDismiss={() => setBinsColumnRequest(null)}
+        onRun={addBinnedGridColumn}
+      />
+      <DeleteColumnsDialog
+        request={deleteColumnsRequest}
+        onDismiss={() => setDeleteColumnsRequest(null)}
+        onRun={(documentId, columnKeys) => {
+          // Column ids arrive as prop:NAME; the grid keeps plain prop keys.
+          const keys = columnKeys
+            .map((id) => (id.startsWith("prop:") ? id.slice("prop:".length) : id))
+            .filter(Boolean);
+          activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
+            source: "burette-grid-host",
+            body: { type: "gridDeleteColumns", documentId, columnKeys: keys },
+          }, "*");
+        }}
       />
       <SplitValueRowsDialog
         request={splitValueRowsRequest}

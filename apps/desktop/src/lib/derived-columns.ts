@@ -186,7 +186,9 @@ export async function storeDerivedValues(
       | "scaffold-count"
       | "substructure-count"
       | "similarity"
-      | "rgroup";
+      | "rgroup"
+      | "row-number"
+      | "bins";
     paramsJson?: string | null;
   },
   values: DerivedStoreValue[],

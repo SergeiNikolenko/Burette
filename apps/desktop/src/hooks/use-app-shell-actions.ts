@@ -34,6 +34,9 @@ type UseAppShellActionsOptions = {
   openCalculatedColumn: ShellActions["openCalculatedColumn"];
   openMergeColumns: ShellActions["openMergeColumns"];
   openSetValueRange: ShellActions["openSetValueRange"];
+  openBinsColumn: ShellActions["openBinsColumn"];
+  openDeleteColumns: ShellActions["openDeleteColumns"];
+  addRowNumberGridColumn: ShellActions["addRowNumberGridColumn"];
   openSplitValueRows: ShellActions["openSplitValueRows"];
   openPerformReaction: ShellActions["openPerformReaction"];
   addScaffoldGridColumns: ShellActions["addScaffoldGridColumns"];
@@ -240,6 +243,9 @@ type GridShellActions = Pick<
   | "openCalculatedColumn"
   | "openMergeColumns"
   | "openSetValueRange"
+  | "openBinsColumn"
+  | "openDeleteColumns"
+  | "addRowNumberGridColumn"
   | "openSplitValueRows"
   | "openPerformReaction"
   | "addScaffoldGridColumns"
@@ -471,6 +477,9 @@ const workspaceHistoryNoneActions = new Set<keyof ShellActions>([
   "openCalculatedColumn",
   "openMergeColumns",
   "openSetValueRange",
+  "openBinsColumn",
+  "openDeleteColumns",
+  "addRowNumberGridColumn",
   "openSplitValueRows",
   "openPerformReaction",
   "addScaffoldGridColumns",
@@ -652,6 +661,9 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       openCalculatedColumn: actions.openCalculatedColumn,
       openMergeColumns: actions.openMergeColumns,
       openSetValueRange: actions.openSetValueRange,
+      openBinsColumn: actions.openBinsColumn,
+      openDeleteColumns: actions.openDeleteColumns,
+      addRowNumberGridColumn: actions.addRowNumberGridColumn,
       openSplitValueRows: actions.openSplitValueRows,
       openPerformReaction: actions.openPerformReaction,
       addScaffoldGridColumns: actions.addScaffoldGridColumns,
@@ -785,6 +797,9 @@ export function useAppShellActions({
   openCalculatedColumn,
   openMergeColumns,
   openSetValueRange,
+  openBinsColumn,
+  openDeleteColumns,
+  addRowNumberGridColumn,
   openSplitValueRows,
   openPerformReaction,
   addScaffoldGridColumns,
@@ -999,6 +1014,9 @@ export function useAppShellActions({
     openCalculatedColumn,
     openMergeColumns,
     openSetValueRange,
+    openBinsColumn,
+    openDeleteColumns,
+    addRowNumberGridColumn,
     openSplitValueRows,
     openPerformReaction,
     addScaffoldGridColumns,

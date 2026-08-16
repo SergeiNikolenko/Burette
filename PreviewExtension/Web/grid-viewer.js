@@ -113,6 +113,7 @@
     rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     hiddenRows: new Set(),
+    deletedPropColumns: new Set(),
     selected: new Set(),
     chemicalSpaceFilterActive: false,
     lastChemicalSpaceVisibility: null,
@@ -640,6 +641,7 @@
         if (!capabilities(config()).editing) return;
         const recordsAppended = Math.max(0, Number(body.recordsAppended || 0));
         state.hiddenRows.clear();
+        state.deletedPropColumns.clear();
         state.selected.clear();
         state.chemicalSpaceFilterActive = false;
         state.undoStack = [];
@@ -685,6 +687,14 @@
       }
       if (body.type === 'gridMergeRows') {
         void mergeGridEquivalentRows(body, config());
+        return;
+      }
+      if (body.type === 'gridDeleteColumns') {
+        const removed = deleteGridPropColumns(Array.isArray(body.columnKeys) ? body.columnKeys : []);
+        refresh(config());
+        setStatus(removed
+          ? `[grid] Removed ${removed.toLocaleString()} column${removed === 1 ? '' : 's'}.`
+          : '[grid] Nothing to remove.');
         return;
       }
       if (body.type === 'gridSplitRows') {
@@ -1001,6 +1011,15 @@
           documentId: cfgValue.documentId || null
         });
         setStatus('[grid] Looking for duplicate molecules.');
+        return;
+      case 'analyze.cluster':
+        // The toolbar's Cluster button: selection first, filtered set otherwise.
+        if (!capabilities(cfgValue).cluster) return;
+        requestClustering(cfgValue);
+        return;
+      case 'analyze.diverse':
+        if (!capabilities(cfgValue).cluster) return;
+        requestClusterRepresentativeExport(cfgValue);
         return;
       case 'collection.calculate-descriptors':
         if (state.dirty) {
@@ -3443,15 +3462,32 @@
       .map(row => {
         const index = Number(row.index);
         const patch = state.rowPatches.get(index);
-        if (!patch) return applyColumnValueRanges(row);
-        return applyColumnValueRanges({
-          ...row,
-          name: patch.name,
-          molblock: patch.molblock,
-          smiles: patch.smiles,
-          props: patch.props || row.props || {}
-        });
+        const merged = patch
+          ? {
+            ...row,
+            name: patch.name,
+            molblock: patch.molblock,
+            smiles: patch.smiles,
+            props: patch.props || row.props || {}
+          }
+          : row;
+        return applyColumnValueRanges(stripDeletedPropColumns(merged));
       });
+  }
+
+  // Delete Columns rides the same virtual layer as row edits: the props stay in
+  // the source rows and disappear from every view and every save until the
+  // collection is materialized, so Undo can bring a column back whole.
+  function stripDeletedPropColumns(row) {
+    if (!state.deletedPropColumns.size) return row;
+    const props = row.props || {};
+    const kept = {};
+    let removed = false;
+    for (const [key, value] of Object.entries(props)) {
+      if (state.deletedPropColumns.has(key)) { removed = true; continue; }
+      kept[key] = value;
+    }
+    return removed ? { ...row, props: kept } : row;
   }
 
   function materializeRemoteCollectionRows(rows) {
@@ -6037,6 +6073,26 @@
     return targets.length;
   }
 
+  function deleteGridPropColumns(columnKeys) {
+    if (state.closeTransitionActive) return 0;
+    const cfg = safeConfig();
+    if (cfg && !capabilities(cfg).editing) return 0;
+    const targets = [...new Set(columnKeys.map(key => String(key || '').trim()))]
+      .filter(key => key && !state.deletedPropColumns.has(key));
+    if (targets.length === 0) return 0;
+    pushUndoSnapshot('Delete Columns');
+    for (const key of targets) {
+      state.deletedPropColumns.add(key);
+      // A filter on a deleted column would keep constraining the page fetch
+      // silently after the column left the table.
+      delete state.tableColumnFilters[`prop:${key}`];
+    }
+    invalidateTableColumnCatalog();
+    state.svgCache.clear();
+    markGridDirty('column edits');
+    return targets.length;
+  }
+
   // Set Value Range. Limits are metadata on the column - the collection keeps
   // every value it had - and one undo entry takes the column back.
   // Returns the range it set, null when it cleared one, and false when it
@@ -6203,6 +6259,7 @@
       totalRows: state.totalRows,
       recordsTotalHint: state.recordsTotalHint,
       hiddenRows: new Set(state.hiddenRows),
+      deletedPropColumns: new Set(state.deletedPropColumns),
       selected: new Set(state.selected),
       rowPatches: new Map(state.rowPatches),
       insertedRows: state.insertedRows.slice(),
@@ -6218,6 +6275,7 @@
     state.totalRows = snapshot.totalRows;
     state.recordsTotalHint = snapshot.recordsTotalHint;
     state.hiddenRows = new Set(snapshot.hiddenRows);
+    state.deletedPropColumns = new Set(snapshot.deletedPropColumns || []);
     state.selected = new Set(snapshot.selected);
     state.rowPatches = new Map(snapshot.rowPatches);
     state.insertedRows = snapshot.insertedRows.slice();
@@ -7351,6 +7409,7 @@
     state.selected = new Set();
     state.chemicalSpaceFilterActive = false;
     state.hiddenRows = new Set();
+    state.deletedPropColumns = new Set();
     state.findingSimilar = false;
     state.exportingClusterRepresentatives = false;
     state.dirty = false;

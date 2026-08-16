@@ -333,6 +333,14 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         MenuItemBuilder::with_id("collection.add-column.calculated", "Calculated Values…")
             .enabled(false)
             .build(app)?;
+    let add_column_bins =
+        MenuItemBuilder::with_id("collection.add-column.bins", "Bins From Numbers…")
+            .enabled(false)
+            .build(app)?;
+    let add_column_row_number =
+        MenuItemBuilder::with_id("collection.add-column.row-number", "Row Number")
+            .enabled(false)
+            .build(app)?;
     let add_column = SubmenuBuilder::with_id(app, "collection.add-column", "Add Column")
         .items(&[
             &add_column_formula,
@@ -342,6 +350,8 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &add_column_idcode,
             &PredefinedMenuItem::separator(app)?,
             &add_column_calculated,
+            &add_column_bins,
+            &add_column_row_number,
         ])
         .build()?;
     let transform_largest_fragment = MenuItemBuilder::with_id(
@@ -426,6 +436,9 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let delete_rows = SubmenuBuilder::with_id(app, "collection.delete-rows", "Delete Rows")
         .items(&[&delete_rows_selected, &delete_rows_duplicates])
         .build()?;
+    let delete_columns = MenuItemBuilder::with_id("collection.delete-columns", "Delete Columns…")
+        .enabled(false)
+        .build(app)?;
     let collection_menu = SubmenuBuilder::with_id(app, "collection.menu", "Collection")
         .items(&[
             &copy_selected,
@@ -440,6 +453,7 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &reaction,
             &PredefinedMenuItem::separator(app)?,
             &delete_rows,
+            &delete_columns,
         ])
         .build()?;
 
@@ -465,9 +479,17 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         MenuItemBuilder::with_id("analyze.find-similar", "Find Similar In File…")
             .enabled(false)
             .build(app)?;
+    let analyze_cluster = MenuItemBuilder::with_id("analyze.cluster", "Cluster Compounds…")
+        .enabled(false)
+        .build(app)?;
+    let analyze_diverse = MenuItemBuilder::with_id("analyze.diverse", "Export Diverse Subset")
+        .enabled(false)
+        .build(app)?;
     let analyze_menu = SubmenuBuilder::with_id(app, "analyze.menu", "Analyze")
         .items(&[
             &analyze_chemical_space,
+            &analyze_cluster,
+            &analyze_diverse,
             &PredefinedMenuItem::separator(app)?,
             &analyze_scaffolds,
             &analyze_rgroups,

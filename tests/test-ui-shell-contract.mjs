@@ -7366,6 +7366,34 @@ for (const viewerSource of [gridViewer, agentGridViewer]) {
     assert.ok(viewerSource.includes(snippet), `grid value range is missing ${snippet}`);
   }
 }
+// Delete Columns is a grid edit: the props survive in the source rows, so one
+// undo entry brings a deleted column back whole. A filter riding the deleted
+// column must go with it, or the page fetch stays silently constrained.
+for (const viewerSource of [gridViewer, agentGridViewer]) {
+  for (const snippet of [
+    "function deleteGridPropColumns(columnKeys)",
+    "function stripDeletedPropColumns(row)",
+    "body.type === 'gridDeleteColumns'",
+    "deletedPropColumns: new Set(state.deletedPropColumns)",
+    "delete state.tableColumnFilters[`prop:${key}`]",
+    "case 'analyze.cluster':",
+    "case 'analyze.diverse':",
+  ]) {
+    assert.ok(viewerSource.includes(snippet), `grid delete columns is missing ${snippet}`);
+  }
+}
+// Bins and Row Number ride the derived channel like every computed column.
+assert.match(derivedColumnsHook, /kind: "row-number"/);
+assert.match(derivedColumnsHook, /kind: "bins"/);
+assert.match(derivedColumnsHook, /Math\.floor\(value \/ binWidth\) \* binWidth/);
+assert.match(appNativeMenuHook, /case "collection\.add-column\.bins":/);
+assert.match(appNativeMenuHook, /case "collection\.add-column\.row-number":/);
+assert.match(appNativeMenuHook, /case "collection\.delete-columns":/);
+assert.match(appNativeMenuHook, /case "analyze\.cluster":/);
+assert.match(appNativeMenuHook, /case "analyze\.diverse":/);
+assert.match(app, /<BinsColumnDialog/);
+assert.match(app, /<DeleteColumnsDialog/);
+assert.match(app, /type: "gridDeleteColumns"/);
 assert.match(appNativeMenuHook, /actions\.addDerivedGridColumn\(activeDocument\.id, kind\)/);
 assert.match(derivedColumnsHook, /type: "gridDescriptorFinished"/);
 assert.match(derivedColumnsHook, /fetchDerivedSourceRows\(documentId, afterSourceIndex, DERIVED_SOURCE_BATCH\)/);

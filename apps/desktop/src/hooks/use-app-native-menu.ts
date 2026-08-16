@@ -449,6 +449,12 @@ export function useAppNativeMenu({
       case "analyze.chemical-space":
         if (isGrid) actions.openDockTab("bottom", "chemical-space");
         return;
+      case "analyze.cluster":
+      case "analyze.diverse":
+        // Clustering lives in the grid; the command is forwarded whole and the
+        // grid re-checks its own capability before doing anything.
+        if (activeDocument && isGrid) postGridMenuCommand(activeDocument.id, command);
+        return;
       case "analyze.scaffolds":
         if (activeDocument && isGrid) actions.addScaffoldGridColumns(activeDocument.id);
         return;
@@ -466,6 +472,15 @@ export function useAppNativeMenu({
         return;
       case "collection.merge-columns":
         if (activeDocument && isGrid) actions.openMergeColumns(activeDocument.id);
+        return;
+      case "collection.add-column.bins":
+        if (activeDocument && isGrid) await actions.openBinsColumn(activeDocument.id);
+        return;
+      case "collection.add-column.row-number":
+        if (activeDocument && isGrid) actions.addRowNumberGridColumn(activeDocument.id);
+        return;
+      case "collection.delete-columns":
+        if (activeDocument && isGrid) await actions.openDeleteColumns(activeDocument.id);
         return;
       case "collection.transform.value-range":
         // Limits a column the grid already holds, so the dialog opens with the

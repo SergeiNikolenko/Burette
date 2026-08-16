@@ -57,6 +57,13 @@ type PushStatus = (message: string, kind?: StatusKind, details?: string[]) => vo
 // Browser-dev has no collection database; the grid iframe owns the parsed rows
 // and already answers chemicalSpaceRequestRecords, so a property run there
 // borrows that channel and applies results back in memory.
+
+// Bin labels read like DataWarrior's: whole numbers stay whole, fractions keep
+// enough digits to tell neighbouring bins apart without float noise.
+function formatBinBound(value: number): string {
+  return String(Math.round(value * 1e6) / 1e6);
+}
+
 export function requestGridRecords(documentId: string): Promise<Array<DerivedComputeRow & { index: number }>> {
   return new Promise((resolve, reject) => {
     const iframe = activeViewerIframeForDocument(documentId, "grid2d");
@@ -930,6 +937,167 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
     };
   }, []);
 
+  // Row Number: the source index as a plain sortable column. Rows keep their
+  // number when filters or sorts change, which is the whole point - it names
+  // the row, not its current position.
+  const addRowNumberGridColumn = useCallback((documentId: string) => {
+    const targetDocument = documents.find((document) => document.id === documentId);
+    if (!targetDocument) {
+      pushStatus("Grid target is not open.", "error");
+      return;
+    }
+    const runKey = `${documentId}:row-number`;
+    if (runningKeysRef.current.has(runKey)) return;
+    runningKeysRef.current.add(runKey);
+    const label = "Row Number";
+    const columnId = "row_number";
+    const updateJob = beginDerivedJob(label, targetDocument.title);
+    pushStatus(`Numbering rows in ${targetDocument.title}`);
+    void (async () => {
+      try {
+        let processedRows = 0;
+        if (isTauriRuntime()) {
+          let afterSourceIndex = -1;
+          for (;;) {
+            const batch = await fetchDerivedSourceRows(documentId, afterSourceIndex, DERIVED_SOURCE_BATCH);
+            if (processedRows === 0) updateJob({ totalRows: batch.totalRows });
+            if (batch.rows.length === 0) break;
+            const stored: DerivedStoreValue[] = batch.rows.map((row) => ({
+              rowId: row.rowId,
+              valueReal: row.sourceIndex + 1,
+              valueText: null,
+              errorText: null,
+            }));
+            await storeDerivedValues(documentId, { columnId, label, kind: "row-number" }, stored);
+            processedRows += batch.rows.length;
+            afterSourceIndex = batch.rows[batch.rows.length - 1].sourceIndex;
+            updateJob({ processedRows });
+            await new Promise((resolve) => window.setTimeout(resolve, 0));
+          }
+          notifyGridDerivedRunFinished(documentId);
+        } else {
+          const rows = await requestGridRecords(documentId);
+          updateJob({ totalRows: rows.length });
+          const results = rows.map((row) => ({
+            index: row.index,
+            descriptors: {
+              [columnId]: { id: columnId, label, value: row.index + 1, missingKind: null, errorText: null },
+            },
+          }));
+          processedRows = results.length;
+          activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
+            source: "burette-grid-host",
+            body: { type: "gridDescriptorResults", documentId, rows: results },
+          }, "*");
+          updateJob({ processedRows });
+        }
+        updateJob({ status: "success", completedAt: Date.now(), processedRows });
+        pushStatus(`Numbered ${processedRows.toLocaleString()} row${processedRows === 1 ? "" : "s"}`, "success");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        updateJob({ status: "failed", completedAt: Date.now(), error: message });
+        pushStatus(`Row numbering failed: ${message}`, "error");
+      } finally {
+        runningKeysRef.current.delete(runKey);
+      }
+    })();
+  }, [beginDerivedJob, documents, notifyGridDerivedRunFinished, pushStatus]);
+
+  // Bins From Numbers: DataWarrior's binning - a fixed bin width anchored at a
+  // round multiple below the minimum. The bin floor rides valueReal so the
+  // column sorts numerically while the cell shows the readable interval.
+  const addBinnedGridColumn = useCallback((
+    documentId: string,
+    column: { id: string; label: string },
+    binWidth: number,
+  ) => {
+    const targetDocument = documents.find((document) => document.id === documentId);
+    if (!targetDocument) {
+      pushStatus("Grid target is not open.", "error");
+      return;
+    }
+    if (!Number.isFinite(binWidth) || binWidth <= 0) {
+      pushStatus("The bin width has to be a positive number.", "error");
+      return;
+    }
+    const label = `${column.label} bins`;
+    const runKey = `${documentId}:bins:${column.id}`;
+    if (runningKeysRef.current.has(runKey)) return;
+    runningKeysRef.current.add(runKey);
+    const columnId = `bins_${column.id.replace(/[^A-Za-z0-9_-]+/gu, "_").slice(0, 60)}`;
+    const updateJob = beginDerivedJob(label, targetDocument.title);
+    pushStatus(`Binning ${column.label} in ${targetDocument.title}`);
+    void (async () => {
+      try {
+        const values = await requestGridColumnValues(documentId, column.id);
+        const binFor = (value: number | null | undefined) => {
+          if (value === null || value === undefined || !Number.isFinite(value)) return null;
+          const floor = Math.floor(value / binWidth) * binWidth;
+          return { floor, text: `[${formatBinBound(floor)} - ${formatBinBound(floor + binWidth)})` };
+        };
+        let processedRows = 0;
+        let failedRows = 0;
+        if (isTauriRuntime()) {
+          let afterSourceIndex = -1;
+          for (;;) {
+            const batch = await fetchDerivedSourceRows(documentId, afterSourceIndex, DERIVED_SOURCE_BATCH);
+            if (processedRows === 0) updateJob({ totalRows: batch.totalRows });
+            if (batch.rows.length === 0) break;
+            const stored: DerivedStoreValue[] = batch.rows.map((row) => {
+              const bin = binFor(values.get(row.sourceIndex));
+              if (!bin) failedRows += 1;
+              return {
+                rowId: row.rowId,
+                valueReal: bin ? bin.floor : null,
+                valueText: bin ? bin.text : null,
+                errorText: null,
+              };
+            });
+            await storeDerivedValues(documentId, { columnId, label, kind: "bins" }, stored);
+            processedRows += batch.rows.length;
+            afterSourceIndex = batch.rows[batch.rows.length - 1].sourceIndex;
+            updateJob({ processedRows, failedRows });
+            await new Promise((resolve) => window.setTimeout(resolve, 0));
+          }
+          notifyGridDerivedRunFinished(documentId);
+        } else {
+          const rowIndexes = [...values.keys()].sort((a, b) => a - b);
+          updateJob({ totalRows: rowIndexes.length });
+          const rows = rowIndexes.map((rowIndex) => {
+            const bin = binFor(values.get(rowIndex));
+            processedRows += 1;
+            if (!bin) failedRows += 1;
+            return {
+              index: rowIndex,
+              descriptors: {
+                [columnId]: { id: columnId, label, value: bin ? bin.floor : null, missingKind: null, errorText: null },
+              },
+            };
+          });
+          activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
+            source: "burette-grid-host",
+            body: { type: "gridDescriptorResults", documentId, rows },
+          }, "*");
+          updateJob({ processedRows, failedRows });
+        }
+        updateJob({ status: "success", completedAt: Date.now(), processedRows, failedRows });
+        pushStatus(
+          failedRows > 0
+            ? `Binned ${(processedRows - failedRows).toLocaleString()} of ${processedRows.toLocaleString()} rows (${failedRows.toLocaleString()} without a number)`
+            : `Binned ${processedRows.toLocaleString()} row${processedRows === 1 ? "" : "s"}`,
+          "success",
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        updateJob({ status: "failed", completedAt: Date.now(), error: message });
+        pushStatus(`Binning ${column.label} failed: ${message}`, "error");
+      } finally {
+        runningKeysRef.current.delete(runKey);
+      }
+    })();
+  }, [beginDerivedJob, documents, notifyGridDerivedRunFinished, pushStatus]);
+
+
   // Analyse Scaffolds: the Bemis-Murcko core of every molecule, and how many
   // molecules share it. The count needs the whole collection before it can be
   // written, so the scaffolds stream out as they are computed and the counts
@@ -1508,6 +1676,8 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
 
   return {
     addCalculatedGridColumn,
+    addRowNumberGridColumn,
+    addBinnedGridColumn,
     mergeGridColumns,
     setGridColumnValueRange,
     splitGridValueRows,

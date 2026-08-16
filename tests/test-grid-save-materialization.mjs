@@ -16,6 +16,7 @@ function materializer(state) {
     "state",
     [
       functionSource("applyVirtualGridEdits"),
+      functionSource("stripDeletedPropColumns"),
       functionSource("materializeRemoteCollectionRows"),
       // A value range is applied where rows are materialised, so the saved
       // collection carries the limits the table showed.
@@ -30,6 +31,7 @@ function materializer(state) {
 function state(overrides = {}) {
   return {
     hiddenRows: new Set(),
+    deletedPropColumns: new Set(),
     rowPatches: new Map(),
     insertedRows: [],
     columnValueRanges: new Map(),
@@ -56,6 +58,16 @@ const duplicate = { index: 1, name: "Base copy", smiles: "CC", props: {} };
     [0],
     "deleting an inserted row must keep it out of the saved collection",
   );
+}
+
+{
+  // A deleted column must stay out of the save while the others survive - and
+  // rows patched by an edit go through the same strip as untouched rows.
+  const withProps = { index: 0, name: "Base", smiles: "CC", props: { IC50: "4", Source: "assay" } };
+  const current = state({ deletedPropColumns: new Set(["Source"]) });
+  current.rowPatches.set(0, { name: "Base", smiles: "CC", props: { IC50: "5", Source: "assay" } });
+  const [saved] = materializer(current)([withProps]);
+  assert.deepEqual(saved.props, { IC50: "5" }, "a deleted column must not reach the saved collection");
 }
 
 {

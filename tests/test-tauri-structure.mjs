@@ -1205,6 +1205,8 @@ assertSourceIncludesAll(nativeMenuSource, [
   'collection.add-column.inchi',
   'collection.add-column.inchikey',
   'collection.add-column.idcode',
+  'collection.add-column.bins',
+  'collection.add-column.row-number',
   'collection.reaction',
   'collection.reaction.add-smiles',
   'collection.reaction.extract-reactants',
@@ -1214,6 +1216,7 @@ assertSourceIncludesAll(nativeMenuSource, [
   'collection.reaction.perform',
   'collection.delete-rows.selected',
   'collection.delete-rows.duplicates',
+  'collection.delete-columns',
   'database.menu',
   'database.search-chembl',
   'database.chembl-actives',
@@ -1225,6 +1228,8 @@ assertSourceIncludesAll(nativeMenuSource, [
   'database.retrieve-url',
   'database.retrieve-sql',
   'analyze.menu',
+  'analyze.cluster',
+  'analyze.diverse',
   'analyze.scaffolds',
   'analyze.rgroups',
   'analyze.substructure-count',
@@ -1264,6 +1269,9 @@ assertSourceIncludesAll(menuEvents, [
   'collection.add-column.inchi',
   'collection.add-column.inchikey',
   'collection.add-column.idcode',
+  'collection.add-column.bins',
+  'collection.add-column.row-number',
+  'collection.delete-columns',
   'collection.reaction.add-smiles',
   'collection.reaction.extract-reactants',
   'collection.reaction.extract-transformation',
@@ -1277,6 +1285,8 @@ assertSourceIncludesAll(menuEvents, [
   'database.search-google-patents',
   'database.retrieve-url',
   'database.retrieve-sql',
+  'analyze.cluster',
+  'analyze.diverse',
   'analyze.scaffolds',
   'analyze.rgroups',
   'analyze.substructure-count',
@@ -1564,7 +1574,7 @@ assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ sourc
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
 assert.match(previewRuntimeGrid, /'unsafe-eval'/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
-assert.match(previewRuntimeGrid, /grid-ui-v48/);
+assert.match(previewRuntimeGrid, /grid-ui-v49/);
 // The grid-only formats have to agree with the registry: a source that opens
 // as nothing else must report an empty collection rather than fall through to
 // a viewer that cannot read it either.

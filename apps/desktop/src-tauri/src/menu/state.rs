@@ -788,9 +788,14 @@ pub(super) fn sync_native_menu<R: Runtime>(
         "collection.add-column.inchikey",
         "collection.add-column.idcode",
         "collection.add-column.calculated",
+        "collection.add-column.bins",
+        "collection.add-column.row-number",
     ] {
         set_enabled(&app, id, can_add_derived_column)?;
     }
+    // Deleting columns is a grid edit like deleting rows: the grid itself
+    // re-checks its editing capability when the command arrives.
+    set_enabled(&app, "collection.delete-columns", state.is_grid)?;
 
     set_enabled(&app, "analyze.menu", true)?;
     set_enabled(
@@ -803,6 +808,11 @@ pub(super) fn sync_native_menu<R: Runtime>(
         "analyze.correlation-matrix",
         state.is_grid && state.grid_has_molecules,
     )?;
+    // Clustering runs inside the grid, which re-checks its own capability; the
+    // menu only asks for a molecular grid to exist.
+    for id in ["analyze.cluster", "analyze.diverse"] {
+        set_enabled(&app, id, state.is_grid && state.grid_has_molecules)?;
+    }
     // The SAR analyses all write derived columns, so they follow the same rule
     // Add Column does: a grid with molecules whose edits are already saved.
     for id in [
