@@ -37,6 +37,14 @@ assert.match(buildScript, /--exclude \.codegraph/);
 assert.match(buildScript, /bun scripts\/check-release-version\.mjs/);
 assert.match(buildScript, /PYTHONDONTWRITEBYTECODE=1/);
 assert.match(buildScript, /find "\$python_root" -type d -name __pycache__/);
+assert.match(
+  buildScript,
+  /prepare_bundled_python_for_signing "\$TAURI_BUILT_APP\/Contents\/Resources\/xyzrender-runtime"/,
+);
+assert.match(
+  buildScript,
+  /prepare_bundled_python_for_signing "\$TAURI_BUILT_APP\/Contents\/Resources\/xyzrender-python"/,
+);
 
 assert.doesNotMatch(releaseWorkflow, /echo "allow_adhoc=true"/);
 assert.match(releaseWorkflow, /Stable releases require Developer ID signing and Apple notarization credentials/);

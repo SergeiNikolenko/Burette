@@ -626,6 +626,7 @@ assert_bundled_compute_metal_runtime "$TAURI_BUILT_APP" "before signing"
 assert_bundled_compute_service "$TAURI_BUILT_APP" "before signing"
 smoke_bundled_compute_service "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
+prepare_bundled_python_for_signing "$TAURI_BUILT_APP/Contents/Resources/xyzrender-runtime"
 prepare_bundled_python_for_signing "$TAURI_BUILT_APP/Contents/Resources/xyzrender-python"
 CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
