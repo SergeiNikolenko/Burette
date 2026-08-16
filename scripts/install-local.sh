@@ -301,7 +301,15 @@ codesign "${CODESIGN_ARGS[@]}" "$STAGING_DEST" >/dev/null
 if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
   assert_bundled_xyzrender_runner "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "after app signing"
 fi
-codesign --verify --deep --strict "$STAGING_DEST"
+codesign --verify --deep --strict "$STAGING_DEST" || {
+  # The one-line failure ("a sealed resource is missing or invalid") never says
+  # which resource. The verbose retry names the exact file, which is the whole
+  # difference between a fixable report and a nightly that fails identically
+  # for months.
+  echo "error: staged app failed strict verification; verbose output follows" >&2
+  codesign -vvv --deep --strict "$STAGING_DEST" >&2 || true
+  exit 1
+}
 rm -rf "$DEST"
 if [[ -e "$DEST" ]]; then
   echo "error: could not remove existing installed app before final move: $DEST" >&2

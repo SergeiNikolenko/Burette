@@ -83,7 +83,16 @@ pub(crate) fn derived_source_rows<R: Runtime>(
     request: DerivedSourceRowsRequest,
 ) -> Result<DerivedSourceRowsResult, String> {
     let document_id = crate::windows::runtime_document_id(window.label(), &request.document_id);
-    let total_rows = registry.descriptor_source_row_count(&document_id)?;
+    eprintln!(
+        "[derived] source_rows window={} doc={document_id}",
+        window.label()
+    );
+    let total_rows = registry
+        .descriptor_source_row_count(&document_id)
+        .map_err(|error| {
+            eprintln!("[derived] source_rows FAILED: {error}");
+            error
+        })?;
     let database_path = registry.descriptor_database_path(&document_id)?;
     let connection = open_descriptor_source(&database_path)?;
     let limit = request
@@ -124,7 +133,17 @@ pub(crate) fn derived_store_values<R: Runtime>(
         ));
     }
     let document_id = crate::windows::runtime_document_id(window.label(), &request.document_id);
-    let database_path = registry.descriptor_database_path(&document_id)?;
+    eprintln!(
+        "[derived] store window={} doc={document_id} values={}",
+        window.label(),
+        request.values.len()
+    );
+    let database_path = registry
+        .descriptor_database_path(&document_id)
+        .map_err(|error| {
+            eprintln!("[derived] store FAILED: {error}");
+            error
+        })?;
     let mut connection = open_descriptor_source(&database_path)?;
     let values = request
         .values

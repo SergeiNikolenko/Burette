@@ -4,11 +4,13 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { ErrorBoundary } from "./components/error-boundary";
+import { installFrontendErrorLog } from "./lib/frontend-error-log";
 import { installKetcherBrowserRequire } from "./lib/ketcher-browser-require";
 import { markPerformanceOnce } from "./lib/performance";
 import { initializeWebDemoAnalytics } from "./lib/web-demo-analytics";
 import "./styles.css";
 
+installFrontendErrorLog();
 installKetcherBrowserRequire();
 
 function Root() {

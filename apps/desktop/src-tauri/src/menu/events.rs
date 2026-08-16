@@ -215,6 +215,7 @@ pub(crate) fn handle_event<R: Runtime>(app: &tauri::AppHandle<R>, id: &str) {
     }
 
     if FORWARDED_COMMANDS.contains(&id) {
+        eprintln!("[menu] forwarded {id}");
         if WINDOW_REQUIRED_COMMANDS.contains(&id) {
             let preferred_label = crate::windows::focused_window_label(app);
             if let Ok(window) =
