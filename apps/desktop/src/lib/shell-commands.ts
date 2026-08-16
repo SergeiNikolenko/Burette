@@ -103,6 +103,46 @@ export function buildShellCommands(
       description: "Open agent plugin status",
       run: () => actions.openSettingsSection("agent"),
     },
+    ...(state.activeDocument?.renderer === "grid2d" ? [{
+      id: "calculate-properties",
+      group: "Suggested",
+      label: "Calculate Properties",
+      description: "Add property columns to the active collection",
+      run: () => actions.openCalculateProperties(state.activeDocument!.id),
+    }, {
+      id: "correlation-matrix",
+      group: "Suggested",
+      label: "Show Correlation Matrix",
+      description: "Correlate the numeric columns of the active collection",
+      run: () => actions.openCorrelationMatrix(state.activeDocument!.id),
+    }, {
+      id: "add-calculated-values",
+      group: "Suggested",
+      label: "Add Calculated Values",
+      description: "Compute a new column from a formula over existing columns",
+      run: () => actions.openCalculatedColumn(state.activeDocument!.id),
+    }, {
+      // The two SAR analyses that run entirely on the in-process engines are
+      // reachable here as well as from the Analyze menu, which is also what
+      // makes them work in browser dev, where there is no native menu.
+      id: "analyse-scaffolds",
+      group: "Suggested",
+      label: "Analyse Scaffolds",
+      description: "Add the Murcko scaffold of each molecule and how many share it",
+      run: () => actions.addScaffoldGridColumns(state.activeDocument!.id),
+    }, {
+      id: "substructure-count",
+      group: "Suggested",
+      label: "Substructure Count",
+      description: "Count how often a SMARTS query occurs in each molecule",
+      run: () => actions.openSubstructureCount(state.activeDocument!.id),
+    }, {
+      id: "delete-duplicate-rows",
+      group: "Suggested",
+      label: "Delete Duplicate Molecules",
+      description: "Remove repeated structures from the active collection",
+      run: () => actions.deleteDuplicateGridRows(state.activeDocument!.id),
+    }] : []),
     {
       id: "toggle-sidebar",
       group: "Suggested",

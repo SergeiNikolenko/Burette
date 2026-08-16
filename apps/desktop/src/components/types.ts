@@ -1,9 +1,12 @@
-import type { ConformerJob, ConformerOperation, ConformerSettings, ConformerStatus, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbSettings, XtbStatus } from "../types";
+import type { ConformerJob, ConformerOperation, ConformerSettings, ConformerStatus, DerivedColumnJob, HoveredGridRow, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbSettings, XtbStatus, DatabaseJob } from "../types";
+import type { DatabaseQueryDraft } from "../hooks/use-app-database";
+import type { DatabaseProvider } from "../lib/database";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { StructureViewerAction as BaseStructureViewerAction } from "../lib/structure-composition";
 import type { TextStructureSelection } from "../lib/text-structure-selection";
 import type { DescriptorSourcePayload, GridDescriptorControls, GridDescriptorResultRow, GridDescriptorRunOptions } from "../lib/descriptors";
+import type { DerivedColumnKind } from "../lib/derived-columns";
 import type { UpdatePreferences, UpdateState } from "../update";
 import type { SidebarProject } from "../lib/sidebar-projects";
 import type { AppSettingsSectionId } from "../lib/settings-sections";
@@ -174,11 +177,31 @@ export type ShellActions = {
   applyGridDescriptorControls: (documentId: string, controls: GridDescriptorControls) => void;
   applyGridDescriptorResults: (documentId: string, rows: GridDescriptorResultRow[]) => void;
   calculateGridDescriptors: (documentId: string, options?: GridDescriptorRunOptions) => void;
+  addDerivedGridColumn: (documentId: string, kind: DerivedColumnKind) => void;
+  clearDerivedColumnJobs: () => void;
+  openCalculateProperties: (documentId: string) => void;
+  deleteDuplicateGridRows: (documentId: string) => void;
+  mergeEquivalentGridRows: (documentId: string) => void;
+  openCorrelationMatrix: (documentId: string) => void;
+  openCalculatedColumn: (documentId: string, seed?: { formula: string; label: string }) => void;
+  openMergeColumns: (documentId: string) => void;
+  openSetValueRange: (documentId: string) => void;
+  openBinsColumn: (documentId: string) => void;
+  openDeleteColumns: (documentId: string) => void;
+  addRowNumberGridColumn: (documentId: string) => void;
+  openSplitValueRows: (documentId: string) => void;
+  openPerformReaction: (documentId: string) => void;
+  addScaffoldGridColumns: (documentId: string) => void;
+  openSubstructureCount: (documentId: string) => void;
+  findSimilarInFile: (documentId: string) => void | Promise<void>;
+  openRGroupDecomposition: (documentId: string) => void;
   checkConformerStatus: () => void | Promise<void>;
   runConformerOperation: (operation: ConformerOperation, document?: ViewerDocument | null, selection?: StructureViewerAction | null) => void | Promise<void>;
   cancelConformerJob: (jobId: string) => void | Promise<void>;
   setConformerSettings: (settings: ConformerSettings) => void;
   clearConformerJobs: () => void;
+  openDatabaseQuery: (provider: DatabaseProvider, seed?: Partial<DatabaseQueryDraft>) => void;
+  clearDatabaseJobs: () => void;
   checkXtbStatus: () => void | Promise<void>;
   chooseXtbExecutable: () => void | Promise<void>;
   clearXtbExecutableSelection: () => void | Promise<void>;
@@ -282,6 +305,15 @@ export type GridFilterModel = {
   columns: GridFilterColumn[];
 };
 
+// One entry of the grid's own column catalog, asked for when a dialog has to
+// offer the columns of a collection the filter model does not describe.
+export type GridColumnChoice = {
+  id: string;
+  label: string;
+  type: "number" | "text";
+  kind: string;
+};
+
 export type ShellViewState = {
   documents: ViewerDocument[];
   textDocuments: TextFileDocument[];
@@ -329,12 +361,16 @@ export type ShellViewState = {
   conformerStatus: ConformerStatus | null;
   conformerSettings: ConformerSettings;
   conformerJobs: ConformerJob[];
+  databaseJobs: DatabaseJob[];
   viewerLigandSelection: ViewerLigandSelection | null;
   structureStory: StructureStory | null;
   structureOverlayMode: StructureOverlayMode;
   xtbStatus: XtbStatus | null;
   xtbSettings: XtbSettings;
   xtbJobs: XtbJob[];
+  derivedColumnJobs: DerivedColumnJob[];
+  rgroupRuntimeAvailable: boolean;
+  hoveredGridRows: Record<string, HoveredGridRow | null>;
   update: UpdateState;
   gridFilterModel: GridFilterModel | null;
   buildInfo: BuildInfo;

@@ -12,6 +12,8 @@ export type DescriptorSourcePayload = {
   text: string;
 };
 
+export type DescriptorRuntimeInstallPhase = "idle" | "installing" | "completed" | "failed" | "cancelled";
+
 export type DescriptorRuntimeStatus = {
   available: boolean;
   pythonPath?: string | null;
@@ -19,11 +21,11 @@ export type DescriptorRuntimeStatus = {
   rdkitVersion?: string | null;
   message: string;
   installHint: string;
-};
-
-export type DescriptorRuntimeInstallResult = {
-  pythonPath: string;
-  message: string;
+  installerAvailable: boolean;
+  installSizeHint: string;
+  installPhase: DescriptorRuntimeInstallPhase;
+  installLine?: string | null;
+  installError?: string | null;
 };
 
 export type DescriptorCellValue = {
@@ -213,11 +215,22 @@ export async function descriptorRuntimeStatus(): Promise<DescriptorRuntimeStatus
   return invoke<DescriptorRuntimeStatus>("descriptor_runtime_status");
 }
 
-export async function installDescriptorRuntime(): Promise<DescriptorRuntimeInstallResult> {
+// The install runs for minutes, so the command only starts it; the caller polls
+// descriptorRuntimeStatus for installPhase, installLine and installError.
+export async function installDescriptorRuntime(): Promise<void> {
   if (!isTauriRuntime()) {
-    return fetchBrowserDevJson<DescriptorRuntimeInstallResult>("/__burette/descriptors/install", {});
+    await fetchBrowserDevJson<unknown>("/__burette/descriptors/install", {});
+    return;
   }
-  return invoke<DescriptorRuntimeInstallResult>("descriptor_runtime_install");
+  await invoke("descriptor_runtime_install");
+}
+
+export async function cancelDescriptorRuntimeInstall(): Promise<void> {
+  if (!isTauriRuntime()) {
+    await fetchBrowserDevJson<unknown>("/__burette/descriptors/cancel-install", {});
+    return;
+  }
+  await invoke("descriptor_runtime_cancel_install");
 }
 
 export async function calculateDescriptors(source: DescriptorSourcePayload): Promise<DescriptorCalculationResult> {

@@ -33,6 +33,7 @@ import { registerKetcherAgentController, unregisterKetcherAgentController } from
 import { RadixDropdownMenu, showRadixContextMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { KetcherImportRequest, KetcherSketchTarget, KetcherSource3D, ShellActions, ShellViewState } from "./types";
+import type { DatabaseProvider } from "../lib/database";
 
 type KetcherEditorComponent = ComponentType<{
   onReady: (api: KetcherEditorApi) => void;
@@ -838,6 +839,27 @@ export function KetcherPage({
     }
   }, [actions, exportingSketch, ketcher, preserved3dSource]);
 
+  // The Database dialog asks for a SMILES query, and the sketch on the canvas is
+  // the fragment the user means. Ketcher exports it itself, so the fragment
+  // reaches a provider without a chemistry toolkit anywhere in between.
+  const searchDatabaseWithSketch = useCallback(async (provider: DatabaseProvider) => {
+    if (!ketcher || exportingSketch) return;
+    setExportingSketch(true);
+    try {
+      const smiles = await withKetcherTimeout(ketcher.getSmiles(), "SMILES export");
+      if (!smiles.trim()) {
+        setStatus("Draw a molecule first");
+        return;
+      }
+      actions.openDatabaseQuery(provider, { structure: smiles.trim() });
+      setStatus("Sent sketch to the database search");
+    } catch (error) {
+      setStatus(ketcherExportErrorMessage(error));
+    } finally {
+      setExportingSketch(false);
+    }
+  }, [actions, exportingSketch, ketcher]);
+
   const sketchDragRecord = useCallback(async () => {
     if (!ketcher) return null;
     const [smiles, molfile] = await Promise.all([
@@ -992,6 +1014,28 @@ export function KetcherPage({
       setExportingSketch(true);
       try {
         setStatus("Applying grid edit");
+        // A reaction goes back as a reaction: an RDfile record carrying the RXN
+        // block and the reaction SMILES, the way a molecule goes back as an SDF
+        // record carrying its molfile and SMILES.
+        if (ketcher.containsReaction()) {
+          const [reactionSmiles, rxn] = await Promise.all([
+            withKetcherTimeout(ketcher.getSmiles(), "Reaction SMILES export"),
+            withKetcherTimeout(ketcher.getRxn("v2000"), "Reaction export"),
+          ]);
+          if (!rxn.trim()) {
+            setStatus("Draw a reaction first");
+            return;
+          }
+          actions.applyKetcherToGridRow({
+            documentId: gridEditSource.documentId,
+            rowIndex: gridEditSource.rowIndex,
+            title: gridEditSource.title,
+            extension: "rdf",
+            text: rxnToRdf(rxn, reactionSmiles),
+          });
+          setStatus("Applied reaction edit to grid");
+          return;
+        }
         const [smiles, molfile] = await Promise.all([
           withKetcherTimeout(ketcher.getSmiles(), "SMILES export"),
           withKetcherTimeout(ketcher.getMolfile("v2000"), "Molfile export"),
@@ -1256,6 +1300,50 @@ export function KetcherPage({
           <RadixDropdownMenu
             align="end"
             items={[
+              {
+                kind: "item",
+                id: "database-chembl",
+                text: "Search ChEMBL",
+                detail: "Substructure, similarity or exact structure",
+                disabled: false,
+                action: () => void searchDatabaseWithSketch("chembl"),
+              },
+              {
+                kind: "item",
+                id: "database-chembl-actives",
+                text: "Similar from ChEMBL actives",
+                detail: "Adds matches to the open collection",
+                disabled: false,
+                action: () => void searchDatabaseWithSketch("chembl-actives"),
+              },
+              { kind: "separator" },
+              {
+                kind: "item",
+                id: "database-building-blocks",
+                text: "Search building blocks",
+                detail: "Commercial catalogues, with price and stock",
+                disabled: false,
+                action: () => void searchDatabaseWithSketch("building-blocks"),
+              },
+              {
+                kind: "item",
+                id: "database-chemspace",
+                text: "Search ChemSpace",
+                detail: "Needs your own ChemSpace API key",
+                disabled: false,
+                action: () => void searchDatabaseWithSketch("chemspace"),
+              },
+            ]}
+            trigger={(
+              <button type="button" disabled={!ketcher || exportingSketch} aria-label="Open database search menu">
+                Database
+                <ShortcutTooltip label="Search a chemical database with this sketch" />
+              </button>
+            )}
+          />
+          <RadixDropdownMenu
+            align="end"
+            items={[
               ...(collectionTargets.length === 0
                 ? [{
                     kind: "item" as const,
@@ -1435,6 +1523,15 @@ function molfileToSdf(molfile: string, smiles?: string) {
     "$$$$",
     "",
   ].join("\n");
+}
+
+// The reaction counterpart of molfileToSdf: an RDfile record carrying the RXN
+// block and, as a field beside it, the reaction SMILES Ketcher exported.
+function rxnToRdf(rxn: string, reactionSmiles?: string) {
+  const fields = reactionSmiles?.trim()
+    ? ["$DTYPE SMILES", `$DATUM ${reactionSmiles.trim()}`]
+    : [];
+  return ["$RDFILE 1", "$RFMT", rxn.replace(/\r\n?/gu, "\n").trimEnd(), ...fields, ""].join("\n");
 }
 
 function exportKetcherText(ketcher: KetcherEditorApi, format: KetcherTextFormat) {
@@ -1652,13 +1749,13 @@ async function loadKetcherImportCandidate(candidate: string, loadCandidate: (can
 }
 
 function loadInitialKetcherImportCandidate(instance: KetcherEditorApi, candidate: string) {
-  return looksLikeMolBlock(candidate)
+  return looksLikeMolBlock(candidate) && !looksLikeReactionBlock(candidate)
     ? instance.setMolfile(candidate)
     : instance.setMolecule(candidate, { needZoom: true });
 }
 
 function loadAdditionalKetcherImportCandidate(instance: KetcherEditorApi, candidate: string) {
-  return looksLikeMolBlock(candidate)
+  return looksLikeMolBlock(candidate) && !looksLikeReactionBlock(candidate)
     ? instance.addMolfileFragment(candidate)
     : instance.addFragment(candidate, { needZoom: true });
 }
@@ -1728,6 +1825,12 @@ function normalizeKetcherImportText(text: string, format?: KetcherTextFormat) {
 
 function looksLikeMolBlock(text: string) {
   return /\nM\s+END(?:\n|$)/u.test(text);
+}
+
+// A reaction block also ends its components with "M  END", so it would be taken
+// for a molfile; Ketcher reads it only through setMolecule, which detects $RXN.
+function looksLikeReactionBlock(text: string) {
+  return /^\s*\$(?:RXN|RDFILE|RFMT)\b/u.test(text);
 }
 
 function looksLikeSdfRecord(text: string) {

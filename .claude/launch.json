@@ -18,6 +18,21 @@
       "port": 1451
     },
     {
+      "name": "burette-tauri-frontend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/.bin/vite",
+        "--config",
+        "apps/desktop/vite.config.ts",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "1425",
+        "--strictPort"
+      ],
+      "port": 1425
+    },
+    {
       "name": "story-preview",
       "runtimeExecutable": "bun",
       "runtimeArgs": [

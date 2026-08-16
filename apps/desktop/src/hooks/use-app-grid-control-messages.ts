@@ -5,7 +5,7 @@ import type { GridFilterModel } from "../components/types";
 import { isTauriRuntime } from "../lib/tauri";
 import type { GridNativeMenuState } from "../lib/native-menu";
 import { isReadOnlyViewerMessageSource } from "../lib/viewer-bridge";
-import type { ViewerDocument } from "../types";
+import type { HoveredGridRow, ViewerDocument } from "../types";
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
@@ -27,6 +27,7 @@ type OpenKetcherWithFragment = (
 type UseAppGridControlMessagesOptions = {
   activeDocument: ViewerDocument | null;
   calculateGridDescriptors: (documentId: string, options?: GridDescriptorRunOptions) => void;
+  deleteDuplicateGridRows: (documentId: string) => void;
   updateGridFilterModel: (documentId: string, model: GridFilterModel, source: MessageEventSource | null) => void;
   documents: ViewerDocument[];
   openKetcherWithFragment: OpenKetcherWithFragment;
@@ -35,6 +36,7 @@ type UseAppGridControlMessagesOptions = {
   pushStatus: PushStatus;
   updateDirtyGridDocument: (documentId: string, dirty: boolean) => void;
   updateGridMenuState: (documentId: string, state: GridNativeMenuState) => void;
+  updateHoveredGridRow: (documentId: string, row: HoveredGridRow | null) => void;
   writeClipboardText: (text: string) => Promise<void>;
   writeGridPerfMetric: (body: unknown) => void;
 };
@@ -42,6 +44,7 @@ type UseAppGridControlMessagesOptions = {
 export function useAppGridControlMessages({
   activeDocument,
   calculateGridDescriptors,
+  deleteDuplicateGridRows,
   updateGridFilterModel,
   documents,
   openKetcherWithFragment,
@@ -50,6 +53,7 @@ export function useAppGridControlMessages({
   pushStatus,
   updateDirtyGridDocument,
   updateGridMenuState,
+  updateHoveredGridRow,
   writeClipboardText,
   writeGridPerfMetric,
 }: UseAppGridControlMessagesOptions) {
@@ -145,6 +149,36 @@ export function useAppGridControlMessages({
       return true;
     }
 
+    if (body?.type === "gridFindDuplicates") {
+      const documentId = typeof body.documentId === "string" && body.documentId.trim()
+        ? body.documentId.trim()
+        : activeDocument?.id;
+      if (documentId) deleteDuplicateGridRows(documentId);
+      return true;
+    }
+    if (body?.type === "gridRowHover") {
+      const documentId = typeof body.documentId === "string" ? body.documentId : "";
+      if (!documentId) return true;
+      const raw = body.row as Record<string, unknown> | null | undefined;
+      const index = Number(raw?.index);
+      const props = Array.isArray(raw?.props)
+        ? (raw.props as Array<Record<string, unknown>>)
+          .filter((entry) => typeof entry?.label === "string" && typeof entry?.value === "string")
+          .slice(0, 24)
+          .map((entry) => ({ label: entry.label as string, value: entry.value as string }))
+        : undefined;
+      const row = raw && Number.isSafeInteger(index) && index >= 0
+        ? {
+            index,
+            name: typeof raw.name === "string" ? raw.name : "",
+            smiles: typeof raw.smiles === "string" ? raw.smiles : null,
+            molblock: typeof raw.molblock === "string" ? raw.molblock : null,
+            props,
+          }
+        : null;
+      updateHoveredGridRow(documentId, row);
+      return true;
+    }
     if (body?.type === "gridMenuStateChanged") {
       if (readOnlySource) return true;
       const documentId = typeof body.documentId === "string" && body.documentId
@@ -175,6 +209,7 @@ export function useAppGridControlMessages({
         showProperties: body.showProperties === true,
         cardRenderer: body.cardRenderer === "xyzrender" ? "xyzrender" : "rdkit",
         hasMolecules: body.hasMolecules === true,
+        hasReactions: body.hasReactions === true,
         saveEnabled: body.saveEnabled === true,
         exportEnabled: body.exportEnabled === true,
         selectionEnabled: body.selectionEnabled === true,

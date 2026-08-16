@@ -1462,8 +1462,21 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 }
 
 .buret-grid-rail-tick:hover {
+  width: 26px;
+  background: color-mix(in srgb, var(--buret-text) 58%, transparent);
+}
+
+/* Dock-style magnification wave: the hovered tick grows most, its neighbours
+   follow with a falloff, so scrubbing the rail reads as one smooth gesture. */
+.buret-grid-rail-tick:hover + .buret-grid-rail-tick,
+.buret-grid-rail-tick:has(+ .buret-grid-rail-tick:hover) {
   width: 20px;
   background: color-mix(in srgb, var(--buret-text) 42%, transparent);
+}
+.buret-grid-rail-tick:hover + .buret-grid-rail-tick + .buret-grid-rail-tick,
+.buret-grid-rail-tick:has(+ .buret-grid-rail-tick + .buret-grid-rail-tick:hover) {
+  width: 16px;
+  background: color-mix(in srgb, var(--buret-text) 34%, transparent);
 }
 
 .buret-grid-rail-popover {
@@ -1546,6 +1559,17 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--buret-accent) 72%, transparent),
     0 0 0 1px color-mix(in srgb, var(--buret-accent) 30%, transparent);
+}
+
+/* The row the chemical-space map is pointing at. Lighter than a selection on
+   purpose: hovering a point elsewhere should locate the molecule here without
+   looking like it changed what is selected. */
+.buret-card.external-hover:not(.selected) {
+  border-color: color-mix(in srgb, var(--buret-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--buret-accent) 7%, var(--buret-surface));
+}
+.buret-grid-table-row.external-hover:not(.selected) > td {
+  background: color-mix(in srgb, var(--buret-accent) 9%, transparent);
 }
 
 .buret-card.selected .buret-molecule-picture {

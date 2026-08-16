@@ -312,6 +312,47 @@ export type XtbJob = {
   error?: string | null;
 };
 
+export type HoveredGridRow = {
+  index: number;
+  name: string;
+  smiles?: string | null;
+  molblock?: string | null;
+  props?: Array<{ label: string; value: string }>;
+};
+
+export type DerivedColumnJob = {
+  id: string;
+  columnLabel: string;
+  documentTitle: string;
+  status: "running" | "success" | "failed";
+  startedAt: number;
+  completedAt?: number | null;
+  processedRows: number;
+  failedRows: number;
+  totalRows: number;
+  error?: string | null;
+};
+
+/**
+ * One Database menu search. The backend answers a search in a single call, so
+ * unlike a conformer or xTB run there is nothing to poll and nothing to cancel:
+ * the row exists to keep the query, its outcome and any provider caveat visible
+ * after the toast is gone.
+ */
+export type DatabaseJob = {
+  id: string;
+  title: string;
+  provider: string;
+  query: string;
+  status: "running" | "success" | "failed";
+  startedAt: number;
+  completedAt?: number;
+  recordCount?: number;
+  documentId?: string | null;
+  error?: string | null;
+  warnings?: string[];
+};
+
 export type FoldingArtifact = {
   path: string;
   title: string;

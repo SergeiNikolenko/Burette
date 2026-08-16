@@ -62,6 +62,7 @@ export type NativeMenuState = {
   selectedMoleculeCount: number;
   selectedGridRowCount: number;
   gridHasMolecules: boolean;
+  gridHasReactions: boolean;
   gridDirty: boolean;
   gridExportEnabled: boolean;
   gridSelectionEnabled: boolean;
@@ -73,6 +74,7 @@ export type NativeMenuState = {
   canRunCrest: boolean;
   canRunPrism: boolean;
   canRunXtb: boolean;
+  rgroupRuntimeAvailable: boolean;
   openDocumentPaths: string[];
   recentDocuments: Array<{ path: string; title: string }> | null;
 };
@@ -90,6 +92,7 @@ export type GridNativeMenuState = {
   showProperties: boolean;
   cardRenderer: "rdkit" | "xyzrender";
   hasMolecules: boolean;
+  hasReactions: boolean;
   saveEnabled: boolean;
   exportEnabled: boolean;
   selectionEnabled: boolean;

@@ -119,6 +119,81 @@ export function splitSdfCollectionRecords(text: string) {
   return records;
 }
 
+// MDL reaction sources, mirroring parse_rxn_batch / parse_rdf_batch in
+// grid_store.rs so browser dev reads a .rxn or .rdf the way the desktop does:
+// a .rxn is one $RXN block, an .rdf is a sequence of them behind $RFMT markers
+// with $DTYPE/$DATUM fields.
+export function parseReactionCollectionRecords(text: string, extension: string): SdfCollectionRecord[] {
+  const normalized = text.replace(/\r\n?/gu, "\n");
+  if (extension !== "rdf") {
+    const record = reactionRecord(normalized.split("\n"), {}, 0);
+    return record ? [record] : [];
+  }
+  const records: SdfCollectionRecord[] = [];
+  let block: string[] = [];
+  let props: Record<string, string> = {};
+  let field = "";
+  let inStructure = false;
+  let started = false;
+  const finish = () => {
+    if (!started) return;
+    const record = reactionRecord(block, props, records.length);
+    if (record) records.push(record);
+    block = [];
+    props = {};
+    field = "";
+    inStructure = false;
+  };
+  for (const line of normalized.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("$RFMT") || trimmed.startsWith("$MFMT")) {
+      finish();
+      started = true;
+      continue;
+    }
+    if (!started) continue;
+    if (trimmed.startsWith("$DTYPE ")) {
+      inStructure = false;
+      field = trimmed.slice("$DTYPE ".length).trim();
+      continue;
+    }
+    if (trimmed.startsWith("$DATUM ")) {
+      if (field) props[field] = trimmed.slice("$DATUM ".length).trim();
+      continue;
+    }
+    if (trimmed.startsWith("$RXN")) {
+      inStructure = true;
+      block.push(line);
+      continue;
+    }
+    if (trimmed.startsWith("$MOL")) {
+      // Inside a reaction block `$MOL` separates its components and has to stay;
+      // before one it is the marker that opens a molecule record.
+      if (inStructure) block.push(line);
+      else inStructure = true;
+      continue;
+    }
+    if (trimmed.startsWith("$")) continue;
+    if (inStructure) block.push(line);
+  }
+  finish();
+  return records;
+}
+
+function reactionRecord(
+  block: string[],
+  props: Record<string, string>,
+  index: number,
+): SdfCollectionRecord | null {
+  const molblock = block.join("\n").trim();
+  if (!molblock) return null;
+  // Line 2 of an RXN block is its name line.
+  const name = [props.Name, props.NAME, props.ID, props.Id, props.id, block[1]]
+    .find((value) => value?.trim())
+    ?.trim() ?? `Reaction ${index + 1}`;
+  return { index, name, molblock, props };
+}
+
 export function parseSdfCollectionRecords(text: string): SdfCollectionRecord[] {
   return splitSdfCollectionRecords(text).map((record, index) => {
     const lines = record.split("\n");

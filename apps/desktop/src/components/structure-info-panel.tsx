@@ -24,11 +24,12 @@ import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
 import { GridDescriptorStatus } from "./grid-descriptor-status";
+import { GridHoverMoleculeCard } from "./grid-hover-molecule";
 import type { GridFilterModel } from "./types";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { getMdsmoothCapabilities, installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
 import { isTauriRuntime } from "../lib/tauri";
-import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings } from "../types";
+import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings, HoveredGridRow } from "../types";
 
 // The filter charts pull in recharts. This panel is the right dock's default tab
 // and stays mounted even while the dock is closed, so a static import shipped the
@@ -52,6 +53,7 @@ type StructureInfoPanelProps = {
   preferences: ShellViewState["preferences"];
   isBrowserDev: boolean;
   actions: ShellActions;
+  hoveredGridRow?: HoveredGridRow | null;
 };
 
 type XtbSettingsScope = "general" | "optimize" | "properties" | "optimized-hessian" | "vipea" | "vfukui" | "md" | "metadyn";
@@ -128,7 +130,7 @@ const TRAJECTORY_SMOOTHING_EXTENSIONS = new Set([
   "xyz", "pdb", "ent", "gro", "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj",
 ]);
 
-export function StructureInfoPanel({ gridFilterModel, document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
+export function StructureInfoPanel({ gridFilterModel, document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, hoveredGridRow, actions }: StructureInfoPanelProps) {
   const hostedMcpWidget = isHostedMcpWidget();
   const composition = useStructureComposition(document);
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
@@ -642,6 +644,9 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         hostedMcpWidget={hostedMcpWidget}
         actions={actions}
       />
+      {document.renderer === "grid2d" ? (
+        <GridHoverMoleculeCard row={hoveredGridRow ?? null} filterModel={gridFilterModel} documentId={document.id} />
+      ) : null}
     </div>
   );
 }

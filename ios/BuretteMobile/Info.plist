@@ -122,10 +122,12 @@
 				<string>psf</string>
 				<string>psi4</string>
 				<string>qcin</string>
+				<string>rdf</string>
 				<string>restrt</string>
 				<string>rst</string>
 				<string>rst7</string>
 				<string>rtf</string>
+				<string>rxn</string>
 				<string>sd</string>
 				<string>sdf</string>
 				<string>smi</string>
@@ -182,6 +184,7 @@
 				<string>com.local.burette10.openmm-workflow-text-artifact</string>
 				<string>com.local.burette10.pdb</string>
 				<string>com.local.burette10.pharmacophore</string>
+				<string>com.local.burette10.reaction</string>
 				<string>com.local.burette10.schrodinger</string>
 				<string>com.local.burette10.sdf</string>
 				<string>com.local.burette10.smiles</string>
@@ -293,6 +296,30 @@
 				<array>
 					<string>chemical/x-datawarrior</string>
 					<string>application/x-datawarrior</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>MDL reaction file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.reaction</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>rxn</string>
+					<string>rdf</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-mdl-rxnfile</string>
+					<string>chemical/x-mdl-rdfile</string>
 				</array>
 			</dict>
 		</dict>

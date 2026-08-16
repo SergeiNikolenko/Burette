@@ -261,6 +261,13 @@
       ],
       "reason": "Need a compact BinaryCIF fixture."
     },
+    "reaction": {
+      "extensions": [
+        "rdf",
+        "rxn"
+      ],
+      "reason": "Reaction collections are covered by the MDL fixtures under tests/fixtures/reactions, which the grid-store ingest tests and the node reaction-column tests both read, rather than by a shipped sample."
+    },
     "mesoscale-model-archive": {
       "extensions": [
         "mesozip"

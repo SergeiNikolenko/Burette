@@ -306,12 +306,139 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let clear_selection = MenuItemBuilder::with_id("collection.clear-selection", "Clear Selection")
         .enabled(false)
         .build(app)?;
-    let calculate_descriptors = MenuItemBuilder::with_id(
-        "collection.calculate-descriptors",
-        "Calculate Descriptors for All Molecules",
+    let calculate_descriptors =
+        MenuItemBuilder::with_id("collection.calculate-descriptors", "Calculate Properties…")
+            .enabled(false)
+            .build(app)?;
+    let add_column_formula =
+        MenuItemBuilder::with_id("collection.add-column.formula", "Molecular Formula")
+            .enabled(false)
+            .build(app)?;
+    let add_column_smiles =
+        MenuItemBuilder::with_id("collection.add-column.smiles", "Canonical SMILES")
+            .enabled(false)
+            .build(app)?;
+    let add_column_inchi = MenuItemBuilder::with_id("collection.add-column.inchi", "InChI")
+        .enabled(false)
+        .build(app)?;
+    let add_column_inchikey =
+        MenuItemBuilder::with_id("collection.add-column.inchikey", "InChI-Key")
+            .enabled(false)
+            .build(app)?;
+    let add_column_idcode =
+        MenuItemBuilder::with_id("collection.add-column.idcode", "Canonical Code")
+            .enabled(false)
+            .build(app)?;
+    let add_column_calculated =
+        MenuItemBuilder::with_id("collection.add-column.calculated", "Calculated Values…")
+            .enabled(false)
+            .build(app)?;
+    let add_column_bins =
+        MenuItemBuilder::with_id("collection.add-column.bins", "Bins From Numbers…")
+            .enabled(false)
+            .build(app)?;
+    let add_column_row_number =
+        MenuItemBuilder::with_id("collection.add-column.row-number", "Row Number")
+            .enabled(false)
+            .build(app)?;
+    let add_column = SubmenuBuilder::with_id(app, "collection.add-column", "Add Column")
+        .items(&[
+            &add_column_formula,
+            &add_column_smiles,
+            &add_column_inchi,
+            &add_column_inchikey,
+            &add_column_idcode,
+            &PredefinedMenuItem::separator(app)?,
+            &add_column_calculated,
+            &add_column_bins,
+            &add_column_row_number,
+        ])
+        .build()?;
+    let transform_largest_fragment = MenuItemBuilder::with_id(
+        "collection.transform.largest-fragment",
+        "Keep Largest Fragment",
     )
     .enabled(false)
     .build(app)?;
+    let transform_logarithmic =
+        MenuItemBuilder::with_id("collection.transform.logarithmic", "Treat Logarithmically…")
+            .enabled(false)
+            .build(app)?;
+    let transform_value_range =
+        MenuItemBuilder::with_id("collection.transform.value-range", "Set Value Range…")
+            .enabled(false)
+            .build(app)?;
+    let transform_split_rows = MenuItemBuilder::with_id(
+        "collection.transform.split-rows",
+        "Split Multiple Value Rows…",
+    )
+    .enabled(false)
+    .build(app)?;
+    let transform = SubmenuBuilder::with_id(app, "collection.transform", "Transform")
+        .items(&[
+            &transform_largest_fragment,
+            &transform_logarithmic,
+            &transform_value_range,
+            &transform_split_rows,
+        ])
+        .build()?;
+    let merge_columns = MenuItemBuilder::with_id("collection.merge-columns", "Merge Columns…")
+        .enabled(false)
+        .build(app)?;
+    let merge_rows = MenuItemBuilder::with_id("collection.merge-rows", "Merge Equivalent Rows")
+        .enabled(false)
+        .build(app)?;
+    let reaction_add_smiles =
+        MenuItemBuilder::with_id("collection.reaction.add-smiles", "Add Reaction SMILES")
+            .enabled(false)
+            .build(app)?;
+    let reaction_extract_reactants =
+        MenuItemBuilder::with_id("collection.reaction.extract-reactants", "Extract Reactants")
+            .enabled(false)
+            .build(app)?;
+    let reaction_extract_catalysts =
+        MenuItemBuilder::with_id("collection.reaction.extract-catalysts", "Extract Catalysts")
+            .enabled(false)
+            .build(app)?;
+    let reaction_extract_products =
+        MenuItemBuilder::with_id("collection.reaction.extract-products", "Extract Products")
+            .enabled(false)
+            .build(app)?;
+    let reaction_extract_transformation = MenuItemBuilder::with_id(
+        "collection.reaction.extract-transformation",
+        "Extract Transformation",
+    )
+    .enabled(false)
+    .build(app)?;
+    let reaction_perform =
+        MenuItemBuilder::with_id("collection.reaction.perform", "Perform Reaction…")
+            .enabled(false)
+            .build(app)?;
+    let reaction = SubmenuBuilder::with_id(app, "collection.reaction", "Reaction")
+        .items(&[
+            &reaction_extract_reactants,
+            &reaction_extract_catalysts,
+            &reaction_extract_products,
+            &reaction_extract_transformation,
+            &PredefinedMenuItem::separator(app)?,
+            &reaction_add_smiles,
+            &reaction_perform,
+        ])
+        .build()?;
+    let delete_rows_selected =
+        MenuItemBuilder::with_id("collection.delete-rows.selected", "Selected Molecules")
+            .enabled(false)
+            .build(app)?;
+    let delete_rows_duplicates =
+        MenuItemBuilder::with_id("collection.delete-rows.duplicates", "Duplicate Molecules")
+            .enabled(false)
+            .build(app)?;
+    let delete_rows = SubmenuBuilder::with_id(app, "collection.delete-rows", "Delete Rows")
+        .items(&[&delete_rows_selected, &delete_rows_duplicates])
+        .build()?;
+    let delete_columns = MenuItemBuilder::with_id("collection.delete-columns", "Delete Columns…")
+        .enabled(false)
+        .build(app)?;
     let collection_menu = SubmenuBuilder::with_id(app, "collection.menu", "Collection")
         .items(&[
             &copy_selected,
@@ -319,6 +446,99 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &clear_selection,
             &PredefinedMenuItem::separator(app)?,
             &calculate_descriptors,
+            &add_column,
+            &transform,
+            &merge_columns,
+            &merge_rows,
+            &reaction,
+            &PredefinedMenuItem::separator(app)?,
+            &delete_rows,
+            &delete_columns,
+        ])
+        .build()?;
+
+    let analyze_chemical_space =
+        MenuItemBuilder::with_id("analyze.chemical-space", "Chemical Space…")
+            .enabled(false)
+            .build(app)?;
+    let analyze_correlation =
+        MenuItemBuilder::with_id("analyze.correlation-matrix", "Show Correlation Matrix…")
+            .enabled(false)
+            .build(app)?;
+    let analyze_scaffolds = MenuItemBuilder::with_id("analyze.scaffolds", "Analyse Scaffolds")
+        .enabled(false)
+        .build(app)?;
+    let analyze_rgroups = MenuItemBuilder::with_id("analyze.rgroups", "Decompose R-Groups…")
+        .enabled(false)
+        .build(app)?;
+    let analyze_substructure_count =
+        MenuItemBuilder::with_id("analyze.substructure-count", "Substructure Count…")
+            .enabled(false)
+            .build(app)?;
+    let analyze_find_similar =
+        MenuItemBuilder::with_id("analyze.find-similar", "Find Similar In File…")
+            .enabled(false)
+            .build(app)?;
+    let analyze_cluster = MenuItemBuilder::with_id("analyze.cluster", "Cluster Compounds…")
+        .enabled(false)
+        .build(app)?;
+    let analyze_diverse = MenuItemBuilder::with_id("analyze.diverse", "Export Diverse Subset")
+        .enabled(false)
+        .build(app)?;
+    let analyze_menu = SubmenuBuilder::with_id(app, "analyze.menu", "Analyze")
+        .items(&[
+            &analyze_chemical_space,
+            &analyze_cluster,
+            &analyze_diverse,
+            &PredefinedMenuItem::separator(app)?,
+            &analyze_scaffolds,
+            &analyze_rgroups,
+            &PredefinedMenuItem::separator(app)?,
+            &analyze_substructure_count,
+            &analyze_find_similar,
+            &PredefinedMenuItem::separator(app)?,
+            &analyze_correlation,
+        ])
+        .build()?;
+
+    let search_chembl =
+        MenuItemBuilder::with_id("database.search-chembl", "Search ChEMBL…").build(app)?;
+    let chembl_actives =
+        MenuItemBuilder::with_id("database.chembl-actives", "Similar From ChEMBL Actives…")
+            .enabled(false)
+            .build(app)?;
+    let search_cod =
+        MenuItemBuilder::with_id("database.search-cod", "Search Crystallography DB…").build(app)?;
+    let retrieve_wikipedia = MenuItemBuilder::with_id(
+        "database.retrieve-wikipedia",
+        "Retrieve Wikipedia Molecules…",
+    )
+    .build(app)?;
+    let search_building_blocks =
+        MenuItemBuilder::with_id("database.search-building-blocks", "Search Building Blocks…")
+            .build(app)?;
+    let search_chemspace =
+        MenuItemBuilder::with_id("database.search-chemspace", "Search ChemSpace…").build(app)?;
+    let search_google_patents =
+        MenuItemBuilder::with_id("database.search-google-patents", "Search Google Patents…")
+            .build(app)?;
+    let retrieve_url =
+        MenuItemBuilder::with_id("database.retrieve-url", "Retrieve From URL…").build(app)?;
+    let retrieve_sql =
+        MenuItemBuilder::with_id("database.retrieve-sql", "Retrieve From SQL…").build(app)?;
+    let database_menu = SubmenuBuilder::with_id(app, "database.menu", "Database")
+        .items(&[
+            &search_chembl,
+            &chembl_actives,
+            &search_cod,
+            &search_building_blocks,
+            &search_chemspace,
+            &search_google_patents,
+            &PredefinedMenuItem::separator(app)?,
+            &retrieve_wikipedia,
+            &PredefinedMenuItem::separator(app)?,
+            &retrieve_url,
+            &retrieve_sql,
         ])
         .build()?;
 
@@ -388,6 +608,8 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &view_menu,
             &structure_menu,
             &collection_menu,
+            &analyze_menu,
+            &database_menu,
             &window_menu,
             &help_menu,
         ])

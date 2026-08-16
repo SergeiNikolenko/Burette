@@ -543,6 +543,22 @@ assert.match(moleculeGridPreview, /value == "smile" \|\| value\.contains\("smile
 assert.match(previewGridStore, /fn infers_smiles_columns_without_smiles_headers/);
 assert.match(previewGridStore, /fn uses_explicit_column_for_ambiguous_delimited_table/);
 assert.match(previewGridStore, /fn lists_delimited_structure_column_choices/);
+// Reaction sources: .rxn is one $RXN record, .rdf is a sequence behind $RFMT,
+// and a reaction SMILES column is found the way a molecule one is.
+for (const snippet of [
+  '"rxn" => Some("rxn")',
+  '"rdf" => Some("rdf")',
+  'fn parse_rxn_batch',
+  'fn parse_rdf_batch',
+  'fn looks_like_reaction_smiles',
+  'looks_like_smiles(value) || looks_like_reaction_smiles(value)',
+]) {
+  assert.ok(previewGridStore.includes(snippet), `grid store reaction parsing is missing ${snippet}`);
+}
+assert.match(previewGridStore, /fn ingests_a_reaction_file_as_one_row/);
+assert.match(previewGridStore, /fn ingests_an_rdfile_as_one_row_per_reaction/);
+assert.match(previewGridStore, /fn rdfile_batches_resume_at_the_next_record/);
+assert.match(previewGridStore, /fn ingests_a_reaction_smiles_csv_column/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn sync_viewer_preferences/);
 assert.match(
   documentsCommand,
@@ -1128,6 +1144,7 @@ assert.match(nativeMenuSource, /SubmenuBuilder::with_id\(app, "edit\.menu", "Edi
 assert.match(nativeMenuSource, /SubmenuBuilder::new\(app, "View"\)/);
 assert.match(nativeMenuSource, /SubmenuBuilder::with_id\(app, "structure\.menu", "Structure"\)/);
 assert.match(nativeMenuSource, /SubmenuBuilder::with_id\(app, "collection\.menu", "Collection"\)/);
+assert.match(nativeMenuSource, /SubmenuBuilder::with_id\(app, "database\.menu", "Database"\)/);
 assert.match(nativeMenuSource, /SubmenuBuilder::with_id\(app, WINDOW_SUBMENU_ID, "Window"\)/);
 assert.match(nativeMenuSource, /SubmenuBuilder::with_id\(app, HELP_SUBMENU_ID, "Help"\)/);
 assertSourceIncludesAll(nativeMenuSource, [
@@ -1182,6 +1199,41 @@ assertSourceIncludesAll(nativeMenuSource, [
   'collection.select-all',
   'collection.clear-selection',
   'collection.calculate-descriptors',
+  'collection.add-column',
+  'collection.add-column.formula',
+  'collection.add-column.smiles',
+  'collection.add-column.inchi',
+  'collection.add-column.inchikey',
+  'collection.add-column.idcode',
+  'collection.add-column.bins',
+  'collection.add-column.row-number',
+  'collection.reaction',
+  'collection.reaction.add-smiles',
+  'collection.reaction.extract-reactants',
+  'collection.reaction.extract-catalysts',
+  'collection.reaction.extract-products',
+  'collection.reaction.extract-transformation',
+  'collection.reaction.perform',
+  'collection.delete-rows.selected',
+  'collection.delete-rows.duplicates',
+  'collection.delete-columns',
+  'database.menu',
+  'database.search-chembl',
+  'database.chembl-actives',
+  'database.search-cod',
+  'database.retrieve-wikipedia',
+  'database.search-building-blocks',
+  'database.search-chemspace',
+  'database.search-google-patents',
+  'database.retrieve-url',
+  'database.retrieve-sql',
+  'analyze.menu',
+  'analyze.cluster',
+  'analyze.diverse',
+  'analyze.scaffolds',
+  'analyze.rgroups',
+  'analyze.substructure-count',
+  'analyze.find-similar',
   'window.previous-tab',
   'window.next-tab',
   'help.keyboard-shortcuts',
@@ -1212,6 +1264,33 @@ assertSourceIncludesAll(menuEvents, [
   'collection.select-all',
   'collection.clear-selection',
   'collection.calculate-descriptors',
+  'collection.add-column.formula',
+  'collection.add-column.smiles',
+  'collection.add-column.inchi',
+  'collection.add-column.inchikey',
+  'collection.add-column.idcode',
+  'collection.add-column.bins',
+  'collection.add-column.row-number',
+  'collection.delete-columns',
+  'collection.reaction.add-smiles',
+  'collection.reaction.extract-reactants',
+  'collection.reaction.extract-transformation',
+  'collection.reaction.perform',
+  'database.search-chembl',
+  'database.chembl-actives',
+  'database.search-cod',
+  'database.retrieve-wikipedia',
+  'database.search-building-blocks',
+  'database.search-chemspace',
+  'database.search-google-patents',
+  'database.retrieve-url',
+  'database.retrieve-sql',
+  'analyze.cluster',
+  'analyze.diverse',
+  'analyze.scaffolds',
+  'analyze.rgroups',
+  'analyze.substructure-count',
+  'analyze.find-similar',
   'window.previous-tab',
   'window.next-tab',
 ], 'Rust native-menu event dispatcher');
@@ -1286,6 +1365,24 @@ assert.match(nativeMenuSource, /"structure\.prism-prune", state\.can_run_prism/)
 assert.match(nativeMenuSource, /"structure\.xtb-optimize", state\.can_run_xtb/);
 assert.match(nativeMenuSource, /"collection\.copy-selected", has_grid_selection/);
 assert.match(nativeMenuSource, /"collection\.calculate-descriptors",\s*state\.is_grid && state\.grid_has_molecules && !state\.grid_dirty/s);
+// The Reaction submenu follows the reaction flag the grid reports, so it stays
+// dark for a collection of plain molecules.
+assert.match(nativeMenuSource, /grid_has_reactions: bool/);
+assert.match(
+  nativeMenuSource,
+  /let can_add_reaction_column =\s*state\.is_grid && state\.grid_has_reactions && !state\.grid_dirty/s,
+);
+// Perform Reaction is the other direction: it runs a reaction over molecules,
+// so it follows the derived-column rule while the extract items follow the
+// reaction one, and the submenu opens for either.
+assert.match(
+  nativeMenuSource,
+  /set_enabled\(&app, "collection\.reaction\.perform", can_add_derived_column\)/,
+);
+assert.match(
+  nativeMenuSource,
+  /"collection\.reaction",\s*can_add_reaction_column \|\| can_add_derived_column/s,
+);
 assert.match(nativeMenuSource, /"file\.reveal-active", state\.has_active_file/);
 assert.match(lib, /menu::handle_event\(app, event\.id\(\)\.0\.as_str\(\)\)/);
 assert.match(lib, /menu::sync_native_menu/);
@@ -1477,11 +1574,25 @@ assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ sourc
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
 assert.match(previewRuntimeGrid, /'unsafe-eval'/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
-assert.match(previewRuntimeGrid, /grid-ui-v33/);
+assert.match(previewRuntimeGrid, /grid-ui-v49/);
+// The grid-only formats have to agree with the registry: a source that opens
+// as nothing else must report an empty collection rather than fall through to
+// a viewer that cannot read it either.
+{
+  const registryGridOnly = JSON.parse(previewFormatRegistrySource).formats
+    .filter((format) => format.grid?.enabled && format.grid?.requiresPreview)
+    .flatMap((format) => format.extensions)
+    .sort();
+  const rustGridOnly = [...previewRuntimeGrid
+    .split('fn grid_requires_preview')[1]
+    .split('}')[0]
+    .matchAll(/"([a-z0-9.]+)"/gu)].map((match) => match[1]).sort();
+  assert.deepEqual(rustGridOnly, registryGridOnly, 'grid_requires_preview must match the format registry');
+}
 assert.match(previewXyzrender, /std::env::current_exe\(\)/);
 assert.match(previewXyzrender, /xyzrender-runtime/);
 assert.match(gridViewerJS, /resetDocumentRuntimeState\(\);\n\s+state\.remoteMode = isRemoteMode\(cfg\);/);
-assert.match(gridViewerJS, /buildUI\(cfg\);\n\s+installGridTextFocusListeners\(\);\n\s+refresh\(cfg\);\n\s+try \{\n\s+await initRDKit\(\);/);
+assert.match(gridViewerJS, /buildUI\(cfg\);\n\s+installGridTextFocusListeners\(\);\n\s+installRowHoverPreview\(cfg\);\n\s+refresh\(cfg\);\n\s+try \{\n\s+await initRDKit\(\);/);
 assert.match(gridViewerJS, /if \(state\.cardRenderer === 'rdkit'\) \{\n\s+if \(state\.remoteMode\) \{\n\s+if \(state\.rows\.length\) void renderVirtualWindow\(cfg, state\.token, \{ force: true \}\);\n\s+\} else \{\n\s+render\(cfg\);\n\s+\}\n\s+\}/);
 assert.match(gridViewerJS, /function supportsXyzrenderCards\(cfg\)/);
 assert.match(gridViewerJS, /cfg\?\.appViewer === true && \(\s*cfg\?\.gridDataMode === 'bridge'/);
@@ -1645,5 +1756,33 @@ assert.match(viewerJS, /function buildSdfPoseOverlay/);
 assert.match(viewerJS, /M  V30 BEGIN CTAB/);
 assert.doesNotMatch(viewerJS, /BuretteXyzFastURL|xyz-fast\.js/);
 assert.match(previewRuntimeViewer, /window\.__mqlPost = \(type, message, payload\) => postToParent\(\{ type, message: message \|\| '', \.\.\.\(payload \|\| \{\}\) \}\);/);
+// Transform is built, forwarded and enabled with the derived-column channel it
+// writes through, so the submenu cannot exist without a path that runs it.
+assert.match(menuBuild, /"collection\.transform\.largest-fragment",\s*\n?\s*"Keep Largest Fragment"/);
+assert.match(menuBuild, /"collection\.transform\.logarithmic", "Treat Logarithmically…"/);
+assert.match(menuBuild, /SubmenuBuilder::with_id\(app, "collection\.transform", "Transform"\)/);
+assert.match(menuEvents, /"collection\.transform\.largest-fragment"/);
+assert.match(menuEvents, /"collection\.transform\.logarithmic"/);
+assert.match(menuState, /"collection\.transform\.largest-fragment"/);
+assert.match(menuBuild, /"collection\.merge-columns", "Merge Columns…"/);
+assert.match(menuEvents, /"collection\.merge-columns"/);
+assert.match(menuState, /"collection\.merge-columns"/);
+// Set Value Range limits a column the grid already holds, so unlike the two
+// transforms above it needs neither structures nor a saved collection and stays
+// reachable once an edit has made the grid dirty.
+assert.match(menuBuild, /"collection\.transform\.value-range", "Set Value Range…"/);
+assert.match(menuEvents, /"collection\.transform\.value-range"/);
+assert.match(menuState, /set_enabled\(&app, "collection\.transform\.value-range", state\.is_grid\)/);
+assert.match(menuState, /set_enabled\(&app, "collection\.transform", state\.is_grid\)/);
+// Splitting rows adds rows through the grid's virtual edit layer, so it is
+// reachable on the same terms as the value range beside it.
+assert.match(menuBuild, /"collection\.transform\.split-rows",\s*\n?\s*"Split Multiple Value Rows…"/);
+assert.match(menuEvents, /"collection\.transform\.split-rows"/);
+assert.match(menuState, /set_enabled\(&app, "collection\.transform\.split-rows", state\.is_grid\)/);
+// Merging equivalent rows compares every structure in the collection, so it
+// sits with the operations that need the collection database itself.
+assert.match(menuBuild, /"collection\.merge-rows", "Merge Equivalent Rows"/);
+assert.match(menuEvents, /"collection\.merge-rows"/);
+assert.match(menuState, /"collection\.merge-rows"/);
 assert.match(viewerJS, /function isQuickLookHost\(\)/);
 assert.match(viewerJS, /powerPreference: String\(activeConfig\?\.molstarPowerPreference \|\| ''\) === 'default' \|\| isQuickLookHost\(\)/);

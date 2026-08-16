@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
+import { ActivityIndicator } from "./activity-indicator";
 import { OpenInEditorMenu } from "./open-in-editor-menu";
 import { QuickLookPreview } from "./quick-look-preview";
 import { Sidebar } from "./sidebar";
@@ -21,6 +22,11 @@ import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
 // Smallest the viewer/content column may become before the right dock stops
 // squeezing it (the point where an overlay dock takes over).
 const MAIN_MIN_WIDTH = 420;
+// The editor tab strip is absolutely positioned over the first band of the
+// viewer column, so that band is the one part of it the bottom dock may not
+// climb into: the dock's own tabs would land under the document tabs. Mirrors
+// `--chrome-height` in styles.css, and test-ui-shell-contract keeps them equal.
+const CHROME_HEIGHT = 56;
 
 // How much further the right dock may be dragged once the viewer has hit
 // MAIN_MIN_WIDTH, as a share of the workbench. Past that point the dock keeps
@@ -512,6 +518,7 @@ export function AppLayout({
             </div>
           ) : null}
           <div className="chrome-trailing-controls" data-tauri-drag-region>
+            {!hostedMcpWidget ? <ActivityIndicator state={layoutState} actions={actions} /> : null}
             {!hostedMcpWidget ? <OpenInEditorMenu state={layoutState} actions={actions} /> : null}
             {!hostedMcpWidget ? (
               <button
@@ -626,11 +633,13 @@ export function AppLayout({
                       if (open !== bottomDockOpenRef.current) actions.setDockOpen("bottom", open);
                     }}
                   >
-                    {/* A pixel floor, not a share of the window: the dock's own
-                        percentage cap used to stop the drag at 30% of main, which
-                        on a tall window left far more document than anyone wanted
-                        while working in the dock. */}
-                    <ResizablePanel id="main" className="main-panel" style={CLIPPED_PANEL_STYLE} minSize="140px">
+                    {/* The floor is the tab strip and nothing more: the dock's own
+                        percentage cap used to stop the drag at 30% of main, and a
+                        140px floor kept a band of document on screen when the work
+                        had moved entirely into the dock. Going to zero instead put
+                        the dock's tabs underneath the document tabs, since the
+                        strip is painted over this column rather than above it. */}
+                    <ResizablePanel id="main" className="main-panel" style={CLIPPED_PANEL_STYLE} minSize={`${CHROME_HEIGHT}px`}>
                       <section className="main-stage">
                         <ViewerArea state={layoutState} actions={actions} />
                       </section>
@@ -647,7 +656,7 @@ export function AppLayout({
                       collapsedSize="0px"
                       defaultSize={`${initialBottomDockSize}px`}
                       minSize="180px"
-                      maxSize="92%"
+                      maxSize="100%"
                       groupResizeBehavior="preserve-pixel-size"
                     >
                       {/* Always mounted: DockPanel renders its own closed state

@@ -25,6 +25,24 @@ type UseAppShellActionsOptions = {
   applyKetcherToGridRow: ShellActions["applyKetcherToGridRow"];
   backToApp: ShellActions["backToApp"];
   calculateGridDescriptors: ShellActions["calculateGridDescriptors"];
+  addDerivedGridColumn: ShellActions["addDerivedGridColumn"];
+  clearDerivedColumnJobs: ShellActions["clearDerivedColumnJobs"];
+  openCalculateProperties: ShellActions["openCalculateProperties"];
+  deleteDuplicateGridRows: ShellActions["deleteDuplicateGridRows"];
+  mergeEquivalentGridRows: ShellActions["mergeEquivalentGridRows"];
+  openCorrelationMatrix: ShellActions["openCorrelationMatrix"];
+  openCalculatedColumn: ShellActions["openCalculatedColumn"];
+  openMergeColumns: ShellActions["openMergeColumns"];
+  openSetValueRange: ShellActions["openSetValueRange"];
+  openBinsColumn: ShellActions["openBinsColumn"];
+  openDeleteColumns: ShellActions["openDeleteColumns"];
+  addRowNumberGridColumn: ShellActions["addRowNumberGridColumn"];
+  openSplitValueRows: ShellActions["openSplitValueRows"];
+  openPerformReaction: ShellActions["openPerformReaction"];
+  addScaffoldGridColumns: ShellActions["addScaffoldGridColumns"];
+  openSubstructureCount: ShellActions["openSubstructureCount"];
+  findSimilarInFile: ShellActions["findSimilarInFile"];
+  openRGroupDecomposition: ShellActions["openRGroupDecomposition"];
   canNavigateBack: boolean;
   canNavigateForward: boolean;
   cancelConformerJob: ShellActions["cancelConformerJob"];
@@ -37,6 +55,8 @@ type UseAppShellActionsOptions = {
   chooseFiles: ShellActions["chooseFiles"];
   chooseWorkspace: ShellActions["chooseWorkspace"];
   clearCache: ShellActions["clearCache"];
+  clearDatabaseJobs: ShellActions["clearDatabaseJobs"];
+  openDatabaseQuery: ShellActions["openDatabaseQuery"];
   clearDescriptorSource: ShellActions["clearDescriptorSource"];
   clearDirtyGridDocuments: () => void;
   clearKetcherImportRequest: ShellActions["clearKetcherImportRequest"];
@@ -214,6 +234,24 @@ type GridShellActions = Pick<
   | "applyGridDescriptorControls"
   | "applyGridDescriptorResults"
   | "calculateGridDescriptors"
+  | "addDerivedGridColumn"
+  | "clearDerivedColumnJobs"
+  | "openCalculateProperties"
+  | "deleteDuplicateGridRows"
+  | "mergeEquivalentGridRows"
+  | "openCorrelationMatrix"
+  | "openCalculatedColumn"
+  | "openMergeColumns"
+  | "openSetValueRange"
+  | "openBinsColumn"
+  | "openDeleteColumns"
+  | "addRowNumberGridColumn"
+  | "openSplitValueRows"
+  | "openPerformReaction"
+  | "addScaffoldGridColumns"
+  | "openSubstructureCount"
+  | "findSimilarInFile"
+  | "openRGroupDecomposition"
   | "appendGridRecords"
   | "addXyzrenderSheetItems"
 >;
@@ -224,6 +262,8 @@ type ChemistryShellActions = Pick<
   | "runConformerOperation"
   | "cancelConformerJob"
   | "clearConformerJobs"
+  | "openDatabaseQuery"
+  | "clearDatabaseJobs"
   | "setConformerSettings"
   | "checkXtbStatus"
   | "chooseXtbExecutable"
@@ -428,12 +468,32 @@ const workspaceHistoryNoneActions = new Set<keyof ShellActions>([
   "applyGridDescriptorControls",
   "applyGridDescriptorResults",
   "calculateGridDescriptors",
+  "addDerivedGridColumn",
+  "clearDerivedColumnJobs",
+  "openCalculateProperties",
+  "deleteDuplicateGridRows",
+  "mergeEquivalentGridRows",
+  "openCorrelationMatrix",
+  "openCalculatedColumn",
+  "openMergeColumns",
+  "openSetValueRange",
+  "openBinsColumn",
+  "openDeleteColumns",
+  "addRowNumberGridColumn",
+  "openSplitValueRows",
+  "openPerformReaction",
+  "addScaffoldGridColumns",
+  "openSubstructureCount",
+  "findSimilarInFile",
+  "openRGroupDecomposition",
   "appendGridRecords",
   "addXyzrenderSheetItems",
   "checkConformerStatus",
   "runConformerOperation",
   "cancelConformerJob",
   "clearConformerJobs",
+  "openDatabaseQuery",
+  "clearDatabaseJobs",
   "checkXtbStatus",
   "chooseXtbExecutable",
   "clearXtbExecutableSelection",
@@ -592,6 +652,24 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       applyGridDescriptorControls: actions.applyGridDescriptorControls,
       applyGridDescriptorResults: actions.applyGridDescriptorResults,
       calculateGridDescriptors: actions.calculateGridDescriptors,
+      addDerivedGridColumn: actions.addDerivedGridColumn,
+      clearDerivedColumnJobs: actions.clearDerivedColumnJobs,
+      openCalculateProperties: actions.openCalculateProperties,
+      deleteDuplicateGridRows: actions.deleteDuplicateGridRows,
+      mergeEquivalentGridRows: actions.mergeEquivalentGridRows,
+      openCorrelationMatrix: actions.openCorrelationMatrix,
+      openCalculatedColumn: actions.openCalculatedColumn,
+      openMergeColumns: actions.openMergeColumns,
+      openSetValueRange: actions.openSetValueRange,
+      openBinsColumn: actions.openBinsColumn,
+      openDeleteColumns: actions.openDeleteColumns,
+      addRowNumberGridColumn: actions.addRowNumberGridColumn,
+      openSplitValueRows: actions.openSplitValueRows,
+      openPerformReaction: actions.openPerformReaction,
+      addScaffoldGridColumns: actions.addScaffoldGridColumns,
+      openSubstructureCount: actions.openSubstructureCount,
+      findSimilarInFile: actions.findSimilarInFile,
+      openRGroupDecomposition: actions.openRGroupDecomposition,
       appendGridRecords: actions.appendGridRecords,
       addXyzrenderSheetItems: actions.addXyzrenderSheetItems,
     },
@@ -600,6 +678,8 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       runConformerOperation: actions.runConformerOperation,
       cancelConformerJob: actions.cancelConformerJob,
       clearConformerJobs: actions.clearConformerJobs,
+      openDatabaseQuery: actions.openDatabaseQuery,
+      clearDatabaseJobs: actions.clearDatabaseJobs,
       setConformerSettings: actions.setConformerSettings,
       checkXtbStatus: actions.checkXtbStatus,
       chooseXtbExecutable: actions.chooseXtbExecutable,
@@ -708,6 +788,24 @@ export function useAppShellActions({
   applyKetcherToGridRow,
   backToApp,
   calculateGridDescriptors,
+  addDerivedGridColumn,
+  clearDerivedColumnJobs,
+  openCalculateProperties,
+  deleteDuplicateGridRows,
+  mergeEquivalentGridRows,
+  openCorrelationMatrix,
+  openCalculatedColumn,
+  openMergeColumns,
+  openSetValueRange,
+  openBinsColumn,
+  openDeleteColumns,
+  addRowNumberGridColumn,
+  openSplitValueRows,
+  openPerformReaction,
+  addScaffoldGridColumns,
+  openSubstructureCount,
+  findSimilarInFile,
+  openRGroupDecomposition,
   canNavigateBack,
   canNavigateForward,
   cancelConformerJob,
@@ -720,6 +818,8 @@ export function useAppShellActions({
   chooseFiles,
   chooseWorkspace,
   clearCache,
+  clearDatabaseJobs,
+  openDatabaseQuery,
   clearDescriptorSource,
   clearDirtyGridDocuments,
   clearKetcherImportRequest,
@@ -905,9 +1005,29 @@ export function useAppShellActions({
     applyGridDescriptorControls,
     applyGridDescriptorResults,
     calculateGridDescriptors,
+    addDerivedGridColumn,
+    clearDerivedColumnJobs,
+    openCalculateProperties,
+    deleteDuplicateGridRows,
+    mergeEquivalentGridRows,
+    openCorrelationMatrix,
+    openCalculatedColumn,
+    openMergeColumns,
+    openSetValueRange,
+    openBinsColumn,
+    openDeleteColumns,
+    addRowNumberGridColumn,
+    openSplitValueRows,
+    openPerformReaction,
+    addScaffoldGridColumns,
+    openSubstructureCount,
+    findSimilarInFile,
+    openRGroupDecomposition,
     checkConformerStatus,
     runConformerOperation,
     cancelConformerJob,
+    openDatabaseQuery,
+    clearDatabaseJobs,
     ...createJobHistoryShellActions({ pushStatus, setConformerJobs, setXtbJobs }),
     setConformerSettings,
     checkXtbStatus,
@@ -1006,7 +1126,7 @@ export function useAppShellActions({
     canRedoWorkspace,
     canUndoFocusedPreview: focusedPreviewHistory.canUndo,
     canUndoWorkspace,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmCloseSourceDocuments, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusedPreviewHistory.canRedo, focusedPreviewHistory.canUndo, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
+  }), [activeDocument, addDerivedGridColumn, addDockDrop, addXyzrenderSheetItemsToDocument, openCalculateProperties, deleteDuplicateGridRows, openCorrelationMatrix, openCalculatedColumn, openMergeColumns, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, clearDerivedColumnJobs, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmCloseSourceDocuments, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusedPreviewHistory.canRedo, focusedPreviewHistory.canUndo, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, openPerformReaction, addScaffoldGridColumns, openSubstructureCount, findSimilarInFile, openRGroupDecomposition]);
 }
 
 export function createJobHistoryShellActions({

@@ -23,6 +23,7 @@ type BrowserDevDescriptorRoutes = {
   gridJobs: Map<string, BrowserDevDescriptorJobStatus>;
   gridSummary: (documentId: string, path: string) => Promise<unknown>;
   install: () => Promise<unknown>;
+  cancelInstall: () => Promise<unknown>;
   status: () => Promise<unknown>;
 };
 
@@ -49,6 +50,14 @@ export function registerBrowserDevDescriptorRoutes(server: ViteDevServer, routes
           return;
         }
         sendJson(res, 200, await routes.install(), "no-cache");
+        return;
+      }
+      if (endpoint === "cancel-install") {
+        if (method !== "POST") {
+          sendJson(res, 405, { error: "Method not allowed" }, "no-cache");
+          return;
+        }
+        sendJson(res, 200, await routes.cancelInstall(), "no-cache");
         return;
       }
       if (endpoint === "calculate") {

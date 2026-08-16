@@ -164,6 +164,18 @@ const [
   openEventsHook,
   menuEventsHook,
   appNativeMenuHook,
+  activityIndicator,
+  calculatePropertiesDialog,
+  correlationDialog,
+  gridHoverMolecule,
+  derivedColumnsHook,
+  derivedColumnCompute,
+  collectionDocumentsLib,
+  setValueRangeDialog,
+  splitValueRowsDialog,
+  performReactionDialog,
+  substructureCountDialog,
+  rgroupDialog,
   gridNativeMenuStateHook,
   nativeMenuTypes,
   windowTitle,
@@ -227,6 +239,9 @@ const [
   desmondPreviewExtract,
   fepGraphmlSample,
   rdkitConformer,
+  databaseLib,
+  appDatabaseHook,
+  databaseQueryDialog,
 ] = await Promise.all([
   source('apps/desktop/index.html'),
   source('apps/desktop/src/App.tsx'),
@@ -373,6 +388,18 @@ const [
   source('apps/desktop/src/hooks/use-open-events.ts'),
   source('apps/desktop/src/hooks/use-menu-events.ts'),
   source('apps/desktop/src/hooks/use-app-native-menu.ts'),
+  source('apps/desktop/src/components/activity-indicator.tsx'),
+  source('apps/desktop/src/components/calculate-properties-dialog.tsx'),
+  source('apps/desktop/src/components/correlation-matrix-dialog.tsx'),
+  source('apps/desktop/src/components/grid-hover-molecule.tsx'),
+  source('apps/desktop/src/hooks/use-app-derived-columns.ts'),
+  source('apps/desktop/src/lib/derived-column-compute.mjs'),
+  source('apps/desktop/src/lib/collection-documents.ts'),
+  source('apps/desktop/src/components/set-value-range-dialog.tsx'),
+  source('apps/desktop/src/components/split-value-rows-dialog.tsx'),
+  source('apps/desktop/src/components/perform-reaction-dialog.tsx'),
+  source('apps/desktop/src/components/substructure-count-dialog.tsx'),
+  source('apps/desktop/src/components/rgroup-decomposition-dialog.tsx'),
   source('apps/desktop/src/hooks/use-grid-native-menu-state.ts'),
   source('apps/desktop/src/lib/native-menu.ts'),
   source('apps/desktop/src/components/window-title/index.tsx'),
@@ -436,6 +463,9 @@ const [
   source('scripts/desmond_preview_extract.py'),
   source('samples/fep/ligand_network.graphml'),
   source('scripts/rdkit_conformer.py'),
+  source('apps/desktop/src/lib/database.ts'),
+  source('apps/desktop/src/hooks/use-app-database.ts'),
+  source('apps/desktop/src/components/database-query-dialog.tsx'),
 ]);
 
 const desktopPackage = JSON.parse(await source('apps/desktop/package.json'));
@@ -2301,6 +2331,13 @@ assert.match(appLayout, /panel\.collapse\(\)/);
 assert.match(appLayout, /panel\.expand\(\)/);
 assert.match(appLayout, /\}, \[open\]\);/);
 assert.match(appLayout, /function useInitialSize/);
+// The editor tab strip is painted over the top band of the viewer column, so the
+// bottom dock's floor for that column IS the strip's height - drop it and the
+// dock's own tabs slide underneath the document tabs. The two numbers live in
+// different files, so they are pinned to each other here.
+assert.match(appLayout, /const CHROME_HEIGHT = 56;/);
+assert.match(styles, /--chrome-height: 56px;/);
+assert.match(appLayout, /<ResizablePanel id="main"[^>]*minSize=\{`\$\{CHROME_HEIGHT\}px`\}/);
 assert.match(appLayout, /onLayoutChanged=\{\(_layout, meta\) => \{/);
 assert.match(appLayout, /if \(!meta\.isUserInteraction\) return;/);
 // Open/close toggles animate through a transient flex-grow transition on the
@@ -3503,9 +3540,11 @@ assert.match(ketcherPage, /const candidates = ketcherImportCandidates\(text\)/);
 assert.match(ketcherPage, /await importKetcherStructure\(ketcher, candidates, \(candidate\) => loadInitialKetcherImportCandidate\(ketcher, candidate\)\)/);
 assert.match(ketcherPage, /await importKetcherStructure\(ketcher, candidates, \(candidate\) => loadAdditionalKetcherImportCandidate\(ketcher, candidate\)\)/);
 assert.match(ketcherPage, /function loadInitialKetcherImportCandidate\(instance: KetcherEditorApi, candidate: string\)/);
-assert.match(ketcherPage, /looksLikeMolBlock\(candidate\)\s*\?\s*instance\.setMolfile\(candidate\)\s*:\s*instance\.setMolecule\(candidate, \{ needZoom: true \}\)/);
+// A reaction block ends its components with "M  END" too, so the molfile route
+// has to exclude it: only setMolecule detects $RXN.
+assert.match(ketcherPage, /looksLikeMolBlock\(candidate\) && !looksLikeReactionBlock\(candidate\)\s*\?\s*instance\.setMolfile\(candidate\)\s*:\s*instance\.setMolecule\(candidate, \{ needZoom: true \}\)/);
 assert.match(ketcherPage, /function loadAdditionalKetcherImportCandidate\(instance: KetcherEditorApi, candidate: string\)/);
-assert.match(ketcherPage, /looksLikeMolBlock\(candidate\)\s*\?\s*instance\.addMolfileFragment\(candidate\)\s*:\s*instance\.addFragment\(candidate, \{ needZoom: true \}\)/);
+assert.match(ketcherPage, /looksLikeMolBlock\(candidate\) && !looksLikeReactionBlock\(candidate\)\s*\?\s*instance\.addMolfileFragment\(candidate\)\s*:\s*instance\.addFragment\(candidate, \{ needZoom: true \}\)/);
 assert.doesNotMatch(ketcherPage, /Ketcher import verification/);
 assert.match(ketcherPage, /await waitForKetcherCanvasUpdate\(\)/);
 assert.match(ketcherPage, /acceptImportRequests = true/);
@@ -4565,7 +4604,7 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v168"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v182"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v70"/);
 assert.match(
   browserDevDocuments,
@@ -7169,6 +7208,323 @@ const gridNativeMenuCommands = [
 assertSourceIncludesAll(appNativeMenuHook, gridNativeMenuCommands, "desktop native-menu dispatcher");
 assertSourceIncludesAll(gridViewer, gridNativeMenuCommands, "Grid native-menu dispatcher");
 assertSourceIncludesAll(agentGridViewer, gridNativeMenuCommands, "plugin Grid native-menu dispatcher");
+// Add Column commands are host-driven derived-column jobs: the menu dispatcher
+// starts them directly and never routes them through the grid iframe, and the
+// finished run reuses the descriptor re-read message the grid already handles.
+const derivedColumnMenuCommands = [
+  "collection.add-column.formula",
+  "collection.add-column.smiles",
+  "collection.add-column.inchi",
+  "collection.add-column.inchikey",
+  "collection.add-column.idcode",
+  // Transform rides the same dispatcher and the same delivery channel.
+  "collection.transform.largest-fragment",
+  // Add Reaction SMILES is a derived column too, not a second delivery path,
+  // and so are the four extractions.
+  "collection.reaction.add-smiles",
+  "collection.reaction.extract-reactants",
+  "collection.reaction.extract-catalysts",
+  "collection.reaction.extract-products",
+  "collection.reaction.extract-transformation",
+];
+assertSourceIncludesAll(appNativeMenuHook, derivedColumnMenuCommands, "desktop derived-column menu dispatcher");
+// Reactions: one reader for both spellings of a reaction, drawn with RDKit's
+// reaction renderer, and the grid tells the menu whether the collection has any.
+assertSourceIncludesAll(derivedColumnCompute, ["reaction-smiles", "ReactionSMILES"], "reaction derived column");
+for (const snippet of [
+  "export function looksLikeRxnBlock",
+  "export function looksLikeReactionSmiles",
+  "export function reactionSourceFromRow",
+  "export function reactionPartsFromRow",
+  "ocl.Reaction.fromRxn(source.text)",
+]) {
+  assert.ok(derivedColumnCompute.includes(snippet), `reaction compute is missing ${snippet}`);
+}
+// Browser dev reads .rxn/.rdf with the mirror of the Rust ingest.
+for (const snippet of [
+  "export function parseReactionCollectionRecords",
+  "trimmed.startsWith(\"$RFMT\")",
+  "trimmed.startsWith(\"$DTYPE \")",
+]) {
+  assert.ok(collectionDocumentsLib.includes(snippet), `reaction collection parser is missing ${snippet}`);
+}
+assert.match(browserDevDocuments, /parseReactionCollectionRecords\(text, extension\)/);
+for (const viewerSource of [gridViewer, agentGridViewer]) {
+  for (const snippet of [
+    "function rowReactionText(row)",
+    "function drawRdkitReaction(row, text, key)",
+    "state.rdkit.get_rxn(text)",
+    "hasReactions: gridHasReactionRows()",
+    "function parseReactionRecordPatch(text)",
+  ]) {
+    assert.ok(viewerSource.includes(snippet), `grid reaction rendering is missing ${snippet}`);
+  }
+}
+assert.match(gridNativeMenuStateHook, /left\.hasReactions === right\.hasReactions/);
+assert.match(nativeMenuTypes, /gridHasReactions: boolean;/);
+assert.match(appNativeMenuHook, /gridHasReactions: Boolean\(isGrid && gridMenuState\?\.hasReactions\)/);
+// A reaction goes to Ketcher as a reaction and comes back as one.
+assert.match(gridViewer, /inputExtension: 'rxn'/);
+assert.match(ketcherPage, /ketcher\.containsReaction\(\)/);
+assert.match(ketcherPage, /extension: "rdf",\s*text: rxnToRdf\(rxn, reactionSmiles\)/s);
+assert.match(ketcherPage, /function looksLikeReactionBlock/);
+// Perform Reaction runs a reaction over the collection's molecules: a dialog
+// names it, and the run rides the same derived-column channel. The engine is
+// RDKit's run_reactants, chosen on fixtures in tests/test-reaction-columns.mjs.
+assert.match(appNativeMenuHook, /case "collection\.reaction\.perform":/);
+assert.match(appNativeMenuHook, /actions\.openPerformReaction\(activeDocument\.id\)/);
+assert.match(componentTypes, /openPerformReaction: \(documentId: string\) => void;/);
+for (const snippet of [
+  "export function createReactionRunner",
+  "export function runReactionOnRow",
+  "engines.rdkit.get_rxn(trimmed)",
+  "runner.run_reactants(reactants, MAX_REACTION_PRODUCTS)",
+  "export function reactionTransformation",
+  "reaction.getReactionCenterMapNos()",
+]) {
+  assert.ok(derivedColumnCompute.includes(snippet), `reaction compute is missing ${snippet}`);
+}
+assert.match(derivedColumnsHook, /addReactionProductColumn/);
+assert.match(derivedColumnsHook, /runReactionOnRow\(engines, runner!, row, coReactants\)/);
+assert.match(derivedColumnsHook, /kind: "reaction-product"/);
+assert.match(performReactionDialog, /Reaction SMARTS/);
+assert.match(performReactionDialog, /onRun\(request\.documentId, label\.trim\(\), smarts\.trim\(\), parsedCoReactants\)/);
+assert.match(app, /onRun=\{addReactionProductColumn\}/);
+// Treat Logarithmically is the calculated-column dialog with the formula already
+// written, not a second definition of what a computed column is.
+assert.match(appNativeMenuHook, /case "collection\.transform\.logarithmic":/);
+// Merge Columns joins display text, so it reads the grid's text channel rather
+// than the numeric one that silently drops every name and identifier.
+assert.match(appNativeMenuHook, /actions\.openMergeColumns\(activeDocument\.id\)/);
+assert.match(derivedColumnsHook, /function requestGridColumnText/);
+assert.match(derivedColumnsHook, /type: "chemicalSpaceRequestColumnText"/);
+assert.match(derivedColumnsHook, /const mergeGridColumns = useCallback/);
+assert.match(gridViewer, /function postChemicalSpaceColumnText/);
+assert.match(appNativeMenuHook, /openCalculatedColumn\(activeDocument\.id, \{ formula: "log10\(\)", label: "log10" \}\)/);
+// Set Value Range mutates nothing: the limits are column metadata the grid
+// carries on its undo stack and applies wherever a value is read, so the dialog
+// needs the grid's own column catalog - the filter model is empty for a paged
+// collection on purpose.
+assert.match(appNativeMenuHook, /case "collection\.transform\.value-range":/);
+assert.match(appNativeMenuHook, /actions\.openSetValueRange\(activeDocument\.id\)/);
+assert.match(componentTypes, /openSetValueRange: \(documentId: string\) => void;/);
+assert.match(derivedColumnsHook, /export function requestGridColumns/);
+assert.match(derivedColumnsHook, /includeAllColumns: true/);
+assert.match(derivedColumnsHook, /type: "gridSetValueRange"/);
+assert.match(setValueRangeDialog, /onRun\(request\.documentId, \{ id: column\.id, label: column\.label \}, min\.trim\(\), max\.trim\(\)\)/);
+assert.match(app, /onRun=\{setGridColumnValueRange\}/);
+// Merge Equivalent Rows folds duplicates together instead of dropping them, so
+// it asks the same question Delete Duplicate Molecules asks - one InChI-Key
+// identity for both - and the grid joins the values it holds.
+assert.match(appNativeMenuHook, /case "collection\.merge-rows":/);
+assert.match(appNativeMenuHook, /actions\.mergeEquivalentGridRows\(activeDocument\.id\)/);
+assert.match(componentTypes, /mergeEquivalentGridRows: \(documentId: string\) => void;/);
+assert.match(derivedColumnsHook, /async function collectStructureIdentityGroups/);
+assert.match(derivedColumnsHook, /computeDerivedValue\("inchikey", engines, row\)\.valueText/);
+assert.match(derivedColumnsHook, /const mergeEquivalentGridRows = useCallback/);
+assert.match(derivedColumnsHook, /type: "gridMergeRows"/);
+for (const viewerSource of [gridViewer, agentGridViewer]) {
+  for (const snippet of [
+    "function mergeRowPropValues(rows, separator)",
+    "function planEquivalentRowMerge(rows, groups, separator)",
+    "async function mergeGridEquivalentRows(body, cfg)",
+    "pushUndoSnapshot('Merge Equivalent Rows')",
+    "body.type === 'gridMergeRows'",
+  ]) {
+    assert.ok(viewerSource.includes(snippet), `grid row merge is missing ${snippet}`);
+  }
+}
+// Split Multiple Value Rows is the one operation that adds rows. It rides the
+// virtual insert Duplicate Molecule already uses, the row that stays keeps its
+// id through a patch, and the whole split is one undo entry.
+assert.match(appNativeMenuHook, /case "collection\.transform\.split-rows":/);
+assert.match(appNativeMenuHook, /actions\.openSplitValueRows\(activeDocument\.id\)/);
+assert.match(componentTypes, /openSplitValueRows: \(documentId: string\) => void;/);
+assert.match(derivedColumnsHook, /type: "gridSplitRows"/);
+assert.match(splitValueRowsDialog, /onRun\(request\.documentId, \{ id: column\.id, label: column\.label \}, delimiter\)/);
+assert.match(app, /onRun=\{splitGridValueRows\}/);
+for (const viewerSource of [gridViewer, agentGridViewer]) {
+  for (const snippet of [
+    "function planMultipleValueRowSplit(rows, propKey, delimiter, firstNewIndex)",
+    "async function splitGridMultipleValueRows(body, cfg)",
+    "pushUndoSnapshot('Split Multiple Value Rows')",
+    "state.insertedRows.push(insert.row)",
+    "body.type === 'gridSplitRows'",
+  ]) {
+    assert.ok(viewerSource.includes(snippet), `grid row split is missing ${snippet}`);
+  }
+}
+for (const viewerSource of [gridViewer, agentGridViewer]) {
+  for (const snippet of [
+    "function setGridColumnValueRange(columnId, min, max)",
+    "function clampToValueRange(value, range)",
+    "function applyColumnValueRanges(row)",
+    "columnValueRanges: new Map(state.columnValueRanges)",
+    "body.type === 'gridSetValueRange'",
+    "options.includeAllColumns === true",
+  ]) {
+    assert.ok(viewerSource.includes(snippet), `grid value range is missing ${snippet}`);
+  }
+}
+// Delete Columns is a grid edit: the props survive in the source rows, so one
+// undo entry brings a deleted column back whole. A filter riding the deleted
+// column must go with it, or the page fetch stays silently constrained.
+for (const viewerSource of [gridViewer, agentGridViewer]) {
+  for (const snippet of [
+    "function deleteGridPropColumns(columnKeys)",
+    "function stripDeletedPropColumns(row)",
+    "body.type === 'gridDeleteColumns'",
+    "deletedPropColumns: new Set(state.deletedPropColumns)",
+    "delete state.tableColumnFilters[`prop:${key}`]",
+    "case 'analyze.cluster':",
+    "case 'analyze.diverse':",
+  ]) {
+    assert.ok(viewerSource.includes(snippet), `grid delete columns is missing ${snippet}`);
+  }
+}
+// Bins and Row Number ride the derived channel like every computed column.
+assert.match(derivedColumnsHook, /kind: "row-number"/);
+assert.match(derivedColumnsHook, /kind: "bins"/);
+assert.match(derivedColumnsHook, /Math\.floor\(value \/ binWidth\) \* binWidth/);
+assert.match(appNativeMenuHook, /case "collection\.add-column\.bins":/);
+assert.match(appNativeMenuHook, /case "collection\.add-column\.row-number":/);
+assert.match(appNativeMenuHook, /case "collection\.delete-columns":/);
+assert.match(appNativeMenuHook, /case "analyze\.cluster":/);
+assert.match(appNativeMenuHook, /case "analyze\.diverse":/);
+assert.match(app, /<BinsColumnDialog/);
+assert.match(app, /<DeleteColumnsDialog/);
+assert.match(app, /type: "gridDeleteColumns"/);
+assert.match(appNativeMenuHook, /actions\.addDerivedGridColumn\(activeDocument\.id, kind\)/);
+assert.match(derivedColumnsHook, /type: "gridDescriptorFinished"/);
+assert.match(derivedColumnsHook, /fetchDerivedSourceRows\(documentId, afterSourceIndex, DERIVED_SOURCE_BATCH\)/);
+assert.match(derivedColumnsHook, /storeDerivedValues\(documentId, \{/);
+assert.match(dockPanel, /DerivedColumnJobList jobs=\{state\.derivedColumnJobs\}/);
+assert.match(dockPanel, /actions\.clearDerivedColumnJobs\(\)/);
+// Calculate Properties: the menu command opens the dialog, the dialog feeds the
+// multi-column property run, and the Mordred pass stays the optional extra.
+assert.match(appNativeMenuHook, /actions\.openCalculateProperties\(activeDocument\.id\)/);
+assert.match(derivedColumnsHook, /addPropertyGridColumns/);
+assert.match(derivedColumnsHook, /computeRowProperties\(engines, row, properties, options\)/);
+assert.match(calculatePropertiesDialog, /PROPERTY_GROUPS\.map/);
+// Value tiles read each number against its column's distribution, which comes
+// from the filter model the inspector already holds - no second data path.
+assert.match(gridHoverMolecule, /describePropValue\(entry\.value, columnsByLabel\.get/);
+// Hover is one shared signal: the grid publishes the row it is pointing at to
+// both the preview card and the chemical-space map, and a point hovered on the
+// map lights the row back here. Number(null) is 0, so clearing must not be
+// read as row 0.
+assert.match(gridViewer, /postChemicalSpaceHover\(index\)/);
+assert.match(gridViewer, /postChemicalSpaceHover\(null\)/);
+assert.match(gridViewer, /applyExternalHoverHighlight\(normalizedIndex\)/);
+// Deleting rows is virtual: hiddenRows is applied to every page and to the
+// saved file, so one bulk hide covers a paged collection too. Deduplication
+// runs on the host, where the whole collection is reachable one page at a time.
+assert.match(gridViewer, /function hideGridRowIndexes\(indexes, label\)/);
+assert.match(gridViewer, /body\.type === 'gridHideRows'/);
+assert.match(derivedColumnsHook, /deleteDuplicateGridRows/);
+// Analyze surfaces the chemical-space panel that already existed and adds the
+// correlation matrix, which borrows the grid's column-value channel.
+assert.match(appNativeMenuHook, /actions\.openDockTab\("bottom", "chemical-space"\)/);
+assert.match(appNativeMenuHook, /actions\.openCorrelationMatrix\(activeDocument\.id\)/);
+assert.match(correlationDialog, /chemicalSpaceRequestColumnValues/);
+assert.match(correlationDialog, /correlationMatrix\(columns\)/);
+// SAR tools: four Analyze commands, each one reaching the grid through the
+// derived-column channel rather than a delivery path of its own.
+const sarMenuCommands = [
+  "analyze.scaffolds",
+  "analyze.rgroups",
+  "analyze.substructure-count",
+  "analyze.find-similar",
+];
+assertSourceIncludesAll(appNativeMenuHook, sarMenuCommands, "desktop SAR menu dispatcher");
+for (const run of [
+  "addScaffoldGridColumns",
+  "addSubstructureCountColumn",
+  "addSimilarityToFileColumns",
+  "decomposeGridRGroups",
+]) {
+  assert.match(derivedColumnsHook, new RegExp(`const ${run} = useCallback`), `${run} is a derived-column run`);
+}
+assert.match(appNativeMenuHook, /actions\.addScaffoldGridColumns\(activeDocument\.id\)/);
+assert.match(appNativeMenuHook, /actions\.openSubstructureCount\(activeDocument\.id\)/);
+assert.match(appNativeMenuHook, /await actions\.findSimilarInFile\(activeDocument\.id\)/);
+assert.match(appNativeMenuHook, /actions\.openRGroupDecomposition\(activeDocument\.id\)/);
+// Analyse Scaffolds writes the scaffold and how many molecules share it.
+assert.match(derivedColumnsHook, /computeDerivedValue\("murcko-scaffold", engines, row\)/);
+assert.match(derivedColumnsHook, /SCAFFOLD_COUNT_COLUMN\.columnId/);
+// Substructure Count compiles the query once for the whole run.
+assert.match(derivedColumnsHook, /compileSubstructureQuery\(engines\.ocl, smarts\)/);
+assert.match(derivedColumnsHook, /countSubstructureMatches\(engines, searcher, row\)/);
+assert.match(substructureCountDialog, /validateQuery\(query\)/);
+// Find Similar In File fingerprints the picked file with the same Morgan the
+// GPU similarity path uses, and answers with the match and its name.
+assert.match(derivedColumnsHook, /parseReferenceStructures\(text, extension\)/);
+assert.match(derivedColumnsHook, /morganFingerprint\(engines\.rdkit,/);
+assert.match(derivedColumnsHook, /closestReferenceMatch\(engines, row, reference\)/);
+// R-groups leave the webview for the managed Python runtime; the menu asks
+// whether that runtime exists before the item can be clicked.
+assert.match(derivedColumnsHook, /decomposeRGroupsInRuntime\(core, rows\)/);
+assert.match(derivedColumnsHook, /rgroupRuntimeStatus\(\)/);
+assert.match(appNativeMenuHook, /rgroupRuntimeAvailable: state\.rgroupRuntimeAvailable/);
+assert.match(nativeMenuTypes, /rgroupRuntimeAvailable: boolean/);
+assert.match(rgroupDialog, /most common scaffold/);
+assert.match(derivedColumnsHook, /computeDerivedValue\("inchikey", engines, row\)\.valueText/);
+assert.match(appNativeMenuHook, /actions\.deleteDuplicateGridRows\(activeDocument\.id\)/);
+assert.match(gridViewer, /raw === null \|\| raw === undefined \|\| raw === '' \? Number\.NaN : Number\(raw\)/);
+assert.match(gridHoverMolecule, /filterModel\?\.columns/);
+assert.match(structureInfoPanel, /<GridHoverMoleculeCard row=\{hoveredGridRow \?\? null\} filterModel=\{gridFilterModel\} documentId=\{document\.id\} \/>/);
+// The scaffold is not a card of its own: it takes over the corner preview, so
+// the inspector must not grow a second structure surface for it.
+assert.doesNotMatch(structureInfoPanel, /GridSelectionScaffoldCard/);
+assert.match(gridHoverMolecule, /const scaffold = useSelectionScaffold\(documentId\);/);
+// The well is measured on mount as well as observed: a ResizeObserver's first
+// callback needs a rendered frame, and a card that mounts while the window is
+// occluded would otherwise never learn its size.
+assert.match(gridHoverMolecule, /const initial = node\.getBoundingClientRect\(\);/);
+// RDKit draws carbon in black, so the dark theme needs its own palette or the
+// skeleton vanishes and only the heteroatom labels survive. The theme is part
+// of the drawing cache key, or a theme switch would serve the old ink.
+assert.match(gridHoverMolecule, /const DARK_STRUCTURE_PALETTE = \{/);
+assert.match(gridHoverMolecule, /"6": \[0\.87, 0\.87, 0\.87\]/);
+assert.match(gridHoverMolecule, /atomColourPalette: palette/);
+assert.match(gridHoverMolecule, /const sizedKey = `\$\{theme\} /);
+assert.match(gridHoverMolecule, /attributeFilter: \["data-effective-theme"\]/);
+assert.match(gridHoverMolecule, /const showingScaffold = scaffold\.kind !== "idle" && !scaffoldDismissed;/);
+assert.match(gridHoverMolecule, /if \(row\) setScaffoldDismissed\(true\);/);
+// The drawing is a control: it opens the row in Ketcher, and the grid runs the
+// same command the Structure menu sends, aimed at a named row.
+assert.match(gridHoverMolecule, /postGridCommand\(documentId, "structure\.edit-in-ketcher", shown\.index\)/);
+assert.match(gridHoverMolecule, /onContextMenu=\{showDrawingMenu\}/);
+assert.match(gridViewer, /function commandTargetRow\(body\)/);
+assert.match(gridViewer, /const targetRow = commandTargetRow\(body\);/);
+assert.match(styles, /\.grid-hover-molecule-prop\[data-tone\^="outlier"\] \{/);
+assert.match(calculatePropertiesDialog, /Use largest fragment/);
+assert.match(calculatePropertiesDialog, /Mordred/);
+// The Mordred group is the only one that leaves the webview, so it carries the
+// runtime affordance: present or not, an install that reports its current step,
+// and a cancel. Same status/install/cancel shape as the model runtime, so the
+// long-running install is never the body of the command the dialog awaits.
+assert.match(calculatePropertiesDialog, /<legend>Extended \(Mordred\)<\/legend>/);
+assert.match(calculatePropertiesDialog, /function DescriptorRuntimeInstall\(\{ open \}/);
+assert.match(calculatePropertiesDialog, /void descriptorRuntimeStatus\(\)/);
+assert.match(calculatePropertiesDialog, /if \(next\.installPhase === "installing"\) setInstalling\(true\);/);
+assert.match(calculatePropertiesDialog, /next\.installPhase === "cancelled"/);
+assert.match(calculatePropertiesDialog, /next\.installPhase === "failed"/);
+assert.match(calculatePropertiesDialog, /void installDescriptorRuntime\(\)\.catch/);
+assert.match(calculatePropertiesDialog, /void cancelDescriptorRuntimeInstall\(\)/);
+assert.match(calculatePropertiesDialog, /Install runtime \(\{status\.installSizeHint\}\)/);
+assert.match(calculatePropertiesDialog, /\{status\.installLine\}/);
+assert.match(calculatePropertiesDialog, /\{installError\}/);
+assert.match(styles, /\.calculate-properties-runtime \{/);
+assert.match(browserDevDescriptors, /endpoint === "cancel-install"/);
+assert.match(viteConfig, /browserDevDescriptorInstallState\.installPhase = "installing";/);
+assert.match(viteConfig, /browserDevDescriptorInstallChild\?\.kill\(\);/);
+// The corner activity spinner surfaces any running background computation in
+// the chrome and routes clicks to the Jobs tab of the bottom dock.
+assert.match(activityIndicator, /GRID_DESCRIPTOR_JOB_EVENT/);
+assert.match(activityIndicator, /openDockTab\("bottom", "jobs"\)/);
+assert.match(appLayout, /<ActivityIndicator state=\{layoutState\} actions=\{actions\} \/>/);
+assert.match(styles, /\.activity-indicator-spinner \{/);
 assert.match(gridNativeMenuStateHook, /activeDocument\?\.renderer === "grid2d"/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "gridMenuStateChanged"/);
 assert.match(appGridControlMessagesHook, /updateGridMenuState\(documentId/);
@@ -7188,11 +7544,17 @@ assert.match(gridViewer, /saveEnabled: caps\.export && collectionIndexReady\(\)/
 assert.match(gridViewer, /exportEnabled: caps\.export/);
 assert.match(gridViewer, /if \(!requireCollectionIndexReady\('saving'\)\) return/);
 assert.match(gridViewer, /selectionEnabled: caps\.selection/);
-assert.match(gridViewer, /canOpenSelectedInMolstar: caps\.rendererSwitch/);
+// Selection-open predicates: opening the selection builds a new document with
+// a SMILES fallback, so it must not require the source-format rendererSwitch.
+assert.match(gridViewer, /canOpenSelectedInMolstar: \(caps\.molstarOpen \|\| caps\.rendererSwitch\)/);
+assert.match(gridViewer, /molstarOpen: molecularGrid && cfg\.appViewer === true/);
+assert.match(gridViewer, /ketcherOpen: editing && cfg\.appViewer === true && molecularGrid/);
+assert.match(gridViewer, /assertWasmBytes/);
+assert.match(gridViewer, /RDKIT_INIT_TIMEOUT_MS/);
 assert.match(gridViewer, /const NATIVE_MOLSTAR_SELECTION_LIMIT = 100/);
 assert.match(gridViewer, /const NATIVE_KETCHER_SELECTION_LIMIT = 25/);
 assert.match(gridViewer, /const NATIVE_GENERATE_3D_SELECTION_LIMIT = 20/);
-assert.match(gridViewer, /if \(!caps\.rendererSwitch \|\| selectedStructureCount < 1/);
+assert.match(gridViewer, /if \(\(!caps\.molstarOpen && !caps\.rendererSwitch\) \|\| selectedStructureCount < 1/);
 assert.match(gridViewer, /if \(rows\.length === 1\) requestOpenInKetcher\(rows\[0\], cfgValue\)/);
 assert.match(gridViewer, /Save the collection before calculating descriptors for all molecules/);
 assert.match(gridViewer, /canRedo: redoEntry !== null/);
@@ -7445,7 +7807,11 @@ assert.match(gridViewer, /function saveGridAs\(cfg\)/);
 assert.match(gridViewer, /post\('saveGrid'/);
 assert.match(gridViewer, /post\('saveGridAs'/);
 assert.match(gridViewer, /function collectCurrentCollectionRows\(cfg\)/);
-assert.match(gridViewer, /const rows = await collectAllRemoteRows\(cfg, '', 'index'\)/);
+// Saving materializes the collection, so the walk must ask for the collection
+// scope: the default carries the active filters and would save only the view.
+assert.match(gridViewer, /const rows = await collectAllRemoteRows\(cfg, '', 'index', 'the collection', 'collection'\)/);
+assert.match(gridViewer, /'the row split', 'collection'\)/);
+assert.match(gridViewer, /'the row merge', 'collection'\)/);
 assert.match(gridViewer, /function gridSaveAsSnapshot\(rows, cfg\)/);
 assert.match(gridViewer, /function serializeSdfRows\(rows\)/);
 assert.match(gridViewer, /function serializeDelimitedRows\(rows, separator\)/);
@@ -8037,13 +8403,20 @@ assert.match(gridViewer, /onRendererSwitch\(value\) \{ requestRendererSwitch\(va
 assert.match(gridViewer, /post\('setRenderer', `\[grid\] Switch renderer to \$\{value\}\.`, \{\s*value,\s*documentId: cfg\?\.documentId \|\| null\s*\}\)/);
 assert.match(gridViewer, /async function scanRemoteBySMARTS\(cfg, token\)/);
 assert.match(gridViewer, /function shouldCollectAllRemoteRows\(\)/);
-assert.match(gridViewer, /async function collectAllRemoteRows\(cfg, query = state\.query \|\| '', sort = state\.sort \|\| 'index'\)/);
+assert.match(gridViewer, /async function collectAllRemoteRows\(cfg, query = state\.query \|\| '', sort = state\.sort \|\| 'index', purpose = 'export', scope = 'view'\)/);
 assert.match(gridViewer, /state\.remoteMode && state\.selected\.size === 0 && !state\.smarts\.trim\(\)/);
 assert.match(gridViewer, /if \(kind === 'error' && status && !window\.BuretteDebug && cfg\.appViewer === true\) status\.classList\.add\('hidden'\);/);
 assert.doesNotMatch(gridViewer, /post\('error', message\);/);
 assert.match(gridViewer, /function pumpRdkitCardQueue\(\) \{\s*if \(state\.rdkitCardRendering \|\| !state\.rdkitCardQueue\.length\) return;\s*if \(!state\.rdkit && !state\.rdkitError\) return;/);
-assert.match(gridViewer, /await initRDKit\(\);\s*state\.rdkitError = '';\s*pumpRdkitCardQueue\(\);/);
-assert.match(gridViewer, /catch \(rdkitError\) \{\s*state\.rdkitError = rdkitError\?\.message \|\| String\(rdkitError\);\s*pumpRdkitCardQueue\(\);/);
+assert.match(gridViewer, /await initRDKit\(\);\s*pumpRdkitCardQueue\(\);/);
+// initRDKitOnce writes "Loading RDKit.js...", so initRDKit has to write the end
+// of that load for both outcomes. Callers that swallow the rejection (Molstar
+// hand-off, chemical-space hover) re-enter a fresh attempt, and when the status
+// was theirs to write the retry left the grid reading "Loading RDKit.js..."
+// over an error it had already reported.
+assert.match(gridViewer, /state\.rdkit = await state\.rdkitInitPromise;\s*state\.rdkitError = '';\s*setStatus\('\[grid\] RDKit\.js is ready\.'\);/);
+assert.match(gridViewer, /\} catch \(error\) \{\s*state\.rdkitError = error\?\.message \|\| String\(error\);\s*setStatus\(`RDKit renderer unavailable: \$\{state\.rdkitError\}`, 'error'\);\s*throw error;/);
+assert.doesNotMatch(gridViewer, /catch \(rdkitError\) \{/);
 assert.match(structureDrag, /export const STRUCTURE_DRAG_MIME = "application\/x-burette-structure-paths"/);
 assert.match(structureDrag, /export function writeStructureDrag/);
 assert.match(structureDrag, /export function writeStructureDragRecords/);
@@ -8315,5 +8688,40 @@ assert.match(
 assert.match(appLayout, /const VIEWPORT_WIDTH_STEP = 16;/u);
 assert.match(appLayout, /function quantisedViewportWidth\(\)/u);
 assert.doesNotMatch(appLayout, /\}, \[activeGridId, viewportWidth, rightDockOpen\]\);/u);
+
+
+// Database menu. Every provider is reached from Rust: the webview CSP blocks
+// external requests and the grid iframe has no network, so a search that reaches
+// the network from the shell would be a hole rather than a feature.
+assertSourceIncludesAll(appNativeMenuHook, [
+  'database.search-chembl',
+  'database.chembl-actives',
+  'database.search-cod',
+  'database.retrieve-wikipedia',
+  'database.search-building-blocks',
+  'database.search-chemspace',
+  'database.search-google-patents',
+  'database.retrieve-url',
+  'database.retrieve-sql',
+], 'desktop native-menu dispatcher');
+assert.match(appNativeMenuHook, /case "database\.search-chembl": actions\.openDatabaseQuery\("chembl"\)/);
+assert.match(appNativeMenuHook, /case "database\.chembl-actives": actions\.openDatabaseQuery\("chembl-actives"\)/);
+assert.match(databaseLib, /invoke<DatabaseSearchResult>\("database_search"/);
+assert.doesNotMatch(databaseLib, /fetch\(|XMLHttpRequest|https?:\/\//);
+assert.doesNotMatch(appDatabaseHook, /fetch\(|XMLHttpRequest/);
+// Actives fold into the collection on screen through the existing append path.
+assert.match(appDatabaseHook, /descriptor\.delivery === "records"/);
+assert.match(appDatabaseHook, /appendGridRecords\(appendTarget\.id/);
+assert.match(appDatabaseHook, /if \(!isTauriRuntime\(\)\)/);
+assert.match(appDatabaseHook, /const MAX_DATABASE_JOBS = 20;/);
+// The Jobs panel owns database runs alongside the conformer and xTB histories.
+// Every job kind counts toward the Clear button being live, including the
+// derived-column runs this branch already had.
+assert.match(dockPanel, /state\.conformerJobs\.length \+ state\.xtbJobs\.length \+ state\.derivedColumnJobs\.length \+ state\.databaseJobs\.length/);
+assert.match(dockPanel, /<DatabaseJobList jobs=\{state\.databaseJobs\} actions=\{actions\} \/>/);
+assert.match(dockPanel, /actions\.clearDatabaseJobs\(\)/);
+assert.match(databaseQueryDialog, /descriptor\.needsStructure/);
+assert.match(databaseQueryDialog, /Query structure \(SMILES\)/);
+assert.match(app, /<DatabaseQueryDialog query=\{databaseQuery\}/);
 
 console.log('ui shell contract tests passed');

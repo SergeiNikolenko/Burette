@@ -29,7 +29,7 @@ import type { DockTabKind } from "../lib/dock";
 import type { GridNativeMenuState } from "../lib/native-menu";
 import type { StructureStory } from "../lib/structure-story";
 import type { PendingMolstarReplaceResolver } from "./use-app-generate-3d-conformer";
-import type { DockingSceneMode, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
+import type { DockingSceneMode, HoveredGridRow, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
 type RefValue<T> = { current: T };
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
@@ -96,6 +96,7 @@ type UseAppViewerBridgeControllerOptions = {
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   addDocuments: (documents: ViewerDocument[]) => void;
   calculateGridDescriptors: (documentId: string, options?: { rowIndexes?: number[] }) => void;
+  deleteDuplicateGridRows: (documentId: string) => void;
   updateGridFilterModel: (documentId: string, model: GridFilterModel, source: MessageEventSource | null) => void;
   closeGridRuntime: (documentId: string | null | undefined) => void;
   documents: ViewerDocument[];
@@ -130,6 +131,7 @@ type UseAppViewerBridgeControllerOptions = {
   toggleSidebar: () => void;
   updateDirtyGridDocument: (documentId: string | null | undefined, dirty: boolean) => void;
   updateGridMenuState: (documentId: string, state: GridNativeMenuState) => void;
+  updateHoveredGridRow: (documentId: string, row: HoveredGridRow | null) => void;
   writeGridPerfMetric: (metric: unknown) => void | Promise<void>;
   xyzrenderOrientationRefRef: RefValue<string | null>;
 };
@@ -140,6 +142,7 @@ export function useAppViewerBridgeController({
   addBackgroundDocuments,
   addDocuments,
   calculateGridDescriptors,
+  deleteDuplicateGridRows,
   closeGridRuntime,
   documents,
   forgetDirtyGridDocument,
@@ -173,6 +176,7 @@ export function useAppViewerBridgeController({
   toggleSidebar,
   updateDirtyGridDocument,
   updateGridMenuState,
+  updateHoveredGridRow,
   writeGridPerfMetric,
   xyzrenderOrientationRefRef,
 }: UseAppViewerBridgeControllerOptions) {
@@ -192,6 +196,7 @@ export function useAppViewerBridgeController({
     activeDocument,
     updateGridFilterModel,
     calculateGridDescriptors,
+    deleteDuplicateGridRows,
     documents,
     openKetcherWithFragment,
     openKetcherWithStructures,
@@ -199,6 +204,7 @@ export function useAppViewerBridgeController({
     pushStatus,
     updateDirtyGridDocument,
     updateGridMenuState,
+    updateHoveredGridRow,
     writeClipboardText,
     writeGridPerfMetric,
   });

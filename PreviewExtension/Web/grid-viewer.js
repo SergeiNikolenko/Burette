@@ -37,6 +37,10 @@
   const MAX_CARD_MIN = 360;
   const DEFAULT_CARD_MIN = 174;
   const RDKIT_SVG_SIZE = 260;
+  // A reaction is drawn as a row of structures around an arrow, so it needs a
+  // landscape box rather than the square one a single molecule gets.
+  const RDKIT_REACTION_SVG_WIDTH = 560;
+  const RDKIT_REACTION_SVG_HEIGHT = 200;
   const SVG_FIT_MIN_PADDING = 12;
   const SVG_FIT_PADDING_FRACTION = 0.08;
   const XYZRENDER_CARD_CONCURRENCY = 4;
@@ -64,6 +68,8 @@
   const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   const state = {
     rdkit: null,
+    externalHoverIndex: null,
+    rdkitInitPromise: null,
     rdkitError: '',
     all: Array.isArray(window.BuretteGridRecords) ? window.BuretteGridRecords : [],
     rows: [],
@@ -95,6 +101,7 @@
     tableHiddenColumns: storedStringSet(TABLE_HIDDEN_COLUMNS_STORAGE_KEY),
     tableColumnFilters: {},
     tableColumnCatalogCache: null,
+    reactionRowsCache: null,
     tableColumnPanelOutsideController: null,
     tableScrollLeft: 0,
     tableColumnScrollFrame: 0,
@@ -106,6 +113,7 @@
     rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     hiddenRows: new Set(),
+    deletedPropColumns: new Set(),
     selected: new Set(),
     chemicalSpaceFilterActive: false,
     lastChemicalSpaceVisibility: null,
@@ -144,6 +152,10 @@
     redoStack: [],
     rowPatches: new Map(),
     insertedRows: [],
+    // Set Value Range is column metadata rather than a rewrite: the limits ride
+    // the undo stack with every other edit and are applied wherever a value is
+    // read, so one entry restores the whole column.
+    columnValueRanges: new Map(),
     indexPollTimer: null,
     requestSeq: 0,
     token: 0,
@@ -264,6 +276,90 @@
     }, 0);
   }
 
+  // DataWarrior-style detail preview: hovering a card or table row tells the
+  // host which molecule is under the pointer, and the Info panel draws it at
+  // full size. Only rows with structures post; leaving the grid clears it.
+  // Column values ride along so the preview card can show the row's data the
+  // way DataWarrior's detail view does: source columns first, then computed
+  // ones, capped so a wide table cannot flood the message.
+  function hoverRowProps(row) {
+    const entries = [];
+    const push = (label, value) => {
+      if (entries.length >= 24) return;
+      const text = String(value ?? '').trim();
+      if (!text) return;
+      entries.push({ label: String(label).slice(0, 48), value: text.slice(0, 96) });
+    };
+    const props = row?.props && typeof row.props === 'object' ? row.props : {};
+    for (const [label, value] of Object.entries(props)) push(label, value);
+    const descriptors = row?.descriptors && typeof row.descriptors === 'object' ? row.descriptors : {};
+    for (const [id, cell] of Object.entries(descriptors)) {
+      const value = cell?.value;
+      if (value == null || value === '') continue;
+      const text = typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(3) : value;
+      push(cell?.label || id, text);
+    }
+    return entries;
+  }
+
+  function gridRowByIndex(index) {
+    const pool = state.remoteMode ? state.rows : state.all;
+    return pool.find(candidate => Number(candidate?.index) === index) || null;
+  }
+
+  // One hovered row, published to the host so both the preview card and the
+  // chemical-space map follow the same molecule.
+  function postGridRowHover(index, cfg) {
+    const row = Number.isSafeInteger(index) && index >= 0 ? gridRowByIndex(index) : null;
+    post('gridRowHover', '', {
+      documentId: cfg?.documentId || null,
+      row: row && rowHasMolecule(row)
+        ? {
+            index,
+            name: String(row.name || ''),
+            smiles: String(row.smiles || ''),
+            molblock: String(row.molblock || ''),
+            props: hoverRowProps(row)
+          }
+        : null
+    });
+  }
+
+  // Marks the row the chemical-space map is pointing at, so a point under the
+  // cursor there reads back here without stealing the selection.
+  function applyExternalHoverHighlight(index) {
+    if (state.externalHoverIndex === index) return;
+    state.externalHoverIndex = index;
+    document.querySelectorAll('.buret-card[data-index], .buret-grid-table-row[data-index]').forEach(node => {
+      node.classList.toggle('external-hover', Number(node.getAttribute('data-index')) === index);
+    });
+  }
+
+  function installRowHoverPreview(cfg) {
+    const root = document.getElementById('app');
+    if (!root || root.dataset.hoverPreviewBound === '1') return;
+    root.dataset.hoverPreviewBound = '1';
+    let lastHoverIndex = null;
+    root.addEventListener('pointerover', (event) => {
+      const target = event.target?.closest?.(
+        '.buret-card[data-index], .buret-grid-table-row[data-index], .buret-grid-rail-tick[data-buret-grid-rail-index]'
+      );
+      if (!target) return;
+      const index = Number(target.getAttribute('data-index') ?? target.getAttribute('data-buret-grid-rail-index'));
+      if (!Number.isSafeInteger(index) || index < 0 || index === lastHoverIndex) return;
+      const row = gridRowByIndex(index);
+      if (!row || !rowHasMolecule(row)) return;
+      lastHoverIndex = index;
+      postGridRowHover(index, cfg);
+      postChemicalSpaceHover(index);
+    });
+    root.addEventListener('pointerleave', () => {
+      lastHoverIndex = null;
+      postGridRowHover(null, cfg);
+      postChemicalSpaceHover(null);
+    });
+  }
+
   function installGridTextFocusListeners() {
     if (state.textFocusListenersInstalled) {
       syncGridTextEditingState();
@@ -370,7 +466,12 @@
       selection: !!caps.selection,
       export: !!caps.export,
       substructureSearch: molecularGrid && !!caps.substructureSearch,
-      ketcherOpen: editing && cfg.appViewer === true && !!caps.rendererSwitch,
+      // Opening the SELECTION in Ketcher or Molstar builds a fresh document
+      // from the rows (with a SMILES -> molblock fallback), so it only needs
+      // structures - unlike rendererSwitch, which re-renders the source file
+      // and stays gated on formats that support it (sdf/sd).
+      ketcherOpen: editing && cfg.appViewer === true && molecularGrid,
+      molstarOpen: molecularGrid && cfg.appViewer === true,
       rendererSwitch: molecularGrid && (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch,
       cluster: molecularGrid && cfg.appViewer === true && cfg.gridDataMode === 'bridge'
     };
@@ -505,7 +606,7 @@
         return;
       }
       if (body.type === 'chemicalSpaceRequestColumns') {
-        postChemicalSpaceColumns(body.requestId);
+        postChemicalSpaceColumns(body.requestId, { includeAllColumns: body.includeAllColumns === true });
         return;
       }
       if (body.type === 'chemicalSpaceRequestIndexState') {
@@ -516,9 +617,18 @@
         postChemicalSpaceColumnValues(body.requestId, body.columnId);
         return;
       }
+      if (body.type === 'chemicalSpaceRequestColumnText') {
+        postChemicalSpaceColumnText(body.requestId, body.columnId);
+        return;
+      }
       if (body.type === 'chemicalSpaceHoverChanged') {
-        const index = Number(body.sourceRecordId);
+        // Number(null) is 0, so leaving the map used to read as "hover row 0"
+        // and pinned the first molecule instead of clearing.
+        const raw = body.sourceRecordId;
+        const index = raw === null || raw === undefined || raw === '' ? Number.NaN : Number(raw);
         const normalizedIndex = Number.isSafeInteger(index) && index >= 0 ? index : null;
+        applyExternalHoverHighlight(normalizedIndex);
+        postGridRowHover(normalizedIndex, config());
         if (normalizedIndex === null) {
           state.chemicalSpaceHoverToken += 1;
           post('chemicalSpaceMoleculePreview', '', { sourceRecordId: null });
@@ -531,6 +641,7 @@
         if (!capabilities(config()).editing) return;
         const recordsAppended = Math.max(0, Number(body.recordsAppended || 0));
         state.hiddenRows.clear();
+        state.deletedPropColumns.clear();
         state.selected.clear();
         state.chemicalSpaceFilterActive = false;
         state.undoStack = [];
@@ -550,6 +661,44 @@
       }
       if (body.type === 'gridAppendRecords') {
         void appendGridRecordsFromHost(body, config());
+        return;
+      }
+      if (body.type === 'gridHideRows') {
+        const removed = hideGridRowIndexes(
+          Array.isArray(body.rowIndexes) ? body.rowIndexes : [],
+          String(body.label || 'Delete Molecules')
+        );
+        refresh(config());
+        setStatus(removed
+          ? `[grid] Removed ${removed.toLocaleString()} molecule${removed === 1 ? '' : 's'}.`
+          : '[grid] Nothing to remove.');
+        return;
+      }
+      if (body.type === 'gridSetValueRange') {
+        const columnId = String(body.columnId || '');
+        const range = setGridColumnValueRange(columnId, body.min, body.max);
+        if (range === false) return;
+        refresh(config());
+        const label = String(body.columnLabel || columnId);
+        setStatus(range
+          ? `[grid] ${label} is limited to ${formatValueRangeBound(range.min, 'no lower limit')} … ${formatValueRangeBound(range.max, 'no upper limit')}.`
+          : `[grid] ${label} has no value range any more.`);
+        return;
+      }
+      if (body.type === 'gridMergeRows') {
+        void mergeGridEquivalentRows(body, config());
+        return;
+      }
+      if (body.type === 'gridDeleteColumns') {
+        const removed = deleteGridPropColumns(Array.isArray(body.columnKeys) ? body.columnKeys : []);
+        refresh(config());
+        setStatus(removed
+          ? `[grid] Removed ${removed.toLocaleString()} column${removed === 1 ? '' : 's'}.`
+          : '[grid] Nothing to remove.');
+        return;
+      }
+      if (body.type === 'gridSplitRows') {
+        void splitGridMultipleValueRows(body, config());
         return;
       }
       if (body.type === 'gridDescriptorControls') {
@@ -788,6 +937,17 @@
     });
   }
 
+  // The molecule preview card acts on the row under the pointer, not on the
+  // selection, so a command may name the row it means. Everything else about
+  // the command - capability gate, record extraction, status text - stays the
+  // same as when the menu drives it.
+  function commandTargetRow(body) {
+    const index = Number(body?.rowIndex);
+    if (!Number.isSafeInteger(index) || index < 0) return null;
+    const row = gridRowByIndex(index);
+    return row && rowHasMolecule(row) ? row : null;
+  }
+
   function executeGridMenuCommand(body, cfg = null) {
     const cfgValue = cfg || safeConfig();
     if (!cfgValue) return;
@@ -836,6 +996,31 @@
         if (!caps.selection) return;
         clearSelection(cfgValue);
         return;
+      case 'collection.delete-rows.selected': {
+        if (!caps.editing || !caps.selection) return;
+        const removed = hideGridRowIndexes([...state.selected], 'Delete Selected Molecules');
+        refresh(cfgValue);
+        setStatus(removed
+          ? `[grid] Removed ${removed.toLocaleString()} selected molecule${removed === 1 ? '' : 's'}.`
+          : '[grid] Nothing selected to remove.', removed ? undefined : 'error');
+        return;
+      }
+      case 'collection.delete-rows.duplicates':
+        if (!caps.editing) return;
+        post('gridFindDuplicates', '[grid] Find duplicate molecules.', {
+          documentId: cfgValue.documentId || null
+        });
+        setStatus('[grid] Looking for duplicate molecules.');
+        return;
+      case 'analyze.cluster':
+        // The toolbar's Cluster button: selection first, filtered set otherwise.
+        if (!capabilities(cfgValue).cluster) return;
+        requestClustering(cfgValue);
+        return;
+      case 'analyze.diverse':
+        if (!capabilities(cfgValue).cluster) return;
+        requestClusterRepresentativeExport(cfgValue);
+        return;
       case 'collection.calculate-descriptors':
         if (state.dirty) {
           setStatus('[grid] Save the collection before calculating descriptors for all molecules.', 'error');
@@ -862,11 +1047,17 @@
         setCardRenderer('xyzrender', cfgValue);
         return;
       case 'structure.open-in-molstar':
-        if (!caps.rendererSwitch || selectedStructureCount < 1 || selectedStructureCount > NATIVE_MOLSTAR_SELECTION_LIMIT) return;
+        if ((!caps.molstarOpen && !caps.rendererSwitch) || selectedStructureCount < 1 || selectedStructureCount > NATIVE_MOLSTAR_SELECTION_LIMIT) return;
         requestRendererSwitch('molstar', cfgValue);
         return;
       case 'structure.edit-in-ketcher': {
-        if (!caps.ketcherOpen || selectedStructureCount < 1 || selectedStructureCount > NATIVE_KETCHER_SELECTION_LIMIT) return;
+        if (!caps.ketcherOpen) return;
+        const targetRow = commandTargetRow(body);
+        if (targetRow) {
+          requestOpenInKetcher(targetRow, cfgValue);
+          return;
+        }
+        if (selectedStructureCount < 1 || selectedStructureCount > NATIVE_KETCHER_SELECTION_LIMIT) return;
         const rows = selectedMolstarRows();
         if (rows.length === 1) requestOpenInKetcher(rows[0], cfgValue);
         else requestSelectedKetcherDocument(cfgValue);
@@ -917,10 +1108,12 @@
       showProperties: state.showProperties,
       cardRenderer: state.cardRenderer,
       hasMolecules: effectiveMolecularGrid(cfg),
+      // The Reaction menu is only live for collections that hold reactions.
+      hasReactions: gridHasReactionRows(),
       saveEnabled: caps.export && collectionIndexReady(),
       exportEnabled: caps.export,
       selectionEnabled: caps.selection,
-      canOpenSelectedInMolstar: caps.rendererSwitch && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_MOLSTAR_SELECTION_LIMIT,
+      canOpenSelectedInMolstar: (caps.molstarOpen || caps.rendererSwitch) && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_MOLSTAR_SELECTION_LIMIT,
       canOpenSelectedInKetcher: caps.ketcherOpen && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_KETCHER_SELECTION_LIMIT,
       canGenerate3dForSelection: caps.selection && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_GENERATE_3D_SELECTION_LIMIT,
       supportsXyzrender: supportsXyzrenderCards(cfg),
@@ -1043,8 +1236,39 @@
     }
   }
 
+  // Emscripten's factory promise never settles when init aborts (for example
+  // after being fed non-wasm bytes), which used to leave the grid stuck on
+  // "Loading RDKit.js..." forever and every structure action silently dead.
+  // The single-flight promise keeps concurrent callers on one init, and the
+  // timeout turns a hung init into an error the status line can show.
+  const RDKIT_INIT_TIMEOUT_MS = 25000;
+
+  // initRDKitOnce announces the start of the load, so this is the only place
+  // that can honestly announce its end. Leaving that to the callers left the
+  // grid reading "Loading RDKit.js..." indefinitely in two ways: nobody wrote
+  // anything after a successful load, and the callers that swallow a rejection
+  // (Molstar hand-off, chemical-space hover) re-entered a fresh attempt that
+  // overwrote an already-reported error with the loading line again. Owning
+  // both outcomes here means every load ends on a message, never on a promise.
   async function initRDKit() {
     if (state.rdkit) return state.rdkit;
+    if (state.rdkitInitPromise) return state.rdkitInitPromise;
+    state.rdkitInitPromise = initRDKitOnce();
+    try {
+      state.rdkit = await state.rdkitInitPromise;
+      state.rdkitError = '';
+      setStatus('[grid] RDKit.js is ready.');
+      return state.rdkit;
+    } catch (error) {
+      state.rdkitError = error?.message || String(error);
+      setStatus(`RDKit renderer unavailable: ${state.rdkitError}`, 'error');
+      throw error;
+    } finally {
+      state.rdkitInitPromise = null;
+    }
+  }
+
+  async function initRDKitOnce() {
     if (typeof window.initRDKitModule !== 'function') {
       throw new Error('RDKit_minimal.js is missing. Run bun run vendor:rdkit and rebuild.');
     }
@@ -1062,8 +1286,20 @@
       options.locateFile = () => wasmPath;
       options.wasmBinary = loaded.bytes;
     }
-    state.rdkit = await window.initRDKitModule(options);
-    return state.rdkit;
+    let timeoutId = 0;
+    try {
+      return await Promise.race([
+        window.initRDKitModule(options),
+        new Promise((_, reject) => {
+          timeoutId = window.setTimeout(
+            () => reject(new Error('RDKit initialization timed out.')),
+            RDKIT_INIT_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
   }
 
   function rdkitWasmCandidates(cfg) {
@@ -1124,7 +1360,18 @@
     if (!response.ok) {
       throw new Error(`Failed to load RDKit wasm from ${path}: ${response.status} ${response.statusText}`.trim());
     }
-    return new Uint8Array(await response.arrayBuffer());
+    return assertWasmBytes(new Uint8Array(await response.arrayBuffer()), path);
+  }
+
+  // A dev server that is still warming up can answer a wasm URL with its SPA
+  // fallback page (HTML, status 200). Feeding those bytes to emscripten aborts
+  // the runtime with a promise that never settles, so reject anything without
+  // the `\0asm` magic before it reaches the factory.
+  function assertWasmBytes(bytes, path) {
+    if (bytes.length < 4 || bytes[0] !== 0x00 || bytes[1] !== 0x61 || bytes[2] !== 0x73 || bytes[3] !== 0x6d) {
+      throw new Error(`Response from ${path} is not WebAssembly (${bytes.length} bytes).`);
+    }
+    return bytes;
   }
 
   function loadWasmBinaryViaXHR(path) {
@@ -1134,7 +1381,11 @@
       request.responseType = 'arraybuffer';
       request.onload = () => {
         if ((request.status >= 200 && request.status < 300) || (request.status === 0 && request.response)) {
-          resolve(new Uint8Array(request.response));
+          try {
+            resolve(assertWasmBytes(new Uint8Array(request.response), path));
+          } catch (error) {
+            reject(error);
+          }
           return;
         }
         reject(new Error(`${request.status} ${request.statusText}`.trim()));
@@ -1937,6 +2188,17 @@
     });
   }
 
+  // An empty record set has two very different causes: the structures could
+  // not be parsed, or the RDKit runtime that powers the SMILES -> molblock
+  // fallback never came up. Blaming "no SDF data" for the latter sent people
+  // hunting through their files for a runtime problem.
+  function molstarRecordFailureReason(subject) {
+    if (state.rdkitError) {
+      return `${subject} could not be prepared for Molstar: RDKit is unavailable (${state.rdkitError}).`;
+    }
+    return `${subject} do not have parseable structure data for Molstar.`;
+  }
+
   async function requestSdfPoseDocument(cfg) {
     const receptorPath = String(cfg?.dockingReceptorPath || '').trim();
     const rows = selectedMolstarRows();
@@ -1947,7 +2209,7 @@
     if (rows.length > 1) setStatus('[grid] Aligning selected molecules for Molstar.');
     const records = await sdfRecordTextsForMolstar(rows);
     if (!records.length) {
-      setStatus('[grid] Selected molecules do not have SDF structure data for Molstar.', 'error');
+      setStatus(`[grid] ${molstarRecordFailureReason('Selected molecules')}`, 'error');
       return;
     }
     const title = records.length === 1
@@ -1972,7 +2234,7 @@
     const record = records[0] || null;
     const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
     if (!record) {
-      setStatus(`[grid] ${label} does not have SDF structure data for Molstar.`, 'error');
+      setStatus(`[grid] ${molstarRecordFailureReason(label)}`, 'error');
       return;
     }
     const receptorPath = String(cfg?.dockingReceptorPath || '').trim();
@@ -2395,6 +2657,9 @@
   }
 
   async function smilesRecordTextForMolstar(row) {
+    // A reaction has no single 3D structure to hand over; feeding its $RXN
+    // block to Molstar as if it were a molfile would draw nonsense.
+    if (rowReactionText(row)) return null;
     const molblock = String(row?.molblock || '').trimEnd();
     if (molblock.trim()) {
       return sdfRecordFromMolblock(molblock);
@@ -2554,6 +2819,7 @@
     const text = String(record?.text || '').trimEnd();
     const extension = String(record?.inputExtension || '').toLowerCase();
     if (!text.trim()) return '';
+    if (extension === 'rxn') return `${text}\n`;
     if (extension === 'sdf' || extension === 'sd') {
       return text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd() + '\n';
     }
@@ -3196,15 +3462,32 @@
       .map(row => {
         const index = Number(row.index);
         const patch = state.rowPatches.get(index);
-        if (!patch) return row;
-        return {
-          ...row,
-          name: patch.name,
-          molblock: patch.molblock,
-          smiles: patch.smiles,
-          props: patch.props || row.props || {}
-        };
+        const merged = patch
+          ? {
+            ...row,
+            name: patch.name,
+            molblock: patch.molblock,
+            smiles: patch.smiles,
+            props: patch.props || row.props || {}
+          }
+          : row;
+        return applyColumnValueRanges(stripDeletedPropColumns(merged));
       });
+  }
+
+  // Delete Columns rides the same virtual layer as row edits: the props stay in
+  // the source rows and disappear from every view and every save until the
+  // collection is materialized, so Undo can bring a column back whole.
+  function stripDeletedPropColumns(row) {
+    if (!state.deletedPropColumns.size) return row;
+    const props = row.props || {};
+    const kept = {};
+    let removed = false;
+    for (const [key, value] of Object.entries(props)) {
+      if (state.deletedPropColumns.has(key)) { removed = true; continue; }
+      kept[key] = value;
+    }
+    return removed ? { ...row, props: kept } : row;
   }
 
   function materializeRemoteCollectionRows(rows) {
@@ -4599,7 +4882,17 @@
     return seen > 0 ? 'number' : 'text';
   }
 
+  // Every value the table shows, every analysis channel and every filter reads
+  // a column through these two, so a value range set on a column is applied
+  // once here instead of in each consumer.
   function tableColumnDisplayValue(row, columnId) {
+    return clampTextToValueRange(
+      tableColumnRawDisplayValue(row, columnId),
+      state.columnValueRanges.get(columnId)
+    );
+  }
+
+  function tableColumnRawDisplayValue(row, columnId) {
     if (columnId === 'index') return String(Number(row.index) + 1);
     if (columnId === 'name') return row.name || `Molecule ${Number(row.index) + 1}`;
     if (columnId === 'smiles') return rowSmiles(row);
@@ -4610,14 +4903,72 @@
   }
 
   function tableColumnNumericValue(row, columnId) {
+    return clampToValueRange(
+      tableColumnRawNumericValue(row, columnId),
+      state.columnValueRanges.get(columnId)
+    );
+  }
+
+  function tableColumnRawNumericValue(row, columnId) {
     if (columnId === 'index') return Number(row.index) + 1;
     if (columnId.startsWith('descriptor:')) return descriptorNumericValue(row.descriptors?.[columnId.slice('descriptor:'.length)]);
     if (columnId.startsWith('analysis:')) {
       const value = row.analyses?.[columnId.slice('analysis:'.length)]?.value;
       return typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
     }
-    const value = Number(tableColumnDisplayValue(row, columnId));
+    const value = Number(tableColumnRawDisplayValue(row, columnId));
     return Number.isFinite(value) ? value : Number.NaN;
+  }
+
+  // A range limits a number; anything that is not one - a blank cell, a name,
+  // a censored "<0.1" - is left exactly as it was.
+  function clampToValueRange(value, range) {
+    if (!range || !Number.isFinite(value)) return value;
+    if (Number.isFinite(range.min) && value < range.min) return range.min;
+    if (Number.isFinite(range.max) && value > range.max) return range.max;
+    return value;
+  }
+
+  function clampTextToValueRange(text, range) {
+    if (!range) return text;
+    const raw = String(text ?? '');
+    if (!raw.trim()) return raw;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return raw;
+    const clamped = clampToValueRange(value, range);
+    return clamped === value ? raw : String(clamped);
+  }
+
+  // Blank means "no limit on this side". A bound that is not a number comes
+  // back as NaN so the caller refuses the whole range instead of quietly
+  // dropping one side of it.
+  function parseValueRangeBound(value) {
+    const text = String(value ?? '').trim();
+    if (!text) return null;
+    const number = Number(text);
+    return Number.isFinite(number) ? number : Number.NaN;
+  }
+
+  function formatValueRangeBound(value, fallback) {
+    return Number.isFinite(value) ? String(value) : fallback;
+  }
+
+  // Property cells are the ones that reach a saved file, so the limits are
+  // applied to them where rows are materialised as well as where they are read.
+  function applyColumnValueRanges(row) {
+    if (!state.columnValueRanges.size) return row;
+    let props = null;
+    for (const [columnId, range] of state.columnValueRanges) {
+      if (!columnId.startsWith('prop:')) continue;
+      const key = columnId.slice(5);
+      const source = props || row.props || {};
+      if (!(key in source)) continue;
+      const before = String(source[key] ?? '');
+      const after = clampTextToValueRange(before, range);
+      if (after === before) continue;
+      props = { ...source, [key]: after };
+    }
+    return props ? { ...row, props } : row;
   }
 
   function installCardDrag(el, row) {
@@ -4917,6 +5268,19 @@
     const text = String(record?.text || '').trim();
     if (!text) return null;
     const fallbackName = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
+    // Ketcher hands a reaction edit back as an RDfile record: the RXN block plus
+    // the reaction SMILES it exported as a field, the way a molecule edit rides
+    // back as an SDF record with a SMILES field.
+    if (extension === 'rxn' || extension === 'rdf') {
+      const parsed = parseReactionRecordPatch(text);
+      if (!parsed) return null;
+      return {
+        name: structureRecordDisplayName(record, parsed.title, fallbackName),
+        molblock: parsed.molblock,
+        smiles: parsed.smiles,
+        props: { ...row?.props, ...parsed.props }
+      };
+    }
     if (extension === 'sdf' || extension === 'sd' || extension === 'mol') {
       const parsed = parseSdfRecordPatch(text);
       const molblock = parsed.molblock;
@@ -4950,6 +5314,51 @@
     const path = String(record?.path || '').trim();
     const base = path.split(/[\\/]/u).pop()?.replace(/\.[^.]+$/u, '').trim();
     return base || String(fallback || '').trim() || 'Molecule';
+  }
+
+  // Reads one MDL reaction record: a bare $RXN block, or an RDfile record whose
+  // $DTYPE/$DATUM fields carry the reaction SMILES beside it. The `$MOL` lines
+  // inside the block separate its components and are kept.
+  function parseReactionRecordPatch(text) {
+    const lines = String(text || '').replace(/\r\n?/gu, '\n').split('\n');
+    const block = [];
+    const props = {};
+    let field = '';
+    let inStructure = false;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('$DTYPE ')) {
+        inStructure = false;
+        field = trimmed.slice(7).trim();
+        continue;
+      }
+      if (trimmed.startsWith('$DATUM ')) {
+        if (field) props[field] = trimmed.slice(7).trim();
+        continue;
+      }
+      if (trimmed.startsWith('$RXN')) {
+        inStructure = true;
+        block.push(line);
+        continue;
+      }
+      if (trimmed.startsWith('$MOL')) {
+        if (inStructure) block.push(line);
+        continue;
+      }
+      if (trimmed.startsWith('$')) continue;
+      if (inStructure) block.push(line);
+    }
+    const molblock = block.join('\n').trimEnd();
+    if (!looksLikeRxnBlockText(molblock)) return null;
+    const smilesKey = Object.keys(props).find(key => key.toLowerCase() === 'smiles');
+    const smiles = smilesKey ? String(props[smilesKey] || '').trim() : '';
+    if (smilesKey) delete props[smilesKey];
+    return {
+      molblock,
+      smiles: looksLikeReactionSmilesValue(smiles) ? smiles : '',
+      props,
+      title: String(block[1] || '').trim()
+    };
   }
 
   function parseSdfRecordPatch(text) {
@@ -5066,11 +5475,99 @@
     else rows.push(row);
   }
 
-  function nextGridRowIndex() {
-    const indexes = [...state.rows, ...state.all, ...state.insertedRows]
+  // A paged collection only holds one window client-side, so an operation that
+  // walked the whole collection passes what it read: a new row must not be
+  // given the index of a row that simply was not loaded.
+  function nextGridRowIndex(knownRows = []) {
+    const indexes = [...state.rows, ...state.all, ...state.insertedRows, ...knownRows]
       .map(row => Number(row?.index))
       .filter(Number.isFinite);
     return indexes.length ? Math.max(...indexes) + 1 : 0;
+  }
+
+  // Split Multiple Value Rows. Pure on purpose: a cell holding "5.2; 7.1"
+  // becomes two rows, the row that was there keeps the first value - so its id,
+  // its selection and everything already computed for it stay attached - and
+  // the rest are born beside it.
+  function splitCellValues(text, delimiter) {
+    const raw = String(text ?? '');
+    if (!delimiter) return raw.trim() ? [raw] : [];
+    return raw.split(delimiter).map(part => part.trim()).filter(part => part !== '');
+  }
+
+  function planMultipleValueRowSplit(rows, propKey, delimiter, firstNewIndex) {
+    const patches = [];
+    const inserts = [];
+    let nextIndex = Number(firstNewIndex) || 0;
+    for (const row of rows) {
+      const values = splitCellValues(row?.props?.[propKey], delimiter);
+      if (values.length < 2) continue;
+      const index = Number(row.index);
+      if (!Number.isSafeInteger(index) || index < 0) continue;
+      patches.push({ index, row: { ...row, props: { ...row.props, [propKey]: values[0] } } });
+      for (const value of values.slice(1)) {
+        inserts.push({
+          afterIndex: index,
+          row: { ...row, index: nextIndex++, props: { ...row.props, [propKey]: value } }
+        });
+      }
+    }
+    return { patches, inserts };
+  }
+
+  async function splitGridMultipleValueRows(body, cfg) {
+    if (state.closeTransitionActive) return;
+    if (!capabilities(cfg).editing) return;
+    const columnId = String(body.columnId || '');
+    const propKey = columnId.startsWith('prop:') ? columnId.slice('prop:'.length) : '';
+    const delimiter = String(body.delimiter ?? '');
+    const label = String(body.columnLabel || propKey || columnId);
+    if (!propKey || !delimiter) {
+      setStatus('[grid] Splitting rows needs a data column and a separator.', 'error');
+      return;
+    }
+    if (!requireCollectionIndexReady('splitting rows')) return;
+    const rows = state.remoteMode
+      ? await collectAllRemoteRows(cfg, '', 'index', 'the row split', 'collection')
+      : currentLocalCollectionRows();
+    if (state.closeTransitionActive) return;
+    const plan = planMultipleValueRowSplit(rows, propKey, delimiter, nextGridRowIndex(rows));
+    if (plan.inserts.length === 0) {
+      setStatus(`[grid] No row holds more than one value in ${label}.`);
+      return;
+    }
+    pushUndoSnapshot('Split Multiple Value Rows');
+    for (const patch of plan.patches) {
+      state.rowPatches.set(patch.index, {
+        name: patch.row.name,
+        molblock: patch.row.molblock,
+        smiles: patch.row.smiles,
+        props: patch.row.props
+      });
+    }
+    if (state.remoteMode) {
+      // The window that is loaded shows the split at once; the rows outside it
+      // carry their patch when their page arrives, and every new row is part of
+      // the collection that gets saved.
+      state.rows = applyVirtualGridEdits(state.rows);
+      const loaded = new Set(state.rows.map(row => Number(row.index)));
+      for (const insert of plan.inserts) {
+        state.insertedRows.push(insert.row);
+        if (loaded.has(insert.afterIndex)) insertAfterRow(state.rows, insert.afterIndex, insert.row);
+      }
+      state.totalRows += plan.inserts.length;
+      const previousTotalHint = Number(state.recordsTotalHint);
+      state.recordsTotalHint = Number.isFinite(previousTotalHint)
+        ? previousTotalHint + plan.inserts.length
+        : state.totalRows;
+    } else {
+      for (const insert of plan.inserts) insertAfterRow(state.all, insert.afterIndex, insert.row);
+    }
+    invalidateTableColumnCatalog();
+    markGridDirty('row edits');
+    if (state.remoteMode) void render(cfg);
+    else refresh(cfg);
+    setStatus(`[grid] Split ${plan.patches.length.toLocaleString()} row${plan.patches.length === 1 ? '' : 's'} of ${label} into ${(plan.patches.length + plan.inserts.length).toLocaleString()}.`);
   }
 
   function applyKetcherGridRow(body, cfg) {
@@ -5116,6 +5613,16 @@
   function gridDragRecord(row) {
     const label = String(row?.name || `Molecule ${Number(row?.index) + 1 || 1}`).trim() || 'Molecule';
     const baseName = safeStructureFileStem(label, Number(row?.index));
+    // A reaction travels as a reaction: Ketcher reads $RXN and reaction SMILES
+    // on import, and packing one into an SDF record would lose the arrow.
+    const reaction = rowReactionText(row);
+    if (reaction) {
+      return {
+        path: `${baseName}.rxn`,
+        inputExtension: 'rxn',
+        text: looksLikeRxnBlockText(reaction) ? `${reaction.trimEnd()}\n` : `${reaction}\n`
+      };
+    }
     const molblock = String(row?.molblock || '').trimEnd();
     if (molblock.trim()) {
       const text = serializeSdfRows([row]);
@@ -5157,6 +5664,8 @@
       const index = Number(card.getAttribute('data-index'));
       const selected = state.selected.has(index);
       card.classList.toggle('selected', selected);
+      // Re-rendered rows would otherwise drop the map's hover marker.
+      card.classList.toggle('external-hover', index === state.externalHoverIndex);
       card.setAttribute('aria-selected', selected ? 'true' : 'false');
     });
     // Toolbar actions live in a menu that React unmounts while closed, so the
@@ -5257,7 +5766,23 @@
     return state.remoteMode ? state.rows : state.all;
   }
 
-  function postChemicalSpaceColumns(requestId) {
+  // Chemical Space asks for the numeric property columns it can colour by. The
+  // table operations need more than that - a text column to split, a computed
+  // column to limit - so they ask for the catalog the table itself renders,
+  // which is the only column list that also exists for a paged collection.
+  function postChemicalSpaceColumns(requestId, options = {}) {
+    if (options.includeAllColumns === true) {
+      const columns = tableColumnCatalog()
+        .filter(column => !column.fixed && !column.spacer && column.type !== 'none')
+        .map(column => ({
+          id: column.id,
+          label: column.label,
+          type: column.type === 'number' ? 'number' : 'text',
+          kind: column.kind || 'property'
+        }));
+      post('chemicalSpaceColumns', '', { requestId: String(requestId || ''), columns });
+      return;
+    }
     const pool = chemicalSpaceColumnPool();
     const keys = new Set();
     for (const row of pool) {
@@ -5293,6 +5818,25 @@
       indexStateKnown,
       sourceRevision: state.sourceRevision,
     });
+  }
+
+  // The numeric channel drops anything that is not a number, which is exactly
+  // what Merge Columns needs to keep. Same shape, display text instead.
+  function postChemicalSpaceColumnText(requestId, columnId) {
+    const id = String(columnId || '');
+    const pool = chemicalSpaceColumnPool();
+    const values = [];
+    if (id) {
+      for (const row of pool) {
+        if (values.length >= CHEMICAL_SPACE_RECORD_LIMIT) break;
+        const sourceRecordId = Number(row?.index);
+        if (!Number.isSafeInteger(sourceRecordId) || sourceRecordId < 0) continue;
+        const text = String(tableColumnDisplayValue(row, id) ?? '');
+        if (!text) continue;
+        values.push([sourceRecordId, text.slice(0, 4096)]);
+      }
+    }
+    post('chemicalSpaceColumnText', '', { requestId: String(requestId || ''), columnId: id, values });
   }
 
   function postChemicalSpaceColumnValues(requestId, columnId) {
@@ -5496,6 +6040,180 @@
     return true;
   }
 
+  // Hides many rows under a single undo entry. Deletion in this grid is
+  // virtual - hiddenRows is applied to every page that arrives and to the
+  // materialised file on save - so this works the same on a paged remote
+  // collection as on a fully loaded one.
+  function hideGridRowIndexes(indexes, label) {
+    if (state.closeTransitionActive) return 0;
+    const cfg = safeConfig();
+    if (cfg && !capabilities(cfg).editing) return 0;
+    const targets = [...new Set(indexes.map(Number))]
+      .filter(index => Number.isSafeInteger(index) && index >= 0 && !state.hiddenRows.has(index));
+    if (targets.length === 0) return 0;
+    pushUndoSnapshot(label);
+    const doomed = new Set(targets);
+    for (const index of targets) {
+      state.selected.delete(index);
+      state.hiddenRows.add(index);
+    }
+    if (!state.remoteMode) {
+      state.all = state.all.filter(row => !doomed.has(Number(row.index)));
+    }
+    state.rows = state.rows.filter(row => !doomed.has(Number(row.index)));
+    invalidateTableColumnCatalog();
+    state.totalRows = Math.max(0, state.totalRows - targets.length);
+    if (state.remoteMode) {
+      const previousTotalHint = Number(state.recordsTotalHint);
+      state.recordsTotalHint = Number.isFinite(previousTotalHint)
+        ? Math.max(0, previousTotalHint - targets.length)
+        : state.totalRows;
+    }
+    markGridDirty('row edits');
+    return targets.length;
+  }
+
+  function deleteGridPropColumns(columnKeys) {
+    if (state.closeTransitionActive) return 0;
+    const cfg = safeConfig();
+    if (cfg && !capabilities(cfg).editing) return 0;
+    const targets = [...new Set(columnKeys.map(key => String(key || '').trim()))]
+      .filter(key => key && !state.deletedPropColumns.has(key));
+    if (targets.length === 0) return 0;
+    pushUndoSnapshot('Delete Columns');
+    for (const key of targets) {
+      state.deletedPropColumns.add(key);
+      // A filter on a deleted column would keep constraining the page fetch
+      // silently after the column left the table.
+      delete state.tableColumnFilters[`prop:${key}`];
+    }
+    invalidateTableColumnCatalog();
+    state.svgCache.clear();
+    markGridDirty('column edits');
+    return targets.length;
+  }
+
+  // Set Value Range. Limits are metadata on the column - the collection keeps
+  // every value it had - and one undo entry takes the column back.
+  // Returns the range it set, null when it cleared one, and false when it
+  // refused the request - the caller has nothing to report in that case.
+  function setGridColumnValueRange(columnId, min, max) {
+    if (state.closeTransitionActive) return false;
+    const cfg = safeConfig();
+    if (cfg && !capabilities(cfg).editing) return false;
+    const id = String(columnId || '');
+    if (!id) return false;
+    const low = parseValueRangeBound(min);
+    const high = parseValueRangeBound(max);
+    if (Number.isNaN(low) || Number.isNaN(high)) {
+      setStatus('[grid] A value range limit has to be a number.', 'error');
+      return false;
+    }
+    if (low !== null && high !== null && low > high) {
+      setStatus('[grid] The lower limit of a value range cannot exceed the upper one.', 'error');
+      return false;
+    }
+    const range = low === null && high === null ? null : { min: low, max: high };
+    pushUndoSnapshot(range ? 'Set Value Range' : 'Clear Value Range');
+    if (range) state.columnValueRanges.set(id, range);
+    else state.columnValueRanges.delete(id);
+    invalidateTableColumnCatalog();
+    markGridDirty('value ranges');
+    return range;
+  }
+
+  // Merge Equivalent Rows. The host decides which rows are the same molecule -
+  // the InChI-Key that Delete Duplicate Molecules already uses - and the grid,
+  // which is where the cells are, joins what those rows say. Values that differ
+  // are kept side by side instead of one of them being thrown away.
+  function mergeRowPropValues(rows, separator) {
+    const values = new Map();
+    for (const row of rows) {
+      for (const [key, value] of Object.entries(row?.props || {})) {
+        const text = String(value ?? '').trim();
+        if (!text) continue;
+        const list = values.get(key) || [];
+        if (!list.includes(text)) list.push(text);
+        values.set(key, list);
+      }
+    }
+    const merged = {};
+    for (const [key, list] of values) merged[key] = list.join(separator);
+    return merged;
+  }
+
+  function planEquivalentRowMerge(rows, groups, separator) {
+    const byIndex = new Map(rows.map(row => [Number(row.index), row]));
+    const patches = [];
+    const hide = [];
+    for (const group of groups) {
+      const keepIndex = Number(group?.keepIndex);
+      const keep = byIndex.get(keepIndex);
+      if (!keep) continue;
+      const members = [keep];
+      const equivalent = [];
+      for (const candidate of group?.mergeIndexes || []) {
+        const index = Number(candidate);
+        const row = index === keepIndex ? null : byIndex.get(index);
+        if (!row) continue;
+        members.push(row);
+        equivalent.push(index);
+      }
+      if (equivalent.length === 0) continue;
+      patches.push({ index: keepIndex, row: { ...keep, props: mergeRowPropValues(members, separator) } });
+      hide.push(...equivalent);
+    }
+    return { patches, hide };
+  }
+
+  async function mergeGridEquivalentRows(body, cfg) {
+    if (state.closeTransitionActive) return;
+    if (!capabilities(cfg).editing) return;
+    const groups = Array.isArray(body.groups) ? body.groups : [];
+    const separator = String(body.separator ?? '; ');
+    if (groups.length === 0) return;
+    if (!requireCollectionIndexReady('merging equivalent rows')) return;
+    const rows = state.remoteMode
+      ? await collectAllRemoteRows(cfg, '', 'index', 'the row merge', 'collection')
+      : currentLocalCollectionRows();
+    if (state.closeTransitionActive) return;
+    const plan = planEquivalentRowMerge(rows, groups, separator);
+    if (plan.hide.length === 0) {
+      setStatus('[grid] No equivalent rows are left to merge.');
+      return;
+    }
+    pushUndoSnapshot('Merge Equivalent Rows');
+    for (const patch of plan.patches) {
+      state.rowPatches.set(patch.index, {
+        name: patch.row.name,
+        molblock: patch.row.molblock,
+        smiles: patch.row.smiles,
+        props: patch.row.props
+      });
+    }
+    const doomed = new Set(plan.hide);
+    for (const index of doomed) {
+      state.selected.delete(index);
+      state.hiddenRows.add(index);
+    }
+    if (!state.remoteMode) state.all = state.all.filter(row => !doomed.has(Number(row.index)));
+    // The loaded window loses the rows that were folded in and shows the joined
+    // values on the ones that stayed.
+    state.rows = applyVirtualGridEdits(state.rows);
+    state.totalRows = Math.max(0, state.totalRows - doomed.size);
+    if (state.remoteMode) {
+      const previousTotalHint = Number(state.recordsTotalHint);
+      state.recordsTotalHint = Number.isFinite(previousTotalHint)
+        ? Math.max(0, previousTotalHint - doomed.size)
+        : state.totalRows;
+    }
+    invalidateTableColumnCatalog();
+    markGridDirty('row edits');
+    if (state.remoteMode) void render(cfg);
+    else refresh(cfg);
+    setStatus(`[grid] Merged ${(plan.patches.length + doomed.size).toLocaleString()} rows into ${plan.patches.length.toLocaleString()} molecule${plan.patches.length === 1 ? '' : 's'}.`);
+  }
+
   function markGridDirty(reason) {
     state.dirty = true;
     state.dirtyReason = reason || state.dirtyReason || 'edits';
@@ -5541,9 +6259,11 @@
       totalRows: state.totalRows,
       recordsTotalHint: state.recordsTotalHint,
       hiddenRows: new Set(state.hiddenRows),
+      deletedPropColumns: new Set(state.deletedPropColumns),
       selected: new Set(state.selected),
       rowPatches: new Map(state.rowPatches),
       insertedRows: state.insertedRows.slice(),
+      columnValueRanges: new Map(state.columnValueRanges),
       dirty: state.dirty,
       dirtyReason: state.dirtyReason
     };
@@ -5555,9 +6275,11 @@
     state.totalRows = snapshot.totalRows;
     state.recordsTotalHint = snapshot.recordsTotalHint;
     state.hiddenRows = new Set(snapshot.hiddenRows);
+    state.deletedPropColumns = new Set(snapshot.deletedPropColumns || []);
     state.selected = new Set(snapshot.selected);
     state.rowPatches = new Map(snapshot.rowPatches);
     state.insertedRows = snapshot.insertedRows.slice();
+    state.columnValueRanges = new Map(snapshot.columnValueRanges);
     state.dirty = snapshot.dirty;
     state.dirtyReason = snapshot.dirtyReason;
     state.sourceRevision += 1;
@@ -6283,11 +7005,74 @@
     return `<div class="buret-molecule-loading" data-buret-rdkit-card-key="${escapeAttr(key)}" aria-label="Rendering molecule"></div>`;
   }
 
+  // A row carries a reaction when its structure is an MDL $RXN block (.rxn,
+  // .rdf, a Ketcher reaction edit) or a reaction SMILES (a CSV reaction column).
+  // '>' occurs nowhere else in SMILES, so counting the separators identifies one.
+  function looksLikeReactionSmilesValue(value) {
+    const text = String(value || '').trim();
+    if (!text || /\s/u.test(text)) return false;
+    const parts = text.split('>');
+    return parts.length === 3 && parts[0].trim() !== '' && parts[2].trim() !== '';
+  }
+
+  function looksLikeRxnBlockText(value) {
+    return /^\s*\$RXN/u.test(String(value || ''));
+  }
+
+  function rowReactionText(row) {
+    const molblock = String(row?.molblock || '');
+    if (looksLikeRxnBlockText(molblock)) return molblock;
+    const smiles = String(row?.smiles || '').trim();
+    return looksLikeReactionSmilesValue(smiles) ? smiles : '';
+  }
+
+  // Called from the menu-state notification, which fires on every selection
+  // change. The scan stops at the first reaction, so a reaction collection is
+  // free either way; the memo is what keeps a local collection - which can hold
+  // every row of the file - from being walked again on each notification.
+  function gridHasReactionRows() {
+    if (state.remoteMode) return state.rows.some(row => !!rowReactionText(row));
+    const signature = `${state.all.length}|${state.rowPatches.size}|${state.insertedRows.length}`;
+    if (state.reactionRowsCache?.signature !== signature) {
+      state.reactionRowsCache = {
+        signature,
+        value: state.all.some(row => !!rowReactionText(row))
+      };
+    }
+    return state.reactionRowsCache.value;
+  }
+
+  function drawRdkitReaction(row, text, key) {
+    let rxn = null;
+    let html = '';
+    try {
+      rxn = state.rdkit.get_rxn(text);
+      if (!rxn) throw new Error('invalid reaction');
+      html = sanitizeSVG(String(rxn.get_svg(RDKIT_REACTION_SVG_WIDTH, RDKIT_REACTION_SVG_HEIGHT) || ''));
+      html = stripSVGClipping(html);
+      html = padSVGViewBox(html, 8);
+      if (!html.includes('<svg')) throw new Error('empty drawing');
+    } catch (error) {
+      html = moleculeErrorHTML(row.name || 'Reaction', error.message || String(error));
+    } finally {
+      try { rxn?.delete?.(); } catch (_) {}
+    }
+    state.svgCache.set(key, html);
+    while (state.svgCache.size > RDKIT_SVG_CACHE_LIMIT) state.svgCache.delete(state.svgCache.keys().next().value);
+    return html;
+  }
+
   function drawRdkit(row) {
     if (!state.rdkit) {
       const label = row.smiles || row.name || 'Molecule';
       const message = state.rdkitError || 'RDKit renderer is unavailable.';
       return moleculeErrorHTML(label, message);
+    }
+    const reactionText = rowReactionText(row);
+    if (reactionText) {
+      const reactionKey = rdkitCardKey(row);
+      if (state.svgCache.has(reactionKey)) return state.svgCache.get(reactionKey);
+      return drawRdkitReaction(row, reactionText, reactionKey);
     }
     const match = state.smartsMatches.get(Number(row.index));
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
@@ -6624,6 +7409,7 @@
     state.selected = new Set();
     state.chemicalSpaceFilterActive = false;
     state.hiddenRows = new Set();
+    state.deletedPropColumns = new Set();
     state.findingSimilar = false;
     state.exportingClusterRepresentatives = false;
     state.dirty = false;
@@ -6639,6 +7425,7 @@
     state.menuStateSignature = '';
     state.rowPatches = new Map();
     state.insertedRows = [];
+    state.columnValueRanges = new Map();
     state.xyzrenderPreset = null;
     state.selectionAnchorIndex = null;
     state.visibleCount = 0;
@@ -6650,6 +7437,10 @@
     state.windowStart = 0;
     state.windowEnd = 0;
     invalidateTableColumnCatalog();
+    // Two documents can have the same row count, so the reaction memo has to be
+    // dropped with the rest of the per-document state rather than left to its
+    // signature.
+    state.reactionRowsCache = null;
     resetRdkitCardObserver();
     resetXyzrenderCardObserver();
     resetCardRenderQueues();
@@ -7211,7 +8002,7 @@
 
   async function collectCurrentCollectionRows(cfg) {
     if (state.remoteMode) {
-      const rows = await collectAllRemoteRows(cfg, '', 'index');
+      const rows = await collectAllRemoteRows(cfg, '', 'index', 'the collection', 'collection');
       return materializeRemoteCollectionRows(rows);
     }
     return currentLocalCollectionRows();
@@ -7320,30 +8111,43 @@
     return String(value || 'molecules').replace(/\.[^.]+$/, '').replace(/[^a-z0-9._-]+/gi, '_').slice(0, 80) || 'molecules';
   }
 
-  async function collectAllRemoteRows(cfg, query = state.query || '', sort = state.sort || 'index') {
+  // Saving and exporting are not the only reasons to walk a paged collection:
+  // the table operations read every row too, and they say so rather than
+  // telling the user an export is being prepared.
+  // `scope` decides what "every row" means. An export takes the view: what the
+  // filters show is what the user asked to export. A table operation rewrites
+  // the collection, so it takes the whole thing - local mode already walks
+  // state.all, and a filtered remote walk would quietly mutate only the rows the
+  // current filter happens to show, leaving the same menu item with two
+  // different meanings depending on collection size.
+  async function collectAllRemoteRows(cfg, query = state.query || '', sort = state.sort || 'index', purpose = 'export', scope = 'view') {
     if (!state.remoteMode) return state.rows;
-    if (query === (state.query || '') && sort === (state.sort || 'index') && state.rows.length >= state.totalRows && state.totalRows > 0) {
+    const wholeCollection = scope === 'collection';
+    const filtered = remoteTableColumnFilters().length > 0
+      || mergedDescriptorFilters().length > 0
+      || mergedAnalysisFilters().length > 0;
+    if (!(wholeCollection && filtered)
+      && query === (state.query || '') && sort === (state.sort || 'index')
+      && state.rows.length >= state.totalRows && state.totalRows > 0) {
       return state.rows.slice();
     }
     const rows = [];
     let offset = 0;
     let total = null;
     const limit = Math.max(120, loadBatchSize(cfg));
-    setStatus('[grid] Preparing export...');
+    setStatus(`[grid] Preparing ${purpose}...`);
     while (total === null || offset < total) {
-      const result = await hostRequest('gridFetchPage', gridFetchPayload({
-        query,
-        sort,
-        offset,
-        limit
-      }));
+      const page = { query, sort, offset, limit };
+      const result = await hostRequest('gridFetchPage', wholeCollection
+        ? { ...page, descriptorSort: state.descriptorSort }
+        : gridFetchPayload(page));
       const pageRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
       applyGridPageState(result);
       total = Number(result.totalRows || 0);
       rows.push(...pageRows);
       offset += Math.max(pageRows.length, Number(result.rows?.length || 0));
       if (!Array.isArray(result.rows) || result.rows.length === 0) break;
-      setStatus(`[grid] Preparing export ${Math.min(offset, total).toLocaleString()} / ${total.toLocaleString()} rows...`);
+      setStatus(`[grid] Preparing ${purpose} ${Math.min(offset, total).toLocaleString()} / ${total.toLocaleString()} rows...`);
     }
     return rows;
   }
@@ -7443,10 +8247,10 @@
       normalizeGridViewMode(cfg);
       buildUI(cfg);
       installGridTextFocusListeners();
+      installRowHoverPreview(cfg);
       refresh(cfg);
       try {
         await initRDKit();
-        state.rdkitError = '';
         pumpRdkitCardQueue();
         const filledSmiles = !state.remoteMode && fillMissingSmilesFromMolblocks();
         if (state.cardRenderer === 'rdkit') {
@@ -7458,10 +8262,10 @@
         } else if (filledSmiles) {
           refresh(cfg);
         }
-      } catch (rdkitError) {
-        state.rdkitError = rdkitError?.message || String(rdkitError);
+      } catch {
+        // initRDKit already recorded the failure and reported it; the queue
+        // still has to be pumped so the cards fall back to their text form.
         pumpRdkitCardQueue();
-        setStatus(`RDKit renderer unavailable: ${state.rdkitError}`, 'error');
       }
     } catch (error) {
       const message = error && error.stack ? error.stack : String(error);

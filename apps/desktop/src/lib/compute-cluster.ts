@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import { attachSharedRun, stopSharedRuns, type SharedRunStore } from "./shared-progress-run";
 import { isTauriRuntime } from "./tauri";
 
 const FINGERPRINT_WORKER_TIMEOUT_MS = 120_000;
@@ -401,7 +402,9 @@ export async function runChemicalSpaceWorkflow(
       scopeSourceIds,
     );
     throwIfAborted(signal);
-    const represented = await representChemicalSpace(
+    const represented = await sharedRepresentChemicalSpace(
+      documentId,
+      scopeSourceIds,
       records,
       options.representation,
       onProgress,
@@ -460,7 +463,14 @@ export async function runChemicalSpaceStudyWorkflow(
       scopeSourceIds,
     );
     throwIfAborted(signal);
-    const represented = await representChemicalSpace(records, representation, onProgress, signal);
+    const represented = await sharedRepresentChemicalSpace(
+      documentId,
+      scopeSourceIds,
+      records,
+      representation,
+      onProgress,
+      signal,
+    );
     const results: ChemicalSpaceResult[] = [];
     for (let index = 0; index < frames.length; index += 1) {
       throwIfAborted(signal);
@@ -490,6 +500,9 @@ export async function runChemicalSpaceStudyWorkflow(
 }
 
 export function invalidateChemicalSpaceFingerprintCache(documentId: string) {
+  // Model vectors describe the records that were prepared, so they go stale on
+  // the same event and through the same call.
+  stopChemicalSpaceRepresentations(documentId);
   const scopePrefix = `${documentId}::scope:`;
   for (const key of [...preparedChemicalSpaceJobs.keys()]) {
     if (key !== documentId && !key.startsWith(scopePrefix)) continue;
@@ -765,6 +778,48 @@ async function ensureModelRuntimeInstalled(): Promise<void> {
   }
 }
 
+// Running the model is the expensive stage; projecting its vectors is cheap.
+// They are cached apart so that changing the embedder or a slider reuses the
+// vectors instead of paying for inference again. A run belongs to the document
+// rather than to whoever started it: switching representation or leaving the
+// panel mid-flight detaches from the run and leaves it going, and coming back
+// re-attaches to the same run at its live progress. Only an explicit stop, or
+// the source changing underneath, ends one early.
+const representationRuns: SharedRunStore<LearnedRepresentation, ChemicalSpaceProgress> = new Map();
+const MAX_REPRESENTATION_RUNS = 4;
+
+function representationRunKey(
+  documentId: string,
+  scope: number[] | null,
+  engine: ChemicalSpaceRepresentation,
+) {
+  const normalized = normalizedScope(scope);
+  return `${documentId}::${normalized ? chemicalSpaceScopeSignature(normalized) : "all"}::${engine}`;
+}
+
+export function stopChemicalSpaceRepresentations(documentId: string) {
+  stopSharedRuns(representationRuns, `${documentId}::`);
+}
+
+function sharedRepresentChemicalSpace(
+  documentId: string,
+  scope: number[] | null,
+  records: BrowserChemicalSpaceInputRecord[],
+  engine: Exclude<ChemicalSpaceRepresentation, "morgan">,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+): Promise<LearnedRepresentation> {
+  return attachSharedRun({
+    runs: representationRuns,
+    key: representationRunKey(documentId, scope, engine),
+    maxRuns: MAX_REPRESENTATION_RUNS,
+    start: (report, runSignal) => representChemicalSpace(records, engine, report, runSignal),
+    onProgress,
+    signal,
+    abortError: clusteringAbortError,
+  });
+}
+
 async function representChemicalSpace(
   records: BrowserChemicalSpaceInputRecord[],
   engine: Exclude<ChemicalSpaceRepresentation, "morgan">,
@@ -959,11 +1014,15 @@ function similarityCutoff(value: number) {
   return { numerator: Math.round(normalized * 1_000), denominator: 1_000 };
 }
 
-function throwIfAborted(signal?: AbortSignal) {
-  if (!signal?.aborted) return;
+function clusteringAbortError() {
   const error = new Error("Clustering cancelled by the user.");
   error.name = "AbortError";
-  throw error;
+  return error;
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  throw clusteringAbortError();
 }
 
 class FingerprintWorkerClient {

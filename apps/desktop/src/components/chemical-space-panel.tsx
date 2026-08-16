@@ -35,6 +35,7 @@ import {
   computeErrorMessage,
   fetchChemicalSpaceModelRuntimeStatus,
   invalidateChemicalSpaceFingerprintCache,
+  stopChemicalSpaceRepresentations,
   isRepresentationUnavailableError,
   runChemicalSpaceClusteringWorkflow,
   runChemicalSpaceWorkflow,
@@ -53,7 +54,10 @@ import {
   runBrowserDevChemicalSpace,
   runBrowserDevChemicalSpaceClustering,
   runBrowserDevChemicalSpaceStudy,
+  stopBrowserChemicalSpaceRepresentations,
 } from "../lib/browser-dev-compute";
+import { HOVER_CARD_VISIBILITY_EVENT, hoverPreviewCardHidden } from "./grid-hover-molecule";
+import { invalidateScaffoldRecords } from "./grid-selection-scaffold";
 import { normalizeChemicalSpacePositions } from "../lib/chemical-space-normalization";
 import {
   buildCameraScreenPointIndex,
@@ -77,6 +81,9 @@ const ChemicalSpace3D = lazy(() => import("./chemical-space-3d").then((module) =
 
 type ChemicalSpacePanelProps = {
   document: ViewerDocument | null;
+  /** The inspector already shows the hovered molecule, so the map's own
+   *  floating card would only repeat it and cover the points being explored. */
+  inspectorOpen?: boolean;
 };
 
 type Point2 = { x: number; y: number };
@@ -163,6 +170,11 @@ const MAX_MOLECULE_PREVIEW_BASE64_BYTES = 350_000;
 // enough that a long session does not accumulate megabytes of SVG.
 const MAX_CACHED_MOLECULE_PREVIEWS = 24;
 const MAX_LASSO_POINTS = 1_024;
+// Points are a few pixels wide, so requiring the pointer to land on one made
+// hovering fiddly in sparse maps. The pointer catches the nearest molecule from
+// this far away instead, and the overlay draws a leader to whichever it caught
+// so a distant catch never looks like the map picked at random.
+const HOVER_CATCH_RADIUS = 22;
 const MAX_HIGHLIGHT_POINTS = 4_096;
 const MAX_VISIBLE_EDGES = 30_000;
 // Cliff edges beyond the strongest pairs turn the map into a hairball; the
@@ -233,7 +245,7 @@ function indexingProgressLabel(state: GridIndexState | null) {
   return `${percent}% · ${records} molecules indexed`;
 }
 
-export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
+export function ChemicalSpacePanel({ document, inspectorOpen = false }: ChemicalSpacePanelProps) {
   const portalContainer = useThemePortalContainer();
   const [draft, setDraft] = useState(DEFAULT_OPTIONS);
   const [options, setOptions] = useState(DEFAULT_OPTIONS);
@@ -322,6 +334,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     studyControllerRef.current = null;
     invalidateChemicalSpaceFingerprintCache(documentId);
     invalidateCompletedEmbeddings(documentId);
+    invalidateScaffoldRecords(documentId);
     setProgress(null);
     setResult(null);
     setCompletedStudy(null);
@@ -737,21 +750,44 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     return () => window.removeEventListener("message", onMessage);
   }, [applySourceRevision, documentId]);
 
+  // Only one of the two shows the hovered molecule. Putting the inspector card
+  // away with its close button hands the job back to the map's own small
+  // preview, so the tab being open is not enough on its own.
+  const [previewCardHidden, setPreviewCardHidden] = useState(hoverPreviewCardHidden);
+  useEffect(() => {
+    const handle = (event: Event) => {
+      setPreviewCardHidden((event as CustomEvent<{ hidden?: boolean }>).detail?.hidden === true);
+    };
+    window.addEventListener(HOVER_CARD_VISIBILITY_EVENT, handle);
+    return () => window.removeEventListener(HOVER_CARD_VISIBILITY_EVENT, handle);
+  }, []);
+  const inspectorShowsMolecule = inspectorOpen && !previewCardHidden;
   const postToGrid = useCallback((body: Record<string, unknown>) => {
     if (!documentId) return;
     activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
       source: "burette-grid-host",
       body: { ...body, documentId },
     }, "*");
+    // The inspector answers a lasso with the fragment the picked molecules
+    // share, and this is the one place a selection is ever announced.
+    if (body.type === "chemicalSpaceSelectionChanged") {
+      window.dispatchEvent(new CustomEvent("burette:chemical-space-selection", {
+        detail: { documentId, sourceRecordIds: body.sourceRecordIds },
+      }));
+    }
   }, [documentId]);
   const stopCalculation = useCallback(() => {
     workflowControllerRef.current?.abort();
     workflowControllerRef.current = null;
+    // Switching representation only detaches from a shared model run; asking for
+    // a stop is the one gesture that ends it.
+    if (documentId) stopChemicalSpaceRepresentations(documentId);
+    stopBrowserChemicalSpaceRepresentations();
     setProgress(null);
     setResult(null);
     setError("Calculation stopped.");
     setErrorNeedsModelRuntime(false);
-  }, []);
+  }, [documentId]);
   const stopStudy = useCallback(() => {
     studyControllerRef.current?.abort();
     studyControllerRef.current = null;
@@ -899,9 +935,6 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       filterToSelection: false,
     });
   }, [postToGrid]);
-  // Rapid hovering over a dense cloud must not spam the grid with preview
-  // renders; the highlight is instant, the preview request trails behind.
-  const hoverPostTimerRef = useRef(0);
   return (
     <TooltipProvider>
       <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-testid="chemical-space-panel">
@@ -1123,7 +1156,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               clusters={rankedClusters}
               selected={selected}
               hovered={hovered}
-              preview={preview}
+              preview={inspectorShowsMolecule ? null : preview}
               pointScale={pointScale}
               tmapLineScale={tmapLineScale}
               activityColors={activityColoring?.colors ?? null}
@@ -1136,10 +1169,9 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               onHover={(sourceRecordId) => {
                 setHovered(sourceRecordId);
                 setPreview((current) => current?.sourceRecordId === sourceRecordId ? current : null);
-                window.clearTimeout(hoverPostTimerRef.current);
-                hoverPostTimerRef.current = window.setTimeout(() => {
-                  postToGrid({ type: "chemicalSpaceHoverChanged", sourceRecordId });
-                }, 120);
+                // Posted on the spot: the structure is drawn from data the grid
+                // already holds, so debouncing only bought lag.
+                postToGrid({ type: "chemicalSpaceHoverChanged", sourceRecordId });
               }}
               onSelect={(sourceRecordIds) => {
                 const expanded = tool === "navigate" && sourceRecordIds.length === 1
@@ -1207,6 +1239,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               label={activityColumns.find((column) => column.id === activityColumnId)?.label ?? "Activity"}
               coloring={activityColoring}
               direction={activityDirection}
+              hoveredValue={hovered === null ? null : activityValues.get(hovered) ?? null}
             />
           ) : null}
           {displayedResult && cliffsEnabled ? (
@@ -1717,21 +1750,38 @@ function ActivityLegend({
   label,
   coloring,
   direction,
+  hoveredValue,
 }: {
   label: string;
   coloring: ActivityColoring;
   direction: ActivityDirection;
+  hoveredValue: number | null;
 }) {
   const gradient = `linear-gradient(to right, ${[0, 0.25, 0.5, 0.75, 1]
     .map((t) => viridisColor(direction === "lowerActive" ? 1 - t : t))
     .join(", ")})`;
   const format = (value: number) => (Number.isInteger(value) ? String(value) : value.toPrecision(3));
+  // Colour alone says "greener than most"; the caret says how much, by putting
+  // the molecule under the pointer on the same scale the map is painted with.
+  const span = coloring.max - coloring.min;
+  const marker = hoveredValue === null || span <= 0 ? null : {
+    value: hoveredValue,
+    position: Math.min(1, Math.max(0, (hoveredValue - coloring.min) / span)),
+  };
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-border bg-background/85 px-3 py-2 text-xs shadow-sm backdrop-blur">
-      <div className="mb-1.5 font-medium text-foreground">{label}</div>
-      <div className="h-3 w-48 rounded-sm" style={{ background: gradient }} />
-      <div className="mt-1 flex w-48 justify-between font-mono text-muted-foreground">
+    <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-border bg-background/85 px-2.5 py-1.5 text-[11px] shadow-sm backdrop-blur">
+      <div className="mb-1 font-medium text-foreground">{label}</div>
+      <div className="relative h-2.5 w-36 rounded-sm" style={{ background: gradient }}>
+        {marker === null ? null : (
+          <span
+            className="absolute -top-1 h-[calc(100%+0.5rem)] w-0.5 rounded-full bg-foreground"
+            style={{ left: `calc(${(marker.position * 100).toFixed(1)}% - 1px)` }}
+          />
+        )}
+      </div>
+      <div className="mt-1 flex w-36 justify-between font-mono text-muted-foreground">
         <span>{format(coloring.min)}</span>
+        {marker === null ? null : <span className="text-foreground">{format(marker.value)}</span>}
         <span>{format(coloring.max)}</span>
       </div>
     </div>
@@ -1948,6 +1998,9 @@ function ChemicalSpace2D({
   const baseLayerRef = useRef<HTMLCanvasElement | null>(null);
   const selectionLayerRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<(hoveredNow: number | null, lassoNow: Point2[]) => void>(() => undefined);
+  // Where the pointer was when it caught the current molecule, so the overlay
+  // can draw the leader between the two.
+  const magnetPointerRef = useRef<Point2 | null>(null);
   const hoveredNowRef = useRef(hovered);
   hoveredNowRef.current = hovered;
   const lassoNowRef = useRef(lasso);
@@ -1984,7 +2037,13 @@ function ChemicalSpace2D({
     // out shrinks them. The square root keeps the growth gentler than the
     // coordinate scale so dense regions stay readable.
     const zoomPointScale = Math.max(0.6, Math.min(2.6, Math.sqrt(camera.zoom)));
-    const basePointOpacity = adaptivePointOpacity(result.successfulRecords);
+    // A dot drawn at three times the radius covers nine times the area, so at
+    // large sizes overlapping ink stacked into solid black blobs. Thinning the
+    // fill with the area keeps density readable as shading instead.
+    const basePointOpacity = Math.max(
+      0.2,
+      adaptivePointOpacity(result.successfulRecords) / Math.max(1, pointScale ** 1.1),
+    );
     // Cliffs arrive sorted by SALI, so the head of the list is the scale.
     const strongestCliff = cliffs[0]?.sali ?? 0;
     if (result.treeEdges.length > 0) {
@@ -2089,8 +2148,21 @@ function ChemicalSpace2D({
         const point = indexed
           ?? (hoveredBasePoint ? screenPointForCamera(hoveredBasePoint, viewport, camera) : null);
         if (point) {
+          const markerRadius = basePointRadius * pointScale * zoomPointScale;
+          const pointer = magnetPointerRef.current;
+          // A catch from across the gap is only trustworthy if you can see what
+          // it caught, so the pointer keeps a thread to the molecule it holds.
+          if (pointer && Math.hypot(pointer.x - point.x, pointer.y - point.y) > markerRadius + 2) {
+            context.beginPath();
+            context.moveTo(pointer.x, pointer.y);
+            context.lineTo(point.x, point.y);
+            context.strokeStyle = ringColor;
+            context.globalAlpha = 0.4;
+            context.lineWidth = 1;
+            context.stroke();
+          }
           context.beginPath();
-          context.arc(point.x, point.y, basePointRadius * pointScale * zoomPointScale, 0, Math.PI * 2);
+          context.arc(point.x, point.y, markerRadius, 0, Math.PI * 2);
           context.fillStyle = selectedColor;
           context.globalAlpha = 1;
           context.fill();
@@ -2167,10 +2239,16 @@ function ChemicalSpace2D({
     const nearest = nearestScreenPoint(
       screenIndexRef.current,
       point,
-      Math.max(4, adaptivePointRadius(result.successfulRecords) * pointScale + 3),
+      Math.max(HOVER_CATCH_RADIUS, adaptivePointRadius(result.successfulRecords) * pointScale + 3),
     );
     const sourceRecordId = nearest?.sourceRecordId ?? null;
-    if (sourceRecordId === hoverRef.current) return;
+    magnetPointerRef.current = sourceRecordId === null ? null : point;
+    if (sourceRecordId === hoverRef.current) {
+      // The leader follows the pointer, so moving inside the catch radius still
+      // has to repaint even though the caught molecule has not changed.
+      if (sourceRecordId !== null) overlayRef.current(sourceRecordId, lassoNowRef.current);
+      return;
+    }
     hoverRef.current = sourceRecordId;
     onHover(sourceRecordId);
   };
@@ -2243,6 +2321,7 @@ function ChemicalSpace2D({
           event.currentTarget.setPointerCapture(event.pointerId);
           const point = localPoint(event);
           hoverRef.current = null;
+          magnetPointerRef.current = null;
           onHover(null);
           pointerRef.current = { start: point, last: point, moved: false };
           if (tool === "lasso") {
@@ -2325,6 +2404,7 @@ function ChemicalSpace2D({
           if (pointerRef.current) return;
           setCursor(null);
           hoverRef.current = null;
+          magnetPointerRef.current = null;
           onHover(null);
         }}
       />
@@ -2793,7 +2873,7 @@ function methodLabel(method: ChemicalSpaceMethod) {
 }
 
 function adaptivePointRadius(recordCount: number) {
-  return Math.max(1.1, Math.min(2.6, 2.6 * Math.sqrt(1_000 / Math.max(1_000, recordCount))));
+  return Math.max(1.6, Math.min(3.4, 3.4 * Math.sqrt(1_500 / Math.max(1_500, recordCount))));
 }
 
 function adaptivePointOpacity(recordCount: number) {
@@ -2807,24 +2887,40 @@ function projectPositions(
   camera: { yaw: number; pitch: number; zoom: number; panX: number; panY: number },
   dimensions: 2 | 3,
 ): ProjectedPoint[] {
-  const scale = Math.max(20, Math.min(viewport.width, viewport.height) * 0.42 * camera.zoom);
   const cosYaw = Math.cos(camera.yaw);
   const sinYaw = Math.sin(camera.yaw);
   const cosPitch = Math.cos(camera.pitch);
   const sinPitch = Math.sin(camera.pitch);
-  return positions.map((position, index) => {
+  const rotated = positions.map((position) => {
     const yawX = position[0] * cosYaw - position[2] * sinYaw;
     const yawZ = position[0] * sinYaw + position[2] * cosYaw;
     const pitchY = position[1] * cosPitch - yawZ * sinPitch;
     const pitchZ = position[1] * sinPitch + yawZ * cosPitch;
     const perspective = dimensions === 3 ? 1 / Math.max(0.45, 1.8 - pitchZ * 0.55) : 1;
-    return {
-      x: viewport.width / 2 + camera.panX + yawX * scale * perspective,
-      y: viewport.height / 2 + camera.panY - pitchY * scale * perspective,
-      depth: pitchZ,
-      sourceRecordId: sourceRecordIds[index],
-    };
+    return { x: yawX * perspective, y: pitchY * perspective, depth: pitchZ };
   });
+  // Fit what the embedding actually produced rather than assuming a fixed
+  // radius: normalisation only pins the 90th percentile, so a compact cloud
+  // used to sit in the middle of the panel with the frame's room unused.
+  // The scale stays isotropic, so the shape is never stretched to fill.
+  let extentX = 0;
+  let extentY = 0;
+  for (const point of rotated) {
+    if (Math.abs(point.x) > extentX) extentX = Math.abs(point.x);
+    if (Math.abs(point.y) > extentY) extentY = Math.abs(point.y);
+  }
+  const usable = 0.94;
+  const fit = Math.min(
+    (viewport.width / 2) * usable / Math.max(1e-6, extentX),
+    (viewport.height / 2) * usable / Math.max(1e-6, extentY),
+  );
+  const scale = Math.max(20, fit * camera.zoom);
+  return rotated.map((point, index) => ({
+    x: viewport.width / 2 + camera.panX + point.x * scale,
+    y: viewport.height / 2 + camera.panY - point.y * scale,
+    depth: point.depth,
+    sourceRecordId: sourceRecordIds[index],
+  }));
 }
 
 function screenPointForCamera(
