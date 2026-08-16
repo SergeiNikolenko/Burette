@@ -237,7 +237,10 @@ run_bundled_xyzrender_help() {
 
   site_packages="$(find "$runtime/lib" -maxdepth 2 -type d -name site-packages | head -n 1)"
   [[ -n "$site_packages" && -d "$site_packages" ]] || return 1
-  PYTHONNOUSERSITE=1 PYTHONPATH="$site_packages" "$python" -m xyzrender.cli --help >/dev/null &
+  # This check runs twice after the bundle is sealed; a bare import would write
+  # __pycache__ into the signed app and break the strict verification with
+  # "file added" - the nightly's eternal failure.
+  PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$site_packages" "$python" -m xyzrender.cli --help >/dev/null &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     if (( elapsed >= timeout_seconds )); then
@@ -301,7 +304,15 @@ codesign "${CODESIGN_ARGS[@]}" "$STAGING_DEST" >/dev/null
 if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
   assert_bundled_xyzrender_runner "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "after app signing"
 fi
-codesign --verify --deep --strict "$STAGING_DEST"
+codesign --verify --deep --strict "$STAGING_DEST" || {
+  # The one-line failure ("a sealed resource is missing or invalid") never says
+  # which resource. The verbose retry names the exact file, which is the whole
+  # difference between a fixable report and a nightly that fails identically
+  # for months.
+  echo "error: staged app failed strict verification; verbose output follows" >&2
+  codesign -vvv --deep --strict "$STAGING_DEST" >&2 || true
+  exit 1
+}
 rm -rf "$DEST"
 if [[ -e "$DEST" ]]; then
   echo "error: could not remove existing installed app before final move: $DEST" >&2

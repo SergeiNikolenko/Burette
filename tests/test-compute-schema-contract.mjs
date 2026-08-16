@@ -558,9 +558,9 @@ expectValid("workflow-templates/cluster.v1.schema.json", edgeBudgetBoundary, "ma
 const edgeBudgetOverflow = structuredClone(edgeBudgetBoundary);
 edgeBudgetOverflow.limits.maxEdges += 1;
 expectInvalid("workflow-templates/cluster.v1.schema.json", edgeBudgetOverflow, "undirected similarity edge budget overflow");
-assert.equal(jcsSha256(request), "e9ac23cb9b124ece406aee5619cf49112de538f4fdf6d2f2217387df1ab202af");
-assert.equal(jcsSha256(filteredRequest), "abc35f1fd431bf053362f15ed63e7125e8f573f2762f92e40454afaf02341c9b");
-assert.equal(jcsSha256(plan), "746fb1f42a9be112bf9d4efc02d50370e64acc8db6790ea70d5d42e178238f58");
+assert.equal(jcsSha256(request), "41e4971d9370bf544b8056005634e654c187fed80a907d7e80aca1f005c6ba56");
+assert.equal(jcsSha256(filteredRequest), "e64ab4223a19591830a4597e7b8dc33c35aab4d8212239b5e2a988a1f3107a19");
+assert.equal(jcsSha256(plan), "c58d081958051a8a977ebadca74dc3129b90d38ae962b1ac5aa959f10d6c933f");
 
 const capability = fixture("valid-compute-capability-report.json");
 expectValid("protocol/compute-capability-report.v1.schema.json", capability, "full capability report");

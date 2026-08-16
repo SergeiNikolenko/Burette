@@ -20,3 +20,9 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    ignore:
+      # The gtk-rs 0.18 family (Tauri's Linux webview stack) pins glib 0.18;
+      # the RUSTSEC bump to 0.20 is impossible until Tauri moves the whole
+      # stack, so the security job fails on every run. These crates are Linux
+      # build targets only and never compile into the shipped macOS app.
+      - dependency-name: glib

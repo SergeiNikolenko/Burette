@@ -123,6 +123,11 @@ fn run_curl(
     let mut command = Command::new("/usr/bin/curl");
     command.args([
         "--fail",
+        // SMILES in a path segment carries [C@H] and friends; without --globoff
+        // curl reads the brackets as a glob range and refuses the URL
+        // ("bad range in URL"). The WHATWG url crate leaves [] unencoded in
+        // paths, so the URL text legitimately contains them.
+        "--globoff",
         "--proto",
         "=http,https",
         "--silent",
@@ -299,6 +304,14 @@ mod tests {
             curl_secret_config(&["Authorization: Bearer a\nheader = \"X: y\"".to_string()]),
             None
         );
+    }
+
+    #[test]
+    fn curl_never_globs_brackets_out_of_a_structure_url() {
+        // A SMILES path segment carries [C@H]; curl without --globoff answers
+        // "bad range in URL" before any request is made.
+        let source = include_str!("http.rs");
+        assert!(source.contains("\"--globoff\""));
     }
 
     #[test]

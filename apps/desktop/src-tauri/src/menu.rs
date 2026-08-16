@@ -19,7 +19,15 @@ pub(crate) fn drain_native_menu_commands<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     pending: tauri::State<'_, events::PendingNativeMenuCommands>,
 ) -> Result<Vec<events::NativeMenuCommand>, String> {
-    pending.drain(window.label())
+    let drained = pending.drain(window.label())?;
+    if !drained.is_empty() {
+        eprintln!(
+            "[menu] drained {} by window={}",
+            drained.len(),
+            window.label()
+        );
+    }
+    Ok(drained)
 }
 
 pub(crate) fn window_destroyed<R: tauri::Runtime>(app: &tauri::AppHandle<R>, window_label: &str) {

@@ -42,6 +42,33 @@ pub(crate) struct WriteBase64FileRequest {
     contents_base64: String,
 }
 
+/// The webview's own errors have no path to disk: WKWebView prints its console
+/// nowhere in a packaged app, so a frontend failure is invisible everywhere but
+/// on screen. The frontend forwards console errors and unhandled rejections
+/// here; they land in the same app log the diagnostics bundle already ships.
+#[tauri::command]
+pub(crate) fn frontend_log<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    level: String,
+    event: String,
+    message: String,
+) -> Result<(), String> {
+    let level = match level.as_str() {
+        "error" | "warn" | "info" => level,
+        _ => "info".to_string(),
+    };
+    let mut event = event.replace(char::is_whitespace, "-");
+    event.truncate(64);
+    if event.is_empty() {
+        event = "frontend".to_string();
+    }
+    let mut message = message;
+    message.truncate(4096);
+    eprintln!("[frontend:{level}] {event}: {message}");
+    let dir = app.path().app_cache_dir().map_err(|err| err.to_string())?;
+    append_app_log(&dir, &level, "frontend", "none", &event, 0, &message)
+}
+
 #[tauri::command]
 pub(crate) fn open_logs_folder<R: Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
     let dir = app.path().app_cache_dir().map_err(|err| err.to_string())?;

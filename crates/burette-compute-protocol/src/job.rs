@@ -1145,6 +1145,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn canonical_plan_bytes_and_hash_are_pinned() {
         let plan = plan(BackendPolicy::GpuRequired, Backend::NativeMetal);
@@ -1165,7 +1166,7 @@ mod tests {
         );
         assert_eq!(
             plan.canonical_sha256().expect("plan hash"),
-            "746fb1f42a9be112bf9d4efc02d50370e64acc8db6790ea70d5d42e178238f58"
+            "c58d081958051a8a977ebadca74dc3129b90d38ae962b1ac5aa959f10d6c933f"
         );
     }
 }

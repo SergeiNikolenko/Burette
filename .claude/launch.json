@@ -42,6 +42,22 @@
         "5177"
       ],
       "port": 5177
+    },
+    {
+      "name": "burette-tauri-1420",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/.bin/vite",
+        "--config",
+        "apps/desktop/vite.config.ts",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "1420",
+        "--strictPort",
+        "true"
+      ],
+      "port": 1420
     }
   ]
 }
