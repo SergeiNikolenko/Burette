@@ -1201,7 +1201,13 @@ mod tests {
 
         let cube = preview_plan_for_extension("cube", "auto").expect("cube plan should resolve");
         assert_eq!(cube.strategy, PreviewStrategy::External);
-        assert_eq!(cube.renderer, "xyzrender-external");
+        // Since the Mesoscale rework the registry opens volumetric text formats
+        // in Mol* through the converter; xyzrender stays reachable as the
+        // explicitly requested fallback below.
+        assert_eq!(cube.renderer, "molstar");
+        let cube_external = preview_plan_for_extension("cube", "xyzrender-external")
+            .expect("explicit cube external plan should resolve");
+        assert_eq!(cube_external.renderer, "xyzrender-external");
         assert_eq!(
             cube.converter
                 .as_ref()
@@ -1211,8 +1217,7 @@ mod tests {
         assert!(cube
             .fallbacks
             .iter()
-            .any(|fallback| fallback.renderer == "molstar"
-                && fallback.converter.as_deref() == Some("text-coordinates-to-pdb")));
+            .any(|fallback| fallback.renderer == "xyzrender-external"));
 
         let xtc = preview_plan_for_extension("xtc", "auto").expect("xtc plan should resolve");
         assert_eq!(xtc.strategy, PreviewStrategy::Trajectory);

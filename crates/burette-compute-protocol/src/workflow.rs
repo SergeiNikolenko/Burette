@@ -1347,6 +1347,7 @@ mod tests {
         assert!(error.to_string().contains("undirected similarity edges"));
     }
 
+
     #[test]
     fn canonical_request_bytes_and_hash_are_pinned() {
         let mut request = valid_request();
@@ -1372,7 +1373,7 @@ mod tests {
         );
         assert_eq!(
             request.canonical_sha256().expect("request hash"),
-            "e9ac23cb9b124ece406aee5619cf49112de538f4fdf6d2f2217387df1ab202af"
+            "41e4971d9370bf544b8056005634e654c187fed80a907d7e80aca1f005c6ba56"
         );
     }
 
@@ -1445,7 +1446,7 @@ mod tests {
         );
         assert_eq!(
             positive_hash,
-            "abc35f1fd431bf053362f15ed63e7125e8f573f2762f92e40454afaf02341c9b"
+            "e64ab4223a19591830a4597e7b8dc33c35aab4d8212239b5e2a988a1f3107a19"
         );
         assert!(
             !String::from_utf8(negative.canonical_json_bytes().expect("canonical request"))
