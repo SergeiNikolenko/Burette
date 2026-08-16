@@ -595,9 +595,13 @@ impl GridRuntimeRegistry {
         descriptor_run_summary_in_database(&runtime.database_path)
     }
 
-    pub(crate) fn mark_virtual_edit(&self, document_id: &str) -> Result<u64, String> {
+    pub(crate) fn set_virtual_edit_state(
+        &self,
+        document_id: &str,
+        dirty: bool,
+    ) -> Result<u64, String> {
         let runtime = self.runtime_entry(document_id)?;
-        grid_identity::mark_virtual_edit(&runtime.database_path)
+        grid_identity::set_virtual_edit_state(&runtime.database_path, dirty)
     }
 
     fn database_path(&self, document_id: &str) -> Result<PathBuf, String> {

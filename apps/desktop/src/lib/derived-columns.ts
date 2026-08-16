@@ -96,17 +96,18 @@ let enginesPromise: Promise<DerivedEngines> | null = null;
 export function loadDerivedEngines(): Promise<DerivedEngines> {
   if (!enginesPromise) {
     enginesPromise = (async () => {
-      const [ocl, oclResourcesUrl, rdkitModule, wasm] = await Promise.all([
+      const [ocl, oclResourcesRaw, rdkitModule, wasm] = await Promise.all([
         import("openchemlib"),
-        // The package exports map hides dist/, so the resources ride along as
-        // a bundled asset url instead of a bare-specifier import.
-        import("../../../../node_modules/openchemlib/dist/resources.json?url"),
+        // WKWebView cannot fetch Vite's emitted JSON asset through Tauri's
+        // packaged frontend protocol. Bundle the predictor tables into the JS
+        // chunk and register them without a runtime network request.
+        import("../../../../node_modules/openchemlib/dist/resources.json?raw"),
         import("@rdkit/rdkit") as unknown as Promise<{ default: RDKitLoader }>,
         import("@rdkit/rdkit/dist/RDKit_minimal.wasm?url"),
       ]);
       // The Actelion predictors (druglikeness, toxicity) refuse to run until
       // their rule tables are registered.
-      await ocl.Resources.registerFromUrl(oclResourcesUrl.default);
+      ocl.Resources.register(JSON.parse(oclResourcesRaw.default));
       const rdkit = await rdkitModule.default({ locateFile: () => wasm.default });
       return { ocl, rdkit };
     })().catch((error) => {

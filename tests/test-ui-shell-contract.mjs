@@ -467,6 +467,8 @@ const [
   source('apps/desktop/src/hooks/use-app-database.ts'),
   source('apps/desktop/src/components/database-query-dialog.tsx'),
 ]);
+const derivedColumnsLib = await source('apps/desktop/src/lib/derived-columns.ts');
+const frontendErrorLog = await source('apps/desktop/src/lib/frontend-error-log.ts');
 
 const desktopPackage = JSON.parse(await source('apps/desktop/package.json'));
 const viewerShell = previewShell;
@@ -7398,6 +7400,13 @@ assert.match(appNativeMenuHook, /actions\.addDerivedGridColumn\(activeDocument\.
 assert.match(derivedColumnsHook, /type: "gridDescriptorFinished"/);
 assert.match(derivedColumnsHook, /fetchDerivedSourceRows\(documentId, afterSourceIndex, DERIVED_SOURCE_BATCH\)/);
 assert.match(derivedColumnsHook, /storeDerivedValues\(documentId, \{/);
+assert.match(derivedColumnsLib, /resources\.json\?raw/);
+assert.match(derivedColumnsLib, /RDKit_minimal\.wasm\?url/);
+assert.match(viteConfig, /assetsInlineLimit:[\s\S]*RDKit_minimal\.wasm/);
+assert.match(derivedColumnsLib, /ocl\.Resources\.register\(JSON\.parse\(oclResourcesRaw\.default\)\)/);
+assert.doesNotMatch(derivedColumnsLib, /Resources\.registerFromUrl/);
+assert.match(frontendErrorLog, /export function logFrontendError/);
+assert.match(derivedColumnsHook, /logFrontendError\("derived-column"/);
 assert.match(dockPanel, /DerivedColumnJobList jobs=\{state\.derivedColumnJobs\}/);
 assert.match(dockPanel, /actions\.clearDerivedColumnJobs\(\)/);
 // Calculate Properties: the menu command opens the dialog, the dialog feeds the
@@ -7697,7 +7706,7 @@ assert.match(appGridFileActionsHook, /rebindSavedGridDocument\(documentId, saved
 assert.match(appGridFileActionsHook, /if \(replacement\.id !== documentId\) closeGridRuntime\(documentId\)/);
 assert.match(appGridFileActionsHook, /Saved \$\{basename\(savedPath\)\}, but could not switch the active document/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "gridDirtyChanged"/);
-assert.match(appGridControlMessagesHook, /invoke\("grid_mark_virtual_edit",\s*\{\s*request:\s*\{\s*documentId\s*\}\s*\}\)/);
+assert.match(appGridControlMessagesHook, /invoke\("grid_mark_virtual_edit",\s*\{\s*request:\s*\{\s*documentId,\s*dirty:\s*body\.dirty === true\s*\}\s*\}\)/);
 assert.match(appGridControlMessagesHook, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
 assert.match(appDirtyGridHook, /buttons: \{\s*yes: "Review Unsaved Changes…",\s*no: CLOSE_WITHOUT_SAVING_LABEL,\s*cancel: "Cancel"/s);
 assert.match(appDirtyGridHook, /`\$\{dirtyCount\} grid documents have unsaved or in-progress changes\.`/);

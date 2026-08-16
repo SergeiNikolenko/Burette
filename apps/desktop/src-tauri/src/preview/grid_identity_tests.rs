@@ -60,7 +60,14 @@ fn source_revision_fingerprint_and_virtual_edit_generation_are_durable() {
     .expect("create disk fixture");
     initialize(&disk).expect("initialize disk identity");
     drop(disk);
-    assert_eq!(mark_virtual_edit(&database_path).expect("mark edit"), 1);
+    assert_eq!(
+        set_virtual_edit_state(&database_path, true).expect("mark edit"),
+        1
+    );
+    assert_eq!(
+        set_virtual_edit_state(&database_path, false).expect("clear reverted edits"),
+        0
+    );
     let reopened = Connection::open(&database_path).expect("reopen disk database");
     let generation: i64 = reopened
         .query_row(
@@ -69,7 +76,7 @@ fn source_revision_fingerprint_and_virtual_edit_generation_are_durable() {
             |row| row.get(0),
         )
         .expect("read edit generation");
-    assert_eq!(generation, 1);
+    assert_eq!(generation, 0);
     drop(reopened);
     let _ = std::fs::remove_dir_all(root);
 }
