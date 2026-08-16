@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 const buildScript = source("scripts/build.sh");
+const releaseWorkflow = source(".github/workflows/release.yml");
 const conformerCommand = source("apps/desktop/src-tauri/src/commands/documents.rs");
 const xtbRuntime = source("apps/desktop/src-tauri/src/commands/xtb_runtime.rs");
 const viewer = source("PreviewExtension/Web/viewer.js");
@@ -34,6 +35,11 @@ assert.ok(
 assert.match(buildScript, /export CARGO_PROFILE_RELEASE_STRIP=false/);
 assert.match(buildScript, /--exclude \.codegraph/);
 assert.match(buildScript, /bun scripts\/check-release-version\.mjs/);
+assert.match(buildScript, /PYTHONDONTWRITEBYTECODE=1/);
+assert.match(buildScript, /find "\$python_root" -type d -name __pycache__/);
+
+assert.doesNotMatch(releaseWorkflow, /echo "allow_adhoc=true"/);
+assert.match(releaseWorkflow, /Stable releases require Developer ID signing and Apple notarization credentials/);
 
 assert.match(conformerCommand, /candidate_errors/);
 assert.match(conformerCommand, /format_conformer_candidate_errors/);

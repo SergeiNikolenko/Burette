@@ -152,8 +152,8 @@ export BURETTE_NOTARY_KEYCHAIN_PROFILE="BuretteNotary"
 ./scripts/release.sh
 ```
 
-If Developer ID credentials are not available, release artifacts can be built
-and published with ad-hoc signing and without notarization:
+Ad-hoc artifacts are limited to local packaging checks and must not be
+published as stable GitHub releases:
 
 ```bash
 export BURETTE_RELEASE_ALLOW_ADHOC=1
@@ -173,8 +173,8 @@ Release builds are explicit: `scripts/release.sh` sets
 `BURETTE_BUILD_MODE=release` and uses the Xcode Release configuration. With
 Developer ID credentials it enables the notarized path: hardened runtime,
 Developer ID signing, Apple notarytool submission, stapling, and then zip/dmg
-packaging. With `BURETTE_RELEASE_ALLOW_ADHOC=1`, it skips notarization and
-publishes ad-hoc signed zip/dmg artifacts.
+packaging. With `BURETTE_RELEASE_ALLOW_ADHOC=1`, it produces local ad-hoc
+zip/dmg artifacts for packaging validation only.
 
 ## Artifact Requirements
 

@@ -77,7 +77,8 @@ jobs:
           if [[ -n "${MACOS_CERTIFICATE_P12_BASE64:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_KEYCHAIN_PASSWORD:-}" && -n "${BURETTE_CODESIGN_IDENTITY:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
             echo "developer_id=true" >> "$GITHUB_OUTPUT"
           else
-            echo "developer_id=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Stable releases require Developer ID signing and Apple notarization credentials."
+            exit 1
           fi
           if [[ -n "${BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" && -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
             echo "signed_manifest=true" >> "$GITHUB_OUTPUT"
@@ -89,11 +90,7 @@ jobs:
           else
             echo "homebrew=false" >> "$GITHUB_OUTPUT"
           fi
-          if [[ -n "${MACOS_CERTIFICATE_P12_BASE64:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_KEYCHAIN_PASSWORD:-}" && -n "${BURETTE_CODESIGN_IDENTITY:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
-            echo "allow_adhoc=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "allow_adhoc=true" >> "$GITHUB_OUTPUT"
-          fi
+          echo "allow_adhoc=false" >> "$GITHUB_OUTPUT"
 
       - name: Import Developer ID certificate
         if: steps.capabilities.outputs.developer_id == 'true'

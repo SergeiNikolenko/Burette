@@ -1484,6 +1484,7 @@ fn bundled_conformer_python_candidates_from_executable(executable: &Path) -> Vec
                         site_packages.to_string_lossy().to_string(),
                     ),
                     ("PYTHONNOUSERSITE".to_string(), "1".to_string()),
+                    ("PYTHONDONTWRITEBYTECODE".to_string(), "1".to_string()),
                 ],
             });
         }
@@ -3426,6 +3427,10 @@ mod tests {
                     .envs
                     .iter()
                     .any(|(key, value)| key == "PYTHONNOUSERSITE" && value == "1")
+                && candidate
+                    .envs
+                    .iter()
+                    .any(|(key, value)| key == "PYTHONDONTWRITEBYTECODE" && value == "1")
         }));
         let _ = fs::remove_dir_all(&directory);
     }
