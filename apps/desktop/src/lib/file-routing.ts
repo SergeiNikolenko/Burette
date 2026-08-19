@@ -53,6 +53,25 @@ export function isPreferredTextPath(path: string, extension = pathExtension(path
   return preferredTextExtensions.has(extension) || preferredTextBasenames.has(basename(path).toLowerCase());
 }
 
+// Office and document formats rendered by the vendored Retab file viewer. They are
+// deliberately kept out of the structure and text sets: none of them is chemistry
+// input, and none of them survives being read as text.
+export const documentViewerExtensions = new Set([
+  "pdf",
+  "docx",
+  "xlsx",
+  "xls",
+  "xlsm",
+  "pptx",
+  "eml",
+  "tif",
+  "tiff",
+]);
+
+export function isDocumentViewerPath(path: string, extension = pathExtension(path)) {
+  return documentViewerExtensions.has(extension);
+}
+
 export const structureAndTextExtensions = new Set([
   "abi",
   "cfg",

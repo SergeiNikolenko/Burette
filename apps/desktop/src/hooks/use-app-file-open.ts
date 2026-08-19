@@ -10,6 +10,7 @@ import type { DockArea, DockTabKind } from "../lib/dock";
 import {
   delimitedColumnChoiceLabel,
   isDelimitedColumnAmbiguity,
+  isDocumentViewerPath,
   isFepGraphmlPath,
   isPreferredTextPath,
   NOT_RENDERABLE_RENDERER,
@@ -60,6 +61,7 @@ type UseAppFileOpenOptions = {
   expandStructureBundles: (paths: string[]) => Promise<string[]>;
   openDockTab: (area: DockArea, kind: DockTabKind) => void;
   openDocumentsInActiveTab: (documents: ViewerDocument[]) => void;
+  openDocumentTab: (path: string) => void;
   openFepNetworkTab: (location: FepNetworkLocation) => void;
   openTextDocumentsInActiveTab: (documents: TextFileDocument[]) => void;
   pushErrorStatus: PushErrorStatus;
@@ -85,6 +87,7 @@ export function useAppFileOpen({
   expandStructureBundles,
   openDockTab,
   openDocumentsInActiveTab,
+  openDocumentTab,
   openFepNetworkTab,
   openTextDocumentsInActiveTab,
   pushErrorStatus,
@@ -341,6 +344,7 @@ export function useAppFileOpen({
 
     const structurePaths: string[] = [];
     const spectrumPaths: string[] = [];
+    const documentPaths: string[] = [];
     const textPaths: string[] = [];
     const structureAndTextPaths: string[] = [];
     let preferredStructureDocumentId: string | null = null;
@@ -350,6 +354,8 @@ export function useAppFileOpen({
       const extension = pathExtension(path);
       if (isSpectrumPath(path, extension) || contentSpectrumPaths.has(path)) {
         spectrumPaths.push(path);
+      } else if (isDocumentViewerPath(path, extension)) {
+        documentPaths.push(path);
       } else if (
         isPreferredTextPath(path, extension)
         || (extension.length > 0 && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension))
@@ -362,6 +368,10 @@ export function useAppFileOpen({
       } else {
         textPaths.push(path);
       }
+    }
+
+    for (const path of documentPaths) {
+      openDocumentTab(path);
     }
 
     if (spectrumPaths.length > 0) {
@@ -407,7 +417,7 @@ export function useAppFileOpen({
     if (preferredStructureDocumentId) {
       setActiveDocument(preferredStructureDocumentId);
     }
-  }, [addProjectRoot, closeDocument, detectContentSpectrumPaths, expandStructureBundles, openDocuments, openSpectrumDocuments, openTextDocuments, pushErrorStatus, pushStatus, setActiveDocument]);
+  }, [addProjectRoot, closeDocument, detectContentSpectrumPaths, expandStructureBundles, openDocuments, openDocumentTab, openSpectrumDocuments, openTextDocuments, pushErrorStatus, pushStatus, setActiveDocument]);
 
   const openStructureRecordDocuments = useCallback(async (records: StructureDragRecord[]) => {
     const cleanRecords = records.filter((record) => record.text.trim().length > 0);

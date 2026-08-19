@@ -1599,7 +1599,7 @@ assert.doesNotMatch(editorTabs, /className="tab-scroll-region"[\s\S]{0,180}data-
 assert.match(editorTabs, /className="tab-strip-spacer"[\s\S]*data-tauri-drag-region/);
 assert.match(defaultCapability, /"core:window:allow-internal-toggle-maximize"/);
 assert.match(defaultCapability, /"core:window:allow-start-dragging"/);
-assert.match(pageKinds, /const kinds = \[fileKind, textFileKind, fepNetworkKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind\] as const/);
+assert.match(pageKinds, /const kinds = \[fileKind, textFileKind, documentKind, fepNetworkKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind\] as const/);
 assert.match(pageKinds, /export function pageKind/);
 assert.match(pageKinds, /export function serializeLocation/);
 assert.match(pageKinds, /export function deserializeLocation/);

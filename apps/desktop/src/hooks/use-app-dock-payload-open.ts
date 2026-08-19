@@ -6,6 +6,7 @@ import { openBrowserDevDocuments } from "../lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "../lib/browser-dev-text-files";
 import { DOCK_TAB_LABELS, dockTabLoadsDroppedDocument, resolveDockDropPaths, type DockArea, type DockDropInput, type DockToolKind } from "../lib/dock";
 import {
+  isDocumentViewerPath,
   isPreferredTextPath,
   NOT_RENDERABLE_RENDERER,
   pathExtension,
@@ -39,6 +40,7 @@ type UseAppDockPayloadOpenOptions = {
   addDockDrop: (input: DockDropInput) => void;
   detectContentSpectrumPaths: (paths: string[]) => Promise<Set<string>>;
   documents: ViewerDocument[];
+  openDocumentTab: (path: string) => void;
   openStructureRecordDocuments: OpenStructureRecordDocuments;
   pushErrorStatus: PushErrorStatus;
   pushStatus: PushStatus;
@@ -59,6 +61,7 @@ export function useAppDockPayloadOpen({
   addDockDrop,
   detectContentSpectrumPaths,
   documents,
+  openDocumentTab,
   openStructureRecordDocuments,
   pushErrorStatus,
   pushStatus,
@@ -108,6 +111,7 @@ export function useAppDockPayloadOpen({
           const extension = pathExtension(path);
           return !isSpectrumPath(path, extension)
             && !rightDockContentSpectrumPaths.has(path)
+            && !isDocumentViewerPath(path, extension)
             && (isPreferredTextPath(path, extension) || (!structureExtensions.has(extension) && !structureAndTextExtensions.has(extension)));
         });
         dockOpenPaths = unopenedPaths.filter((path) => !rightDockTextPaths.includes(path));
@@ -141,6 +145,7 @@ export function useAppDockPayloadOpen({
 
       const structurePaths: string[] = [];
       const spectrumPaths: string[] = [];
+      const documentPaths: string[] = [];
       const textPaths: string[] = [];
       const structureAndTextPaths: string[] = [];
       const contentSpectrumPaths = await detectContentSpectrumPaths(dockOpenPaths);
@@ -148,6 +153,8 @@ export function useAppDockPayloadOpen({
         const extension = pathExtension(path);
         if (isSpectrumPath(path, extension) || contentSpectrumPaths.has(path)) {
           spectrumPaths.push(path);
+        } else if (isDocumentViewerPath(path, extension)) {
+          documentPaths.push(path);
         } else if (isPreferredTextPath(path, extension)) {
           textPaths.push(path);
         } else if (structureAndTextExtensions.has(extension)) {
@@ -159,6 +166,10 @@ export function useAppDockPayloadOpen({
         } else {
           textPaths.push(path);
         }
+      }
+
+      for (const path of documentPaths) {
+        openDocumentTab(path);
       }
 
       const structurePathResult = structurePaths.length > 0
@@ -278,6 +289,7 @@ export function useAppDockPayloadOpen({
     addDockDrop,
     detectContentSpectrumPaths,
     documents,
+    openDocumentTab,
     openStructureRecordDocuments,
     preferences,
     pushErrorStatus,

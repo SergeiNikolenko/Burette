@@ -219,6 +219,15 @@ type StructureFileBundle = {
 };
 const DEV_FILE_EXTENSIONS = new Set([
   ...previewFormatRegistry.documentTypes.extensions,
+  "pdf",
+  "docx",
+  "xlsx",
+  "xls",
+  "xlsm",
+  "pptx",
+  "eml",
+  "tif",
+  "tiff",
   "dtr",
   "magma",
   "md",

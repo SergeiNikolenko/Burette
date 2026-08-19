@@ -99,6 +99,7 @@ import {
   useOpenDocumentsInActiveTab,
   useOpenFepNetworkTab,
   useOpenFepSetupTab,
+  useOpenDocumentTab,
   useOpenKetcherTab,
   useOpenNewTab,
   useOpenPoseReviewTab,
@@ -161,6 +162,7 @@ export default function App() {
   const openTextDocumentsInActiveTab = useOpenTextDocumentsInActiveTab();
   const setDocuments = useSetDocuments();
   const openNewTab = useOpenNewTab();
+  const openDocumentTab = useOpenDocumentTab();
   const openKetcherTab = useOpenKetcherTab();
   const hostedKetcherWidget = isHostedKetcherWidget();
   const openFepNetworkTab = useOpenFepNetworkTab();
@@ -723,6 +725,7 @@ export default function App() {
     expandStructureBundles: expandBrowserDevStructureBundles,
     openDockTab,
     openDocumentsInActiveTab,
+    openDocumentTab,
     openFepNetworkTab,
     openTextDocumentsInActiveTab,
     preferences,
@@ -745,6 +748,7 @@ export default function App() {
     documents,
     openStructureRecordDocuments,
     preferences,
+    openDocumentTab,
     pushErrorStatus,
     pushStatus,
     rememberRecentStructures,

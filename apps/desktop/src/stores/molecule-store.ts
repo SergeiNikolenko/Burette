@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   deserializeLocation,
   serializeLocation,
+  type DocumentLocation,
   type FepNetworkLocation,
   type FepSetupLocation,
   type KetcherLocation,
@@ -71,6 +72,7 @@ type MoleculeState = {
   openNewTab: () => void;
   openFepNetworkTab: (location: FepNetworkLocation) => void;
   openFepSetupTab: (location: FepSetupLocation) => void;
+  openDocumentTab: (path: string) => void;
   openKetcherTab: (location?: KetcherLocation) => void;
   openPoseReviewTab: (location: PoseReviewLocation) => void;
   openSettingsTab: (section?: AppSettingsSectionId) => void;
@@ -179,6 +181,10 @@ function textFileLocation(document: TextFileDocument): TextFileLocation {
 
 export function createSettingsTab(id = createTabId()): MoleculeTab {
   return { id, location: { kind: "settings", section: DEFAULT_SETTINGS_SECTION }, back: [], forward: [] };
+}
+
+export function createDocumentTab(location: DocumentLocation, id = createTabId()): MoleculeTab {
+  return { id, location, back: [], forward: [] };
 }
 
 export function createKetcherTab(id = createTabId(), location: KetcherLocation = { kind: "ketcher" }): MoleculeTab {
@@ -699,6 +705,14 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tab = createFepSetupTab(location);
           const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: activeDocumentIdFrom(tabs, tab.id, state.documents) };
+        }),
+      openDocumentTab: (path) =>
+        set((state) => {
+          const existing = state.tabs.find((tab) => tab.location.kind === "document" && tab.location.path === path);
+          if (existing) return { activeTabId: existing.id, activeDocumentId: null };
+          const tab = createDocumentTab({ kind: "document", path });
+          const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
+          return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
       openKetcherTab: (location: KetcherLocation = { kind: "ketcher" }) =>
         set((state) => {
