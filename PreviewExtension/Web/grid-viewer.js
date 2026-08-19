@@ -46,11 +46,12 @@
   const XYZRENDER_CARD_CONCURRENCY = 4;
   const GRID_LOAD_AHEAD_PX = 720;
   const RDKIT_CARD_ROOT_MARGIN = 900;
-  const XYZRENDER_CARD_ROOT_MARGIN = '120px 0px';
-  const XYZRENDER_CARD_BATCH_SIZE = 12;
+  const XYZRENDER_CARD_ROOT_MARGIN = '600px 0px';
+  const XYZRENDER_CARD_BATCH_SIZE = 24;
   const XYZRENDER_CARD_BATCH_MIN_CONCURRENCY = 1;
-  const XYZRENDER_CARD_BATCH_MAX_CONCURRENCY = 3;
+  const XYZRENDER_CARD_BATCH_MAX_CONCURRENCY = 4;
   const XYZRENDER_CARD_BATCH_DELAY_MS = 16;
+  const XYZRENDER_CARD_PREFETCH_DELAY_MS = 200;
   const RDKIT_CARD_FRAME_BATCH = 6;
   const RDKIT_CARD_FRAME_BUDGET_MS = 8;
   const GRID_WINDOW_OVERSCAN_ROWS = 4;
@@ -64,7 +65,7 @@
   const TABLE_DEFAULT_COLUMN_WIDTH = 118;
   const TABLE_COLUMN_OVERSCAN_PX = 360;
   const RDKIT_SVG_CACHE_LIMIT = 220;
-  const XYZRENDER_CARD_CACHE_LIMIT = 180;
+  const XYZRENDER_CARD_CACHE_LIMIT = 1500;
   const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   const state = {
     rdkit: null,
@@ -136,6 +137,7 @@
     xyzrenderCardsRunning: 0,
     xyzrenderBatchesRunning: 0,
     xyzrenderBatchTimer: 0,
+    xyzrenderCardPrefetchTimer: 0,
     xyzrenderCardSeq: 0,
     xyzrenderCardObserver: null,
     xyzrenderCardLazyJobs: new WeakMap(),
@@ -3352,7 +3354,7 @@
       return;
     }
     while (state.xyzrenderCardsRunning < XYZRENDER_CARD_CONCURRENCY && state.xyzrenderCardQueue.length) {
-      state.xyzrenderCardQueue.sort(compareCardRenderJobs);
+      sortXyzrenderCardQueue();
       const job = state.xyzrenderCardQueue.shift();
       state.xyzrenderCardsRunning++;
       void requestXyzrenderCard(job.row, job.cfg, job.record, job.key).finally(() => {
@@ -3381,7 +3383,6 @@
       state.xyzrenderBatchesRunning < concurrency
       && state.xyzrenderCardQueue.length
     ) {
-      state.xyzrenderCardQueue.sort(compareCardRenderJobs);
       const jobs = takeXyzrenderCardBatchJobs();
       if (!jobs.length) return;
       state.xyzrenderBatchesRunning++;
@@ -7290,6 +7291,11 @@
     });
   }
 
+  function sortXyzrenderCardQueue() {
+    for (const job of state.xyzrenderCardQueue) job.priority = cardRenderPriority(job.target);
+    state.xyzrenderCardQueue.sort((a, b) => (a.priority - b.priority) || ((a.seq || 0) - (b.seq || 0)));
+  }
+
   function compareCardRenderJobs(a, b) {
     const delta = cardRenderPriority(a.target) - cardRenderPriority(b.target);
     return delta || ((a.seq || 0) - (b.seq || 0));
@@ -7351,9 +7357,43 @@
     const observer = ensureXyzrenderCardObserver();
     if (observer) {
       observer.observe(target);
+      scheduleXyzrenderCardPrefetch();
       return;
     }
     window.setTimeout(() => startLazyXyzrenderCard(target), 0);
+  }
+
+  // Cards outside the viewport are queued once the visible ones are on their way
+  // so a rendered grid keeps every card warm instead of drawing them per scroll.
+  function scheduleXyzrenderCardPrefetch() {
+    if (state.xyzrenderCardPrefetchTimer) return;
+    state.xyzrenderCardPrefetchTimer = window.setTimeout(() => {
+      state.xyzrenderCardPrefetchTimer = 0;
+      const targets = state.xyzrenderCardLazyTargets.splice(0);
+      for (const target of targets) startLazyXyzrenderCard(target);
+      warmXyzrenderCards();
+    }, XYZRENDER_CARD_PREFETCH_DELAY_MS);
+  }
+
+  // Rows below the virtual window have no card element yet, so they are queued
+  // without a target: they render at the lowest priority and land in the card
+  // cache before the user scrolls to them.
+  function warmXyzrenderCards() {
+    if (state.cardRenderer !== 'xyzrender') return;
+    const cfg = safeConfig();
+    if (!cfg) return;
+    if (cfg.appViewer !== true || cfg.gridDataMode !== 'bridge') return;
+    const start = Math.max(0, Number(state.windowStart) || 0);
+    const limit = Math.min(state.rows.length, start + XYZRENDER_CARD_CACHE_LIMIT);
+    for (let index = start; index < limit; index += 1) {
+      const row = state.rows[index];
+      if (!row) continue;
+      const record = gridDragRecord(row);
+      if (!record) continue;
+      const key = xyzrenderCardKey(row, record);
+      if (state.xyzrenderCardCache.has(key)) continue;
+      enqueueXyzrenderCard(row, cfg, record, key, null);
+    }
   }
 
   function ensureXyzrenderCardObserver() {
@@ -7377,6 +7417,10 @@
   }
 
   function resetXyzrenderCardObserver() {
+    if (state.xyzrenderCardPrefetchTimer) {
+      window.clearTimeout(state.xyzrenderCardPrefetchTimer);
+      state.xyzrenderCardPrefetchTimer = 0;
+    }
     state.xyzrenderCardObserver?.disconnect?.();
     state.xyzrenderCardObserver = null;
     state.xyzrenderCardLazyJobs = new WeakMap();
