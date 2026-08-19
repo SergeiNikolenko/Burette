@@ -5,6 +5,21 @@ shadcn registry: PDF, DOCX, XLSX, PPTX, CSV/TSV, images, code, Markdown and emai
 Chemistry surfaces (Mol*, 2D grid, xyzrender, spectrum, Ketcher, mesoscale, FEP) are
 unaffected and keep their own renderers.
 
+## How a document opens
+
+`isDocumentViewerPath` in `apps/desktop/src/lib/file-routing.ts` decides which files
+belong to the viewer. Both open paths — `use-app-file-open.ts` for the shell and
+`use-app-dock-payload-open.ts` for dock drops — classify those files before the text
+fallback, and open them through `openDocumentTab`, which is the `document` page kind.
+
+The page kind hands the viewer the file bytes:
+
+- desktop: the `read_document_file` Tauri command (256 MiB limit) and a `blob` source.
+  The asset protocol is not an option here, its scope covers generated runtime files
+  only, so arbitrary user paths are refused.
+- browser dev: the existing `/__burette/read-file` bridge and a `url` source. The
+  extensions must also be listed in `DEV_FILE_EXTENSIONS` in `apps/desktop/vite.config.ts`.
+
 ## Installing and updating
 
 The registry is declared in `apps/desktop/components.json`:
