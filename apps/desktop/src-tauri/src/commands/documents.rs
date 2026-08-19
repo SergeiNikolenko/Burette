@@ -35,7 +35,7 @@ use crate::preview::runtime_grid::create_grid_runtime_with_options;
 use crate::preview::runtime_viewer::create_combined_sdf_pose_runtime;
 use crate::preview::text_xyz::xyz_data_from_text;
 use crate::preview::xyzrender::{
-    create_xyzrender_artifact, create_xyzrender_smiles_batch_artifacts, XyzrenderSmilesBatchRequest,
+    create_xyzrender_artifact, create_xyzrender_card_batch_artifacts, XyzrenderCardBatchRequest,
 };
 
 const XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
@@ -2082,11 +2082,9 @@ fn render_xyzrender_sheet_items_blocking(
             Some("grid-card") => Some(viewer_cache_directory.join("grid-xyzrender-card-cache")),
             _ => None,
         };
-        if let Some(batch_request) = prepare_xyzrender_smiles_batch_request(
-            &item,
-            &output_directory,
-            cache_directory.clone(),
-        ) {
+        if let Some(batch_request) =
+            prepare_xyzrender_card_batch_request(&item, &output_directory, cache_directory.clone())
+        {
             match batch_request {
                 Ok(value) => {
                     batch_requests.push(value);
@@ -2129,7 +2127,7 @@ fn render_xyzrender_sheet_items_blocking(
         }
     }
     results.extend(
-        create_xyzrender_smiles_batch_artifacts(batch_requests)
+        create_xyzrender_card_batch_artifacts(batch_requests)
             .into_iter()
             .map(|result| XyzrenderSheetRenderBatchItemResult {
                 id: result.id,
@@ -2144,16 +2142,19 @@ fn render_xyzrender_sheet_items_blocking(
     Ok(XyzrenderSheetRenderBatchResult { items: results })
 }
 
-fn prepare_xyzrender_smiles_batch_request(
+/// Routes a grid card to the pooled xyzrender workers when the card only needs
+/// an inline structure and a preset, which is every card the grid renders for a
+/// collection. Cards with per-card controls still need the CLI argument surface.
+fn prepare_xyzrender_card_batch_request(
     item: &XyzrenderSheetRenderBatchItemRequest,
     output_directory: &Path,
     cache_directory: Option<PathBuf>,
-) -> Option<Result<XyzrenderSmilesBatchRequest, String>> {
+) -> Option<Result<XyzrenderCardBatchRequest, String>> {
     let request = &item.request;
     if request.controls.is_some() {
         return None;
     }
-    if !matches!(request.preset.as_deref(), None | Some("default")) {
+    if matches!(request.preset.as_deref(), Some("custom")) {
         return None;
     }
     let input_data_base64 = request
@@ -2167,7 +2168,10 @@ fn prepare_xyzrender_smiles_batch_request(
         Ok(value) => value,
         Err(error) => return Some(Err(error)),
     };
-    if !matches!(extension.as_str(), "smi" | "smiles") {
+    if !matches!(
+        extension.as_str(),
+        "smi" | "smiles" | "mol" | "sdf" | "xyz" | "mol2" | "pdb" | "cif"
+    ) {
         return None;
     }
     let data = match base64::engine::general_purpose::STANDARD.decode(input_data_base64) {
@@ -2186,17 +2190,23 @@ fn prepare_xyzrender_smiles_batch_request(
     if let Err(error) = fs::create_dir_all(output_directory) {
         return Some(Err(error.to_string()));
     }
-    let input_path = output_directory.join("sheet-input.smi");
+    let input_path = output_directory.join(format!("sheet-input.{extension}"));
     if let Err(error) = fs::write(&input_path, &data) {
         return Some(Err(format!("{}: {error}", input_path.display())));
     }
-    let direct_smiles = match smiles_from_sheet_data(&data) {
-        Ok(value) => value,
-        Err(error) => return Some(Err(error)),
+    let is_smiles = matches!(extension.as_str(), "smi" | "smiles");
+    let direct_smiles = if is_smiles {
+        match smiles_from_sheet_data(&data) {
+            Ok(value) => Some(value),
+            Err(error) => return Some(Err(error)),
+        }
+    } else {
+        None
     };
-    Some(Ok(XyzrenderSmilesBatchRequest {
+    Some(Ok(XyzrenderCardBatchRequest {
         id: item.id.clone(),
         input_path,
+        input_data: (!is_smiles).then_some(data),
         output_directory: output_directory.to_path_buf(),
         cache_directory,
         preset: request.preset.clone(),

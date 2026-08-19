@@ -1490,10 +1490,8 @@ mod document_open_tests {
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::OnceLock;
     use tauri::Manager;
-
-    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     /// Pins HOME to one empty directory for the whole test process.
     ///
@@ -1628,8 +1626,7 @@ mod document_open_tests {
     }
 
     fn with_fake_xyzrender_script<T>(script: &str, run: impl FnOnce() -> T) -> T {
-        let _lock = ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
+        let _lock = super::super::env_lock()
             .lock()
             .expect("env lock should not be poisoned");
         // HOME stays pinned to the shared test home: the fake executable is

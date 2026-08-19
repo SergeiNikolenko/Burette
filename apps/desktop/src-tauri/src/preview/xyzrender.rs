@@ -1,37 +1,40 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use super::runtime::XyzrenderControls;
 #[cfg(test)]
 use super::runtime::XyzrenderRegion;
+use super::xyzrender_pool::{render_cards, XyzrenderCardJob, XyzrenderWorkerLaunch};
 
 const XYZRENDER_TIMEOUT: Duration = Duration::from_secs(20);
 const XYZRENDER_LOG_CAPTURE_BYTES: usize = 64 * 1024;
 const XYZRENDER_CACHE_MAX_AGE: Duration = Duration::from_secs(14 * 24 * 60 * 60);
-const XYZRENDER_CACHE_MAX_ENTRIES: usize = 96;
+const XYZRENDER_CACHE_MAX_ENTRIES: usize = 4096;
 const XYZRENDER_CACHE_MAX_BYTES: u64 = 256 * 1024 * 1024;
-const XYZRENDER_GRID_BATCH_TIMEOUT: Duration = Duration::from_secs(30);
+const XYZRENDER_CACHE_PRUNE_INTERVAL: Duration = Duration::from_secs(60);
 
-pub(crate) struct XyzrenderSmilesBatchRequest {
+pub(crate) struct XyzrenderCardBatchRequest {
     pub(crate) id: String,
     pub(crate) input_path: PathBuf,
+    pub(crate) input_data: Option<Vec<u8>>,
     pub(crate) output_directory: PathBuf,
     pub(crate) cache_directory: Option<PathBuf>,
     pub(crate) preset: Option<String>,
     pub(crate) controls: Option<XyzrenderControls>,
-    pub(crate) direct_smiles: String,
+    pub(crate) direct_smiles: Option<String>,
 }
 
-pub(crate) struct XyzrenderSmilesBatchResult {
+pub(crate) struct XyzrenderCardBatchResult {
     pub(crate) id: String,
     pub(crate) svg: Option<String>,
     pub(crate) preset: String,
@@ -39,36 +42,6 @@ pub(crate) struct XyzrenderSmilesBatchResult {
     pub(crate) log: String,
     pub(crate) cache_hit: bool,
     pub(crate) error: Option<String>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct XyzrenderSmilesBatchHelperPayload<'a> {
-    items: Vec<XyzrenderSmilesBatchHelperItem<'a>>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct XyzrenderSmilesBatchHelperItem<'a> {
-    id: &'a str,
-    smiles: &'a str,
-    output_path: String,
-    config: &'a str,
-    canvas_size: Option<f64>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct XyzrenderSmilesBatchHelperResponse {
-    results: Vec<XyzrenderSmilesBatchHelperResult>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct XyzrenderSmilesBatchHelperResult {
-    id: String,
-    log: Option<String>,
-    error: Option<String>,
 }
 
 pub(crate) struct XyzrenderArtifact {
@@ -139,7 +112,7 @@ pub(crate) fn create_xyzrender_artifact(
     )?;
     let cache_entry = cache_directory.map(|directory| directory.join(&cache_key));
     if let Some(entry) = cache_entry.as_deref() {
-        prune_xyzrender_cache(entry.parent().unwrap_or(entry));
+        prune_xyzrender_cache_if_due(entry.parent().unwrap_or(entry));
         if let Some(artifact) = read_cached_xyzrender_artifact(
             entry,
             &output_path,
@@ -238,9 +211,9 @@ pub(crate) fn create_xyzrender_artifact(
     })
 }
 
-pub(crate) fn create_xyzrender_smiles_batch_artifacts(
-    requests: Vec<XyzrenderSmilesBatchRequest>,
-) -> Vec<XyzrenderSmilesBatchResult> {
+pub(crate) fn create_xyzrender_card_batch_artifacts(
+    requests: Vec<XyzrenderCardBatchRequest>,
+) -> Vec<XyzrenderCardBatchResult> {
     if requests.is_empty() {
         return Vec::new();
     }
@@ -249,7 +222,7 @@ pub(crate) fn create_xyzrender_smiles_batch_artifacts(
         Err(error) => {
             return requests
                 .into_iter()
-                .map(|request| XyzrenderSmilesBatchResult {
+                .map(|request| XyzrenderCardBatchResult {
                     id: request.id,
                     svg: None,
                     preset: "default".to_string(),
@@ -280,8 +253,8 @@ pub(crate) fn create_xyzrender_smiles_batch_artifacts(
             };
         let cache_key = match xyzrender_cache_key(
             &request.input_path,
-            None,
-            Some(&request.direct_smiles),
+            request.input_data.as_deref(),
+            request.direct_smiles.as_deref(),
             None,
             resolved_preset,
             &resolved_config_argument,
@@ -290,7 +263,7 @@ pub(crate) fn create_xyzrender_smiles_batch_artifacts(
         ) {
             Ok(value) => value,
             Err(error) => {
-                results.push(XyzrenderSmilesBatchResult {
+                results.push(XyzrenderCardBatchResult {
                     id: request.id,
                     svg: None,
                     preset: effective_preset.to_string(),
@@ -307,7 +280,7 @@ pub(crate) fn create_xyzrender_smiles_batch_artifacts(
             .as_ref()
             .map(|directory| directory.join(&cache_key));
         if let Some(entry) = cache_entry.as_deref() {
-            prune_xyzrender_cache(entry.parent().unwrap_or(entry));
+            prune_xyzrender_cache_if_due(entry.parent().unwrap_or(entry));
             match read_cached_xyzrender_artifact(
                 entry,
                 &output_path,
@@ -318,7 +291,7 @@ pub(crate) fn create_xyzrender_smiles_batch_artifacts(
                 None,
             ) {
                 Ok(Some(artifact)) => {
-                    results.push(XyzrenderSmilesBatchResult {
+                    results.push(XyzrenderCardBatchResult {
                         id: request.id,
                         svg: Some(artifact.inline_svg),
                         preset: artifact.preset.to_string(),
@@ -331,7 +304,7 @@ pub(crate) fn create_xyzrender_smiles_batch_artifacts(
                 }
                 Ok(None) => {}
                 Err(error) => {
-                    results.push(XyzrenderSmilesBatchResult {
+                    results.push(XyzrenderCardBatchResult {
                         id: request.id,
                         svg: None,
                         preset: effective_preset.to_string(),
@@ -344,7 +317,7 @@ pub(crate) fn create_xyzrender_smiles_batch_artifacts(
                 }
             }
         }
-        misses.push(XyzrenderPreparedSmilesBatchMiss {
+        misses.push(XyzrenderPreparedCardBatchMiss {
             request,
             output_path,
             log_path,
@@ -358,73 +331,89 @@ pub(crate) fn create_xyzrender_smiles_batch_artifacts(
     if misses.is_empty() {
         return results;
     }
-    match run_xyzrender_smiles_batch_helper(&executable, &misses) {
-        Ok(helper_results) => {
-            for miss in misses {
-                let Some(helper_result) = helper_results
-                    .iter()
-                    .find(|result| result.id == miss.request.id)
-                else {
-                    results.push(batch_miss_error(
-                        miss,
-                        "xyzrender batch helper returned no result",
-                    ));
-                    continue;
-                };
-                if let Some(error) = helper_result
-                    .error
-                    .as_deref()
-                    .filter(|value| !value.is_empty())
-                {
-                    results.push(batch_miss_error(miss, error));
-                    continue;
-                }
-                let svg = match fs::read_to_string(&miss.output_path) {
-                    Ok(value) => value,
-                    Err(error) => {
-                        results.push(batch_miss_error(
-                            miss,
-                            &format!("Could not read xyzrender batch SVG output: {error}"),
-                        ));
-                        continue;
-                    }
-                };
-                let log = helper_result.log.clone().unwrap_or_default();
-                if let Some(entry) = miss.cache_entry.as_deref() {
-                    if let Err(error) = write_xyzrender_cache_entry(
-                        entry,
-                        &miss.output_path,
-                        &miss.log_path,
-                        &miss.cache_key,
-                        &log,
-                        miss.started.elapsed().as_millis(),
-                    ) {
-                        results.push(batch_miss_error(miss, &error));
-                        continue;
-                    }
-                }
-                results.push(XyzrenderSmilesBatchResult {
-                    id: miss.request.id,
-                    svg: Some(svg),
-                    preset: miss.effective_preset.to_string(),
-                    elapsed_ms: miss.started.elapsed().as_millis(),
-                    log,
-                    cache_hit: false,
-                    error: None,
-                });
-            }
+    let Some(launch) = xyzrender_worker_launch(&executable) else {
+        for miss in misses {
+            results.push(batch_miss_error(
+                miss,
+                "Could not resolve the Python interpreter for the xyzrender worker pool.",
+            ));
         }
-        Err(error) => {
-            for miss in misses {
+        return results;
+    };
+    let jobs = misses
+        .iter()
+        .map(|miss| XyzrenderCardJob {
+            id: miss.request.id.clone(),
+            smiles: miss.request.direct_smiles.clone(),
+            input_path: miss
+                .request
+                .direct_smiles
+                .is_none()
+                .then(|| miss.request.input_path.clone()),
+            output_path: miss.output_path.clone(),
+            config: miss.resolved_config_argument.clone(),
+            canvas_size: miss
+                .request
+                .controls
+                .as_ref()
+                .and_then(|controls| finite_positive(controls.canvas_size)),
+        })
+        .collect();
+    let outcomes = render_cards(&launch, jobs);
+    for miss in misses {
+        let Some(outcome) = outcomes
+            .iter()
+            .find(|outcome| outcome.id == miss.request.id)
+        else {
+            results.push(batch_miss_error(
+                miss,
+                "The xyzrender worker pool returned no result for this card.",
+            ));
+            continue;
+        };
+        if let Some(error) = outcome.error.as_deref().filter(|value| !value.is_empty()) {
+            results.push(batch_miss_error(miss, error));
+            continue;
+        }
+        let svg = match fs::read_to_string(&miss.output_path) {
+            Ok(value) => value,
+            Err(error) => {
+                results.push(batch_miss_error(
+                    miss,
+                    &format!("Could not read xyzrender batch SVG output: {error}"),
+                ));
+                continue;
+            }
+        };
+        let log = outcome.log.clone();
+        if let Some(entry) = miss.cache_entry.as_deref() {
+            if let Err(error) = write_xyzrender_cache_entry(
+                entry,
+                &miss.output_path,
+                &miss.log_path,
+                &miss.cache_key,
+                &log,
+                miss.started.elapsed().as_millis(),
+            ) {
                 results.push(batch_miss_error(miss, &error));
+                continue;
             }
         }
+        results.push(XyzrenderCardBatchResult {
+            id: miss.request.id,
+            svg: Some(svg),
+            preset: miss.effective_preset.to_string(),
+            elapsed_ms: miss.started.elapsed().as_millis(),
+            log,
+            cache_hit: false,
+            error: None,
+        });
     }
     results
 }
 
-struct XyzrenderPreparedSmilesBatchMiss {
-    request: XyzrenderSmilesBatchRequest,
+struct XyzrenderPreparedCardBatchMiss {
+    request: XyzrenderCardBatchRequest,
     output_path: PathBuf,
     log_path: PathBuf,
     cache_entry: Option<PathBuf>,
@@ -434,11 +423,8 @@ struct XyzrenderPreparedSmilesBatchMiss {
     started: Instant,
 }
 
-fn batch_miss_error(
-    miss: XyzrenderPreparedSmilesBatchMiss,
-    error: &str,
-) -> XyzrenderSmilesBatchResult {
-    XyzrenderSmilesBatchResult {
+fn batch_miss_error(miss: XyzrenderPreparedCardBatchMiss, error: &str) -> XyzrenderCardBatchResult {
+    XyzrenderCardBatchResult {
         id: miss.request.id,
         svg: None,
         preset: miss.effective_preset.to_string(),
@@ -449,102 +435,25 @@ fn batch_miss_error(
     }
 }
 
-fn run_xyzrender_smiles_batch_helper(
-    executable: &Path,
-    misses: &[XyzrenderPreparedSmilesBatchMiss],
-) -> Result<Vec<XyzrenderSmilesBatchHelperResult>, String> {
-    let helper_launch = xyzrender_batch_helper_launch(executable).ok_or_else(|| {
-        "Could not resolve Python interpreter for xyzrender batch helper.".to_string()
-    })?;
-    let helper_path = std::env::temp_dir().join("burette-xyzrender-grid-batch-helper.py");
-    fs::write(&helper_path, XYZRENDER_GRID_BATCH_HELPER)
-        .map_err(|err| format!("Could not write xyzrender batch helper: {err}"))?;
-    let payload = XyzrenderSmilesBatchHelperPayload {
-        items: misses
-            .iter()
-            .map(|miss| XyzrenderSmilesBatchHelperItem {
-                id: &miss.request.id,
-                smiles: &miss.request.direct_smiles,
-                output_path: miss.output_path.display().to_string(),
-                config: &miss.resolved_config_argument,
-                canvas_size: miss
-                    .request
-                    .controls
-                    .as_ref()
-                    .and_then(|controls| finite_positive(controls.canvas_size)),
-            })
-            .collect(),
-    };
-    let input = serde_json::to_vec(&payload)
-        .map_err(|err| format!("Could not encode xyzrender batch payload: {err}"))?;
-    let mut command = Command::new(&helper_launch.program);
-    command.arg(helper_path);
-    for (key, value) in helper_launch.envs {
-        command.env(key, value);
-    }
-    let mut child = command
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|err| format!("Could not start xyzrender batch helper: {err}"))?;
-    {
-        let stdin = child
-            .stdin
-            .as_mut()
-            .ok_or_else(|| "Could not open xyzrender batch helper stdin.".to_string())?;
-        stdin
-            .write_all(&input)
-            .map_err(|err| format!("Could not send xyzrender batch payload: {err}"))?;
-    }
-    drop(child.stdin.take());
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "Could not capture xyzrender batch helper stdout.".to_string())?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "Could not capture xyzrender batch helper stderr.".to_string())?;
-    let stdout_reader = thread::spawn(move || read_capped_bytes(stdout));
-    let stderr_reader = thread::spawn(move || read_capped_text(stderr));
-    let started = Instant::now();
-    loop {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|err| format!("Could not wait for xyzrender batch helper: {err}"))?
-        {
-            let stdout = stdout_reader.join().unwrap_or_default();
-            let stderr = stderr_reader.join().unwrap_or_default();
-            if !status.success() {
-                return Err(format!(
-                    "xyzrender batch helper failed with exit status {}. {}",
-                    status.code().unwrap_or(-1),
-                    truncate_text(&stderr, 320)
-                ));
-            }
-            let response: XyzrenderSmilesBatchHelperResponse = serde_json::from_slice(&stdout)
-                .map_err(|err| {
-                    format!(
-                        "Could not decode xyzrender batch helper response: {err}. {}",
-                        truncate_text(&stderr, 320)
-                    )
-                })?;
-            return Ok(response.results);
-        }
-        if started.elapsed() >= XYZRENDER_GRID_BATCH_TIMEOUT {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = stdout_reader.join();
-            let stderr = stderr_reader.join().unwrap_or_default();
-            return Err(format!(
-                "xyzrender batch helper timed out after {} seconds. {}",
-                XYZRENDER_GRID_BATCH_TIMEOUT.as_secs(),
-                truncate_text(&stderr, 320)
-            ));
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
+fn xyzrender_worker_launch(executable: &Path) -> Option<XyzrenderWorkerLaunch> {
+    let launch = xyzrender_batch_helper_launch(executable)?;
+    let metadata = fs::metadata(executable).ok();
+    let signature = format!(
+        "{}|{}|{}|{}",
+        launch.program.display(),
+        canonical_path_string(executable),
+        metadata.as_ref().map(fs::Metadata::len).unwrap_or_default(),
+        metadata
+            .as_ref()
+            .and_then(|value| value.modified().ok())
+            .map(system_time_millis)
+            .unwrap_or_default()
+    );
+    Some(XyzrenderWorkerLaunch {
+        program: launch.program,
+        envs: launch.envs,
+        signature,
+    })
 }
 
 struct XyzrenderBatchHelperLaunch {
@@ -610,49 +519,6 @@ fn python_interpreter_from_script(script: &Path) -> Option<PathBuf> {
         Some(PathBuf::from(first))
     }
 }
-
-fn read_capped_bytes(mut reader: impl Read) -> Vec<u8> {
-    let mut stored = Vec::new();
-    let mut buffer = [0_u8; 8192];
-    loop {
-        let read = match reader.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(read) => read,
-            Err(_) => break,
-        };
-        let remaining = XYZRENDER_LOG_CAPTURE_BYTES.saturating_sub(stored.len());
-        if remaining > 0 {
-            let keep = remaining.min(read);
-            stored.extend_from_slice(&buffer[..keep]);
-        }
-    }
-    stored
-}
-
-const XYZRENDER_GRID_BATCH_HELPER: &str = r#"
-import json
-import sys
-from pathlib import Path
-
-from xyzrender import load, render
-
-payload = json.load(sys.stdin)
-results = []
-for item in payload.get("items", []):
-    item_id = str(item.get("id", ""))
-    try:
-        mol = load(str(item.get("smiles", "")), smiles=True)
-        kwargs = {"config": item.get("config") or "default"}
-        canvas_size = item.get("canvasSize")
-        if canvas_size:
-            kwargs["canvas_size"] = canvas_size
-        svg = render(mol, **kwargs)
-        Path(item["outputPath"]).write_text(str(svg))
-        results.append({"id": item_id, "log": ""})
-    except Exception as exc:
-        results.append({"id": item_id, "error": str(exc)})
-print(json.dumps({"results": results}))
-"#;
 
 fn read_cached_xyzrender_artifact(
     entry: &Path,
@@ -1530,6 +1396,19 @@ fn cache_entry_expired(metadata: &fs::Metadata) -> bool {
         .is_some_and(|age| age > XYZRENDER_CACHE_MAX_AGE)
 }
 
+/// Prunes at most once per interval so grid batches do not restat the whole
+/// cache directory for every card they look up.
+fn prune_xyzrender_cache_if_due(cache_directory: &Path) {
+    static LAST_PRUNE: Mutex<Option<Instant>> = Mutex::new(None);
+    let mut last = LAST_PRUNE.lock().unwrap_or_else(|err| err.into_inner());
+    if last.is_some_and(|value| value.elapsed() < XYZRENDER_CACHE_PRUNE_INTERVAL) {
+        return;
+    }
+    *last = Some(Instant::now());
+    drop(last);
+    prune_xyzrender_cache(cache_directory);
+}
+
 fn prune_xyzrender_cache(cache_directory: &Path) {
     let Ok(entries) = fs::read_dir(cache_directory) else {
         return;
@@ -1926,6 +1805,93 @@ fn truncate_text(value: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renders_grid_cards_on_pooled_workers() {
+        let _lock = super::super::env_lock()
+            .lock()
+            .expect("env lock should not be poisoned");
+        let Ok(executable) = resolve_xyzrender_executable() else {
+            return;
+        };
+        if xyzrender_worker_launch(&executable).is_none() {
+            return;
+        }
+        let directory = std::env::temp_dir().join(format!(
+            "burette-xyzrender-pool-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let cache_directory = directory.join("cache");
+        fs::create_dir_all(&cache_directory).expect("cache directory should be created");
+        let smiles = [
+            "CCO",
+            "c1ccccc1",
+            "CC(=O)Oc1ccccc1C(=O)O",
+            "CN1C=NC2=C1C(=O)N(C)C(=O)N2C",
+            "C1CCCCC1",
+            "CCN(CC)CC",
+            "O=C(N)c1ccccc1",
+            "CCOC(=O)C",
+        ];
+        let requests = smiles
+            .iter()
+            .enumerate()
+            .map(|(index, value)| {
+                let output_directory = directory.join(format!("card-{index}"));
+                fs::create_dir_all(&output_directory).expect("card directory should be created");
+                let input_path = output_directory.join("sheet-input.smi");
+                fs::write(&input_path, value).expect("card input should be written");
+                XyzrenderCardBatchRequest {
+                    id: format!("card-{index}"),
+                    input_path,
+                    input_data: None,
+                    output_directory,
+                    cache_directory: Some(cache_directory.clone()),
+                    preset: Some("default".to_string()),
+                    controls: None,
+                    direct_smiles: Some((*value).to_string()),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let results = create_xyzrender_card_batch_artifacts(requests);
+        assert_eq!(results.len(), smiles.len());
+        for result in &results {
+            assert!(
+                result.error.is_none(),
+                "card {} failed: {:?}",
+                result.id,
+                result.error
+            );
+            let svg = result.svg.as_deref().unwrap_or_default();
+            assert!(svg.contains("<svg"), "card {} produced no SVG", result.id);
+            assert!(!result.cache_hit);
+        }
+
+        let repeat = smiles
+            .iter()
+            .enumerate()
+            .map(|(index, value)| XyzrenderCardBatchRequest {
+                id: format!("card-{index}"),
+                input_path: directory
+                    .join(format!("card-{index}"))
+                    .join("sheet-input.smi"),
+                input_data: None,
+                output_directory: directory.join(format!("card-{index}")),
+                cache_directory: Some(cache_directory.clone()),
+                preset: Some("default".to_string()),
+                controls: None,
+                direct_smiles: Some((*value).to_string()),
+            })
+            .collect::<Vec<_>>();
+        let cached = create_xyzrender_card_batch_artifacts(repeat);
+        assert!(
+            cached.iter().all(|result| result.cache_hit),
+            "repeat batch should be served from the card cache"
+        );
+
+        let _ = fs::remove_dir_all(&directory);
+    }
 
     #[test]
     fn times_out_hung_xyzrender_processes() {
