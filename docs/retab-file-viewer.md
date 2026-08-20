@@ -113,6 +113,7 @@ Registry code is vendored, so these edits must be re-applied after every update:
 | `csv-viewer-row-patcher.ts`, `xlsx-viewer-row-patcher.ts` | `isHidden: Boolean(element.hidden)` | `HTMLElement.hidden` is `boolean \| "until-found"` in our TypeScript DOM lib |
 | `file-viewer-sidebar.tsx` | cast the rail click event to `React.MouseEvent<HTMLButtonElement>` | the rail renders either `Slot.Root` or `button` |
 | `file-viewer-route.tsx` | image branch passes `defaultScale={1}` | open media at natural size, no fit-to-width auto zoom |
+| `code-viewer-content.tsx` | syntax engine destroyed on a macrotask with cancellation | React StrictMode's mount -> cleanup -> mount cycle permanently killed the memoized engine, leaving every file unhighlighted in dev |
 
 The PDF page kind composes `PdfViewerPages` with `defaultScale={1}` and the page
 thumbnail sidebar (`PdfViewerThumbnails`), mirroring upstream's pdf-viewer-demo.

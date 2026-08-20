@@ -272,9 +272,25 @@ export function CodeViewerContent({
   });
 
   useMountEffect(() => () => projector.destroy());
+  // Burette patch: destroy the syntax engine on a macrotask so StrictMode's
+  // mount -> cleanup -> mount cycle does not permanently kill the memoized
+  // instance (destroyed engines answer every token request with null, which
+  // renders the whole file without highlighting).
+  const syntaxDisposalRef = React.useRef<{ syntax: typeof syntax; timer: number } | null>(null);
   useKeyedMountEffect(joinEffectKey(["code-syntax", syntax]), () => {
+    const pending = syntaxDisposalRef.current;
+    if (pending && pending.syntax === syntax) {
+      window.clearTimeout(pending.timer);
+      syntaxDisposalRef.current = null;
+    }
     setSyntaxVersion(0);
-    return () => syntax.destroy?.();
+    return () => {
+      const timer = window.setTimeout(() => {
+        if (syntaxDisposalRef.current?.syntax === syntax) syntaxDisposalRef.current = null;
+        syntax.destroy?.();
+      }, 0);
+      syntaxDisposalRef.current = { syntax, timer };
+    };
   });
 
   useCodeControlsRegistration({
