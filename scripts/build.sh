@@ -58,6 +58,9 @@ if [[ "$BUILD_MODE" == "release" ]]; then
   if [[ "$ALLOW_ADHOC_RELEASE" != "1" ]]; then
     [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]] || { echo "error: release builds require BURETTE_CODESIGN_IDENTITY='Developer ID Application: ...'." >&2; exit 1; }
     [[ -n "$DEVELOPMENT_TEAM" ]] || { echo "error: release builds require BURETTE_DEVELOPMENT_TEAM." >&2; exit 1; }
+  else
+    SIGN_IDENTITY="-"
+    DEVELOPMENT_TEAM=""
   fi
   [[ "$XCODE_CONFIGURATION" == "Release" ]] || { echo "error: release builds require BURETTE_XCODE_CONFIGURATION=Release." >&2; exit 1; }
   VITE_BURETTE_BUILD_CHANNEL="release"

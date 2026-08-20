@@ -152,13 +152,19 @@ export BURETTE_NOTARY_KEYCHAIN_PROFILE="BuretteNotary"
 ./scripts/release.sh
 ```
 
-Ad-hoc artifacts are limited to local packaging checks and must not be
-published as stable GitHub releases:
+When Developer ID credentials are unavailable, the release script automatically
+falls back to an ad-hoc signed build and skips notarization. This mode can also
+be selected explicitly:
 
 ```bash
 export BURETTE_RELEASE_ALLOW_ADHOC=1
 ./scripts/release.sh
 ```
+
+Set `BURETTE_RELEASE_ALLOW_ADHOC=0` to make missing Developer ID or
+notarization credentials a hard error. Ad-hoc releases pass the repository's
+integrity checks, but macOS Gatekeeper does not treat them as identified and
+notarized software; users may need to approve the app manually.
 
 For CI and pull-request validation, run the release dry run. It checks the
 release script prerequisites and JavaScript syntax but does not build, sign,
@@ -173,8 +179,9 @@ Release builds are explicit: `scripts/release.sh` sets
 `BURETTE_BUILD_MODE=release` and uses the Xcode Release configuration. With
 Developer ID credentials it enables the notarized path: hardened runtime,
 Developer ID signing, Apple notarytool submission, stapling, and then zip/dmg
-packaging. With `BURETTE_RELEASE_ALLOW_ADHOC=1`, it produces local ad-hoc
-zip/dmg artifacts for packaging validation only.
+packaging. Without the complete credential set, or with
+`BURETTE_RELEASE_ALLOW_ADHOC=1`, it produces ad-hoc zip/dmg artifacts and skips
+notarization.
 
 ## Artifact Requirements
 
