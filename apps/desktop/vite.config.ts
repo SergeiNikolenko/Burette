@@ -4060,6 +4060,11 @@ export default defineConfig({
   build: {
     outDir: desktopDist,
     emptyOutDir: true,
+    assetsInlineLimit: (filePath) => (
+      filePath.endsWith("/RDKit_minimal.wasm")
+        ? true
+        : undefined
+    ),
     cssCodeSplit: !hostedMcpBuild,
     modulePreload: {
       resolveDependencies: resolveModulePreloadDependencies,

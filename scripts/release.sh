@@ -15,7 +15,7 @@ ZIP="$ROOT/build/release/Burette.zip"
 DMG="$ROOT/build/release/Burette.dmg"
 NOTARIZATION_ZIP="$ROOT/build/release/Burette-notarization.zip"
 DRY_RUN=0
-ALLOW_ADHOC="${BURETTE_RELEASE_ALLOW_ADHOC:-0}"
+ALLOW_ADHOC="${BURETTE_RELEASE_ALLOW_ADHOC:-auto}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -30,6 +30,26 @@ done
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
 require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2; exit 1; }; }
+developer_id_credentials_available() {
+  [[ "${BURETTE_CODESIGN_IDENTITY:-}" == Developer\ ID\ Application:* ]] &&
+    [[ -n "${BURETTE_DEVELOPMENT_TEAM:-}" ]] &&
+    { [[ -n "${BURETTE_NOTARY_KEYCHAIN_PROFILE:-}" ]] ||
+      { [[ -n "${APPLE_ID:-}" ]] && [[ -n "${APPLE_TEAM_ID:-}" ]] && [[ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; }; }
+}
+resolve_signing_mode() {
+  case "$ALLOW_ADHOC" in
+    auto)
+      if developer_id_credentials_available; then
+        ALLOW_ADHOC=0
+      else
+        ALLOW_ADHOC=1
+        echo "warning: Developer ID signing credentials are unavailable; building an ad-hoc signed release without notarization." >&2
+      fi
+      ;;
+    0|1) ;;
+    *) echo "error: BURETTE_RELEASE_ALLOW_ADHOC must be 0 or 1 when set." >&2; exit 2 ;;
+  esac
+}
 require_release_env() {
   if [[ "$ALLOW_ADHOC" == "1" ]]; then
     return 0
@@ -98,8 +118,8 @@ if [[ "$DRY_RUN" == "1" ]]; then
   echo "  BURETTE_CODESIGN_IDENTITY='Developer ID Application: ...'"
   echo "  BURETTE_DEVELOPMENT_TEAM=<Apple team id>"
   echo "  BURETTE_NOTARY_KEYCHAIN_PROFILE or APPLE_ID + APPLE_TEAM_ID + APPLE_APP_SPECIFIC_PASSWORD"
-  echo "Ad-hoc release without notarization can be built with:"
-  echo "  BURETTE_RELEASE_ALLOW_ADHOC=1"
+  echo "Without those credentials, release.sh automatically builds an ad-hoc release without notarization."
+  echo "Set BURETTE_RELEASE_ALLOW_ADHOC=0 to require Developer ID credentials."
   exit 0
 fi
 
@@ -107,6 +127,7 @@ require_tool ditto "ditto is normally present on macOS."
 require_tool hdiutil "hdiutil is normally present on macOS."
 require_tool shasum "shasum is normally present on macOS."
 require_tool xcrun "Install full Xcode from the App Store."
+resolve_signing_mode
 require_release_env
 export BURETTE_BUILD_MODE=release
 export BURETTE_XCODE_CONFIGURATION="${BURETTE_XCODE_CONFIGURATION:-Release}"

@@ -30,6 +30,14 @@ function forward(event: string, parts: unknown[]) {
   void invoke("frontend_log", { level: "error", event, message }).catch(() => {});
 }
 
+export function logFrontendError(event: string, error: unknown, context?: unknown) {
+  if (!isTauriRuntime()) {
+    console.error(`[${event}]`, context, error);
+    return;
+  }
+  forward(event, context === undefined ? [error] : [context, error]);
+}
+
 export function installFrontendErrorLog() {
   if (!isTauriRuntime()) return;
   const original = console.error.bind(console);

@@ -720,27 +720,6 @@
         setStatus('[grid] Generating 3D conformers.');
         return;
       }
-      if (body.type === 'gridGenerate3DResult') {
-        const patches = Array.isArray(body.rows) ? body.rows : [];
-        const rows = state.remoteMode ? state.rows : state.all;
-        const patchable = patches
-          .map(patch => ({
-            patch,
-            row: rows.find(row => Number(row.index) === Number(patch?.sourceIndex))
-          }))
-          .filter(item => item.row && hasMolblockInput3DCoordinates(item.patch?.molblock));
-        if (patchable.length) pushUndoSnapshot('Generate 3D');
-        for (const { patch, row } of patchable) {
-          replaceGridRow(row, {
-            name: row.name,
-            molblock: String(patch.molblock).trimEnd(),
-            smiles: row.smiles,
-            props: row.props || {}
-          }, config(), { undo: false });
-        }
-        refreshGridControls(config());
-        return;
-      }
       if (body.type === 'gridAlignmentStarted') {
         state.aligningPoses = true;
         refreshGridControls(config());

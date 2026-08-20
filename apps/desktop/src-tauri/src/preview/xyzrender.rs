@@ -486,6 +486,7 @@ fn bundled_xyzrender_python_launch(script: &Path) -> Option<XyzrenderBatchHelper
         program: python,
         envs: vec![
             ("PYTHONNOUSERSITE", "1".to_string()),
+            ("PYTHONDONTWRITEBYTECODE", "1".to_string()),
             ("PYTHONPATH", site_packages.display().to_string()),
         ],
     })
@@ -2135,6 +2136,10 @@ mod tests {
         assert!(launch.envs.iter().any(|(key, value)| {
             *key == "PYTHONPATH" && value == &site_packages.display().to_string()
         }));
+        assert!(launch
+            .envs
+            .iter()
+            .any(|(key, value)| *key == "PYTHONDONTWRITEBYTECODE" && value == "1"));
         let _ = fs::remove_dir_all(&directory);
     }
 

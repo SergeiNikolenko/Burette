@@ -28,6 +28,7 @@ import {
   type ReferenceFingerprint,
 } from "../lib/derived-columns";
 import { compileFormula } from "../lib/formula-eval.mjs";
+import { logFrontendError } from "../lib/frontend-error-log";
 import { joinColumnValues } from "../lib/merge-columns.mjs";
 import { readStructureText } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
@@ -53,6 +54,10 @@ const RGROUP_ROW_LIMIT = 5_000;
 const MERGED_VALUE_SEPARATOR = "; ";
 
 type PushStatus = (message: string, kind?: StatusKind, details?: string[]) => void;
+
+function logDerivedColumnError(operation: string, documentId: string, error: unknown) {
+  logFrontendError("derived-column", error, { operation, documentId });
+}
 
 // Browser-dev has no collection database; the grid iframe owns the parsed rows
 // and already answers chemicalSpaceRequestRecords, so a property run there
@@ -409,6 +414,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           failedRows > 0 && failedRows === processedRows ? "error" : "success",
         );
       } catch (error) {
+        logDerivedColumnError(kind, documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Add ${kindInfo.label} column failed: ${message}`, "error");
@@ -545,6 +551,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           failedRows > 0 && failedRows === processedRows ? "error" : "success",
         );
       } catch (error) {
+        logDerivedColumnError("properties", documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Calculate properties failed: ${message}`, "error");
@@ -636,6 +643,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           reacted === 0 ? "error" : "success",
         );
       } catch (error) {
+        logDerivedColumnError("reaction", documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Perform reaction failed: ${message}`, "error");
@@ -747,6 +755,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
         });
         pushStatus(`${label} added to ${targetDocument.title}`, "success");
       } catch (error) {
+        logDerivedColumnError("merge-columns", documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Merge failed: ${message}`, "error");
@@ -906,6 +915,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           "success",
         );
       } catch (error) {
+        logDerivedColumnError("calculated-column", documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Calculate ${label} failed: ${message}`, "error");
@@ -994,6 +1004,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
         updateJob({ status: "success", completedAt: Date.now(), processedRows });
         pushStatus(`Numbered ${processedRows.toLocaleString()} row${processedRows === 1 ? "" : "s"}`, "success");
       } catch (error) {
+        logDerivedColumnError("row-number", documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Row numbering failed: ${message}`, "error");
@@ -1088,6 +1099,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           "success",
         );
       } catch (error) {
+        logDerivedColumnError("bins", documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Binning ${column.label} failed: ${message}`, "error");
@@ -1205,6 +1217,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           distinct === 0 ? "error" : "success",
         );
       } catch (error) {
+        logDerivedColumnError("scaffolds", documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Analyse scaffolds failed: ${message}`, "error");
@@ -1298,6 +1311,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           "success",
         );
       } catch (error) {
+        logDerivedColumnError("substructure-count", documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Substructure count failed: ${message}`, "error");
@@ -1421,6 +1435,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           "success",
         );
       } catch (error) {
+        logDerivedColumnError("similarity-file", documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Find similar in file failed: ${message}`, "error");
@@ -1519,6 +1534,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           "success",
         );
       } catch (error) {
+        logDerivedColumnError("rgroup", documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Decompose R-groups failed: ${message}`, "error");
@@ -1579,6 +1595,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           "success",
         );
       } catch (error) {
+        logDerivedColumnError("duplicates", documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Duplicate search failed: ${message}`, "error");
@@ -1637,6 +1654,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           "success",
         );
       } catch (error) {
+        logDerivedColumnError("merge-equivalent-rows", documentId, error);
         const message = error instanceof Error ? error.message : String(error);
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Merging equivalent rows failed: ${message}`, "error");

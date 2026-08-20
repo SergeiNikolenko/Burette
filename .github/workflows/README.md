@@ -21,7 +21,8 @@ Quick Look behavior.
 
 - `release.yml` builds the release app, validates signing, packages zip/dmg
   artifacts, creates the GitHub release, and updates the external Homebrew tap
-  for stable releases.
+  for stable releases. It uses Developer ID plus notarization when all Apple
+  credentials are available and otherwise publishes an ad-hoc signed build.
 - Release notes are grouped by `.github/release.yml`.
 
 ## Rule Of Thumb

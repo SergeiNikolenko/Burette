@@ -467,6 +467,8 @@ const [
   source('apps/desktop/src/hooks/use-app-database.ts'),
   source('apps/desktop/src/components/database-query-dialog.tsx'),
 ]);
+const derivedColumnsLib = await source('apps/desktop/src/lib/derived-columns.ts');
+const frontendErrorLog = await source('apps/desktop/src/lib/frontend-error-log.ts');
 
 const desktopPackage = JSON.parse(await source('apps/desktop/package.json'));
 const viewerShell = previewShell;
@@ -2603,6 +2605,8 @@ assert.match(appXtbWorkflowsHook, /requestXtbStatus\(\)\.then\(setXtbStatus\)\.c
 assert.match(appXtbWorkflowsHook, /openOptimizedPoseInCurrentView/);
 assert.match(appXtbWorkflowsHook, /xtbOperationLabel\(operation\)/);
 assert.match(appXtbWorkflowsHook, /molstarContextEntryExtension\(entry\.format\)/);
+assert.match(appXtbWorkflowsHook, /if \(isTauriRuntime\(\)\) \{[\s\S]*invoke<ViewerDocument>\("open_text_structure", \{[\s\S]*title: `\$\{sourceTitle\} xTB optimized\.\$\{extension\}`,[\s\S]*text: optimizedText,[\s\S]*openDocumentsInActiveTab\(\[documentWithSource\]\);[\s\S]*return;/);
+assert.match(appXtbWorkflowsHook, /const document = await openBrowserDevMolstarContextDocument\(\{/);
 assert.match(appViewerHostMessagesHook, /Structure action did not match the structure/);
 assert.match(appViewerHostMessagesHook, /bodyString\(body\.id\)\.startsWith\("text-selection-"\)/);
 assert.doesNotMatch(app, /pushStatus\("Text selection applied"/);
@@ -5160,6 +5164,11 @@ assert.match(previewViewer, /function molstarAutoFocusEnabled\(config\) \{\s*ret
 assert.match(previewViewer, /function requestMolstarStructureFocus\(viewer, options = \{\}\)/);
 assert.match(previewViewer, /camera\.getFocus\(target, Math\.max\(0\.1, safeRadius \* radiusScale\), up, direction\)/);
 assert.match(previewViewer, /snapshot\.mode = 'perspective'/);
+assert.match(
+  previewViewer,
+  /await applyConfiguredMolstarPreset\(viewer, activeConfig \|\| config\);[\s\S]*scheduleMolstarStructureFocus\(viewer, \{ reason: 'initial-load', durationMs: 120 \}\);/,
+  'initial Mol* camera focus must run after the configured representation preset finishes rebuilding the scene',
+);
 assert.match(previewViewer, /window\.BuretteDataBase64 = textBase64/);
 assert.match(previewViewer, /loadPreparedStructure\(activeViewer, prepared\)/);
 assert.match(previewViewer, /await applyMolstarStyle\(activeViewer, generatedStyle\)/);
@@ -5468,6 +5477,11 @@ assert.match(previewRuntimeViewer, /"defaultLayoutState": \{ "left": "hidden", "
 assert.match(previewRuntimeViewer, /preferences\.theme_for_runtime\(\)/);
 assert.match(previewRuntimeViewer, /preferences\.canvas_background_for_runtime\(\)/);
 assert.match(previewRuntimeViewer, /"molstarStyle": preferences\.resolved_molstar_style\(\)/);
+assert.equal(
+  (previewRuntimeViewer.match(/config\["autoFocusStructure"\] = json!\(true\);/g) || []).length,
+  3,
+  "every native Mol* runtime must opt into the focus scheduler after loading its scene",
+);
 assert.match(previewRuntimeViewer, /"waterRepresentation": "line"/);
 assert.match(previewRuntimeViewer, /config\["stagedEntries"\]/);
 assert.match(previewViewController, /preview-docking-payloads\.js/);
@@ -5958,8 +5972,12 @@ assert.doesNotMatch(previewViewer, /sdfPoseSvgRecords/);
 assert.doesNotMatch(previewViewer, /buret-sdf-pose-svg-overlay/);
 assert.match(previewViewer, /records\.length >= 1 && config\.sdfGrid !== false/);
 assert.match(previewViewer, /function sdfRecordToPdbStructure\(record, label\)/);
+assert.match(previewViewer, /function sdfPdbAtom\(molecule, index\)/);
+assert.match(previewViewer, /label: `\$\{atom\.element\}\$\{\(index \+ 1\)\.toString\(36\)\.toUpperCase\(\)\}`/);
 assert.match(previewViewer, /function sdfMoleculesToPdbCollection\(molecules, label\)/);
+assert.match(previewViewer, /seqId: index \+ 1/);
 assert.match(previewViewer, /function sdfMoleculesToPdbStructure\(molecules, label\)/);
+assert.match(previewViewer, /sdfPdbAtom\(molecule, index\),\s*\{ seqId: moleculeIndex \+ 1 \}/);
 assert.match(previewViewer, /function sdfCollectionBackgroundPdb\(prepared, activeIndex\)/);
 assert.doesNotMatch(previewViewer, /function sdfMoleculesToPdbTrajectory\(molecules, label\)/);
 assert.doesNotMatch(previewViewer, /function molstarResidueExpression\(residue\)/);
@@ -7404,6 +7422,15 @@ assert.match(appNativeMenuHook, /actions\.addDerivedGridColumn\(activeDocument\.
 assert.match(derivedColumnsHook, /type: "gridDescriptorFinished"/);
 assert.match(derivedColumnsHook, /fetchDerivedSourceRows\(documentId, afterSourceIndex, DERIVED_SOURCE_BATCH\)/);
 assert.match(derivedColumnsHook, /storeDerivedValues\(documentId, \{/);
+assert.match(derivedColumnsLib, /resources\.json\?raw/);
+assert.match(derivedColumnsLib, /RDKit_minimal\.wasm\?url/);
+assert.match(derivedColumnsLib, /const rdkitOptions = \{ locateFile: \(\) => wasmUrl, wasmBinary \}/);
+assert.match(derivedColumnsLib, /atob\(/);
+assert.match(viteConfig, /assetsInlineLimit:[\s\S]*RDKit_minimal\.wasm/);
+assert.match(derivedColumnsLib, /ocl\.Resources\.register\(JSON\.parse\(oclResourcesRaw\.default\)\)/);
+assert.doesNotMatch(derivedColumnsLib, /Resources\.registerFromUrl/);
+assert.match(frontendErrorLog, /export function logFrontendError/);
+assert.match(derivedColumnsHook, /logFrontendError\("derived-column"/);
 assert.match(dockPanel, /DerivedColumnJobList jobs=\{state\.derivedColumnJobs\}/);
 assert.match(dockPanel, /actions\.clearDerivedColumnJobs\(\)/);
 // Calculate Properties: the menu command opens the dialog, the dialog feeds the
@@ -7703,7 +7730,7 @@ assert.match(appGridFileActionsHook, /rebindSavedGridDocument\(documentId, saved
 assert.match(appGridFileActionsHook, /if \(replacement\.id !== documentId\) closeGridRuntime\(documentId\)/);
 assert.match(appGridFileActionsHook, /Saved \$\{basename\(savedPath\)\}, but could not switch the active document/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "gridDirtyChanged"/);
-assert.match(appGridControlMessagesHook, /invoke\("grid_mark_virtual_edit",\s*\{\s*request:\s*\{\s*documentId\s*\}\s*\}\)/);
+assert.match(appGridControlMessagesHook, /invoke\("grid_mark_virtual_edit",\s*\{\s*request:\s*\{\s*documentId,\s*dirty:\s*body\.dirty === true\s*\}\s*\}\)/);
 assert.match(appGridControlMessagesHook, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
 assert.match(appDirtyGridHook, /buttons: \{\s*yes: "Review Unsaved Changes…",\s*no: CLOSE_WITHOUT_SAVING_LABEL,\s*cancel: "Cancel"/s);
 assert.match(appDirtyGridHook, /`\$\{dirtyCount\} grid documents have unsaved or in-progress changes\.`/);

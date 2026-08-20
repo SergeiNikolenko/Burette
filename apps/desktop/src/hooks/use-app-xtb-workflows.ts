@@ -173,11 +173,26 @@ export function useAppXtbWorkflows({
       }
     }
     if (!sourcePath || !result.primaryOpenPath) return;
-    const [sourceText, optimizedText] = await Promise.all([
-      readStructureText(sourcePath),
-      readStructureText(result.primaryOpenPath),
-    ]);
+    const optimizedText = await readStructureText(result.primaryOpenPath);
     const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
+    if (isTauriRuntime()) {
+      const extension = structureExtensionFromPath(result.primaryOpenPath);
+      const document = await invoke<ViewerDocument>("open_text_structure", {
+        request: {
+          title: `${sourceTitle} xTB optimized.${extension}`,
+          extension,
+          text: optimizedText,
+        },
+        preferences: molstarPreferences,
+        reloadOptions: {},
+      });
+      const documentWithSource = { ...document, sourcePath };
+      openDocumentsInActiveTab([documentWithSource]);
+      rememberRecentStructures([documentWithSource]);
+      pushStatus("Opened xTB optimized pose in the current Mol* view", "success");
+      return;
+    }
+    const sourceText = await readStructureText(sourcePath);
     const document = await openBrowserDevMolstarContextDocument({
       label: `${sourceTitle} xTB optimized`,
       entries: [

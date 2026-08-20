@@ -88,26 +88,32 @@ export type DerivedEngines = {
   rdkit: RDKitModule;
 };
 
-// Both engines load lazily and once: openchemlib is a plain module, RDKit is a
-// WASM build whose binary vite serves as an asset url (the host webview CSP
-// already allows wasm-unsafe-eval for the grid's sibling loaders).
+// Both engines load lazily and once: openchemlib is a plain module, while RDKit
+// receives its WASM bytes directly so packaged WKWebView never has to fetch a
+// Vite data URL through Emscripten's network loader.
 let enginesPromise: Promise<DerivedEngines> | null = null;
 
 export function loadDerivedEngines(): Promise<DerivedEngines> {
   if (!enginesPromise) {
     enginesPromise = (async () => {
-      const [ocl, oclResourcesUrl, rdkitModule, wasm] = await Promise.all([
+      const [ocl, oclResourcesRaw, rdkitModule, wasm] = await Promise.all([
         import("openchemlib"),
-        // The package exports map hides dist/, so the resources ride along as
-        // a bundled asset url instead of a bare-specifier import.
-        import("../../../../node_modules/openchemlib/dist/resources.json?url"),
+        // WKWebView cannot fetch Vite's emitted JSON asset through Tauri's
+        // packaged frontend protocol. Bundle the predictor tables into the JS
+        // chunk and register them without a runtime network request.
+        import("../../../../node_modules/openchemlib/dist/resources.json?raw"),
         import("@rdkit/rdkit") as unknown as Promise<{ default: RDKitLoader }>,
         import("@rdkit/rdkit/dist/RDKit_minimal.wasm?url"),
       ]);
       // The Actelion predictors (druglikeness, toxicity) refuse to run until
       // their rule tables are registered.
-      await ocl.Resources.registerFromUrl(oclResourcesUrl.default);
-      const rdkit = await rdkitModule.default({ locateFile: () => wasm.default });
+      ocl.Resources.register(JSON.parse(oclResourcesRaw.default));
+      const wasmUrl = wasm.default;
+      const wasmBinary = wasmUrl.startsWith("data:")
+        ? Uint8Array.from(atob(wasmUrl.slice(wasmUrl.indexOf(",") + 1)), (char) => char.charCodeAt(0))
+        : new Uint8Array(await (await fetch(wasmUrl)).arrayBuffer());
+      const rdkitOptions = { locateFile: () => wasmUrl, wasmBinary };
+      const rdkit = await rdkitModule.default(rdkitOptions);
       return { ocl, rdkit };
     })().catch((error) => {
       enginesPromise = null;
