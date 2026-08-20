@@ -149,20 +149,29 @@ pub(crate) fn read_source_identity(connection: &Connection) -> Result<GridSource
     })
 }
 
-pub(crate) fn mark_virtual_edit(database_path: &std::path::Path) -> Result<u64, String> {
+pub(crate) fn set_virtual_edit_state(
+    database_path: &std::path::Path,
+    dirty: bool,
+) -> Result<u64, String> {
     let mut connection = open_grid_database(database_path)?;
     initialize(&connection)?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| error.to_string())?;
-    let updated = transaction
-        .execute(
+    let updated = if dirty {
+        transaction.execute(
             "update grid_metadata
              set virtual_edit_generation = virtual_edit_generation + 1
              where id = 1 and virtual_edit_generation < ?1",
             [MAX_JSON_SAFE_INTEGER as i64],
         )
-        .map_err(|error| error.to_string())?;
+    } else {
+        transaction.execute(
+            "update grid_metadata set virtual_edit_generation = 0 where id = 1",
+            [],
+        )
+    }
+    .map_err(|error| error.to_string())?;
     if updated != 1 {
         return Err("Grid virtual-edit generation exceeded the JSON-safe integer limit".into());
     }

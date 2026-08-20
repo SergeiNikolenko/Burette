@@ -595,9 +595,13 @@ impl GridRuntimeRegistry {
         descriptor_run_summary_in_database(&runtime.database_path)
     }
 
-    pub(crate) fn mark_virtual_edit(&self, document_id: &str) -> Result<u64, String> {
+    pub(crate) fn set_virtual_edit_state(
+        &self,
+        document_id: &str,
+        dirty: bool,
+    ) -> Result<u64, String> {
         let runtime = self.runtime_entry(document_id)?;
-        grid_identity::mark_virtual_edit(&runtime.database_path)
+        grid_identity::set_virtual_edit_state(&runtime.database_path, dirty)
     }
 
     fn database_path(&self, document_id: &str) -> Result<PathBuf, String> {
@@ -3400,7 +3404,14 @@ fn resolve_smiles_columns(
         .enumerate()
         .filter_map(|(index, value)| is_smiles_column(value).then_some(index))
         .collect();
-    let mut indexes = named;
+    // A named structure column is an explicit schema signal. Do not supplement
+    // it with value-based guesses: molecular formulas such as C17H12ClN3O3 can
+    // be parsed as SMILES-like text and would otherwise duplicate every row.
+    if !named.is_empty() {
+        return Ok(named);
+    }
+
+    let mut indexes = Vec::new();
     for index in inferred_indexes {
         if !indexes.contains(index) {
             indexes.push(*index);
@@ -4653,6 +4664,41 @@ mod tests {
         assert_eq!(page.rows.len(), 4);
         assert_eq!(page.rows[0].name, "CMPD-001");
         assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn named_smiles_column_does_not_infer_formula_as_a_second_structure() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "SMILES,Name,Formula\n\
+                   CCO,Ethanol,C2H6O\n\
+                   c1ccccc1,Benzene,C6H6\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 2);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.total_rows, 2);
+        assert_eq!(page.rows[0].name, "Ethanol");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(
+            page.rows[0].props.get("Formula").map(String::as_str),
+            Some("C2H6O")
+        );
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }

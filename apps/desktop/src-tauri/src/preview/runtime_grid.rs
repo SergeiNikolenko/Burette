@@ -258,7 +258,7 @@ fn versioned_asset_url(path: &Path) -> String {
 fn grid_can_preview(extension: &str) -> bool {
     matches!(
         extension,
-        "csv" | "dwar" | "sd" | "sdf" | "smi" | "smiles" | "tsv"
+        "csv" | "dwar" | "rdf" | "rxn" | "sd" | "sdf" | "smi" | "smiles" | "tsv"
     )
 }
 

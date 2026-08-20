@@ -239,6 +239,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "showPanelControls": true,
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
+    config["autoFocusStructure"] = json!(true);
     config["viewerProfile"] = json!(if mesoscale { "mesoscale" } else { "structure" });
     if mesoscale {
         config["graphicsMode"] = json!("balanced");
@@ -391,7 +392,7 @@ pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
     prune_runtime_dirs(&base);
 
     let document_id = stable_id(label_path);
-    let config = json!({
+    let mut config = json!({
         "format": "sdf",
         "molstarFormat": "sdf",
         "binary": false,
@@ -430,6 +431,7 @@ pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
         "showPanelControls": true,
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
+    config["autoFocusStructure"] = json!(true);
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("index.html"),
@@ -555,7 +557,7 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
         .iter()
         .find(|ligand| ligand.format == "sdf" && sdf_record_count(&ligand.data) > 1)
         .map(|ligand| ligand.path.as_str());
-    let config = json!({
+    let mut config = json!({
         "format": receptor.format.as_str(),
         "molstarFormat": receptor.format.as_str(),
         "binary": receptor.binary,
@@ -594,6 +596,7 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
             "ligands": ligands.iter().map(source_config).collect::<Vec<_>>()
         }
     });
+    config["autoFocusStructure"] = json!(true);
     let payloads = json!({
         "receptor": {
             "dataBase64": base64::engine::general_purpose::STANDARD.encode(&receptor.data)

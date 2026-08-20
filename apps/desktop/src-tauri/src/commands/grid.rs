@@ -31,6 +31,7 @@ pub(crate) struct GridPageRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct GridVirtualEditRequest {
     document_id: String,
+    dirty: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -150,7 +151,7 @@ pub(crate) fn grid_mark_virtual_edit<R: Runtime>(
     request: GridVirtualEditRequest,
 ) -> Result<u64, String> {
     let document_id = crate::windows::runtime_document_id(window.label(), &request.document_id);
-    registry.mark_virtual_edit(&document_id)
+    registry.set_virtual_edit_state(&document_id, request.dirty)
 }
 
 #[tauri::command]

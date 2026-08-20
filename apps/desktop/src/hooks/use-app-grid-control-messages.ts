@@ -141,8 +141,8 @@ export function useAppGridControlMessages({
     if (body?.type === "gridDirtyChanged") {
       if (readOnlySource) return true;
       const documentId = typeof body.documentId === "string" ? body.documentId : "";
-      if (documentId && body.dirty === true && isTauriRuntime()) {
-        void invoke("grid_mark_virtual_edit", { request: { documentId } })
+      if (documentId && isTauriRuntime()) {
+        void invoke("grid_mark_virtual_edit", { request: { documentId, dirty: body.dirty === true } })
           .catch((error) => pushErrorStatus(error, "Grid edit tracking failed"));
       }
       updateDirtyGridDocument(documentId, body.dirty === true);

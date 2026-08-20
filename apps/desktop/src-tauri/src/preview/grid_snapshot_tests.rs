@@ -376,7 +376,7 @@ fn rejects_missing_selected_rows_and_frontend_only_edits_without_publication() {
     assert!(!missing_destination.exists());
 
     assert_eq!(
-        grid_identity::mark_virtual_edit(&database_path).expect("mark virtual edit"),
+        grid_identity::set_virtual_edit_state(&database_path, true).expect("mark virtual edit"),
         1
     );
     let edited_snapshot_id = Uuid::new_v4();

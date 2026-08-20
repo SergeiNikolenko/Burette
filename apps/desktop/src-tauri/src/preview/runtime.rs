@@ -218,10 +218,17 @@ impl ViewerPreferences {
     }
 
     pub(crate) fn resolved_molstar_style(&self) -> &str {
-        if self.molstar_style == "default" {
+        match self.molstar_style.as_str() {
             "default"
-        } else {
-            "illustrative"
+            | "illustrative"
+            | "illustrative-surface"
+            | "polymer-ligand"
+            | "cartoon"
+            | "ball-and-stick"
+            | "spacefill"
+            | "line"
+            | "molecular-surface" => self.molstar_style.as_str(),
+            _ => "illustrative",
         }
     }
 
@@ -373,6 +380,28 @@ mod viewer_preferences_tests {
             preferences("auto", "broken").canvas_background_for_runtime(),
             "auto"
         );
+    }
+
+    #[test]
+    fn preserves_supported_molstar_styles_for_runtime() {
+        let mut preferences = preferences("auto", "auto");
+        for style in [
+            "default",
+            "illustrative",
+            "illustrative-surface",
+            "polymer-ligand",
+            "cartoon",
+            "ball-and-stick",
+            "spacefill",
+            "line",
+            "molecular-surface",
+        ] {
+            preferences.molstar_style = style.to_string();
+            assert_eq!(preferences.resolved_molstar_style(), style);
+        }
+
+        preferences.molstar_style = "unsupported".to_string();
+        assert_eq!(preferences.resolved_molstar_style(), "illustrative");
     }
 
     #[test]
@@ -1771,6 +1800,7 @@ mod document_open_tests {
             .expect("trajectory config should be readable");
         let payload = fs::read_to_string(runtime_directory.join("preview-data.js"))
             .expect("trajectory payload should be readable");
+        assert!(config.contains("\"autoFocusStructure\":true"));
         assert!(config.contains("\"docking\""));
         assert!(config.contains("\"format\":\"pdb\""));
         assert!(config.contains("\"format\":\"xtc\""));
@@ -2035,6 +2065,9 @@ mod document_open_tests {
             let single_sdf = temp_fixture_path("collections/sdf/single.sdf");
             let multi_sdf = temp_fixture_path("collections/sdf/multi.sdf");
             let lammps_dump = temp_fixture_path("md/paired/paired.lammpstrj");
+            let reaction_fixtures = repo_root().join("tests/fixtures/reactions");
+            let rxn = reaction_fixtures.join("amidation.rxn");
+            let rdf = reaction_fixtures.join("three-reactions.rdf");
             created_files.push(mini_xyz.clone());
             created_files.push(mini_pdb.clone());
             created_files.push(single_sdf.clone());
@@ -2047,6 +2080,8 @@ mod document_open_tests {
                 (single_sdf, "molstar"),
                 (multi_sdf, "grid2d"),
                 (lammps_dump, "molstar"),
+                (rxn, "grid2d"),
+                (rdf, "grid2d"),
                 (cube, "xyzrender-external"),
                 (com, "xyzrender-external"),
                 (mae_gz, "xyzrender-external"),
@@ -2538,8 +2573,11 @@ f_m_ct {
             .expect("runtime html should have a parent");
         let html = fs::read_to_string(runtime_dir.join("index.html"))
             .expect("runtime HTML should be written");
+        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+            .expect("preview config should be written");
         assert!(runtime_dir.join("preview-data.bin").is_file());
         assert!(runtime_dir.join("preview-data.js").is_file());
+        assert!(config.contains("\"autoFocusStructure\":true"));
         assert!(html.contains("window.BuretteDataURL = "));
         assert!(html.contains("preview-data.js\"></script>"));
         let data_script = fs::read_to_string(runtime_dir.join("preview-data.js"))

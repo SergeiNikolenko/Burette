@@ -58,6 +58,9 @@ if [[ "$BUILD_MODE" == "release" ]]; then
   if [[ "$ALLOW_ADHOC_RELEASE" != "1" ]]; then
     [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]] || { echo "error: release builds require BURETTE_CODESIGN_IDENTITY='Developer ID Application: ...'." >&2; exit 1; }
     [[ -n "$DEVELOPMENT_TEAM" ]] || { echo "error: release builds require BURETTE_DEVELOPMENT_TEAM." >&2; exit 1; }
+  else
+    SIGN_IDENTITY="-"
+    DEVELOPMENT_TEAM=""
   fi
   [[ "$XCODE_CONFIGURATION" == "Release" ]] || { echo "error: release builds require BURETTE_XCODE_CONFIGURATION=Release." >&2; exit 1; }
   VITE_BURETTE_BUILD_CHANNEL="release"
@@ -275,6 +278,7 @@ assert_no_external_python_dependencies() {
 }
 prepare_bundled_python_for_signing() {
   local python_root="$1"
+  [[ -d "$python_root" ]] || return 0
   rm -rf "$python_root/IDLE 3.app" "$python_root/Python Launcher 3.app"
   find "$python_root" -type l \
     -path '*/Python.framework/Versions/*/lib/python*/site-packages' \
@@ -283,6 +287,8 @@ prepare_bundled_python_for_signing() {
     -path '*/Python.framework/Versions/*/Resources/Python.app/Contents/Info.plist' \
     -delete
   find "$python_root" -type d -name _CodeSignature -prune -exec rm -rf {} +
+  find "$python_root" -type f -name '*.pyc' -delete
+  find "$python_root" -type d -name __pycache__ -prune -exec rm -rf {} +
 }
 bundle_xyzrender_runtime() {
   local app="$1"
@@ -322,6 +328,7 @@ if [ -z "$SITE_PACKAGES" ] || [ ! -d "$SITE_PACKAGES" ]; then
 fi
 
 PYTHONNOUSERSITE=1 \
+PYTHONDONTWRITEBYTECODE=1 \
 PYTHONPATH="$SITE_PACKAGES" \
 exec "$PYTHON_ROOT/bin/python3" -m xyzrender.cli "$@"
 EOF
@@ -352,7 +359,7 @@ assert_bundled_xyzrender_runtime() {
       exit 1
     }
   fi
-  PYTHONNOUSERSITE=1 "$python_root/bin/python3" -c 'import sys; print(sys.version)' >/dev/null || {
+  PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 "$python_root/bin/python3" -c 'import sys; print(sys.version)' >/dev/null || {
     echo "error: bundled xyzrender Python runtime does not launch $stage" >&2
     exit 1
   }
@@ -623,6 +630,8 @@ assert_bundled_compute_metal_runtime "$TAURI_BUILT_APP" "before signing"
 assert_bundled_compute_service "$TAURI_BUILT_APP" "before signing"
 smoke_bundled_compute_service "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
+prepare_bundled_python_for_signing "$TAURI_BUILT_APP/Contents/Resources/xyzrender-runtime"
+prepare_bundled_python_for_signing "$TAURI_BUILT_APP/Contents/Resources/xyzrender-python"
 CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
   CODESIGN_ARGS+=(--options runtime --timestamp)
