@@ -1803,6 +1803,7 @@ mod document_open_tests {
             .expect("trajectory config should be readable");
         let payload = fs::read_to_string(runtime_directory.join("preview-data.js"))
             .expect("trajectory payload should be readable");
+        assert!(config.contains("\"autoFocusStructure\":true"));
         assert!(config.contains("\"docking\""));
         assert!(config.contains("\"format\":\"pdb\""));
         assert!(config.contains("\"format\":\"xtc\""));
@@ -2570,8 +2571,11 @@ f_m_ct {
             .expect("runtime html should have a parent");
         let html = fs::read_to_string(runtime_dir.join("index.html"))
             .expect("runtime HTML should be written");
+        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+            .expect("preview config should be written");
         assert!(runtime_dir.join("preview-data.bin").is_file());
         assert!(runtime_dir.join("preview-data.js").is_file());
+        assert!(config.contains("\"autoFocusStructure\":true"));
         assert!(html.contains("window.BuretteDataURL = "));
         assert!(html.contains("preview-data.js\"></script>"));
         let data_script = fs::read_to_string(runtime_dir.join("preview-data.js"))

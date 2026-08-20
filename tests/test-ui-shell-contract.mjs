@@ -5464,6 +5464,11 @@ assert.match(previewRuntimeViewer, /"defaultLayoutState": \{ "left": "hidden", "
 assert.match(previewRuntimeViewer, /preferences\.theme_for_runtime\(\)/);
 assert.match(previewRuntimeViewer, /preferences\.canvas_background_for_runtime\(\)/);
 assert.match(previewRuntimeViewer, /"molstarStyle": preferences\.resolved_molstar_style\(\)/);
+assert.equal(
+  (previewRuntimeViewer.match(/config\["autoFocusStructure"\] = json!\(true\);/g) || []).length,
+  3,
+  "every native Mol* runtime must opt into the focus scheduler after loading its scene",
+);
 assert.match(previewRuntimeViewer, /"waterRepresentation": "line"/);
 assert.match(previewRuntimeViewer, /config\["stagedEntries"\]/);
 assert.match(previewViewController, /preview-docking-payloads\.js/);
