@@ -114,6 +114,7 @@ Registry code is vendored, so these edits must be re-applied after every update:
 | `file-viewer-sidebar.tsx` | cast the rail click event to `React.MouseEvent<HTMLButtonElement>` | the rail renders either `Slot.Root` or `button` |
 | `file-viewer-route.tsx` | image branch passes `defaultScale={1}` | open media at natural size, no fit-to-width auto zoom |
 | `code-viewer-content.tsx` | syntax engine destroyed on a macrotask with cancellation | React StrictMode's mount -> cleanup -> mount cycle permanently killed the memoized engine, leaving every file unhighlighted in dev |
+| `file-viewer-sidebar.tsx` | overlay panel anchors to the content edge (`left-0` for a left sidebar) | upstream's `right-0` puts the zero-width-gap overlay outside the viewer, so toggling it showed nothing |
 
 The PDF page kind composes `PdfViewerPages` with `defaultScale={1}` and the page
 thumbnail sidebar (`PdfViewerThumbnails`), mirroring upstream's pdf-viewer-demo.

@@ -92,9 +92,13 @@ export function FileViewerSidebar({
         data-slot="file-viewer-sidebar"
         className={cn(
           "bg-background absolute inset-y-0 flex min-w-0 flex-col overflow-hidden",
+          // Burette patch: in overlay mode the gap is zero-width at the content
+          // edge, so the panel must extend INTO the content (left-0 for a left
+          // sidebar) or it slides in outside the viewer and stays invisible.
+          // Inline mode keeps the upstream alignment inside the full-width gap.
           sidebar.resolvedSide === "left"
-            ? "right-0 border-r"
-            : "left-0 border-l",
+            ? cn(sidebar.isInline ? "right-0" : "left-0", "border-r")
+            : cn(sidebar.isInline ? "left-0" : "right-0", "border-l"),
           !sidebar.isInline && "shadow-lg transition-transform ease-out",
           !sidebar.isInline &&
             !sidebar.isSidebarOpen &&
