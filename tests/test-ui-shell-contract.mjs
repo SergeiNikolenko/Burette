@@ -5156,6 +5156,11 @@ assert.match(previewViewer, /function molstarAutoFocusEnabled\(config\) \{\s*ret
 assert.match(previewViewer, /function requestMolstarStructureFocus\(viewer, options = \{\}\)/);
 assert.match(previewViewer, /camera\.getFocus\(target, Math\.max\(0\.1, safeRadius \* radiusScale\), up, direction\)/);
 assert.match(previewViewer, /snapshot\.mode = 'perspective'/);
+assert.match(
+  previewViewer,
+  /await applyConfiguredMolstarPreset\(viewer, activeConfig \|\| config\);[\s\S]*scheduleMolstarStructureFocus\(viewer, \{ reason: 'initial-load', durationMs: 120 \}\);/,
+  'initial Mol* camera focus must run after the configured representation preset finishes rebuilding the scene',
+);
 assert.match(previewViewer, /window\.BuretteDataBase64 = textBase64/);
 assert.match(previewViewer, /loadPreparedStructure\(activeViewer, prepared\)/);
 assert.match(previewViewer, /await applyMolstarStyle\(activeViewer, generatedStyle\)/);

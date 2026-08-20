@@ -25440,9 +25440,6 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     observeMolstarStoryState(viewer);
     applyLayoutState(viewer);
     scheduleLayoutStateReapply(viewer);
-    if (!hasMolstarContextFocus(config)) {
-      scheduleMolstarStructureFocus(viewer, { reason: 'initial-load', durationMs: 120 });
-    }
 
     try {
       window.BuretteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
@@ -25483,6 +25480,9 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       await applyConfiguredMolstarPreset(viewer, activeConfig || config);
     } catch (error) {
       debug('Configured Mol* preset failed: ' + (error?.message || String(error)));
+    }
+    if (!hasMolstarContextFocus(config)) {
+      scheduleMolstarStructureFocus(viewer, { reason: 'initial-load', durationMs: 120 });
     }
     {
       const poseCount = Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || prepared?.xyzFrameCount || config?.trajectoryFrameCount || 0);
