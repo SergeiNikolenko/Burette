@@ -22,8 +22,8 @@ plugins/burette-agent/browser-shell-dist/assets/indigo-ketcher-1.43.0-uUo-NEHL.w
 plugins/burette-agent/browser-shell-dist/assets/plotly-basic.min-BGGwveDV.js
 plugins/burette-agent/browser-shell-dist/assets/three.module-B9xciExR.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-610bH81i.js
-plugins/burette-agent/browser-shell-dist/assets/dist-UhtgvaWx.js
-plugins/burette-agent/browser-shell-dist/assets/index.modern-Dc_tqQEr.js
+plugins/burette-agent/browser-shell-dist/assets/dist-CH7R8ams.js
+plugins/burette-agent/browser-shell-dist/assets/index.modern-DN6_6mNQ.js
 plugins/burette-agent/browser-shell-dist/index.js
 tests/test-ui-shell-contract.mjs
 docs/public/burette-quick-look-preview.png
@@ -34,3 +34,15 @@ samples/quantum/volumes/base-pair-density.cube
 samples/quantum/volumes/base-pair-gradient.cube
 samples/quantum/volumes/phenol-di-interaction.cub
 samples/schrodinger/metadynamics-binding.mae
+# Retab document viewer: vendored mermaid WASM and the rebuilt agent-shell
+# bundles that carry the office/PDF/markdown viewers.
+apps/desktop/public/vendor/mmdr/typst_mmdr.wasm
+plugins/burette-agent/browser-shell-dist/vendor/mmdr/typst_mmdr.wasm
+plugins/burette-agent/browser-shell-dist/assets/index.modern-DRe6F2yp.js
+plugins/burette-agent/browser-shell-dist/assets/resources-D5ymtJwZ.json
+plugins/burette-agent/browser-shell-dist/assets/pdf.worker.min-BGUT02Us.mjs
+plugins/burette-agent/browser-shell-dist/assets/openchemlib-BteEtxM3.js
+plugins/burette-agent/browser-shell-dist/assets/PptxViewJS.es-CWh08j7b.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CmeBI5fb.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-document.worker-qen7HUVU.js
+plugins/burette-agent/browser-shell-dist/assets/chunk-KEIR6QF5-CUuuYsZ_.js

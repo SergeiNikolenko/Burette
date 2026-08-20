@@ -1,5 +1,5 @@
 const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./docx-preview-Dt5kguh3.js","./rolldown-runtime-DAXXjFlN.js","./jszip.min-DL0lHVp7.js"])))=>i.map(i=>d[i]);
-import{o as e,r as t}from"./use-mount-effect-DniwGXVQ.js";import{et as n,pr as r,tt as i}from"../index.js";var a=new Map;function o(e,t={}){let n=e.key,r=a.get(n);if(r)return r;let i=c(e).catch(e=>{throw!t.retainRejected&&a.get(n)===i&&a.delete(n),e});return a.set(n,i),i}function s(e){a.delete(e.key)}function c(e){return e.readBytes()}var l=.1,u=1.2,d={inWrapper:!0,breakPages:!0,ignoreLastRenderedPageBreak:!1,experimental:!0,renderHeaders:!0,renderFooters:!0,renderFootnotes:!0},f=`
+import{o as e,r as t}from"./use-mount-effect-DniwGXVQ.js";import{et as n,pr as r,tt as i}from"../index.js";var a=new Map;function o(e,t={}){let n=e.key,r=a.get(n);if(r)return r;let i=c(e).catch(e=>{throw!t.retainRejected&&a.get(n)===i&&a.delete(n),e});return a.set(n,i),i}function s(e){a.delete(e.key)}function c(e){return e.readBytes()}var l=.1,u=1.2,d={inWrapper:!0,breakPages:!0,ignoreLastRenderedPageBreak:!1,experimental:!0,renderHeaders:!0,renderFooters:!0,renderFootnotes:!0,useBase64URL:!0},f=`
 [data-slot="docx-viewer"] .docx-wrapper {
   background: transparent;
   padding: 0;

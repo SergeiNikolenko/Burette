@@ -21,6 +21,10 @@ export const DOCX_RENDER_OPTIONS: Partial<DocxPreview.Options> = {
   renderHeaders: true,
   renderFooters: true,
   renderFootnotes: true,
+  // Embedded images and fonts must arrive as data: URIs: the packaged webview
+  // CSP has no blob: in img-src and none in default-src, so the library's
+  // default blob URLs render only in browser-dev.
+  useBase64URL: true,
 };
 
 export const DOCX_SCOPED_STYLES = `
