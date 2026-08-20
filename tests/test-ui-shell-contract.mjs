@@ -8484,7 +8484,7 @@ assert.match(gridViewer, /post\('gridRowHover', '', \{/);
 // The viewer ships smiles/molblock and lets the host draw: an SVG per hover
 // would cross the iframe boundary at 100KB+ a row.
 assert.match(gridViewer, /molblock: String\(row\.molblock \|\| ''\)/);
-assert.match(gridViewer, /buildUI\(cfg\);\s*installRowHoverPreview\(cfg\);/);
+assert.match(gridViewer, /buildUI\(cfg\);\s*installGridTextFocusListeners\(\);\s*installRowHoverPreview\(cfg\);/);
 assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*inset: 0 0 0 auto;/);
 assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*width: min\(480px, calc\(100vw - 24px\)\);/);
 assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*height: 100%;/);
