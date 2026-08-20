@@ -69,7 +69,7 @@ type KetcherShellViewState = Pick<
   "ketcherImportRequest" | "ketcherDraftMolfile"
 >;
 
-type GridShellViewState = Pick<ShellViewState, "gridFilterModel">;
+type GridShellViewState = Pick<ShellViewState, "descriptorSource" | "gridFilterModel">;
 
 type DockingShellViewState = Pick<ShellViewState, "poseReviewSelections">;
 
@@ -181,6 +181,7 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
       ketcherDraftMolfile: state.ketcherDraftMolfile,
     },
     grid: {
+      descriptorSource: state.descriptorSource,
       gridFilterModel: state.gridFilterModel,
     },
     docking: {

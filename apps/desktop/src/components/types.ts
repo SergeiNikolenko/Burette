@@ -172,6 +172,8 @@ export type ShellActions = {
   }) => void;
   openFepSetupWorkspace: (request: FepSetupRequest) => void;
   openKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
+  openDescriptorSource: (source: DescriptorSourcePayload) => void;
+  clearDescriptorSource: () => void;
   applyGridDescriptorControls: (documentId: string, controls: GridDescriptorControls) => void;
   applyGridDescriptorResults: (documentId: string, rows: GridDescriptorResultRow[]) => void;
   calculateGridDescriptors: (documentId: string, options?: GridDescriptorRunOptions) => void;
@@ -351,6 +353,7 @@ export type ShellViewState = {
   poseReviewSelections: Record<string, number>;
   ketcherImportRequest: KetcherImportRequest | null;
   ketcherDraftMolfile: string;
+  descriptorSource: DescriptorSourcePayload | null;
   sidebarQuery: string;
   status: StatusNotice | null;
   dropActive: boolean;
