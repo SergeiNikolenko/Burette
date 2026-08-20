@@ -17,6 +17,10 @@ assert.match(buildScript, /relocate_bundled_python_runtime/);
 assert.match(buildScript, /install_name_tool/);
 assert.match(buildScript, /assert_no_external_python_dependencies/);
 assert.match(buildScript, /prepare_bundled_python_for_signing/);
+assert.match(
+  buildScript,
+  /prepare_bundled_python_for_signing\(\) \{\s*local python_root="\$1"\s*\[\[ -d "\$python_root" \]\] \|\| return 0/,
+);
 assert.match(buildScript, /_CodeSignature/);
 assert.match(buildScript, /codesign --verify --deep --strict \"\$python_framework\"/);
 assert.match(buildScript, /otool -L/);

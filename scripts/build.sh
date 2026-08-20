@@ -278,6 +278,7 @@ assert_no_external_python_dependencies() {
 }
 prepare_bundled_python_for_signing() {
   local python_root="$1"
+  [[ -d "$python_root" ]] || return 0
   rm -rf "$python_root/IDLE 3.app" "$python_root/Python Launcher 3.app"
   find "$python_root" -type l \
     -path '*/Python.framework/Versions/*/lib/python*/site-packages' \
