@@ -46,3 +46,8 @@ plugins/burette-agent/browser-shell-dist/assets/PptxViewJS.es-CWh08j7b.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CmeBI5fb.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-document.worker-qen7HUVU.js
 plugins/burette-agent/browser-shell-dist/assets/chunk-KEIR6QF5-CUuuYsZ_.js
+# Transient: superseded agent-shell outputs that live only in PR #627's
+# intermediate commits; the final tree does not ship them. Prune after merge.
+plugins/burette-agent/browser-shell-dist/assets/cluster-fingerprint.worker-Q1HfNbxv.js
+plugins/burette-agent/browser-shell-dist/assets/RDKit_minimal-CSQ_4EtA.js
+plugins/burette-agent/browser-shell-dist/assets/resources-BTLdlx-p.js
