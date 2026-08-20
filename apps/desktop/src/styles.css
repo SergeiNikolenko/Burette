@@ -24,6 +24,14 @@
   --color-border: var(--shadcn-border);
   --color-input: var(--shadcn-input);
   --color-ring: var(--shadcn-ring);
+  --color-sidebar: var(--shadcn-sidebar);
+  --color-sidebar-foreground: var(--shadcn-sidebar-foreground);
+  --color-sidebar-primary: var(--shadcn-sidebar-primary);
+  --color-sidebar-primary-foreground: var(--shadcn-sidebar-primary-foreground);
+  --color-sidebar-accent: var(--shadcn-sidebar-accent);
+  --color-sidebar-accent-foreground: var(--shadcn-sidebar-accent-foreground);
+  --color-sidebar-border: var(--shadcn-sidebar-border);
+  --color-sidebar-ring: var(--shadcn-sidebar-ring);
   --radius-sm: calc(var(--control-radius) * 0.6);
   --radius-md: calc(var(--control-radius) * 0.8);
   --radius-lg: var(--control-radius);
@@ -136,6 +144,14 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --shadcn-border: var(--line-subtle);
   --shadcn-input: var(--surface-input);
   --shadcn-ring: var(--focus-ring);
+  --shadcn-sidebar: var(--surface-primary);
+  --shadcn-sidebar-foreground: var(--text-secondary);
+  --shadcn-sidebar-primary: var(--accent);
+  --shadcn-sidebar-primary-foreground: #ffffff;
+  --shadcn-sidebar-accent: var(--surface-hover);
+  --shadcn-sidebar-accent-foreground: var(--text-primary);
+  --shadcn-sidebar-border: var(--line-subtle);
+  --shadcn-sidebar-ring: var(--focus-ring);
   --shadcn-disabled-opacity: 0.48;
   /* Vendored Retab viewer components read the plain shadcn token names
      (var(--background), var(--foreground), ...). Alias them to our --shadcn-*
@@ -157,6 +173,14 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --border: var(--shadcn-border);
   --input: var(--shadcn-input);
   --ring: var(--shadcn-ring);
+  --sidebar: var(--shadcn-sidebar);
+  --sidebar-foreground: var(--shadcn-sidebar-foreground);
+  --sidebar-primary: var(--shadcn-sidebar-primary);
+  --sidebar-primary-foreground: var(--shadcn-sidebar-primary-foreground);
+  --sidebar-accent: var(--shadcn-sidebar-accent);
+  --sidebar-accent-foreground: var(--shadcn-sidebar-accent-foreground);
+  --sidebar-border: var(--shadcn-sidebar-border);
+  --sidebar-ring: var(--shadcn-sidebar-ring);
   position: relative;
   width: 100vw;
   height: 100vh;
@@ -171,53 +195,87 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   line-height: 1.2;
 }
 
-/* Retab document tabs render with the stock shadcn "neutral" palette, exactly as
-   ui.retab.com ships it. The registry publishes no theme of its own, so pinning
-   these values here is what keeps the viewer surface identical to upstream while
-   the rest of the app keeps the Burette theme. Utilities resolve through the
-   @theme inline --color-* -> --shadcn-* indirection, so overriding --shadcn-*
-   at this scope restyles both Tailwind classes and raw var(--...) reads. */
+/* Retab document tabs render with the palette harvested from ui.retab.com's own
+   computed styles (the registry publishes no theme; it inherits host tokens).
+   Alpha-blended borders and muted tones are what give the surface its light
+   hairline look. Scoping here keeps the rest of the app on the Burette theme:
+   utilities resolve through the @theme inline --color-* -> --shadcn-*
+   indirection, so overriding --shadcn-* restyles both Tailwind classes and raw
+   var(--...) reads. */
 .document-stage {
-  --shadcn-background: oklch(1 0 0);
-  --shadcn-foreground: oklch(0.145 0 0);
-  --shadcn-card: oklch(1 0 0);
-  --shadcn-card-foreground: oklch(0.145 0 0);
-  --shadcn-popover: oklch(1 0 0);
-  --shadcn-popover-foreground: oklch(0.145 0 0);
-  --shadcn-primary: oklch(0.205 0 0);
+  --shadcn-background: #ffffff;
+  --shadcn-foreground: oklch(0.235 0 0);
+  --shadcn-card: #ffffff;
+  --shadcn-card-foreground: oklch(0.235 0 0);
+  --shadcn-popover: #ffffff;
+  --shadcn-popover-foreground: oklch(0.235 0 0);
+  --shadcn-primary: oklch(0.235 0 0);
   --shadcn-primary-foreground: oklch(0.985 0 0);
-  --shadcn-secondary: oklch(0.97 0 0);
-  --shadcn-secondary-foreground: oklch(0.205 0 0);
-  --shadcn-muted: oklch(0.97 0 0);
-  --shadcn-muted-foreground: oklch(0.556 0 0);
-  --shadcn-accent: oklch(0.97 0 0);
-  --shadcn-accent-foreground: oklch(0.205 0 0);
+  --shadcn-secondary: color-mix(in oklab, #000 4%, transparent);
+  --shadcn-secondary-foreground: oklch(0.235 0 0);
+  --shadcn-muted: color-mix(in oklab, #000 4%, transparent);
+  --shadcn-muted-foreground: color-mix(in srgb, oklch(0.556 0 0) 90%, #000);
+  --shadcn-accent: color-mix(in oklab, #000 4%, transparent);
+  --shadcn-accent-foreground: oklch(0.235 0 0);
   --shadcn-destructive: oklch(0.577 0.245 27.325);
-  --shadcn-destructive-foreground: oklch(0.985 0 0);
-  --shadcn-border: oklch(0.922 0 0);
-  --shadcn-input: oklch(0.922 0 0);
+  --shadcn-destructive-foreground: oklch(0.45 0.22 26);
+  --shadcn-border: color-mix(in oklab, #000 8%, transparent);
+  --shadcn-input: color-mix(in oklab, #000 10%, transparent);
   --shadcn-ring: oklch(0.708 0 0);
+  --shadcn-sidebar: oklch(0.985 0 0);
+  --shadcn-sidebar-foreground: color-mix(in srgb, oklch(0.235 0 0) 64%, oklch(0.985 0 0));
+  --shadcn-sidebar-primary: oklch(0.235 0 0);
+  --shadcn-sidebar-primary-foreground: oklch(0.985 0 0);
+  --shadcn-sidebar-accent: color-mix(in oklab, #000 4%, transparent);
+  --shadcn-sidebar-accent-foreground: oklch(0.235 0 0);
+  --shadcn-sidebar-border: color-mix(in oklab, #000 6%, transparent);
+  --shadcn-sidebar-ring: oklch(0.708 0 0);
 }
+/* shadcn v4 dropped the v3 preflight that defaulted border-color to the border
+   token; Retab's host app ships it globally, so its components use bare
+   `border-r` etc. and expect it. Scoped to the viewer surface: `.document-stage`
+   covers the light DOM, `:host` covers the csv/xlsx shadow scopes (these sheets
+   are copied into the shadow roots, where :host matches; in the main document it
+   matches nothing). */
+@layer base {
+  .document-stage *,
+  .document-stage ::before,
+  .document-stage ::after,
+  :host *,
+  :host ::before,
+  :host ::after {
+    border-color: var(--shadcn-border);
+  }
+}
+
 .app-shell[data-effective-theme="dark"] .document-stage {
   --shadcn-background: oklch(0.145 0 0);
-  --shadcn-foreground: oklch(0.985 0 0);
-  --shadcn-card: oklch(0.205 0 0);
-  --shadcn-card-foreground: oklch(0.985 0 0);
-  --shadcn-popover: oklch(0.205 0 0);
-  --shadcn-popover-foreground: oklch(0.985 0 0);
-  --shadcn-primary: oklch(0.922 0 0);
-  --shadcn-primary-foreground: oklch(0.205 0 0);
-  --shadcn-secondary: oklch(0.269 0 0);
-  --shadcn-secondary-foreground: oklch(0.985 0 0);
-  --shadcn-muted: oklch(0.269 0 0);
-  --shadcn-muted-foreground: oklch(0.708 0 0);
-  --shadcn-accent: oklch(0.269 0 0);
-  --shadcn-accent-foreground: oklch(0.985 0 0);
-  --shadcn-destructive: oklch(0.704 0.191 22.216);
-  --shadcn-destructive-foreground: oklch(0.985 0 0);
-  --shadcn-border: oklch(1 0 0 / 10%);
-  --shadcn-input: oklch(1 0 0 / 15%);
+  --shadcn-foreground: oklch(0.972 0 0);
+  --shadcn-card: color-mix(in srgb, oklch(0.145 0 0) 98%, #fff);
+  --shadcn-card-foreground: oklch(0.972 0 0);
+  --shadcn-popover: color-mix(in srgb, oklch(0.145 0 0) 98%, #fff);
+  --shadcn-popover-foreground: oklch(0.972 0 0);
+  --shadcn-primary: oklch(0.972 0 0);
+  --shadcn-primary-foreground: oklch(0.235 0 0);
+  --shadcn-secondary: color-mix(in oklab, #fff 4%, transparent);
+  --shadcn-secondary-foreground: oklch(0.972 0 0);
+  --shadcn-muted: color-mix(in oklab, #fff 4%, transparent);
+  --shadcn-muted-foreground: color-mix(in srgb, oklch(0.556 0 0) 90%, #fff);
+  --shadcn-accent: color-mix(in oklab, #fff 4%, transparent);
+  --shadcn-accent-foreground: oklch(0.972 0 0);
+  --shadcn-destructive: color-mix(in srgb, oklch(0.577 0.245 27.325) 90%, #fff);
+  --shadcn-destructive-foreground: oklch(0.972 0 0);
+  --shadcn-border: color-mix(in oklab, #fff 6%, transparent);
+  --shadcn-input: color-mix(in oklab, #fff 8%, transparent);
   --shadcn-ring: oklch(0.556 0 0);
+  --shadcn-sidebar: color-mix(in srgb, oklch(0.145 0 0) 97%, #fff);
+  --shadcn-sidebar-foreground: color-mix(in srgb, oklch(0.972 0 0) 64%, color-mix(in srgb, oklch(0.145 0 0) 97%, #fff));
+  --shadcn-sidebar-primary: oklch(0.972 0 0);
+  --shadcn-sidebar-primary-foreground: oklch(0.235 0 0);
+  --shadcn-sidebar-accent: color-mix(in oklab, #fff 4%, transparent);
+  --shadcn-sidebar-accent-foreground: oklch(0.972 0 0);
+  --shadcn-sidebar-border: color-mix(in oklab, #fff 5%, transparent);
+  --shadcn-sidebar-ring: oklch(0.556 0 0);
 }
 .app-shell::after {
   content: "";

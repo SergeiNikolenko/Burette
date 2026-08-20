@@ -1,3 +1,4 @@
+import "katex/dist/katex.min.css";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -65,8 +66,8 @@ function PdfDocumentViewer({ source }: { source: ViewerSource }) {
             <FileViewerControls />
           </FileViewerHeader>
           <FileViewerContent>
-            <FileViewerSidebar aria-label="PDF pages" width="4.5rem" className="border-r">
-              <PdfViewerThumbnails thumbnailWidth={60} />
+            <FileViewerSidebar aria-label="PDF pages" className="border-r">
+              <PdfViewerThumbnails />
             </FileViewerSidebar>
             <FileViewerInset>
               <FileViewerViewport>
@@ -80,19 +81,17 @@ function PdfDocumentViewer({ source }: { source: ViewerSource }) {
   );
 }
 
+// Reference composition: no separate FileViewerHeader — each viewer draws its
+// own chrome row (sheet name and dimensions for XLSX, row/column meta for CSV,
+// word count and zoom for Markdown) when FileViewerDocument gets `controls`.
 function GenericDocumentViewer({ source }: { source: ViewerSource }) {
   return (
     <FileViewerProvider source={source} isolateStyles>
       <FileViewer className="h-full min-h-0">
-        <FileViewerHeader>
-          <FileViewerTitle />
-          <FileViewerMeta />
-          <FileViewerControls />
-        </FileViewerHeader>
         <FileViewerContent>
           <FileViewerInset>
             <FileViewerViewport>
-              <FileViewerDocument />
+              <FileViewerDocument controls />
             </FileViewerViewport>
           </FileViewerInset>
         </FileViewerContent>
