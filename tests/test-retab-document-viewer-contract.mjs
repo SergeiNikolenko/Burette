@@ -64,6 +64,10 @@ assert.match(fileRouting, /documentViewerExtensions\.has\(extension\) \|\| docum
 // Grid-rejected delimited files fall back to the Retab table viewer, not plain text.
 assert.match(fileRouting, /documentFallbackExtensions = new Set\(\["csv", "tsv"\]\)/);
 assert.match(fileOpen, /documentFallbackExtensions\.has\(pathExtension\(path\)\)/);
+// The grid's rejection must stay silent when the caller will fall back; the
+// option is only honored if both status pushes actually check it.
+assert.match(fileOpen, /if \(!options\.deferErrorStatus\) pushStatus/);
+assert.match(fileOpen, /if \(!options\.deferErrorStatus\) pushErrorStatus\(error\);/);
 assert.match(store, /openDocumentTab: \(path\) =>/);
 assert.match(store, /tab\.location\.kind === "document" && tab\.location\.path === path/);
 

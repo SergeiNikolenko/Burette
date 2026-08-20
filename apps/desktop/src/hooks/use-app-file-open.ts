@@ -209,9 +209,12 @@ export function useAppFileOpen({
         if (result.documents.length > 0) markPerformanceOnce("app:first-document-opened");
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
+        // deferErrorStatus: the caller falls back to another opener for anything
+        // the grid rejects, and that opener surfaces its own failures — a toast
+        // here would report an error for a file that opens fine a moment later.
         if (result.errors.length > 0) {
-          pushStatus(`${openedText}. ${summarizeErrors(result.errors)}`, "error", result.errors);
-        } else {
+          if (!options.deferErrorStatus) pushStatus(`${openedText}. ${summarizeErrors(result.errors)}`, "error", result.errors);
+        } else if (result.documents.length > 0 || !options.deferErrorStatus) {
           pushStatus(openedText);
         }
         return result;
@@ -221,7 +224,7 @@ export function useAppFileOpen({
             .catch((menuError) => pushErrorStatus(menuError, "Structure column menu failed"));
           return null;
         }
-        pushErrorStatus(error);
+        if (!options.deferErrorStatus) pushErrorStatus(error);
         return null;
       }
     },
