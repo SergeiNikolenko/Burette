@@ -8431,7 +8431,6 @@
       normalizeCardRenderer(cfg);
       normalizeGridViewMode(cfg);
       buildUI(cfg);
-      installRowHoverPreview(cfg);
       installGridTextFocusListeners();
       installRowHoverPreview(cfg);
       refresh(cfg);
