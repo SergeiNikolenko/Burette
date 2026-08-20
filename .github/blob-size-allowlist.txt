@@ -15,7 +15,7 @@ plugins/burette-agent/preview-web/openchemlib/openchemlib.js
 plugins/burette-agent/preview-web/rdkit-conformer/Burette_rdkit_conformer.wasm
 plugins/burette-agent/browser-shell-dist/assets/Burette_rdkit_conformer-BA7plZBF.wasm
 plugins/burette-agent/browser-shell-dist/assets/RDKit_minimal-tnscgqxm.wasm
-plugins/burette-agent/browser-shell-dist/assets/dist-BB7l92i6.js
+plugins/burette-agent/browser-shell-dist/assets/dist-DjLjo8cO.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-BmjV2ZLw.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-CT0VIV_p.js
 plugins/burette-agent/browser-shell-dist/assets/indigo-ketcher-1.43.0-uUo-NEHL.wasm
