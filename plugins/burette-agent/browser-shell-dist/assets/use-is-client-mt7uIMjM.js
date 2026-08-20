@@ -1,0 +1,1 @@
+import{o as e}from"./rolldown-runtime-DAXXjFlN.js";import{t}from"./react-DWhDOMx2.js";var n=e(t(),1),r=()=>()=>{},i=()=>!0,a=()=>!1;function o(){return n.useSyncExternalStore(r,i,a)}export{o as t};

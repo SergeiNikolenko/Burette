@@ -7,6 +7,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const source = (path) => readFileSync(join(repoRoot, path), 'utf8');
 
 const documentKind = source('apps/desktop/src/components/editor-area/page-kinds/document.tsx');
+const documentPage = source('apps/desktop/src/components/document-page.tsx');
 const fileRouting = source('apps/desktop/src/lib/file-routing.ts');
 const fileOpen = source('apps/desktop/src/hooks/use-app-file-open.ts');
 const dockOpen = source('apps/desktop/src/hooks/use-app-dock-payload-open.ts');
@@ -24,22 +25,25 @@ assert.match(fileRouting, /export function isDocumentViewerPath/);
 // The viewer fetches the file itself, so both runtimes must hand it a readable URL.
 assert.match(documentKind, /export const documentKind = definePageKind/);
 assert.match(documentKind, /keepAlive: true/);
+// The surface itself lives in document-page.tsx behind the page kind's lazy
+// boundary (see test-lazy-boundaries-contract.mjs).
+assert.match(documentPage, /export function DocumentSurface/);
 // The canonical Retab composition: header (title, meta, controls) above the
 // document, matching the upstream demo one to one.
 for (const piece of ['FileViewerProvider', 'FileViewerHeader', 'FileViewerTitle', 'FileViewerMeta', 'FileViewerControls', 'FileViewerContent', 'FileViewerInset', 'FileViewerViewport', 'FileViewerDocument']) {
-  assert.match(documentKind, new RegExp(`<${piece}[ />]`));
+  assert.match(documentPage, new RegExp(`<${piece}[ />]`));
 }
 const styles = source('apps/desktop/src/styles.css');
 // The stage must clear Burette's floating tab strip like every other page kind.
 assert.match(styles, /\.document-stage \{\n  position: absolute;\n  inset: var\(--chrome-height\) 0 0;/);
-assert.match(documentKind, /className="document-stage"/);
-assert.match(documentKind, /`\/__burette\/read-file\?path=\$\{encodeURIComponent\(path\)\}`/);
-assert.match(documentKind, /invoke<ArrayBuffer>\("read_document_file", \{ path \}\)/);
-assert.match(documentKind, /kind: "blob"/);
+assert.match(documentPage, /className="document-stage"/);
+assert.match(documentPage, /`\/__burette\/read-file\?path=\$\{encodeURIComponent\(path\)\}`/);
+assert.match(documentPage, /invoke<ArrayBuffer>\("read_document_file", \{ path \}\)/);
+assert.match(documentPage, /kind: "blob"/);
 
 // The desktop path must not lean on the asset protocol: its scope covers generated
 // runtime files only, so arbitrary user documents would be refused.
-assert.doesNotMatch(documentKind, /convertFileSrc/);
+assert.doesNotMatch(documentPage, /convertFileSrc/);
 const permissions = source('apps/desktop/src-tauri/permissions/burette.toml');
 const rustCommands = source('apps/desktop/src-tauri/src/commands/text_files.rs');
 const rustRegistry = source('apps/desktop/src-tauri/src/lib.rs');
@@ -97,14 +101,14 @@ assert.match(styles, /\.document-stage \{\n  --shadcn-background: #ffffff;/);
 // The hairline look comes from alpha-blended borders, harvested from ui.retab.com.
 assert.match(styles, /--shadcn-border: color-mix\(in oklab, #000 8%, transparent\);/);
 assert.match(styles, /\.document-stage \*,[\s\S]{0,120}:host \*/);
-assert.match(documentKind, /PdfViewerThumbnails \/>/);
+assert.match(documentPage, /PdfViewerThumbnails \/>/);
 // The generic branch has no FileViewerHeader: each viewer draws its own chrome
 // row (sheet name for XLSX, row meta for CSV, word count and zoom for Markdown),
 // which is the reference composition. Only the PDF branch keeps a header, for
 // the sidebar trigger and the file name.
-assert.match(documentKind, /<FileViewerDocument controls \/>/);
-assert.match(documentKind, /import "katex\/dist\/katex\.min\.css";/);
-assert.match(documentKind, /PdfViewerPages bare className="h-full" defaultScale=\{1\}/);
+assert.match(documentPage, /<FileViewerDocument controls \/>/);
+assert.match(documentPage, /import "katex\/dist\/katex\.min\.css";/);
+assert.match(documentPage, /PdfViewerPages bare className="h-full" defaultScale=\{1\}/);
 const fileViewerRoute = source('apps/desktop/src/components/ui/file-viewer-route.tsx');
 assert.match(fileViewerRoute, /image[\s\S]{0,300}defaultScale=\{1\}/);
 
