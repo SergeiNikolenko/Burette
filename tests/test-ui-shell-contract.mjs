@@ -2599,6 +2599,8 @@ assert.match(appXtbWorkflowsHook, /requestXtbStatus\(\)\.then\(setXtbStatus\)\.c
 assert.match(appXtbWorkflowsHook, /openOptimizedPoseInCurrentView/);
 assert.match(appXtbWorkflowsHook, /xtbOperationLabel\(operation\)/);
 assert.match(appXtbWorkflowsHook, /molstarContextEntryExtension\(entry\.format\)/);
+assert.match(appXtbWorkflowsHook, /if \(isTauriRuntime\(\)\) \{[\s\S]*invoke<ViewerDocument>\("open_text_structure", \{[\s\S]*title: `\$\{sourceTitle\} xTB optimized\.\$\{extension\}`,[\s\S]*text: optimizedText,[\s\S]*openDocumentsInActiveTab\(\[documentWithSource\]\);[\s\S]*return;/);
+assert.match(appXtbWorkflowsHook, /const document = await openBrowserDevMolstarContextDocument\(\{/);
 assert.match(appViewerHostMessagesHook, /Structure action did not match the structure/);
 assert.match(appViewerHostMessagesHook, /bodyString\(body\.id\)\.startsWith\("text-selection-"\)/);
 assert.doesNotMatch(app, /pushStatus\("Text selection applied"/);
