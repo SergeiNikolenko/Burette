@@ -15,14 +15,14 @@ plugins/burette-agent/preview-web/openchemlib/openchemlib.js
 plugins/burette-agent/preview-web/rdkit-conformer/Burette_rdkit_conformer.wasm
 plugins/burette-agent/browser-shell-dist/assets/Burette_rdkit_conformer-BA7plZBF.wasm
 plugins/burette-agent/browser-shell-dist/assets/RDKit_minimal-tnscgqxm.wasm
-plugins/burette-agent/browser-shell-dist/assets/dist-BB7l92i6.js
+plugins/burette-agent/browser-shell-dist/assets/dist-DjLjo8cO.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-BmjV2ZLw.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-CT0VIV_p.js
 plugins/burette-agent/browser-shell-dist/assets/indigo-ketcher-1.43.0-uUo-NEHL.wasm
 plugins/burette-agent/browser-shell-dist/assets/plotly-basic.min-BGGwveDV.js
 plugins/burette-agent/browser-shell-dist/assets/three.module-B9xciExR.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-610bH81i.js
-plugins/burette-agent/browser-shell-dist/assets/dist-CH7R8ams.js
+plugins/burette-agent/browser-shell-dist/assets/dist-DjLjo8cO.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-DN6_6mNQ.js
 plugins/burette-agent/browser-shell-dist/index.js
 tests/test-ui-shell-contract.mjs
@@ -43,11 +43,9 @@ plugins/burette-agent/browser-shell-dist/assets/resources-D5ymtJwZ.json
 plugins/burette-agent/browser-shell-dist/assets/pdf.worker.min-BGUT02Us.mjs
 plugins/burette-agent/browser-shell-dist/assets/openchemlib-BteEtxM3.js
 plugins/burette-agent/browser-shell-dist/assets/PptxViewJS.es-CWh08j7b.js
-plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CmeBI5fb.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-BEeR17eU.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-document.worker-qen7HUVU.js
 plugins/burette-agent/browser-shell-dist/assets/chunk-KEIR6QF5-CUuuYsZ_.js
-# Transient: superseded agent-shell outputs that live only in PR #627's
-# intermediate commits; the final tree does not ship them. Prune after merge.
 plugins/burette-agent/browser-shell-dist/assets/cluster-fingerprint.worker-Q1HfNbxv.js
 plugins/burette-agent/browser-shell-dist/assets/RDKit_minimal-CSQ_4EtA.js
 plugins/burette-agent/browser-shell-dist/assets/resources-BTLdlx-p.js
