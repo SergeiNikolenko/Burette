@@ -484,7 +484,6 @@ const defaultCapability = await source('apps/desktop/src-tauri/capabilities/defa
 const fepSetupStoreTest = await source('tests/test-fep-setup-store.mjs');
 const buretteAgent = await source('PreviewExtension/Web/burette-agent.js');
 const rootTypes = await source('apps/desktop/src/types.ts');
-const gridHoverMolecule = await source('apps/desktop/src/components/grid-hover-molecule.tsx');
 
 const sidebarSurface = [sidebar, sidebarFileBrowser, sidebarFileTreeNode, sidebarWorkspaceSwitcher, settingsSidebar].join('\n');
 const editorTabDragStart = editorTabs.match(/onDragStart=\{\(event\) => \{[\s\S]*?\n                \}\}/)?.[0] ?? '';
@@ -2670,25 +2669,20 @@ assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
 assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\)\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument\(document\.path\)/);
 assert.match(structureInfoPanel, /<InspectorSection title="Composition"/);
-assert.match(structureInfoPanel, /<GridHoverMoleculeCard documentId=\{document\.id\} filterModel=\{gridFilterModel\} \/>/);
-assert.match(structureInfoPanel, /<StructureDetailsSection[\s\S]*?<GridHoverMoleculeCard documentId=\{document\.id\} filterModel=\{gridFilterModel\} \/>/);
-assert.match(gridHoverMolecule, /from "@\/components\/ui\/card"/);
-assert.match(gridHoverMolecule, /from "@\/components\/ui\/badge"/);
-assert.match(gridHoverMolecule, /window\.addEventListener\(HOVER_EVENT, handleHover\)/);
-assert.match(gridHoverMolecule, /if \(detail\.documentId !== documentId \|\| !detail\.row\) return;/);
+// The hover preview is its own block under the inspector cards: the row rides
+// in as a prop from the grid hover message, never via a window event bus.
+assert.match(structureInfoPanel, /<GridHoverMoleculeCard row=\{hoveredGridRow \?\? null\} filterModel=\{gridFilterModel\} documentId=\{document\.id\} \/>/);
 assert.match(gridHoverMolecule, /aria-label="Resize molecule preview"/);
-assert.match(gridHoverMolecule, /<span>Data<\/span>/);
+assert.match(gridHoverMolecule, /className="grid-hover-molecule-props-title">Data<\/span>/);
 assert.match(gridHoverMolecule, /describePropValue\(entry\.value, columnsByLabel\.get/);
 assert.match(gridHoverMolecule, /filterModel\?\.columns/);
 assert.match(gridHoverMolecule, /data-tone=\{described\.tone === "plain" \? undefined : described\.tone\}/);
 assert.doesNotMatch(gridHoverMolecule, /Open molecule details/);
-assert.match(structureInfoPanel, /<GridHoverMoleculeCard documentId=\{document\.id\} filterModel=\{gridFilterModel\} \/>/);
 assert.match(styles, /\.grid-hover-molecule-prop\[data-tone\^="outlier"\] \{/);
-assert.match(gridHoverMolecule, /<CardFooter className="grid-hover-molecule-data-footer">/);
 assert.match(gridViewer, /props: hoverRowProps\(row\)/);
 assert.match(styles, /\.grid-hover-molecule \{[^}]*position: sticky;[^}]*bottom: -12px;[^}]*background: var\(--bg-base\);/s);
 assert.match(appGridControlMessagesHook, /body\?\.type === "gridRowHover"/);
-assert.match(appGridControlMessagesHook, /new CustomEvent\("burette:grid-row-hover"/);
+assert.match(appGridControlMessagesHook, /smiles: typeof raw\.smiles === "string" \? raw\.smiles : null/);
 // Conformers and xTB share one card shell, and a missing binary has to say what
 // it is and how to get it rather than leaving a dead disabled button.
 assert.match(structureInfoPanel, /function InspectorEngineCard\(\{/);
@@ -4155,7 +4149,9 @@ assert.match(commandPalette, /description="Search commands and structures\."/);
 assert.doesNotMatch(commandPalette, /command-palette-sr-only/);
 assert.doesNotMatch(styles, /command-palette-sr-only/);
 assert.doesNotMatch(styles, /\[cmdk-/);
-assert.doesNotMatch(styles, /\.radix-dialog/);
+// .radix-dialog survives on purpose: the DataWarrior table dialogs
+// (calculate-properties, correlation-matrix, database-query, ...) render on it.
+assert.match(styles, /\.radix-dialog \{/);
 assert.match(commandPalette, /onValueChange=\{onQueryChange\}/);
 assert.match(commandPalette, /placeholder="Search commands and structures\.\.\."/);
 assert.match(commandPalette, /heading=\{group\.heading\}/);
@@ -7877,9 +7873,8 @@ assert.doesNotMatch(gridUi, /buret-grid-header/);
 assert.doesNotMatch(gridUi, /id="summary"/);
 assert.match(gridUi, /<FileSection \{\.\.\.props\} onRun=\{onRun\} \/>/);
 assert.match(gridUi, /id="save-grid"[\s\S]*?title=\{props\.saveTitle\}/);
-assert.match(gridUi, /id="save-grid-as"[\s\S]*?aria-description=\{props\.saveAsTitle\}/);
-assert.match(gridUi, /id="undo-grid-edit"[\s\S]*?aria-description=\{props\.undoTitle\}/);
-assert.doesNotMatch(gridUi, /className="ab-item"[\s\S]{0,240}?title=/);
+assert.match(gridUi, /id="save-grid-as"[\s\S]*?title=\{props\.saveAsTitle\}/);
+assert.match(gridUi, /id="undo-grid-edit"[\s\S]*?title=\{props\.undoTitle\}/);
 assert.match(gridViewer, /saveAsTitle: !editing[\s\S]*?'Save this collection as a new file'/);
 assert.match(gridUi, /ariaLabel="Grid view mode"/);
 assert.match(gridUi, /dataAttribute="buret-grid-view-mode"/);
@@ -8486,7 +8481,9 @@ assert.doesNotMatch(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\
 assert.match(gridViewer, /function installRowHoverPreview\(cfg\)/);
 assert.match(gridViewer, /\.buret-card\[data-index\], \.buret-grid-table-row\[data-index\], \.buret-grid-rail-tick\[data-buret-grid-rail-index\]/);
 assert.match(gridViewer, /post\('gridRowHover', '', \{/);
-assert.match(gridViewer, /svg: String\(drawRdkit\(row\) \|\| ''\)\.slice\(0, 120000\)/);
+// The viewer ships smiles/molblock and lets the host draw: an SVG per hover
+// would cross the iframe boundary at 100KB+ a row.
+assert.match(gridViewer, /molblock: String\(row\.molblock \|\| ''\)/);
 assert.match(gridViewer, /buildUI\(cfg\);\s*installRowHoverPreview\(cfg\);/);
 assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*inset: 0 0 0 auto;/);
 assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*width: min\(480px, calc\(100vw - 24px\)\);/);
