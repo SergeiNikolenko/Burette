@@ -294,7 +294,10 @@ export function useAppGridConformerMessages({
               });
           void openTextDocuments([result.reportPath], { background: true });
           if (!optimizeInputGeometry) {
-            await openDocuments([result.primaryOpenPath], {}, { rendererMode: "molstar" });
+            await openDocuments([result.primaryOpenPath], {}, {
+              rendererMode: "molstar",
+              molstarStyle: "ball-and-stick",
+            });
           }
           pushStatus(
             optimizeInputGeometry
@@ -367,14 +370,14 @@ export function useAppGridConformerMessages({
       const generatedDocument = isTauriRuntime()
         ? await invoke<ViewerDocument>("open_text_structure", {
             request: { title, extension: "sdf", text: generatedSdf },
-            preferences: { ...preferences, rendererMode: "molstar" },
+            preferences: { ...preferences, rendererMode: "molstar", molstarStyle: "ball-and-stick" },
             reloadOptions: {},
           })
         : await openBrowserDevTextDocument(
             title,
             "sdf",
             generatedSdf,
-            { ...preferences, rendererMode: "molstar" },
+            { ...preferences, rendererMode: "molstar", molstarStyle: "ball-and-stick" },
           );
       openDocumentsInActiveTab([generatedDocument]);
       rememberRecentStructures([generatedDocument]);
