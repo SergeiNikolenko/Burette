@@ -267,7 +267,7 @@ export function ProjectGroup({
               onBlur={commitRename}
             />
           ) : (
-            <span className="project-group-title">{project.title}</span>
+            <MarqueeName className="project-group-title">{project.title}</MarqueeName>
           )}
         </span>
         <button

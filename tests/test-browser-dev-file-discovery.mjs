@@ -9,7 +9,18 @@ import {
   collectBrowserDevFiles,
   isBrowserDevPathAllowed,
 } from "../apps/desktop/vite/browser-dev/file-discovery.ts";
-import { scanBrowserDevFolders } from "../apps/desktop/src/lib/browser-dev-startup.ts";
+import { absoluteBrowserDevPath, scanBrowserDevFolders } from "../apps/desktop/src/lib/browser-dev-startup.ts";
+
+// Relative devFiles paths must resolve to absolute repo paths before any
+// /@fs/ URL is built; a relative /@fs/ request falls through to vite's SPA
+// fallback and index.html gets rendered as the file contents.
+assert.equal(
+  absoluteBrowserDevPath("samples/collections/tables/compounds.csv", "/repo/"),
+  "/repo/samples/collections/tables/compounds.csv",
+);
+assert.equal(absoluteBrowserDevPath("/abs/structure.pdb", "/repo"), "/abs/structure.pdb");
+assert.equal(absoluteBrowserDevPath("relative.csv", ""), "relative.csv");
+assert.equal(absoluteBrowserDevPath("nested\\file.sdf", "/repo"), "/repo/nested/file.sdf");
 
 const root = await mkdtemp(join(tmpdir(), "burette-browser-files-"));
 const outside = await mkdtemp(join(tmpdir(), "burette-browser-outside-"));

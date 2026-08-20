@@ -109,6 +109,32 @@ export function useAppGridControlMessages({
       if (model && documentId) updateGridFilterModel(documentId, model, eventSource);
       return true;
     }
+    if (body?.type === "gridRowHover") {
+      const documentId = typeof body.documentId === "string" && body.documentId
+        ? body.documentId
+        : activeDocument?.id ?? "";
+      const candidate = body.row as Record<string, unknown> | null | undefined;
+      const index = Number(candidate?.index);
+      const row: HoveredGridRow | null = candidate && Number.isSafeInteger(index) && index >= 0
+          ? {
+            index,
+            name: typeof candidate.name === "string" ? candidate.name.slice(0, 160) : "",
+            svg: typeof candidate.svg === "string" ? candidate.svg.slice(0, 120_000) : null,
+            props: Array.isArray(candidate.props)
+              ? candidate.props.slice(0, 24).flatMap((entry) => {
+                  if (!entry || typeof entry !== "object") return [];
+                  const value = entry as Record<string, unknown>;
+                  if (typeof value.label !== "string" || typeof value.value !== "string") return [];
+                  return [{ label: value.label.slice(0, 80), value: value.value.slice(0, 240) }];
+                })
+              : [],
+          }
+        : null;
+      window.dispatchEvent(new CustomEvent("burette:grid-row-hover", {
+        detail: { documentId, row },
+      }));
+      return true;
+    }
     if (body?.type === "calculateGridDescriptors") {
       const documentId = typeof body.documentId === "string" && body.documentId.trim()
         ? body.documentId.trim()

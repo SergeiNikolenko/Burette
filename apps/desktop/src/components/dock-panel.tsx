@@ -1,6 +1,8 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  Add01Icon,
   Atom01Icon,
+  Cancel01Icon,
   File02Icon,
   Folder01Icon,
   Search01Icon,
@@ -19,11 +21,12 @@ import { ViewerFrame } from "./editor-area/viewer-frame";
 import { TextFileViewer } from "./text-file-viewer";
 import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { useSourceEditing } from "../lib/source-editing/context";
-import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
@@ -218,67 +221,84 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
       aria-label={`${area} dock`}
     >
       <div className="dock-panel-inner">
-        <div className="dock-header">
-          <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
-            {visibleTabs.map((tab) => {
-              const Icon = dockTabIcons[tab.kind];
-              const active = tab.kind === activeTab.kind;
-              const closeTab = () => {
-                if (visibleTabs.length > 1) {
-                  actions.closeDockTab(area, tab.id);
-                  return;
-                }
-                actions.setDockOpen(area, false);
-              };
-              return (
-                <div className="dock-tab-shell" data-active={active || undefined} key={tab.id}>
-                  <button
-                    type="button"
-                    className="dock-tab"
-                    data-active={active || undefined}
-                    draggable={tab.kind === "files" && Boolean(filesTabDragPayload)}
-                    onDragStart={(event) => {
-                      if (tab.kind !== "files" || !filesTabDragPayload) return;
-                      writeStructureDragPayload(event.dataTransfer, filesTabDragPayload);
-                      actions.setStructureDragActive(true);
-                    }}
-                    onDragEnd={() => actions.setStructureDragActive(false)}
-                    onClick={() => actions.setDockActiveTab(area, tab.kind)}
-                    role="tab"
-                    aria-selected={active}
-                    title={DOCK_TAB_LABELS[tab.kind]}
-                  >
-                    <HugeiconsIcon icon={Icon} size={16} color="currentColor" strokeWidth={2} />
-                    <span>{DOCK_TAB_LABELS[tab.kind]}</span>
-                  </button>
-                  {/* Closing used to be reachable on the active tab only, so
-                      getting rid of a background tab meant selecting it first.
-                      Every tab carries the button; CSS reveals it on hover. */}
-                  {!readOnly && !(tab.kind === "xyzrender" && !rawTabs.some((rawTab) => rawTab.kind === "xyzrender")) && (
-                    <button
+        <TooltipProvider>
+          <div className="dock-header">
+            <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
+              {visibleTabs.map((tab) => {
+                const Icon = dockTabIcons[tab.kind];
+                const active = tab.kind === activeTab.kind;
+                const closeTab = () => {
+                  if (visibleTabs.length > 1) {
+                    actions.closeDockTab(area, tab.id);
+                    return;
+                  }
+                  actions.setDockOpen(area, false);
+                };
+                return (
+                  <div className="dock-tab-shell" data-active={active || undefined} key={tab.id}>
+                    <Button
                       type="button"
-                      className="dock-tab-close"
-                      aria-label={visibleTabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
-                      onClick={closeTab}
+                      variant="ghost"
+                      size="sm"
+                      className="dock-tab"
+                      data-active={active || undefined}
+                      draggable={tab.kind === "files" && Boolean(filesTabDragPayload)}
+                      onDragStart={(event) => {
+                        if (tab.kind !== "files" || !filesTabDragPayload) return;
+                        writeStructureDragPayload(event.dataTransfer, filesTabDragPayload);
+                        actions.setStructureDragActive(true);
+                      }}
+                      onDragEnd={() => actions.setStructureDragActive(false)}
+                      onClick={() => actions.setDockActiveTab(area, tab.kind)}
+                      role="tab"
+                      aria-selected={active}
                     >
-                      <CloseIcon size={13} />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+                      <HugeiconsIcon icon={Icon} strokeWidth={2} aria-hidden="true" />
+                      <span>{DOCK_TAB_LABELS[tab.kind]}</span>
+                    </Button>
+                    {!readOnly && !(tab.kind === "xyzrender" && !rawTabs.some((rawTab) => rawTab.kind === "xyzrender")) && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-2xs"
+                            className="dock-tab-close"
+                            aria-label={visibleTabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
+                            onClick={closeTab}
+                          >
+                            <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent showArrow={false}>Close {DOCK_TAB_LABELS[tab.kind]}</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                );
+              })}
+              {!readOnly ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button type="button" variant="ghost" size="icon-sm" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
+                      <HugeiconsIcon icon={Add01Icon} aria-hidden="true" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent showArrow={false}>Add panel</TooltipContent>
+                </Tooltip>
+              ) : null}
+            </div>
             {!readOnly ? (
-              <button type="button" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
-                +
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon-sm" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
+                    <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent showArrow={false}>Close panel</TooltipContent>
+              </Tooltip>
             ) : null}
           </div>
-          {!readOnly ? (
-            <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
-              <CloseIcon size={15} />
-            </button>
-          ) : null}
-        </div>
+        </TooltipProvider>
         <DockPanelContent
           area={area}
           activeTabKind={activeTab.kind}
@@ -1817,22 +1837,19 @@ function DockingDocumentTextPanel({
   const document = existingDocument ?? loadedDocument;
   return (
     <div className="dock-files-view">
-      <div className="dock-file-tabs" role="tablist" aria-label="Docking source text files">
-        {sources.map((source) => (
-          <button
-            type="button"
-            key={source.key}
-            className="dock-file-tab"
-            data-active={source.key === activeSource.key || undefined}
-            title={source.path}
-            onClick={() => setActiveSourceKey(source.key)}
-            role="tab"
-            aria-selected={source.key === activeSource.key}
-          >
-            <span>{source.title}</span>
-          </button>
-        ))}
-      </div>
+      <Tabs
+        className="dock-file-tabs"
+        value={activeSource.key}
+        onValueChange={setActiveSourceKey}
+      >
+        <TabsList variant="line" aria-label="Docking source text files">
+          {sources.map((source) => (
+            <TabsTrigger key={source.key} value={source.key} className="dock-file-tab" title={source.path}>
+              <span>{source.title}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
       {document ? (
         <div className="dock-viewer">
           <TextFileViewer document={document} openPaths={openPaths} onStructureSelection={onStructureSelection} />
@@ -1931,28 +1948,32 @@ function DockFileTabs({
 }) {
   if (entries.length <= 1) return null;
   return (
-    <div className="dock-file-tabs" role="tablist" aria-label={`${area} dock files`}>
-      {entries.map((entry) => (
-        <button
-          type="button"
-          key={entry.key}
-          className="dock-file-tab"
-          data-active={entry.key === activeKey || undefined}
-          title={entry.kind === "tool" ? entry.title : entry.path}
-          onClick={() => {
-            if (entry.kind === "tool") {
-              actions.setDockTool(area, "ketcher");
-              return;
-            }
-            actions.setDockDocument(area, entry.documentId);
-          }}
-          role="tab"
-          aria-selected={entry.key === activeKey}
-        >
-          <span>{entry.title}</span>
-        </button>
-      ))}
-    </div>
+    <Tabs
+      className="dock-file-tabs"
+      value={activeKey ?? ""}
+      onValueChange={(key) => {
+        const entry = entries.find((candidate) => candidate.key === key);
+        if (!entry) return;
+        if (entry.kind === "tool") {
+          actions.setDockTool(area, "ketcher");
+          return;
+        }
+        actions.setDockDocument(area, entry.documentId);
+      }}
+    >
+      <TabsList variant="line" aria-label={`${area} dock files`}>
+        {entries.map((entry) => (
+          <TabsTrigger
+            key={entry.key}
+            value={entry.key}
+            className="dock-file-tab"
+            title={entry.kind === "tool" ? entry.title : entry.path}
+          >
+            <span>{entry.title}</span>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }
 

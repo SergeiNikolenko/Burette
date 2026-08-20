@@ -1,3 +1,13 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import type { BuildInfo, ShellActions } from "../types";
 import { ShortcutTooltip } from "../shortcut-tooltip";
 
@@ -14,35 +24,80 @@ function buildDetail(info: BuildInfo) {
 
 export function WelcomeScreen({ actions, buildInfo }: { actions: ShellActions; buildInfo: BuildInfo }) {
   return (
-    <div className="new-tab-page">
-      <div className="new-tab-copy">
-        <div className="new-tab-eyebrow-row">
-          <p className="new-tab-eyebrow">Burette Desktop</p>
+    <Empty className="new-tab-page border-0">
+      <EmptyHeader className="new-tab-copy max-w-2xl">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <p className="text-xs tracking-wide text-muted-foreground uppercase">Burette Desktop</p>
           {buildInfo.isDevBuild ? (
-            <span className="new-tab-build-badge" title={`${buildInfo.identifier}\n${buildDetail(buildInfo)}`}>
+            <Badge
+              variant="secondary"
+              className="max-w-65 truncate uppercase"
+              title={`${buildInfo.identifier}\n${buildDetail(buildInfo)}`}
+            >
               {buildLabel(buildInfo)}
-            </span>
+            </Badge>
           ) : null}
         </div>
-        <h1>Open a molecular structure</h1>
+        <EmptyTitle className="text-2xl font-normal">Open a molecular structure</EmptyTitle>
         {buildInfo.isDevBuild ? (
-          <p className="new-tab-build-detail">{buildDetail(buildInfo)}</p>
+          <EmptyDescription>{buildDetail(buildInfo)}</EmptyDescription>
         ) : null}
-      </div>
-      <div className="new-tab-actions">
-        <button type="button" className="welcome-primary" data-analytics-control="open_structure" onClick={() => void actions.chooseFiles()}>
-          Open Structure <kbd>⌘O</kbd>
-          <ShortcutTooltip label="Open Structure" shortcut="⌘O" />
-        </button>
-        <button type="button" data-analytics-control="open_command_palette" onClick={actions.openCommandPalette}>
-          Command Palette <kbd>⌘P</kbd> <kbd>/</kbd>
-          <ShortcutTooltip label="Command Palette" shortcut="⌘P /" />
-        </button>
-        <button type="button" data-analytics-control="open_settings" onClick={actions.openSettings}>
-          Settings <kbd>⌘,</kbd>
-          <ShortcutTooltip label="Settings" shortcut="⌘," />
-        </button>
-      </div>
-    </div>
+      </EmptyHeader>
+      <EmptyContent className="new-tab-actions">
+        <WelcomeAction
+          label="Open Structure"
+          shortcut="⌘O"
+          keys={["⌘O"]}
+          analytics="open_structure"
+          onClick={() => void actions.chooseFiles()}
+        />
+        <WelcomeAction
+          label="Command Palette"
+          shortcut="⌘P /"
+          keys={["⌘P", "/"]}
+          analytics="open_command_palette"
+          onClick={actions.openCommandPalette}
+        />
+        <WelcomeAction
+          label="Settings"
+          shortcut="⌘,"
+          keys={["⌘,"]}
+          analytics="open_settings"
+          onClick={actions.openSettings}
+        />
+      </EmptyContent>
+    </Empty>
+  );
+}
+
+function WelcomeAction({
+  label,
+  shortcut,
+  keys,
+  analytics,
+  onClick,
+}: {
+  label: string;
+  shortcut: string;
+  keys: string[];
+  analytics: string;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      className="relative text-muted-foreground hover:text-foreground"
+      data-analytics-control={analytics}
+      onClick={onClick}
+    >
+      {label}
+      <KbdGroup>
+        {keys.map((key) => (
+          <Kbd key={key}>{key}</Kbd>
+        ))}
+      </KbdGroup>
+      <ShortcutTooltip label={label} shortcut={shortcut} />
+    </Button>
   );
 }

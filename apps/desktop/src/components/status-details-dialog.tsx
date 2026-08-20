@@ -1,8 +1,12 @@
-import { Dialog } from "radix-ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import type { StatusDetailsRequest } from "../hooks/use-app-status";
-import { useAppShellPortalContainer } from "./ui/portal-container";
-import { CloseIcon } from "./close-icon";
 
 export function StatusDetailsDialog({
   request,
@@ -11,35 +15,28 @@ export function StatusDetailsDialog({
   request: StatusDetailsRequest | null;
   onDismiss: () => void;
 }) {
-  const portalContainer = useAppShellPortalContainer();
-
   return (
-    <Dialog.Root
+    <Dialog
       open={request !== null}
       onOpenChange={(open) => {
         if (!open) onDismiss();
       }}
     >
-      <Dialog.Portal container={portalContainer}>
-        <Dialog.Overlay className="radix-dialog-overlay" />
-        <Dialog.Content className="radix-dialog" aria-describedby="status-details-body">
-          <div className="radix-dialog-header">
-            <Dialog.Title>{request?.kind === "error" ? "Issue details" : "Status details"}</Dialog.Title>
-            <Dialog.Close asChild>
-              <button type="button" className="radix-dialog-close" aria-label="Close details">
-                <CloseIcon size={14} />
-              </button>
-            </Dialog.Close>
-          </div>
-          <div id="status-details-body" className="radix-dialog-body">
-            <ul>
-              {(request?.details ?? []).map((detail, index) => (
-                <li key={`${index}:${detail}`}>{detail}</li>
-              ))}
-            </ul>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+      <DialogContent aria-describedby="status-details-body">
+        <DialogHeader>
+          <DialogTitle>{request?.kind === "error" ? "Issue details" : "Status details"}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Details for the current workspace status message.
+          </DialogDescription>
+        </DialogHeader>
+        <ul id="status-details-body" className="grid max-h-[50vh] gap-1.5 overflow-auto text-sm">
+          {(request?.details ?? []).map((detail, index) => (
+            <li key={`${index}:${detail}`} className="break-words text-muted-foreground">
+              {detail}
+            </li>
+          ))}
+        </ul>
+      </DialogContent>
+    </Dialog>
   );
 }

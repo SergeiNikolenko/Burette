@@ -32,6 +32,15 @@ import type { KetcherEditorApi } from "./ketcher-editor";
 import { registerKetcherAgentController, unregisterKetcherAgentController } from "../lib/ketcher-agent";
 import { RadixDropdownMenu, showRadixContextMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
+import { ChevronDown } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
+import { Spinner } from "@/components/ui/spinner";
+import { Toggle } from "@/components/ui/toggle";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { KetcherImportRequest, KetcherSketchTarget, KetcherSource3D, ShellActions, ShellViewState } from "./types";
 import type { DatabaseProvider } from "../lib/database";
 
@@ -411,7 +420,6 @@ export function KetcherPage({
   const systemThemeMode = useSystemThemeMode();
   const ketcherThemeMode = resolveThemeMode(state.preferences.theme, systemThemeMode);
   const nextKetcherTheme = ketcherThemeMode === "dark" ? "light" : "dark";
-  const ketcherThemeLabel = nextKetcherTheme === "light" ? "Light" : "Dark";
   const ketcherThemeTitle = `Switch to ${nextKetcherTheme} theme`;
   const ketcherZoomIndex = nearestKetcherZoomIndex(ketcherZoom);
   const ketcherZoomPercent = Math.round(ketcherZoom * 100);
@@ -528,6 +536,13 @@ export function KetcherPage({
     if (!ketcher) return;
     return ketcher.subscribeZoom((zoom) => setKetcherZoom(normalizeKetcherZoom(zoom)));
   }, [ketcher]);
+
+  useEffect(() => {
+    // The compensated scale frame changes the editor's layout size whenever the
+    // chrome scale moves; nudge Ketcher to recompute its canvas viewport.
+    const frameId = window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    return () => window.cancelAnimationFrame(frameId);
+  }, [ketcherZoom]);
 
   useEffect(() => {
     if (!ketcher || !isHostedKetcherWidget()) return undefined;
@@ -1236,19 +1251,35 @@ export function KetcherPage({
             <p>{hasSketch ? "Ketcher sketch" : "New Ketcher sketch"}</p>
           </div>
         </div>
+        <TooltipProvider>
         <div className="ketcher-page-actions" aria-label="Sketch actions">
-          <button type="button" aria-label="Open sketch as 2D grid" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
-            Grid
-            <ShortcutTooltip label="Open sketch as 2D grid" />
-          </button>
-          <button type="button" aria-label="Open sketch in Molstar" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
-            Molstar
-            <ShortcutTooltip label="Open sketch in Molstar" />
-          </button>
-          <button type="button" aria-label="Open sketch in xyzrender" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
-            xyzrender
-            <ShortcutTooltip label="Open sketch in xyzrender" />
-          </button>
+          <ButtonGroup aria-label="Open sketch in a viewer">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="outline" size="sm" aria-label="Open sketch as 2D grid" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
+                  Grid
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open sketch as 2D grid</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="outline" size="sm" aria-label="Open sketch in Molstar" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
+                  Molstar
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open sketch in Molstar</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="outline" size="sm" aria-label="Open sketch in xyzrender" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
+                  xyzrender
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open sketch in xyzrender</TooltipContent>
+            </Tooltip>
+          </ButtonGroup>
+          <Tooltip>
           <RadixDropdownMenu
             align="end"
             items={[
@@ -1291,12 +1322,17 @@ export function KetcherPage({
               },
             ]}
             trigger={(
-              <button type="button" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">
-                Compute
-                <ShortcutTooltip label="Native molecular compute" />
-              </button>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="outline" size="sm" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">
+                  Compute
+                  <ChevronDown data-icon="inline-end" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
             )}
           />
+          <TooltipContent>Native molecular compute</TooltipContent>
+          </Tooltip>
+          <Tooltip>
           <RadixDropdownMenu
             align="end"
             items={[
@@ -1369,33 +1405,52 @@ export function KetcherPage({
               },
             ]}
             trigger={(
-              <button type="button" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch || !hasSketch}>
-                Add to collection
-                <ShortcutTooltip label="Add sketch to SDF collection" />
-              </button>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="outline" size="sm" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch || !hasSketch}>
+                  Add to collection
+                  <ChevronDown data-icon="inline-end" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
             )}
           />
-          <div className="ketcher-scale-control" aria-label="Ketcher scale">
-            <button type="button" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
-              -
-              <ShortcutTooltip label="Decrease Ketcher scale" />
-            </button>
-            <span>{ketcherZoomPercent}%</span>
-            <button type="button" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
-              +
-              <ShortcutTooltip label="Increase Ketcher scale" />
-            </button>
-          </div>
-          <button
-            type="button"
-            className="ketcher-theme-control"
-            aria-label={ketcherThemeTitle}
-            onClick={() => actions.setPreference("theme", nextKetcherTheme)}
-          >
-            {ketcherThemeLabel}
-            <ShortcutTooltip label={ketcherThemeTitle} />
-          </button>
+          <TooltipContent>Add sketch to SDF collection</TooltipContent>
+          </Tooltip>
+          <ButtonGroup className="ketcher-scale-control" aria-label="Ketcher scale">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="outline" size="sm" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
+                  -
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Decrease Ketcher scale</TooltipContent>
+            </Tooltip>
+            <ButtonGroupText className="min-w-12 justify-center border-border text-[0.8rem] font-normal tabular-nums">{ketcherZoomPercent}%</ButtonGroupText>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="outline" size="sm" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
+                  +
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Increase Ketcher scale</TooltipContent>
+            </Tooltip>
+          </ButtonGroup>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Toggle
+                variant="outline"
+                size="sm"
+                className="ketcher-theme-control"
+                pressed={ketcherThemeMode === "dark"}
+                aria-label={ketcherThemeTitle}
+                onPressedChange={() => actions.setPreference("theme", nextKetcherTheme)}
+              >
+                Dark
+              </Toggle>
+            </TooltipTrigger>
+            <TooltipContent>{ketcherThemeTitle}</TooltipContent>
+          </Tooltip>
         </div>
+        </TooltipProvider>
       </header>
       <div className="ketcher-page-body">
         <div
@@ -1416,7 +1471,7 @@ export function KetcherPage({
                 />
               </KetcherErrorBoundary>
             ) : (
-              <div className="ketcher-loading">Loading editor</div>
+              <div className="ketcher-loading"><Spinner />Loading editor</div>
             )}
           </div>
           {dropActive && (
@@ -1427,27 +1482,33 @@ export function KetcherPage({
         </div>
       </div>
       <footer className="ketcher-page-footer">
-        <span className="ketcher-page-status">{status}</span>
-        <button
+        <Badge variant="secondary" className="ketcher-page-status">
+          <span className="min-w-0 truncate">{status}</span>
+        </Badge>
+        <Button
           type="button"
-          className={panelMode?.purpose === "export" ? "is-active" : undefined}
+          variant="secondary"
+          size="sm"
+          className={cn("relative min-w-20", panelMode?.purpose === "export" && "bg-accent text-accent-foreground")}
           disabled={!ketcher}
           onClick={openDefaultExportPanel}
           onContextMenu={showExportFormatMenu}
         >
           Export
           <ShortcutTooltip label="Export sketch to a text or image format" side="top" />
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className={panelMode?.purpose === "import" ? "is-active" : undefined}
+          variant="secondary"
+          size="sm"
+          className={cn("relative min-w-20", panelMode?.purpose === "import" && "bg-accent text-accent-foreground")}
           disabled={!ketcher}
           onClick={openDefaultImportPanel}
           onContextMenu={showImportFormatMenu}
         >
           Import
           <ShortcutTooltip label="Import structure text into Ketcher" side="top" />
-        </button>
+        </Button>
       </footer>
       {panelMode && dockPortalElement ? createPortal((
         <section className="ketcher-dock-workflow" data-mode={panelMode.purpose} aria-label={`${panelMode.purpose === "import" ? "Import" : "Export"} panel`}>
@@ -1481,29 +1542,31 @@ export function KetcherPage({
           <div className="ketcher-dock-actions">
             {panelMode.purpose === "export" ? (
               <>
-                <button type="button" disabled={!output} onClick={() => void copyExportOutput()}>
+                <Button type="button" variant="secondary" size="sm" className="relative min-w-20" disabled={!output} onClick={() => void copyExportOutput()}>
                   Copy
                   <ShortcutTooltip label="Copy exported text" side="top" />
-                </button>
-                <button type="button" disabled={!output} onClick={saveExportOutput}>
+                </Button>
+                <Button type="button" variant="secondary" size="sm" className="relative min-w-20" disabled={!output} onClick={saveExportOutput}>
                   Save
                   <ShortcutTooltip label="Save exported output to a file" side="top" />
-                </button>
-                <button type="button" className="ketcher-primary-action" disabled={!output} onClick={openRawExportOutput}>
+                </Button>
+                <Button type="button" variant="default" size="sm" className="relative min-w-20" disabled={!output} onClick={openRawExportOutput}>
                   Open raw
                   <ShortcutTooltip label="Open exported text in a raw document tab" side="top" />
-                </button>
+                </Button>
               </>
             ) : (
-              <button
+              <Button
                 type="button"
-                className="ketcher-primary-action"
+                variant="default"
+                size="sm"
+                className="relative min-w-20"
                 disabled={!ketcher || exportingSketch || (gridEditSource ? false : !output.trim())}
                 onClick={() => void (gridEditSource ? applyGridEdit() : applyOutput())}
               >
                 {gridEditSource ? "Apply" : "Load"}
                 <ShortcutTooltip label={gridEditSource ? "Apply Ketcher edits to the grid row" : "Load imported text into Ketcher"} side="top" />
-              </button>
+              </Button>
             )}
           </div>
         </section>
@@ -1893,7 +1956,7 @@ function KetcherEditorLoader({
   }
 
   if (!EditorComponent) {
-    return <div className="ketcher-loading">Loading editor</div>;
+    return <div className="ketcher-loading"><Spinner />Loading editor</div>;
   }
 
   return <EditorComponent onReady={onReady} onStatus={onStatus} onOpenFile={onOpenFile} onLoadError={setLoadError} />;
@@ -1901,10 +1964,12 @@ function KetcherEditorLoader({
 
 function KetcherErrorPanel({ error, onRetry }: { error: Error; onRetry: () => void }) {
   return (
-    <div className="ketcher-error-panel" role="alert">
-      <strong>Ketcher failed to load</strong>
-      <span>{error.message}</span>
-      <button type="button" onClick={onRetry}>Try again</button>
+    <div className="ketcher-error-panel">
+      <Alert variant="destructive" className="max-w-[520px]">
+        <AlertTitle>Ketcher failed to load</AlertTitle>
+        <AlertDescription>{error.message}</AlertDescription>
+      </Alert>
+      <Button type="button" variant="secondary" size="sm" onClick={onRetry}>Try again</Button>
     </div>
   );
 }

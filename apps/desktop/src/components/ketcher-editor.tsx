@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import type { Ketcher, Struct } from "ketcher-core";
 import { installKetcherBrowserRequire, installKetcherRaphaelBrowserModules } from "../lib/ketcher-browser-require";
+import { Spinner } from "@/components/ui/spinner";
 import "ketcher-react/dist/index.css";
 
 export type KetcherEditorApi = {
@@ -502,7 +503,7 @@ export function KetcherEditor({
   }
 
   if (!runtime || !structServiceProvider) {
-    return <div className="ketcher-loading">Loading editor</div>;
+    return <div className="ketcher-loading"><Spinner />Loading editor</div>;
   }
 
   const { Editor } = runtime;

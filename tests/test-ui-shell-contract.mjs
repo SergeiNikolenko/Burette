@@ -106,6 +106,7 @@ const [
   appLayout,
   statusDetailsDialog,
   uiToast,
+  uiCommand,
   main,
   bootOverlayScript,
   sidebar,
@@ -330,6 +331,7 @@ const [
   source('apps/desktop/src/components/app-layout.tsx'),
   source('apps/desktop/src/components/status-details-dialog.tsx'),
   source('apps/desktop/src/components/ui/toast.tsx'),
+  source('apps/desktop/src/components/ui/command.tsx'),
   source('apps/desktop/src/main.tsx'),
   source('apps/desktop/public/boot-overlay.js'),
   source('apps/desktop/src/components/sidebar/index.tsx'),
@@ -482,6 +484,7 @@ const defaultCapability = await source('apps/desktop/src-tauri/capabilities/defa
 const fepSetupStoreTest = await source('tests/test-fep-setup-store.mjs');
 const buretteAgent = await source('PreviewExtension/Web/burette-agent.js');
 const rootTypes = await source('apps/desktop/src/types.ts');
+const gridHoverMolecule = await source('apps/desktop/src/components/grid-hover-molecule.tsx');
 
 const sidebarSurface = [sidebar, sidebarFileBrowser, sidebarFileTreeNode, sidebarWorkspaceSwitcher, settingsSidebar].join('\n');
 const editorTabDragStart = editorTabs.match(/onDragStart=\{\(event\) => \{[\s\S]*?\n                \}\}/)?.[0] ?? '';
@@ -1461,7 +1464,10 @@ assert.doesNotMatch(appLayout, /StatusSurface/);
 // mounted from App, so the layout no longer owns notification UI.
 assert.doesNotMatch(appLayout, /NotificationPopup|onDismissStatus/);
 assert.match(statusDetailsDialog, /export function StatusDetailsDialog/);
-assert.match(statusDetailsDialog, /className="radix-dialog-close"/);
+// The dialog is the shadcn primitive, which brings its own close button and
+// portals into .app-shell; the bespoke .radix-dialog-* chrome is gone.
+assert.match(statusDetailsDialog, /from "@\/components\/ui\/dialog"/);
+assert.doesNotMatch(statusDetailsDialog, /radix-dialog/);
 assert.match(appStatusHook, /compactStatusMessage/);
 // Toasts must portal into .app-shell: theme variables and the dark variant
 // only apply inside it, and document.body would escape both.
@@ -2052,9 +2058,9 @@ assert.match(gridCss, /\.buret-molecule-error \{[^}]*padding: 12px;/s);
 assert.doesNotMatch(gridCss, /\.buret-molecule-error \{[^}]*container-type:/s);
 assert.doesNotMatch(gridCss, /\.buret-molecule-error strong \{[^}]*cqi/s);
 assert.doesNotMatch(gridCss, /\.buret-molecule-error span \{[^}]*cqi/s);
-assert.match(gridCss, /\.buret-grid-toolbar \{[^}]*position: sticky;/s);
-assert.match(gridCss, /\.buret-grid-toolbar \{[^}]*top: 0;/s);
-assert.match(gridCss, /\.buret-grid-toolbar \{[^}]*background: color-mix\(in srgb, var\(--buret-bg\) 92%, transparent\);/s);
+assert.match(gridCss, /#grid-controls \{[^}]*position: sticky;/s);
+assert.match(gridCss, /#grid-controls \{[^}]*top: 0;/s);
+assert.match(gridCss, /\.buret-grid-toolbar \{[^}]*background: var\(--buret-table-surface\);/s);
 assert.doesNotMatch(gridCss, /\.buret-grid-toolbar \{[^}]*backdrop-filter:/s);
 assert.doesNotMatch(gridCss, /\.buret-grid-toolbar \{[^}]*-webkit-backdrop-filter:/s);
 assert.match(gridCss, /html,\s*body,\s*#app \{[^}]*overflow-anchor: none;/s);
@@ -2072,12 +2078,15 @@ assert.match(gridCss, /\.buret-grid \{[^}]*padding-inline: var\(--buret-grid-con
 assert.doesNotMatch(gridCss, /\.buret-grid \{[^}]*justify-content: start;/s);
 assert.doesNotMatch(gridCss, /\.buret-grid \{[^}]*padding-left: 24px;/s);
 assert.match(gridCss, /\.buret-grid-rail \{[^}]*width: var\(--buret-grid-rail-gutter\);/s);
-assert.match(gridCss, /body\.buret-grid-rail-dragging \.buret-grid-rail-active-marker \{[^}]*transition: none;/s);
+assert.match(gridCss, /\.buret-grid-rail-ticks \{[^}]*z-index: 7;/s);
+assert.match(gridCss, /\.buret-grid-rail-tick \{[^}]*height: 10px;[^}]*min-height: 10px;/s);
+assert.match(gridCss, /button\.buret-grid-rail-tick:not\(:disabled\):hover,[^}]*background: transparent;[^}]*transform: none;/s);
+assert.match(gridCss, /body\.buret-grid-rail-dragging \.buret-grid-rail-tick-pill \{[^}]*transition: none;/s);
 assert.match(gridCss, /--buret-grid-rail-popover-surface: #303033;/);
 assert.match(gridCss, /--buret-grid-rail-popover-border: rgba\(255, 255, 255, 0\.20\);/);
 assert.match(gridCss, /\.buret-grid-rail-popover \{[^}]*background: var\(--buret-grid-rail-popover-surface\);/s);
-assert.match(gridCss, /\.buret-grid-rail-popover-name \{[^}]*color: var\(--buret-grid-rail-popover-muted\);/s);
-assert.match(gridCss, /\.buret-grid-rail-popover \{[^}]*border-radius: 8px;/s);
+assert.match(gridCss, /\.buret-grid-rail-popover-index \{[^}]*color: var\(--buret-grid-rail-popover-muted\);/s);
+assert.match(gridCss, /\.buret-grid-rail-popover \{[^}]*border-radius: 10px;/s);
 assert.doesNotMatch(gridCss, /\.buret-grid-rail-popover \{[^}]*background: var\(--buret-surface-raised\);/s);
 assert.doesNotMatch(gridCss, /\.buret-grid-rail-popover \{[^}]*background: #ffffe1;/s);
 assert.match(gridCss, /\.buret-grid-rail-popover \{[^}]*transform: translateY\(calc\(-50% \+ var\(--buret-grid-rail-popover-offset, 0px\)\)\);/s);
@@ -2086,10 +2095,29 @@ assert.doesNotMatch(gridCss, /buret-card-rail-hover/);
 assert.match(gridViewer, /class="buret-grid-rail-popover" data-buret-grid-rail-popover hidden/);
 assert.doesNotMatch(gridViewer, /data-buret-grid-rail-hover-target/);
 assert.match(gridViewer, /applyGridPreferences\(cfg\);\s*initGridRail\(cfg\);\s*initInfiniteLoading\(cfg\);/);
-assert.match(gridViewer, /rail\.addEventListener\('focusin', \(\) => updateGridRailActive\(\)\)/);
+assert.match(gridViewer, /rail\.addEventListener\('focusin', event => \{/);
 assert.match(gridViewer, /if \(!target\) return;/);
 assert.match(gridViewer, /if \(Number\.isFinite\(position\)\) void scrollToGridPosition\(position, cfg, \{ behavior: 'smooth' \}\);\s*else scrollToGridRow\(index, cfg, \{ behavior: 'smooth' \}\);/);
 assert.match(gridViewer, /ticks\.addEventListener\('pointerdown', event => startGridRailTrackPointer\(event, cfg\)\);/);
+assert.match(gridViewer, /data-buret-grid-rail-marker="\$\{markerIndex\}"/);
+assert.match(gridViewer, /class="buret-grid-rail-tick-pill"/);
+assert.match(gridViewer, /aria-current', 'location'/);
+assert.match(gridViewer, /function gridRailMarkerWidth\(index, hoveredIndex\)/);
+assert.match(gridViewer, /const GRID_RAIL_ITEM_SIZE = 10;/);
+assert.match(gridViewer, /const GRID_RAIL_PILL_WIDTH = 12;/);
+assert.match(gridViewer, /function gridRailPointInside\(ticks, clientX, clientY\)/);
+assert.match(gridViewer, /const keepHover = endEvent\.type === 'pointerup'\s*&& endEvent\.view === window\s*&& gridRailPointInside\(ticks, endEvent\.clientX, endEvent\.clientY\);/);
+assert.match(gridViewer, /if \(keepHover\) updateGridRailHoverFromPointer\(endEvent\.clientY\);\s*else \{\s*updateGridRailLens\(null\);\s*hideGridRailPopover\(\);\s*\}/);
+assert.match(gridViewer, /ticks\.innerHTML = railRows[\s\S]*?updateGridRailLens\(state\.railHoveredMarker\);/);
+assert.match(gridViewer, /if \(!dragging && endEvent\.type === 'pointerup'\) scrollFromPoint\(lastClientY, 'smooth'\);/);
+assert.match(gridViewer, /document\.documentElement\.addEventListener\('pointerleave', onBoundaryExit\);/);
+assert.match(gridViewer, /window\.addEventListener\('blur', onBoundaryExit\);/);
+assert.match(gridViewer, /parentWindow\?\.addEventListener\('pointerup', onEnd\);/);
+assert.match(gridViewer, /ticks\.addEventListener\('lostpointercapture', onLostCapture\);/);
+assert.match(gridViewer, /document\.documentElement\.removeEventListener\('pointerleave', onBoundaryExit\);/);
+assert.match(gridViewer, /Math\.cos\(\(Math\.PI \* distance\) \/ GRID_RAIL_LENS_RANGE\)/);
+assert.doesNotMatch(gridViewer, /updateGridRailPopoverFromPointer/);
+assert.doesNotMatch(gridViewer, /data-buret-grid-rail-active/);
 assert.match(gridViewer, /function showGridRailPopover\(position, clientY\)/);
 assert.match(gridViewer, /function hideGridRailPopover\(\)/);
 assert.match(gridViewer, /function scrollToGridRow\(index, cfg, options = \{\}\)/);
@@ -2113,27 +2141,32 @@ assert.doesNotMatch(styles, /\.ketcher-page-header\s*\{[^}]*border-bottom:/s);
 assert.match(styles, /\.ketcher-page-body\s*\{[^}]*padding: 0 18px 12px;[^}]*gap: 8px;/s);
 assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*overflow: hidden;[^}]*isolation: isolate;/s);
 assert.doesNotMatch(styles, /\.ketcher-editor-shell\s*\{[^}]*contain: layout paint;/s);
-assert.match(styles, /\.ketcher-scale-control\s*\{[^}]*grid-template-columns: 28px minmax\(34px, 1fr\) 28px;/s);
-assert.match(styles, /\.ketcher-page-actions button\s*\{[^}]*position: relative;/s);
-// nowrap labels plus a shrinkable button spilled the text over the pill's edges.
-assert.match(styles, /\.ketcher-page-actions button\s*\{[^}]*flex: 0 0 auto;/s);
-assert.doesNotMatch(styles, /\.ketcher-page-actions button\s*\{[^}]*min-width: 0;/s);
-assert.match(styles, /\.ketcher-scale-control\s*\{[^}]*overflow: visible;/s);
-assert.match(styles, /\.ketcher-scale-control span\s*\{[^}]*font-variant-numeric: tabular-nums;/s);
-assert.match(styles, /\.ketcher-page-actions \.ketcher-theme-control\s*\{[^}]*min-width: 64px;[^}]*\}/s);
-assert.match(styles, /\.ketcher-page-actions button\.ketcher-theme-control:focus-visible:not\(:disabled\)\s*\{[^}]*outline: none;[^}]*\}/s);
-assert.doesNotMatch(styles, /\.ketcher-page-actions \.ketcher-theme-control\s*\{[^}]*border:/s);
-assert.doesNotMatch(styles, /\.ketcher-theme-control\.active/);
-assert.doesNotMatch(styles, /\.ketcher-theme-control\s*\{[^}]*grid-template-columns:/s);
-assert.doesNotMatch(styles, /\.ketcher-theme-control button \+ button/);
-assert.match(styles, /\.ketcher-collection-menu-anchor\s*\{[^}]*position: relative;/s);
-assert.match(styles, /\.ketcher-collection-menu\s*\{[^}]*position: absolute;[^}]*z-index: 70;/s);
+// The header controls are shadcn Buttons/ButtonGroups now: styles.css keeps only
+// the row layout, and no unlayered `button` descendant rule may exist there —
+// styles.css is unlayered, so such a rule would override the Tailwind utilities
+// that style the primitives.
+assert.match(ketcherPage, /<ButtonGroup className="ketcher-scale-control" aria-label="Ketcher scale">/);
+assert.match(ketcherPage, /<ButtonGroupText className="[^"]*tabular-nums[^"]*">\{ketcherZoomPercent\}%<\/ButtonGroupText>/);
+assert.doesNotMatch(styles, /\.ketcher-page-actions button/);
+assert.doesNotMatch(styles, /\.ketcher-scale-control button/);
+assert.doesNotMatch(styles, /\.ketcher-scale-control\s*\{/);
+assert.doesNotMatch(styles, /\.ketcher-theme-control/);
+assert.doesNotMatch(styles, /\.ketcher-page-footer button/);
+assert.doesNotMatch(styles, /\.ketcher-dock-actions button/);
+assert.doesNotMatch(styles, /\.ketcher-primary-action/);
+// The collection picker is a RadixDropdownMenu; its old hand-rolled menu CSS is gone.
+assert.doesNotMatch(styles, /\.ketcher-collection-menu/);
 assert.doesNotMatch(styles, /\.ketcher-collection-target\s*\{/);
-assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*background: #fcfcfc;[^}]*overflow: hidden;[^}]*isolation: isolate;/s);
-assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*--ketcher-toolbar-button-size: clamp\(3px, calc\(32px \* var\(--ketcher-ui-scale, 1\)\), 40px\);[^}]*--ketcher-side-rail-width: calc\(var\(--ketcher-toolbar-button-size\) \+ 13px\);/s);
-assert.match(styles, /--ketcher-top-toolbar-height: clamp\(12px/);
-assert.match(styles, /--ketcher-top-toolbar-icon-size: clamp\(6px/);
-assert.match(styles, /\.ketcher-editor-scale-frame\s*\{[^}]*position: absolute;[^}]*inset: 0;[^}]*width: 100%;[^}]*height: 100%;/s);
+assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*background: var\(--surface-primary\);[^}]*overflow: hidden;[^}]*isolation: isolate;/s);
+// The header zoom drives a dimension-compensated chrome transform: the frame
+// lays out at 1/scale and scales back down (so every toolbar stays visible and
+// fills the shell at every zoom step), while the canvas cell reverses the
+// transform because Ketcher's pointer math cannot handle a scaled canvas.
+assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*--ketcher-chrome-scale: clamp\(0\.5, var\(--ketcher-ui-scale, 1\), 1\);[^}]*--ketcher-toolbar-button-size: 32px;[^}]*--ketcher-side-rail-width: calc\(var\(--ketcher-toolbar-button-size\) \+ 13px\);/s);
+assert.match(styles, /--ketcher-top-toolbar-height: 36px/);
+assert.match(styles, /--ketcher-top-toolbar-icon-size: 24px/);
+assert.match(styles, /\.ketcher-editor-scale-frame\s*\{[^}]*position: absolute;[^}]*inset: 0;[^}]*width: calc\(100% \/ var\(--ketcher-chrome-scale\)\);[^}]*height: calc\(100% \/ var\(--ketcher-chrome-scale\)\);[^}]*transform: scale\(var\(--ketcher-chrome-scale\)\);[^}]*transform-origin: top left;/s);
+assert.match(styles, /\.ketcher-editor-shell \[class\*="App-module_canvas"\]\s*\{[^}]*width: calc\(100% \* var\(--ketcher-chrome-scale\)\);[^}]*height: calc\(100% \* var\(--ketcher-chrome-scale\)\);[^}]*transform: scale\(calc\(1 \/ var\(--ketcher-chrome-scale\)\)\);[^}]*transform-origin: top left;\s*\}/s);
 assert.match(styles, /\.ketcher-editor-root,\s*\.ketcher-editor-root > \[class\*="Editor-module_editor"\],\s*\.ketcher-editor-shell \[class\*="Editor-module_editorsWrapper"\],\s*\.ketcher-editor-shell \[class\*="App-module_app"\]\s*\{[^}]*width: 100%;[^}]*height: 100%;/s);
 assert.match(styles, /\.ketcher-editor-shell \[class\*="App-module_app"\]\s*\{[^}]*grid-template-columns: minmax\(var\(--ketcher-side-rail-width\), max-content\) 1fr minmax\(var\(--ketcher-side-rail-width\), max-content\);/s);
 assert.match(styles, /\.ketcher-editor-shell \[data-testid="top-toolbar"\]\s*\{[^}]*height: var\(--ketcher-top-toolbar-height\) !important;[^}]*min-height: var\(--ketcher-top-toolbar-height\) !important;/s);
@@ -2141,14 +2174,14 @@ assert.match(styles, /\.ketcher-editor-shell \[data-testid="top-toolbar"\] butto
 assert.match(styles, /\.ketcher-editor-shell \[data-testid="top-toolbar"\] button > svg\s*\{[^}]*width: var\(--ketcher-top-toolbar-icon-size\) !important;[^}]*height: var\(--ketcher-top-toolbar-icon-size\) !important;/s);
 assert.match(styles, /\.ketcher-editor-shell \[data-testid="bottom-toolbar"\] button,\s*\.ketcher-editor-shell \[data-testid="left-toolbar"\] button,\s*\.ketcher-editor-shell \[data-testid="right-toolbar"\] button,/);
 assert.match(styles, /\.ketcher-editor-shell \[data-testid="left-toolbar"\],\s*\.ketcher-editor-shell \[data-testid="right-toolbar"\]\s*\{[^}]*width: var\(--ketcher-side-rail-width\) !important;/s);
-assert.match(styles, /--ketcher-light-canvas: #ffffff/);
+assert.match(styles, /--ketcher-light-canvas: var\(--bg-base\)/);
 assert.match(styles, /background: var\(--ketcher-light-canvas\)/);
 assert.match(styles, /\.app-shell\[data-effective-theme="light"\] \.ketcher-editor-shell \[data-testid="top-toolbar"\],\s*\.app-shell\[data-effective-theme="light"\] \.ketcher-editor-shell \[data-testid="top-toolbar"\] > div,[\s\S]*background-color: var\(--ketcher-light-panel\);/);
 assert.match(styles, /\.ketcher-editor-shell \[class\*="Settings-module_settings"\]\s*\{[^}]*width: min\(420px, calc\(100% - 32px\)\) !important;[^}]*max-width: calc\(100% - 32px\);/s);
 assert.match(styles, /Accordion-module_accordionSummary/);
 assert.match(styles, /Accordion-module_accordionDetailsWrapper/);
-assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell\s*\{[^}]*--ketcher-dark-canvas: #101316;[^}]*--color-background-canvas: var\(--ketcher-dark-canvas\);[^}]*background: var\(--ketcher-dark-canvas\);[^}]*color-scheme: dark;/s);
-assert.match(styles, /--ketcher-dark-structure: #dce5ed;/);
+assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell\s*\{[^}]*--ketcher-dark-canvas: var\(--bg-base\);[^}]*--color-background-canvas: var\(--ketcher-dark-canvas\);[^}]*background: var\(--ketcher-dark-canvas\);[^}]*color-scheme: dark;/s);
+assert.match(styles, /--ketcher-dark-structure: color-mix\(in srgb, var\(--fg-base\) 90%, var\(--bg-base\)\);/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[data-testid="top-toolbar"\]/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[data-testid="monomer-library"\]/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[class\*="template-lib-module_dialog_body"\]/);
@@ -2211,7 +2244,9 @@ assert.match(styles, /\.ketcher-output-resizer\s*\{[^}]*top: -9px;[^}]*height: 1
 assert.match(styles, /\.ketcher-output-resizer::after\s*\{[^}]*width: 64px;[^}]*height: 4px;[^}]*opacity: 0\.64;/s);
 assert.match(styles, /\.ketcher-output-input\s*\{[^}]*height: 100%;[^}]*resize: none;/s);
 assert.doesNotMatch(styles, /\[class\*="App-module_top"\]/);
-assert.doesNotMatch(styles, /\[class\*="App-module_canvas"\]/);
+// App-module_canvas may appear exactly once: the scale-frame inverse
+// compensation rule. No other styling of Ketcher's canvas cell.
+assert.equal((styles.match(/\[class\*="App-module_canvas"\]/g) ?? []).length, 1);
 assert.doesNotMatch(styles, /\[class\*="BottomToolbar-module_root"\]/);
 assert.doesNotMatch(styles, /\.ketcher-empty-watermark\s*\{/);
 assert.doesNotMatch(styles, /\.ketcher-editor-shell \[class\*="StructEditor-module_canvas"\] svg path\s*\{[^}]*fill: transparent;/s);
@@ -2322,6 +2357,7 @@ assert.match(styles, /\.dock-tab \{[^}]*height: 28px;[^}]*border-radius: 10px;/s
 assert.match(styles, /\.dock-tab-close \{[^}]*width: 20px;[^}]*height: 20px;[^}]*border-radius: 8px;[^}]*background: transparent;[^}]*opacity: 0;[^}]*pointer-events: none;/s);
 assert.match(styles, /\.dock-tab-close:hover \{[^}]*background: var\(--surface-hover\);[^}]*box-shadow: inset 0 0 0 1px var\(--line-subtle\)/s);
 assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab-close \{[^}]*color: var\(--text-secondary\);[^}]*\}/s);
+assert.match(styles, /\.dock-tab:hover,\s*\.dock-tab\[data-active\],\s*\.dock-tab-shell:hover \.dock-tab,\s*\.dock-tab-shell:focus-within \.dock-tab \{[^}]*background: var\(--tab-active-bg\);/s);
 // The gutter is sticky; it must stay opaque or line numbers draw over content
 // whenever the editor scrolls horizontally.
 assert.match(styles, /\.text-file-editor \.cm-gutters \{[^}]*border-right: 0;[^}]*background: var\(--shadcn-background\);[^}]*color: var\(--text-muted\);[^}]*\}/s);
@@ -2634,6 +2670,25 @@ assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
 assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\)\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument\(document\.path\)/);
 assert.match(structureInfoPanel, /<InspectorSection title="Composition"/);
+assert.match(structureInfoPanel, /<GridHoverMoleculeCard documentId=\{document\.id\} filterModel=\{gridFilterModel\} \/>/);
+assert.match(structureInfoPanel, /<StructureDetailsSection[\s\S]*?<GridHoverMoleculeCard documentId=\{document\.id\} filterModel=\{gridFilterModel\} \/>/);
+assert.match(gridHoverMolecule, /from "@\/components\/ui\/card"/);
+assert.match(gridHoverMolecule, /from "@\/components\/ui\/badge"/);
+assert.match(gridHoverMolecule, /window\.addEventListener\(HOVER_EVENT, handleHover\)/);
+assert.match(gridHoverMolecule, /if \(detail\.documentId !== documentId \|\| !detail\.row\) return;/);
+assert.match(gridHoverMolecule, /aria-label="Resize molecule preview"/);
+assert.match(gridHoverMolecule, /<span>Data<\/span>/);
+assert.match(gridHoverMolecule, /describePropValue\(entry\.value, columnsByLabel\.get/);
+assert.match(gridHoverMolecule, /filterModel\?\.columns/);
+assert.match(gridHoverMolecule, /data-tone=\{described\.tone === "plain" \? undefined : described\.tone\}/);
+assert.doesNotMatch(gridHoverMolecule, /Open molecule details/);
+assert.match(structureInfoPanel, /<GridHoverMoleculeCard documentId=\{document\.id\} filterModel=\{gridFilterModel\} \/>/);
+assert.match(styles, /\.grid-hover-molecule-prop\[data-tone\^="outlier"\] \{/);
+assert.match(gridHoverMolecule, /<CardFooter className="grid-hover-molecule-data-footer">/);
+assert.match(gridViewer, /props: hoverRowProps\(row\)/);
+assert.match(styles, /\.grid-hover-molecule \{[^}]*position: sticky;[^}]*bottom: -12px;[^}]*background: var\(--bg-base\);/s);
+assert.match(appGridControlMessagesHook, /body\?\.type === "gridRowHover"/);
+assert.match(appGridControlMessagesHook, /new CustomEvent\("burette:grid-row-hover"/);
 // Conformers and xTB share one card shell, and a missing binary has to say what
 // it is and how to get it rather than leaving a dead disabled button.
 assert.match(structureInfoPanel, /function InspectorEngineCard\(\{/);
@@ -2704,6 +2759,16 @@ assert.match(app, /activeDocument\?\.renderer === "grid2d" && activeGridFilterMo
 assert.match(app, /setDockOpen\("right", true\);\s*setDockActiveTab\("right", "inspector"\);/);
 assert.match(gridFilterSection, /CHART_CONFIG = \{ count: \{ label: "Rows"/);
 assert.match(gridFilterSection, /model\.visible\.toLocaleString\(\)\} of \{model\.total\.toLocaleString\(\)\} rows/);
+assert.match(gridFilterSection, /from "\.\/ui\/collapsible"/);
+assert.match(gridFilterSection, /from "\.\/ui\/button"/);
+assert.match(gridFilterSection, /from "\.\/ui\/input"/);
+assert.match(gridFilterSection, /from "\.\/ui\/badge"/);
+assert.match(gridFilterSection, /from "\.\/ui\/tooltip"/);
+assert.match(gridFilterSection, /if \(active\) setOpen\(true\);/);
+assert.match(gridFilterSection, /<Collapsible className="grid-filter-card"/);
+assert.doesNotMatch(gridFilterSection, /className="structure-inspector-section-title-button"[\s\S]{0,180}ArrowDown01Icon[\s\S]{0,80}Filters/);
+assert.match(dockPanel, /<Button[\s\S]*?className="dock-tab"/);
+assert.match(dockPanel, /<TooltipContent showArrow=\{false\}>Close panel<\/TooltipContent>/);
 // The scene stepper is identified by the scene itself, not by the parser failing.
 assert.match(structureInfoPanel, /if \(sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT\)/);
 assert.match(structureInfoPanel, /function InlineSettingsSection\(\{ title, children \}/);
@@ -3085,7 +3150,6 @@ assert.match(ketcherPage, /const \[outputPanelHeight, setOutputPanelHeight\] = u
 assert.match(ketcherPage, /const systemThemeMode = useSystemThemeMode\(\);/);
 assert.match(ketcherPage, /const ketcherThemeMode = resolveThemeMode\(state\.preferences\.theme, systemThemeMode\);/);
 assert.match(ketcherPage, /const nextKetcherTheme = ketcherThemeMode === "dark" \? "light" : "dark";/);
-assert.match(ketcherPage, /const ketcherThemeLabel = nextKetcherTheme === "light" \? "Light" : "Dark";/);
 assert.match(ketcherPage, /const ketcherThemeTitle = `Switch to \$\{nextKetcherTheme\} theme`;/);
 assert.match(ketcherPage, /const ketcherZoomIndex = nearestKetcherZoomIndex\(ketcherZoom\);/);
 assert.match(ketcherPage, /const ketcherZoomPercent = Math\.round\(ketcherZoom \* 100\);/);
@@ -3102,16 +3166,16 @@ assert.match(ketcherPage, /className="ketcher-scale-control"/);
 assert.match(ketcherPage, /aria-label="Ketcher scale"/);
 assert.match(ketcherPage, /Decrease Ketcher scale/);
 assert.match(ketcherPage, /Increase Ketcher scale/);
-assert.match(ketcherPage, /<ShortcutTooltip label="Decrease Ketcher scale" \/>/);
-assert.match(ketcherPage, /<ShortcutTooltip label="Increase Ketcher scale" \/>/);
+assert.match(ketcherPage, /<TooltipContent>Decrease Ketcher scale<\/TooltipContent>/);
+assert.match(ketcherPage, /<TooltipContent>Increase Ketcher scale<\/TooltipContent>/);
 assert.match(ketcherPage, /ketcher\.setZoom\(nextZoom\)/);
-assert.match(ketcherPage, /className="ketcher-theme-control"/);
+assert.match(ketcherPage, /className="ketcher-theme-control[^"]*"/);
 assert.doesNotMatch(ketcherPage, /ketcherThemeMode === "light" \? " active" : ""/);
 assert.match(ketcherPage, /import \{ ShortcutTooltip \} from "\.\/shortcut-tooltip";/);
 assert.match(ketcherPage, /aria-label=\{ketcherThemeTitle\}/);
-assert.match(ketcherPage, /<ShortcutTooltip label=\{ketcherThemeTitle\} \/>/);
-assert.match(ketcherPage, /onClick=\{\(\) => actions\.setPreference\("theme", nextKetcherTheme\)\}/);
-assert.match(ketcherPage, /\{ketcherThemeLabel\}/);
+assert.match(ketcherPage, /<TooltipContent>\{ketcherThemeTitle\}<\/TooltipContent>/);
+assert.match(ketcherPage, /pressed=\{ketcherThemeMode === "dark"\}/);
+assert.match(ketcherPage, /onPressedChange=\{\(\) => actions\.setPreference\("theme", nextKetcherTheme\)\}/);
 assert.doesNotMatch(ketcherPage, /aria-pressed=\{ketcherThemeMode === "light"\}/);
 assert.doesNotMatch(ketcherPage, /aria-pressed=\{ketcherThemeMode === "dark"\}/);
 assert.match(ketcherPage, /const applyDefaultKetcherZoom = useCallback\(\(instance: KetcherEditorApi\) => \{/);
@@ -3195,13 +3259,13 @@ assert.match(ketcherPage, /await withKetcherTimeout\(ketcher\.setMolecule\(""\),
 assert.match(ketcherPage, /const \[preserved3dSource, setPreserved3dSource\] = useState<KetcherSource3D \| null>\(null\)/);
 assert.match(ketcherPage, /\["generate3d", "generateEnsemble", "optimizeGeometry", "semiempiricalRm1"\]\.includes\(target\)[\s\S]*preserved3dSource \?\? undefined/);
 assert.match(ketcherPage, /setPreserved3dSource\(source3d\)/);
-assert.match(ketcherPage, /aria-label="Open sketch as 2D grid"[\s\S]*<ShortcutTooltip label="Open sketch as 2D grid" \/>/);
-assert.match(ketcherPage, /aria-label="Open sketch in Molstar"[\s\S]*<ShortcutTooltip label="Open sketch in Molstar" \/>/);
-assert.match(ketcherPage, /aria-label="Open molecular compute menu"[\s\S]*<ShortcutTooltip label="Native molecular compute" \/>/);
+assert.match(ketcherPage, /aria-label="Open sketch as 2D grid"[\s\S]*<TooltipContent>Open sketch as 2D grid<\/TooltipContent>/);
+assert.match(ketcherPage, /aria-label="Open sketch in Molstar"[\s\S]*<TooltipContent>Open sketch in Molstar<\/TooltipContent>/);
+assert.match(ketcherPage, /aria-label="Open molecular compute menu"[\s\S]*<TooltipContent>Native molecular compute<\/TooltipContent>/);
 assert.match(ketcherPage, /text: "Generate conformer ensemble"/);
 assert.match(ketcherPage, /text: "RM1 energy & charges"/);
-assert.match(ketcherPage, /aria-label="Open sketch in xyzrender"[\s\S]*<ShortcutTooltip label="Open sketch in xyzrender" \/>/);
-assert.match(ketcherPage, /aria-label="Add sketch to SDF collection"[\s\S]*<ShortcutTooltip label="Add sketch to SDF collection" \/>/);
+assert.match(ketcherPage, /aria-label="Open sketch in xyzrender"[\s\S]*<TooltipContent>Open sketch in xyzrender<\/TooltipContent>/);
+assert.match(ketcherPage, /aria-label="Add sketch to SDF collection"[\s\S]*<TooltipContent>Add sketch to SDF collection<\/TooltipContent>/);
 assert.doesNotMatch(ketcherPage, /onClick=\{\(\) => void openSketch\("molstar"\)\}>Mol\*<\/button>/);
 assert.match(ketcherPage, /await navigator\.clipboard\.writeText\(output\)/);
 assert.match(ketcherPage, /const copyExportOutput = useCallback\(async \(\) =>/);
@@ -3735,9 +3799,22 @@ assert.match(welcome, /Open Structure/);
 assert.match(welcome, /Command Palette/);
 assert.match(welcome, /Settings/);
 assert.match(welcome, /from "\.\.\/shortcut-tooltip"/);
-assert.match(welcome, /<ShortcutTooltip label="Open Structure" shortcut="⌘O" \/>/);
-assert.match(welcome, /<ShortcutTooltip label="Command Palette" shortcut="⌘P \/" \/>/);
-assert.match(welcome, /<ShortcutTooltip label="Settings" shortcut="⌘," \/>/);
+// The three actions render through one WelcomeAction row, so the hover tooltip
+// is passed per action instead of being repeated inline.
+assert.match(welcome, /<ShortcutTooltip label=\{label\} shortcut=\{shortcut\} \/>/);
+assert.match(welcome, /shortcut="⌘O"/);
+assert.match(welcome, /shortcut="⌘P \/"/);
+assert.match(welcome, /shortcut="⌘,"/);
+// Rows are shadcn Button + Kbd inside an Empty, not bare elements styled by
+// .new-tab-page descendant rules.
+assert.match(welcome, /from "@\/components\/ui\/empty"/);
+assert.match(welcome, /from "@\/components\/ui\/kbd"/);
+assert.doesNotMatch(welcome, /<button/);
+assert.doesNotMatch(styles, /\.new-tab-page button/);
+assert.doesNotMatch(styles, /\.new-tab-build-badge/);
+// web-demo-analytics names welcome events off these two classes.
+assert.match(welcome, /className="new-tab-page border-0"/);
+assert.match(welcome, /className="new-tab-actions"/);
 assert.doesNotMatch(welcome, /Open molecular structures/);
 assert.match(errorBoundary, /export class ErrorBoundary/);
 assert.match(errorBoundary, /\[ErrorBoundary\]/);
@@ -3818,6 +3895,16 @@ assert.match(sidebarSurface, /if \(skipRenameCommitRef\.current\) \{/);
 assert.match(sidebarSurface, /const handleRowMouseDown = \(event: ReactMouseEvent<HTMLDivElement>\) => \{/);
 assert.match(sidebarSurface, /if \(event\.key === "F2"\) \{/);
 assert.match(sidebarSurface, /className="project-group-title-input"/);
+assert.match(
+  sidebarFileTreeNode,
+  /<MarqueeName className="project-group-title">\{project\.title\}<\/MarqueeName>/,
+  "project titles should reuse the measured marquee used by long file and folder names",
+);
+assert.match(
+  styles,
+  /\.project-group-row:hover \.marquee-text,[\s\S]*\.project-group-row:focus-visible \.marquee-text \{[\s\S]*transform: translateX/,
+  "project-title marquee should animate from the project row without reflowing its actions",
+);
 assert.match(sidebarSurface, /className="project-folder-name-input"/);
 assert.match(sidebarSurface, /onBlur=\{commitRename\}/);
 assert.match(sidebarSurface, /aria-label=\{`Rename \$\{project\.title\}`\}/);
@@ -3898,7 +3985,6 @@ assert.match(styles, /--shadcn-popover: var\(--menu-surface\);/);
 assert.match(styles, /\.open-editor-menu-content \.radix-menu-item-icon \{/);
 assert.match(styles, /\.native-context-menu \{[\s\S]*border: 0;/);
 assert.match(styles, /\.native-context-menu \{[^}]*background: var\(--menu-surface\);[^}]*backdrop-filter: none;/);
-assert.match(styles, /\.ketcher-collection-menu \{[^}]*background: var\(--menu-surface\);/);
 assert.doesNotMatch(sidebarSurface, /sidebar-workspace-menu/);
 assert.match(sidebarSurface, /<RadixDropdownMenu[\s\S]*side="top"[\s\S]*align="start"/);
 assert.doesNotMatch(sidebarSurface, /workspaceMenuPosition/);
@@ -4043,16 +4129,16 @@ assert.match(shellCommands, /Clear Recent Structures/);
 assert.match(shellCommands, /group: "Suggested"/);
 assert.doesNotMatch(shellCommands, /renderer-xyz-fast/);
 assert.match(shellCommands, /group: "Renderer"/);
-assert.match(commandPalette, /from "cmdk"/);
-assert.match(commandPalette, /from "@radix-ui\/react-dialog"/);
-assert.doesNotMatch(commandPalette, /CommandDialog/);
-assert.match(commandPalette, /DialogRoot/);
-assert.match(commandPalette, /DialogPortal/);
-assert.match(commandPalette, /DialogOverlay cmdk-overlay=""/);
-assert.match(commandPalette, /DialogContent cmdk-dialog=""/);
-assert.match(commandPalette, /CommandRoot/);
-assert.match(commandPalette, /DialogTitle/);
-assert.match(commandPalette, /DialogDescription/);
+// The palette is the shadcn command primitive, not a hand-wired cmdk + Radix
+// dialog. Its dialog portals into .app-shell through ui/dialog, so the palette
+// itself must not reach for cmdk or Radix directly again.
+assert.match(commandPalette, /from "@\/components\/ui\/command"/);
+assert.match(commandPalette, /<CommandDialog/);
+assert.doesNotMatch(commandPalette, /from "cmdk"/);
+assert.doesNotMatch(commandPalette, /from "@radix-ui\/react-dialog"/);
+// Filtering stays ours: shell commands are ranked by filterShellCommands, so
+// cmdk's own scorer has to stay off.
+assert.match(commandPalette, /shouldFilter=\{false\}/);
 assert.match(commandPalette, /CommandInput/);
 assert.match(commandPalette, /CommandList/);
 assert.match(commandPalette, /CommandGroup/);
@@ -4061,12 +4147,15 @@ assert.match(commandPalette, /CommandEmpty/);
 assert.match(commandPalette, /shouldFilter=\{false\}/);
 assert.match(commandPalette, /value=\{selectedValue\}/);
 assert.match(commandPalette, /onValueChange=\{setSelectedValue\}/);
-assert.match(commandPalette, /document\.querySelector<HTMLElement>\("\.app-shell"\) \?\? document\.body/);
-assert.match(commandPalette, /<DialogPortal container=\{portalContainer\}>/);
 assert.match(commandPalette, /label="Command Palette"/);
-assert.match(commandPalette, /className="command-palette-sr-only"/);
-assert.match(styles, /\.command-palette-sr-only \{/);
-assert.match(styles, /\[cmdk-dialog\] \[cmdk-root\] \{/);
+// The dialog title and description now come from CommandDialog's own sr-only
+// header, so the palette no longer ships bespoke screen-reader chrome or CSS.
+assert.match(commandPalette, /title="Command Palette"/);
+assert.match(commandPalette, /description="Search commands and structures\."/);
+assert.doesNotMatch(commandPalette, /command-palette-sr-only/);
+assert.doesNotMatch(styles, /command-palette-sr-only/);
+assert.doesNotMatch(styles, /\[cmdk-/);
+assert.doesNotMatch(styles, /\.radix-dialog/);
 assert.match(commandPalette, /onValueChange=\{onQueryChange\}/);
 assert.match(commandPalette, /placeholder="Search commands and structures\.\.\."/);
 assert.match(commandPalette, /heading=\{group\.heading\}/);
@@ -4175,15 +4264,13 @@ assert.doesNotMatch(welcome, /new-tab-description/);
 assert.doesNotMatch(styles, /\[cmdk-input\]:focus-visible/);
 assert.doesNotMatch(styles, /outline: 2px solid var\(--focus-ring\)/);
 assert.match(styles, /\.settings-select:focus-visible,[\s\S]*\.settings-text-control:focus-visible \{[\s\S]*box-shadow: inset 0 0 0 1px var\(--focus-ring\)/);
-assert.match(styles, /\[cmdk-dialog\] \{[\s\S]*top: 16%/);
-assert.match(styles, /\[cmdk-dialog\] \{[\s\S]*width: min\(560px, 90vw\)/);
-assert.match(styles, /\[cmdk-dialog\] \{[\s\S]*overflow: hidden/);
-assert.match(styles, /\[cmdk-overlay\] \{[\s\S]*background: rgb\(0 0 0 \/ 0\.14\)/);
-assert.match(styles, /\[cmdk-dialog\] \{[\s\S]*background: color-mix\(in srgb, var\(--bg-base\) 96%, var\(--fg-base\) 4%\)/);
-assert.match(styles, /\[cmdk-dialog\] \{[\s\S]*box-shadow: 0 24px 72px rgb\(0 0 0 \/ 0\.2\)/);
-assert.doesNotMatch(styles, /\[cmdk-dialog\]::before/);
-assert.match(styles, /\[cmdk-item\]\[data-selected="true"\]/);
-assert.match(styles, /\[cmdk-item\]:hover,[\s\S]*\[cmdk-item\]\[data-selected="true"\] \{[\s\S]*background: var\(--surface-subtle\)/);
+// The palette's placement and width moved out of bespoke [cmdk-*] CSS onto the
+// CommandDialog itself; everything else (surface, shadow, selected row) now
+// comes from the shadcn dialog/command primitives and the shared theme tokens.
+assert.match(commandPalette, /top-\[16%\]/);
+assert.match(commandPalette, /w-\[min\(560px,90vw\)\]/);
+assert.match(uiCommand, /data-selected:bg-muted/);
+assert.match(uiCommand, /max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto/);
 assert.doesNotMatch(app, /from "\.\/hooks\/use-app-open-drop-merge-collections"/);
 assert.match(appOpenDropControllerHook, /useAppOpenDropMergeCollections\(\{/);
 assert.match(appOpenDropControllerHook, /mergeMoleculeCollections: mergeDroppedMoleculeCollections/);
@@ -4612,7 +4699,7 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v182"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v183"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v70"/);
 assert.match(
   browserDevDocuments,
@@ -7783,8 +7870,12 @@ assert.match(gridViewer, /body\.type === 'gridApplyKetcherRow'/);
 assert.match(gridViewer, /body\.type === 'gridGenerate3DStarted'/);
 assert.match(gridViewer, /body\.type === 'gridGenerate3DError'/);
 assert.match(gridUi, /function ControlTooltip\(\{ label \}: \{ label: string \}\)/);
-// Save stays on the toolbar; Save As and Undo moved into the overflow menu,
-// all three carrying their hint through the button `title` from grid-viewer.
+// The redundant collection header is gone. File actions stay under Actions,
+// and the search/action toolbar is the first, sticky control surface.
+assert.doesNotMatch(gridUi, /function HeaderActions/);
+assert.doesNotMatch(gridUi, /buret-grid-header/);
+assert.doesNotMatch(gridUi, /id="summary"/);
+assert.match(gridUi, /<FileSection \{\.\.\.props\} onRun=\{onRun\} \/>/);
 assert.match(gridUi, /id="save-grid"[\s\S]*?title=\{props\.saveTitle\}/);
 assert.match(gridUi, /id="save-grid-as"[\s\S]*?aria-description=\{props\.saveAsTitle\}/);
 assert.match(gridUi, /id="undo-grid-edit"[\s\S]*?aria-description=\{props\.undoTitle\}/);
@@ -7803,7 +7894,8 @@ assert.doesNotMatch(gridUi, /Calculate selected descriptors/);
 assert.match(gridUi, /id="xyzrender-preset"\s+className="ab-mini"/);
 assert.match(gridUi, /value=\{props\.xyzrenderPreset\}/);
 assert.match(gridCss, /\.buret-control-tooltip \{/);
-assert.match(gridCss, /\.buret-actions button:hover > \.buret-control-tooltip/);
+assert.match(gridCss, /\.buret-toolbar-row-view button:hover > \.buret-control-tooltip/);
+assert.match(gridCss, /#grid-controls \{[^}]*position: sticky;[^}]*top: 0;/s);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-grid-xyzrender-preset-control \{[^}]*height: var\(--buret-control-height\);/s);
 assert.doesNotMatch(gridCss, /--buret-xyzrender-preset-width/);
 assert.match(gridViewer, /onSaveGrid\(\) \{ saveGrid\(cfg\); \}/);
@@ -7827,7 +7919,6 @@ assert.match(gridViewer, /function serializeSdfRows\(rows\)/);
 assert.match(gridViewer, /function serializeDelimitedRows\(rows, separator\)/);
 assert.match(gridViewer, /function applyVirtualGridEdits\(rows\)/);
 assert.match(gridViewer, /state\.rowPatches\.set\(index/);
-assert.match(gridViewer, /if \(state\.dirty\) summaryParts\.push\(`unsaved \$\{state\.dirtyReason \|\| 'edits'\}`\)/);
 assert.match(gridViewer, /Unsaved changes\. Use Save to overwrite the source file, Save As to write a new file, or Undo to revert the last edit\./);
 assert.match(gridViewer, /function markGridDirty\(reason\)/);
 assert.match(gridViewer, /function markGridClean\(\)/);
@@ -8071,10 +8162,10 @@ assert.doesNotMatch(gridViewer, /role="option" aria-selected="false"/);
 assert.match(gridViewer, /const key = event\.key\?\.toLowerCase\(\)/);
 assert.match(gridViewer, /commandKey && key === 'a'/);
 assert.match(gridViewer, /state\.selected\.clear\(\)/);
-assert.match(gridCss, /--buret-control-height: 36px;/);
-assert.match(gridCss, /--buret-control-surface: rgba\(255, 255, 255, 0\.075\);/);
-assert.match(gridCss, /--buret-control-hover: rgba\(255, 255, 255, 0\.11\);/);
-assert.match(gridCss, /--buret-control-active: rgba\(255, 255, 255, 0\.14\);/);
+assert.match(gridCss, /--buret-control-height: 32px;/);
+assert.match(gridCss, /--buret-control-surface: rgba\(252, 252, 252, 0\.059\);/);
+assert.match(gridCss, /--buret-control-hover: rgba\(252, 252, 252, 0\.1\);/);
+assert.match(gridCss, /--buret-control-active: rgba\(252, 252, 252, 0\.085\);/);
 assert.match(gridCss, /button,[\s\S]*\.buret-grid-toolbar input\[type="search"\],[\s\S]*\.buret-grid-toolbar select \{[\s\S]*background: var\(--buret-control-surface\);/);
 assert.match(gridCss, /button,[\s\S]*\.buret-grid-toolbar input\[type="search"\],[\s\S]*\.buret-grid-toolbar select \{[\s\S]*font: 400 13px\/1\.2 -apple-system/);
 assert.match(gridCss, /button:disabled \{[\s\S]*color: var\(--buret-faint\);[\s\S]*background: var\(--buret-control-surface\);[\s\S]*opacity: 1;/);
@@ -8168,9 +8259,10 @@ assert.match(gridViewer, /inputDataBase64: textToBase64\(xyzrenderCardInputText\
 assert.match(gridViewer, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(job\.row, job\.record\)\)/);
 assert.doesNotMatch(gridViewer, /function drawXyzrenderPlaceholder\(row\)/);
 assert.doesNotMatch(gridViewer, /target\.classList\.remove\('buret-xyzrender-preview'\)/);
-assert.match(gridUi, /dataAttribute="buret-grid-card-renderer"/);
-assert.match(gridUi, /\{ value: "rdkit", label: "RDKit" \}/);
-assert.match(gridUi, /\{ value: "xyzrender", label: "xyzrender" \}/);
+assert.match(gridUi, /id="card-renderer"/);
+assert.match(gridUi, /<option value="rdkit">RDKit<\/option>/);
+assert.match(gridUi, /<option value="xyzrender">xyzrender<\/option>/);
+assert.match(gridViewer, /document\.getElementById\('card-renderer'\)/);
 assert.match(gridUi, /id="xyzrender-preset"/);
 assert.match(gridUi, /onXyzrenderPresetChange/);
 assert.match(gridViewer, /const DEFAULT_XYZRENDER_PRESETS = \[/);
@@ -8381,8 +8473,8 @@ assert.match(gridViewer, /removeGridRow\(row\)/);
 assert.match(gridViewer, /markGridDirty\('row edits'\)/);
 assert.doesNotMatch(gridViewer, /separateWindow/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{/);
-assert.match(gridCss, /--buret-menu-surface: rgb\(37 37 40\);/);
-assert.match(gridCss, /--buret-menu-surface: rgb\(244 244 246\);/);
+assert.match(gridCss, /--buret-menu-surface: #1a1a1a;/);
+assert.match(gridCss, /--buret-menu-surface: #f5f5f5;/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{[\s\S]*border: 0;/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{[\s\S]*background: var\(--buret-menu-surface\);/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{[^}]*backdrop-filter: none;/);
@@ -8391,15 +8483,26 @@ assert.match(gridCss, /\.buret-grid-molecule-context-menu button \{[\s\S]*font: 
 assert.match(gridCss, /\.buret-grid-molecule-context-menu button:hover,/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\s\S]*background: color-mix\(in srgb, var\(--buret-text\) 8%, transparent\);/);
 assert.doesNotMatch(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\s\S]*var\(--buret-accent\) 20%/);
-assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*width: min\(1120px, calc\(100vw - 96px\)\);/);
-assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*max-height: min\(760px, calc\(100vh - 96px\)\);/);
+assert.match(gridViewer, /function installRowHoverPreview\(cfg\)/);
+assert.match(gridViewer, /\.buret-card\[data-index\], \.buret-grid-table-row\[data-index\], \.buret-grid-rail-tick\[data-buret-grid-rail-index\]/);
+assert.match(gridViewer, /post\('gridRowHover', '', \{/);
+assert.match(gridViewer, /svg: String\(drawRdkit\(row\) \|\| ''\)\.slice\(0, 120000\)/);
+assert.match(gridViewer, /buildUI\(cfg\);\s*installRowHoverPreview\(cfg\);/);
+assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*inset: 0 0 0 auto;/);
+assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*width: min\(480px, calc\(100vw - 24px\)\);/);
+assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*height: 100%;/);
+assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*flex-direction: column;/);
 assert.match(gridCss, /--buret-detail-surface: #ffffff;/);
 const moleculeDetailCss = gridCss.match(/\.buret-grid-molecule-detail \{[^}]*\}/)?.[0] ?? "";
 assert.match(moleculeDetailCss, /background: var\(--buret-detail-surface\);/);
 assert.doesNotMatch(moleculeDetailCss, /background: var\(--buret-surface\);/);
-assert.match(gridCss, /\.buret-grid-molecule-detail-overlay \{[\s\S]*background: rgba\(20, 22, 26, 0\.72\);/);
-assert.match(gridCss, /\.buret-grid-molecule-detail-image \{[\s\S]*min-height: 520px;/);
-assert.match(gridCss, /\.buret-grid-molecule-detail-image \.buret-rdkit-card-image,[\s\S]*max-height: 680px;/);
+assert.match(gridCss, /\.buret-grid-molecule-detail-overlay \{[\s\S]*background: rgba\(20, 22, 26, 0\.22\);/);
+assert.match(gridCss, /\.buret-grid-molecule-detail-image \{[\s\S]*min-height: 220px;/);
+assert.match(gridCss, /\.buret-grid-molecule-detail-image \.buret-rdkit-card-image,[\s\S]*max-height: 100%;/);
+assert.match(gridViewer, /aria-labelledby', 'buret-grid-molecule-detail-title'/);
+assert.match(gridViewer, /<h2 id="buret-grid-molecule-detail-title">/);
+assert.doesNotMatch(gridViewer, /installMoleculeDetailResize/);
+assert.doesNotMatch(gridViewer, /data-buret-detail-resize/);
 assert.doesNotMatch(gridViewer, /function drawXyzrenderFallback/);
 assert.match(gridViewer, /inputExtension: record\.inputExtension/);
 assert.doesNotMatch(gridViewer, /function molblockForRow/);

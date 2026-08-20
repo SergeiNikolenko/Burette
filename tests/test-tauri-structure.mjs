@@ -1585,7 +1585,7 @@ assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ sourc
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
 assert.match(previewRuntimeGrid, /'unsafe-eval'/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
-assert.match(previewRuntimeGrid, /grid-ui-v49/);
+assert.match(previewRuntimeGrid, /grid-ui-v50/);
 // The grid-only formats have to agree with the registry: a source that opens
 // as nothing else must report an empty collection rather than fall through to
 // a viewer that cannot read it either.

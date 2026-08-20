@@ -110,7 +110,7 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v182";
+const GRID_ASSET_VERSION = "grid-ui-v183";
 const VIEWER_ASSET_VERSION = "viewer-ui-v70";
 const MESOSCALE_ASSET_VERSION = "mesoscale-ui-v1";
 // One cache-buster per page load, not per render: the viewer iframe is keyed by
@@ -636,7 +636,7 @@ export async function readBrowserDevCollectionText(path: string) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`${path}: failed to fetch collection data from ${url}: ${message}`);
   }
-  if (!response.ok) throw new Error(`${path}: ${response.status} ${response.statusText}`);
+  assertBrowserDevFileResponse(path, extension, response);
   return await response.text();
 }
 
@@ -716,9 +716,7 @@ async function openBrowserDevDocument(
   const response = await fetch(browserDevReadUrl(path, extension), useBoundedMaestroPreview ? {
     headers: { Range: `bytes=0-${MAESTRO_PREVIEW_READ_LIMIT - 1}` },
   } : undefined);
-  if (!response.ok) {
-    throw new Error(`${path}: ${response.status} ${response.statusText}`);
-  }
+  assertBrowserDevFileResponse(path, extension, response);
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.length === 0) throw new Error(`${path} is empty`);
   const maxFileSize = isMesoscaleDocument(path, extension, bytes) ? MAX_MESOSCALE_FILE_SIZE : MAX_STRUCTURE_FILE_SIZE;
@@ -1055,7 +1053,7 @@ async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDoc
     return browserDevDockingPayloadFromBytes(path, extension, bytes, bytes.length);
   }
   const response = await fetch(browserDevReadUrl(path, extension));
-  if (!response.ok) throw new Error(`${path}: ${response.status} ${response.statusText}`);
+  assertBrowserDevFileResponse(path, extension, response);
   const originalBytes = new Uint8Array(await response.arrayBuffer());
   if (originalBytes.length === 0) throw new Error(`${path} is empty`);
   if (originalBytes.length > MAX_STRUCTURE_FILE_SIZE) {
@@ -2089,7 +2087,10 @@ function pairedDensityCubeCandidates(path: string) {
 async function browserFileExists(path: string) {
   try {
     const response = await fetch(fsUrl(path), { method: "HEAD" });
-    return response.ok;
+    if (!response.ok) return false;
+    // The SPA fallback answers missing files with index.html and a 200.
+    const contentType = response.headers.get("content-type") ?? "";
+    return !contentType.includes("text/html") || fileExtension(path) === "html" || fileExtension(path) === "htm";
   } catch {
     return false;
   }
@@ -2129,6 +2130,17 @@ function isMaestroPreviewExtension(extension: string) {
 
 function fileTitle(path: string) {
   return path.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "structure";
+}
+
+// Vite answers /@fs/ requests for missing or relative paths with the SPA
+// fallback (index.html). Surface that as a clear error instead of letting
+// consumers render the app page as file contents.
+function assertBrowserDevFileResponse(path: string, extension: string, response: Response) {
+  if (!response.ok) throw new Error(`${path}: ${response.status} ${response.statusText}`);
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("text/html") && extension !== "html" && extension !== "htm") {
+    throw new Error(`${path}: the dev server returned the app page instead of file contents; the file does not exist on disk`);
+  }
 }
 
 function fsUrl(path: string) {
