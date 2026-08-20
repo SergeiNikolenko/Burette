@@ -13790,13 +13790,25 @@
     return molecule ? sdfMoleculesToPdbStructure([molecule], label) : null;
   }
 
+  function sdfPdbAtom(molecule, index) {
+    const atom = molecule.atoms[index];
+    // PDB atom names identify atoms within a residue. Reusing just the element
+    // symbol (C, C, C...) makes Mol* collapse a small-molecule residue during
+    // model construction, leaving the viewport blank. Base36 keeps the local
+    // index unique while fitting one- and two-letter elements into four columns.
+    return {
+      ...atom,
+      label: `${atom.element}${(index + 1).toString(36).toUpperCase()}`
+    };
+  }
+
   function sdfMoleculesToPdbCollection(molecules, label) {
     const totalAtoms = molecules.reduce((sum, molecule) => sum + molecule.atomCount, 0);
     if (totalAtoms <= 0 || totalAtoms > 99999) return null;
     const residues = molecules.map((molecule, index) => ({
       index,
       chainId: 'A',
-      seqId: 1,
+      seqId: index + 1,
       compId: 'MOL',
       label: `Molecule ${index + 1}`,
       atomCount: molecule.atomCount
@@ -13811,7 +13823,7 @@
       const residue = residues[moleculeIndex];
       lines.push(`REMARK ${residue.label}`);
       for (let index = 0; index < molecule.atoms.length; index += 1) {
-        lines.push(pdbAtomLine(serialOffset + index + 1, molecule.atoms[index], {
+        lines.push(pdbAtomLine(serialOffset + index + 1, sdfPdbAtom(molecule, index), {
           chainId: residue.chainId,
           seqId: residue.seqId,
           compId: residue.compId
@@ -13841,9 +13853,14 @@
     const lines = [`REMARK ${String(label || 'Burette molecule').slice(0, 66)}`];
     let serialOffset = 0;
     const adjacency = new Map();
-    for (const molecule of molecules) {
+    for (let moleculeIndex = 0; moleculeIndex < molecules.length; moleculeIndex += 1) {
+      const molecule = molecules[moleculeIndex];
       for (let index = 0; index < molecule.atoms.length; index += 1) {
-        lines.push(pdbAtomLine(serialOffset + index + 1, molecule.atoms[index]));
+        lines.push(pdbAtomLine(
+          serialOffset + index + 1,
+          sdfPdbAtom(molecule, index),
+          { seqId: moleculeIndex + 1 }
+        ));
       }
       for (const bond of molecule.bonds) {
         const a = serialOffset + bond.a;
