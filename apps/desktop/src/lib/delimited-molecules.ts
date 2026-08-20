@@ -2,7 +2,12 @@ import { readStructureText } from "./structure-text";
 
 const STRUCTURE_COLUMN_NAME = /^(canonical[_ -]?smiles|smiles|isomeric[_ -]?smiles|inchi|molfile|mol[_ -]?block|structure)$/i;
 const SMILES_CHARSET = /^[A-Za-z0-9@+\-\[\]()=#$/\\%.:*]+$/;
-const SMILES_MARKERS = /[()=#@\[\]]/;
+// Ring closures, branches, bonds, stereo — anything only SMILES would contain.
+const SMILES_MARKERS = /[()=#@\[\]]|[A-Za-z]\d/;
+// Linear alkanes like CCO carry no marker at all; a string spelled purely from
+// the organic subset (Cl/Br plus B C N O P S F I and aromatic b c n o s p)
+// still counts as a molecule.
+const SMILES_ORGANIC_SUBSET = /^(Cl|Br|[BCNOPSFIbcnosp0-9@+\-=#$/\\%()\[\]])+$/;
 const SNIFF_BYTES = 64 * 1024;
 const SNIFF_ROWS = 25;
 
@@ -32,7 +37,12 @@ export async function isMolecularDelimitedFile(path: string) {
       const value = row[column]?.trim();
       if (!value) continue;
       sampled += 1;
-      if (value.length >= 3 && SMILES_CHARSET.test(value) && SMILES_MARKERS.test(value)) smilesLike += 1;
+      if (
+        value.length >= 3
+        && /[A-Za-z]/.test(value)
+        && SMILES_CHARSET.test(value)
+        && (SMILES_MARKERS.test(value) || SMILES_ORGANIC_SUBSET.test(value))
+      ) smilesLike += 1;
     }
     if (sampled >= 3 && smilesLike / sampled >= 0.8) return true;
   }

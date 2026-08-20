@@ -21,6 +21,7 @@ import type { ViewerSource } from "../../../lib/viewer-source";
 import { basename } from "../../../lib/sidebar-projects";
 import { pathExtension } from "../../../lib/file-routing";
 import { isTauriRuntime } from "../../../lib/tauri";
+import { readBrowserDevVirtualTextDocument } from "../../../lib/browser-dev-documents";
 import { definePageKind } from "./types";
 
 export type DocumentLocation = { kind: "document"; path: string };
@@ -108,12 +109,21 @@ type DocumentSourceState =
 // The web view cannot read arbitrary paths through the asset protocol, so the desktop
 // app pulls the bytes over IPC. Browser dev keeps using its own read-file bridge.
 function useDocumentSource(path: string): DocumentSourceState {
-  const devSource = useMemo<ViewerSource | null>(() => (isTauriRuntime() ? null : {
-    kind: "url",
-    url: `/__burette/read-file?path=${encodeURIComponent(path)}`,
-    fileName: basename(path),
-    identityKey: path,
-  }), [path]);
+  const devSource = useMemo<ViewerSource | null>(() => {
+    if (isTauriRuntime()) return null;
+    // Web-demo paths exist only in the in-memory virtual store; the dev-server
+    // bridge would try the real filesystem and 404.
+    const virtualText = readBrowserDevVirtualTextDocument(path);
+    if (virtualText !== null) {
+      return { kind: "text", text: virtualText, fileName: basename(path), identityKey: path };
+    }
+    return {
+      kind: "url",
+      url: `/__burette/read-file?path=${encodeURIComponent(path)}`,
+      fileName: basename(path),
+      identityKey: path,
+    };
+  }, [path]);
   const [state, setState] = useState<DocumentSourceState>(() => (
     devSource ? { status: "ready", source: devSource } : { status: "loading", source: null }
   ));

@@ -11,6 +11,7 @@ import {
   delimitedColumnChoiceLabel,
   isDelimitedColumnAmbiguity,
   documentFallbackExtensions,
+  documentTextViewerExtensions,
   isDocumentViewerPath,
   isFepGraphmlPath,
   isPreferredTextPath,
@@ -28,8 +29,9 @@ import { currentDocumentRegistryRevision } from "../lib/native-menu";
 import { abortOpenDocumentClaims } from "../lib/open-document-claims";
 import { basename } from "../lib/sidebar-projects";
 import type { StructureDragRecord } from "../lib/structure-drag";
-import { readStructureText } from "../lib/structure-text";
+import { readStructureText, readStructureTextDocument } from "../lib/structure-text";
 import { isMolecularDelimitedFile } from "../lib/delimited-molecules";
+import { DEFAULT_MAX_BYTES as RETAB_TEXT_VIEWER_MAX_BYTES } from "../components/ui/text-viewer-resource";
 import { isSpectrumPath, spectrumDocumentFromText } from "../lib/spectrum";
 import { isTauriRuntime } from "../lib/tauri";
 import type {
@@ -76,6 +78,15 @@ type UseAppFileOpenOptions = {
   setDockOpen: (area: DockArea, open: boolean) => void;
   setDocuments: (documents: ViewerDocument[]) => void;
 };
+
+async function fitsRetabTextViewer(path: string) {
+  try {
+    const probe = await readStructureTextDocument(path, undefined, { maxBytes: 1 });
+    return probe.byteCount <= RETAB_TEXT_VIEWER_MAX_BYTES;
+  } catch {
+    return true;
+  }
+}
 
 export function useAppFileOpen({
   preferences,
@@ -360,7 +371,14 @@ export function useAppFileOpen({
       if (isSpectrumPath(path, extension) || contentSpectrumPaths.has(path)) {
         spectrumPaths.push(path);
       } else if (isDocumentViewerPath(path, extension)) {
-        documentPaths.push(path);
+        // The Retab text viewer hard-errors past its byte bound; oversized text
+        // and code stay on the legacy CodeMirror path, which shows a truncated
+        // preview instead.
+        if (documentTextViewerExtensions.has(extension) && !(await fitsRetabTextViewer(path))) {
+          textPaths.push(path);
+        } else {
+          documentPaths.push(path);
+        }
       } else if (
         isPreferredTextPath(path, extension)
         || (extension.length > 0 && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension))

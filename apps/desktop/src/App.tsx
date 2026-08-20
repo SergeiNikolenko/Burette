@@ -701,6 +701,7 @@ export default function App() {
   } = useAppFileActions({
     activeDocument,
     activeTextDocument,
+    activeDocumentTabPath: activeTab?.location.kind === "document" ? activeTab.location.path : null,
     pushErrorStatus,
     pushStatus,
     writeClipboardText,

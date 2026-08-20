@@ -63,21 +63,27 @@ pub(crate) struct OpenTextFilesResult {
 // the asset protocol is scoped to generated runtime files. Read the bytes here instead
 // of widening that scope for every file the user has.
 #[tauri::command]
-pub(crate) fn read_document_file(path: String) -> Result<tauri::ipc::Response, String> {
-    let path = PathBuf::from(path);
-    let metadata = fs::metadata(&path).map_err(|error| format!("{}: {error}", path.display()))?;
-    if !metadata.is_file() {
-        return Err(format!("{}: not a file", path.display()));
-    }
-    if metadata.len() > DOCUMENT_FILE_READ_LIMIT {
-        return Err(format!(
-            "{} is too large to preview ({} MiB limit)",
-            path.display(),
-            DOCUMENT_FILE_READ_LIMIT / (1024 * 1024)
-        ));
-    }
-    let bytes = fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
-    Ok(tauri::ipc::Response::new(bytes))
+pub(crate) async fn read_document_file(path: String) -> Result<tauri::ipc::Response, String> {
+    // Reads run on a blocking thread: a 200 MiB PDF must not stall the IPC pool.
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = PathBuf::from(path);
+        let metadata =
+            fs::metadata(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        if !metadata.is_file() {
+            return Err(format!("{}: not a file", path.display()));
+        }
+        if metadata.len() > DOCUMENT_FILE_READ_LIMIT {
+            return Err(format!(
+                "{} is too large to preview ({} MiB limit)",
+                path.display(),
+                DOCUMENT_FILE_READ_LIMIT / (1024 * 1024)
+            ));
+        }
+        let bytes = fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        Ok(tauri::ipc::Response::new(bytes))
+    })
+    .await
+    .map_err(|error| format!("document read task failed: {error}"))?
 }
 
 #[tauri::command]

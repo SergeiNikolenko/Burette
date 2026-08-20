@@ -44,11 +44,17 @@ const permissions = source('apps/desktop/src-tauri/permissions/burette.toml');
 const rustCommands = source('apps/desktop/src-tauri/src/commands/text_files.rs');
 const rustRegistry = source('apps/desktop/src-tauri/src/lib.rs');
 assert.match(permissions, /"read_document_file"/);
-assert.match(rustCommands, /pub\(crate\) fn read_document_file/);
+// The read stays off the IPC pool: async command + spawn_blocking.
+assert.match(rustCommands, /pub\(crate\) async fn read_document_file/);
+assert.match(rustCommands, /spawn_blocking/);
 assert.match(rustRegistry, /commands::text_files::read_document_file/);
 
 // Both open paths classify documents before the text fallback swallows them.
-assert.match(fileOpen, /} else if \(isDocumentViewerPath\(path, extension\)\) \{\s*documentPaths\.push\(path\);/);
+assert.match(fileOpen, /} else if \(isDocumentViewerPath\(path, extension\)\) \{/);
+// Oversized text keeps the legacy CodeMirror preview: the Retab text viewer
+// hard-errors past its byte bound.
+assert.match(fileOpen, /fitsRetabTextViewer\(path\)/);
+assert.match(fileOpen, /RETAB_TEXT_VIEWER_MAX_BYTES/);
 // The dock keeps its editable CodeMirror surface for text and code, so only
 // media formats leave the dock for a document tab.
 assert.match(dockOpen, /} else if \(isDocumentMediaPath\(path, extension\)\) \{\s*documentPaths\.push\(path\);/);

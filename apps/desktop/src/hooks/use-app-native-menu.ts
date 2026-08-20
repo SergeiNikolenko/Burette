@@ -97,6 +97,9 @@ export function useAppNativeMenu({
   const activeDocumentFileBacked = Boolean(activeDocument
     && fileBackedViewerDocumentPath(activeDocument));
   const activeDocumentReadable = activeDocumentFileBacked;
+  const activeDocumentTabPath = state.activeTab?.location.kind === "document" && isAbsoluteNativeFilePath(state.activeTab.location.path)
+    ? state.activeTab.location.path
+    : null;
   const activeTextTabFileBacked = state.activeTab?.location.kind === "text-file"
     && isAbsoluteNativeFilePath(state.activeTab.location.path);
   const selectedMoleculeCount = isGrid ? gridMenuState?.selectedStructureCount ?? 0 : 0;
@@ -201,7 +204,7 @@ export function useAppNativeMenu({
     activeTabClosable,
     tabCount: state.tabs.length,
     closableTabCount,
-    hasActiveFile: activeDocumentFileBacked || activeTextTabFileBacked,
+    hasActiveFile: activeDocumentFileBacked || activeTextTabFileBacked || activeDocumentTabPath !== null,
     hasActiveDocument: activeDocument !== null,
     canExportExternalPreview: activeDocument?.renderer === "xyzrender-external",
     documentDirty: windowDocumentDirty,
@@ -364,7 +367,7 @@ export function useAppNativeMenu({
         if (recentPath
           && isAbsoluteNativeFilePath(recentPath)
           && recentPath.length <= MAX_RECENT_PATH_CHARS) {
-          await openDocuments([recentPath]);
+          await actions.openPaths([recentPath]);
           return;
         }
         console.warn("Native recent menu item did not contain a valid absolute path.");

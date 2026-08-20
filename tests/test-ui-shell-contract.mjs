@@ -7155,7 +7155,7 @@ assert.match(appGridControlMessagesHook, /isReadOnlyViewerMessageSource\(eventSo
 assert.match(appNativeMenuHook, /case "file\.open-recent"/);
 assert.match(appNativeMenuHook, /\(\{ command, recentPath \}: NativeMenuCommand\)/);
 assert.match(appNativeMenuHook, /isAbsoluteNativeFilePath\(recentPath\)/);
-assert.match(appNativeMenuHook, /await openDocuments\(\[recentPath\]\)/);
+assert.match(appNativeMenuHook, /await actions\.openPaths\(\[recentPath\]\)/);
 assert.doesNotMatch(appNativeMenuHook, /state\.recentStructures\.find\(\(candidate\) => candidate\.path === recentPath\)/);
 assert.doesNotMatch(appNativeMenuHook, /recentIndex/);
 assert.match(appNativeMenuHook, /isAbsoluteNativeFilePath\(path\).*path\.length > MAX_RECENT_PATH_CHARS/s);

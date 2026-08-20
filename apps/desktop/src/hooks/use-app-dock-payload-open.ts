@@ -278,8 +278,11 @@ export function useAppDockPayloadOpen({
         setDockDocument(input.area, firstDockDocumentId);
         addDockDrop(input);
       }
-      const openedCount = openedStructures.length + openedTextDocuments.length;
-      const openedText = `Opened ${openedCount} item${openedCount === 1 ? "" : "s"} in ${input.area === "right" ? "right dock" : "bottom dock"}`;
+      const openedCount = openedStructures.length + openedTextDocuments.length + documentPaths.length;
+      const dockLabel = input.area === "right" ? "right dock" : "bottom dock";
+      const openedText = documentPaths.length > 0 && openedCount === documentPaths.length
+        ? `Opened ${documentPaths.length} document${documentPaths.length === 1 ? "" : "s"} in a tab`
+        : `Opened ${openedCount} item${openedCount === 1 ? "" : "s"} in ${dockLabel}`;
       if (errors.length > 0) {
         pushStatus(openedCount > 0 ? `${openedText}. ${summarizeErrors(errors)}` : summarizeErrors(errors), "error", errors);
         return;
