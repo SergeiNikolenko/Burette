@@ -844,6 +844,8 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
    is the only one around it. */
 .grid-hover-molecule-svg {
   display: flex;
+  flex: 0 1 auto;
+  min-height: 120px;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -3265,6 +3267,18 @@ img.radix-menu-item-icon {
   border-radius: var(--control-radius) var(--control-radius) 0 0;
   background: var(--bg-base);
   box-shadow: 0 -6px 18px color-mix(in srgb, var(--fg-base) 8%, transparent);
+  /* A dragged-tall card must never outgrow the dock viewport: taller than the
+     scroll area, the sticky footer covers the inspector header wholesale. The
+     drawing well is the one part that gives; header, data and footer keep
+     their rows. */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 176px);
+}
+.grid-hover-molecule-header,
+.grid-hover-molecule-props,
+.grid-hover-molecule-data-footer {
+  flex-shrink: 0;
 }
 .grid-hover-molecule-resize.resizable-handle-horizontal {
   flex: 0 0 14px;
