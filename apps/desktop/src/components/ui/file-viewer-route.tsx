@@ -176,6 +176,8 @@ const RENDERERS: Partial<
       className={className}
       bare={bare}
       controls={controls}
+      // Burette patch: open at natural size instead of fit-to-width auto zoom.
+      defaultScale={1}
       download
       fallbackFrameSize={fallbackFrameSize}
     />

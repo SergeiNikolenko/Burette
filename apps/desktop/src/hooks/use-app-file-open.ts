@@ -28,6 +28,7 @@ import { abortOpenDocumentClaims } from "../lib/open-document-claims";
 import { basename } from "../lib/sidebar-projects";
 import type { StructureDragRecord } from "../lib/structure-drag";
 import { readStructureText } from "../lib/structure-text";
+import { isMolecularDelimitedFile } from "../lib/delimited-molecules";
 import { isSpectrumPath, spectrumDocumentFromText } from "../lib/spectrum";
 import { isTauriRuntime } from "../lib/tauri";
 import type {
@@ -361,6 +362,9 @@ export function useAppFileOpen({
         || (extension.length > 0 && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension))
       ) {
         textPaths.push(path);
+      } else if (documentFallbackExtensions.has(extension)) {
+        if (await isMolecularDelimitedFile(path)) structureAndTextPaths.push(path);
+        else documentPaths.push(path);
       } else if (structureAndTextExtensions.has(extension)) {
         structureAndTextPaths.push(path);
       } else if (structureExtensions.has(extension)) {

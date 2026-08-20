@@ -1,6 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
-import { FileViewerPreview } from "../../ui/file-viewer";
+import {
+  FileViewer,
+  FileViewerContent,
+  FileViewerControls,
+  FileViewerDocument,
+  FileViewerHeader,
+  FileViewerInset,
+  FileViewerMeta,
+  FileViewerProvider,
+  FileViewerSidebar,
+  FileViewerSidebarTrigger,
+  FileViewerTitle,
+  FileViewerViewport,
+} from "../../ui/file-viewer";
+import { PdfViewerPages, PdfViewerProvider, PdfViewerThumbnails } from "../../ui/pdf-viewer";
+import { detectCategory } from "../../../lib/viewer-source";
 import type { ViewerSource } from "../../../lib/viewer-source";
 import { basename } from "../../../lib/sidebar-projects";
 import { pathExtension } from "../../../lib/file-routing";
@@ -21,13 +36,69 @@ export const documentKind = definePageKind<"document", DocumentLocation>({
 
 function DocumentSurface({ path }: { path: string }) {
   const source = useDocumentSource(path);
-  if (source.status === "error") {
-    return <div className="flex h-full items-center justify-center p-6 text-sm text-destructive" role="alert">{source.message}</div>;
-  }
-  if (!source.source) {
-    return <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">Loading {basename(path)}...</div>;
-  }
-  return <FileViewerPreview className="bg-background" source={source.source} />;
+  return (
+    <div className="document-stage">
+      {source.status === "error" ? (
+        <div className="flex h-full items-center justify-center p-6 text-sm text-destructive" role="alert">{source.message}</div>
+      ) : source.source ? (
+        detectCategory(basename(path)) === "pdf"
+          ? <PdfDocumentViewer source={source.source} />
+          : <GenericDocumentViewer source={source.source} />
+      ) : (
+        <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">Loading {basename(path)}...</div>
+      )}
+    </div>
+  );
+}
+
+// The upstream pdf-viewer-demo composition: page thumbnails in the viewer sidebar,
+// a sidebar trigger in the header, and pages at 100% (no fit-width auto zoom).
+function PdfDocumentViewer({ source }: { source: ViewerSource }) {
+  return (
+    <FileViewerProvider source={source} isolateStyles defaultSidebarOpen>
+      <FileViewer className="h-full min-h-0">
+        <PdfViewerProvider>
+          <FileViewerHeader>
+            <FileViewerSidebarTrigger className="-ml-1" />
+            <FileViewerTitle />
+            <FileViewerMeta />
+            <FileViewerControls />
+          </FileViewerHeader>
+          <FileViewerContent>
+            <FileViewerSidebar aria-label="PDF pages" width="4.5rem" className="border-r">
+              <PdfViewerThumbnails thumbnailWidth={60} />
+            </FileViewerSidebar>
+            <FileViewerInset>
+              <FileViewerViewport>
+                <PdfViewerPages bare className="h-full" defaultScale={1} />
+              </FileViewerViewport>
+            </FileViewerInset>
+          </FileViewerContent>
+        </PdfViewerProvider>
+      </FileViewer>
+    </FileViewerProvider>
+  );
+}
+
+function GenericDocumentViewer({ source }: { source: ViewerSource }) {
+  return (
+    <FileViewerProvider source={source} isolateStyles>
+      <FileViewer className="h-full min-h-0">
+        <FileViewerHeader>
+          <FileViewerTitle />
+          <FileViewerMeta />
+          <FileViewerControls />
+        </FileViewerHeader>
+        <FileViewerContent>
+          <FileViewerInset>
+            <FileViewerViewport>
+              <FileViewerDocument />
+            </FileViewerViewport>
+          </FileViewerInset>
+        </FileViewerContent>
+      </FileViewer>
+    </FileViewerProvider>
+  );
 }
 
 type DocumentSourceState =
@@ -90,6 +161,21 @@ const DOCUMENT_MIME_TYPES: Record<string, string> = {
   eml: "message/rfc822",
   tif: "image/tiff",
   tiff: "image/tiff",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  avif: "image/avif",
+  ico: "image/x-icon",
+  svg: "image/svg+xml",
+  md: "text/markdown",
+  markdown: "text/markdown",
+  html: "text/html",
+  htm: "text/html",
+  csv: "text/csv",
+  tsv: "text/tab-separated-values",
 };
 
 function documentMimeType(extension: string) {

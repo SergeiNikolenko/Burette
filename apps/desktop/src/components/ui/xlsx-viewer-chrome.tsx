@@ -3,7 +3,7 @@
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/retab-skeleton";
 import {
   VIEWER_CONTROLS_HEIGHT_PX,
   ViewerControlsSkeleton,

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/retab-skeleton";
 
 import { DEFAULT_PPTX_SLIDE_SIZE } from "./pptx-viewer-core";
 import { ViewerControlsSkeleton } from "./viewer-controls";

@@ -1,6 +1,6 @@
 "use client";
 
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/retab-skeleton";
 import {
   XLSX_BASE_COLUMN_WIDTH,
   XLSX_BASE_GUTTER_WIDTH,

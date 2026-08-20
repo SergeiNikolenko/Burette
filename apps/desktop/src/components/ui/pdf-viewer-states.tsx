@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/retab-skeleton";
 import { ViewerControlsSkeleton } from "@/components/ui/viewer-controls";
 import type { PdfPageSize } from "./pdf-viewer-types";
 

@@ -4,7 +4,7 @@ import * as React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useMountEffect } from "@/hooks/use-mount-effect";
 
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/retab-skeleton";
 
 import {
   getPptxRenderPixelRatio,

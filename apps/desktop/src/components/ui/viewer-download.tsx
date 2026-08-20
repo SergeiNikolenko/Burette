@@ -10,15 +10,15 @@ import {
   type ViewerDownloadPayload,
 } from "@/lib/viewer-download-actions";
 
-import { Spinner } from "@/components/ui/spinner";
+import { Spinner } from "@/components/ui/retab-spinner";
 
-import { Button, buttonVariants } from "./button";
+import { Button, buttonVariants } from "./retab-button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "./dropdown-menu";
+} from "./retab-dropdown-menu";
 import { useKeyedMountEffect } from "@/hooks/use-keyed-mount-effect";
 import { joinEffectKey } from "@/lib/effect-key";
 
@@ -183,7 +183,7 @@ export function useViewerDownloadTrigger({
 export function ViewerDownloadControl({
   actions,
   variant = "ghost",
-  size = "icon-sm",
+  size = "iconSm",
   className = "size-7",
   showLabel = false,
   onError,
@@ -220,7 +220,7 @@ export function ViewerDownloadControl({
 export function ViewerDownloadButton({
   action,
   variant = "ghost",
-  size = "icon-sm",
+  size = "iconSm",
   className = "size-7",
   showLabel = false,
   onError,
@@ -279,7 +279,7 @@ export function ViewerDownloadButton({
 export function ViewerDownloadMenu({
   actions,
   variant = "ghost",
-  size = "icon-sm",
+  size = "iconSm",
   className = "size-7",
   showLabel = false,
   onError,

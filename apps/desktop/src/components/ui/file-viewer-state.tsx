@@ -16,8 +16,8 @@ import {
   type ViewerErrorContext,
 } from "@/lib/viewer-errors";
 
-import { Button } from "./button";
-import { Skeleton } from "./skeleton";
+import { Button } from "./retab-button";
+import { Skeleton } from "./retab-skeleton";
 import { ViewerDownloadButton } from "./viewer-download";
 
 type FileViewerStateKind =

@@ -10,7 +10,7 @@ import {
 } from "@/lib/pdf-viewer-diagnostics";
 import { cn } from "@/lib/utils";
 import type { ViewerResource } from "@/lib/viewer-resource";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/retab-skeleton";
 
 import { CodeViewerFallback } from "./code-viewer-chrome";
 import { DocxViewerFallback } from "./docx-viewer-chrome";

@@ -5,9 +5,9 @@ import { Download, Maximize, Minus, Plus, RotateCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { ViewerDownloadAction } from "@/lib/viewer-download-actions";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/retab-button";
 import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/retab-skeleton";
 import {
   ViewerDownloadControl,
   type ViewerDownloadErrorHandler,
@@ -331,7 +331,7 @@ export function ViewerControlButton({
   return (
     <Button
       variant="ghost"
-      size="icon-sm"
+      size="iconSm"
       className={cn("size-7", className)}
       aria-label={label}
       title={label}

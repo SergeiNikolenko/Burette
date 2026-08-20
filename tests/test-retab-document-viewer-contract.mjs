@@ -54,4 +54,23 @@ for (const extension of ['pdf', 'docx', 'xlsx', 'pptx']) {
 // Vendored registry components are only reproducible while the registry stays declared.
 assert.equal(components.registries['@retab'], 'https://ui.retab.com/r/{name}.json');
 
+// Pixel parity: vendored Retab files use Retab's own primitives, and the document
+// stage pins the stock neutral palette the upstream site renders with.
+const viewerControls = source('apps/desktop/src/components/ui/viewer-controls.tsx');
+assert.match(viewerControls, /from "@\/components\/ui\/retab-button"/);
+assert.match(viewerControls, /size="iconSm"/);
+for (const name of ['retab-button', 'retab-dropdown-menu', 'retab-skeleton', 'retab-spinner']) {
+  source(`apps/desktop/src/components/ui/${name}.tsx`);
+}
+assert.match(styles, /\.document-stage \{\n  --shadcn-background: oklch\(1 0 0\);/);
+assert.match(documentKind, /PdfViewerThumbnails thumbnailWidth=\{60\}/);
+assert.match(documentKind, /PdfViewerPages bare className="h-full" defaultScale=\{1\}/);
+const fileViewerRoute = source('apps/desktop/src/components/ui/file-viewer-route.tsx');
+assert.match(fileViewerRoute, /image[\s\S]{0,300}defaultScale=\{1\}/);
+
+// Plain delimited files open in the Retab table; molecular ones keep the grid.
+assert.match(fileOpen, /isMolecularDelimitedFile\(path\)/);
+const sniffer = source('apps/desktop/src/lib/delimited-molecules.ts');
+assert.match(sniffer, /STRUCTURE_COLUMN_NAME/);
+
 console.log('retab document viewer contract ok');

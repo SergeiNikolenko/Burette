@@ -6,7 +6,7 @@ import { useMountEffect } from "@/hooks/use-mount-effect";
 
 import { type ViewerDownloadAction } from "@/lib/viewer-download-actions";
 
-import { Skeleton } from "./skeleton";
+import { Skeleton } from "./retab-skeleton";
 import { TextCodeViewerFrame } from "./text-code-viewer-chrome";
 import type { ViewerDownloadErrorHandler } from "./viewer-download";
 import {

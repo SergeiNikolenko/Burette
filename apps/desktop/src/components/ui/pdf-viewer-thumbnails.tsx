@@ -5,7 +5,7 @@ import * as React from "react";
 import { clearPdfDocumentResource } from "@/lib/pdf-document-resource";
 import { cn } from "@/lib/utils";
 import type { ViewerResource } from "@/lib/viewer-resource";
-import { Spinner } from "@/components/ui/spinner";
+import { Spinner } from "@/components/ui/retab-spinner";
 
 import {
   buildPdfThumbnailLayout,
