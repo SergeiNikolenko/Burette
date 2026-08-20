@@ -267,6 +267,9 @@ const DEV_FILE_EXTENSIONS = new Set([
   "gif",
   "webp",
   "bmp",
+  "svg",
+  "avif",
+  "ico",
   "",
 ]);
 const MD_COORDINATE_EXTENSIONS = [

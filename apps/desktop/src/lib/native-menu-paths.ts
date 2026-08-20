@@ -19,6 +19,7 @@ export function fileBackedViewerDocumentPath(document: ViewerDocumentPath) {
 export function nativeOpenDocumentPaths(
   viewerDocuments: ViewerDocumentPath[],
   textDocuments: TextDocumentPath[],
+  documentTabPaths: string[] = [],
 ) {
   const paths = [
     ...viewerDocuments
@@ -27,6 +28,10 @@ export function nativeOpenDocumentPaths(
     ...textDocuments
       .map((document) => document.path)
       .filter(isAbsoluteNativeFilePath),
+    // Retab document tabs hold no ViewerDocument/TextFileDocument, but the file
+    // is open all the same: without these paths the Rust write guard would let a
+    // Save As overwrite a document the user is looking at.
+    ...documentTabPaths.filter(isAbsoluteNativeFilePath),
   ];
   return Array.from(new Set(paths));
 }

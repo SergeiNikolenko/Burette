@@ -15,6 +15,8 @@ import {
   type TextFileLocation,
 } from "../components/editor-area/page-kinds";
 import { DEFAULT_SETTINGS_SECTION, type AppSettingsSectionId } from "../lib/settings-sections";
+import { pathExtension } from "../lib/file-routing";
+import { basename } from "../lib/sidebar-projects";
 import type { RecentStructure, TextFileDocument, ViewerDocument } from "../types";
 import {
   isTemporaryDocumentPath,
@@ -706,14 +708,34 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: activeDocumentIdFrom(tabs, tab.id, state.documents) };
         }),
-      openDocumentTab: (path) =>
+      openDocumentTab: (path) => {
         set((state) => {
           const existing = state.tabs.find((tab) => tab.location.kind === "document" && tab.location.path === path);
           if (existing) return { activeTabId: existing.id, activeDocumentId: null };
           const tab = createDocumentTab({ kind: "document", path });
           const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
-        }),
+        });
+        if (isTemporaryDocumentPath(path)) return;
+        const remembered = normalizeGlobalRecentStructures([{
+          path,
+          title: basename(path),
+          extension: pathExtension(path),
+          renderer: "document",
+          byteCount: 0,
+          openedAt: Date.now(),
+        }]);
+        if (remembered.length === 0) return;
+        set((state) => {
+          const existing = loadGlobalRecentStructures() ?? state.recentStructures;
+          const recentStructures = mergedRecentStructures(existing, remembered);
+          saveGlobalRecentStructures(recentStructures);
+          return { recentStructures };
+        });
+        if (isTauriRuntime()) {
+          reconcileRecentStructures(invoke("merge_recent_documents", { documents: remembered }));
+        }
+      },
       openKetcherTab: (location: KetcherLocation = { kind: "ketcher" }) =>
         set((state) => {
           const existing = state.tabs.find((tab) => tab.location.kind === "ketcher");

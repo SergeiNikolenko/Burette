@@ -66,10 +66,84 @@ export const documentViewerExtensions = new Set([
   "eml",
   "tif",
   "tiff",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "bmp",
+  "avif",
+  "ico",
+  "svg",
+  "md",
+  "markdown",
+  "html",
+  "htm",
 ]);
 
-export function isDocumentViewerPath(path: string, extension = pathExtension(path)) {
+// Delimited files stay on the grid-ingest path first (SMILES columns become 2D
+// grids); only files the grid rejects fall back to the Retab table viewer.
+export const documentFallbackExtensions = new Set(["csv", "tsv"]);
+
+// Read-only text, code, config and log formats also render through the Retab
+// viewer when opened in the main editor area. The dock keeps its editable
+// CodeMirror surface for them, so they are deliberately NOT in the set above.
+// Scientific text formats (xvg, fasta, out/err, structure inputs) stay on the
+// CodeMirror path: they feed structure-text highlighting and source editing.
+export const documentTextViewerExtensions = new Set([
+  "txt",
+  "text",
+  "log",
+  "json",
+  "jsonl",
+  "json5",
+  "ndjson",
+  "yaml",
+  "yml",
+  "toml",
+  "ini",
+  "env",
+  "mdx",
+  "js",
+  "mjs",
+  "cjs",
+  "jsx",
+  "ts",
+  "tsx",
+  "css",
+  "scss",
+  "less",
+  "py",
+  "rb",
+  "go",
+  "rs",
+  "java",
+  "kt",
+  "c",
+  "h",
+  "cpp",
+  "cc",
+  "cs",
+  "php",
+  "sh",
+  "bash",
+  "zsh",
+  "sql",
+  "graphql",
+  "proto",
+  "lua",
+  "swift",
+  "scala",
+  "vue",
+  "svelte",
+]);
+
+export function isDocumentMediaPath(path: string, extension = pathExtension(path)) {
   return documentViewerExtensions.has(extension);
+}
+
+export function isDocumentViewerPath(path: string, extension = pathExtension(path)) {
+  return documentViewerExtensions.has(extension) || documentTextViewerExtensions.has(extension);
 }
 
 export const structureAndTextExtensions = new Set([

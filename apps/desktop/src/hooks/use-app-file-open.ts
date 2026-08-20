@@ -10,6 +10,7 @@ import type { DockArea, DockTabKind } from "../lib/dock";
 import {
   delimitedColumnChoiceLabel,
   isDelimitedColumnAmbiguity,
+  documentFallbackExtensions,
   isDocumentViewerPath,
   isFepGraphmlPath,
   isPreferredTextPath,
@@ -158,7 +159,7 @@ export function useAppFileOpen({
       paths: string[],
       reloadOptions?: ViewerReloadOptions,
       preferencesOverride?: Partial<ViewerPreferences>,
-      options: { replace?: boolean; inActiveTab?: boolean; mode?: OpenDocumentsMode } = {},
+      options: { replace?: boolean; inActiveTab?: boolean; mode?: OpenDocumentsMode; deferErrorStatus?: boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
@@ -390,7 +391,7 @@ export function useAppFileOpen({
 
     const openedStructureAndTextPaths = new Set<string>();
     if (structureAndTextPaths.length > 0) {
-      const result = await openDocuments(structureAndTextPaths);
+      const result = await openDocuments(structureAndTextPaths, undefined, undefined, { deferErrorStatus: true });
       const openedDocuments = result?.documents ?? [];
       for (const document of openedDocuments) {
         if (document.renderer === NOT_RENDERABLE_RENDERER) {
@@ -414,7 +415,12 @@ export function useAppFileOpen({
       await openTextDocuments(backgroundTextPaths, { background: true });
     }
 
-    const fallbackTextPaths = structureAndTextPaths.filter((path) => !openedStructureAndTextPaths.has(path));
+    const unopenedStructureAndTextPaths = structureAndTextPaths.filter((path) => !openedStructureAndTextPaths.has(path));
+    const fallbackDocumentPaths = unopenedStructureAndTextPaths.filter((path) => documentFallbackExtensions.has(pathExtension(path)));
+    for (const path of fallbackDocumentPaths) {
+      openDocumentTab(path);
+    }
+    const fallbackTextPaths = unopenedStructureAndTextPaths.filter((path) => !documentFallbackExtensions.has(pathExtension(path)));
     if (fallbackTextPaths.length > 0) {
       await openTextDocuments(fallbackTextPaths);
     }

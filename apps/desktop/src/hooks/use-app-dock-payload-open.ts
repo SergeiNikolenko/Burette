@@ -6,7 +6,8 @@ import { openBrowserDevDocuments } from "../lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "../lib/browser-dev-text-files";
 import { DOCK_TAB_LABELS, dockTabLoadsDroppedDocument, resolveDockDropPaths, type DockArea, type DockDropInput, type DockToolKind } from "../lib/dock";
 import {
-  isDocumentViewerPath,
+  documentFallbackExtensions,
+  isDocumentMediaPath,
   isPreferredTextPath,
   NOT_RENDERABLE_RENDERER,
   pathExtension,
@@ -111,7 +112,7 @@ export function useAppDockPayloadOpen({
           const extension = pathExtension(path);
           return !isSpectrumPath(path, extension)
             && !rightDockContentSpectrumPaths.has(path)
-            && !isDocumentViewerPath(path, extension)
+            && !isDocumentMediaPath(path, extension)
             && (isPreferredTextPath(path, extension) || (!structureExtensions.has(extension) && !structureAndTextExtensions.has(extension)));
         });
         dockOpenPaths = unopenedPaths.filter((path) => !rightDockTextPaths.includes(path));
@@ -153,7 +154,7 @@ export function useAppDockPayloadOpen({
         const extension = pathExtension(path);
         if (isSpectrumPath(path, extension) || contentSpectrumPaths.has(path)) {
           spectrumPaths.push(path);
-        } else if (isDocumentViewerPath(path, extension)) {
+        } else if (isDocumentMediaPath(path, extension)) {
           documentPaths.push(path);
         } else if (isPreferredTextPath(path, extension)) {
           textPaths.push(path);
@@ -193,7 +194,7 @@ export function useAppDockPayloadOpen({
         : { documents: [], errors: [] };
       unmaterializedDocuments.push(...spectrumTextResult.documents);
       const spectrumDocuments = spectrumTextResult.documents.map(spectrumDocumentFromText);
-      const structureAndTextResults: OpenDocumentsResult[] = [];
+      const structureAndTextResults: Array<OpenDocumentsResult & { path: string }> = [];
       for (const path of structureAndTextPaths) {
         try {
           const result = isTauriRuntime()
@@ -215,7 +216,7 @@ export function useAppDockPayloadOpen({
             });
           }
           if (documents.length > 0 || result.errors.length > 0) {
-            structureAndTextResults.push({ documents, errors: result.errors });
+            structureAndTextResults.push({ path, documents, errors: result.errors });
           }
         } catch {}
       }
@@ -246,10 +247,19 @@ export function useAppDockPayloadOpen({
         ...recordResult.opened,
       ]);
       const openedTextDocuments = textResult.documents;
+      // A delimited file the grid rejected still opened as dock text right above,
+      // so its grid error would only mislead: the file is on screen.
+      const openedTextPaths = new Set(textResult.documents.map((document) => document.path));
       const errors = [
         ...spectrumTextResult.errors,
         ...structurePathResult.errors,
-        ...structureAndTextResults.flatMap((result) => result.errors),
+        ...structureAndTextResults.flatMap((result) => (
+          result.documents.length === 0
+            && documentFallbackExtensions.has(pathExtension(result.path))
+            && openedTextPaths.has(result.path)
+            ? []
+            : result.errors
+        )),
         ...textResult.errors,
         ...recordResult.errors,
       ];

@@ -157,8 +157,12 @@ export function useAppNativeMenu({
     return documents;
   }, [state.recentStructures]);
   const openDocumentPaths = useMemo(
-    () => nativeOpenDocumentPaths(state.documents, state.textDocuments),
-    [state.documents, state.textDocuments],
+    () => nativeOpenDocumentPaths(
+      state.documents,
+      state.textDocuments,
+      state.tabs.flatMap((tab) => (tab.location.kind === "document" ? [tab.location.path] : [])),
+    ),
+    [state.documents, state.textDocuments, state.tabs],
   );
   const documentRegistryRevision = useMemo(
     () => nextDocumentRegistryRevision(),

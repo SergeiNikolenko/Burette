@@ -1090,7 +1090,7 @@ assert.match(appFileOpenHook, /if \(document\.renderer === NOT_RENDERABLE_RENDER
 assert.match(appDockPayloadHook, /const documents = result\.documents\.filter\(\(document\) => document\.renderer !== NOT_RENDERABLE_RENDERER\);/);
 assert.match(appFileOpenHook, /const backgroundTextPaths = structureAndTextPaths\.filter\(\(path\) => openedStructureAndTextPaths\.has\(path\)\);/);
 assert.match(appFileOpenHook, /await openTextDocuments\(backgroundTextPaths, \{ background: true \}\);/);
-assert.match(appFileOpenHook, /const fallbackTextPaths = structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\);/);
+assert.match(appFileOpenHook, /const unopenedStructureAndTextPaths = structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\);/);
 assert.match(browserDevStartup, /export function browserDevDockingFromLocation\(\): DockingDocumentRequest \| null/);
 assert.match(browserDevStartup, /params\.has\("devDocking"\)/);
 assert.match(appOpenActionsHook, /await openPaths\(paths\)/);
@@ -2322,7 +2322,9 @@ assert.match(styles, /\.dock-tab \{[^}]*height: 28px;[^}]*border-radius: 10px;/s
 assert.match(styles, /\.dock-tab-close \{[^}]*width: 20px;[^}]*height: 20px;[^}]*border-radius: 8px;[^}]*background: transparent;[^}]*opacity: 0;[^}]*pointer-events: none;/s);
 assert.match(styles, /\.dock-tab-close:hover \{[^}]*background: var\(--surface-hover\);[^}]*box-shadow: inset 0 0 0 1px var\(--line-subtle\)/s);
 assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab-close \{[^}]*color: var\(--text-secondary\);[^}]*\}/s);
-assert.match(styles, /\.text-file-editor \.cm-gutters \{[^}]*border-right: 0;[^}]*background: transparent;[^}]*color: var\(--text-muted\);[^}]*\}/s);
+// The gutter is sticky; it must stay opaque or line numbers draw over content
+// whenever the editor scrolls horizontally.
+assert.match(styles, /\.text-file-editor \.cm-gutters \{[^}]*border-right: 0;[^}]*background: var\(--shadcn-background\);[^}]*color: var\(--text-muted\);[^}]*\}/s);
 assert.doesNotMatch(styles, /\.dock-tab-shell:hover \.dock-tab svg,\s*\.dock-tab-shell:focus-within \.dock-tab svg \{\s*opacity: 0/s);
 assert.doesNotMatch(styles, /\.dock-tab\[data-active\] svg \{\s*opacity: 0/s);
 // The hand-rolled resize system is gone; the layout is driven by
@@ -7109,7 +7111,9 @@ for (const stateField of [
 assert.match(nativeMenuTypes, /recentDocuments: Array<\{ path: string; title: string \}> \| null/);
 assert.match(appNativeMenuHook, /invoke\("sync_native_menu", \{ state: nativeState \}\)/);
 assert.match(appNativeMenuHook, /const openDocumentPaths = useMemo/);
-assert.match(appNativeMenuHook, /nativeOpenDocumentPaths\(state\.documents, state\.textDocuments\)/);
+// Retab document tabs must reach the registry sync too: they hold no
+// ViewerDocument, but their file is open and needs the write guard.
+assert.match(appNativeMenuHook, /nativeOpenDocumentPaths\(\s*state\.documents,\s*state\.textDocuments,\s*state\.tabs\.flatMap\(\(tab\) => \(tab\.location\.kind === "document" \? \[tab\.location\.path\] : \[\]\)\),?\s*\)/);
 assert.match(appNativeMenuHook, /const activeDocumentReadable = activeDocumentFileBacked/);
 assert.match(appNativeMenuHook, /const documentRegistryRevision = useMemo\([\s\S]*nextDocumentRegistryRevision\(\)/);
 assert.match(appNativeMenuHook, /hasActiveFile: activeDocumentFileBacked \|\| activeTextTabFileBacked/);
