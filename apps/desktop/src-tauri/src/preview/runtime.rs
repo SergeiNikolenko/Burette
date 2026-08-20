@@ -218,10 +218,17 @@ impl ViewerPreferences {
     }
 
     pub(crate) fn resolved_molstar_style(&self) -> &str {
-        if self.molstar_style == "default" {
+        match self.molstar_style.as_str() {
             "default"
-        } else {
-            "illustrative"
+            | "illustrative"
+            | "illustrative-surface"
+            | "polymer-ligand"
+            | "cartoon"
+            | "ball-and-stick"
+            | "spacefill"
+            | "line"
+            | "molecular-surface" => self.molstar_style.as_str(),
+            _ => "illustrative",
         }
     }
 
@@ -373,6 +380,28 @@ mod viewer_preferences_tests {
             preferences("auto", "broken").canvas_background_for_runtime(),
             "auto"
         );
+    }
+
+    #[test]
+    fn preserves_supported_molstar_styles_for_runtime() {
+        let mut preferences = preferences("auto", "auto");
+        for style in [
+            "default",
+            "illustrative",
+            "illustrative-surface",
+            "polymer-ligand",
+            "cartoon",
+            "ball-and-stick",
+            "spacefill",
+            "line",
+            "molecular-surface",
+        ] {
+            preferences.molstar_style = style.to_string();
+            assert_eq!(preferences.resolved_molstar_style(), style);
+        }
+
+        preferences.molstar_style = "unsupported".to_string();
+        assert_eq!(preferences.resolved_molstar_style(), "illustrative");
     }
 
     #[test]
