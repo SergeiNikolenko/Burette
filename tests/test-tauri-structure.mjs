@@ -69,6 +69,7 @@ const [
   previewFormats,
   previewFormatRegistrySource,
   previewXyzrender,
+  previewXyzrenderPool,
   quickLookPreviewController,
   moleculeGridPreview,
   viewerRuntimeCSS,
@@ -154,6 +155,7 @@ const [
   source('apps/desktop/src-tauri/src/preview/formats.rs'),
   source('config/preview-formats.json'),
   source('apps/desktop/src-tauri/src/preview/xyzrender.rs'),
+  source('apps/desktop/src-tauri/src/preview/xyzrender_pool.rs'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('PreviewExtension/MoleculeGridPreview.swift'),
   source('PreviewExtension/Web/viewer-runtime.css'),
@@ -1089,6 +1091,15 @@ assert.match(previewXyzrender, /bundled_xyzrender_candidates_from_executable/);
 assert.match(previewXyzrender, /Contents"\)\s*\.join\("Resources"\)\s*\.join\("xyzrender-runtime"\)/);
 assert.match(previewXyzrender, /std::env::current_exe\(\)/);
 assert.match(previewXyzrender, /fn xyzrender_batch_helper_launch/);
+assert.match(previewXyzrender, /fn xyzrender_worker_launch/);
+assert.match(previewXyzrender, /render_cards\(&launch, jobs\)/);
+assert.match(previewXyzrenderPool, /pub\(super\) fn render_cards/);
+assert.match(previewXyzrenderPool, /const WORKER_WARMUP_TIMEOUT/);
+assert.match(previewXyzrenderPool, /request\.get\("op"\) == "warmup"/);
+assert.match(previewXyzrenderPool, /for line in sys\.stdin:/);
+assert.match(previewXyzrenderPool, /fn worker_capacity/);
+assert.match(previewXyzrenderPool, /const WORKER_IDLE_TIMEOUT/);
+assert.match(previewXyzrenderPool, /fn reap_idle_workers/);
 assert.match(previewXyzrender, /fn bundled_xyzrender_python_launch/);
 assert.match(previewXyzrender, /join\("xyzrender-python"\)\s*\.join\("bin"\)\s*\.join\("python3"\)/);
 assert.match(previewXyzrender, /\("PYTHONPATH", site_packages\.display\(\)\.to_string\(\)\)/);
