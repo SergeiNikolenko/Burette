@@ -2300,7 +2300,7 @@ assert.match(styles, /@container \(max-width: 320px\) \{[\s\S]*\.topbar \.tab-sh
 assert.match(styles, /\.tab-shell\[data-active\] \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;[^}]*transform: translate\(0, -50%\);[^}]*background: transparent;/s);
 assert.match(styles, /\.tab-shell:hover \.tab-close/);
 assert.match(styles, /\.tab-shell:focus-within \.tab-close \{[^}]*transform: translate\(0, -50%\);/s);
-assert.match(styles, /\.tab-close:hover \{[^}]*color: var\(--text-secondary\);[^}]*background: var\(--surface-hover\);[^}]*box-shadow: inset 0 0 0 1px var\(--line-subtle\)/s);
+assert.match(styles, /\.tab-close:hover \{[^}]*color: var\(--text-secondary\);[^}]*background: color-mix\(in srgb, var\(--fg-base\) calc\(var\(--contrast\) \* 26%\), var\(--bg-base\)\);[^}]*box-shadow: inset 0 0 0 1px var\(--line-subtle\)/s);
 assert.match(closeIcon, /export function CloseIcon/);
 assert.match(closeIcon, /className="close-glyph"/);
 assert.doesNotMatch(closeIcon, /from "\.\/system-icon"/);

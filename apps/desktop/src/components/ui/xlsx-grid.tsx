@@ -273,29 +273,27 @@ export function XlsxGrid({
             })}
           >
             <div
-              className="sticky top-0 z-20 grid border-b"
+              className="sticky top-0 z-20 grid"
               style={{
                 gridTemplateColumns: gridTemplate,
                 height: rowHeight,
-                backgroundColor:
-                  "color-mix(in oklab, var(--card) 92%, var(--foreground))",
               }}
               aria-hidden
             >
               <div
-                className="sticky left-0 z-10 border-r bg-[color-mix(in_oklab,var(--card)_94%,var(--foreground))]"
+                className="sticky left-0 z-10 border-r border-b bg-[color-mix(in_oklab,var(--card)_94%,var(--foreground))]"
                 style={{ height: rowHeight }}
               />
-              <Spacer width={leftPad} />
+              <Spacer width={leftPad} className="border-b bg-[color-mix(in_oklab,var(--card)_92%,var(--foreground))]" />
               {columnItems.map((item) => (
                 <div
                   key={item.key}
-                  className="text-muted-foreground flex items-center justify-center border-r font-medium last:border-r-0"
+                  className="text-muted-foreground flex items-center justify-center border-r border-b font-medium bg-[color-mix(in_oklab,var(--card)_92%,var(--foreground))]"
                 >
                   {xlsxColumnLabel(item.metadata.columnIndex)}
                 </div>
               ))}
-              <Spacer width={rightPad} />
+              <Spacer width={rightPad} className="border-b bg-[color-mix(in_oklab,var(--card)_92%,var(--foreground))]" />
             </div>
 
             <FixedGridRowWindow

@@ -1,5 +1,5 @@
 export const CSV_CELL_CLASS =
-  "flex items-center truncate border-r px-3 last:border-r-0";
+  "flex items-center truncate border-r border-b px-3";
 
 export const CSV_ACTIVE_CELL_CLASS =
   "bg-primary/12 ring-1 ring-primary/50 ring-offset-0 ring-inset";

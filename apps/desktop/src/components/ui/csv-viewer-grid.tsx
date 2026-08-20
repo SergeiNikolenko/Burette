@@ -344,21 +344,19 @@ export const CsvGrid = React.forwardRef<CsvGridHandle, CsvGridProps>(
                 role="row"
                 aria-rowindex={1}
                 data-slot="csv-header"
-                className="sticky top-0 z-20 grid border-b"
+                className="sticky top-0 z-20 grid"
                 style={{
                   gridTemplateColumns: gridTemplate,
-                  backgroundColor:
-                    "color-mix(in oklab, var(--card) 92%, var(--foreground))",
                 }}
               >
                 <div
                   role="columnheader"
                   aria-colindex={1}
                   aria-label="Row number"
-                  className="sticky left-0 z-10 border-r bg-[color-mix(in_oklab,var(--card)_94%,var(--foreground))]"
+                  className="sticky left-0 z-10 border-r border-b bg-[color-mix(in_oklab,var(--card)_94%,var(--foreground))]"
                   style={{ height: effectiveRowHeight }}
                 />
-                <Spacer width={leftPad} />
+                <Spacer width={leftPad} className="border-b bg-[color-mix(in_oklab,var(--card)_92%,var(--foreground))]" />
                 {columnItems.map((item) => (
                   <HeaderCell
                     key={item.index}
@@ -375,7 +373,7 @@ export const CsvGrid = React.forwardRef<CsvGridHandle, CsvGridProps>(
                     onToggle={() => toggleSort(item.index)}
                   />
                 ))}
-                <Spacer width={rightPad} />
+                <Spacer width={rightPad} className="border-b bg-[color-mix(in_oklab,var(--card)_92%,var(--foreground))]" />
               </div>
 
               {statusNode ? (
@@ -508,8 +506,8 @@ function useCsvSortedRowOrder({
   }, [shouldUseWorker, sort, sourceRows, workerRowOrder]);
 }
 
-function Spacer({ width }: { width: number }) {
-  return <div role="presentation" aria-hidden style={{ width }} />;
+function Spacer({ width, className }: { width: number; className?: string }) {
+  return <div role="presentation" aria-hidden className={className} style={{ width }} />;
 }
 
 function HeaderCell({
@@ -537,7 +535,7 @@ function HeaderCell({
             : "none"
       }
       data-slot="csv-header-cell"
-      className="border-r last:border-r-0"
+      className="border-r border-b bg-[color-mix(in_oklab,var(--card)_92%,var(--foreground))]"
     >
       <button
         type="button"
@@ -659,7 +657,7 @@ const CsvRow = React.memo(function CsvRow({
       hidden={hidden}
       data-slot="csv-row"
       className={cn(
-        "grid border-b",
+        "grid",
         !isVirtualized && "group hover:bg-muted/40",
       )}
       style={style}
@@ -669,14 +667,14 @@ const CsvRow = React.memo(function CsvRow({
         aria-colindex={1}
         data-slot="csv-row-number"
         className={cn(
-          "bg-card text-muted-foreground sticky left-0 z-[1] flex items-center justify-end border-r px-2 tabular-nums",
+          "bg-card text-muted-foreground sticky left-0 z-[1] flex items-center justify-end border-r border-b px-2 tabular-nums",
           !isVirtualized &&
             "group-hover:bg-[color-mix(in_oklab,var(--card)_97%,var(--foreground))]",
         )}
       >
         {rowIndex + 1}
       </div>
-      <Spacer width={leftPad} />
+      <Spacer width={leftPad} className="border-b" />
       {columnItems.map((item) => {
         const text = cells?.[item.index] ?? "";
         const isActive = activeColumnIndex === item.index;
@@ -693,7 +691,7 @@ const CsvRow = React.memo(function CsvRow({
           </div>
         );
       })}
-      <Spacer width={rightPad} />
+      <Spacer width={rightPad} className="border-b" />
     </div>
   );
 });

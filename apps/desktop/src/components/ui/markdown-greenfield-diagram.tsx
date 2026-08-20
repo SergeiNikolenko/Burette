@@ -141,9 +141,6 @@ export function MarkdownGreenfieldDiagram({
           className="ml-auto"
           text={source}
         />
-        {state.status === "ready" ? (
-          <DiagramCopyButton ariaLabel="Copy diagram SVG" text={state.svg} />
-        ) : null}
       </div>
       {description ? (
         <p

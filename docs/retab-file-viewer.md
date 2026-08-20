@@ -115,6 +115,14 @@ Registry code is vendored, so these edits must be re-applied after every update:
 | `file-viewer-route.tsx` | image branch passes `defaultScale={1}` | open media at natural size, no fit-to-width auto zoom |
 | `code-viewer-content.tsx` | syntax engine destroyed on a macrotask with cancellation | React StrictMode's mount -> cleanup -> mount cycle permanently killed the memoized engine, leaving every file unhighlighted in dev |
 | `file-viewer-sidebar.tsx` | overlay panel anchors to the content edge (`left-0` for a left sidebar) | upstream's `right-0` puts the zero-width-gap overlay outside the viewer, so toggling it showed nothing |
+| `csv-viewer-grid.tsx`, `csv-viewer-cell-classes.ts`, `xlsx-grid.tsx`, `xlsx-grid-row.tsx` | header/row borders and header background painted on the tracks (cells, row numbers, pads), not on the stretched container | the canvas is min-width 100%, so container-level paint extended the table's grid lines and header band past the last column into empty space |
+| `markdown-greenfield-diagram.tsx` | single "Copy diagram source" button | two identical clipboard icons (source + SVG) read as a duplicate control |
+
+The plain shadcn token names are re-declared inside `.document-stage` (not only
+aliased on `.app-shell`): `var()` inside a custom property substitutes where the
+property is defined, so an alias on `.app-shell` captures the Burette value and
+ignores the viewer scope's overrides — raw `var(--card)` reads in vendored code
+would otherwise pick up translucent Burette surfaces.
 
 The PDF page kind composes `PdfViewerPages` with `defaultScale={1}` and the page
 thumbnail sidebar (`PdfViewerThumbnails`), mirroring upstream's pdf-viewer-demo.

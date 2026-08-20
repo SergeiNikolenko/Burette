@@ -230,6 +230,35 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --shadcn-sidebar-accent-foreground: oklch(0.235 0 0);
   --shadcn-sidebar-border: color-mix(in oklab, #000 6%, transparent);
   --shadcn-sidebar-ring: oklch(0.708 0 0);
+  /* Plain names must be re-declared HERE, not only aliased on .app-shell:
+     var() in a custom property substitutes where the property is DEFINED, so an
+     .app-shell alias captures the Burette value and ignores this scope's
+     overrides. */
+  --background: var(--shadcn-background);
+  --foreground: var(--shadcn-foreground);
+  --card: var(--shadcn-card);
+  --card-foreground: var(--shadcn-card-foreground);
+  --popover: var(--shadcn-popover);
+  --popover-foreground: var(--shadcn-popover-foreground);
+  --primary: var(--shadcn-primary);
+  --primary-foreground: var(--shadcn-primary-foreground);
+  --secondary: var(--shadcn-secondary);
+  --secondary-foreground: var(--shadcn-secondary-foreground);
+  --muted: var(--shadcn-muted);
+  --muted-foreground: var(--shadcn-muted-foreground);
+  --accent-foreground: var(--shadcn-accent-foreground);
+  --destructive: var(--shadcn-destructive);
+  --border: var(--shadcn-border);
+  --input: var(--shadcn-input);
+  --ring: var(--shadcn-ring);
+  --sidebar: var(--shadcn-sidebar);
+  --sidebar-foreground: var(--shadcn-sidebar-foreground);
+  --sidebar-primary: var(--shadcn-sidebar-primary);
+  --sidebar-primary-foreground: var(--shadcn-sidebar-primary-foreground);
+  --sidebar-accent: var(--shadcn-sidebar-accent);
+  --sidebar-accent-foreground: var(--shadcn-sidebar-accent-foreground);
+  --sidebar-border: var(--shadcn-sidebar-border);
+  --sidebar-ring: var(--shadcn-sidebar-ring);
 }
 /* shadcn v4 dropped the v3 preflight that defaulted border-color to the border
    token; Retab's host app ships it globally, so its components use bare
@@ -276,6 +305,35 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --shadcn-sidebar-accent-foreground: oklch(0.972 0 0);
   --shadcn-sidebar-border: color-mix(in oklab, #fff 5%, transparent);
   --shadcn-sidebar-ring: oklch(0.556 0 0);
+  /* Plain names must be re-declared HERE, not only aliased on .app-shell:
+     var() in a custom property substitutes where the property is DEFINED, so an
+     .app-shell alias captures the Burette value and ignores this scope's
+     overrides. */
+  --background: var(--shadcn-background);
+  --foreground: var(--shadcn-foreground);
+  --card: var(--shadcn-card);
+  --card-foreground: var(--shadcn-card-foreground);
+  --popover: var(--shadcn-popover);
+  --popover-foreground: var(--shadcn-popover-foreground);
+  --primary: var(--shadcn-primary);
+  --primary-foreground: var(--shadcn-primary-foreground);
+  --secondary: var(--shadcn-secondary);
+  --secondary-foreground: var(--shadcn-secondary-foreground);
+  --muted: var(--shadcn-muted);
+  --muted-foreground: var(--shadcn-muted-foreground);
+  --accent-foreground: var(--shadcn-accent-foreground);
+  --destructive: var(--shadcn-destructive);
+  --border: var(--shadcn-border);
+  --input: var(--shadcn-input);
+  --ring: var(--shadcn-ring);
+  --sidebar: var(--shadcn-sidebar);
+  --sidebar-foreground: var(--shadcn-sidebar-foreground);
+  --sidebar-primary: var(--shadcn-sidebar-primary);
+  --sidebar-primary-foreground: var(--shadcn-sidebar-primary-foreground);
+  --sidebar-accent: var(--shadcn-sidebar-accent);
+  --sidebar-accent-foreground: var(--shadcn-sidebar-accent-foreground);
+  --sidebar-border: var(--shadcn-sidebar-border);
+  --sidebar-ring: var(--shadcn-sidebar-ring);
 }
 .app-shell::after {
   content: "";
@@ -1283,7 +1341,9 @@ button:focus-visible > .shortcut-tooltip {
 }
 .tab-close:hover {
   color: var(--text-secondary);
-  background: var(--surface-hover);
+  /* Opaque: --surface-hover is alpha-blended and lets the tab title ghost
+     through the close pill. */
+  background: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 26%), var(--bg-base));
   box-shadow: inset 0 0 0 1px var(--line-subtle);
 }
 .utility-tab { min-width: auto; }

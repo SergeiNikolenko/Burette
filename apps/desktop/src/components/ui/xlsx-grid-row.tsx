@@ -42,7 +42,7 @@ export const XlsxGridRow = React.memo(function XlsxGridRow({
   });
   return (
     <div
-      className="group hover:bg-muted/40 grid border-b"
+      className="group hover:bg-muted/40 grid"
       style={style}
       role="row"
       aria-rowindex={rowIndex + 1}
@@ -52,11 +52,11 @@ export const XlsxGridRow = React.memo(function XlsxGridRow({
       <div
         aria-hidden
         data-slot="xlsx-row-number"
-        className="bg-card text-muted-foreground sticky left-0 z-[1] flex items-center justify-end border-r px-2 tabular-nums group-hover:bg-[color-mix(in_oklab,var(--card)_97%,var(--foreground))]"
+        className="bg-card text-muted-foreground sticky left-0 z-[1] flex items-center justify-end border-r border-b px-2 tabular-nums group-hover:bg-[color-mix(in_oklab,var(--card)_97%,var(--foreground))]"
       >
         {rowIndex + 1}
       </div>
-      <Spacer width={leftPad} />
+      <Spacer width={leftPad} className="border-b" />
       {columnItems.map((item) => {
         const columnIndex = item.metadata.columnIndex;
         const cell = getCell(rowIndex, columnIndex);
@@ -68,7 +68,7 @@ export const XlsxGridRow = React.memo(function XlsxGridRow({
             aria-colindex={columnIndex + 1}
             data-slot="xlsx-cell"
             className={cn(
-              "flex items-center truncate border-r px-2 last:border-r-0",
+              "flex items-center truncate border-r border-b px-2",
               cell.numeric ? "justify-end tabular-nums" : "justify-start",
               isActive && "bg-primary/12 ring-primary/50 ring-1 ring-inset",
             )}
@@ -77,11 +77,11 @@ export const XlsxGridRow = React.memo(function XlsxGridRow({
           </div>
         );
       })}
-      <Spacer width={rightPad} />
+      <Spacer width={rightPad} className="border-b" />
     </div>
   );
 });
 
-export function Spacer({ width }: { width: number }) {
-  return <div aria-hidden style={{ width }} />;
+export function Spacer({ width, className }: { width: number; className?: string }) {
+  return <div aria-hidden className={className} style={{ width }} />;
 }
