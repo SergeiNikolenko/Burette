@@ -7402,6 +7402,8 @@ assert.match(derivedColumnsHook, /fetchDerivedSourceRows\(documentId, afterSourc
 assert.match(derivedColumnsHook, /storeDerivedValues\(documentId, \{/);
 assert.match(derivedColumnsLib, /resources\.json\?raw/);
 assert.match(derivedColumnsLib, /RDKit_minimal\.wasm\?url/);
+assert.match(derivedColumnsLib, /const rdkitOptions = \{ locateFile: \(\) => wasmUrl, wasmBinary \}/);
+assert.match(derivedColumnsLib, /atob\(/);
 assert.match(viteConfig, /assetsInlineLimit:[\s\S]*RDKit_minimal\.wasm/);
 assert.match(derivedColumnsLib, /ocl\.Resources\.register\(JSON\.parse\(oclResourcesRaw\.default\)\)/);
 assert.doesNotMatch(derivedColumnsLib, /Resources\.registerFromUrl/);

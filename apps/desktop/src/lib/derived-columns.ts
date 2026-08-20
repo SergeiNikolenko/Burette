@@ -88,9 +88,9 @@ export type DerivedEngines = {
   rdkit: RDKitModule;
 };
 
-// Both engines load lazily and once: openchemlib is a plain module, RDKit is a
-// WASM build whose binary vite serves as an asset url (the host webview CSP
-// already allows wasm-unsafe-eval for the grid's sibling loaders).
+// Both engines load lazily and once: openchemlib is a plain module, while RDKit
+// receives its WASM bytes directly so packaged WKWebView never has to fetch a
+// Vite data URL through Emscripten's network loader.
 let enginesPromise: Promise<DerivedEngines> | null = null;
 
 export function loadDerivedEngines(): Promise<DerivedEngines> {
@@ -108,7 +108,12 @@ export function loadDerivedEngines(): Promise<DerivedEngines> {
       // The Actelion predictors (druglikeness, toxicity) refuse to run until
       // their rule tables are registered.
       ocl.Resources.register(JSON.parse(oclResourcesRaw.default));
-      const rdkit = await rdkitModule.default({ locateFile: () => wasm.default });
+      const wasmUrl = wasm.default;
+      const wasmBinary = wasmUrl.startsWith("data:")
+        ? Uint8Array.from(atob(wasmUrl.slice(wasmUrl.indexOf(",") + 1)), (char) => char.charCodeAt(0))
+        : new Uint8Array(await (await fetch(wasmUrl)).arrayBuffer());
+      const rdkitOptions = { locateFile: () => wasmUrl, wasmBinary };
+      const rdkit = await rdkitModule.default(rdkitOptions);
       return { ocl, rdkit };
     })().catch((error) => {
       enginesPromise = null;
