@@ -88,9 +88,15 @@ keeps the Burette theme. Two mechanisms provide that:
   `retab-dropdown-menu.tsx`, `retab-skeleton.tsx`, `retab-spinner.tsx`, and every
   vendored Retab file imports those instead of the Burette primitives of the same
   name. Burette's `button.tsx` etc. stay untouched for the rest of the app.
-- `.document-stage` in `styles.css` pins the stock shadcn "neutral" palette
-  (light and dark). The registry publishes no theme of its own; it inherits host
-  tokens, so this scope is what makes the surface match upstream.
+- `.document-stage` in `styles.css` pins the palette harvested from
+  ui.retab.com's computed styles (light and dark) — alpha-blended hairline
+  borders, 4% muted tones. The registry publishes no theme of its own; it
+  inherits host tokens, so this scope is what makes the surface match upstream.
+- The shadcn v4 border-color preflight (`* { border-color: var(--border) }`)
+  that Retab's host app ships globally is restored scoped to the viewer:
+  `.document-stage *` for the light DOM plus `:host *` for the csv/xlsx shadow
+  scopes. Without it, bare `border-r`/`border-b` utilities paint with
+  near-black `currentColor` — the "dark grid" failure mode.
 
 Plain delimited files are routed by `isMolecularDelimitedFile`
 (`apps/desktop/src/lib/delimited-molecules.ts`): a structure-named column or
