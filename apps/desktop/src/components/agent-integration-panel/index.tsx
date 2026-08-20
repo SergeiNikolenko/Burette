@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { isTauriRuntime } from "../../lib/tauri";
 import { EditorScrollContainer } from "../editor-area/editor-scroll-container";
 
@@ -90,12 +94,12 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
           <p>Status for the bundled Burette agent plugin and local agent installs.</p>
         </div>
         <div className="agent-integration-actions">
-          <button type="button" className="settings-action-button" onClick={() => void refresh()} disabled={refreshing}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void refresh()} disabled={refreshing}>
             {refreshing ? "Checking..." : "Refresh"}
-          </button>
-          <button type="button" className="settings-action-button" onClick={() => void openBundle()} disabled={!status?.bundledPlugin.path}>
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void openBundle()} disabled={!status?.bundledPlugin.path}>
             Reveal Bundle
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -106,9 +110,7 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
             <h2>{summary.title}</h2>
             <p>{summary.detail}</p>
           </div>
-          <span className="agent-status-badge" data-state={badgeState(summary.state)}>
-            {badgeLabel(summary.state)}
-          </span>
+          <StatusBadge state={summary.state} />
         </div>
       </section>
 
@@ -125,14 +127,14 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
         </div>
       </section>
 
-      <details className="agent-disclosure">
-        <summary>
+      <Collapsible className="agent-disclosure">
+        <CollapsibleTrigger className="agent-disclosure-trigger">
           <span className="agent-disclosure-copy">
             <span className="agent-disclosure-title">Diagnostics</span>
             <span className="agent-disclosure-description">Bundle compatibility and file-level readiness checks.</span>
           </span>
-        </summary>
-        <div className="agent-disclosure-body">
+        </CollapsibleTrigger>
+        <CollapsibleContent className="agent-disclosure-body">
           <div className="agent-diagnostic-group">
             <h3>Bundle</h3>
             <StatusRow label="Bundle" value={bundleSummary(status)} state={status?.bundledPlugin.state ?? "unknown"} />
@@ -152,8 +154,8 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
             {!status && !error ? <StatusRow label="Checks" value="Waiting for status." state="unknown" /> : null}
             {error ? <StatusRow label="Error" value={error} state="missing" /> : null}
           </div>
-        </div>
-      </details>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 
@@ -190,15 +192,25 @@ const unservedSurfaceStatus: AgentIntegrationStatus = {
 
 function StatusRow({ label, value, state }: { label: string; value: string; state: string }) {
   return (
-    <div className="agent-status-row">
-      <div className="agent-status-copy">
-        <div className="settings-control-label">{label}</div>
-        <div className="settings-control-description">{value}</div>
-      </div>
-      <span className="agent-status-badge" data-state={badgeState(state)}>
-        {badgeLabel(state)}
-      </span>
-    </div>
+    <Item className="agent-status-row" size="sm">
+      <ItemContent className="agent-status-copy">
+        <ItemTitle className="settings-control-label">{label}</ItemTitle>
+        <ItemDescription className="settings-control-description">{value}</ItemDescription>
+      </ItemContent>
+      <ItemActions>
+        <StatusBadge state={state} />
+      </ItemActions>
+    </Item>
+  );
+}
+
+// The badge keeps .agent-status-badge and its data-state: the ok/action/missing
+// tints are app tokens, not shadcn variants.
+function StatusBadge({ state }: { state: string }) {
+  return (
+    <Badge variant="secondary" className="agent-status-badge" data-state={badgeState(state)}>
+      {badgeLabel(state)}
+    </Badge>
   );
 }
 

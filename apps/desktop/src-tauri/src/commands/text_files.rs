@@ -10,6 +10,7 @@ use tauri::Runtime;
 use crate::menu::OpenDocumentRegistry;
 
 const TEXT_FILE_READ_LIMIT: usize = 12 * 1024 * 1024;
+const DOCUMENT_FILE_READ_LIMIT: u64 = 256 * 1024 * 1024;
 const IMAGE_PREVIEW_READ_LIMIT: u64 = 24 * 1024 * 1024;
 const IMAGE_PREVIEW_BATCH_READ_LIMIT: u64 = 48 * 1024 * 1024;
 const OPENMM_BINARY_ARTIFACT_EXTENSIONS: &[&str] = &["chk", "checkpoint"];
@@ -56,6 +57,33 @@ pub(crate) struct TextFileDocument {
 pub(crate) struct OpenTextFilesResult {
     documents: Vec<TextFileDocument>,
     errors: Vec<String>,
+}
+
+// Office documents are rendered by the web view, which cannot reach arbitrary paths:
+// the asset protocol is scoped to generated runtime files. Read the bytes here instead
+// of widening that scope for every file the user has.
+#[tauri::command]
+pub(crate) async fn read_document_file(path: String) -> Result<tauri::ipc::Response, String> {
+    // Reads run on a blocking thread: a 200 MiB PDF must not stall the IPC pool.
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = PathBuf::from(path);
+        let metadata =
+            fs::metadata(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        if !metadata.is_file() {
+            return Err(format!("{}: not a file", path.display()));
+        }
+        if metadata.len() > DOCUMENT_FILE_READ_LIMIT {
+            return Err(format!(
+                "{} is too large to preview ({} MiB limit)",
+                path.display(),
+                DOCUMENT_FILE_READ_LIMIT / (1024 * 1024)
+            ));
+        }
+        let bytes = fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        Ok(tauri::ipc::Response::new(bytes))
+    })
+    .await
+    .map_err(|error| format!("document read task failed: {error}"))?
 }
 
 #[tauri::command]

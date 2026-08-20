@@ -492,6 +492,85 @@ function SelectionSection(props: GridControlProps & { onRun: (action: () => void
   );
 }
 
+function FileSection(props: GridControlProps & { onRun: (action: () => void) => void }) {
+  if (!props.exportEnabled) return null;
+  return (
+    <>
+      <div className="ab-separator" />
+      <div className="ab-group">File</div>
+      {props.saveEnabled ? (
+        <div className="ab-row">
+          <button
+            id="save-grid"
+            className="ab-item"
+            type="button"
+            role="menuitem"
+            title={props.saveTitle}
+            onClick={() => props.onRun(props.onSaveGrid)}
+          >
+            <span className="ab-item-title">Save</span>
+          </button>
+        </div>
+      ) : null}
+      {props.undoEnabled ? (
+        <div className="ab-row">
+          <button
+            id="undo-grid-edit"
+            className="ab-item"
+            type="button"
+            role="menuitem"
+            title={props.undoTitle}
+            onClick={() => props.onRun(props.onUndoGridEdit)}
+          >
+            <span className="ab-item-title">Undo</span>
+          </button>
+        </div>
+      ) : null}
+      {props.saveAsEnabled ? (
+        <div className="ab-row">
+          <button
+            id="save-grid-as"
+            className="ab-item"
+            type="button"
+            role="menuitem"
+            title={props.saveAsTitle}
+            onClick={() => props.onRun(props.onSaveGridAs)}
+          >
+            <span className="ab-item-title">Save As...</span>
+          </button>
+        </div>
+      ) : null}
+      <div className="ab-group">Export</div>
+      <div className="ab-row">
+        <button
+          id="export-smi"
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          title="Export visible molecules as SMILES"
+          onClick={() => props.onRun(props.onExportSmiles)}
+        >
+          <span className="ab-item-title">Export SMILES</span>
+          <span className="ab-item-meta">.smi</span>
+        </button>
+      </div>
+      <div className="ab-row">
+        <button
+          id="export-csv"
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          title="Export visible table data as CSV"
+          onClick={() => props.onRun(props.onExportCSV)}
+        >
+          <span className="ab-item-title">Export CSV</span>
+          <span className="ab-item-meta">.csv</span>
+        </button>
+      </div>
+    </>
+  );
+}
+
 // Shared open/close behaviour for the toolbar's dropdowns. The menu is switched
 // to fixed positioning and clamped to the viewport so it stays on screen when
 // the grid panel is squeezed narrow, instead of overflowing off the left edge.
@@ -580,6 +659,9 @@ function ActionsMenu(props: GridControlProps) {
         onClick={() => setOpen((value) => !value)}
       >
         Actions
+        {selectedCount > 0 ? (
+          <span className="ab-badge">{selectedCount.toLocaleString()}</span>
+        ) : null}
       </button>
       {open ? (
         <div className="ab-menu" role="menu" ref={menuRef} style={menuStyle}>
@@ -591,125 +673,10 @@ function ActionsMenu(props: GridControlProps) {
           <ComputeSection {...props} onRun={onRun} />
           <CollectionSection {...props} onRun={onRun} />
           <SelectionSection {...props} onRun={onRun} />
+          <FileSection {...props} onRun={onRun} />
         </div>
       ) : null}
     </div>
-  );
-}
-
-// The collection's file actions: Save stays on the surface, everything else
-// moves into an overflow menu so the header keeps one row on narrow grids.
-function HeaderActions(props: GridControlProps) {
-  const { open, setOpen, wrapRef, menuRef, menuStyle, onRun } = useMenu();
-  return (
-    <div className="buret-actions" hidden={!props.exportEnabled}>
-      <button
-        id="save-grid"
-        className="ab-btn"
-        type="button"
-        disabled={!props.saveEnabled}
-        title={props.saveTitle}
-        onClick={props.onSaveGrid}
-      >
-        Save
-      </button>
-      <div className="ab-menu-wrap" ref={wrapRef}>
-        <button
-          className="ab-btn buret-actions-more"
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={open}
-          aria-label="More collection actions"
-          onClick={() => setOpen((value) => !value)}
-        >
-          <MoreIcon />
-        </button>
-        {open ? (
-          <div className="ab-menu" role="menu" ref={menuRef} style={menuStyle}>
-            <div className="ab-group">File</div>
-            <div className="ab-row">
-              <button
-                id="save-grid-as"
-                className="ab-item"
-                type="button"
-                role="menuitem"
-                disabled={!props.saveAsEnabled}
-                aria-description={props.saveAsTitle}
-                onClick={() => onRun(props.onSaveGridAs)}
-              >
-                <span className="ab-item-title">Save As...</span>
-              </button>
-            </div>
-            <div className="ab-row">
-              <button
-                id="undo-grid-edit"
-                className="ab-item"
-                type="button"
-                role="menuitem"
-                disabled={!props.undoEnabled}
-                aria-description={props.undoTitle}
-                onClick={() => onRun(props.onUndoGridEdit)}
-              >
-                <span className="ab-item-title">Undo</span>
-              </button>
-            </div>
-            <div className="ab-separator" />
-            <div className="ab-group">Export</div>
-            <div className="ab-row">
-              <button
-                id="export-smi"
-                className="ab-item"
-                type="button"
-                role="menuitem"
-                aria-description="Export visible molecules as SMILES"
-                onClick={() => onRun(props.onExportSmiles)}
-              >
-                <span className="ab-item-title">Export SMILES</span>
-                <span className="ab-item-meta">.smi</span>
-              </button>
-            </div>
-            <div className="ab-row">
-              <button
-                id="export-csv"
-                className="ab-item"
-                type="button"
-                role="menuitem"
-                aria-description="Export visible table data as CSV"
-                onClick={() => onRun(props.onExportCSV)}
-              >
-                <span className="ab-item-title">Export CSV</span>
-                <span className="ab-item-meta">.csv</span>
-              </button>
-            </div>
-            <div className="ab-separator" />
-            <div className="ab-group">Clipboard</div>
-            <div className="ab-row">
-              <button
-                id="copy-selected"
-                className="ab-item"
-                type="button"
-                role="menuitem"
-                disabled={props.selectedCount === 0}
-                aria-description="Copy selected molecule records"
-                onClick={() => onRun(props.onCopySelected)}
-              >
-                <span className="ab-item-title">Copy selected</span>
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function MoreIcon() {
-  return (
-    <svg className="ab-ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <circle cx="5" cy="12" r="1.6" />
-      <circle cx="12" cy="12" r="1.6" />
-      <circle cx="19" cy="12" r="1.6" />
-    </svg>
   );
 }
 
@@ -756,20 +723,18 @@ function GridActionToolbar(props: GridControlProps) {
         <ControlTooltip label="Show molecule properties in cards" />
       </button>
       {showRendererSwitch ? (
-        <>
-          <span className="ab-divider" aria-hidden="true" />
-          <span className="ab-label">Render</span>
-          <SegmentedControl
-            ariaLabel="Molecule renderer"
-            dataAttribute="buret-grid-card-renderer"
+        <label className="buret-renderer-control">
+          <span className="buret-visually-hidden">Renderer</span>
+          <select
+            id="card-renderer"
             value={props.cardRenderer}
-            onChange={props.onSetCardRenderer}
-            options={[
-              { value: "rdkit", label: "RDKit" },
-              { value: "xyzrender", label: "xyzrender" },
-            ]}
-          />
-        </>
+            aria-label="Molecule renderer"
+            onChange={(event) => props.onSetCardRenderer(event.currentTarget.value as "rdkit" | "xyzrender")}
+          >
+            <option value="rdkit">RDKit</option>
+            <option value="xyzrender">xyzrender</option>
+          </select>
+        </label>
       ) : null}
       <XyzrenderStyleControl {...props} />
       {/* A pressed-state button rather than a checkbox: grid-viewer owns both the
@@ -824,56 +789,37 @@ function GridActionToolbar(props: GridControlProps) {
 }
 
 function GridControls(props: GridControlProps) {
-  const collectionType = props.format === "sdf"
-    ? "SDF collection"
-    : props.format === "csv"
-      ? "CSV table"
-      : props.format === "tsv"
-        ? "TSV table"
-        : props.format === "dwar"
-          ? "DataWarrior table"
-          : "SMILES collection";
   const searchPlaceholder = props.substructureSearch
     ? "name, SMILES, metadata, SMARTS"
     : "name or table value";
 
   return (
-    <>
-      <header className="buret-grid-header">
-        <div>
-          <div className="buret-eyebrow">{collectionType}</div>
-          <h1>{props.label || "Molecule collection"}</h1>
-          <div id="summary" className="buret-summary" />
-        </div>
-        <HeaderActions {...props} />
-      </header>
-      <div className="buret-grid-toolbar">
-        <div className="buret-toolbar-row buret-toolbar-row-main">
-          <label className="buret-search-control buret-filter-control">
-            Search
-            <input
-              id="search"
-              type="search"
-              aria-label="Search molecules and SMARTS"
-              spellCheck={false}
-              autoCapitalize="off"
-              placeholder={searchPlaceholder}
-              onInput={(event) => props.onSearchInput(event.currentTarget.value || "")}
-            />
-          </label>
-          <label className="buret-sort-control">
-            Sort
-            <select id="sort" onChange={(event) => props.onSortChange(event.currentTarget.value || "index")}>
-              {props.sortOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          <div id="load-status" className="buret-load-status" />
-        </div>
-        <GridActionToolbar {...props} />
+    <div className="buret-grid-toolbar">
+      <div className="buret-toolbar-row buret-toolbar-row-main">
+        <label className="buret-search-control buret-filter-control">
+          Search
+          <input
+            id="search"
+            type="search"
+            aria-label="Search molecules and SMARTS"
+            spellCheck={false}
+            autoCapitalize="off"
+            placeholder={searchPlaceholder}
+            onInput={(event) => props.onSearchInput(event.currentTarget.value || "")}
+          />
+        </label>
+        <label className="buret-sort-control">
+          Sort
+          <select id="sort" onChange={(event) => props.onSortChange(event.currentTarget.value || "index")}>
+            {props.sortOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <div id="load-status" className="buret-load-status" />
       </div>
-    </>
+      <GridActionToolbar {...props} />
+    </div>
   );
 }
 

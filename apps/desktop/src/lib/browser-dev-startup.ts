@@ -3,6 +3,19 @@ import { isTauriRuntime } from "./tauri";
 import type { DockingDocumentRequest, DockingSceneMode } from "../types";
 import { initializeWebDemoWorkspace, isWebDemoWorkspace } from "./web-demo-workspace";
 
+// Vite's /@fs/ endpoint only serves absolute filesystem paths; a relative path
+// falls through to the SPA fallback and index.html gets rendered as the file
+// contents. Resolve every URL-provided dev path against the repo root before
+// any consumer builds a /@fs/ URL from it.
+const BROWSER_DEV_REPO_ROOT = String(import.meta.env.BURETTE_REPO_ROOT || "");
+
+export function absoluteBrowserDevPath(path: string, repoRoot = BROWSER_DEV_REPO_ROOT) {
+  const normalized = path.replace(/\\/g, "/");
+  const root = repoRoot.replace(/\/+$/u, "");
+  if (!root || normalized.startsWith("/")) return normalized;
+  return `${root}/${normalized}`;
+}
+
 const BROWSER_DEV_FOLDER_ROOT_LIMIT = 16;
 const BROWSER_DEV_FOLDER_FILE_LIMIT = 2_000;
 const BROWSER_DEV_FOLDER_DIRECTORY_LIMIT = 400;
@@ -20,7 +33,7 @@ export async function browserDevFilesFromLocation() {
   if (params.has("quickLookFile")) return [];
   if (params.has("devDocking")) return [];
   if (params.has("devFiles")) {
-    return params.getAll("devFiles").flatMap((value) => splitDevFiles(value));
+    return params.getAll("devFiles").flatMap((value) => splitDevFiles(value)).map((path) => absoluteBrowserDevPath(path));
   }
   const folders = browserDevFoldersFromParams(params);
   if (folders.length > 0) {
@@ -47,7 +60,7 @@ export function browserDevQuickLookFileFromLocation() {
   if (typeof window === "undefined" || isTauriRuntime()) return null;
   const params = new URLSearchParams(window.location.search);
   const path = params.get("quickLookFile")?.trim();
-  return path || null;
+  return path ? absoluteBrowserDevPath(path) : null;
 }
 
 export function browserDevHasExplicitFiles() {
@@ -77,7 +90,7 @@ export function browserDevSceneModeFromLocation(): DockingSceneMode | null {
 export function browserDevDockingFromLocation(): DockingDocumentRequest | null {
   const params = new URLSearchParams(window.location.search);
   if (!params.has("devDocking")) return null;
-  const paths = splitDevFiles(params.get("devDocking") ?? "");
+  const paths = splitDevFiles(params.get("devDocking") ?? "").map((path) => absoluteBrowserDevPath(path));
   if (paths.length < 2) return null;
   return dockingRequestForDrop(paths[0], paths.slice(1));
 }

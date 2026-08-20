@@ -208,6 +208,7 @@ pub fn run() {
             commands::documents::list_project_structure_files,
             commands::folding_results::read_folding_result_bundle,
             commands::text_files::read_text_file,
+            commands::text_files::read_document_file,
             commands::text_files::open_text_files,
             commands::documents::read_structure_text,
             commands::documents::fetch_pdb_structure,

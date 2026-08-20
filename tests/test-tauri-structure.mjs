@@ -1590,7 +1590,7 @@ assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ sourc
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
 assert.match(previewRuntimeGrid, /'unsafe-eval'/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
-assert.match(previewRuntimeGrid, /grid-ui-v49/);
+assert.match(previewRuntimeGrid, /grid-ui-v50/);
 // The grid-only formats have to agree with the registry: a source that opens
 // as nothing else must report an empty collection rather than fall through to
 // a viewer that cannot read it either.
@@ -1629,8 +1629,10 @@ assert.match(gridViewerJS, /preset: currentXyzrenderPreset\(job\.cfg\)/);
 assert.match(gridViewerJS, /function prepareXyzrenderCardSVG\(svg\)/);
 assert.match(gridViewerJS, /markSVGForFitting\(html, 'data-buret-xyzrender-svg'\)/);
 assert.match(gridViewerJS, /state\.cardRenderer = 'rdkit';\n\s+store\(CARD_RENDERER_STORAGE_KEY, 'rdkit'\);/);
-assert.match(gridUiTSX, /dataAttribute="buret-grid-card-renderer"/);
-assert.match(gridUiTSX, /value: "xyzrender"/);
+// The renderer switch is a native select the viewer syncs by id, not a
+// segmented control with data attributes.
+assert.match(gridUiTSX, /id="card-renderer"/);
+assert.match(gridUiTSX, /<option value="xyzrender">xyzrender<\/option>/);
 assert.match(gridUiTSX, /id="xyzrender-preset"/);
 assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/script>/);
 assert.match(quickLookPreviewController, /gridRuntimeCSP/);

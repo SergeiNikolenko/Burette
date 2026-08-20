@@ -5,11 +5,19 @@
   --buret-surface: #202020;
   --buret-surface-raised: #3a3a3a;
   --buret-input: #333333;
-  --buret-control-surface: rgba(255, 255, 255, 0.075);
-  --buret-control-hover: rgba(255, 255, 255, 0.11);
-  --buret-control-active: rgba(255, 255, 255, 0.14);
-  --buret-control-focus: rgba(255, 255, 255, 0.16);
-  --buret-menu-surface: rgb(37 37 40);
+  /* Control tokens mirror the desktop shell's shadcn theme (styles.css):
+     secondary = fg 5.9%, hover = secondary mixed with 5% fg, pressed = fg 8.5%,
+     inputs use border-input + dark bg-input/30, focus ring = fg 55% + 50% halo. */
+  --buret-control-surface: rgba(252, 252, 252, 0.059);
+  --buret-control-hover: rgba(252, 252, 252, 0.1);
+  --buret-control-active: rgba(252, 252, 252, 0.085);
+  --buret-input-border: rgba(252, 252, 252, 0.092);
+  --buret-input-surface: rgba(252, 252, 252, 0.028);
+  --buret-input-hover: rgba(252, 252, 252, 0.046);
+  --buret-ring: rgba(252, 252, 252, 0.55);
+  --buret-ring-soft: rgba(252, 252, 252, 0.28);
+  --buret-menu-ring: rgba(252, 252, 252, 0.1);
+  --buret-menu-surface: #1a1a1a;
   --buret-detail-surface: #202020;
   --buret-panel: #202020;
   --buret-grid-rail-popover-surface: #303033;
@@ -30,12 +38,12 @@
   --buret-table-column-item-surface: rgba(255, 255, 255, 0.055);
   --buret-table-shadow: none;
   --buret-table-header-surface: rgba(31, 31, 31, 0.94);
-  --buret-table-filter-surface: rgba(255, 255, 255, 0.055);
-  --buret-table-input-surface: rgba(255, 255, 255, 0.075);
-  --buret-table-input-border: rgba(255, 255, 255, 0.10);
   --buret-table-divider: rgba(255, 255, 255, 0.075);
-  --buret-table-row-hover: rgba(255, 255, 255, 0.055);
-  --buret-table-row-selected: color-mix(in srgb, var(--buret-accent) 18%, transparent);
+  /* Row states follow the app's data tables (spectrum peaks): hover is a 7%
+     accent wash, selection a 14% tint with an inset accent rail. The formulas
+     mix over the table surface, so one definition serves both themes. */
+  --buret-table-row-hover: color-mix(in srgb, var(--buret-accent) 7%, var(--buret-table-surface));
+  --buret-table-row-selected: color-mix(in srgb, var(--buret-accent) 14%, var(--buret-table-surface));
   --buret-picture-bg: #ffffff;
   --buret-picture-bg-soft: #ffffff;
   --buret-card-effective-min: var(--buret-card-auto-min);
@@ -48,8 +56,10 @@
   --buret-grid-shell-padding: 18px;
   --buret-grid-rail-gutter: 42px;
   --buret-grid-content-padding-inline: 24px;
-  --buret-control-height: 36px;
+  --buret-control-height: 32px;
+  --buret-button-height: 28px;
   --buret-segment-height: 28px;
+  --buret-select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='gray' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m7 9.5 5-5 5 5'/><path d='m7 14.5 5 5 5-5'/></svg>");
 }
 
 html[data-buret-theme="light"] {
@@ -58,11 +68,16 @@ html[data-buret-theme="light"] {
   --buret-surface: transparent;
   --buret-surface-raised: rgba(0, 0, 0, 0.055);
   --buret-input: rgba(0, 0, 0, 0.04);
-  --buret-control-surface: rgba(0, 0, 0, 0.045);
-  --buret-control-hover: rgba(0, 0, 0, 0.075);
-  --buret-control-active: rgba(0, 0, 0, 0.10);
-  --buret-control-focus: rgba(0, 0, 0, 0.13);
-  --buret-menu-surface: rgb(244 244 246);
+  --buret-control-surface: rgba(13, 13, 13, 0.036);
+  --buret-control-hover: rgba(13, 13, 13, 0.084);
+  --buret-control-active: rgba(13, 13, 13, 0.052);
+  --buret-input-border: rgba(13, 13, 13, 0.056);
+  --buret-input-surface: transparent;
+  --buret-input-hover: rgba(13, 13, 13, 0.03);
+  --buret-ring: rgba(13, 13, 13, 0.55);
+  --buret-ring-soft: rgba(13, 13, 13, 0.28);
+  --buret-menu-ring: rgba(13, 13, 13, 0.1);
+  --buret-menu-surface: #f5f5f5;
   --buret-detail-surface: #ffffff;
   --buret-panel: rgba(255, 255, 255, 0.94);
   --buret-grid-rail-popover-surface: #ffffff;
@@ -82,12 +97,7 @@ html[data-buret-theme="light"] {
   --buret-table-column-item-surface: rgba(255, 255, 255, 0.72);
   --buret-table-shadow: 0 1px 0 rgba(255, 255, 255, 0.98), 0 14px 36px rgba(29, 29, 31, 0.035);
   --buret-table-header-surface: rgba(255, 255, 255, 0.86);
-  --buret-table-filter-surface: rgba(255, 255, 255, 0.76);
-  --buret-table-input-surface: rgba(247, 248, 250, 0.72);
-  --buret-table-input-border: rgba(29, 29, 31, 0.065);
   --buret-table-divider: rgba(29, 29, 31, 0.052);
-  --buret-table-row-hover: rgba(0, 122, 255, 0.035);
-  --buret-table-row-selected: color-mix(in srgb, var(--buret-accent) 12%, white 88%);
   --buret-picture-bg: #ffffff;
   --buret-picture-bg-soft: #ffffff;
 }
@@ -130,7 +140,7 @@ button,
   box-sizing: border-box;
   min-height: var(--buret-control-height);
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--buret-text);
   background: var(--buret-control-surface);
   outline: none;
@@ -142,8 +152,10 @@ button {
   padding: 0 12px;
 }
 
-button:not(:disabled):active {
-  transform: scale(0.97);
+/* shadcn presses buttons down one pixel; menu triggers stay put like the
+   host's `active:not-aria-[haspopup]` variant. */
+button:not(:disabled):not([aria-haspopup]):active {
+  transform: translateY(1px);
 }
 
 button:not(:disabled):hover,
@@ -152,10 +164,15 @@ button:not(:disabled):hover,
   background-color: var(--buret-control-hover);
 }
 
+/* The host's focus treatment: a 1px ring-coloured border with a 3px halo at
+   half strength (focus-visible:border-ring + ring-3 ring-ring/50). The halo is
+   an outline so it never stacks against control shadows. */
 button:focus-visible,
 .buret-grid-toolbar input[type="search"]:focus,
 .buret-grid-toolbar select:focus {
-  box-shadow: 0 0 0 1px var(--buret-control-focus);
+  box-shadow: 0 0 0 1px var(--buret-ring);
+  outline: 3px solid var(--buret-ring-soft);
+  outline-offset: 1px;
 }
 
 button:disabled {
@@ -170,21 +187,6 @@ button:disabled {
   padding: var(--buret-grid-shell-padding) var(--buret-grid-shell-padding) var(--buret-grid-shell-padding) calc(var(--buret-grid-shell-padding) + var(--buret-grid-rail-gutter));
 }
 
-.buret-grid-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 16px;
-  margin-bottom: 14px;
-}
-
-.buret-grid-header h1 {
-  margin: 2px 0 5px;
-  font-size: 24px;
-  line-height: 1.08;
-  font-weight: 400;
-}
-
 .buret-eyebrow {
   color: var(--buret-accent);
   font-size: 11px;
@@ -193,49 +195,32 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.buret-summary,
 .buret-grid-footer {
   color: var(--buret-muted);
   font-size: 13px;
   line-height: 1.35;
 }
 
-.buret-actions,
 .buret-load-status {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.buret-actions {
-  position: relative;
-  flex-wrap: nowrap;
-  justify-content: flex-end;
-}
-
-.buret-actions button {
-  background: var(--buret-control-surface);
-}
-
-/* The overflow trigger stays square so the header keeps one row whatever the
-   collection's file actions are called. */
-.buret-actions-more {
-  min-width: 36px;
-  justify-content: center;
-  padding: 0 8px;
-}
-
-.buret-grid-toolbar {
+#grid-controls {
   position: sticky;
   top: 0;
   z-index: 20;
+}
+
+.buret-grid-toolbar {
   display: grid;
   gap: 10px;
   margin-bottom: 14px;
   padding: 12px;
   border: 0;
   border-radius: 12px;
-  background: color-mix(in srgb, var(--buret-bg) 92%, transparent);
+  background: var(--buret-table-surface);
   box-shadow: 0 10px 24px color-mix(in srgb, var(--buret-shadow) 28%, transparent);
 }
 
@@ -259,11 +244,11 @@ button:disabled {
 .buret-actionbar {
   position: relative;
   box-sizing: border-box;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--buret-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--buret-control-surface) 55%, transparent);
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .buret-actionbar .ab-label {
@@ -274,8 +259,8 @@ button:disabled {
 
 .buret-actionbar .ab-divider {
   width: 1px;
-  height: 22px;
-  margin: 0 3px;
+  height: 20px;
+  margin: 0 2px;
   background: var(--buret-border-strong);
 }
 
@@ -284,30 +269,34 @@ button:disabled {
   min-width: 12px;
 }
 
+/* The view/renderer switches mirror the host ToggleGroup: bare text items on a
+   transparent track, the pressed one carried by a bg-muted pill (the sliding
+   thumb keeps the app's animated hand-off between options). */
 .buret-actionbar .ab-seg {
   position: relative;
   height: auto;
   min-height: 0;
-  gap: 0;
-  padding: 2px;
-  border-radius: 9px;
-  background: var(--buret-control-surface);
+  gap: 2px;
+  padding: 0;
+  border-radius: 8px;
+  background: transparent;
 }
 
 .buret-actionbar .ab-seg button {
   position: relative;
   z-index: 1;
-  min-height: 30px;
-  padding: 0 12px;
+  min-height: 28px;
+  padding: 0 10px;
   border-radius: 7px;
   color: var(--buret-muted);
   background: transparent;
-  transition: color 160ms ease-out;
+  font-weight: 500;
+  transition: color 160ms ease-out, background 140ms ease-out;
 }
 
 .buret-actionbar .ab-seg button:not(:disabled):hover {
   color: var(--buret-text);
-  background: transparent;
+  background: var(--buret-control-surface);
 }
 
 .buret-actionbar .ab-seg button[aria-pressed="true"] {
@@ -318,19 +307,46 @@ button:disabled {
 .buret-actionbar .ab-seg .ab-thumb {
   position: absolute;
   z-index: 0;
-  top: 2px;
-  bottom: 2px;
-  border-radius: 7px;
+  top: 0;
+  bottom: 0;
+  border-radius: 8px;
   background: var(--buret-control-active);
   transition: left 220ms cubic-bezier(0.34, 1.4, 0.5, 1), width 220ms cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 
+/* Mirrors the host Button secondary/sm: 28px tall, 10px inline padding, the
+   smaller 8px radius, and medium weight. */
 #grid-controls .ab-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  min-height: 32px;
+  min-height: 28px;
+  padding-inline: 10px;
   white-space: nowrap;
+}
+
+.buret-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.buret-grid-toolbar .buret-renderer-control {
+  display: inline-flex;
+  width: auto;
+}
+
+.buret-grid-toolbar .buret-renderer-control select {
+  width: auto;
+  min-width: 104px;
+  min-height: 28px;
 }
 
 #grid-controls .ab-btn[aria-pressed="true"] {
@@ -341,8 +357,8 @@ button:disabled {
    toolbar; the name survives as a tooltip and as the accessible label. */
 #grid-controls .ab-btn-icon {
   justify-content: center;
-  width: var(--buret-control-height);
-  min-width: var(--buret-control-height);
+  width: var(--buret-button-height);
+  min-width: var(--buret-button-height);
   padding: 0;
 }
 
@@ -366,6 +382,26 @@ button:disabled {
   display: inline-flex;
 }
 
+/* Selection count on the Actions trigger, drawn like the host Badge default
+   variant (accent pill). */
+#grid-controls .ab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--buret-accent);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mirrors the host DropdownMenuContent: opaque popover surface, 10px radius,
+   4px inner padding, and a 1px foreground ring instead of a border. */
 #grid-controls .ab-menu {
   position: absolute;
   z-index: 60;
@@ -375,21 +411,20 @@ button:disabled {
   min-width: 344px;
   max-height: min(60vh, 460px);
   overflow: auto;
-  padding: 5px;
-  border: 1px solid var(--buret-border-strong);
+  padding: 4px;
+  border: 0;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--buret-menu-surface) 96%, transparent);
-  box-shadow: 0 12px 32px var(--buret-shadow), 0 2px 6px var(--buret-shadow);
-  backdrop-filter: blur(20px) saturate(1.3);
-  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  background: var(--buret-menu-surface);
+  box-shadow: 0 0 0 1px var(--buret-menu-ring), 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
 }
 
+/* Matches the host's .radix-menu-group-label. */
 #grid-controls .ab-group {
-  padding: 8px 8px 4px;
-  color: var(--buret-muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  padding: 6px 8px 3px;
+  color: var(--buret-faint);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
@@ -399,7 +434,7 @@ button:disabled {
 
 #grid-controls .ab-separator {
   height: 1px;
-  margin: 5px 4px;
+  margin: 4px -4px;
   background: var(--buret-border);
 }
 
@@ -413,27 +448,30 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+/* Mirrors the host DropdownMenuItem: 8px radius, focus/hover carried by the
+   accent surface, disabled rows at half opacity. */
 #grid-controls .ab-item {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  min-height: 32px;
-  padding: 6px 8px;
-  border-radius: 6px;
+  min-height: 28px;
+  padding: 4px 6px;
+  border-radius: 8px;
   color: var(--buret-text);
   background: transparent;
   text-align: left;
 }
 
 #grid-controls .ab-item:not(:disabled):hover {
-  background: var(--buret-control-hover);
+  background: var(--buret-control-active);
 }
 
 #grid-controls .ab-item:disabled {
-  color: var(--buret-faint);
+  color: var(--buret-text);
   background: transparent;
+  opacity: 0.5;
 }
 
 #grid-controls .ab-ico {
@@ -448,7 +486,7 @@ button:disabled {
 }
 
 #grid-controls .ab-item:disabled .ab-ico {
-  color: var(--buret-faint);
+  color: var(--buret-muted);
 }
 
 #grid-controls .ab-item-title {
@@ -456,7 +494,7 @@ button:disabled {
   min-width: 0;
   overflow: hidden;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -488,25 +526,23 @@ button:disabled {
   width: auto;
   height: 28px;
   min-height: 28px;
-  padding: 0 26px 0 9px;
-  border: 1px solid var(--buret-border-strong);
-  border-radius: 7px;
+  padding: 0 24px 0 8px;
+  border: 1px solid var(--buret-input-border);
+  border-radius: 8px;
   color: var(--buret-text);
-  background-color: var(--buret-control-surface);
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--buret-muted) 50%),
-    linear-gradient(135deg, var(--buret-muted) 50%, transparent 50%);
-  background-position: right 12px center, right 7px center;
-  background-size: 5px 5px, 5px 5px;
+  background-color: var(--buret-input-surface);
+  background-image: var(--buret-select-chevron);
+  background-position: right 5px center;
+  background-size: 14px 14px;
   background-repeat: no-repeat;
-  font: 500 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   -webkit-appearance: none;
   appearance: none;
 }
 
 #grid-controls .ab-mini:hover {
-  background-color: var(--buret-control-hover);
-  border-color: var(--buret-border-strong);
+  background-color: var(--buret-input-hover);
+  border-color: var(--buret-input-border);
 }
 
 .buret-grid-control-group,
@@ -603,10 +639,10 @@ button:disabled {
   gap: 7px;
   height: var(--buret-control-height);
   min-height: var(--buret-control-height);
-  padding: 0 9px;
+  padding: 0 2px;
   border: 0;
   border-radius: 8px;
-  background: var(--buret-control-surface);
+  background: transparent;
   color: var(--buret-muted);
   font: 400 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-transform: none;
@@ -659,56 +695,56 @@ button:disabled {
   display: none;
 }
 
+/* Field labels follow the host's Label: sentence case, medium weight. */
 .buret-grid-toolbar label {
   display: grid;
   gap: 5px;
   min-width: 0;
   color: var(--buret-muted);
-  font-size: 11px;
-  font-weight: 400;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.25;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .buret-sort-control {
   width: min(148px, 100%);
 }
 
+/* Search and sort mirror the host Input / NativeSelect: bordered, nearly
+   transparent fill, and the shared unfold chevron. */
 .buret-grid-toolbar input[type="search"],
 .buret-grid-toolbar select {
   width: 100%;
   padding: 0 10px;
+  border: 1px solid var(--buret-input-border);
+  background-color: var(--buret-input-surface);
   text-transform: none;
+}
+
+.buret-grid-toolbar input[type="search"]:hover,
+.buret-grid-toolbar select:hover {
+  background-color: var(--buret-input-hover);
 }
 
 .buret-sort-control select {
   min-height: var(--buret-control-height);
-  padding: 0 26px 0 10px;
+  padding: 0 30px 0 10px;
 }
 
 .buret-grid-toolbar select {
-  padding-right: 28px;
+  padding-right: 30px;
   appearance: none;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--buret-muted) 50%),
-    linear-gradient(135deg, var(--buret-muted) 50%, transparent 50%);
-  background-position:
-    right 15px center,
-    right 10px center;
-  background-size: 5px 5px, 5px 5px;
+  background-image: var(--buret-select-chevron);
+  background-position: right 8px center;
+  background-size: 16px 16px;
   background-repeat: no-repeat;
 }
 
-.buret-sort-control select {
-  padding-right: 26px;
-  background-position:
-    right 13px center,
-    right 8px center;
-}
-
 .buret-grid-toolbar input.invalid {
-  border-color: #ff9f9f;
-  box-shadow: 0 0 0 1px rgba(255, 159, 159, 0.18);
+  border-color: #ff453a;
+  outline: 3px solid rgba(255, 69, 58, 0.25);
+  outline-offset: 1px;
 }
 
 .buret-load-status {
@@ -824,12 +860,13 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   align-items: baseline;
   gap: 6px 22px;
   margin-top: 10px;
-  padding: 10px 14px;
-  border: 1px solid var(--buret-table-panel-border);
+  padding: 9px 12px;
+  border: 1px solid var(--buret-border);
   border-radius: 10px;
   background: var(--buret-table-header-surface);
   color: var(--buret-muted);
   font-size: 12px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1055,29 +1092,16 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   background: var(--buret-control-hover);
 }
 
-/* Filters sit beside the table, the way a data browser keeps them: one card
-   per column, the distribution visible, the table narrowing as you type. */
-.buret-grid-table-layout {
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-  width: 100%;
-  padding-inline: var(--buret-grid-content-padding-inline);
-}
-
-.buret-grid-table-layout > .buret-grid-table-wrap {
-  padding-inline: 0;
-}
-
+/* The table follows the shell's shadcn Table recipe — a bordered rounded
+   container, medium-weight muted header, hairline row dividers — with the
+   spectrum peak table's row-state language on top. */
 .buret-grid-table {
   width: max-content;
   min-width: 100%;
-  border: 1px solid var(--buret-table-panel-border);
+  border: 1px solid var(--buret-border);
   border-collapse: separate;
   border-spacing: 0;
-  border-radius: 14px;
+  border-radius: 10px;
   color: var(--buret-text);
   background: var(--buret-table-surface);
   box-shadow: var(--buret-table-shadow);
@@ -1089,7 +1113,7 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   box-sizing: border-box;
   min-width: 118px;
   max-width: 220px;
-  padding: 11px 14px;
+  padding: 8px 12px;
   border: 0;
   border-bottom: 1px solid var(--buret-table-divider);
   overflow: hidden;
@@ -1100,10 +1124,10 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
 
 .buret-grid-table td {
   background: var(--buret-table-surface);
+  transition: background 120ms ease-out;
 }
 
-.buret-grid-table th.buret-grid-table-search-column,
-.buret-grid-table-filter-row th.buret-grid-table-search-column {
+.buret-grid-table th.buret-grid-table-search-column {
   color: var(--buret-text);
   background: color-mix(in srgb, var(--buret-accent) 18%, var(--buret-table-header-surface));
 }
@@ -1144,17 +1168,6 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
 .buret-grid-table-filter-header[aria-pressed="true"] {
   background: color-mix(in srgb, var(--buret-accent) 13%, var(--buret-table-header-surface));
   color: var(--buret-text);
-}
-
-.buret-grid-table th[data-column="index"],
-.buret-grid-table td[data-column="index"],
-.buret-grid-table th[data-column="molecule"],
-.buret-grid-table td[data-column="molecule"],
-.buret-grid-table th[data-column="name"],
-.buret-grid-table td[data-column="name"],
-.buret-grid-table th[data-column="smiles"],
-.buret-grid-table td[data-column="smiles"] {
-  position: static;
 }
 
 .buret-grid-table th[data-column="name"],
@@ -1255,73 +1268,94 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   white-space: nowrap;
 }
 
-.buret-grid-table th {
-  position: sticky;
-  top: 0;
+/* Sticky header in the shadcn voice: medium weight, muted, on the blurred
+   chrome surface the rest of the viewer uses for floating bars. CSS
+   position:sticky cannot pin it — the horizontal scroll box around the table
+   is the nearest scroll container, not the window — so grid-viewer.js
+   translates the thead on scroll; the relative position keeps it painting
+   above the rows while translated. */
+.buret-grid-table thead {
+  position: relative;
   z-index: 2;
+  will-change: transform;
+}
+
+.buret-grid-table th {
+  position: relative;
   color: var(--buret-muted);
   background: var(--buret-table-header-surface);
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   letter-spacing: 0;
   -webkit-backdrop-filter: blur(18px) saturate(1.1);
   backdrop-filter: blur(18px) saturate(1.1);
 }
 
-.buret-grid-table-filter-row th {
-  top: 35px;
-  padding-block: 4px;
-  background: var(--buret-table-filter-surface);
-}
-
-.buret-grid-table-filter-row input {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--buret-table-input-border);
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--buret-table-input-surface) 72%, transparent);
+.buret-grid-table th.buret-grid-table-sorted {
   color: var(--buret-text);
-  font: 400 11px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  outline: none;
-  box-shadow: none;
-  transition: border-color 140ms ease-out, box-shadow 140ms ease-out, background 140ms ease-out;
 }
 
-html[data-buret-theme="light"] .buret-grid-table-filter-row input {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.64);
+.buret-grid-table-sort-indicator {
+  display: inline-block;
+  margin-left: 5px;
+  vertical-align: -1.5px;
+  color: var(--buret-muted);
 }
 
-.buret-grid-table-filter-row input::placeholder {
-  color: var(--buret-faint);
+/* The resize grip straddles the header cell's right edge; its bar only shows
+   while pointed at or dragged, the way the app's panel resizers behave. */
+.buret-grid-table-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+  width: 9px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
 }
 
-.buret-grid-table-filter-row input:disabled {
-  color: var(--buret-faint);
-  background: color-mix(in srgb, var(--buret-table-input-surface) 54%, transparent);
-  cursor: default;
+.buret-grid-table-resize::after {
+  content: "";
+  position: absolute;
+  top: 22%;
+  bottom: 22%;
+  left: auto;
+  right: 3px;
+  width: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--buret-text) 34%, transparent);
+  opacity: 0;
+  transition: opacity 120ms ease-out;
 }
 
-.buret-grid-table-filter-row input:focus {
-  border-color: color-mix(in srgb, var(--buret-accent) 34%, var(--buret-table-input-border));
-  background: var(--buret-table-input-surface);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent) 22%, transparent);
+.buret-grid-table-resize:hover::after {
+  opacity: 1;
 }
 
-.buret-grid-table-number-filter {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 5px;
+body.buret-grid-table-resizing {
+  cursor: col-resize;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.buret-grid-table-number-filter input {
-  padding-inline: 6px;
-  text-align: center;
+body.buret-grid-table-resizing .buret-grid-table-resize::after {
+  opacity: 1;
 }
 
 .buret-grid-table-row {
   cursor: default;
+}
+
+/* Mouse selection is announced by the row tint and rail, not the UA focus
+   ring; the ring only returns for keyboard traffic, in the shell's style. */
+.buret-grid-table-row:focus {
+  outline: none;
+}
+
+.buret-grid-table-row:focus-visible {
+  outline: 1px solid var(--buret-ring);
+  outline-offset: -1px;
 }
 
 .buret-grid-table-row:hover {
@@ -1340,11 +1374,21 @@ html[data-buret-theme="light"] .buret-grid-table-filter-row input {
   background: var(--buret-table-row-selected);
 }
 
+.buret-grid-table-row.selected:hover td {
+  background: color-mix(in srgb, var(--buret-accent) 18%, var(--buret-table-surface));
+}
+
 .buret-grid-table-row td.buret-grid-table-search-match,
 .buret-grid-table-row:hover td.buret-grid-table-search-match,
 .buret-grid-table-row.selected td.buret-grid-table-search-match {
   background: color-mix(in srgb, var(--buret-accent) 18%, var(--buret-table-row-selected));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--buret-accent) 24%, transparent);
+}
+
+/* The selected rows carry the spectrum table's inset accent rail. A SMARTS
+   match keeps its amber rail — that rule follows this one and wins the tie. */
+.buret-grid-table-row.selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--buret-accent);
 }
 
 .buret-grid-table td[data-column="molecule"].buret-grid-table-search-match .buret-grid-table-molecule {
@@ -1393,53 +1437,18 @@ html[data-buret-theme="light"] .buret-grid-table-filter-row input {
   display: none;
 }
 
-.buret-grid-rail-active-marker {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  z-index: 4;
-  width: 26px;
-  height: 18px;
-  pointer-events: auto;
-  cursor: grab;
-  transform: translateY(calc(-50% + var(--buret-grid-rail-active-offset, 0px)));
-  will-change: transform;
-  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), width 180ms ease;
-}
-
-.buret-grid-rail-active-marker::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 100%;
-  height: 2px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--buret-accent) 76%, var(--buret-text));
-  transform: translateY(-50%);
-}
-
-.buret-grid-rail-active-marker[hidden] {
-  display: none;
-}
-
-body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
-  cursor: grabbing;
-  transition: none;
-}
-
 .buret-grid-rail-ticks {
   position: absolute;
   top: 50%;
   left: 0;
-  z-index: 2;
+  z-index: 7;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 7px;
-  width: 34px;
+  gap: 0;
+  width: 36px;
   max-height: min(58vh, 420px);
-  overflow: hidden;
+  overflow: visible;
   pointer-events: auto;
   transform: translateY(-50%) translateX(0) scale(1);
   transform-origin: left center;
@@ -1448,30 +1457,54 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 }
 
 .buret-grid-rail-tick {
-  width: 13px;
-  height: 2px;
-  min-height: 2px;
+  display: flex;
+  align-items: center;
+  width: 36px;
+  height: 10px;
+  min-height: 10px;
   padding: 0;
   border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--buret-text) 28%, transparent);
+  border-radius: 2px;
+  background: transparent;
   box-shadow: none;
   pointer-events: auto;
+  transform: none;
+  outline: none;
+}
+
+button.buret-grid-rail-tick:not(:disabled):hover,
+button.buret-grid-rail-tick:not(:disabled):active {
+  background: transparent;
+  transform: none;
+}
+
+button.buret-grid-rail-tick:focus-visible {
+  background: transparent;
+  box-shadow: none;
+  outline: 3px solid color-mix(in srgb, var(--buret-text) 18%, transparent);
+  outline-offset: -1px;
+}
+
+.buret-grid-rail-tick-pill {
+  width: var(--buret-grid-rail-tick-width, 12px);
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--buret-text) 34%, transparent);
   transform-origin: left center;
-  transition: width 220ms cubic-bezier(0.2, 0.8, 0.2, 1), background 220ms ease, opacity 220ms ease;
+  transition: width 200ms ease-out, background-color 200ms ease-out;
 }
 
-.buret-grid-rail-tick:hover {
-  width: 26px;
-  background: color-mix(in srgb, var(--buret-text) 58%, transparent);
+.buret-grid-rail-tick:hover .buret-grid-rail-tick-pill,
+.buret-grid-rail-tick:focus-visible .buret-grid-rail-tick-pill {
+  background: color-mix(in srgb, var(--buret-text) 62%, transparent);
 }
 
-/* Dock-style magnification wave: the hovered tick grows most, its neighbours
-   follow with a falloff, so scrubbing the rail reads as one smooth gesture. */
-.buret-grid-rail-tick:hover + .buret-grid-rail-tick,
-.buret-grid-rail-tick:has(+ .buret-grid-rail-tick:hover) {
-  width: 20px;
-  background: color-mix(in srgb, var(--buret-text) 42%, transparent);
+.buret-grid-rail-tick.is-current .buret-grid-rail-tick-pill {
+  background: var(--buret-text);
+}
+
+body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
+  transition: none;
 }
 .buret-grid-rail-tick:hover + .buret-grid-rail-tick + .buret-grid-rail-tick,
 .buret-grid-rail-tick:has(+ .buret-grid-rail-tick + .buret-grid-rail-tick:hover) {
@@ -1482,13 +1515,12 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 .buret-grid-rail-popover {
   position: absolute;
   top: 50%;
-  left: 30px;
+  left: 48px;
   z-index: 6;
-  min-width: 118px;
-  max-width: 220px;
-  padding: 8px 10px 9px;
+  width: min(288px, calc(100vw - 82px));
+  padding: 12px;
   border: 1px solid var(--buret-grid-rail-popover-border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--buret-grid-rail-popover-surface);
   color: var(--buret-text);
   box-shadow: 0 16px 36px var(--buret-grid-rail-popover-shadow);
@@ -1501,17 +1533,23 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 }
 
 .buret-grid-rail-popover-index {
-  font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  white-space: nowrap;
+  margin-top: 4px;
+  color: var(--buret-grid-rail-popover-muted);
+  font: 300 13px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
 .buret-grid-rail-popover-name {
-  margin-top: 3px;
+  display: -webkit-box;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--buret-grid-rail-popover-muted);
-  font: 400 12px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 500 15px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .buret-grid-rail-tick-pill {
+    transition: none;
+  }
 }
 
 .buret-card {
@@ -1521,9 +1559,9 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--buret-border);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--buret-surface);
-  box-shadow: none;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--buret-shadow) 22%, transparent);
   contain: layout paint style;
   transition: background 140ms ease-out, border-color 140ms ease-out, box-shadow 140ms ease-out, transform 140ms ease-out;
 }
@@ -1542,7 +1580,8 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   background: color-mix(in srgb, var(--buret-surface-raised) 78%, var(--buret-surface));
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--buret-border-strong) 72%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--buret-accent) 18%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--buret-accent) 16%, transparent),
+    0 4px 14px color-mix(in srgb, var(--buret-shadow) 34%, transparent);
 }
 
 .buret-card:active {
@@ -1550,7 +1589,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 }
 
 .buret-card:focus-visible {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent) 24%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent) 34%, transparent);
 }
 
 .buret-card.selected {
@@ -1651,33 +1690,39 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   position: fixed;
   inset: 0;
   z-index: 1100;
-  display: grid;
-  place-items: center;
+  display: block;
   box-sizing: border-box;
-  padding: clamp(28px, 4vw, 56px);
-  background: rgba(20, 22, 26, 0.72);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
+  padding: 0;
+  background: rgba(20, 22, 26, 0.22);
+  animation: buret-grid-sheet-overlay-in 160ms ease-out;
 }
 
 .buret-grid-molecule-detail {
-  display: grid;
-  grid-template-columns: minmax(320px, var(--buret-detail-image-width, 58%)) 10px minmax(320px, 1fr);
-  width: min(1120px, calc(100vw - 96px));
-  max-height: min(760px, calc(100vh - 96px));
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: min(480px, calc(100vw - 24px));
+  height: 100%;
+  max-height: none;
   overflow: hidden;
   border: 1px solid var(--buret-border);
-  border-radius: 10px;
+  border-right: 0;
+  border-radius: 14px 0 0 14px;
   color: var(--buret-text);
   background: var(--buret-detail-surface);
-  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.32);
+  box-shadow: -18px 0 54px rgba(0, 0, 0, 0.24);
+  animation: buret-grid-sheet-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .buret-grid-molecule-detail-image {
+  flex: 0 0 clamp(220px, 34vh, 340px);
   display: grid;
   place-items: center;
-  min-height: 520px;
-  padding: 16px;
+  min-height: 220px;
+  padding: 20px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--buret-border);
   background: #fff;
 }
 
@@ -1686,52 +1731,17 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 .buret-grid-molecule-detail-image svg {
   width: 100%;
   height: 100%;
-  min-height: 420px;
-  max-height: 680px;
+  min-height: 0;
+  max-height: 100%;
   object-fit: contain;
 }
 
-.buret-grid-molecule-detail-resizer {
-  position: relative;
-  z-index: 2;
-  width: 10px;
-  min-width: 10px;
-  cursor: col-resize;
-  background:
-    linear-gradient(to right, transparent, var(--buret-border), transparent),
-    var(--buret-detail-surface);
-  touch-action: none;
+@keyframes buret-grid-sheet-overlay-in {
+  from { background: transparent; }
 }
 
-.buret-grid-molecule-detail-resizer::after {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 3px;
-  height: 54px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--buret-muted) 56%, transparent);
-  content: "";
-  opacity: 0;
-  transform: translate(-50%, -50%);
-  transition: opacity 120ms ease-out, background 120ms ease-out;
-}
-
-.buret-grid-molecule-detail-resizer:hover::after,
-.buret-grid-molecule-detail-resizer:focus-visible::after,
-.buret-grid-molecule-detail.is-resizing .buret-grid-molecule-detail-resizer::after {
-  opacity: 1;
-}
-
-.buret-grid-molecule-detail-resizer:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--buret-accent) 72%, transparent);
-}
-
-.buret-grid-molecule-detail.is-resizing,
-.buret-grid-molecule-detail.is-resizing * {
-  cursor: col-resize;
-  user-select: none;
+@keyframes buret-grid-sheet-in {
+  from { transform: translateX(100%); }
 }
 
 .buret-grid-molecule-detail-body {
@@ -1740,7 +1750,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 20px 22px;
+  padding: 18px;
 }
 
 .buret-grid-molecule-detail-title-row {
@@ -1751,10 +1761,23 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 }
 
 .buret-grid-molecule-detail h2 {
-  margin: 2px 0 10px;
-  font-size: 22px;
+  margin: 2px 0 12px;
+  font-size: 18px;
   line-height: 1.15;
   letter-spacing: 0;
+}
+
+.buret-grid-molecule-detail [data-buret-detail-close] {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  color: var(--buret-muted);
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
 }
 
 /* Same segmented track as the action bar's view/render switches, rather than
@@ -1763,13 +1786,15 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
    fill directly instead of animating one. */
 .buret-grid-molecule-detail-tabs {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-self: flex-start;
   gap: 0;
   margin: 0 0 14px;
   padding: 2px;
   border-radius: 9px;
   background: var(--buret-control-surface);
+  overflow-x: auto;
+  max-width: 100%;
 }
 
 .buret-grid-molecule-detail-tabs button {
@@ -1997,8 +2022,11 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 14px;
-  padding-top: 10px;
+  position: sticky;
+  bottom: -18px;
+  margin: auto -18px -18px;
+  padding: 12px 18px 18px;
+  border-top: 1px solid var(--buret-border);
   background: var(--buret-detail-surface);
 }
 
@@ -2008,25 +2036,19 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 
 @media (max-width: 820px) {
   .buret-grid-molecule-detail {
-    grid-template-columns: 1fr;
-    width: min(640px, calc(100vw - 24px));
-    max-height: calc(100vh - 24px);
-  }
-
-  .buret-grid-molecule-detail-resizer {
-    display: none;
+    width: min(440px, calc(100vw - 12px));
   }
 
   .buret-grid-molecule-detail-image {
-    min-height: 300px;
-    border-bottom: 1px solid var(--buret-border);
+    flex-basis: clamp(200px, 32vh, 280px);
+    min-height: 200px;
   }
 
   .buret-grid-molecule-detail-image .buret-rdkit-card-image,
   .buret-grid-molecule-detail-image .buret-xyzrender-card-image,
   .buret-grid-molecule-detail-image svg {
-    min-height: 260px;
-    max-height: 340px;
+    min-height: 0;
+    max-height: 100%;
   }
 
   .buret-grid-molecule-detail-body {
@@ -2045,6 +2067,21 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   .buret-grid-molecule-detail-actions button {
     min-height: 30px;
     padding: 5px 9px;
+  }
+}
+
+@media (max-width: 520px) {
+  .buret-grid-molecule-detail {
+    width: 100%;
+    border-left: 0;
+    border-radius: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .buret-grid-molecule-detail-overlay,
+  .buret-grid-molecule-detail {
+    animation: none;
   }
 }
 
@@ -2089,7 +2126,6 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   transform: translateY(0);
 }
 
-.buret-actions button,
 .buret-toolbar-row-view button {
   position: relative;
 }
@@ -2102,14 +2138,14 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   width: max-content;
   max-width: min(260px, calc(100vw - 24px));
   box-sizing: border-box;
-  padding: 7px 9px;
-  border: 1px solid var(--buret-card-border);
-  border-radius: 8px;
-  color: var(--buret-grid-text);
-  background: color-mix(in srgb, var(--buret-grid-panel) 94%, transparent);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(14px) saturate(1.2);
-  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--buret-text);
+  background: color-mix(in srgb, var(--buret-bg) 82%, transparent);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(15px) saturate(1.35);
+  -webkit-backdrop-filter: blur(15px) saturate(1.35);
   font-size: 11px;
   font-weight: 400;
   line-height: 1.25;
@@ -2123,8 +2159,6 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   transition: opacity 110ms ease-out, transform 130ms ease-out, visibility 0s linear 110ms;
 }
 
-.buret-actions button:hover > .buret-control-tooltip,
-.buret-actions button:focus-visible > .buret-control-tooltip,
 .buret-toolbar-row-view button:hover > .buret-control-tooltip,
 .buret-toolbar-row-view button:focus-visible > .buret-control-tooltip {
   opacity: 1;
@@ -2255,10 +2289,10 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   max-width: 100%;
   margin-bottom: 5px;
   padding: 3px 6px;
-  border: 1px solid rgba(255, 190, 94, 0.42);
+  border: 1px solid color-mix(in srgb, var(--buret-accent) 38%, transparent);
   border-radius: 999px;
-  color: #31210d;
-  background: #ffd88e;
+  color: var(--buret-text);
+  background: color-mix(in srgb, var(--buret-accent) 16%, var(--buret-surface));
   font-size: 10px;
   font-weight: 400;
   line-height: 1.2;
@@ -2521,15 +2555,6 @@ body.buret-hide-properties .buret-card-body {
 }
 
 @media (max-width: 820px) {
-  .buret-grid-header {
-    display: block;
-  }
-
-  .buret-actions {
-    justify-content: flex-start;
-    margin-top: 12px;
-  }
-
   .buret-toolbar-row-main {
     grid-template-columns: minmax(0, 1fr) minmax(112px, 148px);
   }

@@ -225,7 +225,7 @@ for (const extension of ["abi", "cms", "com", "csv", "cub", "cube", "fdf", "grap
 assert.match(appFileOpen, /isPreferredTextPath\(path, extension\)[\s\S]*extension\.length > 0 && !structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\)[\s\S]*textPaths\.push\(path\);/);
 assert.match(appFileOpen, /if \(structureAndTextExtensions\.has\(extension\)\) \{\s*structureAndTextPaths\.push\(path\);/);
 assert.match(appFileOpen, /const openedStructureAndTextPaths = new Set<string>\(\);/);
-assert.match(appFileOpen, /const result = await openDocuments\(structureAndTextPaths\);/);
+assert.match(appFileOpen, /const result = await openDocuments\(structureAndTextPaths, undefined, undefined, \{ deferErrorStatus: true \}\);/);
 assert.match(appFileOpen, /openedStructureAndTextPaths\.add\(document\.path\);/);
 assert.match(appFileOpen, /structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\)/);
 assert.match(appDockPayloadOpen, /let dockOpenPaths = unopenedPaths;/);

@@ -40,6 +40,7 @@ commands.allow = [
   "list_project_structure_files",
   "read_folding_result_bundle",
   "read_text_file",
+  "read_document_file",
   "open_text_files",
   "read_structure_text",
   "fetch_pdb_structure",

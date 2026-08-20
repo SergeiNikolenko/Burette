@@ -24,3 +24,6 @@ apps/desktop/src-tauri/target/
 /target/
 __pycache__/
 *.py[cod]
+
+# Local demo files for the Retab viewer (not part of the app)
+.retab-demo/

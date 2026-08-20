@@ -1,4 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { readStructureTextDocument } from "../lib/structure-text";
 import { parseSpectrumFile, spectrumSummary, type SpectrumDocument, type SpectrumFile, type SpectrumPeak } from "../lib/spectrum";
 import { useSpectrumPeakSelection } from "../lib/spectrum-selection";
@@ -103,29 +115,18 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
       <header className="spectrum-toolbar">
         <div className="spectrum-title">
           <span>{document.title}</span>
-          <span className="text-file-badge">{file.format.toUpperCase()}</span>
+          <Badge variant="secondary">{file.format.toUpperCase()}</Badge>
         </div>
         <div className="spectrum-controls">
           {file.spectra.length > 1 && (
-            <select
-              className="spectrum-select"
-              value={selectedIndex}
-              onChange={(event) => setSelectedIndex(Number(event.currentTarget.value))}
-              aria-label="Spectrum"
-            >
-              {file.spectra.map((spectrum, index) => (
-                <option key={`${spectrum.id}:${index}`} value={index}>{spectrum.title}</option>
-              ))}
-            </select>
+            <SpectrumSelect
+              spectra={file.spectra}
+              selectedIndex={selectedIndex}
+              onSelect={setSelectedIndex}
+            />
           )}
-          <label className="spectrum-toggle">
-            <input type="checkbox" checked={normalize} onChange={(event) => setNormalize(event.currentTarget.checked)} />
-            <span>Normalize</span>
-          </label>
-          <label className="spectrum-toggle">
-            <input type="checkbox" checked={labelTopPeaks} onChange={(event) => setLabelTopPeaks(event.currentTarget.checked)} />
-            <span>Top labels</span>
-          </label>
+          <SpectrumToggle id="spectrum-normalize" label="Normalize" checked={normalize} onChange={setNormalize} />
+          <SpectrumToggle id="spectrum-top-labels" label="Top labels" checked={labelTopPeaks} onChange={setLabelTopPeaks} />
         </div>
       </header>
       <main className="spectrum-layout">
@@ -234,20 +235,12 @@ export function SpectrumPeakTablePanel({ document }: { document: ViewerDocument 
         <>
           {file && file.spectra.length > 1 && (
             <div className="spectrum-table-toolbar">
-              <select
-                className="spectrum-select"
-                value={selectedIndex}
-                onChange={(event) => setSelectedIndex(Number(event.currentTarget.value))}
-                aria-label="Spectrum"
-              >
-                {file.spectra.map((spectrum, index) => (
-                  <option key={`${spectrum.id}:${index}`} value={index}>{spectrum.title}</option>
-                ))}
-              </select>
-              <label className="spectrum-toggle">
-                <input type="checkbox" checked={normalize} onChange={(event) => setNormalize(event.currentTarget.checked)} />
-                <span>Normalize</span>
-              </label>
+              <SpectrumSelect
+                spectra={file.spectra}
+                selectedIndex={selectedIndex}
+                onSelect={setSelectedIndex}
+              />
+              <SpectrumToggle id="spectrum-table-normalize" label="Normalize" checked={normalize} onChange={setNormalize} />
             </div>
           )}
           <PeakTable
@@ -527,17 +520,17 @@ function PeakTable({
       onPeakHover(index);
       if (dragStartIndex !== null && event.buttons === 1) onPeakRangeSelect(dragStartIndex, index);
     }}>
-      <table>
-        <thead>
-          <tr>
-            <th>m/z</th>
-            <th>{normalize ? "Relative intensity" : "Intensity"}</th>
-            <th>Annotation</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>m/z</TableHead>
+            <TableHead>{normalize ? "Relative intensity" : "Intensity"}</TableHead>
+            <TableHead>Annotation</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {peaks.map((peak, index) => (
-            <tr
+            <TableRow
               key={`${peak.x}:${peak.y}:${index}`}
               data-peak-index={index}
               data-active={index === activePeakIndex || undefined}
@@ -553,14 +546,57 @@ function PeakTable({
                 if (dragStartIndex !== null) onPeakRangeSelect(dragStartIndex, index);
               }}
             >
-              <td>{formatNumber(peak.x)}</td>
-              <td>{formatNumber(peak.y)}</td>
-              <td>{peakAnnotationLabel(peak)}</td>
-            </tr>
+              <TableCell>{formatNumber(peak.x)}</TableCell>
+              <TableCell>{formatNumber(peak.y)}</TableCell>
+              <TableCell>{peakAnnotationLabel(peak)}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
+  );
+}
+
+function SpectrumSelect({
+  spectra,
+  selectedIndex,
+  onSelect,
+}: {
+  spectra: SpectrumFile["spectra"];
+  selectedIndex: number;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <NativeSelect
+      className="max-w-65"
+      size="sm"
+      value={selectedIndex}
+      onChange={(event) => onSelect(Number(event.currentTarget.value))}
+      aria-label="Spectrum"
+    >
+      {spectra.map((spectrum, index) => (
+        <NativeSelectOption key={`${spectrum.id}:${index}`} value={index}>{spectrum.title}</NativeSelectOption>
+      ))}
+    </NativeSelect>
+  );
+}
+
+function SpectrumToggle({
+  id,
+  label,
+  checked,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <Label htmlFor={id} className="spectrum-toggle font-normal">
+      <Checkbox id={id} checked={checked} onCheckedChange={(next) => onChange(next === true)} />
+      <span>{label}</span>
+    </Label>
   );
 }
 

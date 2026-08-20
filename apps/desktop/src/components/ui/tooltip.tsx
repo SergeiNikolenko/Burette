@@ -2,6 +2,7 @@ import * as React from "react"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 
 function TooltipProvider({
   delayDuration = 0,
@@ -37,8 +38,11 @@ function TooltipContent({
 }: React.ComponentProps<typeof TooltipPrimitive.Content> & {
   showArrow?: boolean
 }) {
+  // Theme tokens live on .app-shell, so portal there instead of document.body
+  // (same as dialog.tsx) or the content renders with unresolved colors.
+  const container = useAppShellPortalContainer()
   return (
-    <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Portal container={container}>
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
         sideOffset={sideOffset}

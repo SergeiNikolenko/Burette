@@ -1,7 +1,15 @@
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { ArrowDown01Icon, ArrowUpDownIcon, Cancel01Icon, ChartHistogramIcon, Search01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Bar, BarChart, XAxis } from "recharts";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "./ui/chart";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { Field, FieldLabel } from "./ui/field";
+import { Input } from "./ui/input";
 import { Slider } from "./ui/slider";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import type { GridFilterColumn, GridFilterModel, ShellActions } from "./types";
 
 const MAX_COLUMNS = 40;
@@ -224,7 +232,7 @@ function NumericFilter({
         />
       </div>
       <div className="grid-filter-inputs">
-        <input
+        <Input
           type="number"
           inputMode="decimal"
           placeholder={formatNumber(scale.min)}
@@ -232,7 +240,7 @@ function NumericFilter({
           aria-label={`Minimum ${column.label}`}
           onChange={(event) => actions.setGridColumnFilter(column.id, "min", event.currentTarget.value)}
         />
-        <input
+        <Input
           type="number"
           inputMode="decimal"
           placeholder={formatNumber(scale.max)}
@@ -245,52 +253,87 @@ function NumericFilter({
   );
 }
 
-function FilterCard({ column, actions }: { column: GridFilterColumn; actions: ShellActions }) {
+function FilterCard({ column, actions, bulk }: { column: GridFilterColumn; actions: ShellActions; bulk: { open: boolean } | null }) {
   const scale = useMemo(() => columnScale(column), [column]);
   const active = Boolean(column.filter && (column.filter.min || column.filter.max || column.filter.text));
+  const [open, setOpen] = useState(active);
   // A flat histogram is a row id or a counter, so its chart starts folded away.
   const [chartOpen, setChartOpen] = useState<boolean | null>(null);
   const showChart = chartOpen ?? !scale?.flat;
+
+  useEffect(() => {
+    if (active) setOpen(true);
+  }, [active]);
+
+  // Each click mints a fresh object, so the same direction applies again to
+  // cards the user has toggled by hand since the last sweep.
+  useEffect(() => {
+    if (bulk) setOpen(bulk.open);
+  }, [bulk]);
+
   return (
-    <section className={active ? "grid-filter-card active" : "grid-filter-card"}>
-      <header>
-        <span title={column.label}>{column.label}</span>
-        {active ? (
-          <button
-            type="button"
-            className="grid-filter-clear"
-            onClick={() => actions.clearGridColumnFilters(column.id)}
-            aria-label={`Clear the ${column.label} filter`}
-          >
-            Clear
-          </button>
-        ) : null}
-        {scale ? (
-          <button
-            type="button"
-            className="grid-filter-toggle"
-            aria-expanded={showChart}
-            aria-label={`${showChart ? "Hide" : "Show"} the ${column.label} distribution`}
-            onClick={() => setChartOpen(!showChart)}
-          >
-            <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden>
-              <path d="M2 8h2V4H2zm3.5 0h2V2h-2zm3.5 0h2V5H9z" fill="currentColor" />
-            </svg>
-          </button>
-        ) : null}
-      </header>
-      {scale ? (
-        <NumericFilter column={column} scale={scale} chartOpen={showChart} actions={actions} />
-      ) : (
-        <input
-          type="search"
-          placeholder="contains"
-          value={column.filter?.text ?? ""}
-          aria-label={`Filter ${column.label}`}
-          onChange={(event) => actions.setGridColumnFilter(column.id, "text", event.currentTarget.value)}
-        />
-      )}
-    </section>
+    <Collapsible className="grid-filter-card" data-active={active || undefined} open={open} onOpenChange={setOpen}>
+      <div className="grid-filter-card-header">
+        <CollapsibleTrigger asChild>
+          <Button className="grid-filter-card-trigger" variant="ghost" size="sm">
+            <HugeiconsIcon icon={ArrowDown01Icon} data-icon="inline-start" aria-hidden="true" />
+            <span title={column.label}>{column.label}</span>
+            {active ? <Badge variant="secondary">Active</Badge> : null}
+          </Button>
+        </CollapsibleTrigger>
+        <div className="grid-filter-card-actions">
+          {active ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-2xs"
+                  onClick={() => actions.clearGridColumnFilters(column.id)}
+                  aria-label={`Clear the ${column.label} filter`}
+                >
+                  <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent showArrow={false}>Clear filter</TooltipContent>
+            </Tooltip>
+          ) : null}
+          {scale ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-2xs"
+                  aria-expanded={showChart}
+                  aria-label={`${showChart ? "Hide" : "Show"} the ${column.label} distribution`}
+                  onClick={() => setChartOpen(!showChart)}
+                >
+                  <HugeiconsIcon icon={ChartHistogramIcon} aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent showArrow={false}>{showChart ? "Hide" : "Show"} distribution</TooltipContent>
+            </Tooltip>
+          ) : null}
+        </div>
+      </div>
+      <CollapsibleContent className="grid-filter-card-content">
+        <Field>
+          <FieldLabel className="sr-only">{column.label}</FieldLabel>
+          {scale ? (
+            <NumericFilter column={column} scale={scale} chartOpen={showChart} actions={actions} />
+          ) : (
+            <Input
+              type="search"
+              placeholder="contains"
+              value={column.filter?.text ?? ""}
+              aria-label={`Filter ${column.label}`}
+              onChange={(event) => actions.setGridColumnFilter(column.id, "text", event.currentTarget.value)}
+            />
+          )}
+        </Field>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -299,6 +342,8 @@ function FilterCard({ column, actions }: { column: GridFilterColumn; actions: Sh
 export function GridFilterSection({ model, actions }: { model: GridFilterModel; actions: ShellActions }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(true);
+  const [bulk, setBulk] = useState<{ open: boolean } | null>(null);
+  const allOpen = bulk?.open === true;
   const columns = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return model.columns.filter((column) => !needle || column.label.toLowerCase().includes(needle));
@@ -307,49 +352,76 @@ export function GridFilterSection({ model, actions }: { model: GridFilterModel; 
   const activeCount = model.columns.filter((column) => column.filter).length;
 
   return (
-    // Filters is a section like the rest of the panel: it folds away when the
-    // table is not what you are looking at, and its header says how many
-    // filters are on so the count survives the fold.
-    <section className="structure-brief-card structure-inspector-section grid-filter-card-host" data-collapsed={!open || undefined}>
-      <div className="structure-inspector-section-header">
-        <button
-          type="button"
-          className="structure-inspector-section-title-button"
-          aria-expanded={open}
-          onClick={() => setOpen((value) => !value)}
-        >
-          Filters
-        </button>
-        {activeCount ? (
-          <button type="button" className="grid-filter-clear" onClick={() => actions.clearGridColumnFilters()}>
-            Clear all
-          </button>
-        ) : (
-          <span>{model.columns.length.toLocaleString()} columns</span>
-        )}
-      </div>
-      {open ? <>
-      <div className="grid-filter-count">
-        {model.visible.toLocaleString()} of {model.total.toLocaleString()} rows
-      </div>
-      <input
-        type="search"
-        className="grid-filter-search"
-        value={query}
-        placeholder="Find a column"
-        aria-label="Find a column to filter"
-        onChange={(event) => setQuery(event.currentTarget.value)}
-      />
-      <div className="grid-filter-list">
-        {shown.map((column) => <FilterCard key={column.id} column={column} actions={actions} />)}
-        {columns.length > shown.length ? (
-          <div className="grid-filter-more">
-            {(columns.length - shown.length).toLocaleString()} more columns — narrow the search
+    <TooltipProvider>
+      <Collapsible
+        className="structure-brief-card structure-inspector-section grid-filter-card-host"
+        data-collapsed={!open || undefined}
+        open={open}
+        onOpenChange={setOpen}
+      >
+        <div className="structure-inspector-section-header">
+          <CollapsibleTrigger asChild>
+            <Button className="structure-inspector-section-title-button" variant="ghost" size="sm">
+              Filters
+            </Button>
+          </CollapsibleTrigger>
+          <div className="grid-filter-host-actions">
+            {open ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-2xs"
+                    aria-expanded={allOpen}
+                    aria-label={allOpen ? "Collapse all filters" : "Expand all filters"}
+                    onClick={() => setBulk({ open: !allOpen })}
+                  >
+                    <HugeiconsIcon icon={ArrowUpDownIcon} aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent showArrow={false}>{allOpen ? "Collapse all" : "Expand all"}</TooltipContent>
+              </Tooltip>
+            ) : null}
+            {activeCount ? (
+              <Button type="button" variant="ghost" size="xs" onClick={() => actions.clearGridColumnFilters()}>
+                Clear all
+                <Badge variant="secondary">{activeCount.toLocaleString()}</Badge>
+              </Button>
+            ) : (
+              <Badge variant="secondary">{model.columns.length.toLocaleString()} columns</Badge>
+            )}
           </div>
-        ) : null}
-        {columns.length ? null : <div className="dock-empty">No filterable columns</div>}
-      </div>
-      </> : null}
-    </section>
+        </div>
+        <CollapsibleContent>
+          <div className="grid-filter-count">
+            {model.visible.toLocaleString()} of {model.total.toLocaleString()} rows
+          </div>
+          <Field className="grid-filter-search-field">
+            <FieldLabel className="sr-only">Find a column to filter</FieldLabel>
+            <div className="grid-filter-search-wrap">
+              <HugeiconsIcon icon={Search01Icon} aria-hidden="true" />
+              <Input
+                type="search"
+                className="grid-filter-search"
+                value={query}
+                placeholder="Find a column"
+                aria-label="Find a column to filter"
+                onChange={(event) => setQuery(event.currentTarget.value)}
+              />
+            </div>
+          </Field>
+          <div className="grid-filter-list">
+            {shown.map((column) => <FilterCard key={column.id} column={column} actions={actions} bulk={bulk} />)}
+            {columns.length > shown.length ? (
+              <div className="grid-filter-more">
+                {(columns.length - shown.length).toLocaleString()} more columns — narrow the search
+              </div>
+            ) : null}
+            {columns.length ? null : <div className="dock-empty">No filterable columns</div>}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </TooltipProvider>
   );
 }

@@ -74,6 +74,7 @@ const browserDevChemicalEditorTargets: ChemicalEditorTarget[] = [
 type UseAppFileActionsArgs = {
   activeDocument: ViewerDocument | null;
   activeTextDocument: TextFileDocument | null;
+  activeDocumentTabPath: string | null;
   pushErrorStatus: (error: unknown, prefix?: string, details?: string[]) => void;
   pushStatus: (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
   writeClipboardText: (text: string) => Promise<void>;
@@ -82,6 +83,7 @@ type UseAppFileActionsArgs = {
 export function useAppFileActions({
   activeDocument,
   activeTextDocument,
+  activeDocumentTabPath,
   pushErrorStatus,
   pushStatus,
   writeClipboardText,
@@ -144,12 +146,16 @@ export function useAppFileActions({
       await revealPath(activeTextDocument.path, "file");
       return;
     }
+    if (!activeDocument && activeDocumentTabPath) {
+      await revealPath(activeDocumentTabPath, "file");
+      return;
+    }
     if (!activeDocument) {
       pushStatus("No active file to reveal", "error");
       return;
     }
     await revealDocument(activeDocument);
-  }, [activeDocument, activeTextDocument, pushStatus, revealDocument, revealPath]);
+  }, [activeDocument, activeDocumentTabPath, activeTextDocument, pushStatus, revealDocument, revealPath]);
 
   const copyPath = useCallback(async (path: string, label = "file") => {
     try {
@@ -169,12 +175,16 @@ export function useAppFileActions({
       await copyPath(activeTextDocument.path, "file");
       return;
     }
+    if (!activeDocument && activeDocumentTabPath) {
+      await copyPath(activeDocumentTabPath, "file");
+      return;
+    }
     if (!activeDocument) {
       pushStatus("No active file path to copy", "error");
       return;
     }
     await copyDocumentPath(activeDocument);
-  }, [activeDocument, activeTextDocument, copyDocumentPath, copyPath, pushStatus]);
+  }, [activeDocument, activeDocumentTabPath, activeTextDocument, copyDocumentPath, copyPath, pushStatus]);
 
   const showDocumentMetadata = useCallback((document: ViewerDocument) => {
     pushStatus(document.title, "info", [

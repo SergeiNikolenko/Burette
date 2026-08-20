@@ -6,6 +6,7 @@
   const CARD_MIN_STORAGE_KEY = 'buret.grid.cardMin';
   const GRID_VIEW_MODE_STORAGE_KEY = 'buret.grid.viewMode';
   const TABLE_HIDDEN_COLUMNS_STORAGE_KEY = 'buret.grid.tableHiddenColumns';
+  const TABLE_COLUMN_WIDTHS_STORAGE_KEY = 'buret.grid.tableColumnWidths';
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
   const CLUSTER_CUTOFF_STORAGE_KEY = 'buret.grid.clusterCutoff';
@@ -58,11 +59,17 @@
   const GRID_MAX_WINDOW_ROWS = 18;
   const GRID_MIN_ESTIMATED_ROW_HEIGHT = 190;
   const GRID_EDIT_HISTORY_LIMIT = 50;
+  const GRID_RAIL_ITEM_SIZE = 10;
+  const GRID_RAIL_PILL_WIDTH = 12;
+  const GRID_RAIL_LENS_RANGE = 3;
+  const GRID_RAIL_MAGNIFICATION = 3;
   const NATIVE_MOLSTAR_SELECTION_LIMIT = 100;
   const NATIVE_KETCHER_SELECTION_LIMIT = 25;
   const NATIVE_GENERATE_3D_SELECTION_LIMIT = 20;
   const TABLE_COLUMN_PICKER_LIMIT = 240;
   const TABLE_DEFAULT_COLUMN_WIDTH = 118;
+  const TABLE_COLUMN_MIN_WIDTH = 64;
+  const TABLE_COLUMN_MAX_WIDTH = 640;
   const TABLE_COLUMN_OVERSCAN_PX = 360;
   const RDKIT_SVG_CACHE_LIMIT = 220;
   const XYZRENDER_CARD_CACHE_LIMIT = 1500;
@@ -100,6 +107,7 @@
     tableColumnQuery: '',
     tableColumnVisibleLimit: TABLE_COLUMN_PICKER_LIMIT,
     tableHiddenColumns: storedStringSet(TABLE_HIDDEN_COLUMNS_STORAGE_KEY),
+    tableColumnWidths: storedColumnWidths(TABLE_COLUMN_WIDTHS_STORAGE_KEY),
     tableColumnFilters: {},
     tableColumnCatalogCache: null,
     reactionRowsCache: null,
@@ -187,6 +195,7 @@
     exportingClusterRepresentatives: false,
     clusterCutoff: storedClusterCutoff(),
     tableMoleculePreview: null,
+    railHoveredMarker: null,
     railDragging: false,
     pendingGridScrollIndex: null,
     pendingGridRailPosition: null,
@@ -1439,6 +1448,30 @@
     } catch (_) {}
   }
 
+  function storedColumnWidths(key) {
+    try {
+      const parsed = JSON.parse(window.localStorage?.getItem(key) || '{}');
+      const widths = new Map();
+      for (const [id, value] of Object.entries(parsed && typeof parsed === 'object' ? parsed : {})) {
+        const width = Number(value);
+        if (id && Number.isFinite(width)) widths.set(id, clampTableColumnWidth(width));
+      }
+      return widths;
+    } catch (_) {
+      return new Map();
+    }
+  }
+
+  function storeColumnWidths(key, widths) {
+    try {
+      window.localStorage?.setItem(key, JSON.stringify(Object.fromEntries(widths)));
+    } catch (_) {}
+  }
+
+  function clampTableColumnWidth(width) {
+    return Math.min(TABLE_COLUMN_MAX_WIDTH, Math.max(TABLE_COLUMN_MIN_WIDTH, Math.round(width)));
+  }
+
   function supportsXyzrenderCards(cfg) {
     return cfg?.appViewer === true && (
       cfg?.gridDataMode === 'bridge'
@@ -1588,11 +1621,10 @@
       <section class="buret-grid-shell">
         <div id="grid-controls"></div>
         <nav class="buret-grid-rail" data-buret-grid-rail aria-label="${effectiveMolecularGrid(cfg) ? 'Molecule navigation' : 'Row navigation'}">
-          <span class="buret-grid-rail-active-marker" data-buret-grid-rail-active aria-hidden="true"></span>
           <div class="buret-grid-rail-ticks" data-buret-grid-rail-ticks></div>
           <div class="buret-grid-rail-popover" data-buret-grid-rail-popover hidden>
-            <div class="buret-grid-rail-popover-index" data-buret-grid-rail-popover-index></div>
             <div class="buret-grid-rail-popover-name" data-buret-grid-rail-popover-name></div>
+            <div class="buret-grid-rail-popover-index" data-buret-grid-rail-popover-index></div>
           </div>
         </nav>
         <main id="grid" class="buret-grid"></main>
@@ -1808,9 +1840,9 @@
     apply('save-grid', edit.saveEnabled, edit.saveTitle);
     apply('undo-grid-edit', edit.undoEnabled, edit.undoTitle);
     apply('save-grid-as', edit.saveAsEnabled, edit.saveAsTitle);
-    // Save As and Undo live in the header's overflow menu, which is absent from
-    // the DOM until it opens. Re-render the controls whenever the edit state
-    // changes so the menu is built from fresh props rather than stale markup.
+    // File actions live in the Actions menu, which is absent from the DOM until
+    // it opens. Re-render whenever edit state changes so the menu is built from
+    // fresh props rather than stale markup.
     const signature = `${edit.saveEnabled}|${edit.saveAsEnabled}|${edit.undoEnabled}`;
     if (state.gridEditSignature !== signature) {
       state.gridEditSignature = signature;
@@ -2087,11 +2119,8 @@
 
   function syncCardRendererSwitch() {
     document.body.dataset.buretGridCardRenderer = state.cardRenderer;
-    root.querySelectorAll('[data-buret-grid-card-renderer]').forEach(button => {
-      const active = button.getAttribute('data-buret-grid-card-renderer') === state.cardRenderer;
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
+    const select = document.getElementById('card-renderer');
+    if (select && select.value !== state.cardRenderer) select.value = state.cardRenderer;
   }
 
   function syncGridViewModeSwitch() {
@@ -3110,6 +3139,7 @@
       updateVirtualGridMetrics();
       scheduleVirtualWindowRender(cfg);
       updateGridRailActive();
+      updateTableHeaderStick();
       maybeLoadMore(cfg);
     };
     window.addEventListener('resize', state.resizeHandler, { passive: true });
@@ -3119,6 +3149,7 @@
     scheduleVirtualWindowRender(cfg);
     maybeLoadMore(cfg);
     updateGridRailActive();
+    updateTableHeaderStick();
   }
 
   function hasMoreRows() {
@@ -3551,6 +3582,7 @@
         fragment.appendChild(gridTable(rows, cfg, range));
         grid.replaceChildren(fragment);
         restoreTableScrollPosition(grid);
+        updateTableHeaderStick();
         state.windowStart = range.start;
         state.windowEnd = range.end;
         state.renderedCount = Math.max(0, range.end - range.start);
@@ -3609,6 +3641,27 @@
         }
       }
     }
+  }
+
+  // The horizontal scroll box around the table makes CSS position:sticky
+  // useless against the window's vertical scroll (the wrap, not the window,
+  // is the header cells' nearest scroll container), so the header is pinned
+  // by hand: every scroll translates the thead down to sit flush under the
+  // sticky toolbar.
+  function updateTableHeaderStick() {
+    const head = document.querySelector('.buret-grid-table thead');
+    if (!head) return;
+    const table = head.closest('table');
+    if (!table) return;
+    // Pin under the toolbar while it is on screen, at the viewport top once
+    // it has scrolled away.
+    const toolbar = document.querySelector('.buret-grid-toolbar');
+    const stickTop = Math.max(0, toolbar ? toolbar.getBoundingClientRect().bottom : 0);
+    const tableRect = table.getBoundingClientRect();
+    const headHeight = head.getBoundingClientRect().height;
+    const maxOffset = Math.max(0, tableRect.height - headHeight);
+    const offset = Math.min(maxOffset, Math.max(0, stickTop - tableRect.top));
+    head.style.transform = offset > 0 ? `translateY(${Math.round(offset)}px)` : '';
   }
 
   function restoreTableScrollPosition(grid) {
@@ -3723,25 +3776,6 @@
     const included = state.remoteMode ? state.recordsIndexed : Number(cfg.recordsIncluded || state.all.length);
     const visible = state.remoteMode ? state.totalRows : state.rows.length;
     const scrollable = Math.min(state.visibleCount, state.rows.length);
-    const summaryParts = [];
-    if (state.indexError) {
-      summaryParts.push(`Indexing failed after ${moleculeCountLabel(included)}`);
-    } else if (state.indexing) {
-      summaryParts.push(`Indexing ${moleculeCountLabel(included)}${total ? ` of ${total.toLocaleString()}` : ''}`);
-    } else if (total > 0 && visible !== total) {
-      summaryParts.push(`${visible.toLocaleString()} of ${moleculeCountLabel(total)}`);
-    } else {
-      summaryParts.push(moleculeCountLabel(visible || total || included));
-    }
-    // The host read only a prefix of a file too large to load in full, so these
-    // counts describe the sample and must not read as the whole collection.
-    if (cfg.boundedSample) summaryParts.push('first records of a large file');
-    if (state.dirty) summaryParts.push(`unsaved ${state.dirtyReason || 'edits'}`);
-    if (state.selected.size) summaryParts.push(`${state.selected.size.toLocaleString()} selected`);
-    document.getElementById('summary').textContent = summaryParts.filter(Boolean).join(' · ');
-    if (!state.remoteMode && state.smarts.trim() && !state.smartsError) {
-      document.getElementById('summary').textContent += ` · SMARTS matches ${state.smartsMatches.size.toLocaleString()}`;
-    }
     const loadStatus = document.getElementById('load-status');
     if (loadStatus) {
       loadStatus.textContent = state.indexError
@@ -3814,10 +3848,22 @@
 
   function initGridRail(cfg) {
     const rail = root.querySelector('[data-buret-grid-rail]');
-    const marker = root.querySelector('[data-buret-grid-rail-active]');
     const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
     if (!rail || !ticks) return;
-    rail.addEventListener('focusin', () => updateGridRailActive());
+    rail.addEventListener('focusin', event => {
+      const target = event.target instanceof Element ? event.target.closest('[data-buret-grid-rail-marker]') : null;
+      if (!target) return;
+      const markerIndex = Number(target.getAttribute('data-buret-grid-rail-marker'));
+      const position = Number(target.getAttribute('data-buret-grid-rail-position'));
+      updateGridRailLens(markerIndex);
+      showGridRailPopover(position, target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2);
+      updateGridRailActive();
+    });
+    rail.addEventListener('focusout', event => {
+      if (event.relatedTarget instanceof Node && rail.contains(event.relatedTarget)) return;
+      updateGridRailLens(null);
+      hideGridRailPopover();
+    });
     ticks.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target.closest('[data-buret-grid-rail-position], [data-buret-grid-rail-index]') : null;
       if (!target) return;
@@ -3826,13 +3872,18 @@
       if (Number.isFinite(position)) void scrollToGridPosition(position, cfg, { behavior: 'smooth' });
       else scrollToGridRow(index, cfg, { behavior: 'smooth' });
     });
-    ticks.addEventListener('pointerenter', event => updateGridRailPopoverFromPointer(event.clientY));
-    ticks.addEventListener('pointermove', event => updateGridRailPopoverFromPointer(event.clientY));
-    ticks.addEventListener('pointerleave', hideGridRailPopover);
+    ticks.addEventListener('pointerenter', event => updateGridRailHoverFromPointer(event.clientY));
+    ticks.addEventListener('pointermove', event => updateGridRailHoverFromPointer(event.clientY));
+    ticks.addEventListener('pointerleave', () => {
+      updateGridRailLens(null);
+      hideGridRailPopover();
+    });
     ticks.addEventListener('pointerdown', event => startGridRailTrackPointer(event, cfg));
-    marker?.addEventListener('pointerdown', event => startGridRailDrag(event, cfg));
     window.addEventListener('scroll', updateGridRailActive, { passive: true });
-    window.addEventListener('resize', updateGridRailActive, { passive: true });
+    window.addEventListener('resize', () => {
+      updateGridRail();
+      updateGridRailActive();
+    }, { passive: true });
     updateGridRail();
   }
 
@@ -3844,26 +3895,28 @@
     rail.hidden = gridRailTotalRows() < 2;
     if (rail.hidden) return;
     const railRows = gridRailRows(rows);
-    ticks.innerHTML = railRows.map(({ row, position, active }) => {
+    ticks.innerHTML = railRows.map(({ row, position }, markerIndex) => {
       const index = row ? Number(row.index) : null;
       const title = escapeAttr(row?.name || `Molecule ${position + 1}`);
       const indexAttr = Number.isFinite(index) ? ` data-buret-grid-rail-index="${index}"` : '';
-      return `<button type="button" class="buret-grid-rail-tick${active ? ' is-active' : ''}" data-buret-grid-rail-position="${position}"${indexAttr} aria-label="${title}"></button>`;
+      return `<button type="button" class="buret-grid-rail-tick" data-buret-grid-rail-marker="${markerIndex}" data-buret-grid-rail-position="${position}"${indexAttr} aria-label="Jump to ${title}"><span class="buret-grid-rail-tick-pill" aria-hidden="true"></span></button>`;
     }).join('');
+    updateGridRailLens(state.railHoveredMarker);
     updateGridRailActive();
   }
 
   function gridRailRows(rows) {
     const total = gridRailTotalRows();
-    const limit = 96;
+    const availableHeight = Math.min(window.innerHeight * 0.58, 420);
+    const limit = Math.max(12, Math.min(96, Math.floor(availableHeight / GRID_RAIL_ITEM_SIZE)));
     if (total <= limit) {
-      return Array.from({ length: total }, (_, position) => ({ row: rows[position] || null, position, active: false }));
+      return Array.from({ length: total }, (_, position) => ({ row: rows[position] || null, position }));
     }
     const step = total / limit;
     const sampled = [];
     for (let i = 0; i < limit; i++) {
       const position = Math.min(total - 1, Math.floor(i * step));
-      sampled.push({ row: rows[position] || null, position, active: false });
+      sampled.push({ row: rows[position] || null, position });
     }
     return sampled;
   }
@@ -3881,38 +3934,79 @@
       if (card.getBoundingClientRect().top <= threshold) activeIndex = Number(card.getAttribute('data-index'));
       else break;
     }
-    updateGridRailActiveMarker(activeIndex);
+    updateGridRailCurrentMarker(activeIndex);
   }
 
-  function updateGridRailActiveMarker(activeIndex) {
-    const marker = root.querySelector('[data-buret-grid-rail-active]');
+  function updateGridRailCurrentMarker(activeIndex) {
     const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
     const rows = state.rows || [];
     const total = gridRailTotalRows();
-    if (!marker || !ticks || total < 2 || !Number.isFinite(activeIndex)) {
-      if (marker) marker.hidden = true;
-      return;
-    }
+    if (!ticks) return;
+    const markers = [...ticks.querySelectorAll('[data-buret-grid-rail-position]')];
+    if (total < 2 || !Number.isFinite(activeIndex) || !markers.length) return;
     let rowPosition = rows.findIndex(row => Number(row.index) === activeIndex);
     if (rowPosition < 0) {
       rowPosition = rows.reduce((nearest, row, position) => {
         return Math.abs(Number(row.index) - activeIndex) < Math.abs(Number(rows[nearest].index) - activeIndex) ? position : nearest;
       }, 0);
     }
-    const ticksRect = ticks.getBoundingClientRect();
-    const height = ticksRect.height || Math.min(window.innerHeight * 0.58, 420);
-    const progress = rowPosition / Math.max(1, total - 1);
-    const offset = (progress - 0.5) * height;
-    marker.hidden = false;
-    marker.style.setProperty('--buret-grid-rail-active-offset', `${offset.toFixed(2)}px`);
+    const current = markers.reduce((nearest, marker) => {
+      const distance = Math.abs(Number(marker.getAttribute('data-buret-grid-rail-position')) - rowPosition);
+      const nearestDistance = Math.abs(Number(nearest.getAttribute('data-buret-grid-rail-position')) - rowPosition);
+      return distance < nearestDistance ? marker : nearest;
+    }, markers[0]);
+    for (const marker of markers) {
+      const isCurrent = marker === current;
+      marker.classList.toggle('is-current', isCurrent);
+      if (isCurrent) marker.setAttribute('aria-current', 'location');
+      else marker.removeAttribute('aria-current');
+    }
   }
 
-  function updateGridRailPopoverFromPointer(clientY) {
+  function updateGridRailHoverFromPointer(clientY) {
     const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
     if (!ticks) return;
-    const position = gridRailIndexFromPointer(clientY, ticks);
-    if (position == null) return;
+    const markerIndex = gridRailMarkerFromPointer(clientY, ticks);
+    const marker = markerIndex == null
+      ? null
+      : ticks.querySelector(`[data-buret-grid-rail-marker="${markerIndex}"]`);
+    if (!marker) return;
+    const position = Number(marker.getAttribute('data-buret-grid-rail-position'));
+    updateGridRailLens(markerIndex);
     showGridRailPopover(position, clientY);
+  }
+
+  // The cosine lens follows Vivid Layer's Chat Minimap, adapted from Mantine
+  // Lens Select. The grid keeps its own paging, scrolling, and row semantics.
+  function updateGridRailLens(hoveredIndex) {
+    const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
+    if (!ticks) return;
+    state.railHoveredMarker = Number.isFinite(hoveredIndex) ? hoveredIndex : null;
+    ticks.querySelectorAll('[data-buret-grid-rail-marker]').forEach(marker => {
+      const index = Number(marker.getAttribute('data-buret-grid-rail-marker'));
+      const pill = marker.querySelector('.buret-grid-rail-tick-pill');
+      if (!pill) return;
+      pill.style.setProperty('--buret-grid-rail-tick-width', `${gridRailMarkerWidth(index, state.railHoveredMarker).toFixed(2)}px`);
+    });
+  }
+
+  function gridRailMarkerWidth(index, hoveredIndex) {
+    const minWidth = GRID_RAIL_PILL_WIDTH;
+    const maxWidth = GRID_RAIL_PILL_WIDTH * GRID_RAIL_MAGNIFICATION;
+    if (hoveredIndex == null) return minWidth;
+    const distance = Math.abs(index - hoveredIndex);
+    if (distance >= GRID_RAIL_LENS_RANGE) return minWidth;
+    const factor = (1 + Math.cos((Math.PI * distance) / GRID_RAIL_LENS_RANGE)) / 2;
+    return minWidth + (maxWidth - minWidth) * factor;
+  }
+
+  function gridRailMarkerFromPointer(clientY, ticks) {
+    const markers = ticks.querySelectorAll('[data-buret-grid-rail-marker]');
+    if (!markers.length) return null;
+    const rect = ticks.getBoundingClientRect();
+    if (!rect.height) return null;
+    const y = Math.max(rect.top, Math.min(clientY, rect.bottom - 0.01));
+    return Math.max(0, Math.min(markers.length - 1, Math.floor(((y - rect.top) / rect.height) * markers.length)));
   }
 
   function showGridRailPopover(position, clientY) {
@@ -3925,7 +4019,7 @@
     const row = state.rows[target];
     const indexNode = popover.querySelector('[data-buret-grid-rail-popover-index]');
     const nameNode = popover.querySelector('[data-buret-grid-rail-popover-name]');
-    if (indexNode) indexNode.textContent = `${(target + 1).toLocaleString()} / ${total.toLocaleString()}`;
+    if (indexNode) indexNode.textContent = `${effectiveMolecularGrid(safeConfig()) ? 'Molecule' : 'Row'} ${(target + 1).toLocaleString()} of ${total.toLocaleString()}`;
     if (nameNode) nameNode.textContent = row?.name || `${effectiveMolecularGrid(safeConfig()) ? 'Molecule' : 'Row'} ${target + 1}`;
     const rect = ticks.getBoundingClientRect();
     const y = Math.max(rect.top, Math.min(clientY, rect.bottom));
@@ -4038,42 +4132,6 @@
     window.scrollTo({ top: Math.max(0, gridTop + row * estimatedRowStride()), behavior });
   }
 
-  function startGridRailDrag(event, cfg) {
-    if (event.button != null && event.button !== 0) return;
-    const marker = event.currentTarget;
-    const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
-    if (!marker || !ticks) return;
-    event.preventDefault();
-    event.stopPropagation();
-    state.railDragging = true;
-    document.body.classList.add('buret-grid-rail-dragging');
-    const pointerId = event.pointerId;
-    try { marker.setPointerCapture(pointerId); } catch (_) {}
-    const updateFromPoint = clientY => {
-      const position = gridRailIndexFromPointer(clientY, ticks);
-      if (position == null) return;
-      showGridRailPopover(position, clientY);
-      scrollToGridPosition(position, cfg, { behavior: 'auto' });
-    };
-    updateFromPoint(event.clientY);
-    const onMove = moveEvent => {
-      if (moveEvent.pointerId !== pointerId) return;
-      updateFromPoint(moveEvent.clientY);
-    };
-    const onEnd = () => {
-      state.railDragging = false;
-      document.body.classList.remove('buret-grid-rail-dragging');
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onEnd);
-      window.removeEventListener('pointercancel', onEnd);
-      hideGridRailPopover();
-      updateGridRailActive();
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onEnd, { once: true });
-    window.addEventListener('pointercancel', onEnd, { once: true });
-  }
-
   function startGridRailTrackPointer(event, cfg) {
     if (event.button != null && event.button !== 0) return;
     const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
@@ -4081,14 +4139,18 @@
     event.preventDefault();
     event.stopPropagation();
     const pointerId = event.pointerId;
+    const parentWindow = gridRailSameOriginParentWindow();
     let dragging = false;
+    let finished = false;
     let lastClientY = event.clientY;
     const startClientY = event.clientY;
     try { ticks.setPointerCapture(pointerId); } catch (_) {}
-    updateGridRailPopoverFromPointer(event.clientY);
+    updateGridRailHoverFromPointer(event.clientY);
     const scrollFromPoint = (clientY, behavior) => {
       const position = gridRailIndexFromPointer(clientY, ticks);
       if (position == null) return;
+      const markerIndex = gridRailMarkerFromPointer(clientY, ticks);
+      updateGridRailLens(markerIndex);
       showGridRailPopover(position, clientY);
       scrollToGridPosition(position, cfg, { behavior });
     };
@@ -4097,26 +4159,72 @@
       lastClientY = moveEvent.clientY;
       if (Math.abs(lastClientY - startClientY) > 4) dragging = true;
       if (!dragging) {
-        updateGridRailPopoverFromPointer(lastClientY);
+        updateGridRailHoverFromPointer(lastClientY);
         return;
       }
       state.railDragging = true;
       document.body.classList.add('buret-grid-rail-dragging');
       scrollFromPoint(lastClientY, 'auto');
     };
-    const onEnd = () => {
-      if (!dragging) scrollFromPoint(lastClientY, 'smooth');
+    const onEnd = endEvent => {
+      if (finished || (Number.isFinite(endEvent.pointerId) && endEvent.pointerId !== pointerId)) return;
+      finished = true;
+      if (!dragging && endEvent.type === 'pointerup') scrollFromPoint(lastClientY, 'smooth');
+      const keepHover = endEvent.type === 'pointerup'
+        && endEvent.view === window
+        && gridRailPointInside(ticks, endEvent.clientX, endEvent.clientY);
       state.railDragging = false;
       document.body.classList.remove('buret-grid-rail-dragging');
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onEnd);
       window.removeEventListener('pointercancel', onEnd);
-      hideGridRailPopover();
+      window.removeEventListener('blur', onBoundaryExit);
+      document.documentElement.removeEventListener('pointerleave', onBoundaryExit);
+      ticks.removeEventListener('lostpointercapture', onLostCapture);
+      parentWindow?.removeEventListener('pointerup', onEnd);
+      parentWindow?.removeEventListener('pointercancel', onEnd);
+      parentWindow?.removeEventListener('blur', onBoundaryExit);
+      if (keepHover) updateGridRailHoverFromPointer(endEvent.clientY);
+      else {
+        updateGridRailLens(null);
+        hideGridRailPopover();
+      }
       updateGridRailActive();
     };
+    const onBoundaryExit = () => onEnd({
+      type: 'pointercancel',
+      pointerId,
+      clientX: Number.NaN,
+      clientY: Number.NaN,
+      view: window,
+    });
+    const onLostCapture = captureEvent => {
+      if (captureEvent.pointerId === pointerId) onBoundaryExit();
+    };
     window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onEnd, { once: true });
-    window.addEventListener('pointercancel', onEnd, { once: true });
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+    window.addEventListener('blur', onBoundaryExit);
+    document.documentElement.addEventListener('pointerleave', onBoundaryExit);
+    ticks.addEventListener('lostpointercapture', onLostCapture);
+    parentWindow?.addEventListener('pointerup', onEnd);
+    parentWindow?.addEventListener('pointercancel', onEnd);
+    parentWindow?.addEventListener('blur', onBoundaryExit);
+  }
+
+  function gridRailSameOriginParentWindow() {
+    try {
+      if (window.parent === window || !window.parent.document) return null;
+      return window.parent;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function gridRailPointInside(ticks, clientX, clientY) {
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
+    const rect = ticks.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
   }
 
   function gridRailIndexFromPointer(clientY, ticks) {
@@ -4325,9 +4433,67 @@
       scheduleRdkitCard(rowEl, row);
       scheduleXyzrenderCard(rowEl, row, cfg);
     });
+    wrapper.querySelectorAll('[data-buret-table-resize]').forEach(handle => {
+      installTableColumnResize(handle, wrapper, cfg);
+    });
     bindTableColumnPanel(wrapper, cfg, catalog);
     bindTableFilterControls(wrapper, cfg);
     return wrapper;
+  }
+
+  // Column resizing: dragging the handle live-updates the rendered cells of
+  // that column, and the width persists on release so the virtual column
+  // window math sees the same number the stylesheet paints.
+  function installTableColumnResize(handle, wrapper, cfg) {
+    const columnId = handle.getAttribute('data-buret-table-resize');
+    if (!columnId) return;
+    // The header cell doubles as the filters toggle; the handle keeps its
+    // pointer traffic to itself so a resize never reads as a header click.
+    handle.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    handle.addEventListener('dblclick', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.tableColumnWidths.delete(columnId);
+      storeColumnWidths(TABLE_COLUMN_WIDTHS_STORAGE_KEY, state.tableColumnWidths);
+      void render(cfg);
+    });
+    handle.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const th = handle.closest('th');
+      const startWidth = th?.getBoundingClientRect()?.width || tableColumnWidth({ id: columnId });
+      const startX = event.clientX;
+      const selector = `th[data-column="${CSS.escape(columnId)}"], td[data-column="${CSS.escape(columnId)}"]`;
+      const cells = wrapper.querySelectorAll(selector);
+      try { handle.setPointerCapture(event.pointerId); } catch (_) {}
+      document.body.classList.add('buret-grid-table-resizing');
+      let width = clampTableColumnWidth(startWidth);
+      let done = false;
+      const move = moveEvent => {
+        width = clampTableColumnWidth(startWidth + (moveEvent.clientX - startX));
+        cells.forEach(cell => {
+          cell.style.width = `${width}px`;
+          cell.style.minWidth = `${width}px`;
+          cell.style.maxWidth = `${width}px`;
+        });
+      };
+      const finish = () => {
+        if (done) return;
+        done = true;
+        handle.removeEventListener('pointermove', move);
+        document.body.classList.remove('buret-grid-table-resizing');
+        state.tableColumnWidths.set(columnId, width);
+        storeColumnWidths(TABLE_COLUMN_WIDTHS_STORAGE_KEY, state.tableColumnWidths);
+        void render(cfg);
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', finish, { once: true });
+      handle.addEventListener('pointercancel', finish, { once: true });
+    });
   }
 
   function tableColumnCatalog() {
@@ -4513,6 +4679,8 @@
   }
 
   function tableColumnWidth(column) {
+    const override = state.tableColumnWidths.get(column.id);
+    if (Number.isFinite(override)) return override;
     if (column.id === 'index') return 64;
     if (column.id === 'molecule') return 74;
     if (column.id === 'name') return 160;
@@ -4520,21 +4688,64 @@
     return TABLE_DEFAULT_COLUMN_WIDTH;
   }
 
+  // Only user-resized columns get inline widths; the others keep the
+  // stylesheet's content-driven min/max clamp.
+  function tableColumnWidthStyle(column) {
+    const override = state.tableColumnWidths.get(column.id);
+    if (!Number.isFinite(override)) return '';
+    return ` style="width:${override}px;min-width:${override}px;max-width:${override}px"`;
+  }
+
+  function tableColumnResizable(column) {
+    return !column.spacer && column.id !== 'molecule';
+  }
+
+  // The active sort, mapped onto table column ids so the header can carry the
+  // shadcn-style direction arrow. Descriptor sorting wins, mirroring
+  // compareWithDescriptorSort; plain file order draws no marker.
+  function tableActiveSort() {
+    if (state.descriptorSort?.id) {
+      return {
+        columnId: `descriptor:${state.descriptorSort.id}`,
+        direction: state.descriptorSort.direction === 'desc' ? 'desc' : 'asc'
+      };
+    }
+    const key = state.sort || 'index';
+    if (key === 'index') return null;
+    return { columnId: key, direction: 'asc' };
+  }
+
+  function tableSortIndicatorHTML(direction) {
+    const path = direction === 'desc'
+      ? '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>'
+      : '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>';
+    return `<svg class="buret-grid-table-sort-indicator" aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+  }
+
   function tableHeaderCellsHTML(columnWindow, searchColumns = new Set()) {
+    const activeSort = tableActiveSort();
     return tableRenderedColumns(columnWindow).map(column => {
       if (column.spacer) return tableSpacerCellHTML('th', column);
+      const sorted = activeSort?.columnId === column.id;
       const classes = [
         searchColumns.has(column.id) ? 'buret-grid-table-search-column' : '',
-        column.type !== 'none' || column.id === 'index' ? 'buret-grid-table-filter-header' : ''
+        column.type !== 'none' || column.id === 'index' ? 'buret-grid-table-filter-header' : '',
+        sorted ? 'buret-grid-table-sorted' : ''
       ].filter(Boolean).join(' ');
       const className = classes ? ` class="${classes}"` : '';
+      const sortAttr = sorted ? ` aria-sort="${activeSort.direction === 'desc' ? 'descending' : 'ascending'}"` : '';
       const filterToggle = column.type !== 'none' || column.id === 'index'
         ? ` data-buret-table-filter-toggle aria-pressed="${state.tableFiltersOpen ? 'true' : 'false'}" title="Show table filters" aria-label="Show table filters for ${escapeAttr(column.label)}"`
         : '';
+      const content = `${escapeHTML(column.label)}${sorted ? tableSortIndicatorHTML(activeSort.direction) : ''}${
+        tableColumnResizable(column)
+          ? `<span class="buret-grid-table-resize" data-buret-table-resize="${escapeAttr(column.id)}" title="Drag to resize · double-click to reset" aria-hidden="true"></span>`
+          : ''
+      }`;
       if (column.id === 'index') {
-        return `<th scope="col" data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${className}${filterToggle}>${escapeHTML(column.label)}</th>`;
+        return `<th scope="col" data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${className}${sortAttr}${filterToggle}${tableColumnWidthStyle(column)}>${content}</th>`;
       }
-      return `<th scope="col" data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${className}${filterToggle}${column.title ? ` title="${escapeAttr(column.title)}"` : ''}>${escapeHTML(column.label)}</th>`;
+      return `<th scope="col" data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${className}${sortAttr}${filterToggle}${column.title ? ` title="${escapeAttr(column.title)}"` : ''}${tableColumnWidthStyle(column)}>${content}</th>`;
     }).join('');
   }
 
@@ -4583,7 +4794,7 @@
           if (column.spacer) return tableSpacerCellHTML('td', column);
           const searchMatch = tableColumnMatchesSearch(row, column) || (column.id === 'molecule' && rowSearchMatch);
           const searchClass = searchMatch ? ' class="buret-grid-table-search-match"' : '';
-          return `<td data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${searchClass}>${tableCellHTML(row, column, cfg)}</td>`;
+          return `<td data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${searchClass}${tableColumnWidthStyle(column)}>${tableCellHTML(row, column, cfg)}</td>`;
         }).join('')}
       </tr>`;
   }
@@ -6334,20 +6545,19 @@
     overlay.dataset.buretDetailRowIndex = Number.isFinite(index) ? String(index) : '';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
-    overlay.setAttribute('aria-label', row.name || `Molecule ${index + 1}`);
+    overlay.setAttribute('aria-labelledby', 'buret-grid-molecule-detail-title');
     const props = Object.entries(row.props || {})
       .filter(([, value]) => String(value ?? '').trim().length > 0);
     overlay.innerHTML = `
       <div class="buret-grid-molecule-detail">
         <div class="buret-grid-molecule-detail-image" data-buret-molecule-picture>${draw(row, cfg)}</div>
-        <div class="buret-grid-molecule-detail-resizer" role="separator" aria-orientation="vertical" tabindex="0" title="Drag left or right to resize the molecule preview. Double-click to reset." aria-label="Resize molecule preview" data-buret-detail-resize></div>
         <div class="buret-grid-molecule-detail-body">
           <div class="buret-grid-molecule-detail-title-row">
             <div>
               <div class="buret-eyebrow">Molecule ${Number.isFinite(index) ? index + 1 : ''}</div>
-              <h2>${escapeHTML(row.name || `Molecule ${index + 1}`)}</h2>
+              <h2 id="buret-grid-molecule-detail-title">${escapeHTML(row.name || `Molecule ${index + 1}`)}</h2>
             </div>
-            <button type="button" data-buret-detail-close aria-label="Close molecule detail">Close</button>
+            <button type="button" data-buret-detail-close aria-label="Close molecule detail" title="Close">&times;</button>
           </div>
           <div class="buret-grid-molecule-detail-tabs" role="tablist" aria-label="Molecule preview sections">
             <button type="button" role="tab" class="active" aria-selected="true" data-buret-detail-tab="details">Details</button>
@@ -6398,7 +6608,6 @@
     });
     installMoleculeDetailTabs(overlay);
     installMoleculeDetailDescriptorSearch(overlay);
-    installMoleculeDetailResize(overlay);
     const onKey = event => {
       if (event.key === 'Escape') hideMoleculeDetail();
     };
@@ -6428,74 +6637,6 @@
     if (jsonPre) jsonPre.textContent = moleculeDetailJson(row);
     scheduleRdkitCard(overlay, row);
     scheduleXyzrenderCard(overlay, row, cfg);
-  }
-
-  function installMoleculeDetailResize(overlay) {
-    const detail = overlay.querySelector('.buret-grid-molecule-detail');
-    const handle = overlay.querySelector('[data-buret-detail-resize]');
-    if (!detail || !handle) return;
-    const minImage = 320;
-    const minBody = 320;
-    const clampWidth = width => {
-      const rect = detail.getBoundingClientRect();
-      const handleWidth = handle.getBoundingClientRect().width || 10;
-      const maxImage = Math.max(minImage, rect.width - minBody - handleWidth);
-      return Math.max(minImage, Math.min(maxImage, width));
-    };
-    const setWidth = width => {
-      detail.style.setProperty('--buret-detail-image-width', `${Math.round(clampWidth(width))}px`);
-    };
-    const resetWidth = () => {
-      detail.style.removeProperty('--buret-detail-image-width');
-    };
-    const startResize = event => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const rect = detail.getBoundingClientRect();
-      const startX = event.clientX;
-      const startWidth = detail.querySelector('.buret-grid-molecule-detail-image')?.getBoundingClientRect().width || (rect.width * 0.58);
-      detail.classList.add('is-resizing');
-      try { handle.setPointerCapture?.(event.pointerId); } catch (_) {}
-      const move = moveEvent => {
-        moveEvent.preventDefault();
-        setWidth(startWidth + (moveEvent.clientX - startX));
-      };
-      const stop = stopEvent => {
-        try { handle.releasePointerCapture?.(stopEvent.pointerId); } catch (_) {}
-        handle.removeEventListener('pointermove', move);
-        handle.removeEventListener('pointerup', stop);
-        handle.removeEventListener('pointercancel', stop);
-        detail.classList.remove('is-resizing');
-      };
-      handle.addEventListener('pointermove', move);
-      handle.addEventListener('pointerup', stop);
-      handle.addEventListener('pointercancel', stop);
-    };
-    handle.addEventListener('pointerdown', startResize);
-    handle.addEventListener('dblclick', event => {
-      event.preventDefault();
-      resetWidth();
-    });
-    handle.addEventListener('keydown', event => {
-      const imageWidth = detail.querySelector('.buret-grid-molecule-detail-image')?.getBoundingClientRect().width || 0;
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault();
-        setWidth(imageWidth - 32);
-      } else if (event.key === 'ArrowRight') {
-        event.preventDefault();
-        setWidth(imageWidth + 32);
-      } else if (event.key === 'Home') {
-        event.preventDefault();
-        setWidth(minImage);
-      } else if (event.key === 'End') {
-        event.preventDefault();
-        setWidth(Number.MAX_SAFE_INTEGER);
-      } else if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        resetWidth();
-      }
-    });
   }
 
   function installMoleculeDetailTabs(overlay) {

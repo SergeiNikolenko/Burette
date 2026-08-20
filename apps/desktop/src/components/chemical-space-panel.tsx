@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -181,6 +181,11 @@ const MAX_VISIBLE_EDGES = 30_000;
 // table still lists everything, the map draws only the top of the ranking.
 const MAX_VISIBLE_CLIFF_EDGES = 150;
 const DEFAULT_TMAP_LINE_SCALE = 1;
+// Below this header width the toggle groups and the status badge no longer
+// fit beside the two selects; they fold into the Display popover instead.
+// The shell's centre column bottoms out around 420px, so the cutoff sits
+// above that floor or the fold could never engage.
+const CONTROLS_COLLAPSE_WIDTH = 440;
 const CLUSTER_COLORS = [
   "#38bdf8", "#fb7185", "#4ade80", "#facc15", "#f97316",
   "#22d3ee", "#a3e635", "#f472b6", "#60a5fa", "#fbbf24",
@@ -935,13 +940,104 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
       filterToSelection: false,
     });
   }, [postToGrid]);
+  // The header is a single row that must never wrap. Below this width the
+  // toggle groups and the status badge cannot fit next to the selects, so
+  // they fold into the Display popover instead of forcing a second row.
+  const controlsRowRef = useRef<HTMLDivElement | null>(null);
+  const [controlsNarrow, setControlsNarrow] = useState(false);
+  useEffect(() => {
+    const node = controlsRowRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver(() => {
+      setControlsNarrow(node.clientWidth < CONTROLS_COLLAPSE_WIDTH);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const dimensionsToggle = (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      spacing={0}
+      value={draft.dimensions.toString()}
+      aria-label="Embedding dimensions"
+      onValueChange={(value) => {
+        if (value !== "2" && value !== "3") return;
+        const dimensions = Number(value) as 2 | 3;
+        const next = { ...draft, dimensions };
+        setDraft(next);
+        commitOptions(next);
+      }}
+    >
+      <ToggleGroupItem value="2" aria-label="2D embedding">2D</ToggleGroupItem>
+      <ToggleGroupItem value="3" aria-label="3D embedding">3D</ToggleGroupItem>
+    </ToggleGroup>
+  );
+  const toolToggle = (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      spacing={0}
+      value={tool}
+      aria-label="Chemical-space interaction"
+      onValueChange={(value) => {
+        if (value === "navigate" || value === "lasso") setTool(value);
+      }}
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <ToggleGroupItem value="navigate">Explore</ToggleGroupItem>
+        </TooltipTrigger>
+        <TooltipContent showArrow={false}>Pan, orbit, zoom, and inspect molecules</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <ToggleGroupItem value="lasso">Lasso</ToggleGroupItem>
+        </TooltipTrigger>
+        <TooltipContent showArrow={false}>Draw a free-form selection linked to Grid</TooltipContent>
+      </Tooltip>
+    </ToggleGroup>
+  );
+  const scopeToggle = visibleSourceIds || scope === "filtered" ? (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      spacing={0}
+      value={scope}
+      aria-label="Embedding scope"
+      onValueChange={(value) => {
+        if (value === "all" || value === "filtered") setScope(value);
+      }}
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <ToggleGroupItem value="all">All</ToggleGroupItem>
+        </TooltipTrigger>
+        <TooltipContent showArrow={false}>Embed every molecule and dim the filtered-out ones</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <ToggleGroupItem value="filtered" disabled={!visibleSourceIds}>
+            {visibleSourceIds ? `Filtered · ${visibleSourceIds.size.toLocaleString()}` : "Filtered"}
+          </ToggleGroupItem>
+        </TooltipTrigger>
+        <TooltipContent showArrow={false}>Recompute the map over just the filtered molecules</TooltipContent>
+      </Tooltip>
+    </ToggleGroup>
+  ) : null;
   return (
     <TooltipProvider>
       <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-testid="chemical-space-panel">
-        <div className="flex flex-col gap-2 border-b border-border px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2">
+        <div
+          ref={controlsRowRef}
+          className="flex shrink-0 items-center gap-2 overflow-hidden border-b border-border px-3 py-1.5"
+        >
             <NativeSelect
               size="sm"
+              className="min-w-0"
               aria-label="Molecular representation engine"
               value={draft.representation}
               onChange={(event) => {
@@ -961,6 +1057,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
             </NativeSelect>
             <NativeSelect
               size="sm"
+              className="min-w-0"
               aria-label="Chemical-space method"
               value={draft.method}
               onChange={(event) => {
@@ -975,85 +1072,24 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
                 <NativeSelectOption key={method.value} value={method.value}>{method.label}</NativeSelectOption>
               ))}
             </NativeSelect>
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
-              spacing={0}
-              value={draft.dimensions.toString()}
-              aria-label="Embedding dimensions"
-              onValueChange={(value) => {
-                if (value !== "2" && value !== "3") return;
-                const dimensions = Number(value) as 2 | 3;
-                const next = { ...draft, dimensions };
-                setDraft(next);
-                commitOptions(next);
-              }}
-            >
-              <ToggleGroupItem value="2" aria-label="2D embedding">2D</ToggleGroupItem>
-              <ToggleGroupItem value="3" aria-label="3D embedding">3D</ToggleGroupItem>
-            </ToggleGroup>
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
-              spacing={0}
-              value={tool}
-              aria-label="Chemical-space interaction"
-              onValueChange={(value) => {
-                if (value === "navigate" || value === "lasso") setTool(value);
-              }}
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem value="navigate">Explore</ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent showArrow={false}>Pan, orbit, zoom, and inspect molecules</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem value="lasso">Lasso</ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent showArrow={false}>Draw a free-form selection linked to Grid</TooltipContent>
-              </Tooltip>
-            </ToggleGroup>
-            {visibleSourceIds || scope === "filtered" ? (
-              <ToggleGroup
-                type="single"
-                variant="outline"
-                size="sm"
-                spacing={0}
-                value={scope}
-                aria-label="Embedding scope"
-                onValueChange={(value) => {
-                  if (value === "all" || value === "filtered") setScope(value);
-                }}
-              >
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <ToggleGroupItem value="all">All</ToggleGroupItem>
-                  </TooltipTrigger>
-                  <TooltipContent showArrow={false}>Embed every molecule and dim the filtered-out ones</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <ToggleGroupItem value="filtered" disabled={!visibleSourceIds}>
-                      {visibleSourceIds ? `Filtered · ${visibleSourceIds.size.toLocaleString()}` : "Filtered"}
-                    </ToggleGroupItem>
-                  </TooltipTrigger>
-                  <TooltipContent showArrow={false}>Recompute the map over just the filtered molecules</TooltipContent>
-                </Tooltip>
-              </ToggleGroup>
-            ) : null}
-            {displayedResult ? (
+            {controlsNarrow ? null : (
+              <>
+                {dimensionsToggle}
+                {toolToggle}
+                {scopeToggle}
+              </>
+            )}
+            {controlsNarrow ? null : displayedResult ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Badge
-                    className="ml-auto"
+                    className="ml-auto min-w-0"
                     variant="outline"
                     aria-label={resultTimingDescription(displayedResult)}
                   >
-                    {displayedResult.successfulRecords.toLocaleString()} molecules · Metal
+                    <span className="truncate">
+                      {displayedResult.successfulRecords.toLocaleString()} molecules · Metal
+                    </span>
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent showArrow={false}>
@@ -1063,90 +1099,117 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
                 </TooltipContent>
               </Tooltip>
             ) : (
-              <Badge className="ml-auto" variant="outline">
+              <Badge className="ml-auto min-w-0" variant="outline">
                 {progress ? <Spinner data-icon="inline-start" /> : null}
-                {runningLabel}
+                <span className="truncate">{runningLabel}</span>
               </Badge>
             )}
-          </div>
-          <div
-            className="chemical-space-visual-controls flex w-full items-center gap-3"
-            data-testid="chemical-space-visual-controls"
-          >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Field orientation="horizontal" className="min-w-0 max-w-44 flex-1 gap-2">
-                  <FieldLabel className="chemical-space-control-name shrink-0 text-xs text-muted-foreground">Size</FieldLabel>
-                  <Slider
-                    className="min-w-10 flex-1"
-                    tone="neutral"
-                    min={0.5}
-                    max={3}
-                    step={0.1}
-                    value={[pointScale]}
-                    aria-label="Point size"
-                    onValueChange={([value]) => setPointScale(value)}
-                  />
-                  <span className="w-9 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
-                    {Math.round(pointScale * 100)}%
-                  </span>
-                </Field>
-              </TooltipTrigger>
-              <TooltipContent showArrow={false}>Point size · {Math.round(pointScale * 100)}%</TooltipContent>
-            </Tooltip>
-            {draft.method === "tmap" ? (
+            <Popover>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Field orientation="horizontal" className="min-w-0 max-w-44 flex-1 gap-2">
-                    <FieldLabel className="chemical-space-control-name shrink-0 text-xs text-muted-foreground">Width</FieldLabel>
+                  <PopoverTrigger asChild>
+                    <Button
+                      className={controlsNarrow ? "ml-auto shrink-0" : "shrink-0"}
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Display settings"
+                    >
+                      <SlidersHorizontal />
+                    </Button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent showArrow={false}>Display settings</TooltipContent>
+              </Tooltip>
+              <PopoverContent
+                align="end"
+                side="bottom"
+                sideOffset={8}
+                container={portalContainer}
+                className="w-64"
+                data-testid="chemical-space-visual-controls"
+              >
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium text-foreground">Display</span>
+                  <span className="text-xs text-muted-foreground">
+                    Point size and colouring for this map.
+                  </span>
+                </div>
+                {controlsNarrow ? (
+                  <FieldGroup className="gap-3">
+                    <Field className="gap-1.5">
+                      <FieldLabel className="text-xs">Dimensions</FieldLabel>
+                      {dimensionsToggle}
+                    </Field>
+                    <Field className="gap-1.5">
+                      <FieldLabel className="text-xs">Tool</FieldLabel>
+                      {toolToggle}
+                    </Field>
+                    {scopeToggle ? (
+                      <Field className="gap-1.5">
+                        <FieldLabel className="text-xs">Scope</FieldLabel>
+                        {scopeToggle}
+                      </Field>
+                    ) : null}
+                  </FieldGroup>
+                ) : null}
+                <FieldGroup className="gap-3">
+                  <ParameterField label="Size" value={`${Math.round(pointScale * 100)}%`}>
                     <Slider
-                      className="min-w-10 flex-1"
                       tone="neutral"
-                      aria-label="TMAP tree line width"
                       min={0.5}
                       max={3}
                       step={0.1}
-                      value={[tmapLineScale]}
-                      onValueChange={([scale]) => setTmapLineScale(scale)}
+                      value={[pointScale]}
+                      aria-label="Point size"
+                      onValueChange={([value]) => setPointScale(value)}
                     />
-                    <span className="w-9 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
-                      {Math.round(tmapLineScale * 100)}%
-                    </span>
-                  </Field>
-                </TooltipTrigger>
-                <TooltipContent showArrow={false}>TMAP line width · {Math.round(tmapLineScale * 100)}%</TooltipContent>
-              </Tooltip>
-            ) : null}
-            {activityColumns.length > 0 ? (
-              <Field orientation="horizontal" className="min-w-0 max-w-80 flex-1 gap-2">
-                <FieldLabel className="chemical-space-control-name shrink-0 text-xs text-muted-foreground">Activity</FieldLabel>
-                <NativeSelect
-                  size="sm"
-                  className="min-w-28 flex-1"
-                  aria-label="Activity colour column"
-                  value={activityColumnId ?? ""}
-                  onChange={(event) => setActivityColumnId(event.currentTarget.value || null)}
-                >
-                  <NativeSelectOption value="">None</NativeSelectOption>
-                  {activityColumns.map((column) => (
-                    <NativeSelectOption key={column.id} value={column.id}>{column.label}</NativeSelectOption>
-                  ))}
-                </NativeSelect>
-                {activityColumnId ? (
-                  <NativeSelect
-                    size="sm"
-                    className="shrink-0"
-                    aria-label="Activity direction"
-                    value={activityDirection}
-                    onChange={(event) => setActivityDirection(event.currentTarget.value as ActivityDirection)}
-                  >
-                    <NativeSelectOption value="higherActive">High = active</NativeSelectOption>
-                    <NativeSelectOption value="lowerActive">Low = active</NativeSelectOption>
-                  </NativeSelect>
-                ) : null}
-              </Field>
-            ) : null}
-          </div>
+                  </ParameterField>
+                  {draft.method === "tmap" ? (
+                    <ParameterField label="Width" value={`${Math.round(tmapLineScale * 100)}%`}>
+                      <Slider
+                        tone="neutral"
+                        aria-label="TMAP tree line width"
+                        min={0.5}
+                        max={3}
+                        step={0.1}
+                        value={[tmapLineScale]}
+                        onValueChange={([scale]) => setTmapLineScale(scale)}
+                      />
+                    </ParameterField>
+                  ) : null}
+                  {activityColumns.length > 0 ? (
+                    <Field className="gap-1.5">
+                      <FieldLabel htmlFor="chemical-space-activity-column" className="text-xs">Activity</FieldLabel>
+                      <NativeSelect
+                        id="chemical-space-activity-column"
+                        size="sm"
+                        className="w-full"
+                        aria-label="Activity colour column"
+                        value={activityColumnId ?? ""}
+                        onChange={(event) => setActivityColumnId(event.currentTarget.value || null)}
+                      >
+                        <NativeSelectOption value="">None</NativeSelectOption>
+                        {activityColumns.map((column) => (
+                          <NativeSelectOption key={column.id} value={column.id}>{column.label}</NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+                      {activityColumnId ? (
+                        <NativeSelect
+                          size="sm"
+                          className="w-full"
+                          aria-label="Activity direction"
+                          value={activityDirection}
+                          onChange={(event) => setActivityDirection(event.currentTarget.value as ActivityDirection)}
+                        >
+                          <NativeSelectOption value="higherActive">High = active</NativeSelectOption>
+                          <NativeSelectOption value="lowerActive">Low = active</NativeSelectOption>
+                        </NativeSelect>
+                      ) : null}
+                    </Field>
+                  ) : null}
+                </FieldGroup>
+              </PopoverContent>
+            </Popover>
         </div>
 
         <div className="relative min-h-0 flex-1">
@@ -1260,10 +1323,11 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center gap-3 border-t border-border px-3 py-2">
+        <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
+          <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label="Chemical-space tools">
           <Popover>
             <PopoverTrigger asChild>
-              <Button className="shrink-0" variant="ghost" size="sm">
+              <Button className="shrink-0 text-muted-foreground" variant="ghost" size="xs">
                 Embedding
                 {embeddingDirty ? (
                   <span
@@ -1353,7 +1417,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
           </Popover>
           <Popover>
             <PopoverTrigger asChild>
-              <Button className="shrink-0" variant="ghost" size="sm">
+              <Button className="shrink-0 text-muted-foreground" variant="ghost" size="xs">
                 {clusterMode === "off" || !rankedClusters
                   ? "Grouping"
                   : `Grouping · ${rankedClusters.clusterCount}`}
@@ -1457,9 +1521,11 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                className="shrink-0 aria-disabled:opacity-[var(--shadcn-disabled-opacity)]"
+                className={cliffsEnabled
+                  ? "shrink-0 aria-disabled:opacity-[var(--shadcn-disabled-opacity)]"
+                  : "shrink-0 text-muted-foreground aria-disabled:opacity-[var(--shadcn-disabled-opacity)]"}
                 variant={cliffsEnabled ? "outline" : "ghost"}
-                size="sm"
+                size="xs"
                 aria-pressed={cliffsEnabled}
                 aria-disabled={!activityColumnId || undefined}
                 onClick={() => {
@@ -1478,7 +1544,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
           </Tooltip>
           <Popover open={studyOpen} onOpenChange={setStudyOpen}>
             <PopoverTrigger asChild>
-              <Button className="shrink-0" variant="ghost" size="sm">Study</Button>
+              <Button className="shrink-0 text-muted-foreground" variant="ghost" size="xs">Study</Button>
             </PopoverTrigger>
             <PopoverContent
               align="start"
@@ -1546,6 +1612,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
               </Button>
             </PopoverContent>
           </Popover>
+          </div>
           {studyRunning ? (
             <div
               className="flex min-w-0 flex-1 items-center gap-2"
@@ -1592,6 +1659,15 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
                 }}
               />
             </div>
+          ) : null}
+          {needsConfirmation ? (
+            <Button
+              className="ml-auto shrink-0"
+              size="xs"
+              onClick={() => setConfirmedLargeRunDocumentKey(largeRunConfirmationKey)}
+            >
+              Calculate chemical space
+            </Button>
           ) : null}
         </div>
       </div>

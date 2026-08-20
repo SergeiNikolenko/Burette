@@ -1,20 +1,13 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Command as CommandRoot,
+  Command,
+  CommandDialog,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
-} from "cmdk";
-import {
-  Content as DialogContent,
-  Description as DialogDescription,
-  Overlay as DialogOverlay,
-  Portal as DialogPortal,
-  Root as DialogRoot,
-  Title as DialogTitle,
-} from "@radix-ui/react-dialog";
+} from "@/components/ui/command";
 import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
@@ -42,11 +35,6 @@ export function CommandPalette({
   onRunError,
 }: CommandPaletteProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
-  const [portalContainer, setPortalContainer] = useState<HTMLElement>();
-
-  useLayoutEffect(() => {
-    setPortalContainer(document.querySelector<HTMLElement>(".app-shell") ?? document.body);
-  }, [isOpen]);
 
   const items = useMemo<PaletteItem[]>(() => {
     const projectItems = state.sidebarProjects.flatMap((project) => project.items.map((item) => ({
@@ -120,53 +108,54 @@ export function CommandPalette({
     });
   };
 
-  if (!portalContainer) return null;
-
   return (
-    <DialogRoot
+    <CommandDialog
       open={isOpen}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
+      title="Command Palette"
+      description="Search commands and structures."
+      className="top-[16%] w-[min(560px,90vw)] sm:max-w-[min(560px,90vw)]"
     >
-      <DialogPortal container={portalContainer}>
-        <DialogOverlay cmdk-overlay="" />
-        <DialogContent cmdk-dialog="">
-          <DialogTitle className="command-palette-sr-only">Command Palette</DialogTitle>
-          <DialogDescription className="command-palette-sr-only">
-            Search commands and structures.
-          </DialogDescription>
-          <CommandRoot
-            label="Command Palette"
-            shouldFilter={false}
-            value={selectedValue}
-            onValueChange={setSelectedValue}
-          >
-            <CommandInput
-              value={query}
-              onValueChange={onQueryChange}
-              placeholder="Search commands and structures..."
-              aria-label="Search commands and open structures"
-            />
-            <CommandList ref={listRef}>
-              {visibleItems.length === 0 ? (
-                <CommandEmpty>No results found.</CommandEmpty>
-              ) : (
-                visibleGroups.map((group) => (
-                  <CommandGroup key={group.heading} heading={group.heading}>
-                    {group.items.map((item) => (
-                      <CommandItem key={item.id} value={item.id} onSelect={() => runItem(item)}>
-                        <span>{item.label}</span>
-                        <small>{item.description}</small>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                ))
-              )}
-            </CommandList>
-          </CommandRoot>
-        </DialogContent>
-      </DialogPortal>
-    </DialogRoot>
+      <Command
+        label="Command Palette"
+        shouldFilter={false}
+        value={selectedValue}
+        onValueChange={setSelectedValue}
+        className="bg-transparent p-0"
+      >
+        <CommandInput
+          value={query}
+          onValueChange={onQueryChange}
+          placeholder="Search commands and structures..."
+          aria-label="Search commands and open structures"
+          className="pl-1.5"
+        />
+        <CommandList ref={listRef} className="max-h-80 p-1">
+          {visibleItems.length === 0 ? (
+            <CommandEmpty>No results found.</CommandEmpty>
+          ) : (
+            visibleGroups.map((group) => (
+              <CommandGroup key={group.heading} heading={group.heading} className="p-0">
+                {group.items.map((item) => (
+                  <CommandItem
+                    key={item.id}
+                    value={item.id}
+                    onSelect={() => runItem(item)}
+                    className="flex-col items-start gap-0.5 px-3 py-2.5"
+                  >
+                    <span className="w-full truncate">{item.label}</span>
+                    <small className="w-full truncate text-xs text-muted-foreground">
+                      {item.description}
+                    </small>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))
+          )}
+        </CommandList>
+      </Command>
+    </CommandDialog>
   );
 }
