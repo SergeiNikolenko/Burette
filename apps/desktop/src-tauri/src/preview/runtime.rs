@@ -2068,6 +2068,9 @@ mod document_open_tests {
             let single_sdf = temp_fixture_path("collections/sdf/single.sdf");
             let multi_sdf = temp_fixture_path("collections/sdf/multi.sdf");
             let lammps_dump = temp_fixture_path("md/paired/paired.lammpstrj");
+            let reaction_fixtures = repo_root().join("tests/fixtures/reactions");
+            let rxn = reaction_fixtures.join("amidation.rxn");
+            let rdf = reaction_fixtures.join("three-reactions.rdf");
             created_files.push(mini_xyz.clone());
             created_files.push(mini_pdb.clone());
             created_files.push(single_sdf.clone());
@@ -2080,6 +2083,8 @@ mod document_open_tests {
                 (single_sdf, "molstar"),
                 (multi_sdf, "grid2d"),
                 (lammps_dump, "molstar"),
+                (rxn, "grid2d"),
+                (rdf, "grid2d"),
                 (cube, "xyzrender-external"),
                 (com, "xyzrender-external"),
                 (mae_gz, "xyzrender-external"),
