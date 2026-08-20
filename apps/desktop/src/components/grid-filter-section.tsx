@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowDown01Icon, Cancel01Icon, ChartHistogramIcon, Search01Icon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, ArrowUpDownIcon, Cancel01Icon, ChartHistogramIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Bar, BarChart, XAxis } from "recharts";
 import { Badge } from "./ui/badge";
@@ -253,7 +253,7 @@ function NumericFilter({
   );
 }
 
-function FilterCard({ column, actions }: { column: GridFilterColumn; actions: ShellActions }) {
+function FilterCard({ column, actions, bulk }: { column: GridFilterColumn; actions: ShellActions; bulk: { open: boolean } | null }) {
   const scale = useMemo(() => columnScale(column), [column]);
   const active = Boolean(column.filter && (column.filter.min || column.filter.max || column.filter.text));
   const [open, setOpen] = useState(active);
@@ -264,6 +264,12 @@ function FilterCard({ column, actions }: { column: GridFilterColumn; actions: Sh
   useEffect(() => {
     if (active) setOpen(true);
   }, [active]);
+
+  // Each click mints a fresh object, so the same direction applies again to
+  // cards the user has toggled by hand since the last sweep.
+  useEffect(() => {
+    if (bulk) setOpen(bulk.open);
+  }, [bulk]);
 
   return (
     <Collapsible className="grid-filter-card" data-active={active || undefined} open={open} onOpenChange={setOpen}>
@@ -336,6 +342,8 @@ function FilterCard({ column, actions }: { column: GridFilterColumn; actions: Sh
 export function GridFilterSection({ model, actions }: { model: GridFilterModel; actions: ShellActions }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(true);
+  const [bulk, setBulk] = useState<{ open: boolean } | null>(null);
+  const allOpen = bulk?.open === true;
   const columns = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return model.columns.filter((column) => !needle || column.label.toLowerCase().includes(needle));
@@ -357,14 +365,33 @@ export function GridFilterSection({ model, actions }: { model: GridFilterModel; 
               Filters
             </Button>
           </CollapsibleTrigger>
-          {activeCount ? (
-            <Button type="button" variant="ghost" size="xs" onClick={() => actions.clearGridColumnFilters()}>
-              Clear all
-              <Badge variant="secondary">{activeCount.toLocaleString()}</Badge>
-            </Button>
-          ) : (
-            <Badge variant="secondary">{model.columns.length.toLocaleString()} columns</Badge>
-          )}
+          <div className="grid-filter-host-actions">
+            {open ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-2xs"
+                    aria-expanded={allOpen}
+                    aria-label={allOpen ? "Collapse all filters" : "Expand all filters"}
+                    onClick={() => setBulk({ open: !allOpen })}
+                  >
+                    <HugeiconsIcon icon={ArrowUpDownIcon} aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent showArrow={false}>{allOpen ? "Collapse all" : "Expand all"}</TooltipContent>
+              </Tooltip>
+            ) : null}
+            {activeCount ? (
+              <Button type="button" variant="ghost" size="xs" onClick={() => actions.clearGridColumnFilters()}>
+                Clear all
+                <Badge variant="secondary">{activeCount.toLocaleString()}</Badge>
+              </Button>
+            ) : (
+              <Badge variant="secondary">{model.columns.length.toLocaleString()} columns</Badge>
+            )}
+          </div>
         </div>
         <CollapsibleContent>
           <div className="grid-filter-count">
@@ -385,7 +412,7 @@ export function GridFilterSection({ model, actions }: { model: GridFilterModel; 
             </div>
           </Field>
           <div className="grid-filter-list">
-            {shown.map((column) => <FilterCard key={column.id} column={column} actions={actions} />)}
+            {shown.map((column) => <FilterCard key={column.id} column={column} actions={actions} bulk={bulk} />)}
             {columns.length > shown.length ? (
               <div className="grid-filter-more">
                 {(columns.length - shown.length).toLocaleString()} more columns — narrow the search

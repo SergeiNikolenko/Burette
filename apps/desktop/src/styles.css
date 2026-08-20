@@ -9358,6 +9358,11 @@ img.settings-open-destination-icon {
 .grid-filter-search {
   padding-left: 29px;
 }
+.grid-filter-host-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 /* No inner scroll: the section grows to its full height and the dock scrolls
    once, so a filter never sits in a box inside a box. */
 .grid-filter-list {
