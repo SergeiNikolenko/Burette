@@ -1506,11 +1506,6 @@ button.buret-grid-rail-tick:focus-visible {
 body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
   transition: none;
 }
-.buret-grid-rail-tick:hover + .buret-grid-rail-tick + .buret-grid-rail-tick,
-.buret-grid-rail-tick:has(+ .buret-grid-rail-tick + .buret-grid-rail-tick:hover) {
-  width: 16px;
-  background: color-mix(in srgb, var(--buret-text) 34%, transparent);
-}
 
 .buret-grid-rail-popover {
   position: absolute;
