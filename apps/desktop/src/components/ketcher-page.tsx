@@ -82,6 +82,9 @@ const KETCHER_OUTPUT_MAX_HEIGHT = 360;
 const KETCHER_EXPORT_TIMEOUT_MS = 15000;
 const KETCHER_IMPORT_INSTANCE_RETRY_DELAYS_MS = [0, 250, 750, 1500, 2500] as const;
 const KETCHER_IMPORT_REQUEST_RETRY_MS = 5000;
+const KETCHER_CHROME_LAYOUT_WIDTH = 1101;
+const KETCHER_FIT_SCALES = [1, 0.9, 0.8, 0.7, 0.6, 0.5] as const;
+const KETCHER_NARROW_SHELL_WIDTH = 864;
 type KetcherImportResult = "success" | "transient-failure" | "failure";
 const IS_KETCHER_WEB_DEMO = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
 let ketcherStructServiceReady = false;
@@ -182,6 +185,10 @@ const KETCHER_TOOLTIP_LABELS: Record<string, string> = {
   image: "Add image",
   "template-lib": "Open template library",
 };
+
+function ketcherFitScaleForWidth(width: number) {
+  return KETCHER_FIT_SCALES.find((scale) => width >= Math.ceil(KETCHER_CHROME_LAYOUT_WIDTH * scale)) ?? 0.5;
+}
 const KETCHER_FORMAT_LABELS: Record<KetcherTextFormat | "auto", string> = {
   auto: "Auto",
   smiles: "SMILES",
@@ -402,6 +409,8 @@ export function KetcherPage({
     location.draftKet?.trim() || location.draftMolfile?.trim() || state.ketcherDraftMolfile.trim(),
   ));
   const [ketcherZoom, setKetcherZoom] = useState(DEFAULT_KETCHER_ZOOM);
+  const [ketcherFitScale, setKetcherFitScale] = useState(1);
+  const [ketcherNarrow, setKetcherNarrow] = useState(false);
   const [outputPanelHeight, setOutputPanelHeight] = useState(KETCHER_OUTPUT_DEFAULT_HEIGHT);
   const [dockPortalElement, setDockPortalElement] = useState<HTMLElement | null>(null);
   const [liveImportDirty, setLiveImportDirty] = useState(false);
@@ -431,10 +440,27 @@ export function KetcherPage({
     : "";
   const ketcherUIScaleStyle = useMemo(() => ({
     "--ketcher-ui-scale": String(ketcherZoom),
-  }) as CSSProperties, [ketcherZoom]);
+    "--ketcher-fit-scale": String(ketcherFitScale),
+  }) as CSSProperties, [ketcherFitScale, ketcherZoom]);
   const outputPanelStyle = useMemo(() => ({
     "--ketcher-output-height": `${outputPanelHeight}px`,
   }) as CSSProperties, [outputPanelHeight]);
+
+  useEffect(() => {
+    const shell = editorShellRef.current;
+    if (!shell) return undefined;
+    const update = () => {
+      const width = shell.clientWidth;
+      const nextScale = ketcherFitScaleForWidth(width);
+      const nextNarrow = width <= KETCHER_NARROW_SHELL_WIDTH;
+      setKetcherFitScale((current) => current === nextScale ? current : nextScale);
+      setKetcherNarrow((current) => current === nextNarrow ? current : nextNarrow);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(shell);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!panelMode) {
@@ -1226,6 +1252,7 @@ export function KetcherPage({
     <section
       className="ketcher-page"
       aria-label="Ketcher"
+      data-narrow={ketcherNarrow || undefined}
       data-drop-active={dropActive || undefined}
       onDragOverCapture={handleDragOver}
       onDragLeaveCapture={handleDragLeave}

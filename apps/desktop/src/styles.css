@@ -6177,6 +6177,7 @@ input.structure-inspector-composition-search {
   gap: 8px;
 }
 .ketcher-page-body {
+  min-width: 0;
   min-height: 0;
   padding: 0 18px 12px;
   display: grid;
@@ -6187,10 +6188,10 @@ input.structure-inspector-composition-search {
   position: relative;
   min-width: 0;
   min-height: 0;
-  /* Chrome scale follows the header zoom control, floored so the toolbars stay
-     usable at deep zoom-out and capped so zoom-in never outgrows the 100%
-     layout. Canvas drawing zoom is Ketcher's own setZoom, not this scale. */
-  --ketcher-chrome-scale: clamp(0.5, var(--ketcher-ui-scale, 1), 1);
+  /* Chrome scale follows the smaller of the header zoom and measured fit,
+     floored so the toolbars stay usable at deep zoom-out. Canvas drawing zoom
+     is Ketcher's own setZoom, not this scale. */
+  --ketcher-chrome-scale: clamp(0.5, min(var(--ketcher-ui-scale, 1), var(--ketcher-fit-scale)), 1);
   --ketcher-toolbar-button-size: 32px;
   --ketcher-toolbar-icon-size: 22px;
   --ketcher-toolbar-margin: 4px;
@@ -6203,6 +6204,21 @@ input.structure-inspector-composition-search {
   background: var(--surface-primary);
   overflow: hidden;
   isolation: isolate;
+}
+/* ResizeObserver marks the layout narrow from the editor shell's actual width,
+   so sidebar and dock changes are handled independently of the window size. */
+.ketcher-page[data-narrow] .ketcher-page-header {
+  width: 100%;
+  max-width: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+.ketcher-page[data-narrow] .ketcher-page-actions {
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 .ketcher-editor-scale-frame {
   position: absolute;

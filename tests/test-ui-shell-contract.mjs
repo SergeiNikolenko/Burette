@@ -2150,7 +2150,7 @@ assert.doesNotMatch(styles, /\.app-shell\[data-runtime="tauri"\]\[data-active-pa
 assert.match(styles, /\.page-surface\[data-page-kind="file"\]:not\(\[data-active\]\),\s*\.page-surface\[data-page-kind="text-file"\]:not\(\[data-active\]\),\s*\.page-surface\[data-page-kind="ketcher"\]:not\(\[data-active\]\) \{ display: block; \}/);
 assert.match(styles, /\.ketcher-page-header\s*\{[^}]*width: fit-content;[^}]*max-width: calc\(100% - 36px\);[^}]*min-height: 48px;[^}]*padding: 8px 18px;/s);
 assert.doesNotMatch(styles, /\.ketcher-page-header\s*\{[^}]*border-bottom:/s);
-assert.match(styles, /\.ketcher-page-body\s*\{[^}]*padding: 0 18px 12px;[^}]*gap: 8px;/s);
+assert.match(styles, /\.ketcher-page-body\s*\{[^}]*min-width: 0;[^}]*padding: 0 18px 12px;[^}]*gap: 8px;/s);
 assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*overflow: hidden;[^}]*isolation: isolate;/s);
 assert.doesNotMatch(styles, /\.ketcher-editor-shell\s*\{[^}]*contain: layout paint;/s);
 // The header controls are shadcn Buttons/ButtonGroups now: styles.css keeps only
@@ -2174,7 +2174,9 @@ assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*background: var\(--surface
 // lays out at 1/scale and scales back down (so every toolbar stays visible and
 // fills the shell at every zoom step), while the canvas cell reverses the
 // transform because Ketcher's pointer math cannot handle a scaled canvas.
-assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*--ketcher-chrome-scale: clamp\(0\.5, var\(--ketcher-ui-scale, 1\), 1\);[^}]*--ketcher-toolbar-button-size: 32px;[^}]*--ketcher-side-rail-width: calc\(var\(--ketcher-toolbar-button-size\) \+ 13px\);/s);
+assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*--ketcher-chrome-scale: clamp\(0\.5, min\(var\(--ketcher-ui-scale, 1\), var\(--ketcher-fit-scale\)\), 1\);[^}]*--ketcher-toolbar-button-size: 32px;[^}]*--ketcher-side-rail-width: calc\(var\(--ketcher-toolbar-button-size\) \+ 13px\);/s);
+assert.match(styles, /\.ketcher-page\[data-narrow\] \.ketcher-page-header\s*\{[^}]*width: 100%;[^}]*grid-template-columns: minmax\(0, 1fr\);/s);
+assert.match(styles, /\.ketcher-page\[data-narrow\] \.ketcher-page-actions\s*\{[^}]*width: 100%;[^}]*overflow-x: auto;/s);
 assert.match(styles, /--ketcher-top-toolbar-height: 36px/);
 assert.match(styles, /--ketcher-top-toolbar-icon-size: 24px/);
 assert.match(styles, /\.ketcher-editor-scale-frame\s*\{[^}]*position: absolute;[^}]*inset: 0;[^}]*width: calc\(100% \/ var\(--ketcher-chrome-scale\)\);[^}]*height: calc\(100% \/ var\(--ketcher-chrome-scale\)\);[^}]*transform: scale\(var\(--ketcher-chrome-scale\)\);[^}]*transform-origin: top left;/s);
@@ -3155,6 +3157,9 @@ assert.doesNotMatch(ketcherPage, /document\.querySelectorAll<HTMLElement>\(`\[da
 assert.match(ketcherPage, /const \[exportingSketch, setExportingSketch\] = useState\(false\)/);
 assert.match(ketcherPage, /const \[hasSketch, setHasSketch\] = useState\(Boolean\(\s*location\.draftKet\?\.trim\(\) \|\| location\.draftMolfile\?\.trim\(\) \|\| state\.ketcherDraftMolfile\.trim\(\),\s*\)\)/);
 assert.match(ketcherPage, /const \[ketcherZoom, setKetcherZoom\] = useState\(DEFAULT_KETCHER_ZOOM\)/);
+assert.match(ketcherPage, /function ketcherFitScaleForWidth\(width: number\)/);
+assert.match(ketcherPage, /const observer = new ResizeObserver\(update\)/);
+assert.match(ketcherPage, /data-narrow=\{ketcherNarrow \|\| undefined\}/);
 assert.match(ketcherPage, /const \[outputPanelHeight, setOutputPanelHeight\] = useState\(KETCHER_OUTPUT_DEFAULT_HEIGHT\)/);
 assert.match(ketcherPage, /const systemThemeMode = useSystemThemeMode\(\);/);
 assert.match(ketcherPage, /const ketcherThemeMode = resolveThemeMode\(state\.preferences\.theme, systemThemeMode\);/);
@@ -3165,7 +3170,8 @@ assert.match(ketcherPage, /const ketcherZoomPercent = Math\.round\(ketcherZoom \
 assert.match(ketcherPage, /const restoredDraftRef = useRef\(""\)/);
 assert.match(ketcherPage, /const editorShellRef = useRef<HTMLDivElement \| null>\(null\)/);
 assert.match(ketcherPage, /"--ketcher-ui-scale": String\(ketcherZoom\)/);
-assert.match(ketcherPage, /\}\) as CSSProperties, \[ketcherZoom\]\);/);
+assert.match(ketcherPage, /"--ketcher-fit-scale": String\(ketcherFitScale\)/);
+assert.match(ketcherPage, /\}\) as CSSProperties, \[ketcherFitScale, ketcherZoom\]\);/);
 assert.match(ketcherPage, /style=\{ketcherUIScaleStyle\}/);
 assert.match(ketcherPage, /"--ketcher-output-height": `\$\{outputPanelHeight\}px`/);
 assert.match(ketcherPage, /\}\) as CSSProperties, \[outputPanelHeight\]\);/);
