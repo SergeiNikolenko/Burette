@@ -35,6 +35,7 @@ type UseAppStartupEffectsOptions = {
   openPaths: OpenPaths;
   pushErrorStatus: PushErrorStatus;
   setActiveTab: (id: string) => void;
+  setExpandedProjectIds: (projectIds: string[]) => void;
   setWorkspacePath: (path: string | null) => void;
   tabs: MoleculeTab[];
 };
@@ -56,6 +57,7 @@ export function useAppStartupEffects({
   openPaths,
   pushErrorStatus,
   setActiveTab,
+  setExpandedProjectIds,
   setWorkspacePath,
   tabs,
 }: UseAppStartupEffectsOptions) {
@@ -90,6 +92,9 @@ export function useAppStartupEffects({
       for (const root of browserDevProjectRoots) {
         addProjectRoot(root);
       }
+      if (isWebDemoWorkspace()) {
+        setExpandedProjectIds(browserDevProjectRoots.map((root) => `project:${root}`));
+      }
       closeAllDocuments();
       const trajectoryDockingRequest = browserDevTrajectoryDockingRequest(paths);
       if (trajectoryDockingRequest) {
@@ -105,7 +110,7 @@ export function useAppStartupEffects({
     return () => {
       cancelled = true;
     };
-  }, [addProjectRoot, browserDevExplicitFolders, closeAllDocuments, documents, openDockingDocument, openPaths, pushErrorStatus, setWorkspacePath]);
+  }, [addProjectRoot, browserDevExplicitFolders, closeAllDocuments, documents, openDockingDocument, openPaths, pushErrorStatus, setExpandedProjectIds, setWorkspacePath]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;

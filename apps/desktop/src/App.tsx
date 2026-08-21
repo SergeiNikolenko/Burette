@@ -849,6 +849,7 @@ export default function App() {
     openPaths,
     pushErrorStatus,
     setActiveTab,
+    setExpandedProjectIds,
     setWorkspacePath,
     tabs,
   });

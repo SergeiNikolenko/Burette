@@ -51,6 +51,14 @@ for (const expected of [
   assert.match(html, new RegExp(escapeRegExp(expected)));
 }
 
+const expandedDemoHtml = renderToStaticMarkup(React.createElement(ProjectGroup, {
+  project,
+  state,
+  actions,
+  expandFoldersByDefault: true,
+}));
+assert.doesNotMatch(expandedDemoHtml, /data-expanded="false"/);
+
 const crowdedFolderProject = {
   ...project,
   id: "project:/fixtures/crowded",

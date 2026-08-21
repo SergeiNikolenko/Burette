@@ -6,6 +6,7 @@ import { isRemoteStructureUrl } from "../../lib/remote-structure";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
 import { buildShellCommands, filterShellCommands } from "../../lib/shell-commands";
 import { hasStructureDrag, readStructureDragPayload } from "../../lib/structure-drag";
+import { isWebDemoWorkspace, webDemoProjectRoot } from "../../lib/web-demo-workspace";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { RadixDropdownMenu } from "../radix-menu";
 import { ScrollFade } from "../scroll-fade";
@@ -348,6 +349,7 @@ export function FileBrowser({
                   project={project}
                   state={state}
                   actions={actions}
+                  expandFoldersByDefault={isWebDemoWorkspace() && project.rootPath === webDemoProjectRoot()}
                 />
               ))}
             </div>
