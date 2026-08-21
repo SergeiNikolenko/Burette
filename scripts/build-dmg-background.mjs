@@ -29,9 +29,25 @@ const H_VISIBLE = 368;
 const APP_ICON = { x: 145, y: 205 };
 const APPLICATIONS_ICON = { x: 515, y: 205 };
 
-// Sits in the gap between the two 104pt icons: they occupy x 93..197 and
-// x 463..567, so the arrow spans 243..402 with clear margins on both sides.
-const ARROW = { x0: 243, y0: 216, xEnd: 380, tip: 402, y: 190 };
+// Straight, on the icon centreline, spanning the gap between the two 104pt
+// icons. Drawn as a single filled polygon rather than a stroked shaft plus a
+// separate head, so there is no junction to misalign: `s` is the shaft's half
+// thickness, `h` the head's half width and `L` its length.
+const ARROW = { x0: 245, x1: 415, y: 205, s: 4, h: 12, L: 21 };
+
+function arrowPath({ x0, x1, y, s, h, L }) {
+  return [
+    `M ${x0 + s} ${y - s}`,
+    `L ${x1 - L} ${y - s}`,
+    `L ${x1 - L} ${y - h}`,
+    `L ${x1} ${y}`,
+    `L ${x1 - L} ${y + h}`,
+    `L ${x1 - L} ${y + s}`,
+    `L ${x0 + s} ${y + s}`,
+    `A ${s} ${s} 0 0 1 ${x0 + s} ${y - s}`,
+    'Z',
+  ].join(' ');
+}
 
 // The frame of the drift animation to freeze on: of the frames sampled, this one
 // has the widest cloud bank, so both icons sit on cloud rather than on open sky.
@@ -87,13 +103,10 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.
     <text x="${W / 2}" y="76" text-anchor="middle" font-family="${BODY_FONT}" font-size="13" font-weight="400" fill="#ffffff" fill-opacity="0.92">Drag Burette to the Applications folder</text>
   </g>
 
-  <!-- The shaft's final control point shares the tip's y so the curve arrives
-       horizontal and the head can be a plain right-pointing triangle. -->
-  <g fill="#ffffff" filter="url(#typeShadow)">
-    <path d="M ${ARROW.x0} ${ARROW.y0} C ${ARROW.x0 + 48} ${ARROW.y0 - 2} ${ARROW.xEnd - 50} ${ARROW.y} ${ARROW.xEnd} ${ARROW.y}"
-          fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
-    <path d="M ${ARROW.tip} ${ARROW.y} L ${ARROW.xEnd - 1} ${ARROW.y - 11.5} L ${ARROW.xEnd - 1} ${ARROW.y + 11.5} Z"/>
-  </g>
+  <!-- The frozen frame puts the tip over a bright cloud, where a plain white
+       fill loses its silhouette; the hairline defines the edge there and stays
+       unobtrusive over open sky. -->
+  <path d="${arrowPath(ARROW)}" fill="#ffffff" stroke="#2f6ea8" stroke-opacity="0.38" stroke-width="1" filter="url(#typeShadow)"/>
 
   <text x="${W - 20}" y="${H_VISIBLE - 16}" text-anchor="end" font-family="${BODY_FONT}" font-size="10" font-weight="400" fill="#ffffff" fill-opacity="0.72">macOS 12 or later</text>
 </svg>

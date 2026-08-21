@@ -520,13 +520,10 @@ L 221.5 60.4
     <text x="330" y="76" text-anchor="middle" font-family="'SF Pro Text','Helvetica Neue',Helvetica,sans-serif" font-size="13" font-weight="400" fill="#ffffff" fill-opacity="0.92">Drag Burette to the Applications folder</text>
   </g>
 
-  <!-- The shaft's final control point shares the tip's y so the curve arrives
-       horizontal and the head can be a plain right-pointing triangle. -->
-  <g fill="#ffffff" filter="url(#typeShadow)">
-    <path d="M 243 216 C 291 214 330 190 380 190"
-          fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
-    <path d="M 402 190 L 379 178.5 L 379 201.5 Z"/>
-  </g>
+  <!-- The frozen frame puts the tip over a bright cloud, where a plain white
+       fill loses its silhouette; the hairline defines the edge there and stays
+       unobtrusive over open sky. -->
+  <path d="M 249 201 L 394 201 L 394 193 L 415 205 L 394 217 L 394 209 L 249 209 A 4 4 0 0 1 249 201 Z" fill="#ffffff" stroke="#2f6ea8" stroke-opacity="0.38" stroke-width="1" filter="url(#typeShadow)"/>
 
   <text x="640" y="352" text-anchor="end" font-family="'SF Pro Text','Helvetica Neue',Helvetica,sans-serif" font-size="10" font-weight="400" fill="#ffffff" fill-opacity="0.72">macOS 12 or later</text>
 </svg>
