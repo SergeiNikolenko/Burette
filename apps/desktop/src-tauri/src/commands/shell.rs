@@ -1,17 +1,32 @@
 use base64::Engine;
-use serde::Deserialize;
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::Value;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{Manager, Runtime};
+use tauri::{Emitter, Manager, Runtime, State, WebviewWindow};
 
 use crate::preview::trace::PREVIEW_TRACE_FILE;
 use crate::windows;
 
 const APP_LOG_NAME: &str = "BuretteApp.log";
+const PROJECT_FILES_CHANGED_EVENT: &str = "project-files-changed";
+
+#[derive(Default)]
+pub(crate) struct ProjectRootWatcher {
+    watchers: Mutex<HashMap<String, RecommendedWatcher>>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectFilesChanged {
+    roots: Vec<String>,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,6 +114,83 @@ pub(crate) fn existing_paths(paths: Vec<String>) -> Vec<String> {
     paths
         .into_iter()
         .filter(|path| PathBuf::from(path).exists())
+        .collect()
+}
+
+#[tauri::command]
+pub(crate) fn watch_project_roots<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: State<'_, ProjectRootWatcher>,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let roots = paths
+        .into_iter()
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+        .collect::<BTreeSet<_>>();
+    let watched_roots = roots
+        .iter()
+        .map(|root| {
+            (
+                root.to_string_lossy().replace('\\', "/"),
+                root.canonicalize().unwrap_or_else(|_| root.clone()),
+            )
+        })
+        .collect::<Vec<_>>();
+    let event_window = window.clone();
+    let watcher = create_project_root_watcher(&roots, move |result| match result {
+        Ok(event) => {
+            let roots = changed_project_roots(&watched_roots, &event.paths);
+            if !roots.is_empty() {
+                let _ =
+                    event_window.emit(PROJECT_FILES_CHANGED_EVENT, ProjectFilesChanged { roots });
+            }
+        }
+        Err(error) => eprintln!("project folder watcher failed: {error}"),
+    })?;
+    let mut watchers = state
+        .watchers
+        .lock()
+        .map_err(|_| "Project folder watcher is unavailable".to_string())?;
+    if let Some(watcher) = watcher {
+        watchers.insert(window.label().to_string(), watcher);
+    } else {
+        watchers.remove(window.label());
+    }
+    Ok(())
+}
+
+fn create_project_root_watcher<F>(
+    roots: &BTreeSet<PathBuf>,
+    handler: F,
+) -> Result<Option<RecommendedWatcher>, String>
+where
+    F: FnMut(notify::Result<notify::Event>) + Send + 'static,
+{
+    if roots.is_empty() {
+        return Ok(None);
+    }
+    let mut watcher = notify::recommended_watcher(handler).map_err(|error| error.to_string())?;
+    for root in roots {
+        watcher
+            .watch(root, RecursiveMode::Recursive)
+            .map_err(|error| format!("{}: {error}", root.display()))?;
+    }
+    Ok(Some(watcher))
+}
+
+fn changed_project_roots(
+    watched_roots: &[(String, PathBuf)],
+    changed_paths: &[PathBuf],
+) -> Vec<String> {
+    watched_roots
+        .iter()
+        .filter(|(_, canonical_root)| {
+            changed_paths
+                .iter()
+                .any(|path| path.starts_with(canonical_root))
+        })
+        .map(|(root, _)| root.clone())
         .collect()
 }
 
@@ -554,12 +646,13 @@ fn unix_timestamp_ms() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::{
-        copy_redacted_text_file, is_allowed_external_url, read_external_preview_svg,
-        redact_diagnostic_text, write_base64_file, write_text_file, WriteBase64FileRequest,
-        WriteTextFileRequest,
+        changed_project_roots, copy_redacted_text_file, is_allowed_external_url,
+        read_external_preview_svg, redact_diagnostic_text, write_base64_file, write_text_file,
+        WriteBase64FileRequest, WriteTextFileRequest,
     };
     use base64::Engine;
     use std::fs;
+    use std::path::PathBuf;
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
@@ -591,6 +684,27 @@ mod tests {
                 "expected {url} to be rejected"
             );
         }
+    }
+
+    #[test]
+    fn maps_canonical_file_events_back_to_persisted_project_roots() {
+        let watched_roots = vec![
+            (
+                "/var/projects/active".to_string(),
+                PathBuf::from("/private/var/projects/active"),
+            ),
+            (
+                "/Users/test/other".to_string(),
+                PathBuf::from("/Users/test/other"),
+            ),
+        ];
+
+        let changed = changed_project_roots(
+            &watched_roots,
+            &[PathBuf::from("/private/var/projects/active/obsolete.pdb")],
+        );
+
+        assert_eq!(changed, ["/var/projects/active"]);
     }
 
     #[test]

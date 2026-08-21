@@ -181,3 +181,38 @@ assert.deepEqual(
     { relativePath: "zrecent.pdb", source: "recent" },
   ],
 );
+
+const projectsAfterExternalRemoval = buildSidebarProjects({
+  documents,
+  recentStructures,
+  projectRoots: ["/Users/test/Matcha"],
+  projectStructures: [
+    {
+      path: "/Users/test/Matcha/ligands/mini.pdb",
+      title: "mini.pdb",
+      extension: "pdb",
+      renderer: "molstar",
+      byteCount: 128,
+    },
+    {
+      path: "/Users/test/Matcha/keep.cif",
+      title: "keep.cif",
+      extension: "cif",
+      renderer: "molstar",
+      byteCount: 256,
+    },
+  ],
+  missingPaths: [
+    "/Users/test/Matcha/ligands/mini.pdb",
+    "/Users/test/Matcha/archive/alt-mini.pdb",
+  ],
+  activeDocumentId: "doc-1",
+});
+const matchaAfterExternalRemoval = projectsAfterExternalRemoval.find(
+  (project) => project.rootPath === "/Users/test/Matcha",
+);
+assert.ok(matchaAfterExternalRemoval);
+assert.deepEqual(
+  matchaAfterExternalRemoval.items.map((item) => item.relativePath),
+  ["keep.cif", "zrecent.pdb"],
+);

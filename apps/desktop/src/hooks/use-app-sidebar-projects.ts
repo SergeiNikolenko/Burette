@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 import { buildSidebarProjects, type SidebarProjectStructure } from "../lib/sidebar-projects";
 import { scanBrowserDevFolders } from "../lib/browser-dev-startup";
-import { isTauriRuntime } from "../lib/tauri";
+import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import type { RecentStructure, TextFileDocument, ViewerDocument } from "../types";
 import {
   isWebDemoWorkspace,
@@ -21,6 +22,7 @@ const browserDevSampleFiles = [
 const browserDevGeneratedProjectScanMs = 2500;
 const projectScanRootBatchSize = 16;
 const projectScanSessionEntryBudget = 20_000;
+const projectFilesystemRefreshDelayMs = 250;
 const browserDevStructureExtensions = new Set([
   "pdb", "ent", "pdbqt", "pqr", "xpdb",
   "cif", "mmcif", "mcif", "bcif", "mmtf",
@@ -43,6 +45,10 @@ type SidebarProjectRootScan = {
   scannedEntries: number;
   scannedDirectories: number;
   error: string | null;
+};
+
+type ProjectFilesChanged = {
+  roots: string[];
 };
 
 type UseAppSidebarProjectsArgs = {
@@ -89,6 +95,8 @@ export function useAppSidebarProjects({
 }: UseAppSidebarProjectsArgs) {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [projectStructures, setProjectStructures] = useState<SidebarProjectStructure[]>([]);
+  const [missingSidebarPaths, setMissingSidebarPaths] = useState<Set<string>>(() => new Set());
+  const [projectIndexRevision, setProjectIndexRevision] = useState(0);
   const [webDemoRevision, setWebDemoRevision] = useState(0);
   const prunedPersistedPathsRef = useRef(false);
   const lastGeneratedFilesSignatureRef = useRef<string>("");
@@ -102,8 +110,13 @@ export function useAppSidebarProjects({
   const projectScanSessionEntriesRef = useRef(0);
   const deferredProjectScanRootsRef = useRef(new Set<string>());
   const projectScanBudgetReportedRef = useRef(false);
+  const pendingChangedProjectRootsRef = useRef(new Set<string>());
+  const changedProjectRootsToRescanRef = useRef(new Set<string>());
+  const projectWatcherCommandQueueRef = useRef<Promise<void>>(Promise.resolve());
   const activeProjectRootsRef = useRef(new Set(projectRoots));
   activeProjectRootsRef.current = new Set(projectRoots);
+  const sidebarPathsRef = useRef({ documents, projectRoots, pinnedProjectRoots, pinnedStructurePaths, recentStructures, textDocuments });
+  sidebarPathsRef.current = { documents, projectRoots, pinnedProjectRoots, pinnedStructurePaths, recentStructures, textDocuments };
 
   useEffect(() => {
     if (!isWebDemoWorkspace()) return undefined;
@@ -141,12 +154,79 @@ export function useAppSidebarProjects({
     recentStructures: sidebarRecentStructures,
     projectRoots: sidebarProjectRoots,
     projectStructures: sidebarProjectStructures,
+    missingPaths: missingSidebarPaths,
     pinnedProjectRoots,
     projectNameOverrides,
     activeDocumentId,
     hiddenProjectRoots,
     pinnedStructurePaths,
-  }), [activeDocumentId, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, sidebarProjectRoots, sidebarProjectStructures, sidebarRecentStructures, textDocuments]);
+  }), [activeDocumentId, documents, hiddenProjectRoots, missingSidebarPaths, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, sidebarProjectRoots, sidebarProjectStructures, sidebarRecentStructures, textDocuments]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return undefined;
+    projectWatcherCommandQueueRef.current = projectWatcherCommandQueueRef.current
+      .then(() => invoke<void>("watch_project_roots", { paths: projectRoots }))
+      .catch((error) => pushErrorStatus(error, "Project folder indexing failed"));
+    return undefined;
+  }, [projectRoots, pushErrorStatus]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return undefined;
+    let refreshTimer: number | null = null;
+    const refreshChangedProjects = () => {
+      refreshTimer = null;
+      const changedRoots = new Set(pendingChangedProjectRootsRef.current);
+      if (changedRoots.size === 0) return;
+      pendingChangedProjectRootsRef.current.clear();
+      const { documents, projectRoots, pinnedProjectRoots, pinnedStructurePaths, recentStructures, textDocuments } = sidebarPathsRef.current;
+      const paths = Array.from(new Set([
+        ...projectRoots,
+        ...pinnedProjectRoots,
+        ...pinnedStructurePaths,
+        ...documents.map((document) => document.path),
+        ...textDocuments.map((document) => document.path),
+        ...recentStructures.map((structure) => structure.path),
+      ].filter(Boolean)));
+      void invoke<string[]>("existing_paths", { paths })
+        .then((existingPaths) => {
+          setMissingSidebarPaths(missingPaths(paths, existingPaths));
+          pruneSidebarPaths(existingPaths);
+          const checkedDocuments = recentStructures.map(({ path, openedAt }) => ({ path, openedAt }));
+          const checkedPaths = new Set(checkedDocuments.map((document) => document.path));
+          pruneRecentStructures(
+            checkedDocuments,
+            existingPaths.filter((path) => checkedPaths.has(path)),
+          );
+        })
+        .catch((error) => pushErrorStatus(error, "Project folder refresh failed"))
+        .finally(() => {
+          for (const root of changedRoots) changedProjectRootsToRescanRef.current.add(root);
+          setProjectIndexRevision((revision) => revision + 1);
+        });
+    };
+    const cleanup = trackTauriListener(
+      listen<ProjectFilesChanged>("project-files-changed", (event) => {
+        const roots = activeProjectRootsRef.current;
+        for (const root of event.payload.roots) {
+          if (roots.has(root)) pendingChangedProjectRootsRef.current.add(root);
+        }
+        if (pendingChangedProjectRootsRef.current.size === 0) return;
+        if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+        refreshTimer = window.setTimeout(refreshChangedProjects, projectFilesystemRefreshDelayMs);
+      }),
+      "project-files-changed",
+    );
+    return () => {
+      cleanup();
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+    };
+  }, [pruneRecentStructures, pruneSidebarPaths, pushErrorStatus]);
+
+  useEffect(() => () => {
+    projectWatcherCommandQueueRef.current = projectWatcherCommandQueueRef.current
+      .then(() => invoke<void>("watch_project_roots", { paths: [] }))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!isTauriRuntime()) {
@@ -212,6 +292,18 @@ export function useAppSidebarProjects({
       return undefined;
     }
     const activeRoots = activeProjectRootsRef.current;
+    const changedRoots = changedProjectRootsToRescanRef.current;
+    for (const root of changedRoots) {
+      completeProjectScanCacheRef.current.delete(root);
+      partialProjectScanResultsRef.current.delete(root);
+      projectScanInFlightRef.current.delete(root);
+      deferredProjectScanRootsRef.current.delete(root);
+    }
+    if (changedRoots.size > 0) {
+      changedRoots.clear();
+      projectScanSessionEntriesRef.current = 0;
+      projectScanBudgetReportedRef.current = false;
+    }
     for (const root of completeProjectScanCacheRef.current.keys()) {
       if (!activeRoots.has(root)) completeProjectScanCacheRef.current.delete(root);
     }
@@ -352,7 +444,7 @@ export function useAppSidebarProjects({
         .catch(() => undefined);
     }
     return undefined;
-  }, [browserDevExplicitFolders, browserDevGeneratedRoot, projectRoots, projectRootsToScan, pushErrorStatus, pushStatus]);
+  }, [browserDevExplicitFolders, browserDevGeneratedRoot, projectIndexRevision, projectRoots, projectRootsToScan, pushErrorStatus, pushStatus]);
 
   useEffect(() => {
     if (prunedPersistedPathsRef.current || !isTauriRuntime()) return;
@@ -360,6 +452,8 @@ export function useAppSidebarProjects({
       ...projectRoots,
       ...pinnedProjectRoots,
       ...pinnedStructurePaths,
+      ...documents.map((document) => document.path),
+      ...textDocuments.map((document) => document.path),
       ...recentStructures.map((structure) => structure.path),
     ].filter(Boolean)));
     if (paths.length === 0) return;
@@ -368,6 +462,7 @@ export function useAppSidebarProjects({
     void invoke<string[]>("existing_paths", { paths })
       .then((existingPaths) => {
         if (cancelled) return;
+        setMissingSidebarPaths(missingPaths(paths, existingPaths));
         pruneSidebarPaths(existingPaths);
         const checkedDocuments = recentStructures.map(({ path, openedAt }) => ({ path, openedAt }));
         const checkedPaths = new Set(checkedDocuments.map((document) => document.path));
@@ -380,7 +475,7 @@ export function useAppSidebarProjects({
     return () => {
       cancelled = true;
     };
-  }, [pinnedProjectRoots, pinnedStructurePaths, projectRoots, pruneRecentStructures, pruneSidebarPaths, recentStructures]);
+  }, [documents, pinnedProjectRoots, pinnedStructurePaths, projectRoots, pruneRecentStructures, pruneSidebarPaths, recentStructures, textDocuments]);
 
   const activeProject = useMemo(
     () => sidebarProjects.find((project) => project.isActive) ?? null,
@@ -415,6 +510,11 @@ function projectRootTitle(root: string) {
 function appendSidebarProjectRoot(roots: string[], root: string | null) {
   if (!root || roots.includes(root)) return roots;
   return [...roots, root];
+}
+
+function missingPaths(paths: string[], existingPaths: string[]) {
+  const existing = new Set(existingPaths);
+  return new Set(paths.filter((path) => !existing.has(path)));
 }
 
 function browserDevSampleProjectStructures(browserDevHasExplicitWorkspace: boolean): SidebarProjectStructure[] {
