@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import {
   Folder01Icon,
   Folder02Icon,
@@ -63,23 +63,30 @@ export function ProjectGroup({
   project,
   state,
   actions,
+  expandFoldersByDefault = false,
 }: {
   project: SidebarProject;
   state: ShellViewState;
   actions: ShellActions;
+  expandFoldersByDefault?: boolean;
 }) {
+  const projectTree = useMemo(() => buildProjectTree(project.items), [project.items]);
+  const defaultExpandedFolderPaths = useMemo(
+    () => expandFoldersByDefault ? collectProjectFolderPaths(projectTree) : [],
+    [expandFoldersByDefault, projectTree],
+  );
   const [showAllItems, setShowAllItems] = useState(false);
-  const [expandedFolderPaths, setExpandedFolderPaths] = useState<Set<string>>(() => new Set());
+  const [expandedFolderPaths, setExpandedFolderPaths] = useState<Set<string>>(() => new Set(defaultExpandedFolderPaths));
   const [showAllFolderPaths, setShowAllFolderPaths] = useState<Set<string>>(() => new Set());
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState(project.title);
+  const folderExpansionChangedRef = useRef(false);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const skipRenameCommitRef = useRef(false);
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
   const expanded = hasSidebarQuery || state.expandedProjectIds.includes(project.id);
   const canRenameProject = Boolean(project.rootPath);
-  const projectTree = buildProjectTree(project.items);
   const shouldLimitItems = !hasSidebarQuery
     && projectTree.length > COLLAPSED_PROJECT_ITEM_LIMIT
     && !showAllItems;
@@ -97,6 +104,11 @@ export function ProjectGroup({
   useEffect(() => {
     if (!renaming) setRenameDraft(project.title);
   }, [project.title, renaming]);
+
+  useEffect(() => {
+    if (!expandFoldersByDefault || folderExpansionChangedRef.current) return;
+    setExpandedFolderPaths(new Set(defaultExpandedFolderPaths));
+  }, [defaultExpandedFolderPaths, expandFoldersByDefault]);
 
   useEffect(() => {
     if (!renaming) return;
@@ -151,6 +163,7 @@ export function ProjectGroup({
 
   const handleRecursiveToggle = () => {
     const folderPaths = collectProjectFolderPaths(projectTree);
+    folderExpansionChangedRef.current = true;
     setExpandedFolderPaths((current) => {
       const next = new Set(current);
       for (const folderPath of folderPaths) {
@@ -182,6 +195,7 @@ export function ProjectGroup({
   };
   const toggleFolderPath = (path: string) => {
     const descendantPaths = collectProjectFolderPathsFor(projectTree, path).slice(1);
+    folderExpansionChangedRef.current = true;
     setExpandedFolderPaths((current) => {
       const next = new Set(current);
       if (next.has(path)) {
@@ -195,6 +209,7 @@ export function ProjectGroup({
   };
   const toggleFolderPathRecursive = (path: string) => {
     const folderPaths = collectProjectFolderPathsFor(projectTree, path);
+    folderExpansionChangedRef.current = true;
     setExpandedFolderPaths((current) => {
       const next = new Set(current);
       if (next.has(path)) {

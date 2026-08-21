@@ -87,6 +87,7 @@ export function initializeWebDemoWorkspace() {
       registerText(`${WEB_DEMO_ROOT}/${relativePath}`, text);
     }
     registerText(`${WEB_DEMO_ROOT}/notes/README.md`, "# Burette browser workspace\n\nOpen a structure or choose a local project folder.\n");
+    emitChange();
   }
   return [`${WEB_DEMO_ROOT}/proteins/1HTB.pdb`];
 }
