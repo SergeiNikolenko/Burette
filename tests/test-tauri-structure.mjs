@@ -755,7 +755,7 @@ assert.match(releaseScript, /building an ad-hoc signed release without notarizat
 assert.match(releaseScript, /notarytool submit/);
 assert.match(releaseScript, /stapler staple/);
 assert.match(releaseScript, /scripts\/create-dmg\.sh" "\$APP" "\$DMG"/);
-assert.match(createDmgScript, /packaging\/dmg\/background\.png/);
+assert.match(createDmgScript, /packaging\/dmg\/background\.tiff/);
 assert.match(createDmgScript, /ln -s \/Applications/);
 assert.match(createDmgScript, /set background picture of viewOptions/);
 assert.match(createDmgScript, /set position of item "Burette\.app"/);
