@@ -520,11 +520,12 @@ L 221.5 60.4
     <text x="330" y="76" text-anchor="middle" font-family="'SF Pro Text','Helvetica Neue',Helvetica,sans-serif" font-size="13" font-weight="400" fill="#ffffff" fill-opacity="0.92">Drag Burette to the Applications folder</text>
   </g>
 
-  <g stroke="#ffffff" fill="none" stroke-linecap="round" filter="url(#typeShadow)">
-    <path d="M 241 211 Q 330 171 403 211"
-          stroke-width="3" stroke-dasharray="0 10" opacity="0.95"/>
-    <path d="M 394 203 L 406 211 L 394 219"
-          stroke-width="2.6" stroke-linejoin="round"/>
+  <!-- The shaft's final control point shares the tip's y so the curve arrives
+       horizontal and the head can be a plain right-pointing triangle. -->
+  <g fill="#ffffff" filter="url(#typeShadow)">
+    <path d="M 243 216 C 291 214 330 190 380 190"
+          fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+    <path d="M 402 190 L 379 178.5 L 379 201.5 Z"/>
   </g>
 
   <text x="640" y="352" text-anchor="end" font-family="'SF Pro Text','Helvetica Neue',Helvetica,sans-serif" font-size="10" font-weight="400" fill="#ffffff" fill-opacity="0.72">macOS 12 or later</text>

@@ -29,6 +29,10 @@ const H_VISIBLE = 368;
 const APP_ICON = { x: 145, y: 205 };
 const APPLICATIONS_ICON = { x: 515, y: 205 };
 
+// Sits in the gap between the two 104pt icons: they occupy x 93..197 and
+// x 463..567, so the arrow spans 243..402 with clear margins on both sides.
+const ARROW = { x0: 243, y0: 216, xEnd: 380, tip: 402, y: 190 };
+
 // The frame of the drift animation to freeze on: of the frames sampled, this one
 // has the widest cloud bank, so both icons sit on cloud rather than on open sky.
 const SKY_TIME = 95;
@@ -83,11 +87,12 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.
     <text x="${W / 2}" y="76" text-anchor="middle" font-family="${BODY_FONT}" font-size="13" font-weight="400" fill="#ffffff" fill-opacity="0.92">Drag Burette to the Applications folder</text>
   </g>
 
-  <g stroke="#ffffff" fill="none" stroke-linecap="round" filter="url(#typeShadow)">
-    <path d="M ${APP_ICON.x + 96} ${APP_ICON.y + 6} Q ${W / 2} ${APP_ICON.y - 34} ${APPLICATIONS_ICON.x - 112} ${APP_ICON.y + 6}"
-          stroke-width="3" stroke-dasharray="0 10" opacity="0.95"/>
-    <path d="M ${APPLICATIONS_ICON.x - 121} ${APP_ICON.y - 2} L ${APPLICATIONS_ICON.x - 109} ${APP_ICON.y + 6} L ${APPLICATIONS_ICON.x - 121} ${APP_ICON.y + 14}"
-          stroke-width="2.6" stroke-linejoin="round"/>
+  <!-- The shaft's final control point shares the tip's y so the curve arrives
+       horizontal and the head can be a plain right-pointing triangle. -->
+  <g fill="#ffffff" filter="url(#typeShadow)">
+    <path d="M ${ARROW.x0} ${ARROW.y0} C ${ARROW.x0 + 48} ${ARROW.y0 - 2} ${ARROW.xEnd - 50} ${ARROW.y} ${ARROW.xEnd} ${ARROW.y}"
+          fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+    <path d="M ${ARROW.tip} ${ARROW.y} L ${ARROW.xEnd - 1} ${ARROW.y - 11.5} L ${ARROW.xEnd - 1} ${ARROW.y + 11.5} Z"/>
   </g>
 
   <text x="${W - 20}" y="${H_VISIBLE - 16}" text-anchor="end" font-family="${BODY_FONT}" font-size="10" font-weight="400" fill="#ffffff" fill-opacity="0.72">macOS 12 or later</text>
