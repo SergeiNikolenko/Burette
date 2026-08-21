@@ -63,6 +63,7 @@ pub fn run() {
         .manage(OpenedSourceRegistry::default())
         .manage(SourceEditRegistry::default())
         .manage(RecentDocumentsRegistry::default())
+        .manage(commands::shell::ProjectRootWatcher::default())
         .manage(startup::PendingOpenDocuments::default())
         .manage(zoom::WindowZoom::default())
         .on_page_load(|webview, payload| {
@@ -252,6 +253,7 @@ pub fn run() {
             commands::shell::frontend_log,
             commands::shell::open_external_url,
             commands::shell::existing_paths,
+            commands::shell::watch_project_roots,
             commands::shell::open_new_workspace_window,
             commands::shell::read_external_preview_svg,
             commands::shell::read_viewer_runtime_file_base64,

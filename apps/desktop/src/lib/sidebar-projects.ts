@@ -42,6 +42,7 @@ export function buildSidebarProjects({
   recentStructures,
   projectRoots,
   projectStructures = [],
+  missingPaths = [],
   pinnedProjectRoots = [],
   projectNameOverrides = {},
   activeDocumentId,
@@ -53,6 +54,7 @@ export function buildSidebarProjects({
   recentStructures: RecentStructure[];
   projectRoots: string[];
   projectStructures?: SidebarProjectStructure[];
+  missingPaths?: Iterable<string>;
   pinnedProjectRoots?: string[];
   projectNameOverrides?: Record<string, string>;
   activeDocumentId: string | null;
@@ -60,6 +62,7 @@ export function buildSidebarProjects({
   pinnedStructurePaths?: string[];
 }) {
   const normalizedRoots = dedupeRoots(projectRoots.filter((root) => !isTemporaryDocumentPath(root)));
+  const normalizedMissingPaths = new Set(Array.from(missingPaths, normalizePath));
   const hiddenRoots = dedupeRoots(hiddenProjectRoots.filter((root) => !isTemporaryDocumentPath(root)));
   const pinnedRoots = new Set(
     pinnedProjectRoots
@@ -71,8 +74,12 @@ export function buildSidebarProjects({
       .filter((path) => !isTemporaryDocumentPath(path))
       .map((path) => normalizePath(path)),
   );
-  const projectDocuments = documents.filter(isPersistentViewerDocument);
-  const projectTextDocuments = textDocuments.filter((document) => !isTemporaryDocumentPath(document.path));
+  const projectDocuments = documents.filter((document) => (
+    isPersistentViewerDocument(document) && !normalizedMissingPaths.has(normalizePath(document.path))
+  ));
+  const projectTextDocuments = textDocuments.filter((document) => (
+    !isTemporaryDocumentPath(document.path) && !normalizedMissingPaths.has(normalizePath(document.path))
+  ));
   const projectDocumentPaths = new Set(projectDocuments.map((document) => normalizePath(document.path)));
   const openPaths = new Set([
     ...projectDocumentPaths,
@@ -103,7 +110,9 @@ export function buildSidebarProjects({
     });
   }
 
-  for (const structure of recentStructures.filter((structure) => !isTemporaryDocumentPath(structure.path))) {
+  for (const structure of recentStructures.filter((structure) => (
+    !isTemporaryDocumentPath(structure.path) && !normalizedMissingPaths.has(normalizePath(structure.path))
+  ))) {
     if (openPaths.has(normalizePath(structure.path))) continue;
     knownPaths.add(normalizePath(structure.path));
     addStructureToProjects(projects, normalizedRoots, hiddenRoots, pinnedPaths, {
@@ -113,7 +122,9 @@ export function buildSidebarProjects({
     });
   }
 
-  for (const structure of projectStructures.filter((structure) => !isTemporaryDocumentPath(structure.path))) {
+  for (const structure of projectStructures.filter((structure) => (
+    !isTemporaryDocumentPath(structure.path) && !normalizedMissingPaths.has(normalizePath(structure.path))
+  ))) {
     const normalizedPath = normalizePath(structure.path);
     if (knownPaths.has(normalizedPath)) continue;
     knownPaths.add(normalizedPath);

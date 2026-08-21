@@ -1435,6 +1435,17 @@ assert.match(app, /useAppFileOpen\(\{[\s\S]*?addProjectRoot,/);
 assert.match(app, /expandedProjectIds,\s*hiddenProjectRoots,/);
 assert.match(appSidebarProjectsHook, /prunedPersistedPathsRef/);
 assert.match(appSidebarProjectsHook, /pruneSidebarPaths\(existingPaths\)/);
+assert.match(appSidebarProjectsHook, /listen<ProjectFilesChanged>\("project-files-changed"/);
+assert.match(appSidebarProjectsHook, /invoke<void>\("watch_project_roots", \{ paths: projectRoots \}\)/);
+assert.match(appSidebarProjectsHook, /pendingChangedProjectRootsRef/);
+assert.match(appSidebarProjectsHook, /projectIndexRevision/);
+assert.match(appSidebarProjectsHook, /missingPaths: missingSidebarPaths/);
+assert.match(appSidebarProjectsHook, /setMissingSidebarPaths\(missingPaths\(paths, existingPaths\)\)/);
+assert.match(
+  appSidebarProjectsHook,
+  /for \(const root of changedRoots\)[\s\S]*?completeProjectScanCacheRef\.current\.delete\(root\)[\s\S]*?partialProjectScanResultsRef\.current\.delete\(root\)/,
+  "filesystem changes must invalidate cached project inventories before rescanning",
+);
 assert.match(appSidebarProjectsHook, /const checkedDocuments = recentStructures\.map/);
 assert.match(appSidebarProjectsHook, /existingPaths\.filter\(\(path\) => checkedPaths\.has\(path\)\)/);
 assert.match(appStartupEffectsHook, /const browserDevProjectRoots = isWebDemoWorkspace\(\) && webDemoProjectRoot\(\)/);
@@ -3936,13 +3947,14 @@ assert.match(sidebarProjects, /const normalizedRoots = dedupeRoots\(projectRoots
 assert.match(sidebarProjects, /hiddenProjectRoots = \[\]/);
 assert.match(sidebarProjects, /const hiddenRoots = dedupeRoots\(hiddenProjectRoots\.filter\(\(root\) => !isTemporaryDocumentPath\(root\)\)\)/);
 assert.match(sidebarProjects, /if \(!explicitRootPath && resolveProjectRoot\(normalizedPath, hiddenProjectRoots\)\) return;/);
-assert.match(sidebarProjects, /const projectDocuments = documents\.filter\(isPersistentViewerDocument\)/);
-assert.match(sidebarProjects, /const projectTextDocuments = textDocuments\.filter\(\(document\) => !isTemporaryDocumentPath\(document\.path\)\)/);
+assert.match(sidebarProjects, /const normalizedMissingPaths = new Set\(Array\.from\(missingPaths, normalizePath\)\)/);
+assert.match(sidebarProjects, /const projectDocuments = documents\.filter\(\(document\) => \([\s\S]*isPersistentViewerDocument\(document\) && !normalizedMissingPaths\.has\(normalizePath\(document\.path\)\)/);
+assert.match(sidebarProjects, /const projectTextDocuments = textDocuments\.filter\(\(document\) => \([\s\S]*!isTemporaryDocumentPath\(document\.path\) && !normalizedMissingPaths\.has\(normalizePath\(document\.path\)\)/);
 assert.match(sidebarProjects, /const projectDocumentPaths = new Set\(projectDocuments\.map/);
 assert.match(sidebarProjects, /const openPaths = new Set\(\[\s*\.\.\.projectDocumentPaths,[\s\S]*\.\.\.projectTextDocuments\.map/);
 assert.match(sidebarProjects, /renderer: "renderer" in structure \? structure\.renderer : "text"/);
 assert.match(sidebarProjects, /for \(const document of projectDocuments\)/);
-assert.match(sidebarProjects, /recentStructures\.filter\(\(structure\) => !isTemporaryDocumentPath\(structure\.path\)\)/);
+assert.match(sidebarProjects, /recentStructures\.filter\(\(structure\) => \([\s\S]*!isTemporaryDocumentPath\(structure\.path\) && !normalizedMissingPaths\.has\(normalizePath\(structure\.path\)\)/);
 assert.match(sidebarProjects, /function compareProjects\(left: SidebarProject, right: SidebarProject\) \{\s*if \(left\.isPinned !== right\.isPinned\) return left\.isPinned \? -1 : 1;\s*return left\.title\.localeCompare\(right\.title\);\s*\}/);
 assert.doesNotMatch(sidebarProjects, /left\.isActive !== right\.isActive/);
 assert.doesNotMatch(sidebarProjects, /left\.isOpen !== right\.isOpen/);
