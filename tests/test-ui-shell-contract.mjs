@@ -2094,6 +2094,7 @@ assert.match(gridCss, /\.buret-grid-rail-ticks \{[^}]*z-index: 7;/s);
 assert.match(gridCss, /\.buret-grid-rail-tick \{[^}]*height: 10px;[^}]*min-height: 10px;/s);
 assert.match(gridCss, /button\.buret-grid-rail-tick:not\(:disabled\):hover,[^}]*background: transparent;[^}]*transform: none;/s);
 assert.match(gridCss, /body\.buret-grid-rail-dragging \.buret-grid-rail-tick-pill \{[^}]*transition: none;/s);
+assert.doesNotMatch(gridCss, /\.buret-grid-rail-tick:hover \+ \.buret-grid-rail-tick/);
 assert.match(gridCss, /--buret-grid-rail-popover-surface: #303033;/);
 assert.match(gridCss, /--buret-grid-rail-popover-border: rgba\(255, 255, 255, 0\.20\);/);
 assert.match(gridCss, /\.buret-grid-rail-popover \{[^}]*background: var\(--buret-grid-rail-popover-surface\);/s);
