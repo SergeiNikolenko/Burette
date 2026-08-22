@@ -130,7 +130,7 @@ const PASSES = [
 ];
 
 /** Renders one frozen frame as a packed RGB buffer, top row first. */
-export function renderSky(width, height, time, palette = SKY_PALETTE) {
+function renderSky(width, height, time, palette = SKY_PALETTE) {
   const out = Buffer.alloc(width * height * 3);
   const aspect = width / height;
   const sky = [0, 0, 0];

@@ -204,7 +204,7 @@ Every release app bundle must satisfy:
 
 The zip artifact is the in-app updater artifact. The dmg artifact is for manual
 distribution and is not currently consumed by the updater. The DMG uses the
-branded Finder layout from `packaging/dmg/background.png`, with the app and the
+branded Finder layout from `packaging/dmg/background.tiff`, with the app and the
 Applications alias positioned by `scripts/create-dmg.sh`.
 
 ### Legacy Burrete Update Bridge
