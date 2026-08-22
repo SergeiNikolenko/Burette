@@ -2699,6 +2699,15 @@ assert.doesNotMatch(gridHoverMolecule, /Open molecule details/);
 assert.match(styles, /\.grid-hover-molecule-prop\[data-tone\^="outlier"\] \{/);
 assert.match(gridViewer, /props: hoverRowProps\(row\)/);
 assert.match(styles, /\.grid-hover-molecule \{[^}]*position: sticky;[^}]*bottom: -12px;[^}]*background: var\(--bg-base\);/s);
+// The drawing paints the card's own surface rather than trusting a transparent
+// SVG to show it: a see-through well came out white in the packaged runtime,
+// which hid the light-ink structure completely.
+assert.match(gridHoverMolecule, /backgroundColour: paper,/);
+assert.doesNotMatch(gridHoverMolecule, /clearBackground/);
+assert.match(styles, /\.grid-hover-molecule-svg \{[^}]*background: var\(--bg-base\);/s);
+// A put-away preview leaves a bar that names the molecule waiting, so the
+// space it frees reads as a collapsed card instead of an empty panel.
+assert.match(gridHoverMolecule, /className="grid-hover-molecule-strap-label">\{label\}<\/span>/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "gridRowHover"/);
 assert.match(appGridControlMessagesHook, /smiles: typeof raw\.smiles === "string" \? raw\.smiles : null/);
 // Conformers and xTB share one card shell, and a missing binary has to say what

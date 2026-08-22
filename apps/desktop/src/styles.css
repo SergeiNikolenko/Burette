@@ -843,6 +843,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
    measured size, so it fills the width edge to edge and the card's own border
    is the only one around it. */
 .grid-hover-molecule-svg {
+  position: relative;
   display: flex;
   flex: 0 1 auto;
   min-height: 120px;
@@ -852,13 +853,25 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   margin-top: 2px;
   border-radius: 8px;
   cursor: pointer;
+  /* The paper the structure is drawn on, stated rather than borrowed from
+     whatever shows through: the drawing asks RDKit for this same colour, so
+     the two meet without a seam where the rounded size leaves a sliver. */
+  background: var(--bg-base);
 }
 /* The drawing opens the row in Ketcher, so it lights up like the control it is
-   - just enough to invite the click without framing the structure again. */
+   - just enough to invite the click without framing the structure again. The
+   tint rides over the drawing because the drawing is opaque. */
 .grid-hover-molecule-svg:hover,
 .grid-hover-molecule-svg:focus-visible {
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
   outline: none;
+}
+.grid-hover-molecule-svg:hover::after,
+.grid-hover-molecule-svg:focus-visible::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  pointer-events: none;
 }
 .grid-hover-molecule-drawing,
 .grid-hover-molecule-svg svg {
@@ -1032,53 +1045,60 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .grid-hover-molecule-prop[data-tone^="outlier"] .grid-hover-molecule-prop-track > span {
   background: var(--accent);
 }
-/* What a collapsed preview leaves behind: a full-width strip flush with the
-   panel's bottom edge, its grip hidden until the pointer comes near. Pull it
-   up to bring the card back at the height you pull to; click to get the last
-   height back. Mirrors the house resize grip so the gesture reads as familiar. */
+/* What a collapsed preview leaves behind: a bar flush with the panel's bottom
+   edge that names the molecule still waiting, so the freed space reads as a
+   put-away card rather than an empty panel. Pull it up to bring the card back
+   at the height you pull to; click to get the last height back. */
 .grid-hover-molecule-strap {
   position: sticky;
   bottom: -12px;
   z-index: 3;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: calc(100% + 24px);
   margin: 0 -12px -12px;
-  padding: 0;
-  height: 16px;
+  padding: 0 12px;
+  height: 30px;
   border: 0;
-  background: transparent;
+  border-top: 1px solid var(--line-subtler);
+  background: var(--bg-base);
+  color: var(--text-muted);
   cursor: ns-resize;
   touch-action: none;
 }
-.grid-hover-molecule-strap::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--bg-base);
-  opacity: 0;
-  transition: opacity 140ms ease;
-}
-.grid-hover-molecule-strap:hover::before,
-.grid-hover-molecule-strap:focus-visible::before {
-  opacity: 1;
+.grid-hover-molecule-strap:hover,
+.grid-hover-molecule-strap:focus-visible {
+  color: var(--text-secondary);
+  outline: none;
 }
 .grid-hover-molecule-strap-grip {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 44px;
-  height: 4px;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 3px;
   border-radius: 999px;
-  background: var(--text-muted);
-  opacity: 0;
-  transition: opacity 140ms ease, width 140ms ease;
+  background: currentColor;
+  opacity: 0.6;
+  transition: width 140ms ease;
   pointer-events: none;
 }
 .grid-hover-molecule-strap:hover .grid-hover-molecule-strap-grip,
 .grid-hover-molecule-strap:focus-visible .grid-hover-molecule-strap-grip {
-  opacity: 1;
-  width: 56px;
+  width: 28px;
+}
+/* The name is what tells the bar apart from a divider, so it takes the row and
+   the chevron stays pinned to the trailing edge. */
+.grid-hover-molecule-strap-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-hover-molecule-strap-chevron {
+  flex: 0 0 auto;
 }
 @media (prefers-reduced-motion: reduce) {
   .activity-indicator-spinner { animation-duration: 2.4s; }

@@ -96,6 +96,26 @@ function structurePalette(theme: string) {
   return theme === "dark" ? DARK_STRUCTURE_PALETTE : undefined;
 }
 
+// The drawing paints its own paper instead of letting the well show through a
+// transparent SVG: in the packaged runtime the well came out white, and a
+// light-ink structure on white paper is a blank card. The paper is the colour
+// the well is actually painted in, so the two meet without a seam in either
+// theme and a custom theme background is followed without a second source of
+// truth for it.
+const DEFAULT_PAPER: Record<string, [number, number, number]> = {
+  dark: [0.067, 0.067, 0.067],
+  light: [1, 1, 1],
+};
+
+function paperColour(well: HTMLElement | null, theme: string): [number, number, number] {
+  const surface = well ? window.getComputedStyle(well).backgroundColor : "";
+  const match = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,/\s]+([\d.]+))?\s*\)$/u.exec(surface);
+  if (match && (match[4] === undefined || Number(match[4]) > 0)) {
+    return [Number(match[1]) / 255, Number(match[2]) / 255, Number(match[3]) / 255];
+  }
+  return DEFAULT_PAPER[theme] ?? DEFAULT_PAPER.light;
+}
+
 // The shell publishes the resolved theme, so "auto" is already decided here.
 function useEffectiveTheme(): string {
   const [theme, setTheme] = useState(effectiveTheme);
@@ -156,6 +176,7 @@ export function GridHoverMoleculeCard({
   // for at these numbers so it fills the box at any drag height.
   const [wellSize, setWellSize] = useState<{ width: number; height: number } | null>(null);
   const wellObserverRef = useRef<ResizeObserver | null>(null);
+  const wellNodeRef = useRef<HTMLDivElement | null>(null);
   const renderTokenRef = useRef(0);
   const lastRowRef = useRef<HoveredGridRow | null>(null);
   if (row) lastRowRef.current = row;
@@ -169,6 +190,7 @@ export function GridHoverMoleculeCard({
   // list would run before the well exists and never attach.
   const attachWell = useCallback((node: HTMLDivElement | null) => {
     wellObserverRef.current?.disconnect();
+    wellNodeRef.current = node;
     if (!node) {
       wellObserverRef.current = null;
       return;
@@ -203,7 +225,8 @@ export function GridHoverMoleculeCard({
       setSpec("");
       return;
     }
-    const sizedKey = `${theme} ${wellSize.width}x${wellSize.height} ${source}`;
+    const paper = paperColour(wellNodeRef.current, theme);
+    const sizedKey = `${theme} ${paper.join(",")} ${wellSize.width}x${wellSize.height} ${source}`;
     const cachedSvg = svgCache.get(sizedKey);
     const cachedSpec = specCache.get(source);
     if (cachedSvg !== undefined && cachedSpec !== undefined) {
@@ -228,7 +251,7 @@ export function GridHoverMoleculeCard({
           const rendered = mol.get_svg_with_highlights(JSON.stringify({
             width: wellSize.width,
             height: wellSize.height,
-            clearBackground: false,
+            backgroundColour: paper,
             padding: 0.04,
             ...(palette ? { atomColourPalette: palette } : {}),
           }));
@@ -402,6 +425,13 @@ export function GridHoverMoleculeCard({
   // A lasso answer is reason enough to show the card even before anything has
   // been hovered.
   if (!shown && !showingScaffold) return null;
+  const label = showingScaffold
+    ? "Common scaffold"
+    : shown?.name || `Molecule ${(shown?.index ?? 0) + 1}`;
+  // A put-away card used to leave a bare strip of panel behind: the space it
+  // freed read as a hole with nothing in it, and the handle that brings the
+  // drawing back only appeared once the pointer happened to cross it. The
+  // collapsed card is a bar that says whose structure is waiting instead.
   if (hidden) {
     return (
       <button
@@ -412,16 +442,17 @@ export function GridHoverMoleculeCard({
         onPointerUp={onStrapUp}
         onPointerCancel={onStrapUp}
         aria-label="Show molecule preview"
-        title="Pull up to show the molecule preview"
+        title="Click or pull up to show the molecule preview"
       >
         <span className="grid-hover-molecule-strap-grip" aria-hidden="true" />
+        <span className="grid-hover-molecule-strap-label">{label}</span>
+        <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true" className="grid-hover-molecule-strap-chevron">
+          <path d="M1.5 6.5 5 3l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
     );
   }
   const scaffoldStatus = showingScaffold ? scaffoldStatusLine(scaffold) : null;
-  const label = showingScaffold
-    ? "Common scaffold"
-    : shown?.name || `Molecule ${(shown?.index ?? 0) + 1}`;
   const badge = showingScaffold
     ? (scaffold.kind === "failed" ? "" : `${scaffold.count} molecules`)
     : `row ${(shown?.index ?? 0) + 1}`;
