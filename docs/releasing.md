@@ -296,27 +296,16 @@ The release workflow should also push a tap commit named
 stable release, inspect the release job's Homebrew checkout/update steps and the
 `HOMEBREW_TAP_TOKEN` secret before announcing the release channel as updated.
 
-The registry package lives in `packages/burette`. It is a thin CLI installer
-for the macOS app, not the app bundle itself. Publish it from that workspace
-package after registry authentication:
+The private workspace package in `packages/burette` contains the installer and
+doctor implementation used by repository checks. Do not publish it: the
+unscoped `burette` name on npm belongs to an unrelated project. GitHub Releases
+and the Homebrew tap are the public installation channels.
 
-```bash
-cd packages/burette
-bun publish
-```
-
-Bun installs the same published package:
-
-```bash
-bunx burette install
-bunx burette doctor
-```
-
-The CLI installer installs to `~/Applications` by default and to
+The internal installer helper installs to `~/Applications` by default and to
 `/Applications` only with `--system`. It prints each install step, verifies the
 GitHub `sha256:<digest>` asset checksum when release metadata provides one,
 stages replacement through `Burette.app.updating`, and restores the previous app
-bundle if replacement fails. `burette doctor` checks the installed app, embedded
+bundle if replacement fails. Its `doctor` command checks the installed app, embedded
 Quick Look extension, `qlmanage`, and the app version.
 
 ## In-App Updates

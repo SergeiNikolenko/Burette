@@ -9,7 +9,7 @@ shared preview runtime they use.
 | `apps/burette-public-plugin` | Hosted public plugin submission, public HTTPS MCP endpoint, bounded attachment/PDB preparation, and CSP-compatible Burette workspace. |
 | `PreviewExtension` | macOS Finder Quick Look preview and thumbnail extension. `PreviewExtension/Web` contains the bundled Mol*, RDKit grid, and viewer runtime assets shared with desktop and Quick Look. |
 | `ios/BuretteMobile` | Source-built iPhone preview app target. It reuses the bundled preview runtime for iOS document handoff and phone-first molecular inspection. |
-| `packages/burette` | Bun CLI installer used by `bunx burette install`, `bunx burette doctor`, and release-channel checks. |
+| `packages/burette` | Private Bun helper used by installer, doctor, and release-channel checks. It is not a public registry package. |
 | `packages/ketcher-agent-contract` | Shared `@burette/ketcher-agent-contract` types consumed by the desktop app and the hosted public plugin. |
 | `plugins/burette-agent` | Codex/Burette plugin, MCP server, skills, and bounded agent workflow contracts. It wraps the repository CLI instead of reimplementing app control. |
 | `crates/burette-core` | Shared Rust crate for native molecular and preview-support logic used by the Tauri app. |
