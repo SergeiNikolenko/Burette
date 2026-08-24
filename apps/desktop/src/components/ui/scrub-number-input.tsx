@@ -1,5 +1,11 @@
 "use client"
 
+// Vendored from @kinetic/scrub-number-field at upstream commit
+// 3c20e15510f441b9c44c932f032618964df2c483 (registry SHA-256
+// 7dce6f31d69f42963c9eaa44efc0bdad3d39be67119ed81f1eab13543a3de2e1).
+// Burette adapts the optional logo icons, keeps a stable labelable control in
+// display mode, and commits the latest scrubbed value synchronously on release.
+
 import {
   useCallback,
   useEffect,
@@ -798,7 +804,7 @@ export function useNumberScrub({
     y: number
   } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const displaySurfaceRef = useRef<HTMLDivElement>(null)
+  const displaySurfaceRef = useRef<HTMLButtonElement>(null)
   const surfaceRef = useRef<HTMLDivElement>(null)
   const scrubRef = useRef<{
     captureTarget: HTMLElement | null
@@ -1336,6 +1342,7 @@ export function useNumberScrub({
       }
 
       if (wasScrubbing) {
+        const committedValue = lastCommittedValueRef.current
         finishInteraction()
 
         if (boundFeedbackRef.current !== null) {
@@ -1345,8 +1352,8 @@ export function useNumberScrub({
         setDraft((current) => {
           const nextDraft = preserveDisplayDraft(
             current,
-            value,
-            formatForEdit(value),
+            committedValue,
+            formatForEdit(committedValue),
           )
           draftRef.current = nextDraft
           displayDecimalPlacesRef.current = resolveDisplayDecimalPlaces(
@@ -1355,7 +1362,7 @@ export function useNumberScrub({
           )
           return nextDraft
         })
-        notifyCommit(value)
+        notifyCommit(committedValue)
         event.preventDefault()
         return
       }
@@ -2032,11 +2039,13 @@ export function ScrubNumberInput({
       data-slot={usesGroupedControl ? "input-group-control" : undefined}
     />
   ) : (
-    <div
+    <button
       ref={scrub.displaySurfaceRef}
       {...(logoScrollEnabled ? {} : scrub.scrubSurfaceHandlers)}
       {...displaySpinbuttonProps}
       aria-label={typeof ariaLabel === "string" ? ariaLabel : undefined}
+      aria-describedby={props["aria-describedby"]}
+      aria-labelledby={props["aria-labelledby"]}
       aria-invalid={scrub.invalid || undefined}
       className={cn(
         fieldClass,
@@ -2054,8 +2063,11 @@ export function ScrubNumberInput({
         scrub.invalid && "is-bound-error",
       )}
       data-slot={usesGroupedControl ? "input-group-control" : "scrub-number-scrubbable"}
+      disabled={disabled}
+      id={props.id}
       tabIndex={disabled ? -1 : 0}
       title={isDisplayTruncated ? scrub.displayValue : undefined}
+      type="button"
       onClick={
         logoScrollEnabled && !disabled
           ? () => {
@@ -2085,7 +2097,7 @@ export function ScrubNumberInput({
           value={scrub.displayValue}
         />
       </motion.div>
-    </div>
+    </button>
   )
 
   const fieldContent = (

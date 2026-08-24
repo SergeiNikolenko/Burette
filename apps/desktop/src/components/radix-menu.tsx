@@ -261,19 +261,28 @@ function renderControl(item: Extract<MenuItemSpec, { kind: "swatches" | "select"
       </label>
     );
   }
+  return <RadixMenuNumberControl key={item.id} item={item} />;
+}
+
+function RadixMenuNumberControl({ item }: { item: Extract<MenuItemSpec, { kind: "number" }> }) {
+  const [value, setValue] = useState(item.value);
+  const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
   return (
-    <label key={item.id} className="radix-menu-field" onKeyDown={stop}>
+    <label className="radix-menu-field" onKeyDown={stop}>
       <span>{item.label}</span>
       <span className="radix-menu-field-number" onClick={stop} onPointerDown={stop}>
         <ScrubNumberField
           aria-label={item.label}
           className="radix-menu-number-scrub"
-          defaultValue={item.value}
+          value={value}
           min={item.min}
           max={item.max}
           step={item.step}
           disabled={item.disabled}
-          onValueChange={(next) => item.action?.(next)}
+          onValueChange={(next) => {
+            setValue(next);
+            item.action?.(next);
+          }}
         />
         {item.unit ? <em>{item.unit}</em> : null}
       </span>
