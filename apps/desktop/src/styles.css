@@ -2375,7 +2375,7 @@ img.radix-menu-item-icon {
   white-space: nowrap;
 }
 .radix-menu-field select,
-.radix-menu-field input[type="number"] {
+.radix-menu-number-scrub :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]) {
   width: 62px;
   border: 1px solid var(--line-subtler);
   border-radius: 6px;
@@ -2390,10 +2390,11 @@ img.radix-menu-item-icon {
   max-width: 116px;
 }
 .radix-menu-field select:focus-visible,
-.radix-menu-field input[type="number"]:focus-visible {
+.radix-menu-number-scrub :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]):focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
+.radix-menu-number-scrub { width: 62px; }
 .radix-menu-field-number {
   display: inline-flex;
   align-items: center;
@@ -4360,7 +4361,7 @@ img.radix-menu-item-icon {
   color: var(--text-muted);
   font-size: 11px;
 }
-.structure-inspector-number-control input {
+.structure-inspector-number-control :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]) {
   min-width: 0;
   width: 100%;
   height: 28px;
@@ -5397,7 +5398,7 @@ input.structure-inspector-composition-search {
   font-size: 11px;
 }
 .trajectory-smoothing-settings select,
-.trajectory-smoothing-settings input[type="number"] {
+.trajectory-smoothing-number :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]) {
   min-width: 0;
   height: 28px;
   box-sizing: border-box;
@@ -5409,7 +5410,9 @@ input.structure-inspector-composition-search {
   font: inherit;
 }
 .trajectory-smoothing-settings select { width: 100%; max-width: 220px; justify-self: end; }
-.trajectory-smoothing-settings input[type="number"] { width: 88px; justify-self: end; }
+.trajectory-smoothing-number { width: 88px; justify-self: end; }
+.trajectory-smoothing-number > div,
+.structure-inspector-number-control > div { width: 100%; }
 .trajectory-smoothing-check { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 11px; }
 .trajectory-smoothing-check input { accent-color: var(--accent); }
 .trajectory-smoothing-update-status { color: var(--accent); font-size: 10px; font-weight: 650; }
