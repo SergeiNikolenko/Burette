@@ -19,6 +19,7 @@
     "@radix-ui/react-slot": "^1.1.1",
     "@vercel/analytics": "2.0.1",
     "@vercel/speed-insights": "2.0.0",
+    "calligraph": "^1.4.1",
     "chart.js": "^4.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

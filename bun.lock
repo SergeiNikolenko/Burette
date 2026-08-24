@@ -94,6 +94,7 @@
         "@radix-ui/react-slot": "^1.1.1",
         "@vercel/analytics": "2.0.1",
         "@vercel/speed-insights": "2.0.0",
+        "calligraph": "^1.4.1",
         "chart.js": "^4.5.0",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
@@ -1242,6 +1243,8 @@
     "call-bind-apply-helpers": ["call-bind-apply-helpers@1.0.2", "", { "dependencies": { "es-errors": "^1.3.0", "function-bind": "^1.1.2" } }, "sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ=="],
 
     "call-bound": ["call-bound@1.0.4", "", { "dependencies": { "call-bind-apply-helpers": "^1.0.2", "get-intrinsic": "^1.3.0" } }, "sha512-+ys997U96po4Kx/ABpBCqhA9EuxJaQWDQg7295H4hBphv3IZg0boBKuwYpt4YXp6MZ5AmZQnU/tyMTlRpaSejg=="],
+
+    "calligraph": ["calligraph@1.4.1", "", { "peerDependencies": { "motion": ">=11", "react": ">=18", "react-dom": ">=18" } }, "sha512-3EUt7sqF8vIhPbTrNvn6bvOQiQEbgnl2H8QRfzcFGNI6z4oW1Nr6ENb+8ssXzU5VvZGe7RXFRQVJsJlxn9Ruiw=="],
 
     "callsites": ["callsites@3.1.0", "", {}, "sha512-P8BjAsXvZS+VIDUI11hHCQEv74YT67YUi5JJFNWIqL235sBmjX4+qx9Muvls5ivyNENctx46xQLQ3aTuE7ssaQ=="],
 
