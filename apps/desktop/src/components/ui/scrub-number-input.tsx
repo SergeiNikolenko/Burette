@@ -4,7 +4,8 @@
 // 3c20e15510f441b9c44c932f032618964df2c483 (registry SHA-256
 // 7dce6f31d69f42963c9eaa44efc0bdad3d39be67119ed81f1eab13543a3de2e1).
 // Burette adapts the optional logo icons, keeps a stable labelable control in
-// display mode, and commits the latest scrubbed value synchronously on release.
+// display mode, propagates valid typed drafts, and commits the latest scrubbed
+// value synchronously on release.
 
 import {
   useCallback,
@@ -796,6 +797,7 @@ export function useNumberScrub({
   const boundFeedbackLatchedRef = useRef({ max: false, min: false })
   const interactingRef = useRef(false)
   const lastCommittedValueRef = useRef(value)
+  const editStartValueRef = useRef(value)
   const lastNudgeDirectionRef = useRef<1 | -1 | 0>(0)
   const [interactionEpoch, setInteractionEpoch] = useState(0)
   const lastClickRef = useRef<{
@@ -1294,6 +1296,7 @@ export function useNumberScrub({
         return
       }
 
+      editStartValueRef.current = value
       editingRef.current = true
       setEditing(true)
       interactingRef.current = true
@@ -1729,6 +1732,13 @@ export function useNumberScrub({
       )
       draftRef.current = nextValue
       setDraft(nextValue)
+
+      const parsed = Number(nextValue.replace(/^\+/, ""))
+      if (Number.isFinite(parsed)) {
+        const bounded = clampNumber(parsed, min, max)
+        lastCommittedValueRef.current = bounded
+        onChange(bounded)
+      }
     },
     onFocus: () => {
       interactingRef.current = true
@@ -1742,9 +1752,12 @@ export function useNumberScrub({
 
       if (event.key === "Escape") {
         setInvalid(false)
-        const revertedDraft = formatForEdit(value)
+        const revertedValue = editStartValueRef.current
+        const revertedDraft = formatForEdit(revertedValue)
+        lastCommittedValueRef.current = revertedValue
         draftRef.current = revertedDraft
         setDraft(revertedDraft)
+        onChange(revertedValue)
         editingRef.current = false
         setEditing(false)
         event.currentTarget.blur()
@@ -1960,7 +1973,7 @@ export function ScrubNumberInput({
   const scrubBounds = { min, max }
   const fieldClass = getFieldClasses(inputClassName)
   const ariaLabel = props["aria-label"]
-  const mirrorRef = useRef<HTMLInputElement>(null)
+  const mirrorRef = useRef<HTMLSpanElement>(null)
   const calligraphClipRef = useRef<HTMLDivElement>(null)
   const calligraphContentRef = useRef<HTMLSpanElement>(null)
   const [mirroredTypography, setMirroredTypography] = useState<CSSProperties>({})
@@ -2107,16 +2120,10 @@ export function ScrubNumberInput({
         usesGroupedControl ? "flex min-w-0 flex-1 overflow-hidden" : "shrink-0",
       )}
     >
-      <Input
+      <span
         ref={mirrorRef}
         aria-hidden
-        aria-label={
-          typeof ariaLabel === "string" ? ariaLabel : "Scrub number value"
-        }
         className={fieldClass}
-        readOnly
-        tabIndex={-1}
-        value={scrub.displayValue}
         style={{
           inset: 0,
           opacity: 0,
@@ -2124,7 +2131,9 @@ export function ScrubNumberInput({
           position: "absolute",
           zIndex: 0,
         }}
-      />
+      >
+        {scrub.displayValue}
+      </span>
       {scrubSurface}
     </div>
   )
