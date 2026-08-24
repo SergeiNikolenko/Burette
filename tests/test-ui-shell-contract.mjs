@@ -7098,9 +7098,9 @@ assert.match(previewViewer, /const viewportRailRect = visibleRect\('#buret-viewp
 assert.match(previewViewer, /const clearedRight = viewportRailRect\s*\? Math\.min\(right, Math\.floor\(viewportRailRect\.left - FLOATING_LAYOUT_GAP\)\)\s*: right;/);
 assert.match(previewViewer, /right: Math\.max\(clearedLeft, clearedRight\),/);
 assert.match(previewViewer, /const availableWidth = Math\.max\(180, Math\.floor\(bounds\.right - bounds\.left\)\);\s*root\.style\.maxWidth = availableWidth \+ 'px';/);
-assert.match(previewRuntimeCss, /\.buret-docking-poses-compact\.buret-molstar-story \.buret-docking-pose-main\s*\{[\s\S]*?grid-template-columns: 28px repeat\(4, minmax\(0, 1fr\)\);/);
-assert.match(previewRuntimeCss, /\.buret-docking-poses-compact\.buret-molstar-story \[data-buret-story-play\][\s\S]*?grid-column: 4;[\s\S]*?grid-row: 2;/);
-assert.match(previewRuntimeCss, /\.buret-docking-poses-compact\.buret-molstar-story \.buret-molstar-story-open[\s\S]*?grid-column: 5;[\s\S]*?grid-row: 2;/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses-compact \.buret-docking-pose-main\s*\{[\s\S]*?grid-template-columns: 28px auto minmax\(70px, 1fr\) auto auto;/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses-compact\.buret-molstar-story \[data-buret-story-play\][\s\S]*?grid-column: 6;[\s\S]*?grid-row: 1;/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses-compact\.buret-molstar-story \.buret-molstar-story-open[\s\S]*?grid-column: 7;[\s\S]*?grid-row: 1;/);
 assert.match(previewViewer, /function defaultDockingPoseControlsTop\(root, bounds\)/);
 assert.match(previewViewer, /const overlapsToolbar = bounds\.left < toolbarRect\.right \+ FLOATING_LAYOUT_GAP\s*&& bounds\.left \+ width > toolbarRect\.left - FLOATING_LAYOUT_GAP;/);
 assert.match(previewViewer, /return overlapsToolbar \? Math\.ceil\(toolbarRect\.bottom \+ FLOATING_LAYOUT_GAP\) : bounds\.top;/);
