@@ -20,6 +20,7 @@
   },
   "registries": {
     "@animate-ui": "https://animate-ui.com/r/{name}.json",
+    "@kinetic": "https://raw.githubusercontent.com/jay15git/kinetic/3c20e15510f441b9c44c932f032618964df2c483/public/r/{name}.json",
     "@retab": "https://ui.retab.com/r/{name}.json"
   }
 }

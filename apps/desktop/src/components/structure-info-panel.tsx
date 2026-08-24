@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrubNumberField } from "@/components/ui/scrub-number-input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { DIRECT_CHEMISTRY_JOB_ATOM_LIMIT, structureAtomCountFromSummary } from "../lib/direct-chemistry-guard";
@@ -823,6 +824,36 @@ function trajectoryPlaybackControlsFor(document: ViewerDocument, playback: Traje
   };
 }
 
+function TrajectoryNumberField({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <span className="trajectory-smoothing-number">
+      <ScrubNumberField
+        aria-label={label}
+        className="w-full"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onValueChange={onChange}
+      />
+    </span>
+  );
+}
+
 function TrajectorySmoothingCard({
   document,
   controls,
@@ -1089,14 +1120,14 @@ function TrajectorySmoothingCard({
                 <>
                   <div className="trajectory-smoothing-method-note">Use this to tour distinct long-lived shapes, not to smooth the original timeline. It needs a longer trajectory with repeated transitions between shapes.</div>
                   <div className="trajectory-smoothing-group-label">Kinetic model</div>
-                  <label data-smoothing-tooltip="How many distinct long-lived shapes to show. Start with 5; reduce it if the trajectory does not revisit enough states."><span>States to show</span><input type="number" min={2} max={12} value={kineticStates} onChange={(event) => setKineticStates(Number(event.target.value) || 5)} /></label>
-                  <label data-smoothing-tooltip="How far apart frames must be before a transition is counted. Start near 10 frames; a longer lag ignores brief back-and-forth jitter."><span>Lag, frames</span><input type="number" min={1} max={Math.max(1, Math.floor(frameCount / 3))} value={lagFrames} onChange={(event) => setLagFrames(Number(event.target.value) || 1)} /></label>
+                  <label data-smoothing-tooltip="How many distinct long-lived shapes to show. Start with 5; reduce it if the trajectory does not revisit enough states."><span>States to show</span><TrajectoryNumberField label="States to show" min={2} max={12} value={kineticStates} onChange={setKineticStates} /></label>
+                  <label data-smoothing-tooltip="How far apart frames must be before a transition is counted. Start near 10 frames; a longer lag ignores brief back-and-forth jitter."><span>Lag, frames</span><TrajectoryNumberField label="Lag, frames" min={1} max={Math.max(1, Math.floor(frameCount / 3))} value={lagFrames} onChange={setLagFrames} /></label>
                 </>
               )}
               <div className="trajectory-smoothing-group-label">Sampling</div>
               {mode === "extrema" ? <label data-smoothing-tooltip="Start with 50. More source frames preserve detail; fewer frames make a shorter, calmer movie.">
                 <span>Target frames</span>
-                <input type="number" min={2} max={frameCount} value={targetFrames} onChange={(event) => setTargetFrames(Number(event.target.value) || 2)} />
+                <TrajectoryNumberField label="Target frames" min={2} max={frameCount} value={targetFrames} onChange={setTargetFrames} />
               </label> : null}
               {signal === "rmsd" && mode === "extrema" ? (
                 <>
@@ -1108,15 +1139,15 @@ function TrajectorySmoothingCard({
                       <option value="power">Signal power · expert</option>
                     </select>
                   </label>
-                  {rmsdFilter === "cutoff" ? <label data-smoothing-tooltip="Normalized low-pass cutoff. Lower values remove more rapid motion."><span>Cutoff frequency</span><input type="number" min={0.0001} max={0.5} step={0.001} value={cutoffFrequency} onChange={(event) => setCutoffFrequency(Number(event.target.value) || 0.1)} /></label> : null}
-                  {rmsdFilter === "power" ? <label data-smoothing-tooltip="Fraction of signal power preserved by the low-pass filter."><span>Power retained</span><input type="number" min={0.5} max={0.999} step={0.01} value={powerRetained} onChange={(event) => setPowerRetained(Number(event.target.value) || 0.95)} /></label> : null}
-                  <label data-smoothing-tooltip="How sharply the filter separates slow motion from fast jitter. Leave this at 5 unless you are tuning the spectrum manually."><span>Filter order</span><input type="number" min={1} max={12} value={filterOrder} onChange={(event) => setFilterOrder(Number(event.target.value) || 5)} /></label>
+                  {rmsdFilter === "cutoff" ? <label data-smoothing-tooltip="Normalized low-pass cutoff. Lower values remove more rapid motion."><span>Cutoff frequency</span><TrajectoryNumberField label="Cutoff frequency" min={0.0001} max={0.5} step={0.001} value={cutoffFrequency} onChange={setCutoffFrequency} /></label> : null}
+                  {rmsdFilter === "power" ? <label data-smoothing-tooltip="Fraction of signal power preserved by the low-pass filter."><span>Power retained</span><TrajectoryNumberField label="Power retained" min={0.5} max={0.999} step={0.01} value={powerRetained} onChange={setPowerRetained} /></label> : null}
+                  <label data-smoothing-tooltip="How sharply the filter separates slow motion from fast jitter. Leave this at 5 unless you are tuning the spectrum manually."><span>Filter order</span><TrajectoryNumberField label="Filter order" min={1} max={12} value={filterOrder} onChange={setFilterOrder} /></label>
                   <label className="trajectory-smoothing-check" data-smoothing-tooltip="Keeps the trajectory endpoints even when they are not signal turning points."><input type="checkbox" checked={includeEnds} onChange={(event) => setIncludeEnds(event.target.checked)} /><span>Always include first and last frames</span></label>
                 </>
               ) : null}
               <label data-smoothing-tooltip="The frame RMSD compares against. Frame 1 is the safe default; choose another only when it is a better known reference conformation.">
                 <span>Reference frame</span>
-                <input type="number" min={1} max={frameCount} value={referenceFrame} onChange={(event) => setReferenceFrame(Number(event.target.value) || 1)} />
+                <TrajectoryNumberField label="Reference frame" min={1} max={frameCount} value={referenceFrame} onChange={setReferenceFrame} />
               </label>
               <label className="trajectory-smoothing-check" data-smoothing-tooltip="Removes whole-structure tumbling before measuring motion, so the signal follows internal conformational change instead of camera-like movement.">
                 <input type="checkbox" checked={align} onChange={(event) => setAlign(event.target.checked)} />
@@ -1724,10 +1755,10 @@ function ConformerInlineSettings({
             <RangeControl value={settings.threads} min={1} max={16} step={1} onChange={(value) => updateSettings({ threads: value })} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Energy window">
-            <NumberXtbControl value={settings.energyWindowKcalMol} min={1} max={60} step={0.5} suffix="kcal/mol" onChange={(value) => updateSettings({ energyWindowKcalMol: value })} />
+            <NumberXtbControl label="Energy window" value={settings.energyWindowKcalMol} min={1} max={60} step={0.5} suffix="kcal/mol" onChange={(value) => updateSettings({ energyWindowKcalMol: value })} />
           </InlineXtbSetting>
           <InlineXtbSetting label="RMSD threshold">
-            <NumberXtbControl value={settings.rmsdThresholdAngstrom} min={0.01} max={2} step={0.005} suffix="Å" onChange={(value) => updateSettings({ rmsdThresholdAngstrom: value })} />
+            <NumberXtbControl label="RMSD threshold" value={settings.rmsdThresholdAngstrom} min={0.01} max={2} step={0.005} suffix="Å" onChange={(value) => updateSettings({ rmsdThresholdAngstrom: value })} />
           </InlineXtbSetting>
         </InlineSettingsSection>
       ) : null}
@@ -2750,7 +2781,7 @@ function XtbInlineSettings({
             <RangeControl value={settings.threads} min={0} max={32} step={1} onChange={(threads) => update("threads", threads)} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Accuracy" tooltip={XTB_SETTING_TOOLTIPS.accuracy} reset={() => update("accuracy", defaultXtbSettings.accuracy)} modified={settings.accuracy !== defaultXtbSettings.accuracy}>
-            <NumberXtbControl value={settings.accuracy} min={0.05} max={10} step={0.05} onChange={(accuracy) => update("accuracy", accuracy)} />
+            <NumberXtbControl label="Accuracy" value={settings.accuracy} min={0.05} max={10} step={0.05} onChange={(accuracy) => update("accuracy", accuracy)} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Electronic temp" tooltip={XTB_SETTING_TOOLTIPS.electronicTemperature} reset={() => update("electronicTemperature", defaultXtbSettings.electronicTemperature)} modified={settings.electronicTemperature !== defaultXtbSettings.electronicTemperature}>
             <RangeControl value={settings.electronicTemperature} min={50} max={5000} step={50} suffix="K" onChange={(electronicTemperature) => update("electronicTemperature", electronicTemperature)} />
@@ -2793,10 +2824,10 @@ function XtbInlineSettings({
             <RangeControl value={settings.mdTemperature} min={50} max={2000} step={10} suffix="K" onChange={(mdTemperature) => update("mdTemperature", mdTemperature)} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Duration" tooltip={XTB_SETTING_TOOLTIPS.mdTime} reset={() => update("mdTimePs", defaultXtbSettings.mdTimePs)} modified={settings.mdTimePs !== defaultXtbSettings.mdTimePs}>
-            <NumberXtbControl value={settings.mdTimePs} min={0.05} max={100} step={0.05} onChange={(mdTimePs) => update("mdTimePs", mdTimePs)} suffix="ps" />
+            <NumberXtbControl label="Duration" value={settings.mdTimePs} min={0.05} max={100} step={0.05} onChange={(mdTimePs) => update("mdTimePs", mdTimePs)} suffix="ps" />
           </InlineXtbSetting>
           <InlineXtbSetting label="Time step" tooltip={XTB_SETTING_TOOLTIPS.mdStep} reset={() => update("mdStepFs", defaultXtbSettings.mdStepFs)} modified={settings.mdStepFs !== defaultXtbSettings.mdStepFs}>
-            <NumberXtbControl value={settings.mdStepFs} min={0.1} max={10} step={0.1} onChange={(mdStepFs) => update("mdStepFs", mdStepFs)} suffix="fs" />
+            <NumberXtbControl label="Time step" value={settings.mdStepFs} min={0.1} max={10} step={0.1} onChange={(mdStepFs) => update("mdStepFs", mdStepFs)} suffix="fs" />
           </InlineXtbSetting>
           <InlineXtbSetting label="Snapshots" tooltip={XTB_SETTING_TOOLTIPS.mdSnapshots} reset={() => update("mdSnapshots", defaultXtbSettings.mdSnapshots)} modified={settings.mdSnapshots !== defaultXtbSettings.mdSnapshots}>
             <RangeControl value={settings.mdSnapshots} min={1} max={1000} step={1} onChange={(mdSnapshots) => update("mdSnapshots", mdSnapshots)} />
@@ -2878,6 +2909,7 @@ function XtbToggle({ label, tooltip, checked, onChange }: { label: string; toolt
 }
 
 function NumberXtbControl({
+  label,
   value,
   min,
   max,
@@ -2885,6 +2917,7 @@ function NumberXtbControl({
   suffix,
   onChange,
 }: {
+  label: string;
   value: number;
   min: number;
   max: number;
@@ -2894,13 +2927,14 @@ function NumberXtbControl({
 }) {
   return (
     <div className="structure-inspector-number-control">
-      <input
-        type="number"
+      <ScrubNumberField
+        aria-label={label}
+        className="w-full"
         value={value}
         min={min}
         max={max}
         step={step}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onValueChange={onChange}
       />
       {suffix ? <span>{suffix}</span> : null}
     </div>

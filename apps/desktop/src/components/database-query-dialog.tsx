@@ -9,6 +9,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { NativeSelect } from "./ui/native-select";
 import { useAppShellPortalContainer } from "./ui/portal-container";
+import { ScrubNumberField } from "./ui/scrub-number-input";
 
 /**
  * One dialog for every Database provider: which fields it shows is decided by the
@@ -104,13 +105,14 @@ export function DatabaseQueryDialog({
                 descriptor.needsStructure ? (
                   <div className="database-query-field">
                     <Label htmlFor="database-query-threshold">Minimum similarity (%)</Label>
-                    <Input
+                    <ScrubNumberField
                       id="database-query-threshold"
-                      type="number"
+                      aria-label="Minimum similarity (%)"
+                      className="w-full"
                       min={40}
                       max={100}
                       value={draft.similarityThreshold}
-                      onChange={(event) => update({ similarityThreshold: Number(event.target.value) })}
+                      onValueChange={(similarityThreshold) => update({ similarityThreshold })}
                     />
                   </div>
                 ) : null
@@ -277,13 +279,14 @@ export function DatabaseQueryDialog({
               ) : null}
               <div className="database-query-field">
                 <Label htmlFor="database-query-max">Maximum rows</Label>
-                <Input
+                <ScrubNumberField
                   id="database-query-max"
-                  type="number"
+                  aria-label="Maximum rows"
+                  className="w-full"
                   min={1}
                   max={5000}
                   value={draft.maxRecords}
-                  onChange={(event) => update({ maxRecords: Number(event.target.value) })}
+                  onValueChange={(maxRecords) => update({ maxRecords })}
                 />
               </div>
               <div className="database-query-actions">
