@@ -98,7 +98,7 @@
     "react-resizable-panels": "^4",
     "tailwind-merge": "^3.6.0",
     "three": "0.153.0",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@modelcontextprotocol/ext-apps": "^1.7.1",
