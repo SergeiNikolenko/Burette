@@ -131,7 +131,7 @@ const TRAJECTORY_SMOOTHING_EXTENSIONS = new Set([
   "xyz", "pdb", "ent", "gro", "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj",
 ]);
 
-export function StructureInfoPanel({ gridFilterModel, document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, hoveredGridRow, actions }: StructureInfoPanelProps) {
+export function StructureInfoPanel({ gridFilterModel, document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
   const hostedMcpWidget = isHostedMcpWidget();
   const composition = useStructureComposition(document);
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
@@ -646,7 +646,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         actions={actions}
       />
       {document.renderer === "grid2d" ? (
-        <GridHoverMoleculeCard row={hoveredGridRow ?? null} filterModel={gridFilterModel} documentId={document.id} />
+        <GridHoverMoleculeCard row={null} filterModel={gridFilterModel} documentId={document.id} />
       ) : null}
     </div>
   );

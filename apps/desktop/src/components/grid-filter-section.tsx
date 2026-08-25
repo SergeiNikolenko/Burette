@@ -79,21 +79,19 @@ function NumericFilter({
   chartOpen,
   actions,
 }: { column: GridFilterColumn; scale: Scale; chartOpen: boolean; actions: ShellActions }) {
-  const filterKey = `${column.filter?.min ?? ""}|${column.filter?.max ?? ""}`;
   const committed = useMemo<[number, number]>(() => {
     const low = Number.parseFloat(column.filter?.min ?? "");
     const high = Number.parseFloat(column.filter?.max ?? "");
     return [Number.isFinite(low) ? low : scale.min, Number.isFinite(high) ? high : scale.max];
   }, [column.filter?.min, column.filter?.max, scale.min, scale.max]);
 
-  // Re-seed the draft whenever the grid reports a different filter, so dragging
-  // stays smooth locally but an outside change still wins.
+  // Re-seed the draft whenever either the filter or its observed scale changes.
+  // Remote collections expand the scale as pages load, and an untouched slider
+  // must continue to represent the full available range.
   const [draft, setDraft] = useState<[number, number]>(committed);
-  const seen = useRef(filterKey);
-  if (seen.current !== filterKey) {
-    seen.current = filterKey;
+  useEffect(() => {
     setDraft(committed);
-  }
+  }, [committed]);
 
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
@@ -178,6 +176,11 @@ function NumericFilter({
 
   return (
     <>
+      {column.statsComplete === false ? (
+        <div className="grid-filter-stats-coverage">
+          Loaded-page range · {(column.statsRows ?? 0).toLocaleString()} of {(column.statsTotal ?? 0).toLocaleString()} rows
+        </div>
+      ) : null}
       {chartOpen ? (
         <div
           className="grid-filter-chart-wrap"

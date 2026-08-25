@@ -296,6 +296,9 @@ export type GridFilterColumn = {
   min?: number;
   max?: number;
   bins?: number[];
+  statsRows?: number;
+  statsTotal?: number;
+  statsComplete?: boolean;
 };
 
 export type GridFilterModel = {

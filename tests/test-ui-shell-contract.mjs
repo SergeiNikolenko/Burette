@@ -1975,9 +1975,10 @@ assert.match(gridViewer, /function prepareXyzrenderCardSVG\(svg\)/);
 assert.match(gridViewer, /const RDKIT_CARD_ROOT_MARGIN = 900;/);
 assert.match(gridViewer, /rootMargin: `\$\{RDKIT_CARD_ROOT_MARGIN\}px 0px`/);
 assert.match(gridViewer, /const XYZRENDER_CARD_ROOT_MARGIN = '600px 0px';/);
-assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_SIZE = 24;/);
+assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_SIZE = 12;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_MIN_CONCURRENCY = 1;/);
-assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_MAX_CONCURRENCY = 4;/);
+assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_TIMEOUT_MS = 60000;/);
+assert.doesNotMatch(gridViewer, /XYZRENDER_CARD_BATCH_MAX_CONCURRENCY/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_DELAY_MS = 16;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_PREFETCH_DELAY_MS = 200;/);
 assert.match(gridViewer, /function scheduleXyzrenderCardPrefetch\(\) \{/);
@@ -2100,6 +2101,7 @@ assert.match(gridCss, /--buret-grid-rail-popover-border: rgba\(255, 255, 255, 0\
 assert.match(gridCss, /\.buret-grid-rail-popover \{[^}]*background: var\(--buret-grid-rail-popover-surface\);/s);
 assert.match(gridCss, /\.buret-grid-rail-popover-index \{[^}]*color: var\(--buret-grid-rail-popover-muted\);/s);
 assert.match(gridCss, /\.buret-grid-rail-popover \{[^}]*border-radius: 10px;/s);
+assert.match(gridCss, /\.buret-grid-rail-popover \{[^}]*width: min\(220px, calc\(100vw - 82px\)\);/s);
 assert.doesNotMatch(gridCss, /\.buret-grid-rail-popover \{[^}]*background: var\(--buret-surface-raised\);/s);
 assert.doesNotMatch(gridCss, /\.buret-grid-rail-popover \{[^}]*background: #ffffe1;/s);
 assert.match(gridCss, /\.buret-grid-rail-popover \{[^}]*transform: translateY\(calc\(-50% \+ var\(--buret-grid-rail-popover-offset, 0px\)\)\);/s);
@@ -2111,6 +2113,8 @@ assert.match(gridViewer, /applyGridPreferences\(cfg\);\s*initGridRail\(cfg\);\s*
 assert.match(gridViewer, /rail\.addEventListener\('focusin', event => \{/);
 assert.match(gridViewer, /if \(!target\) return;/);
 assert.match(gridViewer, /if \(Number\.isFinite\(position\)\) void scrollToGridPosition\(position, cfg, \{ behavior: 'smooth' \}\);\s*else scrollToGridRow\(index, cfg, \{ behavior: 'smooth' \}\);/);
+assert.match(gridViewer, /else scrollToGridRow\(index, cfg, \{ behavior: 'smooth' \}\);\s*state\.railPopoverSuppressed = true;\s*updateGridRailLens\(null\);\s*hideGridRailPopover\(\);/);
+assert.match(gridViewer, /function updateGridRailHoverFromPointer\(clientY\) \{\s*if \(state\.railPopoverSuppressed\) return;/);
 assert.match(gridViewer, /ticks\.addEventListener\('pointerdown', event => startGridRailTrackPointer\(event, cfg\)\);/);
 assert.match(gridViewer, /data-buret-grid-rail-marker="\$\{markerIndex\}"/);
 assert.match(gridViewer, /class="buret-grid-rail-tick-pill"/);
@@ -2120,7 +2124,7 @@ assert.match(gridViewer, /const GRID_RAIL_ITEM_SIZE = 10;/);
 assert.match(gridViewer, /const GRID_RAIL_PILL_WIDTH = 12;/);
 assert.match(gridViewer, /function gridRailPointInside\(ticks, clientX, clientY\)/);
 assert.match(gridViewer, /const keepHover = endEvent\.type === 'pointerup'\s*&& endEvent\.view === window\s*&& gridRailPointInside\(ticks, endEvent\.clientX, endEvent\.clientY\);/);
-assert.match(gridViewer, /if \(keepHover\) updateGridRailHoverFromPointer\(endEvent\.clientY\);\s*else \{\s*updateGridRailLens\(null\);\s*hideGridRailPopover\(\);\s*\}/);
+assert.match(gridViewer, /if \(endEvent\.type === 'pointerup'\) state\.railPopoverSuppressed = true;\s*if \(state\.railPopoverSuppressed\) \{\s*updateGridRailLens\(null\);\s*hideGridRailPopover\(\);/);
 assert.match(gridViewer, /ticks\.innerHTML = railRows[\s\S]*?updateGridRailLens\(state\.railHoveredMarker\);/);
 assert.match(gridViewer, /if \(!dragging && endEvent\.type === 'pointerup'\) scrollFromPoint\(lastClientY, 'smooth'\);/);
 assert.match(gridViewer, /document\.documentElement\.addEventListener\('pointerleave', onBoundaryExit\);/);
@@ -2133,6 +2137,7 @@ assert.doesNotMatch(gridViewer, /updateGridRailPopoverFromPointer/);
 assert.doesNotMatch(gridViewer, /data-buret-grid-rail-active/);
 assert.match(gridViewer, /function showGridRailPopover\(position, clientY\)/);
 assert.match(gridViewer, /function hideGridRailPopover\(\)/);
+assert.match(gridViewer, /state\.railPopoverHideTimer = window\.setTimeout\(\(\) => \{[\s\S]*?popover\.hidden = true;[\s\S]*?\}, 1200\);/);
 assert.match(gridViewer, /function scrollToGridRow\(index, cfg, options = \{\}\)/);
 assert.match(gridViewer, /function scrollToGridPosition\(position, cfg, options = \{\}\)/);
 assert.match(gridViewer, /function scrollToEstimatedGridRow\(position, behavior = state\.railDragging \? 'auto' : 'smooth'\)/);
@@ -2687,9 +2692,9 @@ assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
 assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\)\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument\(document\.path\)/);
 assert.match(structureInfoPanel, /<InspectorSection title="Composition"/);
-// The hover preview is its own block under the inspector cards: the row rides
-// in as a prop from the grid hover message, never via a window event bus.
-assert.match(structureInfoPanel, /<GridHoverMoleculeCard row=\{hoveredGridRow \?\? null\} filterModel=\{gridFilterModel\} documentId=\{document\.id\} \/>/);
+// Grid hover belongs to the central canvas. The inspector keeps the selection
+// scaffold contract but never grows a second molecule preview at the right.
+assert.match(structureInfoPanel, /<GridHoverMoleculeCard row=\{null\} filterModel=\{gridFilterModel\} documentId=\{document\.id\} \/>/);
 assert.match(gridHoverMolecule, /aria-label="Resize molecule preview"/);
 assert.match(gridHoverMolecule, /className="grid-hover-molecule-props-title">Data<\/span>/);
 assert.match(gridHoverMolecule, /describePropValue\(entry\.value, columnsByLabel\.get/);
@@ -2697,7 +2702,7 @@ assert.match(gridHoverMolecule, /filterModel\?\.columns/);
 assert.match(gridHoverMolecule, /data-tone=\{described\.tone === "plain" \? undefined : described\.tone\}/);
 assert.doesNotMatch(gridHoverMolecule, /Open molecule details/);
 assert.match(styles, /\.grid-hover-molecule-prop\[data-tone\^="outlier"\] \{/);
-assert.match(gridViewer, /props: hoverRowProps\(row\)/);
+assert.doesNotMatch(gridViewer, /hoverRowProps|post\('gridRowHover'/);
 assert.match(styles, /\.grid-hover-molecule \{[^}]*position: sticky;[^}]*bottom: -12px;[^}]*background: var\(--bg-base\);/s);
 // The drawing paints the card's own surface rather than trusting a transparent
 // SVG to show it: a see-through well came out white in the packaged runtime,
@@ -2780,6 +2785,13 @@ assert.match(app, /activeDocument\?\.renderer === "grid2d" && activeGridFilterMo
 assert.match(app, /setDockOpen\("right", true\);\s*setDockActiveTab\("right", "inspector"\);/);
 assert.match(gridFilterSection, /CHART_CONFIG = \{ count: \{ label: "Rows"/);
 assert.match(gridFilterSection, /model\.visible\.toLocaleString\(\)\} of \{model\.total\.toLocaleString\(\)\} rows/);
+assert.match(gridFilterSection, /Loaded-page range · \{\(column\.statsRows \?\? 0\)\.toLocaleString\(\)\} of \{\(column\.statsTotal \?\? 0\)\.toLocaleString\(\)\} rows/);
+// Remote pages can widen the observed min/max without changing the active
+// filter. The slider draft must follow that new committed range instead of
+// applying the stale first-page range on the user's first interaction.
+assert.match(gridFilterSection, /\[column\.filter\?\.min, column\.filter\?\.max, scale\.min, scale\.max\]/);
+assert.match(gridFilterSection, /useEffect\(\(\) => \{\s*setDraft\(committed\);\s*\}, \[committed\]\);/);
+assert.match(styles, /\.grid-filter-stats-coverage \{/);
 assert.match(gridFilterSection, /from "\.\/ui\/collapsible"/);
 assert.match(gridFilterSection, /from "\.\/ui\/button"/);
 assert.match(gridFilterSection, /from "\.\/ui\/input"/);
@@ -7620,7 +7632,7 @@ assert.match(derivedColumnsHook, /computeDerivedValue\("inchikey", engines, row\
 assert.match(appNativeMenuHook, /actions\.deleteDuplicateGridRows\(activeDocument\.id\)/);
 assert.match(gridViewer, /raw === null \|\| raw === undefined \|\| raw === '' \? Number\.NaN : Number\(raw\)/);
 assert.match(gridHoverMolecule, /filterModel\?\.columns/);
-assert.match(structureInfoPanel, /<GridHoverMoleculeCard row=\{hoveredGridRow \?\? null\} filterModel=\{gridFilterModel\} documentId=\{document\.id\} \/>/);
+assert.match(structureInfoPanel, /<GridHoverMoleculeCard row=\{null\} filterModel=\{gridFilterModel\} documentId=\{document\.id\} \/>/);
 // The scaffold is not a card of its own: it takes over the corner preview, so
 // the inspector must not grow a second structure surface for it.
 assert.doesNotMatch(structureInfoPanel, /GridSelectionScaffoldCard/);
@@ -8160,11 +8172,8 @@ assert.match(gridCss, /\.buret-card-resize-handle-xy\s*\{/);
 assert.doesNotMatch(gridCss, /buret-selected-indicator/);
 assert.match(gridCss, /\.buret-card:hover\s*\{[^}]*box-shadow:\s*[\s\S]*inset 0 0 0 1px[\s\S]*0 0 0 1px/s);
 assert.doesNotMatch(gridCss, /0 0 0 [2-9]px/);
-assert.match(gridCss, /\.buret-card::after\s*\{[^}]*content: attr\(data-buret-card-tooltip\);[\s\S]*text-overflow: ellipsis;[\s\S]*white-space: nowrap;/s);
-assert.match(gridCss, /\.buret-card::after\s*\{[^}]*z-index: 20;[\s\S]*background: rgba\(18, 20, 24, 0\.98\);/s);
-assert.match(gridCss, /\.buret-card::after\s*\{[^}]*backdrop-filter: blur\(16px\) saturate\(1\.2\);/s);
-assert.match(gridCss, /\.buret-card::after\s*\{[^}]*-webkit-backdrop-filter: blur\(16px\) saturate\(1\.2\);/s);
-assert.match(gridCss, /\.buret-card\.buret-card-hovering-molecule::after,\s*\.buret-card:focus-visible::after\s*\{[^}]*opacity: 1;/s);
+assert.doesNotMatch(gridCss, /data-buret-card-tooltip|\.buret-card::after/);
+assert.doesNotMatch(gridCss, /\.buret-card::after|buret-card-hovering-molecule/);
 assert.match(gridCss, /\.buret-card-resize-handle-x\s*\{[^}]*width: 16px;/s);
 assert.match(gridCss, /\.buret-card-resize-handle-y\s*\{[^}]*height: 16px;/s);
 assert.match(gridCss, /\.buret-card-resize-handle-xy\s*\{[^}]*width: 24px;[^}]*height: 24px;/s);
@@ -8293,13 +8302,14 @@ assert.match(gridViewer, /function scheduleXyzrenderCardBatchQueue\(\)/);
 assert.match(gridViewer, /scheduleXyzrenderCardBatchQueue\(\);\s*return;/);
 assert.match(gridViewer, /function pumpXyzrenderCardBatchQueue\(\)/);
 assert.match(gridViewer, /function xyzrenderCardBatchConcurrency\(\)/);
-assert.match(gridViewer, /navigator\.hardwareConcurrency/);
-assert.match(gridViewer, /if \(cores >= 12\) return XYZRENDER_CARD_BATCH_MAX_CONCURRENCY;/);
-assert.match(gridViewer, /if \(cores >= 8\) return 2;/);
+assert.match(gridViewer, /return XYZRENDER_CARD_BATCH_MIN_CONCURRENCY;/);
+assert.doesNotMatch(gridViewer, /navigator\.hardwareConcurrency/);
+assert.doesNotMatch(gridViewer, /function resetCardRenderQueues\(\) \{[\s\S]*?state\.xyzrenderBatchesRunning = 0;[\s\S]*?\n  \}/);
 assert.match(gridViewer, /function takeXyzrenderCardBatchJobs\(\)/);
 assert.match(gridViewer, /const concurrency = xyzrenderCardBatchConcurrency\(\);/);
 assert.match(gridViewer, /state\.xyzrenderBatchesRunning < concurrency/);
 assert.match(gridViewer, /batchConcurrency: xyzrenderCardBatchConcurrency\(\)/);
+assert.match(gridViewer, /hostRequest\('renderXyzrenderCards',[\s\S]*XYZRENDER_CARD_BATCH_TIMEOUT_MS/);
 assert.match(gridViewer, /window\.setTimeout\(\(\) => \{\s*state\.xyzrenderBatchTimer = 0;\s*pumpXyzrenderCardBatchQueue\(\);/);
 assert.match(gridViewer, /window\.clearTimeout\(state\.xyzrenderBatchTimer\)/);
 assert.match(gridViewer, /function xyzrenderCardInputText\(row, record\)/);
@@ -8447,14 +8457,19 @@ assert.match(gridViewer, /markSVGForFitting\(html, 'data-buret-xyzrender-svg'\)/
 assert.match(gridViewer, /cacheHit: payload\?\.cacheHit === true/);
 assert.match(gridViewer, /cacheHit: item\.cacheHit === true/);
 assert.match(gridCss, /\.buret-molecule-picture img\.buret-rdkit-card-image,\s*\.buret-molecule-picture img\.buret-xyzrender-card-image\s*\{[^}]*object-fit: contain;/s);
-assert.match(gridViewer, /el\.dataset\.buretCardTooltip = cardTooltip\(row\)/);
-assert.match(gridViewer, /function cardTooltip\(row\)/);
-assert.match(gridViewer, /function installCardHover\(card\)/);
+assert.doesNotMatch(gridViewer, /buretCardTooltip|function cardTooltip\(row\)/);
+assert.match(gridViewer, /function installCardHover\(card, row, cfg\)/);
 assert.match(
   gridViewer,
-  /pointerenter', \(\) => \{\s*card\.classList\.add\('buret-card-hovering-molecule'\);\s*postChemicalSpaceHover\(index\);/,
+  /pointerenter', event => \{\s*if \(event\.pointerType === 'touch'\) return;\s*postChemicalSpaceHover\(index\);\s*showMoleculePreview\(event, row, cfg\);/,
 );
-assert.match(gridViewer, /pointermove', \(\) => card\.classList\.add\('buret-card-hovering-molecule'\)/);
+assert.match(gridViewer, /function showMoleculePreview\(event, row, cfg\)/);
+assert.match(gridViewer, /className = 'buret-grid-molecule-popover'/);
+assert.match(gridViewer, /root\.appendChild\(popover\)/);
+assert.doesNotMatch(gridViewer, /document\.body\.appendChild\(popover\)/);
+assert.match(gridViewer, /if \(!card\.matches\(':focus-visible'\)\) return;/);
+assert.match(gridViewer, /const rightEdge = Math\.max\(margin, window\.innerWidth - state\.gridViewportCover\)/);
+assert.doesNotMatch(gridCss, /\.buret-card::after/);
 assert.match(gridViewer, /el\.addEventListener\('contextmenu', event => showMoleculeContextMenu\(event, row\)\)/);
 assert.match(gridViewer, /if \(event instanceof MouseEvent && event\.button !== 0\) return;/);
 assert.match(gridViewer, /root\.addEventListener\('contextmenu', handleGridShellContextMenu\)/);
@@ -8535,24 +8550,47 @@ assert.match(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\s\S]*ba
 assert.doesNotMatch(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\s\S]*var\(--buret-accent\) 20%/);
 assert.match(gridViewer, /function installRowHoverPreview\(cfg\)/);
 assert.match(gridViewer, /\.buret-card\[data-index\], \.buret-grid-table-row\[data-index\], \.buret-grid-rail-tick\[data-buret-grid-rail-index\]/);
-assert.match(gridViewer, /post\('gridRowHover', '', \{/);
-// The viewer ships smiles/molblock and lets the host draw: an SVG per hover
-// would cross the iframe boundary at 100KB+ a row.
-assert.match(gridViewer, /molblock: String\(row\.molblock \|\| ''\)/);
+assert.doesNotMatch(gridViewer, /post\('gridRowHover'/);
 assert.match(gridViewer, /buildUI\(cfg\);\s*installGridTextFocusListeners\(\);\s*installRowHoverPreview\(cfg\);/);
-assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*inset: 0 0 0 auto;/);
-assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*width: min\(480px, calc\(100vw - 24px\)\);/);
-assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*height: 100%;/);
-assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*flex-direction: column;/);
+assert.match(gridViewer, /function updateGridToolbarCondensed\(\) \{[\s\S]*classList\.toggle\('buret-grid-controls-condensed', scrollTop\(\) > 24\);/);
+assert.match(gridViewer, /function handleGridScroll\(cfg\) \{\s*updateGridToolbarCondensed\(\);/);
+assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-grid-toolbar \{[^}]*padding: 8px;/s);
+assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-load-status \{[^}]*display: none;/s);
+assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-toolbar-row-main \{[^}]*display: none;/s);
+assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-grid-xyzrender-preset-control,[\s\S]*\.buret-selected-open-actions \{[^}]*display: none;/s);
+assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-renderer-control \{[^}]*width: 112px;/s);
+assert.match(gridCss, /#grid-controls \.ab-menu \{[^}]*min-width: 304px;[^}]*max-height: min\(52vh, 360px\);/s);
+assert.match(gridCss, /\.buret-grid-molecule-detail-overlay \{[\s\S]*display: grid;[\s\S]*place-items: center;/);
+assert.match(gridCss, /\.buret-grid-molecule-detail-overlay \{[\s\S]*padding: clamp\(16px, 3vw, 32px\);/);
+assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*grid-template-columns: minmax\(280px, 0\.95fr\) minmax\(320px, 1\.05fr\);/);
+assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*width: min\(920px, calc\(100vw - 40px\)\);/);
+assert.match(gridCss, /\.buret-grid-molecule-detail \{[\s\S]*height: min\(640px, calc\(100vh - 40px\)\);/);
+assert.doesNotMatch(gridCss, /\.buret-grid-molecule-detail \{[^}]*inset: 0 0 0 auto;/s);
+assert.doesNotMatch(gridCss, /\.buret-grid-molecule-detail \{[^}]*border-right: 0;/s);
 assert.match(gridCss, /--buret-detail-surface: #ffffff;/);
 const moleculeDetailCss = gridCss.match(/\.buret-grid-molecule-detail \{[^}]*\}/)?.[0] ?? "";
 assert.match(moleculeDetailCss, /background: var\(--buret-detail-surface\);/);
 assert.doesNotMatch(moleculeDetailCss, /background: var\(--buret-surface\);/);
-assert.match(gridCss, /\.buret-grid-molecule-detail-overlay \{[\s\S]*background: rgba\(20, 22, 26, 0\.22\);/);
-assert.match(gridCss, /\.buret-grid-molecule-detail-image \{[\s\S]*min-height: 220px;/);
+assert.match(gridCss, /\.buret-grid-molecule-detail-overlay \{[\s\S]*background: rgba\(0, 0, 0, 0\.58\);/);
+assert.match(gridCss, /\.buret-grid-molecule-detail-image \{[\s\S]*border-right: 1px solid var\(--buret-border\);/);
 assert.match(gridCss, /\.buret-grid-molecule-detail-image \.buret-rdkit-card-image,[\s\S]*max-height: 100%;/);
+assert.match(gridCss, /\.buret-grid-molecule-detail-props dt \{[^}]*overflow-wrap: anywhere;/s);
+assert.match(gridCss, /\.buret-grid-molecule-detail-prop-range \{/);
+assert.match(gridCss, /\.buret-grid-molecule-detail-prop-track \{/);
+assert.match(gridCss, /\.buret-grid-molecule-detail-actions \{[^}]*position: static;/s);
+assert.match(gridViewer, /visible: state\.remoteMode \? state\.totalRows : state\.rows\.length/);
+assert.match(gridViewer, /function remoteCollectionTotal\(cfg = safeConfig\(\)\)/);
+assert.match(gridViewer, /statsRows: rows\.length,[\s\S]*statsTotal,[\s\S]*statsComplete: state\.indexReady/);
+assert.match(gridViewer, /\? remoteCollectionTotal\(cfg\)/);
+assert.doesNotMatch(gridViewer, /if \(state\.remoteMode\) return \[\];/);
+assert.match(gridCss, /@media \(max-width: 820px\) \{[\s\S]*\.buret-grid-molecule-detail \{[\s\S]*grid-template-columns: 1fr;[\s\S]*grid-template-rows: minmax\(180px, 34vh\) minmax\(0, 1fr\);/);
 assert.match(gridViewer, /aria-labelledby', 'buret-grid-molecule-detail-title'/);
 assert.match(gridViewer, /<h2 id="buret-grid-molecule-detail-title">/);
+assert.match(gridViewer, /overlay\._buretDetailPreviousFocus = previousFocus/);
+assert.match(gridViewer, /if \(event\.key !== 'Tab'\) return;/);
+assert.match(gridViewer, /`Loaded \$\{Number\(stats\.statsRows\)\.toLocaleString\(\)\}\/\$\{Number\(stats\.statsTotal\)\.toLocaleString\(\)\}`/);
+assert.match(gridViewer, /if \(action === 'open'\) \{\s*hideMoleculeContextMenu\(\);\s*showMoleculeDetail\(row, cfg\);/);
+assert.match(gridViewer, /if \(returnFocus\?\.isConnected\) returnFocus\.focus\?\.\(\);/);
 assert.doesNotMatch(gridViewer, /installMoleculeDetailResize/);
 assert.doesNotMatch(gridViewer, /data-buret-detail-resize/);
 assert.doesNotMatch(gridViewer, /function drawXyzrenderFallback/);
