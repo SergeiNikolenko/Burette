@@ -31,7 +31,7 @@
         "fast-uri": "3.1.5",
         "lucide-react": "^1.23.0",
         "molstar": "5.11.0",
-        "openchemlib": "9.24.0",
+        "openchemlib": "9.25.0",
         "plotly.js-basic-dist-min": "^3.6.0",
         "radix-ui": "^1.6.4",
         "react": "^19.2.7",
@@ -2035,7 +2035,7 @@
 
     "open": ["open@11.0.0", "", { "dependencies": { "default-browser": "^5.4.0", "define-lazy-prop": "^3.0.0", "is-in-ssh": "^1.0.0", "is-inside-container": "^1.0.0", "powershell-utils": "^0.1.0", "wsl-utils": "^0.3.0" } }, "sha512-smsWv2LzFjP03xmvFoJ331ss6h+jixfA4UUV/Bsiyuu4YJPfN+FIQGOIiv4w9/+MoHkfkJ22UIaQWRVFRfH6Vw=="],
 
-    "openchemlib": ["openchemlib@9.24.0", "", {}, "sha512-aIZc4wxcIq4d1RK32WAkGjjyFUKPcf2zdlklvzkmmo2HuHTojFUubeSxp0CQ6MZDGLiK18iQJwxA4/O9Db2bvA=="],
+    "openchemlib": ["openchemlib@9.25.0", "", {}, "sha512-FGTaZLJRTGXNC7khx8QvX/EiQBHpH1ncUbT7YXDJhw/Y/aDUKe5WrUIqTguMEtSs3GUHcRUjNUhfkpxulx2UXw=="],
 
     "ora": ["ora@8.2.0", "", { "dependencies": { "chalk": "^5.3.0", "cli-cursor": "^5.0.0", "cli-spinners": "^2.9.2", "is-interactive": "^2.0.0", "is-unicode-supported": "^2.0.0", "log-symbols": "^6.0.0", "stdin-discarder": "^0.2.2", "string-width": "^7.2.0", "strip-ansi": "^7.1.0" } }, "sha512-weP+BZ8MVNnlCm8c0Qdc1WSWq4Qn7I+9CJGm7Qali6g44e/PUzbjNqJX5NJ9ljlNMosfJvg1fKEGILklK9cwnw=="],
 
