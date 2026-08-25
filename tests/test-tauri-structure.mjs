@@ -1135,6 +1135,10 @@ assert.match(lib, /windows::focus_or_create_workspace_window/);
 assert.match(macosTerminationSource, /fn after_current_appkit_event/);
 assert.match(macosTerminationSource, /DispatchQueue::main\(\)\.exec_async\(work\)/);
 assert.match(lib, /macos::after_current_appkit_event\(initial_workspace\)/);
+assert.match(
+  lib,
+  /RunEvent::Opened \{ urls \} => \{[\s\S]*?macos::after_current_appkit_event\(move \|\| \{\s*show_and_emit_open_documents\(&opened_app, paths\);\s*\}\);/,
+);
 assert.match(lib, /startup::signal_open_documents_for_window\(app, window\.label\(\), paths\)/);
 assert.match(windowsSource, /pub\(crate\) const MAIN_WINDOW_LABEL: &str = "main"/);
 assert.match(windowsSource, /pub\(crate\) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-"/);

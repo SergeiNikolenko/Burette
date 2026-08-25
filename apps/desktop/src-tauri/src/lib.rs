@@ -284,6 +284,14 @@ pub fn run() {
                 .filter(|path| path.exists())
                 .map(|path| path.to_string_lossy().to_string())
                 .collect();
+            #[cfg(target_os = "macos")]
+            {
+                let opened_app = app.clone();
+                macos::after_current_appkit_event(move || {
+                    show_and_emit_open_documents(&opened_app, paths);
+                });
+            }
+            #[cfg(not(target_os = "macos"))]
             show_and_emit_open_documents(app, paths);
         }
         #[cfg(target_os = "macos")]
