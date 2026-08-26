@@ -260,16 +260,18 @@ function FilterCard({
   column,
   actions,
   bulk,
+  defaultOpen,
   focusRequestId,
 }: {
   column: GridFilterColumn;
   actions: ShellActions;
   bulk: { open: boolean } | null;
+  defaultOpen: boolean;
   focusRequestId?: number;
 }) {
   const scale = useMemo(() => columnScale(column), [column]);
   const active = Boolean(column.filter && (column.filter.min || column.filter.max || column.filter.text));
-  const [open, setOpen] = useState(active);
+  const [open, setOpen] = useState(active || defaultOpen);
   // A flat histogram is a row id or a counter, so its chart starts folded away.
   const [chartOpen, setChartOpen] = useState<boolean | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -278,6 +280,10 @@ function FilterCard({
   useEffect(() => {
     if (active) setOpen(true);
   }, [active]);
+
+  useEffect(() => {
+    if (defaultOpen) setOpen(true);
+  }, [defaultOpen]);
 
   // Each click mints a fresh object, so the same direction applies again to
   // cards the user has toggled by hand since the last sweep.
@@ -379,6 +385,13 @@ export function GridFilterSection({
   }, [model.columns, query]);
   const shown = columns.slice(0, MAX_COLUMNS);
   const activeCount = model.columns.filter((column) => column.filter).length;
+  const defaultOpenColumnId = useMemo(
+    () => model.columns.find((column) => {
+      const scale = columnScale(column);
+      return scale && !scale.flat;
+    })?.id,
+    [model.columns],
+  );
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -455,6 +468,7 @@ export function GridFilterSection({
                 column={column}
                 actions={actions}
                 bulk={bulk}
+                defaultOpen={column.id === defaultOpenColumnId}
                 focusRequestId={focusRequest?.columnId === column.id ? focusRequest.requestId : undefined}
               />
             ))}
