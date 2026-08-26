@@ -372,7 +372,7 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "burette"
-version = "2.3.10"
+version = "2.3.11"
 dependencies = [
  "base64 0.23.1",
  "burette-compute-core",
