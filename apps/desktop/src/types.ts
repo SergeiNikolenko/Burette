@@ -317,7 +317,9 @@ export type HoveredGridRow = {
   name: string;
   smiles?: string | null;
   molblock?: string | null;
-  props?: Array<{ label: string; value: string }>;
+  cardRenderer?: "rdkit" | "xyzrender";
+  previewSvg?: string | null;
+  props?: Array<{ columnId?: string | null; label: string; value: string }>;
 };
 
 export type DerivedColumnJob = {

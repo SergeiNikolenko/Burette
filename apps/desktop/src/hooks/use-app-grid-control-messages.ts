@@ -165,14 +165,25 @@ export function useAppGridControlMessages({
         ? (raw.props as Array<Record<string, unknown>>)
           .filter((entry) => typeof entry?.label === "string" && typeof entry?.value === "string")
           .slice(0, 24)
-          .map((entry) => ({ label: entry.label as string, value: entry.value as string }))
+          .map((entry) => ({
+            columnId: typeof entry.columnId === "string" ? entry.columnId.slice(0, 160) : null,
+            label: entry.label as string,
+            value: entry.value as string,
+          }))
         : undefined;
+      const previewSvg = typeof raw?.previewSvg === "string"
+        && raw.previewSvg.length <= 512_000
+        && raw.previewSvg.trimStart().startsWith("<svg")
+        ? raw.previewSvg
+        : null;
       const row = raw && Number.isSafeInteger(index) && index >= 0
         ? {
             index,
             name: typeof raw.name === "string" ? raw.name : "",
             smiles: typeof raw.smiles === "string" ? raw.smiles : null,
             molblock: typeof raw.molblock === "string" ? raw.molblock : null,
+            cardRenderer: raw.cardRenderer === "xyzrender" ? "xyzrender" as const : "rdkit" as const,
+            previewSvg,
             props,
           }
         : null;

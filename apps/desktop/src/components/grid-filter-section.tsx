@@ -256,12 +256,23 @@ function NumericFilter({
   );
 }
 
-function FilterCard({ column, actions, bulk }: { column: GridFilterColumn; actions: ShellActions; bulk: { open: boolean } | null }) {
+function FilterCard({
+  column,
+  actions,
+  bulk,
+  focusRequestId,
+}: {
+  column: GridFilterColumn;
+  actions: ShellActions;
+  bulk: { open: boolean } | null;
+  focusRequestId?: number;
+}) {
   const scale = useMemo(() => columnScale(column), [column]);
   const active = Boolean(column.filter && (column.filter.min || column.filter.max || column.filter.text));
   const [open, setOpen] = useState(active);
   // A flat histogram is a row id or a counter, so its chart starts folded away.
   const [chartOpen, setChartOpen] = useState<boolean | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const showChart = chartOpen ?? !scale?.flat;
 
   useEffect(() => {
@@ -274,8 +285,15 @@ function FilterCard({ column, actions, bulk }: { column: GridFilterColumn; actio
     if (bulk) setOpen(bulk.open);
   }, [bulk]);
 
+  useEffect(() => {
+    if (focusRequestId === undefined) return;
+    setOpen(true);
+    const frame = window.requestAnimationFrame(() => cardRef.current?.scrollIntoView({ block: "nearest" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusRequestId]);
+
   return (
-    <Collapsible className="grid-filter-card" data-active={active || undefined} open={open} onOpenChange={setOpen}>
+    <Collapsible ref={cardRef} className="grid-filter-card" data-active={active || undefined} open={open} onOpenChange={setOpen}>
       <div className="grid-filter-card-header">
         <CollapsibleTrigger asChild>
           <Button className="grid-filter-card-trigger" variant="ghost" size="sm">
@@ -342,7 +360,15 @@ function FilterCard({ column, actions, bulk }: { column: GridFilterColumn; actio
 
 // The model is a copy of what the grid runtime holds; every edit here is a
 // command back to it, and the next model it publishes is the confirmation.
-export function GridFilterSection({ model, actions }: { model: GridFilterModel; actions: ShellActions }) {
+export function GridFilterSection({
+  model,
+  actions,
+  focusRequest,
+}: {
+  model: GridFilterModel;
+  actions: ShellActions;
+  focusRequest?: { columnId: string; requestId: number } | null;
+}) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(true);
   const [bulk, setBulk] = useState<{ open: boolean } | null>(null);
@@ -353,6 +379,14 @@ export function GridFilterSection({ model, actions }: { model: GridFilterModel; 
   }, [model.columns, query]);
   const shown = columns.slice(0, MAX_COLUMNS);
   const activeCount = model.columns.filter((column) => column.filter).length;
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    const column = model.columns.find((entry) => entry.id === focusRequest.columnId);
+    if (!column) return;
+    setOpen(true);
+    setQuery(column.label);
+  }, [focusRequest, model.columns]);
 
   return (
     <TooltipProvider>
@@ -415,7 +449,15 @@ export function GridFilterSection({ model, actions }: { model: GridFilterModel; 
             </div>
           </Field>
           <div className="grid-filter-list">
-            {shown.map((column) => <FilterCard key={column.id} column={column} actions={actions} bulk={bulk} />)}
+            {shown.map((column) => (
+              <FilterCard
+                key={column.id}
+                column={column}
+                actions={actions}
+                bulk={bulk}
+                focusRequestId={focusRequest?.columnId === column.id ? focusRequest.requestId : undefined}
+              />
+            ))}
             {columns.length > shown.length ? (
               <div className="grid-filter-more">
                 {(columns.length - shown.length).toLocaleString()} more columns — narrow the search

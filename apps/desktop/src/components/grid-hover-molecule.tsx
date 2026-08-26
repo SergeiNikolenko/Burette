@@ -4,27 +4,21 @@ import { computeDerivedValue, computeRowProperties, loadDerivedEngines } from ".
 import { describePropValue } from "../lib/grid-value-stats.mjs";
 import { writeClipboardText } from "../lib/clipboard";
 import { postGridCommand } from "../lib/viewer-bridge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { scaffoldStatusLine, useSelectionScaffold } from "./grid-selection-scaffold";
 import { showNativeContextMenu } from "./native-context-menu";
-import { CloseIcon } from "./close-icon";
-import type { GridFilterModel } from "./types";
+import type { GridFilterColumn, GridFilterModel } from "./types";
 import type { HoveredGridRow } from "../types";
 
-const HEIGHT_STORAGE_KEY = "burette-grid-hover-molecule-height";
-const HIDDEN_STORAGE_KEY = "burette-grid-hover-molecule-hidden";
 const PROPS_HEIGHT_STORAGE_KEY = "burette-grid-hover-molecule-props-height";
 const PROPS_OPEN_STORAGE_KEY = "burette-grid-hover-molecule-props-open";
-// Putting the card away hands the job back to the map, which draws its own
-// small preview next to the pointer. The map cannot see React state, so the
-// card announces which of the two is currently showing the molecule.
+// Kept as a compatibility contract for the chemical-space panel. The inspector
+// preview is now always the single hover surface, so it is never hidden.
 export const HOVER_CARD_VISIBILITY_EVENT = "burette:hover-preview-card-visibility";
 
 export function hoverPreviewCardHidden(): boolean {
-  return window.localStorage.getItem(HIDDEN_STORAGE_KEY) === "1";
-}
-
-function announceCardVisibility(hidden: boolean) {
-  window.dispatchEvent(new CustomEvent(HOVER_CARD_VISIBILITY_EVENT, { detail: { hidden } }));
+  return false;
 }
 
 const PROPS_MIN_HEIGHT = 56;
@@ -44,22 +38,18 @@ function formatPropValue(value: string): string {
   return numeric.toFixed(decimals).replace(/\.?0+$/u, "");
 }
 
+function propRangeLabel(column: GridFilterColumn | undefined): string | null {
+  if (!column || column.type !== "number") return null;
+  const hasAllowed = Number.isFinite(column.allowedMin) || Number.isFinite(column.allowedMax);
+  const lower = Number.isFinite(column.allowedMin) ? column.allowedMin : column.min;
+  const upper = Number.isFinite(column.allowedMax) ? column.allowedMax : column.max;
+  if (!Number.isFinite(lower) && !Number.isFinite(upper)) return null;
+  return `${hasAllowed ? "Allowed" : "Observed"} ${Number.isFinite(lower) ? formatPropValue(String(lower)) : "−∞"} … ${Number.isFinite(upper) ? formatPropValue(String(upper)) : "+∞"}`;
+}
+
 function storedPropsHeight(): number {
   const raw = Number(window.localStorage.getItem(PROPS_HEIGHT_STORAGE_KEY));
   return Number.isFinite(raw) && raw >= PROPS_MIN_HEIGHT && raw <= PROPS_MAX_HEIGHT ? raw : PROPS_DEFAULT_HEIGHT;
-}
-const MIN_HEIGHT = 120;
-const MAX_HEIGHT = 520;
-const DEFAULT_HEIGHT = 210;
-// Dragging the handle below this collapses the card entirely, so the preview
-// can be put away with the same gesture that sizes it.
-const COLLAPSE_HEIGHT = 72;
-// Pointer travel that separates a pull on the strap from a plain click.
-const DRAG_SLOP = 3;
-
-function storedHeight(): number {
-  const raw = Number(window.localStorage.getItem(HEIGHT_STORAGE_KEY));
-  return Number.isFinite(raw) && raw >= MIN_HEIGHT && raw <= MAX_HEIGHT ? raw : DEFAULT_HEIGHT;
 }
 
 // DataWarrior keeps a full-size drawing of the current row in the corner of
@@ -151,10 +141,12 @@ export function GridHoverMoleculeCard({
   row,
   filterModel,
   documentId,
+  onInspectProperty,
 }: {
   row: HoveredGridRow | null;
   filterModel?: GridFilterModel | null;
   documentId: string;
+  onInspectProperty?: (columnId: string) => void;
 }) {
   // A lasso is answered on this surface rather than in a card of its own: the
   // fragment the selection shares takes the well until the pointer names a row
@@ -184,6 +176,7 @@ export function GridHoverMoleculeCard({
   // the grid - DataWarrior does the same, and a flickering empty card would
   // make the preview useless while moving between rows.
   const shown = row ?? lastRowRef.current;
+  const showingXyzrender = !showingScaffold && shown?.cardRenderer === "xyzrender";
 
   // A callback ref, not a mount effect: the card is unmounted while nothing is
   // hovered and while it is collapsed, so an effect with an empty dependency
@@ -223,6 +216,27 @@ export function GridHoverMoleculeCard({
     if (!source) {
       setSvg(null);
       setSpec("");
+      return;
+    }
+    if (showingXyzrender) {
+      setSvg((shown?.previewSvg ?? "").trim() || null);
+      const cachedSpec = specCache.get(source);
+      if (cachedSpec !== undefined) {
+        setSpec(cachedSpec);
+        return;
+      }
+      void (async () => {
+        try {
+          const engines = await loadDerivedEngines();
+          if (renderTokenRef.current !== token) return;
+          const specLine = moleculeSpecLine(engines, rowMolblock ? { molblock: rowMolblock } : { smiles: source });
+          if (specCache.size >= SVG_CACHE_LIMIT) specCache.clear();
+          specCache.set(source, specLine);
+          setSpec(specLine);
+        } catch {
+          if (renderTokenRef.current === token) setSpec("");
+        }
+      })();
       return;
     }
     const paper = paperColour(wellNodeRef.current, theme);
@@ -277,44 +291,7 @@ export function GridHoverMoleculeCard({
         }
       }
     })();
-  }, [scaffold, showingScaffold, shown, theme, wellSize]);
-
-  const [hidden, setHidden] = useState(() => window.localStorage.getItem(HIDDEN_STORAGE_KEY) === "1");
-  const collapse = useCallback(() => {
-    setHidden(true);
-    window.localStorage.setItem(HIDDEN_STORAGE_KEY, "1");
-    announceCardVisibility(true);
-  }, []);
-  const restore = useCallback((nextHeight?: number) => {
-    setHidden(false);
-    window.localStorage.removeItem(HIDDEN_STORAGE_KEY);
-    announceCardVisibility(false);
-    if (nextHeight === undefined) return;
-    const clamped = Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, nextHeight)));
-    setHeight(clamped);
-    window.localStorage.setItem(HEIGHT_STORAGE_KEY, String(clamped));
-  }, []);
-
-  // The strap left behind by a collapsed card: pull it up to bring the preview
-  // back at the size you pull to, or click it to get the last size back.
-  const strapRef = useRef<{ pointerY: number; pulled: boolean } | null>(null);
-  const onStrapDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    strapRef.current = { pointerY: event.clientY, pulled: false };
-  }, []);
-  const onStrapMove = useCallback((event: React.PointerEvent<HTMLElement>) => {
-    const start = strapRef.current;
-    if (!start) return;
-    const pulled = start.pointerY - event.clientY;
-    if (!start.pulled && pulled < DRAG_SLOP) return;
-    start.pulled = true;
-    restore(pulled);
-  }, [restore]);
-  const onStrapUp = useCallback(() => {
-    const start = strapRef.current;
-    strapRef.current = null;
-    if (start && !start.pulled) restore();
-  }, [restore]);
+  }, [scaffold, showingScaffold, showingXyzrender, shown, theme, wellSize]);
 
   // The drawing IS the row's structure, so acting on it acts on that row: the
   // grid runs the same command the Structure menu sends, aimed at the row under
@@ -353,51 +330,21 @@ export function GridHoverMoleculeCard({
     window.localStorage.setItem(PROPS_OPEN_STORAGE_KEY, open ? "1" : "0");
   }, []);
 
-  const [height, setHeight] = useState(storedHeight);
-  const resizeStateRef = useRef<{ pointerY: number; height: number } | null>(null);
-
-  const onResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    resizeStateRef.current = { pointerY: event.clientY, height };
-  }, [height]);
-
-  const onResizeMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const start = resizeStateRef.current;
-    if (!start) return;
-    // The card sits at the bottom, so dragging the handle UP grows it, and
-    // pushing it past the bottom puts the card away.
-    const raw = start.height + (start.pointerY - event.clientY);
-    if (raw < COLLAPSE_HEIGHT) {
-      resizeStateRef.current = null;
-      collapse();
-      return;
-    }
-    // Pulling past the tallest drawing has nowhere left to go, so the extra
-    // travel opens the data section instead of dying against the clamp.
-    if (raw > MAX_HEIGHT + DRAG_SLOP) setPropsSectionOpen(true);
-    setHeight(Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, raw))));
-  }, [collapse, setPropsSectionOpen]);
-
-  const onResizeEnd = useCallback(() => {
-    if (!resizeStateRef.current) return;
-    resizeStateRef.current = null;
-    setHeight((value) => {
-      window.localStorage.setItem(HEIGHT_STORAGE_KEY, String(value));
-      return value;
-    });
-  }, []);
-
   // The filter panel already summarises every numeric column, so a value can be
   // placed in its column's spread without shipping the column to the host.
   const columnsByLabel = useMemo(() => {
-    const lookup = new Map<string, { min?: number; max?: number; bins?: number[] }>();
+    const lookup = new Map<string, GridFilterColumn>();
     for (const column of filterModel?.columns ?? []) {
-      if (column.type !== "number") continue;
       lookup.set(column.label.trim().toLowerCase(), column);
     }
     return lookup;
   }, [filterModel]);
+  const columnsById = useMemo(() => new Map((filterModel?.columns ?? []).map((column) => [column.id, column])), [filterModel]);
+  const visibleProps = useMemo(() => (shown?.props ?? []).flatMap((entry) => {
+    const column = (entry.columnId ? columnsById.get(entry.columnId) : undefined)
+      ?? columnsByLabel.get(entry.label.trim().toLowerCase());
+    return column?.varied === true ? [{ entry, column }] : [];
+  }), [columnsById, columnsByLabel, shown]);
 
   const [propsHeight, setPropsHeight] = useState(storedPropsHeight);
   const propsResizeRef = useRef<{ pointerY: number; height: number } | null>(null);
@@ -428,69 +375,19 @@ export function GridHoverMoleculeCard({
   const label = showingScaffold
     ? "Common scaffold"
     : shown?.name || `Molecule ${(shown?.index ?? 0) + 1}`;
-  // A put-away card used to leave a bare strip of panel behind: the space it
-  // freed read as a hole with nothing in it, and the handle that brings the
-  // drawing back only appeared once the pointer happened to cross it. The
-  // collapsed card is a bar that says whose structure is waiting instead.
-  if (hidden) {
-    return (
-      <button
-        type="button"
-        className="grid-hover-molecule-strap"
-        onPointerDown={onStrapDown}
-        onPointerMove={onStrapMove}
-        onPointerUp={onStrapUp}
-        onPointerCancel={onStrapUp}
-        aria-label="Show molecule preview"
-        title="Click or pull up to show the molecule preview"
-      >
-        <span className="grid-hover-molecule-strap-grip" aria-hidden="true" />
-        <span className="grid-hover-molecule-strap-label">{label}</span>
-        <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true" className="grid-hover-molecule-strap-chevron">
-          <path d="M1.5 6.5 5 3l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-    );
-  }
   const scaffoldStatus = showingScaffold ? scaffoldStatusLine(scaffold) : null;
   const badge = showingScaffold
     ? (scaffold.kind === "failed" ? "" : `${scaffold.count} molecules`)
     : `row ${(shown?.index ?? 0) + 1}`;
   return (
-    <section className="structure-brief-card grid-hover-molecule">
-      <div
-        className="resizable-handle resizable-handle-horizontal grid-hover-molecule-resize"
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Resize molecule preview"
-        onPointerDown={onResizeStart}
-        onPointerMove={onResizeMove}
-        onPointerUp={onResizeEnd}
-        onPointerCancel={onResizeEnd}
-        onDoubleClick={() => {
-          setHeight(DEFAULT_HEIGHT);
-          window.localStorage.setItem(HEIGHT_STORAGE_KEY, String(DEFAULT_HEIGHT));
-        }}
-      >
-        <span className="resizable-handle-grip" aria-hidden="true" />
-      </div>
+    <Card size="sm" className="structure-brief-card grid-hover-molecule">
       <header className="grid-hover-molecule-header">
         <span className="grid-hover-molecule-name" title={label}>{label}</span>
         <span className="grid-hover-molecule-index">{badge}</span>
-        <button
-          type="button"
-          className="grid-hover-molecule-close"
-          onClick={collapse}
-          aria-label="Hide molecule preview"
-          title="Hide molecule preview"
-        >
-          <CloseIcon size={12} />
-        </button>
       </header>
       <div
         ref={attachWell}
         className="grid-hover-molecule-svg"
-        style={{ height }}
         role="button"
         tabIndex={0}
         title={`Edit ${label} in Ketcher`}
@@ -507,7 +404,7 @@ export function GridHoverMoleculeCard({
         ) : svg ? (
           <div className="grid-hover-molecule-drawing" dangerouslySetInnerHTML={{ __html: svg }} />
         ) : (
-          <span className="grid-hover-molecule-empty">Structure preview unavailable</span>
+          <span className="grid-hover-molecule-empty">{showingXyzrender ? "Rendering XYZRender preview…" : "Structure preview unavailable"}</span>
         )}
       </div>
       {showingScaffold ? (
@@ -515,7 +412,7 @@ export function GridHoverMoleculeCard({
           ? <div className="grid-hover-molecule-spec" title={scaffold.smiles}>{scaffold.atoms} atoms · {scaffold.smiles}</div>
           : null
       ) : spec ? <div className="grid-hover-molecule-spec" title={spec}>{spec}</div> : null}
-      {!showingScaffold && shown?.props?.length ? (
+      {!showingScaffold && visibleProps.length ? (
         <>
           <div className="grid-hover-molecule-props-bar">
             <span className="grid-hover-molecule-props-title">Data</span>
@@ -549,14 +446,20 @@ export function GridHoverMoleculeCard({
           </div>
           {propsOpen ? (
             <div className="grid-hover-molecule-props" style={{ maxHeight: propsHeight }}>
-              {shown.props.map((entry) => {
-                const described = describePropValue(entry.value, columnsByLabel.get(entry.label.trim().toLowerCase()));
+              {visibleProps.map(({ entry, column }) => {
+                const described = describePropValue(entry.value, column);
+                const rangeLabel = propRangeLabel(column);
                 return (
-                  <div
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
                     key={entry.label}
                     className="dock-metric grid-hover-molecule-prop"
                     data-tone={described.tone === "plain" ? undefined : described.tone}
                     title={described.detail ? `${entry.label}: ${entry.value}\n${described.detail}` : `${entry.label}: ${entry.value}`}
+                    aria-label={`Open ${entry.label} filter`}
+                    onClick={() => onInspectProperty?.(column.id)}
                   >
                     <span>{entry.label}</span>
                     <strong>
@@ -567,18 +470,19 @@ export function GridHoverMoleculeCard({
                         </span>
                       ) : null}
                     </strong>
+                    {rangeLabel ? <small className="grid-hover-molecule-prop-range">{rangeLabel}</small> : null}
                     {described.position === null ? null : (
                       <span className="grid-hover-molecule-prop-track" aria-hidden="true">
                         <span style={{ left: `${(described.position * 100).toFixed(1)}%` }} />
                       </span>
                     )}
-                  </div>
+                  </Button>
                 );
               })}
             </div>
           ) : null}
         </>
       ) : null}
-    </section>
+    </Card>
   );
 }

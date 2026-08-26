@@ -295,10 +295,13 @@ export type GridFilterColumn = {
   filter?: { min: string; max: string; text: string };
   min?: number;
   max?: number;
+  allowedMin?: number;
+  allowedMax?: number;
   bins?: number[];
   statsRows?: number;
   statsTotal?: number;
   statsComplete?: boolean;
+  varied?: boolean;
 };
 
 export type GridFilterModel = {

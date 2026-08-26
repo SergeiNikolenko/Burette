@@ -2692,29 +2692,48 @@ assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
 assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\)\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument\(document\.path\)/);
 assert.match(structureInfoPanel, /<InspectorSection title="Composition"/);
-// Grid hover belongs to the central canvas. The inspector keeps the selection
-// scaffold contract but never grows a second molecule preview at the right.
-assert.match(structureInfoPanel, /<GridHoverMoleculeCard row=\{null\} filterModel=\{gridFilterModel\} documentId=\{document\.id\} \/>/);
-assert.match(gridHoverMolecule, /aria-label="Resize molecule preview"/);
+// Grid hover is rendered once in the inspector, above the filters, rather than
+// as a second popover over the molecule canvas.
+assert.match(structureInfoPanel, /<GridHoverMoleculeCard[\s\S]*row=\{hoveredGridRow \?\? null\}[\s\S]*onInspectProperty=/);
+assert.doesNotMatch(gridHoverMolecule, /aria-label="Resize molecule preview"/);
 assert.match(gridHoverMolecule, /className="grid-hover-molecule-props-title">Data<\/span>/);
-assert.match(gridHoverMolecule, /describePropValue\(entry\.value, columnsByLabel\.get/);
+assert.match(gridHoverMolecule, /aria-label="Resize data section"/);
+assert.match(gridHoverMolecule, /aria-expanded=\{propsOpen\}/);
+assert.match(gridHoverMolecule, /describePropValue\(entry\.value, column\)/);
 assert.match(gridHoverMolecule, /filterModel\?\.columns/);
+assert.match(gridHoverMolecule, /column\?\.varied === true/);
+assert.match(gridHoverMolecule, /columnsById\.get\(entry\.columnId\)/);
+assert.match(gridHoverMolecule, /aria-label=\{`Open \$\{entry\.label\} filter`\}/);
 assert.match(gridHoverMolecule, /data-tone=\{described\.tone === "plain" \? undefined : described\.tone\}/);
 assert.doesNotMatch(gridHoverMolecule, /Open molecule details/);
 assert.match(styles, /\.grid-hover-molecule-prop\[data-tone\^="outlier"\] \{/);
-assert.doesNotMatch(gridViewer, /hoverRowProps|post\('gridRowHover'/);
-assert.match(styles, /\.grid-hover-molecule \{[^}]*position: sticky;[^}]*bottom: -12px;[^}]*background: var\(--bg-base\);/s);
+assert.match(gridViewer, /function hoverRowProps\(row\)/);
+assert.match(gridViewer, /post\('gridRowHover'/);
+assert.match(styles, /\.grid-hover-molecule \{[^}]*position: relative;[^}]*bottom: auto;[^}]*background: var\(--surface-card\);/s);
 // The drawing paints the card's own surface rather than trusting a transparent
 // SVG to show it: a see-through well came out white in the packaged runtime,
 // which hid the light-ink structure completely.
 assert.match(gridHoverMolecule, /backgroundColour: paper,/);
 assert.doesNotMatch(gridHoverMolecule, /clearBackground/);
 assert.match(styles, /\.grid-hover-molecule-svg \{[^}]*background: var\(--bg-base\);/s);
-// A put-away preview leaves a bar that names the molecule waiting, so the
-// space it frees reads as a collapsed card instead of an empty panel.
-assert.match(gridHoverMolecule, /className="grid-hover-molecule-strap-label">\{label\}<\/span>/);
+assert.doesNotMatch(gridHoverMolecule, /grid-hover-molecule-strap/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "gridRowHover"/);
 assert.match(appGridControlMessagesHook, /smiles: typeof raw\.smiles === "string" \? raw\.smiles : null/);
+assert.match(appGridControlMessagesHook, /raw\.cardRenderer === "xyzrender"/);
+assert.match(appGridControlMessagesHook, /raw\.previewSvg\.length <= 512_000/);
+assert.match(gridViewer, /cardRenderer: state\.cardRenderer/);
+assert.match(gridViewer, /previewSvg/);
+assert.match(gridViewer, /state\.lastGridRowIndex/);
+assert.match(gridViewer, /HOVER_PREVIEW_SVG_LIMIT = 512_000/);
+assert.match(gridViewer, /columnId: String\(columnId\)\.slice\(0, 160\)/);
+assert.match(gridViewer, /state\.xyzrenderCardCache\.set\(key, \{ html, svg \}\)/);
+assert.match(gridHoverMolecule, /shown\?\.cardRenderer === "xyzrender"/);
+assert.match(gridHoverMolecule, /Rendering XYZRender preview/);
+assert.match(gridFilterSection, /focusRequestId/);
+assert.match(gridFilterSection, /scrollIntoView\(\{ block: "nearest" \}\)/);
+assert.match(gridViewer, /entry\.varied = filterColumnVaries\(column\) && !filterColumnIsRowIndex\(column\)/);
+assert.match(gridViewer, /filterColumnIsRowIndex\(column\)/);
+assert.match(gridViewer, /value !== Number\(row\.index\) \+ 1/);
 // Conformers and xTB share one card shell, and a missing binary has to say what
 // it is and how to get it rather than leaving a dead disabled button.
 assert.match(structureInfoPanel, /function InspectorEngineCard\(\{/);
@@ -2777,7 +2796,7 @@ assert.match(structureInfoPanel, /<ToggleGroup\s+type="single"/);
 assert.match(structureInfoPanel, /onValueChange=\{\(next\) => \{ if \(next\) onChange\(next\); \}\}/);
 assert.match(structureInfoPanel, /<Badge variant="secondary">\{brief\.format\}<\/Badge>/);
 assert.ok(
-  structureInfoPanel.indexOf("<GridFilterSection model={gridFilterModel} actions={actions} />")
+  structureInfoPanel.indexOf("<GridFilterSection")
     < structureInfoPanel.indexOf("{assemblySymmetry.available ? ("),
   "grid filters should be the first inspector section after the document header",
 );
@@ -2798,7 +2817,7 @@ assert.match(gridFilterSection, /from "\.\/ui\/input"/);
 assert.match(gridFilterSection, /from "\.\/ui\/badge"/);
 assert.match(gridFilterSection, /from "\.\/ui\/tooltip"/);
 assert.match(gridFilterSection, /if \(active\) setOpen\(true\);/);
-assert.match(gridFilterSection, /<Collapsible className="grid-filter-card"/);
+assert.match(gridFilterSection, /<Collapsible ref=\{cardRef\} className="grid-filter-card"/);
 assert.doesNotMatch(gridFilterSection, /className="structure-inspector-section-title-button"[\s\S]{0,180}ArrowDown01Icon[\s\S]{0,80}Filters/);
 assert.match(dockPanel, /<Button[\s\S]*?className="dock-tab"/);
 assert.match(dockPanel, /<TooltipContent showArrow=\{false\}>Close panel<\/TooltipContent>/);
@@ -7568,7 +7587,7 @@ assert.match(derivedColumnsHook, /computeRowProperties\(engines, row, properties
 assert.match(calculatePropertiesDialog, /PROPERTY_GROUPS\.map/);
 // Value tiles read each number against its column's distribution, which comes
 // from the filter model the inspector already holds - no second data path.
-assert.match(gridHoverMolecule, /describePropValue\(entry\.value, columnsByLabel\.get/);
+assert.match(gridHoverMolecule, /describePropValue\(entry\.value, column\)/);
 // Hover is one shared signal: the grid publishes the row it is pointing at to
 // both the preview card and the chemical-space map, and a point hovered on the
 // map lights the row back here. Number(null) is 0, so clearing must not be
@@ -7632,7 +7651,7 @@ assert.match(derivedColumnsHook, /computeDerivedValue\("inchikey", engines, row\
 assert.match(appNativeMenuHook, /actions\.deleteDuplicateGridRows\(activeDocument\.id\)/);
 assert.match(gridViewer, /raw === null \|\| raw === undefined \|\| raw === '' \? Number\.NaN : Number\(raw\)/);
 assert.match(gridHoverMolecule, /filterModel\?\.columns/);
-assert.match(structureInfoPanel, /<GridHoverMoleculeCard row=\{null\} filterModel=\{gridFilterModel\} documentId=\{document\.id\} \/>/);
+assert.match(structureInfoPanel, /<GridHoverMoleculeCard[\s\S]*row=\{hoveredGridRow \?\? null\}[\s\S]*onInspectProperty=/);
 // The scaffold is not a card of its own: it takes over the corner preview, so
 // the inspector must not grow a second structure surface for it.
 assert.doesNotMatch(structureInfoPanel, /GridSelectionScaffoldCard/);
@@ -8459,16 +8478,9 @@ assert.match(gridViewer, /cacheHit: item\.cacheHit === true/);
 assert.match(gridCss, /\.buret-molecule-picture img\.buret-rdkit-card-image,\s*\.buret-molecule-picture img\.buret-xyzrender-card-image\s*\{[^}]*object-fit: contain;/s);
 assert.doesNotMatch(gridViewer, /buretCardTooltip|function cardTooltip\(row\)/);
 assert.match(gridViewer, /function installCardHover\(card, row, cfg\)/);
-assert.match(
-  gridViewer,
-  /pointerenter', event => \{\s*if \(event\.pointerType === 'touch'\) return;\s*postChemicalSpaceHover\(index\);\s*showMoleculePreview\(event, row, cfg\);/,
-);
-assert.match(gridViewer, /function showMoleculePreview\(event, row, cfg\)/);
-assert.match(gridViewer, /className = 'buret-grid-molecule-popover'/);
-assert.match(gridViewer, /root\.appendChild\(popover\)/);
-assert.doesNotMatch(gridViewer, /document\.body\.appendChild\(popover\)/);
-assert.match(gridViewer, /if \(!card\.matches\(':focus-visible'\)\) return;/);
-assert.match(gridViewer, /const rightEdge = Math\.max\(margin, window\.innerWidth - state\.gridViewportCover\)/);
+assert.match(gridViewer, /card\.addEventListener\('focusin',[\s\S]*postGridRowHover\(index, cfg\)/);
+assert.doesNotMatch(gridViewer, /function showMoleculePreview\(/);
+assert.doesNotMatch(gridViewer, /buret-grid-molecule-popover/);
 assert.doesNotMatch(gridCss, /\.buret-card::after/);
 assert.match(gridViewer, /el\.addEventListener\('contextmenu', event => showMoleculeContextMenu\(event, row\)\)/);
 assert.match(gridViewer, /if \(event instanceof MouseEvent && event\.button !== 0\) return;/);
@@ -8550,7 +8562,7 @@ assert.match(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\s\S]*ba
 assert.doesNotMatch(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\s\S]*var\(--buret-accent\) 20%/);
 assert.match(gridViewer, /function installRowHoverPreview\(cfg\)/);
 assert.match(gridViewer, /\.buret-card\[data-index\], \.buret-grid-table-row\[data-index\], \.buret-grid-rail-tick\[data-buret-grid-rail-index\]/);
-assert.doesNotMatch(gridViewer, /post\('gridRowHover'/);
+assert.match(gridViewer, /postGridRowHover\(index, cfg\);\s*postChemicalSpaceHover\(index\);/);
 assert.match(gridViewer, /buildUI\(cfg\);\s*installGridTextFocusListeners\(\);\s*installRowHoverPreview\(cfg\);/);
 assert.match(gridViewer, /function updateGridToolbarCondensed\(\) \{[\s\S]*classList\.toggle\('buret-grid-controls-condensed', scrollTop\(\) > 24\);/);
 assert.match(gridViewer, /function handleGridScroll\(cfg\) \{\s*updateGridToolbarCondensed\(\);/);
@@ -8578,6 +8590,9 @@ assert.match(gridCss, /\.buret-grid-molecule-detail-props dt \{[^}]*overflow-wra
 assert.match(gridCss, /\.buret-grid-molecule-detail-prop-range \{/);
 assert.match(gridCss, /\.buret-grid-molecule-detail-prop-track \{/);
 assert.match(gridCss, /\.buret-grid-molecule-detail-actions \{[^}]*position: static;/s);
+assert.match(gridCss, /\.buret-grid-molecule-detail-body \{[^}]*overflow: hidden;/s);
+assert.match(gridCss, /\.buret-grid-molecule-detail-tab-panel \{[^}]*flex: 1 1 auto;[^}]*overflow: auto;/s);
+assert.match(gridViewer, /function formatMoleculeDetailNumber\(value\)/);
 assert.match(gridViewer, /visible: state\.remoteMode \? state\.totalRows : state\.rows\.length/);
 assert.match(gridViewer, /function remoteCollectionTotal\(cfg = safeConfig\(\)\)/);
 assert.match(gridViewer, /statsRows: rows\.length,[\s\S]*statsTotal,[\s\S]*statsComplete: state\.indexReady/);

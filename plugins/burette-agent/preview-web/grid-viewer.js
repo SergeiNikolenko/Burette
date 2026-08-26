@@ -8,6 +8,7 @@
   const TABLE_HIDDEN_COLUMNS_STORAGE_KEY = 'buret.grid.tableHiddenColumns';
   const TABLE_COLUMN_WIDTHS_STORAGE_KEY = 'buret.grid.tableColumnWidths';
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
+  const HOVER_PREVIEW_SVG_LIMIT = 512_000;
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
   const CLUSTER_CUTOFF_STORAGE_KEY = 'buret.grid.clusterCutoff';
   const GRID_SELECTION_BRIDGE_LIMIT = 100000;
@@ -150,6 +151,8 @@
     xyzrenderCardObserver: null,
     xyzrenderCardLazyJobs: new WeakMap(),
     xyzrenderCardLazyTargets: [],
+    hoveredGridRowIndex: null,
+    lastGridRowIndex: null,
     hostRequests: new Map(),
     remoteMode: false,
     remoteLoading: false,
@@ -195,7 +198,6 @@
     findingSimilar: false,
     exportingClusterRepresentatives: false,
     clusterCutoff: storedClusterCutoff(),
-    moleculePreview: null,
     railHoveredMarker: null,
     railPopoverSuppressed: false,
     railPopoverHideTimer: null,
@@ -290,9 +292,62 @@
     }, 0);
   }
 
+  // The host owns the full-size molecule preview in the inspector. Keep the
+  // payload bounded while still giving that preview the row's useful data.
+  function hoverRowProps(row) {
+    const entries = [];
+    const push = (columnId, label, value) => {
+      if (entries.length >= 24) return;
+      const text = String(value ?? '').trim();
+      if (!text) return;
+      entries.push({
+        columnId: String(columnId).slice(0, 160),
+        label: String(label).slice(0, 96),
+        value: text.slice(0, 96)
+      });
+    };
+    const props = row?.props && typeof row.props === 'object' ? row.props : {};
+    for (const [label, value] of Object.entries(props)) push(`prop:${label}`, label, value);
+    const descriptors = row?.descriptors && typeof row.descriptors === 'object' ? row.descriptors : {};
+    for (const [id, cell] of Object.entries(descriptors)) {
+      const value = cell?.value;
+      if (value == null || value === '') continue;
+      push(`descriptor:${id}`, cell?.label || id, typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(3) : value);
+    }
+    return entries;
+  }
+
   function gridRowByIndex(index) {
     const pool = state.remoteMode ? state.rows : state.all;
     return pool.find(candidate => Number(candidate?.index) === index) || null;
+  }
+
+  function postGridRowHover(index, cfg) {
+    const row = Number.isSafeInteger(index) && index >= 0 ? gridRowByIndex(index) : null;
+    state.hoveredGridRowIndex = row ? index : null;
+    if (row) state.lastGridRowIndex = index;
+    let previewSvg = '';
+    if (row && state.cardRenderer === 'xyzrender') {
+      const record = gridDragRecord(row);
+      if (record) {
+        const cachedSvg = state.xyzrenderCardCache.get(xyzrenderCardKey(row, record))?.svg || '';
+        if (cachedSvg.length <= HOVER_PREVIEW_SVG_LIMIT) previewSvg = cachedSvg;
+      }
+    }
+    post('gridRowHover', '', {
+      documentId: cfg?.documentId || null,
+      row: row && rowHasMolecule(row)
+        ? {
+            index,
+            name: String(row.name || ''),
+            smiles: String(row.smiles || ''),
+            molblock: String(row.molblock || ''),
+            cardRenderer: state.cardRenderer,
+            previewSvg,
+            props: hoverRowProps(row)
+          }
+        : null
+    });
   }
 
   // Marks the row the chemical-space map is pointing at, so a point under the
@@ -320,10 +375,12 @@
       const row = gridRowByIndex(index);
       if (!row || !rowHasMolecule(row)) return;
       lastHoverIndex = index;
+      postGridRowHover(index, cfg);
       postChemicalSpaceHover(index);
     });
     root.addEventListener('pointerleave', () => {
       lastHoverIndex = null;
+      postGridRowHover(null, cfg);
       postChemicalSpaceHover(null);
     });
   }
@@ -596,6 +653,7 @@
         const index = raw === null || raw === undefined || raw === '' ? Number.NaN : Number(raw);
         const normalizedIndex = Number.isSafeInteger(index) && index >= 0 ? index : null;
         applyExternalHoverHighlight(normalizedIndex);
+        postGridRowHover(normalizedIndex, config());
         if (normalizedIndex === null) {
           state.chemicalSpaceHoverToken += 1;
           post('chemicalSpaceMoleculePreview', '', { sourceRecordId: null });
@@ -1875,6 +1933,10 @@
     refreshGridControls(cfg);
     applyGridPreferences(cfg);
     render(cfg);
+    const previewRowIndex = Number.isSafeInteger(state.hoveredGridRowIndex)
+      ? state.hoveredGridRowIndex
+      : state.lastGridRowIndex;
+    if (Number.isSafeInteger(previewRowIndex)) postGridRowHover(previewRowIndex, cfg);
   }
 
   function setGridViewMode(value, cfg) {
@@ -4307,6 +4369,39 @@
     };
   }
 
+  function filterColumnVaries(column) {
+    const rows = state.all.length ? state.all : state.rows;
+    let first;
+    for (const row of rows) {
+      const value = column.type === 'number'
+        ? tableColumnRawNumericValue(row, column.id)
+        : tableColumnRawDisplayValue(row, column.id).trim();
+      if (column.type === 'number' ? !Number.isFinite(value) : !value) continue;
+      if (first === undefined) first = value;
+      else if (value !== first) return true;
+    }
+    return false;
+  }
+
+  function filterColumnIsRowIndex(column) {
+    const normalizedId = String(column.id || '').trim().toLowerCase();
+    const normalizedLabel = String(column.label || '').trim().toLowerCase();
+    // CSV ingestion adds this synthetic provenance field to every record. It
+    // is useful internally for source-row tracking, but it is not molecular
+    // data and should not appear as an inspector metric or user filter.
+    if (normalizedId === 'prop:csv row' || normalizedLabel === 'csv row') return true;
+    if (column.type !== 'number') return false;
+    const rows = state.all.length ? state.all : state.rows;
+    let seen = 0;
+    for (const row of rows) {
+      const value = tableColumnRawNumericValue(row, column.id);
+      if (!Number.isFinite(value)) continue;
+      seen += 1;
+      if (value !== Number(row.index) + 1) return false;
+    }
+    return seen > 1;
+  }
+
   function remoteCollectionTotal(cfg = safeConfig()) {
     const totals = [
       cfg?.recordsTotal,
@@ -4323,11 +4418,15 @@
   function gridFilterModel(cfg) {
     const columns = filterModelColumns().map(column => {
       const filter = state.tableColumnFilters[column.id] || null;
+      const allowed = state.columnValueRanges.get(column.id) || null;
       const entry = { id: column.id, label: column.label, type: column.type === 'number' ? 'number' : 'text' };
+      entry.varied = filterColumnVaries(column) && !filterColumnIsRowIndex(column);
       if (filter) entry.filter = { min: filter.min ?? '', max: filter.max ?? '', text: filter.text ?? '' };
       if (column.type === 'number') {
         const stats = filterColumnStats(column);
         if (stats) Object.assign(entry, stats);
+        if (Number.isFinite(allowed?.min)) entry.allowedMin = allowed.min;
+        if (Number.isFinite(allowed?.max)) entry.allowedMax = allowed.max;
       }
       return entry;
     });
@@ -5147,7 +5246,16 @@
   }
 
   function formatValueRangeBound(value, fallback) {
-    return Number.isFinite(value) ? String(value) : fallback;
+    return Number.isFinite(value) ? formatMoleculeDetailNumber(value) : fallback;
+  }
+
+  function formatMoleculeDetailNumber(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return String(value ?? '');
+    if (Number.isInteger(numeric)) return numeric.toLocaleString();
+    const magnitude = Math.abs(numeric);
+    const decimals = magnitude >= 100 ? 1 : magnitude >= 10 ? 2 : 3;
+    return numeric.toFixed(decimals).replace(/\.?0+$/u, '');
   }
 
   // Property cells are the ones that reach a saved file, so the limits are
@@ -6674,7 +6782,7 @@
       ? ''
       : `${rangeSource} ${formatValueRangeBound(lower, '−∞')} … ${formatValueRangeBound(upper, '+∞')}`;
     return `<dt>${escapeHTML(key)}</dt><dd${outside ? ' class="buret-grid-molecule-detail-prop-outside"' : ''}>
-      <span class="buret-grid-molecule-detail-prop-value">${escapeHTML(value)}</span>
+      <span class="buret-grid-molecule-detail-prop-value" title="${escapeHTML(value)}">${escapeHTML(Number.isFinite(numeric) ? formatMoleculeDetailNumber(numeric) : value)}</span>
       ${rangeLabel ? `<small class="buret-grid-molecule-detail-prop-range">${escapeHTML(rangeLabel)}</small>` : ''}
       ${position == null ? '' : `<span class="buret-grid-molecule-detail-prop-track" aria-hidden="true"><span style="left:${(position * 100).toFixed(1)}%"></span></span>`}
     </dd>`;
@@ -6985,93 +7093,34 @@
     const picture = card.querySelector('[data-buret-molecule-picture]');
     if (!picture) return;
     const index = Number(card.getAttribute('data-index'));
-    picture.addEventListener('pointerenter', event => {
-      if (event.pointerType === 'touch') return;
+    picture.addEventListener('pointerenter', () => {
+      card.classList.add('buret-card-hovering-molecule');
       postChemicalSpaceHover(index);
-      showMoleculePreview(event, row, cfg);
     });
-    picture.addEventListener('pointermove', event => {
-      if (event.pointerType === 'touch') return;
-      if (!state.moleculePreview) showMoleculePreview(event, row, cfg);
-      positionMoleculePreview(event);
-    });
+    picture.addEventListener('pointermove', () => card.classList.add('buret-card-hovering-molecule'));
     picture.addEventListener('pointerleave', () => {
+      card.classList.remove('buret-card-hovering-molecule');
       postChemicalSpaceHover(null);
-      hideMoleculePreview();
     });
-    picture.addEventListener('contextmenu', hideMoleculePreview);
     card.addEventListener('focusin', () => {
-      if (!card.matches(':focus-visible')) return;
-      const rect = picture.getBoundingClientRect();
-      showMoleculePreview({ clientX: rect.right, clientY: rect.top }, row, cfg);
+      card.classList.add('buret-card-hovering-molecule');
+      postGridRowHover(index, cfg);
     });
-    card.addEventListener('focusout', hideMoleculePreview);
-    card.addEventListener('keydown', event => {
-      if (event.key === 'Escape') hideMoleculePreview();
+    card.addEventListener('focusout', () => {
+      card.classList.remove('buret-card-hovering-molecule');
+      postGridRowHover(null, cfg);
     });
   }
 
   function installTableMoleculeHover(rowEl, row, cfg) {
     const picture = rowEl.querySelector('.buret-grid-table-molecule');
     if (!picture) return;
-    picture.addEventListener('pointerenter', event => {
-      if (event.pointerType === 'touch') return;
+    picture.addEventListener('pointerenter', () => {
       postChemicalSpaceHover(Number(row.index));
-      showMoleculePreview(event, row, cfg);
-    });
-    picture.addEventListener('pointermove', event => {
-      if (event.pointerType === 'touch') return;
-      if (!state.moleculePreview) showMoleculePreview(event, row, cfg);
-      positionMoleculePreview(event);
     });
     picture.addEventListener('pointerleave', () => {
       postChemicalSpaceHover(null);
-      hideMoleculePreview();
     });
-    picture.addEventListener('contextmenu', hideMoleculePreview);
-  }
-
-  function showMoleculePreview(event, row, cfg) {
-    hideMoleculePreview();
-    const label = row.name || `Molecule ${Number(row.index) + 1}`;
-    const popover = document.createElement('div');
-    popover.className = 'buret-grid-molecule-popover';
-    popover.setAttribute('role', 'tooltip');
-    popover.innerHTML = `
-      <div class="buret-grid-molecule-popover-image" data-buret-molecule-picture>${draw(row, cfg)}</div>
-      <div class="buret-grid-molecule-popover-title">${escapeHTML(label)}</div>`;
-    root.appendChild(popover);
-    state.moleculePreview = popover;
-    scheduleRdkitCard(popover, row);
-    scheduleXyzrenderCard(popover, row, cfg);
-    window.addEventListener('scroll', hideMoleculePreview, true);
-    window.addEventListener('resize', hideMoleculePreview, true);
-    positionMoleculePreview(event);
-  }
-
-  function positionMoleculePreview(event) {
-    const popover = state.moleculePreview;
-    if (!popover) return;
-    const margin = 12;
-    const offset = 16;
-    const rect = popover.getBoundingClientRect();
-    const rightEdge = Math.max(margin, window.innerWidth - state.gridViewportCover);
-    let left = event.clientX + offset;
-    let top = event.clientY + offset;
-    if (left + rect.width + margin > rightEdge) left = event.clientX - rect.width - offset;
-    if (top + rect.height + margin > window.innerHeight) top = window.innerHeight - rect.height - margin;
-    left = Math.max(margin, Math.min(left, rightEdge - rect.width - margin));
-    top = Math.max(margin, top);
-    popover.style.left = `${Math.round(left)}px`;
-    popover.style.top = `${Math.round(top)}px`;
-  }
-
-  function hideMoleculePreview() {
-    if (!state.moleculePreview) return;
-    state.moleculePreview.remove();
-    state.moleculePreview = null;
-    window.removeEventListener('scroll', hideMoleculePreview, true);
-    window.removeEventListener('resize', hideMoleculePreview, true);
   }
 
   function installCardResizeHandle(card) {
@@ -7670,6 +7719,8 @@
     state.pendingLoad = false;
     state.pendingGridScrollIndex = null;
     state.pendingGridRailPosition = null;
+    state.hoveredGridRowIndex = null;
+    state.lastGridRowIndex = null;
     state.windowStart = 0;
     state.windowEnd = 0;
     invalidateTableColumnCatalog();
@@ -7726,9 +7777,10 @@
       const svg = prepareXyzrenderCardSVG(payload.svg);
       if (!svg.includes('<svg')) throw new Error('empty xyzrender drawing');
       const html = svgDataImageHTML(svg, 'buret-xyzrender-card-image', row.name || `Molecule ${Number(row.index) + 1}`);
-      state.xyzrenderCardCache.set(key, { html });
+      state.xyzrenderCardCache.set(key, { html, svg });
       evictXyzrenderCardCache();
       updateXyzrenderCard(key, html);
+      if (state.hoveredGridRowIndex === Number(row.index)) postGridRowHover(Number(row.index), cfg);
       emitGridPerfMetric(cfg, 'xyzrender-card', startedAt, {
         rowIndex: Number(row.index),
         xyzrenderElapsedMs: Number(payload?.elapsedMs) || null,
@@ -7781,9 +7833,10 @@
           continue;
         }
         const html = svgDataImageHTML(svg, 'buret-xyzrender-card-image', job.row.name || `Molecule ${Number(job.row.index) + 1}`);
-        state.xyzrenderCardCache.set(job.key, { html });
+        state.xyzrenderCardCache.set(job.key, { html, svg });
         evictXyzrenderCardCache();
         updateXyzrenderCard(job.key, html);
+        if (state.hoveredGridRowIndex === Number(job.row.index)) postGridRowHover(Number(job.row.index), job.cfg);
         emitGridPerfMetric(cfg, 'xyzrender-card', startedAt, {
           rowIndex: Number(job.row.index),
           xyzrenderElapsedMs: Number(item.elapsedMs) || null,
