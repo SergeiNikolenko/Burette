@@ -96,6 +96,8 @@ export type KetcherImportRequest = {
       rowIndex: number;
       title: string;
       extension: string;
+      sourceRow?: number;
+      structureColumn?: string;
     };
   }>;
 };
@@ -169,6 +171,8 @@ export type ShellActions = {
     title: string;
     extension: string;
     text: string;
+    sourceRow?: number;
+    structureColumn?: string;
   }) => void;
   openFepSetupWorkspace: (request: FepSetupRequest) => void;
   openKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;

@@ -612,12 +612,6 @@ export function KetcherPage({
     restoreDraft(ketcher);
   }, [isActive, ketcher, restoreDraft]);
 
-  useEffect(() => {
-    if (!isActive) return;
-    if (location.importRequest || state.ketcherImportRequest || peekQueuedKetcherImportRequest()) return;
-    setGridEditSource(null);
-  }, [isActive, location.importRequest, location.importRequestId, state.ketcherImportRequest]);
-
   const retryEditorLoad = useCallback(() => {
     setKetcher(null);
     setHasSketch(Boolean(location.draftKet?.trim() || location.draftMolfile?.trim() || state.ketcherDraftMolfile.trim()));
@@ -1073,8 +1067,10 @@ export function KetcherPage({
             title: gridEditSource.title,
             extension: "rdf",
             text: rxnToRdf(rxn, reactionSmiles),
+            sourceRow: gridEditSource.sourceRow,
+            structureColumn: gridEditSource.structureColumn,
           });
-          setStatus("Applied reaction edit to grid");
+          setStatus("Saving reaction edit to collection");
           return;
         }
         const [smiles, molfile] = await Promise.all([
@@ -1091,8 +1087,10 @@ export function KetcherPage({
           title: gridEditSource.title,
           extension: "sdf",
           text: molfileToSdf(molfile, smiles),
+          sourceRow: gridEditSource.sourceRow,
+          structureColumn: gridEditSource.structureColumn,
         });
-        setStatus("Applied edit to grid");
+        setStatus("Saving edit to collection");
       } catch (error) {
         setStatus(ketcherExportErrorMessage(error));
       } finally {
@@ -1404,43 +1402,58 @@ export function KetcherPage({
               </button>
             )}
           />
-          <RadixDropdownMenu
-            align="end"
-            items={[
-              ...(collectionTargets.length === 0
-                ? [{
-                    kind: "item" as const,
-                    id: "no-open-collections",
-                    text: "No open molecule collections",
-                    disabled: true,
-                  }]
-                : collectionTargets.map((target) => ({
-                    kind: "item" as const,
-                    id: `collection-${target.path}`,
-                    text: target.path === selectedCollectionPath ? `✓ ${target.title}` : target.title,
-                    action: () => {
-                      setSelectedCollectionPath(target.path);
-                      addSketchToCollection(target.path);
-                    },
-                  }))),
-              { kind: "separator" as const },
-              {
-                kind: "item" as const,
-                id: "new-collection",
-                text: "New collection...",
-                action: () => addSketchToCollection(null),
-              },
-            ]}
-            trigger={(
-              <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="sm" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch || !hasSketch}>
-                  Add to collection
-                  <ChevronDown data-icon="inline-end" aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-            )}
-          />
-          <TooltipContent>Add sketch to SDF collection</TooltipContent>
+          {gridEditSource ? (
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                aria-label="Save Ketcher edits back to collection"
+                disabled={!ketcher || exportingSketch || !hasSketch}
+                onClick={() => void applyGridEdit()}
+              >
+                Save to collection
+              </Button>
+            </TooltipTrigger>
+          ) : (
+            <RadixDropdownMenu
+              align="end"
+              items={[
+                ...(collectionTargets.length === 0
+                  ? [{
+                      kind: "item" as const,
+                      id: "no-open-collections",
+                      text: "No open molecule collections",
+                      disabled: true,
+                    }]
+                  : collectionTargets.map((target) => ({
+                      kind: "item" as const,
+                      id: `collection-${target.path}`,
+                      text: target.path === selectedCollectionPath ? `✓ ${target.title}` : target.title,
+                      action: () => {
+                        setSelectedCollectionPath(target.path);
+                        addSketchToCollection(target.path);
+                      },
+                    }))),
+                { kind: "separator" as const },
+                {
+                  kind: "item" as const,
+                  id: "new-collection",
+                  text: "New collection...",
+                  action: () => addSketchToCollection(null),
+                },
+              ]}
+              trigger={(
+                <TooltipTrigger asChild>
+                  <Button type="button" variant="outline" size="sm" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch || !hasSketch}>
+                    Add to collection
+                    <ChevronDown data-icon="inline-end" aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+              )}
+            />
+          )}
+          <TooltipContent>{gridEditSource ? "Save edits back to the source collection" : "Add sketch to SDF collection"}</TooltipContent>
           </Tooltip>
           <ButtonGroup className="ketcher-scale-control" aria-label="Ketcher scale">
             <Tooltip>

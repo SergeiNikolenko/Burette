@@ -65,9 +65,9 @@ export function useAppGridFileActions({
 
   const handleGridFileMessage = useCallback((body: GridFileMessageBody, source: MessageEventSource | null) => {
     if (isReadOnlyViewerMessageSource(source)
-      && (body?.type === "saveGrid" || body?.type === "saveGridAs")) {
+      && (body?.type === "saveGrid" || body?.type === "saveGridAs" || body?.type === "saveGridRow")) {
       replyGrid(source, body.documentId, {
-        type: body.type === "saveGrid" ? "gridSaveError" : "gridSaveAsError",
+        type: body.type === "saveGridAs" ? "gridSaveAsError" : "gridSaveError",
         error: "This embedded collection preview is read-only.",
       });
       return true;
@@ -129,6 +129,49 @@ export function useAppGridFileActions({
           const message = error instanceof Error ? error.message : String(error);
           replyGrid(source, body.documentId, { type: "gridMoleculeExportError", error: message });
           pushErrorStatus(error, "Molecule export failed");
+        }
+      })();
+      return true;
+    }
+
+    if (body?.type === "saveGridRow") {
+      const documentId = typeof body.documentId === "string" ? body.documentId : "";
+      const targetDocument = documentId
+        ? documents.find((document) => document.id === documentId)
+        : null;
+      const sourceRow = Number(body.sourceRow);
+      const structureColumn = bodyString(body.structureColumn, "").trim();
+      const value = bodyString(body.value, "").trim();
+      void (async () => {
+        try {
+          if (!documentId) throw new Error("Grid row save requires a document ID.");
+          await runWindowMutation(documentId, async () => {
+            if (!targetDocument?.path || targetDocument.virtual) {
+              throw new Error("This collection cannot be overwritten. Use Save As instead.");
+            }
+            if (!["csv", "tsv"].includes(targetDocument.extension.toLowerCase())) {
+              throw new Error("A targeted collection row save requires CSV or TSV.");
+            }
+            if (!Number.isSafeInteger(sourceRow) || sourceRow < 1 || !structureColumn || !value) {
+              throw new Error("The edited collection row did not include its source cell.");
+            }
+            const savedPath = await invoke<string>("replace_delimited_collection_cell", {
+              request: {
+                path: targetDocument.path,
+                rowNumber: sourceRow,
+                column: structureColumn,
+                value,
+              },
+            });
+            const savedName = basename(savedPath);
+            forgetDirtyGridDocument(documentId);
+            pushStatus(`Saved ${savedName}`);
+            replyGrid(source, documentId, { type: "gridSaved", name: savedName });
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          replyGrid(source, documentId, { type: "gridSaveError", error: message });
+          pushErrorStatus(error, "Grid row save failed");
         }
       })();
       return true;

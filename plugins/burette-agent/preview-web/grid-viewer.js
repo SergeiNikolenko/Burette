@@ -2832,13 +2832,17 @@
       setStatus(`[grid] ${label} has no structure data for Ketcher.`, 'error');
       return;
     }
+    const sourceRow = Number(row?.props?.['CSV row']);
+    const structureColumn = String(row?.props?.['SMILES column'] || '').trim();
     const payload = {
       title: record.path,
       extension: record.inputExtension,
       textBase64: textToBase64(ketcherFragmentText(record)),
       documentId: cfg?.documentId || null,
       rowIndex: Number(row?.index),
-      gridEdit: true
+      gridEdit: true,
+      ...(Number.isSafeInteger(sourceRow) && sourceRow > 0 ? { sourceRow } : {}),
+      ...(structureColumn ? { structureColumn } : {})
     };
     const message = `[grid] Open ${label} in Ketcher.`;
     post('openInKetcher', message, payload);
@@ -5898,8 +5902,29 @@
       setStatus('[grid] Ketcher Apply returned an unsupported molecule record.', 'error');
       return;
     }
+    patch.name = row.name || `Molecule ${rowIndex + 1}`;
     if (replaceGridRow(row, patch, cfg)) {
-      setStatus(`[grid] Applied Ketcher edit to ${row.name || `Molecule ${rowIndex + 1}`}. Unsaved changes.`);
+      const label = row.name || `Molecule ${rowIndex + 1}`;
+      const sourceRow = Number(body.sourceRow);
+      const structureColumn = String(body.structureColumn || '').trim();
+      if (body.save === true
+        && cfg?.tauriViewer
+        && ['csv', 'tsv'].includes(String(cfg?.format || '').toLowerCase())
+        && Number.isSafeInteger(sourceRow)
+        && sourceRow > 0
+        && structureColumn
+        && patch.smiles) {
+        post('saveGridRow', `[grid] Save Ketcher edit to ${label}.`, {
+          sourceRow,
+          structureColumn,
+          value: patch.smiles
+        });
+        setStatus(`[grid] Saving Ketcher edit to ${label}.`);
+      } else if (body.save === true) {
+        void saveGrid(cfg);
+      } else {
+        setStatus(`[grid] Applied Ketcher edit to ${label}. Unsaved changes.`);
+      }
     }
   }
 

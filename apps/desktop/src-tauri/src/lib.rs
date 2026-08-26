@@ -233,6 +233,7 @@ pub fn run() {
             commands::documents::append_to_molecule_collection,
             commands::documents::create_molecule_collection,
             commands::documents::save_molecule_collection_as,
+            commands::documents::replace_delimited_collection_cell,
             commands::documents::save_text_as,
             commands::documents::release_save_as_reservation,
             commands::documents::abort_open_document_claim,

@@ -47,6 +47,8 @@ export function useAppKetcherViewerMessages({
         try {
           const text = decodeBase64Text(textBase64);
           const rowIndex = Number(body.rowIndex);
+          const sourceRow = Number(body.sourceRow);
+          const structureColumn = bodyString(body.structureColumn).trim();
           const extension = bodyString(body.extension).trim()
             ? bodyString(body.extension).trim().replace(/^\./u, "")
             : "sdf";
@@ -57,6 +59,8 @@ export function useAppKetcherViewerMessages({
                 rowIndex,
                 title,
                 extension,
+                ...(Number.isSafeInteger(sourceRow) && sourceRow > 0 ? { sourceRow } : {}),
+                ...(structureColumn ? { structureColumn } : {}),
               }
             : undefined, extension);
         } catch (error) {

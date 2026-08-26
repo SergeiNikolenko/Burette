@@ -60,6 +60,8 @@ type KetcherGridRowSource = {
   rowIndex: number;
   title: string;
   extension: string;
+  sourceRow?: number;
+  structureColumn?: string;
 };
 type OpenKetcherWithFragment = (
   title: string,

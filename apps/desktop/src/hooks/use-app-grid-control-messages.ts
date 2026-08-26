@@ -20,6 +20,8 @@ type OpenKetcherWithFragment = (
     rowIndex: number;
     title: string;
     extension: string;
+    sourceRow?: number;
+    structureColumn?: string;
   },
   extension?: string,
 ) => void;
@@ -74,6 +76,8 @@ export function useAppGridControlMessages({
           const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
           const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
           const rowIndex = Number(body.rowIndex);
+          const sourceRow = Number(body.sourceRow);
+          const structureColumn = typeof body.structureColumn === "string" ? body.structureColumn.trim() : "";
           const extension = typeof body.extension === "string" && body.extension.trim()
             ? body.extension.trim().replace(/^\./u, "")
             : "sdf";
@@ -84,6 +88,8 @@ export function useAppGridControlMessages({
                 rowIndex,
                 title,
                 extension,
+                ...(Number.isSafeInteger(sourceRow) && sourceRow > 0 ? { sourceRow } : {}),
+                ...(structureColumn ? { structureColumn } : {}),
               }
             : undefined, extension);
         } catch (error) {
