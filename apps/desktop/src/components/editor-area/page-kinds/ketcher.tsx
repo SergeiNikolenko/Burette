@@ -18,6 +18,8 @@ export type KetcherLocationImportRequest = {
       rowIndex: number;
       title: string;
       extension: string;
+      sourceRow?: number;
+      structureColumn?: string;
     };
   }>;
 };

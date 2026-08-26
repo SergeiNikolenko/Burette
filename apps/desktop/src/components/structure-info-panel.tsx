@@ -135,6 +135,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
   const hostedMcpWidget = isHostedMcpWidget();
   const composition = useStructureComposition(document);
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
+  const [gridFilterFocus, setGridFilterFocus] = useState<{ columnId: string; requestId: number } | null>(null);
   const [sdfContextStyle, setSdfContextStyle] = useState<SdfContextStyle>(SDF_CONTEXT_STYLE_DEFAULT);
   const [sdfContextColor, setSdfContextColor] = useState<SdfContextColor>(SDF_CONTEXT_COLOR_DEFAULT);
   const [sdfContextOpacity, setSdfContextOpacity] = useState(SDF_CONTEXT_OPACITY_DEFAULT);
@@ -449,9 +450,21 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         <InspectorHeaderStats document={document} summary={compositionSummary} pending={compositionPending} />
       </section>
 
+      {document.renderer === "grid2d" ? (
+        <GridHoverMoleculeCard
+          row={hoveredGridRow ?? null}
+          filterModel={gridFilterModel}
+          documentId={document.id}
+          onInspectProperty={(columnId) => setGridFilterFocus((previous) => ({
+            columnId,
+            requestId: (previous?.requestId ?? 0) + 1,
+          }))}
+        />
+      ) : null}
+
       {gridFilterModel ? (
         <Suspense fallback={null}>
-          <GridFilterSection model={gridFilterModel} actions={actions} />
+          <GridFilterSection model={gridFilterModel} actions={actions} focusRequest={gridFilterFocus} />
         </Suspense>
       ) : null}
 
@@ -645,9 +658,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         hostedMcpWidget={hostedMcpWidget}
         actions={actions}
       />
-      {document.renderer === "grid2d" ? (
-        <GridHoverMoleculeCard row={hoveredGridRow ?? null} filterModel={gridFilterModel} documentId={document.id} />
-      ) : null}
     </div>
   );
 }

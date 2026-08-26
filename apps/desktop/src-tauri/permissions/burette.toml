@@ -60,6 +60,7 @@ commands.allow = [
   "fetch_remote_structure",
   "open_merged_collection",
   "open_delimited_grid_document",
+  "replace_delimited_collection_cell",
   "save_text_as",
   "release_save_as_reservation",
   "abort_open_document_claim",
