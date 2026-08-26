@@ -188,12 +188,18 @@ export type ConformerRunResult = {
 export type ConformerJob = {
   id: string;
   title: string;
-  operation: ConformerOperation;
+  operation: ConformerOperation | "grid-generate" | "grid-optimize";
   inputTitle: string;
   status: "running" | "success" | "recovered" | "failed" | "cancelled";
   startedAt: number;
   workDir?: string | null;
   logPath?: string | null;
+  reportPath?: string | null;
+  primaryOpenPath?: string | null;
+  progress?: string | null;
+  backend?: "nativeMetal" | "rdkitCpu" | null;
+  durableJobId?: string | null;
+  cancelable?: boolean;
   completedAt?: number;
   result?: ConformerRunResult | null;
   error?: string | null;
@@ -317,7 +323,9 @@ export type HoveredGridRow = {
   name: string;
   smiles?: string | null;
   molblock?: string | null;
-  props?: Array<{ label: string; value: string }>;
+  cardRenderer?: "rdkit" | "xyzrender";
+  previewSvg?: string | null;
+  props?: Array<{ columnId?: string | null; label: string; value: string }>;
 };
 
 export type DerivedColumnJob = {

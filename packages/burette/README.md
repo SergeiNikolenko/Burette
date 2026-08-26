@@ -1,20 +1,19 @@
-# Burette CLI installer
+# Internal Burette installer helper
 
-This package provides the `burette` command for installing the Burette macOS
-app from GitHub Releases.
+This private workspace package implements the release and installation helper
+used by repository checks. It is not published to npm: the unscoped `burette`
+package name belongs to an unrelated project.
 
-```bash
-bunx burette install
-bunx burette doctor
-```
+Repository contributors can run it from the repository root with
+`bun packages/burette/bin/burette.mjs <command>`.
 
 The command downloads the latest stable `Burette-<version>.zip`,
 verifies the GitHub release asset SHA-256 digest when GitHub provides one, and
 installs `Burette.app` into `~/Applications` by default.
 
-Use `burette install --system` to install into `/Applications` for all users;
+Use `install --system` to install into `/Applications` for all users;
 without it, the installer uses the current user's `~/Applications` folder.
-Use `burette install --beta` to install from the beta channel instead.
+Use `install --beta` to install from the beta channel instead.
 
-Run `burette doctor` after installation to check that `Burette.app`, the Quick
+Run `doctor` after installation to check that `Burette.app`, the Quick
 Look extension, `qlmanage`, and the installed app version are visible.

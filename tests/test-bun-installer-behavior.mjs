@@ -11,6 +11,14 @@ import {
   selectRelease,
 } from "../packages/burette/bin/burette.mjs";
 
+const packageMetadata = JSON.parse(await readFile(new URL("../packages/burette/package.json", import.meta.url), "utf8"));
+assert.equal(packageMetadata.private, true, "the internal installer package must remain unpublished");
+
+for (const publicDoc of ["../README.md", "../packages/burette/README.md", "../docs/releasing.md", "../docs/repository-layout.md"]) {
+  const source = await readFile(new URL(publicDoc, import.meta.url), "utf8");
+  assert.doesNotMatch(source, /bunx\s+burette\b/u, `${publicDoc} must not direct users to the unrelated npm package`);
+}
+
 const root = await mkdtemp(path.join(tmpdir(), "burette-installer-test-"));
 const sourceApp = path.join(root, "source", "Burette.app");
 const targetApp = path.join(root, "Applications", "Burette.app");

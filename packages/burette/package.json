@@ -1,7 +1,8 @@
 {
   "name": "burette",
-  "version": "2.3.9",
-  "description": "CLI installer for the Burette macOS app and Quick Look extension.",
+  "version": "2.3.12",
+  "private": true,
+  "description": "Internal release and installation helper for the Burette macOS app and Quick Look extension.",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -28,8 +29,5 @@
   "bugs": {
     "url": "https://github.com/SergeiNikolenko/Burette/issues"
   },
-  "homepage": "https://github.com/SergeiNikolenko/Burette#readme",
-  "publishConfig": {
-    "access": "public"
-  }
+  "homepage": "https://github.com/SergeiNikolenko/Burette#readme"
 }

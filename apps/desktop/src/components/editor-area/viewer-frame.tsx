@@ -97,9 +97,11 @@ export function ViewerFrame({
   const renderSlot = (slot: SourcePreviewSlot, runtime: SourcePreviewRuntime) => {
     const active = sourcePreview?.activeSlot === slot;
     const identity = runtime.identity;
+    const accessibleTitle = active ? document.title : `${document.title} preview candidate`;
     const commonProps = {
       ref: active ? iframeRef : stagingIframeRef,
-      title: active ? document.title : `${document.title} preview candidate`,
+      title: document.renderer === "grid2d" ? "" : accessibleTitle,
+      "aria-label": document.renderer === "grid2d" ? accessibleTitle : undefined,
       className: active ? className : "source-preview-staging-iframe",
       ...(sandbox ? { sandbox } : {}),
       referrerPolicy: "no-referrer" as const,
@@ -137,7 +139,8 @@ export function ViewerFrame({
   if (!sourcePreview) {
     const commonProps = {
       ref: iframeRef,
-      title: document.title,
+      title: document.renderer === "grid2d" ? "" : document.title,
+      "aria-label": document.renderer === "grid2d" ? document.title : undefined,
       className,
       ...(sandbox ? { sandbox } : {}),
       referrerPolicy: "no-referrer" as const,

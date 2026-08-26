@@ -57,20 +57,6 @@ Check the cask version when you need to confirm a specific release:
 brew info --cask SergeiNikolenko/burette/burette
 ```
 
-For the latest stable GitHub release, use the Burette Bun CLI:
-
-```bash
-bunx burette latest
-bunx burette install
-bunx burette doctor
-```
-
-The Bun installer places Burette in `~/Applications` by default. Use
-`bunx burette install --system` only when you intentionally want the app in
-`/Applications` for all users. If Finder previews do not appear after install,
-run `bunx burette doctor` to check the app bundle, Quick Look extension,
-`qlmanage`, and installed version.
-
 You can also download Burette from the GitHub Releases page:
 
 [Download the latest Burette release](https://github.com/SergeiNikolenko/Burette/releases/latest)
@@ -93,11 +79,9 @@ After installation:
    - `Cmd+P` or `/` opens the command palette.
    - `Cmd+,` opens settings.
    - The sidebar browses project folders, nested structures, and recent files.
-4. If previews do not appear, run:
-
-```bash
-bunx burette doctor
-```
+4. If previews do not appear, open the command palette and run
+   **Reset Quick Look**. **Open Logs Folder** and **Export Diagnostics** are
+   available there as well.
 
 ## Supported Files
 

@@ -96,6 +96,8 @@ export type KetcherImportRequest = {
       rowIndex: number;
       title: string;
       extension: string;
+      sourceRow?: number;
+      structureColumn?: string;
     };
   }>;
 };
@@ -169,6 +171,8 @@ export type ShellActions = {
     title: string;
     extension: string;
     text: string;
+    sourceRow?: number;
+    structureColumn?: string;
   }) => void;
   openFepSetupWorkspace: (request: FepSetupRequest) => void;
   openKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
@@ -295,7 +299,13 @@ export type GridFilterColumn = {
   filter?: { min: string; max: string; text: string };
   min?: number;
   max?: number;
+  allowedMin?: number;
+  allowedMax?: number;
   bins?: number[];
+  statsRows?: number;
+  statsTotal?: number;
+  statsComplete?: boolean;
+  varied?: boolean;
 };
 
 export type GridFilterModel = {

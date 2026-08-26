@@ -228,6 +228,8 @@ export function useAppKetcherActions({
     title: string;
     extension: string;
     text: string;
+    sourceRow?: number;
+    structureColumn?: string;
   }) => {
     if (isGridDocumentCloseTransitionActive(request.documentId)) {
       throw new Error("Wait for the collection update to finish before applying the grid edit.");
@@ -248,6 +250,9 @@ export function useAppKetcherActions({
         title: request.title,
         extension: request.extension,
         text: request.text,
+        sourceRow: request.sourceRow,
+        structureColumn: request.structureColumn,
+        save: true,
       },
     }, "*");
     if (ketcherTabId) {
@@ -256,7 +261,7 @@ export function useAppKetcherActions({
         closeTab(ketcherTabId);
       }, 0);
     }
-    pushStatus("Applied Ketcher edit to grid");
+    pushStatus("Saving Ketcher edit to collection...");
   }, [closeTab, pushStatus, setActiveDocument, tabs, updateDirtyGridDocument]);
 
   const clearKetcherImportRequest = useCallback((id: number) => {
