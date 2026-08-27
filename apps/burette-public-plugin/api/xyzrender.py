@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import re
 import tempfile
 import time
 import xml.etree.ElementTree as ET
@@ -18,7 +19,18 @@ MAX_INPUT_BYTES = 3_000_000
 MAX_SVG_BYTES = 5_000_000
 SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 XLINK_NAMESPACE = "http://www.w3.org/1999/xlink"
-DISALLOWED_SVG_ELEMENTS = {"foreignobject", "script"}
+DISALLOWED_SVG_ELEMENTS = {
+    "animate",
+    "animatemotion",
+    "animatetransform",
+    "discard",
+    "foreignobject",
+    "mpath",
+    "script",
+    "set",
+    "style",
+}
+CSS_URL_PATTERN = re.compile(r"url\((.*?)\)", re.IGNORECASE)
 PRESETS = {
     "default",
     "flat",
@@ -86,10 +98,14 @@ def _sanitize_svg(value: str) -> str:
                 parent.remove(child)
         for name, raw_value in list(parent.attrib.items()):
             attribute = _xml_local_name(name)
-            if attribute.startswith("on"):
+            if attribute.startswith("on") or attribute == "style":
                 del parent.attrib[name]
                 continue
             if attribute == "href" and not raw_value.strip().startswith("#"):
+                del parent.attrib[name]
+                continue
+            references = CSS_URL_PATTERN.findall(raw_value)
+            if any(not reference.strip(" \t\r\n\"'").startswith("#") for reference in references):
                 del parent.attrib[name]
 
     ET.register_namespace("", SVG_NAMESPACE)

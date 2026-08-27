@@ -47,6 +47,11 @@ def malicious_renderer(source_path, output_path, preset):
       <image xlink:href="data:image/svg+xml,unsafe"/>
       <a href="javascript:alert(4)"><text>unsafe link</text></a>
       <circle onclick="alert(5)" r="1"/>
+      <style>@import url(https://attacker.example/style.css)</style>
+      <circle style="fill:url(https://attacker.example/fill.svg)" r="2"/>
+      <circle fill="url(https://attacker.example/fill.svg)" r="3"/>
+      <set attributeName="href" to="javascript:alert(6)"/>
+      <animate attributeName="href" values="#atom;javascript:alert(7)"/>
     </svg>""", encoding="utf-8")
 
 sanitized = module.render_request(payload, renderer=malicious_renderer)["svg"]
@@ -58,6 +63,10 @@ assert "attacker.example" not in sanitized
 assert "tracker.example" not in sanitized
 assert "data:image" not in sanitized
 assert "javascript:" not in sanitized
+assert "<style" not in sanitized
+assert " style=" not in sanitized
+assert "<set" not in sanitized
+assert "<animate" not in sanitized
 assert 'href="#atom"' in sanitized
 assert 'xlink:href="#atom"' in sanitized
 

@@ -67,7 +67,7 @@ supported.
 - **Reviewer credentials:** Not required.
 - **CSP connect domains:** The stable production app origin only, for self-hosted runtime assets such as RDKit WASM.
 - **CSP resource domains:** The stable production app origin only.
-- **CSP frame domains:** The stable production app origin only.
+- **CSP frame domains:** None; the widgets do not embed a nested application frame.
 
 ## Portal prerequisites
 
