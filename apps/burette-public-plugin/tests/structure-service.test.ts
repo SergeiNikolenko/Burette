@@ -121,6 +121,15 @@ describe("attachment URL boundary", () => {
     );
   });
 
+  test("rejects explicit non-standard HTTPS ports", async () => {
+    await expect(
+      assertPublicHttpsUrl("https://8.8.8.8:8443/file.pdb"),
+    ).rejects.toThrow(/port 443/u);
+
+    const standardPort = await assertPublicHttpsUrl("https://8.8.8.8:443/file.pdb");
+    expect(standardPort.port).toBe("");
+  });
+
   test("rejects private IPv4 URLs", async () => {
     await expect(assertPublicHttpsUrl("https://127.0.0.1/file.pdb")).rejects.toThrow(
       /Private or local/u,

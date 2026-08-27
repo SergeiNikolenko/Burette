@@ -32,6 +32,25 @@ For a PDB lookup, Burette receives the requested four-character PDB ID and sends
 that ID to the RCSB Protein Data Bank. RCSB does not receive a user's attachment
 through this tool.
 
+The hosted Ketcher editor carries bounded continuation state between stateless
+tool requests in an authenticated, AES-256-GCM-encrypted token rather than in
+process-local memory or a Burette application database. The token may contain up
+to 16 KiB of inline molecular structure content together with editor revisions,
+atom selections, highlights, and last-action metadata. It expires 15 minutes
+after issuance, and Burette rejects expired or modified tokens. The token passes
+through the OpenAI tool result and may therefore be retained by the OpenAI host
+under the account, workspace, data-control, and retention settings described
+above. Burette does not treat the token as a saved chemical file or write it to
+application storage.
+
+When a user selects the xyzrender renderer in the public browser demo, the demo
+sends up to 3 MiB of the selected molecular input to Burette's hosted
+`/api/xyzrender` endpoint. The service writes the input and generated SVG only to
+a temporary execution directory, removes that directory after the request, and
+does not save either artifact to Burette application storage. Vercel hosts this
+endpoint and may process the associated network and request metadata described
+below.
+
 ## Service providers and technical metadata
 
 OpenAI processes tool inputs and results so ChatGPT or Codex can run the app and

@@ -203,6 +203,12 @@ async function resolvePublicHttpsTarget(value: string): Promise<PublicHttpsTarge
       "The attachment download URL must be a public HTTPS URL.",
     );
   }
+  if (url.port && url.port !== "443") {
+    throw new StructureServiceError(
+      "INVALID_FILE_URL",
+      "The attachment download URL must use the standard HTTPS port 443.",
+    );
+  }
 
   const rawHostname = url.hostname.toLowerCase();
   const hostname = rawHostname.startsWith("[") && rawHostname.endsWith("]")
