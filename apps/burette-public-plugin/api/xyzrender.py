@@ -7,6 +7,7 @@ import binascii
 import json
 import tempfile
 import time
+import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Callable
@@ -15,6 +16,9 @@ from typing import Any, Callable
 MAX_JSON_BYTES = 4_200_000
 MAX_INPUT_BYTES = 3_000_000
 MAX_SVG_BYTES = 5_000_000
+SVG_NAMESPACE = "http://www.w3.org/2000/svg"
+XLINK_NAMESPACE = "http://www.w3.org/1999/xlink"
+DISALLOWED_SVG_ELEMENTS = {"foreignobject", "script"}
 PRESETS = {
     "default",
     "flat",
@@ -57,6 +61,40 @@ def _default_renderer(source_path: str, output_path: str, preset: str) -> None:
     from xyzrender import render
 
     render(source_path, config=preset, output=output_path)
+
+
+def _xml_local_name(value: str) -> str:
+    return value.rsplit("}", 1)[-1].lower()
+
+
+def _sanitize_svg(value: str) -> str:
+    if "<!DOCTYPE" in value.upper() or "<!ENTITY" in value.upper():
+        raise RequestError("xyzrender produced an unsafe SVG file", 422)
+    try:
+        root = ET.fromstring(value)
+    except ET.ParseError as error:
+        raise RequestError("xyzrender produced an invalid SVG file", 422) from error
+
+    if _xml_local_name(root.tag) != "svg":
+        raise RequestError("xyzrender produced an invalid SVG file", 422)
+    if root.tag.startswith("{") and not root.tag.startswith(f"{{{SVG_NAMESPACE}}}"):
+        raise RequestError("xyzrender produced an invalid SVG namespace", 422)
+
+    for parent in root.iter():
+        for child in list(parent):
+            if _xml_local_name(child.tag) in DISALLOWED_SVG_ELEMENTS:
+                parent.remove(child)
+        for name, raw_value in list(parent.attrib.items()):
+            attribute = _xml_local_name(name)
+            if attribute.startswith("on"):
+                del parent.attrib[name]
+                continue
+            if attribute == "href" and not raw_value.strip().startswith("#"):
+                del parent.attrib[name]
+
+    ET.register_namespace("", SVG_NAMESPACE)
+    ET.register_namespace("xlink", XLINK_NAMESPACE)
+    return ET.tostring(root, encoding="unicode")
 
 
 def _decode_input(payload: dict[str, Any]) -> tuple[bytes, str]:
@@ -103,9 +141,7 @@ def render_request(
             raise RuntimeError("xyzrender produced no SVG file")
         if output_path.stat().st_size > MAX_SVG_BYTES:
             raise RequestError("xyzrender output exceeds the hosted size limit", 413)
-        svg = output_path.read_text(encoding="utf-8")
-    if "<svg" not in svg:
-        raise RuntimeError("xyzrender produced an invalid SVG file")
+        svg = _sanitize_svg(output_path.read_text(encoding="utf-8"))
     return {
         "svg": svg,
         "preset": preset,

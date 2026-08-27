@@ -35,6 +35,45 @@ assert result["preset"] == "flat"
 assert result["configArgument"] == "flat"
 assert calls == [("input.smi", "flat")]
 
+def malicious_renderer(source_path, output_path, preset):
+    pathlib.Path(output_path).write_text("""<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" onload="alert(1)">
+      <defs><circle id="atom" r="2"/></defs>
+      <script>alert(2)</script>
+      <foreignObject><body xmlns="http://www.w3.org/1999/xhtml" onload="alert(3)"/></foreignObject>
+      <use href="#atom"/>
+      <use xlink:href="#atom"/>
+      <image href="https://attacker.example/pixel.svg"/>
+      <image href="http://tracker.example/pixel.svg"/>
+      <image xlink:href="data:image/svg+xml,unsafe"/>
+      <a href="javascript:alert(4)"><text>unsafe link</text></a>
+      <circle onclick="alert(5)" r="1"/>
+    </svg>""", encoding="utf-8")
+
+sanitized = module.render_request(payload, renderer=malicious_renderer)["svg"]
+assert "<script" not in sanitized
+assert "foreignObject" not in sanitized
+assert "onload=" not in sanitized
+assert "onclick=" not in sanitized
+assert "attacker.example" not in sanitized
+assert "tracker.example" not in sanitized
+assert "data:image" not in sanitized
+assert "javascript:" not in sanitized
+assert 'href="#atom"' in sanitized
+assert 'xlink:href="#atom"' in sanitized
+
+def doctype_renderer(source_path, output_path, preset):
+    pathlib.Path(output_path).write_text(
+        '<!DOCTYPE svg [<!ENTITY payload SYSTEM "file:///etc/passwd">]><svg><text>&payload;</text></svg>',
+        encoding="utf-8",
+    )
+
+try:
+    module.render_request(payload, renderer=doctype_renderer)
+except module.RequestError as error:
+    assert error.status == 422
+else:
+    raise AssertionError("Expected an unsafe SVG document type to be rejected")
+
 original_input_limit = module.MAX_INPUT_BYTES
 module.MAX_INPUT_BYTES = 1
 try:
