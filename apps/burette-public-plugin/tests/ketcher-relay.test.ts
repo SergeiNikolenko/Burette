@@ -70,6 +70,7 @@ describe("hosted Ketcher relay", () => {
     expect(replay.ok).toBe(true);
     expect(replay.continuationToken).toBe(setResult.continuationToken);
     expect(replay.snapshot?.structureRevision).toBe(2);
+    expect(replay.result).toEqual(setResult.result);
 
     const replayConflict = executeHostedKetcherAction(action(
       surfaceId,
@@ -100,6 +101,7 @@ describe("hosted Ketcher relay", () => {
     expect(highlight.snapshot?.highlightedAtoms).toEqual([0, 2]);
     expect(highlight.snapshot?.structureRevision).toBe(2);
     expect(highlight.snapshot?.interactionRevision).toBe(3);
+    expect(highlight.result?.ketcherSeed).toEqual(setResult.result?.ketcherSeed);
 
     const exportResult = executeHostedKetcherAction(action(
       surfaceId,
@@ -114,6 +116,20 @@ describe("hosted Ketcher relay", () => {
     ));
     expect(exportResult.ok).toBe(true);
     expect(exportResult.result?.formats).toEqual({ smiles: "CCN" });
+    expect(exportResult.result?.ketcherSeed).toEqual(setResult.result?.ketcherSeed);
+
+    const exportReplay = executeHostedKetcherAction(action(
+      surfaceId,
+      exportResult.continuationToken!,
+      "get-1",
+      2,
+      {
+        command: "get_structure",
+        formats: ["smiles"],
+        delivery: "inline",
+      },
+    ));
+    expect(exportReplay.result).toEqual(exportResult.result);
 
     const stale = executeHostedKetcherAction(action(
       surfaceId,

@@ -35,7 +35,7 @@ through this tool.
 The hosted Ketcher editor carries bounded continuation state between stateless
 tool requests in an authenticated, AES-256-GCM-encrypted token rather than in
 process-local memory or a Burette application database. The token may contain up
-to 16 KiB of inline molecular structure content together with editor revisions,
+to 64 KiB of inline molecular structure content together with editor revisions,
 atom selections, highlights, and last-action metadata. It expires 15 minutes
 after issuance, and Burette rejects expired or modified tokens. The token passes
 through the OpenAI tool result and may therefore be retained by the OpenAI host

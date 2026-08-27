@@ -67,7 +67,7 @@ from the model and conversation transcript.
 - Downloads time out after 15 seconds and are bounded while streaming.
 - PDB lookups use the fixed `files.rcsb.org` download origin.
 - Hosted Ketcher surfaces are ephemeral but not process-affine. An authenticated,
-  encrypted continuation token carries up to 16 KiB of inline structure content
+  encrypted continuation token carries up to 64 KiB of inline structure content
   and expires 15 minutes after each successful action. Atom-index lists are
   capped at 256 entries and inline exports at 64 KiB. `contentRef` is rejected
   until a scoped artifact relay is deployed. The token supports a single
@@ -131,6 +131,7 @@ The production server exposes:
 | --- | --- |
 | `PUBLIC_APP_ORIGIN` | Stable production origin used by MCP App domain and CSP metadata. |
 | `OPENAI_APPS_CHALLENGE` | Exact token supplied by the OpenAI plugin portal for domain verification. |
+| `KETCHER_STATE_SECRET` | Stable secret used only to authenticate and encrypt ephemeral hosted Ketcher continuation tokens. |
 
 Do not change the production origin after publication. Preview deployments can
 use Vercel-provided deployment origins, while production should set

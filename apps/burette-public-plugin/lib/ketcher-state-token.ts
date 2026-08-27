@@ -15,8 +15,8 @@ import type {
 const TOKEN_VERSION = "k1";
 const TOKEN_TTL_MS = 15 * 60 * 1000;
 const MAX_TOKEN_CHARS = 128 * 1024;
-const MAX_DECOMPRESSED_BYTES = 96 * 1024;
-export const MAX_HOSTED_KETCHER_INLINE_BYTES = 16 * 1024;
+const MAX_DECOMPRESSED_BYTES = 192 * 1024;
+export const MAX_HOSTED_KETCHER_INLINE_BYTES = 64 * 1024;
 
 const revisionStateSchema = z.object({
   surfaceId: z.string().min(1).max(160),
@@ -37,6 +37,10 @@ const lastActionSchema = z.object({
   command: z.string().max(64),
   actionId: z.string().max(128).optional(),
   status: z.string().max(64).optional(),
+  formats: z.array(z.string().max(32)).max(7).optional(),
+  delivery: z.enum(["inline", "artifact", "download"]).optional(),
+  format: z.string().max(32).optional(),
+  suggestedBasename: z.string().max(255).optional(),
 }).strict().nullable();
 
 const continuationSchema = z.object({
@@ -65,6 +69,10 @@ export type KetcherContinuationPayload = {
     command: string;
     actionId?: string;
     status?: string;
+    formats?: string[];
+    delivery?: "inline" | "artifact" | "download";
+    format?: string;
+    suggestedBasename?: string;
   } | null;
 };
 
@@ -129,10 +137,11 @@ export function decodeKetcherContinuation(
   if (version !== TOKEN_VERSION || !rawIv || !rawTag || !rawEncrypted || extra.length > 0) {
     return tokenFailure("The hosted Ketcher state token is invalid.");
   }
+  const key = tokenKey(options.secret);
   try {
     const decipher = createDecipheriv(
       "aes-256-gcm",
-      tokenKey(options.secret),
+      key,
       Buffer.from(rawIv, "base64url"),
     );
     decipher.setAuthTag(Buffer.from(rawTag, "base64url"));
@@ -161,7 +170,7 @@ function parsePayload(value: unknown): KetcherContinuationPayload {
   if (parsed.input?.content) {
     const byteCount = new TextEncoder().encode(parsed.input.content).byteLength;
     if (byteCount > MAX_HOSTED_KETCHER_INLINE_BYTES) {
-      throw new Error("Hosted Ketcher structure content exceeds 16 KiB.");
+      throw new Error("Hosted Ketcher structure content exceeds 64 KiB.");
     }
   }
   return parsed;
@@ -169,7 +178,8 @@ function parsePayload(value: unknown): KetcherContinuationPayload {
 
 function tokenKey(explicitSecret: string | undefined): Buffer {
   const secret = explicitSecret?.trim() || process.env.KETCHER_STATE_SECRET?.trim();
-  if (!secret && process.env.NODE_ENV === "production") {
+  const localRuntime = process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development";
+  if (!secret && !localRuntime) {
     throw new KetcherStateConfigurationError();
   }
   return createHash("sha256")

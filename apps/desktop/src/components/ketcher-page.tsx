@@ -421,6 +421,18 @@ function hostedKetcherStateFromResult(value: unknown): HostedKetcherState | null
   };
 }
 
+function hostedKetcherErrorFromResult(value: unknown) {
+  const result = record(value);
+  const structuredContent = record(result?.structuredContent);
+  const nestedResult = record(structuredContent?.result);
+  const error = record(structuredContent?.error) ?? record(nestedResult?.error);
+  if (result?.isError !== true && structuredContent?.ok !== false) return null;
+  return {
+    code: typeof error?.code === "string" ? error.code : "SYNC_FAILED",
+    message: typeof error?.message === "string" ? error.message : "Hosted Ketcher rejected the editor update.",
+  };
+}
+
 function hostedKetcherStateFromWindow(): HostedKetcherState | null {
   return hostedKetcherState(window.__BURETTE_HOSTED_KETCHER_STATE__);
 }
@@ -633,7 +645,10 @@ export function KetcherPage({
       if (isHostedKetcherWidget()) {
         try {
           const hostedState = hostedKetcherStateFromWindow();
-          if (hostedState) retainHostedKetcherState(hostedState);
+          if (hostedState) {
+            retainHostedKetcherState(hostedState);
+            instance.setAgentHighlightedAtomIndexes(hostedState.snapshot?.highlightedAtoms ?? []);
+          }
           await applyHostedSeed(instance, hostedKetcherSeedFromWindow());
         } catch (error) {
           setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
@@ -664,11 +679,17 @@ export function KetcherPage({
     if (!ketcher || !isHostedKetcherWidget()) return undefined;
     const handleState = () => {
       const hostedState = hostedKetcherStateFromWindow();
-      if (hostedState) retainHostedKetcherState(hostedState);
+      if (hostedState) {
+        retainHostedKetcherState(hostedState);
+        ketcher.setAgentHighlightedAtomIndexes(hostedState.snapshot?.highlightedAtoms ?? []);
+      }
     };
     const handleSeed = () => {
       handleState();
-      void applyHostedSeed(ketcher, hostedKetcherSeedFromWindow(), true).catch((error) => {
+      void applyHostedSeed(ketcher, hostedKetcherSeedFromWindow(), true).then(() => {
+        const hostedState = hostedKetcherStateFromWindow();
+        ketcher.setAgentHighlightedAtomIndexes(hostedState?.snapshot?.highlightedAtoms ?? []);
+      }).catch((error) => {
         setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
       });
     };
@@ -694,28 +715,42 @@ export function KetcherPage({
           if (cancelled || hostedKetcherMutationDepthRef.current > 0) return;
           const retained = hostedKetcherStateRef.current;
           if (!retained?.snapshot) return;
-          const molfile = await ketcher.getMolfile("v2000");
+          const smiles = await ketcher.getSmiles();
           if (cancelled || hostedKetcherMutationDepthRef.current > 0) return;
-          const latest = hostedKetcherStateRef.current;
-          if (!latest?.snapshot) return;
-          hostedSeedKeyRef.current = `${latest.surfaceId}:mol:${molfile}`;
-          const actionId = `widget-${Date.now()}-${++hostedKetcherActionIdRef.current}`;
-          const result = await window.BuretteHostedAppBridge?.callServerTool("control_ketcher", {
-            action: {
-              apiVersion: KETCHER_AGENT_API_VERSION,
-              type: "control_ketcher",
-              command: "set_structure",
-              surfaceId: latest.surfaceId,
-              continuationToken: latest.continuationToken,
-              actionId,
-              expectedRevision: latest.snapshot.structureRevision,
-              format: "mol",
-              content: molfile,
-            },
-          });
-          if (cancelled || !result) return;
-          const next = hostedKetcherStateFromResult(result);
-          if (next) retainHostedKetcherState(next);
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            const latest = hostedKetcherStateRef.current;
+            if (!latest?.snapshot) return;
+            hostedSeedKeyRef.current = `${latest.surfaceId}:smiles:${smiles}`;
+            const actionId = `widget-${Date.now()}-${++hostedKetcherActionIdRef.current}`;
+            const result = await window.BuretteHostedAppBridge?.callServerTool("control_ketcher", {
+              action: {
+                apiVersion: KETCHER_AGENT_API_VERSION,
+                type: "control_ketcher",
+                command: "set_structure",
+                surfaceId: latest.surfaceId,
+                continuationToken: latest.continuationToken,
+                actionId,
+                expectedRevision: latest.snapshot.structureRevision,
+                format: "smiles",
+                content: smiles,
+              },
+            });
+            if (cancelled) return;
+            if (!result) throw new Error("The hosted Ketcher bridge is unavailable.");
+            const syncError = hostedKetcherErrorFromResult(result);
+            if (syncError) {
+              const current = hostedKetcherStateRef.current;
+              const canRetry = syncError.code === "REVISION_CONFLICT"
+                && current?.continuationToken !== latest.continuationToken
+                && attempt === 0;
+              if (canRetry) continue;
+              throw new Error(syncError.message);
+            }
+            const next = hostedKetcherStateFromResult(result);
+            if (!next) throw new Error("Hosted Ketcher returned no continuation state.");
+            retainHostedKetcherState(next);
+            return;
+          }
         })
         .catch((error) => {
           if (!cancelled) setStatus("Ketcher sync failed: " + (error instanceof Error ? error.message : String(error)));

@@ -43,7 +43,7 @@ export function createHostedKetcherSurface(seed?: { format: string; content: str
   const input = seed ? normalizeStructureInput(seed) : { ok: true as const, value: undefined };
   if (!input.ok) return input;
   if (input.value?.content && utf8ByteLength(input.value.content) > MAX_HOSTED_KETCHER_INLINE_BYTES) {
-    return relayFailure("PAYLOAD_TOO_LARGE", "Hosted Ketcher structure content exceeds 16 KiB.");
+    return relayFailure("PAYLOAD_TOO_LARGE", "Hosted Ketcher structure content exceeds 64 KiB.");
   }
   let state = createRevisionState(surfaceId, "ready");
   if (input.value) state = markPersisted(applyStructuralRevision(state));
@@ -91,7 +91,7 @@ export function executeHostedKetcherAction(rawAction: unknown): HostedKetcherAct
     if (surface.lastAction.status !== actionHash) {
       return failure(action.command, "REPLAY_CONFLICT", "actionId was already used for another payload.", action.actionId, surface, continuationToken);
     }
-    return success(action.command, action.actionId, surface, continuationToken);
+    return replaySuccess(surface, continuationToken);
   }
   if (surface.state.phase !== "ready") {
     return failure(action.command, "NOT_READY", "The hosted Ketcher surface is not ready.", action.actionId, surface, continuationToken);
@@ -110,7 +110,7 @@ export function executeHostedKetcherAction(rawAction: unknown): HostedKetcherAct
           ? exportStructure(surface, action)
           : requestPersist(surface, action);
   if (!result.ok) return { ...result, continuationToken };
-  surface.lastAction = { ok: true, command: action.command, actionId: action.actionId, status: actionHash };
+  surface.lastAction = replayState(action, actionHash);
   const refreshed = refreshLifetime(surface);
   try {
     const nextToken = encodeKetcherContinuation(refreshed);
@@ -125,7 +125,7 @@ function applyStructure(surface: RelaySurface, action: HostedKetcherAction & { i
     return failure(action.command, "TRANSPORT_UNAVAILABLE", "Hosted relay contentRef resolution is not configured.", action.actionId, surface, action.continuationToken);
   }
   if (action.input?.content && utf8ByteLength(action.input.content) > MAX_HOSTED_KETCHER_INLINE_BYTES) {
-    return failure(action.command, "PAYLOAD_TOO_LARGE", "Hosted Ketcher structure content exceeds 16 KiB.", action.actionId, surface, action.continuationToken);
+    return failure(action.command, "PAYLOAD_TOO_LARGE", "Hosted Ketcher structure content exceeds 64 KiB.", action.actionId, surface, action.continuationToken);
   }
   surface.input = action.input ?? null;
   surface.selectedAtoms = [];
@@ -152,7 +152,9 @@ function applyHighlights(surface: RelaySurface, action: HostedKetcherAction) {
   }
   surface.highlightedAtoms = [...indexes];
   surface.state = applyInteractionRevision(surface.state);
-  return success(action.command, action.actionId, surface, action.continuationToken);
+  return success(action.command, action.actionId, surface, action.continuationToken, {
+    ketcherSeed: seedFor(surface),
+  });
 }
 
 function exportStructure(surface: RelaySurface, action: HostedKetcherAction) {
@@ -167,7 +169,11 @@ function exportStructure(surface: RelaySurface, action: HostedKetcherAction) {
     }
     formats[format] = value;
   }
-  return success(action.command, action.actionId, surface, action.continuationToken, { delivery: action.delivery, formats });
+  return success(action.command, action.actionId, surface, action.continuationToken, {
+    delivery: action.delivery,
+    formats,
+    ketcherSeed: seedFor(surface),
+  });
 }
 
 function requestPersist(surface: RelaySurface, action: HostedKetcherAction) {
@@ -175,7 +181,58 @@ function requestPersist(surface: RelaySurface, action: HostedKetcherAction) {
     status: "awaiting_user",
     format: action.format,
     suggestedBasename: action.suggestedBasename,
+    ketcherSeed: seedFor(surface),
   });
+}
+
+function replaySuccess(surface: RelaySurface, continuationToken: string) {
+  const action = surface.lastAction!;
+  if (action.command === "set_structure") {
+    return success(action.command, action.actionId!, surface, continuationToken, {
+      ketcherSeed: seedFor(surface),
+    });
+  }
+  if (action.command === "clear_structure") {
+    return success(action.command, action.actionId!, surface, continuationToken, { ketcherSeed: null });
+  }
+  if (action.command === "get_structure") {
+    const formats = Object.fromEntries(
+      (action.formats ?? []).map((format) => [format, exportFormat(surface.input, format) ?? ""]),
+    );
+    return success(action.command, action.actionId!, surface, continuationToken, {
+      delivery: action.delivery,
+      formats,
+      ketcherSeed: seedFor(surface),
+    });
+  }
+  if (action.command === "request_persist") {
+    return success(action.command, action.actionId!, surface, continuationToken, {
+      status: "awaiting_user",
+      format: action.format,
+      suggestedBasename: action.suggestedBasename,
+      ketcherSeed: seedFor(surface),
+    });
+  }
+  return success(action.command, action.actionId!, surface, continuationToken, {
+    ketcherSeed: seedFor(surface),
+  });
+}
+
+function replayState(action: HostedKetcherAction, hash: string) {
+  return {
+    ok: true,
+    command: action.command,
+    actionId: action.actionId,
+    status: hash,
+    ...(action.command === "get_structure" ? {
+      formats: action.formats,
+      delivery: action.delivery,
+    } : {}),
+    ...(action.command === "request_persist" ? {
+      format: action.format,
+      suggestedBasename: action.suggestedBasename,
+    } : {}),
+  };
 }
 
 function exportFormat(input: KetcherStructureInput | null, format: string) {

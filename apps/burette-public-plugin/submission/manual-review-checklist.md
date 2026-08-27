@@ -11,6 +11,7 @@
   - ChatGPT web checked at (UTC): `________________________________________`
   - Physical iPhone / iOS / ChatGPT version: `________________________________________`
 - [ ] Confirm the deployed Git commit contains the intended submission bundle and no later unreviewed runtime changes.
+- [ ] Confirm production has a stable, non-public `KETCHER_STATE_SECRET`; do not print, copy, screenshot, or rotate it during an active review run.
 - [ ] Treat the current production deployment of that commit as **not verified** until every production preflight item below passes.
 - [ ] Treat the ChatGPT connector rescan as **not verified** until the rescan and fresh-chat checks below pass.
 - [ ] Treat physical-iPhone behavior as **not verified** until the physical-device checks and evidence below pass.
