@@ -13,7 +13,12 @@
     "@codemirror/language": "6.12.3",
     "@codemirror/state": "6.6.0",
     "@codemirror/view": "6.43.7",
-    "js-yaml": "4.3.1"
+    "fast-uri": "3.1.5",
+    "hono": "4.13.5",
+    "ip-address": "10.5.0",
+    "js-yaml": "4.3.1",
+    "nanoid": "3.3.18",
+    "postcss": "8.5.23"
   },
   "scripts": {
     "vendor:molstar": "bun scripts/vendor-molstar.mjs",
