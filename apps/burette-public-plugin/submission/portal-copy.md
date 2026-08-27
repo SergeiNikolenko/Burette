@@ -11,17 +11,11 @@
 - **Terms:** https://burette-landing.vercel.app/terms
 - **Logo:** `plugins/burette-agent/assets/app-icon.png` in the main Burette
   repository (512 × 512 PNG)
-- **ChatGPT web screenshot:** capture a new screenshot from the production v21
-  widget in a fresh ChatGPT conversation after deploying this resubmission and
-  rescanning the MCP endpoint.
-- **Live ChatGPT proof:** replace this field with a fresh reviewer-accessible
-  conversation URL created from the rescanned production plugin.
-- **Desktop demo video:** https://burette-landing.vercel.app/assets/burette-chatgpt-plugin-demo.mp4
-- **Physical iPhone demo video:** record and upload a fresh run after the
-  production resubmission build is deployed.
-- **Mobile verification:** verify the rescanned production version on a
-  physical iPhone before resubmitting; do not reuse the July 15 evidence as
-  proof of the new version.
+
+Screenshots, videos, and conversation links are submission-run evidence rather
+than reusable listing copy. Capture them from the exact rescanned production
+connector on ChatGPT web and a physical iPhone; this repository does not claim
+that an older artifact proves the current build.
 
 ### Long description
 
@@ -52,8 +46,9 @@ account, and do not control local files or desktop sessions.
 
 Resubmission after review-case corrections. Burette now reports verified chain,
 residue, atom, bond, and element counts for the submitted PDB, mmCIF, and SDF
-fixtures; every structured tool result declares an output schema; and the five
-positive review cases are independent. The no-auth MCP server still provides
+fixtures pinned to an immutable source revision; every structured tool result
+declares an output schema; and the five positive review cases are independent.
+The no-auth MCP server still provides
 supported molecular attachments, explicit RCSB PDB lookups, an isolated
 revisioned Ketcher editor, and interactive CSP-compatible previews. No reviewer
 account or credentials are required.

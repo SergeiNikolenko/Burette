@@ -153,8 +153,10 @@ build output and are not committed.
   skill for the plugin submission.
 - `submission/portal-copy.md` — starter prompts, release notes, and portal
   checklist.
-- `submission/screenshots/chatgpt-pdb-viewer-mobile.jpg` — production v9
-  ChatGPT mobile-width review screenshot captured with CSP enforcement enabled.
+
+Review screenshots, videos, and conversation links must be captured from the
+exact rescanned production connector on ChatGPT web and a physical iPhone. The
+repository does not treat older visual artifacts as proof of the current build.
 
 The existing logo at `plugins/burette-agent/assets/app-icon.png` is the
 production-ready 512 × 512 listing asset.

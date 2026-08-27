@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developers.openai.com/apps-sdk/schemas/chatgpt-app-submission.v1.json",
+  "$schema": "https://developers.openai.com/plugins/schemas/chatgpt-app-submission.v1.json",
   "schema_version": 1,
   "app_info": {
     "display_name": "Burette",
@@ -16,31 +16,31 @@
       },
       "justifications": {
         "read_only_justification": "Only retrieves one user-authorized attachment into memory and computes a bounded preview without saving or changing the file.",
-        "open_world_justification": "Does not publish content or change any public or third-party system.",
+        "open_world_justification": "Reads only the single user-authorized attachment reference supplied by ChatGPT and does not discover or choose external entities.",
         "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
       }
     },
     "preview_pdb_structure": {
       "annotations": {
         "readOnlyHint": true,
-        "openWorldHint": false,
+        "openWorldHint": true,
         "destructiveHint": false
       },
       "justifications": {
         "read_only_justification": "Only retrieves the explicitly requested public RCSB PDB entry and computes a bounded preview.",
-        "open_world_justification": "Reads public structure data without writing to RCSB or any other external system.",
+        "open_world_justification": "Contacts the external public RCSB structure service for the explicitly requested PDB ID.",
         "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
       }
     },
     "render_molecular_scene": {
       "annotations": {
         "readOnlyHint": true,
-        "openWorldHint": false,
+        "openWorldHint": true,
         "destructiveHint": false
       },
       "justifications": {
         "read_only_justification": "Only re-renders one explicitly supplied structure with bounded client-side viewer actions and does not save a workspace.",
-        "open_world_justification": "Viewer actions affect only the isolated result widget and do not write to RCSB or another external system.",
+        "open_world_justification": "May retrieve the explicitly supplied public PDB entry or authorized attachment before applying isolated viewer actions.",
         "destructive_justification": "Cannot modify the source file, persist a molecular edit, or perform an irreversible external action."
       }
     },
@@ -60,12 +60,12 @@
       "annotations": {
         "readOnlyHint": false,
         "openWorldHint": false,
-        "destructiveHint": false
+        "destructiveHint": true
       },
       "justifications": {
         "read_only_justification": "Edits only the ephemeral Ketcher surface in the current widget; it never mutates the source attachment or local files.",
         "open_world_justification": "Revision-checked actions stay inside the isolated Burette relay and do not publish content or call third-party systems.",
-        "destructive_justification": "Clear and replace affect only the transient widget state; saving stops at an explicit user-confirmation boundary."
+        "destructive_justification": "Clear and replace can remove or replace the current transient Ketcher state, but cannot overwrite a source attachment or local file."
       }
     }
   },
@@ -74,7 +74,7 @@
       "description": "Preview a small attached PDB macromolecule.",
       "user_prompt": "Preview this PDB file in the full molecular viewer and summarize its chains, residues, and atoms.",
       "file_attachment_urls": [
-        "https://raw.githubusercontent.com/SergeiNikolenko/Burette/main/samples/mini.pdb"
+        "https://raw.githubusercontent.com/SergeiNikolenko/Burette/e4a701b953a08f4a12ae03d8d1184502fd43d5f5/samples/mini.pdb"
       ],
       "tools_triggered": "preview_molecular_file",
       "expected_output": "Reports 1 chain, 2 residues, and 9 atoms, then opens mini.pdb in the interactive Burette molecular viewer.",
@@ -84,7 +84,7 @@
       "description": "Preview an attached mmCIF structure.",
       "user_prompt": "Open this mmCIF structure and show its chain and element summary.",
       "file_attachment_urls": [
-        "https://raw.githubusercontent.com/SergeiNikolenko/Burette/main/samples/mini.cif"
+        "https://raw.githubusercontent.com/SergeiNikolenko/Burette/e4a701b953a08f4a12ae03d8d1184502fd43d5f5/samples/mini.cif"
       ],
       "tools_triggered": "preview_molecular_file",
       "expected_output": "Reports chain A with 1 residue and 4 atoms, including C 2, N 1, and O 1, then opens mini.cif in the interactive viewer.",
@@ -94,7 +94,7 @@
       "description": "Preview an attached SDF collection.",
       "user_prompt": "Preview this SDF and summarize the molecules and elements it contains.",
       "file_attachment_urls": [
-        "https://raw.githubusercontent.com/SergeiNikolenko/Burette/main/samples/mini.sdf"
+        "https://raw.githubusercontent.com/SergeiNikolenko/Burette/e4a701b953a08f4a12ae03d8d1184502fd43d5f5/samples/mini.sdf"
       ],
       "tools_triggered": "preview_molecular_file",
       "expected_output": "Reports 2 molecules, 9 atoms, 8 bonds, and element counts C 6, H 2, and O 1, then opens mini.sdf in the interactive viewer.",
