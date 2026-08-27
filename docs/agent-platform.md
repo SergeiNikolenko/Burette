@@ -193,10 +193,12 @@ confirms the file write.
 
 The hosted public plugin mirrors the same action schema through
 `open_ketcher`/`control_ketcher` and the resource
-`ui://burette/ketcher-editor-v1.html`. Its relay is process-local and ephemeral:
-it is suitable for the current MCP widget turn, not a durable shared workspace;
-reference-backed content fails closed until an authenticated artifact relay is
-added.
+`ui://burette/ketcher-editor-v1.html`. Hosted actions additionally carry an
+opaque, authenticated continuation token containing the bounded editor state.
+The token makes the ephemeral editor portable across stateless server instances
+and expires after 15 minutes of inactivity. It supports one serialized widget
+chain, not a durable or concurrent multi-writer workspace; reference-backed
+content fails closed until an authenticated artifact relay is added.
 
 ## Agent RCA
 

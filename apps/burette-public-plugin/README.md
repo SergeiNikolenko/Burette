@@ -32,8 +32,8 @@ an isolated Ketcher editor contract:
 | `control_ketcher` | Applies a revision-checked Ketcher action and returns a bounded editor snapshot plus widget seed. |
 
 The three public-structure tools are read-only and idempotent. Ketcher actions
-are scoped to an in-memory relay, are bounded and revision-checked, and never
-write files or the public internet. Each Ketcher result renders
+are bounded and revision-checked, carry an opaque continuation token between
+stateless requests, and never write files or the public internet. Each Ketcher result renders
 `ui://burette/ketcher-editor-v1.html`; the structure-preview tools render
 `ui://burette/molecular-viewer-v21.html`, both with MIME type
 `text/html;profile=mcp-app`.
@@ -66,10 +66,12 @@ from the model and conversation transcript.
   and Host header, preventing a second DNS resolution from changing the target.
 - Downloads time out after 15 seconds and are bounded while streaming.
 - PDB lookups use the fixed `files.rcsb.org` download origin.
-- Hosted Ketcher surfaces are process-local and ephemeral. Inline structure
-  content is capped at 64 KiB, atom-index lists at 256 entries, and inline
-  exports at 64 KiB. `contentRef` is rejected until a scoped artifact relay is
-  deployed.
+- Hosted Ketcher surfaces are ephemeral but not process-affine. An authenticated,
+  encrypted continuation token carries up to 16 KiB of inline structure content
+  and expires 15 minutes after each successful action. Atom-index lists are
+  capped at 256 entries and inline exports at 64 KiB. `contentRef` is rejected
+  until a scoped artifact relay is deployed. The token supports a single
+  serialized editor chain; it is not a durable or multi-writer workspace.
 - The MCP resource mounts the compiled Burette React shell directly instead of
   wrapping a separate viewer page. Its CSP permits only the stable production
   origin for runtime fetches and resources; the widget does not embed subframes.
