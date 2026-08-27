@@ -18,10 +18,7 @@ import {
   TOOL_ANNOTATIONS,
   viewerToolMeta,
 } from "@/lib/contracts";
-import {
-  KETCHER_AGENT_API_VERSION,
-  validateKetcherAction,
-} from "@burette/ketcher-agent-contract";
+import { KETCHER_AGENT_API_VERSION } from "@burette/ketcher-agent-contract";
 import { getAppOrigin } from "@/lib/origin";
 import {
   prepareAttachedStructure,
@@ -64,6 +61,7 @@ const ketcherActionInputSchema = z.object({
   type: z.literal("control_ketcher"),
   command: z.enum(["set_structure", "clear_structure", "highlight_atoms", "get_structure", "request_persist"]),
   surfaceId: z.string().trim().min(1).max(160),
+  continuationToken: z.string().min(1).max(128 * 1024),
   actionId: z.string().trim().min(1).max(128).optional(),
   expectedRevision: z.number().int().min(0),
   format: z.string().trim().optional(),
@@ -111,6 +109,7 @@ const ketcherSnapshotSchema = z.object({
 const openKetcherOutputSchema = {
   ok: z.boolean(),
   surfaceId: z.string().optional(),
+  continuationToken: z.string().optional(),
   ketcher: ketcherSnapshotSchema.nullable().optional(),
   error: ketcherErrorSchema.optional(),
 };
@@ -119,6 +118,7 @@ const hostedKetcherActionResultSchema = z.object({
   ok: z.boolean(),
   command: z.string(),
   actionId: z.string().optional(),
+  continuationToken: z.string().optional(),
   result: z.record(z.string(), z.unknown()).optional(),
   snapshot: ketcherSnapshotSchema.optional(),
   error: ketcherErrorSchema.optional(),
@@ -127,9 +127,9 @@ const hostedKetcherActionResultSchema = z.object({
 const controlKetcherOutputSchema = {
   ok: z.boolean(),
   surfaceId: z.string().optional(),
+  continuationToken: z.string().optional(),
   result: hostedKetcherActionResultSchema.optional(),
   snapshot: ketcherSnapshotSchema.nullable().optional(),
-  action: ketcherActionInputSchema.optional(),
   error: ketcherErrorSchema.optional(),
 };
 
@@ -222,11 +222,7 @@ function createServer(): McpServer {
           structuredContent: { ok: false, error: created.error },
         };
       }
-      const snapshot = created.surface ? {
-        apiVersion: KETCHER_AGENT_API_VERSION,
-        surfaceId: created.surface.surfaceId,
-        snapshot: hostedKetcherSnapshot(created.surface.surfaceId),
-      } : null;
+      const snapshot = hostedKetcherSnapshot(created.continuationToken);
       const seed = created.surface.input
         ? {
             surfaceId: created.surface.surfaceId,
@@ -239,11 +235,16 @@ function createServer(): McpServer {
         structuredContent: {
           ok: true,
           surfaceId: created.surface.surfaceId,
-          ketcher: snapshot?.snapshot ?? null,
+          continuationToken: created.continuationToken,
+          ketcher: snapshot,
         },
         _meta: {
           ketcherSeed: seed,
-          ketcher: snapshot?.snapshot ?? null,
+          ketcher: snapshot,
+          ketcherState: {
+            surfaceId: created.surface.surfaceId,
+            continuationToken: created.continuationToken,
+          },
         },
       };
     },
@@ -261,7 +262,7 @@ function createServer(): McpServer {
       outputSchema: controlKetcherOutputSchema,
       annotations: {
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: false,
         openWorldHint: false,
       },
@@ -272,29 +273,28 @@ function createServer(): McpServer {
       const action = rawAction.actionId
         ? rawAction
         : { ...rawAction, actionId: `ketcher-${randomUUID()}` };
-      const validation = validateKetcherAction(action);
-      if (!validation.ok) {
-        return {
-          isError: true,
-          content: [{ type: "text" as const, text: validation.error.message }],
-          structuredContent: { ok: false, error: validation.error, action },
-        };
-      }
-      const result = executeHostedKetcherAction(validation.value);
-      const seed = result.result?.ketcherSeed ?? null;
+      const result = executeHostedKetcherAction(action);
+      const hasSeed = result.result && Object.hasOwn(result.result, "ketcherSeed");
       return {
         content: [{ type: "text" as const, text: result.ok ? "Ketcher action complete." : result.error?.message || "Ketcher action failed." }],
         ...(result.ok ? {} : { isError: true }),
         structuredContent: {
           ok: result.ok,
-          surfaceId: validation.value.surfaceId,
+          surfaceId: action.surfaceId,
+          continuationToken: result.continuationToken,
           result,
           snapshot: result.snapshot ?? null,
-          action: validation.value,
+          ...(result.error ? { error: result.error } : {}),
         },
         _meta: {
-          ketcherSeed: seed,
+          ...(hasSeed ? { ketcherSeed: result.result?.ketcherSeed } : {}),
           ketcher: result.snapshot ?? null,
+          ...(result.continuationToken ? {
+            ketcherState: {
+              surfaceId: action.surfaceId,
+              continuationToken: result.continuationToken,
+            },
+          } : {}),
         },
       };
     },
@@ -354,7 +354,7 @@ function createServer(): McpServer {
         "Use this when the user asks to select or focus part of a structure, clear the selection, reset the camera, or hide/show polymers, ligands, ions, or water. Re-render the PDB entry or authorized attachment with up to eight allowlisted viewer actions.",
       inputSchema: molecularSceneInputSchema,
       outputSchema: publicStructureOutputSchema,
-      annotations: TOOL_ANNOTATIONS,
+      annotations: { ...TOOL_ANNOTATIONS, openWorldHint: true },
       ...NOAUTH_TOOL_SECURITY,
       _meta: {
         ...viewerToolMeta("Preparing molecular scene…", "Molecular scene ready"),
@@ -404,7 +404,7 @@ function createServer(): McpServer {
           .describe("Four-character PDB ID, for example 1CRN."),
       },
       outputSchema: publicStructureOutputSchema,
-      annotations: TOOL_ANNOTATIONS,
+      annotations: { ...TOOL_ANNOTATIONS, openWorldHint: true },
       ...NOAUTH_TOOL_SECURITY,
       _meta: viewerToolMeta("Retrieving PDB structure…", "PDB structure ready"),
     },

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   KETCHER_AGENT_LIMITS,
   applyInteractionRevision,
@@ -13,80 +13,91 @@ import {
   type KetcherSnapshot,
   type KetcherStructureInput,
 } from "@burette/ketcher-agent-contract";
+import {
+  MAX_HOSTED_KETCHER_INLINE_BYTES,
+  KetcherStateConfigurationError,
+  createKetcherContinuationPayload,
+  decodeKetcherContinuation,
+  encodeKetcherContinuation,
+  type KetcherContinuationPayload,
+} from "@/lib/ketcher-state-token";
 
-type RelaySurface = {
-  surfaceId: string;
-  updatedAt: number;
-  state: ReturnType<typeof createRevisionState>;
-  input: KetcherStructureInput | null;
-  selectedAtoms: number[];
-  highlightedAtoms: number[];
-  lastAction: unknown;
-  actionResults: Map<string, { hash: string; result: HostedKetcherActionResult }>;
+type RelaySurface = KetcherContinuationPayload;
+
+type HostedKetcherAction = KetcherControlAction & {
+  continuationToken: string;
 };
 
 export type HostedKetcherActionResult = {
   ok: boolean;
   command: string;
   actionId?: string;
+  continuationToken?: string;
   result?: Record<string, unknown>;
   snapshot?: KetcherSnapshot;
   error?: { code: KetcherAgentErrorCode; message: string };
 };
 
-const surfaces = new Map<string, RelaySurface>();
-const RELAY_TTL_MS = 15 * 60 * 1000;
-const MAX_SURFACES = 256;
-
 export function createHostedKetcherSurface(seed?: { format: string; content: string }) {
-  pruneExpiredSurfaces();
-  while (surfaces.size >= MAX_SURFACES) {
-    const oldest = [...surfaces.values()].sort((left, right) => left.updatedAt - right.updatedAt)[0];
-    if (!oldest) break;
-    surfaces.delete(oldest.surfaceId);
-  }
   const surfaceId = `hosted-ketcher:${randomUUID()}`;
   const input = seed ? normalizeStructureInput(seed) : { ok: true as const, value: undefined };
   if (!input.ok) return input;
-  const surface: RelaySurface = {
+  if (input.value?.content && utf8ByteLength(input.value.content) > MAX_HOSTED_KETCHER_INLINE_BYTES) {
+    return relayFailure("PAYLOAD_TOO_LARGE", "Hosted Ketcher structure content exceeds 16 KiB.");
+  }
+  let state = createRevisionState(surfaceId, "ready");
+  if (input.value) state = markPersisted(applyStructuralRevision(state));
+  const surface = createKetcherContinuationPayload({
     surfaceId,
-    updatedAt: Date.now(),
-    state: createRevisionState(surfaceId, "ready"),
+    state,
     input: input.value ?? null,
     selectedAtoms: [],
     highlightedAtoms: [],
     lastAction: null,
-    actionResults: new Map(),
-  };
-  if (surface.input) surface.state = markPersisted(applyStructuralRevision(surface.state));
-  surfaces.set(surfaceId, surface);
-  return { ok: true as const, surface };
+  });
+  try {
+    return {
+      ok: true as const,
+      surface,
+      continuationToken: encodeKetcherContinuation(surface),
+      snapshot: snapshot(surface),
+    };
+  } catch (error) {
+    return configurationFailure(error);
+  }
 }
 
-export function hostedKetcherSnapshot(surfaceId: string) {
-  pruneExpiredSurfaces();
-  const surface = surfaces.get(surfaceId);
-  if (surface) surface.updatedAt = Date.now();
-  return surface ? snapshot(surface) : null;
+export function hostedKetcherSnapshot(continuationToken: string) {
+  const decoded = decodeSafely(continuationToken);
+  return decoded.ok ? snapshot(decoded.value) : null;
 }
 
 export function executeHostedKetcherAction(rawAction: unknown): HostedKetcherActionResult {
-  pruneExpiredSurfaces();
-  const validated = validateKetcherAction(rawAction);
-  if (!validated.ok) return failure("control_ketcher", validated.error.code, validated.error.message);
-  const action = validated.value;
-  const surface = surfaces.get(action.surfaceId);
-  if (!surface) return failure(action.command, "STALE_TARGET", "The hosted Ketcher surface is no longer available.", action.actionId);
-  surface.updatedAt = Date.now();
-  const actionHash = stableActionHash(action);
-  const previous = surface.actionResults.get(action.actionId);
-  if (previous) {
-    if (previous.hash !== actionHash) return failure(action.command, "REPLAY_CONFLICT", "actionId was already used for another payload.", action.actionId, surface);
-    return previous.result;
+  if (!isRecord(rawAction) || typeof rawAction.continuationToken !== "string") {
+    return failure("control_ketcher", "INVALID_INPUT", "A hosted Ketcher continuation token is required.");
   }
-  if (surface.state.phase !== "ready") return remember(surface, action, failure(action.command, "NOT_READY", "The hosted Ketcher surface is not ready.", action.actionId, surface), actionHash);
+  const { continuationToken, ...actionPayload } = rawAction;
+  const validated = validateKetcherAction(actionPayload);
+  if (!validated.ok) return failure("control_ketcher", validated.error.code, validated.error.message);
+  const action = { ...validated.value, continuationToken } as HostedKetcherAction & { input?: KetcherStructureInput };
+  const decoded = decodeSafely(continuationToken);
+  if (!decoded.ok) return failure(action.command, decoded.error.code, decoded.error.message, action.actionId);
+  const surface = decoded.value;
+  if (surface.surfaceId !== action.surfaceId) {
+    return failure(action.command, "STALE_TARGET", "The hosted Ketcher continuation token belongs to another surface.", action.actionId);
+  }
+  const actionHash = stableActionHash(action);
+  if (surface.lastAction?.actionId === action.actionId) {
+    if (surface.lastAction.status !== actionHash) {
+      return failure(action.command, "REPLAY_CONFLICT", "actionId was already used for another payload.", action.actionId, surface, continuationToken);
+    }
+    return success(action.command, action.actionId, surface, continuationToken);
+  }
+  if (surface.state.phase !== "ready") {
+    return failure(action.command, "NOT_READY", "The hosted Ketcher surface is not ready.", action.actionId, surface, continuationToken);
+  }
   if (action.expectedRevision !== surface.state.structureRevision) {
-    return remember(surface, action, failure(action.command, "REVISION_CONFLICT", "The hosted Ketcher structure revision is stale.", action.actionId, surface), actionHash);
+    return failure(action.command, "REVISION_CONFLICT", "The hosted Ketcher structure revision is stale.", action.actionId, surface, continuationToken);
   }
 
   const result = action.command === "set_structure"
@@ -98,59 +109,69 @@ export function executeHostedKetcherAction(rawAction: unknown): HostedKetcherAct
         : action.command === "get_structure"
           ? exportStructure(surface, action)
           : requestPersist(surface, action);
-  return remember(surface, action, result, actionHash);
+  if (!result.ok) return { ...result, continuationToken };
+  surface.lastAction = { ok: true, command: action.command, actionId: action.actionId, status: actionHash };
+  const refreshed = refreshLifetime(surface);
+  try {
+    const nextToken = encodeKetcherContinuation(refreshed);
+    return { ...result, continuationToken: nextToken, snapshot: snapshot(refreshed) };
+  } catch (error) {
+    return configurationActionFailure(action.command, action.actionId, error);
+  }
 }
 
-function applyStructure(surface: RelaySurface, action: KetcherControlAction & { input?: KetcherStructureInput }) {
-  if (action.input?.contentRef) return failure(action.command, "TRANSPORT_UNAVAILABLE", "Hosted relay contentRef resolution is not configured.", action.actionId, surface);
+function applyStructure(surface: RelaySurface, action: HostedKetcherAction & { input?: KetcherStructureInput }) {
+  if (action.input?.contentRef) {
+    return failure(action.command, "TRANSPORT_UNAVAILABLE", "Hosted relay contentRef resolution is not configured.", action.actionId, surface, action.continuationToken);
+  }
+  if (action.input?.content && utf8ByteLength(action.input.content) > MAX_HOSTED_KETCHER_INLINE_BYTES) {
+    return failure(action.command, "PAYLOAD_TOO_LARGE", "Hosted Ketcher structure content exceeds 16 KiB.", action.actionId, surface, action.continuationToken);
+  }
   surface.input = action.input ?? null;
   surface.selectedAtoms = [];
   surface.highlightedAtoms = [];
   surface.state = applyStructuralRevision(surface.state);
-  surface.lastAction = { ok: true, command: action.command, actionId: action.actionId };
-  return success(action.command, action.actionId, surface, {
+  return success(action.command, action.actionId, surface, action.continuationToken, {
     ketcherSeed: seedFor(surface),
   });
 }
 
-function clearStructure(surface: RelaySurface, action: KetcherControlAction) {
+function clearStructure(surface: RelaySurface, action: HostedKetcherAction) {
   surface.input = null;
   surface.selectedAtoms = [];
   surface.highlightedAtoms = [];
   surface.state = applyStructuralRevision(surface.state);
-  surface.lastAction = { ok: true, command: action.command, actionId: action.actionId };
-  return success(action.command, action.actionId, surface, { ketcherSeed: null });
+  return success(action.command, action.actionId, surface, action.continuationToken, { ketcherSeed: null });
 }
 
-function applyHighlights(surface: RelaySurface, action: KetcherControlAction) {
+function applyHighlights(surface: RelaySurface, action: HostedKetcherAction) {
   const indexes = action.indexes ?? [];
   const atomCount = structureSummary(surface.input).atomCount;
   if (indexes.some((index) => index >= atomCount)) {
-    return failure(action.command, "INVALID_ATOM_INDEX", "An atom index is outside the current structure.", action.actionId, surface);
+    return failure(action.command, "INVALID_ATOM_INDEX", "An atom index is outside the current structure.", action.actionId, surface, action.continuationToken);
   }
   surface.highlightedAtoms = [...indexes];
   surface.state = applyInteractionRevision(surface.state);
-  surface.lastAction = { ok: true, command: action.command, actionId: action.actionId };
-  return success(action.command, action.actionId, surface);
+  return success(action.command, action.actionId, surface, action.continuationToken);
 }
 
-function exportStructure(surface: RelaySurface, action: KetcherControlAction) {
+function exportStructure(surface: RelaySurface, action: HostedKetcherAction) {
   const formats: Record<string, string> = {};
   for (const format of action.formats ?? []) {
     const value = exportFormat(surface.input, format);
-    if (value === null) return failure(action.command, "EXPORT_FAILED", `Hosted relay cannot export ${format} from the current representation.`, action.actionId, surface);
-    if (new TextEncoder().encode(value).byteLength > KETCHER_AGENT_LIMITS.inlineBytes) {
-      return failure(action.command, "PAYLOAD_TOO_LARGE", "Inline export exceeds 64 KiB.", action.actionId, surface);
+    if (value === null) {
+      return failure(action.command, "EXPORT_FAILED", `Hosted relay cannot export ${format} from the current representation.`, action.actionId, surface, action.continuationToken);
+    }
+    if (utf8ByteLength(value) > KETCHER_AGENT_LIMITS.inlineBytes) {
+      return failure(action.command, "PAYLOAD_TOO_LARGE", "Inline export exceeds 64 KiB.", action.actionId, surface, action.continuationToken);
     }
     formats[format] = value;
   }
-  surface.lastAction = { ok: true, command: action.command, actionId: action.actionId };
-  return success(action.command, action.actionId, surface, { delivery: action.delivery, formats });
+  return success(action.command, action.actionId, surface, action.continuationToken, { delivery: action.delivery, formats });
 }
 
-function requestPersist(surface: RelaySurface, action: KetcherControlAction) {
-  surface.lastAction = { ok: true, command: action.command, actionId: action.actionId, status: "awaiting_user" };
-  return success(action.command, action.actionId, surface, {
+function requestPersist(surface: RelaySurface, action: HostedKetcherAction) {
+  return success(action.command, action.actionId, surface, action.continuationToken, {
     status: "awaiting_user",
     format: action.format,
     suggestedBasename: action.suggestedBasename,
@@ -199,7 +220,11 @@ function snapshot(surface: RelaySurface) {
     structure: { ...structureSummary(surface.input), smiles: surface.input?.format === "smiles" ? surface.input.content : undefined },
     selectedAtoms: surface.selectedAtoms,
     highlightedAtoms: surface.highlightedAtoms,
-    lastAction: surface.lastAction,
+    lastAction: surface.lastAction ? {
+      ok: surface.lastAction.ok,
+      command: surface.lastAction.command,
+      actionId: surface.lastAction.actionId,
+    } : null,
     capabilities: { setStructure: true, highlightAtoms: true, getStructure: true, persist: true },
   });
 }
@@ -208,38 +233,68 @@ function seedFor(surface: RelaySurface) {
   return surface.input ? { surfaceId: surface.surfaceId, format: surface.input.format, content: surface.input.content } : null;
 }
 
-function stableActionHash(action: KetcherControlAction) {
-  const { actionId: _actionId, ...payload } = action;
-  return JSON.stringify(payload);
+function stableActionHash(action: HostedKetcherAction) {
+  const { actionId: _actionId, continuationToken: _continuationToken, ...payload } = action;
+  return createHash("sha256").update(JSON.stringify(payload)).digest("base64url");
 }
 
-function remember(surface: RelaySurface, action: KetcherControlAction, result: HostedKetcherActionResult, hash: string) {
-  surface.actionResults.set(action.actionId, { hash, result });
-  while (surface.actionResults.size > 256) {
-    const oldest = surface.actionResults.keys().next().value;
-    if (!oldest) break;
-    surface.actionResults.delete(oldest);
-  }
-  return result;
+function refreshLifetime(surface: RelaySurface) {
+  return createKetcherContinuationPayload({
+    surfaceId: surface.surfaceId,
+    state: surface.state,
+    input: surface.input,
+    selectedAtoms: surface.selectedAtoms,
+    highlightedAtoms: surface.highlightedAtoms,
+    lastAction: surface.lastAction,
+  });
 }
 
-function pruneExpiredSurfaces() {
-  const cutoff = Date.now() - RELAY_TTL_MS;
-  for (const [surfaceId, surface] of surfaces) {
-    if (surface.updatedAt < cutoff) surfaces.delete(surfaceId);
-  }
+function success(command: string, actionId: string, surface: RelaySurface, continuationToken: string, result?: Record<string, unknown>): HostedKetcherActionResult {
+  return { ok: true, command, actionId, continuationToken, ...(result ? { result } : {}), snapshot: snapshot(surface) };
 }
 
-function success(command: string, actionId: string, surface: RelaySurface, result?: Record<string, unknown>): HostedKetcherActionResult {
-  return { ok: true, command, actionId, ...(result ? { result } : {}), snapshot: snapshot(surface) };
-}
-
-function failure(command: string, code: KetcherAgentErrorCode, message: string, actionId?: string, surface?: RelaySurface): HostedKetcherActionResult {
+function failure(command: string, code: KetcherAgentErrorCode, message: string, actionId?: string, surface?: RelaySurface, continuationToken?: string): HostedKetcherActionResult {
   return {
     ok: false,
     command,
     ...(actionId ? { actionId } : {}),
+    ...(continuationToken ? { continuationToken } : {}),
     error: { code, message: message.slice(0, KETCHER_AGENT_LIMITS.textChars) },
     ...(surface ? { snapshot: snapshot(surface) } : {}),
   };
+}
+
+function decodeSafely(token: string) {
+  try {
+    return decodeKetcherContinuation(token);
+  } catch (error) {
+    return relayFailure(
+      "TRANSPORT_UNAVAILABLE",
+      error instanceof KetcherStateConfigurationError ? error.message : "Hosted Ketcher state is unavailable.",
+    );
+  }
+}
+
+function configurationFailure(error: unknown) {
+  return relayFailure(
+    "TRANSPORT_UNAVAILABLE",
+    error instanceof KetcherStateConfigurationError ? error.message : "Hosted Ketcher state is unavailable.",
+  );
+}
+
+function configurationActionFailure(command: string, actionId: string, error: unknown) {
+  const configured = configurationFailure(error);
+  return failure(command, configured.error.code, configured.error.message, actionId);
+}
+
+function relayFailure(code: KetcherAgentErrorCode, message: string) {
+  return { ok: false as const, error: { code, message } };
+}
+
+function utf8ByteLength(value: string) {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
