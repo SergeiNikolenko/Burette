@@ -147,14 +147,18 @@ The production server exposes:
 | `PUBLIC_APP_ORIGIN` | Stable production origin used by MCP App domain and CSP metadata. |
 | `OPENAI_APPS_CHALLENGE` | Exact token supplied by the OpenAI plugin portal for domain verification. |
 | `KETCHER_STATE_SECRET` | Stable secret used only to authenticate and encrypt ephemeral hosted Ketcher continuation tokens. |
-| `KETCHER_CAS_REDIS_REST_URL` | HTTPS endpoint for a shared Redis REST database supporting `SET NX`, `GET`, and `EVAL`. Required for hosted Ketcher mutations outside tests. |
-| `KETCHER_CAS_REDIS_REST_TOKEN` | Bearer token for the shared Redis REST database. Required for hosted Ketcher mutations outside tests. |
+| `KETCHER_CAS_REDIS_REST_URL` | Explicit HTTPS endpoint for a shared Redis REST database supporting `SET NX`, `GET`, and `EVAL`. Must be paired with `KETCHER_CAS_REDIS_REST_TOKEN`; takes priority over the Marketplace pair. |
+| `KETCHER_CAS_REDIS_REST_TOKEN` | Explicit bearer token for the shared Redis REST database. Must be paired with `KETCHER_CAS_REDIS_REST_URL`. |
+| `KV_REST_API_URL` | Standard Vercel Marketplace Upstash REST endpoint. Used only when neither explicit `KETCHER_CAS_*` variable is set and must be paired with `KV_REST_API_TOKEN`. |
+| `KV_REST_API_TOKEN` | Standard Vercel Marketplace Upstash REST token. Must be paired with `KV_REST_API_URL`. |
 
 Do not change the production origin after publication. Preview deployments can
 use Vercel-provided deployment origins, while production should set
 `PUBLIC_APP_ORIGIN` explicitly. Production and every preview deployment used
-for Ketcher review must point the two CAS variables at a shared Redis database;
-serverless instance-local memory is intentionally unsupported.
+for Ketcher review must configure one complete CAS variable pair for a shared
+Redis database. Variables from different pairs are never combined, and a
+partial pair is a configuration error. Serverless instance-local memory is
+intentionally unsupported.
 
 The local Burette desktop app remains the primary workspace. The hosted service
 only supplies the public MCP endpoint, widget assets, and one isolated

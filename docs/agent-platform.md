@@ -207,6 +207,13 @@ revision: structural actions advance both revisions, while `highlight_atoms`,
 `get_structure`, and `request_persist` advance only `interactionRevision`.
 Idempotent replay reuses the issued snapshot without advancing again.
 
+The hosted CAS accepts either the explicit
+`KETCHER_CAS_REDIS_REST_URL`/`KETCHER_CAS_REDIS_REST_TOKEN` pair or, when both
+explicit variables are absent, Vercel Marketplace Upstash's standard
+`KV_REST_API_URL`/`KV_REST_API_TOKEN` pair. Each pair is resolved atomically:
+the explicit pair has priority, partial pairs are configuration errors, and
+credentials from different pairs are never combined.
+
 ## Agent RCA
 
 | Symptom | Likely cause | Where to look first |

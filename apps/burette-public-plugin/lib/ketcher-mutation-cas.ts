@@ -32,7 +32,7 @@ const COMPLETE_CLAIM_SCRIPT = [
 ].join("\n");
 
 export class KetcherMutationCasConfigurationError extends Error {
-  constructor(message = "KETCHER_CAS_REDIS_REST_URL and KETCHER_CAS_REDIS_REST_TOKEN are required for hosted Ketcher mutations.") {
+  constructor(message = "A complete KETCHER_CAS_REDIS_REST_URL/TOKEN or KV_REST_API_URL/TOKEN pair is required for hosted Ketcher mutations.") {
     super(message);
     this.name = "KetcherMutationCasConfigurationError";
   }
@@ -150,10 +150,9 @@ let configuredAdapter: KetcherMutationCas | null = null;
 
 export function configuredKetcherMutationCas(): KetcherMutationCas {
   if (configuredAdapter) return configuredAdapter;
-  const url = process.env.KETCHER_CAS_REDIS_REST_URL?.trim() ?? "";
-  const token = process.env.KETCHER_CAS_REDIS_REST_TOKEN?.trim() ?? "";
-  if (url && token) {
-    configuredAdapter = new RedisRestKetcherMutationCas({ url, token });
+  const redis = configuredRedisRestOptions();
+  if (redis) {
+    configuredAdapter = new RedisRestKetcherMutationCas(redis);
     return configuredAdapter;
   }
   if (process.env.NODE_ENV === "test") {
@@ -163,13 +162,43 @@ export function configuredKetcherMutationCas(): KetcherMutationCas {
   throw new KetcherMutationCasConfigurationError();
 }
 
+function configuredRedisRestOptions(): RedisRestOptions | null {
+  const explicit = {
+    url: process.env.KETCHER_CAS_REDIS_REST_URL?.trim() ?? "",
+    token: process.env.KETCHER_CAS_REDIS_REST_TOKEN?.trim() ?? "",
+  };
+  if (explicit.url || explicit.token) {
+    if (!explicit.url || !explicit.token) {
+      throw new KetcherMutationCasConfigurationError(
+        "KETCHER_CAS_REDIS_REST_URL and KETCHER_CAS_REDIS_REST_TOKEN must be configured together.",
+      );
+    }
+    return explicit;
+  }
+
+  const marketplace = {
+    url: process.env.KV_REST_API_URL?.trim() ?? "",
+    token: process.env.KV_REST_API_TOKEN?.trim() ?? "",
+  };
+  if (marketplace.url || marketplace.token) {
+    if (!marketplace.url || !marketplace.token) {
+      throw new KetcherMutationCasConfigurationError(
+        "KV_REST_API_URL and KV_REST_API_TOKEN must be configured together.",
+      );
+    }
+    return marketplace;
+  }
+
+  return null;
+}
+
 function validatedRedisUrl(value: string) {
   try {
     const url = new URL(value.trim());
     if (url.protocol !== "https:" || url.username || url.password || url.hash) throw new Error();
     return url.toString().replace(/\/$/u, "");
   } catch {
-    throw new KetcherMutationCasConfigurationError("KETCHER_CAS_REDIS_REST_URL must be a valid HTTPS Redis REST endpoint.");
+    throw new KetcherMutationCasConfigurationError("Hosted Ketcher CAS requires a valid HTTPS Redis REST endpoint.");
   }
 }
 
