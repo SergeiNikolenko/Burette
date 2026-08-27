@@ -51,12 +51,16 @@ selection explicitly clears the model-visible state. Ketcher mutations run
 through the revision-checked relay. A shared Redis REST CAS consumes each
 continuation token at most once across serverless instances; Redis stores only
 the token digest, mutation claim, and encrypted successor token until the
-original token expires. This is concurrency control for an ephemeral chain,
-not a persistent shared molecular workspace.
+consumed token's TTL expires. This is concurrency control for an ephemeral
+chain, not a persistent shared molecular workspace.
 
-The model receives only bounded structure summaries. Original molecular text
-is placed in tool-result `_meta`, which is delivered to the viewer but hidden
-from the model and conversation transcript.
+The public-structure tools expose only bounded structure summaries to the
+model; original attachment or PDB text is placed in tool-result `_meta`, which
+is delivered to the viewer but hidden from the model and conversation
+transcript. Seed content from routine `open_ketcher`, `set_structure`, or
+`highlight_atoms` results follows the same `_meta` path. When a user or tool
+explicitly requests `get_structure`, the bounded requested export formats
+remain model-visible in that tool result.
 
 ## Data and security boundaries
 
@@ -89,8 +93,9 @@ from the model and conversation transcript.
   that bundle contains dynamic code generation forbidden by the MCP Apps
   sandbox CSP.
 - Every string and collection copied into model-visible `structuredContent` is
-  bounded by the declared output schema. Raw structure text remains only in
-  widget-only `_meta`.
+  bounded by the declared output schema. Original attachment or PDB text and
+  routine hosted Ketcher seed content remain in widget-only `_meta`; explicit
+  bounded `get_structure` exports remain model-visible when requested.
 
 Hosting infrastructure may retain ordinary request metadata in platform logs.
 The hosted widget also sends one anonymized Vercel Web Analytics pageview for

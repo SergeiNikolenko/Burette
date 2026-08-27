@@ -6,7 +6,10 @@ import {
   executeHostedKetcherAction,
   hostedKetcherSnapshot,
 } from "../lib/ketcher-relay";
-import { RedisRestKetcherMutationCas } from "../lib/ketcher-mutation-cas";
+import {
+  RedisRestKetcherMutationCas,
+  type KetcherMutationCas,
+} from "../lib/ketcher-mutation-cas";
 import {
   KETCHER_RESOURCE_URI,
   createKetcherResourceMeta,
@@ -210,10 +213,67 @@ describe("hosted Ketcher relay", () => {
 
     expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1);
     const conflict = first.ok ? second : first;
-    const winner = first.ok ? first : second;
     expect(conflict.error?.code).toBe("REVISION_CONFLICT");
-    expect(conflict.continuationToken).toBe(winner.continuationToken);
-    expect(conflict.snapshot?.structureRevision).toBe(2);
+    expect(conflict.continuationToken).toBeUndefined();
+    expect(conflict.snapshot).toBeUndefined();
+  });
+
+  test("recovers a pending claim after a crash without forking concurrent retries", async () => {
+    const redis = fakeRedisRest();
+    const sharedCas = () => new RedisRestKetcherMutationCas({
+      url: "https://redis.example",
+      token: "test-token",
+      fetcher: redis.fetch,
+    });
+    const claimedCas = sharedCas();
+    let crashAfterClaim = true;
+    const crashingCas: KetcherMutationCas = {
+      claim: (...args) => claimedCas.claim(...args),
+      complete: (...args) => {
+        if (crashAfterClaim) {
+          crashAfterClaim = false;
+          throw new Error("Simulated crash after claim.");
+        }
+        return claimedCas.complete(...args);
+      },
+      read: (...args) => claimedCas.read(...args),
+    };
+    const created = createHostedKetcherSurface({ format: "smiles", content: "CCO" });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const retriedAction = action(
+      created.surface.surfaceId,
+      created.continuationToken,
+      "recover-1",
+      1,
+      { command: "set_structure", format: "smiles", content: "CCN" },
+    );
+
+    const interrupted = await executeHostedKetcherAction(retriedAction, { cas: crashingCas });
+    expect(interrupted.ok).toBe(false);
+    expect(interrupted.error?.code).toBe("TRANSPORT_UNAVAILABLE");
+
+    const [firstRetry, secondRetry] = await Promise.all([
+      executeHostedKetcherAction(retriedAction, { cas: sharedCas() }),
+      executeHostedKetcherAction(retriedAction, { cas: sharedCas() }),
+    ]);
+    expect(firstRetry.ok).toBe(true);
+    expect(secondRetry.ok).toBe(true);
+    expect(firstRetry.continuationToken).toBe(secondRetry.continuationToken);
+    expect(firstRetry.snapshot?.structureRevision).toBe(2);
+    expect(secondRetry.snapshot?.structureRevision).toBe(2);
+
+    const conflict = await executeHostedKetcherAction(action(
+      created.surface.surfaceId,
+      created.continuationToken,
+      "recover-conflict",
+      1,
+      { command: "set_structure", format: "smiles", content: "CCC" },
+    ), { cas: sharedCas() });
+    expect(conflict.ok).toBe(false);
+    expect(conflict.error?.code).toBe("REVISION_CONFLICT");
+    expect(conflict.continuationToken).toBeUndefined();
+    expect(conflict.snapshot).toBeUndefined();
   });
 });
 

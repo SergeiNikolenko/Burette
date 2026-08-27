@@ -139,9 +139,35 @@ export async function executeHostedKetcherAction(
     const cas = options.cas ?? configuredKetcherMutationCas();
     const claim = await cas.claim(mutationKey, claimId, ttlMs);
     if (claim.status === "exists") {
-      return resolveExistingClaim(cas, claim.value, claimId, action, surface, continuationToken);
+      return resolveExistingClaim(
+        cas,
+        claim.value,
+        claimId,
+        action,
+        surface,
+        continuationToken,
+        nextToken,
+        refreshed,
+        result,
+        ttlMs,
+      );
     }
     if (!await cas.complete(mutationKey, claimId, nextToken, ttlMs)) {
+      const current = await cas.read(mutationKey);
+      if (current) {
+        return resolveExistingClaim(
+          cas,
+          current,
+          claimId,
+          action,
+          surface,
+          continuationToken,
+          nextToken,
+          refreshed,
+          result,
+          ttlMs,
+        );
+      }
       return failure(
         action.command,
         "TRANSPORT_UNAVAILABLE",
@@ -162,12 +188,22 @@ async function resolveExistingClaim(
   action: HostedKetcherAction,
   surface: RelaySurface,
   continuationToken: string,
+  nextToken: string,
+  refreshed: RelaySurface,
+  result: HostedKetcherActionResult,
+  ttlMs: number,
 ): Promise<HostedKetcherActionResult> {
   let existing = initial;
-  if (existing.status === "pending") {
+  const mutationKey = stableTokenHash(continuationToken);
+  if (existing.status === "pending" && existing.claimId === claimId) {
+    if (await cas.complete(mutationKey, claimId, nextToken, ttlMs)) {
+      return { ...result, continuationToken: nextToken, snapshot: snapshot(refreshed) };
+    }
+    existing = await cas.read(mutationKey) ?? existing;
+  } else if (existing.status === "pending") {
     for (const delayMs of [5, 15, 30]) {
       await delay(delayMs);
-      const current = await cas.read(stableTokenHash(continuationToken));
+      const current = await cas.read(mutationKey);
       if (current) existing = current;
       if (existing.status === "completed") break;
     }
@@ -181,17 +217,12 @@ async function resolveExistingClaim(
     if (completed.ok) return replaySuccess(completed.value, existing.continuationToken);
   }
   if (existing.status === "completed" && existing.continuationToken) {
-    const latest = decodeSafely(existing.continuationToken);
-    if (latest.ok) {
-      return failure(
-        action.command,
-        "REVISION_CONFLICT",
-        "The hosted Ketcher continuation token was already consumed by another action.",
-        action.actionId,
-        latest.value,
-        existing.continuationToken,
-      );
-    }
+    return failure(
+      action.command,
+      "REVISION_CONFLICT",
+      "The hosted Ketcher continuation token was already consumed by another action.",
+      action.actionId,
+    );
   }
   if (existing.claimId === claimId) {
     return failure(
@@ -208,8 +239,6 @@ async function resolveExistingClaim(
     "REVISION_CONFLICT",
     "The hosted Ketcher continuation token was already consumed by another action.",
     action.actionId,
-    surface,
-    continuationToken,
   );
 }
 
