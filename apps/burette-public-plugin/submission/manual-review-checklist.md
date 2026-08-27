@@ -12,6 +12,8 @@
   - Physical iPhone / iOS / ChatGPT version: `________________________________________`
 - [ ] Confirm the deployed Git commit contains the intended submission bundle and no later unreviewed runtime changes.
 - [ ] Confirm production has a stable, non-public `KETCHER_STATE_SECRET`; do not print, copy, screenshot, or rotate it during an active review run.
+- [ ] Confirm the production project has one shared Upstash Redis resource connected through Vercel Marketplace. Record only its resource name and region, never its REST token.
+- [ ] Confirm the Redis resource is on the `free` plan with `primaryRegion=iad1`, `eviction=true`, `autoUpgrade=false`, and `prodPack=false`. Stop before review if the resource can automatically incur charges.
 - [ ] Treat the current production deployment of that commit as **not verified** until every production preflight item below passes.
 - [ ] Treat the ChatGPT connector rescan as **not verified** until the rescan and fresh-chat checks below pass.
 - [ ] Treat physical-iPhone behavior as **not verified** until the physical-device checks and evidence below pass.
@@ -19,6 +21,16 @@
 
 ## Production URL, origin, and MCP preflight
 
+- [ ] `vercel env list production --project burette-plugin` shows `KETCHER_STATE_SECRET` plus one complete Redis credential pair: either the Marketplace-native `KV_REST_API_URL` and `KV_REST_API_TOKEN`, or the explicit `KETCHER_CAS_REDIS_REST_URL` and `KETCHER_CAS_REDIS_REST_TOKEN`. Stop if either member of the selected pair is missing.
+- [ ] All token/secret variables above are marked `Sensitive`; no secret value appears in terminal output, screenshots, this checklist, deployment logs, ChatGPT, or the submission portal.
+- [ ] `vercel firewall overview --project burette-plugin` shows the firewall enabled with no unpublished draft changes and both active fixed-window/IP rules below:
+
+  | Rule | Match | Window | Limit | Exceeded action |
+  | --- | --- | ---: | ---: | --- |
+  | `Rate limit public MCP` | path starts with `/mcp` | `60s` | `120` | deny with `429` |
+  | `Rate limit xyzrender` | path starts with `/api/xyzrender` | `60s` | `10` | deny with `429` |
+
+- [ ] Confirm Vercel system mitigations remain active and Attack Mode remains off for ordinary review traffic. Do not enable browser challenges for `/mcp`, because the ChatGPT MCP client cannot solve them.
 - [ ] `GET https://burette-plugin.vercel.app/` returns `308` with `Location: https://burette-landing.vercel.app/docs/plugin`.
 - [ ] `GET https://burette-plugin.vercel.app/api/health` returns `200`, `Cache-Control: no-store`, and exactly the current health identity: `status=ok`, `service=burette-public-plugin`, `version=0.1.0`.
 - [ ] `GET https://burette-landing.vercel.app/docs/plugin` finishes at `200` over HTTPS.
@@ -156,6 +168,7 @@
 ## Stop / go decision
 
 - [ ] **STOP** if the current Git commit is not the exact production deployment under review.
+- [ ] **STOP** if Redis is missing, auto-upgrade or uncapped billing is enabled, either credential pair is partial, hosted Ketcher mutations fall back from shared CAS, or either production rate-limit rule is missing/unpublished.
 - [ ] **STOP** if health, challenge, root redirect, MCP status, no-auth schemes, tool list, annotations, output schemas, resource URIs, production origin, or CSP differs from this checklist.
 - [ ] **STOP** if the production connector has not been rescanned after this deployment, the card still says `Burrete`, or any evidence comes from a pre-rescan conversation.
 - [ ] **STOP** if any submitted case returns different counts, invokes the wrong tool, produces a blank/noninteractive widget, or fails on either ChatGPT web or the physical iPhone.
