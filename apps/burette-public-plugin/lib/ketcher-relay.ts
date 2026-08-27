@@ -21,6 +21,12 @@ import {
   encodeKetcherContinuation,
   type KetcherContinuationPayload,
 } from "@/lib/ketcher-state-token";
+import {
+  KetcherMutationCasConfigurationError,
+  configuredKetcherMutationCas,
+  type KetcherMutationCas,
+  type KetcherMutationClaim,
+} from "@/lib/ketcher-mutation-cas";
 
 type RelaySurface = KetcherContinuationPayload;
 
@@ -36,6 +42,10 @@ export type HostedKetcherActionResult = {
   result?: Record<string, unknown>;
   snapshot?: KetcherSnapshot;
   error?: { code: KetcherAgentErrorCode; message: string };
+};
+
+type ExecuteOptions = {
+  cas?: KetcherMutationCas;
 };
 
 export function createHostedKetcherSurface(seed?: { format: string; content: string }) {
@@ -72,7 +82,10 @@ export function hostedKetcherSnapshot(continuationToken: string) {
   return decoded.ok ? snapshot(decoded.value) : null;
 }
 
-export function executeHostedKetcherAction(rawAction: unknown): HostedKetcherActionResult {
+export async function executeHostedKetcherAction(
+  rawAction: unknown,
+  options: ExecuteOptions = {},
+): Promise<HostedKetcherActionResult> {
   if (!isRecord(rawAction) || typeof rawAction.continuationToken !== "string") {
     return failure("control_ketcher", "INVALID_INPUT", "A hosted Ketcher continuation token is required.");
   }
@@ -100,24 +113,104 @@ export function executeHostedKetcherAction(rawAction: unknown): HostedKetcherAct
     return failure(action.command, "REVISION_CONFLICT", "The hosted Ketcher structure revision is stale.", action.actionId, surface, continuationToken);
   }
 
+  const candidate = structuredClone(surface);
   const result = action.command === "set_structure"
-    ? applyStructure(surface, action)
+    ? applyStructure(candidate, action)
     : action.command === "clear_structure"
-      ? clearStructure(surface, action)
+      ? clearStructure(candidate, action)
       : action.command === "highlight_atoms"
-        ? applyHighlights(surface, action)
+        ? applyHighlights(candidate, action)
         : action.command === "get_structure"
-          ? exportStructure(surface, action)
-          : requestPersist(surface, action);
+          ? exportStructure(candidate, action)
+          : requestPersist(candidate, action);
   if (!result.ok) return { ...result, continuationToken };
-  surface.lastAction = replayState(action, actionHash);
-  const refreshed = refreshLifetime(surface);
+  candidate.lastAction = replayState(action, actionHash);
+  const refreshed = refreshLifetime(candidate);
+  let nextToken: string;
   try {
-    const nextToken = encodeKetcherContinuation(refreshed);
-    return { ...result, continuationToken: nextToken, snapshot: snapshot(refreshed) };
+    nextToken = encodeKetcherContinuation(refreshed);
   } catch (error) {
     return configurationActionFailure(action.command, action.actionId, error);
   }
+  const mutationKey = stableTokenHash(continuationToken);
+  const claimId = stableMutationClaim(action, actionHash);
+  const ttlMs = Math.max(1, surface.expiresAt - Date.now());
+  try {
+    const cas = options.cas ?? configuredKetcherMutationCas();
+    const claim = await cas.claim(mutationKey, claimId, ttlMs);
+    if (claim.status === "exists") {
+      return resolveExistingClaim(cas, claim.value, claimId, action, surface, continuationToken);
+    }
+    if (!await cas.complete(mutationKey, claimId, nextToken, ttlMs)) {
+      return failure(
+        action.command,
+        "TRANSPORT_UNAVAILABLE",
+        "Hosted Ketcher could not commit the shared mutation claim.",
+        action.actionId,
+      );
+    }
+    return { ...result, continuationToken: nextToken, snapshot: snapshot(refreshed) };
+  } catch (error) {
+    return casActionFailure(action.command, action.actionId, error);
+  }
+}
+
+async function resolveExistingClaim(
+  cas: KetcherMutationCas,
+  initial: KetcherMutationClaim,
+  claimId: string,
+  action: HostedKetcherAction,
+  surface: RelaySurface,
+  continuationToken: string,
+): Promise<HostedKetcherActionResult> {
+  let existing = initial;
+  if (existing.status === "pending") {
+    for (const delayMs of [5, 15, 30]) {
+      await delay(delayMs);
+      const current = await cas.read(stableTokenHash(continuationToken));
+      if (current) existing = current;
+      if (existing.status === "completed") break;
+    }
+  }
+  if (
+    existing.claimId === claimId
+    && existing.status === "completed"
+    && existing.continuationToken
+  ) {
+    const completed = decodeSafely(existing.continuationToken);
+    if (completed.ok) return replaySuccess(completed.value, existing.continuationToken);
+  }
+  if (existing.status === "completed" && existing.continuationToken) {
+    const latest = decodeSafely(existing.continuationToken);
+    if (latest.ok) {
+      return failure(
+        action.command,
+        "REVISION_CONFLICT",
+        "The hosted Ketcher continuation token was already consumed by another action.",
+        action.actionId,
+        latest.value,
+        existing.continuationToken,
+      );
+    }
+  }
+  if (existing.claimId === claimId) {
+    return failure(
+      action.command,
+      "TRANSPORT_UNAVAILABLE",
+      "The matching hosted Ketcher mutation is still in progress.",
+      action.actionId,
+      surface,
+      continuationToken,
+    );
+  }
+  return failure(
+    action.command,
+    "REVISION_CONFLICT",
+    "The hosted Ketcher continuation token was already consumed by another action.",
+    action.actionId,
+    surface,
+    continuationToken,
+  );
 }
 
 function applyStructure(surface: RelaySurface, action: HostedKetcherAction & { input?: KetcherStructureInput }) {
@@ -295,6 +388,18 @@ function stableActionHash(action: HostedKetcherAction) {
   return createHash("sha256").update(JSON.stringify(payload)).digest("base64url");
 }
 
+function stableMutationClaim(action: HostedKetcherAction, actionHash: string) {
+  return createHash("sha256")
+    .update(action.actionId)
+    .update("\0")
+    .update(actionHash)
+    .digest("base64url");
+}
+
+function stableTokenHash(continuationToken: string) {
+  return createHash("sha256").update(continuationToken).digest("base64url");
+}
+
 function refreshLifetime(surface: RelaySurface) {
   return createKetcherContinuationPayload({
     surfaceId: surface.surfaceId,
@@ -344,6 +449,17 @@ function configurationActionFailure(command: string, actionId: string, error: un
   return failure(command, configured.error.code, configured.error.message, actionId);
 }
 
+function casActionFailure(command: string, actionId: string, error: unknown) {
+  return failure(
+    command,
+    "TRANSPORT_UNAVAILABLE",
+    error instanceof KetcherMutationCasConfigurationError
+      ? error.message
+      : "Hosted Ketcher shared mutation state is unavailable.",
+    actionId,
+  );
+}
+
 function relayFailure(code: KetcherAgentErrorCode, message: string) {
   return { ok: false as const, error: { code, message } };
 }
@@ -354,4 +470,8 @@ function utf8ByteLength(value: string) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }

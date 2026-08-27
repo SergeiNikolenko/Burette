@@ -6,6 +6,7 @@ import {
   executeHostedKetcherAction,
   hostedKetcherSnapshot,
 } from "../lib/ketcher-relay";
+import { RedisRestKetcherMutationCas } from "../lib/ketcher-mutation-cas";
 import {
   KETCHER_RESOURCE_URI,
   createKetcherResourceMeta,
@@ -31,7 +32,7 @@ function action(
 }
 
 describe("hosted Ketcher relay", () => {
-  test("keeps edits revisioned, bounded, and idempotent", () => {
+  test("keeps edits revisioned, bounded, and idempotent", async () => {
     const created = createHostedKetcherSurface({ format: "smiles", content: "CCO" });
     expect(created.ok).toBe(true);
     if (!created.ok) return;
@@ -42,7 +43,7 @@ describe("hosted Ketcher relay", () => {
     expect(hostedKetcherSnapshot(initialToken)?.dirty).toBe(false);
     expect(hostedKetcherSnapshot(initialToken)?.lastAction).toBeNull();
 
-    const setResult = executeHostedKetcherAction(action(surfaceId, initialToken, "set-1", 1, {
+    const setResult = await executeHostedKetcherAction(action(surfaceId, initialToken, "set-1", 1, {
       command: "set_structure",
       format: "smiles",
       content: "CCN",
@@ -56,7 +57,7 @@ describe("hosted Ketcher relay", () => {
     });
     expect(setResult.continuationToken).toBeString();
 
-    const replay = executeHostedKetcherAction(action(
+    const replay = await executeHostedKetcherAction(action(
       surfaceId,
       setResult.continuationToken!,
       "set-1",
@@ -72,7 +73,7 @@ describe("hosted Ketcher relay", () => {
     expect(replay.snapshot?.structureRevision).toBe(2);
     expect(replay.result).toEqual(setResult.result);
 
-    const replayConflict = executeHostedKetcherAction(action(
+    const replayConflict = await executeHostedKetcherAction(action(
       surfaceId,
       replay.continuationToken!,
       "set-1",
@@ -87,7 +88,7 @@ describe("hosted Ketcher relay", () => {
     expect(replayConflict.error?.code).toBe("REPLAY_CONFLICT");
     expect(replayConflict.continuationToken).toBe(replay.continuationToken);
 
-    const highlight = executeHostedKetcherAction(action(
+    const highlight = await executeHostedKetcherAction(action(
       surfaceId,
       replayConflict.continuationToken!,
       "highlight-1",
@@ -103,7 +104,7 @@ describe("hosted Ketcher relay", () => {
     expect(highlight.snapshot?.interactionRevision).toBe(3);
     expect(highlight.result?.ketcherSeed).toEqual(setResult.result?.ketcherSeed);
 
-    const exportResult = executeHostedKetcherAction(action(
+    const exportResult = await executeHostedKetcherAction(action(
       surfaceId,
       highlight.continuationToken!,
       "get-1",
@@ -118,7 +119,7 @@ describe("hosted Ketcher relay", () => {
     expect(exportResult.result?.formats).toEqual({ smiles: "CCN" });
     expect(exportResult.result?.ketcherSeed).toEqual(setResult.result?.ketcherSeed);
 
-    const exportReplay = executeHostedKetcherAction(action(
+    const exportReplay = await executeHostedKetcherAction(action(
       surfaceId,
       exportResult.continuationToken!,
       "get-1",
@@ -131,7 +132,7 @@ describe("hosted Ketcher relay", () => {
     ));
     expect(exportReplay.result).toEqual(exportResult.result);
 
-    const stale = executeHostedKetcherAction(action(
+    const stale = await executeHostedKetcherAction(action(
       surfaceId,
       exportResult.continuationToken!,
       "stale-1",
@@ -141,7 +142,7 @@ describe("hosted Ketcher relay", () => {
     expect(stale.ok).toBe(false);
     expect(stale.error?.code).toBe("REVISION_CONFLICT");
 
-    const badIndex = executeHostedKetcherAction(action(
+    const badIndex = await executeHostedKetcherAction(action(
       surfaceId,
       stale.continuationToken!,
       "highlight-2",
@@ -155,11 +156,11 @@ describe("hosted Ketcher relay", () => {
     expect(badIndex.error?.code).toBe("INVALID_ATOM_INDEX");
   });
 
-  test("fails closed for unresolved hosted references", () => {
+  test("fails closed for unresolved hosted references", async () => {
     const created = createHostedKetcherSurface();
     expect(created.ok).toBe(true);
     if (!created.ok) return;
-    const result = executeHostedKetcherAction(action(
+    const result = await executeHostedKetcherAction(action(
       created.surface.surfaceId,
       created.continuationToken,
       "ref-1",
@@ -173,7 +174,79 @@ describe("hosted Ketcher relay", () => {
     expect(result.ok).toBe(false);
     expect(result.error?.code).toBe("TRANSPORT_UNAVAILABLE");
   });
+
+  test("allows only one concurrent mutation from the same token across relay instances", async () => {
+    const redis = fakeRedisRest();
+    const firstInstance = new RedisRestKetcherMutationCas({
+      url: "https://redis.example",
+      token: "test-token",
+      fetcher: redis.fetch,
+    });
+    const secondInstance = new RedisRestKetcherMutationCas({
+      url: "https://redis.example",
+      token: "test-token",
+      fetcher: redis.fetch,
+    });
+    const created = createHostedKetcherSurface({ format: "smiles", content: "CCO" });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const [first, second] = await Promise.all([
+      executeHostedKetcherAction(action(
+        created.surface.surfaceId,
+        created.continuationToken,
+        "concurrent-1",
+        1,
+        { command: "set_structure", format: "smiles", content: "CCN" },
+      ), { cas: firstInstance }),
+      executeHostedKetcherAction(action(
+        created.surface.surfaceId,
+        created.continuationToken,
+        "concurrent-2",
+        1,
+        { command: "set_structure", format: "smiles", content: "CCC" },
+      ), { cas: secondInstance }),
+    ]);
+
+    expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1);
+    const conflict = first.ok ? second : first;
+    const winner = first.ok ? first : second;
+    expect(conflict.error?.code).toBe("REVISION_CONFLICT");
+    expect(conflict.continuationToken).toBe(winner.continuationToken);
+    expect(conflict.snapshot?.structureRevision).toBe(2);
+  });
 });
+
+function fakeRedisRest() {
+  const values = new Map<string, string>();
+  const fetch = async (_input: string | URL | Request, init?: RequestInit) => {
+    const command = JSON.parse(String(init?.body)) as string[];
+    let result: unknown;
+    if (command[0] === "SET" && command.includes("NX")) {
+      if (values.has(command[1])) result = null;
+      else {
+        values.set(command[1], command[2]);
+        result = "OK";
+      }
+    } else if (command[0] === "GET") {
+      result = values.get(command[1]) ?? null;
+    } else if (command[0] === "EVAL") {
+      const key = command[3];
+      if (values.get(key) !== command[4]) result = 0;
+      else {
+        values.set(key, command[5]);
+        result = 1;
+      }
+    } else {
+      throw new Error(`Unexpected Redis command ${command[0]}`);
+    }
+    return new Response(JSON.stringify({ result }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  return { fetch };
+}
 
 describe("hosted Ketcher widget contract", () => {
   test("uses the versioned resource and same-origin CSP", () => {

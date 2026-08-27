@@ -48,8 +48,11 @@ The widgets use the MCP Apps handshake before publishing bounded selection,
 scene, or chemical-editor state through `ui/update-model-context`. Lasso
 selection includes up to 96 atom identities and residues, and clearing the
 selection explicitly clears the model-visible state. Ketcher mutations run
-through the revision-checked relay; the server does not persist a shared
-molecular workspace.
+through the revision-checked relay. A shared Redis REST CAS consumes each
+continuation token at most once across serverless instances; Redis stores only
+the token digest, mutation claim, and encrypted successor token until the
+original token expires. This is concurrency control for an ephemeral chain,
+not a persistent shared molecular workspace.
 
 The model receives only bounded structure summaries. Original molecular text
 is placed in tool-result `_meta`, which is delivered to the viewer but hidden
@@ -70,8 +73,11 @@ from the model and conversation transcript.
   encrypted continuation token carries up to 64 KiB of inline structure content
   and expires 15 minutes after each successful action. Atom-index lists are
   capped at 256 entries and inline exports at 64 KiB. `contentRef` is rejected
-  until a scoped artifact relay is deployed. The token supports a single
-  serialized editor chain; it is not a durable or multi-writer workspace.
+  until a scoped artifact relay is deployed. Redis REST `SET NX`, `GET`, and
+  atomic `EVAL` compare-and-complete operations serialize that token chain
+  across instances. If Redis is unavailable or its configuration is missing,
+  mutations fail closed instead of falling back to process-local state. The
+  token is not a durable or multi-writer workspace.
 - The MCP resource mounts the compiled Burette React shell directly instead of
   wrapping a separate viewer page. Its CSP permits only the stable production
   origin for runtime fetches and resources; the widget does not embed subframes.
@@ -132,10 +138,14 @@ The production server exposes:
 | `PUBLIC_APP_ORIGIN` | Stable production origin used by MCP App domain and CSP metadata. |
 | `OPENAI_APPS_CHALLENGE` | Exact token supplied by the OpenAI plugin portal for domain verification. |
 | `KETCHER_STATE_SECRET` | Stable secret used only to authenticate and encrypt ephemeral hosted Ketcher continuation tokens. |
+| `KETCHER_CAS_REDIS_REST_URL` | HTTPS endpoint for a shared Redis REST database supporting `SET NX`, `GET`, and `EVAL`. Required for hosted Ketcher mutations outside tests. |
+| `KETCHER_CAS_REDIS_REST_TOKEN` | Bearer token for the shared Redis REST database. Required for hosted Ketcher mutations outside tests. |
 
 Do not change the production origin after publication. Preview deployments can
 use Vercel-provided deployment origins, while production should set
-`PUBLIC_APP_ORIGIN` explicitly.
+`PUBLIC_APP_ORIGIN` explicitly. Production and every preview deployment used
+for Ketcher review must point the two CAS variables at a shared Redis database;
+serverless instance-local memory is intentionally unsupported.
 
 The local Burette desktop app remains the primary workspace. The hosted service
 only supplies the public MCP endpoint, widget assets, and one isolated

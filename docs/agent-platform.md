@@ -197,8 +197,12 @@ The hosted public plugin mirrors the same action schema through
 opaque, authenticated continuation token containing the bounded editor state.
 The token makes the ephemeral editor portable across stateless server instances
 and expires after 15 minutes of inactivity. It supports one serialized widget
-chain, not a durable or concurrent multi-writer workspace; reference-backed
-content fails closed until an authenticated artifact relay is added.
+chain, not a durable or concurrent multi-writer workspace. A shared Redis REST
+CAS atomically consumes each token once across serverless instances and retains
+only its digest, claim, and encrypted successor token through the token TTL.
+Hosted mutations fail closed when that CAS is unavailable or unconfigured;
+reference-backed content fails closed until an authenticated artifact relay is
+added.
 
 ## Agent RCA
 

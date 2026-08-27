@@ -25,6 +25,11 @@ import { isTauriRuntime } from "../lib/tauri";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
 import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import { hostedKetcherSeedFromWindow, isHostedKetcherWidget, type HostedKetcherSeed } from "../lib/hosted-mcp-widget";
+import {
+  hostedKetcherMutationBaseAfterRead,
+  isOlderHostedKetcherState,
+  type HostedKetcherState,
+} from "../lib/hosted-ketcher-sync";
 import { runWindowMutation } from "../lib/window-mutation-barrier";
 import type { StructureDragRecord } from "../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "./drop-action-executor";
@@ -88,11 +93,6 @@ const KETCHER_CHROME_LAYOUT_WIDTH = 1101;
 const KETCHER_FIT_SCALES = [1, 0.9, 0.8, 0.7, 0.6, 0.5] as const;
 const KETCHER_NARROW_SHELL_WIDTH = 864;
 type KetcherImportResult = "success" | "transient-failure" | "failure";
-type HostedKetcherState = {
-  surfaceId: string;
-  continuationToken: string;
-  snapshot: KetcherSnapshot | null;
-};
 const IS_KETCHER_WEB_DEMO = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
 let ketcherStructServiceReady = false;
 if (typeof window !== "undefined") {
@@ -437,19 +437,6 @@ function hostedKetcherStateFromWindow(): HostedKetcherState | null {
   return hostedKetcherState(window.__BURETTE_HOSTED_KETCHER_STATE__);
 }
 
-function isOlderHostedKetcherState(
-  next: HostedKetcherState,
-  current: HostedKetcherState | null,
-) {
-  if (!current || current.surfaceId !== next.surfaceId) return false;
-  if (current.snapshot && !next.snapshot) return true;
-  if (!current.snapshot || !next.snapshot) return false;
-  if (next.snapshot.structureRevision !== current.snapshot.structureRevision) {
-    return next.snapshot.structureRevision < current.snapshot.structureRevision;
-  }
-  return next.snapshot.interactionRevision < current.snapshot.interactionRevision;
-}
-
 export function KetcherPage({
   tabId,
   location,
@@ -717,40 +704,37 @@ export function KetcherPage({
           if (!retained?.snapshot) return;
           const smiles = await ketcher.getSmiles();
           if (cancelled || hostedKetcherMutationDepthRef.current > 0) return;
-          for (let attempt = 0; attempt < 2; attempt += 1) {
-            const latest = hostedKetcherStateRef.current;
-            if (!latest?.snapshot) return;
-            hostedSeedKeyRef.current = `${latest.surfaceId}:smiles:${smiles}`;
-            const actionId = `widget-${Date.now()}-${++hostedKetcherActionIdRef.current}`;
-            const result = await window.BuretteHostedAppBridge?.callServerTool("control_ketcher", {
-              action: {
-                apiVersion: KETCHER_AGENT_API_VERSION,
-                type: "control_ketcher",
-                command: "set_structure",
-                surfaceId: latest.surfaceId,
-                continuationToken: latest.continuationToken,
-                actionId,
-                expectedRevision: latest.snapshot.structureRevision,
-                format: "smiles",
-                content: smiles,
-              },
-            });
-            if (cancelled) return;
-            if (!result) throw new Error("The hosted Ketcher bridge is unavailable.");
-            const syncError = hostedKetcherErrorFromResult(result);
-            if (syncError) {
-              const current = hostedKetcherStateRef.current;
-              const canRetry = syncError.code === "REVISION_CONFLICT"
-                && current?.continuationToken !== latest.continuationToken
-                && attempt === 0;
-              if (canRetry) continue;
-              throw new Error(syncError.message);
-            }
-            const next = hostedKetcherStateFromResult(result);
-            if (!next) throw new Error("Hosted Ketcher returned no continuation state.");
-            retainHostedKetcherState(next);
-            return;
+          const mutationBase = hostedKetcherMutationBaseAfterRead(
+            retained,
+            hostedKetcherStateRef.current,
+          );
+          if (!mutationBase?.snapshot) return;
+          hostedSeedKeyRef.current = `${mutationBase.surfaceId}:smiles:${smiles}`;
+          const actionId = `widget-${Date.now()}-${++hostedKetcherActionIdRef.current}`;
+          const result = await window.BuretteHostedAppBridge?.callServerTool("control_ketcher", {
+            action: {
+              apiVersion: KETCHER_AGENT_API_VERSION,
+              type: "control_ketcher",
+              command: "set_structure",
+              surfaceId: mutationBase.surfaceId,
+              continuationToken: mutationBase.continuationToken,
+              actionId,
+              expectedRevision: mutationBase.snapshot.structureRevision,
+              format: "smiles",
+              content: smiles,
+            },
+          });
+          if (cancelled) return;
+          if (!result) throw new Error("The hosted Ketcher bridge is unavailable.");
+          const syncError = hostedKetcherErrorFromResult(result);
+          if (syncError) {
+            const conflictState = hostedKetcherStateFromResult(result);
+            if (conflictState) retainHostedKetcherState(conflictState);
+            throw new Error(syncError.message);
           }
+          const next = hostedKetcherStateFromResult(result);
+          if (!next) throw new Error("Hosted Ketcher returned no continuation state.");
+          retainHostedKetcherState(next);
         })
         .catch((error) => {
           if (!cancelled) setStatus("Ketcher sync failed: " + (error instanceof Error ? error.message : String(error)));
