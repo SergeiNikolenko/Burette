@@ -50,6 +50,7 @@ function structured(result: CallToolResult): Record<string, unknown> {
 
 function action(
   surfaceId: string,
+  continuationToken: string,
   actionId: string,
   command: string,
   expectedRevision: number,
@@ -61,6 +62,7 @@ function action(
       type: "control_ketcher",
       command,
       surfaceId,
+      continuationToken,
       actionId,
       expectedRevision,
       ...fields,
@@ -198,6 +200,7 @@ describe("OpenAI submission review cases", () => {
           expect(output.counts).toMatchObject({ chains: 1, residues: 46, atoms: 327 });
         } else {
           const ketcher = asRecord(output.ketcher);
+          expect(output.continuationToken).toBeString();
           expect(ketcher.structureRevision).toBe(1);
           expect(asRecord(ketcher.structure)).toMatchObject({
             kind: "molecule",
@@ -216,38 +219,43 @@ describe("OpenAI submission review cases", () => {
       structure: { format: "smiles", content: "CCO" },
     }));
     const surfaceId = String(opened.surfaceId);
+    expect(opened.continuationToken).toBeString();
+    const initialToken = String(opened.continuationToken);
 
     const setResult = await rawToolCall(
       "control_ketcher",
-      action(surfaceId, "review-set", "set_structure", 1, {
+      action(surfaceId, initialToken, "review-set", "set_structure", 1, {
         format: "smiles",
         content: "CCN",
       }),
     );
-    const setOutput = asRecord(setResult.structuredContent);
-    const revision = setResult.isError ? 1 : Number(asRecord(setOutput.snapshot).structureRevision);
+    const set = structured(setResult);
+    expect(set.continuationToken).toBeString();
+    const setToken = String(set.continuationToken);
 
     const getResult = await rawToolCall(
       "control_ketcher",
-      action(surfaceId, "review-get", "get_structure", revision, {
+      action(surfaceId, setToken, "review-get", "get_structure", 2, {
         formats: ["smiles"],
         delivery: "inline",
       }),
     );
+    const get = structured(getResult);
+    expect(get.continuationToken).toBeString();
+    const getToken = String(get.continuationToken);
     const clearResult = await rawToolCall(
       "control_ketcher",
-      action(surfaceId, "review-clear", "clear_structure", revision),
+      action(surfaceId, getToken, "review-clear", "clear_structure", 2),
     );
 
-    const set = structured(setResult);
     expect(set.ok).toBe(true);
     expect(asRecord(set.snapshot).structureRevision).toBe(2);
 
-    const get = structured(getResult);
     expect(asRecord(asRecord(get.result).result).formats).toEqual({ smiles: "CCN" });
 
     const clear = structured(clearResult);
     expect(clear.ok).toBe(true);
+    expect(clear.continuationToken).toBeString();
     expect(asRecord(clear.snapshot).structureRevision).toBe(3);
     expect(asRecord(asRecord(clear.snapshot).structure)).toMatchObject({
       kind: "empty",
@@ -265,10 +273,17 @@ describe("OpenAI submission review cases", () => {
       }) as CallToolResult);
       await client.callTool({
         name: "control_ketcher",
-        arguments: action(String(opened.surfaceId), "schema-set", "set_structure", 1, {
-          format: "smiles",
-          content: "CCN",
-        }),
+        arguments: action(
+          String(opened.surfaceId),
+          String(opened.continuationToken),
+          "schema-set",
+          "set_structure",
+          1,
+          {
+            format: "smiles",
+            content: "CCN",
+          },
+        ),
       });
     } finally {
       await client.close();
@@ -280,10 +295,13 @@ describe("OpenAI submission review cases", () => {
       structure: { format: "smiles", content: "CCO" },
     }));
     const surfaceId = String(opened.surfaceId);
+    expect(opened.continuationToken).toBeString();
+    const continuationToken = String(opened.continuationToken);
 
     const results = await Promise.all(Array.from({ length: 4 }, (_, index) =>
       callInFreshInstance("control_ketcher", action(
         surfaceId,
+        continuationToken,
         `cold-get-${index}`,
         "get_structure",
         1,
@@ -294,6 +312,7 @@ describe("OpenAI submission review cases", () => {
     for (const result of results) {
       const output = structured(result);
       expect(output.ok).toBe(true);
+      expect(output.continuationToken).toBeString();
       expect(asRecord(asRecord(output.result).result).formats).toEqual({ smiles: "CCO" });
     }
   }, 30_000);

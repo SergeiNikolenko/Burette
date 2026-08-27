@@ -12,11 +12,18 @@ import {
   createKetcherWidgetHtml,
 } from "../lib/widget";
 
-function action(surfaceId: string, actionId: string, expectedRevision: number, extra: Record<string, unknown>) {
+function action(
+  surfaceId: string,
+  continuationToken: string,
+  actionId: string,
+  expectedRevision: number,
+  extra: Record<string, unknown>,
+) {
   return {
     apiVersion: KETCHER_AGENT_API_VERSION,
     type: "control_ketcher",
     surfaceId,
+    continuationToken,
     actionId,
     expectedRevision,
     ...extra,
@@ -29,11 +36,13 @@ describe("hosted Ketcher relay", () => {
     expect(created.ok).toBe(true);
     if (!created.ok) return;
     const surfaceId = created.surface.surfaceId;
-    expect(hostedKetcherSnapshot(surfaceId)?.structureRevision).toBe(1);
-    expect(hostedKetcherSnapshot(surfaceId)?.dirty).toBe(false);
-    expect(hostedKetcherSnapshot(surfaceId)?.lastAction).toBeNull();
+    const initialToken = created.continuationToken;
+    expect(initialToken).toBeString();
+    expect(hostedKetcherSnapshot(initialToken)?.structureRevision).toBe(1);
+    expect(hostedKetcherSnapshot(initialToken)?.dirty).toBe(false);
+    expect(hostedKetcherSnapshot(initialToken)?.lastAction).toBeNull();
 
-    const setResult = executeHostedKetcherAction(action(surfaceId, "set-1", 1, {
+    const setResult = executeHostedKetcherAction(action(surfaceId, initialToken, "set-1", 1, {
       command: "set_structure",
       format: "smiles",
       content: "CCN",
@@ -45,49 +54,87 @@ describe("hosted Ketcher relay", () => {
       format: "smiles",
       content: "CCN",
     });
+    expect(setResult.continuationToken).toBeString();
 
-    const replay = executeHostedKetcherAction(action(surfaceId, "set-1", 1, {
-      command: "set_structure",
-      format: "smiles",
-      content: "CCN",
-    }));
-    expect(replay).toEqual(setResult);
+    const replay = executeHostedKetcherAction(action(
+      surfaceId,
+      setResult.continuationToken!,
+      "set-1",
+      1,
+      {
+        command: "set_structure",
+        format: "smiles",
+        content: "CCN",
+      },
+    ));
+    expect(replay.ok).toBe(true);
+    expect(replay.continuationToken).toBe(setResult.continuationToken);
+    expect(replay.snapshot?.structureRevision).toBe(2);
 
-    const replayConflict = executeHostedKetcherAction(action(surfaceId, "set-1", 1, {
-      command: "set_structure",
-      format: "smiles",
-      content: "CCC",
-    }));
+    const replayConflict = executeHostedKetcherAction(action(
+      surfaceId,
+      replay.continuationToken!,
+      "set-1",
+      1,
+      {
+        command: "set_structure",
+        format: "smiles",
+        content: "CCC",
+      },
+    ));
     expect(replayConflict.ok).toBe(false);
     expect(replayConflict.error?.code).toBe("REPLAY_CONFLICT");
+    expect(replayConflict.continuationToken).toBe(replay.continuationToken);
 
-    const highlight = executeHostedKetcherAction(action(surfaceId, "highlight-1", 2, {
-      command: "highlight_atoms",
-      indexes: [2, 0],
-    }));
+    const highlight = executeHostedKetcherAction(action(
+      surfaceId,
+      replayConflict.continuationToken!,
+      "highlight-1",
+      2,
+      {
+        command: "highlight_atoms",
+        indexes: [2, 0],
+      },
+    ));
     expect(highlight.ok).toBe(true);
     expect(highlight.snapshot?.highlightedAtoms).toEqual([0, 2]);
     expect(highlight.snapshot?.structureRevision).toBe(2);
     expect(highlight.snapshot?.interactionRevision).toBe(3);
 
-    const exportResult = executeHostedKetcherAction(action(surfaceId, "get-1", 2, {
-      command: "get_structure",
-      formats: ["smiles"],
-      delivery: "inline",
-    }));
+    const exportResult = executeHostedKetcherAction(action(
+      surfaceId,
+      highlight.continuationToken!,
+      "get-1",
+      2,
+      {
+        command: "get_structure",
+        formats: ["smiles"],
+        delivery: "inline",
+      },
+    ));
     expect(exportResult.ok).toBe(true);
     expect(exportResult.result?.formats).toEqual({ smiles: "CCN" });
 
-    const stale = executeHostedKetcherAction(action(surfaceId, "stale-1", 1, {
-      command: "clear_structure",
-    }));
+    const stale = executeHostedKetcherAction(action(
+      surfaceId,
+      exportResult.continuationToken!,
+      "stale-1",
+      1,
+      { command: "clear_structure" },
+    ));
     expect(stale.ok).toBe(false);
     expect(stale.error?.code).toBe("REVISION_CONFLICT");
 
-    const badIndex = executeHostedKetcherAction(action(surfaceId, "highlight-2", 2, {
-      command: "highlight_atoms",
-      indexes: [3],
-    }));
+    const badIndex = executeHostedKetcherAction(action(
+      surfaceId,
+      stale.continuationToken!,
+      "highlight-2",
+      2,
+      {
+        command: "highlight_atoms",
+        indexes: [3],
+      },
+    ));
     expect(badIndex.ok).toBe(false);
     expect(badIndex.error?.code).toBe("INVALID_ATOM_INDEX");
   });
@@ -96,11 +143,17 @@ describe("hosted Ketcher relay", () => {
     const created = createHostedKetcherSurface();
     expect(created.ok).toBe(true);
     if (!created.ok) return;
-    const result = executeHostedKetcherAction(action(created.surface.surfaceId, "ref-1", 0, {
-      command: "set_structure",
-      format: "mol",
-      contentRef: "artifact://not-configured",
-    }));
+    const result = executeHostedKetcherAction(action(
+      created.surface.surfaceId,
+      created.continuationToken,
+      "ref-1",
+      0,
+      {
+        command: "set_structure",
+        format: "mol",
+        contentRef: "artifact://not-configured",
+      },
+    ));
     expect(result.ok).toBe(false);
     expect(result.error?.code).toBe("TRANSPORT_UNAVAILABLE");
   });
