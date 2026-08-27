@@ -135,12 +135,7 @@ describe("hosted Ketcher widget synchronization", () => {
     expect(mutationTokens).toEqual(["token-initial", "token-model"]);
   });
 
-  test("defers a state-less conflict until one later winner result triggers one resync", async () => {
-    const initial = state("token-initial", 1);
-    const winner = state("token-model-winner", 2);
-    const pending = createHostedKetcherPendingSync();
-    let current = initial;
-    const mutationTokens: string[] = [];
+  test("defers a state-less conflict until one read-only winner result triggers one resync", async () => {
     const conflictToolResult = {
       isError: true,
       structuredContent: {
@@ -155,42 +150,55 @@ describe("hosted Ketcher widget synchronization", () => {
         snapshot: null,
       },
     };
-    const winnerToolResult = {
-      structuredContent: { snapshot: winner.snapshot },
-      _meta: {
-        ketcher: winner.snapshot,
-        ketcherState: {
-          surfaceId: winner.surfaceId,
-          continuationToken: winner.continuationToken,
+    for (const command of ["get_structure", "request_persist"] as const) {
+      const initial = state(`token-initial-${command}`, 2, 3);
+      const winner = state(`token-model-winner-${command}`, 2, 4);
+      winner.snapshot = {
+        ...winner.snapshot!,
+        lastAction: { ok: true, command, actionId: `model-${command}` },
+      } as HostedKetcherState["snapshot"];
+      const pending = createHostedKetcherPendingSync();
+      let current = initial;
+      const mutationTokens: string[] = [];
+      const winnerToolResult = {
+        structuredContent: { snapshot: winner.snapshot },
+        _meta: {
+          ketcher: winner.snapshot,
+          ketcherState: {
+            surfaceId: winner.surfaceId,
+            continuationToken: winner.continuationToken,
+          },
         },
-      },
-    };
+      };
 
-    const sync = () => syncHostedKetcherEditorEdit({
-      currentState: () => current,
-      readCanvas: async () => "manual-canvas-edit",
-      mutate: async (base) => {
-        mutationTokens.push(base.continuationToken);
-        if (mutationTokens.length > 1) return { retry: false };
-        const error = hostedKetcherErrorFromToolResult(conflictToolResult);
-        const successor = hostedKetcherStateFromToolResult(conflictToolResult);
-        expect(error?.code).toBe("REVISION_CONFLICT");
-        expect(successor).toBeNull();
-        pending.defer();
-        return { retry: false, pending: true };
-      },
-    });
+      const sync = () => syncHostedKetcherEditorEdit({
+        currentState: () => current,
+        readCanvas: async () => "manual-canvas-edit",
+        mutate: async (base) => {
+          mutationTokens.push(base.continuationToken);
+          if (mutationTokens.length > 1) return { retry: false };
+          const error = hostedKetcherErrorFromToolResult(conflictToolResult);
+          const successor = hostedKetcherStateFromToolResult(conflictToolResult);
+          expect(error?.code).toBe("REVISION_CONFLICT");
+          expect(successor).toBeNull();
+          pending.defer();
+          return { retry: false, pending: true };
+        },
+      });
 
-    expect(await sync()).toBe("pending");
-    expect(mutationTokens).toEqual(["token-initial"]);
+      expect(await sync()).toBe("pending");
+      expect(mutationTokens).toEqual([initial.continuationToken]);
 
-    const acceptedWinner = hostedKetcherStateFromToolResult(winnerToolResult);
-    expect(acceptedWinner?.continuationToken).toBe("token-model-winner");
-    const previous = current;
-    current = acceptedWinner!;
-    if (pending.takeAfterStateAdvance(previous, current)) await sync();
-    if (pending.takeAfterStateAdvance(previous, current)) await sync();
+      const acceptedWinner = hostedKetcherStateFromToolResult(winnerToolResult);
+      expect(acceptedWinner?.snapshot?.structureRevision).toBe(2);
+      expect(acceptedWinner?.snapshot?.interactionRevision).toBe(4);
+      expect(isOlderHostedKetcherState(acceptedWinner!, current)).toBe(false);
+      const previous = current;
+      current = acceptedWinner!;
+      if (pending.takeAfterStateAdvance(previous, current)) await sync();
+      if (pending.takeAfterStateAdvance(previous, current)) await sync();
 
-    expect(mutationTokens).toEqual(["token-initial", "token-model-winner"]);
+      expect(mutationTokens).toEqual([initial.continuationToken, winner.continuationToken]);
+    }
   });
 });

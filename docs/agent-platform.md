@@ -202,7 +202,10 @@ CAS atomically consumes each token once across serverless instances and retains
 only its digest, claim, and encrypted successor token through the token TTL.
 Hosted mutations fail closed when that CAS is unavailable or unconfigured;
 reference-backed content fails closed until an authenticated artifact relay is
-added.
+added. Every successful hosted action that issues a successor token advances a
+revision: structural actions advance both revisions, while `highlight_atoms`,
+`get_structure`, and `request_persist` advance only `interactionRevision`.
+Idempotent replay reuses the issued snapshot without advancing again.
 
 ## Agent RCA
 

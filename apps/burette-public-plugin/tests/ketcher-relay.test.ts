@@ -121,6 +121,8 @@ describe("hosted Ketcher relay", () => {
     expect(exportResult.ok).toBe(true);
     expect(exportResult.result?.formats).toEqual({ smiles: "CCN" });
     expect(exportResult.result?.ketcherSeed).toEqual(setResult.result?.ketcherSeed);
+    expect(exportResult.snapshot?.structureRevision).toBe(2);
+    expect(exportResult.snapshot?.interactionRevision).toBe(4);
 
     const exportReplay = await executeHostedKetcherAction(action(
       surfaceId,
@@ -134,6 +136,36 @@ describe("hosted Ketcher relay", () => {
       },
     ));
     expect(exportReplay.result).toEqual(exportResult.result);
+    expect(exportReplay.snapshot?.interactionRevision).toBe(4);
+
+    const persistResult = await executeHostedKetcherAction(action(
+      surfaceId,
+      exportResult.continuationToken!,
+      "persist-1",
+      2,
+      {
+        command: "request_persist",
+        format: "smiles",
+        suggestedBasename: "edited-structure",
+      },
+    ));
+    expect(persistResult.ok).toBe(true);
+    expect(persistResult.snapshot?.structureRevision).toBe(2);
+    expect(persistResult.snapshot?.interactionRevision).toBe(5);
+
+    const persistReplay = await executeHostedKetcherAction(action(
+      surfaceId,
+      persistResult.continuationToken!,
+      "persist-1",
+      2,
+      {
+        command: "request_persist",
+        format: "smiles",
+        suggestedBasename: "edited-structure",
+      },
+    ));
+    expect(persistReplay.result).toEqual(persistResult.result);
+    expect(persistReplay.snapshot?.interactionRevision).toBe(5);
 
     const stale = await executeHostedKetcherAction(action(
       surfaceId,

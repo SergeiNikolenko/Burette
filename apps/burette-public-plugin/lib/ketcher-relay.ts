@@ -291,6 +291,7 @@ function exportStructure(surface: RelaySurface, action: HostedKetcherAction) {
     }
     formats[format] = value;
   }
+  surface.state = applyInteractionRevision(surface.state);
   return success(action.command, action.actionId, surface, action.continuationToken, {
     delivery: action.delivery,
     formats,
@@ -299,6 +300,7 @@ function exportStructure(surface: RelaySurface, action: HostedKetcherAction) {
 }
 
 function requestPersist(surface: RelaySurface, action: HostedKetcherAction) {
+  surface.state = applyInteractionRevision(surface.state);
   return success(action.command, action.actionId, surface, action.continuationToken, {
     status: "awaiting_user",
     format: action.format,
