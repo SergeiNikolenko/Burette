@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   registerAppResource,
   registerAppTool,
@@ -18,7 +17,11 @@ import {
   TOOL_ANNOTATIONS,
   viewerToolMeta,
 } from "@/lib/contracts";
-import { KETCHER_AGENT_API_VERSION } from "@burette/ketcher-agent-contract";
+import {
+  KETCHER_AGENT_API_VERSION,
+  KETCHER_AGENT_ERROR_CODES,
+  KETCHER_AGENT_LIMITS,
+} from "@burette/ketcher-agent-contract";
 import { getAppOrigin } from "@/lib/origin";
 import {
   prepareAttachedStructure,
@@ -51,31 +54,90 @@ const CORS_HEADERS = {
   "Access-Control-Expose-Headers": "Mcp-Session-Id, Mcp-Protocol-Version",
 } as const;
 
+const ketcherInputFormats = ["ket", "mol", "rxn", "smiles"] as const;
+const ketcherReferencedInputFormats = ["ket", "mol", "rxn"] as const;
+const ketcherOutputFormats = ["ket", "mol", "rxn", "sdf", "smiles", "reaction_smiles", "cdxml"] as const;
+const ketcherDeliveries = ["inline", "artifact", "download"] as const;
+const ketcherCommands = ["set_structure", "clear_structure", "highlight_atoms", "get_structure", "request_persist"] as const;
+const continuationTokenSchema = z.string().min(1).max(128 * 1024);
+const actionIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u);
+const surfaceIdSchema = z.string().min(1).refine((value) => value.trim().length > 0, "surfaceId is required.");
+
+function utf8BoundedString(maxBytes: number) {
+  return z.string().max(maxBytes).refine(
+    (value) => new TextEncoder().encode(value).byteLength <= maxBytes,
+    `String must not exceed ${maxBytes} UTF-8 bytes.`,
+  );
+}
+
+const inlineStructureContentSchema = utf8BoundedString(KETCHER_AGENT_LIMITS.inlineBytes);
+
 const ketcherStructureSchema = z.object({
-  format: z.enum(["ket", "mol", "rxn", "smiles"]),
-  content: z.string().max(64 * 1024),
+  format: z.enum(ketcherInputFormats),
+  content: inlineStructureContentSchema,
 }).strict();
 
-const ketcherActionInputSchema = z.object({
-  apiVersion: z.literal(KETCHER_AGENT_API_VERSION),
+const ketcherActionBase = {
+  apiVersion: z.literal(KETCHER_AGENT_API_VERSION).optional(),
   type: z.literal("control_ketcher"),
-  command: z.enum(["set_structure", "clear_structure", "highlight_atoms", "get_structure", "request_persist"]),
-  surfaceId: z.string().trim().min(1).max(160),
-  continuationToken: z.string().min(1).max(128 * 1024),
-  actionId: z.string().trim().min(1).max(128).optional(),
+  surfaceId: surfaceIdSchema,
+  continuationToken: continuationTokenSchema,
+  actionId: actionIdSchema,
   expectedRevision: z.number().int().min(0),
-  format: z.string().trim().optional(),
-  content: z.string().max(64 * 1024).optional(),
-  contentRef: z.string().trim().max(1024).optional(),
-  indexes: z.array(z.number().int().nonnegative()).max(256).optional(),
-  formats: z.array(z.string().trim()).max(7).optional(),
-  delivery: z.enum(["inline", "artifact", "download"]).optional(),
-  suggestedBasename: z.string().trim().max(255).optional(),
-}).strict();
+};
+
+const ketcherActionInputSchema = z.union([
+  z.object({
+    ...ketcherActionBase,
+    command: z.literal("set_structure"),
+    format: z.enum(ketcherInputFormats),
+    content: inlineStructureContentSchema,
+  }).strict(),
+  z.object({
+    ...ketcherActionBase,
+    command: z.literal("set_structure"),
+    format: z.enum(ketcherReferencedInputFormats),
+    contentRef: z.string().trim().min(1),
+  }).strict(),
+  z.object({
+    ...ketcherActionBase,
+    command: z.literal("clear_structure"),
+  }).strict(),
+  z.object({
+    ...ketcherActionBase,
+    command: z.literal("highlight_atoms"),
+    indexes: z.array(z.number().int().nonnegative())
+      .max(KETCHER_AGENT_LIMITS.atomIndexes)
+      .refine((indexes) => new Set(indexes).size === indexes.length, "indexes must be unique."),
+  }).strict(),
+  z.object({
+    ...ketcherActionBase,
+    command: z.literal("get_structure"),
+    formats: z.array(z.enum(ketcherOutputFormats)).min(1).max(ketcherOutputFormats.length),
+    delivery: z.enum(ketcherDeliveries).optional(),
+  }).strict(),
+  z.object({
+    ...ketcherActionBase,
+    command: z.literal("request_persist"),
+    format: z.enum(ketcherOutputFormats),
+    suggestedBasename: z.string()
+      .trim()
+      .min(1)
+      .max(KETCHER_AGENT_LIMITS.textChars)
+      .regex(/^[^\\/:*?"<>|\u0000-\u001f]+$/u)
+      .optional(),
+  }).strict(),
+]);
 
 const ketcherErrorSchema = z.object({
-  code: z.string(),
-  message: z.string(),
+  code: z.enum(KETCHER_AGENT_ERROR_CODES),
+  message: z.string().max(KETCHER_AGENT_LIMITS.textChars),
+}).strict();
+
+const ketcherLastActionSchema = z.object({
+  ok: z.literal(true),
+  command: z.enum(ketcherCommands),
+  actionId: actionIdSchema,
 }).strict();
 
 const ketcherSnapshotSchema = z.object({
@@ -91,8 +153,8 @@ const ketcherSnapshotSchema = z.object({
     atomCount: z.number().int().nonnegative(),
     bondCount: z.number().int().nonnegative(),
     componentCount: z.number().int().nonnegative(),
-    smiles: z.string().nullable(),
-    reactionSmiles: z.string().nullable(),
+    smiles: z.string().max(KETCHER_AGENT_LIMITS.smilesChars).nullable(),
+    reactionSmiles: z.string().max(KETCHER_AGENT_LIMITS.reactionSmilesChars).nullable(),
     smilesOmitted: z.boolean(),
     reactionSmilesOmitted: z.boolean(),
   }).strict(),
@@ -102,34 +164,97 @@ const ketcherSnapshotSchema = z.object({
   highlightedAtoms: z.array(z.number().int().nonnegative()).max(256),
   highlightedAtomCount: z.number().int().nonnegative(),
   highlightTruncated: z.boolean(),
-  lastAction: z.unknown().nullable(),
-  capabilities: z.record(z.string(), z.boolean()),
+  lastAction: ketcherLastActionSchema.nullable(),
+  capabilities: z.object({
+    setStructure: z.boolean(),
+    highlightAtoms: z.boolean(),
+    getStructure: z.boolean(),
+    persist: z.boolean(),
+  }).strict(),
 }).strict();
 
 const openKetcherOutputSchema = {
   ok: z.boolean(),
   surfaceId: z.string().optional(),
-  continuationToken: z.string().optional(),
+  continuationToken: continuationTokenSchema.optional(),
   ketcher: ketcherSnapshotSchema.nullable().optional(),
   error: ketcherErrorSchema.optional(),
 };
 
-const hostedKetcherActionResultSchema = z.object({
-  ok: z.boolean(),
-  command: z.string(),
-  actionId: z.string().optional(),
-  continuationToken: z.string().optional(),
-  result: z.record(z.string(), z.unknown()).optional(),
-  snapshot: ketcherSnapshotSchema.optional(),
-  error: ketcherErrorSchema.optional(),
+const ketcherSeedSchema = z.object({
+  surfaceId: surfaceIdSchema,
+  format: z.enum(ketcherInputFormats),
+  content: inlineStructureContentSchema,
 }).strict();
+
+const ketcherExportFormatsSchema = z.object({
+  ket: inlineStructureContentSchema.optional(),
+  mol: inlineStructureContentSchema.optional(),
+  rxn: inlineStructureContentSchema.optional(),
+  sdf: inlineStructureContentSchema.optional(),
+  smiles: inlineStructureContentSchema.optional(),
+  reaction_smiles: inlineStructureContentSchema.optional(),
+  cdxml: inlineStructureContentSchema.optional(),
+}).strict();
+
+const hostedKetcherActionSuccessBase = {
+  ok: z.literal(true),
+  actionId: actionIdSchema,
+  continuationToken: continuationTokenSchema,
+  snapshot: ketcherSnapshotSchema,
+};
+
+const hostedKetcherActionResultSchema = z.union([
+  z.object({
+    ...hostedKetcherActionSuccessBase,
+    command: z.literal("set_structure"),
+    result: z.object({ ketcherSeed: ketcherSeedSchema }).strict(),
+  }).strict(),
+  z.object({
+    ...hostedKetcherActionSuccessBase,
+    command: z.literal("clear_structure"),
+    result: z.object({ ketcherSeed: z.null() }).strict(),
+  }).strict(),
+  z.object({
+    ...hostedKetcherActionSuccessBase,
+    command: z.literal("highlight_atoms"),
+    result: z.object({ ketcherSeed: ketcherSeedSchema.nullable() }).strict(),
+  }).strict(),
+  z.object({
+    ...hostedKetcherActionSuccessBase,
+    command: z.literal("get_structure"),
+    result: z.object({
+      delivery: z.enum(ketcherDeliveries),
+      formats: ketcherExportFormatsSchema,
+      ketcherSeed: ketcherSeedSchema.nullable(),
+    }).strict(),
+  }).strict(),
+  z.object({
+    ...hostedKetcherActionSuccessBase,
+    command: z.literal("request_persist"),
+    result: z.object({
+      status: z.literal("awaiting_user"),
+      format: z.enum(ketcherOutputFormats),
+      suggestedBasename: z.string().min(1).max(KETCHER_AGENT_LIMITS.textChars),
+      ketcherSeed: ketcherSeedSchema.nullable(),
+    }).strict(),
+  }).strict(),
+  z.object({
+    ok: z.literal(false),
+    command: z.enum(ketcherCommands),
+    actionId: actionIdSchema,
+    continuationToken: continuationTokenSchema.optional(),
+    snapshot: ketcherSnapshotSchema.optional(),
+    error: ketcherErrorSchema,
+  }).strict(),
+]);
 
 const controlKetcherOutputSchema = {
   ok: z.boolean(),
-  surfaceId: z.string().optional(),
-  continuationToken: z.string().optional(),
-  result: hostedKetcherActionResultSchema.optional(),
-  snapshot: ketcherSnapshotSchema.nullable().optional(),
+  surfaceId: surfaceIdSchema,
+  continuationToken: continuationTokenSchema.optional(),
+  result: hostedKetcherActionResultSchema,
+  snapshot: ketcherSnapshotSchema.nullable(),
   error: ketcherErrorSchema.optional(),
 };
 
@@ -269,11 +394,8 @@ function createServer(): McpServer {
       ...NOAUTH_TOOL_SECURITY,
       _meta: ketcherToolMeta("Applying Ketcher action…", "Ketcher action complete"),
     },
-    async ({ action: rawAction }) => {
-      const action = rawAction.actionId
-        ? rawAction
-        : { ...rawAction, actionId: `ketcher-${randomUUID()}` };
-      const result = executeHostedKetcherAction(action);
+    async ({ action }) => {
+      const result = await executeHostedKetcherAction(action);
       const hasSeed = result.result && Object.hasOwn(result.result, "ketcherSeed");
       return {
         content: [{ type: "text" as const, text: result.ok ? "Ketcher action complete." : result.error?.message || "Ketcher action failed." }],

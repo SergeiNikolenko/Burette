@@ -72,7 +72,7 @@ function action(
 
 let nextRequestId = 100;
 
-async function rawRouteRequest(
+async function rawRouteMessage(
   method: string,
   params: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
@@ -82,6 +82,14 @@ async function rawRouteRequest(
   expect(messages).toHaveLength(1);
   const message = asRecord(messages[0]);
   expect(message.id).toBe(id);
+  return message;
+}
+
+async function rawRouteRequest(
+  method: string,
+  params: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const message = await rawRouteMessage(method, params);
   expect(message.error).toBeUndefined();
   return asRecord(message.result);
 }
@@ -152,6 +160,55 @@ describe("OpenAI submission review cases", () => {
     } finally {
       await client.close();
     }
+  });
+
+  test("publishes exact bounded Ketcher input and output unions", async () => {
+    const listed = await rawRouteRequest("tools/list", {});
+    const tool = (listed.tools as unknown[])
+      .map(asRecord)
+      .find((candidate) => candidate.name === "control_ketcher");
+    expect(tool).toBeDefined();
+
+    const inputProperties = asRecord(asRecord(tool!.inputSchema).properties);
+    const actionSchema = asRecord(inputProperties.action);
+    const actionVariants = actionSchema.anyOf as unknown[];
+    expect(actionVariants).toHaveLength(6);
+    const variantSchemas = actionVariants.map(asRecord);
+    expect(variantSchemas.map((variant) =>
+      asRecord(asRecord(variant.properties).command).const,
+    )).toEqual([
+      "set_structure",
+      "set_structure",
+      "clear_structure",
+      "highlight_atoms",
+      "get_structure",
+      "request_persist",
+    ]);
+    for (const variant of variantSchemas) expect(variant.additionalProperties).toBe(false);
+
+    const getStructure = variantSchemas.find((variant) =>
+      asRecord(asRecord(variant.properties).command).const === "get_structure"
+    )!;
+    const getFormats = asRecord(asRecord(getStructure.properties).formats);
+    expect(getFormats).toMatchObject({ minItems: 1, maxItems: 7 });
+    expect(asRecord(getFormats.items).enum).toEqual([
+      "ket", "mol", "rxn", "sdf", "smiles", "reaction_smiles", "cdxml",
+    ]);
+
+    const outputProperties = asRecord(asRecord(tool!.outputSchema).properties);
+    const resultVariants = asRecord(outputProperties.result).anyOf as unknown[];
+    expect(resultVariants).toHaveLength(6);
+    for (const variant of resultVariants.map(asRecord)) {
+      expect(variant.additionalProperties).toBe(false);
+    }
+    const exportResult = resultVariants.map(asRecord).find((variant) =>
+      asRecord(asRecord(variant.properties).command).const === "get_structure"
+    )!;
+    const exportFormats = asRecord(asRecord(asRecord(exportResult.properties).result).properties).formats;
+    expect(Object.keys(asRecord(asRecord(exportFormats).properties)).sort()).toEqual([
+      "cdxml", "ket", "mol", "reaction_smiles", "rxn", "sdf", "smiles",
+    ]);
+    expect(asRecord(exportFormats).additionalProperties).toBe(false);
   });
 
   test("executes all five submitted cases with exact schema-valid results", async () => {
@@ -271,22 +328,89 @@ describe("OpenAI submission review cases", () => {
         name: "open_ketcher",
         arguments: { structure: { format: "smiles", content: "CCO" } },
       }) as CallToolResult);
-      await client.callTool({
-        name: "control_ketcher",
-        arguments: action(
-          String(opened.surfaceId),
-          String(opened.continuationToken),
-          "schema-set",
-          "set_structure",
-          1,
-          {
-            format: "smiles",
-            content: "CCN",
-          },
-        ),
-      });
+      const surfaceId = String(opened.surfaceId);
+      let continuationToken = String(opened.continuationToken);
+      const variants = [
+        ["set_structure", 1, { format: "smiles", content: "CCN" }],
+        ["highlight_atoms", 2, { indexes: [0, 2] }],
+        ["get_structure", 2, { formats: ["smiles"], delivery: "inline" }],
+        ["request_persist", 2, { format: "smiles", suggestedBasename: "schema-review" }],
+        ["clear_structure", 2, {}],
+      ] as const;
+      for (const [command, expectedRevision, fields] of variants) {
+        const output = structured(await client.callTool({
+          name: "control_ketcher",
+          arguments: action(
+            surfaceId,
+            continuationToken,
+            `schema-${command}`,
+            command,
+            expectedRevision,
+            fields,
+          ),
+        }) as CallToolResult);
+        expect(output.ok).toBe(true);
+        expect(asRecord(output.result).command).toBe(command);
+        continuationToken = String(output.continuationToken);
+      }
     } finally {
       await client.close();
+    }
+  });
+
+  test("rejects schema/runtime drift and enforces the inline UTF-8 byte limit", async () => {
+    const opened = structured(await rawToolCall("open_ketcher", {
+      structure: { format: "smiles", content: "CCO" },
+    }));
+    const surfaceId = String(opened.surfaceId);
+    const continuationToken = String(opened.continuationToken);
+    const validBoundary = await rawToolCall("control_ketcher", action(
+      surfaceId,
+      continuationToken,
+      "utf8-boundary",
+      "set_structure",
+      1,
+      { format: "smiles", content: "é".repeat(32_768) },
+    ));
+    expect(structured(validBoundary).ok).toBe(true);
+
+    const invalidActions = [
+      action(surfaceId, continuationToken, "foreign-set", "set_structure", 1, {
+        format: "smiles", content: "CCN", indexes: [0],
+      }),
+      action(surfaceId, continuationToken, "foreign-clear", "clear_structure", 1, {
+        format: "mol",
+      }),
+      action(surfaceId, continuationToken, "foreign-highlight", "highlight_atoms", 1, {
+        indexes: [0], formats: ["smiles"],
+      }),
+      action(surfaceId, continuationToken, "duplicate-highlight", "highlight_atoms", 1, {
+        indexes: [0, 0],
+      }),
+      action(surfaceId, continuationToken, "empty-formats", "get_structure", 1, {
+        formats: [],
+      }),
+      action(surfaceId, continuationToken, "bad-format", "get_structure", 1, {
+        formats: ["pdb"],
+      }),
+      action(surfaceId, continuationToken, "foreign-persist", "request_persist", 1, {
+        format: "smiles", delivery: "inline",
+      }),
+      action(surfaceId, continuationToken, "smiles-ref", "set_structure", 1, {
+        format: "smiles", contentRef: "artifact://structure",
+      }),
+      action(surfaceId, continuationToken, "utf8-overflow", "set_structure", 1, {
+        format: "smiles", content: "é".repeat(32_769),
+      }),
+    ];
+    for (const invalidAction of invalidActions) {
+      const message = await rawRouteMessage("tools/call", {
+        name: "control_ketcher",
+        arguments: invalidAction,
+      });
+      const rejected = asRecord(message.result);
+      expect(rejected.isError).toBe(true);
+      expect(asRecord((rejected.content as unknown[])[0]).text).toContain("Input validation error");
     }
   });
 
