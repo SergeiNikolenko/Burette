@@ -62,6 +62,7 @@ function ketcherModelContext(value: unknown): McpUiUpdateModelContextRequest["pa
   const snapshot = record(state?.snapshot);
   const structure = record(snapshot?.structure);
   const surfaceId = bounded(state?.surfaceId, "hosted-ketcher").slice(0, 160);
+  const continuationToken = boundedString(state?.continuationToken, 128 * 1024);
   const structureRevision = boundedNonnegativeInteger(snapshot?.structureRevision);
   const interactionRevision = boundedNonnegativeInteger(snapshot?.interactionRevision);
   const atomCount = boundedNonnegativeInteger(structure?.atomCount);
@@ -79,6 +80,7 @@ function ketcherModelContext(value: unknown): McpUiUpdateModelContextRequest["pa
       burette: {
         ketcher: {
           surfaceId,
+          continuationToken,
           structureRevision,
           interactionRevision,
           structure: { kind, atomCount, bondCount, componentCount },
@@ -97,6 +99,10 @@ function record(value: unknown): Record<string, unknown> | null {
 function bounded(value: unknown, fallback: string) {
   const text = typeof value === "string" ? value.trim() : "";
   return (text || fallback).slice(0, 255);
+}
+
+function boundedString(value: unknown, maxLength: number) {
+  return typeof value === "string" ? value.slice(0, maxLength) : "";
 }
 
 function boundedNonnegativeInteger(value: unknown) {

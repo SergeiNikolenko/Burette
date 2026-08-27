@@ -579,6 +579,7 @@ export function KetcherPage({
     window.__BURETTE_HOSTED_KETCHER_STATE__ = next;
     void window.BuretteHostedAppBridge?.updateKetcher({
       surfaceId: next.surfaceId,
+      continuationToken: next.continuationToken,
       snapshot: next.snapshot,
     });
   }, []);
@@ -680,7 +681,7 @@ export function KetcherPage({
           if (cancelled || hostedKetcherMutationDepthRef.current > 0) return;
           const latest = hostedKetcherStateRef.current;
           if (!latest?.snapshot) return;
-          hostedSeedKeyRef.current = null;
+          hostedSeedKeyRef.current = `${latest.surfaceId}:mol:${molfile}`;
           const actionId = `widget-${Date.now()}-${++hostedKetcherActionIdRef.current}`;
           const result = await window.BuretteHostedAppBridge?.callServerTool("control_ketcher", {
             action: {

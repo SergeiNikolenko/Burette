@@ -347,6 +347,7 @@ describe("viewer resource contract", () => {
     expect(source).toContain("getHostCapabilities()?.updateModelContext");
     expect(source).toContain("await app.updateModelContext(params)");
     expect(source).toContain("updateKetcher");
+    expect(source).toContain("continuationToken");
     expect(source).toContain("ketcherModelContext");
     expect(source).toContain('from "@vercel/analytics"');
     expect(source).toContain("disableAutoTrack: true");
