@@ -26,11 +26,17 @@ interface Window {
     format: "ket" | "mol" | "rxn" | "smiles";
     content: string;
   } | null;
+  __BURETTE_HOSTED_KETCHER_STATE__?: {
+    surfaceId: string;
+    continuationToken: string;
+    snapshot?: unknown;
+  } | null;
   BuretteHostedAppBridge?: {
     ready: Promise<boolean>;
     setSource: (source: unknown) => void;
     updateSelection: (selection: unknown, documentId: string) => Promise<boolean>;
     updateScene: (report: unknown) => Promise<boolean>;
+    updateKetcher: (state: unknown) => Promise<boolean>;
     callServerTool: (
       name: string,
       arguments_?: Record<string, unknown>,

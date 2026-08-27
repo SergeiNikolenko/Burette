@@ -176,7 +176,10 @@ describe("hosted Ketcher widget contract", () => {
     const html = createKetcherWidgetHtml("https://burette.example");
     expect(html).toContain("__BURETTE_HOSTED_KETCHER_WIDGET__");
     expect(html).toContain("__BURETTE_HOSTED_KETCHER_SEED__");
+    expect(html).toContain("__BURETTE_HOSTED_KETCHER_STATE__");
     expect(html).toContain("burette-ketcher-seed");
+    expect(html).toContain("burette-ketcher-state");
+    expect(html).toContain("ketcherState");
     expect(html).toContain("callServerTool");
     expect(html).toContain("/viewer-shell/assets/burette-hosted-shell.js");
     expect(html).not.toContain("contentRef");

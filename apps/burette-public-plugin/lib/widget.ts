@@ -94,6 +94,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
         window.__BURETTE_HOSTED_MCP_WIDGET__ = true;
         window.__BURETTE_HOSTED_KETCHER_WIDGET__ = config.ketcherWidget === true;
         window.__BURETTE_HOSTED_KETCHER_SEED__ = null;
+        window.__BURETTE_HOSTED_KETCHER_STATE__ = null;
         window.__BURETTE_WEB_ASSETS_BASE__ = config.viewerAssets;
         window.__BURETTE_HOSTED_ANALYTICS_ORIGIN__ = config.analyticsOrigin;
         window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
@@ -110,6 +111,25 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
         const acceptKetcherResult = (value) => {
           if (!window.__BURETTE_HOSTED_KETCHER_WIDGET__) return;
           const containers = [value, value?._meta, value?.meta, value?.structuredContent, value?.structuredContent?._meta];
+          const stateSource = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherState"));
+          if (stateSource) {
+            const state = stateSource.ketcherState;
+            if (
+              state
+              && typeof state === "object"
+              && typeof state.surfaceId === "string"
+              && typeof state.continuationToken === "string"
+            ) {
+              const snapshotSource = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "snapshot"));
+              const ketcherSource = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcher"));
+              window.__BURETTE_HOSTED_KETCHER_STATE__ = {
+                surfaceId: state.surfaceId,
+                continuationToken: state.continuationToken,
+                snapshot: snapshotSource?.snapshot ?? ketcherSource?.ketcher ?? null,
+              };
+              window.dispatchEvent(new CustomEvent("burette-ketcher-state"));
+            }
+          }
           const source = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherSeed"));
           if (!source) return;
           const meta = source.ketcherSeed;
@@ -142,6 +162,10 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
           },
           updateScene: (...args) => {
             appQueue.push({ method: "updateScene", args });
+            return appReady;
+          },
+          updateKetcher: (...args) => {
+            appQueue.push({ method: "updateKetcher", args });
             return appReady;
           },
           callServerTool,

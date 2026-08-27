@@ -14,6 +14,7 @@ declare global {
       setSource: (source: unknown) => void;
       updateSelection: (selection: unknown, documentId: string) => Promise<boolean>;
       updateScene: (report: unknown) => Promise<boolean>;
+      updateKetcher: (state: unknown) => Promise<boolean>;
       callServerTool: (
         name: string,
         arguments_?: Record<string, unknown>,
@@ -56,6 +57,53 @@ const ready = appConnected.then((initialized) => (
   initialized && app.getHostCapabilities()?.updateModelContext !== undefined
 ));
 
+function ketcherModelContext(value: unknown): McpUiUpdateModelContextRequest["params"] {
+  const state = record(value);
+  const snapshot = record(state?.snapshot);
+  const structure = record(snapshot?.structure);
+  const surfaceId = bounded(state?.surfaceId, "hosted-ketcher").slice(0, 160);
+  const structureRevision = boundedNonnegativeInteger(snapshot?.structureRevision);
+  const interactionRevision = boundedNonnegativeInteger(snapshot?.interactionRevision);
+  const atomCount = boundedNonnegativeInteger(structure?.atomCount);
+  const bondCount = boundedNonnegativeInteger(structure?.bondCount);
+  const componentCount = boundedNonnegativeInteger(structure?.componentCount);
+  const kind = ["empty", "molecule", "reaction"].includes(String(structure?.kind))
+    ? String(structure?.kind)
+    : "empty";
+  return {
+    content: [{
+      type: "text" as const,
+      text: `Hosted Ketcher surface ${surfaceId} is at structure revision ${structureRevision}.`,
+    }],
+    structuredContent: {
+      burette: {
+        ketcher: {
+          surfaceId,
+          structureRevision,
+          interactionRevision,
+          structure: { kind, atomCount, bondCount, componentCount },
+        },
+      },
+    },
+  };
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function bounded(value: unknown, fallback: string) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return (text || fallback).slice(0, 255);
+}
+
+function boundedNonnegativeInteger(value: unknown) {
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 ? number : 0;
+}
+
 async function updateModelContext(params: McpUiUpdateModelContextRequest["params"]) {
   if (!(await ready) || !connected) return false;
   await app.updateModelContext(params);
@@ -85,6 +133,9 @@ const bridge = {
   updateScene(report: unknown) {
     return updateModelContext(createSceneContext(report, sourceDescriptor));
   },
+  updateKetcher(state: unknown) {
+    return updateModelContext(ketcherModelContext(state));
+  },
   callServerTool,
   sanitizeViewerActions,
   ready,
@@ -95,5 +146,6 @@ for (const call of queuedCalls) {
   else if (call.method === "updateSelection") {
     void bridge.updateSelection(call.args[0], String(call.args[1] || "active-structure"));
   } else if (call.method === "updateScene") void bridge.updateScene(call.args[0]);
+  else if (call.method === "updateKetcher") void bridge.updateKetcher(call.args[0]);
 }
 void appConnected.then((initialized) => window.__BURETTE_HOSTED_APP_READY__?.(initialized));
