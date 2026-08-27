@@ -425,6 +425,19 @@ function hostedKetcherStateFromWindow(): HostedKetcherState | null {
   return hostedKetcherState(window.__BURETTE_HOSTED_KETCHER_STATE__);
 }
 
+function isOlderHostedKetcherState(
+  next: HostedKetcherState,
+  current: HostedKetcherState | null,
+) {
+  if (!current || current.surfaceId !== next.surfaceId) return false;
+  if (current.snapshot && !next.snapshot) return true;
+  if (!current.snapshot || !next.snapshot) return false;
+  if (next.snapshot.structureRevision !== current.snapshot.structureRevision) {
+    return next.snapshot.structureRevision < current.snapshot.structureRevision;
+  }
+  return next.snapshot.interactionRevision < current.snapshot.interactionRevision;
+}
+
 export function KetcherPage({
   tabId,
   location,
@@ -575,6 +588,10 @@ export function KetcherPage({
   }, [liveImportDirty, location.draftKet, location.draftMolfile, location.importRequest, panelMode, state.ketcherDraftMolfile]);
 
   const retainHostedKetcherState = useCallback((next: HostedKetcherState) => {
+    if (isOlderHostedKetcherState(next, hostedKetcherStateRef.current)) {
+      window.__BURETTE_HOSTED_KETCHER_STATE__ = hostedKetcherStateRef.current;
+      return;
+    }
     hostedKetcherStateRef.current = next;
     window.__BURETTE_HOSTED_KETCHER_STATE__ = next;
     void window.BuretteHostedAppBridge?.updateKetcher({
