@@ -93,8 +93,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
         const config = ${bootstrap};
         window.__BURETTE_HOSTED_MCP_WIDGET__ = true;
         window.__BURETTE_HOSTED_KETCHER_WIDGET__ = config.ketcherWidget === true;
-        window.__BURETTE_HOSTED_KETCHER_SEED__ = null;
-        window.__BURETTE_HOSTED_KETCHER_STATE__ = null;
+        window.__BURETTE_HOSTED_KETCHER_RESULTS__ = [];
         window.__BURETTE_WEB_ASSETS_BASE__ = config.viewerAssets;
         window.__BURETTE_HOSTED_ANALYTICS_ORIGIN__ = config.analyticsOrigin;
         window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
@@ -112,46 +111,44 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
           if (!window.__BURETTE_HOSTED_KETCHER_WIDGET__) return;
           const containers = [value, value?._meta, value?.meta, value?.structuredContent, value?.structuredContent?._meta];
           const stateSource = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherState"));
-          if (stateSource) {
-            const state = stateSource.ketcherState;
-            if (
-              state
-              && typeof state === "object"
-              && typeof state.surfaceId === "string"
-              && typeof state.continuationToken === "string"
-            ) {
-              const snapshotSource = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "snapshot"));
-              const ketcherSource = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcher"));
-              window.__BURETTE_HOSTED_KETCHER_STATE__ = {
-                surfaceId: state.surfaceId,
-                continuationToken: state.continuationToken,
-                snapshot: snapshotSource?.snapshot ?? ketcherSource?.ketcher ?? null,
+          const state = stateSource?.ketcherState;
+          if (
+            !state
+            || typeof state !== "object"
+            || typeof state.surfaceId !== "string"
+            || typeof state.continuationToken !== "string"
+          ) return;
+          const snapshotSource = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "snapshot"));
+          const ketcherSource = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcher"));
+          const result = {
+            state: {
+              surfaceId: state.surfaceId,
+              continuationToken: state.continuationToken,
+              snapshot: snapshotSource?.snapshot ?? ketcherSource?.ketcher ?? null,
+            },
+          };
+          const source = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherSeed"));
+          if (source) {
+            const meta = source.ketcherSeed;
+            if (meta == null) result.seed = null;
+            else {
+              if (typeof meta !== "object" || typeof meta.content !== "string") return;
+              if (!["ket", "mol", "rxn", "smiles"].includes(meta.format)) return;
+              if (typeof meta.surfaceId === "string" && meta.surfaceId !== state.surfaceId) return;
+              let content = meta.content.slice(0, 65536);
+              while (new TextEncoder().encode(content).byteLength > 65536) content = content.slice(0, -1);
+              result.seed = {
+                surfaceId: typeof meta.surfaceId === "string" ? meta.surfaceId : undefined,
+                format: meta.format,
+                content,
               };
-              window.dispatchEvent(new CustomEvent("burette-ketcher-state"));
             }
           }
-          const source = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherSeed"));
-          if (!source) return;
-          const meta = source.ketcherSeed;
-          if (meta == null) {
-            window.__BURETTE_HOSTED_KETCHER_SEED__ = {
-              surfaceId: undefined,
-              format: "smiles",
-              content: "",
-            };
-            window.dispatchEvent(new CustomEvent("burette-ketcher-seed"));
-            return;
+          window.__BURETTE_HOSTED_KETCHER_RESULTS__.push(result);
+          if (window.__BURETTE_HOSTED_KETCHER_RESULTS__.length > 16) {
+            window.__BURETTE_HOSTED_KETCHER_RESULTS__.splice(0, window.__BURETTE_HOSTED_KETCHER_RESULTS__.length - 16);
           }
-          if (typeof meta !== "object" || typeof meta.content !== "string") return;
-          if (!["ket", "mol", "rxn", "smiles"].includes(meta.format)) return;
-          let content = meta.content.slice(0, 65536);
-          while (new TextEncoder().encode(content).byteLength > 65536) content = content.slice(0, -1);
-          window.__BURETTE_HOSTED_KETCHER_SEED__ = {
-            surfaceId: typeof meta.surfaceId === "string" ? meta.surfaceId : undefined,
-            format: meta.format,
-            content,
-          };
-          window.dispatchEvent(new CustomEvent("burette-ketcher-seed"));
+          window.dispatchEvent(new CustomEvent("burette-ketcher-result", { detail: result }));
         };
         window.BuretteHostedAppBridge = {
           ready: appReady,

@@ -324,10 +324,10 @@ describe("hosted Ketcher widget contract", () => {
   test("bootstraps the hosted seed bridge without widening the payload path", () => {
     const html = createKetcherWidgetHtml("https://burette.example");
     expect(html).toContain("__BURETTE_HOSTED_KETCHER_WIDGET__");
-    expect(html).toContain("__BURETTE_HOSTED_KETCHER_SEED__");
-    expect(html).toContain("__BURETTE_HOSTED_KETCHER_STATE__");
-    expect(html).toContain("burette-ketcher-seed");
-    expect(html).toContain("burette-ketcher-state");
+    expect(html).toContain("__BURETTE_HOSTED_KETCHER_RESULTS__");
+    expect(html).toContain("burette-ketcher-result");
+    expect(html).not.toContain('new CustomEvent("burette-ketcher-seed")');
+    expect(html).not.toContain('new CustomEvent("burette-ketcher-state")');
     expect(html).toContain("ketcherState");
     expect(html).toContain("callServerTool");
     expect(html).toContain("/viewer-shell/assets/burette-hosted-shell.js");

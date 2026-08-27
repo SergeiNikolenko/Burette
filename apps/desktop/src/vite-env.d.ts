@@ -21,16 +21,7 @@ interface Window {
   __BURETTE_HOSTED_MCP_RESULTS__?: unknown[];
   __BURETTE_HOSTED_MCP_WIDGET__?: boolean;
   __BURETTE_HOSTED_KETCHER_WIDGET__?: boolean;
-  __BURETTE_HOSTED_KETCHER_SEED__?: {
-    surfaceId?: string;
-    format: "ket" | "mol" | "rxn" | "smiles";
-    content: string;
-  } | null;
-  __BURETTE_HOSTED_KETCHER_STATE__?: {
-    surfaceId: string;
-    continuationToken: string;
-    snapshot?: unknown;
-  } | null;
+  __BURETTE_HOSTED_KETCHER_RESULTS__?: unknown[];
   BuretteHostedAppBridge?: {
     ready: Promise<boolean>;
     setSource: (source: unknown) => void;
