@@ -48,7 +48,11 @@ and `highlight_atoms` seed content is delivered to the sandboxed editor through
 tool-result metadata rather than model-visible output. When a user or tool
 explicitly requests `get_structure`, the bounded requested export formats
 remain model-visible in that tool result and may be retained by the OpenAI host
-under the settings described above.
+under the settings described above. Successful Ketcher tool results also
+include a bounded model-visible editor snapshot whose structure summary may
+contain a length-limited SMILES or reaction SMILES, but not the raw KET, MOL,
+or RXN seed payload; the OpenAI host may retain that snapshot under the same
+settings.
 
 When a user selects the xyzrender renderer in the public browser demo, the demo
 sends up to 3 MiB of the selected molecular input to Burette's hosted

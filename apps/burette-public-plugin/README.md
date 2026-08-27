@@ -61,6 +61,9 @@ transcript. Seed content from routine `open_ketcher`, `set_structure`, or
 `highlight_atoms` results follows the same `_meta` path. When a user or tool
 explicitly requests `get_structure`, the bounded requested export formats
 remain model-visible in that tool result.
+Successful Ketcher tool results also include a bounded model-visible editor
+snapshot; its structure summary may contain a length-limited SMILES or reaction
+SMILES, but not the raw KET, MOL, or RXN seed payload.
 
 ## Data and security boundaries
 
@@ -95,7 +98,8 @@ remain model-visible in that tool result.
 - Every string and collection copied into model-visible `structuredContent` is
   bounded by the declared output schema. Original attachment or PDB text and
   routine hosted Ketcher seed content remain in widget-only `_meta`; explicit
-  bounded `get_structure` exports remain model-visible when requested.
+  bounded `get_structure` exports and the snapshot's bounded SMILES summary
+  remain model-visible.
 
 Hosting infrastructure may retain ordinary request metadata in platform logs.
 The hosted widget also sends one anonymized Vercel Web Analytics pageview for

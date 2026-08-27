@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
   acceptHostedKetcherResult,
   createHostedKetcherLineage,
+  createHostedKetcherPendingSync,
+  hostedKetcherErrorFromToolResult,
   hostedKetcherMutationBaseAfterRead,
+  hostedKetcherStateFromToolResult,
   isOlderHostedKetcherState,
   rememberHostedKetcherSuccessor,
   syncHostedKetcherEditorEdit,
@@ -130,5 +133,64 @@ describe("hosted Ketcher widget synchronization", () => {
     expect(outcome).toBe("synced");
     expect(readCount).toBe(2);
     expect(mutationTokens).toEqual(["token-initial", "token-model"]);
+  });
+
+  test("defers a state-less conflict until one later winner result triggers one resync", async () => {
+    const initial = state("token-initial", 1);
+    const winner = state("token-model-winner", 2);
+    const pending = createHostedKetcherPendingSync();
+    let current = initial;
+    const mutationTokens: string[] = [];
+    const conflictToolResult = {
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: { code: "REVISION_CONFLICT", message: "The token was consumed by another action." },
+        result: {
+          ok: false,
+          command: "set_structure",
+          actionId: "widget-conflict",
+          error: { code: "REVISION_CONFLICT", message: "The token was consumed by another action." },
+        },
+        snapshot: null,
+      },
+    };
+    const winnerToolResult = {
+      structuredContent: { snapshot: winner.snapshot },
+      _meta: {
+        ketcher: winner.snapshot,
+        ketcherState: {
+          surfaceId: winner.surfaceId,
+          continuationToken: winner.continuationToken,
+        },
+      },
+    };
+
+    const sync = () => syncHostedKetcherEditorEdit({
+      currentState: () => current,
+      readCanvas: async () => "manual-canvas-edit",
+      mutate: async (base) => {
+        mutationTokens.push(base.continuationToken);
+        if (mutationTokens.length > 1) return { retry: false };
+        const error = hostedKetcherErrorFromToolResult(conflictToolResult);
+        const successor = hostedKetcherStateFromToolResult(conflictToolResult);
+        expect(error?.code).toBe("REVISION_CONFLICT");
+        expect(successor).toBeNull();
+        pending.defer();
+        return { retry: false, pending: true };
+      },
+    });
+
+    expect(await sync()).toBe("pending");
+    expect(mutationTokens).toEqual(["token-initial"]);
+
+    const acceptedWinner = hostedKetcherStateFromToolResult(winnerToolResult);
+    expect(acceptedWinner?.continuationToken).toBe("token-model-winner");
+    const previous = current;
+    current = acceptedWinner!;
+    if (pending.takeAfterStateAdvance(previous, current)) await sync();
+    if (pending.takeAfterStateAdvance(previous, current)) await sync();
+
+    expect(mutationTokens).toEqual(["token-initial", "token-model-winner"]);
   });
 });

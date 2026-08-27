@@ -216,6 +216,8 @@ describe("OpenAI submission review cases", () => {
     const outputSuccess = outputVariants.map(asRecord).find((variant) =>
       asRecord(asRecord(variant.properties).ok).const === true
     )!;
+    const outputSnapshot = asRecord(asRecord(outputSuccess.properties).snapshot);
+    expect(asRecord(asRecord(outputSnapshot.properties).surfaceId).maxLength).toBe(160);
     const resultVariants = asRecord(asRecord(outputSuccess.properties).result).anyOf as unknown[];
     expect(resultVariants).toHaveLength(5);
     for (const variant of resultVariants.map(asRecord)) {

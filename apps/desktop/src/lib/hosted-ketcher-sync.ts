@@ -16,8 +16,66 @@ export type HostedKetcherResult<TSeed> = {
 
 export type HostedKetcherLineage = Map<string, string>;
 
+export type HostedKetcherPendingSync = {
+  defer: () => void;
+  takeAfterStateAdvance: (
+    previous: HostedKetcherState | null,
+    next: HostedKetcherState,
+  ) => boolean;
+};
+
 export function createHostedKetcherLineage(): HostedKetcherLineage {
   return new Map();
+}
+
+export function createHostedKetcherPendingSync(): HostedKetcherPendingSync {
+  let pending = false;
+  return {
+    defer() {
+      pending = true;
+    },
+    takeAfterStateAdvance(previous, next) {
+      if (!pending) return false;
+      if (!previous || previous.surfaceId !== next.surfaceId) {
+        pending = false;
+        return false;
+      }
+      if (previous.continuationToken === next.continuationToken) return false;
+      pending = false;
+      return true;
+    },
+  };
+}
+
+export function hostedKetcherStateFromToolResult(value: unknown): HostedKetcherState | null {
+  const result = unknownRecord(value);
+  const structuredContent = unknownRecord(result?.structuredContent);
+  const metadata = unknownRecord(result?._meta) ?? unknownRecord(result?.meta);
+  const rawState = unknownRecord(metadata?.ketcherState ?? structuredContent?.ketcherState);
+  if (
+    !rawState
+    || typeof rawState.surfaceId !== "string"
+    || typeof rawState.continuationToken !== "string"
+    || !rawState.surfaceId.trim()
+    || !rawState.continuationToken.trim()
+  ) return null;
+  return {
+    surfaceId: rawState.surfaceId.slice(0, 160),
+    continuationToken: rawState.continuationToken,
+    snapshot: (unknownRecord(structuredContent?.snapshot) ?? unknownRecord(metadata?.ketcher)) as KetcherSnapshot | null,
+  };
+}
+
+export function hostedKetcherErrorFromToolResult(value: unknown) {
+  const result = unknownRecord(value);
+  const structuredContent = unknownRecord(result?.structuredContent);
+  const nestedResult = unknownRecord(structuredContent?.result);
+  const error = unknownRecord(structuredContent?.error) ?? unknownRecord(nestedResult?.error);
+  if (result?.isError !== true && structuredContent?.ok !== false) return null;
+  return {
+    code: typeof error?.code === "string" ? error.code : "SYNC_FAILED",
+    message: typeof error?.message === "string" ? error.message : "Hosted Ketcher rejected the editor update.",
+  };
 }
 
 export function rememberHostedKetcherSuccessor(
@@ -96,8 +154,8 @@ export async function syncHostedKetcherEditorEdit({
   mutate: (
     base: HostedKetcherState,
     content: string,
-  ) => Promise<{ retry: boolean; error?: Error }>;
-}): Promise<"synced" | "superseded" | "retry-exhausted"> {
+  ) => Promise<{ retry: boolean; pending?: boolean; error?: Error }>;
+}): Promise<"synced" | "pending" | "superseded" | "retry-exhausted"> {
   for (let attempt = 0; attempt < MAX_HOSTED_KETCHER_EDIT_SYNC_ATTEMPTS; attempt += 1) {
     const beforeRead = currentState();
     if (!beforeRead?.snapshot) return "superseded";
@@ -108,6 +166,7 @@ export async function syncHostedKetcherEditorEdit({
       return "superseded";
     }
     const outcome = await mutate(mutationBase, content);
+    if (outcome.pending) return "pending";
     if (!outcome.retry) {
       if (outcome.error) throw outcome.error;
       return "synced";
@@ -118,6 +177,12 @@ export async function syncHostedKetcherEditorEdit({
     }
   }
   return "retry-exhausted";
+}
+
+function unknownRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function compareHostedKetcherRevisions(

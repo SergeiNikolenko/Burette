@@ -28,6 +28,9 @@ import { isHostedKetcherWidget, takeHostedKetcherResultsFromWindow, type HostedK
 import {
   acceptHostedKetcherResult,
   createHostedKetcherLineage,
+  createHostedKetcherPendingSync,
+  hostedKetcherErrorFromToolResult,
+  hostedKetcherStateFromToolResult,
   syncHostedKetcherEditorEdit,
   type HostedKetcherResult,
   type HostedKetcherState,
@@ -443,29 +446,12 @@ function hostedKetcherResult(value: unknown): HostedKetcherResult<HostedKetcherS
 
 function hostedKetcherResultFromToolResult(value: unknown): HostedKetcherResult<HostedKetcherSeed> | null {
   const result = record(value);
-  const structuredContent = record(result?.structuredContent);
   const metadata = record(result?._meta) ?? record(result?.meta);
-  const state = hostedKetcherState(metadata?.ketcherState ?? structuredContent?.ketcherState);
+  const state = hostedKetcherStateFromToolResult(value);
   if (!state) return null;
-  const nextState = {
-    ...state,
-    snapshot: (record(structuredContent?.snapshot) ?? record(metadata?.ketcher)) as KetcherSnapshot | null,
-  };
-  if (!metadata || !Object.hasOwn(metadata, "ketcherSeed")) return { state: nextState };
-  const seed = parseHostedKetcherSeed(metadata.ketcherSeed, nextState.surfaceId);
-  return seed.ok ? { state: nextState, seed: seed.value } : null;
-}
-
-function hostedKetcherErrorFromResult(value: unknown) {
-  const result = record(value);
-  const structuredContent = record(result?.structuredContent);
-  const nestedResult = record(structuredContent?.result);
-  const error = record(structuredContent?.error) ?? record(nestedResult?.error);
-  if (result?.isError !== true && structuredContent?.ok !== false) return null;
-  return {
-    code: typeof error?.code === "string" ? error.code : "SYNC_FAILED",
-    message: typeof error?.message === "string" ? error.message : "Hosted Ketcher rejected the editor update.",
-  };
+  if (!metadata || !Object.hasOwn(metadata, "ketcherSeed")) return { state };
+  const seed = parseHostedKetcherSeed(metadata.ketcherSeed, state.surfaceId);
+  return seed.ok ? { state, seed: seed.value } : null;
 }
 
 export function KetcherPage({
@@ -491,6 +477,8 @@ export function KetcherPage({
   const hostedSeedKeyRef = useRef<string | null>(null);
   const hostedKetcherStateRef = useRef<HostedKetcherState | null>(null);
   const hostedKetcherLineageRef = useRef(createHostedKetcherLineage());
+  const hostedKetcherPendingSyncRef = useRef(createHostedKetcherPendingSync());
+  const hostedKetcherRequestSyncRef = useRef<(() => void) | null>(null);
   const hostedKetcherMutationDepthRef = useRef(0);
   const hostedKetcherResultQueueRef = useRef<Promise<void>>(Promise.resolve());
   const hostedKetcherSyncQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -651,8 +639,9 @@ export function KetcherPage({
   ) => {
     let accepted = false;
     const pending = hostedKetcherResultQueueRef.current.then(async () => {
+      const previous = hostedKetcherStateRef.current;
       const outcome = await acceptHostedKetcherResult({
-        current: hostedKetcherStateRef.current,
+        current: previous,
         lineage: hostedKetcherLineageRef.current,
         result,
         predecessor,
@@ -667,6 +656,9 @@ export function KetcherPage({
         continuationToken: outcome.state.continuationToken,
         snapshot: outcome.state.snapshot,
       });
+      if (hostedKetcherPendingSyncRef.current.takeAfterStateAdvance(previous, outcome.state)) {
+        window.queueMicrotask(() => hostedKetcherRequestSyncRef.current?.());
+      }
     });
     hostedKetcherResultQueueRef.current = pending.catch(() => {});
     return pending.then(() => accepted);
@@ -759,12 +751,16 @@ export function KetcherPage({
               if (!value) {
                 return { retry: false, error: new Error("The hosted Ketcher bridge is unavailable.") };
               }
-              const syncError = hostedKetcherErrorFromResult(value);
+              const syncError = hostedKetcherErrorFromToolResult(value);
               const result = hostedKetcherResultFromToolResult(value);
               const accepted = result
                 ? await queueHostedKetcherResult(ketcher, result, mutationBase)
                 : false;
               if (syncError) {
+                if (syncError.code === "REVISION_CONFLICT" && !accepted) {
+                  hostedKetcherPendingSyncRef.current.defer();
+                  return { retry: false, pending: true };
+                }
                 return {
                   retry: syncError.code === "REVISION_CONFLICT" && accepted,
                   error: new Error(syncError.message),
@@ -784,14 +780,19 @@ export function KetcherPage({
           if (!cancelled) setStatus("Ketcher sync failed: " + (error instanceof Error ? error.message : String(error)));
         });
     };
-    const scheduleSync = () => {
-      if (hostedKetcherMutationDepthRef.current > 0) return;
+    const requestSync = () => {
       if (timerId !== null) window.clearTimeout(timerId);
       timerId = window.setTimeout(sync, HOSTED_KETCHER_SYNC_DEBOUNCE_MS);
     };
+    const scheduleSync = () => {
+      if (hostedKetcherMutationDepthRef.current > 0) return;
+      requestSync();
+    };
+    hostedKetcherRequestSyncRef.current = requestSync;
     const unsubscribe = ketcher.subscribeChange(scheduleSync);
     return () => {
       cancelled = true;
+      if (hostedKetcherRequestSyncRef.current === requestSync) hostedKetcherRequestSyncRef.current = null;
       if (timerId !== null) window.clearTimeout(timerId);
       unsubscribe();
     };

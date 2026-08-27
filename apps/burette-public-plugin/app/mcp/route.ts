@@ -135,7 +135,7 @@ const ketcherLastActionSchema = z.object({
 
 const ketcherSnapshotSchema = z.object({
   apiVersion: z.literal(KETCHER_AGENT_API_VERSION),
-  surfaceId: z.string(),
+  surfaceId: surfaceIdSchema,
   phase: z.enum(["loading", "ready", "applying", "exporting", "recovering", "error", "disposed"]),
   structureRevision: z.number().int().nonnegative(),
   interactionRevision: z.number().int().nonnegative(),
