@@ -39,7 +39,6 @@ import {
 import {
   createHostedKetcherSurface,
   executeHostedKetcherAction,
-  hostedKetcherSnapshot,
 } from "@/lib/ketcher-relay";
 
 export const runtime = "nodejs";
@@ -55,13 +54,13 @@ const CORS_HEADERS = {
 } as const;
 
 const ketcherInputFormats = ["ket", "mol", "rxn", "smiles"] as const;
-const ketcherReferencedInputFormats = ["ket", "mol", "rxn"] as const;
 const ketcherOutputFormats = ["ket", "mol", "rxn", "sdf", "smiles", "reaction_smiles", "cdxml"] as const;
 const ketcherDeliveries = ["inline", "artifact", "download"] as const;
 const ketcherCommands = ["set_structure", "clear_structure", "highlight_atoms", "get_structure", "request_persist"] as const;
 const continuationTokenSchema = z.string().min(1).max(128 * 1024);
 const actionIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u);
-const surfaceIdSchema = z.string().min(1).refine((value) => value.trim().length > 0, "surfaceId is required.");
+const surfaceIdSchema = z.string().min(1).max(160)
+  .refine((value) => value.trim().length > 0, "surfaceId is required.");
 
 function utf8BoundedString(maxBytes: number) {
   return z.string().max(maxBytes).refine(
@@ -92,12 +91,6 @@ const ketcherActionInputSchema = z.union([
     command: z.literal("set_structure"),
     format: z.enum(ketcherInputFormats),
     content: inlineStructureContentSchema,
-  }).strict(),
-  z.object({
-    ...ketcherActionBase,
-    command: z.literal("set_structure"),
-    format: z.enum(ketcherReferencedInputFormats),
-    contentRef: z.string().trim().min(1),
   }).strict(),
   z.object({
     ...ketcherActionBase,
@@ -173,20 +166,6 @@ const ketcherSnapshotSchema = z.object({
   }).strict(),
 }).strict();
 
-const openKetcherOutputSchema = {
-  ok: z.boolean(),
-  surfaceId: z.string().optional(),
-  continuationToken: continuationTokenSchema.optional(),
-  ketcher: ketcherSnapshotSchema.nullable().optional(),
-  error: ketcherErrorSchema.optional(),
-};
-
-const ketcherSeedSchema = z.object({
-  surfaceId: surfaceIdSchema,
-  format: z.enum(ketcherInputFormats),
-  content: inlineStructureContentSchema,
-}).strict();
-
 const ketcherExportFormatsSchema = z.object({
   ket: inlineStructureContentSchema.optional(),
   mol: inlineStructureContentSchema.optional(),
@@ -204,21 +183,21 @@ const hostedKetcherActionSuccessBase = {
   snapshot: ketcherSnapshotSchema,
 };
 
-const hostedKetcherActionResultSchema = z.union([
+const hostedKetcherActionSuccessSchema = z.union([
   z.object({
     ...hostedKetcherActionSuccessBase,
     command: z.literal("set_structure"),
-    result: z.object({ ketcherSeed: ketcherSeedSchema }).strict(),
+    result: z.object({}).strict(),
   }).strict(),
   z.object({
     ...hostedKetcherActionSuccessBase,
     command: z.literal("clear_structure"),
-    result: z.object({ ketcherSeed: z.null() }).strict(),
+    result: z.object({}).strict(),
   }).strict(),
   z.object({
     ...hostedKetcherActionSuccessBase,
     command: z.literal("highlight_atoms"),
-    result: z.object({ ketcherSeed: ketcherSeedSchema.nullable() }).strict(),
+    result: z.object({}).strict(),
   }).strict(),
   z.object({
     ...hostedKetcherActionSuccessBase,
@@ -226,7 +205,6 @@ const hostedKetcherActionResultSchema = z.union([
     result: z.object({
       delivery: z.enum(ketcherDeliveries),
       formats: ketcherExportFormatsSchema,
-      ketcherSeed: ketcherSeedSchema.nullable(),
     }).strict(),
   }).strict(),
   z.object({
@@ -236,27 +214,87 @@ const hostedKetcherActionResultSchema = z.union([
       status: z.literal("awaiting_user"),
       format: z.enum(ketcherOutputFormats),
       suggestedBasename: z.string().min(1).max(KETCHER_AGENT_LIMITS.textChars),
-      ketcherSeed: ketcherSeedSchema.nullable(),
     }).strict(),
+  }).strict(),
+]);
+
+const hostedKetcherActionFailureSchema = z.object({
+  ok: z.literal(false),
+  command: z.enum(ketcherCommands),
+  actionId: actionIdSchema,
+  continuationToken: continuationTokenSchema.optional(),
+  snapshot: ketcherSnapshotSchema.optional(),
+  error: ketcherErrorSchema,
+}).strict();
+
+const hostedKetcherActionResultSchema = z.union([
+  hostedKetcherActionSuccessSchema,
+  hostedKetcherActionFailureSchema,
+]);
+
+const openKetcherOutputUnionSchema = z.discriminatedUnion("ok", [
+  z.object({
+    ok: z.literal(true),
+    surfaceId: surfaceIdSchema,
+    continuationToken: continuationTokenSchema,
+    ketcher: ketcherSnapshotSchema,
   }).strict(),
   z.object({
     ok: z.literal(false),
-    command: z.enum(ketcherCommands),
-    actionId: actionIdSchema,
-    continuationToken: continuationTokenSchema.optional(),
-    snapshot: ketcherSnapshotSchema.optional(),
     error: ketcherErrorSchema,
   }).strict(),
 ]);
 
-const controlKetcherOutputSchema = {
+const controlKetcherOutputUnionSchema = z.discriminatedUnion("ok", [
+  z.object({
+    ok: z.literal(true),
+    surfaceId: surfaceIdSchema,
+    continuationToken: continuationTokenSchema,
+    result: hostedKetcherActionSuccessSchema,
+    snapshot: ketcherSnapshotSchema,
+  }).strict(),
+  z.object({
+    ok: z.literal(false),
+    surfaceId: surfaceIdSchema,
+    continuationToken: continuationTokenSchema.optional(),
+    result: hostedKetcherActionFailureSchema,
+    snapshot: ketcherSnapshotSchema.nullable(),
+    error: ketcherErrorSchema,
+  }).strict(),
+]);
+
+// The MCP SDK currently lists only object-root output schemas. Keep an object
+// root for runtime validation and publish the same exact union through JSON Schema.
+export const openKetcherOutputSchema = z.object({
+  ok: z.boolean(),
+  surfaceId: surfaceIdSchema.optional(),
+  continuationToken: continuationTokenSchema.optional(),
+  ketcher: ketcherSnapshotSchema.optional(),
+  error: ketcherErrorSchema.optional(),
+}).strict().superRefine((value, context) => {
+  const parsed = openKetcherOutputUnionSchema.safeParse(value);
+  if (!parsed.success) {
+    context.addIssue({ code: "custom", message: "Output must match exactly one open_ketcher result variant." });
+  }
+}).meta({
+  oneOf: (z.toJSONSchema(openKetcherOutputUnionSchema, { io: "output" }) as { oneOf: unknown[] }).oneOf,
+});
+
+export const controlKetcherOutputSchema = z.object({
   ok: z.boolean(),
   surfaceId: surfaceIdSchema,
   continuationToken: continuationTokenSchema.optional(),
   result: hostedKetcherActionResultSchema,
   snapshot: ketcherSnapshotSchema.nullable(),
   error: ketcherErrorSchema.optional(),
-};
+}).strict().superRefine((value, context) => {
+  const parsed = controlKetcherOutputUnionSchema.safeParse(value);
+  if (!parsed.success) {
+    context.addIssue({ code: "custom", message: "Output must match exactly one control_ketcher result variant." });
+  }
+}).meta({
+  oneOf: (z.toJSONSchema(controlKetcherOutputUnionSchema, { io: "output" }) as { oneOf: unknown[] }).oneOf,
+});
 
 function toolError(error: unknown) {
   const message =
@@ -347,7 +385,7 @@ function createServer(): McpServer {
           structuredContent: { ok: false, error: created.error },
         };
       }
-      const snapshot = hostedKetcherSnapshot(created.continuationToken);
+      const snapshot = created.snapshot;
       const seed = created.surface.input
         ? {
             surfaceId: created.surface.surfaceId,
@@ -397,27 +435,50 @@ function createServer(): McpServer {
     async ({ action }) => {
       const result = await executeHostedKetcherAction(action);
       const hasSeed = result.result && Object.hasOwn(result.result, "ketcherSeed");
+      const ketcherSeed = hasSeed ? result.result?.ketcherSeed : undefined;
+      const modelResult = hasSeed
+        ? {
+            ...result,
+            result: Object.fromEntries(
+              Object.entries(result.result!).filter(([key]) => key !== "ketcherSeed"),
+            ),
+          }
+        : result;
+      const meta = {
+        ...(hasSeed ? { ketcherSeed } : {}),
+        ketcher: result.snapshot ?? null,
+        ...(result.continuationToken ? {
+          ketcherState: {
+            surfaceId: action.surfaceId,
+            continuationToken: result.continuationToken,
+          },
+        } : {}),
+      };
+      if (result.ok) {
+        return {
+          content: [{ type: "text" as const, text: "Ketcher action complete." }],
+          structuredContent: {
+            ok: true as const,
+            surfaceId: action.surfaceId,
+            continuationToken: result.continuationToken!,
+            result: modelResult,
+            snapshot: result.snapshot!,
+          },
+          _meta: meta,
+        };
+      }
       return {
-        content: [{ type: "text" as const, text: result.ok ? "Ketcher action complete." : result.error?.message || "Ketcher action failed." }],
-        ...(result.ok ? {} : { isError: true }),
+        content: [{ type: "text" as const, text: result.error?.message || "Ketcher action failed." }],
+        isError: true,
         structuredContent: {
-          ok: result.ok,
+          ok: false as const,
           surfaceId: action.surfaceId,
-          continuationToken: result.continuationToken,
-          result,
+          ...(result.continuationToken ? { continuationToken: result.continuationToken } : {}),
+          result: modelResult,
           snapshot: result.snapshot ?? null,
-          ...(result.error ? { error: result.error } : {}),
+          error: result.error!,
         },
-        _meta: {
-          ...(hasSeed ? { ketcherSeed: result.result?.ketcherSeed } : {}),
-          ketcher: result.snapshot ?? null,
-          ...(result.continuationToken ? {
-            ketcherState: {
-              surfaceId: action.surfaceId,
-              continuationToken: result.continuationToken,
-            },
-          } : {}),
-        },
+        _meta: meta,
       };
     },
   );

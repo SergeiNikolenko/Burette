@@ -4,6 +4,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { KETCHER_AGENT_API_VERSION } from "@burette/ketcher-agent-contract";
+import {
+  controlKetcherOutputSchema,
+  openKetcherOutputSchema,
+} from "../app/mcp/route";
 import { createReviewClient, postRouteMessage } from "./review-route-client";
 
 type SubmissionCase = {
@@ -164,27 +168,30 @@ describe("OpenAI submission review cases", () => {
 
   test("publishes exact bounded Ketcher input and output unions", async () => {
     const listed = await rawRouteRequest("tools/list", {});
-    const tool = (listed.tools as unknown[])
-      .map(asRecord)
-      .find((candidate) => candidate.name === "control_ketcher");
+    const tools = (listed.tools as unknown[]).map(asRecord);
+    const openTool = tools.find((candidate) => candidate.name === "open_ketcher");
+    const tool = tools.find((candidate) => candidate.name === "control_ketcher");
+    expect(openTool).toBeDefined();
     expect(tool).toBeDefined();
 
     const inputProperties = asRecord(asRecord(tool!.inputSchema).properties);
     const actionSchema = asRecord(inputProperties.action);
     const actionVariants = actionSchema.anyOf as unknown[];
-    expect(actionVariants).toHaveLength(6);
+    expect(actionVariants).toHaveLength(5);
     const variantSchemas = actionVariants.map(asRecord);
     expect(variantSchemas.map((variant) =>
       asRecord(asRecord(variant.properties).command).const,
     )).toEqual([
-      "set_structure",
       "set_structure",
       "clear_structure",
       "highlight_atoms",
       "get_structure",
       "request_persist",
     ]);
-    for (const variant of variantSchemas) expect(variant.additionalProperties).toBe(false);
+    for (const variant of variantSchemas) {
+      expect(variant.additionalProperties).toBe(false);
+      expect(asRecord(asRecord(variant.properties).surfaceId).maxLength).toBe(160);
+    }
 
     const getStructure = variantSchemas.find((variant) =>
       asRecord(asRecord(variant.properties).command).const === "get_structure"
@@ -195,9 +202,22 @@ describe("OpenAI submission review cases", () => {
       "ket", "mol", "rxn", "sdf", "smiles", "reaction_smiles", "cdxml",
     ]);
 
-    const outputProperties = asRecord(asRecord(tool!.outputSchema).properties);
-    const resultVariants = asRecord(outputProperties.result).anyOf as unknown[];
-    expect(resultVariants).toHaveLength(6);
+    const openOutputVariants = asRecord(openTool!.outputSchema).oneOf as unknown[];
+    expect(openOutputVariants).toHaveLength(2);
+    for (const variant of openOutputVariants.map(asRecord)) {
+      expect(variant.additionalProperties).toBe(false);
+    }
+
+    const outputVariants = asRecord(tool!.outputSchema).oneOf as unknown[];
+    expect(outputVariants).toHaveLength(2);
+    for (const variant of outputVariants.map(asRecord)) {
+      expect(variant.additionalProperties).toBe(false);
+    }
+    const outputSuccess = outputVariants.map(asRecord).find((variant) =>
+      asRecord(asRecord(variant.properties).ok).const === true
+    )!;
+    const resultVariants = asRecord(asRecord(outputSuccess.properties).result).anyOf as unknown[];
+    expect(resultVariants).toHaveLength(5);
     for (const variant of resultVariants.map(asRecord)) {
       expect(variant.additionalProperties).toBe(false);
     }
@@ -209,6 +229,55 @@ describe("OpenAI submission review cases", () => {
       "cdxml", "ket", "mol", "reaction_smiles", "rxn", "sdf", "smiles",
     ]);
     expect(asRecord(exportFormats).additionalProperties).toBe(false);
+  });
+
+  test("rejects impossible outer Ketcher output combinations", async () => {
+    const openedResult = await rawToolCall("open_ketcher", {
+      structure: { format: "smiles", content: "CCO" },
+    });
+    const opened = asRecord(openedResult.structuredContent);
+    expect(openKetcherOutputSchema.safeParse(opened).success).toBe(true);
+    expect(openKetcherOutputSchema.safeParse({
+      ...opened,
+      error: { code: "TRANSPORT_UNAVAILABLE", message: "Impossible success/error mix." },
+    }).success).toBe(false);
+    expect(openKetcherOutputSchema.safeParse({
+      ok: false,
+      surfaceId: opened.surfaceId,
+      error: { code: "TRANSPORT_UNAVAILABLE", message: "Impossible error/success mix." },
+    }).success).toBe(false);
+
+    const surfaceId = String(opened.surfaceId);
+    const continuationToken = String(opened.continuationToken);
+    const successResult = await rawToolCall("control_ketcher", action(
+      surfaceId,
+      continuationToken,
+      "strict-success",
+      "highlight_atoms",
+      1,
+      { indexes: [0] },
+    ));
+    const success = asRecord(successResult.structuredContent);
+    expect(controlKetcherOutputSchema.safeParse(success).success).toBe(true);
+    expect(controlKetcherOutputSchema.safeParse({
+      ...success,
+      error: { code: "REVISION_CONFLICT", message: "Impossible success/error mix." },
+    }).success).toBe(false);
+    expect(controlKetcherOutputSchema.safeParse({ ...success, snapshot: null }).success).toBe(false);
+
+    const failureResult = await rawToolCall("control_ketcher", action(
+      surfaceId,
+      String(success.continuationToken),
+      "strict-failure",
+      "clear_structure",
+      0,
+    ));
+    const failure = asRecord(failureResult.structuredContent);
+    expect(failureResult.isError).toBe(true);
+    expect(controlKetcherOutputSchema.safeParse(failure).success).toBe(true);
+    expect(controlKetcherOutputSchema.safeParse({ ...failure, ok: true }).success).toBe(false);
+    const { error: _error, ...failureWithoutError } = failure;
+    expect(controlKetcherOutputSchema.safeParse(failureWithoutError).success).toBe(false);
   });
 
   test("executes all five submitted cases with exact schema-valid results", async () => {
@@ -307,6 +376,12 @@ describe("OpenAI submission review cases", () => {
 
     expect(set.ok).toBe(true);
     expect(asRecord(set.snapshot).structureRevision).toBe(2);
+    expect(asRecord(asRecord(set.result).result)).toEqual({});
+    expect(asRecord(asRecord(setResult._meta).ketcherSeed)).toEqual({
+      surfaceId,
+      format: "smiles",
+      content: "CCN",
+    });
 
     expect(asRecord(asRecord(get.result).result).formats).toEqual({ smiles: "CCN" });
 
@@ -364,6 +439,15 @@ describe("OpenAI submission review cases", () => {
     }));
     const surfaceId = String(opened.surfaceId);
     const continuationToken = String(opened.continuationToken);
+    const acceptedSurfaceBoundary = await rawToolCall("control_ketcher", action(
+      "x".repeat(160),
+      continuationToken,
+      "surface-boundary",
+      "clear_structure",
+      1,
+    ));
+    expect(acceptedSurfaceBoundary.isError).toBe(true);
+    expect(asRecord(asRecord(acceptedSurfaceBoundary.structuredContent).error).code).toBe("STALE_TARGET");
     const validBoundary = await rawToolCall("control_ketcher", action(
       surfaceId,
       continuationToken,
@@ -396,9 +480,10 @@ describe("OpenAI submission review cases", () => {
       action(surfaceId, continuationToken, "foreign-persist", "request_persist", 1, {
         format: "smiles", delivery: "inline",
       }),
-      action(surfaceId, continuationToken, "smiles-ref", "set_structure", 1, {
-        format: "smiles", contentRef: "artifact://structure",
+      action(surfaceId, continuationToken, "mol-ref", "set_structure", 1, {
+        format: "mol", contentRef: "artifact://structure",
       }),
+      action("x".repeat(161), continuationToken, "surface-overflow", "clear_structure", 1),
       action(surfaceId, continuationToken, "utf8-overflow", "set_structure", 1, {
         format: "smiles", content: "é".repeat(32_769),
       }),
