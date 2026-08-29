@@ -139,14 +139,20 @@ export function decodeKetcherContinuation(
   }
   const key = tokenKey(options.secret);
   try {
+    const iv = decodeCanonicalBase64Url(rawIv);
+    const tag = decodeCanonicalBase64Url(rawTag);
+    const encrypted = decodeCanonicalBase64Url(rawEncrypted);
+    if (iv.length !== 12 || tag.length !== 16 || encrypted.length === 0) {
+      return tokenFailure("The hosted Ketcher state token is invalid.");
+    }
     const decipher = createDecipheriv(
       "aes-256-gcm",
       key,
-      Buffer.from(rawIv, "base64url"),
+      iv,
     );
-    decipher.setAuthTag(Buffer.from(rawTag, "base64url"));
+    decipher.setAuthTag(tag);
     const compressed = Buffer.concat([
-      decipher.update(Buffer.from(rawEncrypted, "base64url")),
+      decipher.update(encrypted),
       decipher.final(),
     ]);
     const decoded = inflateRawSync(compressed, {
@@ -160,6 +166,14 @@ export function decodeKetcherContinuation(
   } catch {
     return tokenFailure("The hosted Ketcher state token is invalid.");
   }
+}
+
+function decodeCanonicalBase64Url(value: string): Buffer {
+  const decoded = Buffer.from(value, "base64url");
+  if (decoded.toString("base64url") !== value) {
+    throw new Error("Non-canonical base64url value.");
+  }
+  return decoded;
 }
 
 function parsePayload(value: unknown): KetcherContinuationPayload {

@@ -42,8 +42,36 @@ describe("hosted Ketcher continuation token", () => {
     const token = encodeKetcherContinuation(payload(), {
       secret: "test-secret",
     });
-    const tampered = `${token.slice(0, -1)}${token.endsWith("a") ? "b" : "a"}`;
-    expect(decodeKetcherContinuation(tampered, {
+    const parts = token.split(".");
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const lastTagCharacter = parts[2].at(-1) ?? "";
+    const alternateTagCharacter = alphabet[alphabet.indexOf(lastTagCharacter) ^ 1];
+    const alternateEncoding = [
+      parts[0],
+      parts[1],
+      `${parts[2].slice(0, -1)}${alternateTagCharacter}`,
+      parts[3],
+    ].join(".");
+    expect(Buffer.from(parts[2], "base64url")).toEqual(Buffer.from(
+      alternateEncoding.split(".")[2],
+      "base64url",
+    ));
+    expect(decodeKetcherContinuation(alternateEncoding, {
+      secret: "test-secret",
+      now: 1_500,
+    })).toEqual({
+      ok: false,
+      error: { code: "STALE_TARGET", message: "The hosted Ketcher state token is invalid." },
+    });
+    const firstEncryptedCharacter = parts[3][0];
+    const bitFlipped = [
+      parts[0],
+      parts[1],
+      parts[2],
+      `${alphabet[alphabet.indexOf(firstEncryptedCharacter) ^ 1]}${parts[3].slice(1)}`,
+    ].join(".");
+    expect(Buffer.from(parts[3], "base64url")).not.toEqual(Buffer.from(bitFlipped.split(".")[3], "base64url"));
+    expect(decodeKetcherContinuation(bitFlipped, {
       secret: "test-secret",
       now: 1_500,
     })).toEqual({
