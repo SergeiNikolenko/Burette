@@ -27,8 +27,8 @@
 
   | Rule | Match | Window | Limit | Exceeded action |
   | --- | --- | ---: | ---: | --- |
-  | `Rate limit public MCP` | path starts with `/mcp` | `60s` | `120` | deny with `429` |
-  | `Rate limit xyzrender` | path starts with `/api/xyzrender` | `60s` | `10` | deny with `429` |
+  | `Rate limit public MCP` | path starts with `/mcp` | `60s` | `120` | `rate_limit` (HTTP `429`) |
+  | `Rate limit xyzrender` | path starts with `/api/xyzrender` | `60s` | `10` | `rate_limit` (HTTP `429`) |
 
 - [ ] Confirm Vercel system mitigations remain active and Attack Mode remains off for ordinary review traffic. Do not enable browser challenges for `/mcp`, because the ChatGPT MCP client cannot solve them.
 - [ ] `GET https://burette-plugin.vercel.app/` returns `308` with `Location: https://burette-landing.vercel.app/docs/plugin`.
