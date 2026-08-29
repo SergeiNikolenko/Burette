@@ -5,6 +5,7 @@ import {
   openBrowserDevMolstarContextDocument,
 } from "../lib/browser-dev-documents";
 import {
+  isHostedMcpWidget,
   isHostedMolecularViewerWidget,
   isHostedMcpToolResultMessage,
   parseHostedMcpStructureMessage,
@@ -32,8 +33,20 @@ export function useHostedMcpWidget({
   const openSequenceRef = useRef(0);
 
   useEffect(() => {
-    if (!isHostedMolecularViewerWidget()) return undefined;
+    if (!isHostedMcpWidget()) return undefined;
     document.documentElement.dataset.hostedMcpWidget = "true";
+    window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = true;
+
+    const cleanupBridge = () => {
+      window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = false;
+      window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
+      delete document.documentElement.dataset.hostedMcpWidget;
+    };
+
+    if (!isHostedMolecularViewerWidget()) {
+      window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
+      return cleanupBridge;
+    }
 
     const forgetOpenedDocument = () => {
       if (!openedDocumentPathRef.current) return;
@@ -119,8 +132,6 @@ export function useHostedMcpWidget({
 
     window.addEventListener("message", onMessage);
     window.addEventListener("openai:set_globals", onOpenAiGlobals);
-    window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = true;
-
     const queuedResults = window.__BURETTE_HOSTED_MCP_RESULTS__?.splice(0) ?? [];
     const initialStructure = selectHostedMcpInitialStructure(
       queuedResults,
@@ -137,10 +148,8 @@ export function useHostedMcpWidget({
     return () => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("openai:set_globals", onOpenAiGlobals);
-      window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = false;
-      window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
       forgetOpenedDocument();
-      delete document.documentElement.dataset.hostedMcpWidget;
+      cleanupBridge();
     };
   }, [addDocuments, closeAllDocuments, preferences, pushErrorStatus]);
 }
