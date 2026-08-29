@@ -4,7 +4,7 @@
   "app_info": {
     "display_name": "Burette",
     "subtitle": "Preview molecular structures",
-    "description": "Burette opens supported molecular structure attachments and explicit public PDB entries as interactive 3D scenes, with bounded composition summaries for chains, residues, ligands, molecules, and elements.",
+    "description": "Burette opens supported molecular structure attachments and explicit public PDB entries as interactive 3D scenes, and provides an isolated Ketcher editor for bounded small-molecule sketching, highlighting, and export.",
     "category": "EDUCATION"
   },
   "tools": {

@@ -13,7 +13,7 @@
 - [ ] Confirm the deployed Git commit contains the intended submission bundle and no later unreviewed runtime changes.
 - [ ] Confirm production has a stable, non-public `KETCHER_STATE_SECRET`; do not print, copy, screenshot, or rotate it during an active review run.
 - [ ] Confirm the production project has one shared Upstash Redis resource connected through Vercel Marketplace. Record only its resource name and region, never its REST token.
-- [ ] Confirm the Redis resource is on the `free` plan with `primaryRegion=iad1`, `eviction=true`, `autoUpgrade=false`, and `prodPack=false`. Stop before review if the resource can automatically incur charges.
+- [ ] Confirm the Redis resource is on the `free` plan with `primaryRegion=iad1`, `eviction=false`, `autoUpgrade=false`, and `prodPack=false`. Fail closed on capacity instead of evicting active CAS claims, and stop before review if the resource can automatically incur charges.
 - [ ] Treat the current production deployment of that commit as **not verified** until every production preflight item below passes.
 - [ ] Treat the ChatGPT connector rescan as **not verified** until the rescan and fresh-chat checks below pass.
 - [ ] Treat physical-iPhone behavior as **not verified** until the physical-device checks and evidence below pass.
@@ -101,10 +101,14 @@
 - [ ] Use one fresh post-rescan ChatGPT web conversation for the entire flow and record the active card/result after every step.
 - [ ] Ask: “Open a Ketcher editor and seed it with ethanol using the SMILES CCO.” Confirm a visible ethanol sketch, `3` atoms, structure revision `1`, and no user-visible continuation token.
 - [ ] Edit the sketch directly in the visible Ketcher canvas from ethanol (`CCO`) to ethylamine (`CCN`) without asking the agent to replace it.
+- [ ] Confirm that the widget's debounced synchronization of that direct edit completes without repeated destructive-action confirmation prompts. Stop if one visible edit causes a confirmation loop or leaves model state behind the canvas.
 - [ ] Ask: “Read the structure currently visible in Ketcher and return its SMILES.” Confirm the agent returns the manually edited `CCN`, not the original `CCO`, and the visible sketch is not cleared or reverted. **Stop if direct editor changes and agent state diverge.**
 - [ ] Ask: “Replace the current Ketcher structure with acetic acid using SMILES CC(=O)O.” Confirm `control_ketcher` uses the current surface/revision, the visible sketch changes to acetic acid, and structure revision advances exactly once.
 - [ ] Ask: “Highlight atom indexes 0 and 2 in the current Ketcher structure.” Confirm both atoms are visibly highlighted, the structure remains acetic acid, structure revision does not change, and interaction revision advances.
 - [ ] Ask: “Export the current Ketcher structure as inline SMILES.” Confirm the result contains `CC(=O)O` or a chemically equivalent canonical SMILES explicitly identified as equivalent; the editor remains populated and is not reset to an earlier seed.
+- [ ] Ask for an inline MOL export from that SMILES-backed surface. Confirm the tool returns bounded `EXPORT_FAILED` instead of inventing a conversion or fake download, then request SMILES again and confirm the same surface remains usable.
+- [ ] Ask: “Replace the current Ketcher structure with benzene using aromatic SMILES c1ccccc1.” Confirm the visible ring and model-visible snapshot both report `6` atoms and `6` bonds, then highlight atom index `5` and confirm the highlight succeeds without `INVALID_ATOM_INDEX`.
+- [ ] In a separate fresh chat, open a two-atom C–O structure from inline KET whose `root.nodes` references `mol0`. Confirm the widget is nonblank, the model-visible snapshot reports `2` atoms and `1` bond, and highlighting atom index `1` succeeds.
 - [ ] Collapse and expand the result, then reload the ChatGPT conversation and remount the latest Ketcher result. Confirm the acetic-acid structure, highlight state, surface identity, and current revisions rehydrate without a blank editor or `STALE_TARGET`.
 - [ ] Ask: “Clear the current Ketcher sketch.” Confirm the editor becomes empty, structure revision advances exactly once, and the result reports an empty structure without claiming that a source attachment or local file was deleted.
 - [ ] Ask for `get_structure` after clear. Confirm the bounded export is empty, the widget stays mounted, and no previous structure silently reappears.
@@ -116,6 +120,7 @@
 - [ ] Modify one character in a valid continuation token and call a non-destructive `get_structure`. Confirm `isError=true`, structured error code `STALE_TARGET`, a bounded generic “invalid state token” message, no stack trace/secret/token echo, and no mutation of the valid surface.
 - [ ] Keep an unused continuation token for more than `15` minutes, then call non-destructive `get_structure`. Confirm `isError=true`, structured error code `STALE_TARGET`, a bounded generic “state token has expired” message, no token echo, and no mutation.
 - [ ] Pair a valid token from one Ketcher surface with another surface ID. Confirm `STALE_TARGET`, no state disclosure from either surface, and no user-facing internal diagnostic.
+- [ ] Send two different revision-changing actions concurrently with the same unused token through separate MCP clients. Confirm exactly one succeeds, the loser returns `REVISION_CONFLICT` without a successor token or non-null snapshot, an idempotent retry of the winner returns the same successor, and the winner's successor remains usable for the next action.
 - [ ] In a normal ChatGPT recovery turn after an expired state, confirm the assistant asks to reopen Ketcher in plain language and does not reveal token internals.
 
 ## ChatGPT web: molecular scene actions
