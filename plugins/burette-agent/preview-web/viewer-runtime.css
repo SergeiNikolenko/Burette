@@ -3456,41 +3456,46 @@ body.burette-mobile-host .buret-docking-poses button {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-molstar-accent) 45%, transparent);
 }
 .buret-docking-poses-compact {
-  width: 100%;
+  width: min(100%, 320px);
 }
 .buret-docking-poses-compact .buret-docking-pose-main {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 28px auto minmax(70px, 1fr) auto auto;
   width: 100%;
 }
 .buret-docking-poses-compact .buret-docking-pose-main > span,
 .buret-docking-poses-compact .buret-docking-pose-current {
-  grid-column: 1 / -1;
+  grid-column: 3;
   grid-row: 1;
-  width: 100%;
+  min-width: 0;
+  width: auto;
 }
 .buret-docking-poses-compact .buret-docking-pose-animation-button {
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 1;
 }
 .buret-docking-poses-compact .buret-docking-pose-previous {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 1;
 }
 .buret-docking-poses-compact .buret-docking-pose-next {
-  grid-column: 3;
-  grid-row: 2;
+  grid-column: 4;
+  grid-row: 1;
+}
+.buret-docking-poses-compact .buret-docking-pose-all {
+  grid-column: 5;
+  grid-row: 1;
 }
 .buret-docking-poses-compact.buret-molstar-story .buret-docking-pose-main {
-  grid-template-columns: 28px repeat(4, minmax(0, 1fr));
+  grid-template-columns: 28px auto minmax(70px, 1fr) auto auto auto auto;
 }
 .buret-docking-poses-compact.buret-molstar-story [data-buret-story-play] {
-  grid-column: 4;
-  grid-row: 2;
+  grid-column: 6;
+  grid-row: 1;
 }
 .buret-docking-poses-compact.buret-molstar-story .buret-molstar-story-open {
-  grid-column: 5;
-  grid-row: 2;
+  grid-column: 7;
+  grid-row: 1;
 }
 .buret-docking-poses-compact .buret-trajectory-smooth-button {
   grid-area: auto / 1 / auto / -1;
