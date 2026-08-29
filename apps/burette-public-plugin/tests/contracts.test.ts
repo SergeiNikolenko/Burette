@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { z } from "zod/v4";
@@ -114,6 +114,31 @@ describe("submission tool contract", () => {
 });
 
 describe("viewer resource contract", () => {
+  test("packages the hosted Indigo worker and WASM inside the sandbox bundle", () => {
+    const assetsRoot = path.resolve(import.meta.dir, "../public/viewer-shell/assets");
+    const assetNames = readdirSync(assetsRoot);
+    expect(assetNames.some((name) => name.startsWith("indigoWorker-"))).toBe(false);
+    expect(assetNames.some((name) => /^indigo-ketcher-.*\.wasm$/u.test(name))).toBe(false);
+
+    const editorAssetName = assetNames.find((name) => /^ketcher-editor-.*\.js$/u.test(name));
+    expect(editorAssetName).toBeDefined();
+    const editorAsset = readFileSync(path.join(assetsRoot, editorAssetName!), "utf8");
+    const standaloneImport = editorAsset.match(/import\(`\.\/(main-[^`]+\.js)`\)/u)?.[1];
+    expect(standaloneImport).toBeDefined();
+
+    const standaloneAsset = readFileSync(path.join(assetsRoot, standaloneImport!), "utf8");
+    expect(standaloneAsset).toContain("indigoVersion");
+    expect(standaloneAsset).toContain("createObjectURL");
+    expect(standaloneAsset).toContain("new Worker");
+
+    const encodedWorker = standaloneAsset.match(/`([A-Za-z0-9+/=]{100000,})`/u)?.[1];
+    expect(encodedWorker).toBeDefined();
+    const workerSource = Buffer.from(encodedWorker!, "base64").toString("utf8");
+    expect(workerSource).toContain("rollup-plugin-web-worker-loader");
+    expect(workerSource).toContain("indigo.version");
+    expect(workerSource).toContain("AGFzbQE");
+  });
+
   test("allows only the hosted Burette runtime and same-origin assets", () => {
     const meta = createViewerResourceMeta("https://burette.example");
     expect(meta.ui.domain).toBe("https://burette.example");
