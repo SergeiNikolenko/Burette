@@ -56,6 +56,7 @@ const CORS_HEADERS = {
 const ketcherInputFormats = ["ket", "mol", "rxn", "smiles"] as const;
 const ketcherOutputFormats = ["ket", "mol", "rxn", "sdf", "smiles", "reaction_smiles", "cdxml"] as const;
 const ketcherDeliveries = ["inline", "artifact", "download"] as const;
+const hostedExportAvailability = "Request one or more output formats. The hosted relay can return the current representation and convert MOL to a complete SDF record; unavailable conversions or non-inline delivery fail with EXPORT_FAILED.";
 const ketcherCommands = ["set_structure", "clear_structure", "highlight_atoms", "get_structure", "request_persist"] as const;
 const continuationTokenSchema = z.string().min(1).max(128 * 1024);
 const actionIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u);
@@ -106,7 +107,10 @@ const ketcherActionInputSchema = z.union([
   z.object({
     ...ketcherActionBase,
     command: z.literal("get_structure"),
-    formats: z.array(z.enum(ketcherOutputFormats)).min(1).max(ketcherOutputFormats.length),
+    formats: z.array(z.enum(ketcherOutputFormats))
+      .min(1)
+      .max(ketcherOutputFormats.length)
+      .describe(hostedExportAvailability),
     delivery: z.enum(ketcherDeliveries).optional(),
   }).strict(),
   z.object({
@@ -418,7 +422,7 @@ function createServer(): McpServer {
     "control_ketcher",
     {
       title: "Control Ketcher Editor",
-      description: "Apply a bounded, revision-checked action to a hosted Ketcher surface.",
+      description: "Apply a bounded, revision-checked action to a hosted Ketcher surface. Export requests return only the current representation or MOL-to-SDF conversion; unavailable conversions fail explicitly.",
       inputSchema: {
         action: ketcherActionInputSchema,
       },
@@ -434,15 +438,11 @@ function createServer(): McpServer {
     },
     async ({ action }) => {
       const result = await executeHostedKetcherAction(action);
-      const hasSeed = result.result && Object.hasOwn(result.result, "ketcherSeed");
-      const ketcherSeed = hasSeed ? result.result?.ketcherSeed : undefined;
+      const resultDetails = result.result ?? {};
+      const hasSeed = Object.hasOwn(resultDetails, "ketcherSeed");
+      const { ketcherSeed, ...visibleResult } = resultDetails;
       const modelResult = hasSeed
-        ? {
-            ...result,
-            result: Object.fromEntries(
-              Object.entries(result.result!).filter(([key]) => key !== "ketcherSeed"),
-            ),
-          }
+        ? { ...result, result: visibleResult }
         : result;
       const meta = {
         ...(hasSeed ? { ketcherSeed } : {}),

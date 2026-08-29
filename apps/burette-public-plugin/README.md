@@ -60,7 +60,11 @@ is delivered to the viewer but hidden from the model and conversation
 transcript. Seed content from routine `open_ketcher`, `set_structure`, or
 `highlight_atoms` results follows the same `_meta` path. When a user or tool
 explicitly requests `get_structure`, the bounded requested export formats
-remain model-visible in that tool result.
+remain model-visible in that tool result. The hosted relay returns the current
+representation or a complete SDF record derived from MOL; it does not claim
+server-side conversion for other format pairs and returns `EXPORT_FAILED`
+instead. Hosted `get_structure` delivery is inline-only; artifact or download
+delivery requests fail explicitly instead of returning a fake reference.
 Successful Ketcher tool results also include a bounded model-visible editor
 snapshot; its structure summary may contain a length-limited SMILES or reaction
 SMILES, but not the raw KET, MOL, or RXN seed payload.
