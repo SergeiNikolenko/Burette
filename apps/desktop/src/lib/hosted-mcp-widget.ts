@@ -73,6 +73,10 @@ export function isHostedKetcherWidget() {
   return typeof window !== "undefined" && window.__BURETTE_HOSTED_KETCHER_WIDGET__ === true;
 }
 
+export function isHostedMolecularViewerWidget() {
+  return isHostedMcpWidget() && !isHostedKetcherWidget();
+}
+
 export function takeHostedKetcherResultsFromWindow(): unknown[] {
   if (!isHostedKetcherWidget() || !Array.isArray(window.__BURETTE_HOSTED_KETCHER_RESULTS__)) return [];
   return window.__BURETTE_HOSTED_KETCHER_RESULTS__.splice(0);

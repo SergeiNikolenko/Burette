@@ -5,7 +5,7 @@ import {
   openBrowserDevMolstarContextDocument,
 } from "../lib/browser-dev-documents";
 import {
-  isHostedMcpWidget,
+  isHostedMolecularViewerWidget,
   isHostedMcpToolResultMessage,
   parseHostedMcpStructureMessage,
   parseHostedMcpStructureResult,
@@ -32,7 +32,7 @@ export function useHostedMcpWidget({
   const openSequenceRef = useRef(0);
 
   useEffect(() => {
-    if (!isHostedMcpWidget()) return undefined;
+    if (!isHostedMolecularViewerWidget()) return undefined;
     document.documentElement.dataset.hostedMcpWidget = "true";
 
     const forgetOpenedDocument = () => {

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   HOSTED_MCP_WIDGET_MESSAGE_SOURCE,
+  isHostedMolecularViewerWidget,
   isHostedMcpWidgetLocation,
   isHostedMcpToolResultMessage,
   parseHostedMcpStructureMessage,
@@ -19,6 +20,18 @@ import { defaultPreferences } from "../apps/desktop/src/stores/settings-store.ts
 
 assert.equal(isHostedMcpWidgetLocation({ search: "?mcpWidget=1" }), true);
 assert.equal(isHostedMcpWidgetLocation({ search: "?mcpWidget=0" }), false);
+
+const originalWindow = globalThis.window;
+globalThis.window = {
+  __BURETTE_HOSTED_MCP_WIDGET__: true,
+  __BURETTE_HOSTED_KETCHER_WIDGET__: true,
+  location: { search: "" },
+};
+assert.equal(isHostedMolecularViewerWidget(), false);
+globalThis.window.__BURETTE_HOSTED_KETCHER_WIDGET__ = false;
+assert.equal(isHostedMolecularViewerWidget(), true);
+if (originalWindow === undefined) delete globalThis.window;
+else globalThis.window = originalWindow;
 
 const structure = parseHostedMcpStructureMessage({
   source: HOSTED_MCP_WIDGET_MESSAGE_SOURCE,
