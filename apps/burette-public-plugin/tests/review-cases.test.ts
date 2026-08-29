@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { KETCHER_AGENT_API_VERSION } from "@burette/ketcher-agent-contract";
@@ -74,6 +76,17 @@ function action(
   };
 }
 
+function oneAtomMolFixture(symbol: string) {
+  return [
+    "",
+    "  Burette",
+    "",
+    "  1  0  0  0  0  0            999 V2000",
+    `    0.0000    0.0000    0.0000 ${symbol.padEnd(3)} 0  0  0  0  0  0  0  0  0  0  0  0`,
+    "M  END",
+  ].join("\n");
+}
+
 let nextRequestId = 100;
 
 async function rawRouteMessage(
@@ -111,6 +124,7 @@ async function rawToolCall(
 async function callInFreshInstance(
   name: string,
   arguments_: Record<string, unknown>,
+  environment: Record<string, string> = {},
 ): Promise<CallToolResult> {
   const child = spawn(process.execPath, [
     fileURLToPath(new URL("./review-case-instance.ts", import.meta.url)),
@@ -118,6 +132,7 @@ async function callInFreshInstance(
     cwd: fileURLToPath(new URL("..", import.meta.url)),
     env: {
       ...process.env,
+      ...environment,
       BURETTE_REVIEW_TOOL_REQUEST: JSON.stringify({ name, arguments: arguments_ }),
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -133,6 +148,57 @@ async function callInFreshInstance(
   const errorText = Buffer.concat(stderr).toString("utf8");
   expect(exitCode, errorText).toBe(0);
   return JSON.parse(Buffer.concat(stdout).toString("utf8")) as CallToolResult;
+}
+
+async function startSharedRedisRest() {
+  const values = new Map<string, string>();
+  const server = createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      try {
+        const command = JSON.parse(body) as string[];
+        let result: unknown;
+        if (command[0] === "SET" && command.includes("NX")) {
+          if (values.has(command[1])) result = null;
+          else {
+            values.set(command[1], command[2]);
+            result = "OK";
+          }
+        } else if (command[0] === "GET") {
+          result = values.get(command[1]) ?? null;
+        } else if (command[0] === "EVAL") {
+          const key = command[3];
+          if (values.get(key) !== command[4]) result = 0;
+          else {
+            values.set(key, command[5]);
+            result = 1;
+          }
+        } else {
+          throw new Error(`Unexpected Redis command ${command[0]}`);
+        }
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ result }));
+      } catch (error) {
+        response.writeHead(400, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Invalid command" }));
+      }
+    });
+  });
+  const listening = once(server, "listening");
+  server.listen(0, "127.0.0.1");
+  await listening;
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Shared Redis test server did not bind a TCP port.");
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    close: () => new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    }),
+  };
 }
 
 describe("OpenAI submission review cases", () => {
@@ -198,8 +264,12 @@ describe("OpenAI submission review cases", () => {
     )!;
     const getFormats = asRecord(asRecord(getStructure.properties).formats);
     expect(getFormats).toMatchObject({ minItems: 1, maxItems: 7 });
+    expect(String(getFormats.description)).toContain("current representation");
     expect(asRecord(getFormats.items).enum).toEqual([
       "ket", "mol", "rxn", "sdf", "smiles", "reaction_smiles", "cdxml",
+    ]);
+    expect(asRecord(asRecord(getStructure.properties).delivery).enum).toEqual([
+      "inline", "artifact", "download",
     ]);
 
     const openOutputVariants = asRecord(openTool!.outputSchema).oneOf as unknown[];
@@ -397,6 +467,151 @@ describe("OpenAI submission review cases", () => {
     });
   });
 
+  test("keeps aromatic SMILES and referenced KET summaries correct through tools/call", async () => {
+    const benzene = structured(await rawToolCall("open_ketcher", {
+      structure: { format: "smiles", content: "c1ccccc1" },
+    }));
+    expect(asRecord(asRecord(benzene.ketcher).structure)).toMatchObject({
+      kind: "molecule",
+      atomCount: 6,
+      bondCount: 6,
+      componentCount: 1,
+    });
+    const highlighted = structured(await rawToolCall("control_ketcher", action(
+      String(benzene.surfaceId),
+      String(benzene.continuationToken),
+      "review-highlight-aromatic",
+      "highlight_atoms",
+      1,
+      { indexes: [5] },
+    )));
+    expect(asRecord(highlighted.snapshot).highlightedAtoms).toEqual([5]);
+
+    const ket = structured(await rawToolCall("open_ketcher", {
+      structure: {
+        format: "ket",
+        content: JSON.stringify({
+          root: { nodes: [{ $ref: "mol0" }] },
+          mol0: {
+            type: "molecule",
+            atoms: [
+              { label: "C", location: [0, 0, 0] },
+              { label: "O", location: [1.5, 0, 0] },
+            ],
+            bonds: [{ type: 1, atoms: [0, 1] }],
+          },
+        }),
+      },
+    }));
+    expect(asRecord(asRecord(ket.ketcher).structure)).toMatchObject({
+      kind: "molecule",
+      atomCount: 2,
+      bondCount: 1,
+      componentCount: 1,
+    });
+
+    const smiles = structured(await rawToolCall("open_ketcher", {
+      structure: { format: "smiles", content: "CCO" },
+    }));
+    const unavailableConversion = await rawToolCall("control_ketcher", action(
+      String(smiles.surfaceId),
+      String(smiles.continuationToken),
+      "review-unavailable-conversion",
+      "get_structure",
+      1,
+      { formats: ["mol"], delivery: "inline" },
+    ));
+    expect(unavailableConversion.isError).toBe(true);
+    expect(asRecord(asRecord(unavailableConversion.structuredContent).error).code).toBe("EXPORT_FAILED");
+    for (const delivery of ["artifact", "download"]) {
+      const unavailableDelivery = await rawToolCall("control_ketcher", action(
+        String(smiles.surfaceId),
+        String(smiles.continuationToken),
+        `review-unavailable-${delivery}`,
+        "get_structure",
+        1,
+        { formats: ["smiles"], delivery },
+      ));
+      expect(unavailableDelivery.isError).toBe(true);
+      expect(asRecord(asRecord(unavailableDelivery.structuredContent).error).code).toBe("EXPORT_FAILED");
+      expect(asRecord(unavailableDelivery.structuredContent).continuationToken).toBe(smiles.continuationToken);
+    }
+    const recoveredSmiles = structured(await rawToolCall("control_ketcher", action(
+      String(smiles.surfaceId),
+      String(smiles.continuationToken),
+      "review-smiles-after-failure",
+      "get_structure",
+      1,
+      { formats: ["smiles"], delivery: "inline" },
+    )));
+    expect(asRecord(asRecord(recoveredSmiles.result).result).formats).toEqual({ smiles: "CCO" });
+
+    const mol = [
+      "CO",
+      "  Burette",
+      "",
+      "  2  1  0  0  0  0            999 V2000",
+      "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0",
+      "    1.5000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0",
+      "  1  2  1  0  0  0  0",
+      "M  END",
+    ].join("\n");
+    const molSurface = structured(await rawToolCall("open_ketcher", {
+      structure: { format: "mol", content: mol },
+    }));
+    const sdf = structured(await rawToolCall("control_ketcher", action(
+      String(molSurface.surfaceId),
+      String(molSurface.continuationToken),
+      "review-mol-to-sdf",
+      "get_structure",
+      1,
+      { formats: ["sdf"], delivery: "inline" },
+    )));
+    expect(asRecord(asRecord(sdf.result).result).formats).toEqual({ sdf: `${mol}\n$$$$\n` });
+
+    const rxn = ["$RXN", "", "", "", "  1  1", "$MOL", oneAtomMolFixture("C"), "$MOL", oneAtomMolFixture("O")].join("\n");
+    const rxnSurface = structured(await rawToolCall("open_ketcher", {
+      structure: { format: "rxn", content: rxn },
+    }));
+    expect(asRecord(rxnSurface.ketcher).structure).toMatchObject({ kind: "reaction" });
+    expect(asRecord(rxnSurface.ketcher).structureRevision).toBe(1);
+    const exportedRxn = structured(await rawToolCall("control_ketcher", action(
+      String(rxnSurface.surfaceId),
+      String(rxnSurface.continuationToken),
+      "review-rxn-round-trip",
+      "get_structure",
+      1,
+      { formats: ["rxn"], delivery: "inline" },
+    )));
+    expect(asRecord(asRecord(exportedRxn.result).result).formats).toEqual({ rxn });
+
+    const molLines = mol.split("\n");
+    molLines[2] = "x".repeat(64 * 1024 - new TextEncoder().encode(mol).byteLength);
+    const boundaryMol = molLines.join("\n");
+    expect(new TextEncoder().encode(boundaryMol).byteLength).toBe(64 * 1024);
+    const boundarySurface = structured(await rawToolCall("open_ketcher", {
+      structure: { format: "mol", content: boundaryMol },
+    }));
+    const oversizedSdf = await rawToolCall("control_ketcher", action(
+      String(boundarySurface.surfaceId),
+      String(boundarySurface.continuationToken),
+      "review-oversized-sdf",
+      "get_structure",
+      1,
+      { formats: ["sdf"], delivery: "inline" },
+    ));
+    expect(oversizedSdf.isError).toBe(true);
+    expect(asRecord(asRecord(oversizedSdf.structuredContent).error).code).toBe("PAYLOAD_TOO_LARGE");
+    const clearedBoundary = structured(await rawToolCall("control_ketcher", action(
+      String(boundarySurface.surfaceId),
+      String(boundarySurface.continuationToken),
+      "review-clear-after-oversized-sdf",
+      "clear_structure",
+      1,
+    )));
+    expect(asRecord(clearedBoundary.snapshot).structure).toMatchObject({ kind: "empty", atomCount: 0 });
+  });
+
   test("keeps every Ketcher action conformant with its advertised output schema", async () => {
     const client = await createReviewClient();
     try {
@@ -435,6 +650,98 @@ describe("OpenAI submission review cases", () => {
     }
   });
 
+  test("rejects invalid chemical content through tools/call without consuming valid state", async () => {
+    for (const structure of [
+      { format: "smiles", content: "foo" },
+      { format: "smiles", content: "é" },
+      { format: "smiles", content: "[" },
+      { format: "smiles", content: "C(" },
+      { format: "smiles", content: "C()" },
+      { format: "smiles", content: "C==C" },
+      { format: "smiles", content: "C##C" },
+      { format: "smiles", content: "C1.C1" },
+      { format: "ket", content: "{}" },
+      { format: "ket", content: JSON.stringify({ root: { nodes: [{ $ref: "missing" }] } }) },
+      { format: "ket", content: JSON.stringify({ root: { nodes: [{ $ref: "__proto__" }] } }) },
+      {
+        format: "ket",
+        content: JSON.stringify({
+          root: { nodes: [{ $ref: "mol0" }] },
+          mol0: { type: "molecule", atoms: "invalid" },
+        }),
+      },
+      { format: "ket", content: JSON.stringify({ root: { nodes: [{ type: "unknown" }] } }) },
+      {
+        format: "ket",
+        content: JSON.stringify({
+          root: { nodes: [{ $ref: "mol0" }] },
+          mol0: { type: "molecule", atoms: [{ label: "C" }], bonds: [{ atoms: [0, 0] }] },
+        }),
+      },
+      { format: "mol", content: "invalid mol" },
+      { format: "mol", content: "valid-looking\nJUNKM  END" },
+      { format: "mol", content: "valid-looking\nM  END\nJUNK\nM  END" },
+      { format: "mol", content: oneAtomMolFixture("C").replace("\nM  END", "\nJUNK\nM  END") },
+      { format: "mol", content: oneAtomMolFixture("C").replace("\nM  END", "\nM  JUNK\nM  END") },
+      { format: "rxn", content: "$RXN\n\n\n\n  0  0\nJUNK" },
+      { format: "rxn", content: "$RXN\n\n\n\n  1  0\n$MOL\nvalid-looking\nM  END\nJUNK\nM  END" },
+    ]) {
+      const rejected = await rawToolCall("open_ketcher", { structure });
+      expect(rejected.isError).toBe(true);
+      expect(asRecord(asRecord(rejected.structuredContent).error).code).toBe("INVALID_STRUCTURE");
+    }
+
+    const opened = structured(await rawToolCall("open_ketcher", {
+      structure: { format: "smiles", content: "CCO" },
+    }));
+    const invalidEdit = await rawToolCall("control_ketcher", action(
+      String(opened.surfaceId),
+      String(opened.continuationToken),
+      "route-invalid-edit",
+      "set_structure",
+      1,
+      { format: "smiles", content: "foo" },
+    ));
+    expect(invalidEdit.isError).toBe(true);
+    expect(asRecord(asRecord(invalidEdit.structuredContent).error).code).toBe("INVALID_STRUCTURE");
+    const recovered = structured(await rawToolCall("control_ketcher", action(
+      String(opened.surfaceId),
+      String(opened.continuationToken),
+      "route-after-invalid-edit",
+      "highlight_atoms",
+      1,
+      { indexes: [2] },
+    )));
+    expect(asRecord(recovered.snapshot).highlightedAtoms).toEqual([2]);
+
+    for (const [format, content] of [
+      ["mol", "invalid mol"],
+      ["rxn", "$RXN\n\n\n\n  0  0\nJUNK"],
+    ] as const) {
+      const recoverySurface = structured(await rawToolCall("open_ketcher", {
+        structure: { format: "smiles", content: "CCO" },
+      }));
+      const rejectedReplacement = await rawToolCall("control_ketcher", action(
+        String(recoverySurface.surfaceId),
+        String(recoverySurface.continuationToken),
+        `route-invalid-${format}`,
+        "set_structure",
+        1,
+        { format, content },
+      ));
+      expect(rejectedReplacement.isError).toBe(true);
+      expect(asRecord(asRecord(rejectedReplacement.structuredContent).error).code).toBe("INVALID_STRUCTURE");
+      const cleared = structured(await rawToolCall("control_ketcher", action(
+        String(recoverySurface.surfaceId),
+        String(recoverySurface.continuationToken),
+        `route-recover-${format}`,
+        "clear_structure",
+        1,
+      )));
+      expect(asRecord(cleared.snapshot).structure).toMatchObject({ kind: "empty", atomCount: 0 });
+    }
+  });
+
   test("rejects schema/runtime drift and enforces the inline UTF-8 byte limit", async () => {
     const opened = structured(await rawToolCall("open_ketcher", {
       structure: { format: "smiles", content: "CCO" },
@@ -450,13 +757,22 @@ describe("OpenAI submission review cases", () => {
     ));
     expect(acceptedSurfaceBoundary.isError).toBe(true);
     expect(asRecord(asRecord(acceptedSurfaceBoundary.structuredContent).error).code).toBe("STALE_TARGET");
+    const ketPayloadAtByteLength = (byteLength: number) => {
+      const prefix = '{"root":{"nodes":[]},"note":"';
+      const suffix = '"}';
+      const fixedBytes = new TextEncoder().encode(prefix + suffix).byteLength;
+      const remaining = byteLength - fixedBytes;
+      return `${prefix}${"é".repeat(Math.floor(remaining / 2))}${remaining % 2 ? "x" : ""}${suffix}`;
+    };
+    const validBoundaryContent = ketPayloadAtByteLength(64 * 1024);
+    expect(new TextEncoder().encode(validBoundaryContent).byteLength).toBe(64 * 1024);
     const validBoundary = await rawToolCall("control_ketcher", action(
       surfaceId,
       continuationToken,
       "utf8-boundary",
       "set_structure",
       1,
-      { format: "smiles", content: "é".repeat(32_768) },
+      { format: "ket", content: validBoundaryContent },
     ));
     expect(structured(validBoundary).ok).toBe(true);
 
@@ -487,7 +803,7 @@ describe("OpenAI submission review cases", () => {
       }),
       action("x".repeat(161), continuationToken, "surface-overflow", "clear_structure", 1),
       action(surfaceId, continuationToken, "utf8-overflow", "set_structure", 1, {
-        format: "smiles", content: "é".repeat(32_769),
+        format: "ket", content: ketPayloadAtByteLength(64 * 1024 + 1),
       }),
     ];
     for (const invalidAction of invalidActions) {
@@ -501,7 +817,7 @@ describe("OpenAI submission review cases", () => {
     }
   });
 
-  test("keeps one Ketcher surface available across concurrent cold instances", async () => {
+  test("carries one Ketcher surface through independent cold instances", async () => {
     const opened = structured(await callInFreshInstance("open_ketcher", {
       structure: { format: "smiles", content: "CCO" },
     }));
@@ -509,22 +825,89 @@ describe("OpenAI submission review cases", () => {
     expect(opened.continuationToken).toBeString();
     const continuationToken = String(opened.continuationToken);
 
-    const results = await Promise.all(Array.from({ length: 4 }, (_, index) =>
-      callInFreshInstance("control_ketcher", action(
+    const output = structured(await callInFreshInstance("control_ketcher", action(
+      surfaceId,
+      continuationToken,
+      "cold-get",
+      "get_structure",
+      1,
+      { formats: ["smiles"], delivery: "inline" },
+    )));
+    expect(output.ok).toBe(true);
+    expect(output.continuationToken).toBeString();
+    expect(asRecord(asRecord(output.result).result).formats).toEqual({ smiles: "CCO" });
+  }, 30_000);
+
+  test("serializes concurrent cold instances through one shared Redis REST CAS", async () => {
+    const redis = await startSharedRedisRest();
+    const environment = {
+      NODE_ENV: "production",
+      PUBLIC_APP_ORIGIN: "https://burette-plugin.vercel.app",
+      KETCHER_STATE_SECRET: "shared-cas-review-secret",
+      KETCHER_CAS_REDIS_REST_URL: "https://redis.example",
+      KETCHER_CAS_REDIS_REST_TOKEN: "test-token",
+      KV_REST_API_URL: "",
+      KV_REST_API_TOKEN: "",
+      BURETTE_REVIEW_REDIS_PROXY_URL: redis.url,
+    };
+    try {
+      const opened = structured(await callInFreshInstance("open_ketcher", {
+        structure: { format: "smiles", content: "CCO" },
+      }, environment));
+      const surfaceId = String(opened.surfaceId);
+      const continuationToken = String(opened.continuationToken);
+      const conflicting = await Promise.all([
+        ["cold-conflict-1", "CCN"],
+        ["cold-conflict-2", "CCC"],
+        ["cold-conflict-3", "CCCl"],
+        ["cold-conflict-4", "CCBr"],
+      ].map(([actionId, content]) => callInFreshInstance("control_ketcher", action(
         surfaceId,
         continuationToken,
-        `cold-get-${index}`,
-        "get_structure",
+        actionId,
+        "set_structure",
         1,
-        { formats: ["smiles"], delivery: "inline" },
-      )),
-    ));
+        { format: "smiles", content },
+      ), environment)));
+      const conflictingOutputs = conflicting.map((result) => asRecord(result.structuredContent));
+      const winners = conflictingOutputs.filter((output) => output.ok === true);
+      const losers = conflictingOutputs.filter((output) => output.ok === false);
+      expect(winners).toHaveLength(1);
+      expect(losers).toHaveLength(3);
+      for (const loser of losers) {
+        expect(asRecord(loser.error).code).toBe("REVISION_CONFLICT");
+        expect(loser.continuationToken).toBeUndefined();
+        expect(loser.snapshot).toBeNull();
+      }
 
-    for (const result of results) {
-      const output = structured(result);
-      expect(output.ok).toBe(true);
-      expect(output.continuationToken).toBeString();
-      expect(asRecord(asRecord(output.result).result).formats).toEqual({ smiles: "CCO" });
+      const replayOpened = structured(await callInFreshInstance("open_ketcher", {
+        structure: { format: "smiles", content: "CCO" },
+      }, environment));
+      const replayAction = action(
+        String(replayOpened.surfaceId),
+        String(replayOpened.continuationToken),
+        "cold-replay",
+        "set_structure",
+        1,
+        { format: "smiles", content: "CCN" },
+      );
+      const replayResults = await Promise.all(Array.from({ length: 4 }, () =>
+        callInFreshInstance("control_ketcher", replayAction, environment)));
+      const replayOutputs = replayResults.map(structured);
+      expect(new Set(replayOutputs.map((output) => output.continuationToken)).size).toBe(1);
+      const successorToken = String(replayOutputs[0].continuationToken);
+      const successor = structured(await callInFreshInstance("control_ketcher", action(
+        String(replayOpened.surfaceId),
+        successorToken,
+        "cold-successor-get",
+        "get_structure",
+        2,
+        { formats: ["smiles"], delivery: "inline" },
+      ), environment));
+      expect(asRecord(successor.snapshot).structureRevision).toBe(2);
+      expect(asRecord(asRecord(successor.result).result).formats).toEqual({ smiles: "CCN" });
+    } finally {
+      await redis.close();
     }
   }, 30_000);
 });

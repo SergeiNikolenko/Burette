@@ -1,5 +1,15 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { createReviewClient } from "./review-route-client";
+
+const redisProxyUrl = process.env.BURETTE_REVIEW_REDIS_PROXY_URL;
+if (redisProxyUrl) {
+  const nativeFetch = globalThis.fetch;
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+    return nativeFetch(url.origin === "https://redis.example" ? redisProxyUrl : input, init);
+  }) as typeof fetch;
+}
+
+const { createReviewClient } = await import("./review-route-client");
 
 const request = JSON.parse(process.env.BURETTE_REVIEW_TOOL_REQUEST ?? "null") as {
   name?: string;
