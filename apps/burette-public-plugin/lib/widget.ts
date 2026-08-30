@@ -115,7 +115,21 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
         });
         const acceptKetcherResult = (value) => {
           if (!window.__BURETTE_HOSTED_KETCHER_WIDGET__) return;
-          const containers = [value, value?._meta, value?.meta, value?.structuredContent, value?.structuredContent?._meta];
+          const baseContainers = [value, value?._meta, value?.meta, value?.structuredContent, value?.structuredContent?._meta];
+          const containers = [...baseContainers];
+          for (const candidate of baseContainers) {
+            if (!candidate || typeof candidate !== "object") continue;
+            containers.push(candidate._meta);
+            for (const key of ["mcp_tool_result", "call_tool_result"]) {
+              const envelope = candidate[key];
+              if (!envelope || typeof envelope !== "object") continue;
+              const nestedResult = envelope.result;
+              containers.push(envelope, envelope._meta, envelope.structuredContent);
+              if (nestedResult && typeof nestedResult === "object") {
+                containers.push(nestedResult, nestedResult._meta, nestedResult.structuredContent);
+              }
+            }
+          }
           const stateSource = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherState"));
           const state = stateSource?.ketcherState;
           if (
@@ -187,9 +201,8 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
             window.__BURETTE_HOSTED_MCP_RESULTS__.push(message.params);
           }
         }, { passive: true });
-        window.addEventListener("openai:set_globals", (event) => {
-          const globals = event.detail?.globals;
-          if (!globals || window.__BURETTE_HOSTED_MCP_BRIDGE_READY__) return;
+        const acceptOpenAiGlobals = (globals) => {
+          if (!globals) return;
           if (Object.hasOwn(globals, "toolOutput")) {
             window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolOutput = globals.toolOutput;
           }
@@ -200,11 +213,17 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
             structuredContent: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolOutput,
             _meta: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
           });
-          window.__BURETTE_HOSTED_MCP_RESULTS__.push({
-            structuredContent: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolOutput,
-            _meta: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
-          });
+          if (!window.__BURETTE_HOSTED_MCP_BRIDGE_READY__) {
+            window.__BURETTE_HOSTED_MCP_RESULTS__.push({
+              structuredContent: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolOutput,
+              _meta: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
+            });
+          }
+        };
+        window.addEventListener("openai:set_globals", (event) => {
+          acceptOpenAiGlobals(event.detail?.globals);
         }, { passive: true });
+        acceptOpenAiGlobals(window.openai);
       })();
     </script>
     <script type="module" crossorigin src="${appBridgeScript}"></script>

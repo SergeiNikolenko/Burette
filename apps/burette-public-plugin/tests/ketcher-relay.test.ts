@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import vm from "node:vm";
 import * as OCL from "openchemlib";
 import { KETCHER_AGENT_API_VERSION } from "@burette/ketcher-agent-contract";
 import { ketcherToolMeta } from "../lib/contracts";
@@ -594,5 +595,93 @@ describe("hosted Ketcher widget contract", () => {
     expect(html).toContain("callServerTool");
     expect(html).toContain("/viewer-shell/assets/burette-hosted-shell.js");
     expect(html).not.toContain("contentRef");
+  });
+
+  test("accepts Ketcher seed metadata from the MCP Apps result envelope", () => {
+    const html = createKetcherWidgetHtml("https://burette.example");
+    const source = html.match(/<script>\s*([\s\S]*?)<\/script>/u)?.[1];
+    expect(source).toBeTruthy();
+
+    const toolOutput = {
+      ok: true,
+      ketcher: { structureRevision: 0, interactionRevision: 0 },
+    };
+    const toolResponseMetadata = {
+      mcp_tool_result: {
+        result: {
+          _meta: {
+            ketcherSeed: {
+              surfaceId: "surface-1",
+              format: "smiles",
+              content: "c1ccccc1",
+            },
+            ketcherState: {
+              surfaceId: "surface-1",
+              continuationToken: "token-1",
+            },
+          },
+        },
+      },
+    };
+    const expectedResult = {
+      state: {
+        surfaceId: "surface-1",
+        continuationToken: "token-1",
+        snapshot: { structureRevision: 0, interactionRevision: 0 },
+      },
+      seed: {
+        surfaceId: "surface-1",
+        format: "smiles",
+        content: "c1ccccc1",
+      },
+    };
+    const createWindow = (openai?: Record<string, unknown>) => {
+      const listeners = new Map<string, Array<(event: unknown) => void>>();
+      const parent = {};
+      const window = {
+        parent,
+        openai,
+        addEventListener(type: string, listener: (event: unknown) => void) {
+          const handlers = listeners.get(type) || [];
+          handlers.push(listener);
+          listeners.set(type, handlers);
+        },
+        dispatchEvent() {},
+        dispatchOpenAI(globals: Record<string, unknown>) {
+          for (const listener of listeners.get("openai:set_globals") || []) {
+            listener({ detail: { globals } });
+          }
+        },
+        dispatchMessage(data: unknown) {
+          for (const listener of listeners.get("message") || []) {
+            listener({ source: parent, data });
+          }
+        },
+      } as Record<string, unknown> & {
+        dispatchOpenAI: (globals: Record<string, unknown>) => void;
+        dispatchMessage: (data: unknown) => void;
+        __BURETTE_HOSTED_KETCHER_RESULTS__?: unknown[];
+        __BURETTE_HOSTED_MCP_BRIDGE_READY__?: boolean;
+      };
+      vm.runInNewContext(source!, { CustomEvent: class {}, TextEncoder, window });
+      return window;
+    };
+
+    const lateWindow = createWindow();
+    lateWindow.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = true;
+    lateWindow.dispatchOpenAI({ toolOutput });
+    lateWindow.dispatchOpenAI({ toolResponseMetadata });
+    expect(lateWindow.__BURETTE_HOSTED_KETCHER_RESULTS__).toEqual([expectedResult]);
+
+    const messageWindow = createWindow();
+    messageWindow.dispatchMessage({
+      jsonrpc: "2.0",
+      method: "ui/notifications/tool-result",
+      params: { structuredContent: toolOutput, _meta: toolResponseMetadata },
+    });
+    expect(messageWindow.__BURETTE_HOSTED_KETCHER_RESULTS__).toEqual([expectedResult]);
+
+    const preloadedWindow = createWindow({ toolOutput, toolResponseMetadata });
+    expect(preloadedWindow.__BURETTE_HOSTED_KETCHER_RESULTS__).toEqual([expectedResult]);
   });
 });
