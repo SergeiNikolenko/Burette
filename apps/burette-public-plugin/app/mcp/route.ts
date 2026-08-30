@@ -39,6 +39,7 @@ import {
 import {
   createHostedKetcherSurface,
   executeHostedKetcherAction,
+  hostedKetcherSeed,
 } from "@/lib/ketcher-relay";
 
 export const runtime = "nodejs";
@@ -390,13 +391,7 @@ function createServer(): McpServer {
         };
       }
       const snapshot = created.snapshot;
-      const seed = created.surface.input
-        ? {
-            surfaceId: created.surface.surfaceId,
-            format: created.surface.input.format,
-            content: created.surface.input.content,
-          }
-        : null;
+      const seed = hostedKetcherSeed(created.surface);
       return {
         content: [{
           type: "text" as const,

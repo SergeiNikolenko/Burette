@@ -271,7 +271,7 @@ function applyStructure(surface: RelaySurface, action: HostedKetcherAction & { i
   surface.highlightedAtoms = [];
   surface.state = applyStructuralRevision(surface.state);
   return success(action.command, action.actionId, surface, action.continuationToken, {
-    ketcherSeed: seedFor(surface),
+    ketcherSeed: hostedKetcherSeed(surface),
   });
 }
 
@@ -292,7 +292,7 @@ function applyHighlights(surface: RelaySurface, action: HostedKetcherAction) {
   surface.highlightedAtoms = [...indexes];
   surface.state = applyInteractionRevision(surface.state);
   return success(action.command, action.actionId, surface, action.continuationToken, {
-    ketcherSeed: seedFor(surface),
+    ketcherSeed: hostedKetcherSeed(surface),
   });
 }
 
@@ -322,7 +322,7 @@ function exportStructure(surface: RelaySurface, action: HostedKetcherAction) {
   return success(action.command, action.actionId, surface, action.continuationToken, {
     delivery: action.delivery,
     formats,
-    ketcherSeed: seedFor(surface),
+    ketcherSeed: hostedKetcherSeed(surface),
   });
 }
 
@@ -332,7 +332,7 @@ function requestPersist(surface: RelaySurface, action: HostedKetcherAction) {
     status: "awaiting_user",
     format: action.format,
     suggestedBasename: action.suggestedBasename,
-    ketcherSeed: seedFor(surface),
+    ketcherSeed: hostedKetcherSeed(surface),
   });
 }
 
@@ -340,7 +340,7 @@ function replaySuccess(surface: RelaySurface, continuationToken: string) {
   const action = surface.lastAction!;
   if (action.command === "set_structure") {
     return success(action.command, action.actionId!, surface, continuationToken, {
-      ketcherSeed: seedFor(surface),
+      ketcherSeed: hostedKetcherSeed(surface),
     });
   }
   if (action.command === "clear_structure") {
@@ -353,7 +353,7 @@ function replaySuccess(surface: RelaySurface, continuationToken: string) {
     return success(action.command, action.actionId!, surface, continuationToken, {
       delivery: action.delivery,
       formats,
-      ketcherSeed: seedFor(surface),
+      ketcherSeed: hostedKetcherSeed(surface),
     });
   }
   if (action.command === "request_persist") {
@@ -361,11 +361,11 @@ function replaySuccess(surface: RelaySurface, continuationToken: string) {
       status: "awaiting_user",
       format: action.format,
       suggestedBasename: action.suggestedBasename,
-      ketcherSeed: seedFor(surface),
+      ketcherSeed: hostedKetcherSeed(surface),
     });
   }
   return success(action.command, action.actionId!, surface, continuationToken, {
-    ketcherSeed: seedFor(surface),
+    ketcherSeed: hostedKetcherSeed(surface),
   });
 }
 
@@ -745,7 +745,7 @@ function snapshot(surface: RelaySurface) {
   });
 }
 
-function seedFor(surface: RelaySurface) {
+export function hostedKetcherSeed(surface: RelaySurface) {
   if (!surface.input) return null;
   const content = surface.input.content ?? "";
   if (surface.input.format !== "smiles") {

@@ -361,6 +361,9 @@ describe("OpenAI submission review cases", () => {
       type: "text",
       text: "Ketcher editor surface created. The widget is loading the structure.",
     }]);
+    const seed = asRecord(asRecord(seeded._meta).ketcherSeed);
+    expect(seed).toMatchObject({ format: "mol" });
+    expect(OCL.Molecule.fromMolfile(String(seed.content)).getAllAtoms()).toBe(3);
     const empty = await rawToolCall("open_ketcher", {});
     expect(empty.content).toEqual([{
       type: "text",
