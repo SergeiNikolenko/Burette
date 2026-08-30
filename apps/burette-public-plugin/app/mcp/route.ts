@@ -378,7 +378,7 @@ function createServer(): McpServer {
         openWorldHint: false,
       },
       ...NOAUTH_TOOL_SECURITY,
-      _meta: ketcherToolMeta("Opening Ketcher editor…", "Ketcher editor ready"),
+      _meta: ketcherToolMeta("Opening Ketcher editor…", "Ketcher editor surface created"),
     },
     async ({ structure }) => {
       const created = createHostedKetcherSurface(structure);
@@ -398,7 +398,12 @@ function createServer(): McpServer {
           }
         : null;
       return {
-        content: [{ type: "text" as const, text: "Ketcher editor is ready." }],
+        content: [{
+          type: "text" as const,
+          text: structure
+            ? "Ketcher editor surface created. The widget is loading the structure."
+            : "Ketcher editor surface created. The widget is opening.",
+        }],
         structuredContent: {
           ok: true,
           surfaceId: created.surface.surfaceId,

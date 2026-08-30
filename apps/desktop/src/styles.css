@@ -6240,6 +6240,15 @@ input.structure-inspector-composition-search {
   overflow-x: auto;
   padding-bottom: 2px;
 }
+.ketcher-page-header[data-hosted] {
+  width: 100%;
+  max-width: none;
+  justify-content: flex-end;
+}
+.ketcher-page[data-narrow] .ketcher-page-header[data-hosted] {
+  display: flex;
+  align-items: center;
+}
 .ketcher-editor-scale-frame {
   position: absolute;
   inset: 0;

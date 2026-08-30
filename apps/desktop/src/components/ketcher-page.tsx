@@ -24,7 +24,7 @@ import { readStructureText } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
 import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
-import { isHostedKetcherWidget, takeHostedKetcherResultsFromWindow, type HostedKetcherSeed } from "../lib/hosted-mcp-widget";
+import { hasHostedKetcherCanvasContent, isHostedKetcherWidget, takeHostedKetcherResultsFromWindow, type HostedKetcherSeed } from "../lib/hosted-mcp-widget";
 import {
   acceptHostedKetcherResult,
   createHostedKetcherLineage,
@@ -99,6 +99,7 @@ const KETCHER_FIT_SCALES = [1, 0.9, 0.8, 0.7, 0.6, 0.5] as const;
 const KETCHER_NARROW_SHELL_WIDTH = 864;
 type KetcherImportResult = "success" | "transient-failure" | "failure";
 const IS_KETCHER_WEB_DEMO = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
+const IS_HOSTED_KETCHER_BUILD = import.meta.env.VITE_BURETTE_BUILD_IDENTIFIER === "hosted-mcp-widget";
 let ketcherStructServiceReady = false;
 if (typeof window !== "undefined") {
   window.addEventListener("struct-service-initialized", () => {
@@ -469,9 +470,11 @@ export function KetcherPage({
   isActive: boolean;
   acceptImportRequests?: boolean;
 }) {
+  const hostedKetcherWidget = isHostedKetcherWidget();
   const [ketcher, setKetcher] = useState<KetcherEditorApi | null>(null);
   const ketcherAgentControllerRef = useRef<ReturnType<typeof registerKetcherAgentController> | null>(null);
   const [status, setStatus] = useState("Loading editor");
+  const [hostedKetcherError, setHostedKetcherError] = useState<string | null>(null);
   const [output, setOutput] = useState("");
   const [panelMode, setPanelMode] = useState<KetcherPanelMode | null>(null);
   const hostedSeedKeyRef = useRef<string | null>(null);
@@ -617,9 +620,24 @@ export function KetcherPage({
     if (hostedSeedKeyRef.current === key) return;
     hostedKetcherMutationDepthRef.current += 1;
     try {
+      setHostedKetcherError(null);
+      if (seed && seed.format !== "mol") {
+        setStatus("Loading structure");
+        await withKetcherTimeout(waitForKetcherStructServiceReady(), "Ketcher structure service");
+      }
       if (!seed) await instance.setMolecule("");
       else if (seed.format === "mol") await instance.setMolfile(seed.content);
       else await instance.setMolecule(seed.content, { needZoom: true });
+      await waitForKetcherCanvasUpdate();
+      if (seed) {
+        const seededKet = await withKetcherTimeout(instance.getKet(), "Hosted seed verification");
+        if (!hasHostedKetcherCanvasContent(seededKet)) {
+          throw new Error("Ketcher returned an empty structure after applying the hosted seed.");
+        }
+        if (seed.format === "rxn" && !instance.containsReaction()) {
+          throw new Error("Ketcher did not apply the hosted reaction seed.");
+        }
+      }
       hostedSeedKeyRef.current = key;
       setOutput("");
       setPanelMode(null);
@@ -630,6 +648,12 @@ export function KetcherPage({
         hostedKetcherMutationDepthRef.current = Math.max(0, hostedKetcherMutationDepthRef.current - 1);
       }));
     }
+  }, []);
+
+  const reportHostedKetcherSeedError = useCallback((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    setHostedKetcherError(message);
+    setStatus("Ketcher seed failed: " + message);
   }, []);
 
   const queueHostedKetcherResult = useCallback((
@@ -675,12 +699,12 @@ export function KetcherPage({
             if (result) await queueHostedKetcherResult(instance, result);
           }
         } catch (error) {
-          setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
+          reportHostedKetcherSeedError(error);
         }
       }
       ketcherAgentControllerRef.current = registerKetcherAgentController(tabId, instance);
     }).finally(() => applyDefaultKetcherZoom(instance));
-  }, [applyDefaultKetcherZoom, queueHostedKetcherResult, restoreDraft, tabId]);
+  }, [applyDefaultKetcherZoom, queueHostedKetcherResult, reportHostedKetcherSeedError, restoreDraft, tabId]);
 
   useEffect(() => () => {
     unregisterKetcherAgentController(tabId, ketcherAgentControllerRef.current ?? undefined);
@@ -706,7 +730,7 @@ export function KetcherPage({
         const result = hostedKetcherResult(value);
         if (!result) continue;
         void queueHostedKetcherResult(ketcher, result).catch((error) => {
-          setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
+          reportHostedKetcherSeedError(error);
         });
       }
     };
@@ -715,7 +739,7 @@ export function KetcherPage({
     return () => {
       window.removeEventListener("burette-ketcher-result", handleResult);
     };
-  }, [ketcher, queueHostedKetcherResult]);
+  }, [ketcher, queueHostedKetcherResult, reportHostedKetcherSeedError]);
 
   useEffect(() => {
     if (!ketcher || !isHostedKetcherWidget()) return undefined;
@@ -1096,6 +1120,35 @@ export function KetcherPage({
     }
   }, [actions, exportingSketch, ketcher, preserved3dSource]);
 
+  const downloadHostedKetcherSdf = useCallback(async () => {
+    if (!ketcher || exportingSketch) return;
+    setHostedKetcherError(null);
+    setExportingSketch(true);
+    try {
+      if (ketcher.containsReaction()) {
+        throw new Error("SDF download is available for molecules, not reactions.");
+      }
+      const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "SDF export");
+      if (isBlankKetcherMolfile(molfile)) {
+        setStatus("Draw a molecule first");
+        return;
+      }
+      const downloaded = await window.BuretteHostedAppBridge?.downloadTextFile(
+        "ketcher-sketch.sdf",
+        molfileToSdf(molfile),
+        "chemical/x-mdl-sdfile",
+      );
+      if (!downloaded) throw new Error("ChatGPT did not complete the SDF download.");
+      setStatus("Downloaded SDF");
+    } catch (error) {
+      const message = ketcherExportErrorMessage(error);
+      setHostedKetcherError(message);
+      setStatus(message);
+    } finally {
+      setExportingSketch(false);
+    }
+  }, [exportingSketch, ketcher]);
+
   // The Database dialog asks for a SMILES query, and the sketch on the canvas is
   // the fragment the user means. Ketcher exports it itself, so the fragment
   // reaches a provider without a chemistry toolkit anywhere in between.
@@ -1474,8 +1527,29 @@ export function KetcherPage({
       onDragLeaveCapture={handleDragLeave}
       onDropCapture={handleDrop}
     >
-      <header className="ketcher-page-header">
-        <div className="ketcher-page-title">
+      <header className="ketcher-page-header" data-hosted={hostedKetcherWidget || undefined}>
+        {hostedKetcherWidget ? (
+          <>
+            {hostedKetcherError && (
+              <Alert variant="destructive" role="alert" className="grow">
+                <AlertTitle>Ketcher action failed</AlertTitle>
+                <AlertDescription>{hostedKetcherError}</AlertDescription>
+              </Alert>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label="Download current structure as SDF"
+              disabled={!ketcher || exportingSketch || !hasSketch}
+              onClick={() => void downloadHostedKetcherSdf()}
+            >
+              SDF
+            </Button>
+          </>
+        ) : (
+          <>
+          <div className="ketcher-page-title">
           <span
             className="ketcher-page-icon"
             aria-hidden="true"
@@ -1693,7 +1767,9 @@ export function KetcherPage({
             <TooltipContent>{ketcherThemeTitle}</TooltipContent>
           </Tooltip>
         </div>
-        </TooltipProvider>
+          </TooltipProvider>
+          </>
+        )}
       </header>
       <div className="ketcher-page-body">
         <div
@@ -1724,35 +1800,37 @@ export function KetcherPage({
           )}
         </div>
       </div>
-      <footer className="ketcher-page-footer">
-        <Badge variant="secondary" className="ketcher-page-status">
-          <span className="min-w-0 truncate">{status}</span>
-        </Badge>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className={cn("relative min-w-20", panelMode?.purpose === "export" && "bg-accent text-accent-foreground")}
-          disabled={!ketcher}
-          onClick={openDefaultExportPanel}
-          onContextMenu={showExportFormatMenu}
-        >
-          Export
-          <ShortcutTooltip label="Export sketch to a text or image format" side="top" />
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className={cn("relative min-w-20", panelMode?.purpose === "import" && "bg-accent text-accent-foreground")}
-          disabled={!ketcher}
-          onClick={openDefaultImportPanel}
-          onContextMenu={showImportFormatMenu}
-        >
-          Import
-          <ShortcutTooltip label="Import structure text into Ketcher" side="top" />
-        </Button>
-      </footer>
+      {!hostedKetcherWidget && (
+        <footer className="ketcher-page-footer">
+          <Badge variant="secondary" className="ketcher-page-status">
+            <span className="min-w-0 truncate">{status}</span>
+          </Badge>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className={cn("relative min-w-20", panelMode?.purpose === "export" && "bg-accent text-accent-foreground")}
+            disabled={!ketcher}
+            onClick={openDefaultExportPanel}
+            onContextMenu={showExportFormatMenu}
+          >
+            Export
+            <ShortcutTooltip label="Export sketch to a text or image format" side="top" />
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className={cn("relative min-w-20", panelMode?.purpose === "import" && "bg-accent text-accent-foreground")}
+            disabled={!ketcher}
+            onClick={openDefaultImportPanel}
+            onContextMenu={showImportFormatMenu}
+          >
+            Import
+            <ShortcutTooltip label="Import structure text into Ketcher" side="top" />
+          </Button>
+        </footer>
+      )}
       {panelMode && dockPortalElement ? createPortal((
         <section className="ketcher-dock-workflow" data-mode={panelMode.purpose} aria-label={`${panelMode.purpose === "import" ? "Import" : "Export"} panel`}>
           <div className="ketcher-dock-toolbar">
@@ -2103,7 +2181,7 @@ function waitForKetcherStructServiceReady() {
       finish();
     };
     window.addEventListener("struct-service-initialized", markReady, { once: true });
-    if (!IS_KETCHER_WEB_DEMO) fallbackId = window.setTimeout(finish, 750);
+    if (!IS_KETCHER_WEB_DEMO && !IS_HOSTED_KETCHER_BUILD) fallbackId = window.setTimeout(finish, 750);
   });
 }
 

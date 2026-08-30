@@ -32,6 +32,7 @@ interface Window {
       name: string,
       arguments_?: Record<string, unknown>,
     ) => Promise<unknown>;
+    downloadTextFile: (fileName: string, text: string, mimeType: string) => Promise<boolean>;
     sanitizeViewerActions: (actions: unknown) => Record<string, unknown>[];
   };
   __BURETTE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;

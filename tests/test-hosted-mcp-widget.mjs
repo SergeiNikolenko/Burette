@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   HOSTED_MCP_WIDGET_MESSAGE_SOURCE,
+  hasHostedKetcherCanvasContent,
   isHostedMolecularViewerWidget,
   isHostedMcpWidgetLocation,
   isHostedMcpToolResultMessage,
@@ -20,6 +21,11 @@ import { defaultPreferences } from "../apps/desktop/src/stores/settings-store.ts
 
 assert.equal(isHostedMcpWidgetLocation({ search: "?mcpWidget=1" }), true);
 assert.equal(isHostedMcpWidgetLocation({ search: "?mcpWidget=0" }), false);
+assert.equal(hasHostedKetcherCanvasContent('{"ket_version":1,"root":{"nodes":[]}}'), false);
+assert.equal(hasHostedKetcherCanvasContent('{"root":{"nodes":[{"$ref":"mol0"}]}}'), false);
+assert.equal(hasHostedKetcherCanvasContent('{"root":{"nodes":[{"$ref":"mol0"}]},"mol0":{"type":"molecule","atoms":[{"label":"C"}],"bonds":[]}}'), true);
+assert.equal(hasHostedKetcherCanvasContent('{"root":{"nodes":[{"type":"arrow"}]}}'), true);
+assert.equal(hasHostedKetcherCanvasContent("not-json"), false);
 
 const originalWindow = globalThis.window;
 globalThis.window = {

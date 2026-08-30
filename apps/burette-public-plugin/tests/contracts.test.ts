@@ -155,7 +155,7 @@ describe("viewer resource contract", () => {
     expect(VIEWER_RESOURCE_URI).toBe("ui://burette/molecular-viewer-v21.html");
     expect(html).toContain(`https://burette.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burette.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-v21");
+    expect(html).toContain("?v=viewer-v22");
     expect(html).toContain(`https://burette.example${VIEWER_MOBILE_SCRIPT_PATH}`);
     expect(html).toContain(`https://burette.example${VIEWER_APP_BRIDGE_SCRIPT_PATH}`);
     expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
@@ -170,6 +170,7 @@ describe("viewer resource contract", () => {
     expect(html).toContain("__BURETTE_HOSTED_MCP_BRIDGE_READY__");
     expect(html).toContain("__BURETTE_HOSTED_OPENAI_GLOBALS__");
     expect(html).toContain("callServerTool");
+    expect(html).toContain("downloadTextFile");
     expect(html).toContain("Burette viewer failed to load.");
     expect(html).toContain('<div id="root"></div>');
     expect(html).toContain("body .app-shell { width: 100%; height: 100%; }");
@@ -374,12 +375,15 @@ describe("viewer resource contract", () => {
     expect(source).toContain("updateKetcher");
     expect(source).toContain("continuationToken");
     expect(source).toContain("ketcherModelContext");
+    expect(source).toContain("getHostCapabilities()?.downloadFile");
+    expect(source).toContain("await app.downloadFile({");
+    expect(source).toContain('mimeType,\n        text,');
     expect(source).toContain('from "@vercel/analytics"');
     expect(source).toContain("disableAutoTrack: true");
     expect(source).toContain('viewEndpoint: `${analyticsOrigin}/api/analytics/view`');
     expect(source).toContain('route: "/mcp/widget", path: "/mcp/widget"');
     expect(source).not.toContain("pdbId");
-    expect(source).not.toContain("fileName");
+    expect(source).not.toContain("sourceDescriptor.fileName");
 
     const selection = createSelectionContext({
       source: "lasso",

@@ -19,6 +19,7 @@ declare global {
         name: string,
         arguments_?: Record<string, unknown>,
       ) => Promise<CallToolResult>;
+      downloadTextFile: (fileName: string, text: string, mimeType: string) => Promise<boolean>;
       sanitizeViewerActions: (actions: unknown) => Record<string, unknown>[];
     };
     __BURETTE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;
@@ -126,6 +127,26 @@ async function callServerTool(
   return app.callServerTool({ name, arguments: arguments_ });
 }
 
+async function downloadTextFile(fileName: string, text: string, mimeType: string) {
+  if (!(await appConnected) || !connected) {
+    throw new Error("Burette Apps bridge is not ready for file downloads.");
+  }
+  if (!app.getHostCapabilities()?.downloadFile) {
+    throw new Error("This ChatGPT host does not support file downloads.");
+  }
+  const result = await app.downloadFile({
+    contents: [{
+      type: "resource",
+      resource: {
+        uri: `file:///${encodeURIComponent(fileName)}`,
+        mimeType,
+        text,
+      },
+    }],
+  });
+  return result.isError !== true;
+}
+
 const queuedCalls = Array.isArray(window.__BURETTE_HOSTED_APP_QUEUE__)
   ? window.__BURETTE_HOSTED_APP_QUEUE__.splice(0)
   : [];
@@ -143,6 +164,7 @@ const bridge = {
     return updateModelContext(ketcherModelContext(state));
   },
   callServerTool,
+  downloadTextFile,
   sanitizeViewerActions,
   ready,
 };

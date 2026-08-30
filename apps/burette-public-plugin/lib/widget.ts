@@ -9,7 +9,7 @@ export const VIEWER_SHELL_STYLES_PATH =
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burette-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burette-hosted-mobile.js";
 export const VIEWER_APP_BRIDGE_SCRIPT_PATH = "/burette-hosted-app.js";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-v21";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-v22";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
@@ -107,6 +107,12 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
           if (!bridge?.callServerTool) throw new Error("Burette Apps bridge does not expose server tool calls.");
           return bridge.callServerTool(name, arguments_);
         });
+        const downloadTextFile = (fileName, text, mimeType) => appReady.then((ready) => {
+          if (!ready) throw new Error("Burette Apps bridge is not ready for file downloads.");
+          const bridge = window.BuretteHostedAppBridge;
+          if (!bridge?.downloadTextFile) throw new Error("Burette Apps bridge does not expose file downloads.");
+          return bridge.downloadTextFile(fileName, text, mimeType);
+        });
         const acceptKetcherResult = (value) => {
           if (!window.__BURETTE_HOSTED_KETCHER_WIDGET__) return;
           const containers = [value, value?._meta, value?.meta, value?.structuredContent, value?.structuredContent?._meta];
@@ -166,6 +172,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
             return appReady;
           },
           callServerTool,
+          downloadTextFile,
           sanitizeViewerActions: () => [],
         };
         window.addEventListener("message", (event) => {

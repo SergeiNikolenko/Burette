@@ -6,6 +6,7 @@ describe("MCP Apps bridge", () => {
   test("completes initialization before acknowledging model context updates", async () => {
     const [appTransport, hostTransport] = InMemoryTransport.createLinkedPair();
     const methods: string[] = [];
+    let downloadParams: unknown;
     hostTransport.onmessage = (message) => {
       if (!("id" in message) || typeof message.id !== "number" || !("method" in message)) return;
       methods.push(message.method);
@@ -17,7 +18,10 @@ describe("MCP Apps bridge", () => {
           result: {
             protocolVersion: params.protocolVersion,
             hostInfo: { name: "test-host", version: "1.0.0" },
-            hostCapabilities: { updateModelContext: { structuredContent: {} } },
+            hostCapabilities: {
+              updateModelContext: { structuredContent: {} },
+              downloadFile: {},
+            },
             hostContext: {},
           },
         });
@@ -29,6 +33,9 @@ describe("MCP Apps bridge", () => {
           id: message.id,
           result: { content: [{ type: "text", text: "ok" }] },
         });
+      } else if (message.method === "ui/download-file") {
+        downloadParams = message.params;
+        void hostTransport.send({ jsonrpc: "2.0", id: message.id, result: {} });
       }
     };
     await hostTransport.start();
@@ -47,7 +54,32 @@ describe("MCP Apps bridge", () => {
       name: "control_ketcher",
       arguments: { action: { command: "get_structure" } },
     });
-    expect(methods).toEqual(["ui/initialize", "ui/update-model-context", "tools/call"]);
+    await app.downloadFile({
+      contents: [{
+        type: "resource",
+        resource: {
+          uri: "file:///ketcher-sketch.sdf",
+          mimeType: "chemical/x-mdl-sdfile",
+          text: "M  END\n$$$$\n",
+        },
+      }],
+    });
+    expect(methods).toEqual([
+      "ui/initialize",
+      "ui/update-model-context",
+      "tools/call",
+      "ui/download-file",
+    ]);
+    expect(downloadParams).toEqual({
+      contents: [{
+        type: "resource",
+        resource: {
+          uri: "file:///ketcher-sketch.sdf",
+          mimeType: "chemical/x-mdl-sdfile",
+          text: "M  END\n$$$$\n",
+        },
+      }],
+    });
     await app.close();
     await hostTransport.close();
   });

@@ -90,7 +90,7 @@
 | Attached mmCIF | `https://raw.githubusercontent.com/SergeiNikolenko/Burette/e4a701b953a08f4a12ae03d8d1184502fd43d5f5/samples/mini.cif` with prompt “Open this mmCIF structure and show its chain and element summary.” | `preview_molecular_file`; chain `A`, `1` residue, `4` atoms; elements `C 2`, `N 1`, `O 1`; nonblank viewer | [ ] | [ ] |
 | Attached SDF | `https://raw.githubusercontent.com/SergeiNikolenko/Burette/e4a701b953a08f4a12ae03d8d1184502fd43d5f5/samples/mini.sdf` with prompt “Preview this SDF and summarize the molecules and elements it contains.” | `preview_molecular_file`; `2` molecules, `9` atoms, `8` bonds; elements `C 6`, `H 2`, `O 1`; nonblank viewer | [ ] | [ ] |
 | Public PDB | Prompt “Open PDB 1CRN in the full molecular viewer and summarize its composition.” | `preview_pdb_structure`; RCSB `1CRN`; `1` chain, `46` residues, `327` atoms; nonblank interactive viewer | [ ] | [ ] |
-| Ketcher seed | Prompt “Open a Ketcher editor and seed it with ethanol using the SMILES CCO.” | `open_ketcher`; visible valid ethanol sketch; `3` atoms; structure revision `1`; no file write or persistence claim | [ ] | [ ] |
+| Ketcher seed | Prompt “Open a Ketcher editor and seed it with ethanol using the SMILES CCO.” | `open_ketcher`; visible valid ethanol sketch before the widget reports ready; nonblank Ketcher canvas/read-back; `3` atoms; structure revision `1`; no file write or persistence claim | [ ] | [ ] |
 
 - [ ] No case relies on a count inferred by the assistant when that count is absent from structured output.
 - [ ] No attachment case uses mutable `main` URLs, a local path, a private URL, or a fixture other than the immutable URLs above.
@@ -100,6 +100,8 @@
 
 - [ ] Use one fresh post-rescan ChatGPT web conversation for the entire flow and record the active card/result after every step.
 - [ ] Ask: “Open a Ketcher editor and seed it with ethanol using the SMILES CCO.” Confirm a visible ethanol sketch, `3` atoms, structure revision `1`, and no user-visible continuation token.
+- [ ] Confirm the compact card shows only the native Ketcher editor plus one top `SDF` button: no Burette icon/title/subtitle, no Grid/Molstar/compute/database/collection/scale/theme row, and no bottom status/Import/Export row.
+- [ ] Click `SDF` and inspect the downloaded `ketcher-sketch.sdf`. Confirm it contains the current visible structure, one valid `M  END`, and one `$$$$` record terminator.
 - [ ] Edit the sketch directly in the visible Ketcher canvas from ethanol (`CCO`) to ethylamine (`CCN`) without asking the agent to replace it.
 - [ ] Confirm that the widget's debounced synchronization of that direct edit completes without repeated destructive-action confirmation prompts. Stop if one visible edit causes a confirmation loop or leaves model state behind the canvas.
 - [ ] Ask: “Read the structure currently visible in Ketcher and return its SMILES.” Confirm the agent returns the manually edited `CCN`, not the original `CCO`, and the visible sketch is not cleared or reverted. **Stop if direct editor changes and agent state diverge.**

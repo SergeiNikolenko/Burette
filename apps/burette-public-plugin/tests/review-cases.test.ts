@@ -352,6 +352,22 @@ describe("OpenAI submission review cases", () => {
     expect(controlKetcherOutputSchema.safeParse(failureWithoutError).success).toBe(false);
   });
 
+  test("reports widget startup without claiming client-side readiness", async () => {
+    const seeded = await rawToolCall("open_ketcher", {
+      structure: { format: "smiles", content: "CCO" },
+    });
+    expect(seeded.content).toEqual([{
+      type: "text",
+      text: "Ketcher editor surface created. The widget is loading the structure.",
+    }]);
+    const empty = await rawToolCall("open_ketcher", {});
+    expect(empty.content).toEqual([{
+      type: "text",
+      text: "Ketcher editor surface created. The widget is opening.",
+    }]);
+    expect(JSON.stringify([seeded.content, empty.content])).not.toContain("ready");
+  });
+
   test("executes all five submitted cases with exact schema-valid results", async () => {
     const client = await createReviewClient();
     try {
