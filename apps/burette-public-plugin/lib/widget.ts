@@ -1,7 +1,7 @@
 // This URI is a persisted ChatGPT connector contract. Keep it stable across
 // asset-only deployments; changing it requires refreshing every connector.
 export const VIEWER_RESOURCE_URI = "ui://burette/molecular-viewer-v21.html";
-export const KETCHER_RESOURCE_URI = "ui://burette/ketcher-editor-v1.html";
+export const KETCHER_RESOURCE_URI = "ui://burette/ketcher-editor-v2.html";
 export const VIEWER_SHELL_SCRIPT_PATH =
   "/viewer-shell/assets/burette-hosted-shell.js";
 export const VIEWER_SHELL_STYLES_PATH =
@@ -9,7 +9,7 @@ export const VIEWER_SHELL_STYLES_PATH =
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burette-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burette-hosted-mobile.js";
 export const VIEWER_APP_BRIDGE_SCRIPT_PATH = "/burette-hosted-app.js";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-v22";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-v23";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;

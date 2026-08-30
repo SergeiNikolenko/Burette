@@ -34,7 +34,7 @@ an isolated Ketcher editor contract:
 The three public-structure tools are read-only and idempotent. Ketcher actions
 are bounded and revision-checked, carry an opaque continuation token between
 stateless requests, and never write files or the public internet. Each Ketcher result renders
-`ui://burette/ketcher-editor-v1.html`; the structure-preview tools render
+`ui://burette/ketcher-editor-v2.html`; the structure-preview tools render
 `ui://burette/molecular-viewer-v21.html`, both with MIME type
 `text/html;profile=mcp-app`.
 

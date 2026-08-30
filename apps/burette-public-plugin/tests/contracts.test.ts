@@ -155,7 +155,7 @@ describe("viewer resource contract", () => {
     expect(VIEWER_RESOURCE_URI).toBe("ui://burette/molecular-viewer-v21.html");
     expect(html).toContain(`https://burette.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burette.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-v22");
+    expect(html).toContain("?v=viewer-v23");
     expect(html).toContain(`https://burette.example${VIEWER_MOBILE_SCRIPT_PATH}`);
     expect(html).toContain(`https://burette.example${VIEWER_APP_BRIDGE_SCRIPT_PATH}`);
     expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
@@ -384,6 +384,12 @@ describe("viewer resource contract", () => {
     expect(source).toContain('route: "/mcp/widget", path: "/mcp/widget"');
     expect(source).not.toContain("pdbId");
     expect(source).not.toContain("sourceDescriptor.fileName");
+
+    const bundledSource = readFileSync(path.resolve(
+      import.meta.dir,
+      "../public/burette-hosted-app.js",
+    ), "utf8");
+    expect(bundledSource).not.toContain("__require");
 
     const selection = createSelectionContext({
       source: "lasso",

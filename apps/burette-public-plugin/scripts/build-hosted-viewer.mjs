@@ -58,7 +58,7 @@ await run("bun", [
   "--target",
   "browser",
   "--format",
-  "iife",
+  "esm",
   "--minify",
 ], { cwd: REPO_ROOT, env: process.env });
 
