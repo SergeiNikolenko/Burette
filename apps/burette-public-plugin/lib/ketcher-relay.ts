@@ -746,7 +746,14 @@ function snapshot(surface: RelaySurface) {
 }
 
 function seedFor(surface: RelaySurface) {
-  return surface.input ? { surfaceId: surface.surfaceId, format: surface.input.format, content: surface.input.content } : null;
+  if (!surface.input) return null;
+  const content = surface.input.content ?? "";
+  if (surface.input.format !== "smiles") {
+    return { surfaceId: surface.surfaceId, format: surface.input.format, content };
+  }
+  const molecule = OCL.Molecule.fromSmiles(content, { noCoordinates: true, noStereo: true });
+  molecule.inventCoordinates();
+  return { surfaceId: surface.surfaceId, format: "mol" as const, content: molecule.toMolfile() };
 }
 
 function stableActionHash(action: HostedKetcherAction) {

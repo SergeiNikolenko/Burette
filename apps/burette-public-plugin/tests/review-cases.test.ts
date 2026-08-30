@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import * as OCL from "openchemlib";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
@@ -465,11 +466,9 @@ describe("OpenAI submission review cases", () => {
     expect(set.ok).toBe(true);
     expect(asRecord(set.snapshot).structureRevision).toBe(2);
     expect(asRecord(asRecord(set.result).result)).toEqual({});
-    expect(asRecord(asRecord(setResult._meta).ketcherSeed)).toEqual({
-      surfaceId,
-      format: "smiles",
-      content: "CCN",
-    });
+    const setSeed = asRecord(asRecord(setResult._meta).ketcherSeed);
+    expect(setSeed).toMatchObject({ surfaceId, format: "mol" });
+    expect(OCL.Molecule.fromMolfile(String(setSeed.content)).getAllAtoms()).toBe(3);
 
     expect(asRecord(asRecord(get.result).result).formats).toEqual({ smiles: "CCN" });
 

@@ -59,11 +59,9 @@ describe("hosted Ketcher relay", () => {
     }));
     expect(setResult.ok).toBe(true);
     expect(setResult.snapshot?.structureRevision).toBe(2);
-    expect(setResult.result?.ketcherSeed).toEqual({
-      surfaceId,
-      format: "smiles",
-      content: "CCN",
-    });
+    expect(setResult.result?.ketcherSeed).toMatchObject({ surfaceId, format: "mol" });
+    const setSeed = setResult.result?.ketcherSeed as { content?: string } | undefined;
+    expect(OCL.Molecule.fromMolfile(setSeed?.content ?? "").getAllAtoms()).toBe(3);
     expect(setResult.continuationToken).toBeString();
 
     const replay = await executeHostedKetcherAction(action(
