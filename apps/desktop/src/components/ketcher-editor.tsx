@@ -517,6 +517,7 @@ export function KetcherEditor({
         staticResourcesUrl={import.meta.env.BASE_URL}
         structServiceProvider={structServiceProvider}
         buttons={BURETTE_KETCHER_BUTTONS}
+        disableMacromoleculesEditor
         onInit={handleInit}
         errorHandler={handleError}
       />

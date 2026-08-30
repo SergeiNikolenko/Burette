@@ -791,7 +791,10 @@ assert.match(desmondPreviewExtract, /backbone_quota = max\(128, atom_limit \/\/ 
 assert.match(desmondPreviewExtract, /0 means all atoms unless --target-mb is set/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--target-mb"/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
-assert.match(viteConfig, /plugins: \[tailwindcss\(\), react\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
+assert.match(
+  viteConfig,
+  /plugins: \[\s*tailwindcss\(\),\s*react\(\),\s*ketcherRaphaelImportShimPlugin\(\),\s*ketcherDisabledMacromoleculesPlugin\(\),\s*deferKetcherCssPlugin\(\),\s*browserDevXyzrenderPlugin\(\),\s*\]/u,
+);
 assert.doesNotMatch(viteConfig, /join\(homedir\(\), "Desktop"\),/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
@@ -3453,7 +3456,7 @@ assert.match(ketcherEditor, /subscribeChange: \(handler: \(\) => void\) => \{/);
 assert.match(ketcherEditor, /editorInstance\.changeEvent\?\.add\(handler\)/);
 assert.match(ketcherEditor, /subscribeOnZoomEvent\?\.bind|subscribeOnZoomEvent\?\.\(zoomHandler\)/);
 assert.doesNotMatch(ketcherPage, /editor\.event\.zoomChanged\.dispatch/);
-assert.doesNotMatch(ketcherEditor, /disableMacromoleculesEditor/);
+assert.match(ketcherEditor, /disableMacromoleculesEditor/);
 assert.match(ketcherEditor, /new MolSerializer\(\)\.serialize\(struct\)/);
 assert.match(ketcherEditor, /addMolfileFragment: async \(molfile: string\) => \{/);
 assert.match(ketcherEditor, /setMolfile: async \(molfile: string\) => \{/);

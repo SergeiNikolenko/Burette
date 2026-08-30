@@ -12,6 +12,7 @@ import tailwindcss from "@tailwindcss/vite";
 import {
   deferKetcherCssPlugin,
   desktopManualChunks,
+  ketcherDisabledMacromoleculesPlugin,
   ketcherRaphaelImportShimPlugin,
   resolveModulePreloadDependencies,
 } from "./vite/build-plugins";
@@ -4029,7 +4030,14 @@ function normalizeOrientationRef(value: string | null) {
 export default defineConfig({
   root: desktopRoot,
   base: "./",
-  plugins: [tailwindcss(), react(), ketcherRaphaelImportShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin()],
+  plugins: [
+    tailwindcss(),
+    react(),
+    ketcherRaphaelImportShimPlugin(),
+    ketcherDisabledMacromoleculesPlugin(),
+    deferKetcherCssPlugin(),
+    browserDevXyzrenderPlugin(),
+  ],
   resolve: {
     alias: {
       "@": resolve(desktopRoot, "src"),
