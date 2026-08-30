@@ -56,7 +56,7 @@
   | `open_ketcher` | `false` | `false` | `false` | `false` |
   | `control_ketcher` | `false` | `false` | `true` | `false` |
 
-- [ ] `resources/list` and `resources/read` expose `ui://burette/molecular-viewer-v21.html` and `ui://burette/ketcher-editor-v2.html` with MIME type `text/html;profile=mcp-app`.
+- [ ] `resources/list` and `resources/read` expose `ui://burette/molecular-viewer-v21.html` and `ui://burette/ketcher-editor-v1.html` with MIME type `text/html;profile=mcp-app`.
 - [ ] Both resources declare the exact app origin `https://burette-plugin.vercel.app` in `ui.domain` and `openai/widgetDomain`.
 - [ ] Both resources declare only `https://burette-plugin.vercel.app` in `ui.csp.connectDomains`, `ui.csp.resourceDomains`, `openai/widgetCSP.connect_domains`, and `openai/widgetCSP.resource_domains`.
 - [ ] Neither resource declares a frame domain; the widget contains no nested application iframe. Stop if the portal CSP values disagree with the rescanned resource metadata.

@@ -574,7 +574,7 @@ describe("hosted Ketcher widget contract", () => {
   test("uses the versioned resource and same-origin CSP", () => {
     const meta = createKetcherResourceMeta("https://burette.example");
     const toolMeta = ketcherToolMeta("Opening Ketcher…", "Ketcher ready");
-    expect(KETCHER_RESOURCE_URI).toBe("ui://burette/ketcher-editor-v2.html");
+    expect(KETCHER_RESOURCE_URI).toBe("ui://burette/ketcher-editor-v1.html");
     expect("resourceUri" in meta.ui).toBe(false);
     expect(meta.ui.domain).toBe("https://burette.example");
     expect(meta.ui.csp.connectDomains).toEqual(["https://burette.example"]);
