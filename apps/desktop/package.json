@@ -24,7 +24,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "docx-preview": "^0.3.7",
-    "dompurify": "^3.3.3",
+    "dompurify": "^3.4.14",
     "eve-raphael": "0.5.0",
     "hast-util-to-jsx-runtime": "^2.3.6",
     "katex": "^0.18.4",
