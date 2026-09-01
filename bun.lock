@@ -32,7 +32,7 @@
         "lucide-react": "^1.23.0",
         "molstar": "5.11.0",
         "openchemlib": "9.24.0",
-        "plotly.js-basic-dist-min": "^3.6.0",
+        "plotly.js-basic-dist-min": "^4.0.0",
         "radix-ui": "^1.6.4",
         "react": "^19.2.7",
         "react-dom": "^19.2.7",
@@ -2097,7 +2097,7 @@
 
     "pkg-up": ["pkg-up@3.1.0", "", { "dependencies": { "find-up": "^3.0.0" } }, "sha512-nDywThFk1i4BQK4twPQ6TA4RT8bDY96yeuCVBWL3ePARCiEKDRSrNGbFIgUJpLp+XeIR65v8ra7WuJOFUBtkMA=="],
 
-    "plotly.js-basic-dist-min": ["plotly.js-basic-dist-min@3.7.0", "", {}, "sha512-84KPQhLTrO5IHu6DCte2KwA4bzSoVIdIs3uDPWid3sgeTX8L5RjpDARjCG3spgOwQ8MYE8PL+MeQ0DQRWA1Emw=="],
+    "plotly.js-basic-dist-min": ["plotly.js-basic-dist-min@4.0.0", "", {}, "sha512-GGhpuikawKAGNQpPAeuvynUSI+BptB0NT6J0ofXfq2frGonhGG3zxrf6OVl/6aZhIeDaj7tP0Hb+de+QKVR08A=="],
 
     "pngjs": ["pngjs@7.0.0", "", {}, "sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow=="],
 
