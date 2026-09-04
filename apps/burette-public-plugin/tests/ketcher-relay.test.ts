@@ -6,6 +6,7 @@ import { ketcherToolMeta } from "../lib/contracts";
 import {
   createHostedKetcherSurface,
   executeHostedKetcherAction,
+  hostedKetcherSeed,
   hostedKetcherSnapshot,
 } from "../lib/ketcher-relay";
 import {
@@ -41,6 +42,39 @@ function action(
 }
 
 describe("hosted Ketcher relay", () => {
+  for (const entryPoint of ["initial", "set_structure"] as const) {
+    test.each([
+      ["one tetrahedral enantiomer", "N[C@@H](C)C(=O)O"],
+      ["the opposite tetrahedral enantiomer", "N[C@H](C)C(=O)O"],
+      ["E alkene geometry", "F/C=C/F"],
+      ["Z alkene geometry", "F/C=C\\F"],
+      ["isotope and charged salt", "[13CH3][NH3+].[Cl-]"],
+    ])(`preserves %s in the ${entryPoint} widget MOL seed`, async (_label, content) => {
+      const created = createHostedKetcherSurface(
+        entryPoint === "initial" ? { format: "smiles", content } : undefined,
+      );
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      let seed = hostedKetcherSeed(created.surface);
+      if (entryPoint === "set_structure") {
+        const result = await executeHostedKetcherAction(action(
+          created.surface.surfaceId,
+          created.continuationToken,
+          "set-stereochemistry",
+          0,
+          { command: "set_structure", format: "smiles", content },
+        ));
+        expect(result.ok).toBe(true);
+        seed = result.result?.ketcherSeed as ReturnType<typeof hostedKetcherSeed>;
+      }
+
+      expect(seed).toMatchObject({ surfaceId: created.surface.surfaceId, format: "mol" });
+      const roundTrip = OCL.Molecule.fromMolfile(seed?.content ?? "");
+      expect(roundTrip.getIDCode()).toBe(OCL.Molecule.fromSmiles(content).getIDCode());
+    });
+  }
+
   test("keeps edits revisioned, bounded, and idempotent", async () => {
     const created = createHostedKetcherSurface({ format: "smiles", content: "CCO" });
     expect(created.ok).toBe(true);

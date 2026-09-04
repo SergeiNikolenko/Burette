@@ -751,7 +751,7 @@ export function hostedKetcherSeed(surface: RelaySurface) {
   if (surface.input.format !== "smiles") {
     return { surfaceId: surface.surfaceId, format: surface.input.format, content };
   }
-  const molecule = OCL.Molecule.fromSmiles(content, { noCoordinates: true, noStereo: true });
+  const molecule = OCL.Molecule.fromSmiles(content, { noCoordinates: true });
   molecule.inventCoordinates();
   return { surfaceId: surface.surfaceId, format: "mol" as const, content: molecule.toMolfile() };
 }
