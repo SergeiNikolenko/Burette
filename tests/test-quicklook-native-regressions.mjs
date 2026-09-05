@@ -5,6 +5,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
+if (process.platform !== "darwin") {
+  console.log("SKIP Quick Look native regressions: requires macOS Swift runtime (covered by macOS CI).");
+  process.exit(0);
+}
+
 const source = await readFile(new URL("../PreviewExtension/Platform/PreviewViewController.swift", import.meta.url), "utf8");
 const parser = source.slice(source.indexOf("    private static func countXYZFrames("), source.indexOf("    private static func estimateTrajectoryFrameCount("));
 const timeout = source.slice(source.indexOf("private func scheduleRenderTimeout("), source.indexOf("    private func finishPreviewIfNeeded("));
