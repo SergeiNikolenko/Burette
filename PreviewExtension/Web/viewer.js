@@ -14877,8 +14877,13 @@
     } else {
       await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode));
     }
-    if (normalized === 'illustrative') await applyMolstarIllustrativePostprocessing(viewer);
-    else await applyMolstarNonIllustrativePostprocessing(viewer);
+    // A pose inherits the current component options. Only a style change needs
+    // the global update, which also visits receptor and water representations.
+    const ignoreLight = normalized === 'illustrative';
+    if (viewer.plugin.managers.structure.component.state.options.ignoreLight !== ignoreLight) {
+      if (ignoreLight) await applyMolstarIllustrativePostprocessing(viewer);
+      else await applyMolstarNonIllustrativePostprocessing(viewer);
+    }
   }
 
   function sdfCollectionAlphaHelpers(alpha = 1, colorMode = 'gray', minAlpha = 0.04) {
@@ -14988,7 +14993,20 @@
   async function addMolstarRepresentation(plugin, component, representation) {
     if (!component) return false;
     try {
-      await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation);
+      const { hydrogens, visualQuality, ignoreLight, materialStyle, clipObjects, interior } = plugin.managers.structure.component.state.options;
+      await plugin.builders.structure.representation.addRepresentation(component.cell || component, {
+        ...representation,
+        typeParams: {
+          ignoreHydrogens: hydrogens !== 'all',
+          ignoreHydrogensVariant: hydrogens === 'only-polar' ? 'non-polar' : 'all',
+          quality: visualQuality,
+          ignoreLight,
+          material: materialStyle,
+          clip: clipObjects,
+          interior,
+          ...representation.typeParams
+        }
+      });
       return true;
     } catch (error) {
       debug('Mol* representation failed: ' + (error && error.message || String(error)));
@@ -18308,11 +18326,17 @@
       const previousIndex = activePose;
       const shouldFocus = options.focus === true;
       const cameraSnapshot = shouldFocus ? null : captureMolstarCameraSnapshot(viewer);
+      const canvas3d = viewer?.plugin?.canvas3d;
+      const manualReset = canvas3d?.props.camera.manualReset;
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
       applyLabel(nextIndex);
       try {
+        if (cameraSnapshot) {
+          canvas3d.setProps({ camera: { manualReset: true } });
+          restoreMolstarCameraSnapshot(viewer, cameraSnapshot);
+        }
         if (prepared.nativeTrajectoryControls) {
           const switched = await setNativeTrajectoryPose(nextIndex, prepared.poseCount);
           if (!switched) throw new Error('Mol* trajectory controls are not available.');
@@ -18364,7 +18388,16 @@
         // eslint-disable-next-line no-console
         console.error(error);
       } finally {
-        if (cameraSnapshot) restoreMolstarCameraSnapshotNow(viewer, cameraSnapshot);
+        if (cameraSnapshot) {
+          try {
+            restoreMolstarCameraSnapshot(viewer, cameraSnapshot);
+            // Flush the final scene while auto-framing is disabled: restoring
+            // only camera.setState leaves a reset queued for the next draw.
+            canvas3d.commit(true);
+          } finally {
+            canvas3d.setProps({ camera: { manualReset } });
+          }
+        }
       }
     };
     if (fileList) {

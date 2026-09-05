@@ -7105,7 +7105,6 @@ assert.match(previewViewer, /const setPose = \(index, options = \{\}\) => \{[\s\
 assert.match(previewViewer, /const performSetPose = async \(index, options = \{\}\) => \{/);
 assert.match(previewViewer, /const shouldFocus = options\.focus === true;/);
 assert.match(previewViewer, /const cameraSnapshot = shouldFocus \? null : captureMolstarCameraSnapshot\(viewer\);/);
-assert.match(previewViewer, /finally \{\s*if \(cameraSnapshot\) restoreMolstarCameraSnapshotNow\(viewer, cameraSnapshot\);\s*\}/);
 assert.match(previewViewer, /if \(shouldFocus\) scheduleMolstarStructureFocus\(viewer, \{ reason: 'pose-selection', durationMs: 180, force: true \}\);/);
 assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\(\), expectedLoopEpoch = loopEpoch\) => \{[\s\S]*?if \(!loopActive \|\| expectedLoopEpoch !== loopEpoch\) return;/);
 assert.match(previewViewer, /slider\.className = 'buret-docking-pose-slider'/);
