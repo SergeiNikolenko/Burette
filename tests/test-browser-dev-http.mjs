@@ -1,3 +1,5 @@
+// Run under Node, matching Vite: Bun 1.3.8 has a same-process HTTP client/server
+// keep-alive scheduling bug; separate-process Node/Bun client/server pairs pass.
 import assert from "node:assert/strict";
 import { Agent, createServer, request } from "node:http";
 import { readJsonBody, sendJson, sendJsonError } from "../apps/desktop/vite/browser-dev/http.ts";
