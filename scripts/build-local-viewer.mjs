@@ -1,6 +1,7 @@
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -31,11 +32,24 @@ const molstar = await Bun.build({
 });
 if (!molstar.success) throw new Error(molstar.logs.join('\n'));
 assets['molstar.js'] = await molstar.outputs[0].text();
-const result = await Bun.build({ entrypoints: [resolve(root, 'plugins/burette-agent/ui/local-viewer.mjs')], target: 'browser', format: 'esm', minify: true });
+const require = createRequire(import.meta.url);
+const tailwindRequire = createRequire(require.resolve('@tailwindcss/vite'));
+const { compile } = await import(tailwindRequire.resolve('@tailwindcss/node'));
+const { Scanner } = await import(tailwindRequire.resolve('@tailwindcss/oxide'));
+const cssPath = resolve(root, 'plugins/burette-agent/ui/local-viewer.css');
+const css = await compile(await readFile(cssPath, 'utf8'), { base: dirname(cssPath), onDependency() {} });
+assets['local-viewer.css'] = css.build(new Scanner({ sources: css.sources }).scan());
+const result = await Bun.build({
+  entrypoints: [resolve(root, 'plugins/burette-agent/ui/local-viewer.mjs')], target: 'browser', format: 'esm', minify: true,
+  define: { 'process.env.NODE_ENV': JSON.stringify('production') },
+  plugins: [{ name: 'desktop-button-import', setup(build) {
+    build.onResolve({ filter: /^@\/lib\/utils$/u }, () => ({ path: resolve(root, 'apps/desktop/src/lib/utils.ts') }));
+  } }],
+});
 if (!result.success) throw new Error(result.logs.join('\n'));
 const bootstrap = (await result.outputs[0].text()).replaceAll('</script', '<\\/script');
 const packed = gzipSync(JSON.stringify(assets)).toString('base64');
-const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Burette</title><style>html,body,#app{margin:0;width:100%;height:100%;min-height:420px}#status{position:absolute;top:8px;left:8px}.hidden{display:none}</style></head><body><div id="app"></div><div id="status">Loading local Burette viewer…</div><script id="burette-assets" type="application/octet-stream">${packed}</script><script type="module">${bootstrap}</script></body></html>`;
+const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Burette</title></head><body data-display-mode="inline"><div id="mcp-header"></div><main id="mcp-scene"><div id="app"></div><div id="status" role="status">Loading local structure…</div></main><script id="burette-assets" type="application/octet-stream">${packed}</script><script type="module">${bootstrap}</script></body></html>`;
 if (Buffer.byteLength(html) > 4 * 1024 * 1024) throw new Error('Local viewer HTML exceeds the 4 MiB resource budget.');
 await mkdir(resolve(root, 'plugins/burette-agent/assets'), { recursive: true });
 await writeFile(resolve(root, 'plugins/burette-agent/assets/local-viewer.html'), html);

@@ -1,4 +1,5 @@
 import { App } from '@modelcontextprotocol/ext-apps';
+import { renderViewerHeader } from './local-viewer-header';
 
 const app = new App({ name: 'burette-local-viewer', version: '0.1.0' }, {}, { autoResize: false });
 let session;
@@ -9,6 +10,28 @@ let lastAction = null;
 let completed = null;
 const executed = new Map();
 const status = document.getElementById('status');
+let latestCounts = null;
+let displayPending = false;
+
+function updateHeader() {
+  document.body.dataset.displayMode = displayMode;
+  renderViewerHeader({
+    label: window.BuretteConfig?.label || 'Molecular structure',
+    detail: latestCounts ? `${latestCounts.atoms.toLocaleString()} atoms · ${latestCounts.residues.toLocaleString()} residues` : 'Loading local structure…',
+    expanded: displayMode === 'fullscreen',
+    canExpand: !displayPending && Boolean(app.getHostContext()?.availableDisplayModes?.includes(displayMode === 'inline' ? 'fullscreen' : 'inline')),
+    onToggle: async () => {
+      displayPending = true;
+      updateHeader();
+      try {
+        const result = await app.requestDisplayMode({ mode: displayMode === 'inline' ? 'fullscreen' : 'inline' });
+        displayMode = result.mode;
+        revision += 1;
+      } catch (error) { status.classList.remove('hidden'); status.textContent = error.message; }
+      finally { displayPending = false; updateHeader(); window.BuretteHandleResize?.(); }
+    },
+  });
+}
 
 async function exchange(input) {
   const result = await app.callServerTool({ name: 'burette.inline_viewer_exchange', arguments: { ...session, ...input } });
@@ -45,10 +68,13 @@ async function start() {
     window.BuretteConfig = payload.config;
     offset = payload.nextOffset;
   } while (offset !== null);
+  window.BuretteConfig.theme = app.getHostContext()?.theme || 'light';
+  document.documentElement.dataset.theme = window.BuretteConfig.theme;
+  updateHeader();
   window.BuretteDataBytes = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
   let cursor = 0;
   for (const chunk of chunks) { window.BuretteDataBytes.set(chunk, cursor); cursor += chunk.length; }
-  for (const name of ['molstar.css', 'viewer-runtime.css']) {
+  for (const name of ['molstar.css', 'viewer-runtime.css', 'local-viewer.css']) {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = URL.createObjectURL(new Blob([assets[name]], { type: 'text/css' }));
@@ -63,6 +89,8 @@ async function poll() {
   try {
     const summary = await window.BuretteAgent.run({ command: 'summary' });
     const ready = summary.ok === true && summary.result?.counts?.atoms > 0;
+    latestCounts = ready ? summary.result.counts : null;
+    updateHeader();
     const state = { ready, revision, displayMode, counts: summary.result?.counts || null, camera: window.BuretteViewer?.plugin?.canvas3d?.camera?.getSnapshot(), lastAction };
     const result = await exchange({ state, ...(completed ? { completed } : {}) });
     completed = null;
@@ -91,6 +119,11 @@ async function poll() {
 
 app.onhostcontextchanged = context => {
   if (context.displayMode) displayMode = context.displayMode;
+  if (context.theme) {
+    document.documentElement.dataset.theme = context.theme;
+    window.postMessage({ source: 'burette-host', body: { type: 'setViewerTheme', value: context.theme } }, '*');
+  }
+  updateHeader();
   window.BuretteHandleResize?.();
 };
 app.ontoolresult = async result => {
