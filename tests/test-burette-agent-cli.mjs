@@ -6,9 +6,9 @@ import { createServer, get as httpGet } from 'node:http';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
-function get(url) {
+function get(url, headers = {}) {
   return new Promise((resolveRequest, rejectRequest) => {
-    httpGet(new URL(url), (response) => {
+    httpGet(new URL(url), { headers }, (response) => {
       let body = '';
       response.setEncoding('utf8');
       response.on('data', chunk => { body += chunk; });
@@ -187,23 +187,27 @@ try {
       });
       assert.equal(prebuiltShell.status, 0, prebuiltShell.stderr);
       const prebuiltPayload = JSON.parse(prebuiltShell.stdout);
+      const shellToken = new URL(prebuiltPayload.result.url).searchParams.get('shellToken');
+      assert.ok(shellToken);
+      const shellHeaders = { Authorization: `Bearer ${shellToken}` };
+      const shellFetch = (url, options = {}) => fetch(url, { ...options, headers: { ...options.headers, ...shellHeaders } });
       assert.equal(prebuiltPayload.ok, true);
       assert.equal(prebuiltPayload.result.mode, 'browser-agent-shell');
       assert.equal(prebuiltPayload.result.runtime, 'prebuilt-static');
       assert.equal(new URL(prebuiltPayload.result.url).searchParams.get('agentLayout'), 'focus');
       const fsUrl = new URL(`/@fs${resolve('samples/mini.pdb')}`, prebuiltPayload.result.url);
-      const fsResponse = await fetch(fsUrl);
+      const fsResponse = await shellFetch(fsUrl);
       assert.equal(fsResponse.status, 200);
       assert.match(await fsResponse.text(), /^HEADER\s+MINI GLY-ALA PEPTIDE/u);
       const viewerRuntimeUrl = new URL(`/@fs${resolve('PreviewExtension/Web/viewer-shell.js')}`, prebuiltPayload.result.url);
-      const viewerRuntimeResponse = await fetch(viewerRuntimeUrl);
+      const viewerRuntimeResponse = await shellFetch(viewerRuntimeUrl);
       assert.equal(viewerRuntimeResponse.status, 200);
       assert.match(await viewerRuntimeResponse.text(), /window\.BuretteViewerShell/);
-      const stableViewerRuntimeResponse = await fetch(new URL('/__burette/runtime/viewer.js', prebuiltPayload.result.url));
+      const stableViewerRuntimeResponse = await shellFetch(new URL('/__burette/runtime/viewer.js', prebuiltPayload.result.url));
       assert.equal(stableViewerRuntimeResponse.status, 200);
       assert.match(stableViewerRuntimeResponse.headers.get('content-type') ?? '', /^text\/javascript\b/u);
       assert.match(await stableViewerRuntimeResponse.text(), /BuretteAgent|BuretteDataBase64|molstar/u);
-      const nativeComputeStatusResponse = await fetch(new URL('/__burette/native-compute', prebuiltPayload.result.url));
+      const nativeComputeStatusResponse = await shellFetch(new URL('/__burette/native-compute', prebuiltPayload.result.url));
       assert.equal(nativeComputeStatusResponse.status, 200);
       assert.match(nativeComputeStatusResponse.headers.get('content-type') ?? '', /^application\/json\b/u);
       const nativeComputeStatus = await nativeComputeStatusResponse.json();
@@ -220,7 +224,7 @@ try {
           'chemicalSpaceCluster',
         ]);
       }
-      const invalidNativeComputeResponse = await fetch(new URL('/__burette/native-compute', prebuiltPayload.result.url), {
+      const invalidNativeComputeResponse = await shellFetch(new URL('/__burette/native-compute', prebuiltPayload.result.url), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: '{}',
@@ -237,7 +241,7 @@ try {
         ['rdkit/RDKit_minimal.js', /^text\/javascript\b/u],
         ['rdkit/RDKit_minimal.wasm', /^application\/wasm\b/u],
       ]) {
-        const response = await fetch(new URL(`/__burette/runtime/${runtimePath}`, prebuiltPayload.result.url));
+        const response = await shellFetch(new URL(`/__burette/runtime/${runtimePath}`, prebuiltPayload.result.url));
         assert.equal(response.status, 200, runtimePath);
         assert.match(response.headers.get('content-type') ?? '', contentType, runtimePath);
         assert.equal((await response.arrayBuffer()).byteLength > 0, true, runtimePath);
@@ -297,20 +301,20 @@ try {
         }
       }
       const wasmUrl = new URL(`/@fs${resolve('PreviewExtension/Web/rdkit/RDKit_minimal.wasm')}`, prebuiltPayload.result.url);
-      const wasmResponse = await fetch(wasmUrl);
+      const wasmResponse = await shellFetch(wasmUrl);
       assert.equal(wasmResponse.status, 200);
       assert.equal(wasmResponse.headers.get('content-type'), 'application/wasm');
       assert.equal(Buffer.from(await wasmResponse.arrayBuffer()).subarray(0, 4).toString('hex'), '0061736d');
-      const rdkitWasmRouteResponse = await fetch(new URL('/__burette/rdkit-wasm', prebuiltPayload.result.url));
+      const rdkitWasmRouteResponse = await shellFetch(new URL('/__burette/rdkit-wasm', prebuiltPayload.result.url));
       assert.equal(rdkitWasmRouteResponse.status, 200);
       assert.equal(rdkitWasmRouteResponse.headers.get('content-type'), 'application/wasm');
       assert.equal(Buffer.from(await rdkitWasmRouteResponse.arrayBuffer()).subarray(0, 4).toString('hex'), '0061736d');
       const miniFsPath = resolve('samples/mini.pdb').split('/').map(encodeURIComponent).join('/');
-      const miniFs = await get(`${prebuiltPayload.result.url.split('?')[0]}@fs/${miniFsPath}`);
+      const miniFs = await get(`${prebuiltPayload.result.url.split('?')[0]}@fs/${miniFsPath}`, shellHeaders);
       assert.equal(miniFs.statusCode, 200);
       assert.match(miniFs.body, /^HEADER\s+MINI GLY-ALA PEPTIDE/u);
       assert.doesNotMatch(miniFs.body, /Burette Agent Shell/);
-      const finderIcon = await get(`${prebuiltPayload.result.url.split('?')[0]}__burette/app-icon/finder.png`);
+      const finderIcon = await get(`${prebuiltPayload.result.url.split('?')[0]}__burette/app-icon/finder.png`, shellHeaders);
       assert.equal(finderIcon.statusCode, 200);
       assert.match(finderIcon.headers['content-type'] ?? '', /^image\/png\b/u);
       assert.doesNotMatch(finderIcon.body, /Burette Agent Shell/);
@@ -328,7 +332,7 @@ try {
         });
         assert.equal(staleAssetShell.status, 0, staleAssetShell.stderr);
         const staleAssetPayload = JSON.parse(staleAssetShell.stdout);
-        const staleAsset = await get(`${staleAssetPayload.result.url.split('?')[0]}@fs/tmp/stale/Burette/PreviewExtension/Web/viewer.js`);
+        const staleAsset = await get(`${staleAssetPayload.result.url.split('?')[0]}@fs/tmp/stale/Burette/PreviewExtension/Web/viewer.js`, { Authorization: `Bearer ${new URL(staleAssetPayload.result.url).searchParams.get('shellToken')}` });
         assert.equal(staleAsset.statusCode, 200);
         assert.match(staleAsset.body, /BuretteAgent|BuretteDataBase64|molstar/u);
         assert.doesNotMatch(staleAsset.body, /Burette Agent Shell/);
