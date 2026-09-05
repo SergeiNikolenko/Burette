@@ -124,22 +124,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
             <>
               <h1>{settingsSectionLabel(section)}</h1>
               {section === "general" ? (
-                <>
-                  <SettingsSection
-                    title="Work mode"
-                    rows={[
-                      ...openDestinationRows,
-                      actionRow("Open structures", state.documents.length + " open structures in this workspace.", "Choose Files", () => void actions.chooseFiles()),
-                      actionRow("Most recent structure", state.recentStructures[0]?.title ?? "No recent structures saved.", "Open", actions.openMostRecentStructure, state.recentStructures.length === 0),
-                    ]}
-                  />
-                  <SettingsSection
-                    title="Current session"
-                    rows={[
-                      actionRow("Open tabs", state.tabs.length + " tabs, " + state.documents.length + " structure documents.", "Close All", actions.clearAllDocuments, state.documents.length === 0, true),
-                    ]}
-                  />
-                </>
+                <SettingsSection title="Work mode" rows={openDestinationRows} />
               ) : null}
               {section === "appearance" ? (
                 <>

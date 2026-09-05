@@ -10,6 +10,18 @@ fileprivate struct RuntimeAuxiliaryFile {
     let data: Data
 }
 
+fileprivate final class WeakPreviewScriptMessageHandler: NSObject, WKScriptMessageHandler {
+    weak var delegate: (any WKScriptMessageHandler)?
+
+    init(delegate: any WKScriptMessageHandler) {
+        self.delegate = delegate
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(userContentController, didReceive: message)
+    }
+}
+
 final class PreviewViewController: NSViewController, QLPreviewingController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     private var webView: WKWebView!
     private var previewStatus = ""
@@ -56,7 +68,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     override func loadView() {
         let transparentBackground = PreviewPreferences.load().resolvedTransparentBackground
         let userContentController = WKUserContentController()
-        userContentController.add(self, name: "burette")
+        userContentController.add(WeakPreviewScriptMessageHandler(delegate: self), name: "burette")
         if Self.showDebugOverlay {
             userContentController.addUserScript(WKUserScript(source: Self.documentStartProbeJavaScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
             userContentController.addUserScript(WKUserScript(source: Self.documentEndProbeJavaScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
@@ -97,6 +109,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Error?) -> Void) {
         let requestID = UUID()
         activePreviewRequestID = requestID
+        renderTimeoutWorkItem?.cancel()
+        renderTimeoutWorkItem = nil
         pendingCompletion = handler
         stopPreviewSourceMonitoring()
         currentPreviewURL = url
@@ -2784,7 +2798,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             guard index < lines.count else { break }
             let firstToken = lines[index].trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").first
             guard let token = firstToken, let atomCount = Int(token), atomCount > 0 else { break }
-            guard index + atomCount + 1 < lines.count else { break }
+            guard lines.count - index >= 2,
+                  atomCount <= lines.count - index - 2 else { break }
             frames += 1
             index += atomCount + 2
         }
@@ -3816,6 +3831,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 	        renderTimeoutWorkItem?.cancel()
 	        let workItem = DispatchWorkItem { [weak self] in
 	            guard let self else { return }
+	            guard self.activePreviewRequestID == requestID else { return }
 	            let error = PreviewError.webRenderTimedOut
 	            self.appendLog("render timeout waiting for JS ready after \(Int(timeoutSeconds)) seconds")
 	            self.appendFailedPreviewTrace(requestID: requestID, error: error, message: "render timeout waiting for JS ready")

@@ -81,6 +81,7 @@ const ChemicalSpace3D = lazy(() => import("./chemical-space-3d").then((module) =
 
 type ChemicalSpacePanelProps = {
   document: ViewerDocument | null;
+  visible?: boolean;
   /** The inspector already shows the hovered molecule, so the map's own
    *  floating card would only repeat it and cover the points being explored. */
   inspectorOpen?: boolean;
@@ -250,7 +251,7 @@ function indexingProgressLabel(state: GridIndexState | null) {
   return `${percent}% · ${records} molecules indexed`;
 }
 
-export function ChemicalSpacePanel({ document, inspectorOpen = false }: ChemicalSpacePanelProps) {
+export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = true }: ChemicalSpacePanelProps) {
   const portalContainer = useThemePortalContainer();
   const [draft, setDraft] = useState(DEFAULT_OPTIONS);
   const [options, setOptions] = useState(DEFAULT_OPTIONS);
@@ -667,6 +668,23 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
 
   useEffect(() => {
     if (!documentId) return;
+    const subscriberId = crypto.randomUUID();
+    let subscribedWindow: Window | null = null;
+    const subscribe = () => {
+      if (!visible) return;
+      const frameWindow = activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow ?? null;
+      if (subscribedWindow && subscribedWindow !== frameWindow) {
+        subscribedWindow.postMessage({
+          source: "burette-grid-host",
+          body: { type: "chemicalSpaceVisibilitySubscription", documentId, subscriberId, active: false },
+        }, "*");
+      }
+      subscribedWindow = frameWindow;
+      frameWindow?.postMessage({
+        source: "burette-grid-host",
+        body: { type: "chemicalSpaceVisibilitySubscription", documentId, subscriberId, active: true },
+      }, "*");
+    };
     const onMessage = (event: MessageEvent) => {
       const data = event.data && typeof event.data === "object"
         ? event.data as { source?: unknown; body?: Record<string, unknown> }
@@ -676,6 +694,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
         || data.body?.documentId !== documentId
         || !isKnownViewerMessageSource(event.source, documentId)
       ) return;
+      if (data.body.type === "ready") subscribe();
       if (data.body.type === "gridMenuStateChanged" && Array.isArray(data.body.selectedSourceIndexes)) {
         setSelected(new Set(data.body.selectedSourceIndexes
           .slice(0, GRID_SELECTION_BRIDGE_LIMIT)
@@ -748,12 +767,19 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false }: Chemical
       }
     };
     window.addEventListener("message", onMessage);
+    subscribe();
     activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
       source: "burette-grid-host",
       body: { type: "chemicalSpaceRequestState", documentId },
     }, "*");
-    return () => window.removeEventListener("message", onMessage);
-  }, [applySourceRevision, documentId]);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      subscribedWindow?.postMessage({
+        source: "burette-grid-host",
+        body: { type: "chemicalSpaceVisibilitySubscription", documentId, subscriberId, active: false },
+      }, "*");
+    };
+  }, [applySourceRevision, documentId, documentInstanceKey, visible]);
 
   // Only one of the two shows the hovered molecule. Putting the inspector card
   // away with its close button hands the job back to the map's own small

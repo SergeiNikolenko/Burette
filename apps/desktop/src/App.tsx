@@ -302,6 +302,7 @@ export default function App() {
     forgetDirtyGridDocument,
     forgetDirtyGridDocuments,
     getWindowDocumentDirtySnapshot: getGridWindowDocumentDirtySnapshot,
+    dirtyGridDocuments,
     hasDirtyGridDocuments,
     isDirtyGridDocument,
     updateDirtyGridDocument,
@@ -1101,10 +1102,14 @@ export default function App() {
   useAppPreferenceEffects({
     activeTab,
     activeTabId,
+    documents,
+    isDocumentDirty: (document) => {
+      const session = sourceEditing.sessionForDocument(document);
+      return isDirtyGridDocument(document.id) || Boolean(session?.dirty || session?.saving);
+    },
     openDocuments,
     preferences,
     pushErrorStatus,
-    setActiveTab,
     skipNextPreferenceRefreshRef,
   });
 
@@ -1268,6 +1273,7 @@ export default function App() {
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
   const state = useAppShellViewState({
+    dirtyGridDocuments,
     gridFilterModel: activeGridFilterModel,
     documents,
     textDocuments,

@@ -1,7 +1,9 @@
-import { createHash } from "node:crypto";
-import { mkdir, open as openFile, readFile, stat, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { mkdir, open as openFile, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { promisify } from "node:util";
 import type { ViteDevServer } from "vite";
 
 import type { BrowserDevFileScan, BrowserDevFileScanLimits } from "./file-discovery";
@@ -260,7 +262,9 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
         sendJson(res, 400, { error: "Missing path" });
         return;
       }
-      const filePath = resolve(path);
+      // JSON can expand a UTF-8 byte to a six-byte escape sequence.
+      const body = await readJsonBody(req, options.devFileSizeLimit * 6 + 1024);
+      const filePath = await realpath(resolve(path));
       if (!options.isDevFileReadAllowed(filePath)) {
         sendJson(res, 403, { error: "Forbidden" });
         return;
@@ -270,7 +274,6 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
         sendJson(res, 400, { error: "Unsupported file" });
         return;
       }
-      const body = await readJsonBody(req);
       const contents = body.contents;
       const expectedModifiedAt = body.expectedModifiedAt;
       if (typeof contents !== "string") {
@@ -287,7 +290,34 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
         sendJson(res, 409, { error: "The file changed on disk. Reopen it before saving your edits." });
         return;
       }
-      await writeFile(filePath, contents, "utf8");
+      const temporaryPath = join(dirname(filePath), `.${basename(filePath)}.${randomUUID()}.tmp`);
+      try {
+        const temporary = await openFile(temporaryPath, "wx", info.mode);
+        try {
+          if (process.platform === "darwin") {
+            // Match native source editing: retain Finder tags and other xattrs
+            // before replacing the original inode with the staged file.
+            await promisify(execFile)("/bin/cp", ["-p", filePath, temporaryPath]);
+            await temporary.truncate(0);
+          }
+          await temporary.writeFile(contents, "utf8");
+          await temporary.chmod(info.mode);
+          await temporary.sync();
+        } finally {
+          await temporary.close();
+        }
+        const current = await stat(filePath);
+        // Detect changes during staging as well as while receiving the body.
+        // External writers are not locked: this is optimistic conflict detection.
+        if (current.mtimeMs !== info.mtimeMs || current.ctimeMs !== info.ctimeMs
+          || current.size !== info.size || current.ino !== info.ino) {
+          sendJson(res, 409, { error: "The file changed on disk. Reopen it before saving your edits." });
+          return;
+        }
+        await rename(temporaryPath, filePath);
+      } finally {
+        await rm(temporaryPath, { force: true });
+      }
       const savedInfo = await stat(filePath);
       sendJson(res, 200, {
         byteCount,

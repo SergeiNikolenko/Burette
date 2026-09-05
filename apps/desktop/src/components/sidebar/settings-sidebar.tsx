@@ -10,14 +10,6 @@ import type { ShellActions, ShellViewState } from "../types";
 export function SettingsSidebar({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
   const [query, setQuery] = useState("");
   const activeSection = state.activeTab?.location.kind === "settings" ? state.activeTab.location.section : "general";
-  const handleBackToApp = () => {
-    const target = [...state.tabs].reverse().find((tab) => tab.location.kind !== "settings");
-    if (target) {
-      actions.selectTab(target.id);
-      return;
-    }
-    actions.openNewTab();
-  };
   const normalizedQuery = query.trim().toLowerCase();
   const visibleGroups = useMemo(() => {
     if (!normalizedQuery) return settingsNavGroups;
@@ -35,7 +27,7 @@ export function SettingsSidebar({ state, actions }: { state: ShellViewState; act
   return (
     <div className="settings-sidebar">
       <div className="settings-sidebar-spacer" data-tauri-drag-region />
-      <Button type="button" variant="ghost" className="settings-back-button" onClick={handleBackToApp}>
+      <Button type="button" variant="ghost" className="settings-back-button" onClick={actions.backToApp}>
         <AnimatedBackIcon />
         <span>Back to app</span>
       </Button>

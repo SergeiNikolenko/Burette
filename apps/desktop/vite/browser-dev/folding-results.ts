@@ -100,7 +100,7 @@ export function registerBrowserDevFoldingResultRoute(
         sendJson(res, 403, { error: "Forbidden" });
         return;
       }
-      sendJson(res, 200, readBrowserDevFoldingResultBundle(filePath), "no-cache");
+      sendJson(res, 200, readBrowserDevFoldingResultBundle(filePath, options), "no-cache");
     } catch (error) {
       sendJsonError(res, 500, error);
     }
@@ -321,10 +321,10 @@ function formatOptionalNumber(value: number | null) {
   return value.toFixed(4);
 }
 
-function readBrowserDevFoldingResultBundle(inputPath: string): BrowserDevFoldingResultBundle {
-  const roots = candidateFoldingRoots(inputPath);
+function readBrowserDevFoldingResultBundle(inputPath: string, options: BrowserDevFoldingResultRouteOptions): BrowserDevFoldingResultBundle {
+  const roots = candidateFoldingRoots(inputPath, options);
   for (const root of roots) {
-    const bundle = scanBrowserDevFoldingRoot(root, inputPath);
+    const bundle = scanBrowserDevFoldingRoot(root, inputPath, options);
     if (!browserDevFoldingBundleHasContent(bundle)) continue;
     if (browserDevFoldingBundleReferencesInput(bundle, inputPath)) return bundle;
   }
@@ -341,9 +341,9 @@ function browserDevFoldingBundleReferencesInput(bundle: BrowserDevFoldingResultB
     || bundle.models.some((model) => model.artifacts.some((artifact) => artifact.path === inputPath));
 }
 
-function scanBrowserDevFoldingRoot(root: string, inputPath: string): BrowserDevFoldingResultBundle {
+function scanBrowserDevFoldingRoot(root: string, inputPath: string, options: BrowserDevFoldingResultRouteOptions): BrowserDevFoldingResultBundle {
   const files: Array<{ path: string; title: string; extension: string; byteCount: number }> = [];
-  collectBrowserDevFoldingFiles(root, 0, files);
+  collectBrowserDevFoldingFiles(root, 0, files, options);
   const foldingEntries = files.filter((entry) => foldingArtifactKind(entry) !== null);
   if (!foldingEntries.length) return emptyBrowserDevFoldingBundle(root, inputPath, []);
   const structures = files.filter((entry) => isFoldingStructureExtension(entry.extension));
@@ -648,7 +648,8 @@ function matchingBrowserDevFoldingArtifacts(
   });
 }
 
-function collectBrowserDevFoldingFiles(root: string, depth: number, files: Array<{ path: string; title: string; extension: string; byteCount: number }>) {
+function collectBrowserDevFoldingFiles(root: string, depth: number, files: Array<{ path: string; title: string; extension: string; byteCount: number }>, options: BrowserDevFoldingResultRouteOptions) {
+  if (!options.isDevFileReadAllowed(root)) return;
   if (depth > 6 || files.length >= 5000 || !existsSync(root)) return;
   let dirents: Dirent[];
   try {
@@ -663,8 +664,9 @@ function collectBrowserDevFoldingFiles(root: string, depth: number, files: Array
     // folding arrays, which showed a plain MD folder as a folding result bundle.
     if (dirent.name.startsWith(".")) continue;
     const path = join(root, dirent.name);
+    if (!options.isDevFileReadAllowed(path)) continue;
     if (dirent.isDirectory()) {
-      collectBrowserDevFoldingFiles(path, depth + 1, files);
+      collectBrowserDevFoldingFiles(path, depth + 1, files, options);
       continue;
     }
     if (!dirent.isFile()) continue;
@@ -678,13 +680,13 @@ function collectBrowserDevFoldingFiles(root: string, depth: number, files: Array
   }
 }
 
-function candidateFoldingRoots(inputPath: string) {
+function candidateFoldingRoots(inputPath: string, options: BrowserDevFoldingResultRouteOptions) {
   const info = statSync(inputPath);
   let root = info.isDirectory() ? inputPath : dirname(inputPath);
   const roots: string[] = [];
   const home = homedir();
   for (let index = 0; index <= 6; index += 1) {
-    if (isUserCollectionRoot(root, home)) break;
+    if (!options.isDevFileReadAllowed(root) || isUserCollectionRoot(root, home)) break;
     roots.push(root);
     const parent = dirname(root);
     if (!parent || parent === root) break;

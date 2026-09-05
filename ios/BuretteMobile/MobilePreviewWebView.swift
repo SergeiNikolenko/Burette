@@ -71,6 +71,14 @@ struct MobilePreviewWebView: UIViewRepresentable {
         context.coordinator.runContextMenuCommand(contextMenuCommand, in: uiView)
     }
 
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+        coordinator.cancelPreparation()
+        coordinator.removeRetiredRuntimes()
+        uiView.stopLoading()
+        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "burette")
+        uiView.navigationDelegate = nil
+    }
+
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         private let status: Binding<String>
         private let lastError: Binding<String?>
@@ -84,6 +92,34 @@ struct MobilePreviewWebView: UIViewRepresentable {
         private(set) var loadedMolstarQuality: MobileMolstarQuality?
         private var desiredPanelState: MobileMolstarPanelState?
         private var appliedPanelState: MobileMolstarPanelState?
+        private var generation = UUID()
+        private var readyGeneration: UUID?
+        private var pageURL: URL?
+        private var runtimeDirectories: [URL] = []
+        private var preparation: DispatchWorkItem?
+
+        func cancelPreparation() {
+            generation = UUID()
+            readyGeneration = nil
+            preparation?.cancel()
+            pageURL = nil
+            pendingActionID = nil
+            pendingContextCommandID = nil
+        }
+
+        func removeRetiredRuntimes() {
+            let current = pageURL?.deletingLastPathComponent()
+            let retired = runtimeDirectories.filter { $0 != current }
+            runtimeDirectories.removeAll { $0 != current }
+            MobilePreviewRuntime.preparationQueue.async {
+                for directory in retired { try? FileManager.default.removeItem(at: directory) }
+            }
+        }
+
+        private var pendingActionID: UUID?
+        private var pendingContextCommandID: UUID?
+        private var desiredAction: MobileMolstarControlAction?
+        private var desiredContextCommand: MobileMolstarContextMenuCommand?
         private var appliedActionID: UUID?
         private var appliedContextCommandID: UUID?
 
@@ -118,62 +154,102 @@ struct MobilePreviewWebView: UIViewRepresentable {
             contextMenu.wrappedValue = nil
             inspectorTarget.wrappedValue = nil
             logEntries.wrappedValue = []
-            do {
-                let preview = try MobilePreviewRuntime.build(
-                    document: document,
-                    theme: theme,
-                    style: style,
-                    waterRepresentation: waterRepresentation,
-                    molstarQuality: molstarQuality
-                )
-                webView.loadFileURL(preview.indexURL, allowingReadAccessTo: preview.readAccessURL)
-                status.wrappedValue = "Loading \(document.displayName) (\(style.displayName))"
-                lastError.wrappedValue = nil
-                appendLog(kind: .status, message: "Loading \(document.displayName) (\(style.displayName))")
-            } catch {
-                let message = error.localizedDescription
-                status.wrappedValue = ""
-                lastError.wrappedValue = message
-                appendLog(kind: .error, message: message)
-                webView.loadHTMLString(Self.errorHTML(message: message), baseURL: nil)
+            cancelPreparation()
+            let requestGeneration = generation
+            webView.stopLoading()
+            status.wrappedValue = "Preparing \(document.displayName)"
+            lastError.wrappedValue = nil
+            let work = DispatchWorkItem { [weak self, weak webView] in
+                let result = Result {
+                    try MobilePreviewRuntime.build(
+                        document: document, theme: theme, style: style,
+                        waterRepresentation: waterRepresentation, molstarQuality: molstarQuality
+                    )
+                }
+                DispatchQueue.main.async {
+                    guard let self, let webView, self.generation == requestGeneration else {
+                        if case .success(let preview) = result {
+                            MobilePreviewRuntime.preparationQueue.async {
+                                try? FileManager.default.removeItem(at: preview.indexURL.deletingLastPathComponent())
+                            }
+                        }
+                        return
+                    }
+                    switch result {
+                    case .success(let preview):
+                        self.runtimeDirectories.append(preview.indexURL.deletingLastPathComponent())
+                        self.pageURL = preview.indexURL
+                        webView.loadFileURL(preview.indexURL, allowingReadAccessTo: preview.readAccessURL)
+                        self.status.wrappedValue = "Loading \(document.displayName) (\(style.displayName))"
+                        self.appendLog(kind: .status, message: self.status.wrappedValue)
+                    case .failure(let error):
+                        let message = error.localizedDescription
+                        self.status.wrappedValue = ""
+                        self.lastError.wrappedValue = message
+                        self.appendLog(kind: .error, message: message)
+                        webView.loadHTMLString(Self.errorHTML(message: message), baseURL: nil)
+                    }
+                }
             }
+            preparation = work
+            MobilePreviewRuntime.preparationQueue.async(execute: work)
         }
 
         func applyPanelState(_ panelState: MobileMolstarPanelState, in webView: WKWebView) {
             desiredPanelState = panelState
-            guard appliedPanelState != panelState else { return }
-            webView.evaluateJavaScript("window.BuretteMobileControls && window.BuretteMobileControls.setLayout(\(panelState.jsonString));") { _, error in
-                if error == nil {
+            guard let pageURL, webView.url == pageURL, appliedPanelState != panelState else { return }
+            let requestGeneration = generation
+            webView.evaluateJavaScript("(() => { const bridge = window.BuretteMobileControls; if (!bridge || typeof bridge.setLayout !== 'function') return false; bridge.setLayout(\(panelState.jsonString)); return true; })()") { result, error in
+                guard self.generation == requestGeneration, webView.url == pageURL,
+                      self.desiredPanelState == panelState else { return }
+                if error == nil, result as? Bool == true {
                     self.appliedPanelState = panelState
                 }
             }
         }
 
         func runControlAction(_ action: MobileMolstarControlAction?, in webView: WKWebView) {
-            guard let action, appliedActionID != action.id else { return }
-            appliedActionID = action.id
-            webView.evaluateJavaScript("window.BuretteMobileControls && window.BuretteMobileControls.runAction(\(Self.javascriptString(action.name)));")
+            desiredAction = action
+            guard readyGeneration == generation, let action, let pageURL, webView.url == pageURL, appliedActionID != action.id, pendingActionID != action.id else { return }
+            pendingActionID = action.id
+            let requestGeneration = generation
+            webView.evaluateJavaScript("(() => { if (typeof window.BuretteRunMobileControlAction !== 'function') return false; window.BuretteRunMobileControlAction(\(Self.javascriptString(action.name))); return true; })()") { result, error in
+                guard self.generation == requestGeneration, webView.url == pageURL else { return }
+                if self.pendingActionID == action.id { self.pendingActionID = nil }
+                if error == nil, result as? Bool == true { self.appliedActionID = action.id }
+            }
         }
 
         func runContextMenuCommand(_ command: MobileMolstarContextMenuCommand?, in webView: WKWebView) {
-            guard let command, appliedContextCommandID != command.id else { return }
-            appliedContextCommandID = command.id
-            webView.evaluateJavaScript(
-                "window.BuretteMobileControls && window.BuretteMobileControls.runContextMenuAction(\(Self.javascriptString(command.action)), \(Self.javascriptString(command.mode)));"
-            )
+            desiredContextCommand = command
+            guard readyGeneration == generation, let command, let pageURL, webView.url == pageURL, appliedContextCommandID != command.id, pendingContextCommandID != command.id else { return }
+            pendingContextCommandID = command.id
+            let requestGeneration = generation
+            webView.evaluateJavaScript("(() => { if (typeof window.BuretteRunMobileContextMenuAction !== 'function') return false; window.BuretteRunMobileContextMenuAction(\(Self.javascriptString(command.action)), \(Self.javascriptString(command.mode))); return true; })()") { result, error in
+                guard self.generation == requestGeneration, webView.url == pageURL else { return }
+                if self.pendingContextCommandID == command.id { self.pendingContextCommandID = nil }
+                if error == nil, result as? Bool == true { self.appliedContextCommandID = command.id }
+            }
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard webView.url == pageURL else { return }
+            removeRetiredRuntimes()
+            runControlAction(desiredAction, in: webView)
+            runContextMenuCommand(desiredContextCommand, in: webView)
             if let desiredPanelState {
                 applyPanelState(desiredPanelState, in: webView)
             }
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard let body = message.body as? [String: Any] else { return }
+            guard let pageURL, message.frameInfo.request.url == pageURL,
+                  let body = message.body as? [String: Any] else { return }
             let type = body["type"] as? String ?? ""
             let text = body["message"] as? String ?? ""
+            let requestGeneration = generation
             DispatchQueue.main.async {
+                guard self.generation == requestGeneration else { return }
                 if type == "mobileContextMenu" {
                     self.contextMenu.wrappedValue = Self.mobileContextMenu(from: body)
                 } else if type == "mobileInspectorTarget" {
@@ -193,6 +269,14 @@ struct MobilePreviewWebView: UIViewRepresentable {
                     self.lastError.wrappedValue = nil
                     self.appendLog(kind: .status, message: text)
                 } else if type == "ready" {
+                    self.readyGeneration = requestGeneration
+                    if let webView = message.webView {
+                        if let desiredPanelState = self.desiredPanelState {
+                            self.applyPanelState(desiredPanelState, in: webView)
+                        }
+                        self.runControlAction(self.desiredAction, in: webView)
+                        self.runContextMenuCommand(self.desiredContextCommand, in: webView)
+                    }
                     self.status.wrappedValue = ""
                     self.lastError.wrappedValue = nil
                     self.appendLog(kind: .ready, message: text.isEmpty ? "Preview ready" : text)

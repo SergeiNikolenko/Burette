@@ -1197,7 +1197,9 @@ impl MetalComputeRuntime {
         }
         let breakdowns = dispatch
             .breakdown_vectors
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|vectors| MmffEnergyBreakdown {
                 bond_stretch: f64::from(vectors[0][0]),
                 angle_bend: f64::from(vectors[0][1]),

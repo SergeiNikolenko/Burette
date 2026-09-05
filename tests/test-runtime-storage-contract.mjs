@@ -62,6 +62,7 @@ assert.deepEqual(storageConstants(gridViewer), sortedPairs([
   ["MMFF_VARIANT_STORAGE_KEY", "buret.grid.mmffVariant"],
   ["RDKIT_USE_INPUT_COORDS_STORAGE_KEY", "buret.grid.rdkitUseInputCoords"],
   ["SEMIEMPIRICAL_METHOD_STORAGE_KEY", "buret.grid.semiempiricalMethod"],
+  ["TABLE_COLUMN_WIDTHS_STORAGE_KEY", "buret.grid.tableColumnWidths"],
   ["TABLE_HIDDEN_COLUMNS_STORAGE_KEY", "buret.grid.tableHiddenColumns"],
 ]));
 
@@ -72,6 +73,8 @@ assert.deepEqual(literalStorageKeys(viewer), [
   "buret.toolbar.collapsed.version",
   "buret.toolbar.position",
   "buret.toolbar.position.version",
+  "buret.viewportRail.position",
+  "buret.viewportRail.position.version",
 ]);
 assert.deepEqual(literalStorageKeys(gridViewer), []);
 
@@ -87,7 +90,5 @@ assert.match(viewer, /return `burette\.dockingPose\.fallback-\$\{stableTextHash\
 assert.match(viewer, /return `burette\.trajectoryControl\.\$\{documentId\}`/);
 assert.match(viewer, /return `burette\.trajectoryControl\.fallback-\$\{stableTextHash\(fallback\)\}`/);
 assert.match(viewer, /return `\$\{trajectoryControlStorageKey\(config, prepared\)\}\.fps\.v1`/);
-
-assert.doesNotMatch(`${viewer}\n${gridViewer}`, /['"`]burette\./i);
 
 console.log("runtime storage contract tests passed");

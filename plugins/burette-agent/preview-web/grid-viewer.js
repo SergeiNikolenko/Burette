@@ -94,6 +94,11 @@
     visibleCount: 0,
     renderedCount: 0,
     query: '',
+    searchMode: 'text',
+    searchTimer: 0,
+    searchTextCache: new WeakMap(),
+    dataToken: 0,
+    remoteLoadToken: 0,
     smarts: '',
     smartsError: '',
     smartsMatches: new Map(),
@@ -111,6 +116,9 @@
     tableColumnWidths: storedColumnWidths(TABLE_COLUMN_WIDTHS_STORAGE_KEY),
     tableColumnFilters: {},
     tableColumnCatalogCache: null,
+    filterColumnStatsCache: new Map(),
+    filterColumnVariationCache: new Map(),
+    filterColumnStatsRows: null,
     reactionRowsCache: null,
     tableColumnPanelOutsideController: null,
     tableScrollLeft: 0,
@@ -127,6 +135,10 @@
     selected: new Set(),
     chemicalSpaceFilterActive: false,
     lastChemicalSpaceVisibility: null,
+    chemicalSpaceVisibilitySubscribers: new Set(),
+    chemicalSpaceVisibilityRequest: null,
+    chemicalSpaceVisibilityGeneration: 0,
+    chemicalSpaceVisibilityScanning: false,
     ketcherOpenPendingUntil: 0,
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
@@ -158,6 +170,7 @@
     remoteLoading: false,
     hostReadOnly: window.name === 'burette-read-only',
     closeTransitionActive: false,
+    saveAsPending: false,
     dirty: false,
     dirtyReason: '',
     sourceRevision: 0,
@@ -487,7 +500,7 @@
   function capabilities(cfg) {
     const caps = cfg.capabilities || {};
     const molecularGrid = effectiveMolecularGrid(cfg);
-    const editing = caps.editing !== false && !state.hostReadOnly;
+    const editing = caps.editing !== false && !state.hostReadOnly && !state.saveAsPending;
     return {
       editing,
       selection: !!caps.selection,
@@ -604,7 +617,7 @@
         return;
       }
       if (body.type === 'gridMenuCommand') {
-        if (state.closeTransitionActive) return;
+        if (state.closeTransitionActive || state.saveAsPending) return;
         const cfg = safeConfig();
         executeGridMenuCommand(body, cfg);
         return;
@@ -627,6 +640,22 @@
         notifyGridMenuState(config());
         if (state.lastChemicalSpaceVisibility) {
           post('chemicalSpaceVisibilityChanged', '', state.lastChemicalSpaceVisibility);
+        }
+        return;
+      }
+      if (body.type === 'chemicalSpaceVisibilitySubscription') {
+        const subscriberId = String(body.subscriberId || '');
+        if (!subscriberId) return;
+        if (body.active === true) {
+          if (state.chemicalSpaceVisibilitySubscribers.has(subscriberId)) return;
+          state.chemicalSpaceVisibilitySubscribers.add(subscriberId);
+          requestChemicalSpaceVisibility(config());
+        } else {
+          state.chemicalSpaceVisibilitySubscribers.delete(subscriberId);
+          if (!state.chemicalSpaceVisibilitySubscribers.size) {
+            state.chemicalSpaceVisibilityGeneration += 1;
+            state.chemicalSpaceVisibilityScanning = false;
+          }
         }
         return;
       }
@@ -899,18 +928,38 @@
         return;
       }
       if (body.type === 'gridSavedAs') {
-        markGridClean();
+        state.saveAsPending = false;
+        if (body.sourceRevision === state.sourceRevision) markGridClean();
         setStatus(`[grid] Saved as ${body.name || 'collection file'}.`);
         updateChrome(config());
         return;
       }
+      if (body.type === 'gridSaveAsCancelled') {
+        state.saveAsPending = false;
+        syncGridEditControls();
+        updateChrome(config());
+        return;
+      }
       if (body.type === 'gridSaveAsError') {
+        state.saveAsPending = false;
+        syncGridEditControls();
+        updateChrome(config());
         setStatus(body.error || '[grid] Save As failed.', 'error');
         return;
       }
       if (body.type === 'gridSaved') {
         if (!capabilities(config()).editing) return;
-        markGridClean();
+        if (body.sourceRevision === state.sourceRevision) markGridClean();
+        else {
+          state.dirty = true;
+          state.dirtyReason = 'changes after save';
+          notifyGridDirty(true);
+          syncGridEditControls();
+          // Historical clean flags refer to the disk state before this save.
+          for (const entry of [...state.undoStack, ...state.redoStack]) {
+            entry.snapshot.dirty = true;
+          }
+        }
         setStatus(`[grid] Saved ${body.name || 'collection file'}.`);
         updateChrome(config());
         return;
@@ -920,7 +969,7 @@
         return;
       }
       if (body.type === 'gridApplyKetcherRow') {
-        if (state.closeTransitionActive) return;
+        if (state.closeTransitionActive || state.saveAsPending) return;
         if (!capabilities(config()).editing) return;
         applyKetcherGridRow(body, config());
         return;
@@ -1676,6 +1725,9 @@
       exportEnabled: caps.export,
       selectionEnabled: caps.selection,
       substructureSearch: caps.substructureSearch,
+      searchMode: state.searchMode,
+      exportScopeLabel: exportScopeLabel(),
+      exportPending: Boolean(state.searchTimer || state.remoteLoading || !collectionIndexReady()),
       supportsXyzrenderCards: supportsXyzrenderCards(cfg),
       viewMode: state.viewMode,
       cardRenderer: state.cardRenderer,
@@ -1702,7 +1754,12 @@
       ...gridEditState(),
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
-        setUnifiedSearchQuery(value || '', cfg);
+        scheduleSearch(value || '', cfg);
+      },
+      onSearchModeChange(value) {
+        state.searchMode = value;
+        setUnifiedSearchQuery(state.query, cfg, value);
+        refreshGridControls(cfg);
         refresh(cfg);
       },
       onSortChange(value) {
@@ -1714,8 +1771,7 @@
         applyGridPreferences(cfg);
       },
       onClearSmarts() {
-        state.query = '';
-        state.smarts = '';
+        setUnifiedSearchQuery('', cfg, state.searchMode);
         const input = document.getElementById('search');
         if (input) input.value = '';
         refresh(cfg);
@@ -1768,7 +1824,7 @@
       }
     });
     const search = document.getElementById('search');
-    if (search) search.setAttribute('aria-label', effectiveMolecularGrid(cfg) ? 'Search molecules and SMARTS' : 'Search table rows');
+    if (search) search.setAttribute('aria-label', state.searchMode === 'structure' ? 'Search structures with SMARTS' : 'Search text');
     bindGridEditControlHandlers(cfg);
     applyGridToolbarInset();
     updateGridToolbarCondensed();
@@ -1862,7 +1918,7 @@
     // File actions live in the Actions menu, which is absent from the DOM until
     // it opens. Re-render whenever edit state changes so the menu is built from
     // fresh props rather than stale markup.
-    const signature = `${edit.saveEnabled}|${edit.saveAsEnabled}|${edit.undoEnabled}`;
+    const signature = `${edit.saveEnabled}|${edit.saveAsEnabled}|${edit.undoEnabled}|${exportScopeLabel()}|${Boolean(state.searchTimer || state.remoteLoading)}`;
     if (state.gridEditSignature !== signature) {
       state.gridEditSignature = signature;
       const cfg = safeConfig();
@@ -2906,15 +2962,44 @@
   }
 
   function shouldFallbackSMARTSToTextSearch() {
-    return !!state.smartsError && !!state.smarts.trim() && !queryLooksLikeExplicitSMARTS(state.query);
+    return state.searchMode !== 'structure' && !!state.smartsError && !!state.smarts.trim() && !queryLooksLikeExplicitSMARTS(state.query);
   }
 
-  function setUnifiedSearchQuery(value, cfg) {
+  // Explicit UI modes are predictable; callers that omit mode retain the
+  // legacy automatic SMARTS/SMILES-fragment interpretation.
+  function setUnifiedSearchQuery(value, cfg, mode = 'auto') {
     state.query = value || '';
-    state.smarts = capabilities(cfg).substructureSearch && queryLooksLikeSMARTS(value) ? value || '' : '';
+    state.smarts = capabilities(cfg).substructureSearch
+      && (mode === 'structure' || (mode === 'auto' && queryLooksLikeSMARTS(value))) ? value || '' : '';
+  }
+
+  function scheduleSearch(value, cfg) {
+    const wasPending = Boolean(state.searchTimer);
+    clearTimeout(state.searchTimer);
+    setUnifiedSearchQuery(value, cfg, state.searchMode);
+    // Obsolete page/SMARTS requests must stop applying while the user types,
+    // rather than remaining valid until the debounce expires.
+    state.token += 1;
+    state.dataToken += 1;
+    state.searchTimer = setTimeout(() => refresh(cfg), 120);
+    if (!wasPending) refreshGridControls(cfg);
+  }
+
+  function normalizedSearchText(row) {
+    const cached = state.searchTextCache.get(row);
+    if (cached && cached.revision === state.sourceRevision
+      && cached.name === row.name && cached.smiles === row.smiles && cached.props === row.props) return cached.text;
+    const text = normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n'));
+    state.searchTextCache.set(row, {
+      revision: state.sourceRevision, name: row.name, smiles: row.smiles, props: row.props, text
+    });
+    return text;
   }
 
   function refresh(cfg) {
+    state.dataToken += 1;
+    clearTimeout(state.searchTimer);
+    state.searchTimer = 0;
     resetGridWindowForNewResultSet();
     if (state.remoteMode) {
       if (state.chemicalSpaceFilterActive) {
@@ -2935,7 +3020,7 @@
     const query = state.smarts.trim() ? '' : normalize(state.query);
     const allRows = currentLocalCollectionRows();
     const textRows = query
-      ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(query))
+      ? allRows.filter(row => normalizedSearchText(row).includes(query))
       : allRows.slice();
     // The pre-selection set is what the Chemical Space map dims against: the
     // lasso's own selection filter must not feed back into map visibility.
@@ -2946,7 +3031,7 @@
       state.smartsError = '';
       state.smartsMatches = new Map();
       const fallbackRows = fallbackQuery
-        ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(fallbackQuery))
+        ? allRows.filter(row => normalizedSearchText(row).includes(fallbackQuery))
         : allRows.slice();
       visibilityRows = filterByTableColumnControls(filterByDescriptorControls(fallbackRows));
       state.rows = filterByChemicalSpaceSelection(visibilityRows);
@@ -2966,9 +3051,10 @@
   }
 
   function postChemicalSpaceVisibility(rows) {
+    state.chemicalSpaceVisibilityRequest = null;
     if (!chemicalSpaceGridFiltersActive()) {
       state.lastChemicalSpaceVisibility = { kind: 'all' };
-      post('chemicalSpaceVisibilityChanged', '', state.lastChemicalSpaceVisibility);
+      if (state.chemicalSpaceVisibilitySubscribers.size) post('chemicalSpaceVisibilityChanged', '', state.lastChemicalSpaceVisibility);
       return;
     }
     const sourceRecordIds = [];
@@ -2978,22 +3064,51 @@
       if (Number.isSafeInteger(index) && index >= 0) sourceRecordIds.push(index);
     }
     state.lastChemicalSpaceVisibility = { kind: 'filtered', sourceRecordIds };
-    post('chemicalSpaceVisibilityChanged', '', state.lastChemicalSpaceVisibility);
+    if (state.chemicalSpaceVisibilitySubscribers.size) post('chemicalSpaceVisibilityChanged', '', state.lastChemicalSpaceVisibility);
   }
 
-  // Remote grids only hold the scrolled-in window, so a complete visibility
-  // set has to page through the host like the SMARTS scan does.
-  async function collectRemoteChemicalSpaceVisibility(cfg, token) {
+  function updateRemoteChemicalSpaceVisibility(result, cfg, token) {
+    if (!chemicalSpaceGridFiltersActive() || state.rows.length >= state.totalRows) {
+      postChemicalSpaceVisibility(state.rows);
+      return;
+    }
+    const pageRows = Array.isArray(result.rows) ? result.rows : [];
+    state.lastChemicalSpaceVisibility = null;
+    state.chemicalSpaceVisibilityRequest = {
+      token, sort: state.sort || 'index', offset: pageRows.length,
+      total: Number(result.totalRows || 0),
+      sourceRecordIds: pageRows.map(row => Number(row.index)).filter(index => Number.isSafeInteger(index) && index >= 0)
+    };
+    requestChemicalSpaceVisibility(cfg);
+  }
+
+  function requestChemicalSpaceVisibility(cfg) {
+    if (!state.chemicalSpaceVisibilitySubscribers.size) return;
+    if (state.lastChemicalSpaceVisibility) {
+      post('chemicalSpaceVisibilityChanged', '', state.lastChemicalSpaceVisibility);
+      return;
+    }
+    const request = state.chemicalSpaceVisibilityRequest;
+    if (!request || request.token !== state.dataToken || state.chemicalSpaceVisibilityScanning) return;
+    void collectRemoteChemicalSpaceVisibility(cfg, request);
+  }
+
+  // Fetch the remaining IDs only while a map consumes them. Continue after the
+  // already fetched page, in the same order, to avoid duplicate page transfers.
+  async function collectRemoteChemicalSpaceVisibility(cfg, request) {
+    const generation = ++state.chemicalSpaceVisibilityGeneration;
+    state.chemicalSpaceVisibilityScanning = true;
     try {
-      const sourceRecordIds = [];
-      let offset = 0;
-      let total = null;
+      const sourceRecordIds = request.sourceRecordIds.slice(0, GRID_SELECTION_BRIDGE_LIMIT);
+      let offset = request.offset;
+      let total = request.total;
       const limit = Math.max(120, loadBatchSize(cfg));
-      while (total === null || offset < total) {
-        if (token !== state.token) return;
+      while (offset < total && sourceRecordIds.length < GRID_SELECTION_BRIDGE_LIMIT) {
+        if (request.token !== state.dataToken || generation !== state.chemicalSpaceVisibilityGeneration
+          || !state.chemicalSpaceVisibilitySubscribers.size) return;
         const result = await hostRequest('gridFetchPage', gridFetchPayload({
           query: state.query || '',
-          sort: 'index',
+          sort: request.sort,
           offset,
           limit
         }));
@@ -3007,11 +3122,14 @@
         offset += pageRows.length;
         if (!pageRows.length || sourceRecordIds.length >= GRID_SELECTION_BRIDGE_LIMIT) break;
       }
-      if (token !== state.token) return;
+      if (request.token !== state.dataToken || generation !== state.chemicalSpaceVisibilityGeneration
+        || !state.chemicalSpaceVisibilitySubscribers.size) return;
       state.lastChemicalSpaceVisibility = { kind: 'filtered', sourceRecordIds };
       post('chemicalSpaceVisibilityChanged', '', state.lastChemicalSpaceVisibility);
     } catch (_) {
       // Keep the previous visibility rather than flashing everything visible.
+    } finally {
+      if (generation === state.chemicalSpaceVisibilityGeneration) state.chemicalSpaceVisibilityScanning = false;
     }
   }
 
@@ -3079,7 +3197,7 @@
     if (!pattern) return rows;
     if (!state.rdkit || typeof state.rdkit.get_qmol !== 'function') {
       state.smartsError = 'This RDKit build does not support SMARTS queries.';
-      return rows;
+      return state.searchMode === 'structure' ? [] : rows;
     }
 
     let qmol = null;
@@ -3096,7 +3214,7 @@
       return matches;
     } catch (error) {
       state.smartsError = error?.message || String(error);
-      return rows;
+      return state.searchMode === 'structure' ? [] : rows;
     } finally {
       try { qmol?.delete?.(); } catch (_) {}
     }
@@ -3235,7 +3353,13 @@
   }
 
   async function refreshRemote(cfg) {
-    const token = ++state.token;
+    const token = ++state.dataToken;
+    const loadToken = ++state.remoteLoadToken;
+    state.token += 1;
+    state.chemicalSpaceVisibilityGeneration += 1;
+    state.chemicalSpaceVisibilityScanning = false;
+    state.chemicalSpaceVisibilityRequest = null;
+    state.lastChemicalSpaceVisibility = null;
     state.smartsError = '';
     state.smartsMatches = new Map();
     state.rows = [];
@@ -3245,18 +3369,18 @@
     state.visibleCount = 0;
     const grid = document.getElementById('grid');
     if (grid) grid.innerHTML = '';
+    state.remoteLoading = true;
     updateChrome(cfg);
     try {
-      state.remoteLoading = true;
       if (state.smarts.trim()) {
         const matches = await scanRemoteBySMARTS(cfg, token);
-        if (token !== state.token) return;
+        if (token !== state.dataToken) return;
         if (!shouldFallbackSMARTSToTextSearch()) {
           state.rows = matches;
           invalidateTableColumnCatalog();
           state.totalRows = matches.length;
           state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
-          await renderVirtualWindow(cfg, token, { force: true });
+          await renderVirtualWindow(cfg, state.token, { force: true });
           postChemicalSpaceVisibility(state.rows);
           return;
         }
@@ -3269,23 +3393,23 @@
         offset: 0,
         limit: loadBatchSize(cfg)
       }));
-      if (token !== state.token) return;
+      if (token !== state.dataToken) return;
       state.rows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
       invalidateTableColumnCatalog();
       applyGridPageState(result);
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
-      await renderVirtualWindow(cfg, token, { force: true });
+      await renderVirtualWindow(cfg, state.token, { force: true });
       scheduleIndexPoll(cfg);
-      if (!chemicalSpaceGridFiltersActive() || state.rows.length >= state.totalRows) {
-        postChemicalSpaceVisibility(state.rows);
-      } else {
-        void collectRemoteChemicalSpaceVisibility(cfg, token);
-      }
+      updateRemoteChemicalSpaceVisibility(result, cfg, token);
     } catch (error) {
+      if (token !== state.dataToken) return;
       const message = error?.message || String(error);
       setStatus(message, 'error');
     } finally {
-      state.remoteLoading = false;
+      if (loadToken === state.remoteLoadToken) {
+        state.remoteLoading = false;
+        syncGridEditControls();
+      }
     }
   }
 
@@ -3293,7 +3417,9 @@
   // filtering the fetched rows alone showed a handful of the selection. Page
   // through the collection like the SMARTS scan does and keep every selected row.
   async function refreshRemoteChemicalSpaceSelection(cfg) {
-    const token = ++state.token;
+    const token = ++state.dataToken;
+    const loadToken = ++state.remoteLoadToken;
+    state.token += 1;
     const wanted = new Set([...state.selected].map(Number));
     state.smartsError = '';
     state.smartsMatches = new Map();
@@ -3312,7 +3438,7 @@
       let total = null;
       const limit = Math.max(120, loadBatchSize(cfg));
       while ((total === null || offset < total) && matches.length < wanted.size) {
-        if (token !== state.token) return;
+        if (token !== state.dataToken) return;
         const result = await hostRequest('gridFetchPage', gridFetchPayload({
           query: state.query || '',
           sort: state.sort || 'index',
@@ -3320,6 +3446,7 @@
           limit
         }));
         const pageRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
+        if (token !== state.dataToken) return;
         applyGridPageState(result);
         total = Number(result.totalRows || 0);
         for (const row of pageRows) {
@@ -3329,18 +3456,22 @@
         if (!pageRows.length) break;
         setStatus(`[grid] Loading selection ${matches.length.toLocaleString()} / ${wanted.size.toLocaleString()} molecules...`);
       }
-      if (token !== state.token) return;
+      if (token !== state.dataToken) return;
       state.rows = matches;
       invalidateTableColumnCatalog();
       state.totalRows = matches.length;
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
-      await renderVirtualWindow(cfg, token, { force: true });
+      await renderVirtualWindow(cfg, state.token, { force: true });
       setStatus(`[grid] Showing ${matches.length.toLocaleString()} selected molecule${matches.length === 1 ? '' : 's'}.`);
     } catch (error) {
+      if (token !== state.dataToken) return;
       const message = error?.message || String(error);
       setStatus(message, 'error');
     } finally {
-      state.remoteLoading = false;
+      if (loadToken === state.remoteLoadToken) {
+        state.remoteLoading = false;
+        syncGridEditControls();
+      }
     }
   }
 
@@ -3360,7 +3491,7 @@
       let total = null;
       const limit = Math.max(120, loadBatchSize(cfg));
       while (total === null || offset < total) {
-        if (token !== state.token) return matches;
+        if (token !== state.dataToken) return matches;
         const result = await hostRequest('gridFetchPage', gridFetchPayload({
           query: '',
           sort: state.sort || 'index',
@@ -3368,6 +3499,7 @@
           limit
         }));
         const pageRows = await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg);
+        if (token !== state.dataToken) return [];
         applyGridPageState(result);
         total = Number(result.totalRows || 0);
         for (const row of pageRows) {
@@ -3382,7 +3514,7 @@
       }
       return matches;
     } catch (error) {
-      state.smartsError = error?.message || String(error);
+      if (token === state.dataToken) state.smartsError = error?.message || String(error);
       return [];
     } finally {
       try { qmol?.delete?.(); } catch (_) {}
@@ -3460,6 +3592,7 @@
   }
 
   async function loadMoreRemote(cfg) {
+    if (state.searchTimer) return;
     if (state.remoteLoading) {
       state.pendingLoad = true;
       return;
@@ -3470,7 +3603,8 @@
       await renderVirtualWindow(cfg, state.token, { force: true });
       return;
     }
-    const token = state.token;
+    const token = state.dataToken;
+    const loadToken = ++state.remoteLoadToken;
     state.remoteLoading = true;
     try {
       const result = await hostRequest('gridFetchPage', gridFetchPayload({
@@ -3479,7 +3613,7 @@
         offset: state.rows.length,
         limit: loadBatchSize(cfg)
       }));
-      if (token !== state.token) return;
+      if (token !== state.dataToken) return;
       const nextRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
       applyGridPageState(result);
       state.rows.push(...nextRows);
@@ -3492,9 +3626,13 @@
       // collection into the iframe heap.
       if (!nextRows.length && state.indexing) scheduleIndexPoll(cfg);
     } catch (error) {
+      if (token !== state.dataToken) return;
       setStatus(error?.message || String(error), 'error');
     } finally {
-      state.remoteLoading = false;
+      if (loadToken === state.remoteLoadToken) {
+        state.remoteLoading = false;
+        syncGridEditControls();
+      }
     }
   }
 
@@ -4116,21 +4254,22 @@
   }
 
   async function loadRemoteRowsThrough(position, cfg, options = {}) {
-    if (!state.remoteMode || state.remoteLoading) {
+    if (!state.remoteMode || state.remoteLoading || state.searchTimer) {
       state.pendingGridRailPosition = position;
       return;
     }
-    const token = state.token;
+    const token = state.dataToken;
+    const loadToken = ++state.remoteLoadToken;
     state.remoteLoading = true;
     try {
-      while (token === state.token && state.rows.length <= position && state.rows.length < state.totalRows) {
+      while (token === state.dataToken && state.rows.length <= position && state.rows.length < state.totalRows) {
         const result = await hostRequest('gridFetchPage', gridFetchPayload({
           query: state.query || '',
           sort: state.sort || 'index',
           offset: state.rows.length,
           limit: Math.max(loadBatchSize(cfg), 240)
         }));
-        if (token !== state.token) return;
+        if (token !== state.dataToken) return;
         const nextRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
         state.totalRows = Number(result.totalRows || state.totalRows);
         if (!nextRows.length) break;
@@ -4149,12 +4288,15 @@
         await renderVirtualWindow(cfg, state.token, { force: true });
       }
     } catch (error) {
+      if (token !== state.dataToken) return;
       setStatus(error?.message || String(error), 'error');
     } finally {
+      if (loadToken !== state.remoteLoadToken) return;
       state.remoteLoading = false;
+      syncGridEditControls();
       const pending = state.pendingGridRailPosition;
       state.pendingGridRailPosition = null;
-      if (pending != null && pending !== position) void scrollToGridPosition(pending, cfg, options);
+      if (token === state.dataToken && pending != null && pending !== position) void scrollToGridPosition(pending, cfg, options);
     }
   }
 
@@ -4348,33 +4490,33 @@
   // The distribution is measured over every loaded row rather than the filtered
   // ones, so its shape stays put while a range moves across it.
   function filterColumnStats(column) {
-    const rows = state.all.length ? state.all : state.rows;
-    const values = [];
-    let min = Infinity;
-    let max = -Infinity;
-    for (const row of rows) {
-      const value = tableColumnNumericValue(row, column.id);
-      if (!Number.isFinite(value)) continue;
-      values.push(value);
-      if (value < min) min = value;
-      if (value > max) max = value;
+    const rows = state.filterColumnStatsRows ??= tableColumnDiscoveryRows();
+    if (!state.filterColumnStatsCache.has(column.id)) {
+      const values = [];
+      let min = Infinity;
+      let max = -Infinity;
+      for (const row of rows) {
+        const value = tableColumnNumericValue(row, column.id);
+        if (!Number.isFinite(value)) continue;
+        values.push(value);
+        if (value < min) min = value;
+        if (value > max) max = value;
+      }
+      let stats = null;
+      if (values.length >= 2 && max > min) {
+        const bins = new Array(FILTER_BINS).fill(0);
+        for (const value of values) {
+          bins[Math.min(FILTER_BINS - 1, Math.floor(((value - min) / (max - min)) * FILTER_BINS))] += 1;
+        }
+        stats = { min, max, bins };
+      }
+      state.filterColumnStatsCache.set(column.id, stats);
     }
-    if (values.length < 2) return null;
-    if (!(max > min)) return null;
-    const bins = new Array(FILTER_BINS).fill(0);
-    for (const value of values) {
-      bins[Math.min(FILTER_BINS - 1, Math.floor(((value - min) / (max - min)) * FILTER_BINS))] += 1;
-    }
-    if (!state.remoteMode) return { min, max, bins };
+    const stats = state.filterColumnStatsCache.get(column.id);
+    if (!stats || !state.remoteMode) return stats;
+    const statsRows = state.filterColumnStatsRows.length;
     const statsTotal = remoteCollectionTotal();
-    return {
-      min,
-      max,
-      bins,
-      statsRows: rows.length,
-      statsTotal,
-      statsComplete: state.indexReady && statsTotal > 0 && rows.length >= statsTotal
-    };
+    return { ...stats, statsRows, statsTotal, statsComplete: state.indexReady && statsTotal > 0 && statsRows >= statsTotal };
   }
 
   function filterColumnVaries(column) {
@@ -4428,7 +4570,10 @@
       const filter = state.tableColumnFilters[column.id] || null;
       const allowed = state.columnValueRanges.get(column.id) || null;
       const entry = { id: column.id, label: column.label, type: column.type === 'number' ? 'number' : 'text' };
-      entry.varied = filterColumnVaries(column) && !filterColumnIsRowIndex(column);
+      if (!state.filterColumnVariationCache.has(column.id)) {
+        state.filterColumnVariationCache.set(column.id, filterColumnVaries(column) && !filterColumnIsRowIndex(column));
+      }
+      entry.varied = state.filterColumnVariationCache.get(column.id);
       if (filter) entry.filter = { min: filter.min ?? '', max: filter.max ?? '', text: filter.text ?? '' };
       if (column.type === 'number') {
         const stats = filterColumnStats(column);
@@ -4692,6 +4837,9 @@
 
   function invalidateTableColumnCatalog() {
     state.tableColumnCatalogCache = null;
+    state.filterColumnStatsCache.clear();
+    state.filterColumnVariationCache.clear();
+    state.filterColumnStatsRows = null;
   }
 
   function tableColumnDiscoveryRows() {
@@ -4950,7 +5098,7 @@
   }
 
   function tableSearchQuery() {
-    return normalize(state.query).trim();
+    return state.searchMode === 'structure' ? '' : normalize(state.query).trim();
   }
 
   function tableColumnPanelHTML(catalog, visibleColumns) {
@@ -5719,7 +5867,7 @@
   }
 
   function replaceGridRow(row, patch, cfg, options = {}) {
-    if (state.closeTransitionActive) return false;
+    if (state.closeTransitionActive || state.saveAsPending) return false;
     if (!capabilities(cfg).editing) return false;
     const index = Number(row?.index);
     if (!Number.isFinite(index)) return false;
@@ -5755,7 +5903,7 @@
   }
 
   function duplicateGridRow(row, cfg) {
-    if (state.closeTransitionActive) return false;
+    if (state.closeTransitionActive || state.saveAsPending) return false;
     if (!capabilities(cfg).editing) return false;
     const index = Number(row?.index);
     if (!Number.isFinite(index)) return false;
@@ -5829,7 +5977,7 @@
   }
 
   async function splitGridMultipleValueRows(body, cfg) {
-    if (state.closeTransitionActive) return;
+    if (state.closeTransitionActive || state.saveAsPending) return;
     if (!capabilities(cfg).editing) return;
     const columnId = String(body.columnId || '');
     const propKey = columnId.startsWith('prop:') ? columnId.slice('prop:'.length) : '';
@@ -5843,7 +5991,7 @@
     const rows = state.remoteMode
       ? await collectAllRemoteRows(cfg, '', 'index', 'the row split', 'collection')
       : currentLocalCollectionRows();
-    if (state.closeTransitionActive) return;
+    if (state.closeTransitionActive || state.saveAsPending) return;
     const plan = planMultipleValueRowSplit(rows, propKey, delimiter, nextGridRowIndex(rows));
     if (plan.inserts.length === 0) {
       setStatus(`[grid] No row holds more than one value in ${label}.`);
@@ -6353,7 +6501,7 @@
   }
 
   function removeGridRow(row, options = {}) {
-    if (state.closeTransitionActive) return false;
+    if (state.closeTransitionActive || state.saveAsPending) return false;
     const cfg = safeConfig();
     if (cfg && !capabilities(cfg).editing) return false;
     const index = Number(row.index);
@@ -6382,7 +6530,7 @@
   // materialised file on save - so this works the same on a paged remote
   // collection as on a fully loaded one.
   function hideGridRowIndexes(indexes, label) {
-    if (state.closeTransitionActive) return 0;
+    if (state.closeTransitionActive || state.saveAsPending) return 0;
     const cfg = safeConfig();
     if (cfg && !capabilities(cfg).editing) return 0;
     const targets = [...new Set(indexes.map(Number))]
@@ -6411,7 +6559,7 @@
   }
 
   function deleteGridPropColumns(columnKeys) {
-    if (state.closeTransitionActive) return 0;
+    if (state.closeTransitionActive || state.saveAsPending) return 0;
     const cfg = safeConfig();
     if (cfg && !capabilities(cfg).editing) return 0;
     const targets = [...new Set(columnKeys.map(key => String(key || '').trim()))]
@@ -6435,7 +6583,7 @@
   // Returns the range it set, null when it cleared one, and false when it
   // refused the request - the caller has nothing to report in that case.
   function setGridColumnValueRange(columnId, min, max) {
-    if (state.closeTransitionActive) return false;
+    if (state.closeTransitionActive || state.saveAsPending) return false;
     const cfg = safeConfig();
     if (cfg && !capabilities(cfg).editing) return false;
     const id = String(columnId || '');
@@ -6504,7 +6652,7 @@
   }
 
   async function mergeGridEquivalentRows(body, cfg) {
-    if (state.closeTransitionActive) return;
+    if (state.closeTransitionActive || state.saveAsPending) return;
     if (!capabilities(cfg).editing) return;
     const groups = Array.isArray(body.groups) ? body.groups : [];
     const separator = String(body.separator ?? '; ');
@@ -6513,7 +6661,7 @@
     const rows = state.remoteMode
       ? await collectAllRemoteRows(cfg, '', 'index', 'the row merge', 'collection')
       : currentLocalCollectionRows();
-    if (state.closeTransitionActive) return;
+    if (state.closeTransitionActive || state.saveAsPending) return;
     const plan = planEquivalentRowMerge(rows, groups, separator);
     if (plan.hide.length === 0) {
       setStatus('[grid] No equivalent rows are left to merge.');
@@ -6644,7 +6792,7 @@
   }
 
   function undoLastGridEdit(cfg) {
-    if (state.closeTransitionActive) return;
+    if (state.closeTransitionActive || state.saveAsPending) return;
     if (!capabilities(cfg).editing) return;
     const entry = state.undoStack.pop();
     if (!entry) {
@@ -6659,7 +6807,7 @@
   }
 
   function redoLastGridEdit(cfg) {
-    if (state.closeTransitionActive) return;
+    if (state.closeTransitionActive || state.saveAsPending) return;
     if (!capabilities(cfg).editing) return;
     const entry = state.redoStack.pop();
     if (!entry) {
@@ -7325,7 +7473,12 @@
 
   function drawRdkitPlaceholder(row) {
     const key = rdkitCardKey(row);
-    if (state.svgCache.has(key)) return state.svgCache.get(key);
+    if (state.svgCache.has(key)) {
+      const html = state.svgCache.get(key);
+      state.svgCache.delete(key);
+      state.svgCache.set(key, html);
+      return html;
+    }
     return `<div class="buret-molecule-loading" data-buret-rdkit-card-key="${escapeAttr(key)}" aria-label="Rendering molecule"></div>`;
   }
 
@@ -7574,7 +7727,10 @@
   }
 
   function enqueueRdkitCard(row, key, target) {
-    if (state.svgCache.has(key)) return;
+    if (state.svgCache.has(key)) {
+      updateRdkitCard(key, state.svgCache.get(key), target);
+      return;
+    }
     const existing = state.rdkitCardPending.get(key);
     if (existing) {
       existing.target = target || existing.target;
@@ -7589,19 +7745,20 @@
   function pumpRdkitCardQueue() {
     if (state.rdkitCardRendering || !state.rdkitCardQueue.length) return;
     if (!state.rdkit && !state.rdkitError) return;
-    state.rdkitCardQueue.sort(compareCardRenderJobs);
     state.rdkitCardRendering = true;
     requestAnimationFrame(() => {
+      for (const job of state.rdkitCardQueue) job.priority = cardRenderPriority(job.target);
+      state.rdkitCardQueue.sort(compareCardRenderJobs);
       const startedAt = nowMs();
       let processed = 0;
       try {
         while (state.rdkitCardQueue.length && processed < RDKIT_CARD_FRAME_BATCH) {
           const job = state.rdkitCardQueue.shift();
-          updateRdkitCard(job.key, drawRdkit(job.row));
+          updateRdkitCard(job.key, drawRdkit(job.row), job.target);
           state.rdkitCardPending.delete(job.key);
           processed++;
           const now = nowMs();
-          if (processed >= 2 && now - startedAt >= RDKIT_CARD_FRAME_BUDGET_MS) break;
+          if (now - startedAt >= RDKIT_CARD_FRAME_BUDGET_MS) break;
         }
       } finally {
         try {
@@ -7620,7 +7777,7 @@
   }
 
   function compareCardRenderJobs(a, b) {
-    const delta = cardRenderPriority(a.target) - cardRenderPriority(b.target);
+    const delta = a.priority - b.priority;
     return delta || ((a.seq || 0) - (b.seq || 0));
   }
 
@@ -7634,15 +7791,14 @@
     return Math.abs(rect.bottom);
   }
 
-  function updateRdkitCard(key, html) {
-    root.querySelectorAll('[data-buret-rdkit-card-key]').forEach(target => {
-      if (target.getAttribute('data-buret-rdkit-card-key') !== key) return;
-      target.classList.remove('buret-molecule-loading');
-      target.removeAttribute('data-buret-rdkit-card-key');
-      target.innerHTML = html;
-      const card = target.closest('.buret-card');
-      if (card) fitCardSVGs(card);
-    });
+  function updateRdkitCard(key, html, target) {
+    if (!target || target.getAttribute('data-buret-rdkit-card-key') !== key) return;
+    target.classList.remove('buret-molecule-loading');
+    target.removeAttribute('data-buret-rdkit-card-key');
+    target.removeAttribute('aria-label');
+    target.innerHTML = html;
+    const card = target.closest('.buret-card');
+    if (card) fitCardSVGs(card);
   }
 
   function resetRdkitCardObserver() {
@@ -7657,7 +7813,11 @@
     if (!record) return '<div class="buret-molecule-error"><strong>Molecule</strong><span>No structure data</span></div>';
     const key = xyzrenderCardKey(row, record);
     const cached = state.xyzrenderCardCache.get(key);
-    if (cached?.html) return cached.html;
+    if (cached?.html) {
+      state.xyzrenderCardCache.delete(key);
+      state.xyzrenderCardCache.set(key, cached);
+      return cached.html;
+    }
     if (cached?.error) return `<div class="buret-molecule-error"><strong>${escapeHTML(row.name || `Molecule ${Number(row.index) + 1}`)}</strong><span>${escapeHTML(cached.error)}</span></div>`;
     const preview = '<div class="buret-molecule-loading" aria-label="Rendering molecule with xyzrender"></div>';
     return `<div class="buret-molecule-picture buret-xyzrender-preview" data-buret-xyzrender-card-key="${escapeAttr(key)}">${preview}</div>`;
@@ -7686,37 +7846,15 @@
     window.setTimeout(() => startLazyXyzrenderCard(target), 0);
   }
 
-  // Cards outside the viewport are queued once the visible ones are on their way
-  // so a rendered grid keeps every card warm instead of drawing them per scroll.
+  // Warm only nearby mounted cards; the observer admits more as the user scrolls.
   function scheduleXyzrenderCardPrefetch() {
     if (state.xyzrenderCardPrefetchTimer) return;
     state.xyzrenderCardPrefetchTimer = window.setTimeout(() => {
       state.xyzrenderCardPrefetchTimer = 0;
-      const targets = state.xyzrenderCardLazyTargets.splice(0);
-      for (const target of targets) startLazyXyzrenderCard(target);
-      warmXyzrenderCards();
+      for (const target of state.xyzrenderCardLazyTargets) {
+        if (isElementNearViewport(target, 600)) startLazyXyzrenderCard(target);
+      }
     }, XYZRENDER_CARD_PREFETCH_DELAY_MS);
-  }
-
-  // Rows below the virtual window have no card element yet, so they are queued
-  // without a target: they render at the lowest priority and land in the card
-  // cache before the user scrolls to them.
-  function warmXyzrenderCards() {
-    if (state.cardRenderer !== 'xyzrender') return;
-    const cfg = safeConfig();
-    if (!cfg) return;
-    if (cfg.appViewer !== true || cfg.gridDataMode !== 'bridge') return;
-    const start = Math.max(0, Number(state.windowStart) || 0);
-    const limit = Math.min(state.rows.length, start + XYZRENDER_CARD_CACHE_LIMIT);
-    for (let index = start; index < limit; index += 1) {
-      const row = state.rows[index];
-      if (!row) continue;
-      const record = gridDragRecord(row);
-      if (!record) continue;
-      const key = xyzrenderCardKey(row, record);
-      if (state.xyzrenderCardCache.has(key)) continue;
-      enqueueXyzrenderCard(row, cfg, record, key, null);
-    }
   }
 
   function ensureXyzrenderCardObserver() {
@@ -7753,18 +7891,28 @@
   function resetCardRenderQueues() {
     state.rdkitCardQueue = [];
     state.rdkitCardPending.clear();
+    for (const job of state.xyzrenderCardQueue) state.xyzrenderCardCache.delete(job.key);
     state.xyzrenderCardQueue = [];
     if (state.xyzrenderBatchTimer) {
       window.clearTimeout(state.xyzrenderBatchTimer);
       state.xyzrenderBatchTimer = 0;
     }
-    state.xyzrenderCardCache.forEach((value, key) => {
-      if (value?.pending) state.xyzrenderCardCache.delete(key);
-    });
   }
 
   function resetDocumentRuntimeState() {
     cancelVirtualWindowRender();
+    state.dataToken += 1;
+    state.remoteLoadToken += 1;
+    state.remoteLoading = false;
+    window.clearTimeout(state.searchTimer);
+    state.searchTimer = 0;
+    state.searchMode = 'text';
+    state.searchTextCache = new WeakMap();
+    state.chemicalSpaceVisibilitySubscribers.clear();
+    state.chemicalSpaceVisibilityRequest = null;
+    state.chemicalSpaceVisibilityGeneration += 1;
+    state.chemicalSpaceVisibilityScanning = false;
+    state.lastChemicalSpaceVisibility = null;
     state.query = '';
     state.smarts = '';
     state.smartsError = '';
@@ -7962,8 +8110,9 @@
   }
 
   function evictXyzrenderCardCache() {
-    while (state.xyzrenderCardCache.size > XYZRENDER_CARD_CACHE_LIMIT) {
-      state.xyzrenderCardCache.delete(state.xyzrenderCardCache.keys().next().value);
+    for (const [key, value] of state.xyzrenderCardCache) {
+      if (state.xyzrenderCardCache.size <= XYZRENDER_CARD_CACHE_LIMIT) break;
+      if (!value?.pending) state.xyzrenderCardCache.delete(key);
     }
   }
 
@@ -8258,6 +8407,60 @@
     return state.selected.size ? pool.filter(row => state.selected.has(Number(row.index))) : state.rows;
   }
 
+  function exportScopeLabel() {
+    const count = state.selected.size || (state.remoteMode ? state.totalRows : state.rows.length);
+    const scope = state.selected.size ? 'selected'
+      : chemicalSpaceGridFiltersActive() || state.chemicalSpaceFilterActive ? 'filtered' : 'all';
+    return `${Number(count).toLocaleString()} ${scope} ${Number(count) === 1 ? 'row' : 'rows'}`;
+  }
+
+  async function collectExportRows(cfg) {
+    if (state.searchTimer || state.remoteLoading) {
+      setStatus('[grid] Wait for the current search before exporting.', 'error');
+      return null;
+    }
+    if (!requireCollectionIndexReady('exporting')) return null;
+    const selected = new Set([...state.selected].map(Number));
+    if (!state.remoteMode) {
+      return selected.size
+        ? currentLocalCollectionRows().filter(row => selected.has(Number(row.index)))
+        : state.rows;
+    }
+    const token = state.token;
+    const revision = state.sourceRevision;
+    try {
+      if (!selected.size) {
+        const rows = state.smarts.trim() ? state.rows : await collectAllRemoteRows(cfg);
+        if (token !== state.token || revision !== state.sourceRevision) throw new Error('The view changed. Export again.');
+        return rows;
+      }
+      const found = new Map(materializeRemoteCollectionRows(state.rows)
+        .filter(row => selected.has(Number(row.index))).map(row => [Number(row.index), row]));
+      let offset = 0;
+      let total = null;
+      const limit = Math.max(120, loadBatchSize(cfg));
+      while (found.size < selected.size && (total === null || offset < total)) {
+        // Selection may include rows outside the filtered or loaded window.
+        // Fetch the collection without its current view filters, retaining only
+        // selected records rather than materializing the entire collection.
+        const result = await hostRequest('gridFetchPage', { query: '', sort: 'index', offset, limit });
+        if (token !== state.token || revision !== state.sourceRevision) throw new Error('The view changed. Export again.');
+        const pageRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
+        for (const row of pageRows) {
+          if (selected.has(Number(row.index))) found.set(Number(row.index), row);
+        }
+        total = Number(result.totalRows || 0);
+        offset += result.rows?.length || 0;
+        if (!result.rows?.length) break;
+      }
+      if (found.size !== selected.size) throw new Error('Some selected rows are no longer available. Refresh the selection before exporting.');
+      return [...found.values()].sort((left, right) => Number(left.index) - Number(right.index));
+    } catch (error) {
+      setStatus(error?.message || String(error), 'error');
+      return null;
+    }
+  }
+
   function shouldCollectAllRemoteRows() {
     return state.remoteMode && state.selected.size === 0 && !state.smarts.trim();
   }
@@ -8306,9 +8509,8 @@
   }
 
   async function exportSmiles(cfg) {
-    const collectAll = shouldCollectAllRemoteRows();
-    if (collectAll && !requireCollectionIndexReady('exporting the full collection')) return;
-    const rows = collectAll ? await collectAllRemoteRows(cfg) : selectedOrFiltered();
+    const rows = await collectExportRows(cfg);
+    if (!rows) return;
     const text = rows
       .map(row => `${row.smiles || ''}\t${row.name || `mol_${Number(row.index) + 1}`}`.trim())
       .filter(Boolean)
@@ -8317,9 +8519,8 @@
   }
 
   async function exportCSV(cfg) {
-    const collectAll = shouldCollectAllRemoteRows();
-    if (collectAll && !requireCollectionIndexReady('exporting the full collection')) return;
-    const rows = collectAll ? await collectAllRemoteRows(cfg) : selectedOrFiltered();
+    const rows = await collectExportRows(cfg);
+    if (!rows) return;
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
       ['index', 'name', 'smiles', ...props],
@@ -8329,36 +8530,55 @@
   }
 
   async function saveGridAs(cfg) {
-    if (!capabilities(cfg).editing) return;
+    if (!capabilities(cfg).editing || state.closeTransitionActive) return;
     if (!requireCollectionIndexReady('saving')) return;
-    const rows = await collectCurrentCollectionRows(cfg);
-    if (state.closeTransitionActive) return;
-    if (!rows.length) {
-      setStatus('[grid] There are no molecules to save.', 'error');
-      return;
-    }
-    const snapshot = gridSaveAsSnapshot(rows, cfg);
-    if (canUseNativeBridge()) {
-      post('saveGridAs', `[grid] Save As ${snapshot.name}.`, snapshot);
-      setStatus(`[grid] Save As requested: ${snapshot.name}.`);
-      return;
-    }
-    download(snapshot.text, snapshot.name, snapshot.mimeType);
-    markGridClean();
-    setStatus(`[grid] Saved as ${snapshot.name}.`);
+    state.saveAsPending = true;
+    syncGridEditControls();
     updateChrome(cfg);
+    let awaitingHost = false;
+    try {
+      const rows = await collectCurrentCollectionRows(cfg);
+      if (state.closeTransitionActive) return;
+      if (!rows.length) {
+        setStatus('[grid] There are no molecules to save.', 'error');
+        return;
+      }
+      const snapshot = { ...gridSaveAsSnapshot(rows, cfg), sourceRevision: state.sourceRevision };
+      if (canUseNativeBridge()) {
+        post('saveGridAs', `[grid] Save As ${snapshot.name}.`, snapshot);
+        awaitingHost = true;
+        setStatus(`[grid] Save As requested: ${snapshot.name}.`);
+        return;
+      }
+      download(snapshot.text, snapshot.name, snapshot.mimeType);
+      markGridClean();
+      setStatus(`[grid] Saved as ${snapshot.name}.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error), 'error');
+    } finally {
+      if (!awaitingHost) {
+        state.saveAsPending = false;
+        syncGridEditControls();
+        updateChrome(cfg);
+      }
+    }
   }
 
   async function saveGrid(cfg) {
     if (!capabilities(cfg).editing) return;
     if (!requireCollectionIndexReady('saving')) return;
+    const sourceRevision = state.sourceRevision;
     const rows = await collectCurrentCollectionRows(cfg);
-    if (state.closeTransitionActive) return;
+    if (sourceRevision !== state.sourceRevision) {
+      setStatus('[grid] The collection changed while preparing Save. Save again.', 'error');
+      return;
+    }
+    if (state.closeTransitionActive || state.saveAsPending) return;
     if (!rows.length) {
       setStatus('[grid] There are no molecules to save.', 'error');
       return;
     }
-    const snapshot = gridSaveAsSnapshot(rows, cfg);
+    const snapshot = { ...gridSaveAsSnapshot(rows, cfg), sourceRevision };
     if (canUseNativeBridge()) {
       post('saveGrid', `[grid] Save ${snapshot.name}.`, snapshot);
       setStatus(`[grid] Save requested: ${snapshot.name}.`);

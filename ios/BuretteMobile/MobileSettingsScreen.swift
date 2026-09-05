@@ -132,15 +132,21 @@ struct MobileSettingsScreen: View {
         let previews = caches
             .appendingPathComponent("BuretteMobile", isDirectory: true)
             .appendingPathComponent("previews", isDirectory: true)
-        do {
-            if fileManager.fileExists(atPath: previews.path) {
-                try fileManager.removeItem(at: previews)
-                maintenanceMessage = "Preview cache cleared. The next structure rebuilds the runtime."
-            } else {
-                maintenanceMessage = "Preview cache is already empty."
+        MobilePreviewRuntime.preparationQueue.async {
+            let result = Result {
+                let entries = try fileManager.contentsOfDirectory(at: previews, includingPropertiesForKeys: nil)
+                for entry in entries where entry.lastPathComponent != MobilePreviewRuntime.sessionID {
+                    try fileManager.removeItem(at: entry)
+                }
             }
-        } catch {
-            maintenanceMessage = "Could not clear preview cache: \(error.localizedDescription)"
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    maintenanceMessage = "Unused preview cache cleared. The active session is retained."
+                case .failure(let error):
+                    maintenanceMessage = "Could not clear preview cache: \(error.localizedDescription)"
+                }
+            }
         }
     }
 

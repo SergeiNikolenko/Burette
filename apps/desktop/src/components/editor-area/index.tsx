@@ -16,9 +16,13 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
   const activeTabIndex = tabs.findIndex((tab) => tab.id === activeTabId);
   const [recentlyUsedTabIds, setRecentlyUsedTabIds] = useState<string[]>([]);
   const warmPageLimit = mountedWarmPageLimit();
+  const dirtyTabIds = useMemo(() => new Set(tabs.filter((tab) => (
+    tab.location.kind === "file"
+    && state.dirtyGridDocuments?.has(tab.location.documentId ?? "")
+  )).map((tab) => tab.id)), [tabs, state.dirtyGridDocuments]);
   const warmMountedTabIds = useMemo(
-    () => warmMountedTabs(tabs, activeTabIndex, recentlyUsedTabIds, warmPageLimit),
-    [activeTabIndex, recentlyUsedTabIds, tabs, warmPageLimit],
+    () => warmMountedTabs(tabs, activeTabIndex, recentlyUsedTabIds, warmPageLimit, dirtyTabIds),
+    [activeTabIndex, recentlyUsedTabIds, tabs, warmPageLimit, dirtyTabIds],
   );
 
   useEffect(() => {
@@ -124,6 +128,7 @@ function warmMountedTabs(
   activeTabIndex: number,
   recentlyUsedTabIds: string[],
   limit: number,
+  dirtyTabIds: ReadonlySet<string>,
 ) {
   const warmEligibleTabIds = new Set(
     tabs.filter((tab) => pageKind(tab.location).keepAlive).map((tab) => tab.id),
@@ -138,15 +143,10 @@ function warmMountedTabs(
     add(recentlyUsedTabIds[index]);
   }
 
-  const fallbackCenter = activeTabIndex >= 0 ? activeTabIndex : tabs.length - 1;
-  for (let offset = 1; selected.size < limit && offset < tabs.length; offset += 1) {
-    add(tabs[fallbackCenter - offset]?.id);
-    add(tabs[fallbackCenter + offset]?.id);
+  // Unsaved iframe state cannot be reconstructed from the source file.
+  for (const id of dirtyTabIds) {
+    if (warmEligibleTabIds.has(id)) selected.add(id);
   }
-  for (let index = tabs.length - 1; selected.size < limit && index >= 0; index -= 1) {
-    add(tabs[index]?.id);
-  }
-
   return selected;
 }
 

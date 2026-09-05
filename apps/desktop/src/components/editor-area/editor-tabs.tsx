@@ -7,6 +7,7 @@ import { showNativeContextMenu } from "../native-context-menu";
 import { pageKind } from "./page-kinds";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import { CloseIcon } from "../close-icon";
+import { Badge } from "../ui/badge";
 import type { DropTargetContext } from "../../lib/drop-actions";
 import { describeDropTargetElement } from "../../lib/drop-target";
 
@@ -474,6 +475,7 @@ export function EditorTabs({
           const textDocument = textFileLocation
             ? state.textDocuments.find((document) => document.id === textFileLocation.documentId || document.path === textFileLocation.path) ?? null
             : null;
+          const dirty = Boolean(tabDocument && state.dirtyGridDocuments?.has(tabDocument.id));
           const isDragging = draggingTabId === tab.id;
           const selected = selectedTabIds.has(tab.id);
           const tabDropTarget = fileLocation
@@ -668,6 +670,7 @@ export function EditorTabs({
                 draggable={!readOnly}
                 tabIndex={active ? 0 : -1}
                 aria-selected={active}
+                aria-label={dirty ? `${title}, Unsaved changes` : title}
                 className={active ? "tab active" : "tab"}
                 aria-grabbed={isDragging || undefined}
                 onMouseDown={readOnly ? undefined : (event) => {
@@ -749,6 +752,7 @@ export function EditorTabs({
                 title={readOnly ? title : tabPath ?? title}
               >
                 <span>{title}</span>
+                {dirty ? <Badge className="ml-1.5 size-2 p-0" aria-hidden="true" /> : null}
               </button>
               {!readOnly ? <button
                 type="button"

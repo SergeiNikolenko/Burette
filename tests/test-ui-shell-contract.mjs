@@ -1538,7 +1538,7 @@ assert.match(editorArea, /const LOW_DEVICE_MEMORY_WARM_PAGE_LIMIT = 6/);
 assert.match(editorArea, /const MEMORY_PRESSURE_WARM_PAGE_LIMIT = 4/);
 assert.match(editorArea, /const MEMORY_PRESSURE_HEAP_RATIO = 0\.7/);
 assert.match(editorArea, /const \[recentlyUsedTabIds, setRecentlyUsedTabIds\] = useState<string\[\]>\(\[\]\)/);
-assert.match(editorArea, /warmMountedTabs\(tabs, activeTabIndex, recentlyUsedTabIds, warmPageLimit\)/);
+assert.match(editorArea, /warmMountedTabs\(tabs, activeTabIndex, recentlyUsedTabIds, warmPageLimit, dirtyTabIds\)/);
 assert.match(editorArea, /kind\.keepAlive/);
 assert.match(editorArea, /if \(!isActive && \(!kind\.keepAlive \|\| !warmMountedTabIds\.has\(tab\.id\)\)\) return null/);
 assert.match(editorArea, /<MountedPageSurface\s+key=\{tab\.id\}/);
@@ -1982,8 +1982,6 @@ assert.doesNotMatch(gridViewer, /XYZRENDER_CARD_BATCH_MAX_CONCURRENCY/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_DELAY_MS = 16;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_PREFETCH_DELAY_MS = 200;/);
 assert.match(gridViewer, /function scheduleXyzrenderCardPrefetch\(\) \{/);
-assert.match(gridViewer, /function warmXyzrenderCards\(\) \{/);
-assert.match(gridViewer, /if \(cfg\.appViewer !== true \|\| cfg\.gridDataMode !== 'bridge'\) return;/);
 assert.match(gridViewer, /function sortXyzrenderCardQueue\(\) \{/);
 assert.match(gridViewer, /return cfg\?\.appViewer === true && \(\s*cfg\?\.gridDataMode === 'bridge'\s*\|\|\s*\(typeof cfg\?\.xyzrenderEndpoint === 'string' && cfg\.xyzrenderEndpoint\.trim\(\)\.length > 0\)\s*\);/);
 assert.match(appGridRuntimeMessagesHook, /body\?\.type === "readStructureText"/);
@@ -2694,7 +2692,7 @@ assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument\(document\.p
 assert.match(structureInfoPanel, /<InspectorSection title="Composition"/);
 // Grid hover is rendered once in the inspector, above the filters, rather than
 // as a second popover over the molecule canvas.
-assert.match(structureInfoPanel, /<GridHoverMoleculeCard[\s\S]*row=\{hoveredGridRow \?\? null\}[\s\S]*onInspectProperty=/);
+assert.match(structureInfoPanel, /<GridHoverMoleculeCard[\s\S]*key=\{document\.id\}[\s\S]*row=\{hoveredGridRow \?\? null\}[\s\S]*onInspectProperty=/);
 assert.doesNotMatch(gridHoverMolecule, /aria-label="Resize molecule preview"/);
 assert.match(gridHoverMolecule, /className="grid-hover-molecule-props-title">Data<\/span>/);
 assert.match(gridHoverMolecule, /aria-label="Resize data section"/);
@@ -2731,7 +2729,8 @@ assert.match(gridHoverMolecule, /shown\?\.cardRenderer === "xyzrender"/);
 assert.match(gridHoverMolecule, /Rendering XYZRender preview/);
 assert.match(gridFilterSection, /focusRequestId/);
 assert.match(gridFilterSection, /scrollIntoView\(\{ block: "nearest" \}\)/);
-assert.match(gridViewer, /entry\.varied = filterColumnVaries\(column\) && !filterColumnIsRowIndex\(column\)/);
+assert.match(gridViewer, /filterColumnVariationCache\.set\(column\.id, filterColumnVaries\(column\) && !filterColumnIsRowIndex\(column\)\)/);
+assert.match(gridViewer, /entry\.varied = state\.filterColumnVariationCache\.get\(column\.id\)/);
 assert.match(gridViewer, /filterColumnIsRowIndex\(column\)/);
 assert.match(gridViewer, /value !== Number\(row\.index\) \+ 1/);
 // Conformers and xTB share one card shell, and a missing binary has to say what
@@ -4078,9 +4077,7 @@ assert.match(sidebarWorkspaceSwitcher, /<span className="sidebar-settings-label"
 assert.match(settingsSidebar, /Back to app/);
 assert.match(settingsSidebar, /Search settings/);
 assert.match(settingsSidebar, /settingsNavGroups/);
-assert.match(settingsSidebar, /const handleBackToApp = \(\) =>/);
-assert.match(settingsSidebar, /actions\.selectTab\(target\.id\)/);
-assert.match(settingsSidebar, /actions\.openNewTab\(\)/);
+assert.match(settingsSidebar, /onClick=\{actions\.backToApp\}/);
 assert.match(settingsSidebar, /actions\.openSettingsSection\(item\.id\)/);
 assert.match(settingsSidebar, /Burette|SettingsItemIcon/);
 assert.doesNotMatch(sidebarSurface, /Open preferences/);
@@ -4426,7 +4423,6 @@ assert.match(appDockingWorkflowsHook, /request\.sceneMode = options\.sceneMode \
 assert.match(appOpenDropControllerHook, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.match(app, /from "\.\/hooks\/use-app-open-actions"/);
 assert.match(app, /useAppOpenActions\(\{/);
-assert.match(appOpenActionsHook, /import previewFormatRegistry from "\.\.\/\.\.\/\.\.\/\.\.\/config\/preview-formats\.json"/);
 assert.match(appOpenActionsHook, /const openRecentStructure = useCallback/);
 assert.match(appOpenActionsHook, /const openMostRecentStructure = useCallback/);
 assert.match(appOpenActionsHook, /No recent structures to open/);
@@ -4457,12 +4453,10 @@ assert.match(appHostRuntimeOperationsHook, /invoke<string>\("write_base64_file",
 assert.match(appHostRuntimeOperationsHook, /GRID_PERF_REPORT_PATH = String\(import\.meta\.env\.BURETTE_GRID_PERF_REPORT_PATH \|\| ""\)/);
 assert.match(viteConfig, /"import\.meta\.env\.BURETTE_GRID_PERF_REPORT_PATH": JSON\.stringify\(\s*hostedMcpBuild \? "" : "\/private\/tmp\/burette-grid-real-app-perf\.jsonl"/s);
 assert.match(appHostRuntimeOperationsHook, /gridPerfMetricsRef\.current = \[\.\.\.gridPerfMetricsRef\.current\.slice\(-399\), line\]/);
-assert.match(app, /useAppPreferenceEffects\(\{\s*activeTab,\s*activeTabId,\s*openDocuments,\s*preferences,\s*pushErrorStatus,\s*setActiveTab,\s*skipNextPreferenceRefreshRef,\s*\}\)/s);
+assert.match(app, /useAppPreferenceEffects\(\{[\s\S]*?isDocumentDirty:[\s\S]*?skipNextPreferenceRefreshRef,/);
 assert.match(appPreferenceEffectsHook, /invoke\("sync_viewer_preferences", \{ preferences \}\)/);
 assert.match(appPreferenceEffectsHook, /isTemporaryDocumentPath\(activeTab\.location\.path\)/);
-assert.match(appPreferenceEffectsHook, /const restoreTabId = activeTabId/);
-assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\]\)\.then\(\(\) => \{/);
-assert.match(appPreferenceEffectsHook, /eslint-disable-next-line react-hooks\/exhaustive-deps/);
+assert.match(appPreferenceEffectsHook, /preserveActiveTab: true/);
 assert.match(app, /useAppShellNavigationActions\(\{/);
 assert.match(appShellNavigationActionsHook, /export function useAppShellNavigationActions\(\{/);
 assert.match(appShellNavigationActionsHook, /if \(!sidebarOpen\) toggleSidebar\(\);/);
@@ -4470,7 +4464,7 @@ assert.match(appShellNavigationActionsHook, /openSettingsTab\(\)/);
 assert.match(appShellNavigationActionsHook, /openSettingsSectionTab\(section\)/);
 assert.match(appShellNavigationActionsHook, /activateLastNonSettingsTab\(\)/);
 assert.match(appOpenActionsHook, /await invoke<string\[]>\("pick_open_targets"\)/);
-assert.match(appOpenActionsHook, /await open\(\{ multiple: true, filters \}\)/);
+assert.match(appOpenActionsHook, /await pickWebDemoFiles\(\)/);
 assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
 assert.match(app, /useAppViewerRuntimeRefs\(\)/);
 assert.match(appViewerRuntimeRefsHook, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions \| null>\(null\)/);
@@ -4770,7 +4764,7 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v183"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v184"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v70"/);
 assert.match(
   browserDevDocuments,
@@ -7663,7 +7657,7 @@ assert.match(derivedColumnsHook, /computeDerivedValue\("inchikey", engines, row\
 assert.match(appNativeMenuHook, /actions\.deleteDuplicateGridRows\(activeDocument\.id\)/);
 assert.match(gridViewer, /raw === null \|\| raw === undefined \|\| raw === '' \? Number\.NaN : Number\(raw\)/);
 assert.match(gridHoverMolecule, /filterModel\?\.columns/);
-assert.match(structureInfoPanel, /<GridHoverMoleculeCard[\s\S]*row=\{hoveredGridRow \?\? null\}[\s\S]*onInspectProperty=/);
+assert.match(structureInfoPanel, /<GridHoverMoleculeCard[\s\S]*key=\{document\.id\}[\s\S]*row=\{hoveredGridRow \?\? null\}[\s\S]*onInspectProperty=/);
 // The scaffold is not a card of its own: it takes over the corner preview, so
 // the inspector must not grow a second structure surface for it.
 assert.doesNotMatch(structureInfoPanel, /GridSelectionScaffoldCard/);
@@ -7761,10 +7755,10 @@ assert.doesNotMatch(gridRecordsAppended, /state\.closeTransitionActive/);
 assert.match(gridRecordsAppended, /state\.undoStack = \[\]/);
 assert.match(gridRecordsAppended, /state\.redoStack = \[\]/);
 const gridApplyKetcherRow = gridViewer.match(/if \(body\.type === 'gridApplyKetcherRow'\) \{[\s\S]*?\n      \}/)?.[0] ?? "";
-assert.match(gridApplyKetcherRow, /if \(state\.closeTransitionActive\) return;/);
+assert.match(gridApplyKetcherRow, /if \(state\.closeTransitionActive \|\| state\.saveAsPending\) return;/);
 for (const saveFunction of ["saveGridAs", "saveGrid"]) {
   const saveSource = gridViewer.match(new RegExp(`async function ${saveFunction}\\(cfg\\) \\{[\\s\\S]*?\\n  \\}`))?.[0] ?? "";
-  assert.match(saveSource, /const rows = await collectCurrentCollectionRows\(cfg\);\s*if \(state\.closeTransitionActive\) return;/);
+  assert.match(saveSource, /const rows = await collectCurrentCollectionRows\(cfg\);[\s\S]*if \(state\.closeTransitionActive/);
 }
 for (const mutationFunction of ["replaceGridRow", "duplicateGridRow", "removeGridRow", "undoLastGridEdit", "redoLastGridEdit"]) {
   const mutationSource = gridViewer.match(new RegExp(`function ${mutationFunction}\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0] ?? "";
@@ -8052,9 +8046,9 @@ assert.match(appViewerStateMessagesHook, /xyzrenderPresetOptions: presetOptions/
 assert.doesNotMatch(app, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
 assert.doesNotMatch(app, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
 assert.doesNotMatch(app, /void openDocuments\(\[path\]\)\.then/);
-assert.match(appPreferenceEffectsHook, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
+assert.match(appPreferenceEffectsHook, /pendingPathsRef/);
 assert.match(appPreferenceEffectsHook, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
-assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\]\)\.then/);
+assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\], undefined, undefined, \{\s*preserveActiveTab: true,/);
 // Theme and Mol* style changes must reach mounted viewers as messages instead of
 // reopening the document, otherwise the live Mol* scene (camera, components,
 // selections) is lost.
@@ -8062,7 +8056,7 @@ assert.match(appPreferenceEffectsHook, /const LIVE_APPLIED_PREFERENCE_MESSAGES =
 assert.match(appPreferenceEffectsHook, /function changedLiveAppliedKeys\(previous: ViewerPreferences, next: ViewerPreferences\)/);
 assert.match(appPreferenceEffectsHook, /querySelectorAll<HTMLIFrameElement>\("iframe\[data-document-id\]"\)/);
 assert.match(appPreferenceEffectsHook, /body: \{ type: LIVE_APPLIED_PREFERENCE_MESSAGES\[key\], value: preferences\[key\] \}/);
-assert.match(appPreferenceEffectsHook, /const liveKeys = changedLiveAppliedKeys\(previousPreferences, preferences\);\s*if \(liveKeys\) \{\s*broadcastLiveAppliedPreferences\(liveKeys, preferences\);\s*return;\s*\}/s);
+assert.match(appPreferenceEffectsHook, /if \(liveKeys\) broadcastLiveAppliedPreferences\(liveKeys, preferences\)/);
 assert.match(previewViewer, /if \(body\.type === 'setViewerTheme'\) \{\s*const nextTheme = normalizeViewerTheme\(body\.value\);/s);
 assert.match(previewViewer, /setViewerTheme\(nextTheme, activeViewer\);/);
 assert.match(previewViewer, /if \(body\.type === 'setViewerStyle'\) \{\s*const style = normalizeMolstarStyle\(body\.value\);\s*if \(style === 'default' \|\| style === 'illustrative'\) void requestMolstarAppearance\(style\);\s*else requestMolstarStyle\(style\);/s);
@@ -8136,7 +8130,7 @@ assert.match(gridViewer, /hostRequest\('gridFetchPage'/);
 assert.match(gridViewer, /hostRequest\('renderXyzrenderCard'/);
 assert.match(gridViewer, /body\.type === 'gridPage' \|\| body\.type === 'xyzrenderCard'/);
 assert.match(gridUi, /buret-search-control buret-filter-control/);
-assert.match(gridUi, /aria-label="Search molecules and SMARTS"/);
+assert.match(gridUi, /aria-label="Search mode"/);
 assert.match(gridUi, /placeholder=\{searchPlaceholder\}/);
 assert.match(gridViewer, /function queryLooksLikeExplicitSMARTS\(value\)/);
 assert.match(gridViewer, /function queryLooksLikeSMILESFragment\(value\)/);
@@ -8144,8 +8138,8 @@ assert.match(gridViewer, /function queryLooksLikeSMARTS\(value\)/);
 assert.match(gridViewer, /queryLooksLikeExplicitSMARTS\(value\) \|\| queryLooksLikeSMILESFragment\(value\)/);
 assert.match(gridViewer, /function shouldFallbackSMARTSToTextSearch\(\)/);
 assert.match(gridViewer, /!queryLooksLikeExplicitSMARTS\(state\.query\)/);
-assert.match(gridViewer, /function setUnifiedSearchQuery\(value, cfg\)/);
-assert.match(gridViewer, /state\.smarts = capabilities\(cfg\)\.substructureSearch && queryLooksLikeSMARTS\(value\) \? value \|\| '' : '';/);
+assert.match(gridViewer, /function setUnifiedSearchQuery\(value, cfg, mode = 'auto'\)/);
+assert.match(gridViewer, /mode === 'structure' \|\| \(mode === 'auto' && queryLooksLikeSMARTS\(value\)\)/);
 assert.doesNotMatch(gridViewer, /id="smarts"/);
 assert.doesNotMatch(gridViewer, /buret-smarts-control/);
 assert.doesNotMatch(gridViewer, /buret-filter-fields/);
@@ -8411,7 +8405,7 @@ assert.match(browserDevDocuments, /molecularGrid: hasMoleculeRecords/);
 assert.match(gridViewer, /typeof cfg\?\.molecularGrid === 'boolean'/);
 assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Molecule table' : 'Data table'/);
 assert.match(gridViewer, /numeric === 1 \? 'row' : 'rows'/);
-assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Search molecules and SMARTS' : 'Search table rows'/);
+assert.match(gridViewer, /state\.searchMode === 'structure' \? 'Search structures with SMARTS' : 'Search text'/);
 assert.doesNotMatch(gridViewer, /data-buret-grid-renderer="xyzrender-external">xyzrender/);
 assert.match(gridViewer, /function requestSdfPoseDocument\(cfg\)/);
 assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Molstar\.', 'error'\)/);
@@ -8621,7 +8615,7 @@ assert.match(gridCss, /\.buret-grid-molecule-detail-tab-panel \{[^}]*flex: 1 1 a
 assert.match(gridViewer, /function formatMoleculeDetailNumber\(value\)/);
 assert.match(gridViewer, /visible: state\.remoteMode \? state\.totalRows : state\.rows\.length/);
 assert.match(gridViewer, /function remoteCollectionTotal\(cfg = safeConfig\(\)\)/);
-assert.match(gridViewer, /statsRows: rows\.length,[\s\S]*statsTotal,[\s\S]*statsComplete: state\.indexReady/);
+assert.match(gridViewer, /const statsRows = state\.filterColumnStatsRows\.length;[\s\S]*statsRows, statsTotal, statsComplete: state\.indexReady/);
 assert.match(gridViewer, /\? remoteCollectionTotal\(cfg\)/);
 assert.doesNotMatch(gridViewer, /if \(state\.remoteMode\) return \[\];/);
 assert.match(gridCss, /@media \(max-width: 820px\) \{[\s\S]*\.buret-grid-molecule-detail \{[\s\S]*grid-template-columns: 1fr;[\s\S]*grid-template-rows: minmax\(180px, 34vh\) minmax\(0, 1fr\);/);

@@ -1,19 +1,10 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
-import previewFormatRegistry from "../../../../config/preview-formats.json";
 import type { StructureDragRecord } from "../lib/structure-drag";
 import { normalizePdbId, rcsbPdbDownloadUrl } from "../lib/structure-fetch";
 import { isTauriRuntime } from "../lib/tauri";
 import type { RecentStructure } from "../types";
-import { isWebDemoWorkspace, pickWebDemoFiles } from "../lib/web-demo-workspace";
-
-const filters = [
-  {
-    name: "Files",
-    extensions: [...previewFormatRegistry.documentTypes.extensions, "ms", "magma", "mgf", "msp", "mzML", "mzXML", "md", "markdown", "mdx", "txt", "log", "out", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css", "png", "jpg", "jpeg", "gif", "webp", "bmp", "inpcrd", "rst7", "crd", "rst", "par", "prm", "rtf", "str", "key", "chk", "checkpoint", "state"],
-  },
-];
+import { pickWebDemoFiles } from "../lib/web-demo-workspace";
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
@@ -61,9 +52,7 @@ export function useAppOpenActions({
     try {
       const selection = isTauriRuntime()
         ? await invoke<string[]>("pick_open_targets")
-        : isWebDemoWorkspace()
-          ? (await pickWebDemoFiles())?.paths ?? []
-          : await open({ multiple: true, filters });
+        : (await pickWebDemoFiles())?.paths ?? [];
       const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
       await openPaths(paths);
     } catch (error) {

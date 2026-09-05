@@ -125,6 +125,21 @@ browser-dev runtimes request 720 rows per page
 smooth. Quick Look requests 48 rows per page to keep Finder extension memory
 lower.
 
+Local grid filter histograms are cached per column until the column/data catalog
+is invalidated. Row edits, undo, derived values, and document reset clear both
+the distributions and their effective-row snapshot; selection and scrolling do
+not recompute them.
+
+Chemical Space visibility paging requires an active map subscription. The host
+sends `chemicalSpaceVisibilitySubscription` with `documentId`, `subscriberId`,
+and `active`; each visible dock owns a subscriber and removes it when hidden or
+unmounted. Hidden docks still observe source revisions. A grid `ready` event
+rebinds subscriptions after runtime replacement. The ID scan reuses the first
+page and continues in its sort order, stops when the last subscriber leaves or
+the query token changes, and retains the existing 100,000-ID bridge limit.
+`tests/test-grid-filter-performance.mjs` exercises these production paths with
+bounded fixtures and counts accesses/requests without chemistry calculations.
+
 `scripts/perf-smoke.sh` includes an opt-in FTS perf smoke:
 
 ```bash

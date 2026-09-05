@@ -168,12 +168,16 @@ pub(crate) fn decode_knn_cache_payload(
     }
     Ok(MetalTanimotoKnnExecution {
         source_indices: source_indices
-            .chunks_exact(4)
-            .map(|bytes| u32::from_le_bytes(bytes.try_into().expect("four-byte chunk")))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|bytes| u32::from_le_bytes(*bytes))
             .collect(),
         similarities: similarities
-            .chunks_exact(4)
-            .map(|bytes| f32::from_le_bytes(bytes.try_into().expect("four-byte chunk")))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|bytes| f32::from_le_bytes(*bytes))
             .collect(),
         neighbors_per_vertex: cache.neighbors_per_vertex,
         gpu_time_ms: 0,

@@ -393,7 +393,8 @@ button:disabled {
   min-height: 28px;
 }
 
-#grid-controls .ab-btn[aria-pressed="true"] {
+#grid-controls .ab-btn[aria-pressed="true"],
+#grid-controls .ab-btn[data-state="on"] {
   background: var(--buret-control-active);
 }
 

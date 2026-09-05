@@ -108,3 +108,27 @@ Before merging mobile changes:
 3. Open at least one structure file through Files or an "Open In" sheet.
 4. Open an SDF document and confirm grid/table thumbnails render through RDKit.
 5. Confirm the app icon appears on the iPhone home screen after reinstall.
+
+## Preview preparation limits
+
+Mobile preview preparation and document summaries run on a serial background
+queue. Structure previews accept at most 32 MiB; larger files produce an error
+before full-file materialization. Text mode reads at most 1 MiB and displays at
+most 4,000 lines. File or style changes discard preparation results belonging
+to an older request. Layout acknowledgments belong to the current page and
+require a positive JavaScript bridge response.
+
+Bundled web assets are copied once per app session under the preview cache;
+page directories remain separate. Prior session caches are pruned on first use.
+Replaced pages are removed after navigation,
+and cache maintenance removes prior sessions while retaining the active one.
+
+A lightweight native runtime regression check (no iOS build) is available:
+
+```bash
+xcrun swiftc ios/BuretteMobile/MobilePreviewRuntime.swift \
+  ios/BuretteMobile/MobileAppModel.swift \
+  tests/mobile-preview-runtime-tests.swift -o /tmp/burette-mobile-runtime-tests
+/tmp/burette-mobile-runtime-tests
+rm /tmp/burette-mobile-runtime-tests
+```

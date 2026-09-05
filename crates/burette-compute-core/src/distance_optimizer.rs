@@ -465,10 +465,7 @@ fn unflatten(values: &[f32]) -> Result<Vec<[f32; 4]>, DistanceGeometryError> {
             "distance optimizer coordinates must contain complete float4 atoms",
         ));
     }
-    Ok(values
-        .chunks_exact(4)
-        .map(|chunk| [chunk[0], chunk[1], chunk[2], chunk[3]])
-        .collect())
+    Ok(values.as_chunks::<4>().0.to_vec())
 }
 
 fn difference(left: &[f32], right: &[f32]) -> Vec<f32> {

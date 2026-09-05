@@ -135,6 +135,8 @@ try {
   assert.match(pdb, /  1\.000   2\.000   3\.000/);
   assert.match(pdb, / 10\.000  11\.000  12\.000/);
 
+  await mkdir(sessionDir);
+  await writeFile(join(sessionDir, 'session.json'), JSON.stringify({ token: 'amber-fixture-token' }));
   await mkdir(distDir);
   await writeFile(join(distDir, 'index.html'), '<!doctype html><title>Burette</title>');
   const port = await freePort();
@@ -158,6 +160,7 @@ try {
     await waitForHealth(port, child, log);
     const url = new URL(`http://127.0.0.1:${port}/__burette/trajectory-preview`);
     url.searchParams.set('path', trajectoryPath);
+    url.searchParams.set('shellToken', 'amber-fixture-token');
     const response = await requestBuffer(url);
     assert.equal(response.statusCode, 200, response.body.toString('utf8'));
     assert.equal(response.headers['x-burette-trajectory-topology'], topologyPath);

@@ -2,6 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { readBunLock } from './bun-lock.mjs';
+import { compareVersions } from '../apps/desktop/src/lib/semver.ts';
 
 function fail(message) {
   console.error(`error: ${message}`);
@@ -61,8 +62,8 @@ if (process.env.GITHUB_EVENT_NAME === 'pull_request' && process.env.GITHUB_BASE_
   }
 
   const basePackage = JSON.parse(git(['show', `${baseRevision}:package.json`]));
-  if (basePackage.version === packageVersion) {
-    fail(`every merged PR creates a release, so this PR must bump package.json beyond ${basePackage.version}`);
+  if (compareVersions(packageVersion, basePackage.version) <= 0) {
+    fail(`this PR must advance package.json beyond ${basePackage.version}`);
   }
 
   try {
