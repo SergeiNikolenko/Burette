@@ -68,8 +68,11 @@ async function poll() {
           ? await app.requestDisplayMode({ mode: item.action.mode })
           : await window.BuretteViewerActions.run(item.action);
         if (item.action.type === 'set_display_mode') displayMode = outcome.mode;
-        revision += 1;
-        completed = { actionId: item.actionId, result: outcome };
+        if (outcome.ok === false) completed = { actionId: item.actionId, result: outcome, error: outcome.error?.message || 'Viewer action failed.' };
+        else {
+          revision += 1;
+          completed = { actionId: item.actionId, result: outcome };
+        }
       } catch (error) { completed = { actionId: item.actionId, error: error.message }; }
       executed.set(item.actionId, completed);
       lastAction = completed;
@@ -89,6 +92,11 @@ app.ontoolresult = async result => {
   if (started || !result._meta?.session) return;
   started = true;
   session = result._meta.session;
-  try { await start(); } catch (error) { status.textContent = `Burette could not load: ${error.message}`; }
+  try { await start(); } catch (error) {
+    status.classList.remove('hidden');
+    status.textContent = `Burette could not load: ${error.message}`;
+    await exchange({ state: { ready: false, revision, displayMode, error: error.message } }).catch(() => {});
+  }
 };
 await app.connect();
+await app.sendSizeChanged({ height: 520 });

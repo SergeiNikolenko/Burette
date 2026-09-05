@@ -85,6 +85,37 @@ do not invent a second local session protocol.
 
 ## Surfaces
 
+### Local embedded MCP App (prototype)
+
+`burette.open_inline_viewer` opens a single local PDB/mmCIF file in
+`ui://burette/local-viewer.html`. `observe_inline_viewer` and
+`control_inline_viewer` retain its `sessionId`. This is distinct from the full
+Browser workspace: no HTTP listener, Ketcher, file tree, or native Finder
+registration is implied. The renderer is the existing preview Mol* runtime,
+packaged by `scripts/build-local-viewer.mjs`; generated HTML must not be edited.
+
+The CLI owns the embedded transport through `mcp-app '<json-operation>'` with
+`open`, `observe`, `act`, and app-only `exchange` operations. Unlike the
+Browser/native file-session transport, the sandboxed App cannot read session
+files directly; it exchanges bounded messages through the host MCP bridge.
+Source snapshots are owner-private, limited to 16 MiB and identified by SHA-256.
+Source chunks (192 KiB before base64) and capabilities are returned only in
+tool `_meta`, never model-visible content. The UI resource is self-contained,
+limited to 4 MiB, with no network connect domains and only blob resources.
+
+`ready` requires a recent mounted-viewer heartbeat with a parsed nonempty
+structure; successful session creation or queue insertion is not rendering or
+action completion. State/results are limited to 64 KiB, actions to 8 KiB and
+128 per session. `lastAction` confirms success or failure. Local snapshots
+remain in the OS temporary directory for the session lifetime; no source file
+is rewritten. Closing the host view stops heartbeats and makes readiness stale.
+
+The allowlist is focus ligand, select residues, clear selection, reset camera,
+and `set_display_mode` (`inline`/`fullscreen`). Display requests use the MCP Apps
+host API on the same mounted document so camera/selection are not reset by
+application code. Host placement and remount behavior still require an actual
+Codex smoke test; a Browser harness is not equivalent evidence.
+
 | Mode | Use When | Notes |
 | --- | --- | --- |
 | `auto` | Default. The CLI picks the best available surface. | Used by the plugin skills unless a task pins a surface. |

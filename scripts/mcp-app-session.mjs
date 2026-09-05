@@ -61,7 +61,7 @@ export async function runMcpAppOperation(input) {
     const pending = await readdir(join(sessionDir, 'actions'));
     if (pending.length >= 128) throw new Error('Session action limit reached; open a new session.');
     const actionId = randomUUID();
-    await writeJson(join(sessionDir, 'actions', `${actionId}.json`), { actionId, action: input.action, status: 'queued' });
+    await writeJson(join(sessionDir, 'actions', `${actionId}.json`), { actionId, action: input.action, status: 'queued', queuedAt: process.hrtime.bigint().toString() });
     return { sessionId: session.sessionId, actionId, status: 'queued' };
   }
   if (input.operation !== 'exchange' || input.token !== session.token) throw new Error('Invalid MCP App capability.');
@@ -85,5 +85,5 @@ export async function runMcpAppOperation(input) {
     if (action.status === 'queued') await writeJson(path, { ...action, status: input.completed.error ? 'failed' : 'completed', result: input.completed.result, error: input.completed.error });
   }
   const records = await Promise.all((await readdir(join(sessionDir, 'actions'))).filter(name => name.endsWith('.json')).map(async name => JSON.parse(await readFile(join(sessionDir, 'actions', name), 'utf8'))));
-  return { actions: records.filter(item => item.status === 'queued').slice(0, 1) };
+  return { actions: records.filter(item => item.status === 'queued').sort((a, b) => BigInt(a.queuedAt) < BigInt(b.queuedAt) ? -1 : 1).slice(0, 1) };
 }

@@ -30,6 +30,11 @@ test('local MCP App snapshots source, gates readiness, authenticates exchange, a
     const queued = await Promise.all([1, 2].map(() => run({ operation: 'act', ...locator, action: { type: 'reset_camera' } })));
     for (const item of queued) await run({ operation: 'exchange', ...locator, token: session.token, completed: { actionId: item.actionId, result: { ok: true } } });
     assert.deepEqual(await run({ operation: 'exchange', ...locator, token: session.token }), { actions: [] });
+    const first = await run({ operation: 'act', ...locator, action: { type: 'select_residues', selector: { chain: 'A', auth_seq_id: 377 } } });
+    const second = await run({ operation: 'act', ...locator, action: { type: 'clear_selection' } });
+    assert.equal((await run({ operation: 'exchange', ...locator, token: session.token })).actions[0].actionId, first.actionId);
+    await run({ operation: 'exchange', ...locator, token: session.token, completed: { actionId: first.actionId, error: 'SELECTION_EMPTY' } });
+    assert.equal((await run({ operation: 'exchange', ...locator, token: session.token })).actions[0].actionId, second.actionId);
     const observed = await run({ operation: 'observe', ...locator });
     assert.equal(observed.ready, true);
     assert.equal(observed.token, undefined);
