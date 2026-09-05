@@ -731,16 +731,17 @@ impl MetalHost {
                 "Tanimoto top-K similarity",
             )?;
             let active_count = row_count * neighbors_per_vertex;
-            let invalid = selected_indices[..active_count]
-                .iter()
-                .enumerate()
-                .find(|(offset, index)| {
-                    let row_index = row_start + offset / neighbors_per_vertex;
-                    **index as usize >= record_count
-                        || **index as usize == row_index
-                        || !selected_similarities[*offset].is_finite()
-                        || !(0.0..=1.0).contains(&selected_similarities[*offset])
-                });
+            let invalid =
+                selected_indices[..active_count]
+                    .iter()
+                    .enumerate()
+                    .find(|(offset, index)| {
+                        let row_index = row_start + offset / neighbors_per_vertex;
+                        **index as usize >= record_count
+                            || **index as usize == row_index
+                            || !selected_similarities[*offset].is_finite()
+                            || !(0.0..=1.0).contains(&selected_similarities[*offset])
+                    });
             if let Some((offset, index)) = invalid {
                 let row_index = row_start + offset / neighbors_per_vertex;
                 return Err(MetalRuntimeError::Dispatch(format!(
@@ -3902,7 +3903,9 @@ mod tests {
         }];
         let options = DistanceGeometryOptimizationOptions::default();
         let expected = positions
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|conformer| {
                 optimize_distance_geometry(conformer, &constraints, options)
                     .expect("CPU L-BFGS oracle")
