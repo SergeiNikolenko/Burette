@@ -14447,6 +14447,7 @@
         activeIndex: -1
       };
       activeDockingPoseCollectionState = state;
+      await applyMolstarWaterLineRepresentation(viewer);
     }
 
     if (state.activeIndex === activeIndex && dockingPoseCollectionStateStillLoaded(viewer, state)) {
@@ -14464,7 +14465,6 @@
     state.activeRefs = molstarStructureRefsOf(activeStructures);
     state.activeIndex = activeIndex;
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
-    await applyMolstarWaterLineRepresentation(viewer);
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
   }
 
@@ -18306,7 +18306,8 @@
     const performSetPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
-      const shouldFocus = options.focus === true || options.userStep === true;
+      const shouldFocus = options.focus === true;
+      const cameraSnapshot = shouldFocus ? null : captureMolstarCameraSnapshot(viewer);
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
@@ -18362,6 +18363,8 @@
         // already rolled back to the frame still on screen, which is the honest report.
         // eslint-disable-next-line no-console
         console.error(error);
+      } finally {
+        if (cameraSnapshot) restoreMolstarCameraSnapshotNow(viewer, cameraSnapshot);
       }
     };
     if (fileList) {
