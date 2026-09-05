@@ -23,3 +23,20 @@ useMoleculeStore.getState().activateLastNonSettingsTab();
 assert.notEqual(useMoleculeStore.getState().activeTabId, b);
 assert.notEqual(useMoleculeStore.getState().tabs.find(tab => tab.id === useMoleculeStore.getState().activeTabId)?.location.kind, "settings");
 console.log("Settings return-tab checks passed.");
+// Exercise the sidebar's actual click binding, so local navigation cannot bypass
+// the store's remembered return target.
+const { readFileSync } = await import("node:fs");
+const sidebar = readFileSync("apps/desktop/src/components/sidebar/settings-sidebar.tsx", "utf8");
+const click = sidebar.match(/className="settings-back-button" onClick=\{([^}]+)\}/)?.[1];
+assert.ok(click);
+const localHandler = sidebar.match(/  const handleBackToApp = \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
+useMoleculeStore.getState().setActiveDocument("a");
+useMoleculeStore.getState().openSettingsTab();
+const clickBack = new Function("state", "actions", `${localHandler}\nreturn ${click};`)(useMoleculeStore.getState(), {
+  backToApp: useMoleculeStore.getState().activateLastNonSettingsTab,
+  selectTab: useMoleculeStore.getState().setActiveTab,
+  openNewTab: useMoleculeStore.getState().openNewTab,
+});
+clickBack();
+assert.equal(useMoleculeStore.getState().activeTabId, a, "the visible Settings Back button uses the remembered return target");
+console.log("Settings sidebar Back binding checks passed.");
