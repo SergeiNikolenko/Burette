@@ -10,6 +10,7 @@ import { registerMolecularWorkspace } from "./registrations/molecular-workspace/
 import { registerMvsStory } from "./registrations/mvs-story/register.mjs";
 import { registerMoleculeTable } from "./registrations/molecule-table/register.mjs";
 import { registerTrajectoryReview } from "./registrations/trajectory-review/register.mjs";
+import { registerLocalViewer } from "./registrations/local-viewer/register.mjs";
 
 const pluginManifest = JSON.parse(readFileSync(pluginPath(".codex-plugin", "plugin.json"), "utf8"));
 
@@ -30,6 +31,7 @@ registerMvsStory(server);
 registerMoleculeTable(server);
 registerTrajectoryReview(server);
 registerMolecularReport(server);
+registerLocalViewer(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

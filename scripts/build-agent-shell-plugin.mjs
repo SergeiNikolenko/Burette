@@ -15,6 +15,7 @@ const runtimeScripts = [
   'agent-preview.mjs',
   'agent-shell-server.mjs',
   'burette-agent.mjs',
+  'mcp-app-session.mjs',
   'mvs-story.mjs',
   'mvs-story-templates.mjs',
 ];
@@ -42,6 +43,7 @@ const requiredPreviewAssets = [
 await rm(shellDist, { recursive: true, force: true });
 await rm(previewWeb, { recursive: true, force: true });
 await mkdir(resolve(pluginRoot, 'scripts'), { recursive: true });
+await run('bun', [resolve(repoRoot, 'scripts/build-local-viewer.mjs')]);
 
 for (const script of runtimeScripts) {
   await cp(resolve(repoRoot, 'scripts', script), resolve(pluginRoot, 'scripts', script));
