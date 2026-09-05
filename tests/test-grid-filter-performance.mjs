@@ -28,7 +28,7 @@ state.rows = state.all.slice();
 const columns = [{ id: 'score', type: 'number' }, { id: 'derived', type: 'number' }];
 const counts = { numericReads: 0, variationReads: 0, posts: 0 };
 const names = [
-  'filterColumnVaries', 'filterColumnIsRowIndex', 'filterColumnStats', 'gridFilterModel', 'postGridFilterModel', 'invalidateTableColumnCatalog',
+  'remoteCollectionTotal', 'filterColumnVaries', 'filterColumnIsRowIndex', 'filterColumnStats', 'gridFilterModel', 'postGridFilterModel', 'invalidateTableColumnCatalog',
   'tableColumnDiscoveryRows', 'currentLocalCollectionRows', 'applyVirtualGridEdits',
   'stripDeletedPropColumns', 'applyColumnValueRanges', 'replaceGridRow',
   'snapshotGridEditState', 'restoreGridEditState', 'applyDescriptorGridResults',
@@ -44,6 +44,7 @@ const stats = new Function('state', 'counts', 'columns', 'window', `
   function tableColumnRawNumericValue(row, id) { counts.variationReads++; return Number(row.props?.[id] ?? row.descriptors?.[id]); }
   function tableColumnRawDisplayValue(row, id) { counts.variationReads++; return String(row.props?.[id] ?? ''); }
   function post() { counts.posts++; }
+  function safeConfig() { return {}; }
   function capabilities() { return { editing: true }; }
   function pushUndoSnapshot() {}
   function markGridDirty() { state.sourceRevision++; }
@@ -73,6 +74,14 @@ for (let index = 0; index < 20; index++) {
 assert.equal(counts.numericReads, 4, 'selection/scroll model refreshes perform zero additional row reads');
 assert.equal(counts.variationReads, initialVariationReads, 'variation and row-index checks also reuse cached results');
 assert.equal(counts.posts, 1, 'unchanged model is sent only once');
+state.remoteMode = true;
+state.totalRows = 4;
+state.indexReady = false;
+assert.deepEqual({ ...stats.filterColumnStats(columns[0]), bins: undefined }, { min: 1, max: 5, bins: undefined, statsRows: 2, statsTotal: 4, statsComplete: false }, 'direct detail consumer receives partial-range metadata');
+state.totalRows = 2;
+state.indexReady = true;
+assert.equal(stats.filterColumnStats(columns[0]).statsComplete, true, 'index completeness refreshes without rescanning cached values');
+state.remoteMode = false;
 const original = stats.snapshotGridEditState();
 stats.replaceGridRow(state.rows[0], { props: { score: 9 } }, {}, { undo: false });
 assert.equal(stats.filterColumnStats(columns[0]).max, 9, 'row edits invalidate stats');

@@ -4490,29 +4490,33 @@
   // The distribution is measured over every loaded row rather than the filtered
   // ones, so its shape stays put while a range moves across it.
   function filterColumnStats(column) {
-    if (state.filterColumnStatsCache.has(column.id)) return state.filterColumnStatsCache.get(column.id);
     const rows = state.filterColumnStatsRows ??= tableColumnDiscoveryRows();
-    const values = [];
-    let min = Infinity;
-    let max = -Infinity;
-    for (const row of rows) {
-      const value = tableColumnNumericValue(row, column.id);
-      if (!Number.isFinite(value)) continue;
-      values.push(value);
-      if (value < min) min = value;
-      if (value > max) max = value;
+    if (!state.filterColumnStatsCache.has(column.id)) {
+      const values = [];
+      let min = Infinity;
+      let max = -Infinity;
+      for (const row of rows) {
+        const value = tableColumnNumericValue(row, column.id);
+        if (!Number.isFinite(value)) continue;
+        values.push(value);
+        if (value < min) min = value;
+        if (value > max) max = value;
+      }
+      let stats = null;
+      if (values.length >= 2 && max > min) {
+        const bins = new Array(FILTER_BINS).fill(0);
+        for (const value of values) {
+          bins[Math.min(FILTER_BINS - 1, Math.floor(((value - min) / (max - min)) * FILTER_BINS))] += 1;
+        }
+        stats = { min, max, bins };
+      }
+      state.filterColumnStatsCache.set(column.id, stats);
     }
-    if (values.length < 2 || !(max > min)) {
-      state.filterColumnStatsCache.set(column.id, null);
-      return null;
-    }
-    const bins = new Array(FILTER_BINS).fill(0);
-    for (const value of values) {
-      bins[Math.min(FILTER_BINS - 1, Math.floor(((value - min) / (max - min)) * FILTER_BINS))] += 1;
-    }
-    const stats = { min, max, bins };
-    state.filterColumnStatsCache.set(column.id, stats);
-    return stats;
+    const stats = state.filterColumnStatsCache.get(column.id);
+    if (!stats || !state.remoteMode) return stats;
+    const statsRows = state.filterColumnStatsRows.length;
+    const statsTotal = remoteCollectionTotal();
+    return { ...stats, statsRows, statsTotal, statsComplete: state.indexReady && statsTotal > 0 && statsRows >= statsTotal };
   }
 
   function filterColumnVaries(column) {
@@ -4573,14 +4577,7 @@
       if (filter) entry.filter = { min: filter.min ?? '', max: filter.max ?? '', text: filter.text ?? '' };
       if (column.type === 'number') {
         const stats = filterColumnStats(column);
-        if (stats) {
-          Object.assign(entry, stats);
-          if (state.remoteMode) {
-            const statsRows = state.filterColumnStatsRows.length;
-            const statsTotal = remoteCollectionTotal();
-            Object.assign(entry, { statsRows, statsTotal, statsComplete: state.indexReady && statsTotal > 0 && statsRows >= statsTotal });
-          }
-        }
+        if (stats) Object.assign(entry, stats);
         if (Number.isFinite(allowed?.min)) entry.allowedMin = allowed.min;
         if (Number.isFinite(allowed?.max)) entry.allowedMax = allowed.max;
       }
