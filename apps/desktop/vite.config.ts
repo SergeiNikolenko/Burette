@@ -3716,7 +3716,7 @@ export function browserDevXyzrenderPlugin() {
         annotateSpectrum: annotateBrowserDevSpectrumWithMsbuddy,
         status: browserDevMsbuddyStatus,
       });
-      registerBrowserDevMdsmoothRoute(server, MDSMOOTH_RUNNER_PATH);
+      registerBrowserDevMdsmoothRoute(server, MDSMOOTH_RUNNER_PATH, { isDevFileReadAllowed });
 
       registerBrowserDevDescriptorRoutes(server, {
         calculate: calculateBrowserDevDescriptors,
