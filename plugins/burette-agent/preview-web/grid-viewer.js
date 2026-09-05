@@ -198,6 +198,8 @@
     findingSimilar: false,
     exportingClusterRepresentatives: false,
     clusterCutoff: storedClusterCutoff(),
+    tableMoleculePreview: null,
+    rightDockOpen: false,
     railHoveredMarker: null,
     railPopoverSuppressed: false,
     railPopoverHideTimer: null,
@@ -561,6 +563,8 @@
       }
       if (body.type === 'gridViewportCover') {
         setGridViewportCover(Number(body.cover) || 0);
+        state.rightDockOpen = body.rightDockOpen === true;
+        if (state.rightDockOpen) hideTableMoleculePreview();
         return;
       }
       if (body.type === 'workspaceHistoryCommand') {
@@ -7138,14 +7142,66 @@
   }
 
   function installTableMoleculeHover(rowEl, row, cfg) {
-    const picture = rowEl.querySelector('.buret-grid-table-molecule');
-    if (!picture) return;
-    picture.addEventListener('pointerenter', () => {
+    const picture = rowEl.querySelector('td[data-column="molecule"]');
+    if (!picture || !rowHasMolecule(row)) return;
+    picture.addEventListener('pointerenter', event => {
+      if (event.pointerType === 'touch') return;
       postChemicalSpaceHover(Number(row.index));
+      showTableMoleculePreview(event, row, cfg);
+    });
+    picture.addEventListener('pointermove', event => {
+      if (event.pointerType === 'touch') return;
+      if (!state.tableMoleculePreview) showTableMoleculePreview(event, row, cfg);
+      positionTableMoleculePreview(event);
     });
     picture.addEventListener('pointerleave', () => {
       postChemicalSpaceHover(null);
+      hideTableMoleculePreview();
     });
+    picture.addEventListener('contextmenu', hideTableMoleculePreview);
+  }
+
+  function showTableMoleculePreview(event, row, cfg) {
+    hideTableMoleculePreview();
+    if (state.rightDockOpen) return;
+    const label = row.name || `Molecule ${Number(row.index) + 1}`;
+    const popover = document.createElement('div');
+    popover.className = 'buret-grid-table-molecule-popover';
+    popover.setAttribute('role', 'tooltip');
+    popover.innerHTML = `
+      <div class="buret-grid-table-molecule-popover-image" data-buret-molecule-picture>${draw(row, cfg)}</div>
+      <div class="buret-grid-table-molecule-popover-title">${escapeHTML(label)}</div>`;
+    document.body.appendChild(popover);
+    state.tableMoleculePreview = popover;
+    scheduleRdkitCard(popover, row);
+    scheduleXyzrenderCard(popover, row, cfg);
+    window.addEventListener('scroll', hideTableMoleculePreview, true);
+    window.addEventListener('resize', hideTableMoleculePreview, true);
+    positionTableMoleculePreview(event);
+  }
+
+  function positionTableMoleculePreview(event) {
+    const popover = state.tableMoleculePreview;
+    if (!popover) return;
+    const margin = 12;
+    const offset = 16;
+    const rect = popover.getBoundingClientRect();
+    let left = event.clientX + offset;
+    let top = event.clientY + offset;
+    if (left + rect.width + margin > window.innerWidth) left = event.clientX - rect.width - offset;
+    if (top + rect.height + margin > window.innerHeight) top = window.innerHeight - rect.height - margin;
+    left = Math.max(margin, left);
+    top = Math.max(margin, top);
+    popover.style.left = `${Math.round(left)}px`;
+    popover.style.top = `${Math.round(top)}px`;
+  }
+
+  function hideTableMoleculePreview() {
+    if (!state.tableMoleculePreview) return;
+    state.tableMoleculePreview.remove();
+    state.tableMoleculePreview = null;
+    window.removeEventListener('scroll', hideTableMoleculePreview, true);
+    window.removeEventListener('resize', hideTableMoleculePreview, true);
   }
 
   function installCardResizeHandle(card) {

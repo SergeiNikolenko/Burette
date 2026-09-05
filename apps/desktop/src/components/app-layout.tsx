@@ -401,9 +401,13 @@ export function AppLayout({
       const dockEl = rightDockOpen ? rightDockElementRef.current : null;
       const dockLeft = dockEl?.getBoundingClientRect().left;
       const cover = dockLeft === undefined ? 0 : Math.max(0, Math.round(iframe.getBoundingClientRect().right - dockLeft));
-      postMessageToViewerSource(win, { source: "burette-grid-host", body: { type: "gridViewportCover", cover } });
+      postMessageToViewerSource(win, { source: "burette-grid-host", body: { type: "gridViewportCover", cover, rightDockOpen } });
     };
     post();
+    const onViewerLoad = (event: Event) => {
+      if (event.target === activeViewerIframeForDocument(activeGridId, "grid2d")) post();
+    };
+    window.addEventListener("load", onViewerLoad, true);
     const dockEl = rightDockElementRef.current;
     const observer = dockEl ? new ResizeObserver(() => post()) : null;
     if (dockEl && observer) observer.observe(dockEl);
@@ -412,6 +416,7 @@ export function AppLayout({
     return () => {
       observer?.disconnect();
       window.clearTimeout(timer);
+      window.removeEventListener("load", onViewerLoad, true);
     };
     // viewportWidth belongs here: when the dock overlaps a floored grid, a window
     // resize moves the dock without changing its size, so the dock's own observer
