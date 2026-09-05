@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, statSync, chmodSync, utimesSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import { registerBrowserDevFoldingResultRoute } from "../apps/desktop/vite/browser-dev/folding-results.ts";
 import { registerBrowserDevFileContentRoutes } from "../apps/desktop/vite/browser-dev/files.ts";
 import { isBrowserDevPathAllowed } from "../apps/desktop/vite/browser-dev/file-discovery.ts";
@@ -42,11 +43,11 @@ try {
   writeFileSync(file, "initial");
   const baseline = Math.floor(statSync(file).mtimeMs);
   const stale = response();
-  await save({ method: "PUT", url: `/?path=${encodeURIComponent(file)}`, async *iterator() {
+  await save(Object.assign(Readable.from((async function* () {
     writeFileSync(file, "external update");
     utimesSync(file, new Date(), new Date(baseline + 5000));
     yield Buffer.from(JSON.stringify({ contents: "stale draft", expectedModifiedAt: baseline }));
-  } }, stale);
+  })()), { method: "PUT", url: `/?path=${encodeURIComponent(file)}` }), stale);
   assert.equal(stale.statusCode, 409);
   assert.equal(readFileSync(file, "utf8"), "external update");
   chmodSync(file, 0o640);
@@ -54,9 +55,9 @@ try {
     execFileSync("/usr/bin/xattr", ["-w", "com.burette.audit-test", "preserved", file]);
   }
   const saved = response();
-  await save({ method: "PUT", url: `/?path=${encodeURIComponent(file)}`, async *iterator() {
+  await save(Object.assign(Readable.from((async function* () {
     yield Buffer.from(JSON.stringify({ contents: "new draft", expectedModifiedAt: Math.floor(statSync(file).mtimeMs) }));
-  } }, saved);
+  })()), { method: "PUT", url: `/?path=${encodeURIComponent(file)}` }), saved);
   assert.equal(saved.statusCode, 200);
   assert.equal(readFileSync(file, "utf8"), "new draft");
   assert.equal(statSync(file).mode & 0o777, 0o640);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import { isBrowserDevPathAllowed } from "../apps/desktop/vite/browser-dev/file-discovery.ts";
 const { registerBrowserDevMdsmoothRoute } = await import("../apps/desktop/vite/browser-dev/mdsmooth.ts");
 const root = realpathSync(mkdtempSync(join(tmpdir(), "burette-mdsmooth-paths-")));
@@ -25,7 +26,7 @@ try {
   });
   async function call(body) {
     const res = { statusCode: 0, setHeader() {}, end(value) { this.body = JSON.parse(value); } };
-    await handler({ method: "POST", async *iterator() { yield Buffer.from(JSON.stringify(body)); } }, res);
+    await handler(Object.assign(Readable.from([Buffer.from(JSON.stringify(body))]), { method: "POST" }), res);
     return res;
   }
   for (const body of [
