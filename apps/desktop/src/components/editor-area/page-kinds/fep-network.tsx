@@ -938,8 +938,8 @@ function fepGridHtml(title: string, records: FepGridRecord[]) {
 <body class="burette-opaque-background">
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
-  <script>window.BuretteConfig = ${JSON.stringify(config)};</script>
-  <script>window.BuretteGridRecords = ${JSON.stringify(records)};</script>
+  <script>window.BuretteConfig = ${JSON.stringify(config).replaceAll("<", "\\u003c")};</script>
+  <script>window.BuretteGridRecords = ${JSON.stringify(records).replaceAll("<", "\\u003c")};</script>
   <script src="rdkit/RDKit_minimal.js?v=${gridAssetVersion}"></script>
   <script src="grid-ui.js?v=${gridAssetVersion}"></script>
   <script src="grid-viewer.js?v=${gridAssetVersion}"></script>
