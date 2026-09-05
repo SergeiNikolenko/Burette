@@ -96,6 +96,8 @@
     searchMode: 'text',
     searchTimer: 0,
     searchTextCache: new WeakMap(),
+    dataToken: 0,
+    remoteLoadToken: 0,
     smarts: '',
     smartsError: '',
     smartsMatches: new Map(),
@@ -2950,6 +2952,7 @@
     // Obsolete page/SMARTS requests must stop applying while the user types,
     // rather than remaining valid until the debounce expires.
     state.token += 1;
+    state.dataToken += 1;
     state.searchTimer = setTimeout(() => refresh(cfg), 120);
     if (!wasPending) refreshGridControls(cfg);
   }
@@ -2966,6 +2969,7 @@
   }
 
   function refresh(cfg) {
+    state.dataToken += 1;
     clearTimeout(state.searchTimer);
     state.searchTimer = 0;
     resetGridWindowForNewResultSet();
@@ -3057,7 +3061,7 @@
       return;
     }
     const request = state.chemicalSpaceVisibilityRequest;
-    if (!request || request.token !== state.token || state.chemicalSpaceVisibilityScanning) return;
+    if (!request || request.token !== state.dataToken || state.chemicalSpaceVisibilityScanning) return;
     void collectRemoteChemicalSpaceVisibility(cfg, request);
   }
 
@@ -3072,7 +3076,7 @@
       let total = request.total;
       const limit = Math.max(120, loadBatchSize(cfg));
       while (offset < total && sourceRecordIds.length < GRID_SELECTION_BRIDGE_LIMIT) {
-        if (request.token !== state.token || generation !== state.chemicalSpaceVisibilityGeneration
+        if (request.token !== state.dataToken || generation !== state.chemicalSpaceVisibilityGeneration
           || !state.chemicalSpaceVisibilitySubscribers.size) return;
         const result = await hostRequest('gridFetchPage', gridFetchPayload({
           query: state.query || '',
@@ -3090,7 +3094,7 @@
         offset += pageRows.length;
         if (!pageRows.length || sourceRecordIds.length >= GRID_SELECTION_BRIDGE_LIMIT) break;
       }
-      if (request.token !== state.token || generation !== state.chemicalSpaceVisibilityGeneration
+      if (request.token !== state.dataToken || generation !== state.chemicalSpaceVisibilityGeneration
         || !state.chemicalSpaceVisibilitySubscribers.size) return;
       state.lastChemicalSpaceVisibility = { kind: 'filtered', sourceRecordIds };
       post('chemicalSpaceVisibilityChanged', '', state.lastChemicalSpaceVisibility);
@@ -3316,7 +3320,9 @@
   }
 
   async function refreshRemote(cfg) {
-    const token = ++state.token;
+    const token = ++state.dataToken;
+    const loadToken = ++state.remoteLoadToken;
+    state.token += 1;
     state.chemicalSpaceVisibilityGeneration += 1;
     state.chemicalSpaceVisibilityScanning = false;
     state.chemicalSpaceVisibilityRequest = null;
@@ -3335,13 +3341,13 @@
     try {
       if (state.smarts.trim()) {
         const matches = await scanRemoteBySMARTS(cfg, token);
-        if (token !== state.token) return;
+        if (token !== state.dataToken) return;
         if (!shouldFallbackSMARTSToTextSearch()) {
           state.rows = matches;
           invalidateTableColumnCatalog();
           state.totalRows = matches.length;
           state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
-          await renderVirtualWindow(cfg, token, { force: true });
+          await renderVirtualWindow(cfg, state.token, { force: true });
           postChemicalSpaceVisibility(state.rows);
           return;
         }
@@ -3354,20 +3360,20 @@
         offset: 0,
         limit: loadBatchSize(cfg)
       }));
-      if (token !== state.token) return;
+      if (token !== state.dataToken) return;
       state.rows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
       invalidateTableColumnCatalog();
       applyGridPageState(result);
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
-      await renderVirtualWindow(cfg, token, { force: true });
+      await renderVirtualWindow(cfg, state.token, { force: true });
       scheduleIndexPoll(cfg);
       updateRemoteChemicalSpaceVisibility(result, cfg, token);
     } catch (error) {
-      if (token !== state.token) return;
+      if (token !== state.dataToken) return;
       const message = error?.message || String(error);
       setStatus(message, 'error');
     } finally {
-      if (token === state.token) {
+      if (loadToken === state.remoteLoadToken) {
         state.remoteLoading = false;
         syncGridEditControls();
       }
@@ -3378,7 +3384,9 @@
   // filtering the fetched rows alone showed a handful of the selection. Page
   // through the collection like the SMARTS scan does and keep every selected row.
   async function refreshRemoteChemicalSpaceSelection(cfg) {
-    const token = ++state.token;
+    const token = ++state.dataToken;
+    const loadToken = ++state.remoteLoadToken;
+    state.token += 1;
     const wanted = new Set([...state.selected].map(Number));
     state.smartsError = '';
     state.smartsMatches = new Map();
@@ -3397,7 +3405,7 @@
       let total = null;
       const limit = Math.max(120, loadBatchSize(cfg));
       while ((total === null || offset < total) && matches.length < wanted.size) {
-        if (token !== state.token) return;
+        if (token !== state.dataToken) return;
         const result = await hostRequest('gridFetchPage', gridFetchPayload({
           query: state.query || '',
           sort: state.sort || 'index',
@@ -3405,7 +3413,7 @@
           limit
         }));
         const pageRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
-        if (token !== state.token) return;
+        if (token !== state.dataToken) return;
         applyGridPageState(result);
         total = Number(result.totalRows || 0);
         for (const row of pageRows) {
@@ -3415,19 +3423,19 @@
         if (!pageRows.length) break;
         setStatus(`[grid] Loading selection ${matches.length.toLocaleString()} / ${wanted.size.toLocaleString()} molecules...`);
       }
-      if (token !== state.token) return;
+      if (token !== state.dataToken) return;
       state.rows = matches;
       invalidateTableColumnCatalog();
       state.totalRows = matches.length;
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
-      await renderVirtualWindow(cfg, token, { force: true });
+      await renderVirtualWindow(cfg, state.token, { force: true });
       setStatus(`[grid] Showing ${matches.length.toLocaleString()} selected molecule${matches.length === 1 ? '' : 's'}.`);
     } catch (error) {
-      if (token !== state.token) return;
+      if (token !== state.dataToken) return;
       const message = error?.message || String(error);
       setStatus(message, 'error');
     } finally {
-      if (token === state.token) {
+      if (loadToken === state.remoteLoadToken) {
         state.remoteLoading = false;
         syncGridEditControls();
       }
@@ -3450,7 +3458,7 @@
       let total = null;
       const limit = Math.max(120, loadBatchSize(cfg));
       while (total === null || offset < total) {
-        if (token !== state.token) return matches;
+        if (token !== state.dataToken) return matches;
         const result = await hostRequest('gridFetchPage', gridFetchPayload({
           query: '',
           sort: state.sort || 'index',
@@ -3458,7 +3466,7 @@
           limit
         }));
         const pageRows = await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg);
-        if (token !== state.token) return [];
+        if (token !== state.dataToken) return [];
         applyGridPageState(result);
         total = Number(result.totalRows || 0);
         for (const row of pageRows) {
@@ -3473,7 +3481,7 @@
       }
       return matches;
     } catch (error) {
-      if (token === state.token) state.smartsError = error?.message || String(error);
+      if (token === state.dataToken) state.smartsError = error?.message || String(error);
       return [];
     } finally {
       try { qmol?.delete?.(); } catch (_) {}
@@ -3563,7 +3571,8 @@
       await renderVirtualWindow(cfg, state.token, { force: true });
       return;
     }
-    const token = state.token;
+    const token = state.dataToken;
+    const loadToken = ++state.remoteLoadToken;
     state.remoteLoading = true;
     try {
       const result = await hostRequest('gridFetchPage', gridFetchPayload({
@@ -3572,7 +3581,7 @@
         offset: state.rows.length,
         limit: loadBatchSize(cfg)
       }));
-      if (token !== state.token) return;
+      if (token !== state.dataToken) return;
       const nextRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
       applyGridPageState(result);
       state.rows.push(...nextRows);
@@ -3585,10 +3594,10 @@
       // collection into the iframe heap.
       if (!nextRows.length && state.indexing) scheduleIndexPoll(cfg);
     } catch (error) {
-      if (token !== state.token) return;
+      if (token !== state.dataToken) return;
       setStatus(error?.message || String(error), 'error');
     } finally {
-      if (token === state.token) {
+      if (loadToken === state.remoteLoadToken) {
         state.remoteLoading = false;
         syncGridEditControls();
       }
@@ -4199,17 +4208,18 @@
       state.pendingGridRailPosition = position;
       return;
     }
-    const token = state.token;
+    const token = state.dataToken;
+    const loadToken = ++state.remoteLoadToken;
     state.remoteLoading = true;
     try {
-      while (token === state.token && state.rows.length <= position && state.rows.length < state.totalRows) {
+      while (token === state.dataToken && state.rows.length <= position && state.rows.length < state.totalRows) {
         const result = await hostRequest('gridFetchPage', gridFetchPayload({
           query: state.query || '',
           sort: state.sort || 'index',
           offset: state.rows.length,
           limit: Math.max(loadBatchSize(cfg), 240)
         }));
-        if (token !== state.token) return;
+        if (token !== state.dataToken) return;
         const nextRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
         state.totalRows = Number(result.totalRows || state.totalRows);
         if (!nextRows.length) break;
@@ -4228,15 +4238,15 @@
         await renderVirtualWindow(cfg, state.token, { force: true });
       }
     } catch (error) {
-      if (token !== state.token) return;
+      if (token !== state.dataToken) return;
       setStatus(error?.message || String(error), 'error');
     } finally {
-      if (token !== state.token) return;
+      if (loadToken !== state.remoteLoadToken) return;
       state.remoteLoading = false;
       syncGridEditControls();
       const pending = state.pendingGridRailPosition;
       state.pendingGridRailPosition = null;
-      if (pending != null && pending !== position) void scrollToGridPosition(pending, cfg, options);
+      if (token === state.dataToken && pending != null && pending !== position) void scrollToGridPosition(pending, cfg, options);
     }
   }
 
@@ -7688,6 +7698,9 @@
 
   function resetDocumentRuntimeState() {
     cancelVirtualWindowRender();
+    state.dataToken += 1;
+    state.remoteLoadToken += 1;
+    state.remoteLoading = false;
     window.clearTimeout(state.searchTimer);
     state.searchTimer = 0;
     state.searchMode = 'text';

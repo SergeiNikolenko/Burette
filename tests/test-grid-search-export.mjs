@@ -13,7 +13,7 @@ function declaration(name) {
 }
 
 const state = {
-  query: "", searchMode: "text", searchTimer: 0, searchTextCache: new WeakMap(), token: 0,
+  query: "", searchMode: "text", searchTimer: 0, searchTextCache: new WeakMap(), token: 0, dataToken: 0,
   sourceRevision: 0, smarts: "", smartsError: "", smartsMatches: new Map(),
   remoteMode: false, rows: [], selected: new Set(), all: [
     { index: 0, name: "CC label", smiles: "O", props: {} },
@@ -64,8 +64,8 @@ state.rdkit = { get_qmol: () => ({ is_valid: () => true, delete() {} }) };
 const scan = new Function("state", "loadBatchSize", "hostRequest", "gridFetchPayload", "hydrateDataWarriorRows", "applyGridPageState", "substructureMatch", "setStatus",
   declaration("scanRemoteBySMARTS") + "\nreturn scanRemoteBySMARTS;"
 )(state, () => 120, () => new Promise(resolve => { completePage = resolve; }), identity, async rows => rows, () => { appliedPages++; }, () => ({ atoms: [0] }), () => {});
-const obsolete = scan({}, state.token);
-state.token++;
+const obsolete = scan({}, state.dataToken);
+state.dataToken++;
 completePage({ rows: state.all, totalRows: 2 });
 assert.deepEqual(await obsolete, []);
 assert.equal(appliedPages, 0, "obsolete SMARTS pages cannot mutate current result/index state");

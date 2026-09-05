@@ -84,7 +84,7 @@ assert.equal(stats.filterColumnStats(columns[0]).min, 10, 'same-size document re
 console.log('Histogram: 20 unchanged refreshes = 0 additional numeric reads (initial model: 4).');
 
 const visibilityState = {
-  token: 1, query: 'fixture', sort: 'name', rows: [], totalRows: 360,
+  token: 1, dataToken: 1, remoteMode: true, query: 'fixture', sort: 'name', rows: [], totalRows: 360,
   chemicalSpaceVisibilitySubscribers: new Set(), chemicalSpaceVisibilityRequest: null,
   chemicalSpaceVisibilityGeneration: 0, chemicalSpaceVisibilityScanning: false,
   lastChemicalSpaceVisibility: null,
@@ -95,15 +95,22 @@ const calls = [];
 const posts = [];
 let heldResponse = null;
 const visibilityNames = ['postChemicalSpaceVisibility', 'updateRemoteChemicalSpaceVisibility',
-  'requestChemicalSpaceVisibility', 'collectRemoteChemicalSpaceVisibility'];
+  'requestChemicalSpaceVisibility', 'collectRemoteChemicalSpaceVisibility', 'render'];
 const visibility = new Function('state', 'hostRequest', 'posts', `
   const GRID_SELECTION_BRIDGE_LIMIT = 100000;
   function chemicalSpaceGridFiltersActive() { return Boolean(state.query); }
   function gridFetchPayload(payload) { return payload; }
   function loadBatchSize() { return 120; }
   function post(type, message, body) { posts.push({ type, body }); }
+  const document = { getElementById() { return { innerHTML: '' }; } };
+  const root = { querySelector() { return null; } };
+  function cancelVirtualWindowRender() {}
+  function resetRdkitCardObserver() {}
+  function resetXyzrenderCardObserver() {}
+  function resetCardRenderQueues() {}
+  async function renderVirtualWindow() {}
   ${visibilityNames.map(functionSource).join('\n')}
-  return { updateRemoteChemicalSpaceVisibility, requestChemicalSpaceVisibility };
+  return { updateRemoteChemicalSpaceVisibility, requestChemicalSpaceVisibility, render };
 `)(visibilityState, async (type, payload) => {
   calls.push(payload);
   if (heldResponse) return heldResponse;
@@ -120,6 +127,9 @@ const firstPage = { rows: visibilityState.rows, totalRows: 360 };
 visibility.updateRemoteChemicalSpaceVisibility(firstPage, {}, 1);
 await drain();
 assert.equal(calls.length, 0, 'search with no map must not fetch background pages');
+await visibility.render({});
+assert.equal(visibilityState.token, 2, 'Cards/Table redraw advances the rendering token');
+assert.equal(visibilityState.dataToken, 1, 'redraw preserves the filtered data generation');
 subscribe('right', true);
 await drain();
 assert.deepEqual(calls.map(call => [call.offset, call.sort]), [[120, 'name'], [240, 'name']], 'reuse first page and preserve ordering');
@@ -131,8 +141,8 @@ assert.equal(calls.length, 2, 'second map uses completed visibility');
 subscribe('bottom', false);
 
 // Closing the last map cancels further pages, including an in-flight response.
-visibilityState.token++;
-visibility.updateRemoteChemicalSpaceVisibility(firstPage, {}, visibilityState.token);
+visibilityState.dataToken++;
+visibility.updateRemoteChemicalSpaceVisibility(firstPage, {}, visibilityState.dataToken);
 let finishResponse;
 heldResponse = new Promise(resolve => { finishResponse = resolve; });
 subscribe('right', true);
@@ -149,10 +159,10 @@ await drain();
 assert.equal(calls.length, 5, 'reopening resumes a complete query without duplicating first page');
 assert.deepEqual(posts.at(-1).body.sourceRecordIds, pageRows.map(row => row.index));
 heldResponse = new Promise(resolve => { finishResponse = resolve; });
-visibilityState.token++;
-visibility.updateRemoteChemicalSpaceVisibility(firstPage, {}, visibilityState.token);
+visibilityState.dataToken++;
+visibility.updateRemoteChemicalSpaceVisibility(firstPage, {}, visibilityState.dataToken);
 const publishedBeforeQueryChange = posts.length;
-visibilityState.token++;
+visibilityState.dataToken++;
 finishResponse({ rows: pageRows.slice(120, 240), totalRows: 360 });
 await drain();
 assert.equal(calls.length, 6, 'query-token cancellation stops further visibility requests');
