@@ -290,6 +290,8 @@ assert.equal(packDryRun.status, 0, packDryRun.stderr);
 const packPayload = JSON.parse(packDryRun.stdout);
 const packedFiles = new Set(packPayload[0].files.map(file => file.path));
 for (const asset of [
+  'assets/local-viewer.html',
+  'scripts/mcp-app-session.mjs',
   "browser-shell-dist/boot-overlay.js",
   "browser-shell-dist/index.html",
   "browser-shell-dist/index.js",
@@ -479,6 +481,8 @@ assert.equal(preflightPayload.context.transports[0].id, "auto");
 assert.equal(preflightPayload.context.transports[1].id, "browser-agent-shell");
 assert.equal(preflightPayload.context.transports[2].id, "browser-preview");
 assert.equal(preflightPayload.context.transports[3].id, "desktop-app");
+assert.equal(preflightPayload.files.inlineViewerResource.status, "available");
+assert.equal(preflightPayload.context.transports.find(item => item.id === 'mcp-app').status, 'available');
 assert.equal(preflightPayload.context.workflowRoutes.molstarScene.includes("observe scene"), true);
 assert.equal(preflightPayload.context.workflowRoutes.molstarScene.includes("apply MolViewSpec-informed declarative scene schema"), true);
 assert.equal(preflightPayload.context.workflowRoutes.molstarScene.includes("load complete MolViewSpec scenes"), true);

@@ -1,5 +1,7 @@
 # Paths are matched exactly, relative to the repository root.
 # Keep this list short and limited to intentional large checked-in assets.
+# Self-contained MCP App; build and wire tests enforce its separate 4 MiB cap.
+plugins/burette-agent/assets/local-viewer.html
 PreviewExtension/Web/mesoscale.js
 PreviewExtension/Web/molstar.js
 PreviewExtension/Web/viewer.js

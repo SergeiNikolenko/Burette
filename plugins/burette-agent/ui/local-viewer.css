@@ -1,0 +1,34 @@
+@import "tailwindcss" source(none);
+@source "./local-viewer-header.tsx";
+@source "../../../apps/desktop/src/components/ui/button.tsx";
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* OpenAI Design Reference / Apps SDK UI semantic tokens. */
+@theme inline {
+  --font-sans: ui-sans-serif, -apple-system, system-ui, "Segoe UI", "Noto Sans", "Helvetica", "Arial", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --color-background: var(--surface);
+  --color-foreground: var(--text);
+  --color-muted: var(--surface-secondary);
+  --color-muted-foreground: var(--text-secondary);
+  --color-border: var(--border);
+  --color-ring: light-dark(#0169cc, #0285ff);
+  --radius-lg: 0.625rem;
+}
+:root {
+  color-scheme: light;
+  --surface: light-dark(#ffffff, #212121);
+  --surface-secondary: light-dark(#f9f9f9, #181818);
+  --text: light-dark(#0d0d0d, #ffffff);
+  --text-secondary: light-dark(#5d5d5d, #afafaf);
+  --border: light-dark(rgb(13 13 13 / 10%), rgb(255 255 255 / 12%));
+  --shadcn-disabled-opacity: 0.5;
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body { display: flex; flex-direction: column; font-family: var(--font-sans); color: var(--text); background: var(--surface); }
+#mcp-header { flex: none; z-index: 1000; background: var(--surface); border-bottom: 1px solid var(--border); }
+#mcp-scene { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+#app { position: absolute; inset: 0; width: 100%; height: 100%; }
+#status { font-family: var(--font-sans); font-size: 14px; line-height: 20px; }
+/* Inline media is single-purpose; the expanded view retains the full scene controls. */
+body[data-display-mode="inline"] :is(#buret-toolbar, #buret-scene-tree-toggle, #buret-viewport-rail) { display: none !important; }

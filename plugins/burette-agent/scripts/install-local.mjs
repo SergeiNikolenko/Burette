@@ -25,6 +25,8 @@ const pluginVersion = await readPluginVersion();
 const pluginId = `burette@${marketplaceName}`;
 const installRoot = path.join(home, ".codex", "plugins", "cache", marketplaceName, "burette", pluginVersion);
 const requiredBundleFiles = [
+  'assets/local-viewer.html',
+  'scripts/mcp-app-session.mjs',
   "browser-shell-dist/boot-overlay.js",
   "browser-shell-dist/index.html",
   "browser-shell-dist/index.js",

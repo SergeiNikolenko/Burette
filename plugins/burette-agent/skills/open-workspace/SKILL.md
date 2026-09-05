@@ -8,6 +8,31 @@ description: "Use when opening molecular artifacts in Burette Browser preview or
 Use this workflow to open local structures, SDF collections, trajectory bundles,
 or workflow result bundles in Burette.
 
+## Inline viewer and host side pane
+
+For a single local PDB/mmCIF file when the host exposes
+`burette.open_inline_viewer`, use this embedded MCP App for inline viewing.
+It does not start a localhost server or upload the structure. Other formats,
+Ketcher, collections, tabs and trajectories still use the workspace modes below.
+
+1. Call `burette.open_inline_viewer` with the exact local file path.
+2. Keep its `sessionId`; a successful open means created, not rendered.
+3. Call `burette.observe_inline_viewer` until `ready` is true. Report a mounting
+   or rendering blocker if it remains false; do not reopen repeatedly.
+4. For detailed inspection, offer once: “Expand this viewer into the side pane?”
+   If the user asks for a side pane, send `burette.control_inline_viewer` with
+   `{"type":"set_display_mode","mode":"fullscreen"}`. The host decides the
+   actual placement. Do not promise a right pane on hosts without that mapping.
+5. Return using the same session and `mode: "inline"`. Never reopen the file,
+   create another viewer, or open a Browser tab just to change placement.
+6. Observe the matching `lastAction.actionId` and actual `displayMode` after
+   every control call. A queued action is not completion. Preserve and report
+   any viewer error, including an empty molecular selection.
+
+Typed checks and a visible nonblank scene are separate requirements. An MCP
+protocol test or Browser host harness is not proof of native Codex mounting.
+After plugin updates, new tools may require a new task or host reload.
+
 ## Workflow
 
 1. Run Burette preflight through [user-context](../user-context/SKILL.md).

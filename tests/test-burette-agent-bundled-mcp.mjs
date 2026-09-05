@@ -25,6 +25,7 @@ let stderr = "";
 let stdoutBuffer = "";
 let nextId = 1;
 const pending = new Map();
+let inlineSessionId;
 
 child.stderr.on("data", chunk => {
   stderr += chunk.toString("utf8");
@@ -95,6 +96,9 @@ try {
     "burette.observe_story",
     "burette.control_story",
     "burette.render_panel",
+    "burette.open_inline_viewer",
+    "burette.observe_inline_viewer",
+    "burette.control_inline_viewer",
   ]) {
     assert.equal(toolNames.includes(required), true, `Missing ${required}`);
   }
@@ -124,8 +128,29 @@ try {
   assert.equal(authoringReference.structuredContent.ok, true);
   assert.equal(authoringReference.structuredContent.result.nodeKind, "component");
   assert.match(authoringReference.structuredContent.result.markdown, /Parent: `structure`/);
+  const resource = await request('resources/read', { uri: 'ui://burette/local-viewer.html' });
+  assert.equal(resource.contents[0].mimeType, 'text/html;profile=mcp-app');
+  assert.deepEqual(resource.contents[0]._meta.ui.csp, { connectDomains: [], resourceDomains: ['blob:'] });
+  assert.ok(Buffer.byteLength(resource.contents[0].text) < 4 * 1024 * 1024);
+  const opened = await request('tools/call', { name: 'burette.open_inline_viewer', arguments: { file: path.resolve('samples/structures/proteins/1htb.pdb') } });
+  assert.equal(opened.isError, undefined);
+  assert.equal(opened.structuredContent.ready, false);
+  inlineSessionId = opened.structuredContent.sessionId;
+  assert.equal(opened.structuredContent.token, undefined);
+  assert.ok(opened._meta.session.token);
+  assert.equal(opened.content[0].text.includes(opened._meta.session.token), false);
+  const privateTool = listed.tools.find(tool => tool.name === 'burette.inline_viewer_exchange');
+  assert.deepEqual(privateTool._meta.ui.visibility, ['app']);
+  const source = await request('tools/call', { name: 'burette.inline_viewer_exchange', arguments: { ...opened._meta.session, source: true } });
+  assert.deepEqual(source.content, []);
+  assert.equal(source.structuredContent, undefined);
+  assert.ok(source._meta.payload.dataBase64.length <= 256 * 1024);
+  const denied = await request('tools/call', { name: 'burette.control_inline_viewer', arguments: { sessionId: inlineSessionId, action: { type: 'reset_camera' } } });
+  assert.equal(denied.isError, true);
+  assert.match(denied.content[0].text, /not mounted/u);
   console.log("burette-agent bundled MCP tests passed");
 } finally {
   if (child.exitCode === null) child.kill("SIGTERM");
   await rm(tempRoot, { recursive: true, force: true });
+  if (inlineSessionId) await rm(path.join(tmpdir(), 'burette-mcp-app', inlineSessionId), { recursive: true, force: true });
 }

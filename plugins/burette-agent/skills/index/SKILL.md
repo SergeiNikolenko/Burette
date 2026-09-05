@@ -49,6 +49,13 @@ Choose the smallest focused workflow that covers the request:
 
 ## Operating Principle
 
+For one local PDB/mmCIF file, prefer the inline MCP App when
+`burette.open_inline_viewer` is available; follow the inline/side-pane section
+of [open-workspace](../open-workspace/SKILL.md). Offer expansion for detailed
+inspection, reuse the same session, and never replace a display-mode switch
+with a new Browser workspace. Keep existing Browser/native routes for formats
+and workflows the inline prototype does not support.
+
 The CLI is the execution contract. MCP tools wrap it. Browser and Computer
 verify visual reality. Do not replace typed `observe` and `act` with screenshot
 interpretation.

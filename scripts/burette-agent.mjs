@@ -10,6 +10,7 @@ import { delimiter, dirname, resolve } from 'node:path';
 import { validateMvsDocumentFile, validateMvsStoryFile, writeMvsStoryFile } from './mvs-story.mjs';
 import { instantiateMvsStoryTemplate, listMvsStoryTemplates } from './mvs-story-templates.mjs';
 import { getOfficialMvsAuthoringReference } from './mvs-schema-validator.mjs';
+import { runMcpAppOperation } from './mcp-app-session.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -29,6 +30,7 @@ const MAX_PENDING_AGENT_ACTIONS = 64;
 function usage() {
   console.error(`Usage:
   node scripts/burette-agent.mjs open --mode auto <file> [--host 127.0.0.1]
+  node scripts/burette-agent.mjs mcp-app '<json-operation>'
   node scripts/burette-agent.mjs open --mode browser-preview <file> [--port 5177] [--host 127.0.0.1]
   node scripts/burette-agent.mjs open --mode browser-agent-shell <file> [--host 127.0.0.1]
   node scripts/burette-agent.mjs open --mode desktop-app <file> [--app Burette] [--session-dir /tmp/session] [--no-launch]
@@ -180,6 +182,10 @@ function fail(code, message, exitCode = 1, details) {
 async function main() {
   const [command = 'help', ...args] = process.argv.slice(2);
   const options = parseOptions(args);
+  if (command === 'mcp-app') {
+    console.log(JSON.stringify({ ok: true, apiVersion, result: await runMcpAppOperation(JSON.parse(options.rest[0])) }));
+    return;
+  }
   if (command === 'help' || options.help) {
     usage();
     return;
