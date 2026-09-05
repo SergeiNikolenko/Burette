@@ -54,7 +54,7 @@ const rdkitScriptUrl = new URL("../../../../../../PreviewExtension/Web/rdkit/RDK
 const rdkitWasmUrl = new URL("../../../../../../PreviewExtension/Web/rdkit/RDKit_minimal.wasm", import.meta.url).href;
 const sampleGraphmlUrl = new URL("../../../../../../samples/fep/ligand_network.graphml", import.meta.url).href;
 const gridAssetsBaseUrl = `${new URL("../../../../../../PreviewExtension/Web/", import.meta.url).href.replace(/\/?$/u, "/")}`;
-const gridAssetVersion = "grid-ui-v103";
+const gridAssetVersion = "grid-ui-v104";
 const cardSize = { width: 16.4, height: 25.8 };
 const edgeLabelAvoidanceCardSize = { width: 17.4, height: 29.2 };
 
@@ -938,8 +938,8 @@ function fepGridHtml(title: string, records: FepGridRecord[]) {
 <body class="burette-opaque-background">
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
-  <script>window.BuretteConfig = ${JSON.stringify(config)};</script>
-  <script>window.BuretteGridRecords = ${JSON.stringify(records)};</script>
+  <script>window.BuretteConfig = ${JSON.stringify(config).replaceAll("<", "\\u003c")};</script>
+  <script>window.BuretteGridRecords = ${JSON.stringify(records).replaceAll("<", "\\u003c")};</script>
   <script src="rdkit/RDKit_minimal.js?v=${gridAssetVersion}"></script>
   <script src="grid-ui.js?v=${gridAssetVersion}"></script>
   <script src="grid-viewer.js?v=${gridAssetVersion}"></script>

@@ -393,7 +393,7 @@ fn minimal_conformer_extract_fixture() -> Vec<u8> {
 
 fn decode_test_sha256(value: &str) -> [u8; 32] {
     let mut bytes = [0_u8; 32];
-    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+    for (index, pair) in value.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         let nibble = |value: u8| match value {
             b'0'..=b'9' => value - b'0',
             b'a'..=b'f' => value - b'a' + 10,

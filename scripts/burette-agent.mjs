@@ -514,6 +514,7 @@ async function openBrowserAgentShell(file, options) {
     url.searchParams.set('devFiles', initialFile);
   }
   url.searchParams.set('agentLayout', 'focus');
+  url.searchParams.set('shellToken', token);
   await writeJsonFile(resolve(sessionDir, 'session.json'), {
     apiVersion,
     mode: 'browser-dev-shell',
@@ -1010,6 +1011,7 @@ async function browserShellSessionDir(urlText) {
   if (url.searchParams.has('token')) return null;
   try {
     const sessionUrl = new URL('/__burette/agent-session/session.json', url);
+    if (url.searchParams.has('shellToken')) sessionUrl.searchParams.set('shellToken', url.searchParams.get('shellToken'));
     const response = await fetchWithTimeout(sessionUrl.toString(), 1500);
     if (!response.ok) return null;
     const session = await response.json();

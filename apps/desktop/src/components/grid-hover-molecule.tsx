@@ -237,7 +237,7 @@ export function GridHoverMoleculeCard({
           if (renderTokenRef.current === token) setSpec("");
         }
       })();
-      return;
+      return () => { renderTokenRef.current += 1; };
     }
     const paper = paperColour(wellNodeRef.current, theme);
     const sizedKey = `${theme} ${paper.join(",")} ${wellSize.width}x${wellSize.height} ${source}`;
@@ -291,6 +291,7 @@ export function GridHoverMoleculeCard({
         }
       }
     })();
+    return () => { renderTokenRef.current += 1; };
   }, [scaffold, showingScaffold, showingXyzrender, shown, theme, wellSize]);
 
   // The drawing IS the row's structure, so acting on it acts on that row: the

@@ -63,8 +63,10 @@ fn snapshot_bytes(snapshot_root: &PublishedSnapshotRoot, relative_path: &str) ->
 
 fn source_ids(snapshot_root: &PublishedSnapshotRoot) -> Vec<u64> {
     snapshot_bytes(snapshot_root, "pack/source-record-ids.bin")
-        .chunks_exact(8)
-        .map(|chunk| u64::from_le_bytes(chunk.try_into().expect("eight-byte source ID")))
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|chunk| u64::from_le_bytes(*chunk))
         .collect()
 }
 
@@ -127,7 +129,7 @@ fn assert_snapshot_integrity(frozen: &FrozenGridSnapshot) {
     for ((record, source_id), molecule_hash) in records
         .iter()
         .zip(source_ids)
-        .zip(molecule_hashes.chunks_exact(32))
+        .zip(molecule_hashes.as_chunks::<32>().0.iter())
     {
         assert_eq!(record.source_record_id, source_id);
         assert_eq!(record.molecule_content_sha256, hex_bytes(molecule_hash));

@@ -363,4 +363,52 @@ function gridState(overrides = {}) {
   assert.equal(state.dirty, false);
 }
 
+// Hover uses the whole molecule cell, including its padding. The same runtime
+// must suppress the floating drawing while the host's right dock is open.
+{
+  const state = { rightDockOpen: false, tableMoleculePreview: null };
+  const listeners = {};
+  const previews = [];
+  const picture = { addEventListener(type, handler) { listeners[type] = handler; } };
+  const document = {
+    createElement() {
+      return { setAttribute() {}, remove() { this.removed = true; } };
+    },
+    body: { appendChild(node) { previews.push(node); } },
+  };
+  const install = new Function("state", "document", `
+    const window = { addEventListener() {}, removeEventListener() {} };
+    const rowHasMolecule = row => Boolean(row.smiles);
+    const postChemicalSpaceHover = () => {};
+    const draw = () => '<svg></svg>';
+    const escapeHTML = value => value;
+    const scheduleRdkitCard = () => {};
+    const scheduleXyzrenderCard = () => {};
+    const positionTableMoleculePreview = () => {};
+    ${functionSource("hideTableMoleculePreview")}
+    ${functionSource("showTableMoleculePreview")}
+    ${functionSource("installTableMoleculeHover")}
+    return installTableMoleculeHover;
+  `)(state, document);
+  install({ querySelector(selector) {
+    return selector === 'td[data-column="molecule"]' ? picture : null;
+  } }, { index: 0, name: "ethanol", smiles: "CCO" }, {});
+  assert.equal(typeof listeners.pointerenter, "function");
+  listeners.pointerenter({ pointerType: "mouse" });
+  assert.match(previews[0].innerHTML, /<svg><\/svg>/);
+  listeners.pointerleave();
+  assert.equal(previews[0].removed, true);
+  assert.equal(state.tableMoleculePreview, null);
+  state.rightDockOpen = true;
+  listeners.pointerenter({ pointerType: "mouse" });
+  listeners.pointermove({ pointerType: "mouse" });
+  assert.equal(previews.length, 1);
+  state.rightDockOpen = false;
+  listeners.pointermove({ pointerType: "mouse" });
+  assert.equal(previews.length, 2);
+  listeners.pointerleave();
+  listeners.pointerenter({ pointerType: "touch" });
+  assert.equal(state.tableMoleculePreview, null);
+}
+
 console.log("Grid table operation checks passed.");

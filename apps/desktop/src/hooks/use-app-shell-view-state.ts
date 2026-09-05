@@ -11,6 +11,7 @@ type AppShellViewStateInput = Omit<
 
 type DocumentShellViewState = Pick<
   ShellViewState,
+  | "dirtyGridDocuments"
   | "documents"
   | "textDocuments"
   | "tabs"
@@ -130,6 +131,7 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
   const { viewerLigandSelections, structureStories, ...state } = input;
   return {
     documents: {
+      dirtyGridDocuments: state.dirtyGridDocuments,
       documents: state.documents,
       textDocuments: state.textDocuments,
       tabs: state.tabs,

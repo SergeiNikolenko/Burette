@@ -277,7 +277,9 @@ impl<'a> Cursor<'a> {
     fn u16s(&mut self, count: usize, label: &str) -> Result<Vec<u16>, ConformerExtractError> {
         Ok(self
             .take(count, 2, 2, label)?
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
             .collect())
     }
@@ -285,8 +287,10 @@ impl<'a> Cursor<'a> {
     fn f32s(&mut self, count: usize, label: &str) -> Result<Vec<f32>, ConformerExtractError> {
         Ok(self
             .take(count, 4, 4, label)?
-            .chunks_exact(4)
-            .map(|chunk| f32::from_le_bytes(chunk.try_into().expect("four-byte chunk")))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|chunk| f32::from_le_bytes(*chunk))
             .collect())
     }
 
@@ -300,13 +304,12 @@ impl<'a> Cursor<'a> {
             .ok_or_else(|| invalid(format!("extractor {label} element count overflowed")))?;
         let values: Vec<u32> = self
             .take(elements, 4, 4, label)?
-            .chunks_exact(4)
-            .map(|chunk| u32::from_le_bytes(chunk.try_into().expect("four-byte chunk")))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|chunk| u32::from_le_bytes(*chunk))
             .collect();
-        Ok(values
-            .chunks_exact(WIDTH)
-            .map(|chunk| chunk.try_into().expect("fixed-width chunk"))
-            .collect())
+        Ok(values.as_chunks::<WIDTH>().0.to_vec())
     }
 
     fn f32_arrays<const WIDTH: usize>(
@@ -317,11 +320,7 @@ impl<'a> Cursor<'a> {
         let elements = count
             .checked_mul(WIDTH)
             .ok_or_else(|| invalid(format!("extractor {label} element count overflowed")))?;
-        Ok(self
-            .f32s(elements, label)?
-            .chunks_exact(WIDTH)
-            .map(|chunk| chunk.try_into().expect("fixed-width chunk"))
-            .collect())
+        Ok(self.f32s(elements, label)?.as_chunks::<WIDTH>().0.to_vec())
     }
 
     fn i8_arrays<const WIDTH: usize>(
@@ -332,11 +331,7 @@ impl<'a> Cursor<'a> {
         let elements = count
             .checked_mul(WIDTH)
             .ok_or_else(|| invalid(format!("extractor {label} element count overflowed")))?;
-        Ok(self
-            .i8s(elements, label)?
-            .chunks_exact(WIDTH)
-            .map(|chunk| chunk.try_into().expect("fixed-width chunk"))
-            .collect())
+        Ok(self.i8s(elements, label)?.as_chunks::<WIDTH>().0.to_vec())
     }
 }
 

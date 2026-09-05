@@ -1,6 +1,7 @@
 import React from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 
 type SortOption = {
   value: string;
@@ -35,6 +36,9 @@ type GridControlProps = {
   exportEnabled: boolean;
   selectionEnabled: boolean;
   substructureSearch: boolean;
+  searchMode: "text" | "structure";
+  exportScopeLabel: string;
+  exportPending: boolean;
   supportsXyzrenderCards: boolean;
   viewMode: "cards" | "table";
   cardRenderer: "rdkit" | "xyzrender";
@@ -69,6 +73,7 @@ type GridControlProps = {
   undoTitle: string;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
+  onSearchModeChange: (value: "text" | "structure") => void;
   onSortChange: (value: string) => void;
   onShowProperties: () => void;
   onClearSmarts: () => void;
@@ -498,48 +503,45 @@ function FileSection(props: GridControlProps & { onRun: (action: () => void) => 
     <>
       <div className="ab-separator" />
       <div className="ab-group">File</div>
-      {props.saveEnabled ? (
         <div className="ab-row">
           <button
             id="save-grid"
             className="ab-item"
             type="button"
             role="menuitem"
+            disabled={!props.saveEnabled}
             title={props.saveTitle}
             onClick={() => props.onRun(props.onSaveGrid)}
           >
             <span className="ab-item-title">Save</span>
           </button>
         </div>
-      ) : null}
-      {props.undoEnabled ? (
         <div className="ab-row">
           <button
             id="undo-grid-edit"
             className="ab-item"
             type="button"
             role="menuitem"
+            disabled={!props.undoEnabled}
             title={props.undoTitle}
             onClick={() => props.onRun(props.onUndoGridEdit)}
           >
             <span className="ab-item-title">Undo</span>
           </button>
         </div>
-      ) : null}
-      {props.saveAsEnabled ? (
         <div className="ab-row">
           <button
             id="save-grid-as"
             className="ab-item"
             type="button"
             role="menuitem"
+            disabled={!props.saveAsEnabled}
             title={props.saveAsTitle}
             onClick={() => props.onRun(props.onSaveGridAs)}
           >
             <span className="ab-item-title">Save As...</span>
           </button>
         </div>
-      ) : null}
       <div className="ab-group">Export</div>
       <div className="ab-row">
         <button
@@ -547,10 +549,11 @@ function FileSection(props: GridControlProps & { onRun: (action: () => void) => 
           className="ab-item"
           type="button"
           role="menuitem"
-          title="Export visible molecules as SMILES"
+          title={`Export ${props.exportScopeLabel} as SMILES`}
+          disabled={props.exportPending}
           onClick={() => props.onRun(props.onExportSmiles)}
         >
-          <span className="ab-item-title">Export SMILES</span>
+          <span className="ab-item-title">Export {props.exportScopeLabel}</span>
           <span className="ab-item-meta">.smi</span>
         </button>
       </div>
@@ -560,10 +563,11 @@ function FileSection(props: GridControlProps & { onRun: (action: () => void) => 
           className="ab-item"
           type="button"
           role="menuitem"
-          title="Export visible table data as CSV"
+          title={`Export ${props.exportScopeLabel} as CSV`}
+          disabled={props.exportPending}
           onClick={() => props.onRun(props.onExportCSV)}
         >
-          <span className="ab-item-title">Export CSV</span>
+          <span className="ab-item-title">Export {props.exportScopeLabel}</span>
           <span className="ab-item-meta">.csv</span>
         </button>
       </div>
@@ -668,12 +672,12 @@ function ActionsMenu(props: GridControlProps) {
           <div className={selectedCount > 0 ? "ab-selhead has-selection" : "ab-selhead"}>
             {selectedCount > 0
               ? `${selectedCount.toLocaleString()} selected`
-              : "Select molecules to enable actions"}
+              : "No molecules selected"}
           </div>
+          <FileSection {...props} onRun={onRun} />
           <ComputeSection {...props} onRun={onRun} />
           <CollectionSection {...props} onRun={onRun} />
           <SelectionSection {...props} onRun={onRun} />
-          <FileSection {...props} onRun={onRun} />
         </div>
       ) : null}
     </div>
@@ -789,25 +793,39 @@ function GridActionToolbar(props: GridControlProps) {
 }
 
 function GridControls(props: GridControlProps) {
-  const searchPlaceholder = props.substructureSearch
-    ? "name, SMILES, metadata, SMARTS"
+  const searchPlaceholder = props.searchMode === "structure"
+    ? "SMARTS pattern"
     : "name or table value";
 
   return (
     <div className="buret-grid-toolbar">
       <div className="buret-toolbar-row buret-toolbar-row-main">
-        <label className="buret-search-control buret-filter-control">
-          Search
+        <div className="buret-search-control buret-filter-control">
+          {props.substructureSearch ? (
+            <ToggleGroup
+              type="single"
+              value={props.searchMode}
+              onValueChange={(value) => {
+                if (value === "text" || value === "structure") props.onSearchModeChange(value);
+              }}
+              aria-label="Search mode"
+              className="buret-renderer-control"
+              size="sm"
+            >
+              <ToggleGroupItem value="text" className="ab-btn">Text</ToggleGroupItem>
+              <ToggleGroupItem value="structure" className="ab-btn">Structure</ToggleGroupItem>
+            </ToggleGroup>
+          ) : "Search"}
           <input
             id="search"
             type="search"
-            aria-label="Search molecules and SMARTS"
+            aria-label={props.searchMode === "structure" ? "Search structures with SMARTS" : "Search text"}
             spellCheck={false}
             autoCapitalize="off"
             placeholder={searchPlaceholder}
             onInput={(event) => props.onSearchInput(event.currentTarget.value || "")}
           />
-        </label>
+        </div>
         <label className="buret-sort-control">
           Sort
           <select id="sort" onChange={(event) => props.onSortChange(event.currentTarget.value || "index")}>

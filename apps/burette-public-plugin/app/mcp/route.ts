@@ -280,8 +280,7 @@ function createServer(): McpServer {
           structuredContent: { ok: false, error: validation.error, action },
         };
       }
-      const result = executeHostedKetcherAction(validation.value);
-      const seed = result.result?.ketcherSeed ?? null;
+      const result = executeHostedKetcherAction(action);
       return {
         content: [{ type: "text" as const, text: result.ok ? "Ketcher action complete." : result.error?.message || "Ketcher action failed." }],
         ...(result.ok ? {} : { isError: true }),
@@ -290,10 +289,12 @@ function createServer(): McpServer {
           surfaceId: validation.value.surfaceId,
           result,
           snapshot: result.snapshot ?? null,
-          action: validation.value,
+          action,
         },
         _meta: {
-          ketcherSeed: seed,
+          ...(result.ok && result.result && Object.hasOwn(result.result, "ketcherSeed")
+            ? { ketcherSeed: result.result.ketcherSeed }
+            : {}),
           ketcher: result.snapshot ?? null,
         },
       };

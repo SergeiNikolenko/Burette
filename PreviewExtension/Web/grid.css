@@ -393,7 +393,8 @@ button:disabled {
   min-height: 28px;
 }
 
-#grid-controls .ab-btn[aria-pressed="true"] {
+#grid-controls .ab-btn[aria-pressed="true"],
+#grid-controls .ab-btn[data-state="on"] {
   background: var(--buret-control-active);
 }
 
@@ -1264,6 +1265,52 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   padding: 4px;
   font-size: 7px;
   line-height: 1.15;
+}
+
+.buret-grid-table-molecule-popover {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1200;
+  width: min(148px, calc(100vw - 24px));
+  box-sizing: border-box;
+  padding: 6px;
+  pointer-events: none;
+  border: 0;
+  border-radius: 8px;
+  background: var(--buret-panel);
+  box-shadow: 0 10px 28px rgba(10, 24, 36, 0.18);
+}
+
+.buret-grid-table-molecule-popover-image {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background: var(--buret-picture-bg);
+}
+
+.buret-grid-table-molecule-popover-image svg,
+.buret-grid-table-molecule-popover-image img.buret-rdkit-card-image,
+.buret-grid-table-molecule-popover-image img.buret-xyzrender-card-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.buret-grid-table-molecule-popover-title {
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--buret-text);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Sticky header in the shadcn voice: medium weight, muted, on the blurred

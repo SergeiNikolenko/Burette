@@ -39,16 +39,39 @@ export async function runBuretteAgent(args, { timeoutMs = 30000 } = {}) {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  let stdout = "";
-  let stderr = "";
+  const outputByteLimit = 4 * 1024 * 1024;
+  let outputBytes = 0;
+  let outputLimitExceeded = false;
+  const stdoutChunks = [];
+  const stderrChunks = [];
   child.stdout.on("data", chunk => {
-    stdout += chunk.toString("utf8");
+    outputBytes += chunk.length;
+    if (outputBytes > outputByteLimit) {
+      outputLimitExceeded = true;
+      child.kill("SIGKILL");
+      return;
+    }
+    stdoutChunks.push(chunk);
   });
   child.stderr.on("data", chunk => {
-    stderr += chunk.toString("utf8");
+    outputBytes += chunk.length;
+    if (outputBytes > outputByteLimit) {
+      outputLimitExceeded = true;
+      child.kill("SIGKILL");
+      return;
+    }
+    stderrChunks.push(chunk);
   });
 
   const exit = await waitForChild(child, timeoutMs);
+  if (outputLimitExceeded) {
+    return {
+      ok: false, exitCode: exit.code, signal: exit.signal, stdout: "", stderr: "",
+      error: { code: "CLI_OUTPUT_LIMIT", message: `Burette CLI output exceeds ${outputByteLimit} bytes; request a smaller result or a file artifact.` },
+    };
+  }
+  const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+  const stderr = Buffer.concat(stderrChunks).toString("utf8");
   const parsedStdout = parseJson(stdout);
   const parsedStderr = parseJson(stderr);
   if (exit.code !== 0) {
@@ -80,7 +103,7 @@ function waitForChild(child, timeoutMs) {
       child.kill("SIGTERM");
       resolve({ code: 124, signal: "TIMEOUT" });
     }, timeoutMs);
-    child.on("exit", (code, signal) => {
+    child.on("close", (code, signal) => {
       clearTimeout(timer);
       resolve({ code: code ?? 0, signal });
     });

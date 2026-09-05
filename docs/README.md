@@ -5,6 +5,8 @@ contains only documents that describe the active project.
 
 ## Current Docs
 
+- [Code and software audit, 2026-09-05](code-software-audit-2026-09-05.md): open
+  findings, priorities, evidence, and acceptance checks across Burette surfaces.
 - [Changelog](../CHANGELOG.md): pointer to GitHub Releases, which are the
   human-readable changelog for each version.
 - [Architecture](architecture.md): repository boundaries and runtime shape.

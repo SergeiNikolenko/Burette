@@ -180,6 +180,7 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" \
             "${assets[@]}" \
             "${release_flags[@]}" \
+            --target "$GITHUB_SHA" \
             --title "Burette ${{ steps.version.outputs.version }}" \
             --generate-notes
 

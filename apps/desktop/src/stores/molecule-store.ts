@@ -51,6 +51,7 @@ export type SessionTab = {
 };
 
 type MoleculeState = {
+  settingsReturnTabId: string | null;
   documents: ViewerDocument[];
   textDocuments: TextFileDocument[];
   tabs: MoleculeTab[];
@@ -327,6 +328,11 @@ function activeDocumentIdFrom(tabs: MoleculeTab[], activeTabId: string | null, d
   return document?.id ?? null;
 }
 
+function settingsReturnTabId(state: MoleculeState) {
+  const active = state.tabs.find((tab) => tab.id === state.activeTabId);
+  return active && active.location.kind !== "settings" ? active.id : state.settingsReturnTabId;
+}
+
 function activeTabIdOrFirst(tabs: MoleculeTab[], activeTabId: string | null) {
   if (activeTabId && tabs.some((tab) => tab.id === activeTabId)) return activeTabId;
   return tabs[0]?.id ?? null;
@@ -419,6 +425,7 @@ export function getMoleculeStoreSnapshot(): MoleculeStoreSnapshot {
 export const useMoleculeStore = create<MoleculeState>()(
   persist<MoleculeState, [], [], PersistedMoleculeState>(
     (set) => ({
+      settingsReturnTabId: null,
       documents: [],
       textDocuments: [],
       tabs: [createLauncherTab()],
@@ -781,11 +788,11 @@ export const useMoleculeStore = create<MoleculeState>()(
             const tabs = state.tabs.map((tab) => (
               tab.id === existing.id ? { ...tab, location: { kind: "settings" as const, section } } : tab
             ));
-            return { tabs, activeTabId: existing.id, activeDocumentId: null };
+            return { tabs, activeTabId: existing.id, activeDocumentId: null, settingsReturnTabId: settingsReturnTabId(state) };
           }
           const tab = createSettingsTab();
           tab.location = { kind: "settings", section };
-          return { tabs: [...state.tabs, tab], activeTabId: tab.id, activeDocumentId: null };
+          return { tabs: [...state.tabs, tab], activeTabId: tab.id, activeDocumentId: null, settingsReturnTabId: settingsReturnTabId(state) };
         }),
       openSettingsSection: (section) =>
         set((state) => {
@@ -793,16 +800,17 @@ export const useMoleculeStore = create<MoleculeState>()(
           if (!existing) {
             const tab = createSettingsTab();
             tab.location = { kind: "settings", section };
-            return { tabs: [...state.tabs, tab], activeTabId: tab.id, activeDocumentId: null };
+            return { tabs: [...state.tabs, tab], activeTabId: tab.id, activeDocumentId: null, settingsReturnTabId: settingsReturnTabId(state) };
           }
           const tabs = state.tabs.map((tab) => (
             tab.id === existing.id ? { ...tab, location: { kind: "settings" as const, section } } : tab
           ));
-          return { tabs, activeTabId: existing.id, activeDocumentId: null };
+          return { tabs, activeTabId: existing.id, activeDocumentId: null, settingsReturnTabId: settingsReturnTabId(state) };
         }),
       activateLastNonSettingsTab: () =>
         set((state) => {
-          const target = [...state.tabs].reverse().find((tab) => tab.location.kind !== "settings");
+          const target = state.tabs.find((tab) => tab.id === state.settingsReturnTabId && tab.location.kind !== "settings")
+            ?? [...state.tabs].reverse().find((tab) => tab.location.kind !== "settings");
           if (target) {
             return { activeTabId: target.id, activeDocumentId: activeDocumentIdFrom(state.tabs, target.id, state.documents) };
           }
@@ -837,7 +845,13 @@ export const useMoleculeStore = create<MoleculeState>()(
       setActiveTab: (id) =>
         set((state) => {
           const activeTabId = activeTabIdOrFirst(state.tabs, id);
-          return { activeTabId, activeDocumentId: activeDocumentIdFrom(state.tabs, activeTabId, state.documents) };
+          return {
+            activeTabId,
+            activeDocumentId: activeDocumentIdFrom(state.tabs, activeTabId, state.documents),
+            settingsReturnTabId: state.tabs.find((tab) => tab.id === activeTabId)?.location.kind === "settings"
+              ? settingsReturnTabId(state)
+              : state.settingsReturnTabId,
+          };
         }),
       setActiveDocument: (id) =>
         set((state) => {

@@ -2,8 +2,8 @@
 import { createServer } from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, watch } from 'node:fs';
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { constants, existsSync, readFileSync, realpathSync, statSync, watch } from 'node:fs';
+import { mkdir, open, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
@@ -162,11 +162,16 @@ const allowRoots = Array.from(new Set([
   sessionDir,
   ...defaultAssetAllowRoots(),
   ...fileAllowRoots,
-].map((item) => resolve(item))));
+].filter(existsSync).map((item) => realpathSync(item))));
 const indexPath = resolve(distRoot, 'index.html');
 if (!existsSync(indexPath)) fail(`Missing prebuilt agent shell index: ${indexPath}`);
 
 await mkdir(sessionDir, { recursive: true });
+const session = JSON.parse(await readFile(resolve(sessionDir, 'session.json'), 'utf8'));
+if (typeof session.token !== 'string' || !session.token.trim()) fail('Missing session token. Initialize the session through burette-agent.mjs.');
+if (!['127.0.0.1', 'localhost', '::1'].includes(args.host)) fail('Agent shell must bind to a loopback host.');
+const serverOrigin = `http://${args.host.includes(':') ? `[${args.host}]` : args.host}:${args.port}`;
+const cookieName = `burette-shell-${args.port}`;
 
 const server = createServer((req, res) => {
   void handleRequest(req, res).catch((error) => {
@@ -186,11 +191,28 @@ server.listen(args.port, args.host, () => {
 });
 
 async function handleRequest(req, res) {
+  if (req.headers.host !== new URL(serverOrigin).host
+    || (req.headers.origin && req.headers.origin !== serverOrigin)) {
+    sendJson(res, 403, { error: 'Forbidden request source' });
+    return;
+  }
+  res.setHeader('Referrer-Policy', 'no-referrer');
   const method = (req.method || 'GET').toUpperCase();
-  const url = new URL(req.url || '/', `http://${args.host}:${args.port}`);
+  const url = new URL(req.url || '/', serverOrigin);
   if (url.pathname === '/healthz') {
     sendJson(res, 200, { ok: true });
     return;
+  }
+  const cookie = (req.headers.cookie || '').split(';').map(value => value.trim())
+    .find(value => value.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1);
+  const bootstrapToken = url.searchParams.get('shellToken');
+  if (req.headers.authorization !== `Bearer ${session.token}`
+    && cookie !== session.token && bootstrapToken !== session.token) {
+    sendJson(res, 401, { error: 'Missing or invalid session token' });
+    return;
+  }
+  if (bootstrapToken === session.token) {
+    res.setHeader('Set-Cookie', `${cookieName}=${session.token}; Path=/; HttpOnly; SameSite=Strict`);
   }
   if (url.pathname.startsWith('/__burette/agent-session/')) {
     await handleAgentSession(req, res, method, url);
@@ -403,7 +425,7 @@ async function handleReadFile(res, method, url) {
     sendJson(res, 400, { error: 'Unsupported file' });
     return;
   }
-  const bytes = await readFile(filePath);
+  const bytes = await readAllowedFile(filePath);
   res.statusCode = 200;
   res.setHeader('Content-Type', 'application/octet-stream');
   res.setHeader('Content-Length', String(bytes.length));
@@ -428,7 +450,7 @@ async function handleReadTextFile(res, method, url) {
   }
   const maxBytes = textFileReadLimit(url.searchParams.get('maxBytes'));
   const extension = fileExtension(filePath);
-  const bytes = readableTextBytes(await readFile(filePath), extension);
+  const bytes = readableTextBytes(await readAllowedFile(filePath), extension);
   if (looksBinary(bytes)) {
     sendJson(res, 400, { error: `${filePath} is not a text file` });
     return;
@@ -539,7 +561,7 @@ async function createTrajectoryPairPayload(filePath) {
   const [coordinateInfo, modelInfo] = await Promise.all([stat(coordinatePath), stat(modelPath)]);
   if (!coordinateInfo.isFile() || !modelInfo.isFile()) return null;
   if (coordinateInfo.size > DEV_FILE_SIZE_LIMIT || modelInfo.size > DEV_FILE_SIZE_LIMIT) return null;
-  const [coordinateBytes, modelBytes] = await Promise.all([readFile(coordinatePath), readFile(modelPath)]);
+  const [coordinateBytes, modelBytes] = await Promise.all([readAllowedFile(coordinatePath), readAllowedFile(modelPath)]);
   const coordinate = trajectorySource(coordinatePath, coordinateBytes);
   const model = trajectorySource(modelPath, modelBytes);
   return {
@@ -611,7 +633,7 @@ async function createAmberNcPreview(trajectoryPath) {
   for (const topologyPath of candidates) {
     const outputPath = resolve(sessionDir, `${safeFileStem(basename(trajectoryPath))}.amber-preview.pdb`);
     try {
-      const frameCount = runAmberNcExtractor(topologyPath, trajectoryPath, outputPath);
+      const frameCount = await runAmberNcExtractor(topologyPath, trajectoryPath, outputPath);
       return {
         bytes: await readFile(outputPath),
         topologyPath,
@@ -653,25 +675,33 @@ async function amberNcTopologyCandidates(trajectoryPath) {
   return candidates;
 }
 
-function runAmberNcExtractor(topologyPath, trajectoryPath, outputPath) {
+async function runAmberNcExtractor(topologyPath, trajectoryPath, outputPath) {
   const extractor = resolve(scriptDir, 'amber_nc_preview_extract.py');
   if (!existsSync(extractor)) throw new Error(`Missing Amber NetCDF extractor: ${extractor}`);
-  const result = spawnSync('python3', [
-    extractor,
-    topologyPath,
-    trajectoryPath,
-    '--frames',
-    String(AMBER_NC_PREVIEW_FRAME_LIMIT),
-    '--output',
-    outputPath,
-  ], { encoding: 'utf8' });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    const details = (result.stderr || result.stdout || '').trim();
-    throw new Error(details || `extractor exited with status ${result.status}`);
+  const topology = await openAllowedFile(topologyPath);
+  let trajectory;
+  try {
+    trajectory = await openAllowedFile(trajectoryPath);
+    const result = spawnSync('python3', [
+      extractor,
+      '/dev/fd/3',
+      '/dev/fd/4',
+      '--frames',
+      String(AMBER_NC_PREVIEW_FRAME_LIMIT),
+      '--output',
+      outputPath,
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe', topology.fd, trajectory.fd] });
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+      const details = (result.stderr || result.stdout || '').trim();
+      throw new Error(details || `extractor exited with status ${result.status}`);
+    }
+    const match = String(result.stdout || '').match(/frames=(\d+)/u);
+    return match ? Number(match[1]) : countPdbModelsFromFile(outputPath);
+  } finally {
+    await topology.close();
+    await trajectory?.close();
   }
-  const match = String(result.stdout || '').match(/frames=(\d+)/u);
-  return match ? Number(match[1]) : countPdbModelsFromFile(outputPath);
 }
 
 function countPdbModelsFromFile(path) {
@@ -997,7 +1027,7 @@ async function sendStaticFile(res, method, filePath, noCache, knownInfo = null) 
     sendJson(res, 404, { error: 'Not found' });
     return;
   }
-  const bytes = await readFile(filePath);
+  const bytes = await readAllowedFile(filePath);
   res.statusCode = 200;
   res.setHeader('Content-Type', STATIC_MIME_TYPES.get(extname(filePath).toLowerCase()) || 'application/octet-stream');
   res.setHeader('Content-Length', String(bytes.length));
@@ -1025,7 +1055,11 @@ function findRuntimeAssetPath(cleanPath) {
   return null;
 }
 
-async function collectDevFiles(path, files) {
+async function collectDevFiles(path, files, visited = new Set()) {
+  if (!isAllowed(path)) return;
+  const canonicalPath = realpathSync(path);
+  if (visited.has(canonicalPath)) return;
+  visited.add(canonicalPath);
   let info;
   try {
     info = await stat(path);
@@ -1035,7 +1069,7 @@ async function collectDevFiles(path, files) {
   if (info.isDirectory()) {
     const entries = await readdir(path, { withFileTypes: true });
     for (const entry of entries) {
-      await collectDevFiles(join(path, entry.name), files);
+      await collectDevFiles(join(path, entry.name), files, visited);
     }
     return;
   }
@@ -1064,7 +1098,43 @@ function defaultAssetAllowRoots() {
 }
 
 function isAllowed(path) {
-  return allowRoots.some((root) => isWithin(path, root));
+  try {
+    const canonicalPath = realpathSync(path);
+    return allowRoots.some((root) => isWithin(canonicalPath, root));
+  } catch {
+    return false;
+  }
+}
+
+async function openAllowedFile(path) {
+  const canonicalPath = realpathSync(path);
+  if (!isAllowed(canonicalPath)) throw new Error('Forbidden path');
+  const handle = await open(canonicalPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const info = await handle.stat();
+    // Validate the opened object, not just the name checked before open. Reads
+    // remain on this descriptor even if a symlink or parent is replaced later.
+    const currentPath = realpathSync(canonicalPath);
+    const currentInfo = statSync(currentPath);
+    if (!allowRoots.some(root => isWithin(currentPath, root))
+      || info.dev !== currentInfo.dev || info.ino !== currentInfo.ino
+      || !info.isFile() || info.size > DEV_FILE_SIZE_LIMIT) {
+      throw new Error('Forbidden or unsupported file');
+    }
+    return handle;
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+}
+
+async function readAllowedFile(path) {
+  const handle = await openAllowedFile(path);
+  try {
+    return await handle.readFile();
+  } finally {
+    await handle.close();
+  }
 }
 
 function isWithin(path, root) {

@@ -71,10 +71,10 @@ struct MobileViewModePicker: View {
 struct MobileTextArtifactView: View {
     let document: MobilePreviewDocument
     var maxLines = 4000
+    @State private var lines: [String] = []
 
     var body: some View {
         ScrollView([.vertical, .horizontal]) {
-            let lines = fileLines
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -97,19 +97,37 @@ struct MobileTextArtifactView: View {
             .padding(.bottom, 120)
         }
         .background(Color(.systemBackground))
+        .task(id: document) {
+            lines = []
+            let selectedDocument = document
+            let limit = maxLines
+            let result: [String] = await withCheckedContinuation { continuation in
+                MobilePreviewRuntime.preparationQueue.async {
+                    continuation.resume(returning: Self.fileLines(document: selectedDocument, maxLines: limit))
+                }
+            }
+            guard !Task.isCancelled else { return }
+            lines = result
+        }
     }
 
-    private var fileLines: [String] {
+    private static func fileLines(document: MobilePreviewDocument, maxLines: Int) -> [String] {
         guard let url = document.bundleURL(),
-              let text = try? String(contentsOf: url, encoding: .utf8) else {
+              let handle = try? FileHandle(forReadingFrom: url) else {
             return ["Unable to read \(document.displayName) as text."]
         }
+        defer { try? handle.close() }
+        let byteLimit = 1024 * 1024
+        guard let data = try? handle.read(upToCount: byteLimit + 1) else {
+            return ["Unable to read \(document.displayName) as text."]
+        }
+        let text = String(decoding: data.prefix(byteLimit), as: UTF8.self)
         let all = text
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
             .components(separatedBy: "\n")
-        if all.count > maxLines {
-            return Array(all.prefix(maxLines)) + ["… \(all.count - maxLines) more lines (truncated)"]
+        if all.count > maxLines || data.count > byteLimit {
+            return Array(all.prefix(maxLines)) + ["… additional content truncated (1 MiB / \(maxLines) line limit)"]
         }
         return all
     }

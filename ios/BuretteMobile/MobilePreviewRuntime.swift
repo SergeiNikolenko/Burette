@@ -177,7 +177,8 @@ struct MobilePreviewDocument: Identifiable, Hashable {
     func xyzFrameCount(bundle: Bundle = .main, frameLimit: Int = .max) -> Int {
         guard fileExtension == "xyz" || fileExtension == "xyzr",
               let url = bundleURL(bundle: bundle),
-              let text = try? String(contentsOf: url, encoding: .utf8) else {
+              let data = try? MobilePreviewRuntime.readPreviewData(at: url),
+              let text = String(data: data, encoding: .utf8) else {
             return 0
         }
         return Self.countXYZFrames(in: text, frameLimit: frameLimit)
@@ -206,9 +207,10 @@ struct MobilePreviewDocument: Identifiable, Hashable {
                 break
             }
 
+            guard lines.count - index >= 2,
+                  atomCount <= lines.count - index - 2 else { break }
             let firstAtomIndex = index + 2
             let endIndex = firstAtomIndex + atomCount
-            guard endIndex <= lines.count else { break }
             let atomLines = lines[firstAtomIndex..<endIndex]
             guard atomLines.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
                 break
@@ -431,7 +433,7 @@ struct MobileStructureSummary: Equatable {
     let summaryKind: String
 
     static func load(document: MobilePreviewDocument, bundle: Bundle = .main) -> MobileStructureSummary {
-        guard let url = document.bundleURL(bundle: bundle), let data = try? Data(contentsOf: url) else {
+        guard let url = document.bundleURL(bundle: bundle), let data = try? MobilePreviewRuntime.readPreviewData(at: url) else {
             return MobileStructureSummary(
                 document: document,
                 byteCount: 0,
@@ -679,6 +681,18 @@ private extension String {
 }
 
 struct MobilePreviewRuntime {
+    static let preparationQueue = DispatchQueue(label: "BuretteMobile.preview-preparation", qos: .userInitiated)
+    static let sessionID = UUID().uuidString
+    static let maximumPreviewBytes = 32 * 1024 * 1024
+
+    static func readPreviewData(at url: URL) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let data = try handle.read(upToCount: maximumPreviewBytes + 1) ?? Data()
+        guard data.count <= maximumPreviewBytes else { throw RuntimeError.sampleTooLarge }
+        return data
+    }
+
     struct Preview {
         let indexURL: URL
         let readAccessURL: URL
@@ -698,16 +712,22 @@ struct MobilePreviewRuntime {
         guard let sampleURL = document.bundleURL() else {
             throw RuntimeError.missingResource(document.bundlePath)
         }
-        let data = try Data(contentsOf: sampleURL)
+        let data = try readPreviewData(at: sampleURL)
         guard !data.isEmpty else { throw RuntimeError.emptySample }
         let usesMesoscaleViewer = isMesoscalePreview(document: document, data: data)
 
-        let previewsDirectory = try resetPreviewsDirectory(fileManager: fileManager)
+        let previewsDirectory = try previewsDirectory(fileManager: fileManager)
         let assetsDirectory = previewsDirectory.appendingPathComponent("assets", isDirectory: true)
-        try fileManager.copyItem(at: webDirectory, to: assetsDirectory)
+        if !fileManager.fileExists(atPath: assetsDirectory.path) {
+            try fileManager.copyItem(at: webDirectory, to: assetsDirectory)
+        }
 
         let runtimeDirectory = previewsDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try fileManager.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
+        var completed = false
+        defer {
+            if !completed { try? fileManager.removeItem(at: runtimeDirectory) }
+        }
         try Data(inlineHTML(title: document.displayName, theme: theme, usesMesoscaleViewer: usesMesoscaleViewer).utf8)
             .write(to: runtimeDirectory.appendingPathComponent("index.html"), options: [.atomic])
         try Data("window.BuretteConfig = \(previewConfigJSON(document: document, byteCount: data.count, theme: theme, style: style, waterRepresentation: waterRepresentation, molstarQuality: molstarQuality, usesMesoscaleViewer: usesMesoscaleViewer));\n".utf8)
@@ -716,6 +736,7 @@ struct MobilePreviewRuntime {
         try Data(dataScript.utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-data.js"), options: [.atomic])
 
+        completed = true
         return Preview(indexURL: runtimeDirectory.appendingPathComponent("index.html"), readAccessURL: previewsDirectory)
     }
 
@@ -728,15 +749,19 @@ struct MobilePreviewRuntime {
             .replacingOccurrences(of: "'", with: "&#39;")
     }
 
-    private static func resetPreviewsDirectory(fileManager: FileManager) throws -> URL {
+    private static func previewsDirectory(fileManager: FileManager) throws -> URL {
         guard let cachesDirectory = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
             throw RuntimeError.cachesUnavailable
         }
         let previewsDirectory = cachesDirectory
             .appendingPathComponent("BuretteMobile", isDirectory: true)
             .appendingPathComponent("previews", isDirectory: true)
-        if fileManager.fileExists(atPath: previewsDirectory.path) {
-            try fileManager.removeItem(at: previewsDirectory)
+            .appendingPathComponent(sessionID, isDirectory: true)
+        if !fileManager.fileExists(atPath: previewsDirectory.path) {
+            let previousSessions = (try? fileManager.contentsOfDirectory(
+                at: previewsDirectory.deletingLastPathComponent(), includingPropertiesForKeys: nil
+            )) ?? []
+            for previous in previousSessions { try? fileManager.removeItem(at: previous) }
         }
         try fileManager.createDirectory(at: previewsDirectory, withIntermediateDirectories: true)
         return previewsDirectory
@@ -969,12 +994,15 @@ struct MobilePreviewRuntime {
     enum RuntimeError: LocalizedError {
         case cachesUnavailable
         case emptySample
+        case sampleTooLarge
         case missingResource(String)
 
         var errorDescription: String? {
             switch self {
             case .cachesUnavailable:
                 return "Caches directory is unavailable."
+            case .sampleTooLarge:
+                return "Mobile previews support files up to 32 MiB. Open a smaller file or use Burette on desktop."
             case .emptySample:
                 return "Bundled structure file is empty."
             case .missingResource(let name):
