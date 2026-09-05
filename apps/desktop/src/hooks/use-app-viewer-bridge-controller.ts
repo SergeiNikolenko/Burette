@@ -29,7 +29,7 @@ import type { DockTabKind } from "../lib/dock";
 import type { GridNativeMenuState } from "../lib/native-menu";
 import type { StructureStory } from "../lib/structure-story";
 import type { PendingMolstarReplaceResolver } from "./use-app-generate-3d-conformer";
-import type { DockingSceneMode, HoveredGridRow, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
+import type { ConformerJob, DockingSceneMode, HoveredGridRow, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
 type RefValue<T> = { current: T };
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
@@ -60,6 +60,8 @@ type KetcherGridRowSource = {
   rowIndex: number;
   title: string;
   extension: string;
+  sourceRow?: number;
+  structureColumn?: string;
 };
 type OpenKetcherWithFragment = (
   title: string,
@@ -124,10 +126,12 @@ type UseAppViewerBridgeControllerOptions = {
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
   setPoseReviewSelections: Dispatch<SetStateAction<Record<string, number>>>;
+  setConformerJobs: Dispatch<SetStateAction<ConformerJob[]>>;
   setStructureOverlayModes: Dispatch<SetStateAction<Record<string, StructureOverlayMode>>>;
   setStructureStories: Dispatch<SetStateAction<Record<string, StructureStory | null>>>;
   setViewerLigandSelections: Dispatch<SetStateAction<Record<string, ViewerLigandSelection | null>>>;
   skipNextPreferenceRefreshRef: RefValue<boolean>;
+  showGridComputeJobs: () => void;
   toggleSidebar: () => void;
   updateDirtyGridDocument: (documentId: string | null | undefined, dirty: boolean) => void;
   updateGridMenuState: (documentId: string, state: GridNativeMenuState) => void;
@@ -169,10 +173,12 @@ export function useAppViewerBridgeController({
   rememberRecentStructures,
   setPreference,
   setPoseReviewSelections,
+  setConformerJobs,
   setStructureOverlayModes,
   setStructureStories,
   setViewerLigandSelections,
   skipNextPreferenceRefreshRef,
+  showGridComputeJobs,
   toggleSidebar,
   updateDirtyGridDocument,
   updateGridMenuState,
@@ -217,6 +223,8 @@ export function useAppViewerBridgeController({
     pushErrorStatus,
     pushStatus,
     rememberRecentStructures,
+    setConformerJobs,
+    showGridComputeJobs,
   });
   const { handleGridComputeMessage } = useAppGridComputeMessages({
     openTextDocuments,

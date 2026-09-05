@@ -349,6 +349,7 @@ for (const commandPath of [
   'commands::documents::classify_open_paths',
   'commands::documents::open_documents',
   'commands::documents::open_delimited_grid_document',
+  'commands::documents::replace_delimited_collection_cell',
   'commands::documents::read_structure_text',
   'commands::documents::fetch_pdb_structure',
   'commands::documents::generate_3d_conformer',
@@ -500,6 +501,7 @@ assert.match(rdkitConformerScript, /selected_conf_ids = select_ensemble_conforme
 assert.match(rdkitConformerScript, /"conformerCount": len\(records\)/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_text_structure/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn fetch_remote_structure/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn replace_delimited_collection_cell/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn save_text_as/);
 assert.match(previewRuntime, /pub\(crate\) fn into_virtual\(mut self\) -> Self/);
 assert.match(previewRuntime, /pub\(crate\) fn virtual_structure/);
@@ -755,7 +757,7 @@ assert.match(releaseScript, /building an ad-hoc signed release without notarizat
 assert.match(releaseScript, /notarytool submit/);
 assert.match(releaseScript, /stapler staple/);
 assert.match(releaseScript, /scripts\/create-dmg\.sh" "\$APP" "\$DMG"/);
-assert.match(createDmgScript, /packaging\/dmg\/background\.png/);
+assert.match(createDmgScript, /packaging\/dmg\/background\.tiff/);
 assert.match(createDmgScript, /ln -s \/Applications/);
 assert.match(createDmgScript, /set background picture of viewOptions/);
 assert.match(createDmgScript, /set position of item "Burette\.app"/);
@@ -1135,6 +1137,10 @@ assert.match(lib, /windows::focus_or_create_workspace_window/);
 assert.match(macosTerminationSource, /fn after_current_appkit_event/);
 assert.match(macosTerminationSource, /DispatchQueue::main\(\)\.exec_async\(work\)/);
 assert.match(lib, /macos::after_current_appkit_event\(initial_workspace\)/);
+assert.match(
+  lib,
+  /RunEvent::Opened \{ urls \} => \{[\s\S]*?macos::after_current_appkit_event\(move \|\| \{\s*show_and_emit_open_documents\(&opened_app, paths\);\s*\}\);/,
+);
 assert.match(lib, /startup::signal_open_documents_for_window\(app, window\.label\(\), paths\)/);
 assert.match(windowsSource, /pub\(crate\) const MAIN_WINDOW_LABEL: &str = "main"/);
 assert.match(windowsSource, /pub\(crate\) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-"/);

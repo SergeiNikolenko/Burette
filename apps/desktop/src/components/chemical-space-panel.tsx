@@ -184,9 +184,9 @@ const MAX_VISIBLE_CLIFF_EDGES = 150;
 const DEFAULT_TMAP_LINE_SCALE = 1;
 // Below this header width the toggle groups and the status badge no longer
 // fit beside the two selects; they fold into the Display popover instead.
-// The shell's centre column bottoms out around 420px, so the cutoff sits
-// above that floor or the fold could never engage.
-const CONTROLS_COLLAPSE_WIDTH = 440;
+// Keep the cutoff above the combined non-shrinking control widths so Radix
+// groups never compress around children that intentionally keep their size.
+const CONTROLS_COLLAPSE_WIDTH = 720;
 const CLUSTER_COLORS = [
   "#38bdf8", "#fb7185", "#4ade80", "#facc15", "#f97316",
   "#22d3ee", "#a3e635", "#f472b6", "#60a5fa", "#fbbf24",
@@ -982,6 +982,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
   }, []);
   const dimensionsToggle = (
     <ToggleGroup
+      className="shrink-0"
       type="single"
       variant="outline"
       size="sm"
@@ -1002,6 +1003,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
   );
   const toolToggle = (
     <ToggleGroup
+      className="shrink-0"
       type="single"
       variant="outline"
       size="sm"
@@ -1028,6 +1030,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
   );
   const scopeToggle = visibleSourceIds || scope === "filtered" ? (
     <ToggleGroup
+      className="shrink-0"
       type="single"
       variant="outline"
       size="sm"
@@ -1063,7 +1066,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
         >
             <NativeSelect
               size="sm"
-              className="min-w-0"
+              className="w-44 shrink-0"
               aria-label="Molecular representation engine"
               value={draft.representation}
               onChange={(event) => {
@@ -1083,7 +1086,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
             </NativeSelect>
             <NativeSelect
               size="sm"
-              className="min-w-0"
+              className="w-28 shrink-0"
               aria-label="Chemical-space method"
               value={draft.method}
               onChange={(event) => {

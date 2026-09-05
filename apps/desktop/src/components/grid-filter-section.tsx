@@ -79,21 +79,19 @@ function NumericFilter({
   chartOpen,
   actions,
 }: { column: GridFilterColumn; scale: Scale; chartOpen: boolean; actions: ShellActions }) {
-  const filterKey = `${column.filter?.min ?? ""}|${column.filter?.max ?? ""}`;
   const committed = useMemo<[number, number]>(() => {
     const low = Number.parseFloat(column.filter?.min ?? "");
     const high = Number.parseFloat(column.filter?.max ?? "");
     return [Number.isFinite(low) ? low : scale.min, Number.isFinite(high) ? high : scale.max];
   }, [column.filter?.min, column.filter?.max, scale.min, scale.max]);
 
-  // Re-seed the draft whenever the grid reports a different filter, so dragging
-  // stays smooth locally but an outside change still wins.
+  // Re-seed the draft whenever either the filter or its observed scale changes.
+  // Remote collections expand the scale as pages load, and an untouched slider
+  // must continue to represent the full available range.
   const [draft, setDraft] = useState<[number, number]>(committed);
-  const seen = useRef(filterKey);
-  if (seen.current !== filterKey) {
-    seen.current = filterKey;
+  useEffect(() => {
     setDraft(committed);
-  }
+  }, [committed]);
 
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
@@ -178,6 +176,11 @@ function NumericFilter({
 
   return (
     <>
+      {column.statsComplete === false ? (
+        <div className="grid-filter-stats-coverage">
+          Loaded-page range · {(column.statsRows ?? 0).toLocaleString()} of {(column.statsTotal ?? 0).toLocaleString()} rows
+        </div>
+      ) : null}
       {chartOpen ? (
         <div
           className="grid-filter-chart-wrap"
@@ -253,17 +256,34 @@ function NumericFilter({
   );
 }
 
-function FilterCard({ column, actions, bulk }: { column: GridFilterColumn; actions: ShellActions; bulk: { open: boolean } | null }) {
+function FilterCard({
+  column,
+  actions,
+  bulk,
+  defaultOpen,
+  focusRequestId,
+}: {
+  column: GridFilterColumn;
+  actions: ShellActions;
+  bulk: { open: boolean } | null;
+  defaultOpen: boolean;
+  focusRequestId?: number;
+}) {
   const scale = useMemo(() => columnScale(column), [column]);
   const active = Boolean(column.filter && (column.filter.min || column.filter.max || column.filter.text));
-  const [open, setOpen] = useState(active);
+  const [open, setOpen] = useState(active || defaultOpen);
   // A flat histogram is a row id or a counter, so its chart starts folded away.
   const [chartOpen, setChartOpen] = useState<boolean | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const showChart = chartOpen ?? !scale?.flat;
 
   useEffect(() => {
     if (active) setOpen(true);
   }, [active]);
+
+  useEffect(() => {
+    if (defaultOpen) setOpen(true);
+  }, [defaultOpen]);
 
   // Each click mints a fresh object, so the same direction applies again to
   // cards the user has toggled by hand since the last sweep.
@@ -271,8 +291,15 @@ function FilterCard({ column, actions, bulk }: { column: GridFilterColumn; actio
     if (bulk) setOpen(bulk.open);
   }, [bulk]);
 
+  useEffect(() => {
+    if (focusRequestId === undefined) return;
+    setOpen(true);
+    const frame = window.requestAnimationFrame(() => cardRef.current?.scrollIntoView({ block: "nearest" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusRequestId]);
+
   return (
-    <Collapsible className="grid-filter-card" data-active={active || undefined} open={open} onOpenChange={setOpen}>
+    <Collapsible ref={cardRef} className="grid-filter-card" data-active={active || undefined} open={open} onOpenChange={setOpen}>
       <div className="grid-filter-card-header">
         <CollapsibleTrigger asChild>
           <Button className="grid-filter-card-trigger" variant="ghost" size="sm">
@@ -339,7 +366,15 @@ function FilterCard({ column, actions, bulk }: { column: GridFilterColumn; actio
 
 // The model is a copy of what the grid runtime holds; every edit here is a
 // command back to it, and the next model it publishes is the confirmation.
-export function GridFilterSection({ model, actions }: { model: GridFilterModel; actions: ShellActions }) {
+export function GridFilterSection({
+  model,
+  actions,
+  focusRequest,
+}: {
+  model: GridFilterModel;
+  actions: ShellActions;
+  focusRequest?: { columnId: string; requestId: number } | null;
+}) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(true);
   const [bulk, setBulk] = useState<{ open: boolean } | null>(null);
@@ -350,6 +385,21 @@ export function GridFilterSection({ model, actions }: { model: GridFilterModel; 
   }, [model.columns, query]);
   const shown = columns.slice(0, MAX_COLUMNS);
   const activeCount = model.columns.filter((column) => column.filter).length;
+  const defaultOpenColumnId = useMemo(
+    () => model.columns.find((column) => {
+      const scale = columnScale(column);
+      return scale && !scale.flat;
+    })?.id,
+    [model.columns],
+  );
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    const column = model.columns.find((entry) => entry.id === focusRequest.columnId);
+    if (!column) return;
+    setOpen(true);
+    setQuery(column.label);
+  }, [focusRequest, model.columns]);
 
   return (
     <TooltipProvider>
@@ -412,7 +462,16 @@ export function GridFilterSection({ model, actions }: { model: GridFilterModel; 
             </div>
           </Field>
           <div className="grid-filter-list">
-            {shown.map((column) => <FilterCard key={column.id} column={column} actions={actions} bulk={bulk} />)}
+            {shown.map((column) => (
+              <FilterCard
+                key={column.id}
+                column={column}
+                actions={actions}
+                bulk={bulk}
+                defaultOpen={column.id === defaultOpenColumnId}
+                focusRequestId={focusRequest?.columnId === column.id ? focusRequest.requestId : undefined}
+              />
+            ))}
             {columns.length > shown.length ? (
               <div className="grid-filter-more">
                 {(columns.length - shown.length).toLocaleString()} more columns — narrow the search

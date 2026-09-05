@@ -154,6 +154,15 @@ pub(crate) struct CreateCollectionRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct ReplaceDelimitedCollectionCellRequest {
+    path: String,
+    row_number: usize,
+    column: String,
+    value: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct TextStructureRequest {
     title: String,
     extension: String,
@@ -1972,6 +1981,38 @@ pub(crate) fn save_molecule_collection_as<R: Runtime>(
 }
 
 #[tauri::command]
+pub(crate) fn replace_delimited_collection_cell<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    registry: tauri::State<'_, OpenDocumentRegistry>,
+    request: ReplaceDelimitedCollectionCellRequest,
+) -> Result<String, String> {
+    let path = PathBuf::from(&request.path)
+        .canonicalize()
+        .map_err(|err| format!("{}: {err}", request.path))?;
+    let separator = match structure_path_extension(&path).as_str() {
+        "csv" => ',',
+        "tsv" => '\t',
+        extension => {
+            return Err(format!(
+                "Editing one collection cell is not supported for {extension} files"
+            ))
+        }
+    };
+    let source = fs::read_to_string(&path).map_err(|err| format!("{}: {err}", path.display()))?;
+    let updated = replace_delimited_collection_cell_text(
+        &source,
+        separator,
+        request.row_number,
+        &request.column,
+        &request.value,
+    )?;
+    registry.with_save_as_permit(window.label(), &path, &path, || {
+        write_text_atomically(&path, &updated)
+    })?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 pub(crate) fn save_text_as<R: Runtime>(
     window: tauri::WebviewWindow<R>,
     registry: tauri::State<'_, OpenDocumentRegistry>,
@@ -2697,6 +2738,13 @@ fn merge_delimited_collection_text(
 }
 
 fn parse_delimited_collection_header(line: &str, separator: char) -> Vec<String> {
+    parse_delimited_collection_cells(line, separator)
+        .into_iter()
+        .map(|cell| cell.trim().to_lowercase())
+        .collect()
+}
+
+fn parse_delimited_collection_cells(line: &str, separator: char) -> Vec<String> {
     let mut cells = Vec::new();
     let mut current = String::new();
     let mut quoted = false;
@@ -2708,14 +2756,81 @@ fn parse_delimited_collection_header(line: &str, separator: char) -> Vec<String>
         } else if character == '"' {
             quoted = !quoted;
         } else if character == separator && !quoted {
-            cells.push(current.trim().to_lowercase());
-            current.clear();
+            cells.push(std::mem::take(&mut current));
         } else {
             current.push(character);
         }
     }
-    cells.push(current.trim().to_lowercase());
+    cells.push(current);
     cells
+}
+
+fn replace_delimited_collection_cell_text(
+    text: &str,
+    separator: char,
+    row_number: usize,
+    column: &str,
+    value: &str,
+) -> Result<String, String> {
+    if row_number == 0 {
+        return Err("Collection row numbers start at 1".to_string());
+    }
+    let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let trailing_newline = text.ends_with('\n');
+    let mut lines = text.lines().map(str::to_string).collect::<Vec<_>>();
+    let header_index = lines
+        .iter()
+        .position(|line| !line.trim().is_empty())
+        .ok_or_else(|| "Delimited collection is empty".to_string())?;
+    let header = parse_delimited_collection_header(
+        lines[header_index].trim_start_matches('\u{feff}'),
+        separator,
+    );
+    let normalized_column = column.trim().to_lowercase();
+    let column_index = header
+        .iter()
+        .position(|candidate| candidate == &normalized_column)
+        .ok_or_else(|| format!("Collection column {column:?} was not found"))?;
+    let target_index = lines
+        .iter()
+        .enumerate()
+        .skip(header_index + 1)
+        .filter(|(_, line)| !line.trim().is_empty())
+        .nth(row_number - 1)
+        .map(|(index, _)| index)
+        .ok_or_else(|| format!("Collection row {row_number} was not found"))?;
+    let mut cells = parse_delimited_collection_cells(&lines[target_index], separator);
+    if cells.len() != header.len() {
+        return Err(format!(
+            "Collection row {row_number} has {} cells; expected {}",
+            cells.len(),
+            header.len()
+        ));
+    }
+    cells[column_index] = value.to_string();
+    let separator_text = separator.to_string();
+    lines[target_index] = cells
+        .iter()
+        .map(|cell| delimited_collection_cell(cell, separator))
+        .collect::<Vec<_>>()
+        .join(&separator_text);
+    let mut updated = lines.join(newline);
+    if trailing_newline {
+        updated.push_str(newline);
+    }
+    Ok(updated)
+}
+
+fn delimited_collection_cell(value: &str, separator: char) -> String {
+    if value.contains(separator)
+        || value.contains('"')
+        || value.contains('\n')
+        || value.contains('\r')
+    {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
 }
 
 fn write_file_atomically(
@@ -3603,6 +3718,28 @@ mod tests {
         .expect_err("reordered CSV columns should fail closed");
 
         assert!(error.contains("same columns in the same order"));
+    }
+
+    #[test]
+    fn replaces_one_csv_structure_without_changing_the_collection_schema() {
+        let source = concat!(
+            "SMILES,Molecule_Name,score,flag\r\n",
+            "CCO,First,1.25,true\r\n",
+            "c1ccccc1,\"Second, lead\",2.5,false\r\n",
+        );
+
+        let updated =
+            super::replace_delimited_collection_cell_text(source, ',', 2, "SMILES", "CC(=O)O")
+                .expect("the edited structure should replace its source CSV cell");
+
+        assert_eq!(
+            updated,
+            concat!(
+                "SMILES,Molecule_Name,score,flag\r\n",
+                "CCO,First,1.25,true\r\n",
+                "CC(=O)O,\"Second, lead\",2.5,false\r\n",
+            )
+        );
     }
 
     #[test]

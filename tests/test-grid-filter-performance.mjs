@@ -18,7 +18,7 @@ const state = {
   remoteMode: false, all: [{ index: 0, props: { score: 1 } }, { index: 1, props: { score: 5 } }],
   rows: [], totalRows: 2, rowPatches: new Map(), insertedRows: [],
   hiddenRows: new Set(), deletedPropColumns: new Set(), selected: new Set(),
-  columnValueRanges: new Map(), filterColumnStatsCache: new Map(), filterColumnStatsRows: null,
+  columnValueRanges: new Map(), filterColumnStatsCache: new Map(), filterColumnVariationCache: new Map(), filterColumnStatsRows: null,
   svgCache: new Map(), xyzrenderCardCache: new Map(), undoStack: [], redoStack: [], sourceRevision: 0,
   remoteDescriptorIds: [], tableColumnFilters: {},
   chemicalSpaceVisibilitySubscribers: new Set(), chemicalSpaceVisibilityGeneration: 0,
@@ -26,9 +26,9 @@ const state = {
 const testWindow = { clearTimeout() {} };
 state.rows = state.all.slice();
 const columns = [{ id: 'score', type: 'number' }, { id: 'derived', type: 'number' }];
-const counts = { numericReads: 0, posts: 0 };
+const counts = { numericReads: 0, variationReads: 0, posts: 0 };
 const names = [
-  'filterColumnStats', 'gridFilterModel', 'postGridFilterModel', 'invalidateTableColumnCatalog',
+  'filterColumnVaries', 'filterColumnIsRowIndex', 'filterColumnStats', 'gridFilterModel', 'postGridFilterModel', 'invalidateTableColumnCatalog',
   'tableColumnDiscoveryRows', 'currentLocalCollectionRows', 'applyVirtualGridEdits',
   'stripDeletedPropColumns', 'applyColumnValueRanges', 'replaceGridRow',
   'snapshotGridEditState', 'restoreGridEditState', 'applyDescriptorGridResults',
@@ -41,6 +41,8 @@ const stats = new Function('state', 'counts', 'columns', 'window', `
     counts.numericReads++;
     return Number(id === 'derived' ? row.descriptors?.derived : row.props?.[id]);
   }
+  function tableColumnRawNumericValue(row, id) { counts.variationReads++; return Number(row.props?.[id] ?? row.descriptors?.[id]); }
+  function tableColumnRawDisplayValue(row, id) { counts.variationReads++; return String(row.props?.[id] ?? ''); }
   function post() { counts.posts++; }
   function capabilities() { return { editing: true }; }
   function pushUndoSnapshot() {}
@@ -63,11 +65,13 @@ const stats = new Function('state', 'counts', 'columns', 'window', `
 
 stats.postGridFilterModel({});
 assert.equal(counts.numericReads, 4, 'first model scans two rows and two columns');
+const initialVariationReads = counts.variationReads;
 for (let index = 0; index < 20; index++) {
   state.selected = new Set([index % 2]);
   stats.postGridFilterModel({});
 }
 assert.equal(counts.numericReads, 4, 'selection/scroll model refreshes perform zero additional row reads');
+assert.equal(counts.variationReads, initialVariationReads, 'variation and row-index checks also reuse cached results');
 assert.equal(counts.posts, 1, 'unchanged model is sent only once');
 const original = stats.snapshotGridEditState();
 stats.replaceGridRow(state.rows[0], { props: { score: 9 } }, {}, { undo: false });

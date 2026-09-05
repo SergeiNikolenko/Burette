@@ -72,6 +72,11 @@ changes are broadcast without rebuilding the viewer. Leaving Settings returns
 to the tab that was active on entry. Unsaved grids show a tab marker, and the
 Inspector molecule card resets its retained hover state when its document changes.
 
+Collection tables show a floating molecule preview when hovering the Mol cell
+with the right dock closed. Opening the dock dismisses that preview. The shell
+includes `rightDockOpen` in its `gridViewportCover` message; standalone grid
+previews default to showing the hover preview when this field is absent.
+
 Normal app launch remains a visible full-window launch. Registration-only
 maintenance may opt into `BURETTE_LAUNCH_MODE=register`; file-open and tray/menu
 paths still show the full app. See [Launch modes](launch-modes.md).

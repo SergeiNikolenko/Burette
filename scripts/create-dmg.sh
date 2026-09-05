@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd -P)"
-BACKGROUND="$ROOT/packaging/dmg/background.png"
+BACKGROUND="$ROOT/packaging/dmg/background.tiff"
 VOLUME_NAME="Burette"
 
 require_tool() {
@@ -57,7 +57,7 @@ trap cleanup EXIT
 mkdir -p "$STAGING_DIR/.background" "$(dirname "$OUTPUT")"
 ditto "$APP" "$STAGING_DIR/Burette.app"
 ln -s /Applications "$STAGING_DIR/Applications"
-cp "$BACKGROUND" "$STAGING_DIR/.background/background.png"
+cp "$BACKGROUND" "$STAGING_DIR/.background/background.tiff"
 
 hdiutil create \
   -volname "$VOLUME_NAME" \
@@ -93,7 +93,7 @@ tell application "Finder"
     set arrangement of viewOptions to not arranged
     set icon size of viewOptions to 104
     set text size of viewOptions to 13
-    set background picture of viewOptions to file ".background:background.png"
+    set background picture of viewOptions to file ".background:background.tiff"
     set position of item "Burette.app" of container window to {145, 205}
     set position of item "Applications" of container window to {515, 205}
     update without registering applications

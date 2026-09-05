@@ -1468,15 +1468,17 @@ function ConformerJobList({
   return (
     <div className="dock-drop-list">
       {jobs.map((job) => {
-        const primaryOpenPath = job.result?.primaryOpenPath;
+        const primaryOpenPath = job.primaryOpenPath ?? job.result?.primaryOpenPath;
+        const reportPath = job.reportPath ?? null;
         const isRunning = job.status === "running";
+        const canCancel = isRunning && job.cancelable !== false;
         const openJobResult = () => {
           if (!primaryOpenPath) return;
           void actions.openPaths([primaryOpenPath]);
         };
         const showJobMenu = (event: React.MouseEvent<HTMLDivElement>) => {
           const items = [
-            isRunning ? {
+            canCancel ? {
               kind: "item" as const,
               id: `conformer-job-${job.id}-cancel`,
               text: "Cancel",
@@ -1487,6 +1489,12 @@ function ConformerJobList({
               id: `conformer-job-${job.id}-log`,
               text: "Log",
               action: () => void actions.openTextPaths([job.logPath!]),
+            } : null,
+            reportPath ? {
+              kind: "item" as const,
+              id: `conformer-job-${job.id}-report`,
+              text: "Report",
+              action: () => void actions.openTextPaths([reportPath]),
             } : null,
             primaryOpenPath ? {
               kind: "item" as const,
@@ -1528,10 +1536,16 @@ function ConformerJobList({
                   {" · "}
                   {job.inputTitle}
                 </span>
+                {job.progress ? (
+                  <span className="dock-job-meta">
+                    {job.progress}
+                    {job.durableJobId ? ` · job ${job.durableJobId}` : ""}
+                  </span>
+                ) : null}
               </div>
-              {isRunning || job.logPath || primaryOpenPath ? (
+              {canCancel || job.logPath || reportPath || primaryOpenPath ? (
                 <div className="dock-inline-action-row">
-                  {isRunning ? (
+                  {canCancel ? (
                     <button
                       type="button"
                       className="dock-action dock-action-compact"
@@ -1553,6 +1567,18 @@ function ConformerJobList({
                       }}
                     >
                       Log
+                    </button>
+                  ) : null}
+                  {reportPath ? (
+                    <button
+                      type="button"
+                      className="dock-action dock-action-compact"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void actions.openTextPaths([reportPath]);
+                      }}
+                    >
+                      Report
                     </button>
                   ) : null}
                   {primaryOpenPath ? (

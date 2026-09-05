@@ -1050,6 +1050,9 @@ export default function App() {
     pendingViewerReloadOptionsRef,
     xyzrenderOrientationRefRef,
   });
+  const showGridComputeJobs = useCallback(() => {
+    openDockTab("bottom", "jobs");
+  }, [openDockTab]);
   useAppViewerBridgeController({
     activeDocument,
     addBackgroundDocuments,
@@ -1083,10 +1086,12 @@ export default function App() {
     rememberRecentStructures,
     setPreference,
     setPoseReviewSelections,
+    setConformerJobs,
     setStructureOverlayModes,
     setStructureStories,
     setViewerLigandSelections,
     skipNextPreferenceRefreshRef,
+    showGridComputeJobs,
     toggleSidebar,
     updateDirtyGridDocument,
     updateGridFilterModel,

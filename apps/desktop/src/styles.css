@@ -796,23 +796,15 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   font-size: 11px;
   color: var(--text-secondary);
 }
-/* DataWarrior-style full-size preview of the row under the pointer. Sticky to
-   the bottom of the inspector scroll so it stays in view while filters above
-   grow long. */
-/* Doubled class beats .structure-brief-card's translucent --surface-card:
-   this card floats over the filter histograms while sticky, so it must be
-   fully opaque. Negative margins flush it to the panel edges so nothing
-   scrolls past its rounded corners. */
+/* Full-size preview of the row under the pointer. It is a normal inspector
+   card, not a sticky overlay, so it cannot cover filters or grow across them. */
 .structure-brief-card.grid-hover-molecule {
-  position: sticky;
-  bottom: -12px;
-  z-index: 3;
-  margin: 0 -12px -12px;
-  padding: 8px 12px 12px;
-  border-radius: var(--control-radius) var(--control-radius) 0 0;
-  border-bottom: 0;
-  background: var(--bg-base);
-  box-shadow: 0 -6px 18px color-mix(in srgb, var(--fg-base) 8%, transparent);
+  position: relative;
+  margin: 0;
+  padding: 10px 12px 12px;
+  border-radius: var(--control-radius);
+  background: var(--surface-card);
+  box-shadow: none;
   overflow: hidden;
 }
 /* The same handle chrome the dock panels use, docked to the card's top edge. */
@@ -845,8 +837,10 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .grid-hover-molecule-svg {
   position: relative;
   display: flex;
-  flex: 0 1 auto;
-  min-height: 120px;
+  flex: 0 0 auto;
+  width: 100%;
+  height: clamp(150px, 22vh, 190px);
+  min-height: 150px;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -2375,7 +2369,7 @@ img.radix-menu-item-icon {
   white-space: nowrap;
 }
 .radix-menu-field select,
-.radix-menu-field input[type="number"] {
+.radix-menu-number-scrub :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]) {
   width: 62px;
   border: 1px solid var(--line-subtler);
   border-radius: 6px;
@@ -2390,10 +2384,11 @@ img.radix-menu-item-icon {
   max-width: 116px;
 }
 .radix-menu-field select:focus-visible,
-.radix-menu-field input[type="number"]:focus-visible {
+.radix-menu-number-scrub :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]):focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
+.radix-menu-number-scrub { width: 62px; }
 .radix-menu-field-number {
   display: inline-flex;
   align-items: center;
@@ -3278,22 +3273,18 @@ img.radix-menu-item-icon {
   height: 13px;
 }
 .grid-hover-molecule {
-  position: sticky;
-  bottom: -12px;
-  z-index: 3;
+  position: relative;
+  bottom: auto;
+  z-index: auto;
   gap: 0;
-  margin: 0 -12px -12px;
-  padding-block: 0;
-  border-radius: var(--control-radius) var(--control-radius) 0 0;
-  background: var(--bg-base);
-  box-shadow: 0 -6px 18px color-mix(in srgb, var(--fg-base) 8%, transparent);
-  /* A dragged-tall card must never outgrow the dock viewport: taller than the
-     scroll area, the sticky footer covers the inspector header wholesale. The
-     drawing well is the one part that gives; header, data and footer keep
-     their rows. */
+  margin: 0;
+  padding-block: 10px 12px;
+  border-radius: var(--control-radius);
+  background: var(--surface-card);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
-  max-height: calc(100dvh - 176px);
+  max-height: none;
 }
 .grid-hover-molecule-header,
 .grid-hover-molecule-props,
@@ -3317,10 +3308,10 @@ img.radix-menu-item-icon {
 .grid-hover-molecule-drawing,
 .grid-hover-molecule-loading {
   width: 100%;
-  border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border: 0;
+  border-radius: 0;
   overflow: hidden;
-  background: #fff;
+  background: transparent;
 }
 .grid-hover-molecule [data-slot="card-content"] {
   padding-bottom: 12px;
@@ -3328,7 +3319,7 @@ img.radix-menu-item-icon {
 .grid-hover-molecule-drawing {
   display: grid;
   place-items: center;
-  padding: 10px;
+  padding: 0;
 }
 .grid-hover-molecule-drawing svg {
   display: block;
@@ -3373,12 +3364,21 @@ img.radix-menu-item-icon {
 }
 .grid-hover-molecule-prop {
   min-width: 0;
+  height: auto;
   display: grid;
   gap: 2px;
+  justify-content: stretch;
+  text-align: left;
+  white-space: normal;
   border: 1px solid var(--line-subtler);
   border-radius: 7px;
   padding: 6px 8px;
   background: var(--bg-base);
+}
+.grid-hover-molecule-prop:hover,
+.grid-hover-molecule-prop:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line-subtler));
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-base));
 }
 .grid-hover-molecule-prop > span:first-child {
   min-width: 0;
@@ -3400,6 +3400,16 @@ img.radix-menu-item-icon {
   font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-hover-molecule-prop-range {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4360,7 +4370,7 @@ img.radix-menu-item-icon {
   color: var(--text-muted);
   font-size: 11px;
 }
-.structure-inspector-number-control input {
+.structure-inspector-number-control :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]) {
   min-width: 0;
   width: 100%;
   height: 28px;
@@ -5397,7 +5407,7 @@ input.structure-inspector-composition-search {
   font-size: 11px;
 }
 .trajectory-smoothing-settings select,
-.trajectory-smoothing-settings input[type="number"] {
+.trajectory-smoothing-number :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]) {
   min-width: 0;
   height: 28px;
   box-sizing: border-box;
@@ -5409,7 +5419,9 @@ input.structure-inspector-composition-search {
   font: inherit;
 }
 .trajectory-smoothing-settings select { width: 100%; max-width: 220px; justify-self: end; }
-.trajectory-smoothing-settings input[type="number"] { width: 88px; justify-self: end; }
+.trajectory-smoothing-number { width: 88px; justify-self: end; }
+.trajectory-smoothing-number > div,
+.structure-inspector-number-control > div { width: 100%; }
 .trajectory-smoothing-check { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 11px; }
 .trajectory-smoothing-check input { accent-color: var(--accent); }
 .trajectory-smoothing-update-status { color: var(--accent); font-size: 10px; font-weight: 650; }
@@ -9401,7 +9413,13 @@ img.settings-open-destination-icon {
 }
 /* No inner scroll: the section grows to its full height and the dock scrolls
    once, so a filter never sits in a box inside a box. */
+.grid-filter-card-host,
+.grid-filter-card-host > [data-slot="collapsible-content"] {
+  min-width: 0;
+  max-width: 100%;
+}
 .grid-filter-list {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -9413,6 +9431,7 @@ img.settings-open-destination-icon {
   font-size: 11px;
 }
 .grid-filter-card {
+  min-width: 0;
   border-bottom: 1px solid var(--line-subtler);
 }
 .grid-filter-card:last-child {
@@ -9450,11 +9469,21 @@ img.settings-open-destination-icon {
   flex: 0 0 auto;
 }
 .grid-filter-card-content {
+  min-width: 0;
+  max-width: 100%;
   padding: 4px 2px 10px 28px;
+}
+.grid-filter-stats-coverage {
+  margin-bottom: 4px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 1.25;
 }
 /* Bar colours reach Recharts as per-datum `fill`, so they have to be plain
    custom properties resolvable on the chart's own subtree. */
 .grid-filter-chart-wrap {
+  min-width: 0;
+  max-width: 100%;
   cursor: crosshair;
   touch-action: none;
   user-select: none;
@@ -9466,6 +9495,8 @@ img.settings-open-destination-icon {
   outline: none;
 }
 .grid-filter-chart {
+  min-width: 0;
+  max-width: 100%;
   --grid-filter-bin: color-mix(in srgb, var(--text-primary) 14%, transparent);
   --grid-filter-bin-active: color-mix(in srgb, var(--accent) 72%, transparent);
 }
@@ -9474,6 +9505,8 @@ img.settings-open-destination-icon {
 }
 .grid-filter-slider-wrap {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   align-items: center;
   height: 16px;
@@ -9502,10 +9535,18 @@ img.settings-open-destination-icon {
   background: var(--surface-card);
 }
 .grid-filter-inputs {
+  min-width: 0;
+  max-width: 100%;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
+.grid-filter-inputs input {
+  min-width: 0;
+  width: 100%;
+}
 .grid-filter-card [data-slot="field"] {
+  min-width: 0;
+  max-width: 100%;
   gap: 8px;
 }
