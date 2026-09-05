@@ -108,7 +108,6 @@ export function subscribeWebDemoWorkspace(listener: () => void) {
 }
 
 export async function pickWebDemoFiles(options: { directory?: boolean } = {}) {
-  if (!WEB_DEMO_ENABLED) return null;
   const selected = await selectFiles(options.directory === true);
   if (selected.length === 0) return null;
   trackWebDemoLocalFiles(selected, options.directory === true);

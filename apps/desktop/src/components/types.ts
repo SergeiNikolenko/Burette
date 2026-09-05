@@ -315,6 +315,7 @@ export type GridColumnChoice = {
 };
 
 export type ShellViewState = {
+  dirtyGridDocuments: ReadonlySet<string>;
   documents: ViewerDocument[];
   textDocuments: TextFileDocument[];
   tabs: MoleculeTab[];

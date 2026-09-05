@@ -159,7 +159,7 @@ export function useAppGridFileActions({
             if (!isTauriRuntime()) {
               downloadTextFile(snapshotName, text);
               pushStatus(`Saved ${snapshotName}`);
-              replyGrid(source, body.documentId, { type: "gridSaved", name: snapshotName });
+              replyGrid(source, body.documentId, { type: "gridSaved", name: snapshotName, sourceRevision: body.sourceRevision });
               return;
             }
             const savedPath = await invoke<string>("save_text_as", {
@@ -168,9 +168,8 @@ export function useAppGridFileActions({
               sourcePath: targetDocument.path,
             });
             const savedName = basename(savedPath);
-            forgetDirtyGridDocument(documentId);
             pushStatus(`Saved ${savedName}`);
-            replyGrid(source, body.documentId, { type: "gridSaved", name: savedName });
+            replyGrid(source, body.documentId, { type: "gridSaved", name: savedName, sourceRevision: body.sourceRevision });
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -197,14 +196,17 @@ export function useAppGridFileActions({
               downloadTextFile(name, text);
               pushStatus(`Saved ${name}`);
               forgetDirtyGridDocument(documentId);
-              replyGrid(source, body.documentId, { type: "gridSavedAs", name });
+              replyGrid(source, body.documentId, { type: "gridSavedAs", name, sourceRevision: body.sourceRevision });
               return;
             }
             const outputPath = await save({
               defaultPath: name,
               filters: exportDialogFilters(name, bodyString(body.mimeType, "")),
             });
-            if (!outputPath) return;
+            if (!outputPath) {
+              replyGrid(source, body.documentId, { type: "gridSaveAsCancelled" });
+              return;
+            }
             if (documents.some((document) => (
               document.id !== documentId && document.path === outputPath
             ))) {
@@ -227,7 +229,7 @@ export function useAppGridFileActions({
             if (replacement.id !== documentId) closeGridRuntime(documentId);
             forgetDirtyGridDocument(documentId);
             pushStatus(`Saved ${replacement.title}`);
-            replyGrid(source, body.documentId, { type: "gridSavedAs", name: replacement.title });
+            replyGrid(source, body.documentId, { type: "gridSavedAs", name: replacement.title, sourceRevision: body.sourceRevision });
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

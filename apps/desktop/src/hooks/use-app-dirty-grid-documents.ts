@@ -129,6 +129,7 @@ export function useAppDirtyGridDocuments() {
     confirmDiscardDirtyGridDocuments,
     forgetDirtyGridDocument,
     forgetDirtyGridDocuments,
+    dirtyGridDocuments,
     hasDirtyGridDocuments: dirtyGridDocuments.size > 0,
     getWindowDocumentDirtySnapshot,
     isDirtyGridDocument,

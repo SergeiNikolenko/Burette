@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { useMoleculeStore } from "../stores/molecule-store";
 import { invoke } from "@tauri-apps/api/core";
 
 import { showNativeContextMenu } from "../components/native-context-menu";
@@ -170,7 +171,7 @@ export function useAppFileOpen({
       paths: string[],
       reloadOptions?: ViewerReloadOptions,
       preferencesOverride?: Partial<ViewerPreferences>,
-      options: { replace?: boolean; inActiveTab?: boolean; mode?: OpenDocumentsMode; deferErrorStatus?: boolean } = {},
+      options: { replace?: boolean; inActiveTab?: boolean; mode?: OpenDocumentsMode; deferErrorStatus?: boolean; preserveActiveTab?: boolean; shouldApply?: () => boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
@@ -204,6 +205,11 @@ export function useAppFileOpen({
               openStateRevision: currentDocumentRegistryRevision(),
             })
           : await openBrowserDevDocuments(structurePaths, effectivePreferences, reloadOptions);
+        if (options.shouldApply && !options.shouldApply()) {
+          await abortOpenDocumentClaims(result.documents);
+          return null;
+        }
+        const previousActiveTabId = useMoleculeStore.getState().activeTabId;
         try {
           if (options.replace) setDocuments(result.documents);
           else if (options.inActiveTab) openDocumentsInActiveTab(result.documents);
@@ -216,6 +222,9 @@ export function useAppFileOpen({
         }
         if (!options.replace && !options.inActiveTab && result.documents[0]) {
           setActiveDocument(result.documents[0].id);
+        }
+        if (options.preserveActiveTab && previousActiveTabId) {
+          useMoleculeStore.getState().setActiveTab(previousActiveTabId);
         }
         if (result.documents.length > 0) markPerformanceOnce("app:first-document-opened");
         rememberRecentStructures(result.documents);

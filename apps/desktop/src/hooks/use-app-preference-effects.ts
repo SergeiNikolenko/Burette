@@ -3,10 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "../lib/tauri";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 import type { MoleculeTab } from "../stores/molecule-store";
-import type { OpenDocumentsResult, ViewerPreferences } from "../types";
+import type { OpenDocumentsResult, ViewerDocument, ViewerPreferences } from "../types";
 
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
-type OpenDocuments = (paths: string[]) => Promise<OpenDocumentsResult | null | undefined>;
+type OpenDocuments = (paths: string[], reloadOptions?: undefined, preferencesOverride?: undefined, options?: { preserveActiveTab?: boolean; shouldApply?: () => boolean }) => Promise<OpenDocumentsResult | null | undefined>;
 
 // Preferences the mounted viewers can apply without being rebuilt, each mapped to
 // the runtime message that applies it. Everything else is baked into the viewer
@@ -44,23 +44,28 @@ function broadcastLiveAppliedPreferences(keys: LiveAppliedPreferenceKey[], prefe
 type UseAppPreferenceEffectsOptions = {
   activeTab: MoleculeTab | null | undefined;
   activeTabId: string | null;
+  documents: ViewerDocument[];
+  isDocumentDirty: (document: ViewerDocument) => boolean;
   openDocuments: OpenDocuments;
   preferences: ViewerPreferences;
   pushErrorStatus: PushErrorStatus;
-  setActiveTab: (id: string) => void;
   skipNextPreferenceRefreshRef: MutableRefObject<boolean>;
 };
 
 export function useAppPreferenceEffects({
   activeTab,
   activeTabId,
+  documents,
+  isDocumentDirty,
   openDocuments,
   preferences,
   pushErrorStatus,
-  setActiveTab,
   skipNextPreferenceRefreshRef,
 }: UseAppPreferenceEffectsOptions) {
   const previousPreferencesRef = useRef(preferences);
+  const pendingPathsRef = useRef(new Set<string>());
+  const currentInputsRef = useRef({ documents, preferences, isDocumentDirty });
+  currentInputsRef.current = { documents, preferences, isDocumentDirty };
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -72,26 +77,39 @@ export function useAppPreferenceEffects({
   useEffect(() => {
     const previousPreferences = previousPreferencesRef.current;
     previousPreferencesRef.current = preferences;
-    if (skipNextPreferenceRefreshRef.current) {
-      skipNextPreferenceRefreshRef.current = false;
-      return;
+    const pendingPaths = pendingPathsRef.current;
+    const openPaths = new Set(documents.map((document) => document.path));
+    for (const path of pendingPaths) {
+      if (!openPaths.has(path)) pendingPaths.delete(path);
     }
-    // Reopening would drop the live Mol* scene (camera, components, selections),
-    // so preferences the mounted viewers can apply themselves are pushed instead.
-    const liveKeys = changedLiveAppliedKeys(previousPreferences, preferences);
-    if (liveKeys) {
-      broadcastLiveAppliedPreferences(liveKeys, preferences);
-      return;
+    if (previousPreferences !== preferences) {
+      if (skipNextPreferenceRefreshRef.current) {
+        skipNextPreferenceRefreshRef.current = false;
+        return;
+      }
+      // Live changes preserve scenes; HTML-backed changes wait for activation.
+      const liveKeys = changedLiveAppliedKeys(previousPreferences, preferences);
+      if (liveKeys) broadcastLiveAppliedPreferences(liveKeys, preferences);
+      else for (const path of openPaths) pendingPaths.add(path);
     }
     const path = activeTab?.location.kind === "file" && !isTemporaryDocumentPath(activeTab.location.path)
       ? activeTab.location.path
       : null;
-    if (!path) return;
-    const restoreTabId = activeTabId;
-    void openDocuments([path]).then(() => {
-      if (restoreTabId) setActiveTab(restoreTabId);
+    if (!path || !pendingPaths.has(path)) return;
+    const document = documents.find((candidate) => candidate.path === path);
+    if (!document || isDocumentDirty(document)) return;
+    pendingPaths.delete(path);
+    let deferred = false;
+    void openDocuments([path], undefined, undefined, {
+      preserveActiveTab: true,
+      shouldApply: () => {
+        const current = currentInputsRef.current;
+        if (current.preferences !== preferences || !current.documents.includes(document)) return false;
+        deferred = current.isDocumentDirty(document);
+        return !deferred;
+      },
+    }).then(() => {
+      if (deferred) pendingPaths.add(path);
     });
-    // Preferences refresh only the mounted file runtime. Inactive file tabs are unloaded.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preferences]);
+  }, [activeTab, activeTabId, documents, isDocumentDirty, openDocuments, preferences, skipNextPreferenceRefreshRef]);
 }

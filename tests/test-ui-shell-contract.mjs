@@ -1538,7 +1538,7 @@ assert.match(editorArea, /const LOW_DEVICE_MEMORY_WARM_PAGE_LIMIT = 6/);
 assert.match(editorArea, /const MEMORY_PRESSURE_WARM_PAGE_LIMIT = 4/);
 assert.match(editorArea, /const MEMORY_PRESSURE_HEAP_RATIO = 0\.7/);
 assert.match(editorArea, /const \[recentlyUsedTabIds, setRecentlyUsedTabIds\] = useState<string\[\]>\(\[\]\)/);
-assert.match(editorArea, /warmMountedTabs\(tabs, activeTabIndex, recentlyUsedTabIds, warmPageLimit\)/);
+assert.match(editorArea, /warmMountedTabs\(tabs, activeTabIndex, recentlyUsedTabIds, warmPageLimit, dirtyTabIds\)/);
 assert.match(editorArea, /kind\.keepAlive/);
 assert.match(editorArea, /if \(!isActive && \(!kind\.keepAlive \|\| !warmMountedTabIds\.has\(tab\.id\)\)\) return null/);
 assert.match(editorArea, /<MountedPageSurface\s+key=\{tab\.id\}/);
@@ -4383,7 +4383,6 @@ assert.match(appDockingWorkflowsHook, /request\.sceneMode = options\.sceneMode \
 assert.match(appOpenDropControllerHook, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.match(app, /from "\.\/hooks\/use-app-open-actions"/);
 assert.match(app, /useAppOpenActions\(\{/);
-assert.match(appOpenActionsHook, /import previewFormatRegistry from "\.\.\/\.\.\/\.\.\/\.\.\/config\/preview-formats\.json"/);
 assert.match(appOpenActionsHook, /const openRecentStructure = useCallback/);
 assert.match(appOpenActionsHook, /const openMostRecentStructure = useCallback/);
 assert.match(appOpenActionsHook, /No recent structures to open/);
@@ -4414,12 +4413,10 @@ assert.match(appHostRuntimeOperationsHook, /invoke<string>\("write_base64_file",
 assert.match(appHostRuntimeOperationsHook, /GRID_PERF_REPORT_PATH = String\(import\.meta\.env\.BURETTE_GRID_PERF_REPORT_PATH \|\| ""\)/);
 assert.match(viteConfig, /"import\.meta\.env\.BURETTE_GRID_PERF_REPORT_PATH": JSON\.stringify\(\s*hostedMcpBuild \? "" : "\/private\/tmp\/burette-grid-real-app-perf\.jsonl"/s);
 assert.match(appHostRuntimeOperationsHook, /gridPerfMetricsRef\.current = \[\.\.\.gridPerfMetricsRef\.current\.slice\(-399\), line\]/);
-assert.match(app, /useAppPreferenceEffects\(\{\s*activeTab,\s*activeTabId,\s*openDocuments,\s*preferences,\s*pushErrorStatus,\s*setActiveTab,\s*skipNextPreferenceRefreshRef,\s*\}\)/s);
+assert.match(app, /useAppPreferenceEffects\(\{[\s\S]*?isDocumentDirty:[\s\S]*?skipNextPreferenceRefreshRef,/);
 assert.match(appPreferenceEffectsHook, /invoke\("sync_viewer_preferences", \{ preferences \}\)/);
 assert.match(appPreferenceEffectsHook, /isTemporaryDocumentPath\(activeTab\.location\.path\)/);
-assert.match(appPreferenceEffectsHook, /const restoreTabId = activeTabId/);
-assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\]\)\.then\(\(\) => \{/);
-assert.match(appPreferenceEffectsHook, /eslint-disable-next-line react-hooks\/exhaustive-deps/);
+assert.match(appPreferenceEffectsHook, /preserveActiveTab: true/);
 assert.match(app, /useAppShellNavigationActions\(\{/);
 assert.match(appShellNavigationActionsHook, /export function useAppShellNavigationActions\(\{/);
 assert.match(appShellNavigationActionsHook, /if \(!sidebarOpen\) toggleSidebar\(\);/);
@@ -4427,7 +4424,7 @@ assert.match(appShellNavigationActionsHook, /openSettingsTab\(\)/);
 assert.match(appShellNavigationActionsHook, /openSettingsSectionTab\(section\)/);
 assert.match(appShellNavigationActionsHook, /activateLastNonSettingsTab\(\)/);
 assert.match(appOpenActionsHook, /await invoke<string\[]>\("pick_open_targets"\)/);
-assert.match(appOpenActionsHook, /await open\(\{ multiple: true, filters \}\)/);
+assert.match(appOpenActionsHook, /await pickWebDemoFiles\(\)/);
 assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
 assert.match(app, /useAppViewerRuntimeRefs\(\)/);
 assert.match(appViewerRuntimeRefsHook, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions \| null>\(null\)/);
@@ -7718,10 +7715,10 @@ assert.doesNotMatch(gridRecordsAppended, /state\.closeTransitionActive/);
 assert.match(gridRecordsAppended, /state\.undoStack = \[\]/);
 assert.match(gridRecordsAppended, /state\.redoStack = \[\]/);
 const gridApplyKetcherRow = gridViewer.match(/if \(body\.type === 'gridApplyKetcherRow'\) \{[\s\S]*?\n      \}/)?.[0] ?? "";
-assert.match(gridApplyKetcherRow, /if \(state\.closeTransitionActive\) return;/);
+assert.match(gridApplyKetcherRow, /if \(state\.closeTransitionActive \|\| state\.saveAsPending\) return;/);
 for (const saveFunction of ["saveGridAs", "saveGrid"]) {
   const saveSource = gridViewer.match(new RegExp(`async function ${saveFunction}\\(cfg\\) \\{[\\s\\S]*?\\n  \\}`))?.[0] ?? "";
-  assert.match(saveSource, /const rows = await collectCurrentCollectionRows\(cfg\);\s*if \(state\.closeTransitionActive\) return;/);
+  assert.match(saveSource, /const rows = await collectCurrentCollectionRows\(cfg\);[\s\S]*if \(state\.closeTransitionActive/);
 }
 for (const mutationFunction of ["replaceGridRow", "duplicateGridRow", "removeGridRow", "undoLastGridEdit", "redoLastGridEdit"]) {
   const mutationSource = gridViewer.match(new RegExp(`function ${mutationFunction}\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0] ?? "";
@@ -8003,9 +8000,9 @@ assert.match(appViewerStateMessagesHook, /xyzrenderPresetOptions: presetOptions/
 assert.doesNotMatch(app, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
 assert.doesNotMatch(app, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
 assert.doesNotMatch(app, /void openDocuments\(\[path\]\)\.then/);
-assert.match(appPreferenceEffectsHook, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
+assert.match(appPreferenceEffectsHook, /pendingPathsRef/);
 assert.match(appPreferenceEffectsHook, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
-assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\]\)\.then/);
+assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\], undefined, undefined, \{\s*preserveActiveTab: true,/);
 // Theme and Mol* style changes must reach mounted viewers as messages instead of
 // reopening the document, otherwise the live Mol* scene (camera, components,
 // selections) is lost.
@@ -8013,7 +8010,7 @@ assert.match(appPreferenceEffectsHook, /const LIVE_APPLIED_PREFERENCE_MESSAGES =
 assert.match(appPreferenceEffectsHook, /function changedLiveAppliedKeys\(previous: ViewerPreferences, next: ViewerPreferences\)/);
 assert.match(appPreferenceEffectsHook, /querySelectorAll<HTMLIFrameElement>\("iframe\[data-document-id\]"\)/);
 assert.match(appPreferenceEffectsHook, /body: \{ type: LIVE_APPLIED_PREFERENCE_MESSAGES\[key\], value: preferences\[key\] \}/);
-assert.match(appPreferenceEffectsHook, /const liveKeys = changedLiveAppliedKeys\(previousPreferences, preferences\);\s*if \(liveKeys\) \{\s*broadcastLiveAppliedPreferences\(liveKeys, preferences\);\s*return;\s*\}/s);
+assert.match(appPreferenceEffectsHook, /if \(liveKeys\) broadcastLiveAppliedPreferences\(liveKeys, preferences\)/);
 assert.match(previewViewer, /if \(body\.type === 'setViewerTheme'\) \{\s*const nextTheme = normalizeViewerTheme\(body\.value\);/s);
 assert.match(previewViewer, /setViewerTheme\(nextTheme, activeViewer\);/);
 assert.match(previewViewer, /if \(body\.type === 'setViewerStyle'\) \{\s*const style = normalizeMolstarStyle\(body\.value\);\s*if \(style === 'default' \|\| style === 'illustrative'\) void requestMolstarAppearance\(style\);\s*else requestMolstarStyle\(style\);/s);
