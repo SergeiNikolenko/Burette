@@ -23,7 +23,7 @@ async function loadScript(name, text) {
       const script = document.createElement('script');
       const failed = event => {
         window.removeEventListener('error', failed);
-        reject(new Error(`${name}: ${event.message || 'Bundled viewer script failed to load.'}`));
+        reject(new Error(`${name}: ${event.error?.stack || event.message || 'Bundled viewer script failed to load.'}`));
       };
       window.addEventListener('error', failed);
       script.src = url;

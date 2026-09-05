@@ -290,6 +290,8 @@ assert.equal(packDryRun.status, 0, packDryRun.stderr);
 const packPayload = JSON.parse(packDryRun.stdout);
 const packedFiles = new Set(packPayload[0].files.map(file => file.path));
 for (const asset of [
+  'assets/local-viewer.html',
+  'scripts/mcp-app-session.mjs',
   "browser-shell-dist/boot-overlay.js",
   "browser-shell-dist/index.html",
   "browser-shell-dist/index.js",

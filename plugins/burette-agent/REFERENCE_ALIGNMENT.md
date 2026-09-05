@@ -56,8 +56,30 @@ Burette implementation:
 - `mcp/server.mjs` registers all stable tools/resources, and
   `mcp/lib/server-bundle.mjs` is the self-contained runtime entrypoint.
 - `mcp/registrations/*/register.mjs` define tool schemas.
-- Tool responses pass `structuredContent` to the model and do not expose MCP
-  inline widgets.
+- Workspace tools pass bounded `structuredContent` to the model. The local
+  viewer additionally exposes an MCP App; file bytes and its capability stay
+  in app-only `_meta`, not model-visible output.
+
+## Molecular Structure Viewer
+
+The inspected OpenAI package uses a local stdio MCP server, a self-contained
+viewer resource, app-only data transport, and host-managed inline/expanded
+display modes. Its first-party distribution is not evidence that third-party
+local stdio plugins can use the ordinary public submission path.
+
+Burette adopts the reusable architecture, not the reference implementation:
+
+- existing Mol* preview assets are compressed into a bounded offline resource;
+- one local source snapshot and `sessionId` survive display-mode requests;
+- the host controls expansion, with no localhost iframe fallback;
+- source bytes/capabilities remain outside model-visible content;
+- creation, mounted readiness, and acknowledged action success are separate;
+- the skill offers expansion once and reuses the existing viewer.
+
+The initial surface supports PDB/mmCIF only. Native file-pane registration,
+Finder integration through Codex, and public-directory acceptance are separate
+unverified capabilities, not implied by MCP App support. See
+[local submission notes](../../docs/local-plugin-submission.md).
 
 ## Browser
 

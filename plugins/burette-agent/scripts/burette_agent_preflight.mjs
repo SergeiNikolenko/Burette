@@ -84,6 +84,8 @@ const [pluginManifest, repoPackage, hasCli, hasPreview, hasPreviewWeb, hasAgentS
 ]);
 const hasPrebuiltAgentShell = hasAgentShellServer && hasAgentShellDist && hasPreviewWeb;
 const hasFullBrowserAgentShell = hasCli && (hasPrebuiltAgentShell || (!usesBundledCli && hasVp));
+const inlineViewerPath = path.join(pluginRoot, 'assets', 'local-viewer.html');
+const hasInlineViewer = await exists(inlineViewerPath) && await exists(path.join(path.dirname(cliPath), 'mcp-app-session.mjs'));
 
 function commandExists(command) {
   const result = spawnSync(command, ["--version"], {
@@ -108,6 +110,10 @@ const payload = {
     packageVersion: repoPackage.version || null,
   },
   files: {
+    inlineViewerResource: {
+      path: inlineViewerPath,
+      status: hasInlineViewer ? 'available' : 'missing',
+    },
     cli: {
       path: cliPath,
       status: hasCli ? "available" : "missing",
@@ -141,6 +147,11 @@ const payload = {
     scope: "burette_agent_capability_registry",
     preferredMode: "auto",
     transports: [
+      {
+        id: 'mcp-app',
+        status: hasInlineViewer ? 'available' : 'blocked',
+        note: 'Bundled local PDB/mmCIF viewer. Requires an MCP Apps host and exposed inline-viewer tools; package availability is not mounted readiness.',
+      },
       {
         id: "auto",
         status: hasCli && hasPreview && hasPreviewWeb ? "available" : "blocked",

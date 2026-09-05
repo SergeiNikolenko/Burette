@@ -7,7 +7,6 @@ const session = await runMcpAppOperation({ operation: 'open', file: new URL('../
 const bundle = await Bun.build({ entrypoints: [new URL('./fixtures/local-viewer-host.mjs', import.meta.url).pathname], target: 'browser', format: 'esm' });
 if (!bundle.success) throw new Error(bundle.logs.join('\n'));
 const hostJs = await bundle.outputs[0].text();
-const html = await readFile(new URL('../plugins/burette-agent/assets/local-viewer.html', import.meta.url), 'utf8');
 const server = createServer(async (request, response) => {
   try {
     response.setHeader('Cache-Control', 'no-store');
@@ -20,7 +19,7 @@ const server = createServer(async (request, response) => {
     } else if (request.url === '/viewer') {
       response.setHeader('Content-Type', 'text/html');
       response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline' blob:; img-src data: blob:; font-src data:; connect-src 'none'; worker-src blob:");
-      response.end(html);
+      response.end(await readFile(new URL('../plugins/burette-agent/assets/local-viewer.html', import.meta.url), 'utf8'));
     } else if (request.url === '/result') {
       response.setHeader('Content-Type', 'application/json');
       response.end(JSON.stringify({ content: [], _meta: { session: { sessionId: session.sessionId, token: session.token } } }));
