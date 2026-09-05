@@ -27,12 +27,12 @@ export function registerLocalViewer(server) {
     inputSchema: { file: z.string().min(1) }, annotations: { ...annotations, readOnlyHint: false, idempotentHint: false },
     _meta: { ui: { resourceUri: uri } },
   }, input => operation({ operation: 'open', ...input }));
-  registerAppTool(server, 'burette.observe_inline_viewer', {
+  server.registerTool('burette.observe_inline_viewer', {
     title: 'Observe local Burette viewer', description: 'Get bounded live readiness, counts, camera, display mode, revision and last action. A created session alone does not prove rendering.',
     inputSchema: locator, annotations: { ...annotations, readOnlyHint: true, idempotentHint: true },
   }, input => operation({ operation: 'observe', ...input }));
-  registerAppTool(server, 'burette.control_inline_viewer', {
-    title: 'Control local Burette viewer', description: 'Queue a local scene action. Use set_display_mode with fullscreen or inline to move the same viewer without reloading. Observe lastAction to confirm completion.',
+  server.registerTool('burette.control_inline_viewer', {
+    title: 'Control local Burette viewer', description: 'Queue a local scene action. Select with selector fields such as chain, comp_id, auth_seq_id (example: {chain:"A",comp_id:"NAD",auth_seq_id:377}). Use set_display_mode with fullscreen or inline to move the same viewer without reloading. Observe lastAction to confirm completion.',
     inputSchema: { ...locator, action: z.object({ type: z.enum(['focus_ligand', 'select_residues', 'reset_camera', 'clear_selection', 'set_display_mode']) }).passthrough() },
     annotations: { ...annotations, readOnlyHint: false, idempotentHint: false },
   }, input => operation({ operation: 'act', ...input }));
