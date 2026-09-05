@@ -658,6 +658,11 @@ Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
   assert.equal(invalidStoryGoto.statusCode, 400);
   assert.equal(JSON.parse(invalidStoryGoto.body).error.code, 'INVALID_ACTION');
 
+  const completePanel = await postJson(`${base}/__agent/action-result`, {
+    id: queuedPanel.action.id, result: { ok: true }
+  }, { Cookie: cookieHeader });
+  assert.equal(completePanel.statusCode, 200);
+
   const largeResult = { ok: true, result: { text: 'x'.repeat(3 * 1024 * 1024 - 256) } };
   let firstArtifact;
   for (let index = 0; index < 101; index += 1) {
@@ -678,10 +683,23 @@ Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
   const retained = JSON.parse((await get(`${base}/__agent/observe`, { Cookie: cookieHeader })).body);
   assert.equal(retained.actions.completed, 100);
   assert.equal(retained.actions.queued, 3, 'history pruning must preserve queued Story actions');
-  assert.equal(retained.actions.dispatched, 7, 'history pruning must preserve dispatched actions');
+  assert.equal(retained.actions.dispatched, 6, 'history pruning must preserve dispatched actions');
+  assert.equal(retained.workspacePanels.length, 1);
+  assert.equal(retained.workspacePanels[0].actionId, queuedPanel.action.id, 'visible panel metadata must survive action-history eviction');
+  assert.equal(retained.workspacePanels[0].status, 'completed');
   assert.equal((await get(`${base}${firstArtifact.url}`)).statusCode, 403);
   const archived = await get(`${base}${firstArtifact.url}`, { Cookie: cookieHeader });
   assert.deepEqual(JSON.parse(archived.body), largeResult, 'pruned results remain available by artifact URL');
+  for (const [area, title] of [['bottom', 'Bottom report'], ['right', 'Replacement report']]) {
+    const panel = JSON.parse((await postJson(`${base}/__agent/act`, {
+      type: 'render_panel', kind: 'markdown', area, title, content: title
+    }, { Cookie: cookieHeader })).body).action;
+    await postJson(`${base}/__agent/action-result`, { id: panel.id, result: { ok: true } }, { Cookie: cookieHeader });
+  }
+  const panelSlots = JSON.parse((await get(`${base}/__agent/observe`, { Cookie: cookieHeader })).body).workspacePanels;
+  assert.deepEqual(panelSlots.map(panel => [panel.area, panel.title]), [
+    ['bottom', 'Bottom report'], ['right', 'Replacement report']
+  ], 'panel metadata is bounded to the current right/bottom slots');
   const pending = JSON.parse((await get(`${base}/__agent/next-action`, { Cookie: cookieHeader })).body);
   assert.equal(pending.action.type, 'story_observe');
 

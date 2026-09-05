@@ -1090,12 +1090,15 @@ function controlConfig() {
   };
 }
 
-function observeState({ host, port, structurePath, config, liveReport, actions }) {
+function observeState({ host, port, structurePath, config, liveReport, actions, completedPanels }) {
   const liveSummary = liveReport?.summary?.ok ? liveReport.summary.result : null;
   const liveCapabilities = liveReport?.capabilities?.ok ? liveReport.capabilities.result : null;
   const actionItems = Array.from(actions.values());
   const lastAction = actionItems.at(-1) || null;
-  const workspacePanels = observedWorkspacePanels(actionItems);
+  const workspacePanels = observedWorkspacePanels([
+    ...completedPanels.values(),
+    ...actionItems.filter(action => action.status === 'queued' || action.status === 'dispatched')
+  ].sort((left, right) => Number(left.id.slice(4)) - Number(right.id.slice(4))));
   return {
     apiVersion: agentControlApiVersion,
     mode: 'browser-preview',
@@ -1217,8 +1220,7 @@ function escapeHtml(value) {
 }
 
 function observedWorkspacePanels(actionItems) {
-  const panels = [];
-  const seen = new Set();
+  const panels = new Map();
   for (const item of actionItems) {
     if (item.action?.type !== 'render_panel' || item.status === 'failed') continue;
     const panel = item.action.panel || {};
@@ -1227,9 +1229,7 @@ function observedWorkspacePanels(actionItems) {
     if (!kind || !title) continue;
     const area = item.action.area === 'bottom' ? 'bottom' : 'right';
     const id = `agent-panel:${area}:${kind}:${title}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    panels.push({
+    panels.set(area, {
       id,
       actionId: item.id,
       status: item.status,
@@ -1240,7 +1240,7 @@ function observedWorkspacePanels(actionItems) {
       byteCount: Number.isFinite(panel.byteCount) ? panel.byteCount : null
     });
   }
-  return panels;
+  return Array.from(panels.values());
 }
 
 function publicAction(action) {
@@ -1461,6 +1461,7 @@ async function main() {
   let nextActionId = 1;
   const actions = new Map();
   const completedActionIds = [];
+  const completedPanels = new Map();
   const artifactDir = await mkdtemp(join(tmpdir(), 'burette-agent-results-'));
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.once(signal, async () => {
@@ -1506,7 +1507,7 @@ async function main() {
       }
       if (url.pathname === '/__agent/observe') {
         const observation = observeState({
-          host: args.host, port: args.port, structurePath, config, liveReport, actions
+          host: args.host, port: args.port, structurePath, config, liveReport, actions, completedPanels
         });
         let body = JSON.stringify(observation);
         if (Buffer.byteLength(body) > observeByteLimit) {
@@ -1618,6 +1619,9 @@ async function main() {
               file: item.action.panel?.file, byteCount: item.action.panel?.byteCount
             } }
           : { type: item.action.type };
+        if (item.action.type === 'render_panel' && item.status === 'completed') {
+          completedPanels.set(item.action.area === 'bottom' ? 'bottom' : 'right', item);
+        }
         completedActionIds.push(item.id);
         if (completedActionIds.length > completedHistoryLimit) actions.delete(completedActionIds.shift());
         res.writeHead(200, { 'Content-Type': 'application/json' });

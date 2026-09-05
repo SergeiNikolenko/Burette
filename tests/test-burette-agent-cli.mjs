@@ -315,8 +315,13 @@ try {
       assert.match(miniFs.body, /^HEADER\s+MINI GLY-ALA PEPTIDE/u);
       assert.doesNotMatch(miniFs.body, /Burette Agent Shell/);
       const finderIcon = await get(`${prebuiltPayload.result.url.split('?')[0]}__burette/app-icon/finder.png`, shellHeaders);
-      assert.equal(finderIcon.statusCode, 200);
-      assert.match(finderIcon.headers['content-type'] ?? '', /^image\/png\b/u);
+      if (process.platform === 'darwin') {
+        assert.equal(finderIcon.statusCode, 200);
+        assert.match(finderIcon.headers['content-type'] ?? '', /^image\/png\b/u);
+      } else {
+        assert.equal(finderIcon.statusCode, 404);
+        assert.deepEqual(JSON.parse(finderIcon.body), { error: 'Icon not found' });
+      }
       assert.doesNotMatch(finderIcon.body, /Burette Agent Shell/);
       if (prebuiltPayload.result.processId) {
         try {
