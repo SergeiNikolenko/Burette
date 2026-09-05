@@ -21,6 +21,8 @@ struct MobilePreviewScreen: View {
     @State private var logEntries: [MobileLogEntry] = []
     @State private var isFileImporterPresented = false
     @State private var commandSearchText = ""
+    @State private var structureSummary: MobileStructureSummary?
+    @State private var playbackKind: MobilePlaybackKind?
 
     var body: some View {
         GeometryReader { _ in
@@ -77,7 +79,7 @@ struct MobilePreviewScreen: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                     .zIndex(15)
 
-                if let playbackKind = currentDocument.playbackKind,
+                if let playbackKind,
                    activeSheet == nil,
                    !isProjectDrawerOpen {
                     MobilePlaybackBar(kind: playbackKind) { actionName in
@@ -109,6 +111,19 @@ struct MobilePreviewScreen: View {
             .animation(.snappy(duration: 0.24), value: activeSheet)
         }
         .background(resolvedTheme.screenBackground.ignoresSafeArea())
+        .task(id: currentDocument) {
+            structureSummary = nil
+            playbackKind = nil
+            let document = currentDocument
+            let result: (MobileStructureSummary, MobilePlaybackKind?) = await withCheckedContinuation { continuation in
+                MobilePreviewRuntime.preparationQueue.async {
+                    continuation.resume(returning: (MobileStructureSummary.load(document: document), document.playbackKind))
+                }
+            }
+            guard !Task.isCancelled else { return }
+            structureSummary = result.0
+            playbackKind = result.1
+        }
         .onChange(of: currentDocument) { _, _ in
             if !availableViewModes.contains(viewMode) {
                 viewMode = availableViewModes.first ?? .structure3D
@@ -179,7 +194,10 @@ struct MobilePreviewScreen: View {
                 resolvedTheme: resolvedTheme,
                 selectedStyle: $model.style,
                 selectedWaterRepresentation: $model.water,
-                structureSummary: MobileStructureSummary.load(document: currentDocument),
+                structureSummary: structureSummary ?? MobileStructureSummary(
+                    document: currentDocument, byteCount: 0, atomCount: 0, residueCount: 0,
+                    chainSummaries: [], sdfRecords: [], recordCount: 0, summaryKind: "Preparing"
+                ),
                 inspectorTarget: inspectorTarget,
                 logEntries: logEntries,
                 runAction: { name in controlAction = MobileMolstarControlAction(name: name) },
@@ -251,7 +269,7 @@ struct MobilePreviewScreen: View {
     }
 
     private var statusBottomPadding: CGFloat {
-        currentDocument.playbackKind == nil || activeSheet != nil || isProjectDrawerOpen ? 18 : 102
+        playbackKind == nil || activeSheet != nil || isProjectDrawerOpen ? 18 : 102
     }
 
     private func openImportedDocument(from url: URL) {
