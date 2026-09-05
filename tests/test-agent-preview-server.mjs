@@ -658,6 +658,61 @@ Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
   assert.equal(invalidStoryGoto.statusCode, 400);
   assert.equal(JSON.parse(invalidStoryGoto.body).error.code, 'INVALID_ACTION');
 
+  const largeResult = { ok: true, result: { text: 'x'.repeat(3 * 1024 * 1024 - 256) } };
+  let firstArtifact;
+  for (let index = 0; index < 101; index += 1) {
+    const response = await postJson(`${base}/__agent/act`, { type: 'reset_camera' }, { Cookie: cookieHeader });
+    const action = JSON.parse(response.body).action;
+    const result = index < 2 ? largeResult : { ok: true, result: index };
+    const completion = await postJson(`${base}/__agent/action-result`, { id: action.id, result }, { Cookie: cookieHeader });
+    assert.equal(completion.statusCode, 200);
+    const finished = JSON.parse(completion.body).action;
+    if (index === 0) {
+      firstArtifact = finished.resultArtifact;
+      assert.equal(finished.result.truncated, true);
+      assert.equal(firstArtifact.byteCount, Buffer.byteLength(JSON.stringify(largeResult)));
+    }
+    const snapshot = await get(`${base}/__agent/observe`, { Cookie: cookieHeader });
+    assert.ok(Buffer.byteLength(snapshot.body) <= 256 * 1024);
+  }
+  const retained = JSON.parse((await get(`${base}/__agent/observe`, { Cookie: cookieHeader })).body);
+  assert.equal(retained.actions.completed, 100);
+  assert.equal(retained.actions.queued, 3, 'history pruning must preserve queued Story actions');
+  assert.equal(retained.actions.dispatched, 7, 'history pruning must preserve dispatched actions');
+  assert.equal((await get(`${base}${firstArtifact.url}`)).statusCode, 403);
+  const archived = await get(`${base}${firstArtifact.url}`, { Cookie: cookieHeader });
+  assert.deepEqual(JSON.parse(archived.body), largeResult, 'pruned results remain available by artifact URL');
+  const pending = JSON.parse((await get(`${base}/__agent/next-action`, { Cookie: cookieHeader })).body);
+  assert.equal(pending.action.type, 'story_observe');
+
+  const pendingPanel = await postJson(`${base}/__agent/act`, {
+    type: 'render_panel', kind: 'markdown', title: 't'.repeat(300 * 1024), content: 'preserve me'
+  }, { Cookie: cookieHeader });
+  assert.equal(pendingPanel.statusCode, 200);
+  const pendingObserve = await get(`${base}/__agent/observe`, { Cookie: cookieHeader });
+  assert.ok(Buffer.byteLength(pendingObserve.body) <= 256 * 1024);
+  const pendingSummary = JSON.parse(pendingObserve.body);
+  assert.equal(pendingSummary.truncated, true);
+  const repeatSummary = JSON.parse((await get(`${base}/__agent/observe`, { Cookie: cookieHeader })).body);
+  assert.deepEqual(repeatSummary.artifact, pendingSummary.artifact, 'unchanged polling must reuse an immutable artifact');
+  // Drain the two preceding Story requests, then verify the queued input was not truncated.
+  await get(`${base}/__agent/next-action`, { Cookie: cookieHeader });
+  await get(`${base}/__agent/next-action`, { Cookie: cookieHeader });
+  const pendingPanelRequest = JSON.parse((await get(`${base}/__agent/next-action`, { Cookie: cookieHeader })).body);
+  assert.equal(pendingPanelRequest.action.panel.title.length, 300 * 1024);
+  assert.equal(pendingPanelRequest.action.panel.content, 'preserve me');
+
+  // A near-limit report must not bypass the whole observation budget.
+  await postJson(`${base}/__agent/report`, {
+    summary: { ok: true, result: { counts: { atoms: 42 }, structures: [{ chains: ['x'.repeat(300 * 1024)] }] } }
+  }, { Cookie: cookieHeader });
+  const bounded = await get(`${base}/__agent/observe`, { Cookie: cookieHeader });
+  assert.ok(Buffer.byteLength(bounded.body) <= 256 * 1024);
+  const summary = JSON.parse(bounded.body);
+  assert.equal(summary.truncated, true);
+  const fullObservation = JSON.parse((await get(`${base}${summary.artifact.url}`, { Cookie: cookieHeader })).body);
+  assert.equal(fullObservation.scene.chains[0].length, 300 * 1024);
+
   console.log('agent-preview server tests passed');
 } finally {
   child.kill('SIGTERM');

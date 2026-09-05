@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { createReadStream, existsSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve, normalize } from 'node:path';
@@ -15,6 +16,9 @@ const webRoot = process.env.BURETTE_AGENT_PREVIEW_WEB_ROOT
 const agentControlApiVersion = 'burette-agent-control/v1';
 const renderPanelReadLimit = 512 * 1024;
 const actionResultReadLimit = 3 * 1024 * 1024;
+const inlineResultLimit = 4 * 1024;
+const observeByteLimit = 256 * 1024;
+const completedHistoryLimit = 100;
 const mvsReadLimit = 25 * 1024 * 1024;
 const amberNcPreviewFrameLimit = 100;
 const coordinateArtifactExtensions = new Set(['xml', 'inpcrd', 'rst7', 'restrt', 'crd', 'rst', 'state', 'lammpstrj', 'dump', 'pos', 'cfg', 'in', 'inp', 'log', 'out', 'data', 'lammps', 'lmp']);
@@ -1247,7 +1251,8 @@ function publicAction(action) {
     createdAt: action.createdAt,
     dispatchedAt: action.dispatchedAt || null,
     completedAt: action.completedAt || null,
-    result: action.result || null
+    result: action.result || null,
+    ...(action.resultArtifact ? { resultArtifact: action.resultArtifact } : {})
   };
 }
 
@@ -1455,6 +1460,14 @@ async function main() {
   let liveReport = null;
   let nextActionId = 1;
   const actions = new Map();
+  const completedActionIds = [];
+  const artifactDir = await mkdtemp(join(tmpdir(), 'burette-agent-results-'));
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.once(signal, async () => {
+      await rm(artifactDir, { recursive: true, force: true });
+      process.exit(0);
+    });
+  }
 
   const server = createServer(async (req, res) => {
     try {
@@ -1480,16 +1493,57 @@ async function main() {
         res.end('Missing or invalid token.');
         return;
       }
+      if (/^\/__agent\/artifacts\/(act-[0-9]+|observe-[a-f0-9]{64})\.json$/.test(url.pathname) && req.method === 'GET') {
+        const artifactPath = join(artifactDir, basename(url.pathname));
+        if (!existsSync(artifactPath)) {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        createReadStream(artifactPath).pipe(res);
+        return;
+      }
       if (url.pathname === '/__agent/observe') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(observeState({
-          host: args.host,
-          port: args.port,
-          structurePath,
-          config,
-          liveReport,
-          actions
-        }), null, 2));
+        const observation = observeState({
+          host: args.host, port: args.port, structurePath, config, liveReport, actions
+        });
+        let body = JSON.stringify(observation);
+        if (Buffer.byteLength(body) > observeByteLimit) {
+          const name = `observe-${createHash('sha256').update(body).digest('hex')}.json`;
+          if (!existsSync(join(artifactDir, name))) {
+            await writeFile(join(artifactDir, name), body, { mode: 0o600 });
+          }
+          const summarizeAction = action => action && ({
+            ...action,
+            result: action.resultArtifact
+              ? { ok: action.status !== 'failed', truncated: true, artifact: action.resultArtifact }
+              : null
+          });
+          body = JSON.stringify({
+            apiVersion: agentControlApiVersion,
+            mode: 'browser-preview',
+            transport: 'http-local-token',
+            activeDocument: {
+              ...observation.activeDocument,
+              title: String(observation.activeDocument.title).slice(0, 512),
+              path: String(observation.activeDocument.path).slice(0, 4096)
+            },
+            viewerAgent: { available: observation.viewerAgent.available },
+            scene: { known: observation.scene.known, truncated: true },
+            endpoints: observation.endpoints,
+            truncated: true,
+            artifact: { url: `/__agent/artifacts/${name}`, byteCount: Buffer.byteLength(body) },
+            actions: {
+              ...observation.actions,
+              last: summarizeAction(observation.actions.last),
+              recent: observation.actions.recent.map(summarizeAction)
+            }
+          });
+        }
+        if (Buffer.byteLength(body) > observeByteLimit) throw new Error('Observation exceeds response byte budget.');
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(body);
         return;
       }
       if (url.pathname === '/__agent/act' && req.method === 'POST') {
@@ -1543,9 +1597,29 @@ async function main() {
           res.end(JSON.stringify({ ok: false, apiVersion: agentControlApiVersion, error: { code: 'UNKNOWN_ACTION', message: 'Unknown action id.' } }));
           return;
         }
+        if (item.status === 'completed' || item.status === 'failed') {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: { code: 'ACTION_ALREADY_COMPLETED', message: 'Action result is already recorded.' } }));
+          return;
+        }
         item.completedAt = new Date().toISOString();
-        item.result = parsed.result || null;
-        item.status = parsed.result?.ok === false ? 'failed' : 'completed';
+        const result = parsed.result || null;
+        const resultJson = JSON.stringify(result);
+        await writeFile(join(artifactDir, `${item.id}.json`), resultJson, { mode: 0o600, flag: 'wx' });
+        item.resultArtifact = { url: `/__agent/artifacts/${item.id}.json`, byteCount: Buffer.byteLength(resultJson) };
+        item.result = item.resultArtifact.byteCount <= inlineResultLimit
+          ? result
+          : { ok: result?.ok !== false, truncated: true, artifact: item.resultArtifact };
+        item.status = result?.ok === false ? 'failed' : 'completed';
+        // Completed requests no longer need their potentially large input payload.
+        item.action = item.action.type === 'render_panel'
+          ? { type: 'render_panel', area: item.action.area, panel: {
+              kind: item.action.panel?.kind, title: item.action.panel?.title,
+              file: item.action.panel?.file, byteCount: item.action.panel?.byteCount
+            } }
+          : { type: item.action.type };
+        completedActionIds.push(item.id);
+        if (completedActionIds.length > completedHistoryLimit) actions.delete(completedActionIds.shift());
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, apiVersion: agentControlApiVersion, action: publicAction(item) }));
         return;

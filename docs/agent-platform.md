@@ -96,6 +96,27 @@ Browser means the in-app Browser plugin unless the user explicitly asks for an
 external browser. Computer/native UI control is a QA fallback, not the primary
 state channel.
 
+## Static Browser Shell Authorization
+
+The prebuilt browser agent shell binds to loopback and requires the initialized
+session token for its app, file, compute, and session routes. The CLI returns a
+URL with `shellToken`; opening that URL sets an HttpOnly, SameSite=Strict session
+cookie for subsequent same-origin assets, fetches, and event streams. HTTP clients
+can instead send `Authorization: Bearer <session token>`. Keep the returned URL
+private. `/healthz` exposes only readiness and does not require a token.
+
+The server rejects mismatched Host and Origin headers even when a token is
+present. File allowlists compare canonical paths, and file reads validate the
+opened descriptor against the allowed canonical object before reading. Directory
+walks exclude symlink escapes and repeated canonical directories. The Amber
+preview subprocess receives validated input descriptors rather than reopening
+user-provided path names.
+
+Run `node tests/test-agent-shell-security.mjs` for positive and negative HTTP
+coverage, and `node tests/test-burette-agent-cli.mjs` for CLI startup and runtime
+asset integration. These checks exercise the prebuilt static transport; Vite
+browser-dev and native app validation remain separate surfaces.
+
 ## Observe And Act Contract
 
 - `observe` is the machine-readable state source for active document, open
@@ -197,6 +218,36 @@ The hosted public plugin mirrors the same action schema through
 it is suitable for the current MCP widget turn, not a durable shared workspace;
 reference-backed content fails closed until an authenticated artifact relay is
 added.
+
+## Preview Response And CLI Output Bounds
+
+Tokenized preview observation JSON is capped at 256 KiB. Action results up to
+4 KiB retain their existing inline shape. Larger results return
+`{ ok, truncated: true, artifact: { url, byteCount } }`. Every completed action
+also carries `resultArtifact` with the raw result JSON location, including small
+results. URLs are relative to the preview origin and require the same session
+token or cookie. They never contain the token themselves.
+
+The preview retains the most recent 100 completions in memory; `completed` and
+`failed` counts describe this retained history. Queued and dispatched actions are
+preserved. Completed input payloads are released, retaining panel metadata where
+needed. A repeated result for a retained completed action returns HTTP 409.
+Raw result artifacts remain available after history eviction for the lifetime of
+the preview session. They reside in its private temporary directory and are
+removed on SIGINT/SIGTERM; disk usage grows with recorded results during that
+session. Export needed artifacts before stopping it.
+
+When scene or panel metadata makes the entire observation exceed 256 KiB, the
+response sets `truncated: true` and supplies an `artifact` URL for an immutable
+full observation snapshot. Basic document identity, scene readiness, endpoints,
+and bounded action summaries remain inline; fallback action results use artifact
+references. Identical observations reuse a content-hashed artifact, so polling
+does not duplicate disk snapshots. Consumers must inspect this marker
+and fetch the artifact explicitly when they need the omitted detail.
+
+The MCP CLI bridge limits combined stdout/stderr to 4 MiB, terminates a child
+that exceeds the limit, and reports `CLI_OUTPUT_LIMIT` without forwarding partial
+output. UTF-8 output is decoded after collection to preserve split characters.
 
 ## Agent RCA
 
