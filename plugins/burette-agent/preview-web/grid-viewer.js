@@ -155,6 +155,7 @@
     remoteLoading: false,
     hostReadOnly: window.name === 'burette-read-only',
     closeTransitionActive: false,
+    saveAsPending: false,
     dirty: false,
     dirtyReason: '',
     sourceRevision: 0,
@@ -471,7 +472,7 @@
   function capabilities(cfg) {
     const caps = cfg.capabilities || {};
     const molecularGrid = effectiveMolecularGrid(cfg);
-    const editing = caps.editing !== false && !state.hostReadOnly;
+    const editing = caps.editing !== false && !state.hostReadOnly && !state.saveAsPending;
     return {
       editing,
       selection: !!caps.selection,
@@ -586,7 +587,7 @@
         return;
       }
       if (body.type === 'gridMenuCommand') {
-        if (state.closeTransitionActive) return;
+        if (state.closeTransitionActive || state.saveAsPending) return;
         const cfg = safeConfig();
         executeGridMenuCommand(body, cfg);
         return;
@@ -881,18 +882,38 @@
         return;
       }
       if (body.type === 'gridSavedAs') {
-        markGridClean();
+        state.saveAsPending = false;
+        if (body.sourceRevision === state.sourceRevision) markGridClean();
         setStatus(`[grid] Saved as ${body.name || 'collection file'}.`);
         updateChrome(config());
         return;
       }
+      if (body.type === 'gridSaveAsCancelled') {
+        state.saveAsPending = false;
+        syncGridEditControls();
+        updateChrome(config());
+        return;
+      }
       if (body.type === 'gridSaveAsError') {
+        state.saveAsPending = false;
+        syncGridEditControls();
+        updateChrome(config());
         setStatus(body.error || '[grid] Save As failed.', 'error');
         return;
       }
       if (body.type === 'gridSaved') {
         if (!capabilities(config()).editing) return;
-        markGridClean();
+        if (body.sourceRevision === state.sourceRevision) markGridClean();
+        else {
+          state.dirty = true;
+          state.dirtyReason = 'changes after save';
+          notifyGridDirty(true);
+          syncGridEditControls();
+          // Historical clean flags refer to the disk state before this save.
+          for (const entry of [...state.undoStack, ...state.redoStack]) {
+            entry.snapshot.dirty = true;
+          }
+        }
         setStatus(`[grid] Saved ${body.name || 'collection file'}.`);
         updateChrome(config());
         return;
@@ -902,7 +923,7 @@
         return;
       }
       if (body.type === 'gridApplyKetcherRow') {
-        if (state.closeTransitionActive) return;
+        if (state.closeTransitionActive || state.saveAsPending) return;
         if (!capabilities(config()).editing) return;
         applyKetcherGridRow(body, config());
         return;
@@ -5597,7 +5618,7 @@
   }
 
   function replaceGridRow(row, patch, cfg, options = {}) {
-    if (state.closeTransitionActive) return false;
+    if (state.closeTransitionActive || state.saveAsPending) return false;
     if (!capabilities(cfg).editing) return false;
     const index = Number(row?.index);
     if (!Number.isFinite(index)) return false;
@@ -5633,7 +5654,7 @@
   }
 
   function duplicateGridRow(row, cfg) {
-    if (state.closeTransitionActive) return false;
+    if (state.closeTransitionActive || state.saveAsPending) return false;
     if (!capabilities(cfg).editing) return false;
     const index = Number(row?.index);
     if (!Number.isFinite(index)) return false;
@@ -5707,7 +5728,7 @@
   }
 
   async function splitGridMultipleValueRows(body, cfg) {
-    if (state.closeTransitionActive) return;
+    if (state.closeTransitionActive || state.saveAsPending) return;
     if (!capabilities(cfg).editing) return;
     const columnId = String(body.columnId || '');
     const propKey = columnId.startsWith('prop:') ? columnId.slice('prop:'.length) : '';
@@ -5721,7 +5742,7 @@
     const rows = state.remoteMode
       ? await collectAllRemoteRows(cfg, '', 'index', 'the row split', 'collection')
       : currentLocalCollectionRows();
-    if (state.closeTransitionActive) return;
+    if (state.closeTransitionActive || state.saveAsPending) return;
     const plan = planMultipleValueRowSplit(rows, propKey, delimiter, nextGridRowIndex(rows));
     if (plan.inserts.length === 0) {
       setStatus(`[grid] No row holds more than one value in ${label}.`);
@@ -6207,7 +6228,7 @@
   }
 
   function removeGridRow(row, options = {}) {
-    if (state.closeTransitionActive) return false;
+    if (state.closeTransitionActive || state.saveAsPending) return false;
     const cfg = safeConfig();
     if (cfg && !capabilities(cfg).editing) return false;
     const index = Number(row.index);
@@ -6236,7 +6257,7 @@
   // materialised file on save - so this works the same on a paged remote
   // collection as on a fully loaded one.
   function hideGridRowIndexes(indexes, label) {
-    if (state.closeTransitionActive) return 0;
+    if (state.closeTransitionActive || state.saveAsPending) return 0;
     const cfg = safeConfig();
     if (cfg && !capabilities(cfg).editing) return 0;
     const targets = [...new Set(indexes.map(Number))]
@@ -6265,7 +6286,7 @@
   }
 
   function deleteGridPropColumns(columnKeys) {
-    if (state.closeTransitionActive) return 0;
+    if (state.closeTransitionActive || state.saveAsPending) return 0;
     const cfg = safeConfig();
     if (cfg && !capabilities(cfg).editing) return 0;
     const targets = [...new Set(columnKeys.map(key => String(key || '').trim()))]
@@ -6289,7 +6310,7 @@
   // Returns the range it set, null when it cleared one, and false when it
   // refused the request - the caller has nothing to report in that case.
   function setGridColumnValueRange(columnId, min, max) {
-    if (state.closeTransitionActive) return false;
+    if (state.closeTransitionActive || state.saveAsPending) return false;
     const cfg = safeConfig();
     if (cfg && !capabilities(cfg).editing) return false;
     const id = String(columnId || '');
@@ -6358,7 +6379,7 @@
   }
 
   async function mergeGridEquivalentRows(body, cfg) {
-    if (state.closeTransitionActive) return;
+    if (state.closeTransitionActive || state.saveAsPending) return;
     if (!capabilities(cfg).editing) return;
     const groups = Array.isArray(body.groups) ? body.groups : [];
     const separator = String(body.separator ?? '; ');
@@ -6367,7 +6388,7 @@
     const rows = state.remoteMode
       ? await collectAllRemoteRows(cfg, '', 'index', 'the row merge', 'collection')
       : currentLocalCollectionRows();
-    if (state.closeTransitionActive) return;
+    if (state.closeTransitionActive || state.saveAsPending) return;
     const plan = planEquivalentRowMerge(rows, groups, separator);
     if (plan.hide.length === 0) {
       setStatus('[grid] No equivalent rows are left to merge.');
@@ -6498,7 +6519,7 @@
   }
 
   function undoLastGridEdit(cfg) {
-    if (state.closeTransitionActive) return;
+    if (state.closeTransitionActive || state.saveAsPending) return;
     if (!capabilities(cfg).editing) return;
     const entry = state.undoStack.pop();
     if (!entry) {
@@ -6513,7 +6534,7 @@
   }
 
   function redoLastGridEdit(cfg) {
-    if (state.closeTransitionActive) return;
+    if (state.closeTransitionActive || state.saveAsPending) return;
     if (!capabilities(cfg).editing) return;
     const entry = state.redoStack.pop();
     if (!entry) {
@@ -8123,36 +8144,55 @@
   }
 
   async function saveGridAs(cfg) {
-    if (!capabilities(cfg).editing) return;
+    if (!capabilities(cfg).editing || state.closeTransitionActive) return;
     if (!requireCollectionIndexReady('saving')) return;
-    const rows = await collectCurrentCollectionRows(cfg);
-    if (state.closeTransitionActive) return;
-    if (!rows.length) {
-      setStatus('[grid] There are no molecules to save.', 'error');
-      return;
-    }
-    const snapshot = gridSaveAsSnapshot(rows, cfg);
-    if (canUseNativeBridge()) {
-      post('saveGridAs', `[grid] Save As ${snapshot.name}.`, snapshot);
-      setStatus(`[grid] Save As requested: ${snapshot.name}.`);
-      return;
-    }
-    download(snapshot.text, snapshot.name, snapshot.mimeType);
-    markGridClean();
-    setStatus(`[grid] Saved as ${snapshot.name}.`);
+    state.saveAsPending = true;
+    syncGridEditControls();
     updateChrome(cfg);
+    let awaitingHost = false;
+    try {
+      const rows = await collectCurrentCollectionRows(cfg);
+      if (state.closeTransitionActive) return;
+      if (!rows.length) {
+        setStatus('[grid] There are no molecules to save.', 'error');
+        return;
+      }
+      const snapshot = { ...gridSaveAsSnapshot(rows, cfg), sourceRevision: state.sourceRevision };
+      if (canUseNativeBridge()) {
+        post('saveGridAs', `[grid] Save As ${snapshot.name}.`, snapshot);
+        awaitingHost = true;
+        setStatus(`[grid] Save As requested: ${snapshot.name}.`);
+        return;
+      }
+      download(snapshot.text, snapshot.name, snapshot.mimeType);
+      markGridClean();
+      setStatus(`[grid] Saved as ${snapshot.name}.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error), 'error');
+    } finally {
+      if (!awaitingHost) {
+        state.saveAsPending = false;
+        syncGridEditControls();
+        updateChrome(cfg);
+      }
+    }
   }
 
   async function saveGrid(cfg) {
     if (!capabilities(cfg).editing) return;
     if (!requireCollectionIndexReady('saving')) return;
+    const sourceRevision = state.sourceRevision;
     const rows = await collectCurrentCollectionRows(cfg);
-    if (state.closeTransitionActive) return;
+    if (sourceRevision !== state.sourceRevision) {
+      setStatus('[grid] The collection changed while preparing Save. Save again.', 'error');
+      return;
+    }
+    if (state.closeTransitionActive || state.saveAsPending) return;
     if (!rows.length) {
       setStatus('[grid] There are no molecules to save.', 'error');
       return;
     }
-    const snapshot = gridSaveAsSnapshot(rows, cfg);
+    const snapshot = { ...gridSaveAsSnapshot(rows, cfg), sourceRevision };
     if (canUseNativeBridge()) {
       post('saveGrid', `[grid] Save ${snapshot.name}.`, snapshot);
       setStatus(`[grid] Save requested: ${snapshot.name}.`);
