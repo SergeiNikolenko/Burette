@@ -93,12 +93,14 @@ struct MobilePreviewWebView: UIViewRepresentable {
         private var desiredPanelState: MobileMolstarPanelState?
         private var appliedPanelState: MobileMolstarPanelState?
         private var generation = UUID()
+        private var readyGeneration: UUID?
         private var pageURL: URL?
         private var runtimeDirectories: [URL] = []
         private var preparation: DispatchWorkItem?
 
         func cancelPreparation() {
             generation = UUID()
+            readyGeneration = nil
             preparation?.cancel()
             pageURL = nil
             pendingActionID = nil
@@ -208,7 +210,7 @@ struct MobilePreviewWebView: UIViewRepresentable {
 
         func runControlAction(_ action: MobileMolstarControlAction?, in webView: WKWebView) {
             desiredAction = action
-            guard let action, let pageURL, webView.url == pageURL, appliedActionID != action.id, pendingActionID != action.id else { return }
+            guard readyGeneration == generation, let action, let pageURL, webView.url == pageURL, appliedActionID != action.id, pendingActionID != action.id else { return }
             pendingActionID = action.id
             let requestGeneration = generation
             webView.evaluateJavaScript("(() => { if (typeof window.BuretteRunMobileControlAction !== 'function') return false; window.BuretteRunMobileControlAction(\(Self.javascriptString(action.name))); return true; })()") { result, error in
@@ -220,7 +222,7 @@ struct MobilePreviewWebView: UIViewRepresentable {
 
         func runContextMenuCommand(_ command: MobileMolstarContextMenuCommand?, in webView: WKWebView) {
             desiredContextCommand = command
-            guard let command, let pageURL, webView.url == pageURL, appliedContextCommandID != command.id, pendingContextCommandID != command.id else { return }
+            guard readyGeneration == generation, let command, let pageURL, webView.url == pageURL, appliedContextCommandID != command.id, pendingContextCommandID != command.id else { return }
             pendingContextCommandID = command.id
             let requestGeneration = generation
             webView.evaluateJavaScript("(() => { if (typeof window.BuretteRunMobileContextMenuAction !== 'function') return false; window.BuretteRunMobileContextMenuAction(\(Self.javascriptString(command.action)), \(Self.javascriptString(command.mode))); return true; })()") { result, error in
@@ -267,6 +269,7 @@ struct MobilePreviewWebView: UIViewRepresentable {
                     self.lastError.wrappedValue = nil
                     self.appendLog(kind: .status, message: text)
                 } else if type == "ready" {
+                    self.readyGeneration = requestGeneration
                     if let webView = message.webView {
                         if let desiredPanelState = self.desiredPanelState {
                             self.applyPanelState(desiredPanelState, in: webView)
