@@ -47,7 +47,7 @@ const result = await Bun.build({
   } }],
 });
 if (!result.success) throw new Error(result.logs.join('\n'));
-const bootstrap = (await result.outputs[0].text()).replaceAll('</script', '<\\/script');
+const bootstrap = (await result.outputs[0].text()).replaceAll('</script', '<\\/script').replace(/[ \t]+$/gmu, '');
 const packed = gzipSync(JSON.stringify(assets)).toString('base64');
 const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Burette</title></head><body data-display-mode="inline"><div id="mcp-header"></div><main id="mcp-scene"><div id="app"></div><div id="status" role="status">Loading local structure…</div></main><script id="burette-assets" type="application/octet-stream">${packed}</script><script type="module">${bootstrap}</script></body></html>`;
 if (Buffer.byteLength(html) > 4 * 1024 * 1024) throw new Error('Local viewer HTML exceeds the 4 MiB resource budget.');
