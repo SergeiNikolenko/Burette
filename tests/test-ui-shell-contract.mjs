@@ -1981,8 +1981,6 @@ assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_MAX_CONCURRENCY = 4;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_DELAY_MS = 16;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_PREFETCH_DELAY_MS = 200;/);
 assert.match(gridViewer, /function scheduleXyzrenderCardPrefetch\(\) \{/);
-assert.match(gridViewer, /function warmXyzrenderCards\(\) \{/);
-assert.match(gridViewer, /if \(cfg\.appViewer !== true \|\| cfg\.gridDataMode !== 'bridge'\) return;/);
 assert.match(gridViewer, /function sortXyzrenderCardQueue\(\) \{/);
 assert.match(gridViewer, /return cfg\?\.appViewer === true && \(\s*cfg\?\.gridDataMode === 'bridge'\s*\|\|\s*\(typeof cfg\?\.xyzrenderEndpoint === 'string' && cfg\.xyzrenderEndpoint\.trim\(\)\.length > 0\)\s*\);/);
 assert.match(appGridRuntimeMessagesHook, /body\?\.type === "readStructureText"/);
@@ -2689,7 +2687,7 @@ assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument\(document\.p
 assert.match(structureInfoPanel, /<InspectorSection title="Composition"/);
 // The hover preview is its own block under the inspector cards: the row rides
 // in as a prop from the grid hover message, never via a window event bus.
-assert.match(structureInfoPanel, /<GridHoverMoleculeCard row=\{hoveredGridRow \?\? null\} filterModel=\{gridFilterModel\} documentId=\{document\.id\} \/>/);
+assert.match(structureInfoPanel, /<GridHoverMoleculeCard key=\{document\.id\} row=\{hoveredGridRow \?\? null\} filterModel=\{gridFilterModel\} documentId=\{document\.id\} \/>/);
 assert.match(gridHoverMolecule, /aria-label="Resize molecule preview"/);
 assert.match(gridHoverMolecule, /className="grid-hover-molecule-props-title">Data<\/span>/);
 assert.match(gridHoverMolecule, /describePropValue\(entry\.value, columnsByLabel\.get/);
@@ -4035,9 +4033,7 @@ assert.match(sidebarWorkspaceSwitcher, /<span className="sidebar-settings-label"
 assert.match(settingsSidebar, /Back to app/);
 assert.match(settingsSidebar, /Search settings/);
 assert.match(settingsSidebar, /settingsNavGroups/);
-assert.match(settingsSidebar, /const handleBackToApp = \(\) =>/);
-assert.match(settingsSidebar, /actions\.selectTab\(target\.id\)/);
-assert.match(settingsSidebar, /actions\.openNewTab\(\)/);
+assert.match(settingsSidebar, /onClick=\{actions\.backToApp\}/);
 assert.match(settingsSidebar, /actions\.openSettingsSection\(item\.id\)/);
 assert.match(settingsSidebar, /Burette|SettingsItemIcon/);
 assert.doesNotMatch(sidebarSurface, /Open preferences/);
@@ -7617,7 +7613,7 @@ assert.match(derivedColumnsHook, /computeDerivedValue\("inchikey", engines, row\
 assert.match(appNativeMenuHook, /actions\.deleteDuplicateGridRows\(activeDocument\.id\)/);
 assert.match(gridViewer, /raw === null \|\| raw === undefined \|\| raw === '' \? Number\.NaN : Number\(raw\)/);
 assert.match(gridHoverMolecule, /filterModel\?\.columns/);
-assert.match(structureInfoPanel, /<GridHoverMoleculeCard row=\{hoveredGridRow \?\? null\} filterModel=\{gridFilterModel\} documentId=\{document\.id\} \/>/);
+assert.match(structureInfoPanel, /<GridHoverMoleculeCard key=\{document\.id\} row=\{hoveredGridRow \?\? null\} filterModel=\{gridFilterModel\} documentId=\{document\.id\} \/>/);
 // The scaffold is not a card of its own: it takes over the corner preview, so
 // the inspector must not grow a second structure surface for it.
 assert.doesNotMatch(structureInfoPanel, /GridSelectionScaffoldCard/);
@@ -8084,7 +8080,7 @@ assert.match(gridViewer, /hostRequest\('gridFetchPage'/);
 assert.match(gridViewer, /hostRequest\('renderXyzrenderCard'/);
 assert.match(gridViewer, /body\.type === 'gridPage' \|\| body\.type === 'xyzrenderCard'/);
 assert.match(gridUi, /buret-search-control buret-filter-control/);
-assert.match(gridUi, /aria-label="Search molecules and SMARTS"/);
+assert.match(gridUi, /aria-label="Search mode"/);
 assert.match(gridUi, /placeholder=\{searchPlaceholder\}/);
 assert.match(gridViewer, /function queryLooksLikeExplicitSMARTS\(value\)/);
 assert.match(gridViewer, /function queryLooksLikeSMILESFragment\(value\)/);
@@ -8092,8 +8088,8 @@ assert.match(gridViewer, /function queryLooksLikeSMARTS\(value\)/);
 assert.match(gridViewer, /queryLooksLikeExplicitSMARTS\(value\) \|\| queryLooksLikeSMILESFragment\(value\)/);
 assert.match(gridViewer, /function shouldFallbackSMARTSToTextSearch\(\)/);
 assert.match(gridViewer, /!queryLooksLikeExplicitSMARTS\(state\.query\)/);
-assert.match(gridViewer, /function setUnifiedSearchQuery\(value, cfg\)/);
-assert.match(gridViewer, /state\.smarts = capabilities\(cfg\)\.substructureSearch && queryLooksLikeSMARTS\(value\) \? value \|\| '' : '';/);
+assert.match(gridViewer, /function setUnifiedSearchQuery\(value, cfg, mode = 'auto'\)/);
+assert.match(gridViewer, /mode === 'structure' \|\| \(mode === 'auto' && queryLooksLikeSMARTS\(value\)\)/);
 assert.doesNotMatch(gridViewer, /id="smarts"/);
 assert.doesNotMatch(gridViewer, /buret-smarts-control/);
 assert.doesNotMatch(gridViewer, /buret-filter-fields/);
@@ -8361,7 +8357,7 @@ assert.match(browserDevDocuments, /molecularGrid: hasMoleculeRecords/);
 assert.match(gridViewer, /typeof cfg\?\.molecularGrid === 'boolean'/);
 assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Molecule table' : 'Data table'/);
 assert.match(gridViewer, /numeric === 1 \? 'row' : 'rows'/);
-assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Search molecules and SMARTS' : 'Search table rows'/);
+assert.match(gridViewer, /state\.searchMode === 'structure' \? 'Search structures with SMARTS' : 'Search text'/);
 assert.doesNotMatch(gridViewer, /data-buret-grid-renderer="xyzrender-external">xyzrender/);
 assert.match(gridViewer, /function requestSdfPoseDocument\(cfg\)/);
 assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Molstar\.', 'error'\)/);

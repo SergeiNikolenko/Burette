@@ -490,7 +490,7 @@ function DockPanelContent({
   if (activeTabKind === "chemical-space") {
     return (
       <Suspense fallback={null}>
-        <ChemicalSpacePanel document={chemicalSpaceDocument} inspectorOpen={state.rightDockOpen && state.rightDockActiveTab === "inspector"} />
+        <ChemicalSpacePanel document={chemicalSpaceDocument} visible={area === "right" ? state.rightDockOpen : state.bottomDockOpen} inspectorOpen={state.rightDockOpen && state.rightDockActiveTab === "inspector"} />
       </Suspense>
     );
   }
