@@ -13,7 +13,7 @@ const server = createServer(async (request, response) => {
     response.setHeader('Cache-Control', 'no-store');
     if (request.url === '/') {
       response.setHeader('Content-Type', 'text/html');
-      response.end('<!doctype html><title>Burette MCP App protocol fixture</title><h1>MCP App test host — not native Codex</h1><iframe title="Burette" style="width:95vw;height:520px" sandbox="allow-scripts allow-same-origin"></iframe><script type="module" src="/host.js"></script>');
+      response.end('<!doctype html><meta charset="utf-8"><title>Burette MCP App protocol fixture</title><h1>MCP App test host — not native Codex</h1><iframe title="Burette" style="width:95vw;height:520px" sandbox="allow-scripts allow-same-origin"></iframe><script type="module" src="/host.js"></script>');
     } else if (request.url === '/host.js') {
       response.setHeader('Content-Type', 'text/javascript');
       response.end(hostJs);

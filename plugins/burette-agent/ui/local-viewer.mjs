@@ -16,14 +16,19 @@ async function exchange(input) {
   return result._meta.payload;
 }
 
-async function loadScript(text) {
+async function loadScript(name, text) {
   const url = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }));
   try {
     await new Promise((resolve, reject) => {
       const script = document.createElement('script');
+      const failed = event => {
+        window.removeEventListener('error', failed);
+        reject(new Error(`${name}: ${event.message || 'Bundled viewer script failed to load.'}`));
+      };
+      window.addEventListener('error', failed);
       script.src = url;
-      script.onload = resolve;
-      script.onerror = () => reject(new Error('Bundled viewer script failed to load.'));
+      script.onload = () => { window.removeEventListener('error', failed); resolve(); };
+      script.onerror = failed;
       document.body.appendChild(script);
     });
   } finally { URL.revokeObjectURL(url); }
@@ -50,7 +55,7 @@ async function start() {
     if (name === 'molstar.css') window.BuretteMolstarCSSURL = link.href;
     document.head.appendChild(link);
   }
-  for (const name of ['molstar.js', 'viewer-shell.js', 'burette-agent.js', 'trajectory-smoothing.js', 'molstar-preset-preview-controller.js', 'superposition-panel.js', 'viewer.js']) await loadScript(assets[name]);
+  for (const name of ['molstar.js', 'viewer-shell.js', 'burette-agent.js', 'trajectory-smoothing.js', 'molstar-preset-preview-controller.js', 'superposition-panel.js', 'viewer.js']) await loadScript(name, assets[name]);
   await poll();
 }
 
