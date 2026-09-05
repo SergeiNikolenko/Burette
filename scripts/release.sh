@@ -129,6 +129,7 @@ require_tool shasum "shasum is normally present on macOS."
 require_tool xcrun "Install full Xcode from the App Store."
 resolve_signing_mode
 require_release_env
+export BURETTE_RELEASE_ALLOW_ADHOC="$ALLOW_ADHOC"
 export BURETTE_BUILD_MODE=release
 export BURETTE_XCODE_CONFIGURATION="${BURETTE_XCODE_CONFIGURATION:-Release}"
 "$ROOT/scripts/build.sh"
