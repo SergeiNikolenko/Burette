@@ -148,11 +148,6 @@ const payload = {
     preferredMode: "auto",
     transports: [
       {
-        id: 'mcp-app',
-        status: hasInlineViewer ? 'available' : 'blocked',
-        note: 'Bundled local PDB/mmCIF viewer. Requires an MCP Apps host and exposed inline-viewer tools; package availability is not mounted readiness.',
-      },
-      {
         id: "auto",
         status: hasCli && hasPreview && hasPreviewWeb ? "available" : "blocked",
         note: "Start the full browser agent shell when available; fall back to browser-preview when the shell cannot start.",
@@ -173,6 +168,11 @@ const payload = {
         id: "desktop-app",
         status: hasCli ? "available" : "blocked",
         note: "Explicit file-backed session directory passed through --burette-agent-session. MolViewSpec Story control requires Burette 2.1.16 or newer.",
+      },
+      {
+        id: 'mcp-app',
+        status: hasInlineViewer ? 'available' : 'blocked',
+        note: 'Bundled local PDB/mmCIF viewer. Requires an MCP Apps host and exposed inline-viewer tools; package availability is not mounted readiness.',
       },
     ],
     visualQaSurfaces: [
