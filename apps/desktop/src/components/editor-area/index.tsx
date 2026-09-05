@@ -143,15 +143,6 @@ function warmMountedTabs(
     add(recentlyUsedTabIds[index]);
   }
 
-  const fallbackCenter = activeTabIndex >= 0 ? activeTabIndex : tabs.length - 1;
-  for (let offset = 1; selected.size < limit && offset < tabs.length; offset += 1) {
-    add(tabs[fallbackCenter - offset]?.id);
-    add(tabs[fallbackCenter + offset]?.id);
-  }
-  for (let index = tabs.length - 1; selected.size < limit && index >= 0; index -= 1) {
-    add(tabs[index]?.id);
-  }
-
   // Unsaved iframe state cannot be reconstructed from the source file.
   for (const id of dirtyTabIds) {
     if (warmEligibleTabIds.has(id)) selected.add(id);

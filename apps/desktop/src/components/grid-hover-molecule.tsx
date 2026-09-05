@@ -277,6 +277,7 @@ export function GridHoverMoleculeCard({
         }
       }
     })();
+    return () => { renderTokenRef.current += 1; };
   }, [scaffold, showingScaffold, shown, theme, wellSize]);
 
   const [hidden, setHidden] = useState(() => window.localStorage.getItem(HIDDEN_STORAGE_KEY) === "1");

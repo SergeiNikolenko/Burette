@@ -13,3 +13,7 @@ for (const limit of [4, 6, 10]) {
   assert.equal(mounted.size, limit + 1);
 }
 console.log("Dirty viewer retention checks passed.");
+const firstOpen = retain(tabs, 0, [], 10, new Set());
+assert.deepEqual([...firstOpen], ["tab-0"], "opening many files must not initialize unvisited viewers");
+assert.deepEqual([...retain(tabs, 4, ["tab-0", "tab-2"], 10, new Set())], ["tab-4", "tab-2", "tab-0"]);
+console.log("Visited-only viewer warmup checks passed.");

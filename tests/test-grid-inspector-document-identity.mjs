@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import React from "react";
+const panel = readFileSync("apps/desktop/src/components/structure-info-panel.tsx", "utf8");
+const card = panel.match(/<GridHoverMoleculeCard\b[^]*?\/>/)?.[0];
+assert.ok(card);
+const jsx = new Bun.Transpiler({ loader: "tsx", tsconfig: { compilerOptions: { jsx: "react" } } }).transformSync(`function render(document, hoveredGridRow) { const gridFilterModel = null; return ${card}; }`);
+const render = new Function("React", "GridHoverMoleculeCard", `${jsx}; return render;`)(React, () => null);
+const old = render({ id: "compounds" }, { index: 2, name: "CMPD-003" });
+const next = render({ id: "bace1" }, null);
+assert.notEqual(old.key, next.key, "changing the inspected document must recreate the card instead of retaining another file's row");
+assert.equal(next.props.documentId, "bace1");
+assert.equal(next.props.row, null);
+console.log("Inspector document identity checks passed.");

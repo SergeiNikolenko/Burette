@@ -645,7 +645,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         actions={actions}
       />
       {document.renderer === "grid2d" ? (
-        <GridHoverMoleculeCard row={hoveredGridRow ?? null} filterModel={gridFilterModel} documentId={document.id} />
+        <GridHoverMoleculeCard key={document.id} row={hoveredGridRow ?? null} filterModel={gridFilterModel} documentId={document.id} />
       ) : null}
     </div>
   );

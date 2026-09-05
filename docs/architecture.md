@@ -61,13 +61,16 @@ The desktop shell is a compact molecule workspace:
 
 Open molecule pages stay mounted while inactive when their renderer state should
 survive tab switches. The warm-page budget never evicts a grid with unsaved
-changes. Grid Save acknowledgements carry the saved source revision; newer edits
+changes. Only active and previously visited tabs join that budget; opening a
+batch does not initialize unseen viewers. Grid Save acknowledgements carry the saved source revision; newer edits
 remain dirty. Save As temporarily disables editing until the host finishes,
 fails, or cancels the document switch.
 
 Settings that require new runtime HTML are applied when each open file next
 becomes active, after its unsaved edits have been resolved. Live theme and style
-changes are broadcast without rebuilding the viewer.
+changes are broadcast without rebuilding the viewer. Leaving Settings returns
+to the tab that was active on entry. Unsaved grids show a tab marker, and the
+Inspector molecule card resets its retained hover state when its document changes.
 
 Normal app launch remains a visible full-window launch. Registration-only
 maintenance may opt into `BURETTE_LAUNCH_MODE=register`; file-open and tray/menu
