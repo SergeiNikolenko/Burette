@@ -138,7 +138,7 @@ impl Fingerprint2048 {
     /// Encodes the canonical EnginePack little-endian `u64[32]` row.
     pub fn to_le_bytes(self) -> [u8; FINGERPRINT_BYTES] {
         let mut bytes = [0_u8; FINGERPRINT_BYTES];
-        for (chunk, word) in bytes.chunks_exact_mut(8).zip(self.words) {
+        for (chunk, word) in bytes.as_chunks_mut::<8>().0.iter_mut().zip(self.words) {
             chunk.copy_from_slice(&word.to_le_bytes());
         }
         bytes
