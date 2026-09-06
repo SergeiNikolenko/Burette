@@ -85,6 +85,10 @@ Runtime asset selection, generated runtime cache layout, binary payload loading,
 RDKit WASM loading, grid search, and performance budgets are documented in
 [Performance architecture](performance.md).
 
+Pose playback continues during camera rotation, panning, and zooming. Pose loads
+are serialized, with automatic framing disabled until each update is committed;
+camera input received during a load is retained instead of restoring an old view.
+
 ## Quick Look Boundary
 
 The Quick Look preview and thumbnail extensions are Swift runtime boundaries

@@ -16,7 +16,7 @@ const immediateRestoreSource = section('  function restoreMolstarCameraSnapshotN
 const poseSource = section('    const performSetPose = async ', '    if (fileList) {');
 const postprocessingSource = section('  async function applyMolstarNonIllustrativePostprocessing(', '  async function applyMolstarStyle(');
 
-function poseHarness({ manualReset = false, fail = false } = {}) {
+function poseHarness({ manualReset = false, fail = false, beforePoseCommit = async () => {} } = {}) {
   const initial = { radius: 8, radiusMax: 100, target: [3, 2, 1], position: [9, 8, 7], up: [0, 1, 0] };
   let state = structuredClone(initial);
   let pendingReset = null;
@@ -54,6 +54,7 @@ function poseHarness({ manualReset = false, fail = false } = {}) {
     console: { error: (error) => errors.push(error) },
     scheduleMolstarStructureFocus: () => { focusCalls++; },
     applyDockingPoseCollectionVisibility: async () => {
+      await beforePoseCommit(canvas3d);
       scenePending = true;
       canvas3d.commit(); // A render while the new ligand is being built.
       await Promise.resolve();
@@ -95,6 +96,80 @@ test('explicit focus remains available', async () => {
   await harness.context.setPose(1, { focus: true });
   assert.equal(harness.focusCalls(), 1);
   assert.equal(harness.canvas3d.props.camera.manualReset, false);
+});
+
+test('pose updates keep camera input received while geometry is loading, including failures', async () => {
+  for (const manualReset of [false, true]) {
+    for (const fail of [false, true]) {
+      let rotated;
+      const harness = poseHarness({ manualReset, fail, beforePoseCommit: async (canvas) => {
+        rotated = { ...canvas.camera.getSnapshot(), position: [7, 8, -9], up: [1, 0, 0] };
+        canvas.camera.setState(rotated);
+      } });
+      await harness.context.setPose(1, { loopStep: true });
+      harness.canvas3d.commit();
+      assert.deepEqual(harness.canvas3d.camera.getSnapshot(), rotated);
+      const firstRotatedFrame = harness.frames.findIndex(frame => frame.position[2] === -9);
+      assert.ok(firstRotatedFrame >= 0, 'the user rotation must reach the renderer');
+      assert.deepEqual(harness.frames.slice(firstRotatedFrame), harness.frames.slice(firstRotatedFrame).map(() => rotated));
+      assert.equal(harness.canvas3d.props.camera.manualReset, manualReset);
+      assert.equal(harness.context.activePose, fail ? 0 : 1);
+    }
+  }
+});
+
+test('Loop advances while the viewport pointer is held and serializes slow pose loads', async () => {
+  let releaseLoad;
+  const harness = poseHarness({ beforePoseCommit: () => new Promise(resolve => { releaseLoad = resolve; }) });
+  let now = 0;
+  let timerId = 0;
+  const timers = new Map();
+  const listeners = new Map();
+  class ViewportElement { closest(selector) { return selector === '.msp-viewport' ? this : null; } }
+  Object.assign(harness.context, {
+    playbackRestore: null, Element: ViewportElement, onKeyDown() {},
+    speed: { value: '10' }, trajectoryFpsToDelay: () => 100,
+    minimumTrajectoryLoopTimerDelay: () => 16,
+    trajectoryControlBounds: () => ({ start: 0, count: 3 }),
+    performance: { now: () => now },
+    window: {
+      setTimeout(callback) { timers.set(++timerId, callback); return timerId; },
+      addEventListener(type, callback) { listeners.set(type, callback); },
+      removeEventListener(type) { listeners.delete(type); },
+    },
+  });
+  vm.runInContext(
+    section('    let loopTimer = null;', '    let poseRepeatDelayTimer = null;')
+    + section('    const loopDelayMs = () => {', '    const trajectoryPlaybackControl = {')
+    + section('    const setPose = (index, options = {}) => {', '    const performSetPose = async ')
+    + section("    window.addEventListener('keydown', onKeyDown);", '    mainRow.append(animation, previous, label, next);')
+    + '\nloopActive = true; scheduleLoopStep();', harness.context);
+  listeners.get('pointerdown')?.({ target: new ViewportElement() });
+  const tick = async (time) => {
+    now = time;
+    assert.equal(timers.size, 1, 'only one playback timer should be pending');
+    const [id, callback] = timers.entries().next().value;
+    timers.delete(id);
+    callback();
+    await new Promise(resolve => setImmediate(resolve));
+  };
+  await tick(100);
+  assert.equal(typeof releaseLoad, 'function', 'holding the scene must not block a pose load');
+  assert.equal(timers.size, 0, 'a slow load must finish before the next tick is scheduled');
+  releaseLoad();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(harness.context.activePose, 1);
+  await tick(200);
+  releaseLoad();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(harness.context.activePose, 2, 'playback continues without releasing the pointer');
+  listeners.get('pointerup')?.({});
+  await tick(300);
+  releaseLoad();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(harness.context.activePose, 0, 'playback wraps normally after the drag');
+  assert.equal(harness.focusCalls(), 0);
+  assert.deepEqual(harness.errors, []);
 });
 
 test('reapplying pose lighting does not update receptor and water components globally', async () => {

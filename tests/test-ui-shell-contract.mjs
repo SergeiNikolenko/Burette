@@ -6939,12 +6939,7 @@ assert.match(previewViewer, /'Alignment needs every molecule to list the same at
 assert.match(previewViewer, /else if \(align && alignmentSupported && sdfCollectionAlignFrames\) \{/);
 assert.match(previewViewer, /function restoreSdfCollectionAlignment\(prepared\)/);
 assert.match(previewViewer, /restoreSdfCollectionAlignment\(prepared\);/);
-// Loop ticks rebuild the active layer through Mol* state transactions, which
-// starves camera drags; while the pointer is held on the viewport the loop
-// skips ticks and the elapsed-time frame math catches up afterwards.
-assert.match(previewViewer, /let loopPointerHeld = false/);
-assert.match(previewViewer, /if \(loopBusy \|\| loopPointerHeld\) \{/);
-assert.match(previewViewer, /window\.addEventListener\('pointerdown', onLoopPointerDown, true\)/);
+// Loop playback during camera drags is exercised in test-pose-viewport-behavior.mjs.
 // The playback row keeps max-content only while closed; open it must take the
 // control's width or the slider collapses to its 44px minimum.
 assert.match(previewRuntimeCss, /buret-docking-poses-animation-open \.buret-docking-pose-animation \{\s*position: static;[\s\S]*?width: auto;/);

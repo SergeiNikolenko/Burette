@@ -17879,15 +17879,6 @@
     let loopTimer = null;
     let loopActive = Boolean(playbackRestore?.playing);
     let loopBusy = false;
-    // Every loop tick rebuilds the active layer through a Mol* state
-    // transaction, which starves camera drags of main-thread time; while the
-    // pointer is held down on the viewport the loop skips ticks (the elapsed-
-    // time frame math catches the playhead up afterwards).
-    let loopPointerHeld = false;
-    const onLoopPointerDown = (event) => {
-      if (event.target instanceof Element && event.target.closest('.msp-viewport')) loopPointerHeld = true;
-    };
-    const onLoopPointerUp = () => { loopPointerHeld = false; };
     let loopEpoch = 0;
     let loopStartedAt = 0;
     let loopStartPose = activePose;
@@ -18296,7 +18287,7 @@
       loopTimer = window.setTimeout(() => {
         loopTimer = null;
         if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
-        if (loopBusy || loopPointerHeld) {
+        if (loopBusy) {
           scheduleLoopStep(undefined, expectedLoopEpoch);
           return;
         }
@@ -18360,6 +18351,8 @@
         if (cameraSnapshot) {
           canvas3d.setProps({ camera: { manualReset: true } });
           restoreMolstarCameraSnapshot(viewer, cameraSnapshot);
+          // Consume the pending reset before yielding to camera input.
+          canvas3d.commit(true);
         }
         if (prepared.nativeTrajectoryControls) {
           const switched = await setNativeTrajectoryPose(nextIndex, prepared.poseCount);
@@ -18414,7 +18407,9 @@
       } finally {
         if (cameraSnapshot) {
           try {
-            restoreMolstarCameraSnapshot(viewer, cameraSnapshot);
+            // Camera input remains live while the asynchronous pose is built.
+            // Keep that latest view instead of undoing a drag, pan, or zoom.
+            restoreMolstarCameraSnapshot(viewer, captureMolstarCameraSnapshot(viewer) || cameraSnapshot);
             // Flush the final scene while auto-framing is disabled: restoring
             // only camera.setState leaves a reset queued for the next draw.
             canvas3d.commit(true);
@@ -18754,14 +18749,8 @@
       }
     };
     window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('pointerdown', onLoopPointerDown, true);
-    window.addEventListener('pointerup', onLoopPointerUp, true);
-    window.addEventListener('pointercancel', onLoopPointerUp, true);
     dockingPoseKeydownDisposer = () => {
       window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('pointerdown', onLoopPointerDown, true);
-      window.removeEventListener('pointerup', onLoopPointerUp, true);
-      window.removeEventListener('pointercancel', onLoopPointerUp, true);
     };
     mainRow.append(animation, previous, label, next);
     const smoothAvailable = !xyzAlignFrames
