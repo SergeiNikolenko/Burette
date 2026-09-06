@@ -15188,6 +15188,28 @@
   }
 
   async function tryCreateMolstarWaterComponent(plugin, structure) {
+    if (activeConfig?.waterRepresentation === 'ligand-neighborhood') {
+      const queries = plugin.query.structure.registry.list;
+      const ligand = queries.find(query => query.label === 'Ligand').expression;
+      const water = queries.find(query => query.label === 'Water').expression;
+      // Use Mol*'s classifications and world-space atom distances. Expanding
+      // whole residues before intersecting water keeps bonded solvent intact.
+      return plugin.builders.structure.tryCreateComponentFromExpression(
+        structure.cell || structure,
+        {
+          head: { name: 'structure-query.modifier.intersect-by' },
+          args: {
+            0: {
+              head: { name: 'structure-query.modifier.include-surroundings' },
+              args: { 0: ligand, radius: 5, 'as-whole-residues': true }
+            },
+            by: water
+          }
+        },
+        'burette-ligand-water',
+        { label: 'Water within 5 Å of ligands' }
+      );
+    }
     for (const target of [structure?.cell, structure]) {
       if (!target) continue;
       try {
@@ -15202,7 +15224,7 @@
 
   function shouldUseMolstarWaterLines(config) {
     const value = String(config?.waterRepresentation || 'line').trim().toLowerCase();
-    return value === 'line' || value === 'lines' || value === 'solvent-lines';
+    return value === 'line' || value === 'lines' || value === 'solvent-lines' || value === 'ligand-neighborhood';
   }
 
   function molstarWaterLineRepresentation() {
@@ -15249,6 +15271,7 @@
 
   async function applyMolstarWaterLineRepresentation(viewer) {
     if (!shouldUseMolstarWaterLines(activeConfig)) return;
+    const ligandNeighborhood = activeConfig?.waterRepresentation === 'ligand-neighborhood';
     const plugin = viewer?.plugin;
     const structures = plugin?.managers?.structure?.hierarchy?.current?.structures || [];
     const waterComponents = [];
@@ -15260,7 +15283,7 @@
         waterComponents.push(component);
         structureWaterCount += 1;
       }
-      if (structureWaterCount === 0) {
+      if (ligandNeighborhood || structureWaterCount === 0) {
         const component = await tryCreateMolstarWaterComponent(plugin, structure);
         if (component) createdWaterComponents.push(component);
       }
@@ -15271,6 +15294,7 @@
       await plugin.managers.structure.component.removeRepresentations(waterComponents);
     }
     for (const component of waterComponents) {
+      if (ligandNeighborhood) continue;
       await plugin.builders.structure.representation.addRepresentation(component.cell, molstarWaterRepresentationFor(component), { tag: 'water' });
     }
     for (const component of createdWaterComponents) {

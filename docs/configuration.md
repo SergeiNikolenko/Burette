@@ -43,6 +43,13 @@ bun scripts/check-vendor-assets.mjs
 
 ## Development Overrides
 
+Embedded Mol* hosts can set `waterRepresentation: 'ligand-neighborhood'` in
+their boot configuration. This renders whole water residues within 5 Å of any
+ligand atom in the same structure, using Mol*'s Water and Ligand classifications.
+Structures without ligands show no water. It changes representations only, not
+the source coordinates. SPELL uses this mode and retains receptor water across
+generated-pose switches; standalone Burette keeps its existing default.
+
 | Variable | Use |
 | --- | --- |
 | `BURETTE_DEV_FLAVOR` | Namespaced local app/Quick Look build for safe packaged testing. Use this for local installs unless explicitly producing a release bundle. |
