@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, rename, rm } from "node:fs/promises";
+import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { ViteDevServer } from "vite";
 
@@ -25,7 +26,7 @@ export function registerBrowserDevRdkitWasmRoute(server: ViteDevServer, rdkitWas
 
 export function registerBrowserDevAppIconRoute(
   server: ViteDevServer,
-  appIcons: Record<string, string>,
+  appIcons: Record<string, string | (() => Promise<string | undefined>)>,
   execFileAsync: ExecFileAsync,
 ) {
   server.middlewares.use("/__burette/app-icon/", async (req, res) => {
@@ -37,16 +38,27 @@ export function registerBrowserDevAppIconRoute(
     try {
       const url = new URL(req.url || "", "http://127.0.0.1");
       const id = decodeURIComponent(url.pathname.replace(/^\/+/, "")).replace(/\.png$/u, "");
-      const iconPath = appIcons[id];
-      if (!iconPath || !existsSync(iconPath)) {
+      if (!/^[a-z0-9-]+$/u.test(id) || !Object.hasOwn(appIcons, id)) {
         sendJson(res, 404, { error: "Icon not found" });
         return;
       }
-      const cacheDir = join(tmpdir(), "burette-app-icons");
+      const cacheDir = join(homedir(), process.platform === "darwin" ? "Library/Caches" : ".cache", "Burette", "app-icons");
       const outputPath = join(cacheDir, `${id}.png`);
       if (!existsSync(outputPath)) {
+        const source = appIcons[id];
+        const iconPath = typeof source === "function" ? await source() : source;
+        if (!iconPath || !existsSync(iconPath)) {
+          sendJson(res, 404, { error: "Icon not found" });
+          return;
+        }
         await mkdir(cacheDir, { recursive: true });
-        await execFileAsync("/usr/bin/sips", ["-s", "format", "png", iconPath, "--out", outputPath]);
+        const pendingPath = join(cacheDir, `${id}-${randomUUID()}.png`);
+        try {
+          await execFileAsync("/usr/bin/sips", ["-s", "format", "png", iconPath, "--out", pendingPath]);
+          await rename(pendingPath, outputPath);
+        } finally {
+          await rm(pendingPath, { force: true });
+        }
       }
       const bytes = await readFile(outputPath);
       res.statusCode = 200;

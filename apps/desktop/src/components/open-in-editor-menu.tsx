@@ -7,6 +7,7 @@ import type { MenuItemSpec } from "./menu-types";
 import { isTauriRuntime } from "../lib/tauri";
 import { useFinderIconUrl } from "../hooks/use-finder-icon-url";
 import { useDefaultApplicationIconUrl } from "../hooks/use-default-application-icon-url";
+import { AppImageIcon } from "./ui/app-image-icon";
 
 type ActiveFile = {
   path: string;
@@ -122,7 +123,7 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
         >
           <span className={preferredIconUrl ? "open-editor-trigger-icon open-editor-trigger-icon-image" : "open-editor-trigger-icon"} aria-hidden="true">
             {preferredIconUrl ? (
-              <img src={preferredIconUrl} alt="" aria-hidden="true" />
+              <AppImageIcon src={preferredIconUrl} fallback={openDestinationIconText(state.preferences.openInDefaultDestination, preferredTarget)} />
             ) : openDestinationIconText(state.preferences.openInDefaultDestination, preferredTarget)}
           </span>
           <svg className="open-editor-chevron" width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">

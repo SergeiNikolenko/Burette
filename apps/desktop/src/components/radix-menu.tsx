@@ -30,6 +30,7 @@ import { ScrubNumberField } from "@/components/ui/scrub-number-input";
 import type { MenuItemSpec } from "./menu-types";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as appIconData from "./ui/app-icon-data";
+import { AppImageIcon } from "./ui/app-image-icon";
 
 type RadixDropdownProps = {
   items: MenuItemSpec[];
@@ -302,7 +303,7 @@ function renderItemBody(item: Extract<MenuItemSpec, { kind: "item" | "checkbox" 
   return (
     <span className="radix-menu-item-body" title={tooltip}>
       {iconUrl ? (
-        <img className="radix-menu-item-icon" src={iconUrl} alt="" aria-hidden="true" />
+        <AppImageIcon className="radix-menu-item-icon" src={iconUrl} fallback={iconText ?? item.text.slice(0, 2).toUpperCase()} />
       ) : item.icon ? (
         <HugeiconsIcon className="radix-menu-item-icon" icon={appIconData[item.icon]} size={16} aria-hidden="true" />
       ) : iconText ? (
