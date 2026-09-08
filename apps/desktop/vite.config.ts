@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { gunzipSync } from "node:zlib";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { ketcherUiPlugin } from "./vite/ketcher-ui";
 import tailwindcss from "@tailwindcss/vite";
 import {
   deferKetcherCssPlugin,
@@ -4035,7 +4036,7 @@ function normalizeOrientationRef(value: string | null) {
 export default defineConfig({
   root: desktopRoot,
   base: "./",
-  plugins: [tailwindcss(), react(), ketcherRaphaelImportShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin()],
+  plugins: [tailwindcss(), react(), ketcherUiPlugin(), ketcherRaphaelImportShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin()],
   resolve: {
     alias: {
       "@": resolve(desktopRoot, "src"),

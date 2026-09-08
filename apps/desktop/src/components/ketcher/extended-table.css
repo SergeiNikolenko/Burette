@@ -1,0 +1,68 @@
+/* Extended-table hierarchy: two columns, uniform symbol targets, captions below
+   each pair. Keep native selection and chemical definitions intact. */
+.app-shell .ketcher-ui-dialog[data-slot="dialog-content"]:has([class*="ExtendedTable-module_extendedTable"]) {
+  width: min(720px, calc(100vw - 48px));
+}
+.app-shell .ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] {
+  --generic-gap: 16px;
+  font-size: 14px; line-height: 20px;
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_genericGroups"] {
+  display: grid; gap: var(--generic-gap); width: 100%; padding: 0; margin: 0;
+}
+.app-shell .ketcher-ui-dialog-body :is([class*="GenericGroups-module_topGroupsContainer"], [class*="GenericGroups-module_groupGenerics"]) {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px; margin: 0; padding: 0;
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_genericGroups"] :is(fieldset, [class*="GenGroup-module_fieldFlexWrapper"]) {
+  display: block; min-width: 0; width: auto; margin: 0; padding: 0; border: 0;
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_genericGroups"] [class*="GenGroup-module_legend"] {
+  position: static; padding: 0; margin: 0 0 8px;
+  font-size: 14px; line-height: 20px; font-weight: 600;
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_genericGroups"] [class*="GenGroup-module_legendMain"] {
+  font-size: 16px; line-height: 24px;
+}
+.app-shell .ketcher-ui-dialog-body :is([class*="GenGroup-module_buttonContainer"], [class*="GenGroup-module_genButtonContainer"]) {
+  display: grid; grid-template-columns: repeat(2, max-content); gap: 8px 16px;
+  margin: 0; padding: 0; width: auto;
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_genericGroups"] [class*="GenGroup-module_subGroup"] > div:first-child {
+  display: flex; gap: 4px; margin: 0; padding: 0; width: auto;
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_groupGenerics"] [class*="GenGroup-module_subGroup"] {
+  min-height: 54px;
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_genericGroups"] :is([class*="GenSet-module_legendBox"], [class*="GenSet-module_genGroupLegendBox"]) {
+  position: static; display: block; width: auto; height: auto;
+  margin: 4px 0 0; padding: 0; text-align: left;
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_genericGroups"] :is([class*="GenSet-module_legendBox"], [class*="GenSet-module_genGroupLegendBox"]) legend {
+  position: static; padding: 0; margin: 0; color: var(--text-secondary) !important;
+  font-size: 12px; line-height: 18px; font-weight: 400;
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_genericGroups"] button {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 40px; width: auto; height: 32px; margin: 0; padding: 0 8px;
+  border: 1px solid var(--line-subtle); border-radius: 6px;
+  background: var(--surface-primary); color: var(--text-primary);
+  font-family: inherit; font-size: 14px; line-height: 20px; font-weight: 500;
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_genericGroups"] button:hover {
+  background: var(--surface-hover); border-color: var(--line-strong);
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_genericGroups"] [class*="BoxWithLines-module_"] { display: none; }
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_groupGenerics"] > div,
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_subgroupContainer"] > div:last-child {
+  display: grid; align-content: start; gap: var(--generic-gap);
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_subgroupContainer"] {
+  display: block; padding: 0 0 0 12px; margin: 0; border-left: 1px solid var(--line-subtle);
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_genericGroups"] [class*="GenGroup-module_subGroup"]:has([class*="GenSet-module_SpecialNodes"]) {
+  grid-column: 1 / -1;
+}
+.app-shell .ketcher-ui-dialog-body [class*="GenericGroups-module_genericGroups"] [class*="GenGroup-module_subGroup"] > [class*="GenSet-module_SpecialNodes"] {
+  display: grid; grid-template-columns: repeat(3, 40px); gap: 4px;
+}

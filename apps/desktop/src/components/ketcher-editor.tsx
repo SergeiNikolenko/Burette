@@ -86,6 +86,9 @@ const KETCHER_INSTANCE_RETRY_DELAYS_MS = [0, 250, 500, 1000, 1500, 2500, 4000, 6
 const BURETTE_KETCHER_BUTTONS = {
   // Ketcher 3.15 supports this runtime key, but omits it from ButtonName.
   images: { hidden: true },
+  help: { hidden: true },
+  about: { hidden: true },
+  zoom: { hidden: true },
 } as unknown as KetcherButtonsConfig;
 
 declare global {

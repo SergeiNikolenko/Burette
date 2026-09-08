@@ -34,15 +34,17 @@ function TooltipContent({
   sideOffset = 0,
   children,
   showArrow = true,
+  container: portalContainer,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content> & {
   showArrow?: boolean
+  container?: HTMLElement | null
 }) {
   // Theme tokens live on .app-shell, so portal there instead of document.body
   // (same as dialog.tsx) or the content renders with unresolved colors.
   const container = useAppShellPortalContainer()
   return (
-    <TooltipPrimitive.Portal container={container}>
+    <TooltipPrimitive.Portal container={portalContainer ?? container}>
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
         sideOffset={sideOffset}

@@ -375,7 +375,7 @@ function DockPanelContent({
         actions={actions}
       />
     );
-    if (dockTool === "ketcher") return <KetcherDockTool area={area} state={state} fileTabs={fileTabs} />;
+    if (dockTool === "ketcher") return <KetcherDockTool area={area} state={state} fileTabs={fileTabs} actions={actions} />;
     if (dockDocument) {
       return (
         <div className="dock-files-view">
@@ -1157,6 +1157,7 @@ function normalizeXyzrenderFieldMode(value: string): XyzrenderControls["fieldMod
 }
 
 function KetcherDockTool({
+  actions,
   area,
   state,
   fileTabs,
@@ -1164,6 +1165,7 @@ function KetcherDockTool({
   area: DockArea;
   state: ShellViewState;
   fileTabs: ReactNode;
+  actions: ShellActions;
 }) {
   if (area === "right") {
     return (
@@ -1176,9 +1178,9 @@ function KetcherDockTool({
   return (
     <div className="dock-files-view">
       {fileTabs}
-      <div className="ketcher-dock-portal" data-ketcher-dock-portal="bottom">
+      <div className="ketcher-dock-portal">
         <div className="dock-content dock-content-empty">
-          <div className="dock-empty dock-empty-large">Open Export or Import from Ketcher</div>
+          <Button variant="outline" size="sm" onClick={() => actions.setDockTool("right", "ketcher")}>Import / export</Button>
         </div>
       </div>
     </div>
@@ -1601,14 +1603,11 @@ function ConformerJobList({
 }
 
 function KetcherInspectorPanel({ state }: { state: ShellViewState }) {
-  const sketchInfo = ketcherSketchInfo(state.ketcherDraftMolfile);
   return (
-    <div className="dock-content ketcher-inspector-panel">
-      <Metric label="Tool" value="Ketcher" />
-      <Metric label="Sketch" value={sketchInfo.hasSketch ? "Modified" : "Empty"} />
-      <Metric label="Atoms" value={sketchInfo.atomCount} />
-      <Metric label="Bonds" value={sketchInfo.bondCount} />
-      <Metric label="Document" value={state.activeTab?.location.kind === "ketcher" ? "Ketcher sketch" : "No active Ketcher tab"} />
+    <div className="ketcher-dock-portal" data-ketcher-dock-portal="right">
+      <div className="dock-content dock-content-empty">
+        <div className="dock-empty">{state.activeTab?.location.kind === "ketcher" ? "Loading structure text…" : "Open Ketcher to import or export a structure"}</div>
+      </div>
     </div>
   );
 }
@@ -1620,36 +1619,6 @@ function StructureBriefTextRow({ label, value }: { label: string; value: string 
       <strong>{value}</strong>
     </div>
   );
-}
-
-function ketcherSketchInfo(molfile: string) {
-  const counts = molfile.split(/\r?\n/u)
-    .map((line) => ketcherMolfileCounts(line))
-    .find((candidate) => candidate !== null);
-  if (!counts) return { hasSketch: false, atomCount: "0", bondCount: "0" };
-  const { atomCount, bondCount } = counts;
-  const hasSketch = atomCount > 0 || bondCount > 0;
-  return {
-    hasSketch,
-    atomCount: String(atomCount),
-    bondCount: String(bondCount),
-  };
-}
-
-function ketcherMolfileCounts(line: string) {
-  const v3000Counts = line.match(/^M\s+V30\s+COUNTS\s+(\d+)\s+(\d+)/u);
-  if (v3000Counts) {
-    return {
-      atomCount: Number(v3000Counts[1]),
-      bondCount: Number(v3000Counts[2]),
-    };
-  }
-  if (!/\bV2000\b/u.test(line)) return null;
-  const [fallbackAtomCount, fallbackBondCount] = line.trim().split(/\s+/u);
-  const atomCount = Number(line.slice(0, 3).trim() || fallbackAtomCount);
-  const bondCount = Number(line.slice(3, 6).trim() || fallbackBondCount);
-  if (!Number.isFinite(atomCount) || !Number.isFinite(bondCount)) return null;
-  return { atomCount, bondCount };
 }
 
 function ActiveDocumentTextPanel({
