@@ -361,12 +361,14 @@ export function MarkdownGreenfieldContent({
       typeof cancelAnimationFrame === "function"
     ) {
       cancelAnimationFrame(scrollFrameRef.current);
+      scrollFrameRef.current = null;
     }
     if (
       measuredHeightFrameRef.current !== null &&
       typeof cancelAnimationFrame === "function"
     ) {
       cancelAnimationFrame(measuredHeightFrameRef.current);
+      measuredHeightFrameRef.current = null;
     }
   });
 

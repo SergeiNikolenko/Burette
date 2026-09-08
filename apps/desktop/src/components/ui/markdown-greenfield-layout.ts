@@ -23,7 +23,7 @@ const MONO_LINE_HEIGHT = 20;
 const APPROX_BODY_CHAR_WIDTH = 7.9;
 const APPROX_MONO_CHAR_WIDTH = 7.8;
 export const MARKDOWN_GREENFIELD_LAYOUT_POLICY_VERSION =
-  "greenfield-layout-rich-blocks-v7";
+  "greenfield-layout-rich-blocks-v8";
 const MARKDOWN_TABLE_VIRTUALIZATION_ROW_THRESHOLD = 80;
 const MARKDOWN_TABLE_VIRTUALIZED_HEIGHT = 640;
 const LAYOUT_CACHE_LIMIT = 64;
@@ -227,6 +227,9 @@ function estimateMarkdownGreenfieldBlockHeight({
   fontScale: number;
   textWidth: number;
 }) {
+  // The fallback has its own bounded scroll viewport, regardless of how many
+  // source lines it contains. Check this before the ordinary block estimates.
+  if (block.isHostile) return 624;
   if (block.kind === "thematicBreak") return 36 * fontScale;
   if (block.kind === "frontmatter") {
     const lines = Math.max(1, block.sourceLineCount);
@@ -242,7 +245,9 @@ function estimateMarkdownGreenfieldBlockHeight({
   if (block.kind === "component") return 160 * fontScale;
   if (block.kind === "code") {
     const lines = Math.max(1, block.sourceLineCount);
-    return 48 * fontScale + lines * MONO_LINE_HEIGHT * fontScale;
+    const sourceHeight = lines * MONO_LINE_HEIGHT * fontScale;
+    // MarkdownCodeSource uses an internal 32rem viewport above 100 lines.
+    return 48 * fontScale + (lines > 100 ? Math.min(sourceHeight, 512) : sourceHeight);
   }
   if (block.kind === "table") {
     const rows = Math.max(2, block.sourceLineCount);
@@ -252,7 +257,6 @@ function estimateMarkdownGreenfieldBlockHeight({
     return (48 + rows * 36) * fontScale;
   }
   if (block.kind === "image") return 280 * fontScale;
-  if (block.isHostile) return 420 * fontScale;
   return estimateTextBlock(block, textWidth, fontScale, 1);
 }
 
