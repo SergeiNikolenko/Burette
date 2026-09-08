@@ -1,7 +1,7 @@
 import { SidebarFileOperations } from "./sidebar/file-operations";
 import { WorkspaceMenus } from "./workspace-menus";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, ArrowRight, PanelLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight, SidebarLeft as PanelLeft } from "@/components/ui/app-icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
@@ -675,7 +675,7 @@ export function AppLayout({
                   </ResizablePanelGroup>
                 </ResizablePanel>
                 {chromeVisible ? (
-                  <ResizableHandle withHandle aria-label="Resize right dock" data-collapsed={!state.rightDockOpen || undefined} />
+                  <ResizableHandle withHandle className="workspace-right-dock-handle" aria-label="Resize right dock" data-collapsed={!state.rightDockOpen || undefined} />
                 ) : null}
                 <ResizablePanel
                   id="right-dock"

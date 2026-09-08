@@ -27,7 +27,7 @@ export const useWorkspaceMenus = () => useContext(Context);
 
 export function WorkspaceMenus({ state, actions, children }: { state: ShellViewState; actions: ShellActions; children: ReactNode }) {
   const diskMenu = useSidebarFileMenus();
-  const batchFiles = useBatchFileOperations(actions);
+  const batchFiles = useBatchFileOperations(actions, state);
   const workflows = useWorkspaceFileActions(state, actions);
   useGridWorkspaceMenu(state, actions, workflows);
   const [batch, setBatch] = useState<{ path: string; mode: string } | null>(null);

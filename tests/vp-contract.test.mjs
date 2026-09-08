@@ -1,4 +1,9 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+
 const contractScripts = {
+  "test-workspace-export-guards.mjs": () => import("./test-workspace-export-guards.mjs"),
   "test-workspace-file-menu.mjs": () => import("./test-workspace-file-menu.mjs"),
   "test-scene-file-actions.mjs": () => import("./test-scene-file-actions.mjs"),
   "test-native-context-menu.mjs": () => import("./test-native-context-menu.mjs"),
@@ -22,6 +27,10 @@ const contractScripts = {
   "test-structure-drag.mjs": () => import("./test-structure-drag.mjs"),
   "test-drop-actions.mjs": () => import("./test-drop-actions.mjs"),
   "test-molecule-store-behavior.mjs": () => import("./test-molecule-store-behavior.mjs"),
+  "test-markdown-block-layout.mjs": () => import("./test-markdown-block-layout.mjs"),
+  "test-text-find.mjs": () => import("./test-text-find.mjs"),
+  // Mol* captures its scheduler globals on import; keep real DOM tests separate from store mocks.
+  "test-mmcif-block-loading.mjs": () => promisify(execFile)(process.execPath, [fileURLToPath(new URL("./test-mmcif-block-loading.mjs", import.meta.url))]),
   "test-shell-store-behavior.mjs": () => import("./test-shell-store-behavior.mjs"),
   "test-fep-setup-store.mjs": () => import("./test-fep-setup-store.mjs"),
   "test-tauri-structure.mjs": () => import("./test-tauri-structure.mjs"),

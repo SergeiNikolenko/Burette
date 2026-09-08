@@ -1046,7 +1046,7 @@
       if (atom.kind === 'ligand') {
         let ligand = ligandMap.get(residueKey);
         if (!ligand) {
-          ligand = { ...residueSummary(atom), atomCount: 0 };
+          ligand = { ...residueSummary(atom), structureId: atom.structureId, atomCount: 0 };
           ligandMap.set(residueKey, ligand);
         }
         ligand.atomCount++;
@@ -1175,6 +1175,7 @@
       label_comp_id: labelComp,
       auth_comp_id: authComp,
       entityType,
+      group_PDB: valueAt(residues.group_PDB, residueIndex),
       residueIndex,
       chainIndex
     };
@@ -1252,6 +1253,9 @@
     const comp = String(atom.label_comp_id || atom.auth_comp_id || '').toUpperCase();
     const entityType = String(atom.entityType || '').toLowerCase();
     if (WATER.has(comp) || entityType === 'water') return 'water';
+    // Coordinate-only PyMOL ligand exports use UNK/HETATM; CCD also uses
+    // UNK for unknown amino acids, so respect the file's explicit record type.
+    if (comp === 'UNK' && atom.group_PDB === 'HETATM') return 'ligand';
     if (STANDARD_AA.has(comp)) return 'protein';
     if (NUCLEIC.has(comp)) return 'nucleic';
     if (entityType === 'polymer') return 'polymer';
@@ -1441,6 +1445,13 @@
     }
     const atoms = collectAtoms(selector, { includePositions: false, maxAtoms: 200000 });
     const schemas = schemasForSelector(selector, atoms, options.warnings);
+    // Residue addresses are local to a structure: separate CIF blocks can reuse
+    // every chain, residue and atom identifier. Mol* supports an explicit filter
+    // alongside its residue schema, so scope the visual action as well as counts.
+    const structureIds = new Set(atoms.map(atom => atom.structureId));
+    const scopedStructures = selector.structure != null && selector.structure !== 'primary'
+      ? new Set(getStructures().filter(entry => structureIds.has(String(entry.ref))).map(entry => entry.data))
+      : null;
     if (action === 'select' && options.mode !== 'add') {
       try { viewer.structureInteractivity({ action: 'select' }); } catch (_) {}
     }
@@ -1458,6 +1469,7 @@
         viewer.structureInteractivity({
           elements: schema,
           action,
+          filterStructure: scopedStructures ? structure => scopedStructures.has(structure) : undefined,
           applyGranularity: options.granularity !== 'atom',
           focusOptions: action === 'focus' ? focusOptions : undefined
         });
@@ -1511,7 +1523,7 @@
       const key = residueIdentity(atom);
       let ligand = ligands.get(key);
       if (!ligand) {
-        ligand = { ...residueSummary(atom), atomCount: 0 };
+        ligand = { ...residueSummary(atom), structureId: atom.structureId, atomCount: 0 };
         ligands.set(key, ligand);
       }
       ligand.atomCount++;
@@ -1547,6 +1559,7 @@
 
   function ligandToSelector(ligand) {
     const selector = { kind: 'ligand' };
+    if (ligand.structureId != null) selector.structure = ligand.structureId;
     for (const key of ['label_entity_id', 'label_asym_id', 'auth_asym_id', 'label_seq_id', 'auth_seq_id', 'pdbx_PDB_ins_code', 'label_comp_id', 'auth_comp_id']) {
       if (ligand[key] != null) selector[key] = ligand[key];
     }

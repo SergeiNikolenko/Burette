@@ -94,6 +94,19 @@ changing.
   the repo-local skills under [.codex/skills](.codex/skills). Keep those
   separate from packaged product skills under `plugins/burette-agent/skills`.
 
+## Interface Icons
+
+- Use the shared, reviewed icons from `apps/desktop/src/components/ui/app-icons`
+  for React controls, including search arrows, close buttons, menus, and toolbars.
+  Existing Hugeicons renderers use `components/ui/app-icon-data`.
+- Do not add direct Lucide/Hugeicons imports or hand-drawn SVG replacements for
+  common actions. Reuse the shared icon with the matching meaning. Preserve
+  scientific glyphs, application logos, and established animations as described
+  in [Shared Icon Geometry](docs/design-system.md#shared-icon-geometry).
+- The source of truth is `config/icons/apps-sdk.json`; update it through the
+  documented icon workflow when a shared glyph is missing. Do not edit generated
+  icon data or exports by hand.
+
 ## Change Discipline
 
 - Keep changes staged and reviewable. If a change is not mechanical and grows

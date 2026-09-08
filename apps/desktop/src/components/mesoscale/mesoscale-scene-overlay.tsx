@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { MouseEvent } from "react";
-import { Contrast, Layers3, MoreHorizontal, Redo2, Undo2, X } from "lucide-react";
+import { ColorTheme as Contrast, Stack as Layers3, DotsHorizontal as MoreHorizontal, ArrowCurvedRight as Redo2, Undo as Undo2, X } from "@/components/ui/app-icons";
 import type { ViewerDocument } from "../../types";
 import { Button } from "../ui/button";
 import { MesoscaleScenePanel } from "./mesoscale-scene-panel";
@@ -27,12 +27,12 @@ export function MesoscaleSceneOverlay({ document, onClose }: { document: ViewerD
     const current = snapshots.find((snapshot) => snapshot.current);
     void showNativeContextMenu([
       { kind: "label", id: "mesoscale-scene-session", text: "Scene" },
-      { kind: "item", id: "mesoscale-create-snapshot", text: "Create snapshot", action: () => run({ type: "createSnapshot", name: `Snapshot ${snapshots.length + 1}` }) },
+      { kind: "item", id: "mesoscale-create-snapshot", text: "Create snapshot", icon: "CameraPhoto", action: () => run({ type: "createSnapshot", name: `Snapshot ${snapshots.length + 1}` }) },
       { kind: "select", id: "mesoscale-apply-snapshot", label: "Snapshot", value: current?.id ?? "", options: snapshots.map((snapshot) => snapshot.id), optionLabels: Object.fromEntries(snapshots.map((snapshot) => [snapshot.id, snapshot.name])), disabled: snapshots.length === 0, action: (id) => run({ type: "applySnapshot", id }) },
-      { kind: "item", id: "mesoscale-delete-snapshot", text: "Delete current snapshot", disabled: !current, action: current ? () => run({ type: "deleteSnapshot", id: current.id }) : undefined },
+      { kind: "item", id: "mesoscale-delete-snapshot", text: "Delete current snapshot", icon: "Delete", disabled: !current, action: current ? () => run({ type: "deleteSnapshot", id: current.id }) : undefined },
       { kind: "separator" },
-      { kind: "item", id: "mesoscale-export-molx", text: "Export Mol* state (.molx)", action: () => run({ type: "exportState", format: "molx" }) },
-      { kind: "item", id: "mesoscale-export-molj", text: "Export Mol* JSON (.molj)", action: () => run({ type: "exportState", format: "molj" }) },
+      { kind: "item", id: "mesoscale-export-molx", text: "Export Mol* state (.molx)", icon: "Download", action: () => run({ type: "exportState", format: "molx" }) },
+      { kind: "item", id: "mesoscale-export-molj", text: "Export Mol* JSON (.molj)", icon: "Download", action: () => run({ type: "exportState", format: "molj" }) },
     ], { x: rect.right, y: rect.bottom + 6 }, { forceWeb: true });
   };
 

@@ -5,16 +5,20 @@ import type { NativeIcon } from "@tauri-apps/api/menu";
 // and a component menu carries the colour it is drawn in - so the menu models
 // headings, state and small controls rather than pushing all of that into a
 // separate settings panel.
+import type * as AppIconData from "./ui/app-icon-data";
+
+type MenuIconName = keyof typeof AppIconData;
+
 export type MenuItemSpec =
   // `detail` prints a second line and widens the menu; `tooltip` keeps the same
   // sentence one hover away without turning a command list into prose.
-  | { kind: "item"; id: string; text: string; detail?: string; tooltip?: string; nativeIcon?: NativeIcon; nativeSymbol?: string; iconText?: string; iconUrl?: string; action?: () => void; accelerator?: string; disabled?: boolean }
+  | { kind: "item"; id: string; text: string; detail?: string; tooltip?: string; icon?: MenuIconName; nativeIcon?: NativeIcon; nativeSymbol?: string; iconText?: string; iconUrl?: string; action?: () => void; accelerator?: string; disabled?: boolean }
   | { kind: "separator" }
   | { kind: "label"; id: string; text: string }
   // A submenu keeps a long command list readable: the parent row names the
   // topic and the nested items carry the commands themselves.
-  | { kind: "submenu"; id: string; text: string; items: MenuItemSpec[]; detail?: string; nativeIcon?: NativeIcon; nativeSymbol?: string; iconText?: string; iconUrl?: string; disabled?: boolean }
-  | { kind: "checkbox"; id: string; text: string; checked: boolean; detail?: string; accelerator?: string; disabled?: boolean; action?: (checked: boolean) => void }
+  | { kind: "submenu"; id: string; text: string; items: MenuItemSpec[]; detail?: string; icon?: MenuIconName; nativeIcon?: NativeIcon; nativeSymbol?: string; iconText?: string; iconUrl?: string; disabled?: boolean }
+  | { kind: "checkbox"; id: string; text: string; checked: boolean; detail?: string; icon?: MenuIconName; nativeIcon?: NativeIcon; nativeSymbol?: string; accelerator?: string; disabled?: boolean; action?: (checked: boolean) => void }
   | { kind: "swatches"; id: string; colors: string[]; activeColor?: string; label?: string; action?: (color: string) => void }
   | { kind: "select"; id: string; label: string; value: string; options: readonly string[]; optionLabels?: Record<string, string>; disabled?: boolean; action?: (value: string) => void }
   | { kind: "number"; id: string; label: string; value: number; min?: number; max?: number; step?: number; unit?: string; disabled?: boolean; action?: (value: number) => void };

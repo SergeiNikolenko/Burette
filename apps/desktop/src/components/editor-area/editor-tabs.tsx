@@ -37,7 +37,7 @@ export function EditorTabs({
   const [selectionAnchorTabId, setSelectionAnchorTabId] = useState<string | null>(null);
   const draggingTabIdRef = useRef<string | null>(null);
   const selectedTabIdsRef = useRef<Set<string>>(new Set());
-  const mouseDragRef = useRef<{ tabId: string; startX: number; active: boolean } | null>(null);
+  const mouseDragRef = useRef<{ tabId: string; startX: number; startY: number; active: boolean } | null>(null);
   const removeMouseDragListenersRef = useRef<(() => void) | null>(null);
   const dragActivationRef = useRef<{ tabId: string; timeout: number } | null>(null);
   const tabShellRefs = useRef(new Map<string, HTMLDivElement>());
@@ -340,7 +340,7 @@ export function EditorTabs({
   const startMouseTabReorder = useCallback((tabId: string, tabHasDockPayload: boolean, event: React.MouseEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
     removeMouseDragListeners();
-    mouseDragRef.current = { tabId, startX: event.clientX, active: false };
+    mouseDragRef.current = { tabId, startX: event.clientX, startY: event.clientY, active: false };
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const drag = mouseDragRef.current;
@@ -350,13 +350,15 @@ export function EditorTabs({
         return;
       }
       if (!drag.active) {
-        if (Math.abs(moveEvent.clientX - drag.startX) < TAB_MOUSE_REORDER_THRESHOLD_PX) return;
+        if (Math.hypot(moveEvent.clientX - drag.startX, moveEvent.clientY - drag.startY) < TAB_MOUSE_REORDER_THRESHOLD_PX) return;
         drag.active = true;
         draggingTabIdRef.current = tabId;
         setDraggingTabId(tabId);
         if (tabHasDockPayload) actions.setStructureDragActive(true);
       }
-      moveDraggedTab(tabId, moveEvent.clientX);
+      if (document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest(".tab-strip")) {
+        moveDraggedTab(tabId, moveEvent.clientX);
+      }
     };
     const handleMouseUp = (upEvent: MouseEvent) => {
       const drag = mouseDragRef.current;
@@ -374,7 +376,16 @@ export function EditorTabs({
     };
   }, [actions, moveDraggedTab, removeMouseDragListeners, runTabDropAtPoint, stopTabDrag]);
 
-  useEffect(() => removeMouseDragListeners, [removeMouseDragListeners]);
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") stopTabDrag(); };
+    window.addEventListener("blur", stopTabDrag);
+    window.addEventListener("keydown", escape, true);
+    return () => {
+      window.removeEventListener("blur", stopTabDrag);
+      window.removeEventListener("keydown", escape, true);
+      removeMouseDragListeners();
+    };
+  }, [removeMouseDragListeners, stopTabDrag]);
 
   const updateNativeTabDrag = useCallback((event: React.DragEvent<HTMLElement>) => {
     const tabId = draggingTabIdRef.current;
@@ -561,6 +572,7 @@ export function EditorTabs({
                 onClick={(event) => handleTabClick(tab.id, event)}
                 onContextMenu={readOnly ? undefined : showTabMenu}
                 onDragStart={readOnly ? undefined : (event) => {
+                  removeMouseDragListeners();
                   draggingTabIdRef.current = tab.id;
                   setDraggingTabId(tab.id);
                   event.dataTransfer.effectAllowed = "copyMove";
@@ -573,10 +585,9 @@ export function EditorTabs({
                   writeStructureDragPayload(event.dataTransfer, payload);
                   actions.setStructureDragActive(true);
                 }}
-                onDragEnd={readOnly ? undefined : (event) => {
-                  runTabDropAtPoint(tab.id, event.clientX, event.clientY);
-                  stopTabDrag();
-                }}
+                // Only drop handlers execute native drops. dragend also fires
+                // after Escape and must never open a file or run an action.
+                onDragEnd={readOnly ? undefined : stopTabDrag}
                 onDragOver={readOnly ? undefined : (event) => {
                   if (!hasStructureDrag(event.dataTransfer)) return;
                   const payload = readStructureDragPayload(event.dataTransfer);

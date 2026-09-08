@@ -7,6 +7,7 @@ The source of truth for runtime theme defaults is:
 - `apps/desktop/src/stores/settings-store.ts`
 - `apps/desktop/src/lib/theme.ts`
 - `apps/desktop/src/styles.css`
+- `apps/desktop/src/styles/interface-tokens.css`
 
 ## Current Reality
 
@@ -61,8 +62,33 @@ The shell is a workspace, not a brand canvas.
 
 - Use compact controls with stable dimensions.
 - Use familiar icons for common actions when available.
-- Reserve filled accent treatment for primary or high-intent actions.
+- Primary actions use a neutral inverse fill, with separate hover and pressed tones.
+- Keep the configurable accent separate from primary actions and readiness status.
+  Ready/installed states are neutral; success and failure use semantic status colors.
 - Hover and focus should clarify interactivity without shifting layout.
+
+### Shared Icon Geometry
+
+- Common commands use the reviewed Apps SDK UI 0.2.2 geometry stored in
+  `config/icons/apps-sdk.json`, under the adjacent MIT license. React components
+  import `components/ui/app-icons`; controls using the existing Hugeicons SVG
+  renderer import `components/ui/app-icon-data`.
+- `node scripts/sync-app-icons.mjs` regenerates the React data/exports and the
+  inline preview data, and mirrors `viewer.js` into the packaged plugin. Update
+  the reviewed snapshot before regenerating; do not edit generated glyph data.
+- Existing animation classes, interaction state, labels, dimensions and focus
+  behavior belong to the control and survive an icon replacement. Filled SDK
+  paths retain their original geometry regardless of a caller's stroke width.
+- Protein, molecule, trajectory, topology, spectrum, sequence, precise
+  measurements, focus and isolation keep their scientific glyphs. The Ketcher
+  Orbit retains its hover animation. Finder and external-editor logos remain
+  application identities.
+- Web menu specs may name a shared `icon`; application `iconUrl` takes priority.
+  Native AppKit menus keep their native rendering and do not consume this web
+  glyph field. Mol* context menus use the shared inline geometry directly.
+- New icons decorate existing actions (run history, active filters, snapshot,
+  unpin, source path, elapsed time, copy confirmation). They do not create new
+  commands or change scientific workflows.
 
 ### Sidebar And Search
 
@@ -137,3 +163,42 @@ The shell is a workspace, not a brand canvas.
 - Use a single accent as the whole visual language.
 - Hide critical file, renderer, or maintenance actions behind vague labels.
 - Treat screenshots as the source of truth when typed runtime state exists.
+
+### Interface Typography And Palette
+
+The shell and document controls share the shell's semantic theme palette.
+`styles/interface-tokens.css` defines 20/26 headings at weight 600, 14/20 body
+labels, and 12/18 supporting text. Buttons use weight 500. Scientific tables
+keep their compact scale. Secondary text is mixed against the configured
+background rather than made translucent, so it remains distinct from disabled
+text. Theme preferences still own background, foreground, fonts and accent.
+
+Inspector disclosures use the installed shadcn `radix-nova` `Accordion` components.
+Calculation engines compose `ItemGroup`, outlined `Item` rows, `ItemContent`,
+`ItemTitle`, `ItemDescription`, and `ItemActions`. Smoothing and inline engine
+option sets use `ToggleGroup` with its outline variant. Keep component variants
+responsible for borders, type, selection, and focus; use local classes for layout.
+Accordion content uses natural height within the inspector's scrolling dock.
+The shared OpenAI glyphs do not make these components Apps SDK UI components;
+the shell retains its shadcn base and Burette theme.
+
+The sidebar magnifier opens the same Command palette as Command-P. The palette
+uses compact single-line rows: structure names with project labels and numbered
+shortcuts, followed by quick actions. Descriptions remain searchable and are
+available on hover. Its plain input variant removes the nested input border;
+the dialog and list retain semantic light/dark theme colors.
+
+Command-F and native Edit → Find search the focused text viewer, falling back
+to the visible text dock. CodeMirror searches the loaded document, including
+virtualized lines, with a shadcn input, match count, and previous/next controls.
+Enter and Shift-Enter move between matches; Command-F toggles the search panel
+and Escape closes it. Read-only
+structure text remains searchable and copyable. Files with multiple structures
+keep Edit Source disabled with an explanatory tooltip.
+
+Sidebar search, pin, and settings controls show compact shadcn tooltips above
+the control on hover and keyboard focus. Folder rows and the Projects header
+do not show tooltips. Folder, Ketcher, and search glyphs use the primary text
+color at rest in the light theme.
+Light-theme shell and neutral button glyphs use the primary text color on hover
+and keyboard focus while preserving their resting color and geometry.

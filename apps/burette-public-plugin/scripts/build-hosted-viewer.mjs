@@ -27,6 +27,7 @@ const VIEWER_FILES = [
   "superposition-panel.js",
   "molecule-preview-interactions.js",
   "color-picker.js",
+  "scene-file-actions.js",
   "viewer.js",
 ];
 

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { PanelLeft, PanelRight } from "lucide-react";
+import { SidebarLeft as PanelLeft, SidebarRight as PanelRight } from "@/components/ui/app-icons";
 
 import { cn } from "@/lib/utils";
 

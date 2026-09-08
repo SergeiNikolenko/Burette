@@ -1,0 +1,72 @@
+/* Shared interface scale, adapted from Apps SDK UI. Scientific tables keep
+   their own compact density and the user's molecular colors remain separate. */
+.app-shell {
+  --ui-heading-size: 20px;
+  --ui-heading-line: 26px;
+  --ui-body-size: 14px;
+  --ui-body-line: 20px;
+  --ui-caption-size: 12px;
+  --ui-caption-line: 18px;
+  --ui-weight-body: 400;
+  --ui-weight-control: 500;
+  --ui-weight-heading: 600;
+  --action-hover: light-dark(#303030, #ededed);
+  --action-pressed: light-dark(#414141, #dcdcdc);
+  --control-selected-bg: light-dark(#fff, #383838);
+  --status-success: light-dark(#008635, #40c977);
+  --status-danger: light-dark(#b91c1c, #ff8583);
+}
+.app-shell [data-slot="button"] { font-weight: var(--ui-weight-control); }
+.app-shell [data-slot="button"][data-variant="default"] {
+  background: var(--shadcn-primary);
+  color: var(--shadcn-primary-foreground);
+}
+.app-shell [data-slot="button"][data-variant="default"]:hover { background: var(--action-hover); }
+.app-shell [data-slot="button"][data-variant="default"]:active { background: var(--action-pressed); }
+.app-shell .new-tab-copy [data-slot="empty-title"],
+.app-shell .settings-panel h1,
+.app-shell .agent-integration-panel h1 {
+  font-size: var(--ui-heading-size);
+  line-height: var(--ui-heading-line);
+  font-weight: var(--ui-weight-heading);
+  letter-spacing: 0;
+  color: var(--text-primary);
+}
+.app-shell .new-tab-copy [data-slot="empty-description"],
+.app-shell .settings-control-label,
+.app-shell .agent-disclosure-title {
+  font-size: var(--ui-body-size);
+  line-height: var(--ui-body-line);
+}
+.app-shell .new-tab-copy [data-slot="empty-description"] { color: var(--text-muted); }
+.app-shell .new-tab-actions { gap: 12px; }
+.app-shell .new-tab-actions [data-slot="button"] { min-height: 34px; padding-inline: 14px; }
+.app-shell .settings-control-label, .app-shell .agent-disclosure-title { font-weight: var(--ui-weight-control); }
+.app-shell .settings-control-description,
+.app-shell .agent-disclosure-description,
+.app-shell .agent-summary-card p,
+.app-shell .agent-integration-header p {
+  font-size: var(--ui-caption-size);
+  line-height: var(--ui-caption-line);
+  color: var(--text-muted);
+}
+.app-shell .settings-section h2,
+.app-shell .agent-integration-section h2 {
+  font-size: var(--ui-caption-size);
+  line-height: var(--ui-caption-line);
+  font-weight: var(--ui-weight-control);
+}
+.app-shell .agent-summary-card h2 { font-size: 16px; line-height: 24px; font-weight: var(--ui-weight-heading); }
+.app-shell .settings-range-control [data-slot="slider-range"] { background: var(--shadcn-primary); }
+.app-shell .settings-toggle:is([data-checked],[data-state="checked"]) > [data-slot="switch-thumb"] {
+  background: var(--shadcn-primary-foreground);
+}
+.app-shell .agent-status-badge[data-state="missing"] {
+  color: var(--status-danger);
+  background: color-mix(in srgb, var(--status-danger) 10%, transparent);
+}
+.app-shell .settings-card,
+.app-shell .agent-summary-card,
+.app-shell .agent-disclosure { border-radius: 10px; }
+.app-shell .agent-status-row { padding: 14px 16px; }
+.app-shell .agent-summary-card, .app-shell .agent-disclosure-trigger { padding: 16px; }

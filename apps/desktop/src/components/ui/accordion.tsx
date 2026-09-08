@@ -5,7 +5,7 @@ import { Accordion as AccordionPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons"
+import { ChevronDown as ArrowDown01Icon, ChevronUp as ArrowUp01Icon } from "@/components/ui/app-icon-data";
 
 function Accordion({
   className,

@@ -5,6 +5,7 @@ import {
   isKetcherWorkspaceTarget,
 } from "../lib/workspace-history-dispatch";
 import { isTauriRuntime } from "../lib/tauri";
+import { requestTextFind } from "../lib/text-find";
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -19,6 +20,10 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
     const onKeyDown = (event: KeyboardEvent) => {
       const commandKey = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
+      if (commandKey && !event.altKey && !event.shiftKey && key === "f" && !event.defaultPrevented && requestTextFind()) {
+        event.preventDefault();
+        return;
+      }
       const selectAdjacentTab = (offset: -1 | 1) => {
         if (state.tabs.length === 0) return;
         const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);

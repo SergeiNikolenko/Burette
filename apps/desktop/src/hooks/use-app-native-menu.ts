@@ -29,6 +29,7 @@ import {
 } from "../lib/window-mutation-barrier";
 import type { ViewerPreferences, ViewerReloadOptions } from "../types";
 import { useMenuEvents } from "./use-menu-events";
+import { requestTextFind } from "../lib/text-find";
 
 const PROJECT_URL = "https://github.com/SergeiNikolenko/Burette";
 const ADD_COLUMN_COMMAND_KINDS: Record<string, DerivedColumnKind> = {
@@ -408,12 +409,16 @@ export function useAppNativeMenu({
         if (sourceSaveEnabled) await saveActiveSource();
         else gridCommand();
         return;
+      case "edit.find":
+        if (requestTextFind()) return;
+        if (isGrid) gridCommand();
+        else actions.focusSidebarSearch();
+        return;
       case "file.save-as":
       case "file.export-smiles":
       case "file.export-csv":
       case "edit.undo-grid":
       case "edit.redo-grid":
-      case "edit.find":
       case "view.grid-cards":
       case "view.grid-table":
       case "view.grid-properties":
@@ -422,8 +427,7 @@ export function useAppNativeMenu({
       case "collection.copy-selected":
       case "collection.select-all":
       case "collection.clear-selection":
-        if (command === "edit.find" && !isGrid) actions.focusSidebarSearch();
-        else gridCommand();
+        gridCommand();
         return;
       case "collection.calculate-descriptors":
         // Opens the Calculate Properties dialog; the Mordred descriptor run is

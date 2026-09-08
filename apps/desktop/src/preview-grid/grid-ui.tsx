@@ -158,7 +158,6 @@ const ICONS = {
   selectAll: <Icon paths={<><rect x="3" y="3" width="18" height="18" rx="3" /><path d="m8 12 3 3 5-6" /></>} />,
   clearSelection: <Icon paths={<><rect x="3" y="3" width="18" height="18" rx="3" /><path d="m9 9 6 6M15 9l-6 6" /></>} />,
   copy: <Icon paths={<><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></>} />,
-  fileCoords: <Icon paths={<><path d="M4 20V6a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" /><path d="M13 4v5h5" /><path d="M9 16.5 11 14l1.6 1.8L15 12" /></>} />,
   molstar: <Icon paths={<><circle cx="12" cy="6" r="2.4" /><circle cx="6" cy="16.5" r="2.4" /><circle cx="18" cy="16.5" r="2.4" /><path d="M10.4 7.9 7.6 14.6M13.6 7.9l2.8 6.7M8.4 16.5h7.2" /></>} />,
   ketcher: <Icon paths={<><path d="M14.5 4.5 19.5 9.5 9 20H4v-5Z" /><path d="M12.5 6.5 17.5 11.5" /></>} />,
 };
@@ -754,7 +753,7 @@ function GridActionToolbar(props: GridControlProps) {
             event.currentTarget.getAttribute("aria-pressed") !== "true",
           )}
         >
-          {ICONS.fileCoords}
+          {ICONS.generate3d}
           <ControlTooltip label="Use the coordinates embedded in the file" />
         </button>
       </span>

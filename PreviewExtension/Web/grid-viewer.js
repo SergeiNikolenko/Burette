@@ -6167,15 +6167,20 @@
     }
   }
 
-  function gridDragRecordsForRow(row) {
+  function gridDragRecordsForRow(row, sceneScope) {
+    const recordForRow = candidate => {
+      const record = gridDragRecord(candidate);
+      if (record && sceneScope) record.path = `grid-record/${encodeURIComponent(sceneScope)}/${candidate.index}/${record.path}`;
+      return record;
+    };
     const rowIndex = Number(row?.index);
     if (!Number.isFinite(rowIndex) || !state.selected.has(rowIndex) || state.selected.size < 2) {
-      return [gridDragRecord(row)].filter(Boolean);
+      return [recordForRow(row)].filter(Boolean);
     }
     const pool = state.remoteMode ? state.rows : state.all;
     return pool
       .filter(candidate => state.selected.has(Number(candidate.index)))
-      .map(candidate => gridDragRecord(candidate))
+      .map(recordForRow)
       .filter(Boolean);
   }
 
@@ -7353,7 +7358,7 @@
       window.addEventListener('message', receive);
       post('gridWorkspaceMenu', '', { requestId, x: event.clientX, y: event.clientY,
         entries: entries.filter(Boolean).map(({ id, label, disabled }) => ({ id, label, disabled })),
-        records: (() => { const records = gridDragRecordsForRow(row); return records.length <= 200 && (state.selected.size < 2 || !state.selected.has(index) || records.length === state.selected.size) && records.reduce((size, record) => size + new TextEncoder().encode(record.text).length, 0) <= 24 * 1024 * 1024 ? records : []; })()
+        records: (() => { const records = gridDragRecordsForRow(row, cfg.documentId || window.location.href); return records.length <= 200 && (state.selected.size < 2 || !state.selected.has(index) || records.length === state.selected.size) && records.reduce((size, record) => size + new TextEncoder().encode(record.text).length, 0) <= 24 * 1024 * 1024 ? records : []; })()
       });
       return;
     }

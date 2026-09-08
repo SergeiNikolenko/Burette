@@ -864,7 +864,18 @@ export const useMoleculeStore = create<MoleculeState>()(
       setActiveDocument: (id) =>
         set((state) => {
           const document = state.documents.find((candidate) => candidate.id === id);
-          if (!document) return state;
+          if (!document) {
+            const textDocument = state.textDocuments.find((candidate) => candidate.id === id);
+            if (!textDocument) return state;
+            const existing = state.tabs.find((tab) => tab.location.kind === "text-file"
+              && (tab.location.documentId === id || tab.location.path === textDocument.path));
+            const tab = existing ?? createTextFileTab(textDocument);
+            return {
+              tabs: existing ? state.tabs : [...state.tabs, tab],
+              activeTabId: tab.id,
+              activeDocumentId: null,
+            };
+          }
           const existing = state.tabs.find((tab) => tab.location.kind === "file" && (tab.location.documentId === id || tab.location.path === document.path));
           if (existing) {
             return { activeTabId: existing.id, activeDocumentId: document.id };

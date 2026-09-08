@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Download, Maximize, Minus, Plus, RotateCw } from "lucide-react";
+import { Plus } from "lucide-react";
+import { Download, Expand as Maximize, Minus, ArrowRotateCw as RotateCw } from "@/components/ui/app-icons";
 
 import { cn } from "@/lib/utils";
 import type { ViewerDownloadAction } from "@/lib/viewer-download-actions";

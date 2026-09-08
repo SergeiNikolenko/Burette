@@ -26,6 +26,13 @@ route modules, but route bodies belong under `apps/desktop/vite/`.
 
 ## Contract Rules
 
+The browser-dev app icon route keeps converted PNGs under
+`~/Library/Caches/Burette/app-icons` on macOS (`~/.cache/Burette/app-icons`
+elsewhere). It reads a saved icon before looking for the application, so suite
+updates and repeated dev sessions do not trigger discovery or conversion.
+Delete an individual PNG to refresh that application's artwork. Missing images
+fall back to initials in menus and the Open In trigger.
+
 - Do not change browser-dev endpoint paths, methods, status codes, query
   parameters, or response shapes as part of a mechanical refactor.
 - Keep job lifecycle logic auditable: process registration, status reads,

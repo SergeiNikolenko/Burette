@@ -1,13 +1,8 @@
 "use client";
 
 import * as React from "react";
-import {
-  AlertCircle,
-  FileQuestion,
-  Inbox,
-  Loader2,
-  WifiOff,
-} from "lucide-react";
+import { Inbox, Loader2, WifiOff } from "lucide-react";
+import { InfoCircle as AlertCircle, FileBlank as FileQuestion } from "@/components/ui/app-icons";
 
 import { cn } from "@/lib/utils";
 import type { ViewerDownloadAction } from "@/lib/viewer-download-actions";

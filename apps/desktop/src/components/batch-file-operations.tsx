@@ -6,10 +6,10 @@ import { isTauriRuntime } from "../lib/tauri";
 import { useMoleculeStore } from "../stores/molecule-store";
 import { useShellStore } from "../stores/shell-store";
 import { useAppShellPortalContainer } from "./ui/portal-container";
-import type { ShellActions } from "./types";
+import type { ShellActions, ShellViewState } from "./types";
 import { menuItem } from "./workspace-menu-items";
 
-export function useBatchFileOperations(actions: ShellActions) {
+export function useBatchFileOperations(actions: ShellActions, state: ShellViewState) {
   const container = useAppShellPortalContainer();
   const [paths, setPaths] = useState<string[]>([]);
   const [error, setError] = useState("");
@@ -39,7 +39,10 @@ export function useBatchFileOperations(actions: ShellActions) {
       window.dispatchEvent(new Event("burette-folder-contents-changed"));
     }
   };
+  const hasDirtyFile = (files: string[]) => state.documents.some(document =>
+    files.includes(document.path) && state.dirtyGridDocuments.has(document.id));
   const exportFiles = async (files: string[]) => {
+    if (hasDirtyFile(files)) throw new Error("Save changes to the selected collections before exporting file copies.");
     const destination = await open({ directory: true, multiple: false, title: "Export Selected Files" });
     if (typeof destination !== "string") return;
     let copied = 0;
@@ -51,7 +54,7 @@ export function useBatchFileOperations(actions: ShellActions) {
     } catch (error) { throw new Error(`${copied} of ${files.length} files copied. ${String(error)}`); }
   };
   const items = (files: string[]) => !isTauriRuntime() || files.length < 2 || files.length > 200 ? [] : [
-    menuItem("save-file-copy", "Selected Files…", () => exportFiles(files)),
+    { ...menuItem("save-file-copy", "Selected Files…", () => exportFiles(files)), disabled: hasDirtyFile(files) },
     menuItem("trash-file", "Move to Trash…", () => { setPaths(files); setCompleted([]); setError(""); }),
   ];
   const dialog = <Dialog.Root open={paths.length > 0} onOpenChange={open => { if (!open && !busy) setPaths([]); }}>
