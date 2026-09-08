@@ -1,4 +1,5 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { ChevronRight as AppChevronRight, Eye as AppEye, EyeOff as AppEyeOff, Delete as AppDelete, Stopwatch } from "./ui/app-icons";
+import { Suspense, lazy, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { showNativeContextMenu } from "./native-context-menu";
 import { formatBytes } from "./format";
@@ -18,7 +19,9 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrubNumberField } from "@/components/ui/scrub-number-input";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Field, FieldGroup, FieldTitle, FieldLabel, FieldSet, FieldLegend } from "./ui/field";
+import { Switch } from "./ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { DIRECT_CHEMISTRY_JOB_ATOM_LIMIT, structureAtomCountFromSummary } from "../lib/direct-chemistry-guard";
 import { extensionForDocking } from "../lib/docking-documents";
@@ -413,7 +416,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
       {
         kind: "item",
         id: "copy-path",
-        text: "Copy path",
+        text: "Copy path", icon: "Link",
         detail: document.path,
         action: () => void actions.copyDocumentPath(document),
       },
@@ -430,7 +433,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
   return (
     <div className="dock-content structure-brief">
       <section className="structure-brief-card structure-inspector-header">
-        <div className="structure-brief-kicker">Molecular Inspector</div>
         <div className="structure-brief-title-row">
           <h3 title={document.title}>{document.title}</h3>
           <Badge variant="secondary">{brief.format}</Badge>
@@ -446,7 +448,9 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
             </button>
           ) : null}
         </div>
-        <p>{inspectorSummaryLine(brief.kind, compositionSummary, compositionPending, compositionError)}</p>
+        {(!compositionSummary || compositionPending || compositionError) ? (
+          <p>{inspectorSummaryLine(brief.kind, compositionSummary, compositionPending, compositionError)}</p>
+        ) : null}
         <InspectorHeaderStats document={document} summary={compositionSummary} pending={compositionPending} />
       </section>
 
@@ -519,7 +523,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
           className="structure-inspector-xtb-card"
           title="Tools"
           tooltip="Calculation engines available for the current molecular scope."
-          status={runningXtbJob ? `Running ${operationTitle(runningXtbJob.operation).toLowerCase()}` : xtbStatusLine(xtbStatus, isBrowserDev)}
+          status={runningXtbJob ? `Running ${operationTitle(runningXtbJob.operation).toLowerCase()}` : xtbStatus?.installed ? null : xtbStatusLine(xtbStatus, isBrowserDev)}
           open={xtbOpen}
           onToggle={() => setXtbOpen((open) => !open)}
           summary={xtbSettingsModified(xtbSettings) ? "xTB settings changed from the defaults" : ""}
@@ -1062,49 +1066,43 @@ function TrajectorySmoothingCard({
     return () => window.removeEventListener("burette:trajectory-smoothing-toggle-requested", toggle);
   });
   return (
-    <section className="structure-brief-card structure-inspector-section trajectory-smoothing-card" data-collapsed={!open || undefined}>
-      <div className="structure-inspector-section-header trajectory-smoothing-header">
-        <button
-          type="button"
-          className="structure-inspector-section-title-button"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
-          Smooth motion
-        </button>
-        <div className="trajectory-smoothing-power" role="group" aria-label="Smooth motion">
-          <button type="button" data-selected={view === "original" || !built || undefined} aria-pressed={view === "original" || !built} onClick={() => { if (built) changeView("original"); }}>Off</button>
-          <button type="button" data-selected={built && view === "smoothed" || undefined} aria-pressed={built && view === "smoothed"} onClick={() => { if (built) changeView("smoothed"); else void build(); }}>On</button>
-        </div>
+    <Accordion type="single" collapsible value={open ? "smoothing" : ""} onValueChange={(value) => setOpen(Boolean(value))} className="structure-brief-card structure-inspector-section trajectory-smoothing-card" data-collapsed={!open || undefined}>
+      <AccordionItem value="smoothing">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1"><AccordionTrigger>Smooth motion</AccordionTrigger></div>
+        <ToggleGroup type="single" variant="outline" size="sm" spacing={0} aria-label="Smooth motion" value={built && view === "smoothed" ? "on" : "off"} onValueChange={(value) => {
+          if (value === "off" && built) changeView("original");
+          if (value === "on") { if (built) changeView("smoothed"); else void build(); }
+        }}>
+          <ToggleGroupItem value="off">Off</ToggleGroupItem>
+          <ToggleGroupItem value="on">On</ToggleGroupItem>
+        </ToggleGroup>
       </div>
-      {open ? (
-        <>
+      <AccordionContent className="h-auto grid gap-3">
           {built ? null : (
             <p className="trajectory-smoothing-intro">Smooths playback without changing the original trajectory or analysis data.</p>
           )}
-          <div className="trajectory-smoothing-presets" role="group" aria-label="Smoothing strength">
+          <ToggleGroup type="single" variant="outline" size="sm" spacing={0} className="w-full" aria-label="Smoothing strength" value={preset} disabled={mode === "kinetic"} onValueChange={(value) => {
+            if (value === "light" || value === "balanced" || value === "strong") selectPreset(value);
+          }}>
             {(["light", "balanced", "strong"] as const).map((value) => (
-              <button
+              <ToggleGroupItem
                 key={value}
-                type="button"
+                value={value}
+                className="flex-1"
                 data-smoothing-tooltip={value === "light" ? "Keeps more source frames and removes only the fastest jitter." : value === "strong" ? "Keeps fewer source frames for the calmest, most simplified playback." : "Balances retained molecular detail with smoother playback."}
-                data-selected={preset === value || undefined}
-                aria-pressed={preset === value}
-                disabled={mode === "kinetic"}
-                onClick={() => selectPreset(value)}
               >
                 {value[0].toUpperCase() + value.slice(1)}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
           <div className="trajectory-smoothing-strength-copy">
             {mode === "kinetic" ? `${kineticStates} MSM/PCCA+ macrostates` : <>{frameCount} source frames <span aria-hidden="true">→</span> <strong>{targetFrames}</strong> played back</>}
           </div>
-          <button type="button" className="trajectory-smoothing-advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
-            <span>Scientific settings</span><span aria-hidden="true">{advanced ? "⌃" : "⌄"}</span>
-          </button>
-          {advanced ? (
-            <div className="trajectory-smoothing-settings trajectory-smoothing-science">
+          <Accordion type="single" collapsible value={advanced ? "science" : ""} onValueChange={(value) => setAdvanced(Boolean(value))}>
+            <AccordionItem value="science">
+            <AccordionTrigger>Scientific settings</AccordionTrigger>
+            <AccordionContent className="h-auto trajectory-smoothing-settings">
               <div className="trajectory-smoothing-group-label">Method</div>
               <label data-smoothing-tooltip="Smooth one measured motion over time, or build a short tour through distinct long-lived shapes.">
                 <span>Analysis method</span>
@@ -1183,8 +1181,9 @@ function TrajectorySmoothingCard({
                 </button></>}
                 </div>
               ) : null}
-            </div>
-          ) : null}
+            </AccordionContent>
+            </AccordionItem>
+          </Accordion>
           {resultDirty || (running && built) ? <div className="trajectory-smoothing-update-status">Updating…</div> : showUpdated ? <div className="trajectory-smoothing-update-status" data-complete>Updated</div> : null}
           {result ? <TrajectorySmoothingChart result={result} playback={playback} preset={result.preset ?? preset} setFrame={setFrame} /> : null}
           {result?.spectrum ? <TrajectorySpectrum spectrum={result.spectrum} cutoffFrequency={result.cutoffFrequency ?? null} /> : null}
@@ -1195,9 +1194,9 @@ function TrajectorySmoothingCard({
           {!built || error ? <Button type="button" variant="secondary" size="sm" className="trajectory-smoothing-build" disabled={running} onClick={() => void build()}>
             {running ? "Enabling smoothing…" : error ? "Try again" : "Enable smoothing"}
           </Button> : null}
-        </>
-      ) : null}
-    </section>
+      </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }
 
@@ -1779,7 +1778,7 @@ function ConformerInlineSettings({
             <RangeControl value={settings.prismTimeoutSeconds} min={5} max={86400} step={5} suffix="s" onChange={(value) => updateSettings({ prismTimeoutSeconds: value })} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Sort by energy">
-            <ToggleControl label="Sort by energy" checked={settings.prismEnergySort} onChange={(value) => updateSettings({ prismEnergySort: value })} />
+            <Switch aria-label="Sort by energy" checked={settings.prismEnergySort} onCheckedChange={(value) => updateSettings({ prismEnergySort: value })} />
           </InlineXtbSetting>
         </InlineSettingsSection>
       ) : null}
@@ -2110,7 +2109,7 @@ function TextFileInfoPanel({ document, dockDrops, actions }: { document: TextFil
       {
         kind: "item",
         id: "copy-path",
-        text: "Copy path",
+        text: "Copy path", icon: "Link",
         detail: document.path,
         action: () => void actions.copyPath(document.path, "file"),
       },
@@ -2506,6 +2505,7 @@ function XtbSettingsCategoryBar({
 // header with a status, a settings summary, a grid of runs and an inline
 // settings body. They now share one.
 function InspectorEngineCard({
+  scope,
   className,
   title,
   tooltip,
@@ -2517,7 +2517,6 @@ function InspectorEngineCard({
   summaryModified,
   onReset,
   notice,
-  scope,
   footer,
   children,
 }: {
@@ -2537,20 +2536,22 @@ function InspectorEngineCard({
   children: ReactNode;
 }) {
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={onToggle}
+    <Accordion
+      type="single"
+      collapsible
+      value={open ? "tools" : ""}
+      onValueChange={onToggle}
       className={`structure-brief-card structure-inspector-section ${className}`}
       data-collapsed={!open || undefined}
     >
-      <div className="structure-inspector-section-header">
-        <CollapsibleTrigger className="structure-inspector-section-title-button">
-          {title}
-          <ShortcutTooltip label={tooltip} />
-        </CollapsibleTrigger>
-        <span>{status}</span>
-      </div>
-      <CollapsibleContent className="structure-inspector-engine-body">
+      <AccordionItem value="tools">
+        <AccordionTrigger title={tooltip}>
+          <span className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-2">
+            <span>{title}</span>
+            {status ? <span className="truncate text-xs text-muted-foreground">{status}</span> : null}
+          </span>
+        </AccordionTrigger>
+      <AccordionContent className="h-auto grid gap-2">
         {/* Each tool row already carries its own settings line, so the card only
             keeps this one when it has something the rows do not say. */}
         {summary ? (
@@ -2578,8 +2579,9 @@ function InspectorEngineCard({
         {/* What the run is scoped to belongs under the rows it constrains, said
             once and quietly - as a banner above them it shouted over the tools. */}
         {footer ? <div className="structure-inspector-tool-footer">{footer}</div> : null}
-      </CollapsibleContent>
-    </Collapsible>
+      </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }
 
@@ -2602,22 +2604,26 @@ function InspectorSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={setOpen}
+    <Accordion
+      type="single"
+      collapsible
+      value={open ? "section" : ""}
+      onValueChange={(value) => setOpen(Boolean(value))}
       className={`structure-brief-card structure-inspector-section ${className ?? ""}`.trim()}
       data-collapsed={!open || undefined}
     >
-      <div className="structure-inspector-section-header">
-        <CollapsibleTrigger className="structure-inspector-section-title-button">
-          {title}
-        </CollapsibleTrigger>
-        {detail ? <span>{detail}</span> : null}
-      </div>
-      <CollapsibleContent className="structure-inspector-engine-body">
+      <AccordionItem value="section">
+        <AccordionTrigger>
+          <span className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-2">
+            <span>{title}</span>
+            {detail ? <span className="max-w-40 truncate text-xs text-muted-foreground">{detail}</span> : null}
+          </span>
+        </AccordionTrigger>
+      <AccordionContent className="h-auto grid gap-2">
         {children}
-      </CollapsibleContent>
-    </Collapsible>
+      </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }
 
@@ -2911,11 +2917,12 @@ const XTB_SOLVENT_LABELS: Record<string, string> = {
 };
 
 function XtbToggle({ label, tooltip, checked, onChange }: { label: string; tooltip: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  const id = useId();
   return (
-    <label className="structure-inspector-xtb-toggle" data-xtb-tooltip={tooltip}>
-      <ToggleControl label={label} checked={checked} onChange={onChange} />
-      <span>{label}</span>
-    </label>
+    <Field orientation="horizontal" title={tooltip}>
+      <Switch id={id} checked={checked} onCheckedChange={onChange} />
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+    </Field>
   );
 }
 
@@ -3366,7 +3373,7 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
         <XtbMetric label="HL gap" value={formatMaybeNumber(summary["HOMO-LUMO gap / eV"], " eV")} />
         <XtbMetric label="Dipole" value={formatDipole(summary["dipole / a.u."])} />
         <XtbMetric label="Files" value={String(result.artifacts.length)} />
-        <XtbMetric label="Elapsed" value={openedInMs} />
+        <XtbMetric label={<><Stopwatch size={12} aria-hidden="true" /> Elapsed</>} value={openedInMs} />
         <XtbMetric label="Exit code" value={result.exitCode === null || result.exitCode === undefined ? "n/a" : String(result.exitCode)} />
       </div>
       {charges.length > 0 ? (
@@ -3453,7 +3460,7 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
   );
 }
 
-function XtbMetric({ label, value }: { label: string; value: string }) {
+function XtbMetric({ label, value }: { label: ReactNode; value: string }) {
   return (
     <div className="structure-inspector-xtb-metric">
       <span>{label}</span>
@@ -3613,7 +3620,7 @@ function xtbArtifactMenuItems(artifact: XtbArtifact, actions: ShellActions): Men
     {
       kind: "item",
       id: "copy-artifact-path",
-      text: "Copy path",
+      text: "Copy path", icon: "Link",
       tooltip: artifact.path,
       action: () => void actions.copyPath(artifact.path, "xTB artifact"),
     },
@@ -3747,12 +3754,13 @@ function InlineSegmentedControl({
       aria-label={ariaLabel}
       size="sm"
       spacing={0}
-      className="structure-inspector-segment"
+      variant="outline"
+      className="w-full"
       // A radio group is never empty: clicking the active item must not clear it.
       onValueChange={(next) => { if (next) onChange(next); }}
     >
       {options.map((option) => (
-        <ToggleGroupItem key={option} value={option} className="structure-inspector-segment-button">
+        <ToggleGroupItem key={option} value={option} className="min-w-0 flex-1 truncate">
           {labels[option] ?? option}
         </ToggleGroupItem>
       ))}
@@ -3762,10 +3770,10 @@ function InlineSegmentedControl({
 
 function InlineSettingsSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="structure-inspector-settings-group">
-      <h5 className="structure-inspector-settings-group-title">{title}</h5>
-      {children}
-    </div>
+    <FieldSet>
+      <FieldLegend variant="label">{title}</FieldLegend>
+      <FieldGroup className="gap-4">{children}</FieldGroup>
+    </FieldSet>
   );
 }
 
@@ -3783,12 +3791,14 @@ function InlineXtbSetting({
   children: ReactNode;
 }) {
   return (
-    <div className="structure-inspector-xtb-setting-row" data-xtb-tooltip={tooltip}>
-      <span>{label}</span>
+    <Field orientation="horizontal" className="structure-inspector-xtb-setting-row" aria-label={label} title={tooltip}>
+      <FieldTitle>{label}</FieldTitle>
       <div className="structure-inspector-xtb-setting-control">
         {reset ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             className="settings-reset-button"
             aria-hidden={!modified}
             tabIndex={modified ? 0 : -1}
@@ -3797,11 +3807,11 @@ function InlineXtbSetting({
           >
             Reset
             <ShortcutTooltip label={`Restore the default ${label} parameter.`} />
-          </button>
+          </Button>
         ) : null}
         {children}
       </div>
-    </div>
+    </Field>
   );
 }
 
@@ -4178,7 +4188,7 @@ function MenuChevronIcon() {
 // The scene tree's twisty is this chevron at 11px inside a 16px box; matching
 // both keeps the two lists indented to the same rhythm.
 function TreeDisclosureIcon() {
-  return <SceneTreeGlyph paths={SCENE_TREE_GLYPH.chevron} size={11} />;
+  return <AppChevronRight size={11} aria-hidden="true" />;
 }
 
 function structureActionRowKey(row: StructureSummaryRow, index: number) {
@@ -4347,41 +4357,8 @@ function StructureActionRow({
   );
 }
 
-// The same marks the viewer's scene tree draws, copied path for path from
-// SCENE_TREE_ICON in PreviewExtension/Web/viewer.js. The tree lives in the Mol*
-// iframe and shares no code with this panel, so the only way a glyph means the
-// same thing in both lists is to keep the geometry identical here. The panel
-// used to draw its own eye on a 16px grid at a lighter stroke, and the two rows
-// never read as the same control.
-const SCENE_TREE_GLYPH = {
-  chevron: ["m9 6 6 6-6 6"],
-  eye: [
-    "M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0",
-    "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
-  ],
-  eyeOff: [
-    "M9.88 9.88a3 3 0 1 0 4.24 4.24",
-    "M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68",
-    "M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61",
-    "m2 2 20 20",
-  ],
-  trash: [
-    "M3 6h18",
-    "M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2",
-    "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6",
-  ],
-} as const;
-
-function SceneTreeGlyph({ paths, size = 13 }: { paths: readonly string[]; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {paths.map((definition) => <path key={definition} d={definition} />)}
-    </svg>
-  );
-}
-
 function TrashIcon() {
-  return <SceneTreeGlyph paths={SCENE_TREE_GLYPH.trash} />;
+  return <AppDelete size={13} aria-hidden="true" />;
 }
 
 function StructureDetailsSection({
@@ -4620,11 +4597,11 @@ function StructureMiniAction({
 }
 
 function EyeIcon() {
-  return <SceneTreeGlyph paths={SCENE_TREE_GLYPH.eye} />;
+  return <AppEye size={13} aria-hidden="true" />;
 }
 
 function EyeOffIcon() {
-  return <SceneTreeGlyph paths={SCENE_TREE_GLYPH.eyeOff} />;
+  return <AppEyeOff size={13} aria-hidden="true" />;
 }
 
 // Inside the File section this is a plain group; on the empty panel there is no

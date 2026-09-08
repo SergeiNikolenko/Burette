@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { hasFoldingResultContent, readFoldingResultBundle } from "../lib/folding-results";
 import { readStructureText } from "../lib/structure-text";
@@ -150,20 +151,15 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
   };
 
   return (
-    <section className="structure-brief-card structure-inspector-section folding-results-card" data-collapsed={collapsed || undefined}>
-      <div className="structure-inspector-section-header">
-        <button
-          type="button"
-          className="structure-inspector-section-title-button"
-          aria-expanded={!collapsed}
-          onClick={() => setCollapsed((value) => !value)}
-        >
-          Folding Results
-        </button>
-        <span>{bundle.source} · {modelCountLabel(bundle.models.length)}</span>
-      </div>
-
-      {collapsed ? null : (
+    <Accordion type="single" collapsible value={collapsed ? "" : "results"} onValueChange={(value) => setCollapsed(!value)} className="structure-brief-card structure-inspector-section folding-results-card" data-collapsed={collapsed || undefined}>
+      <AccordionItem value="results">
+        <AccordionTrigger>
+          <span className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-2">
+            <span>Folding Results</span>
+            <span className="truncate text-xs text-muted-foreground">{bundle.source} · {modelCountLabel(bundle.models.length)}</span>
+          </span>
+        </AccordionTrigger>
+      <AccordionContent className="h-auto">
         <div className="folding-results-body">
           <FoldingModelSelector models={bundle.models} activeModel={activeModel} onSelect={selectModel} />
 
@@ -226,8 +222,9 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
             </div>
           ) : null}
         </div>
-      )}
-    </section>
+      </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }
 

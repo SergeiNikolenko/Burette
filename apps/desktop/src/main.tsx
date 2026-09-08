@@ -10,6 +10,7 @@ import { markPerformanceOnce } from "./lib/performance";
 import { initializeWebDemoAnalytics } from "./lib/web-demo-analytics";
 import "./styles.css";
 import "./styles/interface-tokens.css";
+import "./styles/inspector-panel.css";
 import "./styles/dock-panels.css";
 import "./styles/drop-feedback.css";
 

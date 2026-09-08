@@ -3425,7 +3425,7 @@ img.radix-menu-item-icon {
   font-size: 12px;
   font-weight: 500;
 }
-.structure-brief-card p {
+.structure-brief-card p:not([data-slot]) {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.35;
@@ -9330,6 +9330,7 @@ img.settings-open-destination-icon {
   flex: 1 1 auto;
   justify-content: flex-start;
   min-width: 0;
+  text-align: left;
 }
 .grid-filter-card-trigger > svg {
   transition: transform 140ms ease-out;
