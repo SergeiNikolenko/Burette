@@ -82,7 +82,7 @@
     "@rdkit/rdkit": "2025.3.4-1.0.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.4.0",
-    "@tauri-apps/plugin-opener": "^2.5.0",
+    "@tauri-apps/plugin-opener": "^2.5.5",
     "beautiful-mermaid": "^1.1.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
