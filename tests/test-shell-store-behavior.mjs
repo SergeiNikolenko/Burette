@@ -98,4 +98,11 @@ assert.deepEqual(useShellStore.getState().projectNameOverrides, {
   "/tmp/implicit-project": "Implicit Project",
 });
 
+useShellStore.getState().togglePinnedProjectRoot("/tmp/inferred-project");
+assert.ok(useShellStore.getState().projectRoots.includes("/tmp/inferred-project"));
+assert.ok(useShellStore.getState().pinnedProjectRoots.includes("/tmp/inferred-project"));
+useShellStore.getState().togglePinnedProjectRoot("/tmp/inferred-project");
+assert.equal(useShellStore.getState().pinnedProjectRoots.includes("/tmp/inferred-project"), false);
+assert.equal(useShellStore.getState().projectRoots.filter(root => root === "/tmp/inferred-project").length, 1);
+
 console.log("shell store behavior tests passed");

@@ -110,8 +110,8 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v185";
-const VIEWER_ASSET_VERSION = "viewer-ui-v71";
+const GRID_ASSET_VERSION = "grid-ui-v186";
+const VIEWER_ASSET_VERSION = "viewer-ui-v72";
 const MESOSCALE_ASSET_VERSION = "mesoscale-ui-v1";
 // One cache-buster per page load, not per render: the viewer iframe is keyed by
 // its srcdoc, so a fresh timestamp on every rebuild would remount the frame and
@@ -1358,6 +1358,9 @@ function viewerHtml(
   <script src="${viewerAsset("trajectory-smoothing.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("molstar-preset-preview-controller.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("superposition-panel.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("molecule-preview-interactions.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("color-picker.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("scene-file-actions.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("viewer.js")}?v=${runtimeAssetVersion}"></script>
 </body>
 </html>`;

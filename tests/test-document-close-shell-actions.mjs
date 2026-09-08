@@ -89,3 +89,16 @@ function closeActions(approveClose) {
 }
 
 console.log("document close shell action tests passed");
+
+// A bulk close uses one discard permit and never closes unrelated tabs.
+{
+  const { actions, calls } = closeActions(true);
+  await actions.closeTabs(["tab-b", "tab-b", "missing"]);
+  assert.deepEqual(calls, [
+    ["confirm", ["doc-b"]], ["close-runtime", "doc-b"],
+    ["forget-dirty-many", ["doc-b"]], ["close-tab", "tab-b"], ["release-permit"],
+  ]);
+  const cancelled = closeActions(false);
+  await cancelled.actions.closeTabs(["tab-a", "tab-b"]);
+  assert.deepEqual(cancelled.calls, [["confirm", ["doc-a", "doc-b"]]]);
+}

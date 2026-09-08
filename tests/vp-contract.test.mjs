@@ -1,4 +1,17 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+
 const contractScripts = {
+  "test-workspace-export-guards.mjs": () => import("./test-workspace-export-guards.mjs"),
+  "test-workspace-file-menu.mjs": () => import("./test-workspace-file-menu.mjs"),
+  "test-scene-file-actions.mjs": () => import("./test-scene-file-actions.mjs"),
+  "test-native-context-menu.mjs": () => import("./test-native-context-menu.mjs"),
+  "test-molecule-preview-interactions.mjs": () => import("./test-molecule-preview-interactions.mjs"),
+  "test-expanded-context-menus.mjs": () => import("./test-expanded-context-menus.mjs"),
+  "test-color-picker.mjs": () => import("./test-color-picker.mjs"),
+  "test-molstar-context-environment.mjs": () => import("./test-molstar-context-environment.mjs"),
+  "test-chemical-space-grid-navigation.mjs": () => import("./test-chemical-space-grid-navigation.mjs"),
   "test-burette-agent.mjs": () => import("./test-burette-agent.mjs"),
   "test-agent-preview-server.mjs": () => import("./test-agent-preview-server.mjs"),
   "test-update-versioning.mjs": () => import("./test-update-versioning.mjs"),
@@ -16,7 +29,8 @@ const contractScripts = {
   "test-molecule-store-behavior.mjs": () => import("./test-molecule-store-behavior.mjs"),
   "test-markdown-block-layout.mjs": () => import("./test-markdown-block-layout.mjs"),
   "test-text-find.mjs": () => import("./test-text-find.mjs"),
-  "test-mmcif-block-loading.mjs": () => import("./test-mmcif-block-loading.mjs"),
+  // Mol* captures its scheduler globals on import; keep real DOM tests separate from store mocks.
+  "test-mmcif-block-loading.mjs": () => promisify(execFile)(process.execPath, [fileURLToPath(new URL("./test-mmcif-block-loading.mjs", import.meta.url))]),
   "test-shell-store-behavior.mjs": () => import("./test-shell-store-behavior.mjs"),
   "test-fep-setup-store.mjs": () => import("./test-fep-setup-store.mjs"),
   "test-tauri-structure.mjs": () => import("./test-tauri-structure.mjs"),

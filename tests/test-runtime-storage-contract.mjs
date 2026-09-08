@@ -64,6 +64,7 @@ assert.deepEqual(storageConstants(gridViewer), sortedPairs([
   ["SEMIEMPIRICAL_METHOD_STORAGE_KEY", "buret.grid.semiempiricalMethod"],
   ["TABLE_COLUMN_WIDTHS_STORAGE_KEY", "buret.grid.tableColumnWidths"],
   ["TABLE_HIDDEN_COLUMNS_STORAGE_KEY", "buret.grid.tableHiddenColumns"],
+  ["TABLE_PINNED_COLUMNS_STORAGE_KEY", "buret.grid.tablePinnedColumns"],
 ]));
 
 assert.deepEqual(literalStorageKeys(viewer), [

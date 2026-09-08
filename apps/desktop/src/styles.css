@@ -807,10 +807,34 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   letter-spacing: 0.4px;
   color: var(--text-muted);
 }
-.grid-hover-molecule-props-resize {
-  flex: 1 1 auto;
+.grid-hover-molecule-props-resize.resizable-handle-horizontal {
+  flex: 0 0 20px;
+  width: 100%;
+  height: 20px;
   margin: 0;
-  height: 12px;
+  touch-action: none;
+}
+.grid-hover-molecule-props-resize .resizable-handle-grip {
+  opacity: 1;
+}
+.grid-hover-molecule-props-show-all {
+  margin-left: auto;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 10px;
+  cursor: pointer;
+}
+.grid-hover-molecule-props-show-all:hover {
+  background: color-mix(in srgb, var(--fg-base) 8%, transparent);
+}
+.grid-hover-molecule-props-toggle {
+  margin-left: auto;
+}
+.grid-hover-molecule-props-show-all + .grid-hover-molecule-props-toggle {
+  margin-left: 0;
 }
 .grid-hover-molecule-props-toggle {
   flex: 0 0 auto;
@@ -1697,15 +1721,6 @@ kbd span { margin-left: 2px; }
 }
 .project-group-row:hover { background: var(--surface-subtle); }
 .project-group-row:active { transform: scale(0.99); }
-.project-folder-icon {
-  width: 20px;
-  height: 16px;
-  flex: 0 0 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-icon-muted);
-}
 .project-group-copy {
   min-width: 0;
   flex: 1;
@@ -2075,6 +2090,8 @@ kbd span { margin-left: 2px; }
   white-space: nowrap;
   transition: transform 200ms ease-out;
 }
+.tab:hover .marquee-text,
+.tab:focus-visible .marquee-text,
 .project:hover .marquee-text,
 .project-folder-row:hover .marquee-text,
 .project-group-row:hover .marquee-text,
@@ -2090,7 +2107,9 @@ kbd span { margin-left: 2px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .marquee-text,
-  .project:hover .marquee-text,
+  .tab:hover .marquee-text,
+.tab:focus-visible .marquee-text,
+.project:hover .marquee-text,
   .project-folder-row:hover .marquee-text,
   .project-group-row:hover .marquee-text { transition: none; }
 }
@@ -4508,8 +4527,15 @@ img.radix-menu-item-icon {
    panel. The tree keeps its own scroll instead, so the sections after it stay
    reachable no matter how long the composition is. */
 .structure-brief-rows.structure-inspector-tree {
-  max-height: 264px;
+  max-height: min(60vh, 560px);
   overflow-y: auto;
+  padding: 6px;
+  user-select: none;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  background: rgb(14, 15, 17);
+}
+.app-shell[data-effective-theme="light"] .structure-inspector-tree {
+  background: rgb(244, 244, 244);
 }
 /* Indentation already says where a group starts, so the hairlines that made the
    tree read as a table are gone. Without them the rows can also close up: at the
@@ -4518,14 +4544,23 @@ img.radix-menu-item-icon {
   border-top: 0;
 }
 .structure-inspector-tree .structure-brief-action-entry {
+  display: flex;
   gap: 4px;
   min-height: 24px;
   padding: 0;
   border-radius: 5px;
 }
 .structure-inspector-tree .structure-brief-action-summary,
-.structure-inspector-tree .structure-brief-action-row {
-  padding: 3px 5px;
+.structure-inspector-tree .structure-brief-action-row,
+.structure-inspector-tree .structure-brief-chip-button,
+.structure-inspector-tree .structure-brief-chip-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  border-radius: 4px;
+  padding: 3px 2px;
+  background: transparent;
+  box-shadow: none;
 }
 /* The generic action row marks its selection with an accent tint and a 3px rail
    down the left edge. That rail landed right beside this row's colour bar, so a
@@ -4539,8 +4574,14 @@ img.radix-menu-item-icon {
 .structure-inspector-tree .structure-brief-action-entry[data-selected="true"] .structure-brief-action-row,
 .structure-inspector-tree .structure-brief-action-entry[data-selected="true"] .structure-brief-chip-button {
   border-color: transparent;
-  background: var(--surface-selected);
+  background: transparent;
   box-shadow: none;
+}
+.structure-inspector-tree .structure-brief-action-entry[data-selected="true"] {
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+}
+.structure-inspector-tree .structure-brief-action-entry:hover {
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 .structure-inspector-tree .structure-brief-action-entry[data-selected="true"] .structure-inspector-row-label {
   color: var(--text-primary);
@@ -4609,14 +4650,14 @@ input.structure-inspector-composition-search {
 /* 0.45 is what the tree fades a row to once it is hidden. This bar carried it
    permanently, which washed out every colour in the list and made the panel
    disagree with the render even where the two picked the same tone. */
-.structure-brief-action-entry[data-hidden="true"] .structure-inspector-row-bar,
-.structure-brief-action-entry[data-hidden="true"] .structure-brief-action-row {
+.structure-brief-action-entry[data-hidden="true"] .structure-brief-action-row,
+.structure-brief-action-entry[data-hidden="true"] .structure-brief-chip-button {
   opacity: 0.45;
 }
-.structure-inspector-row-bar[data-tone="polymer"] { background: #4e79a7; }
-.structure-inspector-row-bar[data-tone="ligand"] { background: #59a14f; }
-.structure-inspector-row-bar[data-tone="ion"] { background: #e8973a; }
-.structure-inspector-row-bar[data-tone="water"] { background: #9aa0a6; }
+.structure-inspector-row-bar[data-tone="polymer"] { background: #54d98c; }
+.structure-inspector-row-bar[data-tone="ligand"] { background: #54d98c; }
+.structure-inspector-row-bar[data-tone="ion"] { background: #54d98c; }
+.structure-inspector-row-bar[data-tone="water"] { background: #54d98c; }
 .structure-inspector-row-actions {
   display: flex;
   align-items: center;
@@ -4890,7 +4931,18 @@ input.structure-inspector-composition-search {
   transform: rotate(90deg);
 }
 .structure-inspector-tree-children {
-  padding: 0 0 2px 15px;
+  position: relative;
+  margin-left: 13px;
+  padding: 0;
+}
+.structure-inspector-tree-children::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line-subtle);
 }
 .structure-inspector-tree-children .structure-brief-action-entry + .structure-brief-action-entry {
   border-top: 0;
@@ -8789,7 +8841,7 @@ input.structure-inspector-composition-search {
 .keyboard-shortcuts-section { margin: 0 0 40px; }
 /* The search field, the rows and the key pills are shadcn InputGroup, Table and
    Kbd now; what stays here is the settings-page bleed and the table density. */
-.keyboard-shortcuts-search { margin: 0 -16px 10px; }
+.keyboard-shortcuts-search { width: calc(100% + 32px); margin: 0 -16px 10px; }
 .keyboard-shortcuts-card {
   margin: 0 -16px;
   overflow: hidden;
@@ -8798,14 +8850,13 @@ input.structure-inspector-composition-search {
   background: var(--surface-card);
 }
 .keyboard-shortcuts-card [data-slot="table-container"] { overflow: visible; }
-/* Auto table layout widens to fit the longest description, which pushed the
-   keybinding column past the card. Fixed layout honours the declared column
-   width and lets the description ellipsis instead. */
+/* Reserve a compact key column and let descriptions wrap in the remaining space. */
 .keyboard-shortcuts-card table { table-layout: fixed; }
-.keyboard-shortcuts-card th { height: 40px; padding: 0 16px; }
-.keyboard-shortcuts-card td { padding: 12px 16px; }
+.keyboard-shortcuts-card tr { border-color: var(--line-subtler); }
+.keyboard-shortcuts-card th { height: 34px; padding: 0 14px; color: var(--text-muted); font-size: 12px; }
+.keyboard-shortcuts-card td { padding: 9px 14px; }
 .keyboard-shortcuts-card tbody tr:hover { background: transparent; }
-.keyboard-shortcuts-keys-column { width: clamp(148px, 30%, 188px); }
+.keyboard-shortcuts-keys-column { width: 148px; }
 .keyboard-shortcuts-copy { min-width: 0; white-space: normal; }
 .keyboard-shortcuts-command {
   color: var(--text-primary);
@@ -8815,11 +8866,10 @@ input.structure-inspector-composition-search {
 .keyboard-shortcuts-description {
   margin-top: 3px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .keyboard-shortcuts-keys { flex-wrap: wrap; }
 .keyboard-shortcuts-empty { border: 0; padding: 18px 16px; }
@@ -9051,6 +9101,7 @@ img.settings-open-destination-icon {
   .agent-disclosure { margin-left: 0; margin-right: 0; }
   .keyboard-shortcuts-search,
   .keyboard-shortcuts-card { margin-left: 0; margin-right: 0; }
+  .keyboard-shortcuts-search { width: 100%; }
   /* Narrow settings: the table stacks, so the header carries no meaning. */
   .keyboard-shortcuts-card [data-slot="table-header"] { display: none; }
   .keyboard-shortcuts-card tbody tr { display: grid; gap: 10px; padding: 12px 16px; }
@@ -9389,3 +9440,13 @@ img.settings-open-destination-icon {
 .app-shell[data-effective-theme="light"] .sidebar-tool-icon {
   opacity: 1;
 }
+
+.project.selected { background: var(--surface-selected); }
+
+.file-operation-dialog { width: min(360px, calc(100vw - 32px)); }
+.file-operation-dialog .radix-dialog-header { min-height: 0; padding: 20px 20px 0; border: 0; }
+.file-operation-dialog .radix-dialog-header h2 { font-weight: 600; }
+.file-operation-dialog .radix-dialog-body { padding: 8px 20px 20px; overflow-wrap: anywhere; }
+.file-operation-dialog .radix-dialog-body p { margin: 0; }
+.file-operation-dialog .radix-dialog-actions { padding: 0 20px 20px; }
+.file-operation-dialog .radix-dialog-actions button { min-height: 30px; padding: 5px 12px; }

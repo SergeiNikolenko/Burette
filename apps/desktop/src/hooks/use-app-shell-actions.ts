@@ -7,7 +7,7 @@ import {
   workspaceHistoryNone,
   type WorkspaceHistoryGroup,
 } from "../stores/workspace-history-store";
-import type { MoleculeTab } from "../stores/molecule-store";
+import { useMoleculeStore, type MoleculeTab } from "../stores/molecule-store";
 import type { ConformerJob, OpenDocumentsMode, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob } from "../types";
 import { requestActiveRuntimeWorkspaceHistory } from "../lib/workspace-history-dispatch";
 
@@ -319,6 +319,8 @@ type DocumentShellActions = Pick<
   | "closeDocument"
   | "closeTab"
   | "closeOtherTabs"
+  | "closeTabs"
+  | "togglePinnedTab"
   | "closeActiveDocument"
   | "clearAllDocuments"
   | "listChemicalEditorTargets"
@@ -729,6 +731,8 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       closeDocument: actions.closeDocument,
       closeTab: actions.closeTab,
       closeOtherTabs: actions.closeOtherTabs,
+      closeTabs: actions.closeTabs,
+      togglePinnedTab: actions.togglePinnedTab,
       closeActiveDocument: actions.closeActiveDocument,
       clearAllDocuments: actions.clearAllDocuments,
       listChemicalEditorTargets: actions.listChemicalEditorTargets,
@@ -964,8 +968,8 @@ export function useAppShellActions({
 
   return useMemo<ShellActions>(() => createWorkspaceHistoryShellActions(createAppShellActions({
     chooseFiles,
-    openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode }) => {
-      await openDocuments(paths, undefined, undefined, options);
+    openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" }) => {
+      await openDocuments(paths, options?.rendererMode ? {} : undefined, options?.rendererMode ? { rendererMode: options.rendererMode } : undefined, options);
     },
     openTextPaths: async (paths: string[]) => {
       await openTextDocuments(paths);
@@ -978,6 +982,7 @@ export function useAppShellActions({
     fetchPdbStructure,
     selectDocument,
     selectTab: setActiveTab,
+    togglePinnedTab: (id: string) => useMoleculeStore.getState().togglePinnedTab(id),
     openNewTab,
     canNavigateBack,
     canNavigateForward,
@@ -1236,7 +1241,7 @@ export function createDocumentCloseShellActions({
   forgetDirtyGridDocuments: (documentIds: string[]) => void;
   pushStatus: PushStatus;
   tabs: MoleculeTab[];
-}): Pick<ShellActions, "closeDocument" | "closeTab" | "closeOtherTabs" | "closeActiveDocument" | "clearAllDocuments"> {
+}): Pick<ShellActions, "closeDocument" | "closeTab" | "closeOtherTabs" | "closeTabs" | "closeActiveDocument" | "clearAllDocuments"> {
   // Closing runs to completion straight away. It used to freeze the document's
   // grid and wait for in-flight mutations first, but that wait had no timeout,
   // so one unfinished operation left the "Finishing current change…" overlay up
@@ -1283,8 +1288,22 @@ export function createDocumentCloseShellActions({
         closeTab(id);
       });
     },
+    closeTabs: async (ids: string[]) => {
+      const wanted = new Set(ids);
+      const targets = tabs.filter(tab => wanted.has(tab.id));
+      if (!targets.length) return;
+      const documentIds = [...new Set(targets.map(documentIdForTab).filter((id): id is string => id !== null))];
+      if (!confirmCloseSourceDocuments(documentIds)) return;
+      const permit = await confirmDiscardDirtyGridDocuments(documentIds);
+      if (!permit) return;
+      completeClose(permit, () => {
+        for (const documentId of documentIds) closeGridRuntime(documentId);
+        forgetDirtyGridDocuments(documentIds);
+        for (const tab of targets) closeTab(tab.id);
+      });
+    },
     closeOtherTabs: async (id: string) => {
-      const otherTabs = tabs.filter((tab) => tab.id !== id);
+      const otherTabs = tabs.filter((tab) => tab.id !== id && !tab.pinned);
       if (otherTabs.length === 0) return;
       const documentIds = Array.from(new Set(
         otherTabs

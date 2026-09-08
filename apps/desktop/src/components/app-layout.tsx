@@ -1,3 +1,5 @@
+import { SidebarFileOperations } from "./sidebar/file-operations";
+import { WorkspaceMenus } from "./workspace-menus";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowRight, SidebarLeft as PanelLeft } from "@/components/ui/app-icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -456,7 +458,7 @@ export function AppLayout({
     );
   }
   return (
-    <main
+    <SidebarFileOperations state={state} actions={actions}><WorkspaceMenus state={state} actions={actions}><main
       ref={shellRef}
       className="app-shell"
       data-theme={state.preferences.theme}
@@ -696,7 +698,7 @@ export function AppLayout({
         </ResizablePanelGroup>
       </section>
       <FileDropFeedback preview={dropPreview} />
-    </main>
+    </main></WorkspaceMenus></SidebarFileOperations>
   );
 }
 

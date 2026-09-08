@@ -341,3 +341,14 @@ assert.deepEqual(useMoleculeStore.getState().recentStructures, []);
 assert.deepEqual(JSON.parse(storage.get("burette.recent.structures")).documents, []);
 
 console.log("molecule store behavior tests passed");
+
+resetStore();
+useMoleculeStore.getState().addDocuments([document("pin-a", "/data/a.pdb"), document("pin-b", "/data/b.pdb")]);
+const pinTarget = useMoleculeStore.getState().tabs.find(tab => tab.location.path === "/data/b.pdb");
+useMoleculeStore.getState().togglePinnedTab(pinTarget.id);
+assert.equal(useMoleculeStore.getState().tabs[0].id, pinTarget.id);
+assert.equal(useMoleculeStore.getState().tabs[0].pinned, true);
+await useMoleculeStore.persist.rehydrate();
+assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === pinTarget.id)?.pinned, true);
+useMoleculeStore.getState().togglePinnedTab(pinTarget.id);
+assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === pinTarget.id)?.pinned, false);

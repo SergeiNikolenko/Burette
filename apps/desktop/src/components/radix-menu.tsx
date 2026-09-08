@@ -297,13 +297,15 @@ function RadixMenuNumberControl({ item }: { item: Extract<MenuItemSpec, { kind: 
 // line of detail, which the shadcn item does not model. It sits inside the shadcn
 // item, so spacing, hover and disabled states still come from the component.
 function renderItemBody(item: Extract<MenuItemSpec, { kind: "item" | "checkbox" | "submenu" }>) {
-  const iconUrl = item.kind === "item" ? item.iconUrl : undefined;
+  const iconUrl = item.kind === "item" || item.kind === "submenu" ? item.iconUrl : undefined;
   const iconText = item.kind === "item" || item.kind === "submenu" ? item.iconText : undefined;
   const tooltip = item.kind === "item" ? item.tooltip : undefined;
   return (
     <span className="radix-menu-item-body" title={tooltip}>
       {iconUrl ? (
-        <AppImageIcon className="radix-menu-item-icon" src={iconUrl} fallback={iconText ?? item.text.slice(0, 2).toUpperCase()} />
+        iconUrl.startsWith("data:image/svg+xml")
+          ? <span className="radix-menu-item-icon" aria-hidden="true" style={{ backgroundColor: "currentColor", maskImage: `url("${iconUrl}")`, WebkitMaskImage: `url("${iconUrl}")`, maskSize: "contain", maskRepeat: "no-repeat" }} />
+          : <AppImageIcon className="radix-menu-item-icon" src={iconUrl} fallback={iconText ?? item.text.slice(0, 2).toUpperCase()} />
       ) : item.icon ? (
         <HugeiconsIcon className="radix-menu-item-icon" icon={appIconData[item.icon]} size={16} aria-hidden="true" />
       ) : iconText ? (

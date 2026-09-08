@@ -2662,3 +2662,19 @@ body.buret-hide-properties .buret-card-body {
   font-weight: 600;
   box-shadow: 0 8px 28px rgb(0 0 0 / 14%);
 }
+
+/* Pinned columns stay visible inside the horizontal table scroller. */
+.buret-grid-table [data-buret-pinned-column] {
+  z-index: 1;
+  background: var(--buret-panel);
+  box-shadow: 1px 0 var(--buret-table-panel-border);
+}
+.buret-grid-table th[data-buret-pinned-column] { z-index: 3; background: var(--buret-panel); }
+.buret-grid-molecule-context-menu hr { width: 100%; border: 0; border-top: 1px solid var(--buret-table-panel-border); margin: 4px 0; }
+.buret-grid-molecule-context-menu button:disabled { opacity: .4; cursor: default; }
+.buret-grid-molecule-context-menu button:disabled:hover { background: transparent; }
+.buret-grid-molecule-context-menu label { display: grid; gap: 4px; padding: 6px 8px; color: var(--buret-muted); font-size: 12px; }
+.buret-grid-molecule-context-menu input { min-width: 0; padding: 6px 8px; border: 1px solid var(--buret-table-panel-border); border-radius: 6px; background: var(--buret-panel); color: var(--buret-text); }
+
+.buret-grid-molecule-context-menu { max-width: min(360px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; }
+.buret-grid-statistics-menu .buret-grid-molecule-context-menu-subtitle { white-space: normal; line-height: 1.6; }
