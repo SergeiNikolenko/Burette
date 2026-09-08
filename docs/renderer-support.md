@@ -36,6 +36,13 @@ Mol* interactive preview is used for:
   coordinate pairs (for example XTC/TRR next to a topology), and trajectories
   without a topology through synthetic topology generation
 
+For standard mmCIF/BinaryCIF previews, coordinate-bearing data blocks load
+as separate structures in the same scene, preserving their original coordinates.
+This includes PyMOL exports with a protein and ligand in separate blocks.
+Metadata-only blocks do not become structures; models within each block retain
+the normal model-selection behavior. The viewer and agent treat `HETATM UNK`
+records as unnamed ligands; `ATOM UNK` retains unknown-amino-acid behavior.
+
 Mesoscale documents (`molj`, `molx`, `.mesozip` packages, and
 CellPack/Petworld-style CIF paths) open in the dedicated Mesoscale runtime
 rather than the standard Mol* viewer.

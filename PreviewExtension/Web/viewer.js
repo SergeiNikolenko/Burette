@@ -15712,6 +15712,33 @@ SOFTWARE.
     colorByChain: colorMolstarByChain
   };
 
+  // Keep CIF block loading at the shared Mol* loader boundary: PyMOL can write
+  // a protein and its ligand as separate data blocks in the same coordinate frame.
+  // One trajectory per block preserves that frame and each block's own models.
+  async function parseMolstarStructureTrajectories(plugin, data, format) {
+    if (format !== 'mmcif') return [await plugin.builders.structure.parseTrajectory(data, format)];
+    const transforms = window.molstar.lib.plugin.StateTransforms;
+    const cif = await plugin.state.data.build().to(data)
+      .apply(transforms.Data.ParseCif, undefined, { state: { isGhost: true } })
+      .commit({ revertOnError: true });
+    const blocks = cif.obj.data.blocks;
+    const indices = blocks.flatMap((block, index) => (
+      ['atom_site', 'ihm_sphere_obj_site', 'ihm_gaussian_obj_site'].some(name => block.categories[name]?.rowCount > 0)
+        ? [index] : []
+    ));
+    // Retain Mol*'s single-block CCD handling when no coordinate block is present.
+    if (indices.length === 0) indices.push(0);
+    const trajectories = [];
+    for (const blockIndex of indices) {
+      const trajectory = await plugin.state.data.build().to(cif)
+        .apply(transforms.Model.TrajectoryFromMmCif, { blockHeader: '', blockIndex })
+        .commit({ revertOnError: true });
+      trajectories.push(trajectory);
+    }
+    if (trajectories.length > 1) plugin.state.data.updateCellState(cif.ref, { isGhost: false });
+    return trajectories;
+  }
+
   async function loadPreparedStructure(viewer, prepared) {
     cancelScheduledMolstarWaterRepresentation();
     activeMolstarPrepared = prepared;
@@ -15762,24 +15789,24 @@ SOFTWARE.
     if (prepared.loadPreset === 'all-models') {
       const plugin = viewer.plugin;
       const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
-      const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
-        useDefaultIfSingleModel: true
-      });
+      for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
+        await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', { useDefaultIfSingleModel: true });
+      }
       if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
       await applyMolstarWaterLineRepresentation(viewer);
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
     const plugin = viewer.plugin;
-    if (prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
+    if (prepared.format !== 'mmcif' && prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
       await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
     const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
-    const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
-    await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
+    for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
+      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
+    }
     if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
     await applyMolstarWaterLineRepresentation(viewer);
     installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
@@ -15792,8 +15819,9 @@ SOFTWARE.
       ? { data: coreCifToPdb(entry.data), format: 'pdb' }
       : { data: entry.data, format: normalized };
     const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
-    const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
-    await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', presetOptions);
+    for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, payload.format)) {
+      await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', presetOptions);
+    }
   }
 
   async function loadMolstarEntryWithStructureRefs(viewer, entry, presetOptions = undefined) {
@@ -20356,7 +20384,8 @@ SOFTWARE.
       auth_comp_id: authCompId,
       label_atom_id: molstarContextValueAt(atoms.label_atom_id, atomIndex),
       auth_atom_id: molstarContextValueAt(atoms.auth_atom_id, atomIndex),
-      entityType
+      entityType,
+      group_PDB: molstarContextValueAt(residues.group_PDB, residueIndex)
     };
   }
 
@@ -20616,6 +20645,8 @@ SOFTWARE.
     const comp = String(atom?.label_comp_id || atom?.auth_comp_id || '').toUpperCase();
     const entityType = String(atom?.entityType || '').toLowerCase();
     if (MOLSTAR_CONTEXT_WATER.has(comp) || entityType === 'water') return 'water';
+    // Match the agent's UNK/HETATM policy for PyMOL coordinate-only ligands.
+    if (comp === 'UNK' && atom?.group_PDB === 'HETATM') return 'ligand';
     if (MOLSTAR_CONTEXT_STANDARD_RESIDUES.has(comp)) return entityType === 'polymer' ? 'polymer' : 'biopolymer';
     if (entityType === 'polymer') return 'polymer';
     if (MOLSTAR_CONTEXT_COMMON_IONS.has(comp)) return 'ion';
@@ -23216,6 +23247,8 @@ SOFTWARE.
     if (caption) caption.textContent = label;
     button.dataset.copyState = state;
     button.title = label;
+    const glyph = button.querySelector('svg');
+    if (glyph) glyph.replaceWith(sceneTreeIconElement(state === 'done' ? APP_ICON_DATA.CheckCircle : MOLECULE_PREVIEW_ICON.copy));
     if (molstarMoleculePreviewCopyTimer) clearTimeout(molstarMoleculePreviewCopyTimer);
     molstarMoleculePreviewCopyTimer = setTimeout(() => {
       molstarMoleculePreviewCopyTimer = 0;
@@ -23225,6 +23258,8 @@ SOFTWARE.
       if (text) text.textContent = current.dataset.restLabel || 'SMILES';
       delete current.dataset.copyState;
       current.title = 'Copy SMILES';
+      const glyph = current.querySelector('svg');
+      if (glyph) glyph.replaceWith(sceneTreeIconElement(MOLECULE_PREVIEW_ICON.copy));
     }, 1800);
   }
 
