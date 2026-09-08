@@ -1,4 +1,4 @@
-import { FileImportIcon } from "@hugeicons/core-free-icons";
+import { FileUpload as FileImportIcon } from "@/components/ui/app-icon-data";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { CSSProperties } from "react";
 import type { FileDropPreview } from "../lib/drop-preview";

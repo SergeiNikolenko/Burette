@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertCircle, Check, Copy } from "lucide-react";
+import { InfoCircle as AlertCircle, CheckCircle as Check, Copy } from "@/components/ui/app-icons";
 import { useMountEffect } from "@/hooks/use-mount-effect";
 
 import { type ViewerDownloadAction } from "@/lib/viewer-download-actions";
