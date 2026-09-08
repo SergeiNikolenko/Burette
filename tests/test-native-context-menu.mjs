@@ -1,4 +1,5 @@
 import { withMenuIcons } from "../apps/desktop/src/components/menu-icons.ts";
+import { Edit } from "../apps/desktop/src/components/ui/app-icon-data.ts";
 import assert from 'node:assert/strict';
 import ts from 'typescript';
 import { readFileSync } from 'node:fs';
@@ -97,3 +98,11 @@ assert.deepEqual(wire.items, [{ kind: 'submenu', id: 'file-copy', text: 'Copy', 
   { kind: 'item', id: 'copy-paths', text: 'Path', enabled: true, image: 'sdk-png' },
 ] }]);
 console.log('OpenAI SDK icons reach AppKit on both commands and submenu parents');
+
+const [editMenu] = withMenuIcons([{ kind: 'item', id: 'file-edit', text: 'Edit', action() {} }]);
+const editSvg = decodeURIComponent(editMenu.iconUrl.split(',')[1]);
+assert.match(editSvg, /width="24" height="24" viewBox="0 0 24 24"/);
+assert.match(editSvg, /fill="#000"/);
+assert.match(editSvg, /fill-rule="evenodd"/);
+assert.ok(Edit.every(([tag, attributes]) => tag !== 'path' || editSvg.includes(`d="${attributes.d}"`)));
+assert.doesNotMatch(editSvg, /currentColor|className| key=/);

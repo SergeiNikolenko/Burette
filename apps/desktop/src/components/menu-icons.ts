@@ -1,8 +1,20 @@
-import iconSvgs from "../assets/openai-menu-icons/icons.json";
+import * as iconData from "./ui/app-icon-data";
 import type { MenuItemSpec } from "./menu-types";
 
-// Official OpenAI Apps SDK UI paths, pinned and licensed under assets/.
-const urls = Object.fromEntries(Object.entries(iconSvgs).map(([name, svg]) => [name, `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`]));
+// Native template images use the same reviewed SVG geometry as React controls.
+const urls = Object.fromEntries(Object.entries(iconData).map(([name, nodes]) => {
+  const svg = nodes.map(([tag, attributes]) => `<${tag} ${Object.entries(attributes)
+    .filter(([key]) => key !== "key" && key !== "className")
+    .map(([key, value]) => `${key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}="${String(value)
+      .replaceAll("currentColor", "#000").replaceAll("&", "&amp;").replaceAll('"', "&quot;")}"`)
+    .join(" ")} />`).join("");
+  return [name, `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">${svg}</svg>`)}`];
+}));
+const aliases: Record<string, keyof typeof iconData> = {
+  ArrowUpRight: "ExternalLink", CloseBold: "X", FolderDocumentsFinder: "Folder",
+  Grid: "Stack", ImageSquare: "FileImage", OpenRight: "SidebarRight", SelectText: "Clipboard",
+  Sidebar: "SidebarLeft", TableFilled: "FileSpreadsheet", Text: "FileDocument", Trash: "Delete",
+};
 const names: Record<string, string> = {
   'file-open': 'ArrowUpRight', 'folder-open': 'FolderOpen', 'row-open': 'ArrowUpRight',
   'file-edit': 'Edit', 'row-edit': 'Edit', 'file-copy': 'Copy', 'folder-copy': 'Copy', 'row-copy': 'Copy',
@@ -37,7 +49,7 @@ export function withMenuIcons(entries: MenuItemSpec[]): MenuItemSpec[] {
     if (entry.id === 'copy-sequence') name = 'Text';
     if (entry.id.startsWith('pin-') || entry.id.startsWith('unpin-')) name = entry.text.startsWith('Unpin') ? 'Unpin' : 'Pin';
     if (entry.id.startsWith('add-scene') || entry.id.startsWith('row-scene') || entry.id === 'row-add-scene') name = 'Cube';
-    const iconUrl = urls[name] ?? entry.iconUrl;
+    const iconUrl = urls[aliases[name] ?? name ?? entry.icon ?? ""] ?? entry.iconUrl;
     return { ...entry, ...(iconUrl ? { iconUrl } : {}), ...(entry.kind === "submenu" ? { items: withMenuIcons(entry.items) } : {}) };
   });
 }

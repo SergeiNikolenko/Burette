@@ -90,3 +90,4 @@ export const Warning = /* @__PURE__ */ appIcon("Warning");
 export const X = /* @__PURE__ */ appIcon("X");
 export const XCircleCrossedClose = /* @__PURE__ */ appIcon("XCircleCrossedClose");
 export const PinFilled = /* @__PURE__ */ appIcon("PinFilled");
+export const Edit = /* @__PURE__ */ appIcon("Edit");

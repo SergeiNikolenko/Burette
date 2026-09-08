@@ -42,7 +42,7 @@ plugins/burette-agent/browser-shell-dist/assets/resources-D5ymtJwZ.json
 plugins/burette-agent/browser-shell-dist/assets/pdf.worker.min-BGUT02Us.mjs
 plugins/burette-agent/browser-shell-dist/assets/openchemlib-BteEtxM3.js
 plugins/burette-agent/browser-shell-dist/assets/PptxViewJS.es-CWh08j7b.js
-plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-Bxp7RE5c.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-Cwc3Uzq2.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-document.worker-qen7HUVU.js
 plugins/burette-agent/browser-shell-dist/assets/chunk-KEIR6QF5-CUuuYsZ_.js
 plugins/burette-agent/browser-shell-dist/assets/cluster-fingerprint.worker-Q1HfNbxv.js
