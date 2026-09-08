@@ -3992,74 +3992,10 @@ img.radix-menu-item-icon {
   white-space: normal;
   overflow-wrap: anywhere;
 }
-/* Settings belong to the tool row that opened them, so they read as a drawer
-   nested inside the section rather than a slab bolted under it. */
 .structure-inspector-xtb-settings {
   min-width: 0;
   display: grid;
-  gap: 7px;
-  border: 1px solid var(--line-subtler);
-  border-radius: 9px;
-  background: var(--surface-subtle);
-  margin-top: 2px;
-  padding: 8px;
-}
-/* The section title above is the heading; this one names a drawer inside it and
-   sits a step down, matching the group headings used in menus. */
-.structure-inspector-xtb-settings .structure-inspector-section-header h4 {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.structure-inspector-xtb-settings-title {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-}
-.structure-inspector-xtb-settings-title > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.structure-inspector-xtb-category-bar {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 4px;
-}
-.structure-inspector-xtb-category-button {
-  position: relative;
-  min-width: 0;
-  height: 28px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: var(--surface-input);
-  color: var(--text-muted);
-  padding: 0 7px;
-  font: 12px/1 var(--ui-font);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: default;
-  transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
-}
-.structure-inspector-xtb-category-button:hover {
-  background: var(--surface-subtle);
-  color: var(--text-secondary);
-}
-.structure-inspector-xtb-category-button[data-active] {
-  border-color: color-mix(in srgb, var(--accent) 36%, transparent);
-  background: color-mix(in srgb, var(--accent) 20%, var(--surface-input));
-  color: var(--text-primary);
+  gap: 12px;
 }
 .structure-inspector-xtb-runtime {
   min-width: 0;
@@ -4261,28 +4197,6 @@ img.radix-menu-item-icon {
   background: var(--surface-input);
   color: var(--text-secondary);
   padding: 0 8px;
-}
-.structure-inspector-xtb-toggle-grid {
-  position: relative;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 8px;
-}
-.structure-inspector-xtb-toggle {
-  position: relative;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.structure-inspector-xtb-toggle span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .structure-inspector-xtb-card [data-xtb-tooltip]::after {
   content: attr(data-xtb-tooltip);
