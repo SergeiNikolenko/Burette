@@ -9,6 +9,7 @@ import { installKetcherBrowserRequire } from "./lib/ketcher-browser-require";
 import { markPerformanceOnce } from "./lib/performance";
 import { initializeWebDemoAnalytics } from "./lib/web-demo-analytics";
 import "./styles.css";
+import "./styles/interface-tokens.css";
 
 installFrontendErrorLog();
 installKetcherBrowserRequire();
