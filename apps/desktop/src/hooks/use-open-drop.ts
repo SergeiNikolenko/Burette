@@ -109,7 +109,8 @@ function fileDropTargetElement(element: Element | null, target: OpenDropTargetCo
       ?? document.querySelector('[data-file-drop-zone="tab-strip"]');
   }
   if (target.kind === "ketcher") {
-    return element?.closest(".ketcher-page") ?? document.querySelector(".ketcher-page");
+    return element?.closest('[data-file-drop-zone="ketcher"], .ketcher-page')
+      ?? document.querySelector(".ketcher-page");
   }
   const documentTarget = element?.closest("[data-drop-document-path]");
   if (documentTarget) return documentTarget;
@@ -148,6 +149,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   const [dropActive, setDropActive] = useState(false);
   const [dropPreview, setDropPreview] = useState<FileDropPreview | null>(null);
   const nativeDragPayloadRef = useRef<StructureDragPayload | null>(null);
+  const browserDragPayloadRef = useRef<StructureDragPayload | null>(null);
   const hideDropFeedback = useCallback(() => {
     nativeDragPayloadRef.current = null;
     setDropActive(false);
@@ -466,15 +468,34 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   }, [handleFileDrop, pushStatus]);
 
   useEffect(() => {
-    const resetDropState = () => hideDropFeedback();
+    const resetDropState = () => {
+      browserDragPayloadRef.current = null;
+      hideDropFeedback();
+    };
+    // dragover exposes MIME types but protects getData(). Read our payload
+    // after the source's dragstart handler has written it, while it is readable.
+    const rememberBrowserDrag = (event: DragEvent) => {
+      if (event.dataTransfer && hasStructureDrag(event.dataTransfer)) {
+        browserDragPayloadRef.current = readStructureDragPayload(event.dataTransfer);
+      }
+    };
+    const resetOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") resetDropState();
+    };
     const resetWhenHidden = () => {
-      if (document.visibilityState === "hidden") hideDropFeedback();
+      if (document.visibilityState === "hidden") resetDropState();
     };
 
+    window.addEventListener("dragstart", rememberBrowserDrag);
+    window.addEventListener("drop", resetDropState, true);
+    window.addEventListener("keydown", resetOnEscape, true);
     window.addEventListener("blur", resetDropState);
     window.addEventListener("dragend", resetDropState);
     document.addEventListener("visibilitychange", resetWhenHidden);
     return () => {
+      window.removeEventListener("dragstart", rememberBrowserDrag);
+      window.removeEventListener("drop", resetDropState, true);
+      window.removeEventListener("keydown", resetOnEscape, true);
       window.removeEventListener("blur", resetDropState);
       window.removeEventListener("dragend", resetDropState);
       document.removeEventListener("visibilitychange", resetWhenHidden);
@@ -489,7 +510,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     event.dataTransfer.dropEffect = "copy";
     const { payload, itemCount } = structureDrop
       ? {
-          payload: readStructureDragPayload(event.dataTransfer),
+          payload: browserDragPayloadRef.current ?? readStructureDragPayload(event.dataTransfer),
           itemCount: 0,
         }
       : browserFileDropPreviewPayload(event.dataTransfer);
@@ -520,7 +541,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
           };
       payload.point = point;
       const target = event.target instanceof Element ? event.target : null;
-      if (payload.paths.length > 0 || payload.records.length > 0) {
+      if (payload.paths.length > 0 || payload.records.length > 0 || (payload.items?.length ?? 0) > 0) {
         if (fileDrop) {
           void runFinderDropAction(payload, dropTargetForElement(target));
         } else {

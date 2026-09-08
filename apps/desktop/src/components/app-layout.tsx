@@ -673,7 +673,7 @@ export function AppLayout({
                   </ResizablePanelGroup>
                 </ResizablePanel>
                 {chromeVisible ? (
-                  <ResizableHandle withHandle aria-label="Resize right dock" data-collapsed={!state.rightDockOpen || undefined} />
+                  <ResizableHandle withHandle className="workspace-right-dock-handle" aria-label="Resize right dock" data-collapsed={!state.rightDockOpen || undefined} />
                 ) : null}
                 <ResizablePanel
                   id="right-dock"

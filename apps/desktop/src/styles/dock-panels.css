@@ -1,0 +1,32 @@
+/* Jobs, baskets and compare inputs use the same compact list treatment. */
+.dock-content .dock-drop-list { gap: 0; }
+.dock-content .dock-drop-item {
+  border: 0;
+  border-bottom: 1px solid var(--line-subtler);
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 4px;
+  gap: 4px;
+}
+.dock-content .dock-xtb-job-item::before { display: none; }
+.dock-content .dock-xtb-job-item[data-has-primary-result]:hover { background: var(--surface-hover); border-color: var(--line-subtler); }
+.dock-content .dock-drop-item-title > strong { font-size: 13px; line-height: 18px; font-weight: 500; color: var(--text-primary); }
+.dock-content .dock-drop-item span { font-size: var(--ui-caption-size); line-height: var(--ui-caption-line); }
+.dock-content .dock-job-meta { flex-wrap: wrap; white-space: normal; gap: 4px; }
+.dock-content .dock-job-status { flex-shrink: 0; text-transform: capitalize; }
+.dock-content .dock-xtb-job-item[data-status="success"] .dock-job-status { color: var(--status-success); }
+.dock-content .dock-xtb-job-item[data-status="failed"] .dock-job-status { color: var(--status-danger); }
+.dock-content .dock-drop-item > span { white-space: normal; overflow-wrap: anywhere; }
+.dock-content .dock-inline-action-row { flex-shrink: 0; gap: 4px; }
+.dock-content :is(.dock-action, .dock-job-menu-button) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.dock-content :is(.dock-action, .dock-job-menu-button):hover { background: var(--surface-hover); color: var(--text-primary); }
+.dock-content .dock-empty { background: transparent; border-radius: 0; padding: 8px 4px; color: var(--text-muted); font-size: 12px; line-height: 18px; }
+.dock-jobs-toolbar { padding-inline: 4px; }
+.dock-jobs-toolbar > span { font-size: 12px; line-height: 18px; font-weight: 500; }
