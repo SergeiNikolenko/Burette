@@ -1,3 +1,4 @@
+import { Cube, FileBlank, FileCode, FileDocument, FileImage, FileSpreadsheet, Flask, SettingsSlider, type AppIconType } from "../ui/app-icons";
 import type { ReactElement } from "react";
 import { pathExtension } from "../../lib/file-routing";
 
@@ -207,7 +208,20 @@ export function fileKindForPath(path: string, extension?: string): FileKind {
     : "default";
 }
 
+const SHARED_FILE_ICONS: Partial<Record<FileKind, AppIconType>> = {
+  crystal: Cube,
+  table: FileSpreadsheet,
+  calculation: Flask,
+  image: FileImage,
+  document: FileDocument,
+  code: FileCode,
+  config: SettingsSlider,
+  default: FileBlank,
+};
+
 export function FileKindIcon({ kind }: { kind: FileKind }) {
+  const SharedIcon = SHARED_FILE_ICONS[kind];
+  if (SharedIcon) return <SharedIcon size={16} aria-hidden="true" />;
   return (
     <svg
       width="16"
@@ -230,17 +244,10 @@ export function FileKindIcon({ kind }: { kind: FileKind }) {
 // where one exists for the concept — a curve between two points for a trajectory,
 // a viewfinder for a saved scene, axes with a polyline for a plot, angle brackets
 // for code. Fills appear only where they carry meaning, never as decoration.
-const KIND_GLYPHS: Record<FileKind, ReactElement> = {
+const KIND_GLYPHS: Partial<Record<FileKind, ReactElement>> = {
   // Helix wound as a coil. Four half-turns rather than three: at 16px three read
   // as a plain "S", and mirrored strands collapse into a closed pouch shape.
   protein: <path d="M7 20.4c0-1.95 10-1.95 10-3.9s-10-1.95-10-3.9 10-1.95 10-3.9-10-1.95-10-3.9" />,
-  // Unit cell drawn as an isometric cube.
-  crystal: (
-    <>
-      <path d="M12 3 19.9 7.4v9.2L12 21l-7.9-4.4V7.4Z" />
-      <path d="M12 12 19.9 7.4M12 12 4.1 7.4M12 12v9" />
-    </>
-  ),
   // Aromatic ring with a substituent.
   molecule: (
     <>
@@ -248,13 +255,6 @@ const KIND_GLYPHS: Record<FileKind, ReactElement> = {
       <circle cx="10.6" cy="13.7" r="2.5" />
       <path d="M13.7 8.3 16.9 5.7" />
       <circle cx="18.5" cy="4.5" r="1.5" fill="currentColor" stroke="none" />
-    </>
-  ),
-  // Header row and key column.
-  table: (
-    <>
-      <rect x="3.4" y="4.6" width="17.2" height="14.8" rx="4.2" />
-      <path d="M3.4 10h17.2M9.7 10v9.4" />
     </>
   ),
   // A path travelled from one point to another.
@@ -272,13 +272,6 @@ const KIND_GLYPHS: Record<FileKind, ReactElement> = {
       <circle cx="12" cy="8.6" r="2.5" />
       <circle cx="18.8" cy="16.2" r="2.5" />
       <path d="M6.9 14.3 10.3 10.5M13.7 10.5 17.1 14.3" />
-    </>
-  ),
-  // Flask.
-  calculation: (
-    <>
-      <path d="M9.6 3.2v6.4l-4.8 8.7c-.8 1.5.3 3.3 2 3.3h10.4c1.7 0 2.8-1.8 2-3.3l-4.8-8.7V3.2" />
-      <path d="M8.3 3.2h7.4M7.4 15.9h9.2" />
     </>
   ),
   // Peaks on a baseline.
@@ -315,14 +308,6 @@ const KIND_GLYPHS: Record<FileKind, ReactElement> = {
       <path d="M3.6 16.6h5.6M11.5 16.6h2.4M16.2 16.6h4.2" />
     </>
   ),
-  // Raster figure or screenshot.
-  image: (
-    <>
-      <rect x="3.4" y="4.6" width="17.2" height="14.8" rx="3.2" />
-      <circle cx="8.2" cy="9" r="1.5" />
-      <path d="m5.4 17 4.2-4 2.6 2.2 2.7-3 3.7 4.8" />
-    </>
-  ),
   // Series on axes.
   plot: (
     <>
@@ -335,38 +320,6 @@ const KIND_GLYPHS: Record<FileKind, ReactElement> = {
     <>
       <rect x="3.4" y="4.6" width="17.2" height="14.8" rx="4.2" />
       <path d="m7.6 10 2.4 2-2.4 2M13 14h3.6" />
-    </>
-  ),
-  // Page with a folded corner.
-  document: (
-    <>
-      <path d="M13.4 3.4H7.2A2.2 2.2 0 0 0 5 5.6v12.8a2.2 2.2 0 0 0 2.2 2.2h9.6a2.2 2.2 0 0 0 2.2-2.2V9Z" />
-      <path d="M13.4 3.4V9H19" />
-      <path d="M8.4 13h7.2M8.4 16.4h4.6" />
-    </>
-  ),
-  code: (
-    <>
-      <path d="M9.4 7.4 4.4 12l5 4.6M14.6 7.4 19.6 12l-5 4.6" />
-      <path d="M12.9 5.4 11.1 18.6" />
-    </>
-  ),
-  // Parameter sliders.
-  config: (
-    <>
-      <path d="M4 6.8h3.4M11.4 6.8h8.6" />
-      <circle cx="9.4" cy="6.8" r="2" />
-      <path d="M4 12h9.6M17.6 12h2.4" />
-      <circle cx="15.6" cy="12" r="2" />
-      <path d="M4 17.2h5.4M13.4 17.2h6.6" />
-      <circle cx="11.4" cy="17.2" r="2" />
-    </>
-  ),
-  // Plain page, for anything the workbench has no opinion about.
-  default: (
-    <>
-      <path d="M13.4 3.4H7.2A2.2 2.2 0 0 0 5 5.6v12.8a2.2 2.2 0 0 0 2.2 2.2h9.6a2.2 2.2 0 0 0 2.2-2.2V9Z" />
-      <path d="M13.4 3.4V9H19" />
     </>
   ),
 };

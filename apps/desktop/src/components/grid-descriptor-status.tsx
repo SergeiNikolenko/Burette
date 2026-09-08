@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Item, ItemContent, ItemDescription, ItemTitle } from "./ui/item";
 import { GRID_DESCRIPTOR_JOB_EVENT } from "../hooks/use-app-descriptors";
 import type { GridDescriptorJobStatus } from "../lib/descriptors";
 
@@ -52,16 +53,15 @@ export function GridDescriptorStatus({ documentId }: { documentId: string }) {
   // tool row inside Tools instead, where the other running work already is.
   if (job.running) {
     return (
-      <div className="structure-inspector-tool grid-descriptor-status" data-state="running">
-        <span className="structure-inspector-tool-rail" aria-hidden="true" />
-        <span className="structure-inspector-tool-main">
-          <span className="structure-inspector-tool-name">
+      <Item variant="outline" size="xs" role="listitem" className="grid-descriptor-status" data-state="running">
+        <ItemContent className="min-w-0">
+          <ItemTitle>
             RDKit
-            <em>descriptors</em>
-          </span>
-          <span className="structure-inspector-tool-detail">
+            <span className="text-xs font-normal text-muted-foreground">descriptors</span>
+          </ItemTitle>
+          <ItemDescription>
             {total > 0 ? `Calculating · ${done.toLocaleString()} of ${total.toLocaleString()}` : "Calculating descriptors"}
-          </span>
+          </ItemDescription>
           {/* An all-molecules run reports no total up front. A full bar would read
               as finished, so that case sweeps as indeterminate instead. */}
           {total > 0 ? (
@@ -71,27 +71,26 @@ export function GridDescriptorStatus({ documentId }: { documentId: string }) {
           ) : (
             <div className="grid-descriptor-progress indeterminate" aria-hidden><span /></div>
           )}
-        </span>
-      </div>
+        </ItemContent>
+      </Item>
     );
   }
 
   const failed = job.status === "failed";
   const added = job.summary?.descriptorIdCount ?? 0;
   return (
-    <div className="structure-inspector-tool grid-descriptor-status" data-state={failed ? "missing" : "ready"}>
-      <span className="structure-inspector-tool-rail" aria-hidden="true" />
-      <span className="structure-inspector-tool-main">
-        <span className="structure-inspector-tool-name">
+    <Item variant="outline" size="xs" role="listitem" className="grid-descriptor-status" data-state={failed ? "missing" : "ready"}>
+      <ItemContent className="min-w-0">
+        <ItemTitle>
           RDKit
-          <em>descriptors</em>
-        </span>
-        <span className="structure-inspector-tool-detail">
+          <span className="text-xs font-normal text-muted-foreground">descriptors</span>
+        </ItemTitle>
+        <ItemDescription>
           {failed
             ? job.message || "Descriptor run failed"
             : added > 0 ? `Added ${added.toLocaleString()} ${added === 1 ? "column" : "columns"}` : "Descriptors calculated"}
-        </span>
-      </span>
-    </div>
+        </ItemDescription>
+      </ItemContent>
+    </Item>
   );
 }

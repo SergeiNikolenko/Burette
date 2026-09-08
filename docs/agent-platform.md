@@ -128,6 +128,12 @@ browser-dev and native app validation remain separate surfaces.
 - Screenshot interpretation must not replace typed `observe`, validation
   output, or CLI/MCP errors.
 
+Mol* ligand results include `structureId`, the current viewer structure reference.
+Use it as `selector.structure` to distinguish identical residue addresses across
+CIF data blocks. `focusLigand` retains that reference when resolving an index or
+saving a selection, and scopes both selection and camera focus to that structure.
+References are local to the loaded scene; refresh them after reloading a file.
+
 ## MolViewSpec Story Contract
 
 A Story is standard MolViewSpec multi-state data: `kind: "multiple"`, global

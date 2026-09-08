@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "@/components/ui/app-icons";
 
 import { useKeyedMountEffect } from "@/hooks/use-keyed-mount-effect";
 import { cn } from "@/lib/utils";

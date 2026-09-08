@@ -93,9 +93,16 @@ export function useSidebarStructureDrag({
       finishDrag();
     };
 
+    const cancelOnEscape = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key === "Escape") finishDrag();
+    };
+    window.addEventListener("blur", finishDrag);
+    window.addEventListener("keydown", cancelOnEscape, true);
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp, { once: true });
     removeMouseListenersRef.current = () => {
+      window.removeEventListener("blur", finishDrag);
+      window.removeEventListener("keydown", cancelOnEscape, true);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
@@ -135,7 +142,9 @@ function runSidebarDropAtPoint(
   actions: ShellActions,
 ) {
   if (typeof document === "undefined" || (clientX <= 0 && clientY <= 0)) return false;
-  const target = sidebarDropTarget(document.elementFromPoint(clientX, clientY), state);
+  const element = document.elementFromPoint(clientX, clientY);
+  if (!element?.closest(".app-shell")) return false;
+  const target = sidebarDropTarget(element, state);
   if (target.kind === "dock") {
     void actions.openDockPayload({ area: target.area, tabKind: target.tabKind, payload });
     return true;

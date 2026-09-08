@@ -5,6 +5,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fileKindForPath } from "../apps/desktop/src/components/sidebar/file-kind-icon.tsx";
 import { ProjectGroup } from "../apps/desktop/src/components/sidebar/file-tree-node.tsx";
+import { TooltipProvider } from "../apps/desktop/src/components/ui/tooltip.tsx";
 
 const project = {
   id: "project:/fixtures/BurettePreviewSamples",
@@ -33,7 +34,7 @@ const state = {
 };
 
 const actions = new Proxy({}, { get: () => () => {} });
-const html = renderToStaticMarkup(React.createElement(ProjectGroup, { project, state, actions }));
+const html = renderProjectGroup({ project, state, actions });
 
 for (const expected of [
   "project-folder-row",
@@ -51,12 +52,12 @@ for (const expected of [
   assert.match(html, new RegExp(escapeRegExp(expected)));
 }
 
-const expandedDemoHtml = renderToStaticMarkup(React.createElement(ProjectGroup, {
+const expandedDemoHtml = renderProjectGroup({
   project,
   state,
   actions,
   expandFoldersByDefault: true,
-}));
+});
 assert.doesNotMatch(expandedDemoHtml, /data-expanded="false"/);
 
 const crowdedFolderProject = {
@@ -73,11 +74,11 @@ const crowdedState = {
   ...state,
   expandedProjectIds: [crowdedFolderProject.id],
 };
-const crowdedHtml = renderToStaticMarkup(React.createElement(ProjectGroup, {
+const crowdedHtml = renderProjectGroup({
   project: crowdedFolderProject,
   state: crowdedState,
   actions,
-}));
+});
 
 assert.match(crowdedHtml, /results/);
 assert.match(crowdedHtml, /Show more/);
@@ -122,6 +123,12 @@ for (const inherited of ["constructor", "__proto__", "toString", "hasOwnProperty
 }
 
 console.log("sidebar tree render tests passed");
+
+function renderProjectGroup(props) {
+  // Match Sidebar's provider boundary so rows render their real tooltips.
+  return renderToStaticMarkup(React.createElement(TooltipProvider, { delayDuration: 350 },
+    React.createElement(ProjectGroup, props)));
+}
 
 function structure(path, title, relativePath) {
   return {

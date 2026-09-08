@@ -22,14 +22,8 @@ import {
   type RefObject,
 } from "react"
 import { Calligraph } from "calligraph"
-import {
-  GripHorizontalIcon,
-  GripVerticalIcon,
-  MoveIcon,
-  MoveLeftIcon,
-  MoveTopIcon,
-  PercentIcon,
-} from "@hugeicons/core-free-icons"
+import { GripHorizontalIcon, GripVerticalIcon, MoveIcon, PercentIcon } from "@hugeicons/core-free-icons";
+import { ArrowLeft as MoveLeftIcon, ArrowUp as MoveTopIcon } from "@/components/ui/app-icon-data";
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useReducedMotion, motion } from "motion/react"
 

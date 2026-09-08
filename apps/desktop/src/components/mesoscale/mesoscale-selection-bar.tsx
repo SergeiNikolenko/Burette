@@ -1,4 +1,4 @@
-import { Box, Trash2, X } from "lucide-react";
+import { Cube as Box, Delete as Trash2, X } from "@/components/ui/app-icons";
 import { requestMesoscale, useMesoscaleStore } from "../../stores/mesoscale-store";
 
 export function MesoscaleSelectionBar({ documentId }: { documentId: string }) {

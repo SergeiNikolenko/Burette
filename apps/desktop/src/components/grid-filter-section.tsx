@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowDown01Icon, ArrowUpDownIcon, Cancel01Icon, ChartHistogramIcon, Search01Icon } from "@hugeicons/core-free-icons";
+import { ChevronDown as ArrowDown01Icon, ChevronUpDown as ArrowUpDownIcon, X as Cancel01Icon, BarChart as ChartHistogramIcon, Search as Search01Icon } from "@/components/ui/app-icon-data";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Filter } from "./ui/app-icons";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import { Bar, BarChart, XAxis } from "recharts";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -259,47 +261,31 @@ function NumericFilter({
 function FilterCard({
   column,
   actions,
-  bulk,
-  defaultOpen,
+  open,
+  onOpenChange,
   focusRequestId,
 }: {
   column: GridFilterColumn;
   actions: ShellActions;
-  bulk: { open: boolean } | null;
-  defaultOpen: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   focusRequestId?: number;
 }) {
   const scale = useMemo(() => columnScale(column), [column]);
   const active = Boolean(column.filter && (column.filter.min || column.filter.max || column.filter.text));
-  const [open, setOpen] = useState(active || defaultOpen);
   // A flat histogram is a row id or a counter, so its chart starts folded away.
   const [chartOpen, setChartOpen] = useState<boolean | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const showChart = chartOpen ?? !scale?.flat;
 
   useEffect(() => {
-    if (active) setOpen(true);
-  }, [active]);
-
-  useEffect(() => {
-    if (defaultOpen) setOpen(true);
-  }, [defaultOpen]);
-
-  // Each click mints a fresh object, so the same direction applies again to
-  // cards the user has toggled by hand since the last sweep.
-  useEffect(() => {
-    if (bulk) setOpen(bulk.open);
-  }, [bulk]);
-
-  useEffect(() => {
     if (focusRequestId === undefined) return;
-    setOpen(true);
     const frame = window.requestAnimationFrame(() => cardRef.current?.scrollIntoView({ block: "nearest" }));
     return () => window.cancelAnimationFrame(frame);
   }, [focusRequestId]);
 
   return (
-    <Collapsible ref={cardRef} className="grid-filter-card" data-active={active || undefined} open={open} onOpenChange={setOpen}>
+    <Collapsible ref={cardRef} className="grid-filter-card" data-active={active || undefined} open={open} onOpenChange={onOpenChange}>
       <div className="grid-filter-card-header">
         <CollapsibleTrigger asChild>
           <Button className="grid-filter-card-trigger" variant="ghost" size="sm">
@@ -332,14 +318,17 @@ function FilterCard({
                   type="button"
                   variant="ghost"
                   size="icon-2xs"
-                  aria-expanded={showChart}
-                  aria-label={`${showChart ? "Hide" : "Show"} the ${column.label} distribution`}
-                  onClick={() => setChartOpen(!showChart)}
+                  aria-expanded={open && showChart}
+                  aria-label={`${open && showChart ? "Hide" : "Show"} the ${column.label} distribution`}
+                  onClick={() => {
+                    setChartOpen(!open || !showChart);
+                    onOpenChange(true);
+                  }}
                 >
                   <HugeiconsIcon icon={ChartHistogramIcon} aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent showArrow={false}>{showChart ? "Hide" : "Show"} distribution</TooltipContent>
+              <TooltipContent showArrow={false}>{open && showChart ? "Hide" : "Show"} distribution</TooltipContent>
             </Tooltip>
           ) : null}
         </div>
@@ -377,8 +366,7 @@ export function GridFilterSection({
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(true);
-  const [bulk, setBulk] = useState<{ open: boolean } | null>(null);
-  const allOpen = bulk?.open === true;
+  const [columnOpen, setColumnOpen] = useState<Record<string, boolean>>({});
   const columns = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return model.columns.filter((column) => !needle || column.label.toLowerCase().includes(needle));
@@ -392,6 +380,9 @@ export function GridFilterSection({
     })?.id,
     [model.columns],
   );
+  const isColumnOpen = (column: GridFilterColumn) => columnOpen[column.id]
+    ?? Boolean(column.filter?.min || column.filter?.max || column.filter?.text || column.id === defaultOpenColumnId);
+  const allOpen = shown.length > 0 && shown.every(isColumnOpen);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -399,22 +390,22 @@ export function GridFilterSection({
     if (!column) return;
     setOpen(true);
     setQuery(column.label);
+    setColumnOpen((current) => current[column.id] ? current : { ...current, [column.id]: true });
   }, [focusRequest, model.columns]);
 
   return (
     <TooltipProvider>
-      <Collapsible
+      <Accordion
         className="structure-brief-card structure-inspector-section grid-filter-card-host"
         data-collapsed={!open || undefined}
-        open={open}
-        onOpenChange={setOpen}
+        type="single"
+        collapsible
+        value={open ? "filters" : ""}
+        onValueChange={(value) => setOpen(Boolean(value))}
       >
-        <div className="structure-inspector-section-header">
-          <CollapsibleTrigger asChild>
-            <Button className="structure-inspector-section-title-button" variant="ghost" size="sm">
-              Filters
-            </Button>
-          </CollapsibleTrigger>
+        <AccordionItem value="filters">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1"><AccordionTrigger>Filters</AccordionTrigger></div>
           <div className="grid-filter-host-actions">
             {open ? (
               <Tooltip>
@@ -425,7 +416,10 @@ export function GridFilterSection({
                     size="icon-2xs"
                     aria-expanded={allOpen}
                     aria-label={allOpen ? "Collapse all filters" : "Expand all filters"}
-                    onClick={() => setBulk({ open: !allOpen })}
+                    onClick={() => setColumnOpen((current) => ({
+                      ...current,
+                      ...Object.fromEntries(shown.map((column) => [column.id, !allOpen])),
+                    }))}
                   >
                     <HugeiconsIcon icon={ArrowUpDownIcon} aria-hidden="true" />
                   </Button>
@@ -435,6 +429,7 @@ export function GridFilterSection({
             ) : null}
             {activeCount ? (
               <Button type="button" variant="ghost" size="xs" onClick={() => actions.clearGridColumnFilters()}>
+                <Filter size={14} aria-hidden="true" />
                 Clear all
                 <Badge variant="secondary">{activeCount.toLocaleString()}</Badge>
               </Button>
@@ -443,7 +438,7 @@ export function GridFilterSection({
             )}
           </div>
         </div>
-        <CollapsibleContent>
+        <AccordionContent className="h-auto">
           <div className="grid-filter-count">
             {model.visible.toLocaleString()} of {model.total.toLocaleString()} rows
           </div>
@@ -467,8 +462,8 @@ export function GridFilterSection({
                 key={column.id}
                 column={column}
                 actions={actions}
-                bulk={bulk}
-                defaultOpen={column.id === defaultOpenColumnId}
+                open={isColumnOpen(column)}
+                onOpenChange={(nextOpen) => setColumnOpen((current) => ({ ...current, [column.id]: nextOpen }))}
                 focusRequestId={focusRequest?.columnId === column.id ? focusRequest.requestId : undefined}
               />
             ))}
@@ -479,8 +474,9 @@ export function GridFilterSection({
             ) : null}
             {columns.length ? null : <div className="dock-empty">No filterable columns</div>}
           </div>
-        </CollapsibleContent>
-      </Collapsible>
+        </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     </TooltipProvider>
   );
 }

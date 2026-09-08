@@ -1,3 +1,4 @@
+import { Camera, X } from "../ui/app-icons";
 import type { MouseEvent } from "react";
 import type { ViewerDocument } from "../../types";
 import { requestMesoscale, useMesoscaleStore } from "../../stores/mesoscale-store";
@@ -45,7 +46,7 @@ export function MesoscaleViewportRail({ document, hidden }: { document: ViewerDo
         <RailIcon paths={["M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0", "M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5"]} />
       </button>
       <button type="button" className="mesoscale-rail-button" disabled={disabled} aria-label="Save a screenshot" title="Save a screenshot" onClick={() => run({ type: "exportPng" })}>
-        <RailIcon paths={["M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z", "M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"]} />
+        <Camera size={24} aria-hidden="true" />
       </button>
       <button type="button" className="mesoscale-rail-button" disabled={disabled} aria-pressed={summary?.illumination ?? false} aria-label="Realistic lighting" title="Realistic lighting" onClick={() => run({ type: "setIllumination", enabled: !(summary?.illumination ?? false) })}>
         <RailIcon paths={["M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z", "M12 1.8V4M12 20v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M1.8 12H4M20 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"]} />
@@ -70,7 +71,7 @@ export function MesoscaleViewportRail({ document, hidden }: { document: ViewerDo
       </button>
       {summary?.selectedCount ? (
         <button type="button" className="mesoscale-rail-button mesoscale-clear-selection" aria-label="Clear selection" title="Clear selection" onClick={() => run({ type: "setSelection", mode: "clear" })}>
-          <RailIcon paths={["M18 6 6 18M6 6l12 12"]} />
+          <X size={24} aria-hidden="true" />
         </button>
       ) : null}
     </div>

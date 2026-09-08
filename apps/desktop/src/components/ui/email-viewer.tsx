@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { FileText, Layers3, Mail, Paperclip } from "lucide-react";
+import { FileDocument as FileText, Stack as Layers3, Email as Mail, Clip as Paperclip } from "@/components/ui/app-icons";
 
 import { cn } from "@/lib/utils";
 

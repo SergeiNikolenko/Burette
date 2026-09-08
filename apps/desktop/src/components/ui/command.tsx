@@ -14,7 +14,7 @@ import {
   InputGroupAddon,
 } from "@/components/ui/input-group"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { SearchIcon, Tick02Icon } from "@hugeicons/core-free-icons"
+import { Search as SearchIcon, Check as Tick02Icon } from "@/components/ui/app-icon-data";
 
 function Command({
   className,
@@ -66,8 +66,20 @@ function CommandDialog({
 
 function CommandInput({
   className,
+  variant = "default",
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: React.ComponentProps<typeof CommandPrimitive.Input> & { variant?: "default" | "plain" }) {
+  if (variant === "plain") {
+    return (
+      <div data-slot="command-input-wrapper" className="px-4 py-3">
+        <CommandPrimitive.Input
+          data-slot="command-input"
+          className={cn("h-8 w-full bg-transparent text-base outline-none placeholder:text-muted-foreground disabled:opacity-50", className)}
+          {...props}
+        />
+      </div>
+    )
+  }
   return (
     <div data-slot="command-input-wrapper" className="p-1 pb-0">
       <InputGroup className="h-8! rounded-lg! border-input/30 bg-input/30 shadow-none! *:data-[slot=input-group-addon]:pl-2!">

@@ -1,12 +1,6 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import {
-  Add01Icon,
-  Atom01Icon,
-  Cancel01Icon,
-  File02Icon,
-  Folder01Icon,
-  Search01Icon,
-} from "@hugeicons/core-free-icons";
+import { useDropHighlightReset } from "../hooks/use-drop-highlight-reset";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type ComponentProps } from "react";
+import { Plus as Add01Icon, Atom as Atom01Icon, X as Cancel01Icon, FileBlank as File02Icon, Folder as Folder01Icon, Search as Search01Icon } from "@/components/ui/app-icon-data";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { join, resourceDir } from "@tauri-apps/api/path";
@@ -49,7 +43,7 @@ type DockPanelProps = {
   readOnly?: boolean;
 };
 
-const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
+const dockTabIcons: Record<DockTabKind, ComponentProps<typeof HugeiconsIcon>["icon"]> = {
   scene: Atom01Icon,
   xyzrender: Atom01Icon,
   files: Folder01Icon,
@@ -93,6 +87,8 @@ function resolveChemicalSpaceDocument(
 
 export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
   const [dropActive, setDropActive] = useState(false);
+  useDropHighlightReset(setDropActive);
+
   const configuredTabs = area === "right" ? state.rightDockTabs : state.bottomDockTabs;
   const rawTabs = readOnly && area === "right"
     ? [configuredTabs.find((tab) => tab.kind === "inspector") ?? createDockTab("inspector")]

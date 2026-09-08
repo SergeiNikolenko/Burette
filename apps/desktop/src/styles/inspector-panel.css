@@ -1,0 +1,72 @@
+/* One inspector surface with section dividers, rather than nested cards. */
+.structure-brief > .structure-brief-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 12px 4px;
+  gap: 10px;
+}
+.structure-brief > .structure-brief-card + .structure-brief-card {
+  border-top: 1px solid var(--line-subtle);
+}
+.structure-brief > .structure-inspector-header {
+  background: var(--bg-base);
+  background-image: none;
+  padding-top: 4px;
+}
+.structure-inspector-header .structure-brief-title-row h3 {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+.structure-inspector-header-stats { border: 0; border-radius: 0; }
+.structure-inspector-header-stats > div { padding: 2px 10px; gap: 2px; }
+.structure-inspector-header-stats > div:first-child { padding-left: 0; }
+.structure-inspector-header-stats span { font-size: 11px; line-height: 16px; text-transform: none; letter-spacing: 0; color: var(--text-muted); }
+.structure-inspector-header-stats strong { font-size: 13px; font-weight: 500; line-height: 18px; }
+.structure-inspector-section-header > span { background: transparent; padding: 0; color: var(--text-muted); font-weight: 400; }
+.structure-inspector-inline-action { border-color: var(--line-subtle); background: var(--surface-input); }
+.structure-inspector-inline-action:hover { background: var(--surface-hover); }
+
+/* Composition, file properties and computed results share the section surface. */
+.structure-brief :is(.structure-brief-rows, .structure-inspector-xtb-table, .structure-inspector-xtb-runtime) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.structure-brief :is(.structure-brief-row, .structure-inspector-xtb-table, .structure-inspector-xtb-runtime) { padding-inline: 0; }
+.structure-brief-notes span { background: transparent; padding: 4px 0; }
+.structure-brief .structure-brief-action-entry[data-selected="true"] :is(.structure-brief-action-row, .structure-brief-action-summary, .structure-brief-chip-button, .structure-brief-chip-summary) {
+  border-color: var(--line-subtle);
+  background: var(--surface-hover);
+  box-shadow: none;
+}
+.structure-brief :is(.structure-inspector-xtb-category-button[data-active], .structure-inspector-pose-option[data-selected="true"], .structure-inspector-style-option[data-selected="true"]) {
+  border-color: var(--line-subtle);
+  background: var(--control-selected-bg);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+  font-weight: var(--ui-weight-control);
+}
+.trajectory-smoothing-card { gap: 12px; }
+.trajectory-smoothing-intro,
+.trajectory-smoothing-note,
+.trajectory-smoothing-strength-copy,
+.trajectory-smoothing-method-note {
+  font-size: var(--ui-caption-size);
+  line-height: var(--ui-caption-line);
+  color: var(--text-muted);
+}
+.trajectory-smoothing-strength-copy strong { font-weight: 500; color: var(--text-primary); }
+.structure-brief :is(.trajectory-smoothing-group-label, .structure-inspector-settings-group-title) {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.trajectory-smoothing-settings > label:not(.trajectory-smoothing-check) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); font-size: 12px; line-height: 18px; }
+.trajectory-smoothing-check { font-size: 12px; line-height: 18px; }
+.structure-brief :is(input[type="checkbox"], input[type="range"]) { accent-color: var(--shadcn-primary); }
+.trajectory-smoothing-update-status { color: var(--text-muted); font-size: 12px; line-height: 18px; font-weight: 400; }
+.trajectory-smoothing-update-status[data-complete] { color: var(--status-success); }

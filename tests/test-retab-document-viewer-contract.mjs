@@ -89,17 +89,17 @@ for (const extension of ['pdf', 'docx', 'xlsx', 'pptx']) {
 // Vendored registry components are only reproducible while the registry stays declared.
 assert.equal(components.registries['@retab'], 'https://ui.retab.com/r/{name}.json');
 
-// Pixel parity: vendored Retab files use Retab's own primitives, and the document
-// stage pins the stock neutral palette the upstream site renders with.
+// Vendored Retab viewers retain their primitives while inheriting the shell
+// palette, so custom colors and light/dark preferences reach document controls.
 const viewerControls = source('apps/desktop/src/components/ui/viewer-controls.tsx');
 assert.match(viewerControls, /from "@\/components\/ui\/retab-button"/);
 assert.match(viewerControls, /size="iconSm"/);
 for (const name of ['retab-button', 'retab-dropdown-menu', 'retab-skeleton', 'retab-spinner']) {
   source(`apps/desktop/src/components/ui/${name}.tsx`);
 }
-assert.match(styles, /\.document-stage \{\n  --shadcn-background: #ffffff;/);
-// The hairline look comes from alpha-blended borders, harvested from ui.retab.com.
-assert.match(styles, /--shadcn-border: color-mix\(in oklab, #000 8%, transparent\);/);
+assert.doesNotMatch(styles, /\.document-stage\s*\{[^}]*--shadcn-background:/);
+assert.match(styles, /--shadcn-background: var\(--surface-primary\);/);
+assert.match(styles, /--shadcn-border: var\(--line-subtle\);/);
 assert.match(styles, /\.document-stage \*,[\s\S]{0,120}:host \*/);
 assert.match(documentPage, /PdfViewerThumbnails \/>/);
 // The generic branch has no FileViewerHeader: each viewer draws its own chrome
