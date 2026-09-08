@@ -6220,10 +6220,6 @@ input.structure-inspector-composition-search {
   position: relative;
   min-width: 0;
   min-height: 0;
-  /* Chrome scale follows the smaller of the header zoom and measured fit,
-     floored so the toolbars stay usable at deep zoom-out. Canvas drawing zoom
-     is Ketcher's own setZoom, not this scale. */
-  --ketcher-chrome-scale: clamp(0.5, min(var(--ketcher-ui-scale, 1), var(--ketcher-fit-scale)), 1);
   --ketcher-toolbar-button-size: 32px;
   --ketcher-toolbar-icon-size: 22px;
   --ketcher-toolbar-margin: 4px;
@@ -6256,25 +6252,8 @@ input.structure-inspector-composition-search {
   position: absolute;
   inset: 0;
   z-index: 2;
-  /* Dimension-compensated scale: lay the editor out at 1/scale size, then
-     transform it back down so the scaled chrome fills the shell edge-to-edge
-     at every zoom step. An uncompensated transform leaves the editor laid out
-     at the visible size, clipping the top toolbar and the right atom rail. */
-  width: calc(100% / var(--ketcher-chrome-scale));
-  height: calc(100% / var(--ketcher-chrome-scale));
-  transform: scale(var(--ketcher-chrome-scale));
-  transform-origin: top left;
-}
-/* The drawing canvas must stay visually 1:1: Ketcher converts pointer events
-   with raw clientX/clientY math and knows nothing about external transforms
-   (a scaled canvas places atoms away from the cursor). Reverse the frame
-   transform on the canvas cell while keeping its visual footprint equal to
-   its grid track. */
-.ketcher-editor-shell [class*="App-module_canvas"] {
-  width: calc(100% * var(--ketcher-chrome-scale));
-  height: calc(100% * var(--ketcher-chrome-scale));
-  transform: scale(calc(1 / var(--ketcher-chrome-scale)));
-  transform-origin: top left;
+  width: 100%;
+  height: 100%;
 }
 .ketcher-editor-root,
 .ketcher-editor-root > [class*="Editor-module_editor"],
@@ -6370,13 +6349,13 @@ input.structure-inspector-composition-search {
    ketcher-react ships no theme prop; its whole chrome (toolbars, dialogs,
    dropdowns, tabs, inputs) reads the `--color-*` / `--font-*` / `--border-*`
    custom properties its dist CSS defines on :root. The editor mounts inside
-   .ketcher-editor-shell, so redefining those variables here re-skins every
+   :is(.ketcher-editor-shell, .ketcher-ui-dialog), so redefining those variables here re-skins every
    surface without touching node_modules. The teal family (#167782/#00838f/
    #005662) is Ketcher's accent; it all maps onto neutral foreground/muted
    tokens — the editor chrome stays zinc-neutral like the rest of the shadcn
    surfaces, never accent-tinted. Canvas drawing colors are untouched —
    atoms/bonds render from Ketcher settings, not from these variables. */
-.ketcher-editor-shell {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) {
   --font-family-inter: var(--ui-font);
   --font-family-roboto: var(--ui-font);
   --font-family-montserrat: var(--ui-font);
@@ -6411,120 +6390,120 @@ input.structure-inspector-composition-search {
    Ketcher's stylesheet loads after this one (deferred chunk), so they need
    !important like the dark-theme overrides below. */
 /* Selected tools, active toggles, selected tabs: muted fill + foreground. */
-.ketcher-editor-shell [class*="ActionButton-module_selected"]:not(:disabled),
-.ketcher-editor-shell [class*="ActionButton-module_button"]:active:not(:disabled),
-.ketcher-editor-shell [class*="ToggleButtonGroup-module_selected"]:not(:disabled),
-.ketcher-editor-shell [class*="ToggleButtonGroup-module_button"]:active:not(:disabled),
-.ketcher-editor-shell [class*="ButtonGenSet-module_selected"]:not(:disabled),
-.ketcher-editor-shell [class*="ButtonGenSet-module_button"]:focus:not(:disabled),
-.ketcher-editor-shell [class*="rgroup-module_rgroup"] form button[class*="rgroup-module_selected"],
-.ketcher-editor-shell [class*="SpecialSymbolsButton-module_activeTextButton"],
-.ketcher-editor-shell [class*="TextButton-module_isActive"],
-.ketcher-editor-shell [class*="StyledIconButton"].active,
-.ketcher-editor-shell [class*="Tabs-module_active"] {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ActionButton-module_selected"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ActionButton-module_button"]:active:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ToggleButtonGroup-module_selected"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ToggleButtonGroup-module_button"]:active:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ButtonGenSet-module_selected"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ButtonGenSet-module_button"]:focus:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="rgroup-module_rgroup"] form button[class*="rgroup-module_selected"],
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="SpecialSymbolsButton-module_activeTextButton"],
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TextButton-module_isActive"],
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledIconButton"].active,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Tabs-module_active"] {
   background-color: var(--surface-selected) !important;
   border-color: var(--line-subtle) !important;
   color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [class*="ActionButton-module_selected"]:hover:not(:disabled),
-.ketcher-editor-shell [class*="ToggleButtonGroup-module_selected"]:hover:not(:disabled),
-.ketcher-editor-shell [class*="SpecialSymbolsButton-module_activeTextButton"]:hover,
-.ketcher-editor-shell [class*="TextButton-module_isActive"]:hover,
-.ketcher-editor-shell [class*="Tabs-module_tabs"] button:hover {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ActionButton-module_selected"]:hover:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ToggleButtonGroup-module_selected"]:hover:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="SpecialSymbolsButton-module_activeTextButton"]:hover,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TextButton-module_isActive"]:hover,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Tabs-module_tabs"] button:hover {
   background-color: var(--surface-hover) !important;
   border-color: var(--line-subtle) !important;
   color: var(--text-primary) !important;
 }
 /* Selected tool icons ship white fills for the old teal fill; keep them on
    currentColor so they read as foreground on the muted background. */
-.ketcher-editor-shell [class*="ActionButton-module_selected"]:not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse, use)[fill="#fff"],
-.ketcher-editor-shell [class*="ActionButton-module_selected"]:not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse, use)[fill="#FFF"],
-.ketcher-editor-shell [class*="ActionButton-module_selected"]:not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse, use)[fill="#ffffff"],
-.ketcher-editor-shell [class*="ActionButton-module_selected"]:not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse, use)[fill="white"] {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ActionButton-module_selected"]:not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse, use)[fill="#fff"],
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ActionButton-module_selected"]:not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse, use)[fill="#FFF"],
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ActionButton-module_selected"]:not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse, use)[fill="#ffffff"],
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ActionButton-module_selected"]:not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse, use)[fill="white"] {
   fill: currentColor !important;
 }
 /* Dialog primary buttons: shadcn default Button — foreground fill,
    background-colored text. */
-.ketcher-editor-shell [class*="InfoModal-module_ok"]:not(:disabled),
-.ketcher-editor-shell [class*="Dialog-module_ok"]:not(:disabled),
-.ketcher-editor-shell [class*="Settings-module_acsStyleButton"]:not(:disabled),
-.ketcher-editor-shell [class*="Check-module_buttonPrimary"]:not(:disabled),
-.ketcher-editor-shell [class*="Recognize-module_primaryButton"]:not(:disabled),
-.ketcher-editor-shell [class*="Miew-module_applyButton"]:not(:disabled),
-.ketcher-editor-shell [class*="Open-module_copyButton"]:not(:disabled),
-.ketcher-editor-shell [class*="Save-module_ok"]:not(:disabled),
-.ketcher-editor-shell [class*="RemoveFG-module_buttonOk"]:not(:disabled),
-.ketcher-editor-shell [class*="PeriodTable-module_addAtom"]:not(:disabled),
-.ketcher-editor-shell [class*="MonomerCreationWizard-module_buttonSubmit"]:not(:disabled) {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="InfoModal-module_ok"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Dialog-module_ok"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_acsStyleButton"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Check-module_buttonPrimary"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Recognize-module_primaryButton"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Miew-module_applyButton"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Open-module_copyButton"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Save-module_ok"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="RemoveFG-module_buttonOk"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="PeriodTable-module_addAtom"]:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="MonomerCreationWizard-module_buttonSubmit"]:not(:disabled) {
   background-color: var(--text-primary) !important;
   border-color: var(--text-primary) !important;
   color: var(--bg-base) !important;
 }
-.ketcher-editor-shell [class*="InfoModal-module_ok"]:hover:not(:disabled),
-.ketcher-editor-shell [class*="Dialog-module_ok"]:hover:not(:disabled),
-.ketcher-editor-shell [class*="Settings-module_acsStyleButton"]:hover:not(:disabled),
-.ketcher-editor-shell [class*="Check-module_buttonPrimary"]:hover:not(:disabled),
-.ketcher-editor-shell [class*="Recognize-module_primaryButton"]:hover:not(:disabled),
-.ketcher-editor-shell [class*="Miew-module_applyButton"]:hover:not(:disabled),
-.ketcher-editor-shell [class*="Open-module_copyButton"]:hover:not(:disabled),
-.ketcher-editor-shell [class*="Save-module_ok"]:hover:not(:disabled),
-.ketcher-editor-shell [class*="RemoveFG-module_buttonOk"]:hover:not(:disabled),
-.ketcher-editor-shell [class*="PeriodTable-module_addAtom"]:hover:not(:disabled) {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="InfoModal-module_ok"]:hover:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Dialog-module_ok"]:hover:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_acsStyleButton"]:hover:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Check-module_buttonPrimary"]:hover:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Recognize-module_primaryButton"]:hover:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Miew-module_applyButton"]:hover:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Open-module_copyButton"]:hover:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Save-module_ok"]:hover:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="RemoveFG-module_buttonOk"]:hover:not(:disabled),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="PeriodTable-module_addAtom"]:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--text-primary) 80%, var(--bg-base)) !important;
   border-color: color-mix(in srgb, var(--text-primary) 80%, var(--bg-base)) !important;
   color: var(--bg-base) !important;
 }
 /* Toggle switches (emotion-styled, class-less inner span): match the app's
    shadcn Switch — foreground track when checked, background-colored knob. */
-.ketcher-editor-shell [class*="Input-module_slider"] input:checked + span {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Input-module_slider"] input:checked + span {
   background-color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [class*="Input-module_slider"] input:checked + span::before {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Input-module_slider"] input:checked + span::before {
   background-color: var(--bg-base) !important;
 }
 /* Emphasis text, icons and links: foreground, never tinted. */
-.ketcher-editor-shell [class*="Settings-module_headerContent"] [class*="Settings-module_button"]:hover,
-.ketcher-editor-shell [class*="About-module_about"] a,
-.ketcher-editor-shell [class*="PasteErrorModalBody-module_shortcut"] {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_headerContent"] [class*="Settings-module_button"]:hover,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="About-module_about"] a,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="PasteErrorModalBody-module_shortcut"] {
   color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [class*="template-lib-module_searchIcon"],
-.ketcher-editor-shell [class*="AbbreviationLookup-module_searchIcon"],
-.ketcher-editor-shell [class*="MonomerCreationWizard-module_attachmentPointInfoIcon"] {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_searchIcon"],
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="AbbreviationLookup-module_searchIcon"],
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="MonomerCreationWizard-module_attachmentPointInfoIcon"] {
   color: var(--text-muted) !important;
 }
-.ketcher-editor-shell [class*="TemplateTable-module_button"]:hover path,
-.ketcher-editor-shell [class*="SpecialSymbolsList-module_button"]:hover > svg,
-.ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"]:not([class*="activeTextButton"]):hover > svg,
-.ketcher-editor-shell [class*="TextButton-module_textButton"]:not([class*="isActive"]):hover > svg {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_button"]:hover path,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="SpecialSymbolsList-module_button"]:hover > svg,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="SpecialSymbolsButton-module_textButton"]:not([class*="activeTextButton"]):hover > svg,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TextButton-module_textButton"]:not([class*="isActive"]):hover > svg {
   fill: var(--text-primary) !important;
 }
 /* Neutral borders and selection tints. */
-.ketcher-editor-shell [class*="Select-module_dropdownList"] .MuiMenuItem-root:hover,
-.ketcher-editor-shell [class*="AbbreviationLookup-module_listBox"] li.MuiAutocomplete-option.Mui-focused,
-.ketcher-editor-shell [class*="AbbreviationLookup-module_listBox"] li.MuiAutocomplete-option.Mui-focusVisible {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Select-module_dropdownList"] .MuiMenuItem-root:hover,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="AbbreviationLookup-module_listBox"] li.MuiAutocomplete-option.Mui-focused,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="AbbreviationLookup-module_listBox"] li.MuiAutocomplete-option.Mui-focusVisible {
   border-left-color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [class*="Select-module_selectContainer"] .Mui-focused .MuiSelect-select,
-.ketcher-editor-shell [class*="ColorPicker-module_selectedInput"],
-.ketcher-editor-shell [class*="AbbreviationLookup-module_input"][type="text"] {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Select-module_selectContainer"] .Mui-focused .MuiSelect-select,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ColorPicker-module_selectedInput"],
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="AbbreviationLookup-module_input"][type="text"] {
   border-color: var(--line-strong) !important;
 }
-.ketcher-editor-shell [class*="Select-module_selectContainer"] .MuiOutlinedInput-root .MuiSelect-select:hover,
-.ketcher-editor-shell [class*="ColorPicker-module_colorPickerInput"]:hover,
-.ketcher-editor-shell [class*="Editor-module_editor"] :is(input[type="search"], input[type="number"], input[type="text"], select, textarea):hover,
-.ketcher-editor-shell [class*="Save-module_dialog"] form > label input:hover,
-.ketcher-editor-shell [class*="AttachmentPoint-module_removeButton"]:hover {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Select-module_selectContainer"] .MuiOutlinedInput-root .MuiSelect-select:hover,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ColorPicker-module_colorPickerInput"]:hover,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Editor-module_editor"] :is(input[type="search"], input[type="number"], input[type="text"], select, textarea):hover,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Save-module_dialog"] form > label input:hover,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="AttachmentPoint-module_removeButton"]:hover {
   border-color: var(--line-strong) !important;
 }
-.ketcher-editor-shell [class*="TemplateTable-module_selected"] [class*="TemplateTable-module_struct"] {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_selected"] [class*="TemplateTable-module_struct"] {
   background-color: color-mix(in srgb, var(--fg-base) 6%, transparent) !important;
   border-color: var(--line-strong) !important;
 }
-.ketcher-editor-shell [class*="template-lib-module_tabs"] .MuiTabs-indicator {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_tabs"] .MuiTabs-indicator {
   background-color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [class*="LoadingCircles-module_container"] span {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="LoadingCircles-module_container"] span {
   border-color: var(--text-muted) !important;
 }
 /* Hover/active/selected states the blocks above missed, found by scanning the
@@ -6533,94 +6512,94 @@ input.structure-inspector-composition-search {
    label, so they are reached through the top-toolbar testid both editors
    share), the right-rail atom cells' selected border, caret color, and a
    handful of dialog and macromolecule-library states. Same recipe as above. */
-.ketcher-editor-shell [class*="ActionButton-module_button"]:hover:not(:disabled) {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ActionButton-module_button"]:hover:not(:disabled) {
   color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [data-testid="top-toolbar"] button:hover:not(:disabled) {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:hover:not(:disabled) {
   color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [data-testid="top-toolbar"] button:active:not(:disabled) {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:active:not(:disabled) {
   color: var(--text-primary) !important;
   background-color: var(--surface-selected) !important;
 }
-.ketcher-editor-shell [data-testid="top-toolbar"] .MuiIconButton-root:hover svg,
-.ketcher-editor-shell [class*="StyledButton"]:hover svg {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] .MuiIconButton-root:hover svg,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledButton"]:hover svg {
   fill: var(--text-primary) !important;
 }
-.ketcher-editor-shell [class*="StyledIconButton"]:hover:not(:disabled) {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledIconButton"]:hover:not(:disabled) {
   color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [class*="StyledIconButton"]:active:not(:disabled) {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledIconButton"]:active:not(:disabled) {
   color: var(--text-primary) !important;
   background-color: var(--surface-selected) !important;
 }
-.ketcher-editor-shell [class*="RightToolbar-module_buttons"] button.selected {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="RightToolbar-module_buttons"] button.selected {
   border-color: var(--line-strong) !important;
 }
-.ketcher-editor-shell [class*="ButtonGenSet-module_button"]:hover:not(:disabled) {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ButtonGenSet-module_button"]:hover:not(:disabled) {
   border-color: var(--line-strong) !important;
 }
-.ketcher-editor-shell [class*="rgroup-module_rgroup"] form button:hover {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="rgroup-module_rgroup"] form button:hover {
   color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [class*="AttachmentPoint-module_removeButton"]:active {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="AttachmentPoint-module_removeButton"]:active {
   background-color: var(--surface-selected) !important;
 }
-.ketcher-editor-shell [class*="ColorPicker-module_presetColors"] [class*="ColorPicker-module_clicked"] {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ColorPicker-module_presetColors"] [class*="ColorPicker-module_clicked"] {
   background-color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [class*="NaturalAnaloguePicker-module_gridItem"]:hover,
-.ketcher-editor-shell [class*="NaturalAnaloguePicker-module_gridItem"][aria-selected="true"] {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="NaturalAnaloguePicker-module_gridItem"]:hover,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="NaturalAnaloguePicker-module_gridItem"][aria-selected="true"] {
   border-color: var(--line-strong) !important;
 }
-.ketcher-editor-shell [class*="CDXStructuresViewer-module_menuListWrapper"] > ul > li:hover,
-.ketcher-editor-shell [class*="CDXStructuresViewer-module_menuListWrapper"] > ul .Mui-selected {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="CDXStructuresViewer-module_menuListWrapper"] > ul > li:hover,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="CDXStructuresViewer-module_menuListWrapper"] > ul .Mui-selected {
   color: var(--text-primary) !important;
   background: var(--surface-selected) !important;
 }
-.ketcher-editor-shell [class*="Editor-module_editor"] :is(input, textarea):is(:active, :focus) {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Editor-module_editor"] :is(input, textarea):is(:active, :focus) {
   caret-color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [class*="SequenceTypeButton"].MuiButton-contained {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="SequenceTypeButton"].MuiButton-contained {
   background-color: var(--surface-selected) !important;
   border-color: var(--line-subtle) !important;
   color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [class*="MonomerLibrarySearchIcon"] {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="MonomerLibrarySearchIcon"] {
   color: var(--text-muted) !important;
 }
-.ketcher-editor-shell [class*="MonomerLibraryInput"] {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="MonomerLibraryInput"] {
   caret-color: var(--text-primary) !important;
 }
-.ketcher-editor-shell [class*="MonomerLibraryInputContainer"]:hover,
-.ketcher-editor-shell [class*="MonomerLibraryInputContainer"]:has(input:focus),
-.ketcher-editor-shell [class*="MonomerLibraryInput"]:is(:hover, :active, :focus, :focus-within) {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="MonomerLibraryInputContainer"]:hover,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="MonomerLibraryInputContainer"]:has(input:focus),
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="MonomerLibraryInput"]:is(:hover, :active, :focus, :focus-within) {
   outline-color: var(--line-strong) !important;
 }
-.ketcher-editor-shell ::-webkit-scrollbar {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-.ketcher-editor-shell ::-webkit-scrollbar-thumb {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) ::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
   border-radius: 999px;
   background-clip: padding-box;
   border: 2px solid transparent;
 }
-.ketcher-editor-shell ::-webkit-scrollbar-track,
-.ketcher-editor-shell ::-webkit-scrollbar-corner {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) ::-webkit-scrollbar-track,
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) ::-webkit-scrollbar-corner {
   background: transparent;
 }
-.ketcher-editor-shell [class*="Settings-module_settings"] {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] {
   width: min(420px, calc(100% - 32px)) !important;
   max-width: calc(100% - 32px);
 }
-.ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionSummary"],
-.ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionDetailsWrapper"] {
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Accordion-module_accordionSummary"],
+:is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Accordion-module_accordionDetailsWrapper"] {
   width: 100% !important;
   box-sizing: border-box;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) {
   --ketcher-dark-canvas: var(--bg-base);
   --ketcher-dark-panel: var(--surface-primary);
   --ketcher-dark-panel-raised: color-mix(in srgb, var(--fg-base) 5%, var(--bg-base));
@@ -6670,207 +6649,206 @@ input.structure-inspector-composition-search {
   background: var(--ketcher-dark-canvas);
   color-scheme: dark;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Editor-module_editor"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="EditorWrapper"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="RowMain"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Row"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="MenuLayout"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledGroup"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="BottomToolbar-module_group"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="LeftToolbar-module_groupItem"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="RightToolbar-module_buttons"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="ToolbarMultiToolItem-module_portal"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Dialog-module_dialog"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="InfoModal-module_infoModalWindow"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Editor-module_editor"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="EditorWrapper"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="RowMain"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Row"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="MenuLayout"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledGroup"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="BottomToolbar-module_group"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="LeftToolbar-module_groupItem"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="RightToolbar-module_buttons"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ToolbarMultiToolItem-module_portal"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Dialog-module_dialog"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="InfoModal-module_infoModalWindow"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] {
   background-color: var(--ketcher-dark-panel);
   color: var(--ketcher-dark-text);
   border-color: var(--ketcher-dark-border-soft);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="ToolbarMultiToolItem-module_portal"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ToolbarMultiToolItem-module_portal"] {
   background-color: var(--menu-surface);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StructEditor-module_canvas"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StructEditor-module_intermediateCanvas"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="ketcher-canvas"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StructEditor-module_canvas"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="ketcher-canvas"] {
   background-color: var(--ketcher-dark-canvas);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures {
   color: var(--ketcher-dark-structure);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(0, 0, 0)"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(51, 51, 51)"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(0, 0, 0)"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(51, 51, 51)"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(51, 51, 51)"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(51, 51, 51)"] {
   stroke: var(--ketcher-dark-structure) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, text, tspan)[fill="#000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, text, tspan)[fill="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, text, tspan)[fill="#333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, text, tspan)[fill="#333333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, text, tspan)[style*="fill: rgb(0, 0, 0)"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, text, tspan)[style*="fill: rgb(51, 51, 51)"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, text, tspan)[fill="#000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, text, tspan)[fill="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, text, tspan)[fill="#333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, text, tspan)[fill="#333333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, text, tspan)[style*="fill: rgb(0, 0, 0)"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, text, tspan)[style*="fill: rgb(51, 51, 51)"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"] :is(path, text, tspan)[fill="#000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"] :is(path, text, tspan)[fill="#000000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"] :is(path, text, tspan)[fill="#333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"] :is(path, text, tspan)[fill="#333333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"] :is(path, text, tspan)[style*="fill: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="drawn-structures"] :is(path, text, tspan)[style*="fill: rgb(51, 51, 51)"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures :is(path, text, tspan)[fill="#000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures :is(path, text, tspan)[fill="#000000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures :is(path, text, tspan)[fill="#333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures :is(path, text, tspan)[fill="#333333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures :is(path, text, tspan)[style*="fill: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) .drawn-structures :is(path, text, tspan)[style*="fill: rgb(51, 51, 51)"] {
   fill: var(--ketcher-dark-structure) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][stroke="#000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][stroke="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][stroke="#333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][stroke="#333333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][style*="stroke: rgb(0, 0, 0)"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][style*="stroke: rgb(51, 51, 51)"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] [data-testid="bond"][stroke="#000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] [data-testid="bond"][stroke="#000000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] [data-testid="bond"][stroke="#333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] [data-testid="bond"][stroke="#333333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] [data-testid="bond"][style*="stroke: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] [data-testid="bond"][style*="stroke: rgb(51, 51, 51)"] {
   stroke: var(--ketcher-dark-structure) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][fill="#000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][fill="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][fill="#333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][fill="#333333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][style*="fill: rgb(0, 0, 0)"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][style*="fill: rgb(51, 51, 51)"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] [data-testid="bond"][fill="#000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] [data-testid="bond"][fill="#000000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] [data-testid="bond"][fill="#333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] [data-testid="bond"][fill="#333333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] [data-testid="bond"][style*="fill: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] [data-testid="bond"][style*="fill: rgb(51, 51, 51)"] {
   fill: var(--ketcher-dark-structure) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(text, tspan)[fill="#000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(text, tspan)[fill="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(text, tspan)[fill="#333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(text, tspan)[fill="#333333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(text, tspan)[style*="fill: rgb(0, 0, 0)"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(text, tspan)[style*="fill: rgb(51, 51, 51)"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] :is(text, tspan)[fill="#000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] :is(text, tspan)[fill="#000000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] :is(text, tspan)[fill="#333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] :is(text, tspan)[fill="#333333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] :is(text, tspan)[style*="fill: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="canvas"] :is(text, tspan)[style*="fill: rgb(51, 51, 51)"] {
   fill: var(--ketcher-dark-structure) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="ActionButton-module_button"]:not([class*="selected"]),
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TextButton-module_textButton"]:not([class*="isActive"]),
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Atom-module_atom"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledButton"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="ArrowScroll-module_scroll"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="RNABtn"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="DNABtn"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="PEPTIDEBtn"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="NewSequencePlusButtonIcon"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ActionButton-module_button"]:not([class*="selected"]),
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TextButton-module_textButton"]:not([class*="isActive"]),
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="SpecialSymbolsButton-module_textButton"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Atom-module_atom"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledButton"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ArrowScroll-module_scroll"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="RNABtn"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="DNABtn"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="PEPTIDEBtn"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="NewSequencePlusButtonIcon"] {
   background-color: transparent;
   color: var(--ketcher-dark-text);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledIconButton"]:not(:disabled) {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledIconButton"]:not(:disabled) {
   color: var(--ketcher-dark-muted);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledIconButton"]:not(:disabled):hover {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledIconButton"]:not(:disabled):hover {
   background-color: var(--ketcher-dark-panel-hover);
   color: var(--ketcher-dark-text);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledIconButton"]:disabled {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledIconButton"]:disabled {
   color: var(--ketcher-dark-faint);
   opacity: 0.42;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledIconButton"] svg {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledIconButton"] svg {
   color: currentColor;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledIconButton"] path:not([fill="none"]) {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledIconButton"] path:not([fill="none"]) {
   fill: currentColor;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledIconButton"] [stroke]:not([stroke="none"]) {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledIconButton"] [stroke]:not([stroke="none"]) {
   stroke: currentColor;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:disabled),
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] .MuiButtonBase-root:not(:disabled) {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:disabled),
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] .MuiButtonBase-root:not(:disabled) {
   color: var(--ketcher-dark-muted);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:disabled):hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] .MuiButtonBase-root:not(:disabled):hover {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:disabled):hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] .MuiButtonBase-root:not(:disabled):hover {
   background-color: var(--ketcher-dark-panel-hover);
   color: var(--ketcher-dark-text);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:disabled,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] .Mui-disabled {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:disabled,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] .Mui-disabled {
   color: var(--ketcher-dark-faint);
   opacity: 0.45;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button svg {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button svg {
   color: currentColor;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg * {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg * {
   color: var(--ketcher-dark-muted) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button :is(path, circle, rect, polygon, polyline, ellipse, use):not([fill="none"]) {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button :is(path, circle, rect, polygon, polyline, ellipse, use):not([fill="none"]) {
   fill: currentColor;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button :is(path, circle, rect, polygon, polyline, line, ellipse, use)[stroke]:not([stroke="none"]),
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button line {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button :is(path, circle, rect, polygon, polyline, line, ellipse, use)[stroke]:not([stroke="none"]),
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button line {
   stroke: currentColor;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="#fff"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="#FFF"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="#ffffff"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="#FFFFFF"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="white"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[style*="fill: white"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[style*="fill: rgb(255, 255, 255)"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="#fff"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="#FFF"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="#ffffff"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="#FFFFFF"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="white"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[style*="fill: white"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[style*="fill: rgb(255, 255, 255)"] {
   fill: var(--ketcher-dark-muted) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="#fff"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="#FFF"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="#ffffff"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="#FFFFFF"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="white"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[style*="stroke: white"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[style*="stroke: rgb(255, 255, 255)"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="#fff"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="#FFF"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="#ffffff"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="#FFFFFF"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="white"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[style*="stroke: white"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[style*="stroke: rgb(255, 255, 255)"] {
   stroke: var(--ketcher-dark-muted) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="polymer-toggler"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="zoom-selector"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="polymer-toggler"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="zoom-selector"] {
   color: var(--ketcher-dark-text);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="right-toolbar"] [data-testid="H-button"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="right-toolbar"] [data-testid="H-button"] span,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="right-toolbar"] [data-testid="C-button"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="right-toolbar"] [data-testid="C-button"] span {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="right-toolbar"] [data-testid="H-button"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="right-toolbar"] [data-testid="H-button"] span,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="right-toolbar"] [data-testid="C-button"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="right-toolbar"] [data-testid="C-button"] span {
   color: var(--ketcher-dark-text);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="ActionButton-module_button"]:not([class*="selected"]):hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TextButton-module_textButton"]:not([class*="isActive"]):hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"]:hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Atom-module_atom"]:hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledButton"]:hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="RNABtn"]:hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="DNABtn"]:hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="PEPTIDEBtn"]:hover {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ActionButton-module_button"]:not([class*="selected"]):hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TextButton-module_textButton"]:not([class*="isActive"]):hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="SpecialSymbolsButton-module_textButton"]:hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Atom-module_atom"]:hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledButton"]:hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="RNABtn"]:hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="DNABtn"]:hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="PEPTIDEBtn"]:hover {
   background-color: var(--ketcher-dark-panel-hover);
   color: var(--ketcher-dark-accent);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TextButton-module_textButton"]:not([class*="isActive"]) > svg,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"] > svg,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="ToolbarMultiToolItem-module_icon"]:not([class*="iconSelected"]) {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TextButton-module_textButton"]:not([class*="isActive"]) > svg,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="SpecialSymbolsButton-module_textButton"] > svg,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ToolbarMultiToolItem-module_icon"]:not([class*="iconSelected"]) {
   fill: var(--ketcher-dark-text);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TextButton-module_textButton"]:not([class*="isActive"]):hover > svg,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"]:hover > svg {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TextButton-module_textButton"]:not([class*="isActive"]):hover > svg,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="SpecialSymbolsButton-module_textButton"]:hover > svg {
   fill: var(--ketcher-dark-accent);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell input[type="search"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell input[type="text"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell input[type="number"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell textarea,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell select {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) input[type="search"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) input[type="text"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) input[type="number"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) textarea,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) select {
   background-color: var(--ketcher-dark-panel-soft);
   color: var(--ketcher-dark-text);
   border-color: var(--ketcher-dark-border);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Select-module_selectContainer"] .MuiSelect-select,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Select-module_selectContainer"] .MuiSelect-select,
 .app-shell[data-effective-theme="dark"] [class*="Select-module_dropdownList"] .MuiPaper-root,
 .app-shell[data-effective-theme="dark"] [class*="Select-module_dropdownList"] .MuiList-root.MuiMenu-list,
 .app-shell[data-effective-theme="dark"] [class*="Select-module_dropdownList"] .MuiMenuItem-root {
@@ -6880,253 +6858,253 @@ input.structure-inspector-composition-search {
 .app-shell[data-effective-theme="dark"] [class*="Select-module_dropdownList"] .MuiMenuItem-root:hover {
   background-color: var(--ketcher-dark-panel-hover);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="MonomerLibraryHeader"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="MonomerLibraryInputContainer"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="MonomerLibraryToggle"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="StyledHeader"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="RnaTabsContainer"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="MonomerLibraryHeader"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="MonomerLibraryInputContainer"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="MonomerLibraryToggle"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="StyledHeader"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="RnaTabsContainer"] {
   background-color: var(--ketcher-dark-panel-raised);
   color: var(--ketcher-dark-text);
   border-color: var(--ketcher-dark-border-soft);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] input,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [role="tab"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="Mui"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] input,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [role="tab"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="Mui"] {
   background-color: transparent;
   color: var(--ketcher-dark-text);
   border-color: var(--ketcher-dark-border-soft);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="TabPanelContent"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="TabPanelBox"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="RnaBuilderContainer"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="RnaAccordionContainer"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="RnaEditorContainer"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="RnaTabContent"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="CompactDetailsContainer"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="DetailsContainer"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="GroupContainerRow"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="ItemsContainer"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="TabPanelContent"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="TabPanelBox"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="RnaBuilderContainer"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="RnaAccordionContainer"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="RnaEditorContainer"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="RnaTabContent"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="CompactDetailsContainer"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="DetailsContainer"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="GroupContainerRow"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="ItemsContainer"] {
   background-color: var(--ketcher-dark-panel) !important;
   color: var(--ketcher-dark-text);
   border-color: var(--ketcher-dark-border-soft);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="Card-Card"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="Card-Card"] {
   background-color: var(--ketcher-dark-panel-soft);
   color: var(--ketcher-dark-text);
   border-color: var(--ketcher-dark-border-soft);
   box-shadow: none;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="Card-Card"]::after {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="Card-Card"]::after {
   filter: saturate(0.72) brightness(0.82);
   opacity: 0.58;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="Card-Card"]:hover {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="Card-Card"]:hover {
   background-color: var(--ketcher-dark-panel-hover);
   border-color: #46535f;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="Accordion"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="accordion"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="summary"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="Accordion"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="accordion"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="monomer-library"] [class*="summary"] {
   background-color: var(--ketcher-dark-panel);
   color: var(--ketcher-dark-muted);
   border-color: var(--ketcher-dark-border-soft);
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabsContent"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_resultsContainer"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_tableContent"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_tabsContent"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_resultsContainer"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_tableContent"] {
   background-color: var(--ketcher-dark-panel) !important;
   color: var(--ketcher-dark-text) !important;
   border-color: var(--ketcher-dark-border-soft) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialogHeader"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_inputContainer"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabs"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabs"] .MuiTabs-flexContainer {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialogHeader"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_inputContainer"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_tabs"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_tabs"] .MuiTabs-flexContainer {
   background-color: var(--ketcher-dark-panel-raised) !important;
   color: var(--ketcher-dark-text) !important;
   border-color: var(--ketcher-dark-border-soft) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabs"] .MuiTab-root {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_tabs"] .MuiTab-root {
   background-color: transparent !important;
   color: var(--ketcher-dark-muted) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabs"] .MuiTab-root:hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabs"] .MuiTab-root.Mui-selected {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_tabs"] .MuiTab-root:hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_tabs"] .MuiTab-root.Mui-selected {
   color: var(--ketcher-dark-text) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabs"] .MuiTabs-indicator {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_tabs"] .MuiTabs-indicator {
   background-color: var(--ketcher-dark-accent) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] [data-testid="close-window-button"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] [class*="Dialog-module_buttonTop"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] [data-testid="close-window-button"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] [class*="Dialog-module_buttonTop"] {
   background-color: transparent !important;
   color: var(--ketcher-dark-text) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] [data-testid="close-window-button"]:hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] [class*="Dialog-module_buttonTop"]:hover {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] [data-testid="close-window-button"]:hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] [class*="Dialog-module_buttonTop"]:hover {
   background-color: var(--ketcher-dark-panel-hover) !important;
   color: var(--ketcher-dark-text) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] [class*="Dialog-module_closeButton"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] [class*="Dialog-module_closeButton"] {
   color: currentColor !important;
   fill: currentColor !important;
   stroke: currentColor !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] [class*="Dialog-module_closeButton"] :is(path, line, polyline, polygon, circle, ellipse, rect) {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] [class*="Dialog-module_closeButton"] :is(path, line, polyline, polygon, circle, ellipse, rect) {
   fill: currentColor !important;
   stroke: currentColor !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_header"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_body"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_footer"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_headerContent"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Dialog-module_header"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Dialog-module_body"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Dialog-module_footer"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_headerContent"] {
   background-color: var(--ketcher-dark-panel) !important;
   color: var(--ketcher-dark-text) !important;
   border-color: var(--ketcher-dark-border-soft) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_title"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] label,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] fieldset {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_title"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] label,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] fieldset {
   color: var(--ketcher-dark-text) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_accordion"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionWrapper"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionDetailsWrapper"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionDetails"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_accordion"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Accordion-module_accordionWrapper"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Accordion-module_accordionDetailsWrapper"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Accordion-module_accordionDetails"] {
   background-color: var(--ketcher-dark-panel) !important;
   color: var(--ketcher-dark-text) !important;
   border-color: var(--ketcher-dark-border-soft) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionSummaryWrapper"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionSummary"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Accordion-module_accordionSummaryWrapper"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Accordion-module_accordionSummary"] {
   background-color: var(--ketcher-dark-panel-raised) !important;
   color: var(--ketcher-dark-text) !important;
   border-color: var(--ketcher-dark-border-soft) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionSummaryWrapper"]:hover {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Accordion-module_accordionSummaryWrapper"]:hover {
   background-color: var(--ketcher-dark-panel-hover) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_groupLabel"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_groupIcon"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_expandIcon"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Accordion-module_groupLabel"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Accordion-module_groupIcon"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Accordion-module_expandIcon"] {
   color: var(--ketcher-dark-text) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [data-testid="close-window-button"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_buttonTop"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [data-testid="close-window-button"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Dialog-module_buttonTop"] {
   background-color: transparent !important;
   color: var(--ketcher-dark-text) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [data-testid="close-window-button"]:hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_buttonTop"]:hover {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [data-testid="close-window-button"]:hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Dialog-module_buttonTop"]:hover {
   background-color: var(--ketcher-dark-panel-hover) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_closeButton"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] svg {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Dialog-module_closeButton"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] svg {
   color: currentColor !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] svg :is(path, circle, rect, polygon, polyline, ellipse, use):not([fill="none"]) {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] svg :is(path, circle, rect, polygon, polyline, ellipse, use):not([fill="none"]) {
   fill: currentColor !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] svg :is(path, circle, rect, polygon, polyline, line, ellipse, use)[stroke]:not([stroke="none"]) {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] svg :is(path, circle, rect, polygon, polyline, line, ellipse, use)[stroke]:not([stroke="none"]) {
   stroke: currentColor !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_cancel"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Settings-module_button"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Dialog-module_cancel"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Settings-module_button"] {
   background-color: var(--ketcher-dark-panel-soft) !important;
   color: var(--ketcher-dark-text) !important;
   border-color: var(--ketcher-dark-border) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_cancel"]:hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Settings-module_button"]:hover {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Dialog-module_cancel"]:hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="Settings-module_settings"] [class*="Settings-module_button"]:hover {
   background-color: var(--ketcher-dark-panel-hover) !important;
   border-color: var(--ketcher-dark-border) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] .MuiAccordion-root,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] .MuiAccordionSummary-root,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] .MuiAccordionDetails-root,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_accordionSummary"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] .MuiAccordion-root,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] .MuiAccordionSummary-root,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] .MuiAccordionDetails-root,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_accordionSummary"] {
   background-color: var(--ketcher-dark-panel) !important;
   color: var(--ketcher-dark-text) !important;
   border-color: var(--ketcher-dark-border-soft) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] .MuiAccordion-root::before {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] .MuiAccordion-root::before {
   background-color: var(--ketcher-dark-border-soft) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] .MuiAccordion-root:hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_accordionSummary"]:hover {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] .MuiAccordion-root:hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_accordionSummary"]:hover {
   background-color: var(--ketcher-dark-panel-hover) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_td"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_structTitle"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_button"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_td"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_structTitle"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_button"] {
   background-color: var(--ketcher-dark-panel) !important;
   color: var(--ketcher-dark-text) !important;
   border-color: var(--ketcher-dark-border-soft) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_td"]:hover {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_td"]:hover {
   background-color: var(--ketcher-dark-panel-hover) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_selected"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_selectedTitle"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_selected"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_selectedTitle"] {
   background-color: var(--ketcher-dark-panel-hover) !important;
   color: var(--ketcher-dark-accent) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_saveButton"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="save-to-sdf-button"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="add-to-canvas-button"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_saveButton"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="save-to-sdf-button"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="add-to-canvas-button"] {
   color: var(--ketcher-dark-text) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_saveButton"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="save-to-sdf-button"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_saveButton"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="save-to-sdf-button"] {
   background-color: var(--ketcher-dark-panel-soft) !important;
   border-color: var(--ketcher-dark-border) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_saveButton"]:hover,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="save-to-sdf-button"]:hover {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_saveButton"]:hover,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="save-to-sdf-button"]:hover {
   background-color: var(--ketcher-dark-panel-hover) !important;
   border-color: var(--ketcher-dark-border) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] input[type="search"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] input[type="search"] {
   background-color: var(--ketcher-dark-panel-soft) !important;
   color: var(--ketcher-dark-text) !important;
   border-color: var(--ketcher-dark-border) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] input[type="search"]::placeholder {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] input[type="search"]::placeholder {
   color: var(--ketcher-dark-muted) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] svg,
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialogHeader"] svg {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] svg,
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialogHeader"] svg {
   color: currentColor;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] svg :is(path, circle, rect, polygon, polyline, ellipse, use):not([fill="none"]),
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialogHeader"] svg :is(path, circle, rect, polygon, polyline, ellipse, use):not([fill="none"]) {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] svg :is(path, circle, rect, polygon, polyline, ellipse, use):not([fill="none"]),
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialogHeader"] svg :is(path, circle, rect, polygon, polyline, ellipse, use):not([fill="none"]) {
   fill: currentColor;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] svg :is(path, circle, rect, polygon, polyline, line, ellipse, use)[stroke]:not([stroke="none"]),
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialogHeader"] svg :is(path, circle, rect, polygon, polyline, line, ellipse, use)[stroke]:not([stroke="none"]) {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialog_body"] svg :is(path, circle, rect, polygon, polyline, line, ellipse, use)[stroke]:not([stroke="none"]),
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="template-lib-module_dialogHeader"] svg :is(path, circle, rect, polygon, polyline, line, ellipse, use)[stroke]:not([stroke="none"]) {
   stroke: currentColor;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(0, 0, 0)"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(51, 51, 51)"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(51, 51, 51)"] {
   stroke: var(--ketcher-dark-structure) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, text, tspan)[fill="#000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, text, tspan)[fill="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, text, tspan)[fill="#333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, text, tspan)[fill="#333333"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, text, tspan)[style*="fill: rgb(0, 0, 0)"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, text, tspan)[style*="fill: rgb(51, 51, 51)"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"] :is(path, text, tspan)[fill="#000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"] :is(path, text, tspan)[fill="#000000"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"] :is(path, text, tspan)[fill="#333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"] :is(path, text, tspan)[fill="#333333"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"] :is(path, text, tspan)[style*="fill: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="TemplateTable-module_struct"] :is(path, text, tspan)[style*="fill: rgb(51, 51, 51)"] {
   fill: var(--ketcher-dark-structure) !important;
 }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledArrowScrollWrapper"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="NewSequencePlusButtonIcon"] {
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="StyledArrowScrollWrapper"],
+.app-shell[data-effective-theme="dark"] :is(.ketcher-editor-shell, .ketcher-ui-dialog) [data-testid="NewSequencePlusButtonIcon"] {
   background-color: var(--ketcher-dark-panel-raised) !important;
   color: var(--ketcher-dark-text) !important;
   border-color: var(--ketcher-dark-border-soft) !important;

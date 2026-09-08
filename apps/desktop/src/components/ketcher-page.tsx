@@ -6,11 +6,8 @@ import {
   useRef,
   useState,
   type ComponentType,
-  type CSSProperties,
   type DragEvent,
   type ErrorInfo,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -30,15 +27,15 @@ import { runShellDropActionChoices, shellDropActionChoices } from "./drop-action
 import type { KetcherLocation } from "./editor-area/page-kinds";
 import type { KetcherEditorApi } from "./ketcher-editor";
 import { registerKetcherAgentController, unregisterKetcherAgentController } from "../lib/ketcher-agent";
-import { RadixDropdownMenu, showRadixContextMenu } from "./radix-menu";
+import { RadixDropdownMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Minus, Plus, Moon, Sun } from "lucide-react";
+import "./ketcher/workspace.css";
+import { KetcherTextPanel } from "./ketcher/text-panel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
-import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { KetcherImportRequest, KetcherSketchTarget, KetcherSource3D, ShellActions, ShellViewState } from "./types";
@@ -76,14 +73,9 @@ type KetcherPanelMode =
 
 const KETCHER_ZOOM_LEVELS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.7, 2, 2.5, 3, 3.5, 4] as const;
 const DEFAULT_KETCHER_ZOOM = 1;
-const KETCHER_OUTPUT_DEFAULT_HEIGHT = 58;
-const KETCHER_OUTPUT_MIN_HEIGHT = 42;
-const KETCHER_OUTPUT_MAX_HEIGHT = 360;
 const KETCHER_EXPORT_TIMEOUT_MS = 15000;
 const KETCHER_IMPORT_INSTANCE_RETRY_DELAYS_MS = [0, 250, 750, 1500, 2500] as const;
 const KETCHER_IMPORT_REQUEST_RETRY_MS = 5000;
-const KETCHER_CHROME_LAYOUT_WIDTH = 1101;
-const KETCHER_FIT_SCALES = [1, 0.9, 0.8, 0.7, 0.6, 0.5] as const;
 const KETCHER_NARROW_SHELL_WIDTH = 864;
 type KetcherImportResult = "success" | "transient-failure" | "failure";
 const IS_KETCHER_WEB_DEMO = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
@@ -186,9 +178,6 @@ const KETCHER_TOOLTIP_LABELS: Record<string, string> = {
   "template-lib": "Open template library",
 };
 
-function ketcherFitScaleForWidth(width: number) {
-  return KETCHER_FIT_SCALES.find((scale) => width >= Math.ceil(KETCHER_CHROME_LAYOUT_WIDTH * scale)) ?? 0.5;
-}
 const KETCHER_FORMAT_LABELS: Record<KetcherTextFormat | "auto", string> = {
   auto: "Auto",
   smiles: "SMILES",
@@ -210,28 +199,6 @@ const KETCHER_FORMAT_LABELS: Record<KetcherTextFormat | "auto", string> = {
   "inchi-aux": "InChI + AuxInfo",
   "inchi-key": "InChIKey",
   svg: "SVG",
-};
-const KETCHER_FORMAT_DETAILS: Record<KetcherTextFormat | "auto", string> = {
-  auto: "Detect the structure format from its contents.",
-  smiles: "Compact one-line molecule notation.",
-  "extended-smiles": "SMILES with Ketcher extended annotations.",
-  "molfile-v2000": "Legacy MDL MOL structure format.",
-  "molfile-v3000": "MDL MOL format for larger or richer structures.",
-  "rxn-v2000": "Legacy MDL reaction format.",
-  "rxn-v3000": "Reaction format for larger or richer reactions.",
-  ket: "Native Ketcher JSON format.",
-  "sdf-v2000": "SDF collection record using V2000 molfile blocks.",
-  "sdf-v3000": "SDF collection record using V3000 molfile blocks.",
-  "rdf-v2000": "Reaction data file using V2000 blocks.",
-  "rdf-v3000": "Reaction data file using V3000 blocks.",
-  smarts: "Substructure query pattern.",
-  cml: "Chemical Markup Language XML.",
-  cdxml: "ChemDraw XML document.",
-  cdx: "ChemDraw binary document.",
-  inchi: "IUPAC identifier string.",
-  "inchi-aux": "InChI plus auxiliary atom mapping data.",
-  "inchi-key": "Hashed InChIKey identifier.",
-  svg: "Vector image of the current sketch.",
 };
 const KETCHER_EXPORT_FORMATS: KetcherTextFormat[] = [
   "smiles",
@@ -316,17 +283,6 @@ function normalizeKetcherZoom(value: number) {
   return Math.max(KETCHER_ZOOM_LEVELS[0], Math.min(KETCHER_ZOOM_LEVELS[KETCHER_ZOOM_LEVELS.length - 1], value));
 }
 
-function outputPanelMaxHeight() {
-  return Math.max(
-    KETCHER_OUTPUT_MIN_HEIGHT,
-    Math.min(KETCHER_OUTPUT_MAX_HEIGHT, Math.floor(window.innerHeight * 0.42)),
-  );
-}
-
-function resizedOutputPanelHeight(startHeight: number, startY: number, clientY: number) {
-  return Math.max(KETCHER_OUTPUT_MIN_HEIGHT, Math.min(outputPanelMaxHeight(), startHeight + startY - clientY));
-}
-
 function readableKetcherTooltip(value: string) {
   const normalized = value
     .replace(/\b(button|dropdown|selector)\b/gi, " ")
@@ -360,7 +316,9 @@ function applyKetcherTooltips(root: HTMLElement) {
   root.querySelectorAll<HTMLElement>(KETCHER_TOOLTIP_SELECTOR).forEach((target) => {
     const label = ketcherTooltipLabel(target);
     if (!label) return;
-    if (!target.getAttribute("title")) {
+    if (target.getAttribute("data-slot") === "tooltip-trigger") {
+      target.removeAttribute("title");
+    } else if (!target.getAttribute("title")) {
       target.setAttribute("title", label);
     }
     if (!target.getAttribute("aria-label")) {
@@ -409,9 +367,7 @@ export function KetcherPage({
     location.draftKet?.trim() || location.draftMolfile?.trim() || state.ketcherDraftMolfile.trim(),
   ));
   const [ketcherZoom, setKetcherZoom] = useState(DEFAULT_KETCHER_ZOOM);
-  const [ketcherFitScale, setKetcherFitScale] = useState(1);
   const [ketcherNarrow, setKetcherNarrow] = useState(false);
-  const [outputPanelHeight, setOutputPanelHeight] = useState(KETCHER_OUTPUT_DEFAULT_HEIGHT);
   const [dockPortalElement, setDockPortalElement] = useState<HTMLElement | null>(null);
   const [liveImportDirty, setLiveImportDirty] = useState(false);
   const [selectedCollectionPath, setSelectedCollectionPath] = useState("");
@@ -438,22 +394,12 @@ export function KetcherPage({
       ? `Auto · ${KETCHER_FORMAT_LABELS[detectedImportFormat]}`
       : KETCHER_FORMAT_LABELS[panelMode.format]
     : "";
-  const ketcherUIScaleStyle = useMemo(() => ({
-    "--ketcher-ui-scale": String(ketcherZoom),
-    "--ketcher-fit-scale": String(ketcherFitScale),
-  }) as CSSProperties, [ketcherFitScale, ketcherZoom]);
-  const outputPanelStyle = useMemo(() => ({
-    "--ketcher-output-height": `${outputPanelHeight}px`,
-  }) as CSSProperties, [outputPanelHeight]);
-
   useEffect(() => {
     const shell = editorShellRef.current;
     if (!shell) return undefined;
     const update = () => {
       const width = shell.clientWidth;
-      const nextScale = ketcherFitScaleForWidth(width);
       const nextNarrow = width <= KETCHER_NARROW_SHELL_WIDTH;
-      setKetcherFitScale((current) => current === nextScale ? current : nextScale);
       setKetcherNarrow((current) => current === nextNarrow ? current : nextNarrow);
     };
     update();
@@ -463,17 +409,17 @@ export function KetcherPage({
   }, []);
 
   useEffect(() => {
-    if (!panelMode) {
+    if (!isActive) {
       setDockPortalElement(null);
       return undefined;
     }
     const syncPortalElement = () => {
-      setDockPortalElement(document.querySelector<HTMLElement>('[data-ketcher-dock-portal="bottom"]'));
+      setDockPortalElement(document.querySelector<HTMLElement>('[data-ketcher-dock-portal="right"]'));
     };
     syncPortalElement();
     const frameId = window.requestAnimationFrame(syncPortalElement);
     return () => window.cancelAnimationFrame(frameId);
-  }, [panelMode, state.bottomDockOpen, state.bottomDockTool]);
+  }, [isActive, state.rightDockOpen, state.rightDockTool, state.rightDockActiveTab]);
 
   useEffect(() => {
     if (!isActive || editorHasActivated) return;
@@ -644,6 +590,10 @@ export function KetcherPage({
   }, [ketcher]);
 
   useEffect(() => {
+    if (isActive && ketcher && dockPortalElement && !panelMode) showExport(DEFAULT_KETCHER_EXPORT_FORMAT);
+  }, [isActive, ketcher, dockPortalElement, panelMode, showExport]);
+
+  useEffect(() => {
     if (!ketcher || panelMode?.purpose !== "export") return undefined;
     let cancelled = false;
     let exportSerial = 0;
@@ -684,36 +634,10 @@ export function KetcherPage({
     setStatus(`Paste ${KETCHER_FORMAT_LABELS[format]} to import`);
   }, [panelMode]);
 
-  const selectExportFormat = useCallback((format: KetcherTextFormat) => {
-    actions.setDockTool("bottom", "ketcher");
-    showExport(format);
-  }, [actions, showExport]);
-
   const selectImportFormat = useCallback((format: KetcherTextFormat | "auto") => {
-    actions.setDockTool("bottom", "ketcher");
+    actions.setDockTool("right", "ketcher");
     startImport(format);
   }, [actions, startImport]);
-
-  const exportFormatItems = useMemo(() => KETCHER_EXPORT_FORMATS.map((format) => ({
-    kind: "item" as const,
-    id: `export-${format}`,
-    text: KETCHER_FORMAT_LABELS[format],
-    detail: `Export ${KETCHER_FORMAT_DETAILS[format]}`,
-    action: () => selectExportFormat(format),
-  })), [selectExportFormat]);
-
-  const importFormatItems = useMemo(() => KETCHER_IMPORT_FORMATS.map((format) => ({
-    kind: "item" as const,
-    id: `import-${format}`,
-    text: KETCHER_FORMAT_LABELS[format],
-    detail: `Import ${KETCHER_FORMAT_DETAILS[format]}`,
-    action: () => selectImportFormat(format),
-  })), [selectImportFormat]);
-
-  const openDefaultExportPanel = useCallback(() => {
-    if (!ketcher) return;
-    selectExportFormat(panelMode?.purpose === "export" ? panelMode.format : DEFAULT_KETCHER_EXPORT_FORMAT);
-  }, [ketcher, panelMode, selectExportFormat]);
 
   const openDefaultImportPanel = useCallback(() => {
     if (!ketcher) return;
@@ -734,18 +658,6 @@ export function KetcherPage({
         setStatus(`Open failed: ${error instanceof Error ? error.message : String(error)}`);
       });
   }, [actions, openDefaultImportPanel]);
-
-  const showExportFormatMenu = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
-    if (!ketcher) return;
-    event.preventDefault();
-    showRadixContextMenu(exportFormatItems, { x: event.clientX, y: event.clientY });
-  }, [exportFormatItems, ketcher]);
-
-  const showImportFormatMenu = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
-    if (!ketcher) return;
-    event.preventDefault();
-    showRadixContextMenu(importFormatItems, { x: event.clientX, y: event.clientY });
-  }, [importFormatItems, ketcher]);
 
   const applyOutput = useCallback(async () => {
     if (!ketcher || panelMode?.purpose !== "import") return;
@@ -1198,57 +1110,10 @@ export function KetcherPage({
     setKetcherZoom(nextZoom);
   }, [ketcher, ketcherZoom]);
 
-  const resizeOutputPanel = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    const resizeTarget = event.currentTarget;
-    const pointerId = event.pointerId;
-    const startY = event.clientY;
-    const startHeight = outputPanelHeight;
-
-    const move = (moveEvent: PointerEvent) => {
-      if (moveEvent.pointerId !== pointerId) return;
-      setOutputPanelHeight(resizedOutputPanelHeight(startHeight, startY, moveEvent.clientY));
-    };
-
-    const stop = (stopEvent: PointerEvent) => {
-      if (stopEvent.pointerId !== pointerId) return;
-      resizeTarget.removeEventListener("pointermove", move);
-      resizeTarget.removeEventListener("pointerup", stop);
-      resizeTarget.removeEventListener("pointercancel", stop);
-      resizeTarget.removeEventListener("lostpointercapture", stop);
-      if (resizeTarget.hasPointerCapture(pointerId)) {
-        resizeTarget.releasePointerCapture(pointerId);
-      }
-    };
-
-    resizeTarget.setPointerCapture(pointerId);
-    resizeTarget.addEventListener("pointermove", move);
-    resizeTarget.addEventListener("pointerup", stop);
-    resizeTarget.addEventListener("pointercancel", stop);
-    resizeTarget.addEventListener("lostpointercapture", stop);
-  }, [outputPanelHeight]);
-
-  const resizeOutputPanelWithMouse = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    const startY = event.clientY;
-    const startHeight = outputPanelHeight;
-
-    const move = (moveEvent: MouseEvent) => {
-      setOutputPanelHeight(resizedOutputPanelHeight(startHeight, startY, moveEvent.clientY));
-    };
-
-    const stop = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", stop);
-    };
-
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", stop);
-  }, [outputPanelHeight]);
-
   return (
     <section
       className="ketcher-page"
+      data-ketcher-fullscreen-container
       aria-label="Ketcher"
       data-narrow={ketcherNarrow || undefined}
       data-drop-active={dropActive || undefined}
@@ -1273,46 +1138,46 @@ export function KetcherPage({
           </span>
           <div>
             <h1>Ketcher</h1>
-            <p>{hasSketch ? "Ketcher sketch" : "New Ketcher sketch"}</p>
+            <p>{hasSketch ? "Molecular structure" : "Draw or import a structure"}</p>
           </div>
         </div>
         <TooltipProvider>
         <div className="ketcher-page-actions" aria-label="Sketch actions">
-          <ButtonGroup aria-label="Open sketch in a viewer">
+          <div className="flex items-center gap-1" role="group" aria-label="Open sketch in a viewer">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="sm" aria-label="Open sketch as 2D grid" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
+                <Button type="button" variant="ghost" aria-label="Open sketch as 2D grid" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
                   Grid
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Open sketch as 2D grid</TooltipContent>
+              <TooltipContent showArrow={false}>Open sketch as 2D grid</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="sm" aria-label="Open sketch in Molstar" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
+                <Button type="button" variant="ghost" aria-label="Open sketch in Molstar" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
                   Molstar
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Open sketch in Molstar</TooltipContent>
+              <TooltipContent showArrow={false}>Open sketch in Molstar</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="sm" aria-label="Open sketch in xyzrender" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
+                <Button type="button" variant="ghost" aria-label="Open sketch in xyzrender" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
                   xyzrender
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Open sketch in xyzrender</TooltipContent>
+              <TooltipContent showArrow={false}>Open sketch in xyzrender</TooltipContent>
             </Tooltip>
-          </ButtonGroup>
+          </div>
           <Tooltip>
           <RadixDropdownMenu
             align="end"
+            contentClassName="ketcher-ui-menu"
             items={[
               {
                 kind: "item",
                 id: "compute-generate-3d",
                 text: "Generate 3D",
-                detail: isTauriRuntime() ? "ETKDGv3 + MMFF94s" : "Dev backend · RDKit CPU",
                 disabled: false,
                 action: () => void openSketch("generate3d"),
               },
@@ -1320,7 +1185,6 @@ export function KetcherPage({
                 kind: "item",
                 id: "compute-generate-ensemble",
                 text: "Generate conformer ensemble",
-                detail: isTauriRuntime() ? "16 ranked conformers" : "Dev backend · RDKit CPU",
                 disabled: false,
                 action: () => void openSketch("generateEnsemble"),
               },
@@ -1329,9 +1193,6 @@ export function KetcherPage({
                 kind: "item",
                 id: "compute-optimize",
                 text: "Optimize geometry",
-                detail: preserved3dSource
-                  ? isTauriRuntime() ? "MMFF94s on current 3D coordinates" : "Dev backend · RDKit MMFF94s CPU"
-                  : "Requires imported 3D coordinates",
                 disabled: !preserved3dSource,
                 action: () => void openSketch("optimizeGeometry"),
               },
@@ -1339,33 +1200,30 @@ export function KetcherPage({
                 kind: "item",
                 id: "compute-rm1",
                 text: "RM1 energy & charges",
-                detail: preserved3dSource
-                  ? isTauriRuntime() ? "Native semi-empirical workflow" : "Dev backend · native Metal"
-                  : "Requires imported 3D coordinates",
                 disabled: !preserved3dSource,
                 action: () => void openSketch("semiempiricalRm1"),
               },
             ]}
             trigger={(
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="sm" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">
+                <Button type="button" variant="outline" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">
                   Compute
                   <ChevronDown data-icon="inline-end" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
             )}
           />
-          <TooltipContent>Native molecular compute</TooltipContent>
+          <TooltipContent showArrow={false}>Native molecular compute</TooltipContent>
           </Tooltip>
           <Tooltip>
           <RadixDropdownMenu
             align="end"
+            contentClassName="ketcher-ui-menu"
             items={[
               {
                 kind: "item",
                 id: "database-chembl",
                 text: "Search ChEMBL",
-                detail: "Substructure, similarity or exact structure",
                 disabled: false,
                 action: () => void searchDatabaseWithSketch("chembl"),
               },
@@ -1373,7 +1231,6 @@ export function KetcherPage({
                 kind: "item",
                 id: "database-chembl-actives",
                 text: "Similar from ChEMBL actives",
-                detail: "Adds matches to the open collection",
                 disabled: false,
                 action: () => void searchDatabaseWithSketch("chembl-actives"),
               },
@@ -1382,7 +1239,6 @@ export function KetcherPage({
                 kind: "item",
                 id: "database-building-blocks",
                 text: "Search building blocks",
-                detail: "Commercial catalogues, with price and stock",
                 disabled: false,
                 action: () => void searchDatabaseWithSketch("building-blocks"),
               },
@@ -1390,18 +1246,22 @@ export function KetcherPage({
                 kind: "item",
                 id: "database-chemspace",
                 text: "Search ChemSpace",
-                detail: "Needs your own ChemSpace API key",
                 disabled: false,
                 action: () => void searchDatabaseWithSketch("chemspace"),
               },
             ]}
             trigger={(
-              <button type="button" disabled={!ketcher || exportingSketch} aria-label="Open database search menu">
+              <TooltipTrigger asChild>
+              <Button type="button" variant="outline" disabled={!ketcher || exportingSketch} aria-label="Open database search menu">
                 Database
-                <ShortcutTooltip label="Search a chemical database with this sketch" />
-              </button>
+                <ChevronDown data-icon="inline-end" aria-hidden="true" />
+              </Button>
+              </TooltipTrigger>
             )}
           />
+          <TooltipContent showArrow={false}>Search a chemical database with this sketch</TooltipContent>
+          </Tooltip>
+          {(gridEditSource || (ketcher && hasSketch && !exportingSketch)) && <Tooltip>
           {gridEditSource ? (
             <TooltipTrigger asChild>
               <Button
@@ -1418,6 +1278,7 @@ export function KetcherPage({
           ) : (
             <RadixDropdownMenu
               align="end"
+            contentClassName="ketcher-ui-menu"
               items={[
                 ...(collectionTargets.length === 0
                   ? [{
@@ -1445,7 +1306,7 @@ export function KetcherPage({
               ]}
               trigger={(
                 <TooltipTrigger asChild>
-                  <Button type="button" variant="outline" size="sm" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch || !hasSketch}>
+                  <Button type="button" variant="outline" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch || !hasSketch}>
                     Add to collection
                     <ChevronDown data-icon="inline-end" aria-hidden="true" />
                   </Button>
@@ -1453,41 +1314,39 @@ export function KetcherPage({
               )}
             />
           )}
-          <TooltipContent>{gridEditSource ? "Save edits back to the source collection" : "Add sketch to SDF collection"}</TooltipContent>
-          </Tooltip>
+          <TooltipContent showArrow={false}>{gridEditSource ? "Save edits back to the source collection" : "Add sketch to SDF collection"}</TooltipContent>
+          </Tooltip>}
           <ButtonGroup className="ketcher-scale-control" aria-label="Ketcher scale">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="sm" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
-                  -
+                <Button type="button" variant="outline" size="icon" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
+                  <Minus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Decrease Ketcher scale</TooltipContent>
+              <TooltipContent showArrow={false}>Decrease Ketcher scale</TooltipContent>
             </Tooltip>
-            <ButtonGroupText className="min-w-12 justify-center border-border text-[0.8rem] font-normal tabular-nums">{ketcherZoomPercent}%</ButtonGroupText>
+            <ButtonGroupText className="min-w-12 justify-center border-border tabular-nums">{ketcherZoomPercent}%</ButtonGroupText>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="sm" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
-                  +
+                <Button type="button" variant="outline" size="icon" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
+                  <Plus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Increase Ketcher scale</TooltipContent>
+              <TooltipContent showArrow={false}>Increase Ketcher scale</TooltipContent>
             </Tooltip>
           </ButtonGroup>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Toggle
-                variant="outline"
-                size="sm"
-                className="ketcher-theme-control"
-                pressed={ketcherThemeMode === "dark"}
+              <Button
+                variant="ghost"
+                size="icon"
                 aria-label={ketcherThemeTitle}
-                onPressedChange={() => actions.setPreference("theme", nextKetcherTheme)}
+                onClick={() => actions.setPreference("theme", nextKetcherTheme)}
               >
-                Dark
-              </Toggle>
+                {ketcherThemeMode === "dark" ? <Moon aria-hidden="true" /> : <Sun aria-hidden="true" />}
+              </Button>
             </TooltipTrigger>
-            <TooltipContent>{ketcherThemeTitle}</TooltipContent>
+            <TooltipContent showArrow={false}>{ketcherThemeTitle}</TooltipContent>
           </Tooltip>
         </div>
         </TooltipProvider>
@@ -1497,7 +1356,6 @@ export function KetcherPage({
           ref={editorShellRef}
           className="ketcher-editor-shell"
           data-drop-active={dropActive || undefined}
-          style={ketcherUIScaleStyle}
         >
           <div className="ketcher-editor-scale-frame">
             {shouldMountEditor ? (
@@ -1521,95 +1379,28 @@ export function KetcherPage({
           )}
         </div>
       </div>
-      <footer className="ketcher-page-footer">
-        <Badge variant="secondary" className="ketcher-page-status">
-          <span className="min-w-0 truncate">{status}</span>
-        </Badge>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className={cn("relative min-w-20", panelMode?.purpose === "export" && "bg-accent text-accent-foreground")}
-          disabled={!ketcher}
-          onClick={openDefaultExportPanel}
-          onContextMenu={showExportFormatMenu}
-        >
-          Export
-          <ShortcutTooltip label="Export sketch to a text or image format" side="top" />
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className={cn("relative min-w-20", panelMode?.purpose === "import" && "bg-accent text-accent-foreground")}
-          disabled={!ketcher}
-          onClick={openDefaultImportPanel}
-          onContextMenu={showImportFormatMenu}
-        >
-          Import
-          <ShortcutTooltip label="Import structure text into Ketcher" side="top" />
-        </Button>
-      </footer>
-      {panelMode && dockPortalElement ? createPortal((
-        <section className="ketcher-dock-workflow" data-mode={panelMode.purpose} aria-label={`${panelMode.purpose === "import" ? "Import" : "Export"} panel`}>
-          <div className="ketcher-dock-toolbar">
-            <div className="ketcher-dock-title">
-              <strong>{panelMode.purpose === "import" ? "Import" : "Export"}</strong>
-              <span>{status}</span>
-            </div>
-            <span className="ketcher-dock-format">{panelFormatLabel}</span>
-          </div>
-          <div className="ketcher-output-panel" style={outputPanelStyle}>
-            <button
-              type="button"
-              className="ketcher-output-resizer"
-              aria-label="Resize Ketcher output panel"
-              onPointerDown={resizeOutputPanel}
-              onMouseDown={resizeOutputPanelWithMouse}
-            />
-            <textarea
-              className="ketcher-output ketcher-output-input"
-              aria-label={`${panelMode.purpose === "import" ? "Import" : "Export"} ${panelFormatLabel}`}
-              readOnly={panelMode.purpose === "export"}
-              spellCheck={false}
-              value={output}
-              onChange={(event) => {
-                setOutput(event.target.value);
-                if (panelMode.purpose === "import") setLiveImportDirty(true);
-              }}
-            />
-          </div>
-          <div className="ketcher-dock-actions">
-            {panelMode.purpose === "export" ? (
-              <>
-                <Button type="button" variant="secondary" size="sm" className="relative min-w-20" disabled={!output} onClick={() => void copyExportOutput()}>
-                  Copy
-                  <ShortcutTooltip label="Copy exported text" side="top" />
-                </Button>
-                <Button type="button" variant="secondary" size="sm" className="relative min-w-20" disabled={!output} onClick={saveExportOutput}>
-                  Save
-                  <ShortcutTooltip label="Save exported output to a file" side="top" />
-                </Button>
-                <Button type="button" variant="default" size="sm" className="relative min-w-20" disabled={!output} onClick={openRawExportOutput}>
-                  Open raw
-                  <ShortcutTooltip label="Open exported text in a raw document tab" side="top" />
-                </Button>
-              </>
-            ) : (
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                className="relative min-w-20"
-                disabled={!ketcher || exportingSketch || (gridEditSource ? false : !output.trim())}
-                onClick={() => void (gridEditSource ? applyGridEdit() : applyOutput())}
-              >
-                {gridEditSource ? "Apply" : "Load"}
-                <ShortcutTooltip label={gridEditSource ? "Apply Ketcher edits to the grid row" : "Load imported text into Ketcher"} side="top" />
-              </Button>
-            )}
-          </div>
-        </section>
+      {isActive && panelMode && dockPortalElement ? createPortal((
+        <KetcherTextPanel
+          purpose={panelMode.purpose}
+          format={panelMode.format}
+          formatLabel={panelFormatLabel}
+          formats={(panelMode.purpose === "export" ? KETCHER_EXPORT_FORMATS : KETCHER_IMPORT_FORMATS).map((format) => ({ value: format, label: KETCHER_FORMAT_LABELS[format] }))}
+          value={output}
+          status={status}
+          ready={Boolean(ketcher)}
+          busy={exportingSketch}
+          applyEdits={Boolean(gridEditSource)}
+          onModeChange={(purpose) => purpose === "import" ? startImport(DEFAULT_KETCHER_IMPORT_FORMAT) : showExport(DEFAULT_KETCHER_EXPORT_FORMAT)}
+          onFormatChange={(format) => {
+            if (panelMode.purpose === "export") showExport(format as KetcherTextFormat);
+            else setPanelMode({ purpose: "import", format: format as KetcherTextFormat | "auto" });
+          }}
+          onValueChange={(value) => { setOutput(value); setLiveImportDirty(true); }}
+          onLoad={() => void (gridEditSource ? applyGridEdit() : applyOutput())}
+          onCopy={() => void copyExportOutput()}
+          onSave={saveExportOutput}
+          onOpenRaw={openRawExportOutput}
+        />
       ), dockPortalElement) : null}
     </section>
   );

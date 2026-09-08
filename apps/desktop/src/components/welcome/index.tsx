@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/empty";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import type { BuildInfo, ShellActions } from "../types";
-import { ShortcutTooltip } from "../shortcut-tooltip";
 
 function buildLabel(info: BuildInfo) {
   if (info.isAgentShell) return `Agent shell · v${info.version}`;
@@ -46,21 +45,18 @@ export function WelcomeScreen({ actions, buildInfo }: { actions: ShellActions; b
       <EmptyContent className="new-tab-actions">
         <WelcomeAction
           label="Open Structure"
-          shortcut="⌘O"
           keys={["⌘O"]}
           analytics="open_structure"
           onClick={() => void actions.chooseFiles()}
         />
         <WelcomeAction
           label="Command Palette"
-          shortcut="⌘P /"
           keys={["⌘P", "/"]}
           analytics="open_command_palette"
           onClick={actions.openCommandPalette}
         />
         <WelcomeAction
           label="Settings"
-          shortcut="⌘,"
           keys={["⌘,"]}
           analytics="open_settings"
           onClick={actions.openSettings}
@@ -72,13 +68,11 @@ export function WelcomeScreen({ actions, buildInfo }: { actions: ShellActions; b
 
 function WelcomeAction({
   label,
-  shortcut,
   keys,
   analytics,
   onClick,
 }: {
   label: string;
-  shortcut: string;
   keys: string[];
   analytics: string;
   onClick: () => void;
@@ -97,7 +91,6 @@ function WelcomeAction({
           <Kbd key={key}>{key}</Kbd>
         ))}
       </KbdGroup>
-      <ShortcutTooltip label={label} shortcut={shortcut} />
     </Button>
   );
 }

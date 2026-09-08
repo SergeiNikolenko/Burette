@@ -1,0 +1,38 @@
+[data-ketcher-dock-portal="right"] .ketcher-text-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.ketcher-text-panel > [data-slot="tabs"],
+.ketcher-text-panel .ketcher-text-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  gap: 12px;
+}
+
+.ketcher-text-panel .ketcher-text-input {
+  flex: 1;
+  min-height: 80px;
+  resize: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ketcher-text-status {
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.ketcher-text-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
