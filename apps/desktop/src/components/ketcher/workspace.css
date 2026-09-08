@@ -541,6 +541,7 @@
 }
 .app-shell[data-effective-theme] .ketcher-ui-dialog [data-testid="info-modal-body"] .ketcher-settings-groups :is([data-slot="select-trigger"], [data-slot="accordion-trigger"]) svg path {
   fill: currentColor !important;
+  stroke: none !important;
 }
 .app-shell .ketcher-ui-dialog [data-slot="select-trigger"][class*="measure-input-module_select"] {
   min-width: 72px;
