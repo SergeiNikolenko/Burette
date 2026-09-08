@@ -1,8 +1,9 @@
-import { ArrowLeft, Orbit, Search, Settings } from "lucide-react";
+import { Orbit } from "lucide-react";
+import { ArrowLeft, Search, SettingsCog as Settings } from "@/components/ui/app-icons";
 
-// Lucide icons with lightweight CSS micro-animations (see the .anim-icon rules in
-// styles.css), in the spirit of the Animate UI icon set but dependency-free. They
-// animate on hover of the icon / its button.
+// Shared Apps SDK glyphs and the scientific Lucide Orbit keep the existing
+// CSS micro-animations in styles.css, inspired by Animate UI.
+// Hover behavior belongs to the control, not to the glyph family.
 
 type AnimatedIconProps = {
   size?: number;

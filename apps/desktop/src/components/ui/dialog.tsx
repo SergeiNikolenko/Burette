@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Cancel01Icon } from "@hugeicons/core-free-icons"
+import { X as Cancel01Icon } from "@/components/ui/app-icon-data";
 
 function Dialog({
   ...props

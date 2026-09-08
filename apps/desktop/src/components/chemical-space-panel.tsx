@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, SettingsSlider as SlidersHorizontal } from "@/components/ui/app-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -1275,6 +1275,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                   type: "chemicalSpaceSelectionChanged",
                   sourceRecordIds: bounded,
                   filterToSelection: tool === "lasso",
+                  focusSourceRecordId: tool === "navigate" && sourceRecordIds.length === 1 ? sourceRecordIds[0] : null,
                 });
               }}
             />

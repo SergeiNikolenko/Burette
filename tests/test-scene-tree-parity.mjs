@@ -2,11 +2,14 @@
 // The inspector's composition list and the viewer's scene tree show the same
 // objects, so a row has to read the same in both. They cannot share a component:
 // the tree is built with plain DOM inside the Mol* srcdoc iframe and the panel is
-// React in the host document, two runtimes with no stylesheet and no module in
-// common. Every shared number is therefore written down twice, and the only thing
-// that stops the copies drifting is this file - which compares them to each other
-// rather than to a literal, so a change on either side has to be made on both.
+// React in the host document, with separate stylesheets and icon renderers.
+// Compare both rendered glyphs and shared layout values across those boundaries
+// so a change on either side has to be reflected on the other.
 import assert from "node:assert/strict";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Window } from "happy-dom";
+import * as appIcons from "../apps/desktop/src/components/ui/app-icons.tsx";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -32,45 +35,56 @@ function declaration(body, property) {
   return match ? match[1].trim() : null;
 }
 
-// Reads `NAME = { key: ['path', …] }` out of either file. Path data never
-// contains a quote, so pulling the quoted runs out of each array is enough and
-// works the same for the viewer's single quotes and the panel's double ones.
-function iconPaths(source, name) {
-  const start = source.indexOf(`${name} = {`);
-  assert.ok(start !== -1, `no ${name} in source`);
-  const open = source.indexOf("{", start);
-  let depth = 0;
-  let end = -1;
-  for (let index = open; index < source.length; index += 1) {
-    if (source[index] === "{") depth += 1;
-    else if (source[index] === "}" && --depth === 0) {
-      end = index;
-      break;
-    }
-  }
-  assert.ok(end !== -1, `${name} is not closed`);
-  const icons = {};
-  for (const [, key, list] of source.slice(open + 1, end).matchAll(/(\w+)\s*:\s*\[([\s\S]*?)\]/g)) {
-    icons[key] = Array.from(list.matchAll(/['"]([^'"]+)['"]/g), ([, path]) => path);
-  }
-  return icons;
+// Evaluate only the declarative glyph maps and isolated DOM renderer. The
+// iframe embeds SDK nodes, while the panel reaches them through React exports.
+const embeddedIcons = JSON.parse(viewerJs.match(/const APP_ICON_DATA = (.+);\n/)?.[1] ?? "null");
+assert.ok(embeddedIcons, "viewer has no embedded SDK icon data");
+const treeMap = viewerJs.match(/const SCENE_TREE_ICON = (\{[\s\S]*?\n  \});/)?.[1];
+assert.ok(treeMap, "viewer has no scene tree icon map");
+const treeIcons = new Function("APP_ICON_DATA", `return (${treeMap});`)(embeddedIcons);
+const renderer = viewerJs.match(/function sceneTreeIconElement\(paths\) \{[\s\S]*?\n  \}/)?.[0];
+assert.ok(renderer, "viewer has no scene tree icon renderer");
+const window = new Window();
+const renderTreeIcon = new Function("document", "SCENE_TREE_SVG_NS", `${renderer}; return sceneTreeIconElement;`)(
+  window.document, "http://www.w3.org/2000/svg",
+);
+function contourNodes(svg) {
+  return Array.from(svg.children, (node) => ({
+    tag: node.tagName.toLowerCase(),
+    attributes: Object.fromEntries(Array.from(node.attributes, ({ name, value }) => [name, value])
+      .filter(([name]) => name !== "class")),
+  }));
 }
-
-// A glyph that means "hide" has to be the same mark in both lists.
-const treeIcons = iconPaths(viewerJs, "SCENE_TREE_ICON");
-const panelIcons = iconPaths(panel, "SCENE_TREE_GLYPH");
-const sharedGlyphs = Object.keys(panelIcons);
-assert.deepEqual(sharedGlyphs.sort(), ["chevron", "eye", "eyeOff", "trash"]);
-for (const key of sharedGlyphs) {
-  assert.ok(treeIcons[key], `the scene tree has no ${key} icon to copy`);
-  assert.deepEqual(
-    panelIcons[key],
-    treeIcons[key],
-    `${key} is drawn differently in the panel than in the scene tree`
-  );
+try {
+  for (const [key, name, component] of [
+    ["chevron", "ChevronRight", "TreeDisclosureIcon"],
+    ["eye", "Eye", "EyeIcon"],
+    ["eyeOff", "EyeOff", "EyeOffIcon"],
+    ["trash", "Delete", "TrashIcon"],
+  ]) {
+    // Check the actual panel mapping too: equal unused exports prove nothing.
+    const local = panel.match(new RegExp(`\\b${name} as (\\w+)`))?.[1];
+    assert.ok(local, `panel does not import the ${name} icon`);
+    assert.match(panel, new RegExp(`function ${component}\\(\\) \\{\\s*return <${local}\\b`));
+    const host = window.document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(React.createElement(appIcons[name], { size: key === "chevron" ? 11 : 13 }));
+    const treeSvg = renderTreeIcon(treeIcons[key]);
+    assert.equal(host.firstElementChild.getAttribute("viewBox"), treeSvg.getAttribute("viewBox"));
+    assert.deepEqual(contourNodes(host.firstElementChild), contourNodes(treeSvg), `${key} differs between panel and scene tree`);
+    assert.ok(treeSvg.children.length > 0, `${key} must not render an empty glyph`);
+  }
+  // Scientific focus/isolation marks retain their legacy stroked paths.
+  for (const key of ["focus", "isolate"]) {
+    assert.ok(treeIcons[key].length > 0 && treeIcons[key].every((path) => typeof path === "string"));
+    const svg = renderTreeIcon(treeIcons[key]);
+    assert.equal(svg.getAttribute("stroke-width"), "1.8");
+    assert.equal(svg.getAttribute("stroke"), "currentColor");
+    assert.equal(svg.getAttribute("fill"), "none");
+    assert.deepEqual(contourNodes(svg), treeIcons[key].map((d) => ({ tag: "path", attributes: { d } })));
+  }
+} finally {
+  await window.happyDOM.close();
 }
-assert.match(panel, /strokeWidth="1\.8"/);
-assert.match(viewerJs, /setAttribute\('stroke-width', '1\.8'\)/);
 
 // The colour bar ahead of the name.
 const treeBar = ruleBody(viewerCss, ".buret-tree-bar", "viewer");
@@ -87,7 +101,7 @@ for (const property of ["width", "height", "border-radius"]) {
 // on the bar itself.
 assert.equal(declaration(treeBar, "opacity"), null);
 assert.equal(declaration(panelBar, "opacity"), null);
-assert.match(styles, /\.structure-brief-action-entry\[data-hidden="true"\] \.structure-inspector-row-bar/);
+assert.ok(styles.includes('.structure-brief-action-entry[data-hidden="true"] .structure-brief-chip-button'), "hidden child rows must fade their contents once");
 assert.match(viewerCss, /\.buret-tree-item\[data-hidden="true"\][^{]*\.buret-tree-bar/);
 
 // Row height, and the twisty that sets the indent.

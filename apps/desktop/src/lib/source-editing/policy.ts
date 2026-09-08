@@ -31,6 +31,24 @@ export type SourceEditEligibility =
   | { editable: true; previewMode: SourcePreviewMode }
   | { editable: false; reason: SourceNotEditableReason };
 
+export function sourceNotEditableMessage(reason: SourceNotEditableReason): string {
+  switch (reason) {
+    case "unsupported_shape":
+      return "This file contains multiple structures or frames. You can search and copy its text, but source editing is not supported yet.";
+    case "truncated": return "Only part of this file is loaded. Source editing requires the complete file.";
+    case "too_large": return "Source editing is limited to files up to 3 MB. You can still search and copy the text.";
+    case "lossy_encoding": return "Source editing requires lossless UTF-8 text.";
+    case "compressed_source": return "Decompress this file before editing its source.";
+    case "binary_source": return "Binary files cannot be edited as text.";
+    case "virtual_source":
+    case "generated_source": return "Save this structure to a local file before editing its source.";
+    case "combined_source":
+    case "multi_source": return "Open an individual source file to edit it.";
+    case "docking_source": return "Source editing is not available for docking results.";
+    case "unsupported_format": return "Source editing is not supported for this file format.";
+  }
+}
+
 export function utf8ByteCount(content: string) {
   return new TextEncoder().encode(content).byteLength;
 }

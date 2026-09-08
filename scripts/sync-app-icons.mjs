@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Regenerate the React glyph data and inline preview glyphs from the reviewed
 // Apps SDK UI snapshot. This does not install dependencies or build the app.
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, copyFile } from 'node:fs/promises';
 
 const root = new URL('../', import.meta.url);
 const snapshot = JSON.parse(await readFile(new URL('config/icons/apps-sdk.json', root), 'utf8'));
@@ -27,4 +27,13 @@ const components = (await readFile(componentsPath, 'utf8')).split('// BEGIN GENE
 await writeFile(componentsPath, components + '// BEGIN GENERATED EXPORTS\n' + Object.keys(snapshot.icons)
   .map((name) => `export const ${name} = /* @__PURE__ */ appIcon("${name}");`).join('\n') + '\n');
 
-console.log(`Updated desktop glyphs from ${snapshot.source.package}@${snapshot.source.version}`);
+const previewPath = new URL('PreviewExtension/Web/viewer.js', root);
+let preview = await readFile(previewPath, 'utf8');
+const glyphs = `  // BEGIN GENERATED APPS SDK ICONS\n  ${banner}  const APP_ICON_DATA = ${JSON.stringify(snapshot.icons)};\n  // END GENERATED APPS SDK ICONS`;
+const region = /  \/\/ BEGIN GENERATED APPS SDK ICONS[\s\S]*?  \/\/ END GENERATED APPS SDK ICONS/;
+preview = region.test(preview) ? preview.replace(region, () => glyphs) : preview.replace('  const SCENE_TREE_ICON = {', `${glyphs}\n  const SCENE_TREE_ICON = {`);
+await writeFile(previewPath, preview);
+// Same source file is shipped by the packaged plugin; avoid rebuilding unrelated
+// native, viewer and MCP bundles when only the shared glyph data changes.
+await copyFile(previewPath, new URL('plugins/burette-agent/preview-web/viewer.js', root));
+console.log(`Updated app and preview glyphs from ${snapshot.source.package}@${snapshot.source.version}`);

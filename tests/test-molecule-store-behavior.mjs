@@ -54,6 +54,32 @@ function resetStore() {
 }
 
 resetStore();
+const logDocument = {
+  id: "xtb-log",
+  path: "/tmp/xtb_optimize_2/xtb.log",
+  title: "xtb.log",
+  extension: "log",
+  language: "text",
+  byteCount: 12,
+  content: "finished run",
+  truncated: false,
+};
+useMoleculeStore.getState().addDocuments([document("mini", "/tmp/mini.pdb")]);
+useMoleculeStore.getState().addBackgroundTextDocuments([logDocument]);
+useMoleculeStore.getState().setActiveDocument(logDocument.id);
+const logOpened = useMoleculeStore.getState();
+const logTab = logOpened.tabs.find((tab) => tab.id === logOpened.activeTabId);
+assert.deepEqual(logTab.location, {
+  kind: "text-file", documentId: logDocument.id, path: logDocument.path,
+});
+assert.equal(logOpened.activeDocumentId, null);
+useMoleculeStore.getState().setActiveDocument("mini");
+useMoleculeStore.getState().setActiveDocument(logDocument.id);
+const logReselected = useMoleculeStore.getState();
+assert.equal(logReselected.activeTabId, logTab.id);
+assert.deepEqual(logReselected.tabs, logOpened.tabs);
+
+resetStore();
 useMoleculeStore.setState({
   documents: [document("old-doc", "/tmp/mini.pdb")],
   tabs: [{
@@ -315,3 +341,14 @@ assert.deepEqual(useMoleculeStore.getState().recentStructures, []);
 assert.deepEqual(JSON.parse(storage.get("burette.recent.structures")).documents, []);
 
 console.log("molecule store behavior tests passed");
+
+resetStore();
+useMoleculeStore.getState().addDocuments([document("pin-a", "/data/a.pdb"), document("pin-b", "/data/b.pdb")]);
+const pinTarget = useMoleculeStore.getState().tabs.find(tab => tab.location.path === "/data/b.pdb");
+useMoleculeStore.getState().togglePinnedTab(pinTarget.id);
+assert.equal(useMoleculeStore.getState().tabs[0].id, pinTarget.id);
+assert.equal(useMoleculeStore.getState().tabs[0].pinned, true);
+await useMoleculeStore.persist.rehydrate();
+assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === pinTarget.id)?.pinned, true);
+useMoleculeStore.getState().togglePinnedTab(pinTarget.id);
+assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === pinTarget.id)?.pinned, false);

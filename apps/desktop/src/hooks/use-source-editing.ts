@@ -8,7 +8,7 @@ import { openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
 import type { ViewerDocument, ViewerPreferences } from "../types";
-import { classifySourceShape, sourceDraftValidationError } from "../lib/source-editing/policy";
+import { classifySourceShape, sourceDraftValidationError, sourceNotEditableMessage } from "../lib/source-editing/policy";
 
 const LIVE_PREVIEW_LIMIT = 1_000_000;
 const SOURCE_EDIT_LIMIT = 3_000_000;
@@ -47,7 +47,7 @@ type NativeSaveResult = {
 type NativeSourceError = {
   code?: string;
   message?: string;
-  details?: { actualRevision?: FileRevision };
+  details?: { actualRevision?: FileRevision; reason?: string };
 };
 
 type UseSourceEditingOptions = {
@@ -207,7 +207,11 @@ export function useSourceEditingController({
       setDockOpen("right", true);
       setDockActiveTab("right", "text");
     } catch (error) {
-      pushErrorStatus(error, "Edit Source");
+      const parsed = parseNativeSourceError(error);
+      const message = parsed?.code === "source_not_editable" && parsed.details?.reason === "unsupported_shape"
+        ? sourceNotEditableMessage("unsupported_shape")
+        : parsed?.message;
+      pushErrorStatus(message ? new Error(message) : error, "Edit Source");
     }
   }, [clearStagingWindows, commitSessions, pushErrorStatus, setDockActiveTab, setDockOpen, updateSession]);
 

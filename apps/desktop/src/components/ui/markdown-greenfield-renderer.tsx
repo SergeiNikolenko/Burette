@@ -3,17 +3,7 @@
 import * as React from "react";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
-import {
-  BadgeAlert,
-  Check,
-  CircleAlert,
-  Copy,
-  ExternalLink,
-  Info,
-  Lightbulb,
-  Link2,
-  TriangleAlert,
-} from "lucide-react";
+import { Warning as BadgeAlert, Check, Warning as CircleAlert, Copy, ExternalLink, InfoCircle as Info, Lightbulb, Link as Link2, Warning as TriangleAlert } from "@/components/ui/app-icons";
 
 import {
   diffLineKind,

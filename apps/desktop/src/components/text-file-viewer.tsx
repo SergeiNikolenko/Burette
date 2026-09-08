@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { defaultKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching, defaultHighlightStyle, foldGutter, indentOnInput, LanguageDescription, syntaxHighlighting } from "@codemirror/language";
-import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, keymap, lineNumbers } from "@codemirror/view";
 import { formatBytes } from "./format";
@@ -13,6 +13,10 @@ import { MaestroOutlineViewer } from "./text-file-viewer/maestro-outline-viewer"
 import type { MarkdownOpenPaths } from "./text-file-viewer/markdown-link-navigation";
 import { hasStructureTextHighlighting, structureTextHighlighting, textNumberHighlighting } from "./text-file-viewer/structure-text-highlighting";
 import { Button } from "./ui/button";
+import { Search } from "./ui/app-icons";
+import { createTextSearchPanel, toggleTextSearch } from "./text-file-viewer/text-search-panel";
+import { registerTextFind } from "../lib/text-find";
+import { classifySourceEditEligibility, classifySourceShape, sourceNotEditableMessage } from "../lib/source-editing/policy";
 
 const AGENT_SHELL_BUILD = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
 
@@ -57,6 +61,15 @@ export function TextFileViewer({
   const nonEditorDocument = markdownDocument || maestroDocument || imageDocument;
   const editorContent = sourceEditing?.content ?? document.content;
   const editable = Boolean(sourceEditing?.editable);
+  const editDisabledReason = useMemo(() => {
+    const eligibility = classifySourceEditEligibility({
+      extension: document.extension,
+      byteCount: document.byteCount,
+      truncated: document.truncated,
+      shape: classifySourceShape(document.extension, document.content),
+    });
+    return eligibility.editable ? null : sourceNotEditableMessage(eligibility.reason);
+  }, [document]);
 
   useEffect(() => {
     onStructureSelectionRef.current = onStructureSelection;
@@ -100,6 +113,13 @@ export function TextFileViewer({
           bracketMatching(),
           highlightActiveLine(),
           highlightSelectionMatches(),
+          search({
+            top: true,
+            literal: true,
+            createPanel: createTextSearchPanel,
+            scrollToMatch: (range) => EditorView.scrollIntoView(range, { y: "center" }),
+          }),
+          EditorView.contentAttributes.of({ tabindex: "0", "aria-label": `${document.title} text` }),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           ...(editable
             ? [EditorState.readOnly.of(false), EditorView.editable.of(true)]
@@ -124,6 +144,7 @@ export function TextFileViewer({
                 return true;
               },
             },
+            { key: "Mod-f", run: toggleTextSearch, preventDefault: true },
             ...searchKeymap,
             ...defaultKeymap,
           ]),
@@ -133,6 +154,7 @@ export function TextFileViewer({
       }),
     });
     viewRef.current = view;
+    const unregisterFind = registerTextFind(view.dom, () => { toggleTextSearch(view); });
     const lineRangeFromElement = (lineElement: HTMLElement) => {
       const line = view.state.doc.lineAt(view.posAtDOM(lineElement, 0));
       return { from: line.from, to: line.to };
@@ -237,6 +259,7 @@ export function TextFileViewer({
       parent.removeEventListener("pointercancel", onPointerCancel);
       parent.removeEventListener("pointerleave", onPointerLeave);
       view.destroy();
+      unregisterFind();
       viewRef.current = null;
     };
   }, [document.id, editable, languageCompartment, nonEditorDocument]);
@@ -270,6 +293,7 @@ export function TextFileViewer({
 
   return (
     <div className="text-file-stage">
+      <div className="min-w-0">
       <div className="text-file-toolbar">
         <div className="text-file-title">
           <span>{document.title}</span>
@@ -284,8 +308,13 @@ export function TextFileViewer({
           )}
           <span>{document.language}</span>
           <span>{formatBytes(imageDocument ? document.byteCount : new TextEncoder().encode(editorContent).byteLength)}</span>
+          {!nonEditorDocument && (
+            <Button type="button" variant="ghost" size="icon-xs" aria-label="Find in text" title="Find in text (⌘F)" onClick={() => { if (viewRef.current) toggleTextSearch(viewRef.current); }}>
+              <Search />
+            </Button>
+          )}
           {sourceEditing?.onBeginEditing && !sourceEditing.editable && (
-            <Button type="button" variant="secondary" size="xs" onClick={sourceEditing.onBeginEditing}>Edit Source</Button>
+            <Button type="button" variant="secondary" size="xs" disabled={Boolean(editDisabledReason)} title={editDisabledReason ?? undefined} onClick={sourceEditing.onBeginEditing}>Edit Source</Button>
           )}
           {sourceEditing?.showApplyPreview && sourceEditing.editable && (
             <Button type="button" variant="secondary" size="xs" onClick={() => void sourceEditing.onApplyPreview?.()}>Apply Preview</Button>
@@ -307,6 +336,7 @@ export function TextFileViewer({
       {sourceEditing?.diagnostic && (
         <div className="source-edit-diagnostic" role="status">{sourceEditing.diagnostic}</div>
       )}
+      </div>
       {markdownDocument ? (
         <MarkdownRichViewer document={document} openPaths={openPaths} />
       ) : maestroDocument ? (
@@ -395,6 +425,11 @@ const textViewerTheme = EditorView.theme({
     fontFeatureSettings: "\"tnum\" 1, \"kern\" 0, \"liga\" 0, \"calt\" 0",
     fontKerning: "none",
     overflowX: "auto",
+  },
+  ".cm-panels": {
+    backgroundColor: "var(--shadcn-background)",
+    color: "var(--text-primary)",
+    borderColor: "var(--line-subtler)",
   },
   ".cm-content": {
     padding: "16px 0 32px",

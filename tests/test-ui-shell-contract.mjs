@@ -1128,9 +1128,8 @@ assert.match(app, /const \{\s*backToApp,\s*focusSidebarSearch,\s*openSettings,\s
 assert.doesNotMatch(app, /const selectDocument = useCallback/);
 assert.doesNotMatch(app, /const focusSidebarSearch = useCallback/);
 assert.match(appShellNavigationActionsHook, /const selectDocument = useCallback\(\(id: string\) => \{\s*setActiveDocument\(id\);/);
-assert.match(appShellNavigationActionsHook, /const focusSidebarSearch = useCallback/);
-assert.match(appShellNavigationActionsHook, /document\.querySelector<HTMLButtonElement>\("\[data-sidebar-search-toggle\]"\)\?\.click\(\)/);
-assert.match(appShellNavigationActionsHook, /document\.querySelector<HTMLInputElement>\("\[data-sidebar-search\]"\)\?\.focus\(\)/);
+// Sidebar search now enters the shared palette directly.
+assert.match(appShellNavigationActionsHook, /const focusSidebarSearch = useOpenCommandPalette\(\)/);
 assert.match(appShellNavigationActionsHook, /const openSettingsSection = useCallback/);
 assert.match(app, /openSettingsSection,/);
 assert.match(componentsTypes, /openSettingsSection: \(section: AppSettingsSectionId\) => void/);
@@ -1244,7 +1243,7 @@ assert.match(appMaintenanceHook, /invoke<ExternalRuntimeDoctorReport>\("external
 assert.match(appMaintenanceHook, /fetch\("\/__burette\/external-runtime-doctor", \{ cache: "no-store" \}\)/);
 assert.match(appMaintenanceHook, /Runtime doctor is available in the desktop app or browser-dev only/);
 assert.match(appMaintenanceHook, /Runtime doctor failed/);
-assert.match(appMaintenanceHook, /invoke<string>\("open_new_workspace_window"\)/);
+assert.match(appMaintenanceHook, /invoke<string>\("open_new_workspace_window", \{ paths: paths \?\? null \}\)/);
 assert.match(app, /runExternalRuntimeDoctor,\s*\} = useAppMaintenance\(\{ pushErrorStatus, pushStatus \}\)/);
 assert.match(app, /runExternalRuntimeDoctor,/);
 assert.match(appShellActionsHook, /runExternalRuntimeDoctor: ShellActions\["runExternalRuntimeDoctor"\]/);
@@ -1466,8 +1465,8 @@ assert.doesNotMatch(appLayout, /SidebarLeftIcon/);
 assert.doesNotMatch(appLayout, /from "\.\/system-icon"/);
 assert.match(appLayout, /function DockToggleIcon\(\{ className \}: \{ className\?: string \}\)/);
 assert.match(appLayout, /function clampRightDockWidth\(width: number, workbenchWidth: number\)/);
-// The hand-drawn toggle SVG was replaced by the Lucide panel icon.
-assert.match(appLayout, /import \{ ArrowLeft, ArrowRight, PanelLeft \} from "lucide-react"/);
+// Shell controls use the shared reviewed icon geometry.
+assert.match(appLayout, /import \{ ArrowLeft, ArrowRight, SidebarLeft as PanelLeft \} from "@\/components\/ui\/app-icons"/);
 assert.match(appLayout, /<PanelLeft className=\{className\} size=\{18\} strokeWidth=\{1\.8\} aria-hidden \/>/);
 assert.match(appLayout, /<FileDropFeedback preview=\{dropPreview\} \/>/);
 assert.doesNotMatch(appLayout, /drop-overlay/);
@@ -1565,29 +1564,17 @@ assert.match(editorTabs, /const selectAndFocusTab = useCallback/);
 assert.match(editorTabs, /querySelector<HTMLButtonElement>\('\[role="tab"\]'\)\?\.focus\(\)/);
 assert.match(editorTabs, /selectAndFocusTab\(next\.id\)/);
 assert.match(editorTabs, /actions\.closeTab\(tab\.id\)/);
-assert.match(editorTabs, /function molstarScenePathsForTabDocument\(state: ShellViewState, tabDocument: ShellViewState\["documents"\]\[number\]\)/);
-assert.match(editorTabs, /project\.items\.find\(\(item\) => item\.path === tabDocument\.path\)/);
-assert.match(editorTabs, /filter\(\(item\) => item\.renderer === "molstar"\)/);
 assert.match(editorTabs, /from "\.\.\/\.\.\/lib\/collection-documents"/);
 assert.match(editorTabs, /const canSaveAs = tabDocument && isMoleculeCollectionPath\(tabDocument\.path\)/);
-assert.match(editorTabs, /const tabMolstarScenePaths = tabDocument\?\.renderer === "molstar"/);
 assert.match(editorTabs, /id: "save-as"/);
 assert.match(editorTabs, /text: "Save As\.\.\."/);
 assert.match(editorTabs, /id: "open-tab-document-as-text"/);
 assert.match(editorTabs, /text: "Open as Text"/);
 assert.match(editorTabs, /actions\.openTextPaths\(\[tabDocument\.path\]\)/);
-assert.match(editorTabs, /id: "open-tab-folder-molstar-scene"/);
-assert.match(editorTabs, /text: "Open all in Mol\* scene"/);
-assert.match(editorTabs, /disabled: tabMolstarScenePaths\.length < 2/);
-assert.match(editorTabs, /actions\.openDockingDocument\(\s*tabMolstarScenePaths\[0\],\s*tabMolstarScenePaths\.slice\(1\),\s*\{ sceneMode: "structureAll" \},\s*\)/s);
-assert.match(editorTabs, /id: "select-all-tabs"/);
-assert.match(editorTabs, /text: "Select All Tabs"/);
-assert.match(editorTabs, /id: "clear-tab-selection"/);
-assert.match(editorTabs, /text: "Clear Tab Selection"/);
 assert.match(editorTabs, /actions\.saveMoleculeCollectionAs\(tabDocument\.id\)/);
 assert.match(editorTabs, /kind: tab\.location\.kind === "ketcher" \? "ketcher" as const : tab\.location\.kind === "text-file" \? "writer" as const : "tab" as const/);
 assert.match(editorTabs, /startMouseTabReorder\(tab\.id, true, event\);/);
-assert.match(editorTabs, /showNativeContextMenu\(items, \{ x: event\.clientX, y: event\.clientY \}, \{ forceWeb: true \}\)/);
+assert.match(editorTabs, /showNativeContextMenu\(menuSections\(/);
 assert.match(editorTabs, /actions\.openNewTab/);
 assert.doesNotMatch(editorTabs, /from "lucide-react"/);
 assert.doesNotMatch(editorTabs, /className="tab-history-controls"/);
@@ -2342,7 +2329,8 @@ assert.match(styles, /--tab-active-bg: rgb\(29 29 29\);/);
 assert.doesNotMatch(styles, /--tab-active-bg: color-mix\(/);
 assert.match(styles, /\.tab\.active \{[^}]*background: var\(--tab-active-bg\);[^}]*backdrop-filter: blur\(40px\)/s);
 assert.match(styles, /\.tab-close \{[^}]*transform: translate\(100%, -50%\);/s);
-assert.match(styles, /\.tab-shell\[data-active\] \.tab \{[^}]*padding-right: 34px;/s);
+// Every tab reserves its close-button space before hover reveals the button.
+assert.match(styles, /\.tab \{[^}]*padding: 0 34px 0 14px;/s);
 assert.match(styles, /@container \(max-width: 320px\) \{[\s\S]*\.topbar \.tab-shell \{[^}]*flex: 0 0 auto;/);
 assert.match(styles, /\.tab-shell\[data-active\] \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;[^}]*transform: translate\(0, -50%\);[^}]*background: transparent;/s);
 assert.match(styles, /\.tab-shell:hover \.tab-close/);
@@ -2676,7 +2664,7 @@ assert.match(dockPanel, /structure-story-controls/);
 assert.match(dockPanel, /type: "story_control"/);
 assert.match(dockPanel, /MarkdownRichViewer document=\{markdownDocument\}/);
 assert.match(dockPanel, /story\.descriptionFormat === "markdown"/);
-assert.match(structureInfoPanel, /Molecular Inspector/);
+assert.match(structureInfoPanel, /<h3 title=\{document\.title\}>\{document\.title\}<\/h3>/);
 assert.match(structureInfoPanel, /No active structure/);
 assert.match(structureInfoPanel, /actions\.showDocumentMetadata\(document\)/);
 assert.match(structureInfoPanel, /actions\.revealDocument\(document\)/);
@@ -2735,14 +2723,16 @@ assert.match(structureInfoPanel, /const missing = tools\.filter\(\(tool\) => !to
 assert.match(structureInfoPanel, /const xtbMissing = xtbStatus\?\.installed === false/);
 assert.match(structureInfoPanel, /install: \(\) => void actions\.installXtb\(\)/);
 assert.match(structureInfoPanel, /function conformerTools\(status: ShellViewState\["conformerStatus"\]\): EngineTool\[\]/);
-// The engine menu names what each run does to the molecule instead of listing
-// seven operations in one flat run, and carries the common parameters with it.
+// The settings dialog groups operations and runs the selected operation with
+// the current xTB settings.
 assert.match(structureInfoPanel, /const XTB_MENU_GROUPS = \[/);
 for (const group of ["Geometry", "Electronic", "Dynamics"]) {
   assert.match(structureInfoPanel, new RegExp(`\\["${group}", \\[`), `xTB menu should group operations under ${group}`);
 }
-assert.match(structureInfoPanel, /kind: "label", id: "xtb-parameters", text: "Parameters"/);
-assert.match(structureInfoPanel, /id: "xtb-method",[\s\S]*?optionLabels: XTB_METHOD_LABELS/);
+assert.match(structureInfoPanel, /<NativeSelectOptGroup key=\{group\} label=\{group\}>/);
+assert.match(structureInfoPanel, /onRun=\{\(\) => void actions\.runXtbActiveOperation\(xtbOperation\)\}/);
+assert.match(structureInfoPanel, /<XtbInlineSettings settings=\{xtbSettings\}/);
+assert.match(structureInfoPanel, /value=\{settings\.method\}[\s\S]*?labels=\{XTB_METHOD_LABELS\}/);
 // The runtime refuses a direct job above the atom cap and tells you to select
 // something; the card knows the count already, so it says so before the click.
 assert.match(structureInfoPanel, /structureAtomCountFromSummary\(compositionSummary\)/);
@@ -2781,7 +2771,7 @@ assert.match(structureInfoPanel, /function InlineSegmentedControl\(\{/);
 // ToggleGroup brings roving focus to the segmented controls, Collapsible owns the
 // card open state, Alert carries the tool notices and Badge the format pill.
 assert.match(structureInfoPanel, /from "@\/components\/ui\/toggle-group"/);
-assert.match(structureInfoPanel, /from "@\/components\/ui\/collapsible"/);
+assert.match(structureInfoPanel, /from "@\/components\/ui\/accordion"/);
 assert.match(structureInfoPanel, /from "@\/components\/ui\/alert"/);
 assert.match(structureInfoPanel, /from "@\/components\/ui\/badge"/);
 assert.match(structureInfoPanel, /<ToggleGroup\s+type="single"/);
@@ -2809,14 +2799,16 @@ assert.match(gridFilterSection, /from "\.\/ui\/button"/);
 assert.match(gridFilterSection, /from "\.\/ui\/input"/);
 assert.match(gridFilterSection, /from "\.\/ui\/badge"/);
 assert.match(gridFilterSection, /from "\.\/ui\/tooltip"/);
-assert.match(gridFilterSection, /if \(active\) setOpen\(true\);/);
-assert.match(gridFilterSection, /const \[open, setOpen\] = useState\(active \|\| defaultOpen\);/);
+// One owner coordinates manual, default, and bulk expansion state.
+assert.match(gridFilterSection, /const isColumnOpen = \(column: GridFilterColumn\) => columnOpen\[column\.id\]\s*\?\? Boolean\(column\.filter\?\.min \|\| column\.filter\?\.max \|\| column\.filter\?\.text \|\| column\.id === defaultOpenColumnId\)/);
+assert.match(gridFilterSection, /const allOpen = shown\.length > 0 && shown\.every\(isColumnOpen\)/);
 assert.match(gridFilterSection, /return scale && !scale\.flat;/);
-assert.match(gridFilterSection, /defaultOpen=\{column\.id === defaultOpenColumnId\}/);
+assert.match(gridFilterSection, /open=\{isColumnOpen\(column\)\}/);
 assert.match(gridFilterSection, /<Collapsible ref=\{cardRef\} className="grid-filter-card"/);
 assert.match(styles, /\.grid-filter-inputs \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/s);
 assert.match(styles, /\.grid-filter-inputs input \{[^}]*min-width: 0;[^}]*width: 100%;/s);
-assert.match(styles, /\.grid-filter-card-host > \[data-slot="collapsible-content"\] \{[^}]*min-width: 0;[^}]*max-width: 100%;/s);
+assert.match(styles, /\.grid-filter-card-host,[^{]*\{[^}]*min-width: 0;[^}]*max-width: 100%;/s);
+assert.match(gridFilterSection, /<Accordion[\s\S]*?value=\{open \? "filters" : ""\}/);
 assert.doesNotMatch(gridFilterSection, /className="structure-inspector-section-title-button"[\s\S]{0,180}ArrowDown01Icon[\s\S]{0,80}Filters/);
 assert.match(dockPanel, /<Button[\s\S]*?className="dock-tab"/);
 assert.match(dockPanel, /<TooltipContent showArrow=\{false\}>Close panel<\/TooltipContent>/);
@@ -2827,7 +2819,8 @@ assert.match(structureInfoPanel, /gfnff: "GFN-FF"/);
 assert.match(structureInfoPanel, /verytight: "Very tight"/);
 assert.match(structureInfoPanel, /ch2cl2: "Dichloromethane"/);
 assert.match(structureInfoPanel, /none: "Gas phase"/);
-assert.match(structureInfoPanel, /function XtbSettingsGroup\(\{ title, labelled, children \}/);
+assert.match(structureInfoPanel, /<Tabs defaultValue="core"/);
+assert.match(structureInfoPanel, /<TabsContent value="solvation">/);
 assert.match(settingControl, /labels\?: Record<string, string>/);
 assert.match(settingControl, /\{labels\?\.\[option\] \?\? option\}/);
 assert.match(structureInfoPanel, /key: "maestro"/);
@@ -3126,7 +3119,7 @@ assert.match(styles, /\.app-shell\[data-window-fullscreen="true"\] \.chrome-lead
 assert.doesNotMatch(styles, /instance-badge/);
 assert.doesNotMatch(styles, /sidebar-link/);
 assert.match(launcherKind, /export const launcherKind = definePageKind/);
-assert.match(launcherKind, /<WelcomeScreen actions=\{actions\} buildInfo=\{state\.buildInfo\} \/>/);
+assert.match(launcherKind, /<WelcomeScreen actions=\{actions\} \/>/);
 assert.match(sidebarWorkspaceSwitcher, /sidebar-build-badge/);
 assert.match(sidebarWorkspaceSwitcher, /const showBuildBadge = buildInfo\.isDevBuild \|\| buildInfo\.isBrowserDev;/);
 assert.match(sidebarWorkspaceSwitcher, /\{showBuildBadge \? \(/);
@@ -3798,25 +3791,24 @@ assert.doesNotMatch(agentIntegrationPanel, /If `burette-agent` is not installed 
 assert.doesNotMatch(agentIntegrationPanel, /compatibility\.json/);
 assert.match(welcome, /export function WelcomeScreen/);
 assert.match(welcome, /new-tab-copy/);
-assert.match(welcome, /Burette Desktop/);
-assert.match(welcome, /Open a molecular structure/);
+assert.match(welcome, /Open a structure/);
+assert.match(welcome, /Drop a file here or open one/);
 assert.doesNotMatch(welcome, /Use the shell to inspect files quickly/);
-assert.match(welcome, /buildInfo\.isDevBuild/);
-assert.match(welcome, /Open Structure/);
-assert.match(welcome, /Command Palette/);
-assert.match(welcome, /Settings/);
-// Visible button labels and key hints do not need duplicate hover content.
-assert.doesNotMatch(welcome, /ShortcutTooltip/);
-// Rows are shadcn Button + Kbd inside an Empty, not bare elements styled by
+assert.match(welcome, /Open file/);
+assert.match(welcome, /onClick=\{\(\) => void actions\.chooseFiles\(\)\}/);
+assert.match(welcome, /<Kbd>⌘O<\/Kbd>/);
+// The open action uses shadcn Button + Kbd inside an Empty, not bare elements styled by
+
 // .new-tab-page descendant rules.
 assert.match(welcome, /from "@\/components\/ui\/empty"/);
 assert.match(welcome, /from "@\/components\/ui\/kbd"/);
 assert.doesNotMatch(welcome, /<button/);
 assert.doesNotMatch(styles, /\.new-tab-page button/);
 assert.doesNotMatch(styles, /\.new-tab-build-badge/);
-// web-demo-analytics names welcome events off these two classes.
-assert.match(welcome, /className="new-tab-page border-0"/);
-assert.match(welcome, /className="new-tab-actions"/);
+// web-demo-analytics identifies the welcome surface and its file-open action.
+assert.match(welcome, /className="new-tab-page\b/);
+assert.match(welcome, /className="new-tab-actions\b/);
+assert.match(welcome, /data-analytics-control="open_structure"/);
 assert.doesNotMatch(welcome, /Open molecular structures/);
 assert.match(errorBoundary, /export class ErrorBoundary/);
 assert.match(errorBoundary, /\[ErrorBoundary\]/);
@@ -3828,7 +3820,7 @@ assert.match(sidebar, /from "\.\/file-browser"/);
 assert.match(sidebar, /from "\.\/workspace-switcher"/);
 assert.match(sidebarSurface, /from "\.\.\/scroll-fade"/);
 assert.match(sidebarSurface, /filterSidebarProjects/);
-assert.match(sidebarSurface, /<ScrollFade className="sidebar-scroll">/);
+assert.match(sidebarSurface, /<ScrollFade className="sidebar-scroll" onContextMenu=/);
 assert.match(sidebarSurface, /Projects/);
 assert.match(sidebarSurface, /Pinned/);
 assert.match(sidebarSurface, /pinnedItems/);
@@ -3836,26 +3828,25 @@ assert.match(sidebarSurface, /state\.projectsOpen/);
 assert.match(sidebarSurface, /actions\.toggleProjectsOpen/);
 assert.match(sidebarSurface, /actions\.setExpandedProjectIds/);
 assert.match(sidebarSurface, /actions\.openRecentStructure/);
-assert.match(sidebarSurface, /from "@hugeicons\/core-free-icons"/);
+assert.match(sidebarSurface, /from "@\/components\/ui\/app-icon-data"/);
 assert.match(sidebarSurface, /from "@hugeicons\/react"/);
 assert.doesNotMatch(sidebarSurface, /from "\.\.\/system-icon"/);
-assert.doesNotMatch(sidebarSurface, /actions\.openCommandPalette/);
+assert.match(sidebarFileBrowser, /actions\.setSidebarQuery\(""\); actions\.openCommandPalette\(\)/);
 assert.doesNotMatch(sidebarFileBrowser, /from "\.\.\/shortcut-tooltip"/);
 assert.doesNotMatch(sidebarFileBrowser, /<ShortcutTooltip label="Search projects and structures" shortcut="⌘P" \/>/);
 assert.match(sidebarSurface, /function PinIcon/);
 assert.match(sidebarSurface, /function MoreIcon/);
 assert.doesNotMatch(sidebarSurface, /Cancel01Icon/);
-assert.match(sidebarSurface, /Search projects and structures/);
+assert.match(sidebarFileBrowser, /aria-label="Search commands and structures"/);
 assert.match(sidebarFileBrowser, /className="sidebar-browser-title">Burette<\/strong>/);
 assert.match(sidebarFileBrowser, /data-sidebar-search-toggle/);
-assert.match(sidebarFileBrowser, /aria-expanded=\{searchOpen\}/);
-assert.match(sidebarFileBrowser, /\{searchOpen \? \(/);
+assert.match(sidebarFileBrowser, /aria-haspopup="dialog"/);
 assert.match(styles, /\.sidebar-browser-header \{/);
 assert.match(styles, /\.sidebar-search-toggle \{/);
 assert.doesNotMatch(sidebarSurface, /sidebar-search-input/);
 assert.doesNotMatch(sidebarSurface, /type="text"/);
-assert.match(sidebarSurface, /isRemoteStructureUrl\(sidebarQuery\)/);
-assert.match(sidebarSurface, /actions\.openStructureUrlInMolstar\(sidebarQuery\)/);
+assert.match(commandPalette, /isRemoteStructureUrl\(queryUrl\)/);
+assert.match(commandPalette, /actions\.openStructureUrlInMolstar\(queryUrl\)/);
 assert.match(sidebarSurface, /ProjectGroup/);
 assert.match(sidebarSurface, /ProjectItem/);
 assert.match(sidebarSurface, /const \[expandedFolderPaths, setExpandedFolderPaths\]/);
@@ -3886,9 +3877,7 @@ assert.match(sidebarSurface, /project-group-row/);
 assert.match(sidebarSurface, /state\.expandedProjectIds\.includes\(project\.id\)/);
 assert.match(sidebarSurface, /expandedFolderPaths\.has\(node\.path\)/);
 assert.match(sidebarSurface, /actions\.togglePinnedStructure\(item\.path\)/);
-assert.match(sidebarSurface, /actions\.togglePinnedProjectRoot\(project\.rootPath\)/);
 assert.match(sidebarSurface, /actions\.renameProjectRoot\(project\.rootPath, renameDraft\)/);
-assert.match(sidebarSurface, /actions\.renameProjectFolder\(folderPath, renameDraft\)/);
 assert.doesNotMatch(sidebarSurface, /title=\{item\.relativePath\}/);
 assert.match(sidebarSurface, /const \[renaming, setRenaming\] = useState\(false\)/);
 assert.match(sidebarSurface, /const renameInputRef = useRef<HTMLInputElement \| null>\(null\)/);
@@ -3907,31 +3896,15 @@ assert.match(
   /\.project-group-row:hover \.marquee-text,[\s\S]*\.project-group-row:focus-visible \.marquee-text \{[\s\S]*transform: translateX/,
   "project-title marquee should animate from the project row without reflowing its actions",
 );
-assert.match(sidebarSurface, /className="project-folder-name-input"/);
 assert.match(sidebarSurface, /onBlur=\{commitRename\}/);
 assert.match(sidebarSurface, /aria-label=\{`Rename \$\{project\.title\}`\}/);
 assert.doesNotMatch(sidebarSurface, /<RenameIcon \/>/);
 assert.doesNotMatch(sidebarSurface, /function RenameIcon\(\)/);
-assert.match(sidebarSurface, /id: "rename-project"/);
-assert.match(sidebarSurface, /text: "Rename project"/);
-assert.match(sidebarSurface, /id: "rename-folder"/);
-assert.match(sidebarSurface, /text: "Rename folder"/);
-assert.match(sidebarSurface, /onMouseDown=\{\(event\) => \{\s*event\.stopPropagation\(\);\s*\}\}/);
+assert.match(sidebarSurface, /onMouseDown=\{\(event\) => event\.stopPropagation\(\)\}/);
 assert.doesNotMatch(sidebarSurface, /window\.prompt\("Rename project"/);
-assert.match(sidebarSurface, /actions\.removeProjectRoot\(project\.rootPath\)/);
-assert.match(sidebarSurface, /id: "remove-project"/);
-assert.match(sidebarSurface, /disabled: !project\.rootPath,\s*action: \(\) => \{\s*if \(!project\.rootPath\) return;\s*actions\.removeProjectRoot\(project\.rootPath\);/);
 assert.doesNotMatch(sidebarSurface, /!project\.rootPath \|\| !project\.isExplicit/);
 assert.match(sidebarSurface, /Pin structure/);
 assert.match(sidebarSurface, /Unpin structure/);
-assert.match(sidebarSurface, /id: "open-structure-as-text"/);
-assert.match(sidebarSurface, /text: "Open as Text"/);
-assert.match(sidebarSurface, /actions\.openTextPaths\(\[item\.path\]\)/);
-assert.match(sidebarSurface, /id: "copy-structure-path"/);
-assert.match(sidebarSurface, /text: "Copy Path"/);
-assert.match(sidebarSurface, /actions\.copyPath\(item\.path, "structure"\)/);
-assert.match(sidebarSurface, /Pin project/);
-assert.match(sidebarSurface, /Unpin project/);
 assert.doesNotMatch(sidebarSurface, /projectCount/);
 assert.doesNotMatch(sidebarSurface, /\|\| project\.isActive/);
 assert.match(sidebarProjects, /function compareProjectItems\(left: SidebarProjectItem, right: SidebarProjectItem\) \{\s*if \(left\.isPinned !== right\.isPinned\) return left\.isPinned \? -1 : 1;\s*return left\.relativePath\.localeCompare\(right\.relativePath\);\s*\}/);
@@ -3953,9 +3926,6 @@ assert.doesNotMatch(sidebarProjects, /left\.isActive !== right\.isActive/);
 assert.doesNotMatch(sidebarProjects, /left\.isOpen !== right\.isOpen/);
 assert.doesNotMatch(sidebarProjects, /left\.openedAt !== right\.openedAt/);
 assert.match(sidebarSurface, /onContextMenu=\{handleContextMenu\}/);
-assert.match(sidebarSurface, /id: "open-project-folder"/);
-assert.match(sidebarSurface, /Open in Finder/);
-assert.match(sidebarSurface, /actions\.openProjectFolder\(project\.rootPath\)/);
 assert.doesNotMatch(sidebarSurface, /Archive chats/);
 assert.match(sidebarSurface, /project-children/);
 assert.doesNotMatch(sidebarSurface, /project-source-badge/);
@@ -3989,7 +3959,7 @@ assert.match(styles, /\.open-editor-menu-content \.radix-menu-item-icon \{/);
 assert.match(styles, /\.native-context-menu \{[\s\S]*border: 0;/);
 assert.match(styles, /\.native-context-menu \{[^}]*background: var\(--menu-surface\);[^}]*backdrop-filter: none;/);
 assert.doesNotMatch(sidebarSurface, /sidebar-workspace-menu/);
-assert.match(sidebarSurface, /<RadixDropdownMenu[\s\S]*side="top"[\s\S]*align="start"/);
+assert.match(sidebarSurface, /<NativeDropdownMenu[\s\S]*side="top"[\s\S]*align="start"/);
 assert.doesNotMatch(sidebarSurface, /workspaceMenuPosition/);
 assert.match(sidebar, /data-open=\{open \? "true" : "false"\}/);
 assert.match(sidebar, /inert=\{!open\}/);
@@ -4035,7 +4005,7 @@ assert.doesNotMatch(sidebarSurface, /SidebarUtility/);
 assert.doesNotMatch(sidebarSurface, /Quick Look/);
 assert.doesNotMatch(sidebarSurface, /actions\.resetQuickLook\(\)/);
 assert.doesNotMatch(sidebarSurface, /sidebar-title/);
-assert.doesNotMatch(sidebarSurface, /Open Structures/);
+assert.doesNotMatch(sidebarSurface, /text: "Open Structures"/);
 assert.doesNotMatch(appLayout + sidebar + editorTabs, /◧|◨/);
 assert.match(settingsPanel, /settingsSectionLabel\(section\)/);
 assert.match(settingsPanel, /className="settings-panel"/);
@@ -4113,7 +4083,7 @@ assert.doesNotMatch(styles, /\.agent-setup-prompt/);
 assert.match(styles, /\.page-surface:not\(\[data-active\]\) \{[^}]*display: none/s);
 assert.doesNotMatch(editorScrollContainer, /ProgressiveBlur|editor-progressive-blur/);
 assert.doesNotMatch(styles, /\.editor-progressive-blur/);
-assert.match(commandPalette, /group: "Projects"/);
+assert.match(commandPalette, /group: "Structures"/);
 assert.match(shellCommands, /id: "open-clipboard"/);
 assert.match(shellCommands, /parsePdbFetchCommand/);
 assert.match(shellCommands, /parseSmilesCommand/);
@@ -4160,7 +4130,7 @@ assert.doesNotMatch(styles, /\[cmdk-/);
 // (calculate-properties, correlation-matrix, database-query, ...) render on it.
 assert.match(styles, /\.radix-dialog \{/);
 assert.match(commandPalette, /onValueChange=\{onQueryChange\}/);
-assert.match(commandPalette, /placeholder="Search commands and structures\.\.\."/);
+assert.match(commandPalette, /placeholder="Search structures and commands…"/);
 assert.match(commandPalette, /heading=\{group\.heading\}/);
 assert.match(commandPalette, /value=\{item\.id\}/);
 assert.match(commandPalette, /onSelect=\{\(\) => runItem\(item\)\}/);
@@ -4270,7 +4240,7 @@ assert.match(styles, /\.settings-select:focus-visible,[\s\S]*\.settings-text-con
 // The palette's placement and width moved out of bespoke [cmdk-*] CSS onto the
 // CommandDialog itself; everything else (surface, shadow, selected row) now
 // comes from the shadcn dialog/command primitives and the shared theme tokens.
-assert.match(commandPalette, /top-\[16%\]/);
+assert.match(commandPalette, /top-\[12%\]/);
 assert.match(commandPalette, /w-\[min\(560px,90vw\)\]/);
 assert.match(uiCommand, /data-selected:bg-muted/);
 assert.match(uiCommand, /max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto/);
@@ -4329,9 +4299,8 @@ assert.match(appClipboardHook, /openClipboardText\(text\)/);
 assert.match(appClipboardHook, /Clipboard text is not available in this environment\./);
 assert.match(appClipboardHook, /Open from clipboard failed/);
 assert.match(app, /openClipboard,/);
-assert.match(appShellActionsHook, /openStructurePaths: async \(paths: string\[\], options\?: \{ mode\?: OpenDocumentsMode \}\) => \{\s*await openDocuments\(paths, undefined, undefined, options\);\s*\}/s);
+assert.match(appShellActionsHook, /openStructurePaths: async[\s\S]*rendererMode[\s\S]*await openDocuments\(paths/);
 assert.match(app, /openPaths,/);
-assert.match(appShellActionsHook, /openStructurePaths: async \(paths: string\[\], options\?: \{ mode\?: OpenDocumentsMode \}\) => \{/);
 assert.match(app, /openStructureRecords,/);
 assert.match(app, /activeTabKind: activeTab\?\.location\.kind \?\? null/);
 assert.match(appOpenDropControllerHook, /activeDocumentPath: activeDocument\?\.path \?\? null/);
@@ -4699,8 +4668,8 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v184"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v70"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v186"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v72"/);
 assert.match(
   browserDevDocuments,
   /viewerProfile === "mesoscale"\) return !document\.runtimePath\.includes\(MESOSCALE_ASSET_VERSION\)/,
@@ -6563,7 +6532,7 @@ assert.match(previewViewer, /normalizeFormat\(target\.sourceEntry\?\.format\) ==
 assert.match(previewViewer, /format !== 'pdb' && format !== 'pdbqt' && format !== 'sdf'/);
 assert.match(previewViewer, /const activePose = Math\.max\(0, Math\.min\(records\.length - 1, Number\(activeMolstarPrepared\?\.activePose\) \|\| 0\)\)/);
 assert.doesNotMatch(previewViewer, /if \(!image\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
-assert.match(previewViewer, /molstarMoleculePreviewCardHTML\(label, subtitle, image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\)/);
+assert.match(previewViewer, /molstarMoleculePreviewCardHTML\(label, image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\)/);
 assert.match(previewViewer, /function molstarPreviewLoadRDKitScript\(\)/);
 assert.match(previewViewer, /runtimeURL\('BuretteRDKitJSURL', '\.\.\/assets\/rdkit\/RDKit_minimal\.js'\)/);
 assert.match(previewViewer, /function molstarPreviewRDKitWasmCandidates\(\)/);
@@ -6687,7 +6656,7 @@ assert.match(previewViewer, /if \(!contextPick\) \{\s*event\.preventDefault\(\);
 assert.doesNotMatch(previewViewer, /is not implemented yet/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu \{/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-molecule-tool-dialog-layer \{/);
-assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-representation-menu\] \.buret-tree-swatch \{[\s\S]*width: 15px;[\s\S]*height: 15px;[\s\S]*min-height: 15px;/);
+assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-representation-menu\] \.buret-tree-swatch \{[\s\S]*width: 14px;[\s\S]*height: 14px;[\s\S]*min-height: 14px;/);
 assert.match(previewRuntimeCss, /\.buret-representation-type-item \.buret-representation-type-check \{[\s\S]*opacity: 0;/);
 assert.match(previewRuntimeCss, /\.buret-representation-type-item\[data-current="true"\] \.buret-representation-type-check \{[\s\S]*opacity: 1;/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-representation-mode-radio/);
@@ -7723,10 +7692,10 @@ assert.match(shellCommands, /id: "export-preview-png"/);
 assert.match(shellCommands, /id: "export-preview-svg"/);
 assert.match(editorTabs, /id: "reveal-tab-document"/);
 assert.match(editorTabs, /id: "copy-tab-document-path"/);
-assert.match(editorTabs, /id: "show-tab-document-metadata"/);
+assert.doesNotMatch(editorTabs, /id: "show-tab-document-metadata"/);
 assert.match(editorTabs, /id: "reveal-tab-text-file"/);
 assert.match(editorTabs, /id: "copy-tab-text-file-path"/);
-assert.match(editorTabs, /id: "show-tab-text-file-metadata"/);
+assert.doesNotMatch(editorTabs, /id: "show-tab-text-file-metadata"/);
 assert.match(windowTitle, /activeDocument\.path/);
 assert.match(app, /from "\.\/hooks\/use-app-active-text-document"/);
 assert.match(app, /const activeTextDocument = useAppActiveTextDocument\(\{ activeTab, textDocuments \}\)/);
@@ -8480,7 +8449,7 @@ assert.match(gridViewer, /function replaceGridRow\(row, patch, cfg, options = \{
 assert.match(gridViewer, /props: patch\.props \|\| candidate\.props \|\| \{\}/);
 assert.match(gridViewer, /markGridDirty\('row edits'\)/);
 assert.match(gridCss, /\.buret-card\.buret-card-drop-target\s*\{/);
-assert.match(gridViewer, /function gridDragRecordsForRow\(row\)/);
+assert.match(gridViewer, /function gridDragRecordsForRow\(row, sceneScope\)/);
 assert.match(gridViewer, /state\.selected\.has\(rowIndex\) \|\| state\.selected\.size < 2/);
 assert.match(gridViewer, /function gridDragRecord\(row\)/);
 assert.match(gridViewer, /function gridDragRecord\(row\)[\s\S]*const text = serializeSdfRows\(\[row\]\);/);
@@ -8560,7 +8529,7 @@ assert.match(gridViewer, /overlay\._buretDetailPreviousFocus = previousFocus/);
 assert.match(gridViewer, /if \(event\.key !== 'Tab'\) return;/);
 assert.match(gridViewer, /`Loaded \$\{Number\(stats\.statsRows\)\.toLocaleString\(\)\}\/\$\{Number\(stats\.statsTotal\)\.toLocaleString\(\)\}`/);
 assert.match(gridViewer, /if \(action === 'open'\) \{\s*hideMoleculeContextMenu\(\);\s*showMoleculeDetail\(row, cfg\);/);
-assert.match(gridViewer, /if \(returnFocus\?\.isConnected\) returnFocus\.focus\?\.\(\);/);
+assert.match(gridViewer, /if \(returnFocus\?\.isConnected\) returnFocus\.focus\?\.\(\{ preventScroll: true \}\);/);
 assert.doesNotMatch(gridViewer, /installMoleculeDetailResize/);
 assert.doesNotMatch(gridViewer, /data-buret-detail-resize/);
 assert.doesNotMatch(gridViewer, /function drawXyzrenderFallback/);
@@ -8715,7 +8684,8 @@ assert.match(editorTabs, /const runTabDropAtPoint = useCallback/);
 assert.match(editorTabs, /const targetTabId = tabIdFromPoint\(clientX, clientY, sourceTabId\)/);
 assert.match(editorTabs, /runShellDropActionChoices\(actions, payload, choices, \{ x: clientX, y: clientY \}\)/);
 assert.match(editorTabs, /runTabDropAtPoint\(tabId, upEvent\.clientX, upEvent\.clientY\)/);
-assert.match(editorTabs, /runTabDropAtPoint\(tab\.id, event\.clientX, event\.clientY\)/);
+// A canceled native drag must clean up without running a drop action.
+assert.match(editorTabs, /onDragEnd=\{readOnly \? undefined : stopTabDrag\}/);
 assert.match(editorTabs, /const tabDropTarget = fileLocation/);
 assert.match(editorTabs, /kind: "active-viewer" as const/);
 assert.match(editorTabs, /documentId: tabDocument\?\.id \?\? fileLocation\.documentId/);
@@ -8761,7 +8731,7 @@ assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPa
 assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(nodeItems\)/);
 assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(\[item\]\)/);
 assert.match(sidebarFileTreeNode, /className="project-group-row"[\s\S]*draggable=\{!renaming && project\.items\.length > 0\}/);
-assert.match(sidebarFileTreeNode, /className="project-folder-row"[\s\S]*draggable=\{!renaming && nodeItems\.length > 0\}/);
+assert.match(sidebarFileTreeNode, /className="project-folder-row"[\s\S]*draggable=\{nodeItems\.length > 0\}/);
 assert.match(sidebarFileTreeNode, /readStructureDragPayload\(event\.dataTransfer\)/);
 assert.match(sidebarFileTreeNode, /shellDropActionChoices\(payload, sidebarDropTarget\(item, state\), \{ kind: "sidebar" \}\)/);
 assert.match(sidebarFileTreeNode, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);

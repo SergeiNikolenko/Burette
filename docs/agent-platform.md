@@ -128,6 +128,12 @@ browser-dev and native app validation remain separate surfaces.
 - Screenshot interpretation must not replace typed `observe`, validation
   output, or CLI/MCP errors.
 
+Mol* ligand results include `structureId`, the current viewer structure reference.
+Use it as `selector.structure` to distinguish identical residue addresses across
+CIF data blocks. `focusLigand` retains that reference when resolving an index or
+saving a selection, and scopes both selection and camera focus to that structure.
+References are local to the loaded scene; refresh them after reloading a file.
+
 ## MolViewSpec Story Contract
 
 A Story is standard MolViewSpec multi-state data: `kind: "multiple"`, global
@@ -306,3 +312,36 @@ For app-side shell action/session changes:
 bun tests/test-ui-shell-contract.mjs
 bun tests/test-viewer-bridge-message-contract.mjs
 ```
+
+### Inspector context operations
+
+The desktop inspector uses `edit_components` with `query` (exact PyMOL, maximum
+4096 characters), `componentLabel`, `kind`, and a discriminated `edit`:
+`{ operation: "representation", value: string }`, `{ operation: "opacity",
+value: number }` (0–1), or `{ operation: "color", value: "#rrggbb" }`. The viewer
+validates the supported representations, splits intersecting components, preserves
+sibling appearance and visibility, and records the operation in scene undo history.
+
+The viewport menu's **Show & pin surroundings (5 Å)** uses Mol*'s active Focus
+behavior and preserves its native target, surroundings and interaction transforms
+with their current representation parameters. Pinned copies remain after focus or
+selection changes and can be hidden or removed in Scene. Separate receptor and
+ligand structures use their current scene coordinates; this does not dock or align
+them. Repeating the action replaces the same pinned neighborhood without duplicates.
+Interaction display follows Mol*'s computed model and its structure boundaries.
+
+Distance, angle and dihedral picking temporarily use atom granularity and clear
+prior selection. Completion or Escape restores the previous selection and picking
+level.
+
+The ligand 2D preview keeps a square drawing area. Mouse-wheel zoom stays inside
+the drawing and does not move the 3D camera. Its lasso uses RDKit atom locations
+and retained source coordinates to select the same atoms in Mol*, without
+expanding to residues. Escape leaves lasso mode. Zoom is bounded to 1–8× (the initial fit is the minimum) and
+lasso paths to 2,048 sampled points.
+
+The desktop-only `popup_macos_context_menu` command accepts tagged item, submenu,
+and separator entries and an optional logical window position. It returns a selected
+ID or cancellation; callbacks remain in the frontend. The request is limited to
+128 entries, three submenu levels, unique IDs of at most 160 bytes, labels of at
+most 1024 bytes, and finite coordinates. SF Symbol names are resolved by AppKit.

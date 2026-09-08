@@ -6,6 +6,7 @@
   const CARD_MIN_STORAGE_KEY = 'buret.grid.cardMin';
   const GRID_VIEW_MODE_STORAGE_KEY = 'buret.grid.viewMode';
   const TABLE_HIDDEN_COLUMNS_STORAGE_KEY = 'buret.grid.tableHiddenColumns';
+  const TABLE_PINNED_COLUMNS_STORAGE_KEY = 'buret.grid.tablePinnedColumns';
   const TABLE_COLUMN_WIDTHS_STORAGE_KEY = 'buret.grid.tableColumnWidths';
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const HOVER_PREVIEW_SVG_LIMIT = 512_000;
@@ -113,6 +114,8 @@
     tableColumnQuery: '',
     tableColumnVisibleLimit: TABLE_COLUMN_PICKER_LIMIT,
     tableHiddenColumns: storedStringSet(TABLE_HIDDEN_COLUMNS_STORAGE_KEY),
+    tablePinnedColumns: storedStringSet(TABLE_PINNED_COLUMNS_STORAGE_KEY),
+    tablePinnedOffsets: new Map(),
     tableColumnWidths: storedColumnWidths(TABLE_COLUMN_WIDTHS_STORAGE_KEY),
     tableColumnFilters: {},
     tableColumnCatalogCache: null,
@@ -620,6 +623,7 @@
         if (state.closeTransitionActive || state.saveAsPending) return;
         const cfg = safeConfig();
         executeGridMenuCommand(body, cfg);
+        if (typeof body.requestId === 'string' && body.requestId.length <= 128 && ['view.grid-table', 'view.grid-cards'].includes(body.command)) post('gridMenuCommandResult', '', { requestId: body.requestId });
         return;
       }
       if (body.type === 'chemicalSpaceSelectionChanged') {
@@ -632,7 +636,13 @@
         state.selected = new Set(indexes);
         state.chemicalSpaceFilterActive = body.filterToSelection === true && indexes.length > 0;
         state.selectionAnchorIndex = indexes.length ? indexes[indexes.length - 1] : null;
-        refresh(config());
+        const cfg = config();
+        const refreshed = refresh(cfg);
+        const token = state.dataToken;
+        const focusIndex = body.focusSourceRecordId;
+        if (Number.isSafeInteger(focusIndex) && indexes.includes(focusIndex)) {
+          void Promise.resolve(refreshed).then(() => revealChemicalSpaceRow(focusIndex, cfg, token));
+        }
         return;
       }
       if (body.type === 'chemicalSpaceRequestState') {
@@ -1764,6 +1774,7 @@
       },
       onSortChange(value) {
         state.sort = value || 'index';
+        state.descriptorSort = null;
         refresh(cfg);
       },
       onShowProperties() {
@@ -1825,6 +1836,18 @@
     });
     const search = document.getElementById('search');
     if (search) search.setAttribute('aria-label', state.searchMode === 'structure' ? 'Search structures with SMARTS' : 'Search text');
+    const sortControl = document.getElementById('sort');
+    if (sortControl) {
+      const currentSort = tableActiveSort();
+      const value = state.descriptorSort ? `descriptor:${state.descriptorSort.id}` : state.sort;
+      if (![...sortControl.options].some(option => option.value === value)) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = `${tableColumnCatalog().find(column => column.id === currentSort?.columnId)?.label || value} ${currentSort?.direction === 'desc' ? '↓' : '↑'}`;
+        sortControl.append(option);
+      }
+      sortControl.value = value;
+    }
     bindGridEditControlHandlers(cfg);
     applyGridToolbarInset();
     updateGridToolbarCondensed();
@@ -3008,14 +3031,11 @@
         if (allLoaded) {
           state.rows = filterByChemicalSpaceSelection(state.rows);
           state.totalRows = state.rows.length;
-          render(cfg);
-          return;
+          return render(cfg);
         }
-        void refreshRemoteChemicalSpaceSelection(cfg);
-        return;
+        return refreshRemoteChemicalSpaceSelection(cfg);
       }
-      void refreshRemote(cfg);
-      return;
+      return refreshRemote(cfg);
     }
     const query = state.smarts.trim() ? '' : normalize(state.query);
     const allRows = currentLocalCollectionRows();
@@ -3038,8 +3058,9 @@
     }
     state.rows.sort((a, b) => compareWithDescriptorSort(a, b));
     state.totalRows = state.rows.length;
-    render(cfg);
+    const rendered = render(cfg);
     postChemicalSpaceVisibility(visibilityRows);
+    return rendered;
   }
 
   function chemicalSpaceGridFiltersActive() {
@@ -3238,12 +3259,18 @@
   }
 
   function compare(a, b, key) {
-    const get = row => key.startsWith('prop:') ? (row.props || {})[key.slice(5)] : row[key];
-    if (key === 'index') return Number(a.index) - Number(b.index);
-    return String(get(a) || '').localeCompare(String(get(b) || ''), undefined, {
-      numeric: true,
-      sensitivity: 'base'
-    }) || Number(a.index) - Number(b.index);
+    const descending = key.startsWith('desc:');
+    if (descending) key = key.slice(5);
+    const numeric = key.startsWith('numeric:') || key === 'index';
+    if (key.startsWith('numeric:')) key = key.slice(8);
+    const get = row => key.startsWith('prop:') ? (row.props || {})[key.slice(5)]
+      : key.startsWith('analysis:') ? analysisDisplayValue(row.analyses?.[key.slice(9)]) : row[key];
+    const left = get(a), right = get(b);
+    const missing = value => value == null || String(value).trim() === '' || (numeric && !Number.isFinite(Number(value)));
+    if (missing(left) !== missing(right)) return missing(left) ? 1 : -1;
+    const result = numeric ? (Number(left) - Number(right))
+      : String(left ?? '').localeCompare(String(right ?? ''), undefined, { numeric: true, sensitivity: 'base' });
+    return (descending ? -result : result) || Number(a.index) - Number(b.index);
   }
 
   function compareWithDescriptorSort(a, b) {
@@ -4219,6 +4246,46 @@
     if (popover) popover.hidden = true;
   }
 
+  // Map IDs are source identities, not positions in the current sorted/filtered
+  // result. Resolve the row through that result before asking virtualization to
+  // reveal it; a newer query or map click cancels the outstanding navigation.
+  async function revealChemicalSpaceRow(index, cfg, token) {
+    if (token !== state.dataToken) return;
+    const loadToken = ++state.remoteLoadToken;
+    if (state.remoteMode) state.remoteLoading = true;
+    try {
+      while (!state.rows.some(row => Number(row.index) === index)
+        && state.remoteMode && state.rows.length < state.totalRows) {
+        const result = await hostRequest('gridFetchPage', gridFetchPayload({
+          query: state.query || '',
+          sort: state.sort || 'index',
+          offset: state.rows.length,
+          limit: Math.max(loadBatchSize(cfg), 240)
+        }));
+        if (token !== state.dataToken) return;
+        const rows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
+        if (token !== state.dataToken) return;
+        applyGridPageState(result);
+        if (!rows.length) break;
+        state.rows.push(...rows);
+        invalidateTableColumnCatalog();
+      }
+      if (token !== state.dataToken) return;
+      if (state.rows.some(row => Number(row.index) === index)) {
+        scrollToGridRow(index, cfg, { behavior: 'auto' });
+      } else {
+        setStatus('The selected molecule is hidden by the current grid filters.');
+      }
+    } catch (error) {
+      if (token === state.dataToken) setStatus(error?.message || String(error), 'error');
+    } finally {
+      if (loadToken === state.remoteLoadToken) {
+        state.remoteLoading = false;
+        syncGridEditControls();
+      }
+    }
+  }
+
   function scrollToGridRow(index, cfg, options = {}) {
     const behavior = options.behavior || (state.railDragging ? 'auto' : 'smooth');
     let card = document.querySelector(`.buret-card[data-index="${index}"], .buret-grid-table-row[data-index="${index}"]`);
@@ -4670,6 +4737,12 @@
     wrapper.scrollLeft = state.tableScrollLeft;
     wrapper.addEventListener('scroll', () => handleTableColumnScroll(wrapper, cfg), { passive: true });
     wrapper.addEventListener('wheel', event => handleTableWheel(event, wrapper, cfg), { passive: false });
+    wrapper.querySelectorAll('th[data-column]').forEach(header => {
+      header.addEventListener('contextmenu', event => {
+        const column = catalog.find(column => column.id === header.dataset.column);
+        if (column) showColumnContextMenu(event, column, cfg);
+      });
+    });
     wrapper.querySelectorAll('[data-buret-table-filter-toggle]').forEach(button => {
       button.addEventListener('click', event => {
         event.preventDefault();
@@ -4874,11 +4947,20 @@
   }
 
   function tableVisibleColumns(catalog) {
-    return catalog.filter(column => column.fixed || !state.tableHiddenColumns.has(column.id));
+    return catalog.filter(column => column.fixed || !state.tableHiddenColumns.has(column.id))
+      .sort((a, b) => Number(state.tablePinnedColumns.has(b.id)) - Number(state.tablePinnedColumns.has(a.id)));
   }
 
   function tableColumnWindow(columns) {
-    const viewportWidth = tableViewportWidth();
+    const fixedColumns = columns.filter(column => state.tablePinnedColumns.has(column.id));
+    let fixedWidth = 0;
+    state.tablePinnedOffsets = new Map();
+    for (const column of fixedColumns) {
+      state.tablePinnedOffsets.set(column.id, fixedWidth);
+      fixedWidth += tableColumnWidth(column);
+    }
+    columns = columns.filter(column => !state.tablePinnedColumns.has(column.id));
+    const viewportWidth = Math.max(TABLE_DEFAULT_COLUMN_WIDTH, tableViewportWidth() - fixedWidth);
     const scrollLeft = Math.max(0, Number(state.tableScrollLeft) || 0);
     const visibleLeft = Math.max(0, scrollLeft - TABLE_COLUMN_OVERSCAN_PX);
     const visibleRight = scrollLeft + viewportWidth + TABLE_COLUMN_OVERSCAN_PX;
@@ -4903,7 +4985,7 @@
       rightOffset += widths[start] || TABLE_DEFAULT_COLUMN_WIDTH;
     }
     return {
-      fixedColumns: [],
+      fixedColumns,
       scrollColumns: columns,
       windowColumns: columns.slice(start, end),
       leftSpacerWidth: offset,
@@ -4952,6 +5034,11 @@
   // Only user-resized columns get inline widths; the others keep the
   // stylesheet's content-driven min/max clamp.
   function tableColumnWidthStyle(column) {
+    const pinnedLeft = state.tablePinnedOffsets.get(column.id);
+    if (pinnedLeft !== undefined) {
+      const width = tableColumnWidth(column);
+      return ` data-buret-pinned-column="true" style="position:sticky;left:${pinnedLeft}px;width:${width}px;min-width:${width}px;max-width:${width}px"`;
+    }
     const override = state.tableColumnWidths.get(column.id);
     if (!Number.isFinite(override)) return '';
     return ` style="width:${override}px;min-width:${override}px;max-width:${override}px"`;
@@ -4973,7 +5060,7 @@
     }
     const key = state.sort || 'index';
     if (key === 'index') return null;
-    return { columnId: key, direction: 'asc' };
+    return { columnId: key.replace(/^desc:/, '').replace(/^numeric:/, ''), direction: key.startsWith('desc:') ? 'desc' : 'asc' };
   }
 
   function tableSortIndicatorHTML(direction) {
@@ -6080,15 +6167,20 @@
     }
   }
 
-  function gridDragRecordsForRow(row) {
+  function gridDragRecordsForRow(row, sceneScope) {
+    const recordForRow = candidate => {
+      const record = gridDragRecord(candidate);
+      if (record && sceneScope) record.path = `grid-record/${encodeURIComponent(sceneScope)}/${candidate.index}/${record.path}`;
+      return record;
+    };
     const rowIndex = Number(row?.index);
     if (!Number.isFinite(rowIndex) || !state.selected.has(rowIndex) || state.selected.size < 2) {
-      return [gridDragRecord(row)].filter(Boolean);
+      return [recordForRow(row)].filter(Boolean);
     }
     const pool = state.remoteMode ? state.rows : state.all;
     return pool
       .filter(candidate => state.selected.has(Number(candidate.index)))
-      .map(candidate => gridDragRecord(candidate))
+      .map(recordForRow)
       .filter(Boolean);
   }
 
@@ -6467,7 +6559,7 @@
     }
     const returnFocus = state.contextMenuReturnFocus;
     state.contextMenuReturnFocus = null;
-    if (returnFocus?.isConnected) returnFocus.focus?.();
+    if (returnFocus?.isConnected) returnFocus.focus?.({ preventScroll: true });
   }
 
   function handleGridShellContextMenu(event) {
@@ -7208,22 +7300,7 @@
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation?.();
-    hideMoleculeContextMenu();
-    const returnFocus = event.target instanceof Element
-      ? event.target.closest('.buret-card, .buret-grid-table-row, [tabindex]')
-      : null;
-    state.contextMenuReturnFocus = returnFocus instanceof HTMLElement ? returnFocus : null;
     const index = Number(row.index);
-    const menu = document.createElement('div');
-    menu.className = 'buret-grid-molecule-context-menu';
-    menu.setAttribute('role', 'menu');
-    menu.setAttribute('aria-label', 'Molecule actions');
-    const title = document.createElement('div');
-    title.className = 'buret-grid-molecule-context-menu-title';
-    title.textContent = row.name || `Molecule ${index + 1}`;
-    const subtitle = document.createElement('div');
-    subtitle.className = 'buret-grid-molecule-context-menu-subtitle';
-    subtitle.textContent = row.smiles || 'SDF molecule';
     const editing = capabilities(cfg).editing;
     const actions = [
       ['open', 'Preview molecule'],
@@ -7240,30 +7317,184 @@
       actions.push(['pubchem-identity', 'Search PubChem — Identical']);
       actions.push(['pubchem-similarity', 'Search PubChem — Similar (90%)']);
     }
-    menu.append(title, subtitle);
-    actions.forEach(([action, label]) => {
+    const entries = actions.map(([id, label]) => ({ id, label, action: () => moleculeContextMenuAction(id, row) }));
+    if (rowSmiles(row)) entries.push({ id: 'copy-smiles', label: 'Copy SMILES', action: () => copyGridText(rowSmiles(row), 'SMILES') });
+    const cell = event.target.closest('td[data-column]');
+    const column = cell && tableColumnCatalog().find(column => column.id === cell.dataset.column);
+    if (column?.get) {
+      const value = String(column.get(row) ?? '');
+      entries.unshift(
+        { id: 'copy-cell', label: 'Copy Cell Value', action: () => copyGridText(value, column.label) },
+        { id: 'filter-cell', label: 'Filter by This Value', disabled: !value.trim(), action: () => {
+          state.tableColumnFilters[column.id] = column.type === 'number'
+            ? { type: 'number', min: value, max: value } : { type: 'text', text: value };
+          void refresh(cfg);
+        } }, null);
+    }
+    if (state.selected.size > 1 && state.selected.has(index)) {
+      entries.unshift(
+        { id: 'copy-selected', label: `Copy ${state.selected.size} Selected SMILES`, action: () => copySelected() },
+        { id: 'export-selected', label: `Export ${state.selected.size} Selected Rows as CSV…`, action: () => exportCSV(cfg) },
+        { id: 'export-selected-smiles', label: 'Export Selected as SMILES…', action: () => exportSmiles(cfg) }, null);
+    }
+    if (cfg.appViewer === true && window.parent !== window) {
+      entries.push(
+        { id: 'copy-name', label: 'Name', action: () => copyGridText(row.name || `Molecule ${index + 1}`, 'name') },
+        { id: 'select-row', label: 'Molecule', action: () => { state.selected = new Set([index]); void refresh(cfg); } },
+        { id: 'select-all', label: 'All', action: () => selectAllRows(cfg) },
+        { id: 'clear-selection', label: 'None', action: () => clearSelection(cfg) }
+      );
+      if (state.selected.size > 1 && state.selected.has(index)) entries.push({ id: 'selected-molstar', label: 'Together', action: () => requestSdfPoseDocument(cfg) });
+      const requestId = `grid-menu-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const receive = event => {
+        const body = event.source === window.parent && event.data?.source === 'burette-grid-host' ? event.data.body : null;
+        if (body?.type !== 'gridWorkspaceMenuResult' || body.requestId !== requestId) return;
+        window.removeEventListener('message', receive);
+        clearTimeout(timeout);
+        const entry = entries.find(entry => entry?.id === body.command && !entry.disabled);
+        if (entry) Promise.resolve().then(entry.action).catch(error => setStatus(String(error), 'error'));
+      };
+      const timeout = setTimeout(() => window.removeEventListener('message', receive), 60000);
+      window.addEventListener('message', receive);
+      post('gridWorkspaceMenu', '', { requestId, x: event.clientX, y: event.clientY,
+        entries: entries.filter(Boolean).map(({ id, label, disabled }) => ({ id, label, disabled })),
+        records: (() => { const records = gridDragRecordsForRow(row, cfg.documentId || window.location.href); return records.length <= 200 && (state.selected.size < 2 || !state.selected.has(index) || records.length === state.selected.size) && records.reduce((size, record) => size + new TextEncoder().encode(record.text).length, 0) <= 24 * 1024 * 1024 ? records : []; })()
+      });
+      return;
+    }
+    showGridContextMenu(event, row.name || `Molecule ${index + 1}`, entries, row.smiles || '');
+  }
+
+  async function copyGridText(text, label) {
+    if (await writeClipboardText(text, `[grid] Copied ${label}.`)) return;
+    if (canUseNativeBridge()) post('copyText', `[grid] Copy ${label}.`, { text });
+    else setStatus('Clipboard is unavailable in this WebView.', 'error');
+  }
+
+  function showGridContextMenu(event, title, entries, detail = '') {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+    hideMoleculeContextMenu();
+    state.contextMenuReturnFocus = event.target.closest?.('[tabindex], .buret-card, .buret-grid-table-row');
+    const menu = document.createElement('div');
+    menu.className = 'buret-grid-molecule-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.tabIndex = -1;
+    menu.setAttribute('aria-label', title);
+    const heading = document.createElement('div');
+    heading.className = 'buret-grid-molecule-context-menu-title';
+    heading.textContent = title;
+    menu.append(heading);
+    if (detail) {
+      const subtitle = document.createElement('div');
+      subtitle.className = 'buret-grid-molecule-context-menu-subtitle';
+      subtitle.textContent = detail;
+      menu.append(subtitle);
+    }
+    entries.forEach(entry => {
+      if (!entry) { const divider = document.createElement('hr'); divider.setAttribute('role', 'separator'); menu.append(divider); return; }
       const button = document.createElement('button');
       button.type = 'button';
       button.setAttribute('role', 'menuitem');
-      button.dataset.buretMoleculeAction = action;
-      button.textContent = label;
-      button.addEventListener('click', () => moleculeContextMenuAction(action, row));
+      button.dataset.buretMoleculeAction = entry.id;
+      button.textContent = entry.label;
+      button.disabled = Boolean(entry.disabled);
+      button.addEventListener('click', () => {
+        hideMoleculeContextMenu();
+        Promise.resolve().then(entry.action).catch(error => setStatus(String(error), 'error'));
+      });
       menu.appendChild(button);
     });
     root.appendChild(menu);
     positionMoleculeContextMenu(menu, event.clientX, event.clientY);
-    menu.querySelector('button')?.focus();
+    (menu.querySelector('button:not(:disabled)') || menu).focus({ preventScroll: true });
     state.contextMenuOutsideHandler = outsideEvent => {
-      if (outsideEvent.target instanceof Element && outsideEvent.target.closest('.buret-grid-molecule-context-menu')) return;
-      hideMoleculeContextMenu();
+      if (!menu.contains(outsideEvent.target)) hideMoleculeContextMenu();
     };
     state.contextMenuKeyHandler = keyEvent => {
-      if (keyEvent.key === 'Escape') hideMoleculeContextMenu();
+      if (keyEvent.key === 'Escape') { hideMoleculeContextMenu(); return; }
+      if (keyEvent.key === 'Tab') {
+        if (!menu.querySelector('input')) { hideMoleculeContextMenu(); return; }
+        keyEvent.preventDefault();
+        const controls = [...menu.querySelectorAll('input, button:not(:disabled)')];
+        const next = (controls.indexOf(document.activeElement) + (keyEvent.shiftKey ? -1 : 1) + controls.length) % controls.length;
+        controls[next]?.focus({ preventScroll: true });
+        return;
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(keyEvent.key) || keyEvent.target?.matches?.('input')) return;
+      keyEvent.preventDefault();
+      const buttons = [...menu.querySelectorAll('button:not(:disabled)')];
+      const current = buttons.indexOf(document.activeElement);
+      const index = keyEvent.key === 'Home' ? 0 : keyEvent.key === 'End' ? buttons.length - 1
+        : (current + (keyEvent.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[index]?.focus({ preventScroll: true });
     };
     document.addEventListener('pointerdown', state.contextMenuOutsideHandler, true);
     window.addEventListener('scroll', state.contextMenuOutsideHandler, true);
     window.addEventListener('resize', state.contextMenuOutsideHandler, true);
     document.addEventListener('keydown', state.contextMenuKeyHandler);
+    return menu;
+  }
+
+  function showColumnContextMenu(event, column, cfg) {
+    const canSort = column.type !== 'none' && (!state.remoteMode || !column.id.startsWith('analysis:'));
+    const sort = direction => {
+      state.descriptorSort = column.id.startsWith('descriptor:') ? { id: column.id.slice(11), direction } : null;
+      state.sort = state.descriptorSort ? 'index'
+        : `${direction === 'desc' ? 'desc:' : ''}${column.type === 'number' && column.id !== 'index' ? 'numeric:' : ''}${column.id}`;
+      refreshGridControls(cfg);
+      void refresh(cfg);
+    };
+    showGridContextMenu(event, column.label, [
+      { id: 'sort-asc', label: 'Sort Ascending', disabled: !canSort, action: () => sort('asc') },
+      { id: 'sort-desc', label: 'Sort Descending', disabled: !canSort, action: () => sort('desc') },
+      { id: 'clear-sort', label: 'Restore File Order', action: () => { state.sort = 'index'; state.descriptorSort = null; refreshGridControls(cfg); void refresh(cfg); } }, null,
+      { id: 'filter-column', label: 'Filter Column…', disabled: column.type === 'none', action: () => showColumnFilterMenu(event, column, cfg) },
+      { id: 'clear-column-filter', label: 'Clear Column Filter', disabled: !state.tableColumnFilters[column.id], action: () => clearGridColumnFilters(cfg, column.id) },
+      { id: 'pin-column', label: state.tablePinnedColumns.has(column.id) ? 'Unpin Column' : 'Pin Column', action: () => {
+        if (state.tablePinnedColumns.has(column.id)) state.tablePinnedColumns.delete(column.id);
+        else state.tablePinnedColumns.add(column.id);
+        storeStringSet(TABLE_PINNED_COLUMNS_STORAGE_KEY, state.tablePinnedColumns);
+        void render(cfg);
+      } },
+      { id: 'hide-column', label: 'Hide Column', disabled: column.fixed, action: () => { state.tableHiddenColumns.add(column.id); storeStringSet(TABLE_HIDDEN_COLUMNS_STORAGE_KEY, state.tableHiddenColumns); void render(cfg); } },
+      { id: 'choose-columns', label: 'Show / Hide Columns…', action: () => toggleTableColumnPanel(cfg) },
+      { id: 'reset-column-width', label: 'Reset Column Width', action: () => { state.tableColumnWidths.delete(column.id); storeColumnWidths(TABLE_COLUMN_WIDTHS_STORAGE_KEY, state.tableColumnWidths); void render(cfg); } }, null,
+      { id: 'column-statistics', label: 'Column Statistics', disabled: column.type !== 'number', action: () => {
+        const rows = tableColumnDiscoveryRows();
+        const values = rows.map(row => tableColumnNumericValue(row, column.id)).filter(Number.isFinite);
+        let min = Infinity, max = -Infinity, sum = 0;
+        for (const value of values) { min = Math.min(min, value); max = Math.max(max, value); sum += value; }
+        const details = `Count: ${values.length} · Missing: ${rows.length - values.length}` + (values.length ? ` · Min: ${min} · Max: ${max} · Mean: ${(sum / values.length).toPrecision(5)}` : '');
+        showGridContextMenu(event, column.label, [], `${state.remoteMode ? 'Loaded rows only. ' : ''}${details}`).classList.add('buret-grid-statistics-menu');
+      } },
+    ]);
+  }
+
+  function showColumnFilterMenu(event, column, cfg) {
+    const filter = state.tableColumnFilters[column.id] || {};
+    const fields = column.type === 'number' ? ['min', 'max'] : ['text'];
+    const draft = { type: column.type === 'number' ? 'number' : 'text', ...filter };
+    const menu = showGridContextMenu(event, `Filter ${column.label}`, [{ id: 'apply-filter', label: 'Apply Filter', action: () => {
+      if (tableColumnFilterEmpty(draft)) delete state.tableColumnFilters[column.id];
+      else state.tableColumnFilters[column.id] = draft;
+      void refresh(cfg);
+    } }]);
+    fields.forEach(part => {
+      const label = document.createElement('label');
+      label.textContent = part === 'text' ? 'Contains' : part === 'min' ? 'Minimum' : 'Maximum';
+      const input = document.createElement('input');
+      input.type = column.type === 'number' ? 'number' : 'text';
+      if (input.type === 'number') input.step = 'any';
+      input.value = draft[part] ?? '';
+      input.addEventListener('input', () => { draft[part] = input.value; });
+      input.addEventListener('keydown', key => { if (key.key === 'Enter') menu.querySelector('button')?.click(); });
+      label.append(input);
+      menu.insertBefore(label, menu.querySelector('button'));
+    });
+    positionMoleculeContextMenu(menu, event.clientX, event.clientY);
+    menu.querySelector('input')?.focus({ preventScroll: true });
   }
 
   function installCardHover(card, row, cfg) {
@@ -8484,9 +8715,8 @@
   }
 
   async function copySelected() {
-    const collectAll = shouldCollectAllRemoteRows();
-    if (collectAll && !requireCollectionIndexReady('copying the full collection')) return;
-    const sourceRows = collectAll ? await collectAllRemoteRows(config()) : selectedOrFiltered();
+    const sourceRows = await collectExportRows(config());
+    if (!sourceRows) return;
     const text = sourceRows.map(row => `${row.smiles || ''}\t${row.name || ''}`.trim()).join('\n');
     if (await writeClipboardText(text, '[grid] Copied molecules.')) return;
     if (canUseNativeBridge()) {

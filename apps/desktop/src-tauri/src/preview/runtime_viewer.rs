@@ -957,6 +957,22 @@ mod tests {
         assert!(html.contains("wasm-unsafe-eval"));
         assert!(html.contains("window.BuretteRDKitWasmDataURL"));
         assert!(html.contains("rdkit-wasm-data.js"));
+        // All native viewer helpers must load before the viewer installs menus.
+        let scripts: Vec<_> = html
+            .lines()
+            .filter(|line| line.contains("<script src="))
+            .collect();
+        for helper in ["color-picker.js", "molecule-preview-interactions.js"] {
+            let helper_index = scripts
+                .iter()
+                .position(|line| line.contains(helper))
+                .expect("native viewer helper script");
+            let viewer_index = scripts
+                .iter()
+                .position(|line| line.contains("viewer.js\""))
+                .expect("viewer script");
+            assert!(helper_index < viewer_index);
+        }
     }
 }
 
@@ -1173,6 +1189,10 @@ fn viewer_html(
     let trajectory_smoothing_js = asset_url(&assets.join("trajectory-smoothing.js"));
     let preset_preview_controller_js =
         asset_url(&assets.join("molstar-preset-preview-controller.js"));
+    let scene_files_js = asset_url(&assets.join("scene-file-actions.js"));
+    let color_picker_js = asset_url(&assets.join("color-picker.js"));
+    let molecule_preview_interactions_js =
+        asset_url(&assets.join("molecule-preview-interactions.js"));
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
     let molstar_js = asset_url(&assets.join("molstar.js"));
@@ -1204,6 +1224,7 @@ fn viewer_html(
     window.BurettePreviewConfigURL = {config_js:?};
     window.BurettePreviewDataScriptURL = {data_js:?};
     window.BuretteDataURL = {data_bin_js:?};
+    window.BuretteSceneFilesURL = {scene_files_js:?};
     window.BuretteMolstarURL = {molstar_js:?};
     window.BuretteRDKitJSURL = {rdkit_js:?};
     window.BuretteRDKitWasmURL = {rdkit_wasm:?};
@@ -1220,6 +1241,8 @@ fn viewer_html(
   <script src="{agent_js}"></script>
   <script src="{trajectory_smoothing_js}"></script>
   <script src="{preset_preview_controller_js}"></script>
+  <script src="{color_picker_js}"></script>
+  <script src="{molecule_preview_interactions_js}"></script>
   <script src="{viewer_js}"></script>
 </body>
 </html>"#

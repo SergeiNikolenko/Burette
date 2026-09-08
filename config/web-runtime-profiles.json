@@ -11,6 +11,9 @@
       "trajectory-smoothing.js",
       "molstar-preset-preview-controller.js",
       "superposition-panel.js",
+      "molecule-preview-interactions.js",
+      "color-picker.js",
+      "scene-file-actions.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -39,6 +42,9 @@
       "trajectory-smoothing.js",
       "molstar-preset-preview-controller.js",
       "superposition-panel.js",
+      "molecule-preview-interactions.js",
+      "color-picker.js",
+      "scene-file-actions.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -61,6 +67,8 @@
       "trajectory-smoothing.js",
       "molstar-preset-preview-controller.js",
       "superposition-panel.js",
+      "molecule-preview-interactions.js",
+      "color-picker.js",
       "viewer.js"
     ]
   },

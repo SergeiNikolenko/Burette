@@ -100,7 +100,7 @@
 html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
 button, select, input { font: inherit; }
 button { color: inherit; cursor: default; }
-strong { font-weight: 400; }
+strong { font-weight: 600; }
 
 @keyframes burette-progress-indeterminate {
   0% {
@@ -131,8 +131,8 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --shadcn-card-foreground: var(--text-primary);
   --shadcn-popover: var(--menu-surface);
   --shadcn-popover-foreground: var(--text-primary);
-  --shadcn-primary: var(--accent);
-  --shadcn-primary-foreground: #ffffff;
+  --shadcn-primary: light-dark(#181818, #f3f3f3);
+  --shadcn-primary-foreground: light-dark(#ffffff, #0d0d0d);
   --shadcn-secondary: var(--surface-subtle);
   --shadcn-secondary-foreground: var(--text-primary);
   --shadcn-muted: var(--surface-subtle);
@@ -195,71 +195,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   line-height: 1.2;
 }
 
-/* Retab document tabs render with the palette harvested from ui.retab.com's own
-   computed styles (the registry publishes no theme; it inherits host tokens).
-   Alpha-blended borders and muted tones are what give the surface its light
-   hairline look. Scoping here keeps the rest of the app on the Burette theme:
-   utilities resolve through the @theme inline --color-* -> --shadcn-*
-   indirection, so overriding --shadcn-* restyles both Tailwind classes and raw
-   var(--...) reads. */
-.document-stage {
-  --shadcn-background: #ffffff;
-  --shadcn-foreground: oklch(0.235 0 0);
-  --shadcn-card: #ffffff;
-  --shadcn-card-foreground: oklch(0.235 0 0);
-  --shadcn-popover: #ffffff;
-  --shadcn-popover-foreground: oklch(0.235 0 0);
-  --shadcn-primary: oklch(0.235 0 0);
-  --shadcn-primary-foreground: oklch(0.985 0 0);
-  --shadcn-secondary: color-mix(in oklab, #000 4%, transparent);
-  --shadcn-secondary-foreground: oklch(0.235 0 0);
-  --shadcn-muted: color-mix(in oklab, #000 4%, transparent);
-  --shadcn-muted-foreground: color-mix(in srgb, oklch(0.556 0 0) 90%, #000);
-  --shadcn-accent: color-mix(in oklab, #000 4%, transparent);
-  --shadcn-accent-foreground: oklch(0.235 0 0);
-  --shadcn-destructive: oklch(0.577 0.245 27.325);
-  --shadcn-destructive-foreground: oklch(0.45 0.22 26);
-  --shadcn-border: color-mix(in oklab, #000 8%, transparent);
-  --shadcn-input: color-mix(in oklab, #000 10%, transparent);
-  --shadcn-ring: oklch(0.708 0 0);
-  --shadcn-sidebar: oklch(0.985 0 0);
-  --shadcn-sidebar-foreground: color-mix(in srgb, oklch(0.235 0 0) 64%, oklch(0.985 0 0));
-  --shadcn-sidebar-primary: oklch(0.235 0 0);
-  --shadcn-sidebar-primary-foreground: oklch(0.985 0 0);
-  --shadcn-sidebar-accent: color-mix(in oklab, #000 4%, transparent);
-  --shadcn-sidebar-accent-foreground: oklch(0.235 0 0);
-  --shadcn-sidebar-border: color-mix(in oklab, #000 6%, transparent);
-  --shadcn-sidebar-ring: oklch(0.708 0 0);
-  /* Plain names must be re-declared HERE, not only aliased on .app-shell:
-     var() in a custom property substitutes where the property is DEFINED, so an
-     .app-shell alias captures the Burette value and ignores this scope's
-     overrides. */
-  --background: var(--shadcn-background);
-  --foreground: var(--shadcn-foreground);
-  --card: var(--shadcn-card);
-  --card-foreground: var(--shadcn-card-foreground);
-  --popover: var(--shadcn-popover);
-  --popover-foreground: var(--shadcn-popover-foreground);
-  --primary: var(--shadcn-primary);
-  --primary-foreground: var(--shadcn-primary-foreground);
-  --secondary: var(--shadcn-secondary);
-  --secondary-foreground: var(--shadcn-secondary-foreground);
-  --muted: var(--shadcn-muted);
-  --muted-foreground: var(--shadcn-muted-foreground);
-  --accent-foreground: var(--shadcn-accent-foreground);
-  --destructive: var(--shadcn-destructive);
-  --border: var(--shadcn-border);
-  --input: var(--shadcn-input);
-  --ring: var(--shadcn-ring);
-  --sidebar: var(--shadcn-sidebar);
-  --sidebar-foreground: var(--shadcn-sidebar-foreground);
-  --sidebar-primary: var(--shadcn-sidebar-primary);
-  --sidebar-primary-foreground: var(--shadcn-sidebar-primary-foreground);
-  --sidebar-accent: var(--shadcn-sidebar-accent);
-  --sidebar-accent-foreground: var(--shadcn-sidebar-accent-foreground);
-  --sidebar-border: var(--shadcn-sidebar-border);
-  --sidebar-ring: var(--shadcn-sidebar-ring);
-}
+/* Document controls inherit the same semantic palette as the shell. */
 /* shadcn v4 dropped the v3 preflight that defaulted border-color to the border
    token; Retab's host app ships it globally, so its components use bare
    `border-r` etc. and expect it. Scoped to the viewer surface: `.document-stage`
@@ -277,64 +213,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   }
 }
 
-.app-shell[data-effective-theme="dark"] .document-stage {
-  --shadcn-background: oklch(0.145 0 0);
-  --shadcn-foreground: oklch(0.972 0 0);
-  --shadcn-card: color-mix(in srgb, oklch(0.145 0 0) 98%, #fff);
-  --shadcn-card-foreground: oklch(0.972 0 0);
-  --shadcn-popover: color-mix(in srgb, oklch(0.145 0 0) 98%, #fff);
-  --shadcn-popover-foreground: oklch(0.972 0 0);
-  --shadcn-primary: oklch(0.972 0 0);
-  --shadcn-primary-foreground: oklch(0.235 0 0);
-  --shadcn-secondary: color-mix(in oklab, #fff 4%, transparent);
-  --shadcn-secondary-foreground: oklch(0.972 0 0);
-  --shadcn-muted: color-mix(in oklab, #fff 4%, transparent);
-  --shadcn-muted-foreground: color-mix(in srgb, oklch(0.556 0 0) 90%, #fff);
-  --shadcn-accent: color-mix(in oklab, #fff 4%, transparent);
-  --shadcn-accent-foreground: oklch(0.972 0 0);
-  --shadcn-destructive: color-mix(in srgb, oklch(0.577 0.245 27.325) 90%, #fff);
-  --shadcn-destructive-foreground: oklch(0.972 0 0);
-  --shadcn-border: color-mix(in oklab, #fff 6%, transparent);
-  --shadcn-input: color-mix(in oklab, #fff 8%, transparent);
-  --shadcn-ring: oklch(0.556 0 0);
-  --shadcn-sidebar: color-mix(in srgb, oklch(0.145 0 0) 97%, #fff);
-  --shadcn-sidebar-foreground: color-mix(in srgb, oklch(0.972 0 0) 64%, color-mix(in srgb, oklch(0.145 0 0) 97%, #fff));
-  --shadcn-sidebar-primary: oklch(0.972 0 0);
-  --shadcn-sidebar-primary-foreground: oklch(0.235 0 0);
-  --shadcn-sidebar-accent: color-mix(in oklab, #fff 4%, transparent);
-  --shadcn-sidebar-accent-foreground: oklch(0.972 0 0);
-  --shadcn-sidebar-border: color-mix(in oklab, #fff 5%, transparent);
-  --shadcn-sidebar-ring: oklch(0.556 0 0);
-  /* Plain names must be re-declared HERE, not only aliased on .app-shell:
-     var() in a custom property substitutes where the property is DEFINED, so an
-     .app-shell alias captures the Burette value and ignores this scope's
-     overrides. */
-  --background: var(--shadcn-background);
-  --foreground: var(--shadcn-foreground);
-  --card: var(--shadcn-card);
-  --card-foreground: var(--shadcn-card-foreground);
-  --popover: var(--shadcn-popover);
-  --popover-foreground: var(--shadcn-popover-foreground);
-  --primary: var(--shadcn-primary);
-  --primary-foreground: var(--shadcn-primary-foreground);
-  --secondary: var(--shadcn-secondary);
-  --secondary-foreground: var(--shadcn-secondary-foreground);
-  --muted: var(--shadcn-muted);
-  --muted-foreground: var(--shadcn-muted-foreground);
-  --accent-foreground: var(--shadcn-accent-foreground);
-  --destructive: var(--shadcn-destructive);
-  --border: var(--shadcn-border);
-  --input: var(--shadcn-input);
-  --ring: var(--shadcn-ring);
-  --sidebar: var(--shadcn-sidebar);
-  --sidebar-foreground: var(--shadcn-sidebar-foreground);
-  --sidebar-primary: var(--shadcn-sidebar-primary);
-  --sidebar-primary-foreground: var(--shadcn-sidebar-primary-foreground);
-  --sidebar-accent: var(--shadcn-sidebar-accent);
-  --sidebar-accent-foreground: var(--shadcn-sidebar-accent-foreground);
-  --sidebar-border: var(--shadcn-sidebar-border);
-  --sidebar-ring: var(--shadcn-sidebar-ring);
-}
+
 .app-shell::after {
   content: "";
   position: absolute;
@@ -928,10 +807,34 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   letter-spacing: 0.4px;
   color: var(--text-muted);
 }
-.grid-hover-molecule-props-resize {
-  flex: 1 1 auto;
+.grid-hover-molecule-props-resize.resizable-handle-horizontal {
+  flex: 0 0 20px;
+  width: 100%;
+  height: 20px;
   margin: 0;
-  height: 12px;
+  touch-action: none;
+}
+.grid-hover-molecule-props-resize .resizable-handle-grip {
+  opacity: 1;
+}
+.grid-hover-molecule-props-show-all {
+  margin-left: auto;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 10px;
+  cursor: pointer;
+}
+.grid-hover-molecule-props-show-all:hover {
+  background: color-mix(in srgb, var(--fg-base) 8%, transparent);
+}
+.grid-hover-molecule-props-toggle {
+  margin-left: auto;
+}
+.grid-hover-molecule-props-show-all + .grid-hover-molecule-props-toggle {
+  margin-left: 0;
 }
 .grid-hover-molecule-props-toggle {
   flex: 0 0 auto;
@@ -1280,7 +1183,7 @@ button:focus-visible > .shortcut-tooltip {
   border-radius: 10px;
   background: transparent;
   color: var(--text-muted);
-  padding: 0 14px;
+  padding: 0 34px 0 14px;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
@@ -1295,7 +1198,6 @@ button:focus-visible > .shortcut-tooltip {
 .tab > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; }
 .tab:hover { background: var(--tab-active-bg); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
 .tab.active { background: var(--tab-active-bg); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
-.tab-shell[data-active] .tab { padding-right: 34px; }
 .tab-shell[data-selected="true"] .tab {
   background: var(--surface-selected);
   color: var(--text-secondary);
@@ -1341,10 +1243,6 @@ button:focus-visible > .shortcut-tooltip {
   .topbar .tab-scroll-region { width: 100%; flex: 1 1 auto; }
   .topbar .tab-shell { min-width: 0; max-width: 100%; flex: 0 0 auto; }
   .topbar .tab { min-width: 0; max-width: 100%; padding-inline: 10px 28px; }
-}
-.tab:hover > span:first-child {
-  -webkit-mask-image: linear-gradient(to right, black, black calc(100% - 28px), transparent);
-  mask-image: linear-gradient(to right, black, black calc(100% - 28px), transparent);
 }
 .tab-shell:hover .tab-close,
 .tab-shell:focus-within .tab-close { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
@@ -1405,6 +1303,11 @@ button:focus-visible > .shortcut-tooltip {
   height: 14px;
   margin: -7px 0;
   cursor: row-resize;
+}
+/* The right dock starts below the shared toolbar. Its divider and drag target
+   must start there too, so they cannot cross the Finder or dock buttons. */
+.resizable-handle.workspace-right-dock-handle {
+  margin-top: var(--chrome-height);
 }
 /* The workbench card's soft shadow over the glass sidebar. It sits on this
    handle (centered on the sidebar/workbench boundary) because the handle rides
@@ -1818,15 +1721,6 @@ kbd span { margin-left: 2px; }
 }
 .project-group-row:hover { background: var(--surface-subtle); }
 .project-group-row:active { transform: scale(0.99); }
-.project-folder-icon {
-  width: 20px;
-  height: 16px;
-  flex: 0 0 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-icon-muted);
-}
 .project-group-copy {
   min-width: 0;
   flex: 1;
@@ -2196,6 +2090,8 @@ kbd span { margin-left: 2px; }
   white-space: nowrap;
   transition: transform 200ms ease-out;
 }
+.tab:hover .marquee-text,
+.tab:focus-visible .marquee-text,
 .project:hover .marquee-text,
 .project-folder-row:hover .marquee-text,
 .project-group-row:hover .marquee-text,
@@ -2211,7 +2107,9 @@ kbd span { margin-left: 2px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .marquee-text,
-  .project:hover .marquee-text,
+  .tab:hover .marquee-text,
+.tab:focus-visible .marquee-text,
+.project:hover .marquee-text,
   .project-folder-row:hover .marquee-text,
   .project-group-row:hover .marquee-text { transition: none; }
 }
@@ -2258,6 +2156,9 @@ kbd span { margin-left: 2px; }
 }
 .pin-hit:hover,
 .pin-hit.pinned { color: var(--text-muted); }
+.app-shell[data-effective-theme="light"] .pin-hit.pinned:not(:hover):not(:focus-visible) {
+  color: var(--text-faint);
+}
 /* The menu surface, rows and separators come from the shadcn menu components.
    What stays here is the item's own two-line body, which shadcn does not model. */
 .radix-menu-item-body {
@@ -2268,6 +2169,12 @@ kbd span { margin-left: 2px; }
   overflow: hidden;
 }
 .radix-menu-item-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: var(--text-secondary);
+}
+span.radix-menu-item-icon {
   width: 20px;
   height: 20px;
   flex: 0 0 20px;
@@ -2283,6 +2190,9 @@ kbd span { margin-left: 2px; }
   object-fit: cover;
 }
 img.radix-menu-item-icon {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
   display: block;
   background: transparent;
   border-radius: 0;
@@ -3543,7 +3453,7 @@ img.radix-menu-item-icon {
   font-size: 12px;
   font-weight: 500;
 }
-.structure-brief-card p {
+.structure-brief-card p:not([data-slot]) {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.35;
@@ -4110,74 +4020,10 @@ img.radix-menu-item-icon {
   white-space: normal;
   overflow-wrap: anywhere;
 }
-/* Settings belong to the tool row that opened them, so they read as a drawer
-   nested inside the section rather than a slab bolted under it. */
 .structure-inspector-xtb-settings {
   min-width: 0;
   display: grid;
-  gap: 7px;
-  border: 1px solid var(--line-subtler);
-  border-radius: 9px;
-  background: var(--surface-subtle);
-  margin-top: 2px;
-  padding: 8px;
-}
-/* The section title above is the heading; this one names a drawer inside it and
-   sits a step down, matching the group headings used in menus. */
-.structure-inspector-xtb-settings .structure-inspector-section-header h4 {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.structure-inspector-xtb-settings-title {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-}
-.structure-inspector-xtb-settings-title > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.structure-inspector-xtb-category-bar {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 4px;
-}
-.structure-inspector-xtb-category-button {
-  position: relative;
-  min-width: 0;
-  height: 28px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: var(--surface-input);
-  color: var(--text-muted);
-  padding: 0 7px;
-  font: 12px/1 var(--ui-font);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: default;
-  transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
-}
-.structure-inspector-xtb-category-button:hover {
-  background: var(--surface-subtle);
-  color: var(--text-secondary);
-}
-.structure-inspector-xtb-category-button[data-active] {
-  border-color: color-mix(in srgb, var(--accent) 36%, transparent);
-  background: color-mix(in srgb, var(--accent) 20%, var(--surface-input));
-  color: var(--text-primary);
+  gap: 12px;
 }
 .structure-inspector-xtb-runtime {
   min-width: 0;
@@ -4379,28 +4225,6 @@ img.radix-menu-item-icon {
   background: var(--surface-input);
   color: var(--text-secondary);
   padding: 0 8px;
-}
-.structure-inspector-xtb-toggle-grid {
-  position: relative;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 8px;
-}
-.structure-inspector-xtb-toggle {
-  position: relative;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.structure-inspector-xtb-toggle span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .structure-inspector-xtb-card [data-xtb-tooltip]::after {
   content: attr(data-xtb-tooltip);
@@ -4703,8 +4527,15 @@ img.radix-menu-item-icon {
    panel. The tree keeps its own scroll instead, so the sections after it stay
    reachable no matter how long the composition is. */
 .structure-brief-rows.structure-inspector-tree {
-  max-height: 264px;
+  max-height: min(60vh, 560px);
   overflow-y: auto;
+  padding: 6px;
+  user-select: none;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  background: rgb(14, 15, 17);
+}
+.app-shell[data-effective-theme="light"] .structure-inspector-tree {
+  background: rgb(244, 244, 244);
 }
 /* Indentation already says where a group starts, so the hairlines that made the
    tree read as a table are gone. Without them the rows can also close up: at the
@@ -4713,14 +4544,23 @@ img.radix-menu-item-icon {
   border-top: 0;
 }
 .structure-inspector-tree .structure-brief-action-entry {
+  display: flex;
   gap: 4px;
   min-height: 24px;
   padding: 0;
   border-radius: 5px;
 }
 .structure-inspector-tree .structure-brief-action-summary,
-.structure-inspector-tree .structure-brief-action-row {
-  padding: 3px 5px;
+.structure-inspector-tree .structure-brief-action-row,
+.structure-inspector-tree .structure-brief-chip-button,
+.structure-inspector-tree .structure-brief-chip-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  border-radius: 4px;
+  padding: 3px 2px;
+  background: transparent;
+  box-shadow: none;
 }
 /* The generic action row marks its selection with an accent tint and a 3px rail
    down the left edge. That rail landed right beside this row's colour bar, so a
@@ -4734,8 +4574,14 @@ img.radix-menu-item-icon {
 .structure-inspector-tree .structure-brief-action-entry[data-selected="true"] .structure-brief-action-row,
 .structure-inspector-tree .structure-brief-action-entry[data-selected="true"] .structure-brief-chip-button {
   border-color: transparent;
-  background: var(--surface-selected);
+  background: transparent;
   box-shadow: none;
+}
+.structure-inspector-tree .structure-brief-action-entry[data-selected="true"] {
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+}
+.structure-inspector-tree .structure-brief-action-entry:hover {
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 .structure-inspector-tree .structure-brief-action-entry[data-selected="true"] .structure-inspector-row-label {
   color: var(--text-primary);
@@ -4804,14 +4650,14 @@ input.structure-inspector-composition-search {
 /* 0.45 is what the tree fades a row to once it is hidden. This bar carried it
    permanently, which washed out every colour in the list and made the panel
    disagree with the render even where the two picked the same tone. */
-.structure-brief-action-entry[data-hidden="true"] .structure-inspector-row-bar,
-.structure-brief-action-entry[data-hidden="true"] .structure-brief-action-row {
+.structure-brief-action-entry[data-hidden="true"] .structure-brief-action-row,
+.structure-brief-action-entry[data-hidden="true"] .structure-brief-chip-button {
   opacity: 0.45;
 }
-.structure-inspector-row-bar[data-tone="polymer"] { background: #4e79a7; }
-.structure-inspector-row-bar[data-tone="ligand"] { background: #59a14f; }
-.structure-inspector-row-bar[data-tone="ion"] { background: #e8973a; }
-.structure-inspector-row-bar[data-tone="water"] { background: #9aa0a6; }
+.structure-inspector-row-bar[data-tone="polymer"] { background: #54d98c; }
+.structure-inspector-row-bar[data-tone="ligand"] { background: #54d98c; }
+.structure-inspector-row-bar[data-tone="ion"] { background: #54d98c; }
+.structure-inspector-row-bar[data-tone="water"] { background: #54d98c; }
 .structure-inspector-row-actions {
   display: flex;
   align-items: center;
@@ -5085,7 +4931,18 @@ input.structure-inspector-composition-search {
   transform: rotate(90deg);
 }
 .structure-inspector-tree-children {
-  padding: 0 0 2px 15px;
+  position: relative;
+  margin-left: 13px;
+  padding: 0;
+}
+.structure-inspector-tree-children::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line-subtle);
 }
 .structure-inspector-tree-children .structure-brief-action-entry + .structure-brief-action-entry {
   border-top: 0;
@@ -8861,7 +8718,7 @@ input.structure-inspector-composition-search {
   gap: 16px;
   padding: 16px 14px;
 }
-.agent-summary-card[data-state="ok"] { border-color: color-mix(in srgb, var(--accent) 28%, var(--line-subtler)); }
+.agent-summary-card[data-state="ok"] { border-color: var(--line-subtle); }
 .agent-summary-card[data-state="action"] { border-color: var(--line-subtle); }
 .agent-summary-card[data-state="missing"] { border-color: color-mix(in srgb, var(--danger, #ff5f57) 36%, var(--line-subtler)); }
 .agent-summary-copy { min-width: 0; }
@@ -8911,7 +8768,7 @@ input.structure-inspector-composition-search {
   font-size: 11px;
   font-weight: 400;
 }
-.agent-status-badge[data-state="ok"] { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text-primary); }
+.agent-status-badge[data-state="ok"] { background: var(--surface-subtle-strong); color: var(--text-primary); }
 .agent-status-badge[data-state="action"] { background: var(--surface-subtle-strong); color: var(--text-secondary); }
 .agent-status-badge[data-state="missing"] { background: color-mix(in srgb, var(--danger, #ff5f57) 18%, transparent); color: var(--text-primary); }
 .agent-disclosure {
@@ -8962,7 +8819,7 @@ input.structure-inspector-composition-search {
 .keyboard-shortcuts-section { margin: 0 0 40px; }
 /* The search field, the rows and the key pills are shadcn InputGroup, Table and
    Kbd now; what stays here is the settings-page bleed and the table density. */
-.keyboard-shortcuts-search { margin: 0 -16px 10px; }
+.keyboard-shortcuts-search { width: calc(100% + 32px); margin: 0 -16px 10px; }
 .keyboard-shortcuts-card {
   margin: 0 -16px;
   overflow: hidden;
@@ -8971,14 +8828,13 @@ input.structure-inspector-composition-search {
   background: var(--surface-card);
 }
 .keyboard-shortcuts-card [data-slot="table-container"] { overflow: visible; }
-/* Auto table layout widens to fit the longest description, which pushed the
-   keybinding column past the card. Fixed layout honours the declared column
-   width and lets the description ellipsis instead. */
+/* Reserve a compact key column and let descriptions wrap in the remaining space. */
 .keyboard-shortcuts-card table { table-layout: fixed; }
-.keyboard-shortcuts-card th { height: 40px; padding: 0 16px; }
-.keyboard-shortcuts-card td { padding: 12px 16px; }
+.keyboard-shortcuts-card tr { border-color: var(--line-subtler); }
+.keyboard-shortcuts-card th { height: 34px; padding: 0 14px; color: var(--text-muted); font-size: 12px; }
+.keyboard-shortcuts-card td { padding: 9px 14px; }
 .keyboard-shortcuts-card tbody tr:hover { background: transparent; }
-.keyboard-shortcuts-keys-column { width: clamp(148px, 30%, 188px); }
+.keyboard-shortcuts-keys-column { width: 148px; }
 .keyboard-shortcuts-copy { min-width: 0; white-space: normal; }
 .keyboard-shortcuts-command {
   color: var(--text-primary);
@@ -8988,11 +8844,10 @@ input.structure-inspector-composition-search {
 .keyboard-shortcuts-description {
   margin-top: 3px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .keyboard-shortcuts-keys { flex-wrap: wrap; }
 .keyboard-shortcuts-empty { border: 0; padding: 18px 16px; }
@@ -9181,7 +9036,7 @@ img.settings-open-destination-icon {
   transition: background 160ms ease;
 }
 .settings-toggle[data-checked],
-.settings-toggle[data-state="checked"] { background: var(--accent); }
+.settings-toggle[data-state="checked"] { background: var(--shadcn-primary); }
 /* Target the thumb itself rather than any span: shadcn's Switch happens to
    render exactly one today, but a second (an sr-only label, a ripple) would
    silently inherit these absolute-positioned thumb styles — the same trap that
@@ -9224,6 +9079,7 @@ img.settings-open-destination-icon {
   .agent-disclosure { margin-left: 0; margin-right: 0; }
   .keyboard-shortcuts-search,
   .keyboard-shortcuts-card { margin-left: 0; margin-right: 0; }
+  .keyboard-shortcuts-search { width: 100%; }
   /* Narrow settings: the table stacks, so the header carries no meaning. */
   .keyboard-shortcuts-card [data-slot="table-header"] { display: none; }
   .keyboard-shortcuts-card tbody tr { display: grid; gap: 10px; padding: 12px 16px; }
@@ -9426,6 +9282,7 @@ img.settings-open-destination-icon {
   flex: 1 1 auto;
   justify-content: flex-start;
   min-width: 0;
+  text-align: left;
 }
 .grid-filter-card-trigger > svg {
   transition: transform 140ms ease-out;
@@ -9528,3 +9385,46 @@ img.settings-open-destination-icon {
   max-width: 100%;
   gap: 8px;
 }
+
+/* Keep Agents cards inside the scroll viewport, including their text insets. */
+.agent-integration-content .agent-summary-card,
+.agent-integration-content .settings-card { margin-inline: 0; }
+.agent-integration-content .agent-disclosure { margin-inline: 0; }
+.app-shell { color-scheme: light; }
+.app-shell[data-effective-theme="dark"] { color-scheme: dark; }
+
+/* Increase glyph contrast on light surfaces without changing icon geometry. */
+.app-shell[data-effective-theme="light"] :is(
+  .sidebar button,
+  .chrome-button,
+  .new-tab,
+  .dock-icon-button,
+  .dock-tab,
+  .dock-tab-close,
+  [data-slot="button"][data-variant="ghost"],
+  [data-slot="button"][data-variant="outline"]
+):not(:disabled):is(:hover, :focus-visible) svg {
+  color: var(--text-primary);
+}
+
+.app-shell[data-effective-theme="light"] .sidebar :is(
+  .sidebar-search-toggle,
+  .sidebar-tool-icon,
+  .project-folder-icon
+) svg {
+  color: var(--text-primary);
+}
+
+.app-shell[data-effective-theme="light"] .sidebar-tool-icon {
+  opacity: 1;
+}
+
+.project.selected { background: var(--surface-selected); }
+
+.file-operation-dialog { width: min(360px, calc(100vw - 32px)); }
+.file-operation-dialog .radix-dialog-header { min-height: 0; padding: 20px 20px 0; border: 0; }
+.file-operation-dialog .radix-dialog-header h2 { font-weight: 600; }
+.file-operation-dialog .radix-dialog-body { padding: 8px 20px 20px; overflow-wrap: anywhere; }
+.file-operation-dialog .radix-dialog-body p { margin: 0; }
+.file-operation-dialog .radix-dialog-actions { padding: 0 20px 20px; }
+.file-operation-dialog .radix-dialog-actions button { min-height: 30px; padding: 5px 12px; }

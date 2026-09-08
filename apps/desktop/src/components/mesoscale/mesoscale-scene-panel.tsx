@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ChevronDown, ChevronRight, Eye, EyeOff, Focus } from "lucide-react";
+import { Focus } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff } from "@/components/ui/app-icons";
 import type { ViewerDocument } from "../../types";
 import { loadMesoscaleHierarchy, previewMesoscaleObject, requestMesoscale, setMesoscaleVisibilityOptimistic, useMesoscaleStore } from "../../stores/mesoscale-store";
 import type { MesoscaleHierarchyDetail, MesoscaleHierarchyObject, MesoscaleHierarchySelector } from "../../lib/mesoscale-contract";

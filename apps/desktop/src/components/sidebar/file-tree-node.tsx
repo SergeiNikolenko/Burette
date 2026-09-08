@@ -1,49 +1,19 @@
+import { useWorkspaceMenus } from "../workspace-menus";
+import { SidebarTooltip } from "./sidebar-tooltip";
+import { Pin, PinFilled, DotsHorizontal } from "../ui/app-icons";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
-import {
-  Folder01Icon,
-  Folder02Icon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload } from "../../lib/structure-drag";
-import type { DockingSceneMode } from "../../types";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 
-// Sidebar names are cut to keep rows narrow, which hides exactly the tail that tells
-// two files apart. Hovering the row slides the name through its window to show it,
-// the same way the viewer's trajectory control does. The distance is measured rather
-// than guessed: on mount so a hover works immediately, and again on enter because the
-// sidebar can be resized. Moving an inner element by transform keeps it off the
-// layout path, so the row itself never reflows.
-function MarqueeName({ className, children }: { className: string; children: string }) {
-  const boxRef = useRef<HTMLSpanElement>(null);
-  const textRef = useRef<HTMLSpanElement>(null);
-  const measure = () => {
-    const box = boxRef.current;
-    const text = textRef.current;
-    if (!box || !text) return;
-    const overflow = Math.max(0, text.scrollWidth - box.clientWidth);
-    box.style.setProperty("--marquee-shift", `${overflow}px`);
-    // A steady reading pace, so a long tail does not race past a short one.
-    box.style.setProperty("--marquee-duration", `${Math.max(0.45, overflow / 34).toFixed(2)}s`);
-  };
-  useEffect(measure, [children]);
-  return (
-    <span ref={boxRef} className={className} onPointerEnter={measure}>
-      <span ref={textRef} className="marquee-text">{children}</span>
-    </span>
-  );
-}
+import { MarqueeName } from "../marquee-name";
 import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
-import { RadixDropdownMenu } from "../radix-menu";
 import type { ShellActions, ShellViewState } from "../types";
 import { FileKindIcon, fileKindForPath } from "./file-kind-icon";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
 
 const COLLAPSED_PROJECT_ITEM_LIMIT = 5;
-const MAX_MOLSTAR_SCENE_STRUCTURES = 200;
 
 type ProjectTreeNode =
   | {
@@ -70,7 +40,10 @@ export function ProjectGroup({
   actions: ShellActions;
   expandFoldersByDefault?: boolean;
 }) {
-  const projectTree = useMemo(() => buildProjectTree(project.items), [project.items]);
+
+  const menus = useWorkspaceMenus();
+  const emptyFolders = project.rootPath ? menus.folders[project.rootPath] : undefined;
+  const projectTree = useMemo(() => buildProjectTree(project.items, emptyFolders), [project.items, emptyFolders]);
   const defaultExpandedFolderPaths = useMemo(
     () => expandFoldersByDefault ? collectProjectFolderPaths(projectTree) : [],
     [expandFoldersByDefault, projectTree],
@@ -115,6 +88,17 @@ export function ProjectGroup({
     renameInputRef.current?.focus();
     renameInputRef.current?.select();
   }, [renaming]);
+
+  useEffect(() => {
+    const expandAll = (event: Event) => {
+      const expanded = (event as CustomEvent<boolean>).detail;
+      setExpandedFolderPaths(new Set(expanded ? collectProjectFolderPaths(projectTree) : []));
+      setShowAllItems(expanded);
+      setShowAllFolderPaths(new Set(expanded ? collectProjectFolderPaths(projectTree) : []));
+    };
+    window.addEventListener("burette-sidebar-expand-all", expandAll);
+    return () => window.removeEventListener("burette-sidebar-expand-all", expandAll);
+  }, [projectTree]);
 
   const handleToggle = () => {
     if (renaming) return;
@@ -191,7 +175,7 @@ export function ProjectGroup({
   const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    void showNativeContextMenu(projectMenuItems(project, actions, startRename), { x: event.clientX, y: event.clientY });
+    void showNativeContextMenu(menus.folder(project, project.rootPath ?? "", true, startRename), { x: event.clientX, y: event.clientY });
   };
   const toggleFolderPath = (path: string) => {
     const descendantPaths = collectProjectFolderPathsFor(projectTree, path).slice(1);
@@ -256,9 +240,6 @@ export function ProjectGroup({
         aria-expanded={expanded}
         aria-label={`${project.title}, ${project.items.length} file${project.items.length === 1 ? "" : "s"}`}
       >
-        <span className="project-folder-icon" aria-hidden="true">
-          <HugeiconsIcon icon={expanded ? Folder02Icon : Folder01Icon} size={16} color="currentColor" strokeWidth={2} />
-        </span>
         <span className="project-group-copy">
           {renaming ? (
             <input
@@ -289,7 +270,6 @@ export function ProjectGroup({
           type="button"
           className="project-folder-toggle-button"
           aria-label={expanded ? `Collapse ${project.title}` : `Expand ${project.title}`}
-          title={expanded ? "Collapse all nested folders" : "Expand all nested folders"}
           onClick={(event) => {
             event.stopPropagation();
             handleRecursiveToggle();
@@ -298,27 +278,21 @@ export function ProjectGroup({
           <FolderExpandCollapseIcon collapse={expanded} />
         </button>
         <span className="project-group-actions">
-          <RadixDropdownMenu
-            items={projectMenuItems(project, actions, startRename)}
-            trigger={(
-              <button
-                type="button"
-                className="project-group-menu-button"
-                aria-label={`${project.title} options`}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                }}
-                onMouseDown={(event) => {
-                  event.stopPropagation();
-                }}
-                onClick={(event) => {
-                  event.stopPropagation();
-                }}
-              >
-                <MoreIcon />
-              </button>
-            )}
-          />
+          <button
+            type="button"
+            className="project-group-menu-button"
+            aria-label={`${project.title} options`}
+            aria-haspopup="menu"
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              const rect = event.currentTarget.getBoundingClientRect();
+              void showNativeContextMenu(menus.folder(project, project.rootPath ?? "", true, startRename), { x: rect.left, y: rect.bottom });
+            }}
+          >
+            <MoreIcon />
+          </button>
         </span>
       </div>
       <div
@@ -359,122 +333,6 @@ export function ProjectGroup({
   );
 }
 
-function projectMenuItems(project: SidebarProject, actions: ShellActions, startRename: () => void) {
-  const scenePaths = molstarScenePathsForProjectFolder(project, null);
-  return [
-    {
-      kind: "item" as const,
-      id: "open-project-molstar-scene",
-      text: "Open all in Mol* scene",
-      disabled: scenePaths.length < 2 || scenePaths.length > MAX_MOLSTAR_SCENE_STRUCTURES,
-      action: () => openProjectFolderMolstarScene(project, null, actions, "structureAll"),
-    },
-    { kind: "separator" as const },
-    {
-      kind: "item" as const,
-      id: project.isPinned ? "unpin-project" : "pin-project",
-      text: project.isPinned ? "Unpin project" : "Pin project",
-      disabled: !project.rootPath,
-      action: () => {
-        if (!project.rootPath) return;
-        actions.togglePinnedProjectRoot(project.rootPath);
-      },
-    },
-    {
-      kind: "item" as const,
-      id: "open-project-folder",
-      text: "Open in Finder",
-      disabled: !project.rootPath,
-      action: () => {
-        void actions.openProjectFolder(project.rootPath);
-      },
-    },
-    { kind: "separator" as const },
-    {
-      kind: "item" as const,
-      id: "rename-project",
-      text: "Rename project",
-      disabled: !project.rootPath,
-      action: () => {
-        if (!project.rootPath) return;
-        startRename();
-      },
-    },
-    { kind: "separator" as const },
-    {
-      kind: "item" as const,
-      id: "remove-project",
-      text: "Remove",
-      disabled: !project.rootPath,
-      action: () => {
-        if (!project.rootPath) return;
-        actions.removeProjectRoot(project.rootPath);
-      },
-    },
-  ];
-}
-
-function projectFolderMenuItems(project: SidebarProject, folderPath: string, actions: ShellActions, startRename: () => void) {
-  const scenePaths = molstarScenePathsForProjectFolder(project, folderPath);
-  return [
-    {
-      kind: "item" as const,
-      id: "open-folder-molstar-scene",
-      text: "Open all in Mol* scene",
-      disabled: scenePaths.length < 2 || scenePaths.length > MAX_MOLSTAR_SCENE_STRUCTURES,
-      action: () => openProjectFolderMolstarScene(project, folderPath, actions, "structureAll"),
-    },
-    { kind: "separator" as const },
-    {
-      kind: "item" as const,
-      id: "open-folder-documents",
-      text: "Open as document tabs",
-      disabled: scenePaths.length === 0,
-      action: () => {
-        if (scenePaths.length > 0) void actions.openStructurePaths(scenePaths);
-      },
-    },
-    {
-      kind: "item" as const,
-      id: "copy-folder-path",
-      text: "Copy Path",
-      disabled: !project.rootPath,
-      action: () => {
-        if (!project.rootPath) return;
-        void actions.copyPath(`${project.rootPath}/${folderPath}`, "folder");
-      },
-    },
-    { kind: "separator" as const },
-    {
-      kind: "item" as const,
-      id: "rename-folder",
-      text: "Rename folder",
-      disabled: !project.rootPath,
-      action: startRename,
-    },
-  ];
-}
-
-function openProjectFolderMolstarScene(
-  project: SidebarProject,
-  folderPath: string | null,
-  actions: ShellActions,
-  sceneMode: DockingSceneMode,
-) {
-  const paths = molstarScenePathsForProjectFolder(project, folderPath);
-  if (paths.length < 2) return;
-  if (paths.length > MAX_MOLSTAR_SCENE_STRUCTURES) return;
-  void actions.openDockingDocument(paths[0], paths.slice(1), { sceneMode });
-}
-
-function molstarScenePathsForProjectFolder(project: SidebarProject, folderPath: string | null) {
-  const prefix = folderPath ? `${folderPath}/` : "";
-  return project.items
-    .filter((item) => (folderPath ? item.relativePath.startsWith(prefix) : true))
-    .filter((item) => item.renderer === "molstar")
-    .map((item) => item.path);
-}
-
 function ProjectTreeNodeView({
   node,
   project,
@@ -500,6 +358,8 @@ function ProjectTreeNodeView({
   toggleFolderPathRecursive: (path: string) => void;
   toggleShowAllFolderPath: (path: string) => void;
 }) {
+
+  const menus = useWorkspaceMenus();
   if (node.kind === "item") {
     return <ProjectItem item={node.item} state={state} actions={actions} depth={depth} />;
   }
@@ -508,23 +368,7 @@ function ProjectTreeNodeView({
   const expanded = forceExpanded || expandedFolderPaths.has(node.path);
   const folderPath = project.rootPath ? `${project.rootPath}/${node.path}` : null;
   const displayName = folderPath ? state.projectNameOverrides?.[folderPath]?.trim() || node.name : node.name;
-  const [renaming, setRenaming] = useState(false);
-  const [renameDraft, setRenameDraft] = useState(displayName);
-  const renameInputRef = useRef<HTMLInputElement | null>(null);
-  const skipRenameCommitRef = useRef(false);
-
-  useEffect(() => {
-    if (!renaming) setRenameDraft(displayName);
-  }, [displayName, renaming]);
-
-  useEffect(() => {
-    if (!renaming) return;
-    renameInputRef.current?.focus();
-    renameInputRef.current?.select();
-  }, [renaming]);
-
   const handleToggle = () => {
-    if (renaming) return;
     if (!forceExpanded) toggleFolderPath(node.path);
   };
   const handleRowClick = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -536,27 +380,10 @@ function ProjectTreeNodeView({
   };
   const startRename = () => {
     if (!folderPath) return;
-    skipRenameCommitRef.current = false;
-    setRenameDraft(displayName);
-    setRenaming(true);
+    const command = menus.folder(project, folderPath, false, () => {}).find(entry => entry.kind === "item" && entry.id === "rename-folder");
+    if (command?.kind === "item") command.action?.();
   };
-  const cancelRename = () => {
-    skipRenameCommitRef.current = true;
-    setRenameDraft(displayName);
-    setRenaming(false);
-  };
-  const commitRename = () => {
-    if (skipRenameCommitRef.current) {
-      skipRenameCommitRef.current = false;
-      return;
-    }
-    if (!folderPath) {
-      cancelRename();
-      return;
-    }
-    actions.renameProjectFolder(folderPath, renameDraft);
-    setRenaming(false);
-  };
+
   const handleRowMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (event.detail < 2) return;
     event.preventDefault();
@@ -577,11 +404,10 @@ function ProjectTreeNodeView({
   const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    void showNativeContextMenu(projectFolderMenuItems(project, node.path, actions, startRename), { x: event.clientX, y: event.clientY });
+    void showNativeContextMenu(menus.folder(project, folderPath ?? "", false, startRename), { x: event.clientX, y: event.clientY });
   };
   const sidebarDrag = useSidebarStructureDrag({
     actions,
-    disabled: renaming,
     getPayload: () => sidebarProjectItemsDragPayload(nodeItems),
     state,
   });
@@ -601,7 +427,7 @@ function ProjectTreeNodeView({
         tabIndex={0}
         className="project-folder-row"
         style={projectDepthStyle(depth)}
-        draggable={!renaming && nodeItems.length > 0}
+        draggable={nodeItems.length > 0}
         onMouseDown={(event) => {
           handleRowMouseDown(event);
           sidebarDrag.onMouseDown(event);
@@ -618,40 +444,12 @@ function ProjectTreeNodeView({
         onKeyDown={handleKeyDown}
         aria-expanded={expanded}
         aria-label={node.path}
-        title={node.path}
       >
-        <span className="project-folder-icon" aria-hidden="true">
-          <HugeiconsIcon icon={expanded ? Folder02Icon : Folder01Icon} size={16} color="currentColor" strokeWidth={2} />
-        </span>
-        {renaming ? (
-          <input
-            ref={renameInputRef}
-            className="project-folder-name-input"
-            value={renameDraft}
-            aria-label={`Rename ${displayName}`}
-            onChange={(event) => setRenameDraft(event.currentTarget.value)}
-            onClick={(event) => event.stopPropagation()}
-            onDoubleClick={(event) => event.stopPropagation()}
-            onKeyDown={(event: ReactKeyboardEvent<HTMLInputElement>) => {
-              event.stopPropagation();
-              if (event.key === "Enter") {
-                event.preventDefault();
-                commitRename();
-              } else if (event.key === "Escape") {
-                event.preventDefault();
-                cancelRename();
-              }
-            }}
-            onBlur={commitRename}
-          />
-        ) : (
-          <MarqueeName className="project-folder-name">{displayName}</MarqueeName>
-        )}
+        <MarqueeName className="project-folder-name">{displayName}</MarqueeName>
         <button
           type="button"
           className="project-folder-toggle-button"
           aria-label={expanded ? `Collapse ${node.path}` : `Expand ${node.path}`}
-          title={expanded ? "Collapse nested folders" : "Expand nested folders"}
           onClick={(event) => {
             event.stopPropagation();
             if (!forceExpanded) toggleFolderPathRecursive(node.path);
@@ -712,6 +510,7 @@ export function ProjectItem({
   nested?: boolean;
   depth?: number;
 }) {
+  const menus = useWorkspaceMenus();
   const sidebarDrag = useSidebarStructureDrag({
     actions,
     getPayload: () => sidebarProjectItemsDragPayload([item]),
@@ -757,58 +556,16 @@ export function ProjectItem({
     actions.setStructureDragActive(false);
     runShellDropActionChoices(actions, payload, choices, { x: event.clientX, y: event.clientY });
   };
-  const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+  const handleContextMenu = async (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    const items = [
-      {
-        kind: "item" as const,
-        id: "open-structure",
-        text: "Open",
-        action: openItem,
-      },
-      {
-        kind: "item" as const,
-        id: "open-structure-as-text",
-        text: "Open as Text",
-        action: () => {
-          void actions.openTextPaths([item.path]);
-        },
-      },
-      {
-        kind: "item" as const,
-        id: "copy-structure-path",
-        text: "Copy Path",
-        action: () => {
-          void actions.copyPath(item.path, "structure");
-        },
-      },
-      ...(isMoleculeCollectionPath(item.path)
-        ? [
-            { kind: "separator" as const },
-            {
-              kind: "item" as const,
-              id: "save-collection-as",
-              text: "Save Collection As...",
-              action: () => {
-                void actions.saveMoleculeCollectionAs(item.documentId ?? item.path);
-              },
-            },
-          ]
-        : []),
-      { kind: "separator" as const },
-      {
-        kind: "item" as const,
-        id: item.isPinned ? "unpin-structure" : "pin-structure",
-        text: item.isPinned ? "Unpin" : "Pin",
-        action: () => actions.togglePinnedStructure(item.path),
-      },
-    ];
-    void showNativeContextMenu(items, { x: event.clientX, y: event.clientY });
+    const paths = menus.selected.has(item.path) ? Array.from(menus.selected) : [item.path];
+    void showNativeContextMenu(await menus.files(paths), { x: event.clientX, y: event.clientY });
   };
   const className = [
     "project",
     item.isActive ? "active" : "",
+    menus.selected.has(item.path) ? "selected" : "",
     item.isPinned ? "pinned" : "",
     nested ? "nested-project" : "",
   ].filter(Boolean).join(" ");
@@ -829,7 +586,8 @@ export function ProjectItem({
       data-drop-document-id={item.documentId ?? undefined}
       onMouseDown={sidebarDrag.onMouseDown}
       onClickCapture={sidebarDrag.onClickCapture}
-      onClick={openItem}
+      onClick={event => { if (!menus.select(item.path, event)) openItem(); }}
+      aria-selected={menus.selected.has(item.path)}
       onDragStart={sidebarDrag.onDragStart}
       onDragEnd={sidebarDrag.onDragEnd}
       onDragOver={handleDragOver}
@@ -845,24 +603,25 @@ export function ProjectItem({
         <MarqueeName className="project-name">{item.title}</MarqueeName>
       </span>
       <span className="project-actions">
-        <button
-          type="button"
-          className={item.isPinned ? "pin-hit pinned" : "pin-hit"}
-          aria-label={(item.isPinned ? "Unpin " : "Pin ") + item.title}
-          title={item.isPinned ? "Unpin structure" : "Pin structure"}
-          onClick={(event) => {
-            event.stopPropagation();
-            actions.togglePinnedStructure(item.path);
-          }}
-        >
-          <PinIcon />
-        </button>
+        <SidebarTooltip label={item.isPinned ? "Unpin structure" : "Pin structure"}>
+          <button
+            type="button"
+            className={item.isPinned ? "pin-hit pinned" : "pin-hit"}
+            aria-label={(item.isPinned ? "Unpin " : "Pin ") + item.title}
+            onClick={(event) => {
+              event.stopPropagation();
+              actions.togglePinnedStructure(item.path);
+            }}
+          >
+            <PinIcon pinned={item.isPinned} />
+          </button>
+        </SidebarTooltip>
       </span>
     </div>
   );
 }
 
-function buildProjectTree(items: SidebarProjectItem[]) {
+function buildProjectTree(items: SidebarProjectItem[], emptyFolders: string[] = []) {
   const roots: ProjectTreeNode[] = [];
   const folders = new Map<string, Extract<ProjectTreeNode, { kind: "folder" }>>();
 
@@ -885,6 +644,7 @@ function buildProjectTree(items: SidebarProjectItem[]) {
     return folder.children;
   };
 
+  for (const path of emptyFolders) childrenFor(path);
   for (const item of items) {
     const segments = item.relativePath.split("/").filter(Boolean);
     const parentPath = segments.length > 1 ? segments.slice(0, -1).join("/") : null;
@@ -945,28 +705,13 @@ function projectDepthStyle(depth: number): CSSProperties {
   return { "--project-depth": depth } as CSSProperties;
 }
 
-function PinIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path
-        d="M8.25 1.75L12.25 5.75L10.4 7.6L9.25 6.45L6.8 8.9L7.15 11.2L6.35 12L4 9.65L1.9 11.75L1.25 11.1L3.35 9L1 6.65L1.8 5.85L4.1 6.2L6.55 3.75L5.4 2.6L8.25 1.75Z"
-        stroke="currentColor"
-        strokeWidth="1.15"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+function PinIcon({ pinned }: { pinned: boolean }) {
+  const Icon = pinned ? PinFilled : Pin;
+  return <Icon size={14} aria-hidden="true" />;
 }
 
 function MoreIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="4" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="12" cy="8" r="1.2" fill="currentColor" />
-    </svg>
-  );
+  return <DotsHorizontal size={16} aria-hidden="true" />;
 }
 
 function FolderExpandCollapseIcon({ collapse }: { collapse: boolean }) {

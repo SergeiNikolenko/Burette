@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown } from "@/components/ui/app-icons";
 import type { ViewerDocument, ViewerPreferences } from "../../types";
 import type { ShellActions } from "../types";
 import { positionMesoscaleControls, requestMesoscale, useMesoscaleStore } from "../../stores/mesoscale-store";

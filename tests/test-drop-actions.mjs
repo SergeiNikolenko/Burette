@@ -60,7 +60,7 @@ assert.deepEqual(buildFileDropPreview({
   bounds: previewBounds,
   point: { x: 480, y: 240 },
 }), {
-  actionLabel: "Add to Ketcher",
+  actionLabel: "Choose an action",
   bounds: previewBounds,
   choiceCount: 3,
   itemLabel: "ligand.sdf",
@@ -980,3 +980,10 @@ assert.equal(resolveDropAction(payload([]), { kind: "workspace" }), null);
 assert.deepEqual(resolveDropActionChoices(payload([]), { kind: "workspace" }), []);
 
 console.log("drop action tests passed");
+
+// Drag-image metadata must not double the visible number of dropped files.
+assert.equal(buildFileDropPreview({
+  payload: { paths: ["/tmp/ligand.sdf"], records: [], items: [{ kind: "file", title: "ligand.sdf", path: "/tmp/ligand.sdf" }] },
+  target: { kind: "workspace" }, source: { kind: "sidebar" },
+  bounds: previewBounds, point: { x: 400, y: 200 },
+}).itemLabel, "ligand.sdf");

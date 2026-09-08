@@ -1,0 +1,29 @@
+/* Keep the molecule visible while identifying exactly one receiving surface. */
+.app-shell[data-drop-active] .viewer-iframe { pointer-events: none; }
+.file-drop-target {
+  border: 1px solid var(--text-secondary);
+  background: color-mix(in srgb, var(--fg-base) 2%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bg-base) 65%, transparent);
+  border-radius: 8px;
+}
+.file-drop-card {
+  background: var(--menu-surface);
+  border-color: var(--line-strong);
+  border-radius: 9px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.file-drop-card-icon {
+  color: var(--text-secondary);
+  background: var(--surface-subtle);
+  box-shadow: none;
+  border-radius: 7px;
+}
+.file-drop-choice-count { background: var(--surface-subtle); box-shadow: none; }
+.dock-panel[data-drop-active],
+.app-shell[data-structure-drag-active="true"] .dock-panel[data-open="true"]:hover {
+  background: var(--bg-base);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.sidebar-tool-row[data-drop-active="true"] { background: var(--surface-hover); box-shadow: inset 0 0 0 1px var(--line-strong); }

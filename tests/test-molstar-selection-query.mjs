@@ -74,11 +74,7 @@ const panel = await read("apps/desktop/src/components/structure-info-panel.tsx")
 const viewer = await read("PreviewExtension/Web/viewer.js");
 const composition = await read("apps/desktop/src/lib/structure-composition.ts");
 
-assert.match(panel, /text: "Add to scene as component"/);
-assert.match(panel, /type: "create_component"/);
-// A chain row has no componentKind of its own, so the representation is chosen
-// from the selector instead - without this a chain came out as ball-and-stick.
-assert.match(panel, /compositionComponentKindFromSelector\(componentSelector\)/);
+assert.ok(!panel.includes('text: "Add to scene as component"'));
 assert.match(composition, /type: "create_component";/);
 assert.match(viewer, /createComponent: createMolstarComponentFromQuery/);
 assert.match(viewer, /if \(type === 'create_component'\)/);
@@ -90,17 +86,6 @@ assert.match(viewer, /addRepresentation\(component, representation, \{ tag: 'bur
 // nullIfEmpty is what stops an unmatched selector leaving an empty row behind.
 assert.match(viewer, /nullIfEmpty: true,\s*\n\s*label\s*\n?\s*\}, key, 'burette-selection'\)/);
 
-// The same act is offered on the viewer's own right click, for whatever is
-// selected there rather than only for a row in the panel. Same wording, because
-// it is the same thing.
-assert.match(viewer, /\['represent:component', 'Add to scene as component'\]/);
-assert.match(viewer, /action === 'represent:component'/);
-// It sits outside the componentRef check on purpose: the item exists for targets
-// that have no component yet.
-assert.doesNotMatch(
-  viewer,
-  /if \(molstarContextComponentRef\(target\)\) \{[^}]*represent:component/
-);
 // Two presses do make two components - "Current Selection" is a referencesCurrent
 // query and Mol* will not fold two of those together, which was measured rather
 // than assumed. So the label has to carry something that tells them apart.
@@ -108,3 +93,40 @@ assert.match(viewer, /`Selection · \$\{atoms\.toLocaleString\(\)\} \$\{atoms ==
 assert.match(viewer, /options: \{ label: componentLabel, checkExisting: true \}/);
 
 console.log("molstar selection query contract ok");
+
+const { compositionSceneAction } = await import("../apps/desktop/src/lib/composition-scene-actions.ts");
+const chainRow = {
+  label: "Chain A", value: "374 residues / 2776 atoms",
+  action: { type: "select_residues", label: "Select chain A", selector: { kind: "polymer", auth_asym_id: "A" }, granularity: "residue" },
+};
+for (const operation of ["hide", "show", "remove"]) {
+  assert.deepEqual(compositionSceneAction(chainRow, operation), {
+    type: `${operation}_components`,
+    label: `${operation[0].toUpperCase()}${operation.slice(1)} chain a`,
+    kind: "polymer", query: "polymer and chain A", componentLabel: "Chain A",
+  });
+}
+const ligandRow = {
+  label: "NAD B 377", value: "44 atoms",
+  action: { type: "focus_ligand", label: "Focus NAD B 377", selector: { kind: "ligand", label_comp_id: "NAD", auth_asym_id: "B", auth_seq_id: 377 } },
+};
+assert.equal(compositionSceneAction(ligandRow, "remove").query, "organic and resn NAD and chain B and resi 377");
+assert.deepEqual(compositionSceneAction({ ...chainRow, label: "Polymers", action: { ...chainRow.action, selector: { kind: "polymer" } } }, "hide"), {
+  type: "hide_components", label: "Hide polymers", kind: "polymer", query: "polymer", componentLabel: "Polymers",
+});
+assert.equal(compositionSceneAction({ ...ligandRow, action: { ...ligandRow.action, selector: { ...ligandRow.action.selector, pdbx_PDB_ins_code: "A" } } }, "remove"), null,
+  "an inexact query must not fall back to removing every ligand");
+assert.equal(compositionSceneAction({ label: "Metadata", value: "1" }, "hide"), null);
+console.log("composition row scene actions ok");
+
+const { compositionStyleMenu } = await import("../apps/desktop/src/components/composition-style-menu.ts");
+const edits = [];
+const menu = compositionStyleMenu(chainRow, action => edits.push(action));
+menu.find(item => item.id === "component-opacity").items.find(item => item.text === "50%").action();
+menu.find(item => item.id === "component-tint").action("#e85d5d");
+assert.deepEqual(edits, [
+  { type: "edit_components", label: "Update Chain A", query: "polymer and chain A", componentLabel: "Chain A", kind: "polymer", edit: { operation: "opacity", value: 0.5 } },
+  { type: "edit_components", label: "Update Chain A", query: "polymer and chain A", componentLabel: "Chain A", kind: "polymer", edit: { operation: "color", value: "#e85d5d" } },
+]);
+assert.deepEqual(compositionStyleMenu({ ...ligandRow, action: { ...ligandRow.action, selector: { ...ligandRow.action.selector, pdbx_PDB_ins_code: "A" } } }, () => {}), []);
+console.log("composition style menu routing ok");

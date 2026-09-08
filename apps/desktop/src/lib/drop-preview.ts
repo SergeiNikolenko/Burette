@@ -55,7 +55,7 @@ export function buildFileDropPreview({
   return {
     actionLabel: target.kind === "dock"
       ? `Open in ${target.area} dock`
-      : choices[0]?.label ?? "Open files",
+      : choices.length > 1 ? "Choose an action" : choices[0]?.label ?? "Open files",
     bounds,
     choiceCount: choices.length,
     itemLabel: dropItemLabel(payload, fallbackItemCount),
@@ -95,7 +95,10 @@ function dropItemLabel(payload: StructureDragPayload, fallbackItemCount: number)
   const labels = [
     ...payload.paths.map(fileName),
     ...payload.records.map((record) => fileName(record.path)),
-    ...(payload.items ?? []).map((item) => item.title.trim()).filter(Boolean),
+    // items describe the same files for drag imagery; do not count them twice.
+    ...(payload.paths.length === 0 && payload.records.length === 0
+      ? (payload.items ?? []).map((item) => item.title.trim()).filter(Boolean)
+      : []),
   ];
   const count = Math.max(labels.length, fallbackItemCount);
   if (count === 1) return labels[0] ?? "1 file";

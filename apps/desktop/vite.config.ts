@@ -87,10 +87,16 @@ const defaultFsAllow = defaultDevFileSources.map((path) => {
   }
 });
 const execFileAsync = promisify(execFile);
-const BROWSER_DEV_APP_ICONS: Record<string, string> = {
+const BROWSER_DEV_APP_ICONS = {
   "default-app": join(repoRoot, "apps", "desktop", "src-tauri", "icons", "icon.png"),
   finder: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns",
-  maestro: "/Applications/SchrodingerSuites2026-1/Maestro.app/Contents/Resources/Maestro.icns",
+  maestro: async () => {
+    const suites = (await readdir("/Applications"))
+      .filter((name) => /^SchrodingerSuites\d{4}-\d+$/u.test(name))
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    return suites.map((suite) => join("/Applications", suite, "Maestro.app/Contents/Resources/Maestro.icns"))
+      .find((path) => existsSync(path));
+  },
   chimerax: "/Applications/ChimeraX-1.10.app/Contents/Resources/chimerax-icon.icns",
   pymol: "/Applications/PyMOL.app/Contents/Resources/pymol.icns",
   avogadro2: "/Applications/Avogadro2.app/Contents/Resources/avogadro.icns",

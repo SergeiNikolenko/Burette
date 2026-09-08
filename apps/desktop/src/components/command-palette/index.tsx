@@ -7,7 +7,10 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandShortcut,
 } from "@/components/ui/command";
+import { ArrowRight, Clipboard, FileDocument, FolderOpen, History, Link, Plus, Search, SettingsCog, type AppIconType } from "../ui/app-icons";
+import { Kbd } from "../ui/kbd";
 import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
@@ -23,7 +26,23 @@ type CommandPaletteProps = {
   onRunError: (error: unknown, prefix?: string) => void;
 };
 
-type PaletteItem = ShellCommand;
+type PaletteItem = ShellCommand & { icon?: AppIconType; detail?: string; shortcut?: string };
+
+const commandIcons: Record<string, AppIconType> = {
+  "open-structure": FolderOpen,
+  "open-clipboard": Clipboard,
+  "fetch-structure-url": Link,
+  "new-window": Plus,
+  "open-recent": History,
+  "search-projects": Search,
+  "open-settings": SettingsCog,
+};
+const commandShortcuts: Record<string, string> = {
+  "open-structure": "⌘O",
+  "open-recent": "⇧⌘O",
+  "search-projects": "⌘P",
+  "open-settings": "⌘,",
+};
 
 export function CommandPalette({
   state,
@@ -39,9 +58,11 @@ export function CommandPalette({
   const items = useMemo<PaletteItem[]>(() => {
     const projectItems = state.sidebarProjects.flatMap((project) => project.items.map((item) => ({
       id: `${item.source}-${item.path}`,
-      group: "Projects",
-      label: `${project.title}: ${item.title}`,
-      description: `${item.relativePath} · ${rendererLabel(item.renderer)} · ${formatBytes(item.byteCount)}${item.isOpen ? "" : " · Recent"}`,
+      group: "Structures",
+      label: item.title,
+      detail: project.title,
+      icon: FileDocument,
+      description: `${project.title} · ${item.relativePath} · ${rendererLabel(item.renderer)} · ${formatBytes(item.byteCount)}${item.isOpen ? "" : " · Recent"}`,
       run: () => {
         if (item.documentId) {
           actions.selectDocument(item.documentId);
@@ -59,15 +80,20 @@ export function CommandPalette({
     })));
 
     const commands: PaletteItem[] = [
-      ...buildShellCommands(state, actions, query),
       ...projectItems,
+      ...buildShellCommands(state, actions, query).map((command) => ({
+        ...command,
+        group: command.group === "Suggested" ? "Quick actions" : command.group,
+        icon: commandIcons[command.id] ?? ArrowRight,
+        shortcut: commandShortcuts[command.id],
+      })),
     ];
     return commands;
   }, [actions, query, state]);
 
   const visibleItems = useMemo(() => {
     const queryUrl = query.trim();
-    const allItems = isRemoteStructureUrl(queryUrl)
+    const allItems: PaletteItem[] = isRemoteStructureUrl(queryUrl)
       ? [{
           id: `fetch-structure-url:${queryUrl}`,
           group: "Suggested",
@@ -76,7 +102,10 @@ export function CommandPalette({
           run: () => actions.openStructureUrlInMolstar(queryUrl),
         }, ...items]
       : items;
-    return filterShellCommands(allItems, query);
+    const matches = filterShellCommands(allItems, query);
+    let structures = 0;
+    return matches.filter((item) => query.trim() || item.group !== "Structures" || ++structures <= 9)
+      .map((item, index) => ({ ...item, shortcut: item.group === "Structures" && index < 9 ? `⌘${index + 1}` : item.shortcut }));
   }, [actions, items, query]);
 
   const visibleGroups = useMemo(() => {
@@ -116,41 +145,70 @@ export function CommandPalette({
       }}
       title="Command Palette"
       description="Search commands and structures."
-      className="top-[16%] w-[min(560px,90vw)] sm:max-w-[min(560px,90vw)]"
+      className="top-[12%] w-[min(560px,90vw)] sm:max-w-[min(560px,90vw)] rounded-2xl!"
     >
       <Command
         label="Command Palette"
         shouldFilter={false}
         value={selectedValue}
         onValueChange={setSelectedValue}
-        className="bg-transparent p-0"
+        onKeyDown={(event) => {
+          if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+          const key = event.key.toLowerCase();
+          if (!event.shiftKey && /^[1-9]$/.test(key)) {
+            // Keep palette shortcuts from also switching workspace tabs.
+            event.preventDefault();
+            event.stopPropagation();
+            const item = visibleItems[Number(key) - 1];
+            if (item?.group === "Structures") runItem(item);
+            return;
+          }
+          const commandId = key === "o" ? event.shiftKey ? "open-recent" : "open-structure"
+            : !event.shiftKey && key === "," ? "open-settings"
+            : !event.shiftKey && key === "p" ? "search-projects" : null;
+          if (!commandId) return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (commandId === "search-projects") onQueryChange("");
+          else {
+            const command = items.find((item) => item.id === commandId);
+            if (command) runItem(command);
+          }
+        }}
+        className="p-1 rounded-2xl!"
       >
         <CommandInput
           value={query}
+          variant="plain"
           onValueChange={onQueryChange}
-          placeholder="Search commands and structures..."
+          placeholder="Search structures and commands…"
           aria-label="Search commands and open structures"
-          className="pl-1.5"
         />
-        <CommandList ref={listRef} className="max-h-80 p-1">
+        <CommandList ref={listRef} className="max-h-[min(560px,64vh)] p-1">
           {visibleItems.length === 0 ? (
             <CommandEmpty>No results found.</CommandEmpty>
           ) : (
             visibleGroups.map((group) => (
               <CommandGroup key={group.heading} heading={group.heading} className="p-0">
-                {group.items.map((item) => (
+                {group.items.map((item) => {
+                  const Icon = item.icon ?? ArrowRight;
+                  return (
                   <CommandItem
                     key={item.id}
                     value={item.id}
                     onSelect={() => runItem(item)}
-                    className="flex-col items-start gap-0.5 px-3 py-2.5"
+                    title={item.description}
+                    className="min-h-8 gap-3 px-3 py-1.5"
                   >
-                    <span className="w-full truncate">{item.label}</span>
-                    <small className="w-full truncate text-xs text-muted-foreground">
-                      {item.description}
-                    </small>
+                    <Icon aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                    <CommandShortcut className="flex min-w-0 items-center gap-2 tracking-normal">
+                      {item.detail ? <span className="max-w-32 truncate">{item.detail}</span> : null}
+                      {item.shortcut ? <Kbd>{item.shortcut}</Kbd> : null}
+                    </CommandShortcut>
                   </CommandItem>
-                ))}
+                  );
+                })}
               </CommandGroup>
             ))
           )}

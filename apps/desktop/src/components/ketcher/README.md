@@ -35,7 +35,7 @@ General controls share the OpenAI Apps SDK UI 0.2.2 glyph snapshot in
 Chemical glyphs and shortcut labels remain upstream-owned. Refresh the desktop
 snapshot with `node scripts/sync-app-icons.mjs`.
 Molecule tool groups have separate primary and dropdown buttons: the primary
-selects the current tool, while the full-height chevron opens alternatives.
+selects the current tool, while a chevron shown on hover or keyboard focus opens alternatives.
 Selecting an option still dispatches the original action. Side rails use native overflow scrolling,
 without upstream arrow strips. Check arrow selection and drawing, wheel access
 to both ends of each rail, and clipboard dropdowns after changing these rules.
@@ -44,3 +44,5 @@ The Burette header owns the single zoom control. Help/About are hidden through
 Ketcher's button config. Fullscreen targets the marked Ketcher page, including
 its header; verify both entry and exit. Molecular selection plates and transform
 handles use neutral theme colors, scoped to the canvas's pinned color markers.
+
+The active Ketcher page portals its Import/Export text controls into the right dock. Import retains automatic format detection and live loading; export subscribes to sketch changes. Close/reopen preserves panel state, and inactive kept-alive pages must not render into the shared dock.
