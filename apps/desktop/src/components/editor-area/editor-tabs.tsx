@@ -1,5 +1,8 @@
+import { useWorkspaceMenus } from "../workspace-menus";
+import { menuSections, submenu } from "../workspace-menu-items";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ShellActions, ShellViewState } from "../types";
+import type { MenuItemSpec } from "../menu-types";
 import { ScrollFade } from "../scroll-fade";
 import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
@@ -7,6 +10,7 @@ import { showNativeContextMenu } from "../native-context-menu";
 import { pageKind } from "./page-kinds";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import { CloseIcon } from "../close-icon";
+import { MarqueeName } from "../marquee-name";
 import { Badge } from "../ui/badge";
 import type { DropTargetContext } from "../../lib/drop-actions";
 import { describeDropTargetElement } from "../../lib/drop-target";
@@ -15,42 +19,6 @@ const TAB_DRAG_MIME = "application/x-burette-tab-id";
 const TAB_REORDER_ANIMATION_MS = 170;
 const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
 const TAB_MOUSE_REORDER_THRESHOLD_PX = 8;
-
-function molstarScenePathsForTabDocument(state: ShellViewState, tabDocument: ShellViewState["documents"][number]) {
-  const projectMatch = state.sidebarProjects
-    .map((project) => ({
-      project,
-      item: project.items.find((item) => item.path === tabDocument.path) ?? null,
-    }))
-    .find((match) => match.item);
-  if (projectMatch?.item) {
-    const folderPath = projectFolderPathForRelativePath(projectMatch.item.relativePath);
-    const prefix = folderPath ? `${folderPath}/` : "";
-    return uniquePaths(projectMatch.project.items
-      .filter((item) => (folderPath ? item.relativePath.startsWith(prefix) : true))
-      .filter((item) => item.renderer === "molstar")
-      .map((item) => item.path));
-  }
-
-  const folderPath = parentPath(tabDocument.path);
-  return uniquePaths(state.documents
-    .filter((document) => document.renderer === "molstar" && parentPath(document.path) === folderPath)
-    .map((document) => document.path));
-}
-
-function projectFolderPathForRelativePath(relativePath: string) {
-  const separatorIndex = relativePath.lastIndexOf("/");
-  return separatorIndex > 0 ? relativePath.slice(0, separatorIndex) : null;
-}
-
-function parentPath(path: string) {
-  const separatorIndex = path.lastIndexOf("/");
-  return separatorIndex > 0 ? path.slice(0, separatorIndex) : "";
-}
-
-function uniquePaths(paths: string[]) {
-  return [...new Set(paths)];
-}
 
 export function EditorTabs({
   state,
@@ -61,6 +29,7 @@ export function EditorTabs({
   actions: ShellActions;
   readOnly?: boolean;
 }) {
+  const workspaceMenus = useWorkspaceMenus();
   const visibleTabs = state.tabs.filter((tab) => tab.location.kind !== "settings");
   const activeTabIndex = visibleTabs.findIndex((tab) => tab.id === state.activeTabId);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
@@ -487,160 +456,72 @@ export function EditorTabs({
                 dockingRequest: tabDocument?.dockingRequest ?? null,
               }
             : null;
-          const showTabMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+          const showTabMenu = async (event: React.MouseEvent<HTMLButtonElement>) => {
             event.preventDefault();
             event.stopPropagation();
             const canSaveAs = tabDocument && isMoleculeCollectionPath(tabDocument.path);
-            const tabMolstarScenePaths = tabDocument?.renderer === "molstar"
-              ? molstarScenePathsForTabDocument(state, tabDocument)
-              : [];
-            const canSelectAll = selectableTabIds().length > 1;
-            const items = [
-              ...(canSaveAs
-                ? [
-                    {
-                      kind: "item" as const,
-                      id: "save-as",
-                      text: "Save As...",
-                      action: () => {
-                        void actions.saveMoleculeCollectionAs(tabDocument.id);
-                      },
-                    },
-                    { kind: "separator" as const },
-                  ]
-                : []),
-              ...(tabDocument
-                ? [
-                    {
-                      kind: "item" as const,
-                      id: "open-tab-document-as-text",
-                      text: "Open as Text",
-                      disabled: tabDocument.virtual === true,
-                      action: () => {
-                        if (tabDocument.virtual) return;
-                        void actions.openTextPaths([tabDocument.path]);
-                      },
-                    },
-                    {
-                      kind: "item" as const,
-                      id: "reveal-tab-document",
-                      text: "Reveal in Finder",
-                      action: () => {
-                        void actions.revealDocument(tabDocument);
-                      },
-                    },
-                    {
-                      kind: "item" as const,
-                      id: "copy-tab-document-path",
-                      text: "Copy Path",
-                      action: () => {
-                        void actions.copyDocumentPath(tabDocument);
-                      },
-                    },
-                    {
-                      kind: "item" as const,
-                      id: "show-tab-document-metadata",
-                      text: "Get Info",
-                      action: () => {
-                        actions.showDocumentMetadata(tabDocument);
-                      },
-                    },
-                    ...(tabDocument.renderer === "molstar"
-                      ? [
-                          {
-                            kind: "item" as const,
-                            id: "open-tab-folder-molstar-scene",
-                            text: "Open all in Mol* scene",
-                            disabled: tabMolstarScenePaths.length < 2,
-                            action: () => {
-                              if (tabMolstarScenePaths.length < 2) return;
-                              void actions.openDockingDocument(
-                                tabMolstarScenePaths[0],
-                                tabMolstarScenePaths.slice(1),
-                                { sceneMode: "structureAll" },
-                              );
-                            },
-                          },
-                        ]
-                      : []),
-                    { kind: "separator" as const },
-                  ]
-                : []),
-              ...(textDocument
-                ? [
-                    {
-                      kind: "item" as const,
-                      id: "reveal-tab-text-file",
-                      text: "Reveal in Finder",
-                      action: () => {
-                        void actions.revealPath(textDocument.path, "file");
-                      },
-                    },
-                    {
-                      kind: "item" as const,
-                      id: "copy-tab-text-file-path",
-                      text: "Copy Path",
-                      action: () => {
-                        void actions.copyPath(textDocument.path, "file");
-                      },
-                    },
-                    {
-                      kind: "item" as const,
-                      id: "show-tab-text-file-metadata",
-                      text: "Get Info",
-                      action: () => {
-                        actions.showTextFileMetadata(textDocument);
-                      },
-                    },
-                    { kind: "separator" as const },
-                  ]
-                : []),
-              ...(canSelectAll
-                ? [
-                    {
-                      kind: "item" as const,
-                      id: "select-all-tabs",
-                      text: "Select All Tabs",
-                      action: selectAllTabs,
-                    },
-                    ...(selectedTabIds.size > 0
-                      ? [
-                          {
-                            kind: "item" as const,
-                            id: "clear-tab-selection",
-                            text: "Clear Tab Selection",
-                            action: clearSelectedTabs,
-                          },
-                        ]
-                      : []),
-                    { kind: "separator" as const },
-                  ]
-                : []),
-              {
-                kind: "item" as const,
-                id: "close-tab",
-                text: "Close Tab",
-                action: () => actions.closeTab(tab.id),
-              },
-              ...(visibleTabs.length > 1
-                ? [
-                    {
-                      kind: "item" as const,
-                      id: "close-other-tabs",
-                      text: "Close Other Tabs",
-                      action: () => actions.closeOtherTabs(tab.id),
-                    },
-                  ]
-                : []),
-              { kind: "separator" as const },
-              {
-                kind: "item" as const,
-                id: "close-all-tabs",
-                text: "Close All Tabs",
-                action: actions.clearAllDocuments,
-              },
+            const tabsToRight = visibleTabs.slice(index + 1).filter(tab => !tab.pinned);
+            const items: MenuItemSpec[] = [
+              { kind: "item", id: tab.pinned ? "unpin-tab" : "pin-tab", text: tab.pinned ? "Unpin Tab" : "Pin Tab",
+                action: () => actions.togglePinnedTab(tab.id) },
             ];
-            void showNativeContextMenu(items, { x: event.clientX, y: event.clientY }, { forceWeb: true });
+            if (tabPath) items.push(
+              { kind: "item", id: "open-tab-right-panel", text: "Open in Right Panel", action: () => {
+                void actions.openDockPayload({ area: "right", tabKind: textDocument ? "text" : "files",
+                  payload: { paths: [tabPath], records: [], items: [tabDragItem] } });
+              } },
+              { kind: "item", id: "show-tab-in-sidebar", text: "Show in Sidebar", action: () => {
+                if (!state.sidebarOpen) actions.toggleSidebar();
+                const project = state.sidebarProjects.find(project => project.items.some(item => item.path === tabPath));
+                if (project && !state.expandedProjectIds.includes(project.id)) actions.toggleProjectExpanded(project.id);
+                actions.setSidebarQuery(tabPath.split("/").pop() ?? tabPath);
+              } },
+            );
+            if (canSaveAs) items.push({ kind: "item", id: "save-as", text: "Save As...",
+              action: () => { void actions.saveMoleculeCollectionAs(tabDocument.id); } });
+            if (tabDocument && !tabDocument.virtual) items.push(
+              { kind: "separator" },
+              { kind: "item", id: "open-tab-document-as-text", text: "Open as Text", action: () => { void actions.openTextPaths([tabDocument.path]); } },
+              { kind: "item", id: "reveal-tab-document", text: "Show in Finder", action: () => { void actions.revealDocument(tabDocument); } },
+              { kind: "item", id: "copy-tab-document-path", text: "Copy Path", action: () => { void actions.copyDocumentPath(tabDocument); } },
+            );
+            if (textDocument) items.push(
+              { kind: "separator" },
+              { kind: "item", id: "reveal-tab-text-file", text: "Show in Finder", action: () => { void actions.revealPath(textDocument.path, "file"); } },
+              { kind: "item", id: "copy-tab-text-file-path", text: "Copy Path", action: () => { void actions.copyPath(textDocument.path, "file"); } },
+            );
+            items.push({ kind: "separator" },
+              { kind: "item", id: "close-tab", text: "Close Tab", action: () => actions.closeTab(tab.id) });
+            if (visibleTabs.some(other => other.id !== tab.id && !other.pinned)) items.push(
+              { kind: "item", id: "close-other-tabs", text: "Close Other Tabs", action: () => actions.closeOtherTabs(tab.id) });
+            if (tabsToRight.length) items.push(
+              { kind: "item", id: "close-tabs-right", text: "Close Tabs to the Right", action: () => { void actions.closeTabs(tabsToRight.map(tab => tab.id)); } });
+            if (visibleTabs.length > 1) items.push(
+              { kind: "item", id: "close-all-tabs", text: "Close All Tabs", action: actions.clearAllDocuments });
+            const chosenTabs = selectedTabIds.has(tab.id) && selectedTabIds.size > 1
+              ? visibleTabs.filter(candidate => selectedTabIds.has(candidate.id)) : [tab];
+            const chosenPaths = chosenTabs.flatMap(candidate => { const path = tabPathForLocation(candidate); return path ? [path] : []; });
+            const shared = chosenPaths.length === chosenTabs.length ? await workspaceMenus.files(chosenPaths) : [];
+            const closing = chosenTabs.length > 1 ? [{ kind: "item" as const, id: "close-selected", text: "Selected", action: () => { void actions.closeTabs(chosenTabs.map(tab => tab.id)); } }]
+              : items.filter(entry => entry.kind === "item" && entry.id.startsWith("close-")).map(entry => entry.kind === "item" ? { ...entry, text: ({ "close-tab": "Tab", "close-other-tabs": "Others", "close-tabs-right": "To the Right", "close-all-tabs": "All" } as Record<string, string>)[entry.id] ?? entry.text } : entry);
+            const pin = { kind: "item" as const, id: "pin-tabs", text: chosenTabs.every(tab => tab.pinned) ? "Unpin" : "Pin", action: () => {
+              const pinned = chosenTabs.every(tab => tab.pinned); chosenTabs.forEach(tab => { if (tab.pinned === pinned) actions.togglePinnedTab(tab.id); });
+            } };
+            const sceneMenu = chosenTabs.length === 1 && tabDocument ? workspaceMenus.scene(tabDocument) : [];
+            const tabMenu = shared.filter(entry => !("id" in entry && ["pin-files", "trash-file", "rename-file", "duplicate-file"].includes(entry.id)));
+            if (sceneMenu.length) {
+              const exports = tabMenu.find(entry => entry.kind === "submenu" && entry.id === "file-export");
+              if (exports?.kind === "submenu") exports.items = exports.items.filter(entry => !("id" in entry && entry.id === "save-scene"));
+            }
+            const open = tabMenu.find(entry => entry.kind === "submenu" && entry.id === "file-open");
+            const reveal: MenuItemSpec[] = [];
+            if (open?.kind === "submenu") {
+              const finder = open.items.find(entry => entry.kind === "item" && entry.id === "open-finder");
+              if (finder?.kind === "item") reveal.push({ ...finder, text: "Reveal in Finder" });
+              open.items = open.items.filter(entry => !("id" in entry && ["open-tabs", "open-as", "open-external", "open-finder"].includes(entry.id)));
+            }
+            const compact = tabMenu.filter(entry => entry.kind !== "separator" && !(entry.kind === "submenu" && !entry.items.length));
+            void showNativeContextMenu(menuSections([...compact.slice(0, 1), pin, ...sceneMenu, ...compact.slice(1), ...reveal], submenu("close-tabs", "Close", closing, "xmark")), { x: event.clientX, y: event.clientY });
           };
           return (
             <div
@@ -674,10 +555,7 @@ export function EditorTabs({
                 className={active ? "tab active" : "tab"}
                 aria-grabbed={isDragging || undefined}
                 onMouseDown={readOnly ? undefined : (event) => {
-                  if (event.button === 2) {
-                    showTabMenu(event);
-                    return;
-                  }
+                  if (event.button !== 0) return;
                   startMouseTabReorder(tab.id, true, event);
                 }}
                 onClick={(event) => handleTabClick(tab.id, event)}
@@ -751,10 +629,10 @@ export function EditorTabs({
                 }}
                 title={readOnly ? title : tabPath ?? title}
               >
-                <span>{title}</span>
+                <MarqueeName className="tab-title">{`${tab.pinned ? "⌖ " : ""}${title}`}</MarqueeName>
                 {dirty ? <Badge className="ml-1.5 size-2 p-0" aria-hidden="true" /> : null}
               </button>
-              {!readOnly ? <button
+              {!readOnly && !tab.pinned ? <button
                 type="button"
                 className="tab-close"
                 aria-label={"Close " + title}

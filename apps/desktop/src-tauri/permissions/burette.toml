@@ -4,6 +4,9 @@ description = "Allows the Burette desktop shell to open structures and manage lo
 commands.allow = [
   "agent_integration_status",
   "frontend_log",
+  "operate_sidebar_file",
+  "popup_macos_context_menu",
+  "read_folder_contents",
   "default_application_icon_path",
   "finder_icon_path",
   "list_chemical_editor_targets",

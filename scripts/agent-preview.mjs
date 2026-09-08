@@ -1684,6 +1684,9 @@ async function main() {
           .replaceAll('./burette-agent.js"', `./burette-agent.js?v=${assetVersion}"`)
           .replaceAll('./molstar-preset-preview-controller.js"', `./molstar-preset-preview-controller.js?v=${assetVersion}"`)
           .replaceAll('./superposition-panel.js"', `./superposition-panel.js?v=${assetVersion}"`)
+          .replaceAll('./molecule-preview-interactions.js"', `./molecule-preview-interactions.js?v=${assetVersion}"`)
+          .replaceAll('./color-picker.js"', `./color-picker.js?v=${assetVersion}"`)
+          .replaceAll('./scene-file-actions.js"', `./scene-file-actions.js?v=${assetVersion}"`)
           .replaceAll('./viewer.js"', `./viewer.js?v=${assetVersion}"`));
         return;
       }

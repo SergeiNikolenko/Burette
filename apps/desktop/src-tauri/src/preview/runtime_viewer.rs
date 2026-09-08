@@ -1173,6 +1173,7 @@ fn viewer_html(
     let trajectory_smoothing_js = asset_url(&assets.join("trajectory-smoothing.js"));
     let preset_preview_controller_js =
         asset_url(&assets.join("molstar-preset-preview-controller.js"));
+    let scene_files_js = asset_url(&assets.join("scene-file-actions.js"));
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
     let molstar_js = asset_url(&assets.join("molstar.js"));
@@ -1204,6 +1205,7 @@ fn viewer_html(
     window.BurettePreviewConfigURL = {config_js:?};
     window.BurettePreviewDataScriptURL = {data_js:?};
     window.BuretteDataURL = {data_bin_js:?};
+    window.BuretteSceneFilesURL = {scene_files_js:?};
     window.BuretteMolstarURL = {molstar_js:?};
     window.BuretteRDKitJSURL = {rdkit_js:?};
     window.BuretteRDKitWasmURL = {rdkit_wasm:?};

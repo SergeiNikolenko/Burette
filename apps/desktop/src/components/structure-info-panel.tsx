@@ -1,3 +1,4 @@
+import { compositionStyleMenu } from "./composition-style-menu";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { showNativeContextMenu } from "./native-context-menu";
@@ -9,7 +10,8 @@ import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState, StructureOverlayMode, StructureViewerAction } from "./types";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
-import { pymolQueryForSelector } from "../lib/molstar-selection-query";
+import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "../lib/viewer-bridge";
+import { compositionSceneAction } from "../lib/composition-scene-actions";
 import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerWorkflow } from "../lib/conformer-ensemble";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -3906,28 +3908,6 @@ function structureRowsKeyDown(event: KeyboardEvent<HTMLDivElement>) {
 // places without matching names by eye.
 type CompositionTone = "polymer" | "ligand" | "ion" | "water" | "entry";
 
-// Only the four group rows stand for a Mol* component, so only they can be
-// hidden or removed as a whole. A chain or one ligand instance is a
-// sub-selection inside a component - there is no scene node to take out.
-type CompositionComponentKind = "polymer" | "ligand" | "ion" | "water";
-
-function compositionComponentKind(label: string): CompositionComponentKind | undefined {
-  if (label === "Polymers") return "polymer";
-  if (label === "Ligands") return "ligand";
-  if (label === "Ions") return "ion";
-  if (label === "Water") return "water";
-  return undefined;
-}
-
-// The group rows are named after their kind, but a chain or a ligand instance is
-// not - it is named after itself. Its selector still says which kind it belongs
-// to, which is what decides how a new component made from it gets drawn.
-function compositionComponentKindFromSelector(selector: unknown): CompositionComponentKind | undefined {
-  if (!selector || typeof selector !== "object") return undefined;
-  const kind = (selector as { kind?: unknown }).kind;
-  return kind === "polymer" || kind === "ligand" || kind === "ion" || kind === "water" ? kind : undefined;
-}
-
 function compositionToneFor(label: string): CompositionTone {
   if (label === "Polymers" || label.startsWith("Chain")) return "polymer";
   if (label === "Ligands") return "ligand";
@@ -4048,21 +4028,62 @@ function StructureCompositionCard({
     return next;
   });
   const [query, setQuery] = useState("");
-  // The viewer owns visibility; the panel only remembers what it asked for, so
-  // the eye matches the last instruction the row gave.
-  const [hiddenKinds, setHiddenKinds] = useState<Set<CompositionComponentKind>>(new Set());
+  // Group rows retain their requested state; scoped rows also receive updates
+  // from their real scene cells, including changes made in the viewer's tree.
+  const [hiddenRows, setHiddenRows] = useState<Set<string>>(new Set());
+  const [rowColors, setRowColors] = useState<Map<string, string>>(new Map());
   useEffect(() => {
     setQuery("");
-    setHiddenKinds(new Set());
+    setHiddenRows(new Set());
+    setRowColors(new Map());
   }, [document.id]);
-  const toggleHidden = (kind: CompositionComponentKind, hide: boolean) => {
-    actions.runStructureViewerAction(document, kind === "water"
-      ? { type: hide ? "hide_waters" : "show_waters", label: hide ? "Hide water" : "Show water" }
-      : { type: hide ? "hide_components" : "show_components", label: hide ? "Hide" : "Show", kind });
-    setHiddenKinds((current) => {
+  useEffect(() => {
+    const keys = new Map<string, string>();
+    for (const group of groups) {
+      for (const row of [group.row, ...group.children]) {
+        const action = compositionSceneAction(row, "hide");
+        if (action && "query" in action && action.query) keys.set(action.query, structureActionRowKey(row, 0));
+      }
+    }
+    const requestVisibility = () => activeViewerIframeForDocument(document.id)?.contentWindow?.postMessage({
+      source: "burette-agent-host", body: { type: "compositionVisibilityRequest", queries: [...keys.keys()].slice(0, 128) },
+    }, "*");
+    const receive = (event: MessageEvent) => {
+      if (!isKnownViewerMessageSource(event.source, document.id)) return;
+      const body = event.data?.body;
+      if (body?.type === "ready") requestVisibility();
+      if (body?.type !== "compositionVisibilityChanged" || !Array.isArray(body.rows)) return;
+      setRowColors(current => {
+        const next = new Map(current);
+        for (const row of body.rows.slice(0, 128)) {
+          const key = keys.get(row?.query);
+          if (!key) continue;
+          if (typeof row.color === "string" && /^#[0-9a-f]{6}$/i.test(row.color)) next.set(key, row.color);
+          else next.delete(key);
+        }
+        return next;
+      });
+      setHiddenRows((current) => {
+        const next = new Set(current);
+        for (const row of body.rows.slice(0, 128)) {
+          const key = keys.get(row?.query);
+          if (!key || typeof row.hidden !== "boolean") continue;
+          if (row.hidden) next.add(key);
+          else next.delete(key);
+        }
+        return next;
+      });
+    };
+    window.addEventListener("message", receive);
+    requestVisibility();
+    return () => window.removeEventListener("message", receive);
+  }, [document.id, groups]);
+  const markHidden = (row: StructureSummaryRow, hide: boolean) => {
+    setHiddenRows((current) => {
       const next = new Set(current);
-      if (hide) next.add(kind);
-      else next.delete(kind);
+      const key = structureActionRowKey(row, 0);
+      if (hide) next.add(key);
+      else next.delete(key);
       return next;
     });
   };
@@ -4103,12 +4124,9 @@ function StructureCompositionCard({
                 <StructureActionRow
                   row={group.row}
                   tone={group.tone}
-                  componentKind={compositionComponentKind(group.row.label)}
-                  hidden={(() => {
-                    const kind = compositionComponentKind(group.row.label);
-                    return kind ? hiddenKinds.has(kind) : undefined;
-                  })()}
-                  onToggleHidden={toggleHidden}
+                  color={rowColors.get(structureActionRowKey(group.row, 0))}
+                  hidden={hiddenRows.has(structureActionRowKey(group.row, 0))}
+                  onHiddenChange={(hidden) => markHidden(group.row, hidden)}
                   document={document}
                   actions={actions}
                   activeActionKey={activeActionKey}
@@ -4134,11 +4152,15 @@ function StructureCompositionCard({
                         key={structureActionRowKey(child, index)}
                         row={child}
                         tone={group.tone}
+                        color={rowColors.get(structureActionRowKey(child, 0))}
+                        hidden={hiddenRows.has(structureActionRowKey(child, 0))}
+                        onHiddenChange={(hidden) => markHidden(child, hidden)}
                         document={document}
                         actions={actions}
                         activeActionKey={activeActionKey}
                         setActiveActionKey={setActiveActionKey}
                         compact
+                        leading={<span className="structure-inspector-tree-spacer" aria-hidden="true" />}
                       />
                     ))}
                   </div>
@@ -4189,9 +4211,9 @@ function structureActionRowKey(row: StructureSummaryRow, index: number) {
 function StructureActionRow({
   row,
   tone,
-  componentKind,
   hidden,
-  onToggleHidden,
+  color,
+  onHiddenChange,
   document,
   actions,
   activeActionKey,
@@ -4201,9 +4223,9 @@ function StructureActionRow({
 }: {
   row: StructureSummaryRow;
   tone?: CompositionTone;
-  componentKind?: CompositionComponentKind;
   hidden?: boolean;
-  onToggleHidden?: (kind: CompositionComponentKind, hide: boolean) => void;
+  color?: string;
+  onHiddenChange?: (hidden: boolean) => void;
   document: ViewerDocument;
   actions: ShellActions;
   activeActionKey: string | null;
@@ -4266,17 +4288,25 @@ function StructureActionRow({
     }
     actions.runStructureViewerAction(document, action);
     if (key) setActiveActionKey(key);
+    if (!("query" in action) || !action.query) {
+      if (action.type === "hide_components" || action.type === "hide_waters" || action.type === "remove_components") onHiddenChange?.(true);
+      if (action.type === "show_components" || action.type === "show_waters") onHiddenChange?.(false);
+    }
   };
+  const hideAction = compositionSceneAction(row, "hide");
+  const showAction = compositionSceneAction(row, "show");
+  const removeAction = compositionSceneAction(row, "remove");
   const showContextMenu = (event: MouseEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
     void showNativeContextMenu(contextMenuItems({
       row,
       document,
-      componentKind,
-      primaryAction,
+          primaryAction,
       secondaryAction,
       selected,
+      hidden: hidden === true,
+      color,
       runAction,
       clearSelection: () => {
         actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear selection" });
@@ -4313,11 +4343,12 @@ function StructureActionRow({
       >
         {content()}
       </button>
-      {componentKind ? (
+      {hideAction && showAction && removeAction ? (
         // Remove sits ahead of the eye because that is the order the scene tree
         // puts them in; a row that reads the same in both places has to reach
         // the same control at the same spot.
         <span className="structure-inspector-row-actions">
+          {color ? <button type="button" className="structure-inspector-row-dot" style={{ backgroundColor: color }} aria-label={`Colour ${row.label}`} title={`Colour ${row.label}`} onClick={showContextMenu} /> : null}
           <Button
             type="button"
             variant="ghost"
@@ -4325,7 +4356,7 @@ function StructureActionRow({
             className="structure-inspector-row-action"
             aria-label={`Remove ${row.label.toLowerCase()}`}
             title={`Remove ${row.label.toLowerCase()}`}
-            onClick={() => runAction({ type: "remove_components", label: `Remove ${row.label.toLowerCase()}`, kind: componentKind })}
+            onClick={() => runAction(removeAction)}
           >
             <TrashIcon />
           </Button>
@@ -4337,7 +4368,7 @@ function StructureActionRow({
             data-hidden={hidden ? "true" : undefined}
             aria-label={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
             title={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
-            onClick={() => onToggleHidden?.(componentKind, !hidden)}
+            onClick={() => runAction(hidden ? showAction : hideAction)}
           >
             {hidden ? <EyeOffIcon /> : <EyeIcon />}
           </Button>
@@ -4484,19 +4515,21 @@ function selectionActionKey(document: ViewerDocument, action: StructureViewerAct
 function contextMenuItems({
   row,
   document,
-  componentKind,
   primaryAction,
   secondaryAction,
   selected,
+  hidden,
+  color,
   runAction,
   clearSelection,
 }: {
   row: StructureSummaryRow;
   document: ViewerDocument;
-  componentKind?: CompositionComponentKind;
   primaryAction: StructureViewerAction;
   secondaryAction?: StructureViewerAction;
   selected: boolean;
+  hidden: boolean;
+  color?: string;
   runAction: (action: StructureViewerAction) => void;
   clearSelection: () => void;
 }): MenuItemSpec[] {
@@ -4519,54 +4552,14 @@ function contextMenuItems({
       action: () => runAction(secondaryAction),
     });
   }
-  if (componentKind) {
-    const hideShow: StructureViewerAction[] = componentKind === "water"
-      ? [{ type: "hide_waters", label: "Hide" }, { type: "show_waters", label: "Show" }]
-      : [
-        { type: "hide_components", label: "Hide", kind: componentKind },
-        { type: "show_components", label: "Show", kind: componentKind },
-      ];
+  const hideAction = compositionSceneAction(row, "hide");
+  const showAction = compositionSceneAction(row, "show");
+  const removeAction = compositionSceneAction(row, "remove");
+  if (hideAction && showAction && removeAction) {
     items.push(
       { kind: "separator" },
-      { kind: "label", id: "row-visibility", text: "Scene" },
-      { kind: "item", id: "hide-component", text: "Hide", tooltip: `Drop the ${row.label.toLowerCase()} representation`, action: () => runAction(hideShow[0]) },
-      { kind: "item", id: "show-component", text: "Show", tooltip: `Draw the ${row.label.toLowerCase()} again`, action: () => runAction(hideShow[1]) },
-      {
-        kind: "item",
-        id: "remove-component",
-        text: "Remove",
-        tooltip: `Take the ${row.label.toLowerCase()} out of the scene tree`,
-        action: () => runAction({ type: "remove_components", label: `Remove ${row.label.toLowerCase()}`, kind: componentKind }),
-      },
-    );
-  }
-  // A chain or a ligand instance is a selector, not a scene object, so the tree's
-  // colour and representation controls have nothing to address. Making a component
-  // out of it gives it a row in the scene tree, and every one of those controls
-  // comes with it. The item is absent when the query cannot be written exactly:
-  // a component wider than the row it came from would be a lie.
-  const componentSelector = "selector" in primaryAction ? primaryAction.selector : undefined;
-  const componentQuery = pymolQueryForSelector(componentSelector);
-  // The row's own kind decides how the new component is drawn - a chain wants a
-  // cartoon, a ligand ball-and-stick. `componentKind` only exists on the four
-  // group rows, so a chain row has to read it off the selector it already carries.
-  const componentQueryKind = componentKind ?? compositionComponentKindFromSelector(componentSelector);
-  if (componentQuery) {
-    items.push(
-      { kind: "separator" },
-      {
-        kind: "item",
-        id: "create-component",
-        text: "Add to scene as component",
-        tooltip: `Give ${row.label} its own row in the scene tree, with the colour and representation controls that come with one`,
-        action: () => runAction({
-          type: "create_component",
-          label: `Add ${row.label} to the scene`,
-          query: componentQuery,
-          componentLabel: row.label,
-          kind: componentQueryKind,
-        }),
-      },
+      { kind: "item", id: "toggle-component", text: hidden ? "Show" : "Hide", action: () => runAction(hidden ? showAction : hideAction) },
+      ...compositionStyleMenu(row, runAction, color),
     );
   }
   items.push(
@@ -4585,6 +4578,10 @@ function contextMenuItems({
       tooltip: document.title,
       action: () => void navigator.clipboard?.writeText(`${row.label}: ${row.value}`),
     },
+  );
+  if (removeAction) items.push(
+    { kind: "separator" },
+    { kind: "item", id: "remove-component", text: "Remove", tooltip: `Take ${row.label} out of the scene`, action: () => runAction(removeAction) },
   );
   return items;
 }

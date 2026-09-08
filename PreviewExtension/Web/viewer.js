@@ -27,7 +27,7 @@
   const MOLSTAR_LASSO_PREVIEW_ATOM_LIMIT = 128;
   const MOLSTAR_LASSO_COMPONENT_KEY = 'burette-lasso-selection';
   const MOLSTAR_LASSO_COMPONENT_TAG = 'burette-lasso-selection-object';
-  const MOLSTAR_PREVIEW_RDKIT_SVG_SIZE = 260;
+  const MOLSTAR_PREVIEW_RDKIT_SVG_SIZE = 420;
   const MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS = 300;
   const MOLSTAR_EDIT_HISTORY_LIMIT = 20;
   const MOLSTAR_PRESET_PREVIEW_CLOSE_DELAY_MS = 700;
@@ -633,6 +633,29 @@
 
   async function executeBuretteAgentAction(action) {
     const type = String(action?.type || '');
+    if (type === 'workspace_scene_state') {
+      return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length) } };
+    }
+    if (type === 'align_scene_files') {
+      if (!activeStructureAlignmentControl) throw new Error('This scene does not support structure alignment.');
+      await activeStructureAlignmentControl.apply({ method: 'auto' });
+      return { ok: true, result: { aligned: true } };
+    }
+    if (type === 'export_scene_structure') {
+      const payload = molstarModifiedStructureExportPayloadForFormat(action.format);
+      if (new TextEncoder().encode(payload.text).length > 24 * 1024 * 1024) throw new Error('Structure export exceeds 24 MB.');
+      return { ok: true, result: payload };
+    }
+    if (type === 'copy_scene_sequence') {
+      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+      return { ok: true, result: { text: window.BuretteSceneFiles.sequence(activeMolstarViewer()) } };
+    }
+    if (type === 'append_scene_files') {
+      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+      return window.BuretteSceneFiles.append(activeMolstarViewer(), action, {
+        load: loadMolstarEntry, capture: captureMolstarCameraSnapshot, restore: restoreMolstarCameraSnapshotNow
+      });
+    }
     if (type === 'story_observe') {
       return molstarStoryResult('story_observe');
     }
@@ -679,6 +702,9 @@
     }
     if (type === 'show_components') {
       return window.BuretteSceneActions?.showComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showComponents is unavailable.');
+    }
+    if (type === 'edit_components') {
+      return window.BuretteSceneActions?.editComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'Component editing is unavailable.');
     }
     if (type === 'remove_components') {
       return window.BuretteSceneActions?.removeComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.removeComponents is unavailable.');
@@ -1320,6 +1346,15 @@
 
   window.addEventListener('message', event => {
     const body = event.data && event.data.source === 'burette-agent-host' ? event.data.body : null;
+    if (body?.type === 'compositionVisibilityRequest') {
+      for (const query of (Array.isArray(body.queries) ? body.queries.slice(0, 128) : [])) {
+        if (typeof query === 'string' && query.length > 0 && query.length <= 4096) molstarCompositionQueries.set(query, null);
+      }
+      while (molstarCompositionQueries.size > 128) molstarCompositionQueries.delete(molstarCompositionQueries.keys().next().value);
+      molstarCompositionVisibilitySignature = '';
+      reportMolstarCompositionVisibility();
+      return;
+    }
     if (!body || body.type !== 'agent-action' || !body.id) return;
     void (async () => {
       let result;
@@ -6899,6 +6934,7 @@
             nodes.push(...build(decoratorChain(childRef)));
             continue;
           }
+          if (cell.transform.tags?.includes('measurement-group') && !(children.get(childRef)?.length)) continue;
           const chain = decoratorChain(childRef);
           const nodeRef = chain[chain.length - 1];
           const nodeCell = state.cells.get(nodeRef) || cell;
@@ -7073,6 +7109,7 @@
     sceneTreeRenderHandle = window.setTimeout(() => {
       sceneTreeRenderHandle = 0;
       renderSceneTree();
+      reportMolstarCompositionVisibility();
     }, 0);
   }
 
@@ -8003,7 +8040,7 @@
 
   function sceneTreeMenuSwatches(menu, label, action, currentValue) {
     const swatches = document.createElement('div');
-    swatches.className = 'buret-tree-swatches';
+    swatches.className = 'buret-tree-swatches buret-tree-swatches-with-picker';
     for (const entry of SCENE_TREE_UNIFORM_COLORS) {
       const swatch = document.createElement('button');
       swatch.type = 'button';
@@ -8016,6 +8053,37 @@
       swatch.title = entry.label;
       swatches.appendChild(swatch);
     }
+    const custom = document.createElement('button');
+    custom.type = 'button';
+    custom.className = 'buret-tree-swatch buret-tree-swatch-custom';
+    custom.title = 'Choose custom colour';
+    custom.appendChild(sceneTreeIconElement(['M12 5v14', 'M5 12h14']));
+    custom.setAttribute('aria-label', `Choose custom colour for ${label}`);
+    custom.setAttribute('aria-haspopup', 'dialog');
+    custom.setAttribute('aria-expanded', 'false');
+    let colourUndoSnapshot = null;
+    const picker = window.BuretteColorPicker.create(Number.isFinite(currentValue) ? currentValue : 0xffffff, value => {
+      const ref = menu.closest('[data-ref]')?.dataset.ref;
+      if (!ref) return;
+      if (!colourUndoSnapshot) colourUndoSnapshot = captureMolstarSceneUndoSnapshot(molstarSceneMenuUndoLabel(action, ref, custom));
+      void streamSceneTreeTheme(ref, action, 'tint', value);
+    }, () => {
+      if (colourUndoSnapshot) pushMolstarEditUndoSnapshot(colourUndoSnapshot);
+      colourUndoSnapshot = null;
+    });
+    picker.addEventListener('toggle', event => custom.setAttribute('aria-expanded', String(event.newState === 'open')));
+    custom.addEventListener('click', event => {
+      event.stopPropagation();
+      if (picker.matches(':popover-open')) { picker.hidePopover(); return; }
+      const owner = menu.closest('.buret-molecule-context-submenu, #buret-scene-tree-menu') || menu;
+      const ownerRect = owner.getBoundingClientRect();
+      picker.style.width = `${ownerRect.width}px`;
+      picker.style.left = `${ownerRect.left}px`;
+      picker.showPopover();
+      picker.style.top = `${Math.max(8, ownerRect.top - picker.offsetHeight - 8)}px`;
+      picker.querySelector('input[type="text"]').focus();
+    });
+    swatches.append(custom, picker);
     menu.appendChild(swatches);
   }
 
@@ -8167,17 +8235,17 @@
   // the opacity drag does, so the scene follows the cursor instead of a backlog.
   let sceneTreeThemeInFlight = false;
   let sceneTreePendingTheme = null;
-  async function streamSceneTreeTheme(ref, action, name) {
-    sceneTreePendingTheme = { ref, action, name };
+  async function streamSceneTreeTheme(ref, action, name, value = null) {
+    sceneTreePendingTheme = { ref, action, name, value };
     if (sceneTreeThemeInFlight) return;
     sceneTreeThemeInFlight = true;
     try {
       while (sceneTreePendingTheme) {
         const next = sceneTreePendingTheme;
         sceneTreePendingTheme = null;
-        await (next.action === 'representation-color'
-          ? applySceneTreeReprColor(next.ref, next.name, null)
-          : applySceneTreeColorTheme(next.ref, next.name, null));
+        await (next.action === 'representation-color' || next.action === 'rep-tint-color'
+          ? applySceneTreeReprColor(next.ref, next.name, next.value)
+          : applySceneTreeColorTheme(next.ref, next.name, next.value));
       }
     } finally {
       sceneTreeThemeInFlight = false;
@@ -8301,24 +8369,6 @@
         sceneTreeMenuThemePicker(menu, 'Theme', 'color-theme', sceneTreeColorThemes(viewer, components), node.theme);
         sceneTreeMenuSwatches(menu, node.label, 'tint-color', node.value);
       }
-    }
-
-    // Mol*'s own actions are many and rarely the reason the menu was opened, so they
-    // stay folded away instead of pushing everything else off the screen.
-    const actions = isLassoSelection ? [] : sceneTreeCellActions(viewer, ref);
-    if (actions.length) {
-      sceneTreeMenuSection(menu);
-      const disclosure = document.createElement('details');
-      disclosure.className = 'buret-tree-menu-actions';
-      const summary = document.createElement('summary');
-      summary.textContent = 'Apply action';
-      disclosure.appendChild(summary);
-      actions.forEach((entry, index) => {
-        disclosure.appendChild(sceneTreeMenuItem(entry.label, 'apply-action', {
-          data: { sceneTreeActionIndex: String(index) }
-        }));
-      });
-      menu.appendChild(disclosure);
     }
 
     sceneTreeMenuSection(menu, isLassoSelection ? 'Selection' : '');
@@ -9999,7 +10049,41 @@
     updateSelectionBar();
   }
 
+  const guardedMeasurementManagers = new WeakSet();
+
+  function guardMolstarMeasurementOrderLabels(viewer) {
+    const plugin = viewer?.plugin;
+    const manager = plugin?.managers?.structure?.measurement;
+    if (!manager?.addOrderLabels || guardedMeasurementManagers.has(manager)) return;
+    guardedMeasurementManagers.add(manager);
+    const addOrderLabels = manager.addOrderLabels.bind(manager);
+    let pending = Promise.resolve();
+    manager.addOrderLabels = locis => {
+      const next = pending.then(async () => {
+        if (locis.length) return addOrderLabels(locis);
+        // Mol*'s empty-list implementation calls getGroup(), creating a group
+        // just to clear it. Panel unmounts can enqueue many such creations before
+        // any one commits. Clear transient order labels directly and serialize
+        // requests; never create a group on the cleanup path.
+        const state = plugin.state.data;
+        const cells = [...state.cells.values()];
+        const transient = new Set(cells.filter(cell => cell.transform.tags?.includes('measurement-order-label')).map(cell => cell.transform.ref));
+        const emptyGroups = cells.filter(cell => cell.transform.tags?.includes('measurement-group')
+          && !cells.some(child => child.transform.parent === cell.transform.ref && !transient.has(child.transform.ref)));
+        if (!transient.size && !emptyGroups.length) return;
+        const update = state.build();
+        for (const ref of transient) update.delete(ref);
+        for (const cell of emptyGroups) update.delete(cell.transform.ref);
+        await update.commit();
+      });
+      pending = next.catch(() => {});
+      return next;
+    };
+    void manager.addOrderLabels([]).catch(error => debug(`measurement cleanup failed: ${error?.message || error}`));
+  }
+
   function initSceneTree(viewer) {
+    guardMolstarMeasurementOrderLabels(viewer);
     const toggle = document.getElementById('buret-scene-tree-toggle');
     const panel = document.getElementById('buret-scene-tree');
     if (!toggle || !panel) return;
@@ -10181,7 +10265,10 @@
     const events = viewer?.plugin?.state?.data?.events;
     const subscriptions = [
       events?.changed?.subscribe?.(scheduleSceneTreeRender),
-      events?.cell?.stateUpdated?.subscribe?.(scheduleSceneTreeRender)
+      events?.cell?.stateUpdated?.subscribe?.(scheduleSceneTreeRender),
+      viewer?.plugin?.behaviors?.state?.isUpdating?.subscribe?.(updating => {
+        if (!updating) scheduleSceneTreeRender();
+      })
     ].filter(Boolean);
     if (subscriptions.length) {
       sceneTreeStateDisposer = () => subscriptions.forEach(subscription => subscription?.unsubscribe?.());
@@ -15420,7 +15507,227 @@
     return { ok: true, command: 'clear_selection', result: { cleared: true } };
   }
 
+  const molstarCompositionQueries = new Map();
+  let molstarCompositionVisibilitySignature = '';
+  let molstarQueryComponentActions = Promise.resolve();
+
+  const compositionQueryCache = new WeakMap();
+
+  function compositionQueryLoci(structure, query) {
+    const parent = structure.cell?.obj?.data;
+    const transform = window.molstar?.lib?.plugin?.StateTransforms?.Model?.StructureComponent;
+    const { Structure } = molstarStructureRuntime();
+    if (!parent || !transform?.definition?.apply) return null;
+    let cache = compositionQueryCache.get(parent);
+    if (!cache) compositionQueryCache.set(parent, cache = new Map());
+    if (cache.has(query)) return cache.get(query);
+    // Evaluate the same Mol* component transform without adding a state node.
+    // This gives both trees exact subset visibility even before the first edit.
+    let loci = null;
+    try {
+      const component = transform.definition.apply({ a: structure.cell.obj, params: {
+        type: { name: 'script', params: { language: 'pymol', expression: query } }, nullIfEmpty: true, label: ''
+      }, cache: {} });
+      if (component?.data?.elementCount) loci = Structure.toSubStructureElementLoci(parent, component.data);
+    } catch (_) { /* Unsupported queries don't fall back to a wider component. */ }
+    cache.set(query, loci);
+    while (cache.size > 128) cache.delete(cache.keys().next().value);
+    return loci;
+  }
+
+  function reportMolstarCompositionVisibility() {
+    if (!molstarCompositionQueries.size) return;
+    const plugin = activeMolstarViewer()?.plugin;
+    if (plugin?.behaviors?.state?.isUpdating?.value) return;
+    const viewer = activeMolstarViewer();
+    const structures = molstarCurrentStructures(viewer);
+    if (!structures.length) return;
+    const { StructureElement } = molstarStructureRuntime();
+    const rows = [...molstarCompositionQueries.keys()].map(query => {
+      const matched = [];
+      for (const structure of structures) {
+        const loci = compositionQueryLoci(structure, query);
+        if (!loci) continue;
+        for (const component of structure.components || []) {
+          const data = component.cell?.obj?.data;
+          if (data && StructureElement.Loci.size(StructureElement.Loci.remap(loci, data))) matched.push(component);
+        }
+      }
+      const tint = sceneTreeColorState(matched).value;
+      return {
+        query,
+        hidden: !matched.some(component => !component.cell.state.isHidden
+          && component.representations?.some(repr => !repr.cell.state.isHidden)),
+        color: Number.isFinite(tint) ? sceneTreeColorHex(tint) : null
+      };
+    });
+    const signature = JSON.stringify(rows);
+    if (signature === molstarCompositionVisibilitySignature) return;
+    molstarCompositionVisibilitySignature = signature;
+    post('compositionVisibilityChanged', '', { rows });
+  }
+
+  function queueMolstarQueryComponentAction(action, operation) {
+    const next = molstarQueryComponentActions.then(async () => {
+      const snapshot = captureMolstarSceneUndoSnapshot(`${operation} ${action.componentLabel || 'component'}`);
+      const result = await changeMolstarQueryComponents(action, operation);
+      if (result?.ok) pushMolstarEditUndoSnapshot(snapshot);
+      return result;
+    });
+    molstarQueryComponentActions = next.catch(() => {});
+    return next;
+  }
+
+  // Lives beside the component actions because splitting needs the viewer's
+  // private structure runtime and scene-tree visibility helpers. Split once,
+  // then use ordinary scene cells: both trees operate on the same objects.
+  async function changeMolstarQueryComponents(action, operation) {
+    const command = `${operation}_components`;
+    const query = typeof action.query === 'string' ? action.query.trim() : '';
+    if (!query || query.length > 4096) return sceneActionFailure(command, 'INVALID_ARGUMENT', 'An exact component query is required.');
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    const manager = plugin?.managers?.structure?.component;
+    const selection = plugin?.managers?.structure?.selection;
+    const { Structure, StructureElement } = molstarStructureRuntime();
+    if (!plugin?.dataTransaction || !plugin?.builders?.structure?.tryCreateComponent
+      || !manager?.modifyByCurrentSelection || !manager?.updateRepresentations || !selection?.getSnapshot || !selection?.setSnapshot
+      || !Structure?.toSubStructureElementLoci || !StructureElement?.Loci?.remap
+      || !StructureElement?.Loci?.toStructure || !StructureElement?.Bundle?.fromSubStructure) {
+      return sceneActionFailure(command, 'NOT_IMPLEMENTED', 'Mol* subset component editing is unavailable.');
+    }
+    const edit = operation === 'edit' ? action.edit : null;
+    if (operation === 'edit' && !(edit && (
+      (edit.operation === 'representation' && ['cartoon', 'backbone', 'ball-and-stick', 'spacefill', 'line', 'molecular-surface'].includes(edit.value))
+      || (edit.operation === 'opacity' && Number.isFinite(edit.value) && edit.value >= 0 && edit.value <= 1)
+      || (edit.operation === 'color' && /^#[0-9a-f]{6}$/i.test(edit.value))
+    ))) return sceneActionFailure(command, 'INVALID_ARGUMENT', 'Unsupported component edit.');
+    const savedSelection = selection.getSnapshot();
+    const label = String(action.componentLabel || 'Selection');
+    const representation = representationForSceneComponentKind(normalizeSceneComponentKind(action.kind));
+    const affectedRefs = new Set();
+    let componentCount = 0;
+    let atoms = 0;
+    try {
+      await plugin.dataTransaction(async () => {
+        for (const structure of molstarCurrentStructures(viewer)) {
+          const parent = structure.cell?.obj?.data;
+          if (!parent) continue;
+          const components = [...(structure.components || [])];
+          const probe = await plugin.builders.structure.tryCreateComponent(structure.cell, {
+            type: { name: 'script', params: { language: 'pymol', expression: query } },
+            nullIfEmpty: true,
+            label
+          }, `burette-inspector-query-${query}`, ['burette-inspector-subset']);
+          if (!probe?.obj?.data) continue;
+          const loci = Structure.toSubStructureElementLoci(parent, probe.obj.data);
+          atoms += Number(probe.obj.data.elementCount) || 0;
+          const partials = [];
+          let matched = 0;
+          for (const component of components) {
+            const data = component.cell?.obj?.data;
+            if (!data) continue;
+            const overlap = StructureElement.Loci.remap(loci, data);
+            const count = StructureElement.Loci.size(overlap);
+            if (!count) continue;
+            matched++;
+            componentCount++;
+            if (count === data.elementCount) {
+              const ref = component.cell.transform.ref;
+              affectedRefs.add(ref);
+              if (operation === 'remove') {
+                await plugin.state.data.build().delete(ref).commit();
+              } else if (operation !== 'edit') {
+                if (operation === 'show' && !component.representations?.length) {
+                  await plugin.builders.structure.representation.addRepresentation(component.cell, representation);
+                }
+                for (const target of sceneTreeSubtreeRefs(plugin.state.data, ref)) {
+                  plugin.state.data.updateCellState(target, { isHidden: operation === 'hide' });
+                }
+              }
+              continue;
+            }
+            if (!manager.canBeModified(component)) throw new Error(`Cannot split ${component.cell.obj.label}.`);
+            partials.push(component);
+            if (operation === 'remove') continue;
+            const subset = StructureElement.Loci.toStructure(overlap);
+            const split = await plugin.builders.structure.tryCreateComponent(structure.cell, {
+              type: { name: 'bundle', params: StructureElement.Bundle.fromSubStructure(parent, subset) },
+              nullIfEmpty: true,
+              label
+            }, `burette-inspector-${component.cell.transform.ref}-${query}`, ['burette-inspector-subset']);
+            if (!split) throw new Error(`Could not separate ${label}.`);
+            affectedRefs.add(split.ref);
+            // Copy the existing representation parameters, including colours,
+            // sizes and opacity. A hide/show cycle must not reset visual style.
+            const update = plugin.state.data.build();
+            for (const repr of component.representations || []) {
+              update.to(split.ref).apply(repr.cell.transform.transformer, repr.cell.params.values);
+            }
+            await update.commit();
+            if (operation === 'show' && !component.representations?.length) {
+              await plugin.builders.structure.representation.addRepresentation(split, representation);
+            }
+            plugin.state.data.updateCellState(split.ref, { isHidden: operation === 'edit' ? !!component.cell.state.isHidden : operation === 'hide' });
+            const splitRepresentations = [...plugin.state.data.cells.values()].filter(cell => cell.transform.parent === split.ref);
+            for (let index = 0; index < splitRepresentations.length; index++) {
+              plugin.state.data.updateCellState(splitRepresentations[index].transform.ref, {
+                isHidden: operation === 'edit' ? !!component.representations?.[index]?.cell.state.isHidden : operation === 'hide'
+              });
+            }
+          }
+          if (partials.length) {
+            selection.clear();
+            selection.fromLoci('set', loci, false);
+            await manager.modifyByCurrentSelection(partials, 'subtract');
+          }
+          if (!matched && operation === 'show') {
+            const restored = await plugin.builders.structure.tryCreateComponent(structure.cell, {
+              type: { name: 'bundle', params: StructureElement.Bundle.fromSubStructure(parent, probe.obj.data) },
+              nullIfEmpty: true,
+              label
+            }, `burette-inspector-restored-${query}`, ['burette-inspector-subset']);
+            if (!restored) throw new Error(`Could not restore ${label}.`);
+            affectedRefs.add(restored.ref);
+            await plugin.builders.structure.representation.addRepresentation(restored, representation);
+            componentCount++;
+          }
+          await plugin.state.data.build().delete(probe.ref).commit();
+        }
+        if (edit) {
+          const allComponents = molstarCurrentStructures(viewer).flatMap(structure => structure.components || []);
+          const targets = allComponents.filter(component => affectedRefs.has(component.cell.transform.ref));
+          if (!targets.length) throw new Error(`Show ${label} before changing its appearance.`);
+          for (let component of targets) {
+            if (!component.representations?.length) {
+              const ref = component.cell.transform.ref;
+              const created = await plugin.builders.structure.representation.addRepresentation(component.cell, representation);
+              plugin.state.data.updateCellState(created.ref, { isHidden: true });
+              component = molstarCurrentStructures(viewer).flatMap(structure => structure.components || []).find(entry => entry.cell.transform.ref === ref);
+            }
+            for (const repr of component?.representations || []) {
+              await manager.updateRepresentations([component], repr, old => {
+                if (edit.operation === 'representation') return { ...old, type: { name: edit.value, params: {} } };
+                if (edit.operation === 'opacity') return { ...old, type: { ...old.type, params: { ...old.type.params, alpha: edit.value } } };
+                return { ...old, colorTheme: sceneTreeReprTintTheme(old.type.name, parseInt(edit.value.slice(1), 16)) };
+              });
+            }
+          }
+        }
+      }, { canUndo: `${operation} ${label}`, rethrowErrors: true });
+      molstarCompositionQueries.delete(query);
+      molstarCompositionQueries.set(query, affectedRefs);
+      while (molstarCompositionQueries.size > 128) molstarCompositionQueries.delete(molstarCompositionQueries.keys().next().value);
+    } finally {
+      selection.setSnapshot(savedSelection);
+      scheduleSceneTreeRender();
+    }
+    if (!atoms) return sceneActionFailure(command, 'SELECTION_EMPTY', `Nothing matched ${label}.`);
+    return { ok: true, command, result: { query, label, componentCount, atoms, ...(edit ? { edit } : { hidden: operation !== 'show' }) } };
+  }
+
   async function hideMolstarComponents(action = {}) {
+    if (action.query !== undefined) return queueMolstarQueryComponentAction(action, 'hide');
     const kind = normalizeSceneComponentKind(action.kind);
     if (kind === 'water') return hideMolstarWaters();
     const viewer = activeMolstarViewer();
@@ -15438,9 +15745,10 @@
 
   // Hiding drops the representations but keeps the component; removing takes the
   // component out of the scene tree entirely, the way the tree's own bin button
-  // does. Only whole kinds can go: a chain or a single ligand instance is a
-  // sub-selection, not a state cell there is anything to delete.
+  // does. Scoped rows first resolve an exact query and split intersecting
+  // components, so removing a chain cannot remove its polymer siblings.
   async function removeMolstarComponents(action = {}) {
+    if (action.query !== undefined) return queueMolstarQueryComponentAction(action, 'remove');
     const kind = normalizeSceneComponentKind(action.kind);
     const viewer = activeMolstarViewer();
     const plugin = viewer?.plugin;
@@ -15519,6 +15827,7 @@
   }
 
   async function showMolstarComponents(action = {}) {
+    if (action.query !== undefined) return queueMolstarQueryComponentAction(action, 'show');
     const kind = normalizeSceneComponentKind(action.kind);
     if (kind === 'water') return showMolstarWaters();
     const viewer = activeMolstarViewer();
@@ -15676,6 +15985,7 @@
     hideComponents: hideMolstarComponents,
     showComponents: showMolstarComponents,
     removeComponents: removeMolstarComponents,
+    editComponents: action => queueMolstarQueryComponentAction(action, 'edit'),
     createComponent: createMolstarComponentFromQuery,
     hideWaters: hideMolstarWaters,
     showWaters: showMolstarWaters,
@@ -21768,10 +22078,9 @@
   // from the pick, the neighbour search runs against the full structure's spatial
   // index, and Mol* rounds the hit atoms out to their residues so the selection
   // never cuts a side chain in half.
-  function molstarSurroundingsLoci(target, radius) {
+  function molstarSurroundingsLoci(target, radius, fullStructure = target?.structure?.cell?.obj?.data) {
     const StructureElement = window.molstar?.lib?.structure?.StructureElement;
     const pickLoci = molstarContextElementLoci(target?.loci);
-    const fullStructure = target?.structure?.cell?.obj?.data;
     const lookup = fullStructure?.lookup3d;
     if (!pickLoci || typeof lookup?.find !== 'function') return null;
     const perUnit = new Map();
@@ -21796,6 +22105,56 @@
     if (!elements.length) return null;
     const raw = StructureElement.Loci(fullStructure, elements);
     return StructureElement.Loci.extendToWholeResidues(raw);
+  }
+
+  // Build with Mol*'s active focus behavior, then preserve its native selection
+  // and representation transforms. Pinning changes lifetime, never styling.
+  async function pinMolstarEnvironment(target) {
+    const plugin = activeMolstarViewer()?.plugin;
+    const { StructureElement } = molstarStructureRuntime();
+    const loci = molstarContextElementLoci(molstarContextSelectionLoci(target));
+    if (!loci) return 0;
+    const behavior = [...plugin.state.behaviors.cells.values()].find(cell =>
+      cell.transform.transformer.id.endsWith('create-structure-focus-representation'))?.obj?.data;
+    if (!behavior?.focus || !behavior?.ensureShape) throw new Error('Mol* focus representation is unavailable.');
+    const transforms = window.molstar.lib.plugin.StateTransforms;
+    const state = plugin.state.data;
+    const key = `burette-pinned-focus-${stableTextHash(JSON.stringify(StructureElement.Bundle.fromLoci(loci)))}`;
+    await behavior.focus(loci);
+    let count = 0;
+    for (const structure of [...molstarCurrentStructures(activeMolstarViewer())]) {
+      const data = structure.cell?.obj?.data;
+      const environment = molstarSurroundingsLoci({ ...target, loci }, behavior.params.expandRadius, data);
+      if (!environment) continue;
+      const { builder, refs } = behavior.ensureShape(structure.cell);
+      const localTarget = loci.structure.root === data.root
+        ? StructureElement.Loci.remap(loci, data) : StructureElement.Loci.none(data);
+      builder.to(refs['structure-focus-target-sel']).update(transforms.Model.StructureSelectionFromBundle,
+        old => ({ ...old, bundle: StructureElement.Bundle.fromLoci(localTarget) }));
+      builder.to(refs['structure-focus-surr-sel']).update(transforms.Model.StructureSelectionFromExpression,
+        old => ({ ...old, expression: StructureElement.Bundle.toExpression(StructureElement.Bundle.fromLoci(environment)) }));
+      await builder.commit();
+      const update = state.build();
+      const cells = [...state.cells.values()];
+      for (const cell of cells) {
+        if (cell.transform.parent === structure.cell.transform.ref && cell.transform.tags?.includes(key)) update.delete(cell.transform.ref);
+      }
+      for (const tag of ['structure-focus-target-sel', 'structure-focus-surr-sel']) {
+        const source = state.cells.get(refs[tag]);
+        if (!source?.obj?.data?.elementCount) continue;
+        const copy = update.to(structure.cell).apply(source.transform.transformer,
+          { ...source.params.values, label: source.obj.label.replace('[Focus]', '[Pinned]') },
+          { tags: [key, 'burette-pinned-environment'] });
+        for (const child of cells.filter(cell => cell.transform.parent === source.transform.ref)) {
+          copy.apply(child.transform.transformer, child.params.values);
+        }
+      }
+      await update.commit();
+      count++;
+    }
+    await behavior.clear(state.tree.root.ref);
+    scheduleSceneTreeRender();
+    return count;
   }
 
   async function addMolstarContextScopeComponent(target, representation, label) {
@@ -21877,7 +22236,11 @@
     try { session.subscription?.unsubscribe?.(); } catch (_) {}
     document.removeEventListener('keydown', session.onKeyDown, true);
     const plugin = activeMolstarViewer()?.plugin;
-    if (plugin) plugin.selectionMode = session.restoreMode;
+    if (plugin) {
+      plugin.selectionMode = session.restoreMode;
+      plugin.managers.interactivity.setProps({ granularity: session.restoreGranularity });
+      plugin.managers.structure.selection.setSnapshot(session.restoreSelection);
+    }
     if (message) showMolstarMeasureToast(message, 3200);
   }
 
@@ -21904,17 +22267,24 @@
       acceptPicksAt: performance.now() + 180,
       lastPickAt: -Infinity,
       restoreMode: plugin.selectionMode === true,
+      restoreGranularity: plugin.managers.interactivity.props.granularity,
+      restoreSelection: plugin.managers.structure.selection.getSnapshot(),
       subscription: null,
       onKeyDown: null
     };
     session.onKeyDown = event => {
       if (event.key === 'Escape') cancelMolstarMeasurement(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measurement cancelled.`);
     };
+    plugin.managers.structure.selection.clear();
+    plugin.managers.interactivity.setProps({ granularity: 'element' });
     plugin.selectionMode = true;
     document.addEventListener('keydown', session.onKeyDown, true);
     session.subscription = clicks.subscribe(event => {
       const loci = molstarContextElementLoci(event?.current?.loci);
-      if (!loci || molstarLociIsEmpty(loci)) {
+      const atomCount = loci ? window.molstar?.lib?.structure?.StructureElement?.Loci?.size?.(loci) : 0;
+      if (!loci || molstarLociIsEmpty(loci) || (atomCount !== undefined && atomCount !== 1)) {
+        plugin.managers.structure.selection.clear();
+        for (const point of session.points) plugin.managers.structure.selection.fromLoci('add', point, false);
         showMolstarMeasureToast(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)}: no atom at that point. Click directly on an atom. Esc cancels.`);
         return;
       }
@@ -21922,12 +22292,17 @@
       // Their loci are not necessarily equal, so coalesce the event burst before
       // comparing atoms; a measurement must advance once per user click.
       const pickAt = performance.now();
-      if (pickAt < session.acceptPicksAt) return;
+      if (pickAt < session.acceptPicksAt) {
+        plugin.managers.structure.selection.clear();
+        return;
+      }
       if (pickAt - session.lastPickAt < 120) return;
       session.lastPickAt = pickAt;
       const previous = session.points[session.points.length - 1];
       if (previous && Loci?.areEqual?.(previous, loci)) return;
       session.points.push(loci);
+      plugin.managers.structure.selection.clear();
+      for (const point of session.points) plugin.managers.structure.selection.fromLoci('add', point, false);
       if (session.points.length < spec.points) {
         showMolstarMeasureToast(molstarMeasurePrompt(kind, session.points.length));
         return;
@@ -22409,15 +22784,14 @@
   // the first level. The Tools heading starts at Analyze, where the longer
   // Maestro/PyMOL toolsets continue as Base UI-style submenus.
   const MOLECULE_MENU_GROUPS = [
-    { id: 'primary', title: 'Target', direct: true },
+    { id: 'primary', title: 'Target', direct: true, hideTitle: true },
     { id: 'view', title: 'Visibility', direct: true, breakBefore: true },
-    { id: 'represent', title: 'Representation', direct: true, breakBefore: true },
+    { id: 'represent', title: 'Appearance', direct: true, breakBefore: true },
     { id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true },
     { id: 'align', title: 'Superposition' },
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
     { id: 'compute', title: 'Compute' },
-    { id: 'molstar-action', title: 'Apply action' },
     { id: 'danger', title: 'Delete', direct: true, destructive: true, hideTitle: true, breakBefore: true }
   ];
 
@@ -22445,7 +22819,9 @@
     if (name.startsWith('save') || name.startsWith('extract:') || name.startsWith('split:')) return 'export';
     if (name.startsWith('pubchem')) return 'search';
     if (name.startsWith('compute')) return 'compute';
+    if (name === 'view:hide') return 'primary';
     if (name.startsWith('view:')) return 'view';
+    if (name === 'analyze:pin-environment') return 'represent';
     if (name === 'represent:component') return 'primary';
     if (name.startsWith('represent:')) return 'represent';
     if (name.startsWith('colour:')) return 'colour';
@@ -22469,7 +22845,7 @@
     if (name === 'represent:menu') return ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'];
     // A box with a plus: the selection becomes a new object in the scene.
     if (name === 'represent:component') return ['M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z', 'M12 11v6', 'M9 14h6'];
-    if (name === 'analyze:surroundings') return ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
+    if (name === 'analyze:surroundings' || name === 'analyze:pin-environment') return ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
     if (name === 'analyze:label') return ['M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z', 'M7 7h.01'];
     if (name === 'analyze:distance') return ['M21.3 15.3 8.7 2.7a1 1 0 0 0-1.4 0L2.7 7.3a1 1 0 0 0 0 1.4l12.6 12.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4Z', 'M14.5 12.5 12 15', 'M11.5 9.5 9 12', 'M8.5 6.5 6 9', 'M17.5 15.5 15 18'];
     if (name === 'analyze:interactions') return ['M6 6h.01', 'M18 18h.01', 'M18 6h.01', 'M6 18h.01', 'M7.5 7.5 16.5 16.5', 'M16.5 7.5 7.5 16.5'];
@@ -22519,30 +22895,12 @@
       const componentRef = molstarContextComponentRef(target);
       if (componentRef) {
         actions.push(['view:hide', `Hide ${noun}`]);
-        actions.push(['view:isolate', `Isolate ${noun}`]);
-        // Clears the hidden flag on every component of this structure: the way
-        // back from the scene tree's eye toggles, and from an Isolate that hid
-        // whole components outright. It does not undo the element-level subtract
-        // that Hide and Isolate apply to a component they do intersect — that
-        // rewrites the component rather than hiding a cell, and ⌘Z is its inverse.
-        actions.push(['view:show-all', 'Show all']);
         actions.push(['represent:surface', 'Add grey surface']);
         actions.push(['represent:menu', 'Representation & colour…']);
-        // Mol*'s own cell actions, the same list the scene tree offers. They are
-        // many and rarely the reason the menu was opened, so they stay behind a
-        // submenu rather than pushing the rest of the menu off screen.
-        sceneTreeCellActions(activeMolstarViewer(), componentRef).forEach((entry, index) => {
-          actions.push([`molstar-action:${index}`, entry.label]);
-        });
       }
-      // Deliberately outside the componentRef check: this is the item for things
-      // that have no component yet, which is exactly when it is worth offering.
-      // The Info panel's rows carry the same wording for the same act.
-      actions.push(['represent:component', 'Add to scene as component']);
       if (target?.atom && target?.loci) {
         if (target.scope === 'ligand' || target.scope === 'ion' || target.scope === 'residue') {
-          actions.push(['analyze:surroundings', 'Select surroundings (5 Å)']);
-          actions.push(['analyze:interactions', 'Show interactions (5 Å)']);
+          actions.push(['analyze:pin-environment', 'Show & pin surroundings (5 Å)']);
         }
         actions.push(['analyze:label', `Label ${noun}`]);
         actions.push(['analyze:distance', 'Measure distance']);
@@ -22608,6 +22966,7 @@
     // in "Undid colour <file name>"; the structure is what was coloured.
     const targetLabel = target?.atom ? target.label : 'the structure';
     if (name.startsWith('colour:')) return `colour ${targetLabel}`;
+    if (name === 'analyze:pin-environment') return `pinned surroundings of ${targetLabel}`;
     if (name === 'analyze:interactions') return `interactions around ${targetLabel}`;
     if (name === 'analyze:label') return `label ${targetLabel}`;
     if (name === 'analyze:surroundings') return `surroundings of ${targetLabel}`;
@@ -22783,6 +23142,10 @@
         });
         scheduleSceneTreeRender();
         setStatus(`[web] Added ${targetLabel} to the scene as a component.`);
+      } else if (action === 'analyze:pin-environment') {
+        const count = await pinMolstarEnvironment(target);
+        if (!count) throw new Error('No surrounding atoms were found within 5 Å in this scene.');
+        setStatus(`[web] Pinned surroundings of ${targetLabel} across ${count} structure(s).`);
       } else if (action === 'analyze:surroundings') {
         const loci = molstarContextSelectionLoci(target);
         const surroundings = molstarSurroundingsLoci({ ...target, loci }, 5);
@@ -23076,7 +23439,7 @@
       </span>`;
   }
 
-  function molstarMoleculePreviewCardHTML(label, subtitle, image) {
+  function molstarMoleculePreviewCardHTML(label, image) {
     const sizes = Object.entries(MOLECULE_PREVIEW_SIZES).map(([key, preset]) =>
       `<button type="button" class="buret-molecule-card-size" data-buret-molecule-preview-action="size" data-size="${key}" aria-pressed="${key === molstarMoleculePreviewSize}" aria-label="${escapeHTML(preset.label)} preview" title="${escapeHTML(preset.label)}">${key.toUpperCase()}</button>`
     ).join('');
@@ -23084,7 +23447,6 @@
       <div class="buret-molecule-card-header" data-buret-molecule-preview-drag>
         <span class="buret-molecule-card-heading">
           <span class="buret-molecule-card-title" title="${escapeHTML(label)}">${escapeHTML(label)}</span>
-          <span class="buret-molecule-card-subtitle">${escapeHTML(subtitle)}</span>
         </span>
         ${molstarMoleculePreviewNavHTML()}
         <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="minimize" aria-label="Minimize preview" title="Minimize preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.minimize)}</button>
@@ -23094,6 +23456,7 @@
       <div class="buret-molecule-card-footer">
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Ketcher</span></button>
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Lasso atoms in 2D">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}</button>
         <span class="buret-molecule-card-sizes" role="group" aria-label="Preview size">${sizes}</span>
       </div>
       ${molstarMoleculePreviewResizeHandlesHTML()}`;
@@ -23147,7 +23510,7 @@
       const preset = MOLECULE_PREVIEW_SIZES[button.dataset.size];
       const matches = preset
         && Math.abs(preset.width - rect.width) < 2
-        && Math.abs(preset.height - rect.height) < 2;
+        && Math.abs(molstarMoleculePreviewFitHeight(popover, preset.width) - rect.height) < 2;
       button.setAttribute('aria-pressed', matches ? 'true' : 'false');
     }
   }
@@ -23164,13 +23527,41 @@
     molstarMoleculePreviewClamp(popover);
   }
 
+  function molstarMoleculePreviewFitHeight(popover, width) {
+    const header = popover.querySelector('.buret-molecule-card-header')?.getBoundingClientRect().height || 24;
+    const footer = popover.querySelector('.buret-molecule-card-footer')?.getBoundingClientRect().height || 24;
+    return Math.ceil(width + header + footer);
+  }
+
+  function fitMolstarMoleculePreviewDrawing(popover) {
+    const svg = popover.querySelector('.buret-molstar-molecule-preview-image svg');
+    if (!svg) return;
+    // RDKit emits a square viewport even for a long, flat molecule. Measure its
+    // actual paths and labels, excluding the background, before scaling the SVG.
+    const nodes = [...svg.querySelectorAll('path, text, circle, ellipse, polygon, line')];
+    const boxes = nodes.map(node => node.getBBox()).filter(box => box.width || box.height);
+    if (!boxes.length) return;
+    const left = Math.min(...boxes.map(box => box.x));
+    const top = Math.min(...boxes.map(box => box.y));
+    const right = Math.max(...boxes.map(box => box.x + box.width));
+    const bottom = Math.max(...boxes.map(box => box.y + box.height));
+    const margin = 4;
+    const width = right - left + margin * 2;
+    const height = bottom - top + margin * 2;
+    svg.setAttribute('viewBox', `${left - margin} ${top - margin} ${width} ${height}`);
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    popover.style.height = `${molstarMoleculePreviewFitHeight(popover, popover.getBoundingClientRect().width)}px`;
+    molstarMoleculePreviewClamp(popover);
+    rememberMolstarMoleculePreviewGeometry(popover);
+  }
+
   function setMolstarMoleculePreviewSize(size) {
     const preset = MOLECULE_PREVIEW_SIZES[size];
     const popover = molstarMoleculePreview;
     if (!preset || !popover) return;
     molstarMoleculePreviewSize = size;
     popover.style.width = `${preset.width}px`;
-    popover.style.height = `${preset.height}px`;
+    popover.style.height = `${molstarMoleculePreviewFitHeight(popover, preset.width)}px`;
     molstarMoleculePreviewClamp(popover);
     rememberMolstarMoleculePreviewGeometry(popover);
   }
@@ -23249,6 +23640,7 @@
     else if (action === 'minimize') minimizeMolstarMoleculePreview();
     else if (action === 'ketcher') openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
     else if (action === 'copy-smiles') void copyMolstarMoleculePreviewSmiles(molstarMoleculePreviewTarget);
+    else if (action === 'lasso') molstarMoleculePreview?.querySelector('.buret-molstar-molecule-preview-image')?.dispatchEvent(new Event('burette-toggle-lasso'));
     else if (action === 'size') setMolstarMoleculePreviewSize(control.dataset.size);
     else if (action === 'prev') stepMolstarMoleculePreview(-1);
     else if (action === 'next') stepMolstarMoleculePreview(1);
@@ -23308,10 +23700,9 @@
   function installMolstarMoleculePreviewResize(popover) {
     if (!popover || popover.dataset.buretResizeInstalled === '1') return;
     popover.dataset.buretResizeInstalled = '1';
-    const minWidth = 96;
-    const minHeight = 126;
-    const maxWidth = 560;
-    const maxHeight = 520;
+    const minWidth = 148;
+    const maxWidth = 340;
+    const maxHeight = 420;
     const margin = 8;
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
     const finish = (event) => {
@@ -23385,8 +23776,10 @@
           ? Math.min(maxWidth, right - margin)
           : Math.min(maxWidth, drag.viewportWidth - margin - drag.left);
         const maxAllowedHeight = Math.min(maxHeight, drag.viewportHeight - margin - drag.bottom);
-        width = clamp(width, minWidth, Math.max(minWidth, maxAllowedWidth));
-        height = clamp(height, minHeight, Math.max(minHeight, maxAllowedHeight));
+        const chromeHeight = molstarMoleculePreviewFitHeight(popover, 0);
+        if (!direction.includes('e') && !direction.includes('w')) width = height - chromeHeight;
+        width = clamp(width, minWidth, Math.max(minWidth, Math.min(maxAllowedWidth, maxAllowedHeight - chromeHeight)));
+        height = molstarMoleculePreviewFitHeight(popover, width);
         if (direction.includes('w')) {
           left = clamp(right - width, margin, drag.viewportWidth - margin - width);
         }
@@ -23522,6 +23915,9 @@
   function molstarPreviewCleanRDKitSVG(svg) {
     return String(svg || '')
       .replace(/<script[\s\S]*?<\/script>/giu, '')
+      .replace(/#000000/giu, 'var(--depiction-carbon)')
+      .replace(/#0000FF/giu, 'var(--depiction-nitrogen)')
+      .replace(/#FF0000/giu, 'var(--depiction-oxygen)')
       .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/giu, '')
       .replace(/\sclip-path="url\([^"]+\)"/giu, '')
       .replace(/<svg([^>]*)>/iu, (_match, attrs) => {
@@ -23636,8 +24032,20 @@
         const molblock = splitSdfRecords(String(entry.data || ''))[0] || String(entry.data || '');
         mol = rdkit.get_mol(molblock);
         if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
-        try { mol.set_new_coords?.(); } catch (_) {}
-        const svg = molstarPreviewCleanRDKitSVG(mol.get_svg(MOLSTAR_PREVIEW_RDKIT_SVG_SIZE, MOLSTAR_PREVIEW_RDKIT_SVG_SIZE));
+        const original = JSON.parse(mol.get_json()).molecules?.[0];
+        const sourcePositions = original?.conformers?.[0]?.coords || [];
+        mol.set_new_coords(true);
+        const svg = molstarPreviewCleanRDKitSVG(mol.get_svg_with_highlights(JSON.stringify({
+          width: MOLSTAR_PREVIEW_RDKIT_SVG_SIZE, height: MOLSTAR_PREVIEW_RDKIT_SVG_SIZE,
+          bondLineWidth: 1.3, minFontSize: 11, maxFontSize: 17,
+          padding: 0.02, clearBackground: false, addStereoAnnotation: false,
+          atoms: Array.from({ length: Math.min(original?.atoms?.length || 0, 2048) }, (_, index) => index),
+          bonds: [], atomHighlightsAreCircles: true, standardColoursForHighlightedAtoms: true, highlightRadius: 0.16
+        })).replace(/<ellipse\b[^>]*class='atom-(\d+)'[^>]*>/g, (tag, index) => {
+          const position = sourcePositions[Number(index)];
+          const source = position ? [position[0], position[1], position[2] || 0].join(',') : '';
+          return tag.replace("class='", `data-source-position='${source}' class='buret-preview-atom `);
+        }));
         if (!svg.includes('<svg')) throw new Error('empty drawing');
         molstarPreviewCacheSVG(key, svg);
         return svg;
@@ -23653,6 +24061,32 @@
     }
   }
 
+  function selectMolstarMoleculePreviewAtoms(target, positions) {
+    const structure = molstarStructureFromRef(target.structure) || target.loci?.structure;
+    const plugin = activeMolstarViewer()?.plugin;
+    if (!structure || !plugin) return;
+    const sourceUnits = molstarContextElementLoci(target.atomLoci || target.loci)?.elements?.map(entry => entry.unit.id);
+    const elements = [];
+    for (const unit of structure.units) {
+      if (sourceUnits?.length && !sourceUnits.includes(unit.id)) continue;
+      const conformation = unit.model?.atomicConformation;
+      if (!conformation) continue;
+      const indices = [];
+      for (let index = 0; index < unit.elements.length; index++) {
+        const atom = unit.elements[index];
+        // Compare source coordinates, before assembly/alignment operators, so the
+        // same atom stays selected even when its 3D structure has been moved.
+        if (positions.some(p => Math.abs(conformation.x[atom] - p[0]) < 0.002
+          && Math.abs(conformation.y[atom] - p[1]) < 0.002
+          && Math.abs(conformation.z[atom] - p[2]) < 0.002)) indices.push(index);
+      }
+      if (indices.length) elements.push({ unit, indices });
+    }
+    plugin.managers.structure.selection.clear();
+    if (elements.length) plugin.managers.structure.selection.fromLoci('add', { kind: 'element-loci', structure, elements }, false);
+    scheduleSceneTreeRender();
+  }
+
   function showMolstarMoleculePreview(target) {
     const entry = molstarMoleculePreviewEntry(target);
     if (normalizeFormat(entry?.format) !== 'sdf') {
@@ -23665,7 +24099,6 @@
     const key = molstarPreviewKey(entry);
     const image = molstarPreviewSvgCache.get(key) || '';
     const label = target?.label || entry?.label || (target?.scope === 'ion' ? 'Ion' : 'Ligand');
-    const subtitle = target?.scope === 'ion' ? 'Ion' : 'Small molecule';
     let popover = molstarMoleculePreview;
     molstarMoleculePreviewTarget = target || null;
     const created = !popover;
@@ -23683,9 +24116,9 @@
     // markup each time destroys the button under the cursor between pointerdown and
     // click, so nothing in the footer can be pressed and a resize handle grabbed
     // mid-rebuild belongs to no card. Only redraw when the card would differ.
-    const signature = `${key}\n${label}\n${subtitle}`;
+    const signature = `${key}\n${label}`;
     if (popover.dataset.buretPreviewSignature !== signature) {
-      popover.innerHTML = molstarMoleculePreviewCardHTML(label, subtitle, image || escapeHTML('Rendering 2D preview...'));
+      popover.innerHTML = molstarMoleculePreviewCardHTML(label, image || escapeHTML('Rendering 2D preview...'));
       popover.dataset.buretPreviewSignature = signature;
       popover.dataset.buretPreviewKey = key;
       if (created) applyMolstarMoleculePreviewGeometry(popover);
@@ -23695,7 +24128,12 @@
       .then(svg => {
         if (!svg || !molstarMoleculePreview || molstarMoleculePreview.dataset.buretPreviewKey !== key) return;
         const imageEl = molstarMoleculePreview.querySelector('.buret-molstar-molecule-preview-image');
-        if (imageEl) imageEl.innerHTML = svg;
+        if (imageEl && imageEl.dataset.depictionKey !== key) {
+          imageEl.innerHTML = svg;
+          imageEl.dataset.depictionKey = key;
+          fitMolstarMoleculePreviewDrawing(molstarMoleculePreview);
+          window.BuretteMoleculePreviewInteractions?.install(imageEl, positions => selectMolstarMoleculePreviewAtoms(target, positions));
+        }
       })
       .catch(() => {
         if (!image && molstarMoleculePreview?.dataset?.buretPreviewKey === key) {

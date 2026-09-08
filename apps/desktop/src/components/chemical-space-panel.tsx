@@ -1275,6 +1275,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                   type: "chemicalSpaceSelectionChanged",
                   sourceRecordIds: bounded,
                   filterToSelection: tool === "lasso",
+                  focusSourceRecordId: tool === "navigate" && sourceRecordIds.length === 1 ? sourceRecordIds[0] : null,
                 });
               }}
             />

@@ -116,18 +116,13 @@ assert.match(fn("modifyMolstarContextVisibility"), /state\?\.updateCellState\?\.
 assert.match(fn("moleculeContextMenuAction"), /modifyMolstarContextVisibility\(target, 'subtract'\)/);
 assert.match(fn("moleculeContextMenuAction"), /modifyMolstarContextVisibility\(target, 'intersect'\)/);
 assert.match(fn("moleculeContextMenuAction"), /action === 'view:isolate'[\s\S]*focusMolstarContextPick\(\{ \.\.\.target, loci: isolateLoci \}\)/);
-// Isolate's inverse and Mol*'s own cell actions came over from the scene tree menu
-// when the 3D right click took its place; both address the component by ref.
-assert.match(fn("molstarContextMenuActions"), /actions\.push\(\['view:show-all', 'Show all'\]\)/);
-assert.match(fn("molstarContextMenuActions"), /sceneTreeCellActions\(activeMolstarViewer\(\), componentRef\)[\s\S]*`molstar-action:\$\{index\}`/);
-assert.match(fn("moleculeContextMenuAction"), /action === 'view:show-all'[\s\S]*showAllSceneTreeNodes\(componentRef\)/);
-assert.match(fn("moleculeContextMenuAction"), /action\.startsWith\('molstar-action:'\)[\s\S]*applySceneTreeAction\(componentRef, Number\(/);
-assert.match(fn("addMolstarContextScopeComponent"), /const loci = molstarContextSelectionLoci\(target\)/);
-assert.match(fn("addMolstarContextScopeComponent"), /manager\.add\(\{[\s\S]*selection: selectionQuery[\s\S]*representation/);
-assert.match(fn("molstarContextTargetComponents"), /molstarCurrentStructures\(activeMolstarViewer\(\)\)[\s\S]*find\(structure => structure\?\.cell\?\.transform\?\.ref === targetRef\)/);
-assert.match(fn("applyMolstarColourPreset"), /addMolstarContextScopeComponent\([\s\S]*updateRepresentationsTheme\(\[component\]/);
-assert.match(fn("moleculeContextMenuAction"), /focusMolstarContextPick\(\{ \.\.\.target, loci \}\)/);
-assert.match(fn("moleculeContextMenuAction"), /molstarSurroundingsLoci\(\{ \.\.\.target, loci \}, 5\)/);
+// The viewport menu keeps explicit, scoped operations only.
+const viewportActions = fn("molstarContextMenuActions");
+for (const removed of ["view:isolate", "view:show-all", "represent:component", "molstar-action:", "analyze:surroundings", "analyze:interactions"]) {
+  assert.ok(!viewportActions.includes(removed), `removed menu action still offered: ${removed}`);
+}
+assert.ok(viewportActions.includes("analyze:pin-environment"));
+
 
 // Typed contacts come from Mol*'s interactions representation, not from a distance
 // cutoff, and the component includes the environment or it renders nothing.
@@ -206,10 +201,10 @@ assert.match(fn("sceneTreeMeasurementText"), /const field = 'custom-text'/);
 // The first level stays compact: common target actions are direct, the long
 // Maestro/PyMOL toolsets use submenus, while the short visibility actions stay one
 // click away and the representation editor gets the same cascading treatment.
-assert.match(viewer, /\{ id: 'primary', title: 'Target', direct: true \}/);
+assert.match(viewer, /\{ id: 'primary', title: 'Target', direct: true, hideTitle: true \}/);
 assert.doesNotMatch(viewer, /\{ id: 'selection', title: 'Selection'/);
 assert.match(viewer, /\{ id: 'view', title: 'Visibility', direct: true, breakBefore: true \}/);
-assert.match(viewer, /\{ id: 'represent', title: 'Representation', direct: true, breakBefore: true \}/);
+assert.match(viewer, /\{ id: 'represent', title: 'Appearance', direct: true, breakBefore: true \}/);
 assert.match(viewer, /\{ id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true \}/);
 assert.match(viewer, /\{ id: 'export', title: 'Export' \}/);
 assert.doesNotMatch(viewer, /\{ id: 'appearance', title: 'Appearance'/);

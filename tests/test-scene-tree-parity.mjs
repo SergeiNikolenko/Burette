@@ -87,7 +87,7 @@ for (const property of ["width", "height", "border-radius"]) {
 // on the bar itself.
 assert.equal(declaration(treeBar, "opacity"), null);
 assert.equal(declaration(panelBar, "opacity"), null);
-assert.match(styles, /\.structure-brief-action-entry\[data-hidden="true"\] \.structure-inspector-row-bar/);
+assert.ok(styles.includes('.structure-brief-action-entry[data-hidden="true"] .structure-brief-chip-button'), "hidden child rows must fade their contents once");
 assert.match(viewerCss, /\.buret-tree-item\[data-hidden="true"\][^{]*\.buret-tree-bar/);
 
 // Row height, and the twisty that sets the indent.

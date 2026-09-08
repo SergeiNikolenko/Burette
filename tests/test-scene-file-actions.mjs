@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+const window = {};
+vm.runInNewContext(readFileSync(new URL('../PreviewExtension/Web/scene-file-actions.js', import.meta.url), 'utf8'), { window, TextEncoder, Set, WeakMap });
+const cells = new Map([['root', { transform: { parent: 'root' } }], ['protein', { transform: { parent: 'root' }, style: 'cartoon' }]]);
+const removed = [];
+const viewer = { plugin: { state: { data: { cells, build: () => ({ delete(ref) { removed.push(ref); return this; }, async commit() { removed.forEach(ref => cells.delete(ref)); } }) } } } };
+const camera = { position: [10, 20, 30], target: [0, 0, 0] };
+let restored;
+const context = { capture: () => camera, restore: (_, value) => { restored = value; }, load: async (_, source) => {
+  cells.set(source.path, { transform: { parent: 'root' } });
+  if (source.path === '/broken.cif') throw new Error('parse failed');
+} };
+const source = path => ({ path, format: 'pdb', data: 'ATOM', label: path });
+const result = await window.BuretteSceneFiles.append(viewer, { sources: [source('/ligand.pdb')], existingPaths: ['/protein.pdb'] }, context);
+assert.equal(result.result.added, 1);
+assert.equal(cells.get('protein').style, 'cartoon');
+assert.equal(restored, camera);
+await assert.rejects(window.BuretteSceneFiles.append(viewer, { sources: [source('/ligand.pdb')] }, context), /already in this scene/);
+await assert.rejects(window.BuretteSceneFiles.append(viewer, { sources: [source('/new.pdb'), source('/broken.cif')] }, context), /parse failed/);
+assert.deepEqual([...cells.keys()], ['root', 'protein', '/ligand.pdb']);
+assert.equal(restored, camera);
+await window.BuretteSceneFiles.append(viewer, { sources: [source('/new.pdb')] }, context);
+assert.ok(cells.has('/new.pdb'), 'failed imports must not poison duplicate detection');
+console.log('Scene file imports preserve existing objects and camera, reject duplicates, and roll back partial imports');

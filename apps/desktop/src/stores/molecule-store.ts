@@ -37,6 +37,7 @@ import { isTauriRuntime } from "../lib/tauri";
 import { workspaceStorageKey } from "../lib/window-scope";
 
 export type MoleculeTab = {
+  pinned?: boolean;
   id: string;
   location: Location;
   back: Location[];
@@ -44,6 +45,7 @@ export type MoleculeTab = {
 };
 
 export type SessionTab = {
+  pinned?: boolean;
   id?: string;
   location: SerializedLocation;
   back: SerializedLocation[];
@@ -86,6 +88,7 @@ type MoleculeState = {
   setActiveTab: (id: string) => void;
   setActiveDocument: (id: string) => void;
   moveTab: (id: string, toIndex: number) => void;
+  togglePinnedTab: (id: string) => void;
   closeTab: (id: string) => void;
   closeDocument: (id: string) => void;
   closeActiveDocument: () => void;
@@ -341,7 +344,10 @@ function activeTabIdOrFirst(tabs: MoleculeTab[], activeTabId: string | null) {
 function moveTabToIndex(tabs: MoleculeTab[], id: string, toIndex: number) {
   const fromIndex = tabs.findIndex((tab) => tab.id === id);
   if (fromIndex < 0) return tabs;
-  const nextIndex = Math.max(0, Math.min(tabs.length - 1, Math.round(toIndex)));
+  const pinnedCount = tabs.filter(tab => tab.pinned).length;
+  const lower = tabs[fromIndex].pinned ? 0 : pinnedCount;
+  const upper = tabs[fromIndex].pinned ? pinnedCount - 1 : tabs.length - 1;
+  const nextIndex = Math.max(lower, Math.min(upper, Math.round(toIndex)));
   if (fromIndex === nextIndex) return tabs;
   const nextTabs = [...tabs];
   const [tab] = nextTabs.splice(fromIndex, 1);
@@ -350,7 +356,7 @@ function moveTabToIndex(tabs: MoleculeTab[], id: string, toIndex: number) {
 }
 
 function ensureTabs(tabs: MoleculeTab[]) {
-  return tabs.length > 0 ? tabs : [createLauncherTab()];
+  return tabs.length > 0 ? [...tabs].sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))) : [createLauncherTab()];
 }
 
 function collapseDuplicateKetcherTabs(tabs: MoleculeTab[], preferredActiveId: string | null = null) {
@@ -368,6 +374,7 @@ function serializeTab(tab: MoleculeTab): SessionTab | null {
   if (!location) return null;
   return {
     id: tab.id,
+    ...(tab.pinned ? { pinned: true } : {}),
     location,
     back: tab.back.map(serializeLocation).filter((location): location is SerializedLocation => location !== null),
     forward: tab.forward.map(serializeLocation).filter((location): location is SerializedLocation => location !== null),
@@ -379,6 +386,7 @@ function hydrateTab(tab: SessionTab, id = tab.id ?? createTabId()): MoleculeTab 
   if (!location) return null;
   return {
     id,
+    ...(tab.pinned ? { pinned: true } : {}),
     location,
     back: tab.back.map(deserializeLocation).filter((location): location is Location => location !== null),
     forward: tab.forward.map(deserializeLocation).filter((location): location is Location => location !== null),
@@ -511,7 +519,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           const byPath = new Map(state.documents.map((document) => [document.path, document]));
           for (const document of incoming) byPath.set(document.path, document);
           const documents = Array.from(byPath.values());
-          const active = state.tabs.find((tab) => tab.id === state.activeTabId);
+          const active = state.tabs.find((tab) => tab.id === state.activeTabId && !tab.pinned);
           let tabs = state.tabs
             .filter((tab) => tab.location.kind !== "launcher")
             .map(cloneTab)
@@ -600,7 +608,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           const byPath = new Map(state.textDocuments.map((document) => [document.path, document]));
           for (const document of incoming) byPath.set(document.path, document);
           const textDocuments = Array.from(byPath.values());
-          const active = state.tabs.find((tab) => tab.id === state.activeTabId);
+          const active = state.tabs.find((tab) => tab.id === state.activeTabId && !tab.pinned);
           let tabs = state.tabs
             .filter((tab) => tab.location.kind !== "launcher")
             .map(cloneTab)
@@ -864,6 +872,10 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tab = createFileTab(document);
           return { tabs: [...state.tabs, tab], activeTabId: tab.id, activeDocumentId: document.id };
         }),
+      togglePinnedTab: (id) => set(state => ({
+        tabs: state.tabs.map(tab => tab.id === id ? { ...tab, pinned: !tab.pinned } : tab)
+          .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))),
+      })),
       moveTab: (id, toIndex) =>
         set((state) => {
           const tabs = moveTabToIndex(state.tabs, id, toIndex);

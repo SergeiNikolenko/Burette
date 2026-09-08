@@ -25,6 +25,8 @@ const VIEWER_FILES = [
   "molstar-preset-preview-controller.js",
   "trajectory-smoothing.js",
   "superposition-panel.js",
+  "molecule-preview-interactions.js",
+  "color-picker.js",
   "viewer.js",
 ];
 

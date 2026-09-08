@@ -930,7 +930,7 @@ fn fetch_predicate_page(
         ""
     };
     let sql = format!(
-        "select id, source_index, name, smiles, molblock, idcode, idcoordinates, props_json \
+        "select molecules.id, source_index, name, smiles, molblock, idcode, idcoordinates, props_json \
          from molecules \
          {join_sql} \
          {where_sql}{fts_sql} \
@@ -1212,6 +1212,9 @@ fn attach_descriptor_cells(
 
 fn sort_sql(sort: &str) -> &'static str {
     match sort {
+        "desc:index" => "source_index desc",
+        "desc:name" => "name collate nocase desc, source_index asc",
+        "desc:smiles" => "coalesce(smiles, '') collate nocase desc, source_index asc",
         "name" => "name collate nocase asc, source_index asc",
         "smiles" => "coalesce(smiles, '') collate nocase asc, source_index asc",
         _ => "source_index asc",
@@ -1223,6 +1226,29 @@ fn page_sort_clause(
     fallback_sort: &str,
 ) -> PageSortClause {
     let Some(sort) = descriptor_sort else {
+        let (direction, key) = fallback_sort
+            .strip_prefix("desc:")
+            .map(|key| ("desc", key))
+            .unwrap_or(("asc", fallback_sort));
+        let (numeric, key) = key
+            .strip_prefix("numeric:")
+            .map(|key| (true, key))
+            .unwrap_or((false, key));
+        if let Some(property) = key
+            .strip_prefix("prop:")
+            .filter(|key| !key.is_empty() && key.len() <= 512)
+        {
+            let value = if numeric {
+                "cast(nullif(trim(property_sort.value), '') as real)"
+            } else {
+                "property_sort.value collate nocase"
+            };
+            return PageSortClause {
+                join_sql: "left join json_each(molecules.props_json) property_sort on property_sort.key = ?",
+                order_sql: format!("nullif(trim(property_sort.value), '') is null asc, {value} {direction}, source_index asc"),
+                params: vec![SqlValue::Text(property.to_string())],
+            };
+        }
         return PageSortClause {
             join_sql: "",
             order_sql: sort_sql(fallback_sort).to_string(),
@@ -3904,6 +3930,43 @@ mod tests {
         assert_eq!(filtered.rows[0].name, "Ethylamine");
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn context_menu_property_sort_preserves_paging_and_filters() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "smiles,name,score,odd'key\nCCO,Low,2,Z\nCCN,High,10,A\nCCC,Middle,3,M\nCC,Missing,,B\n";
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        let mut query = GridQuery {
+            query: String::new(),
+            sort: "desc:numeric:prop:score".into(),
+            analysis_filters: vec![],
+            column_filters: vec![],
+            descriptor_filters: vec![],
+            descriptor_sort: None,
+            offset: 0,
+            limit: 2,
+        };
+        let names = |query: &GridQuery| {
+            fetch_page(&database_path, query)
+                .unwrap()
+                .rows
+                .into_iter()
+                .map(|row| row.name)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(&query), ["High", "Middle"]);
+        query.offset = 2;
+        assert_eq!(names(&query), ["Low", "Missing"]);
+        query.offset = 0;
+        query.sort = "prop:odd'key".into();
+        assert_eq!(names(&query), ["High", "Missing"]);
+        query.sort = "desc:name".into();
+        assert_eq!(names(&query), ["Missing", "Middle"]);
+        query.sort = "numeric:prop:score".into();
+        query.query = "high".into();
+        assert_eq!(names(&query), ["High"]);
+        std::fs::remove_dir_all(runtime_dir).unwrap();
     }
 
     #[test]

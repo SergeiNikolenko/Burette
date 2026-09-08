@@ -1,3 +1,4 @@
+import { withMenuIcons } from "./menu-icons";
 import { isTauriRuntime } from "../lib/tauri";
 import type { MenuItemSpec } from "./menu-types";
 import { showRadixContextMenu } from "./radix-menu";
@@ -7,18 +8,23 @@ export async function showNativeContextMenu(
   at?: { x: number; y: number },
   options: { forceWeb?: boolean } = {},
 ): Promise<boolean> {
+  if (!options.forceWeb) spec = withMenuIcons(spec);
   if (options.forceWeb || !isTauriRuntime()) {
     showRadixContextMenu(spec, at);
     return true;
   }
 
-  const [{ LogicalPosition }, { Menu }, { MenuItem }, { CheckMenuItem }, { PredefinedMenuItem }, { Submenu }] = await Promise.all([
+  const { showMacContextMenu } = await import("./mac-context-menu");
+  if (await showMacContextMenu(spec, at)) return true;
+
+  const [{ LogicalPosition }, { Menu }, { MenuItem }, { CheckMenuItem }, { PredefinedMenuItem }, { Submenu }, { IconMenuItem }] = await Promise.all([
     import("@tauri-apps/api/dpi"),
     import("@tauri-apps/api/menu/menu"),
     import("@tauri-apps/api/menu/menuItem"),
     import("@tauri-apps/api/menu/checkMenuItem"),
     import("@tauri-apps/api/menu/predefinedMenuItem"),
     import("@tauri-apps/api/menu/submenu"),
+    import("@tauri-apps/api/menu/iconMenuItem"),
   ]);
 
   // A native menu holds commands, so the richer kinds map down to what AppKit
@@ -46,17 +52,20 @@ export async function showNativeContextMenu(
       }
       if (entry.kind === "submenu") {
         return [Promise.all(entry.items.flatMap((child) => child.kind === "item"
-          ? [MenuItem.new({
+          ? [(child.nativeIcon ? IconMenuItem : MenuItem).new({
+              ...(child.nativeIcon ? { icon: child.nativeIcon } : {}),
               id: child.id,
               text: child.text,
               enabled: !child.disabled,
               ...(child.disabled || !child.action ? {} : { action: child.action }),
+              ...(child.accelerator ? { accelerator: child.accelerator } : {}),
             })]
           : child.kind === "separator" ? [PredefinedMenuItem.new({ item: "Separator" })] : []))
-          .then((items) => Submenu.new({ id: entry.id, text: entry.text, enabled: !entry.disabled, items }))];
+          .then((items) => Submenu.new({ id: entry.id, text: entry.text, enabled: !entry.disabled, items, ...(entry.nativeIcon ? { icon: entry.nativeIcon } : {}) }))];
       }
       if (entry.kind !== "item") return [];
-      return [MenuItem.new({
+      return [(entry.nativeIcon ? IconMenuItem : MenuItem).new({
+        ...(entry.nativeIcon ? { icon: entry.nativeIcon } : {}),
         id: entry.id,
         text: entry.text,
         enabled: !entry.disabled,

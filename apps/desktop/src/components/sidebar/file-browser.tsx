@@ -1,3 +1,5 @@
+import { sidebarCreationItems } from "./context-actions";
+import { showNativeContextMenu } from "../native-context-menu";
 import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { AnimatedOrbitIcon } from "../ui/animated-icons";
@@ -8,7 +10,7 @@ import { buildShellCommands, filterShellCommands } from "../../lib/shell-command
 import { hasStructureDrag, readStructureDragPayload } from "../../lib/structure-drag";
 import { isWebDemoWorkspace, webDemoProjectRoot } from "../../lib/web-demo-workspace";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
-import { RadixDropdownMenu } from "../radix-menu";
+import { NativeDropdownMenu } from "../native-dropdown-menu";
 import { ScrollFade } from "../scroll-fade";
 import type { ShellActions, ShellViewState } from "../types";
 import { ProjectGroup, ProjectItem } from "./file-tree-node";
@@ -167,7 +169,11 @@ export function FileBrowser({
   };
 
   return (
-    <ScrollFade className="sidebar-scroll">
+    <ScrollFade className="sidebar-scroll" onContextMenu={event => {
+      if ((event.target as HTMLElement).closest('[role="treeitem"], button, input')) return;
+      event.preventDefault();
+      void showNativeContextMenu(sidebarCreationItems(state, actions), { x: event.clientX, y: event.clientY });
+    }}>
       <div className="sidebar-browser-header">
         <strong className="sidebar-browser-title">Burette</strong>
         <button
@@ -307,7 +313,7 @@ export function FileBrowser({
           >
             <ExpandCollapseIcon collapsed={allVisibleProjectsExpanded} />
           </button>
-          <RadixDropdownMenu
+          <NativeDropdownMenu
             items={[
               {
                 kind: "item",

@@ -2,10 +2,12 @@ pub(crate) mod agent_integration;
 pub(crate) mod chemical_editors;
 pub(crate) mod chemical_space_models;
 pub(crate) mod conformer;
+pub(crate) mod context_menu;
 pub(crate) mod database;
 pub(crate) mod derived;
 pub(crate) mod descriptors;
 pub(crate) mod documents;
+pub(crate) mod file_operations;
 pub(crate) mod folding_results;
 pub(crate) mod grid;
 pub(crate) mod mdsmooth;
@@ -24,3 +26,5 @@ pub(crate) mod update_progress;
 pub(crate) mod updater;
 pub(crate) mod xtb;
 pub(crate) mod xtb_runtime;
+
+pub(crate) mod folder_contents;

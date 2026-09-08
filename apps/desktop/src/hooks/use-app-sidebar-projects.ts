@@ -204,6 +204,11 @@ export function useAppSidebarProjects({
           setProjectIndexRevision((revision) => revision + 1);
         });
     };
+    const refreshAll = () => {
+      for (const root of activeProjectRootsRef.current) pendingChangedProjectRootsRef.current.add(root);
+      refreshChangedProjects();
+    };
+    window.addEventListener("burette-project-refresh", refreshAll);
     const cleanup = trackTauriListener(
       listen<ProjectFilesChanged>("project-files-changed", (event) => {
         const roots = activeProjectRootsRef.current;
@@ -218,6 +223,7 @@ export function useAppSidebarProjects({
     );
     return () => {
       cleanup();
+      window.removeEventListener("burette-project-refresh", refreshAll);
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
     };
   }, [pruneRecentStructures, pruneSidebarPaths, pushErrorStatus]);

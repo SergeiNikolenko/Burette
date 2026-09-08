@@ -88,13 +88,13 @@ export function useAppMaintenance({ pushErrorStatus, pushStatus }: UseAppMainten
     }
   }, [pushErrorStatus, pushStatus]);
 
-  const openNewWindow = useCallback(async () => {
+  const openNewWindow = useCallback(async (paths?: string[]) => {
     if (!isTauriRuntime()) {
       pushStatus("New windows are available in the desktop app only.", "error");
       return;
     }
     try {
-      await invoke<string>("open_new_workspace_window");
+      await invoke<string>("open_new_workspace_window", { paths: paths ?? null });
       pushStatus("Opened new window");
     } catch (error) {
       pushErrorStatus(error, "Open new window failed");

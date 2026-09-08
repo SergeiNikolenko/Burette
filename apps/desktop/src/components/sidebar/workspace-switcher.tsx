@@ -1,5 +1,5 @@
 import { appInstanceLabel } from "../../lib/instance";
-import { RadixDropdownMenu } from "../radix-menu";
+import { NativeDropdownMenu } from "../native-dropdown-menu";
 import { AnimatedSettingsIcon } from "../ui/animated-icons";
 import type { BuildInfo, ShellActions, ShellViewState } from "../types";
 
@@ -29,7 +29,7 @@ export function WorkspaceSwitcher({ state, actions }: { state: ShellViewState; a
 
   return (
     <div className="sidebar-footer">
-      <RadixDropdownMenu
+      <NativeDropdownMenu
         side="top"
         align="start"
         items={[

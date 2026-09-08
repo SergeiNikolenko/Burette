@@ -22,7 +22,6 @@ export function hoverPreviewCardHidden(): boolean {
 }
 
 const PROPS_MIN_HEIGHT = 56;
-const PROPS_MAX_HEIGHT = 320;
 const PROPS_DEFAULT_HEIGHT = 132;
 
 // Numbers arrive as raw strings; long floats read badly in a tile, so they
@@ -49,7 +48,7 @@ function propRangeLabel(column: GridFilterColumn | undefined): string | null {
 
 function storedPropsHeight(): number {
   const raw = Number(window.localStorage.getItem(PROPS_HEIGHT_STORAGE_KEY));
-  return Number.isFinite(raw) && raw >= PROPS_MIN_HEIGHT && raw <= PROPS_MAX_HEIGHT ? raw : PROPS_DEFAULT_HEIGHT;
+  return Number.isFinite(raw) && raw >= PROPS_MIN_HEIGHT ? raw : PROPS_DEFAULT_HEIGHT;
 }
 
 // DataWarrior keeps a full-size drawing of the current row in the corner of
@@ -348,17 +347,27 @@ export function GridHoverMoleculeCard({
   }), [columnsById, columnsByLabel, shown]);
 
   const [propsHeight, setPropsHeight] = useState(storedPropsHeight);
-  const propsResizeRef = useRef<{ pointerY: number; height: number } | null>(null);
+  const propsNodeRef = useRef<HTMLDivElement | null>(null);
+  const propsResizeRef = useRef<{ pointerY: number; height: number; maxHeight: number } | null>(null);
+  const savePropsHeight = useCallback((height: number) => {
+    setPropsHeight(height);
+    window.localStorage.setItem(PROPS_HEIGHT_STORAGE_KEY, String(height));
+  }, []);
   const onPropsResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !propsNodeRef.current) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    propsResizeRef.current = { pointerY: event.clientY, height: propsHeight };
-  }, [propsHeight]);
+    propsResizeRef.current = {
+      pointerY: event.clientY,
+      height: propsNodeRef.current.getBoundingClientRect().height,
+      maxHeight: Math.max(PROPS_MIN_HEIGHT, propsNodeRef.current.scrollHeight),
+    };
+  }, []);
   const onPropsResizeMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const start = propsResizeRef.current;
     if (!start) return;
-    // The divider sits above the data table, so dragging it UP grows the table.
-    const next = Math.min(PROPS_MAX_HEIGHT, Math.max(PROPS_MIN_HEIGHT, start.height + (start.pointerY - event.clientY)));
+    // The bottom edge follows the pointer, up to the full content height.
+    const next = Math.min(start.maxHeight, Math.max(PROPS_MIN_HEIGHT, start.height + event.clientY - start.pointerY));
     setPropsHeight(next);
   }, []);
   const onPropsResizeEnd = useCallback(() => {
@@ -417,22 +426,15 @@ export function GridHoverMoleculeCard({
         <>
           <div className="grid-hover-molecule-props-bar">
             <span className="grid-hover-molecule-props-title">Data</span>
-            <div
-              className="resizable-handle resizable-handle-horizontal grid-hover-molecule-props-resize"
-              role="separator"
-              aria-orientation="horizontal"
-              aria-label="Resize data section"
-              onPointerDown={onPropsResizeStart}
-              onPointerMove={onPropsResizeMove}
-              onPointerUp={onPropsResizeEnd}
-              onPointerCancel={onPropsResizeEnd}
-              onDoubleClick={() => {
-                setPropsHeight(PROPS_DEFAULT_HEIGHT);
-                window.localStorage.setItem(PROPS_HEIGHT_STORAGE_KEY, String(PROPS_DEFAULT_HEIGHT));
-              }}
-            >
-              <span className="resizable-handle-grip" aria-hidden="true" />
-            </div>
+            {propsOpen ? (
+              <button
+                type="button"
+                className="grid-hover-molecule-props-show-all"
+                onClick={() => savePropsHeight(Math.max(PROPS_MIN_HEIGHT, propsNodeRef.current?.scrollHeight ?? PROPS_DEFAULT_HEIGHT))}
+              >
+                Show all
+              </button>
+            ) : null}
             <button
               type="button"
               className="grid-hover-molecule-props-toggle"
@@ -446,41 +448,73 @@ export function GridHoverMoleculeCard({
             </button>
           </div>
           {propsOpen ? (
-            <div className="grid-hover-molecule-props" style={{ maxHeight: propsHeight }}>
-              {visibleProps.map(({ entry, column }) => {
-                const described = describePropValue(entry.value, column);
-                const rangeLabel = propRangeLabel(column);
-                return (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    key={entry.label}
-                    className="dock-metric grid-hover-molecule-prop"
-                    data-tone={described.tone === "plain" ? undefined : described.tone}
-                    title={described.detail ? `${entry.label}: ${entry.value}\n${described.detail}` : `${entry.label}: ${entry.value}`}
-                    aria-label={`Open ${entry.label} filter`}
-                    onClick={() => onInspectProperty?.(column.id)}
-                  >
-                    <span>{entry.label}</span>
-                    <strong>
-                      {formatPropValue(entry.value)}
-                      {described.tone === "outlier-high" || described.tone === "outlier-low" ? (
-                        <span className="grid-hover-molecule-prop-mark" aria-hidden="true">
-                          {described.tone === "outlier-high" ? "\u25B2" : "\u25BC"}
+            <>
+              <div ref={propsNodeRef} className="grid-hover-molecule-props" style={{ maxHeight: propsHeight }}>
+                {visibleProps.map(({ entry, column }) => {
+                  const described = describePropValue(entry.value, column);
+                  const rangeLabel = propRangeLabel(column);
+                  return (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      key={entry.label}
+                      className="dock-metric grid-hover-molecule-prop"
+                      data-tone={described.tone === "plain" ? undefined : described.tone}
+                      title={described.detail ? `${entry.label}: ${entry.value}\n${described.detail}` : `${entry.label}: ${entry.value}`}
+                      aria-label={`Open ${entry.label} filter`}
+                      onClick={() => onInspectProperty?.(column.id)}
+                    >
+                      <span>{entry.label}</span>
+                      <strong>
+                        {formatPropValue(entry.value)}
+                        {described.tone === "outlier-high" || described.tone === "outlier-low" ? (
+                          <span className="grid-hover-molecule-prop-mark" aria-hidden="true">
+                            {described.tone === "outlier-high" ? "\u25B2" : "\u25BC"}
+                          </span>
+                        ) : null}
+                      </strong>
+                      {rangeLabel ? <small className="grid-hover-molecule-prop-range">{rangeLabel}</small> : null}
+                      {described.position === null ? null : (
+                        <span className="grid-hover-molecule-prop-track" aria-hidden="true">
+                          <span style={{ left: `${(described.position * 100).toFixed(1)}%` }} />
                         </span>
-                      ) : null}
-                    </strong>
-                    {rangeLabel ? <small className="grid-hover-molecule-prop-range">{rangeLabel}</small> : null}
-                    {described.position === null ? null : (
-                      <span className="grid-hover-molecule-prop-track" aria-hidden="true">
-                        <span style={{ left: `${(described.position * 100).toFixed(1)}%` }} />
-                      </span>
-                    )}
-                  </Button>
-                );
-              })}
-            </div>
+                      )}
+                    </Button>
+                  );
+                })}
+              </div>
+              <div
+                className="resizable-handle resizable-handle-horizontal grid-hover-molecule-props-resize"
+                role="separator"
+                tabIndex={0}
+                aria-orientation="horizontal"
+                aria-label="Resize data section"
+                aria-valuemin={PROPS_MIN_HEIGHT}
+                aria-valuenow={propsHeight}
+                aria-valuemax={Math.max(propsHeight, propsNodeRef.current?.scrollHeight ?? propsHeight)}
+                aria-valuetext={`${Math.round(propsHeight)} pixels`}
+                title="Drag to resize data · Double-click to reset"
+                onPointerDown={onPropsResizeStart}
+                onPointerMove={onPropsResizeMove}
+                onPointerUp={onPropsResizeEnd}
+                onPointerCancel={onPropsResizeEnd}
+                onLostPointerCapture={onPropsResizeEnd}
+                onDoubleClick={() => savePropsHeight(PROPS_DEFAULT_HEIGHT)}
+                onKeyDown={(event) => {
+                  const node = propsNodeRef.current;
+                  if (!node || !["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const maxHeight = Math.max(PROPS_MIN_HEIGHT, node.scrollHeight);
+                  const height = event.key === "Home" ? PROPS_MIN_HEIGHT
+                    : event.key === "End" ? maxHeight
+                    : node.getBoundingClientRect().height + (event.key === "ArrowDown" ? 32 : -32);
+                  savePropsHeight(Math.min(maxHeight, Math.max(PROPS_MIN_HEIGHT, height)));
+                }}
+              >
+                <span className="resizable-handle-grip" aria-hidden="true" />
+              </div>
+            </>
           ) : null}
         </>
       ) : null}

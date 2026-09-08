@@ -19,7 +19,14 @@ export type StructureViewerSelectorPrimitive = string | number | Array<string | 
 export type StructureViewerResidueSelector = Record<string, StructureViewerSelectorPrimitive>;
 export type StructureViewerSelector = Record<string, StructureViewerSelectorPrimitive | StructureViewerResidueSelector[] | undefined>;
 
+export type CompositionSceneEdit =
+  | { operation: "representation"; value: string }
+  | { operation: "opacity"; value: number }
+  | { operation: "color"; value: string };
+
 export type StructureViewerAction =
+  | { type: "edit_components"; label: string; query: string; componentLabel: string; kind: "polymer" | "ligand" | "ion" | "water"; edit: CompositionSceneEdit }
+  | { type: "focus_selection"; label: string; selector: StructureViewerSelector }
   | {
       type: "select_residues";
       label: string;
@@ -43,6 +50,8 @@ export type StructureViewerAction =
       type: "hide_components" | "show_components" | "remove_components";
       label: string;
       kind: "polymer" | "ligand" | "ion" | "water";
+      query?: string;
+      componentLabel?: string;
     }
   // Makes a scene object out of a row that had none, so the viewer's own scene
   // tree can then colour, restyle or isolate it like any other component. The

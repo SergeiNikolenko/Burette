@@ -138,8 +138,10 @@ export const useShellStore = create<ShellState>()(
       togglePinnedProjectRoot: (root) =>
         set((state) => {
           const normalized = normalizeRoot(root);
-          if (!normalized || !state.projectRoots.includes(normalized)) return state;
+          if (!normalized) return state;
           return {
+            projectRoots: state.projectRoots.includes(normalized) ? state.projectRoots : [...state.projectRoots, normalized],
+            hiddenProjectRoots: state.hiddenProjectRoots.filter((candidate) => candidate !== normalized),
             pinnedProjectRoots: state.pinnedProjectRoots.includes(normalized)
               ? state.pinnedProjectRoots.filter((candidate) => candidate !== normalized)
               : [...state.pinnedProjectRoots, normalized],

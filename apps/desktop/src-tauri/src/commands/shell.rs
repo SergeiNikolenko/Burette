@@ -197,8 +197,19 @@ fn changed_project_roots(
 #[tauri::command]
 pub(crate) fn open_new_workspace_window<R: Runtime>(
     app: tauri::AppHandle<R>,
+    paths: Option<Vec<String>>,
 ) -> Result<String, String> {
-    windows::open_new_workspace_window(&app)
+    let paths = paths.unwrap_or_default();
+    if paths.len() > 200
+        || paths
+            .iter()
+            .any(|path| !Path::new(path).is_absolute() || path.len() > 4096)
+    {
+        return Err("Choose at most 200 absolute file paths".into());
+    }
+    let label = windows::open_new_workspace_window(&app)?;
+    crate::startup::signal_open_documents_for_window(&app, &label, paths);
+    Ok(label)
 }
 
 #[tauri::command]
