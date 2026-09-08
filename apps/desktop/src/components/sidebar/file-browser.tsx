@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Search01Icon } from "@hugeicons/core-free-icons";
+import { SidebarTooltip } from "./sidebar-tooltip";
+import { useDropHighlightReset } from "../../hooks/use-drop-highlight-reset";
+import { useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { Search as Search01Icon } from "@/components/ui/app-icon-data";
 import { AnimatedOrbitIcon } from "../ui/animated-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { isRemoteStructureUrl } from "../../lib/remote-structure";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
-import { buildShellCommands, filterShellCommands } from "../../lib/shell-commands";
 import { hasStructureDrag, readStructureDragPayload } from "../../lib/structure-drag";
 import { isWebDemoWorkspace, webDemoProjectRoot } from "../../lib/web-demo-workspace";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
@@ -15,7 +15,6 @@ import { ProjectGroup, ProjectItem } from "./file-tree-node";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
 
 const SIDEBAR_TREE_ROW_SELECTOR = ".project-group-row, .project-folder-row, [data-sidebar-structure-path]";
-const SIDEBAR_COMMAND_LIMIT = 6;
 
 // DOM-based tree keyboard navigation: move focus across visible rows with the
 // arrow keys, expand/collapse the focused folder with Right/Left, and jump with
@@ -75,17 +74,11 @@ export function FileBrowser({
   actions: ShellActions;
 }) {
   const [pinnedOpen, setPinnedOpen] = useState(true);
-  const [searchOpen, setSearchOpen] = useState(() => state.sidebarQuery.trim().length > 0);
   const [ketcherDropActive, setKetcherDropActive] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchToggleRef = useRef<HTMLButtonElement>(null);
+  useDropHighlightReset(setKetcherDropActive);
   const hideProjectPreviews = state.buildInfo.isAgentShell && !state.workspacePath;
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
-  const canFetchRemoteStructure = isRemoteStructureUrl(sidebarQuery);
-  const matchingCommands = hasSidebarQuery
-    ? filterShellCommands(buildShellCommands(state, actions, sidebarQuery), sidebarQuery).slice(0, SIDEBAR_COMMAND_LIMIT)
-    : [];
   const visibleProjects = hideProjectPreviews ? [] : filterSidebarProjects(state.sidebarProjects, state.sidebarQuery);
   const pinnedItems = visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned));
   const pinnedExpanded = pinnedOpen || hasSidebarQuery;
@@ -106,33 +99,6 @@ export function FileBrowser({
     }),
     state,
   });
-
-  useEffect(() => {
-    if (hasSidebarQuery) setSearchOpen(true);
-  }, [hasSidebarQuery]);
-
-  useEffect(() => {
-    if (!searchOpen) return;
-    const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [searchOpen]);
-
-  const toggleSearch = () => {
-    if (searchOpen) {
-      actions.setSidebarQuery("");
-      setSearchOpen(false);
-      return;
-    }
-    setSearchOpen(true);
-  };
-
-  const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    actions.setSidebarQuery("");
-    setSearchOpen(false);
-    window.requestAnimationFrame(() => searchToggleRef.current?.focus());
-  };
 
   const toggleAllProjectFolders = () => {
     if (!projectsExpanded) actions.toggleProjectsOpen();
@@ -170,109 +136,59 @@ export function FileBrowser({
     <ScrollFade className="sidebar-scroll">
       <div className="sidebar-browser-header">
         <strong className="sidebar-browser-title">Burette</strong>
-        <button
-          ref={searchToggleRef}
-          type="button"
-          className="sidebar-search-toggle"
-          data-sidebar-search-toggle
-          onClick={toggleSearch}
-          aria-label={searchOpen ? "Close project search" : "Search projects and structures"}
-          aria-expanded={searchOpen}
-          aria-controls="sidebar-project-search"
-        >
-          <HugeiconsIcon icon={Search01Icon} size={16} color="currentColor" strokeWidth={2} />
-        </button>
-      </div>
-      {searchOpen ? (
-        <label
-          id="sidebar-project-search"
-          className="sidebar-search-row"
-          aria-label="Search projects and structures"
-        >
-          <span className="sidebar-search-icon" aria-hidden="true">
+        <SidebarTooltip label="Search commands and structures (⌘P)">
+          <button
+            type="button"
+            className="sidebar-search-toggle"
+            data-sidebar-search-toggle
+            onClick={() => { actions.setSidebarQuery(""); actions.openCommandPalette(); }}
+            aria-label="Search commands and structures"
+            aria-haspopup="dialog"
+          >
             <HugeiconsIcon icon={Search01Icon} size={16} color="currentColor" strokeWidth={2} />
-          </span>
-          <input
-            ref={searchInputRef}
-            type="search"
-            data-sidebar-search
-            value={state.sidebarQuery}
-            onChange={(event) => actions.setSidebarQuery(event.currentTarget.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="Search"
-            aria-label="Search projects and structures"
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <kbd>⌘<span>P</span></kbd>
-        </label>
-      ) : null}
-      {matchingCommands.length > 0 && (
-        <section className="sidebar-section sidebar-command-section" aria-label="Matching commands">
-          <div className="sidebar-section-header">
-            <span className="sidebar-section-title">Commands</span>
-          </div>
-          {matchingCommands.map((command) => (
-            <button
-              key={command.id}
-              type="button"
-              className="sidebar-command-row"
-              title={command.description}
-              onClick={() => {
-                actions.setSidebarQuery("");
-                void command.run();
-              }}
-            >
-              <span className="sidebar-command-label">{command.label}</span>
-              <span className="sidebar-command-description">{command.description}</span>
-            </button>
-          ))}
-        </section>
-      )}
-      {canFetchRemoteStructure && (
+          </button>
+        </SidebarTooltip>
+      </div>
+      <SidebarTooltip label="Open Ketcher">
         <button
           type="button"
-          className="sidebar-search-action-row"
-          onClick={() => actions.openStructureUrlInMolstar(sidebarQuery)}
+          className="sidebar-tool-row"
+          data-file-drop-zone="ketcher"
+          draggable
+          onMouseDown={ketcherDrag.onMouseDown}
+          onClickCapture={ketcherDrag.onClickCapture}
+          onClick={actions.openKetcher}
+          onDragStart={ketcherDrag.onDragStart}
+          onDragEnd={ketcherDrag.onDragEnd}
+          onDragOver={handleKetcherDragOver}
+          onDragLeave={handleKetcherDragLeave}
+          onDrop={handleKetcherDrop}
+          data-drop-active={ketcherDropActive || undefined}
+          aria-label="Open Ketcher"
         >
-          Fetch URL in Mol*
+          <span className="sidebar-tool-icon" aria-hidden="true">
+            <AnimatedOrbitIcon size={16} />
+          </span>
+          <span className="sidebar-tool-label">Ketcher</span>
         </button>
-      )}
-      <button
-        type="button"
-        className="sidebar-tool-row"
-        draggable
-        onMouseDown={ketcherDrag.onMouseDown}
-        onClickCapture={ketcherDrag.onClickCapture}
-        onClick={actions.openKetcher}
-        onDragStart={ketcherDrag.onDragStart}
-        onDragEnd={ketcherDrag.onDragEnd}
-        onDragOver={handleKetcherDragOver}
-        onDragLeave={handleKetcherDragLeave}
-        onDrop={handleKetcherDrop}
-        data-drop-active={ketcherDropActive || undefined}
-        aria-label="Open Ketcher"
-      >
-        <span className="sidebar-tool-icon" aria-hidden="true">
-          <AnimatedOrbitIcon size={16} />
-        </span>
-        <span className="sidebar-tool-label">Ketcher</span>
-      </button>
+      </SidebarTooltip>
       {pinnedItems.length > 0 && (
         <section className="sidebar-section pinned-section" aria-label="Pinned structures">
           <div className="sidebar-section-header">
-            <button
-              type="button"
-              className="sidebar-section-title-button"
-              onClick={() => setPinnedOpen((value) => !value)}
-              aria-expanded={pinnedExpanded}
-              aria-controls="sidebar-pinned-tree"
-            >
-              <span>Pinned</span>
-              <span className={pinnedExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
-                <ChevronIcon />
-              </span>
-            </button>
+            <SidebarTooltip label={pinnedExpanded ? "Collapse pinned structures" : "Expand pinned structures"}>
+              <button
+                type="button"
+                className="sidebar-section-title-button"
+                onClick={() => setPinnedOpen((value) => !value)}
+                aria-expanded={pinnedExpanded}
+                aria-controls="sidebar-pinned-tree"
+              >
+                <span>Pinned</span>
+                <span className={pinnedExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
+                  <ChevronIcon />
+                </span>
+              </button>
+            </SidebarTooltip>
           </div>
           {pinnedExpanded && (
             <div className="pinned-structures" role="list" id="sidebar-pinned-tree">
@@ -302,7 +218,6 @@ export function FileBrowser({
             type="button"
             className="sidebar-section-menu-button"
             aria-label={allVisibleProjectsExpanded ? "Collapse all project folders" : "Expand all project folders"}
-            title={allVisibleProjectsExpanded ? "Collapse all project folders" : "Expand all project folders"}
             onClick={toggleAllProjectFolders}
           >
             <ExpandCollapseIcon collapsed={allVisibleProjectsExpanded} />

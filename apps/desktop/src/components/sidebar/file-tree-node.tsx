@@ -1,8 +1,7 @@
+import { SidebarTooltip } from "./sidebar-tooltip";
+import { Pin, PinFilled, DotsHorizontal } from "../ui/app-icons";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
-import {
-  Folder01Icon,
-  Folder02Icon,
-} from "@hugeicons/core-free-icons";
+import { Folder01Icon, Folder02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
@@ -289,7 +288,6 @@ export function ProjectGroup({
           type="button"
           className="project-folder-toggle-button"
           aria-label={expanded ? `Collapse ${project.title}` : `Expand ${project.title}`}
-          title={expanded ? "Collapse all nested folders" : "Expand all nested folders"}
           onClick={(event) => {
             event.stopPropagation();
             handleRecursiveToggle();
@@ -374,6 +372,7 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions, startR
       kind: "item" as const,
       id: project.isPinned ? "unpin-project" : "pin-project",
       text: project.isPinned ? "Unpin project" : "Pin project",
+      icon: project.isPinned ? "Unpin" as const : "Pin" as const,
       disabled: !project.rootPath,
       action: () => {
         if (!project.rootPath) return;
@@ -618,7 +617,6 @@ function ProjectTreeNodeView({
         onKeyDown={handleKeyDown}
         aria-expanded={expanded}
         aria-label={node.path}
-        title={node.path}
       >
         <span className="project-folder-icon" aria-hidden="true">
           <HugeiconsIcon icon={expanded ? Folder02Icon : Folder01Icon} size={16} color="currentColor" strokeWidth={2} />
@@ -651,7 +649,6 @@ function ProjectTreeNodeView({
           type="button"
           className="project-folder-toggle-button"
           aria-label={expanded ? `Collapse ${node.path}` : `Expand ${node.path}`}
-          title={expanded ? "Collapse nested folders" : "Expand nested folders"}
           onClick={(event) => {
             event.stopPropagation();
             if (!forceExpanded) toggleFolderPathRecursive(node.path);
@@ -801,6 +798,7 @@ export function ProjectItem({
         kind: "item" as const,
         id: item.isPinned ? "unpin-structure" : "pin-structure",
         text: item.isPinned ? "Unpin" : "Pin",
+        icon: item.isPinned ? "Unpin" as const : "Pin" as const,
         action: () => actions.togglePinnedStructure(item.path),
       },
     ];
@@ -845,18 +843,19 @@ export function ProjectItem({
         <MarqueeName className="project-name">{item.title}</MarqueeName>
       </span>
       <span className="project-actions">
-        <button
-          type="button"
-          className={item.isPinned ? "pin-hit pinned" : "pin-hit"}
-          aria-label={(item.isPinned ? "Unpin " : "Pin ") + item.title}
-          title={item.isPinned ? "Unpin structure" : "Pin structure"}
-          onClick={(event) => {
-            event.stopPropagation();
-            actions.togglePinnedStructure(item.path);
-          }}
-        >
-          <PinIcon />
-        </button>
+        <SidebarTooltip label={item.isPinned ? "Unpin structure" : "Pin structure"}>
+          <button
+            type="button"
+            className={item.isPinned ? "pin-hit pinned" : "pin-hit"}
+            aria-label={(item.isPinned ? "Unpin " : "Pin ") + item.title}
+            onClick={(event) => {
+              event.stopPropagation();
+              actions.togglePinnedStructure(item.path);
+            }}
+          >
+            <PinIcon pinned={item.isPinned} />
+          </button>
+        </SidebarTooltip>
       </span>
     </div>
   );
@@ -945,28 +944,13 @@ function projectDepthStyle(depth: number): CSSProperties {
   return { "--project-depth": depth } as CSSProperties;
 }
 
-function PinIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path
-        d="M8.25 1.75L12.25 5.75L10.4 7.6L9.25 6.45L6.8 8.9L7.15 11.2L6.35 12L4 9.65L1.9 11.75L1.25 11.1L3.35 9L1 6.65L1.8 5.85L4.1 6.2L6.55 3.75L5.4 2.6L8.25 1.75Z"
-        stroke="currentColor"
-        strokeWidth="1.15"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+function PinIcon({ pinned }: { pinned: boolean }) {
+  const Icon = pinned ? PinFilled : Pin;
+  return <Icon size={14} aria-hidden="true" />;
 }
 
 function MoreIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="4" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="12" cy="8" r="1.2" fill="currentColor" />
-    </svg>
-  );
+  return <DotsHorizontal size={16} aria-hidden="true" />;
 }
 
 function FolderExpandCollapseIcon({ collapse }: { collapse: boolean }) {

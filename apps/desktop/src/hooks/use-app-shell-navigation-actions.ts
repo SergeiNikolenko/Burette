@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { useOpenCommandPalette } from "./use-command-palette";
 import type { AppSettingsSectionId } from "../components/types";
 
 type UseAppShellNavigationActionsOptions = {
@@ -22,20 +23,7 @@ export function useAppShellNavigationActions({
     setActiveDocument(id);
   }, [setActiveDocument]);
 
-  const focusSidebarSearch = useCallback(() => {
-    if (!sidebarOpen) toggleSidebar();
-    window.setTimeout(() => {
-      const searchInput = document.querySelector<HTMLInputElement>("[data-sidebar-search]");
-      if (searchInput) {
-        searchInput.focus();
-        return;
-      }
-      document.querySelector<HTMLButtonElement>("[data-sidebar-search-toggle]")?.click();
-      window.setTimeout(() => {
-        document.querySelector<HTMLInputElement>("[data-sidebar-search]")?.focus();
-      }, 0);
-    }, 0);
-  }, [sidebarOpen, toggleSidebar]);
+  const focusSidebarSearch = useOpenCommandPalette();
 
   const openSettings = useCallback(() => {
     if (!sidebarOpen) toggleSidebar();
