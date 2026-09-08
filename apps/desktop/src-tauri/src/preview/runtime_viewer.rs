@@ -969,7 +969,7 @@ mod tests {
                 .expect("native viewer helper script");
             let viewer_index = scripts
                 .iter()
-                .position(|line| line.contains("/viewer.js\""))
+                .position(|line| line.contains("viewer.js\""))
                 .expect("viewer script");
             assert!(helper_index < viewer_index);
         }
