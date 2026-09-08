@@ -2150,6 +2150,12 @@ kbd span { margin-left: 2px; }
   overflow: hidden;
 }
 .radix-menu-item-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: var(--text-secondary);
+}
+span.radix-menu-item-icon {
   width: 20px;
   height: 20px;
   flex: 0 0 20px;
@@ -2165,6 +2171,9 @@ kbd span { margin-left: 2px; }
   object-fit: cover;
 }
 img.radix-menu-item-icon {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
   display: block;
   background: transparent;
   border-radius: 0;

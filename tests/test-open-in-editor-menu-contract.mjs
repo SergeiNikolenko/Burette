@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
+import { registerBrowserDevAppIconRoute } from "../apps/desktop/vite/browser-dev/assets.ts";
 
 const menu = await readFile("apps/desktop/src/components/open-in-editor-menu.tsx", "utf8");
 const finderHook = await readFile("apps/desktop/src/hooks/use-finder-icon-url.ts", "utf8");
@@ -30,4 +33,49 @@ assert.match(tauriCommands, /URLForApplicationToOpenURL/);
 assert.match(tauriLib, /commands::chemical_editors::default_application_icon_path/);
 assert.match(tauriPermissions, /"default_application_icon_path"/);
 
-console.log("open-in-editor menu contract ok");
+// A new route instance must reuse the persistent icon without resolving the app
+// or invoking conversion again, even when the original app is no longer there.
+const iconId = `test-${randomUUID()}`;
+const sourceIcon = "apps/desktop/src-tauri/icons/icon.png";
+const expectedIcon = await readFile(sourceIcon);
+let discoveries = 0;
+let conversions = 0;
+let outputPath;
+let handler;
+const fakeVite = { middlewares: { use(_path, callback) { handler = callback; } } };
+registerBrowserDevAppIconRoute(fakeVite, {
+  [iconId]: async () => { discoveries++; return sourceIcon; },
+}, async (_command, args) => {
+  conversions++;
+  const pendingPath = args.at(-1);
+  outputPath = pendingPath.replace(/-[a-f0-9-]{36}\.png$/u, ".png");
+  await writeFile(pendingPath, expectedIcon);
+});
+const server = createServer((req, res) => { void handler(req, res); });
+await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+const baseUrl = `http://127.0.0.1:${server.address().port}`;
+try {
+  const first = await fetch(`${baseUrl}/${iconId}.png`);
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("content-type"), "image/png");
+  assert.deepEqual(Buffer.from(await first.arrayBuffer()), expectedIcon);
+  registerBrowserDevAppIconRoute(fakeVite, {
+    [iconId]: async () => { throw new Error("Cached icons must skip discovery"); },
+  }, async () => { throw new Error("Cached icons must skip conversion"); });
+  const cached = await fetch(`${baseUrl}/${iconId}.png`);
+  assert.equal(cached.status, 200);
+  assert.deepEqual(Buffer.from(await cached.arrayBuffer()), expectedIcon);
+  const head = await fetch(`${baseUrl}/${iconId}.png`, { method: "HEAD" });
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), "");
+  assert.equal((await fetch(`${baseUrl}/constructor.png`)).status, 404);
+  assert.equal((await fetch(`${baseUrl}/..%2F${iconId}.png`)).status, 404);
+  assert.equal((await fetch(`${baseUrl}/${iconId}.png`, { method: "POST" })).status, 405);
+  assert.deepEqual({ discoveries, conversions }, { discoveries: 1, conversions: 1 });
+} finally {
+  server.closeAllConnections();
+  await new Promise((resolve) => server.close(resolve));
+  if (outputPath) await rm(outputPath, { force: true });
+}
+
+console.log("open-in-editor menu and persistent icon cache contract ok");
