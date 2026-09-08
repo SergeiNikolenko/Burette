@@ -29,8 +29,7 @@ import type { KetcherEditorApi } from "./ketcher-editor";
 import { registerKetcherAgentController, unregisterKetcherAgentController } from "../lib/ketcher-agent";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
-import { ChevronDown, Minus, Plus } from "@/components/ui/app-icons";
-import { Moon, Sun } from "lucide-react";
+import { ChevronDown, Minus, Plus, ColorTheme } from "@/components/ui/app-icons";
 import "./ketcher/workspace.css";
 import { KetcherTextPanel } from "./ketcher/text-panel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1344,7 +1343,7 @@ export function KetcherPage({
                 aria-label={ketcherThemeTitle}
                 onClick={() => actions.setPreference("theme", nextKetcherTheme)}
               >
-                {ketcherThemeMode === "dark" ? <Moon aria-hidden="true" /> : <Sun aria-hidden="true" />}
+                <ColorTheme aria-hidden="true" />
               </Button>
             </TooltipTrigger>
             <TooltipContent showArrow={false}>{ketcherThemeTitle}</TooltipContent>
