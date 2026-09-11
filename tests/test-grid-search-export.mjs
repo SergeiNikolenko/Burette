@@ -13,7 +13,7 @@ function declaration(name) {
 }
 
 const state = {
-  query: "", searchMode: "text", searchTimer: 0, searchTextCache: new WeakMap(), token: 0, dataToken: 0,
+  query: "", searchTimer: 0, searchTextCache: new WeakMap(), token: 0, dataToken: 0,
   sourceRevision: 0, smarts: "", smartsError: "", smartsMatches: new Map(),
   remoteMode: false, rows: [], selected: new Set(), all: [
     { index: 0, name: "CC label", smiles: "O", props: {} },
@@ -47,16 +47,15 @@ state.sourceRevision++;
 search.refresh({});
 assert.deepEqual(state.rows, [], "edits invalidate cached search text");
 assert.match(search.normalizedSearchText(state.all[0]), /changed/);
-search.setUnifiedSearchQuery("CC", {}, "text");
-assert.equal(state.smarts, "", "SMILES-looking text remains text in the UI's default mode");
+search.setUnifiedSearchQuery("label", {});
+assert.equal(state.smarts, "", "plain text never becomes a substructure query");
 search.setUnifiedSearchQuery("CC", {});
-assert.equal(state.smarts, "CC", "legacy automatic interpretation remains available");
-state.searchMode = "structure";
-search.setUnifiedSearchQuery("CC", {}, "structure");
+assert.equal(state.smarts, "CC", "SMILES-looking input is interpreted as a substructure query automatically");
 state.rdkit = { get_qmol: () => ({ is_valid: () => true, delete() {} }) };
 assert.deepEqual(search.filterBySMARTS(state.all).map(row => row.index), [1]);
 state.rdkit = { get_qmol: () => ({ is_valid: () => false, delete() {} }) };
-assert.deepEqual(search.filterBySMARTS(state.all), [], "invalid explicit structure query cannot display all rows");
+assert.deepEqual(search.filterBySMARTS(state.all), state.all, "an unparsable auto-detected query keeps rows for the text fallback");
+assert.ok(state.smartsError, "the failed SMARTS parse is reported to the footer");
 
 let completePage;
 let appliedPages = 0;
@@ -104,6 +103,6 @@ for (const enabled of [false, true]) {
   assert.match(html, /Export 2 selected rows as CSV/);
 }
 assert.ok(ui.indexOf("<FileSection {...props}") < ui.indexOf("<ComputeSection {...props}"), "File actions come first");
-assert.match(ui, /<ToggleGroupItem value="text"/);
-assert.match(ui, /<ToggleGroupItem value="structure"/);
+assert.doesNotMatch(ui, /ToggleGroupItem/, "the single search input replaces the Text/Structure mode toggle");
+assert.match(ui, /"name, table value or SMARTS"/);
 console.log("Grid search, export scope and stable file actions passed.");

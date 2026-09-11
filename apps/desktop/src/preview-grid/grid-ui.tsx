@@ -1,7 +1,6 @@
 import React from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
-import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 
 type SortOption = {
   value: string;
@@ -36,7 +35,6 @@ type GridControlProps = {
   exportEnabled: boolean;
   selectionEnabled: boolean;
   substructureSearch: boolean;
-  searchMode: "text" | "structure";
   exportScopeLabel: string;
   exportPending: boolean;
   supportsXyzrenderCards: boolean;
@@ -73,7 +71,6 @@ type GridControlProps = {
   undoTitle: string;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
-  onSearchModeChange: (value: "text" | "structure") => void;
   onSortChange: (value: string) => void;
   onShowProperties: () => void;
   onClearSmarts: () => void;
@@ -792,33 +789,19 @@ function GridActionToolbar(props: GridControlProps) {
 }
 
 function GridControls(props: GridControlProps) {
-  const searchPlaceholder = props.searchMode === "structure"
-    ? "SMARTS pattern"
+  const searchPlaceholder = props.substructureSearch
+    ? "name, table value or SMARTS"
     : "name or table value";
 
   return (
     <div className="buret-grid-toolbar">
       <div className="buret-toolbar-row buret-toolbar-row-main">
         <div className="buret-search-control buret-filter-control">
-          {props.substructureSearch ? (
-            <ToggleGroup
-              type="single"
-              value={props.searchMode}
-              onValueChange={(value) => {
-                if (value === "text" || value === "structure") props.onSearchModeChange(value);
-              }}
-              aria-label="Search mode"
-              className="buret-renderer-control"
-              size="sm"
-            >
-              <ToggleGroupItem value="text" className="ab-btn">Text</ToggleGroupItem>
-              <ToggleGroupItem value="structure" className="ab-btn">Structure</ToggleGroupItem>
-            </ToggleGroup>
-          ) : "Search"}
+          Search
           <input
             id="search"
             type="search"
-            aria-label={props.searchMode === "structure" ? "Search structures with SMARTS" : "Search text"}
+            aria-label={props.substructureSearch ? "Search text or structures with SMARTS" : "Search text"}
             spellCheck={false}
             autoCapitalize="off"
             placeholder={searchPlaceholder}
