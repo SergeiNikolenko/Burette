@@ -8703,6 +8703,10 @@ input.structure-inspector-composition-search {
   background: var(--surface-subtle);
   color: var(--text-primary);
 }
+.radix-dialog :is(button, a, select):focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 2px;
+}
 .radix-dialog-body,
 .radix-dialog-description {
   margin: 0;
