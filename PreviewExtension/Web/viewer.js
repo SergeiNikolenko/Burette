@@ -8066,6 +8066,8 @@ SOFTWARE.
     scheduleSceneTreeRender();
   }
 
+  let sceneTreeColorPickerMissingReported = false;
+
   function sceneTreeMenuSwatches(menu, label, action, currentValue) {
     const swatches = document.createElement('div');
     swatches.className = 'buret-tree-swatches buret-tree-swatches-with-picker';
@@ -8080,6 +8082,18 @@ SOFTWARE.
       swatch.setAttribute('aria-pressed', currentValue === entry.value ? 'true' : 'false');
       swatch.title = entry.label;
       swatches.appendChild(swatch);
+    }
+    // The picker lives in color-picker.js, loaded next to this file. When that
+    // script is missing (a packaged build once shipped without it) the preset
+    // swatches still work on their own; only the custom-colour button is dropped,
+    // rather than the whole menu dying before it renders.
+    if (typeof window.BuretteColorPicker?.create !== 'function') {
+      if (!sceneTreeColorPickerMissingReported) {
+        sceneTreeColorPickerMissingReported = true;
+        debug('[web] BuretteColorPicker is unavailable; scene tree menus offer preset colours only');
+      }
+      menu.appendChild(swatches);
+      return;
     }
     const custom = document.createElement('button');
     custom.type = 'button';
@@ -21546,6 +21560,11 @@ SOFTWARE.
   function molstarExportToMmCif() {
     const runtime = molstarRuntime();
     const lib = molstarExportLib();
+    // The vendored bundle (scripts/molstar-viewer-entry.js) exposes the exporter
+    // under the lowercase `lib.structure` namespace; the other probes cover
+    // older layouts that hoisted it to the root or a capitalised `Structure`.
+    const structureLib = molstarStructureRuntime();
+    if (typeof structureLib?.to_mmCIF === 'function') return structureLib.to_mmCIF;
     if (typeof lib.to_mmCIF === 'function') return lib.to_mmCIF;
     if (typeof runtime?.to_mmCIF === 'function') return runtime.to_mmCIF;
     if (typeof lib.Structure?.to_mmCIF === 'function') return lib.Structure.to_mmCIF;

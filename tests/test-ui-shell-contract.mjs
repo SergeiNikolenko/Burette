@@ -2328,13 +2328,21 @@ assert.match(styles, /\.tab:hover \{[^}]*backdrop-filter: blur\(40px\)/);
 assert.match(styles, /--tab-active-bg: rgb\(29 29 29\);/);
 assert.doesNotMatch(styles, /--tab-active-bg: color-mix\(/);
 assert.match(styles, /\.tab\.active \{[^}]*background: var\(--tab-active-bg\);[^}]*backdrop-filter: blur\(40px\)/s);
-assert.match(styles, /\.tab-close \{[^}]*transform: translate\(100%, -50%\);/s);
-// Every tab reserves its close-button space before hover reveals the button.
-assert.match(styles, /\.tab \{[^}]*padding: 0 34px 0 14px;/s);
+// The close button sits inside the pill's right padding from the start and
+// only fades in; sliding it in from outside forced every tab to reserve the
+// slide distance on top of the button, which spread the strip out.
+assert.match(styles, /\.tab-close \{[^}]*right: 4px;[^}]*transform: translateY\(-50%\);/s);
+assert.doesNotMatch(styles, /\.tab-close \{[^}]*translate\(100%/s);
+// Every tab reserves exactly the close button's room before hover reveals it,
+// so nothing shifts on hover and inactive tabs carry no dead space.
+assert.match(styles, /\.tab \{[^}]*padding: 0 26px 0 12px;/s);
+// A tab with no close button (pinned, read-only) closes up on the right.
+assert.match(styles, /\.tab-shell > \.tab:last-child \{ padding-right: 12px; \}/);
 assert.match(styles, /@container \(max-width: 320px\) \{[\s\S]*\.topbar \.tab-shell \{[^}]*flex: 0 0 auto;/);
-assert.match(styles, /\.tab-shell\[data-active\] \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;[^}]*transform: translate\(0, -50%\);[^}]*background: transparent;/s);
+assert.match(styles, /@container \(max-width: 320px\) \{[\s\S]*\.topbar \.tab \{[^}]*padding-inline: 10px 26px;/);
+assert.match(styles, /\.tab-shell\[data-active\] \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;[^}]*background: transparent;/s);
 assert.match(styles, /\.tab-shell:hover \.tab-close/);
-assert.match(styles, /\.tab-shell:focus-within \.tab-close \{[^}]*transform: translate\(0, -50%\);/s);
+assert.match(styles, /\.tab-shell:focus-within \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;/s);
 assert.match(styles, /\.tab-close:hover \{[^}]*color: var\(--text-secondary\);[^}]*background: color-mix\(in srgb, var\(--fg-base\) calc\(var\(--contrast\) \* 26%\), var\(--bg-base\)\);[^}]*box-shadow: inset 0 0 0 1px var\(--line-subtle\)/s);
 assert.match(closeIcon, /export function CloseIcon/);
 assert.match(closeIcon, /className="close-glyph"/);
@@ -2424,6 +2432,31 @@ assert.doesNotMatch(appLayout, /animatingRef/);
 assert.match(appLayout, /function useGroupPixelGuard/);
 assert.match(appLayout, /frame = requestAnimationFrame\(correct\)/);
 assert.match(appLayout, /panel\.resize\(`\$\{want\}px`\)/);
+// Sizes reported while a separator is dragged are parked in a DragCommit and
+// written once on release: setDockSize clones the workspace and the persist
+// middleware serialised every workspace to localStorage per drag frame. Open
+// flags still commit as they change. For the same gesture (and the toggle
+// slide) the shell carries data-resizing and every viewer iframe is pinned to
+// its pixel size so Mol* reflows once instead of once per frame.
+assert.match(appLayout, /function useResizeDragSession/);
+assert.match(appLayout, /function useDragCommittedSize/);
+assert.match(appLayout, /const sidebarResize = useDragCommittedSize\(onSidebarWidthChange\);/);
+assert.match(appLayout, /const rightDockResize = useDragCommittedSize\(\(px\) => actions\.setDockSize\("right", px\)\);/);
+assert.match(appLayout, /const bottomDockResize = useDragCommittedSize\(\(px\) => actions\.setDockSize\("bottom", px\)\);/);
+assert.match(appLayout, /if \(px > 1\) sidebarResize\.report\(px\);/);
+assert.match(appLayout, /if \(px > 1\) rightDockResize\.report\(px\);/);
+assert.match(appLayout, /if \(px > 1\) bottomDockResize\.report\(px\);/);
+assert.doesNotMatch(appLayout, /if \(px > 1\) actions\.setDockSize/);
+assert.doesNotMatch(appLayout, /if \(px > 1\) onSidebarWidthChange/);
+assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(sidebarResize\); \}\}/);
+assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(rightDockResize\); \}\}/);
+assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(bottomDockResize\); \}\}/);
+assert.match(appLayout, /window\.addEventListener\("pointerup", end, true\);/);
+assert.match(appLayout, /const release = shellRef\.current \? pinViewerFrames\(shellRef\.current\) : null;/);
+assert.match(viewerFrame, /export function pinViewerFrames\(root: HTMLElement\): \(\) => void/);
+assert.match(viewerFrame, /root\.setAttribute\("data-resizing", "true"\);/);
+assert.match(viewerFrame, /frame\.style\.removeProperty\("width"\);/);
+assert.match(styles, /\.app-shell\[data-resizing\] \.viewer-iframe \{\s*pointer-events: none;\s*\}/);
 assert.doesNotMatch(appLayout, /\{rightDockOpen \? <DockPanel/);
 assert.doesNotMatch(appLayout, /\{bottomDockOpen \? <DockPanel/);
 assert.match(dockPanel, /data-open=\{open \? "true" : "false"\}/);
@@ -2991,7 +3024,10 @@ assert.match(styles, /\.structure-brief \{[\s\S]*?grid-auto-rows: max-content/);
 assert.doesNotMatch(styles, /\.structure-inspector-details > summary/);
 assert.match(styles, /\.structure-inspector-details-body \{[^}]*border-top: 1px solid var\(--line-subtler\)/s);
 assert.match(styles, /\.structure-inspector-style-option\[data-selected="true"\]/);
-assert.match(styles, /right: max\(146px, var\(--right-dock-edge, var\(--right-dock-width, 0px\)\)\)/);
+// The right dock starts below the toolbar and renders its own header there, so
+// the tab strip only clears the trailing controls and never yields to the dock.
+assert.match(styles, /\.topbar \{[^}]*right: 146px;/s);
+assert.doesNotMatch(styles, /\.topbar \{[^}]*--right-dock-(?:edge|width)/s);
 assert.match(styles, /@container \(max-width: 320px\)/);
 assert.match(previewRuntimeCss, /@media \(max-width: 360px\)[\s\S]*?top: 64px;[\s\S]*?width: calc\(100vw - 24px\)/);
 assert.match(previewRuntimeCss, /grid-template-columns: 28px auto minmax\(62px, 1fr\) auto auto/);
@@ -3294,7 +3330,13 @@ assert.match(ketcherPage, /aria-label="Open sketch in xyzrender"[\s\S]*<TooltipC
 assert.match(ketcherPage, /aria-label="Add sketch to SDF collection"/);
 assert.match(ketcherPage, /gridEditSource \? \([\s\S]*aria-label="Save Ketcher edits back to collection"[\s\S]*onClick=\{\(\) => void applyGridEdit\(\)\}[\s\S]*Save to collection/);
 assert.match(ketcherPage, /\) : \([\s\S]*<RadixDropdownMenu[\s\S]*aria-label="Add sketch to SDF collection"/);
-assert.match(ketcherPage, /<TooltipContent[^>]*>\{gridEditSource \? "Save edits back to the source collection" : "Add sketch to SDF collection"\}<\/TooltipContent>/);
+assert.match(ketcherPage, /<TooltipContent[^>]*>\{gridEditSource \? saveToCollectionTooltip : "Add sketch to SDF collection"\}<\/TooltipContent>/);
+// The tooltip trigger relabels `data-slot`; the button restates it so the
+// primary-button colours keep applying and an enabled button never reads as
+// disabled. While disabled, the tooltip names the reason.
+assert.match(ketcherPage, /aria-label="Save Ketcher edits back to collection"[\s\S]*?disabled=\{!ketcher \|\| exportingSketch \|\| !hasSketch\}/);
+assert.match(ketcherPage, /variant="default"\s*size="sm"\s*data-slot="button"\s*aria-label="Save Ketcher edits back to collection"/);
+assert.match(ketcherPage, /const saveToCollectionTooltip = !ketcher\s*\? "Wait for the editor to load before saving"\s*: exportingSketch\s*\? "Saving the sketch\.\.\."\s*: !hasSketch\s*\? "Draw a molecule first"\s*: "Save edits back to the source collection";/);
 assert.doesNotMatch(ketcherPage, /if \(!isActive\) return;\s*if \(location\.importRequest \|\| state\.ketcherImportRequest \|\| peekQueuedKetcherImportRequest\(\)\) return;\s*setGridEditSource\(null\)/);
 assert.match(gridViewer, /patch\.name = row\.name \|\| `Molecule \$\{rowIndex \+ 1\}`;\s*if \(replaceGridRow\(row, patch, cfg\)\)/);
 assert.doesNotMatch(ketcherPage, /onClick=\{\(\) => void openSketch\("molstar"\)\}>Mol\*<\/button>/);
@@ -3870,6 +3912,16 @@ assert.match(styles, /\n\.project \{[^}]*color: var\(--text-secondary\);/s);
 assert.match(styles, /\.project:hover \{\s*background: var\(--surface-subtle\);\s*\}/);
 assert.match(styles, /\.project-folder-children-shell \{[^}]*grid-template-rows: 0fr;[^}]*overflow: hidden;[^}]*transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;/s);
 assert.match(styles, /\.project-folder-children-shell\[data-expanded="true"\] \{[^}]*grid-template-rows: 1fr;[^}]*pointer-events: auto;/s);
+// "Show more" slides the overflow rows open through the same shell recipe
+// instead of splicing them in; the collapsed tail is inert so it never
+// catches focus, and reduced motion drops the transition on every shell.
+assert.match(sidebarSurface, /className="project-tail-shell"[^>]*data-expanded=\{showAllItems \? "true" : "false"\}[^>]*aria-hidden=\{!showAllItems\}[^>]*inert=\{!showAllItems\}/s);
+assert.match(sidebarSurface, /className="project-tail-shell"[^>]*data-expanded=\{showAllChildren \? "true" : "false"\}[^>]*aria-hidden=\{!showAllChildren\}[^>]*inert=\{!showAllChildren\}/s);
+assert.match(sidebarSurface, /aria-expanded=\{showAllItems\}\s*aria-label=\{showAllItems \?/);
+assert.match(sidebarSurface, /aria-expanded=\{showAllChildren\}\s*aria-label=\{showAllChildren \?/);
+assert.match(styles, /\.project-tail-shell \{[^}]*grid-template-rows: 0fr;[^}]*overflow: hidden;[^}]*transition: grid-template-rows 160ms ease-out, margin-top 160ms ease-out, opacity 120ms ease-out;/s);
+assert.match(styles, /\.project-tail-shell\[data-expanded="true"\] \{[^}]*grid-template-rows: 1fr;[^}]*pointer-events: auto;/s);
+assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{\s*\.project-group-children-shell,\s*\.project-folder-children-shell,\s*\.project-tail-shell \{ transition: none; \}/);
 assert.match(styles, /\.project-folder-children \{[^}]*min-height: 0;[^}]*overflow: hidden;/s);
 assert.match(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-visible\s*\{\s*background: var\(--surface-subtle\);\s*outline: none;\s*\}/);
 assert.doesNotMatch(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-visible\s*\{[^}]*box-shadow:/);
@@ -4333,7 +4385,7 @@ assert.match(appOpenActionsHook, /No recent structures to open/);
 assert.match(appOpenActionsHook, /const chooseFiles = useCallback/);
 assert.match(
   app,
-  /useAppNativeMenu\(\{\s*state,\s*actions,\s*gridMenuState:\s*activeGridMenuState,\s*openDocuments,\s*getWindowDocumentDirtySnapshot,\s*windowDocumentDirty:\s*hasDirtyGridDocuments \|\| sourceEditing\.hasUnsavedOrSavingSessions,\s*sourceSaveEnabled,\s*saveActiveSource,\s*\}\)/s,
+  /useAppNativeMenu\(\{\s*state,\s*actions,\s*gridMenuState:\s*activeGridMenuState,\s*openDocuments,\s*getWindowDocumentDirtySnapshot,\s*confirmSourceCloseWindow:\s*sourceEditing\.confirmCloseWindow,\s*windowDocumentDirty:\s*hasDirtyGridDocuments \|\| sourceEditing\.hasUnsavedOrSavingSessions,\s*sourceSaveEnabled,\s*saveActiveSource,\s*\}\)/s,
 );
 assert.match(app, /from "\.\/hooks\/use-app-host-runtime-operations"/);
 assert.match(app, /from "\.\/hooks\/use-app-preference-effects"/);
@@ -6181,6 +6233,12 @@ assert.match(previewViewer, /function updateSceneTreeStoryCaption\(\)/);
 assert.match(previewViewer, /caption\.textContent = `\$\{story\.stepIndex \+ 1\}\/\$\{story\.stepCount\} · \$\{story\.current\?\.title \|\| 'Story state'\}`/);
 assert.match(previewShell, /data-buret-scene-tree-story/);
 assert.match(previewRuntimeCss, /\.buret-tree-section \{/);
+// The tree is a control surface: a drag across it must not paint a text
+// selection, and its rows share the 8px corner of the inspector's composition list.
+assert.match(previewRuntimeCss, /\.buret-tree \{[^}]*-webkit-user-select: none;[^}]*user-select: none;/);
+assert.match(previewRuntimeCss, /\.buret-tree-row \{[^}]*border-radius: 8px;/);
+assert.match(previewRuntimeCss, /\.buret-tree-highlight \{[^}]*border-radius: 8px;/);
+assert.match(previewRuntimeCss, /\.buret-tree-item\[data-selected="true"\] > \.buret-tree-row \{[^}]*border-radius: 8px;/);
 assert.match(previewViewer, /trigger\.dataset\.sourceLabel = node\.sourceLabel/);
 const sceneTreeDisplayLabelSource = previewViewer.slice(
   previewViewer.indexOf('  function sceneTreeDisplayLabel(value)'),
@@ -6607,6 +6665,9 @@ assert.match(previewViewer, /filteredPdbConectLine\(line, includedSerials\)/);
 assert.match(previewViewer, /function molstarRuntime\(\)/);
 assert.match(previewViewer, /typeof molstar !== 'undefined'/);
 assert.match(previewViewer, /const toMmCif = molstarExportToMmCif\(\);/);
+// The vendored bundle keeps the exporter at lib.structure.to_mmCIF; that probe
+// has to come first or the menu reports mmCIF export as unavailable.
+assert.match(previewViewer, /function molstarExportToMmCif\(\) \{[\s\S]*?const structureLib = molstarStructureRuntime\(\);\s*if \(typeof structureLib\?\.to_mmCIF === 'function'\) return structureLib\.to_mmCIF;\s*if \(typeof lib\.to_mmCIF === 'function'\)/);
 assert.match(previewViewer, /runtime\?\.Structure\?\.to_mmCIF/);
 assert.match(previewViewer, /if \(!toMmCif\) return molstarModifiedPdbExportPayload\(\);/);
 assert.match(previewViewer, /toMmCif\(label, structures, false, \{ copyAllCategories: true \}\)/);
@@ -6656,6 +6717,10 @@ assert.match(previewViewer, /if \(!contextPick\) \{\s*event\.preventDefault\(\);
 assert.doesNotMatch(previewViewer, /is not implemented yet/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu \{/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-molecule-tool-dialog-layer \{/);
+// A missing color-picker.js once took the whole scene-tree and canvas context
+// menus down with a TypeError; the preset swatches must render without it.
+assert.match(previewViewer, /if \(typeof window\.BuretteColorPicker\?\.create !== 'function'\) \{[\s\S]*?menu\.appendChild\(swatches\);\s*return;\s*\}/);
+assert.match(previewViewer, /let sceneTreeColorPickerMissingReported = false;/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-representation-menu\] \.buret-tree-swatch \{[\s\S]*width: 14px;[\s\S]*height: 14px;[\s\S]*min-height: 14px;/);
 assert.match(previewRuntimeCss, /\.buret-representation-type-item \.buret-representation-type-check \{[\s\S]*opacity: 0;/);
 assert.match(previewRuntimeCss, /\.buret-representation-type-item\[data-current="true"\] \.buret-representation-type-check \{[\s\S]*opacity: 1;/);
@@ -7190,14 +7255,21 @@ assert.match(appNativeMenuHook, /hasActiveFile: activeDocumentFileBacked \|\| ac
 assert.match(appNativeMenuHook, /canExportExternalPreview: activeDocument\?\.renderer === "xyzrender-external"/);
 assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onFocusChanged/);
 assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onCloseRequested/);
-// The close button quits the whole app (same as Cmd+Q): prevent the plain
-// window close and route through request_app_quit, whose Rust flow runs the
-// unsaved-changes preflight before it exits. A plain window close left a
-// windowless process alive that recreated a window, so the button did nothing.
+// The close button and File > Close Window share one coordinator: with other
+// windows open it closes just this window through close_workspace_window;
+// the last window keeps quitting through request_app_quit, whose Rust flow
+// runs the unsaved-changes preflight (a plain window close left a windowless
+// process alive that recreated a window, so the button did nothing).
 assert.match(
   appNativeMenuHook,
-  /onCloseRequested\(\(event\) => \{[\s\S]*event\.preventDefault\(\);\s*void invoke\("request_app_quit"\)/s,
+  /onCloseRequested\(\(event\) => \{[\s\S]*event\.preventDefault\(\);\s*void closeCurrentWindow\(\);/s,
 );
+assert.match(appNativeMenuHook, /case "file\.close-window":\s*await closeCurrentWindow\(\);/s);
+assert.match(
+  appNativeMenuHook,
+  /const closeCurrentWindow = useCallback\(async \(\) => \{[\s\S]*if \(windowCount <= 1\) \{\s*void invoke\("request_app_quit"\)[\s\S]*clearWindowScopedStorage\(\);[\s\S]*invoke<boolean>\("close_workspace_window"\)/s,
+);
+assert.doesNotMatch(appNativeMenuHook, /getCurrentWindow\(\)\.close\(\)/);
 assert.doesNotMatch(appNativeMenuHook, /confirmCloseWindowRef/);
 assert.doesNotMatch(appNativeMenuHook, /waitForPending/);
 assert.doesNotMatch(appNativeMenuHook, /setEnabled/);
@@ -8034,7 +8106,9 @@ assert.match(gridViewer, /hostRequest\('gridFetchPage'/);
 assert.match(gridViewer, /hostRequest\('renderXyzrenderCard'/);
 assert.match(gridViewer, /body\.type === 'gridPage' \|\| body\.type === 'xyzrenderCard'/);
 assert.match(gridUi, /buret-search-control buret-filter-control/);
-assert.match(gridUi, /aria-label="Search mode"/);
+assert.doesNotMatch(gridUi, /aria-label="Search mode"/);
+assert.doesNotMatch(gridUi, /ToggleGroup/);
+assert.match(gridUi, /"name, table value or SMARTS"/);
 assert.match(gridUi, /placeholder=\{searchPlaceholder\}/);
 assert.match(gridViewer, /function queryLooksLikeExplicitSMARTS\(value\)/);
 assert.match(gridViewer, /function queryLooksLikeSMILESFragment\(value\)/);
@@ -8042,8 +8116,9 @@ assert.match(gridViewer, /function queryLooksLikeSMARTS\(value\)/);
 assert.match(gridViewer, /queryLooksLikeExplicitSMARTS\(value\) \|\| queryLooksLikeSMILESFragment\(value\)/);
 assert.match(gridViewer, /function shouldFallbackSMARTSToTextSearch\(\)/);
 assert.match(gridViewer, /!queryLooksLikeExplicitSMARTS\(state\.query\)/);
-assert.match(gridViewer, /function setUnifiedSearchQuery\(value, cfg, mode = 'auto'\)/);
-assert.match(gridViewer, /mode === 'structure' \|\| \(mode === 'auto' && queryLooksLikeSMARTS\(value\)\)/);
+assert.match(gridViewer, /function setUnifiedSearchQuery\(value, cfg\)/);
+assert.match(gridViewer, /capabilities\(cfg\)\.substructureSearch && queryLooksLikeSMARTS\(value\) \? value \|\| '' : ''/);
+assert.doesNotMatch(gridViewer, /searchMode/);
 assert.doesNotMatch(gridViewer, /id="smarts"/);
 assert.doesNotMatch(gridViewer, /buret-smarts-control/);
 assert.doesNotMatch(gridViewer, /buret-filter-fields/);
@@ -8309,7 +8384,7 @@ assert.match(browserDevDocuments, /molecularGrid: hasMoleculeRecords/);
 assert.match(gridViewer, /typeof cfg\?\.molecularGrid === 'boolean'/);
 assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Molecule table' : 'Data table'/);
 assert.match(gridViewer, /numeric === 1 \? 'row' : 'rows'/);
-assert.match(gridViewer, /state\.searchMode === 'structure' \? 'Search structures with SMARTS' : 'Search text'/);
+assert.match(gridUi, /aria-label=\{props\.substructureSearch \? "Search text or structures with SMARTS" : "Search text"\}/);
 assert.doesNotMatch(gridViewer, /data-buret-grid-renderer="xyzrender-external">xyzrender/);
 assert.match(gridViewer, /function requestSdfPoseDocument\(cfg\)/);
 assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Molstar\.', 'error'\)/);

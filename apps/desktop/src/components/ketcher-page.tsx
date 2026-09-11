@@ -1013,6 +1013,16 @@ export function KetcherPage({
     });
   }, [actions, exportingSketch, gridEditSource, ketcher]);
 
+  // The tooltip names the reason while the button is disabled, so a greyed
+  // "Save to collection" never leaves the user guessing.
+  const saveToCollectionTooltip = !ketcher
+    ? "Wait for the editor to load before saving"
+    : exportingSketch
+      ? "Saving the sketch..."
+      : !hasSketch
+        ? "Draw a molecule first"
+        : "Save edits back to the source collection";
+
   const consumeImportRequest = useCallback((request: KetcherImportRequest | null) => {
     if (!request || handledImportRequestIdRef.current === request.id) return;
     if (inFlightImportRequestIdRef.current === request.id) return;
@@ -1264,10 +1274,16 @@ export function KetcherPage({
           {(gridEditSource || (ketcher && hasSketch && !exportingSketch)) && <Tooltip>
           {gridEditSource ? (
             <TooltipTrigger asChild>
+              {/* `data-slot` is restated because the tooltip trigger would
+                  otherwise relabel the slot and the primary-button colours
+                  (interface-tokens.css) would no longer apply: the label then
+                  inherits the muted header colour on the primary fill and the
+                  enabled button reads as disabled. */}
               <Button
                 type="button"
                 variant="default"
                 size="sm"
+                data-slot="button"
                 aria-label="Save Ketcher edits back to collection"
                 disabled={!ketcher || exportingSketch || !hasSketch}
                 onClick={() => void applyGridEdit()}
@@ -1314,7 +1330,7 @@ export function KetcherPage({
               )}
             />
           )}
-          <TooltipContent showArrow={false}>{gridEditSource ? "Save edits back to the source collection" : "Add sketch to SDF collection"}</TooltipContent>
+          <TooltipContent showArrow={false}>{gridEditSource ? saveToCollectionTooltip : "Add sketch to SDF collection"}</TooltipContent>
           </Tooltip>}
           <ButtonGroup className="ketcher-scale-control" aria-label="Ketcher scale">
             <Tooltip>

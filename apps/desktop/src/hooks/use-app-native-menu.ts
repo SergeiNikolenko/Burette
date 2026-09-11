@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getAllWindows, getCurrentWindow } from "@tauri-apps/api/window";
+import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import type { ShellActions, ShellViewState, StructureViewerAction } from "../components/types";
 import { canInspectConformerEnsemble } from "../lib/conformer-ensemble";
 import { isMolstarViewerExtension } from "../lib/docking-documents";
@@ -23,10 +24,12 @@ import {
 import type { DerivedColumnKind } from "../lib/derived-columns";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import { postGridCommand } from "../lib/viewer-bridge";
+import { decideWindowClose } from "../lib/window-close";
 import {
   resumeWindowMutations,
   sealWindowMutations,
 } from "../lib/window-mutation-barrier";
+import { clearWindowScopedStorage } from "../lib/window-scope";
 import type { ViewerPreferences, ViewerReloadOptions } from "../types";
 import { useMenuEvents } from "./use-menu-events";
 import { requestTextFind } from "../lib/text-find";
@@ -67,9 +70,12 @@ type UseAppNativeMenuOptions = {
   openDocuments: OpenDocuments;
   getWindowDocumentDirtySnapshot: () => {
     dirty: boolean;
+    gridDirty: boolean;
+    sourceDirty: boolean;
     revision: number;
     closeTransitionActive: boolean;
   };
+  confirmSourceCloseWindow: () => Promise<boolean>;
   windowDocumentDirty: boolean;
   sourceSaveEnabled: boolean;
   saveActiveSource: () => void | Promise<void>;
@@ -87,6 +93,7 @@ export function useAppNativeMenu({
   gridMenuState,
   openDocuments,
   getWindowDocumentDirtySnapshot,
+  confirmSourceCloseWindow,
   windowDocumentDirty,
   sourceSaveEnabled,
   saveActiveSource,
@@ -245,9 +252,75 @@ export function useAppNativeMenu({
   }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closableTabCount, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.rgroupRuntimeAvailable, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
   const nativeStateRef = useRef<NativeMenuState>({ ...nativeState, recentDocuments });
   const closingWindowRef = useRef(false);
+  const closeRequestInFlightRef = useRef(false);
   const getWindowDocumentDirtySnapshotRef = useRef(getWindowDocumentDirtySnapshot);
+  const confirmSourceCloseWindowRef = useRef(confirmSourceCloseWindow);
   nativeStateRef.current = { ...nativeState, recentDocuments };
   getWindowDocumentDirtySnapshotRef.current = getWindowDocumentDirtySnapshot;
+  confirmSourceCloseWindowRef.current = confirmSourceCloseWindow;
+
+  // The single close coordinator for this window: the title-bar close button
+  // and File > Close Window both land here. With other windows open the window
+  // closes on its own after the unsaved-changes checks; the last window keeps
+  // quitting the app through request_app_quit (whose Rust flow runs the
+  // unsaved-changes preflight) so a windowless process never lingers.
+  const closeCurrentWindow = useCallback(async () => {
+    // A close request that is already waiting on a confirm dialog must not be
+    // re-entered by a second click or shortcut.
+    if (closingWindowRef.current || closeRequestInFlightRef.current) return;
+    closeRequestInFlightRef.current = true;
+    try {
+      const windowCount = await getAllWindows()
+        .then((windows) => windows.length)
+        .catch(() => 1);
+      if (windowCount <= 1) {
+        void invoke("request_app_quit").catch((error) => {
+          console.warn("App quit request failed", error);
+        });
+        return;
+      }
+      const barrier = sealWindowMutations();
+      const snapshot = getWindowDocumentDirtySnapshotRef.current();
+      const decision = await decideWindowClose({
+        pendingCount: barrier.pendingCount,
+        closeTransitionActive: snapshot.closeTransitionActive || barrier.closeTransitionActive,
+        dirty: snapshot.dirty,
+        gridDirty: snapshot.gridDirty,
+        sourceDirty: snapshot.sourceDirty,
+        confirm: () => confirmDialog("Discard unsaved changes and close this window?", {
+          title: "Unsaved Changes",
+          kind: "warning",
+          okLabel: "Discard",
+          cancelLabel: "Cancel",
+        }),
+        sourceConfirm: () => confirmSourceCloseWindowRef.current(),
+        notifySaveInProgress: async () => {
+          await messageDialog(
+            "A document is still being saved. Wait for it to finish before closing.",
+            { title: "Save in Progress", kind: "info" },
+          );
+        },
+      });
+      if (decision === "abort") {
+        resumeWindowMutations();
+        return;
+      }
+      closingWindowRef.current = true;
+      clearWindowScopedStorage();
+      try {
+        const closed = await invoke<boolean>("close_workspace_window");
+        // false means this became the last window meanwhile and the quit flow
+        // took over; it owns the window from here.
+        if (!closed) closingWindowRef.current = false;
+      } catch (error) {
+        closingWindowRef.current = false;
+        resumeWindowMutations();
+        console.warn("Window close failed", error);
+      }
+    } finally {
+      closeRequestInFlightRef.current = false;
+    }
+  }, []);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -278,18 +351,14 @@ export function useAppNativeMenu({
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
     return trackTauriListener(getCurrentWindow().onCloseRequested((event) => {
-      // The close button quits the whole application, matching Cmd+Q and the
-      // "Quit Burette" menu item. Preventing the default window close and
-      // routing through request_app_quit is deliberate: a plain window close
-      // left a windowless process alive (macOS default) that then recreated a
-      // window, so the button looked like it did nothing. request_quit runs the
-      // unsaved-changes preflight before it exits.
+      // Preventing the plain window close is deliberate: the coordinator runs
+      // the unsaved-changes checks first, and for the last window a plain
+      // close left a windowless process alive (macOS default) that then
+      // recreated a window, so the button looked like it did nothing.
       event.preventDefault();
-      void invoke("request_app_quit").catch((error) => {
-        console.warn("App quit request failed", error);
-      });
+      void closeCurrentWindow();
     }), "native window close guard");
-  }, []);
+  }, [closeCurrentWindow]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
@@ -534,7 +603,7 @@ export function useAppNativeMenu({
         await actions.clearAllDocuments();
         return;
       case "file.close-window":
-        await getCurrentWindow().close();
+        await closeCurrentWindow();
         return;
       case "database.search-chembl": actions.openDatabaseQuery("chembl"); return;
       case "database.chembl-actives": actions.openDatabaseQuery("chembl-actives"); return;
@@ -603,7 +672,7 @@ export function useAppNativeMenu({
       default:
         console.warn(`Unknown native menu command: ${command}`);
     }
-  }, [actions, activeDocument, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.tabs]);
+  }, [actions, activeDocument, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.tabs]);
 
   useMenuEvents({
     handleNativeMenuCommand,

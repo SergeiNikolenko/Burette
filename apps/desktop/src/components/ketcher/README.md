@@ -36,7 +36,9 @@ Chemical glyphs and shortcut labels remain upstream-owned. Refresh the desktop
 snapshot with `node scripts/sync-app-icons.mjs`.
 Molecule tool groups have separate primary and dropdown buttons: the primary
 selects the current tool, while a chevron shown on hover or keyboard focus opens alternatives.
-Selecting an option still dispatches the original action. Side rails use native overflow scrolling,
+Selecting an option still dispatches the original action. The molecular canvas takes the whole
+area under the action strip; the side rails and the template bar float over it as content-sized
+cards. Side rails use native overflow scrolling,
 without upstream arrow strips. Check arrow selection and drawing, wheel access
 to both ends of each rail, and clipboard dropdowns after changing these rules.
 

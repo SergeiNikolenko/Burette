@@ -256,6 +256,7 @@ pub fn run() {
             commands::shell::existing_paths,
             commands::shell::watch_project_roots,
             commands::shell::open_new_workspace_window,
+            commands::shell::close_workspace_window,
             commands::shell::read_external_preview_svg,
             commands::shell::read_viewer_runtime_file_base64,
             commands::shell::reveal_path,

@@ -12,8 +12,10 @@ function write(relative, content, executable = false) {
   mkdirSync(path.dirname(target), { recursive: true });
   writeFileSync(target, content, executable ? { mode: 0o755 } : undefined);
 }
+// GIT_* is dropped too: git hooks (pre-push runs this suite) export GIT_DIR and
+// friends, which would point the fixture repository at the outer checkout.
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
-  !key.startsWith('BURETTE_') && !key.startsWith('APPLE_') && !key.startsWith('GITHUB_')));
+  !key.startsWith('BURETTE_') && !key.startsWith('APPLE_') && !key.startsWith('GITHUB_') && !key.startsWith('GIT_')));
 try {
   // Execute the real release entrypoint until the build boundary; never build an app.
   const release = readFileSync(path.join(root, 'scripts/release.sh'), 'utf8');

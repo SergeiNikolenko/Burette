@@ -60,13 +60,13 @@ export function ProjectGroup({
   const hasSidebarQuery = sidebarQuery.length > 0;
   const expanded = hasSidebarQuery || state.expandedProjectIds.includes(project.id);
   const canRenameProject = Boolean(project.rootPath);
-  const shouldLimitItems = !hasSidebarQuery
-    && projectTree.length > COLLAPSED_PROJECT_ITEM_LIMIT
-    && !showAllItems;
-  const visibleTree = shouldLimitItems
-    ? projectTree.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT)
-    : projectTree;
-  const hiddenItemCount = projectTree.length - COLLAPSED_PROJECT_ITEM_LIMIT;
+  // The tail past the limit stays mounted inside a collapsible shell so "Show
+  // more" can animate it open instead of popping the rows in; a search shows
+  // every match inline and needs no shell at all.
+  const limitItems = !hasSidebarQuery && projectTree.length > COLLAPSED_PROJECT_ITEM_LIMIT;
+  const leadingTree = limitItems ? projectTree.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT) : projectTree;
+  const trailingTree = limitItems ? projectTree.slice(COLLAPSED_PROJECT_ITEM_LIMIT) : [];
+  const hiddenItemCount = trailingTree.length;
   const sidebarDrag = useSidebarStructureDrag({
     actions,
     disabled: renaming,
@@ -215,6 +215,22 @@ export function ProjectGroup({
       return next;
     });
   };
+  const renderNode = (node: ProjectTreeNode) => (
+    <ProjectTreeNodeView
+      key={node.key}
+      node={node}
+      project={project}
+      state={state}
+      actions={actions}
+      depth={1}
+      expandedFolderPaths={expandedFolderPaths}
+      showAllFolderPaths={showAllFolderPaths}
+      forceExpanded={hasSidebarQuery}
+      toggleFolderPath={toggleFolderPath}
+      toggleFolderPathRecursive={toggleFolderPathRecursive}
+      toggleShowAllFolderPath={toggleShowAllFolderPath}
+    />
+  );
 
   return (
     <div className="project-group" role="listitem">
@@ -301,31 +317,29 @@ export function ProjectGroup({
         aria-hidden={!expanded}
       >
         <div className="project-children" role="list">
-          {visibleTree.map((node) => (
-            <ProjectTreeNodeView
-              key={node.key}
-              node={node}
-              project={project}
-              state={state}
-              actions={actions}
-              depth={1}
-              expandedFolderPaths={expandedFolderPaths}
-              showAllFolderPaths={showAllFolderPaths}
-              forceExpanded={hasSidebarQuery}
-              toggleFolderPath={toggleFolderPath}
-              toggleFolderPathRecursive={toggleFolderPathRecursive}
-              toggleShowAllFolderPath={toggleShowAllFolderPath}
-            />
-          ))}
-          {projectTree.length > COLLAPSED_PROJECT_ITEM_LIMIT && !hasSidebarQuery && (
-            <button
-              type="button"
-              className="project-show-more"
-              onClick={() => setShowAllItems((value) => !value)}
-              aria-label={showAllItems ? `Show fewer files in ${project.title}` : `Show ${hiddenItemCount} more files in ${project.title}`}
-            >
-              {showAllItems ? "Show less" : "Show more"}
-            </button>
+          {leadingTree.map(renderNode)}
+          {limitItems && (
+            <>
+              <div
+                className="project-tail-shell"
+                data-expanded={showAllItems ? "true" : "false"}
+                aria-hidden={!showAllItems}
+                inert={!showAllItems}
+              >
+                <div className="project-tail">
+                  {trailingTree.map(renderNode)}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="project-show-more"
+                onClick={() => setShowAllItems((value) => !value)}
+                aria-expanded={showAllItems}
+                aria-label={showAllItems ? `Show fewer files in ${project.title}` : `Show ${hiddenItemCount} more files in ${project.title}`}
+              >
+                {showAllItems ? "Show less" : "Show more"}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -412,13 +426,26 @@ function ProjectTreeNodeView({
     state,
   });
   const showAllChildren = showAllFolderPaths.has(node.path);
-  const shouldLimitChildren = !forceExpanded
-    && node.children.length > COLLAPSED_PROJECT_ITEM_LIMIT
-    && !showAllChildren;
-  const visibleChildren = shouldLimitChildren
-    ? node.children.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT)
-    : node.children;
-  const hiddenChildCount = node.children.length - COLLAPSED_PROJECT_ITEM_LIMIT;
+  const limitChildren = !forceExpanded && node.children.length > COLLAPSED_PROJECT_ITEM_LIMIT;
+  const leadingChildren = limitChildren ? node.children.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT) : node.children;
+  const trailingChildren = limitChildren ? node.children.slice(COLLAPSED_PROJECT_ITEM_LIMIT) : [];
+  const hiddenChildCount = trailingChildren.length;
+  const renderChild = (child: ProjectTreeNode) => (
+    <ProjectTreeNodeView
+      key={child.key}
+      node={child}
+      project={project}
+      state={state}
+      actions={actions}
+      depth={depth + 1}
+      expandedFolderPaths={expandedFolderPaths}
+      showAllFolderPaths={showAllFolderPaths}
+      forceExpanded={forceExpanded}
+      toggleFolderPath={toggleFolderPath}
+      toggleFolderPathRecursive={toggleFolderPathRecursive}
+      toggleShowAllFolderPath={toggleShowAllFolderPath}
+    />
+  );
 
   return (
     <div className="project-folder-node" role="listitem">
@@ -464,32 +491,30 @@ function ProjectTreeNodeView({
         aria-hidden={!expanded}
       >
         <div className="project-folder-children" role="list">
-          {visibleChildren.map((child) => (
-            <ProjectTreeNodeView
-              key={child.key}
-              node={child}
-              project={project}
-              state={state}
-              actions={actions}
-              depth={depth + 1}
-              expandedFolderPaths={expandedFolderPaths}
-              showAllFolderPaths={showAllFolderPaths}
-              forceExpanded={forceExpanded}
-              toggleFolderPath={toggleFolderPath}
-              toggleFolderPathRecursive={toggleFolderPathRecursive}
-              toggleShowAllFolderPath={toggleShowAllFolderPath}
-            />
-          ))}
-          {node.children.length > COLLAPSED_PROJECT_ITEM_LIMIT && !forceExpanded && (
-            <button
-              type="button"
-              className="project-show-more"
-              style={projectDepthStyle(depth + 1)}
-              onClick={() => toggleShowAllFolderPath(node.path)}
-              aria-label={showAllChildren ? `Show fewer files in ${node.path}` : `Show ${hiddenChildCount} more files in ${node.path}`}
-            >
-              {showAllChildren ? "Show less" : "Show more"}
-            </button>
+          {leadingChildren.map(renderChild)}
+          {limitChildren && (
+            <>
+              <div
+                className="project-tail-shell"
+                data-expanded={showAllChildren ? "true" : "false"}
+                aria-hidden={!showAllChildren}
+                inert={!showAllChildren}
+              >
+                <div className="project-tail">
+                  {trailingChildren.map(renderChild)}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="project-show-more"
+                style={projectDepthStyle(depth + 1)}
+                onClick={() => toggleShowAllFolderPath(node.path)}
+                aria-expanded={showAllChildren}
+                aria-label={showAllChildren ? `Show fewer files in ${node.path}` : `Show ${hiddenChildCount} more files in ${node.path}`}
+              >
+                {showAllChildren ? "Show less" : "Show more"}
+              </button>
+            </>
           )}
         </div>
       </div>
