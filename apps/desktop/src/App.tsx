@@ -682,6 +682,8 @@ export default function App() {
     }
     return {
       dirty: gridSnapshot.dirty || sourceSnapshot.dirty,
+      gridDirty: gridSnapshot.dirty,
+      sourceDirty: sourceSnapshot.dirty,
       revision: combined.revision,
       closeTransitionActive: sourceSnapshot.closeTransitionActive,
     };
@@ -1339,6 +1341,7 @@ export default function App() {
     gridMenuState: activeGridMenuState,
     openDocuments,
     getWindowDocumentDirtySnapshot,
+    confirmSourceCloseWindow: sourceEditing.confirmCloseWindow,
     windowDocumentDirty: hasDirtyGridDocuments || sourceEditing.hasUnsavedOrSavingSessions,
     sourceSaveEnabled,
     saveActiveSource,

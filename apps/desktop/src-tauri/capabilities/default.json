@@ -11,6 +11,7 @@
     "core:menu:allow-new",
     "core:menu:allow-popup",
     "core:window:allow-close",
+    "core:window:allow-get-all-windows",
     "core:window:allow-is-enabled",
     "core:window:allow-is-fullscreen",
     "core:window:allow-set-enabled",

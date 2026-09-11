@@ -250,6 +250,9 @@ assert.ok(defaultCapability.permissions.includes('dialog:allow-save'));
 assert.ok(defaultCapability.permissions.includes('core:menu:allow-new'));
 assert.ok(defaultCapability.permissions.includes('core:menu:allow-popup'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-close'));
+// The close coordinator counts open windows to decide between closing one
+// window and quitting the app from the last one.
+assert.ok(defaultCapability.permissions.includes('core:window:allow-get-all-windows'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-set-enabled'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-is-enabled'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-is-fullscreen'));
@@ -377,6 +380,7 @@ for (const commandPath of [
   'commands::shell::open_external_url',
   'commands::shell::existing_paths',
   'commands::shell::open_new_workspace_window',
+  'commands::shell::close_workspace_window',
   'commands::shell::read_external_preview_svg',
   'commands::shell::read_viewer_runtime_file_base64',
   'commands::shell::reveal_path',

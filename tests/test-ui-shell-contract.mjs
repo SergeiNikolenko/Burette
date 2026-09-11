@@ -4379,7 +4379,7 @@ assert.match(appOpenActionsHook, /No recent structures to open/);
 assert.match(appOpenActionsHook, /const chooseFiles = useCallback/);
 assert.match(
   app,
-  /useAppNativeMenu\(\{\s*state,\s*actions,\s*gridMenuState:\s*activeGridMenuState,\s*openDocuments,\s*getWindowDocumentDirtySnapshot,\s*windowDocumentDirty:\s*hasDirtyGridDocuments \|\| sourceEditing\.hasUnsavedOrSavingSessions,\s*sourceSaveEnabled,\s*saveActiveSource,\s*\}\)/s,
+  /useAppNativeMenu\(\{\s*state,\s*actions,\s*gridMenuState:\s*activeGridMenuState,\s*openDocuments,\s*getWindowDocumentDirtySnapshot,\s*confirmSourceCloseWindow:\s*sourceEditing\.confirmCloseWindow,\s*windowDocumentDirty:\s*hasDirtyGridDocuments \|\| sourceEditing\.hasUnsavedOrSavingSessions,\s*sourceSaveEnabled,\s*saveActiveSource,\s*\}\)/s,
 );
 assert.match(app, /from "\.\/hooks\/use-app-host-runtime-operations"/);
 assert.match(app, /from "\.\/hooks\/use-app-preference-effects"/);
@@ -7249,14 +7249,21 @@ assert.match(appNativeMenuHook, /hasActiveFile: activeDocumentFileBacked \|\| ac
 assert.match(appNativeMenuHook, /canExportExternalPreview: activeDocument\?\.renderer === "xyzrender-external"/);
 assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onFocusChanged/);
 assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onCloseRequested/);
-// The close button quits the whole app (same as Cmd+Q): prevent the plain
-// window close and route through request_app_quit, whose Rust flow runs the
-// unsaved-changes preflight before it exits. A plain window close left a
-// windowless process alive that recreated a window, so the button did nothing.
+// The close button and File > Close Window share one coordinator: with other
+// windows open it closes just this window through close_workspace_window;
+// the last window keeps quitting through request_app_quit, whose Rust flow
+// runs the unsaved-changes preflight (a plain window close left a windowless
+// process alive that recreated a window, so the button did nothing).
 assert.match(
   appNativeMenuHook,
-  /onCloseRequested\(\(event\) => \{[\s\S]*event\.preventDefault\(\);\s*void invoke\("request_app_quit"\)/s,
+  /onCloseRequested\(\(event\) => \{[\s\S]*event\.preventDefault\(\);\s*void closeCurrentWindow\(\);/s,
 );
+assert.match(appNativeMenuHook, /case "file\.close-window":\s*await closeCurrentWindow\(\);/s);
+assert.match(
+  appNativeMenuHook,
+  /const closeCurrentWindow = useCallback\(async \(\) => \{[\s\S]*if \(windowCount <= 1\) \{\s*void invoke\("request_app_quit"\)[\s\S]*clearWindowScopedStorage\(\);[\s\S]*invoke<boolean>\("close_workspace_window"\)/s,
+);
+assert.doesNotMatch(appNativeMenuHook, /getCurrentWindow\(\)\.close\(\)/);
 assert.doesNotMatch(appNativeMenuHook, /confirmCloseWindowRef/);
 assert.doesNotMatch(appNativeMenuHook, /waitForPending/);
 assert.doesNotMatch(appNativeMenuHook, /setEnabled/);
