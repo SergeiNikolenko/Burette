@@ -7267,7 +7267,7 @@ assert.match(
 assert.match(appNativeMenuHook, /case "file\.close-window":\s*await closeCurrentWindow\(\);/s);
 assert.match(
   appNativeMenuHook,
-  /const closeCurrentWindow = useCallback\(async \(\) => \{[\s\S]*if \(windowCount <= 1\) \{\s*void invoke\("request_app_quit"\)[\s\S]*clearWindowScopedStorage\(\);[\s\S]*invoke<boolean>\("close_workspace_window"\)/s,
+  /const closeCurrentWindow = useCallback\(async \(\) => \{[\s\S]*if \(windowCount <= 1\) \{\s*void invoke\("request_app_quit"\)[\s\S]*invoke<boolean>\("close_workspace_window"\)/s,
 );
 assert.doesNotMatch(appNativeMenuHook, /getCurrentWindow\(\)\.close\(\)/);
 assert.doesNotMatch(appNativeMenuHook, /confirmCloseWindowRef/);

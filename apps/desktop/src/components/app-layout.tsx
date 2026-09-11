@@ -280,7 +280,13 @@ function useGroupPixelGuard(entries: PixelGuardEntry[]) {
       frame = 0;
       for (const { panelRef, openRef, sizePxRef } of entriesRef.current) {
         const panel = panelRef.current;
-        if (!panel || !openRef.current) continue;
+        if (!panel) continue;
+        // The panel library can redistribute a collapsed panel on group resize.
+        // Keep the closed state authoritative as well as the stored open size.
+        if (!openRef.current) {
+          if (!panel.isCollapsed()) panel.collapse();
+          continue;
+        }
         // A panel the group collapsed under pressure is restored here once the
         // room is back: the open flag stays true through a squeeze, so this is
         // the other half of not persisting a forced collapse.

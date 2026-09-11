@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 import assert from "node:assert/strict";
 import { decideWindowClose } from "../apps/desktop/src/lib/window-close.ts";
-import { clearWindowScopedStorage, workspaceStorageKey } from "../apps/desktop/src/lib/window-scope.ts";
 
 function prompts(overrides = {}) {
   const calls = [];
@@ -89,58 +88,6 @@ function prompts(overrides = {}) {
   const { calls, input } = prompts({ confirm: false, input: { dirty: true } });
   assert.equal(await decideWindowClose(input), "abort");
   assert.deepEqual(calls, ["confirm"]);
-}
-
-// Window-scoped storage cleanup removes only the keys of the current window.
-function fakeStorage(entries) {
-  const map = new Map(entries);
-  return {
-    map,
-    get length() {
-      return map.size;
-    },
-    key(index) {
-      return [...map.keys()][index] ?? null;
-    },
-    removeItem(key) {
-      map.delete(key);
-    },
-  };
-}
-
-// Without a window (or in the main window) nothing is touched.
-{
-  const storage = fakeStorage([["burette.tab-workspaces.workspace-2", "{}"]]);
-  assert.deepEqual(clearWindowScopedStorage(storage), []);
-  assert.equal(storage.map.size, 1);
-}
-
-globalThis.window = { location: { search: "?buretteWindow=workspace-2" } };
-assert.equal(workspaceStorageKey("burette.tab-workspaces"), "burette.tab-workspaces.workspace-2");
-{
-  const storage = fakeStorage([
-    ["burette.tab-workspaces", "{}"],
-    ["burette.tab-workspaces.workspace-2", "{}"],
-    ["burette.molecule.session.workspace-2", "{}"],
-    ["burette.molecule.session.workspace-12", "{}"],
-    ["burette.shell.ui", "{}"],
-  ]);
-  assert.deepEqual(clearWindowScopedStorage(storage).sort(), [
-    "burette.molecule.session.workspace-2",
-    "burette.tab-workspaces.workspace-2",
-  ]);
-  assert.deepEqual([...storage.map.keys()], [
-    "burette.tab-workspaces",
-    "burette.molecule.session.workspace-12",
-    "burette.shell.ui",
-  ]);
-}
-
-globalThis.window = { location: { search: "?buretteWindow=main" } };
-{
-  const storage = fakeStorage([["burette.tab-workspaces", "{}"]]);
-  assert.deepEqual(clearWindowScopedStorage(storage), []);
-  assert.equal(storage.map.size, 1);
 }
 
 console.log("window close behavior tests passed");

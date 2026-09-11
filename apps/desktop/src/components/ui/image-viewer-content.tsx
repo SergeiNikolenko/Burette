@@ -99,6 +99,16 @@ export function ImageViewerContent({
   // slide-start commit and the brief settle hold; re-derive the window
   // normally once the transition is idle again.
   const freezeVisibleFrameWindow = rendererFrame.phase !== "idle";
+  const [viewportElement, setViewportElement] = React.useState<HTMLDivElement | null>(null);
+  const [viewportHeight, setViewportHeight] = React.useState<number | null>(null);
+  React.useLayoutEffect(() => {
+    if (!viewportElement) return;
+    const measure = () => setViewportHeight(viewportElement.clientHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewportElement);
+    return () => observer.disconnect();
+  }, [viewportElement]);
   const {
     isFitWidth,
     pixelRatio,
@@ -114,6 +124,7 @@ export function ImageViewerContent({
     defaultScale,
     onScaleChange,
     frameListLayoutWidth,
+    viewportHeight,
   );
   const rasterInlineSize =
     rendererFrame.shellInlineSize ??
@@ -404,6 +415,7 @@ export function ImageViewerContent({
   });
   const setScrollViewportRefWithRebase = React.useCallback(
     (element: HTMLDivElement | null) => {
+      setViewportElement(element);
       scrollerRef.current = element;
       setScrollViewportRef(element);
     },
@@ -433,7 +445,7 @@ export function ImageViewerContent({
   }, [beginZoomMotion, setViewerScale]);
   // The percentage readout doubles as the reset: 100% is logical pixels (a
   // Retina screenshot at the size it was captured at), while the fit button
-  // stays fit-width.
+  // fits the image back inside the viewport.
   const resetScale = React.useCallback(() => {
     beginZoomMotion();
     setViewerScale(1);
@@ -469,6 +481,7 @@ export function ImageViewerContent({
             onZoomOut: zoomOut,
             onZoomIn: zoomIn,
             onFit: fitWidth,
+            fitLabel: "Fit image",
             onReset: resetScale,
             isDisabled: scaleControlsDisabled,
           }}
@@ -536,6 +549,7 @@ function useImageControlsRegistration({
         onZoomOut: zoomOut,
         onZoomIn: zoomIn,
         onFit: fitWidth,
+        fitLabel: "Fit image",
         onReset: resetScale,
         isDisabled: scaleControlsDisabled,
       },

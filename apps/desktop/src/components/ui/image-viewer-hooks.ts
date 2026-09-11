@@ -123,6 +123,7 @@ export function useImageViewerScale(
   defaultScale: number | undefined,
   onScaleChange: ImageViewerProps["onScaleChange"],
   frameListWidth: number | null,
+  viewportHeight: number | null,
 ) {
   const isScaleControlled = controlledScale !== undefined;
   const [uncontrolledScale, setUncontrolledScale] = React.useState<
@@ -162,14 +163,21 @@ export function useImageViewerScale(
         stageInlinePadding: IMAGE_VIEWER_HORIZONTAL_PADDING,
       })
     : 1;
+  // Single images open entirely inside the viewport. Multi-page documents
+  // retain width fit and scrolling between pages.
+  const fitHeightScale = source.frames.length === 1 && viewportHeight
+    ? Math.max(1, viewportHeight - 32) * pixelRatio
+      / Math.max(1, rotatedSize(source.frames[0].intrinsicSize, rotation).height)
+    : Infinity;
+  const fitScale = Math.min(fitWidthScale, fitHeightScale);
   const scale =
     controlledScale !== undefined
       ? normalizeViewerScale(controlledScale)
       : uncontrolledScale !== null
         ? normalizeViewerScale(uncontrolledScale)
-        : Math.min(MAX_VIEWER_SCALE, Math.max(MIN_VIEWER_SCALE, fitWidthScale));
+        : Math.min(MAX_VIEWER_SCALE, Math.max(Number.EPSILON, fitScale));
   const isFitWidth =
-    controlledScale === undefined && uncontrolledScale === null;
+    controlledScale === undefined && uncontrolledScale === null && fitWidthScale <= fitHeightScale;
 
   const scaleControlsDisabled = isScaleControlled && !onScaleChange;
   const setViewerScale = React.useCallback(

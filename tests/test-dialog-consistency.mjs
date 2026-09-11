@@ -12,17 +12,12 @@ function walk(directory, out = []) {
   for (const entry of readdirSync(directory)) {
     const path = join(directory, entry);
     if (statSync(path).isDirectory()) walk(path, out);
-    else if (entry.endsWith('-dialog.tsx')) out.push(path);
+    else if (entry.endsWith('.tsx') && /<(?:Dialog(?:\.Root|Content)?|AlertDialog|KetcherDialog)\b/.test(readFileSync(path, 'utf8'))) out.push(path);
   }
   return out;
 }
 
-// Dialogs that live inside a hook or a provider rather than a *-dialog file.
-const extraDialogFiles = [
-  `${componentsRoot}/batch-file-operations.tsx`,
-  `${componentsRoot}/sidebar/file-operations.tsx`,
-];
-const dialogFiles = [...walk(componentsRoot), ...extraDialogFiles].sort();
+const dialogFiles = walk(componentsRoot).filter((file) => !file.endsWith('/ui/dialog.tsx')).sort();
 assert.ok(dialogFiles.some((file) => file.endsWith('folder-open-dialog.tsx')), 'folder-open dialog is scanned');
 assert.ok(dialogFiles.some((file) => file.endsWith('merge-columns-dialog.tsx')), 'merge-columns dialog is scanned');
 

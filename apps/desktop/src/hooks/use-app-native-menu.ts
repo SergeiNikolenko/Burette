@@ -29,7 +29,6 @@ import {
   resumeWindowMutations,
   sealWindowMutations,
 } from "../lib/window-mutation-barrier";
-import { clearWindowScopedStorage } from "../lib/window-scope";
 import type { ViewerPreferences, ViewerReloadOptions } from "../types";
 import { useMenuEvents } from "./use-menu-events";
 import { requestTextFind } from "../lib/text-find";
@@ -306,7 +305,6 @@ export function useAppNativeMenu({
         return;
       }
       closingWindowRef.current = true;
-      clearWindowScopedStorage();
       try {
         const closed = await invoke<boolean>("close_workspace_window");
         // false means this became the last window meanwhile and the quit flow
@@ -317,6 +315,10 @@ export function useAppNativeMenu({
         resumeWindowMutations();
         console.warn("Window close failed", error);
       }
+    } catch (error) {
+      closingWindowRef.current = false;
+      resumeWindowMutations();
+      console.warn("Window close preparation failed", error);
     } finally {
       closeRequestInFlightRef.current = false;
     }
