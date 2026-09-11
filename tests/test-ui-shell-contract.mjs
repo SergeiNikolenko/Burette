@@ -3330,7 +3330,13 @@ assert.match(ketcherPage, /aria-label="Open sketch in xyzrender"[\s\S]*<TooltipC
 assert.match(ketcherPage, /aria-label="Add sketch to SDF collection"/);
 assert.match(ketcherPage, /gridEditSource \? \([\s\S]*aria-label="Save Ketcher edits back to collection"[\s\S]*onClick=\{\(\) => void applyGridEdit\(\)\}[\s\S]*Save to collection/);
 assert.match(ketcherPage, /\) : \([\s\S]*<RadixDropdownMenu[\s\S]*aria-label="Add sketch to SDF collection"/);
-assert.match(ketcherPage, /<TooltipContent[^>]*>\{gridEditSource \? "Save edits back to the source collection" : "Add sketch to SDF collection"\}<\/TooltipContent>/);
+assert.match(ketcherPage, /<TooltipContent[^>]*>\{gridEditSource \? saveToCollectionTooltip : "Add sketch to SDF collection"\}<\/TooltipContent>/);
+// The tooltip trigger relabels `data-slot`; the button restates it so the
+// primary-button colours keep applying and an enabled button never reads as
+// disabled. While disabled, the tooltip names the reason.
+assert.match(ketcherPage, /aria-label="Save Ketcher edits back to collection"[\s\S]*?disabled=\{!ketcher \|\| exportingSketch \|\| !hasSketch\}/);
+assert.match(ketcherPage, /variant="default"\s*size="sm"\s*data-slot="button"\s*aria-label="Save Ketcher edits back to collection"/);
+assert.match(ketcherPage, /const saveToCollectionTooltip = !ketcher\s*\? "Wait for the editor to load before saving"\s*: exportingSketch\s*\? "Saving the sketch\.\.\."\s*: !hasSketch\s*\? "Draw a molecule first"\s*: "Save edits back to the source collection";/);
 assert.doesNotMatch(ketcherPage, /if \(!isActive\) return;\s*if \(location\.importRequest \|\| state\.ketcherImportRequest \|\| peekQueuedKetcherImportRequest\(\)\) return;\s*setGridEditSource\(null\)/);
 assert.match(gridViewer, /patch\.name = row\.name \|\| `Molecule \$\{rowIndex \+ 1\}`;\s*if \(replaceGridRow\(row, patch, cfg\)\)/);
 assert.doesNotMatch(ketcherPage, /onClick=\{\(\) => void openSketch\("molstar"\)\}>Mol\*<\/button>/);
