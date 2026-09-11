@@ -2295,7 +2295,7 @@ assert.doesNotMatch(styles, /\.splitter::after \{ background: var\(--sidebar-div
 // The workbench card's edge shadow lives on the sidebar handle now: the center
 // ResizablePanel clips its children (overflow: hidden), so a box-shadow on
 // .workbench itself can never reach over the sidebar.
-assert.match(styles, /\.workbench \{[^}]*background: var\(--bg-base\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 20px 0 0 20px;/s);
+assert.match(styles, /\.workbench \{[^}]*background: var\(--bg-base\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 0;/s);
 // The workbench, stage and docks stay opaque (`--bg-base`); only the sidebar is
 // translucent, which it gets from the shell's own `--bg` showing through.
 assert.match(styles, /\.main-stage \{[^}]*background: var\(--bg-base\);/s);

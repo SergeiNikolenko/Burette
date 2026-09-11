@@ -1426,7 +1426,7 @@ button:focus-visible > .shortcut-tooltip {
   background: var(--bg-base);
   overflow: hidden;
   border-left: 1px solid var(--workspace-edge-border);
-  border-radius: 20px 0 0 20px;
+  border-radius: 0;
   /* The soft edge shadow this card used to cast over the glass sidebar lives on
      .workspace-sidebar-handle::before now: the center ResizablePanel clips its
      children (overflow: hidden), so a box-shadow here can never reach out. */

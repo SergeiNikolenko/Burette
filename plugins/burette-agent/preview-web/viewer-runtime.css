@@ -1,4 +1,7 @@
 /* Shared Quick Look viewer shell style. Keep app runtimes linked here; do not fork host-specific Mol* chrome. */
+/* Empty scenes and loading states use Burette's own shell on every surface. */
+.msp-plugin .msp-logo { display: none !important; }
+
 :root {
   color-scheme: dark;
   --buret-viewer-ui-scale: 0.9;

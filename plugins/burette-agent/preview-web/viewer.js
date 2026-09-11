@@ -15583,21 +15583,44 @@ SOFTWARE.
     if (plugin?.behaviors?.state?.isUpdating?.value) return;
     const viewer = activeMolstarViewer();
     const structures = molstarCurrentStructures(viewer);
-    if (!structures.length) return;
-    const { StructureElement } = molstarStructureRuntime();
+    if (!plugin?.canvas3d) return;
+    const { Structure, StructureElement } = molstarStructureRuntime();
     const rows = [...molstarCompositionQueries.keys()].map(query => {
       const matched = [];
+      const counts = { atoms: 0, residues: 0, chains: 0, types: 0 };
+      const residueTypes = new Set();
       for (const structure of structures) {
         const loci = compositionQueryLoci(structure, query);
         if (!loci) continue;
+        let represented = null;
         for (const component of structure.components || []) {
           const data = component.cell?.obj?.data;
-          if (data && StructureElement.Loci.size(StructureElement.Loci.remap(loci, data))) matched.push(component);
+          if (!data) continue;
+          const overlap = StructureElement.Loci.remap(loci, data);
+          if (!StructureElement.Loci.size(overlap)) continue;
+          matched.push(component);
+          const parentLoci = StructureElement.Loci.remap(overlap, loci.structure);
+          represented = represented ? StructureElement.Loci.union(represented, parentLoci) : parentLoci;
+        }
+        if (represented) {
+          // Count the union: overlapping representations must not count atoms twice.
+          const data = StructureElement.Loci.toStructure(represented);
+          counts.atoms += data.elementCount;
+          Structure.eachAtomicHierarchyElement(data, {
+            chain: () => { counts.chains++; },
+            residue: location => {
+              counts.residues++;
+              residueTypes.add(location.unit.model.atomicHierarchy.atoms.label_comp_id.value(location.element));
+            }
+          });
         }
       }
+      counts.types = residueTypes.size;
       const tint = sceneTreeColorState(matched).value;
       return {
         query,
+        present: matched.length > 0,
+        counts,
         hidden: !matched.some(component => !component.cell.state.isHidden
           && component.representations?.some(repr => !repr.cell.state.isHidden)),
         color: Number.isFinite(tint) ? sceneTreeColorHex(tint) : null
