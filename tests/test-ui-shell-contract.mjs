@@ -2432,6 +2432,31 @@ assert.doesNotMatch(appLayout, /animatingRef/);
 assert.match(appLayout, /function useGroupPixelGuard/);
 assert.match(appLayout, /frame = requestAnimationFrame\(correct\)/);
 assert.match(appLayout, /panel\.resize\(`\$\{want\}px`\)/);
+// Sizes reported while a separator is dragged are parked in a DragCommit and
+// written once on release: setDockSize clones the workspace and the persist
+// middleware serialised every workspace to localStorage per drag frame. Open
+// flags still commit as they change. For the same gesture (and the toggle
+// slide) the shell carries data-resizing and every viewer iframe is pinned to
+// its pixel size so Mol* reflows once instead of once per frame.
+assert.match(appLayout, /function useResizeDragSession/);
+assert.match(appLayout, /function useDragCommittedSize/);
+assert.match(appLayout, /const sidebarResize = useDragCommittedSize\(onSidebarWidthChange\);/);
+assert.match(appLayout, /const rightDockResize = useDragCommittedSize\(\(px\) => actions\.setDockSize\("right", px\)\);/);
+assert.match(appLayout, /const bottomDockResize = useDragCommittedSize\(\(px\) => actions\.setDockSize\("bottom", px\)\);/);
+assert.match(appLayout, /if \(px > 1\) sidebarResize\.report\(px\);/);
+assert.match(appLayout, /if \(px > 1\) rightDockResize\.report\(px\);/);
+assert.match(appLayout, /if \(px > 1\) bottomDockResize\.report\(px\);/);
+assert.doesNotMatch(appLayout, /if \(px > 1\) actions\.setDockSize/);
+assert.doesNotMatch(appLayout, /if \(px > 1\) onSidebarWidthChange/);
+assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(sidebarResize\); \}\}/);
+assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(rightDockResize\); \}\}/);
+assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(bottomDockResize\); \}\}/);
+assert.match(appLayout, /window\.addEventListener\("pointerup", end, true\);/);
+assert.match(appLayout, /const release = shellRef\.current \? pinViewerFrames\(shellRef\.current\) : null;/);
+assert.match(viewerFrame, /export function pinViewerFrames\(root: HTMLElement\): \(\) => void/);
+assert.match(viewerFrame, /root\.setAttribute\("data-resizing", "true"\);/);
+assert.match(viewerFrame, /frame\.style\.removeProperty\("width"\);/);
+assert.match(styles, /\.app-shell\[data-resizing\] \.viewer-iframe \{\s*pointer-events: none;\s*\}/);
 assert.doesNotMatch(appLayout, /\{rightDockOpen \? <DockPanel/);
 assert.doesNotMatch(appLayout, /\{bottomDockOpen \? <DockPanel/);
 assert.match(dockPanel, /data-open=\{open \? "true" : "false"\}/);

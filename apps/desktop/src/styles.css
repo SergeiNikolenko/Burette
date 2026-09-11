@@ -1287,6 +1287,14 @@ button:focus-visible > .shortcut-tooltip {
 .workbench-main-panels[data-panels-animating] > [data-panel] {
   transition: flex-grow 180ms cubic-bezier(0.2, 0, 0, 1);
 }
+/* While a separator drag or a toggle animation is in flight the shell carries
+   data-resizing and every viewer iframe is pinned (inline, by pinViewerFrames)
+   to the pixel size it had when the gesture began, so Mol* reflows once on
+   release instead of once per frame. The frames must not take the pointer in
+   that window: an iframe under the cursor would swallow the drag. */
+.app-shell[data-resizing] .viewer-iframe {
+  pointer-events: none;
+}
 .workspace-sidebar-panel { position: relative; height: 100%; min-height: 0; overflow: hidden; }
 .workspace-center-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
 .workbench-panels { flex: 1; min-width: 0; min-height: 0; }
