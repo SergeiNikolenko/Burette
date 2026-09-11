@@ -4010,16 +4010,12 @@
       footerText = `Showing first ${included.toLocaleString()} of ${total.toLocaleString()} records.`;
     } else if (hasMoreRows()) {
       footerText = `Scroll to load more. ${scrollable.toLocaleString()} of ${visible.toLocaleString()} visible ${effectiveMolecularGrid(cfg) ? 'molecules' : 'rows'} are scrollable.`;
-    } else if (state.remoteMode) {
-      footerText = 'Desktop grid runtime loads rows on demand and keeps only the active window mounted.';
     } else {
-      footerText = !effectiveMolecularGrid(cfg)
-        ? 'Tabular data preview with search, sort, columns, and filters.'
-        : state.cardRenderer === 'xyzrender'
-        ? 'External xyzrender card rendering.'
-        : 'Offline RDKit.js rendering with windowed cards. No network access required.';
+      footerText = '';
     }
-    document.getElementById('footer').textContent = footerText;
+    const footer = document.getElementById('footer');
+    footer.textContent = footerText;
+    footer.hidden = !footerText;
     updateGridRail();
     notifyGridMenuState(cfg);
   }

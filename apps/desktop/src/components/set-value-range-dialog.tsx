@@ -96,14 +96,10 @@ export function SetValueRangeDialog({
             </label>
             {problem ? <div className="calculated-column-problem">{problem}</div> : null}
             <p className="calculated-column-note">
-              Values outside the range are read at the limit by the table, the filters and every
-              analysis. Nothing is deleted, and Undo takes the column back.
+              Values outside the range use the nearest limit.
             </p>
           </div>
           <div className="radix-dialog-footer calculate-properties-footer">
-            <span className="calculate-properties-count">
-              {clearing ? "Both limits blank clears the range" : "Blank means no limit on that side"}
-            </span>
             <div className="calculate-properties-actions">
               <Dialog.Close asChild>
                 <button type="button" className="dock-action">Cancel</button>

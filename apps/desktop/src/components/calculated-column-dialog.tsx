@@ -137,14 +137,11 @@ export function CalculatedColumnDialog({
                 ))}
               </div>
               <p className="calculated-column-note">
-                Operators + − * / ^ and comparisons work as usual. A row missing any input is left empty.
+                Missing inputs leave the result empty.
               </p>
             </div>
           </div>
           <div className="radix-dialog-footer calculate-properties-footer">
-            <span className="calculate-properties-count">
-              {ready ? "Ready" : "Name the column and enter a formula"}
-            </span>
             <div className="calculate-properties-actions">
               <Dialog.Close asChild>
                 <button type="button" className="dock-action">Cancel</button>

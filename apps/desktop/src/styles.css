@@ -618,6 +618,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   color: var(--text-secondary);
 }
 .calculate-properties-actions {
+  margin-left: auto;
   display: flex;
   gap: 8px;
 }
@@ -635,7 +636,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   flex-direction: column;
   gap: 4px;
   margin: 0 0 12px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
 }
@@ -649,18 +650,25 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   color: var(--text-primary);
   font: inherit;
   font-weight: 400;
-  font-size: 12px;
+  font-size: 13px;
 }
 .calculated-column-field textarea {
   resize: vertical;
   font-family: var(--font-mono, ui-monospace, monospace);
+}
+.calculated-column-field :is(input, textarea, select):focus {
+  outline: none;
+}
+.calculated-column-field :is(input, textarea, select):focus-visible {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 1px var(--focus-ring);
 }
 .calculated-column-field [data-slot="native-select-wrapper"] {
   width: 100%;
 }
 .calculated-column-problem {
   margin: -6px 0 12px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-danger, #c0392b);
 }
 .calculated-column-help {
@@ -668,7 +676,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   padding-top: 10px;
 }
 .calculated-column-help-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 6px;
@@ -686,7 +694,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   background: none;
   color: var(--text-primary);
   font: inherit;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
 }
 .calculated-column-chip:hover {
@@ -695,7 +703,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .calculated-column-empty,
 .calculated-column-note {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 /* Full-size preview of the row under the pointer. It is a normal inspector
