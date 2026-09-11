@@ -845,6 +845,15 @@ mod tests {
         );
         assert!(!AssetProfile::Mesoscale.copies_rdkit());
         assert!(AssetProfile::Grid.copies_rdkit());
+        for helper in [
+            "superposition-panel.js",
+            "molecule-preview-interactions.js",
+            "color-picker.js",
+            "scene-file-actions.js",
+        ] {
+            assert!(AssetProfile::Molstar.files().contains(&helper));
+            assert!(AssetProfile::ExternalXyzrender.files().contains(&helper));
+        }
         assert!(!AssetProfile::Molstar.files().contains(&"grid-viewer.js"));
         assert!(!AssetProfile::Molstar.files().contains(&"xyz-fast.js"));
         assert!(!AssetProfile::Grid.files().contains(&"molstar.js"));
@@ -962,7 +971,11 @@ mod tests {
             .lines()
             .filter(|line| line.contains("<script src="))
             .collect();
-        for helper in ["color-picker.js", "molecule-preview-interactions.js"] {
+        for helper in [
+            "superposition-panel.js",
+            "color-picker.js",
+            "molecule-preview-interactions.js",
+        ] {
             let helper_index = scripts
                 .iter()
                 .position(|line| line.contains(helper))
@@ -973,6 +986,86 @@ mod tests {
                 .expect("viewer script");
             assert!(helper_index < viewer_index);
         }
+    }
+
+    /// Collects every path under `assets` that the HTML references, whether as
+    /// an eager `<script src>` / `<link href>` or as a lazy `window.*URL` global.
+    fn referenced_asset_paths(html: &str, assets: &Path) -> Vec<String> {
+        let prefix = format!("{}%2F", super::asset_url(assets));
+        html.match_indices(&prefix)
+            .map(|(index, _)| {
+                let rest = &html[index + prefix.len()..];
+                let end = rest.find('"').expect("asset URL should be quoted");
+                rest[..end].replace("%2F", "/")
+            })
+            .collect()
+    }
+
+    fn assert_html_assets_are_copied(html: &str, assets: &Path, profile: AssetProfile) {
+        let referenced = referenced_asset_paths(html, assets);
+        assert!(
+            !referenced.is_empty(),
+            "viewer HTML should reference assets"
+        );
+        for path in referenced {
+            let copied = profile.files().contains(&path.as_str())
+                || (profile.copies_rdkit()
+                    && (path.starts_with("rdkit/") || path == "rdkit-wasm-data.js"));
+            assert!(
+                copied,
+                "{path} is referenced by viewer_html but {:?} does not copy it",
+                profile
+            );
+        }
+    }
+
+    #[test]
+    fn molstar_viewer_html_references_only_copied_assets() {
+        let assets = Path::new("/tmp/assets");
+        let html = super::viewer_html(
+            Path::new("example.pdb"),
+            Path::new("/tmp/runtime"),
+            assets,
+            "molstar",
+            &preferences(),
+            false,
+        );
+
+        let referenced = referenced_asset_paths(&html, assets);
+        for lazy in [
+            "scene-file-actions.js",
+            "molstar.js",
+            "rdkit/RDKit_minimal.js",
+            "rdkit-wasm-data.js",
+        ] {
+            assert!(
+                referenced.iter().any(|path| path == lazy),
+                "{lazy} should be referenced by the Mol* viewer HTML"
+            );
+        }
+        assert_html_assets_are_copied(&html, assets, AssetProfile::Molstar);
+    }
+
+    #[test]
+    fn external_artifact_html_loads_only_copied_scripts_eagerly() {
+        let assets = Path::new("/tmp/assets");
+        let html = super::viewer_html(
+            Path::new("example.pdb"),
+            Path::new("/tmp/runtime"),
+            assets,
+            "xyzrender-external",
+            &preferences(),
+            false,
+        );
+
+        // The external renderer never loads Mol* or RDKit, so only the eager tags
+        // must resolve against the copied profile.
+        let eager: String = html
+            .lines()
+            .filter(|line| line.contains("<script src=") || line.contains("<link rel="))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_html_assets_are_copied(&eager, assets, AssetProfile::ExternalXyzrender);
     }
 }
 
@@ -1004,6 +1097,10 @@ impl AssetProfile {
                 "burette-agent.js",
                 "trajectory-smoothing.js",
                 "molstar-preset-preview-controller.js",
+                "superposition-panel.js",
+                "molecule-preview-interactions.js",
+                "color-picker.js",
+                "scene-file-actions.js",
                 "viewer.js",
             ],
             Self::Mesoscale => &["mesoscale.js", "mesoscale.css"],
@@ -1015,6 +1112,10 @@ impl AssetProfile {
                 "burette-agent.js",
                 "trajectory-smoothing.js",
                 "molstar-preset-preview-controller.js",
+                "superposition-panel.js",
+                "molecule-preview-interactions.js",
+                "color-picker.js",
+                "scene-file-actions.js",
                 "viewer.js",
             ],
         }
@@ -1190,6 +1291,7 @@ fn viewer_html(
     let preset_preview_controller_js =
         asset_url(&assets.join("molstar-preset-preview-controller.js"));
     let scene_files_js = asset_url(&assets.join("scene-file-actions.js"));
+    let superposition_panel_js = asset_url(&assets.join("superposition-panel.js"));
     let color_picker_js = asset_url(&assets.join("color-picker.js"));
     let molecule_preview_interactions_js =
         asset_url(&assets.join("molecule-preview-interactions.js"));
@@ -1241,6 +1343,7 @@ fn viewer_html(
   <script src="{agent_js}"></script>
   <script src="{trajectory_smoothing_js}"></script>
   <script src="{preset_preview_controller_js}"></script>
+  <script src="{superposition_panel_js}"></script>
   <script src="{color_picker_js}"></script>
   <script src="{molecule_preview_interactions_js}"></script>
   <script src="{viewer_js}"></script>
