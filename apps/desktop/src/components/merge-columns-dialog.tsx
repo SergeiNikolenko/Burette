@@ -102,14 +102,10 @@ export function MergeColumnsDialog({
               />
             </label>
             <p className="calculated-column-note">
-              The merge is over what the cells display, so a name and an identifier join as
-              plain text.
+              Joins the displayed values as text.
             </p>
           </div>
           <div className="radix-dialog-footer calculate-properties-footer">
-            <span className="calculate-properties-count">
-              {canRun ? `Merging into ${effectiveLabel}` : "Pick two different columns"}
-            </span>
             <div className="calculate-properties-actions">
               <Dialog.Close asChild>
                 <button type="button" className="dock-action">Cancel</button>

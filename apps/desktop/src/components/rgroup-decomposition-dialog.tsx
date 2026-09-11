@@ -58,8 +58,7 @@ export function RGroupDecompositionDialog({
             </label>
             <div className="calculated-column-help">
               <p className="calculated-column-note">
-                Molecules that do not contain the core keep empty cells and are reported when the run finishes.
-                The decomposition runs in the managed Python RDKit runtime.
+                Molecules without this core leave empty cells.
               </p>
             </div>
           </div>
