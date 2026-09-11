@@ -130,3 +130,57 @@ assert.deepEqual(edits, [
 ]);
 assert.deepEqual(compositionStyleMenu({ ...ligandRow, action: { ...ligandRow.action, selector: { ...ligandRow.action.selector, pdbx_PDB_ins_code: "A" } } }, () => {}), []);
 console.log("composition style menu routing ok");
+
+// Exercise the viewer snapshot against real Mol* loci: hidden objects remain,
+// removed subsets disappear, overlapping components do not double the counts,
+// and an empty scene still sends the snapshot needed to clear the inspector.
+const { Structure, StructureElement } = await import("molstar/lib/commonjs/mol-model/structure.js");
+const { parsePDB } = await import("molstar/lib/commonjs/mol-io/reader/pdb/parser.js");
+const { trajectoryFromPDB } = await import("molstar/lib/commonjs/mol-model-formats/structure/pdb.js");
+const parsed = await parsePDB(await read("samples/mini.pdb")).run();
+assert.equal(parsed.isError, false);
+const trajectory = await trajectoryFromPDB(parsed.result).run();
+const structure = Structure.ofModel(trajectory.representative);
+const loci = Structure.toStructureElementLoci(structure);
+const component = data => ({ cell: { obj: { data }, state: { isHidden: false } }, representations: [{ cell: { state: { isHidden: false } } }] });
+const first = component(structure);
+const hierarchy = { cell: { obj: { data: structure } }, components: [first, component(structure)] };
+let structures = [hierarchy];
+const snapshots = [];
+const reportStart = viewer.indexOf("  function reportMolstarCompositionVisibility()");
+const reportEnd = viewer.indexOf("  function queueMolstarQueryComponentAction(", reportStart);
+const report = new Function("activeMolstarViewer", "molstarCurrentStructures", "molstarStructureRuntime", "compositionQueryLoci", "sceneTreeColorState", "sceneTreeColorHex", "post", `
+  const molstarCompositionQueries = new Map([['polymer', new Set()]]);
+  let molstarCompositionVisibilitySignature = '';
+  ${viewer.slice(reportStart, reportEnd)}
+  return reportMolstarCompositionVisibility;
+`)(() => ({ plugin: { canvas3d: {} } }), () => structures, () => ({ Structure, StructureElement }),
+  () => loci, () => ({ value: NaN }), () => null, (_, __, value) => snapshots.push(value.rows[0]));
+const whole = { query: "polymer", present: true, counts: { atoms: 9, residues: 2, chains: 1, types: 2 }, hidden: false, color: null };
+report();
+assert.deepEqual(snapshots.at(-1), whole);
+hierarchy.components = [first];
+first.cell.state.isHidden = true;
+report();
+assert.deepEqual(snapshots.at(-1), { ...whole, hidden: true });
+const fragment = StructureElement.Loci.toStructure(StructureElement.Loci(structure, [{ unit: structure.units[0], indices: Int32Array.from([0, 1, 2, 3]) }]));
+hierarchy.components = [component(fragment)];
+report();
+assert.deepEqual(snapshots.at(-1), { ...whole, counts: { atoms: 4, residues: 1, chains: 1, types: 1 } });
+hierarchy.components = [];
+report();
+assert.deepEqual(snapshots.at(-1), { ...whole, present: false, hidden: true, counts: { atoms: 0, residues: 0, chains: 0, types: 0 } });
+hierarchy.components = [component(structure)];
+report();
+assert.deepEqual(snapshots.at(-1), whole, "Undo restores the same row and counts");
+structures = [];
+report();
+assert.equal(snapshots.at(-1).present, false, "removing the last structure must clear Composition");
+
+const { compositionRowFromScene } = await import("../apps/desktop/src/lib/composition-scene-state.ts");
+const row = { label: "Polymers", value: "2 chains / 748 residues / 5552 atoms" };
+assert.deepEqual(compositionRowFromScene(row), row, "a missing snapshot is not deletion");
+assert.equal(compositionRowFromScene(row, snapshots.at(-1)), null);
+assert.deepEqual(compositionRowFromScene(row, whole), { label: "Polymers", value: "1 chain / 2 residues / 9 atoms" });
+assert.deepEqual(compositionRowFromScene(row, { present: true, counts: { atoms: -1 } }), row);
+console.log("live Composition distinguishes hidden, removed and restored rows with exact union counts");

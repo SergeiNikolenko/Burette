@@ -6,6 +6,8 @@ import { isTauriRuntime } from "../lib/tauri";
 import type { ShellActions, ShellViewState } from "./types";
 import { fileCapabilities } from "./workspace-menu-items";
 import { useAppShellPortalContainer } from "./ui/portal-container";
+import { NativeSelect, NativeSelectOption } from "./ui/native-select";
+import { CloseIcon } from "./close-icon";
 
 type FolderContents = { files: string[]; folders: string[]; truncated: boolean };
 export async function readFolderContents(path: string, recursive: boolean, state: ShellViewState): Promise<FolderContents> {
@@ -40,8 +42,9 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
   const compatible = paths.length > 1 && paths.every(path => fileCapabilities(path).scene);
   const targets = workflows.sceneTargets(paths);
   const canAlign = compatible && paths.every(path => fileCapabilities(path).protein);
+  const poses = compatible && paths.every(path => fileCapabilities(path).poses);
   const validMode = mode.startsWith("scene:") ? targets.some(target => mode === `scene:${target.id}`)
-    : mode === "aligned" ? canAlign : mode === "poses" ? compatible && paths.every(path => fileCapabilities(path).poses) : mode !== "together" || compatible;
+    : mode === "aligned" ? canAlign : mode === "poses" ? poses : mode !== "together" || compatible;
   const submit = async () => {
     if (busy || !paths.length || paths.length > 200 || !validMode) return;
     setBusy(true); setError("");
@@ -64,30 +67,59 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
     } catch (error) { setError(String(error)); }
     finally { setBusy(false); }
   };
+  const toggleFile = (file: string, checked: boolean) => setSelected(current => {
+    const next = new Set(current);
+    if (checked) next.add(file); else next.delete(file);
+    return next;
+  });
   return <Dialog.Root open={path !== null} onOpenChange={open => { if (!open && !busy) onClose(); }}>
     <Dialog.Portal container={container}><Dialog.Overlay className="radix-dialog-overlay" />
-      <Dialog.Content className="radix-dialog calculated-column-dialog">
-        <div className="radix-dialog-header"><Dialog.Title>Open Folder</Dialog.Title></div>
-        <div className="radix-dialog-body">
-          <Dialog.Description>{path}</Dialog.Description>
-          <label><input type="checkbox" checked={recursive} disabled={busy} onChange={event => setRecursive(event.target.checked)} /> Include subfolders</label>
-          <p>{contents ? `${selected.size} of ${contents.files.length} files selected` : "Reading folder…"}</p>
-          {contents?.truncated ? <p role="status">Showing the first 2,000 entries. Open a smaller folder to see the rest.</p> : null}
-          <div className="folder-open-file-list" style={{ maxHeight: 240, overflowY: "auto" }}>
-            {contents?.files.map(file => <label key={file} style={{ display: "block" }}><input type="checkbox" checked={selected.has(file)} disabled={busy}
-              onChange={event => setSelected(current => { const next = new Set(current); if (event.target.checked) next.add(file); else next.delete(file); return next; })} /> {file.slice((path?.length ?? 0) + 1)}</label>)}
-          </div>
-          <label className="calculated-column-field"><span>Open</span><select value={mode} disabled={busy} onChange={event => setMode(event.target.value)}>
-            <option value="tabs">In Tabs</option><option value="right">In Right Panel</option>
-            {isTauriRuntime() ? <option value="window">In New Window</option> : null}
-            <option value="together" disabled={!compatible}>Together</option><option value="aligned" disabled={!canAlign}>Aligned</option><option value="poses" disabled={!compatible || !paths.every(path => fileCapabilities(path).poses)}>As Poses</option>
-            {targets.map(target => <option key={target.id} value={`scene:${target.id}`}>Add to {target.title}</option>)}
-          </select></label>
-          {paths.length > 200 ? <p role="alert">Select at most 200 files.</p> : null}
-          {error ? <p role="alert">{error}</p> : null}
+      <Dialog.Content className="radix-dialog calculated-column-dialog" aria-describedby="folder-open-body">
+        <div className="radix-dialog-header">
+          <Dialog.Title>Open Folder</Dialog.Title>
+          <Dialog.Close asChild>
+            <button type="button" className="radix-dialog-close" aria-label="Close open folder" disabled={busy}>
+              <CloseIcon size={14} />
+            </button>
+          </Dialog.Close>
         </div>
-        <div className="radix-dialog-footer calculate-properties-footer"><button className="dock-action" onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="dock-action calculate-properties-run" disabled={busy || !contents || !paths.length || paths.length > 200 || !validMode} onClick={() => void submit()}>Open {paths.length || ''}</button></div>
+        <div id="folder-open-body" className="radix-dialog-body">
+          <p className="radix-dialog-subline">{path}</p>
+          <label className="radix-dialog-check-row">
+            <input type="checkbox" checked={recursive} disabled={busy} onChange={event => setRecursive(event.target.checked)} />
+            <span>Include subfolders</span>
+          </label>
+          {contents?.truncated ? <p className="calculated-column-note" role="status">Showing the first 2,000 entries. Open a smaller folder to see the rest.</p> : null}
+          <div className="radix-dialog-scroll-list folder-open-file-list" role="group" aria-label="Files to open">
+            {contents?.files.map(file => <label key={file} className="radix-dialog-check-row">
+              <input type="checkbox" checked={selected.has(file)} disabled={busy} onChange={event => toggleFile(file, event.target.checked)} />
+              <span>{file.slice((path?.length ?? 0) + 1)}</span>
+            </label>)}
+            {contents && !contents.files.length ? <p className="calculated-column-empty">No files in this folder.</p> : null}
+          </div>
+          <label className="calculated-column-field"><span>Open</span>
+            <NativeSelect size="sm" value={mode} disabled={busy} onChange={event => setMode(event.target.value)}>
+              <NativeSelectOption value="tabs">In Tabs</NativeSelectOption>
+              <NativeSelectOption value="right">In Right Panel</NativeSelectOption>
+              {isTauriRuntime() ? <NativeSelectOption value="window">In New Window</NativeSelectOption> : null}
+              <NativeSelectOption value="together" disabled={!compatible}>Together</NativeSelectOption>
+              <NativeSelectOption value="aligned" disabled={!canAlign}>Aligned</NativeSelectOption>
+              <NativeSelectOption value="poses" disabled={!poses}>As Poses</NativeSelectOption>
+              {targets.map(target => <NativeSelectOption key={target.id} value={`scene:${target.id}`}>Add to {target.title}</NativeSelectOption>)}
+            </NativeSelect>
+          </label>
+          {paths.length > 200 ? <p className="calculated-column-problem" role="alert">Select at most 200 files.</p> : null}
+          {error ? <p className="calculated-column-problem" role="alert">{error}</p> : null}
+        </div>
+        <div className="radix-dialog-footer calculate-properties-footer">
+          <span className="calculate-properties-count">
+            {contents ? `${selected.size} of ${contents.files.length} files selected` : "Reading folder…"}
+          </span>
+          <div className="calculate-properties-actions">
+            <button type="button" className="dock-action" onClick={onClose} disabled={busy}>Cancel</button>
+            <button type="button" className="dock-action calculate-properties-run" disabled={busy || !contents || !paths.length || paths.length > 200 || !validMode} onClick={() => void submit()}>Open {paths.length || ''}</button>
+          </div>
+        </div>
       </Dialog.Content>
     </Dialog.Portal>
   </Dialog.Root>;

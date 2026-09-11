@@ -404,16 +404,17 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .topbar {
   position: absolute;
   top: 0;
-  /* Both edges follow the panels' measured widths (`--sidebar-edge` /
-     `--right-dock-edge`, published by a ResizeObserver on the panels), falling
-     back to the stored layout widths for the first paint. Measuring is what
-     keeps the strip glued to the panels: a right dock the group had to squeeze
-     below its 260px still stores 260, and a dragged sidebar only reaches the
-     DOM a render later. No transition on `left` either — the sidebar's own
-     toggle animation moves the measured edge, so easing it here again would
-     rubber-band the strip behind every drag frame. */
+  /* The left edge follows the sidebar's measured width (`--sidebar-edge`,
+     published by a ResizeObserver on the panel), falling back to the stored
+     layout width for the first paint. Measuring is what keeps the strip glued
+     to the panel: a dragged sidebar only reaches the DOM a render later. No
+     transition on `left` either — the sidebar's own toggle animation moves the
+     measured edge, so easing it here again would rubber-band the strip behind
+     every drag frame. The right edge does not yield to the right dock: the dock
+     starts below the toolbar (`padding-top: var(--chrome-height)`) and renders
+     its own header there, so the strip only has to clear the trailing controls. */
   left: max(var(--chrome-leading-inset, 192px), calc(var(--sidebar-edge, var(--sidebar-layout-width, 0px)) + 12px));
-  right: max(146px, var(--right-dock-edge, var(--right-dock-width, 0px)));
+  right: 146px;
   z-index: 4;
   height: var(--chrome-height);
   display: flex;
@@ -422,6 +423,10 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   gap: 12px;
   padding: var(--chrome-control-padding) 0;
   container-type: inline-size;
+  /* Toolbar chrome is not text: a drag across the strip must not paint a
+     selection over the tab titles. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 .chrome-button,
 .new-tab {
@@ -550,12 +555,26 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 2px 10px;
 }
-.calculate-properties-option {
+/* One checkbox row for every dialog: the property pickers, the column
+   deleter and the folder opener all read the same way. */
+.calculate-properties-option,
+.radix-dialog-check-row {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   padding: 2px 0;
+  color: var(--text-primary);
+}
+.calculate-properties-option input[type="checkbox"],
+.radix-dialog-check-row input[type="checkbox"] {
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.radix-dialog-check-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .calculate-properties-runtime {
   display: flex;
@@ -599,6 +618,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   color: var(--text-secondary);
 }
 .calculate-properties-actions {
+  margin-left: auto;
   display: flex;
   gap: 8px;
 }
@@ -616,12 +636,13 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   flex-direction: column;
   gap: 4px;
   margin: 0 0 12px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
 }
 .calculated-column-field input,
-.calculated-column-field textarea {
+.calculated-column-field textarea,
+.calculated-column-field select:not([data-slot="native-select"]) {
   padding: 6px 8px;
   border: 1px solid var(--line-subtler);
   border-radius: 6px;
@@ -629,15 +650,25 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   color: var(--text-primary);
   font: inherit;
   font-weight: 400;
-  font-size: 12px;
+  font-size: 13px;
 }
 .calculated-column-field textarea {
   resize: vertical;
   font-family: var(--font-mono, ui-monospace, monospace);
 }
+.calculated-column-field :is(input, textarea, select):focus {
+  outline: none;
+}
+.calculated-column-field :is(input, textarea, select):focus-visible {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 1px var(--focus-ring);
+}
+.calculated-column-field [data-slot="native-select-wrapper"] {
+  width: 100%;
+}
 .calculated-column-problem {
   margin: -6px 0 12px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-danger, #c0392b);
 }
 .calculated-column-help {
@@ -645,7 +676,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   padding-top: 10px;
 }
 .calculated-column-help-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 6px;
@@ -663,7 +694,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   background: none;
   color: var(--text-primary);
   font: inherit;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
 }
 .calculated-column-chip:hover {
@@ -672,7 +703,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .calculated-column-empty,
 .calculated-column-note {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 /* Full-size preview of the row under the pointer. It is a normal inspector
@@ -1183,7 +1214,10 @@ button:focus-visible > .shortcut-tooltip {
   border-radius: 10px;
   background: transparent;
   color: var(--text-muted);
-  padding: 0 34px 0 14px;
+  /* The right padding is exactly the close button's box plus its inset, so
+     the button never slides in from outside the pill and an inactive tab
+     reserves no room beyond what the hover state fills. */
+  padding: 0 26px 0 12px;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
@@ -1217,11 +1251,14 @@ button:focus-visible > .shortcut-tooltip {
   display: block;
   flex: 0 0 auto;
 }
+/* A tab without a close button (pinned, or a read-only strip) has nothing to
+   make room for, so it closes up to the same inset on both sides. */
+.tab-shell > .tab:last-child { padding-right: 12px; }
 .tab-close {
   position: absolute;
-  right: 5px;
+  right: 4px;
   top: 50%;
-  transform: translate(100%, -50%);
+  transform: translateY(-50%);
   width: 20px;
   height: 20px;
   border-radius: 8px;
@@ -1234,7 +1271,7 @@ button:focus-visible > .shortcut-tooltip {
   color: var(--text-faint);
   background: transparent;
   cursor: default;
-  transition: opacity 120ms ease-out, color 120ms ease-out, background 120ms ease-out, transform 120ms ease-out;
+  transition: opacity 120ms ease-out, color 120ms ease-out, background 120ms ease-out;
 }
 @container (max-width: 320px) {
   .topbar .tab-history-controls,
@@ -1242,14 +1279,13 @@ button:focus-visible > .shortcut-tooltip {
   .topbar .tab-strip-spacer { display: none; }
   .topbar .tab-scroll-region { width: 100%; flex: 1 1 auto; }
   .topbar .tab-shell { min-width: 0; max-width: 100%; flex: 0 0 auto; }
-  .topbar .tab { min-width: 0; max-width: 100%; padding-inline: 10px 28px; }
+  .topbar .tab { min-width: 0; max-width: 100%; padding-inline: 10px 26px; }
 }
 .tab-shell:hover .tab-close,
-.tab-shell:focus-within .tab-close { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
+.tab-shell:focus-within .tab-close { opacity: 1; pointer-events: auto; }
 .tab-shell[data-active] .tab-close {
   opacity: 1;
   pointer-events: auto;
-  transform: translate(0, -50%);
   color: var(--text-muted);
   background: transparent;
 }
@@ -1276,6 +1312,14 @@ button:focus-visible > .shortcut-tooltip {
 .workbench-panels[data-panels-animating] > [data-panel],
 .workbench-main-panels[data-panels-animating] > [data-panel] {
   transition: flex-grow 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+/* While a separator drag or a toggle animation is in flight the shell carries
+   data-resizing and every viewer iframe is pinned (inline, by pinViewerFrames)
+   to the pixel size it had when the gesture began, so Mol* reflows once on
+   release instead of once per frame. The frames must not take the pointer in
+   that window: an iframe under the cursor would swallow the drag. */
+.app-shell[data-resizing] .viewer-iframe {
+  pointer-events: none;
 }
 .workspace-sidebar-panel { position: relative; height: 100%; min-height: 0; overflow: hidden; }
 .workspace-center-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
@@ -1390,7 +1434,7 @@ button:focus-visible > .shortcut-tooltip {
   background: var(--bg-base);
   overflow: hidden;
   border-left: 1px solid var(--workspace-edge-border);
-  border-radius: 20px 0 0 20px;
+  border-radius: 0;
   /* The soft edge shadow this card used to cast over the glass sidebar lives on
      .workspace-sidebar-handle::before now: the center ResizablePanel clips its
      children (overflow: hidden), so a box-shadow here can never reach out. */
@@ -1423,6 +1467,16 @@ button:focus-visible > .shortcut-tooltip {
   flex-direction: column;
   background: transparent;
   overflow: hidden;
+  /* Project rows, the settings nav and the app title are chrome, not copy: a
+     drag across them must not paint a selection. Fields inside opt back in. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sidebar :is(input, textarea, [contenteditable="true"]),
+.topbar :is(input, textarea),
+.dock-header :is(input, textarea) {
+  user-select: text;
+  -webkit-user-select: text;
 }
 .sidebar[data-mode="settings"] {
   z-index: 4;
@@ -1953,6 +2007,37 @@ kbd span { margin-left: 2px; }
   grid-template-rows: 1fr;
   opacity: 1;
   pointer-events: auto;
+}
+/* The rows past the "Show more" limit stay in the DOM inside this shell so the
+   button can slide them open with the same 0fr -> 1fr recipe the folder shells
+   use, instead of the tail popping in as a hard slice. It is one row of the
+   parent's 1px-gap grid, so while collapsed it pulls up by that gap to keep the
+   button exactly where a plain slice would have left it. */
+.project-tail-shell {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: -1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: grid-template-rows 160ms ease-out, margin-top 160ms ease-out, opacity 120ms ease-out;
+}
+.project-tail-shell[data-expanded="true"] {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  opacity: 1;
+  pointer-events: auto;
+}
+.project-tail {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  gap: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .project-group-children-shell,
+  .project-folder-children-shell,
+  .project-tail-shell { transition: none; }
 }
 .project-folder-children {
   position: relative;
@@ -2668,6 +2753,8 @@ img.radix-menu-item-icon {
   padding: 7px 8px;
   border-bottom: 1px solid var(--line-subtler);
   box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .dock-tab-strip {
   min-width: 0;
@@ -2714,6 +2801,8 @@ img.radix-menu-item-icon {
   font: inherit;
   font-size: 13px;
   cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
   transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
 .dock-tab svg {
@@ -4548,7 +4637,7 @@ img.radix-menu-item-icon {
   gap: 4px;
   min-height: 24px;
   padding: 0;
-  border-radius: 5px;
+  border-radius: 8px;
 }
 .structure-inspector-tree .structure-brief-action-summary,
 .structure-inspector-tree .structure-brief-action-row,
@@ -4557,7 +4646,7 @@ img.radix-menu-item-icon {
   flex: 1 1 auto;
   min-width: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 3px 2px;
   background: transparent;
   box-shadow: none;
@@ -4654,10 +4743,13 @@ input.structure-inspector-composition-search {
 .structure-brief-action-entry[data-hidden="true"] .structure-brief-chip-button {
   opacity: 0.45;
 }
-.structure-inspector-row-bar[data-tone="polymer"] { background: #54d98c; }
-.structure-inspector-row-bar[data-tone="ligand"] { background: #54d98c; }
-.structure-inspector-row-bar[data-tone="ion"] { background: #54d98c; }
-.structure-inspector-row-bar[data-tone="water"] { background: #54d98c; }
+/* Same four tones as the segmented composition bar above, so a row's bar and
+   its slice in the summary read as one thing. A row whose entity the viewer
+   has already coloured overrides this inline with that exact colour. */
+.structure-inspector-row-bar[data-tone="polymer"] { background: #4e79a7; }
+.structure-inspector-row-bar[data-tone="ligand"] { background: #59a14f; }
+.structure-inspector-row-bar[data-tone="ion"] { background: #e8973a; }
+.structure-inspector-row-bar[data-tone="water"] { background: #9aa0a6; }
 .structure-inspector-row-actions {
   display: flex;
   align-items: center;
@@ -8566,6 +8658,21 @@ input.structure-inspector-composition-search {
   backdrop-filter: blur(28px) saturate(1.2);
   -webkit-backdrop-filter: blur(28px) saturate(1.2);
 }
+/* Keep actions visible when a long dialog body reaches the viewport limit. */
+.radix-dialog:has(> .radix-dialog-body) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.radix-dialog > .radix-dialog-body {
+  min-height: 0;
+  overflow: auto;
+}
+.radix-dialog > .radix-dialog-header,
+.radix-dialog > .radix-dialog-footer,
+.radix-dialog > .radix-dialog-actions {
+  flex-shrink: 0;
+}
 .radix-dialog-header {
   min-height: 48px;
   display: flex;
@@ -8596,6 +8703,10 @@ input.structure-inspector-composition-search {
   background: var(--surface-subtle);
   color: var(--text-primary);
 }
+.radix-dialog :is(button, a, select):focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 2px;
+}
 .radix-dialog-body,
 .radix-dialog-description {
   margin: 0;
@@ -8613,6 +8724,43 @@ input.structure-inspector-composition-search {
   justify-content: flex-end;
   gap: 8px;
   padding: 0 16px 16px;
+}
+/* The footer of the table and file dialogs: actions sit at the right, and a
+   .calculate-properties-footer pushes its status text to the left edge. */
+.radix-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+.radix-dialog-footer.calculate-properties-footer {
+  justify-content: space-between;
+}
+/* A muted second line under the title: the path a dialog acts on. */
+.radix-dialog-subline {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+/* A bounded list inside the body that scrolls on its own instead of growing
+   the dialog past the viewport. */
+.radix-dialog-scroll-list {
+  display: grid;
+  max-height: 240px;
+  margin: 0 0 12px;
+  padding: 4px 8px;
+  overflow-y: auto;
+  border: 1px solid var(--line-subtler);
+  border-radius: 6px;
+  background: var(--surface-input, transparent);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.radix-dialog-body ul.radix-dialog-scroll-list {
+  padding-left: 24px;
 }
 .database-query-form {
   display: grid;
@@ -9426,5 +9574,8 @@ img.settings-open-destination-icon {
 .file-operation-dialog .radix-dialog-header h2 { font-weight: 600; }
 .file-operation-dialog .radix-dialog-body { padding: 8px 20px 20px; overflow-wrap: anywhere; }
 .file-operation-dialog .radix-dialog-body p { margin: 0; }
+/* Here the description is the message itself, so it keeps the body type. */
+.file-operation-dialog .radix-dialog-subline { font-size: 13px; color: var(--text-secondary); }
+.file-operation-dialog .radix-dialog-body .radix-dialog-subline + * { margin-top: 10px; }
 .file-operation-dialog .radix-dialog-actions { padding: 0 20px 20px; }
 .file-operation-dialog .radix-dialog-actions button { min-height: 30px; padding: 5px 12px; }

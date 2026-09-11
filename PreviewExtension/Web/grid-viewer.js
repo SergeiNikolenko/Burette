@@ -95,7 +95,6 @@
     visibleCount: 0,
     renderedCount: 0,
     query: '',
-    searchMode: 'text',
     searchTimer: 0,
     searchTextCache: new WeakMap(),
     dataToken: 0,
@@ -1735,7 +1734,6 @@
       exportEnabled: caps.export,
       selectionEnabled: caps.selection,
       substructureSearch: caps.substructureSearch,
-      searchMode: state.searchMode,
       exportScopeLabel: exportScopeLabel(),
       exportPending: Boolean(state.searchTimer || state.remoteLoading || !collectionIndexReady()),
       supportsXyzrenderCards: supportsXyzrenderCards(cfg),
@@ -1766,12 +1764,6 @@
       onSearchInput(value) {
         scheduleSearch(value || '', cfg);
       },
-      onSearchModeChange(value) {
-        state.searchMode = value;
-        setUnifiedSearchQuery(state.query, cfg, value);
-        refreshGridControls(cfg);
-        refresh(cfg);
-      },
       onSortChange(value) {
         state.sort = value || 'index';
         state.descriptorSort = null;
@@ -1782,7 +1774,7 @@
         applyGridPreferences(cfg);
       },
       onClearSmarts() {
-        setUnifiedSearchQuery('', cfg, state.searchMode);
+        setUnifiedSearchQuery('', cfg);
         const input = document.getElementById('search');
         if (input) input.value = '';
         refresh(cfg);
@@ -1834,8 +1826,6 @@
         render(cfg);
       }
     });
-    const search = document.getElementById('search');
-    if (search) search.setAttribute('aria-label', state.searchMode === 'structure' ? 'Search structures with SMARTS' : 'Search text');
     const sortControl = document.getElementById('sort');
     if (sortControl) {
       const currentSort = tableActiveSort();
@@ -2985,21 +2975,21 @@
   }
 
   function shouldFallbackSMARTSToTextSearch() {
-    return state.searchMode !== 'structure' && !!state.smartsError && !!state.smarts.trim() && !queryLooksLikeExplicitSMARTS(state.query);
+    return !!state.smartsError && !!state.smarts.trim() && !queryLooksLikeExplicitSMARTS(state.query);
   }
 
-  // Explicit UI modes are predictable; callers that omit mode retain the
-  // legacy automatic SMARTS/SMILES-fragment interpretation.
-  function setUnifiedSearchQuery(value, cfg, mode = 'auto') {
+  // The single search input is interpreted automatically: SMARTS and
+  // SMILES-fragment queries drive the substructure filter, anything else is
+  // matched as text.
+  function setUnifiedSearchQuery(value, cfg) {
     state.query = value || '';
-    state.smarts = capabilities(cfg).substructureSearch
-      && (mode === 'structure' || (mode === 'auto' && queryLooksLikeSMARTS(value))) ? value || '' : '';
+    state.smarts = capabilities(cfg).substructureSearch && queryLooksLikeSMARTS(value) ? value || '' : '';
   }
 
   function scheduleSearch(value, cfg) {
     const wasPending = Boolean(state.searchTimer);
     clearTimeout(state.searchTimer);
-    setUnifiedSearchQuery(value, cfg, state.searchMode);
+    setUnifiedSearchQuery(value, cfg);
     // Obsolete page/SMARTS requests must stop applying while the user types,
     // rather than remaining valid until the debounce expires.
     state.token += 1;
@@ -3218,7 +3208,7 @@
     if (!pattern) return rows;
     if (!state.rdkit || typeof state.rdkit.get_qmol !== 'function') {
       state.smartsError = 'This RDKit build does not support SMARTS queries.';
-      return state.searchMode === 'structure' ? [] : rows;
+      return rows;
     }
 
     let qmol = null;
@@ -3235,7 +3225,7 @@
       return matches;
     } catch (error) {
       state.smartsError = error?.message || String(error);
-      return state.searchMode === 'structure' ? [] : rows;
+      return rows;
     } finally {
       try { qmol?.delete?.(); } catch (_) {}
     }
@@ -4020,16 +4010,12 @@
       footerText = `Showing first ${included.toLocaleString()} of ${total.toLocaleString()} records.`;
     } else if (hasMoreRows()) {
       footerText = `Scroll to load more. ${scrollable.toLocaleString()} of ${visible.toLocaleString()} visible ${effectiveMolecularGrid(cfg) ? 'molecules' : 'rows'} are scrollable.`;
-    } else if (state.remoteMode) {
-      footerText = 'Desktop grid runtime loads rows on demand and keeps only the active window mounted.';
     } else {
-      footerText = !effectiveMolecularGrid(cfg)
-        ? 'Tabular data preview with search, sort, columns, and filters.'
-        : state.cardRenderer === 'xyzrender'
-        ? 'External xyzrender card rendering.'
-        : 'Offline RDKit.js rendering with windowed cards. No network access required.';
+      footerText = '';
     }
-    document.getElementById('footer').textContent = footerText;
+    const footer = document.getElementById('footer');
+    footer.textContent = footerText;
+    footer.hidden = !footerText;
     updateGridRail();
     notifyGridMenuState(cfg);
   }
@@ -5185,7 +5171,7 @@
   }
 
   function tableSearchQuery() {
-    return state.searchMode === 'structure' ? '' : normalize(state.query).trim();
+    return normalize(state.query).trim();
   }
 
   function tableColumnPanelHTML(catalog, visibleColumns) {
@@ -8137,7 +8123,6 @@
     state.remoteLoading = false;
     window.clearTimeout(state.searchTimer);
     state.searchTimer = 0;
-    state.searchMode = 'text';
     state.searchTextCache = new WeakMap();
     state.chemicalSpaceVisibilitySubscribers.clear();
     state.chemicalSpaceVisibilityRequest = null;

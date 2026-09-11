@@ -13,6 +13,7 @@ import { structureBriefForDocument, type StructureBriefRow as BriefRow } from ".
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "../lib/viewer-bridge";
 import { compositionSceneAction } from "../lib/composition-scene-actions";
+import { compositionRowFromScene, type CompositionSceneState } from "../lib/composition-scene-state";
 import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerWorkflow } from "../lib/conformer-ensemble";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -3731,11 +3732,21 @@ function StructureCompositionCard({
   activeActionKey: string | null;
   setActiveActionKey: (key: string | null) => void;
 }) {
-  const groups = useMemo(() => summary ? compositionGroups(summary) : [], [summary]);
-  const [expanded, setExpanded] = useState<Set<string>>(() => defaultExpandedCompositionGroups(groups));
+  const sourceGroups = useMemo(() => summary ? compositionGroups(summary) : [], [summary]);
+  const [sceneRows, setSceneRows] = useState<Map<string, CompositionSceneState>>(new Map());
+  const groups = useMemo(() => sourceGroups.flatMap(group => {
+    const row = compositionRowFromScene(group.row, sceneRows.get(structureActionRowKey(group.row, 0)));
+    if (!row) return [];
+    const children = group.children.flatMap(child => {
+      const current = compositionRowFromScene(child, sceneRows.get(structureActionRowKey(child, 0)));
+      return current ? [current] : [];
+    });
+    return [{ ...group, row, children }];
+  }), [sourceGroups, sceneRows]);
+  const [expanded, setExpanded] = useState<Set<string>>(() => defaultExpandedCompositionGroups(sourceGroups));
   useEffect(() => {
-    setExpanded(defaultExpandedCompositionGroups(groups));
-  }, [groups]);
+    setExpanded(defaultExpandedCompositionGroups(sourceGroups));
+  }, [sourceGroups]);
   const toggle = (key: string) => setExpanded((current) => {
     const next = new Set(current);
     if (!next.delete(key)) next.add(key);
@@ -3750,10 +3761,12 @@ function StructureCompositionCard({
     setQuery("");
     setHiddenRows(new Set());
     setRowColors(new Map());
+    setSceneRows(new Map());
   }, [document.id]);
   useEffect(() => {
     const keys = new Map<string, string>();
-    for (const group of groups) {
+    // Keep removed rows registered so Undo can restore them from a later snapshot.
+    for (const group of sourceGroups) {
       for (const row of [group.row, ...group.children]) {
         const action = compositionSceneAction(row, "hide");
         if (action && "query" in action && action.query) keys.set(action.query, structureActionRowKey(row, 0));
@@ -3767,6 +3780,14 @@ function StructureCompositionCard({
       const body = event.data?.body;
       if (body?.type === "ready") requestVisibility();
       if (body?.type !== "compositionVisibilityChanged" || !Array.isArray(body.rows)) return;
+      setSceneRows(current => {
+        const next = new Map(current);
+        for (const row of body.rows.slice(0, 128)) {
+          const key = keys.get(row?.query);
+          if (key && typeof row.present === "boolean") next.set(key, { present: row.present, counts: row.counts });
+        }
+        return next;
+      });
       setRowColors(current => {
         const next = new Map(current);
         for (const row of body.rows.slice(0, 128)) {
@@ -3791,7 +3812,7 @@ function StructureCompositionCard({
     window.addEventListener("message", receive);
     requestVisibility();
     return () => window.removeEventListener("message", receive);
-  }, [document.id, groups]);
+  }, [document.id, sourceGroups]);
   const markHidden = (row: StructureSummaryRow, hide: boolean) => {
     setHiddenRows((current) => {
       const next = new Set(current);
@@ -3828,7 +3849,7 @@ function StructureCompositionCard({
           />
         ) : null}
         {visibleGroups.length === 0 ? (
-          <div className="dock-empty">Nothing matches “{query}”.</div>
+          <div className="dock-empty">{query ? `Nothing matches “${query}”.` : "No components in this scene."}</div>
         ) : (
         <div className="structure-brief-rows structure-inspector-tree" onKeyDown={structureRowsKeyDown}>
           {visibleGroups.map(({ group, match }) => {
@@ -3945,7 +3966,7 @@ function StructureActionRow({
   // only in what the panel knows that the tree does not.
   const content = () => tone ? (
     <span className="structure-inspector-row-content" data-tree="true">
-      <span className="structure-inspector-row-bar" data-tone={tone} aria-hidden="true" />
+      <span className="structure-inspector-row-bar" data-tone={tone} style={color ? { backgroundColor: color } : undefined} aria-hidden="true" />
       <span className="structure-inspector-row-label">{row.label}</span>
       <em title={row.value}>{compositionShortValue(row.label, row.value)}</em>
     </span>

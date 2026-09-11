@@ -1,4 +1,7 @@
 /* Shared Quick Look viewer shell style. Keep app runtimes linked here; do not fork host-specific Mol* chrome. */
+/* Empty scenes and loading states use Burette's own shell on every surface. */
+.msp-plugin .msp-logo { display: none !important; }
+
 :root {
   color-scheme: dark;
   --buret-viewer-ui-scale: 0.9;
@@ -4062,13 +4065,17 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   width: 100%;
   padding: 4px;
   box-sizing: border-box;
+  /* Rows are controls, not prose: a drag or a double click must not paint a
+     text selection across labels and notes. */
+  -webkit-user-select: none;
+  user-select: none;
 }
 .buret-tree-highlight {
   position: absolute;
   left: 0;
   top: 0;
   z-index: 0;
-  border-radius: 5px;
+  border-radius: 8px;
   background: var(--buret-molstar-hover-background);
   opacity: 0;
   pointer-events: none;
@@ -4092,7 +4099,7 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   gap: 4px;
   min-height: 24px;
   padding: 0 3px 0 0;
-  border-radius: 5px;
+  border-radius: 8px;
 }
 .buret-tree-twisty {
   display: grid;
@@ -4188,7 +4195,7 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
    over a panel that is otherwise greyscale; a flat tint carries it quietly. */
 .buret-tree-item[data-selected="true"] > .buret-tree-row {
   background: color-mix(in srgb, var(--buret-molstar-text) 9%, transparent);
-  border-radius: 5px;
+  border-radius: 8px;
 }
 .buret-tree-item[data-selected="true"] > .buret-tree-row > .buret-tree-trigger > .buret-tree-label {
   color: var(--buret-molstar-text);

@@ -96,9 +96,6 @@ export function CalculatePropertiesDialog({
             </Dialog.Close>
           </div>
           <div id="calculate-properties-body" className="radix-dialog-body">
-            <p className="calculate-properties-target">
-              Adds the selected property columns to <strong>{request?.documentTitle}</strong>.
-            </p>
             {PROPERTY_GROUPS.map((group) => (
               <fieldset key={group.id} className="calculate-properties-group">
                 <legend>

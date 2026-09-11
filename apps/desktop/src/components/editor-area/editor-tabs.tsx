@@ -516,7 +516,7 @@ export function EditorTabs({
             const closing = chosenTabs.length > 1 ? [{ kind: "item" as const, id: "close-selected", text: "Selected", action: () => { void actions.closeTabs(chosenTabs.map(tab => tab.id)); } }]
               : items.filter(entry => entry.kind === "item" && entry.id.startsWith("close-")).map(entry => entry.kind === "item" ? { ...entry, text: ({ "close-tab": "Tab", "close-other-tabs": "Others", "close-tabs-right": "To the Right", "close-all-tabs": "All" } as Record<string, string>)[entry.id] ?? entry.text } : entry);
             const pin = { kind: "item" as const, id: "pin-tabs", text: chosenTabs.every(tab => tab.pinned) ? "Unpin" : "Pin", action: () => {
-              const pinned = chosenTabs.every(tab => tab.pinned); chosenTabs.forEach(tab => { if (tab.pinned === pinned) actions.togglePinnedTab(tab.id); });
+              const pinned = chosenTabs.every(tab => tab.pinned); chosenTabs.forEach(tab => { if (Boolean(tab.pinned) === pinned) actions.togglePinnedTab(tab.id); });
             } };
             const sceneMenu = chosenTabs.length === 1 && tabDocument ? workspaceMenus.scene(tabDocument) : [];
             const tabMenu = shared.filter(entry => !("id" in entry && ["pin-files", "trash-file", "rename-file", "duplicate-file"].includes(entry.id)));

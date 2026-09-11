@@ -110,7 +110,7 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v186";
+const GRID_ASSET_VERSION = "grid-ui-v187";
 const VIEWER_ASSET_VERSION = "viewer-ui-v72";
 const MESOSCALE_ASSET_VERSION = "mesoscale-ui-v1";
 // One cache-buster per page load, not per render: the viewer iframe is keyed by

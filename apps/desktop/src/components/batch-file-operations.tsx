@@ -6,6 +6,7 @@ import { isTauriRuntime } from "../lib/tauri";
 import { useMoleculeStore } from "../stores/molecule-store";
 import { useShellStore } from "../stores/shell-store";
 import { useAppShellPortalContainer } from "./ui/portal-container";
+import { CloseIcon } from "./close-icon";
 import type { ShellActions, ShellViewState } from "./types";
 import { menuItem } from "./workspace-menu-items";
 
@@ -59,13 +60,14 @@ export function useBatchFileOperations(actions: ShellActions, state: ShellViewSt
   ];
   const dialog = <Dialog.Root open={paths.length > 0} onOpenChange={open => { if (!open && !busy) setPaths([]); }}>
     <Dialog.Portal container={container}><Dialog.Overlay className="radix-dialog-overlay" /><Dialog.Content className="radix-dialog file-operation-dialog">
-      <div className="radix-dialog-header"><Dialog.Title>Move {paths.length} Files to Trash</Dialog.Title></div>
-      <div className="radix-dialog-body"><Dialog.Description>You can restore these files in Finder.</Dialog.Description>
-        <ul style={{ maxHeight: 220, overflowY: "auto" }}>{paths.map(path => <li key={path}>{path.split('/').pop()}</li>)}</ul>
+      <div className="radix-dialog-header"><Dialog.Title>Move {paths.length} Files to Trash</Dialog.Title>
+        <Dialog.Close asChild><button type="button" className="radix-dialog-close" aria-label="Close move to trash" disabled={busy}><CloseIcon size={14} /></button></Dialog.Close></div>
+      <div className="radix-dialog-body"><Dialog.Description className="radix-dialog-subline">You can restore these files in Finder.</Dialog.Description>
+        <ul className="radix-dialog-scroll-list">{paths.map(path => <li key={path}>{path.split('/').pop()}</li>)}</ul>
         {completed.length ? <p>{completed.length} files moved.</p> : null}{error ? <p role="alert">{error}</p> : null}
       </div>
-      <div className="radix-dialog-actions"><button className="dock-action" disabled={busy} onClick={() => setPaths([])}>Cancel</button>
-        <button className="dock-action" disabled={busy} onClick={() => void trash()}>{busy ? "Moving…" : "Move to Trash"}</button></div>
+      <div className="radix-dialog-actions"><button type="button" className="dock-action" disabled={busy} onClick={() => setPaths([])}>Cancel</button>
+        <button type="button" className="dock-action calculate-properties-run" disabled={busy} onClick={() => void trash()}>{busy ? "Moving…" : "Move to Trash"}</button></div>
     </Dialog.Content></Dialog.Portal>
   </Dialog.Root>;
   return { items, dialog };

@@ -8,11 +8,18 @@ import type { StructureDragRecord } from "../lib/structure-drag";
 import type { useWorkspaceFileActions } from "./use-workspace-file-actions";
 import { toast } from "../components/ui/toast";
 
+// A read-only host (the dock panel, FEP setup, pose review) still gets the full
+// molecule menu; only the entries that write back into the collection are
+// dropped. The grid already omits them for a read-only frame - this pins the
+// contract on the host side as well.
+const READ_ONLY_HIDDEN_ENTRIES = new Set(["ketcher", "duplicate", "remove"]);
+
 export function useGridWorkspaceMenu(state: ShellViewState, actions: ShellActions, workflows: ReturnType<typeof useWorkspaceFileActions>) {
   useEffect(() => {
     const receive = (event: MessageEvent) => {
       const body = event.data?.body;
-      if (body?.type !== "gridWorkspaceMenu" || !isKnownViewerMessageSource(event.source) || isReadOnlyViewerMessageSource(event.source)) return;
+      if (body?.type !== "gridWorkspaceMenu" || !isKnownViewerMessageSource(event.source)) return;
+      const readOnly = isReadOnlyViewerMessageSource(event.source);
       if (typeof body.requestId !== "string" || body.requestId.length > 128 || !Array.isArray(body.entries) || body.entries.length > 60) return;
       const frame = Array.from(document.querySelectorAll<HTMLIFrameElement>('.viewer-iframe[data-renderer="grid2d"]')).find(frame => frame.contentWindow === event.source);
       if (!frame) return;
@@ -22,6 +29,7 @@ export function useGridWorkspaceMenu(state: ShellViewState, actions: ShellAction
       for (const entry of body.entries) if (entry && typeof entry.id === "string" && entry.id.length < 80 && typeof entry.label === "string") entries.set(entry.id, entry);
       const take = (id: string, text: string): MenuItemSpec[] => {
         const entry = entries.get(id);
+        if (readOnly && READ_ONLY_HIDDEN_ENTRIES.has(id)) return [];
         return entry && !entry.disabled ? [item(id, text, () => reply(id))] : [];
       };
       const records: StructureDragRecord[] = Array.isArray(body.records) && body.records.length <= 200 ? body.records : [];

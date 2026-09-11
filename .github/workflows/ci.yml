@@ -87,4 +87,21 @@ jobs:
           install-xyzrender: "true"
 
       - name: Build native bundle
+        env:
+          BURETTE_DEV_FLAVOR: pr${{ github.event.number }}
         run: ./scripts/build.sh
+
+      - name: Archive isolated app for native acceptance
+        env:
+          BURETTE_DEV_FLAVOR: pr${{ github.event.number }}
+        run: |
+          eval "$(bun scripts/dev-namespace.mjs shell-env)"
+          ditto -c -k --sequesterRsrc --keepParent "build/$BURETTE_APP_BUNDLE_NAME" build/native-acceptance.zip
+
+      - name: Upload native acceptance app
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-acceptance-${{ github.event.number }}-${{ github.sha }}
+          path: build/native-acceptance.zip
+          retention-days: 7
+

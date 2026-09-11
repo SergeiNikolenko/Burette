@@ -99,6 +99,7 @@ commands.allow = [
   "existing_paths",
   "watch_project_roots",
   "open_new_workspace_window",
+  "close_workspace_window",
   "read_external_preview_svg",
   "read_viewer_runtime_file_base64",
   "reveal_path",
