@@ -185,3 +185,11 @@ assert.match(styles, /\.structure-inspector-tree \.structure-brief-action-entry\
 assert.match(viewerCss, /\.buret-tree-item\[data-selected="true"\][^{]*\.buret-tree-label \{[\s\S]*?font-weight: 590/);
 
 console.log("scene tree parity contract ok");
+
+// Both trees round their rows the same way; the panel mirrors the viewer's tree
+// row, so a radius change on one side has to land on the other.
+assert.equal(
+  declaration(ruleBody(styles, ".structure-inspector-tree .structure-brief-action-entry", "panel"), "border-radius"),
+  declaration(ruleBody(viewerCss, ".buret-tree-row", "viewer"), "border-radius"),
+  "the composition rows' border-radius no longer matches the scene tree's"
+);
