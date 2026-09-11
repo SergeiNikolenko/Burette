@@ -101,12 +101,13 @@ export function ImageViewerContent({
   const freezeVisibleFrameWindow = rendererFrame.phase !== "idle";
   const {
     isFitWidth,
+    pixelRatio,
     rotateClockwise,
     rotation,
     scale,
     scaleControlsDisabled,
     setViewerScale,
-    widestFrameWidth,
+    widestFrameLogicalWidth,
   } = useImageViewerScale(
     frameSource,
     controlledScale,
@@ -122,7 +123,7 @@ export function ImageViewerContent({
     ? clamp(
         getFileViewerFitWidthScale({
           availableInlineSize: rasterInlineSize ?? frameListLayoutWidth ?? 0,
-          contentInlineSize: widestFrameWidth,
+          contentInlineSize: widestFrameLogicalWidth,
           stageInlinePadding: IMAGE_VIEWER_HORIZONTAL_PADDING,
         }),
         MIN_VIEWER_SCALE,
@@ -135,8 +136,9 @@ export function ImageViewerContent({
         frames: frameSource.frames,
         scale,
         rotation,
+        pixelRatio,
       }),
-    [frameSource.frames, rotation, scale],
+    [frameSource.frames, pixelRatio, rotation, scale],
   );
   const {
     captureZoomIntent,
@@ -184,7 +186,7 @@ export function ImageViewerContent({
   const scrollerRef = React.useRef<HTMLElement | null>(null);
   const { captureReadingFraction } = useReadingFractionRebase({
     scrollerRef,
-    layoutKey: scale,
+    layoutKey: joinEffectKey([scale, pixelRatio]),
     enabled: rendererEnvironment.usesShellGeometry && !isZoomTransitioning,
   });
   const imageDocumentSurfaceRef = React.useRef<HTMLDivElement | null>(null);
@@ -429,11 +431,19 @@ export function ImageViewerContent({
     beginZoomMotion();
     setViewerScale(null);
   }, [beginZoomMotion, setViewerScale]);
+  // The percentage readout doubles as the reset: 100% is logical pixels (a
+  // Retina screenshot at the size it was captured at), while the fit button
+  // stays fit-width.
+  const resetScale = React.useCallback(() => {
+    beginZoomMotion();
+    setViewerScale(1);
+  }, [beginZoomMotion, setViewerScale]);
   useImageControlsRegistration({
     countLabel,
     download,
     downloadAction: resource.originalDownload,
     fitWidth,
+    resetScale,
     rotateClockwise,
     scale,
     scaleControlsDisabled,
@@ -459,6 +469,7 @@ export function ImageViewerContent({
             onZoomOut: zoomOut,
             onZoomIn: zoomIn,
             onFit: fitWidth,
+            onReset: resetScale,
             isDisabled: scaleControlsDisabled,
           }}
           rotate={{ onRotate: rotateClockwise }}
@@ -498,6 +509,7 @@ function useImageControlsRegistration({
   download,
   downloadAction,
   fitWidth,
+  resetScale,
   rotateClockwise,
   scale,
   scaleControlsDisabled,
@@ -508,6 +520,7 @@ function useImageControlsRegistration({
   download: boolean;
   downloadAction: ViewerResource["originalDownload"];
   fitWidth: () => void;
+  resetScale: () => void;
   rotateClockwise: () => void;
   scale: number;
   scaleControlsDisabled: boolean;
@@ -523,6 +536,7 @@ function useImageControlsRegistration({
         onZoomOut: zoomOut,
         onZoomIn: zoomIn,
         onFit: fitWidth,
+        onReset: resetScale,
         isDisabled: scaleControlsDisabled,
       },
       rotate: { onRotate: rotateClockwise },
@@ -533,6 +547,7 @@ function useImageControlsRegistration({
       download,
       downloadAction,
       fitWidth,
+      resetScale,
       rotateClockwise,
       scale,
       scaleControlsDisabled,
