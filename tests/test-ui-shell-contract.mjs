@@ -8205,7 +8205,7 @@ assert.match(gridViewer, /control\.hidden = state\.cardRenderer !== 'rdkit' \|\|
 assert.match(gridViewer, /toggle\.disabled = !hasInputCoordinates/);
 assert.match(gridViewer, /toggle\.setAttribute\('aria-pressed', hasInputCoordinates && state\.rdkitUseInputCoords \? 'true' : 'false'\)/);
 assert.match(gridViewer, /syncRdkitCoordinatesControl\(\);\s*syncGridEditControls\(\);\s*let footerText;/s);
-assert.match(gridViewer, /document\.getElementById\('footer'\)\.textContent = footerText/);
+assert.match(gridViewer, /footer\.textContent = footerText;\s*footer\.hidden = !footerText;/);
 assert.match(gridViewer, /function hasMolblockInputCoordinates\(value\)/);
 assert.match(gridViewer, /Math\.abs\(x\) > 1e-6 \|\| Math\.abs\(y\) > 1e-6 \|\| Math\.abs\(z\) > 1e-6/);
 assert.match(gridViewer, /function hasMolblockInput3DCoordinates\(value\)/);
