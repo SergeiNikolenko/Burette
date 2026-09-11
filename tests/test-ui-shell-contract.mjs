@@ -6181,6 +6181,12 @@ assert.match(previewViewer, /function updateSceneTreeStoryCaption\(\)/);
 assert.match(previewViewer, /caption\.textContent = `\$\{story\.stepIndex \+ 1\}\/\$\{story\.stepCount\} · \$\{story\.current\?\.title \|\| 'Story state'\}`/);
 assert.match(previewShell, /data-buret-scene-tree-story/);
 assert.match(previewRuntimeCss, /\.buret-tree-section \{/);
+// The tree is a control surface: a drag across it must not paint a text
+// selection, and its rows share the 8px corner of the inspector's composition list.
+assert.match(previewRuntimeCss, /\.buret-tree \{[^}]*-webkit-user-select: none;[^}]*user-select: none;/);
+assert.match(previewRuntimeCss, /\.buret-tree-row \{[^}]*border-radius: 8px;/);
+assert.match(previewRuntimeCss, /\.buret-tree-highlight \{[^}]*border-radius: 8px;/);
+assert.match(previewRuntimeCss, /\.buret-tree-item\[data-selected="true"\] > \.buret-tree-row \{[^}]*border-radius: 8px;/);
 assert.match(previewViewer, /trigger\.dataset\.sourceLabel = node\.sourceLabel/);
 const sceneTreeDisplayLabelSource = previewViewer.slice(
   previewViewer.indexOf('  function sceneTreeDisplayLabel(value)'),
@@ -6607,6 +6613,9 @@ assert.match(previewViewer, /filteredPdbConectLine\(line, includedSerials\)/);
 assert.match(previewViewer, /function molstarRuntime\(\)/);
 assert.match(previewViewer, /typeof molstar !== 'undefined'/);
 assert.match(previewViewer, /const toMmCif = molstarExportToMmCif\(\);/);
+// The vendored bundle keeps the exporter at lib.structure.to_mmCIF; that probe
+// has to come first or the menu reports mmCIF export as unavailable.
+assert.match(previewViewer, /function molstarExportToMmCif\(\) \{[\s\S]*?const structureLib = molstarStructureRuntime\(\);\s*if \(typeof structureLib\?\.to_mmCIF === 'function'\) return structureLib\.to_mmCIF;\s*if \(typeof lib\.to_mmCIF === 'function'\)/);
 assert.match(previewViewer, /runtime\?\.Structure\?\.to_mmCIF/);
 assert.match(previewViewer, /if \(!toMmCif\) return molstarModifiedPdbExportPayload\(\);/);
 assert.match(previewViewer, /toMmCif\(label, structures, false, \{ copyAllCategories: true \}\)/);
@@ -6656,6 +6665,10 @@ assert.match(previewViewer, /if \(!contextPick\) \{\s*event\.preventDefault\(\);
 assert.doesNotMatch(previewViewer, /is not implemented yet/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu \{/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-molecule-tool-dialog-layer \{/);
+// A missing color-picker.js once took the whole scene-tree and canvas context
+// menus down with a TypeError; the preset swatches must render without it.
+assert.match(previewViewer, /if \(typeof window\.BuretteColorPicker\?\.create !== 'function'\) \{[\s\S]*?menu\.appendChild\(swatches\);\s*return;\s*\}/);
+assert.match(previewViewer, /let sceneTreeColorPickerMissingReported = false;/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-representation-menu\] \.buret-tree-swatch \{[\s\S]*width: 14px;[\s\S]*height: 14px;[\s\S]*min-height: 14px;/);
 assert.match(previewRuntimeCss, /\.buret-representation-type-item \.buret-representation-type-check \{[\s\S]*opacity: 0;/);
 assert.match(previewRuntimeCss, /\.buret-representation-type-item\[data-current="true"\] \.buret-representation-type-check \{[\s\S]*opacity: 1;/);
