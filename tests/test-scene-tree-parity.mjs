@@ -101,6 +101,18 @@ for (const property of ["width", "height", "border-radius"]) {
 // on the bar itself.
 assert.equal(declaration(treeBar, "opacity"), null);
 assert.equal(declaration(panelBar, "opacity"), null);
+// Each tone wears its own colour, the one its slice has in the segmented
+// composition bar; a single colour for all four once collapsed the tree.
+const toneColours = ["polymer", "ligand", "ion", "water"].map((tone) => {
+  const rowTone = declaration(ruleBody(styles, `.structure-inspector-row-bar[data-tone="${tone}"]`, "panel"), "background");
+  const barTone = declaration(ruleBody(styles, `.structure-inspector-composition-bar i[data-tone="${tone}"]`, "panel"), "background");
+  assert.ok(rowTone, `the ${tone} row bar has no colour`);
+  assert.equal(rowTone, barTone, `the ${tone} row bar and composition slice disagree`);
+  return rowTone;
+});
+assert.equal(new Set(toneColours).size, 4, `the four row-bar tones must be distinct, got ${toneColours.join(", ")}`);
+// The viewer's own colour for the entity, when known, beats the tone.
+assert.match(panel, /className="structure-inspector-row-bar" data-tone=\{tone\} style=\{color \? \{ backgroundColor: color \} : undefined\}/);
 assert.ok(styles.includes('.structure-brief-action-entry[data-hidden="true"] .structure-brief-chip-button'), "hidden child rows must fade their contents once");
 assert.match(viewerCss, /\.buret-tree-item\[data-hidden="true"\][^{]*\.buret-tree-bar/);
 

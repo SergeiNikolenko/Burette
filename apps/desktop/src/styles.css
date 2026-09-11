@@ -404,16 +404,17 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .topbar {
   position: absolute;
   top: 0;
-  /* Both edges follow the panels' measured widths (`--sidebar-edge` /
-     `--right-dock-edge`, published by a ResizeObserver on the panels), falling
-     back to the stored layout widths for the first paint. Measuring is what
-     keeps the strip glued to the panels: a right dock the group had to squeeze
-     below its 260px still stores 260, and a dragged sidebar only reaches the
-     DOM a render later. No transition on `left` either — the sidebar's own
-     toggle animation moves the measured edge, so easing it here again would
-     rubber-band the strip behind every drag frame. */
+  /* The left edge follows the sidebar's measured width (`--sidebar-edge`,
+     published by a ResizeObserver on the panel), falling back to the stored
+     layout width for the first paint. Measuring is what keeps the strip glued
+     to the panel: a dragged sidebar only reaches the DOM a render later. No
+     transition on `left` either — the sidebar's own toggle animation moves the
+     measured edge, so easing it here again would rubber-band the strip behind
+     every drag frame. The right edge does not yield to the right dock: the dock
+     starts below the toolbar (`padding-top: var(--chrome-height)`) and renders
+     its own header there, so the strip only has to clear the trailing controls. */
   left: max(var(--chrome-leading-inset, 192px), calc(var(--sidebar-edge, var(--sidebar-layout-width, 0px)) + 12px));
-  right: max(146px, var(--right-dock-edge, var(--right-dock-width, 0px)));
+  right: 146px;
   z-index: 4;
   height: var(--chrome-height);
   display: flex;
@@ -422,6 +423,10 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   gap: 12px;
   padding: var(--chrome-control-padding) 0;
   container-type: inline-size;
+  /* Toolbar chrome is not text: a drag across the strip must not paint a
+     selection over the tab titles. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 .chrome-button,
 .new-tab {
@@ -1183,7 +1188,10 @@ button:focus-visible > .shortcut-tooltip {
   border-radius: 10px;
   background: transparent;
   color: var(--text-muted);
-  padding: 0 34px 0 14px;
+  /* The right padding is exactly the close button's box plus its inset, so
+     the button never slides in from outside the pill and an inactive tab
+     reserves no room beyond what the hover state fills. */
+  padding: 0 26px 0 12px;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
@@ -1217,11 +1225,14 @@ button:focus-visible > .shortcut-tooltip {
   display: block;
   flex: 0 0 auto;
 }
+/* A tab without a close button (pinned, or a read-only strip) has nothing to
+   make room for, so it closes up to the same inset on both sides. */
+.tab-shell > .tab:last-child { padding-right: 12px; }
 .tab-close {
   position: absolute;
-  right: 5px;
+  right: 4px;
   top: 50%;
-  transform: translate(100%, -50%);
+  transform: translateY(-50%);
   width: 20px;
   height: 20px;
   border-radius: 8px;
@@ -1234,7 +1245,7 @@ button:focus-visible > .shortcut-tooltip {
   color: var(--text-faint);
   background: transparent;
   cursor: default;
-  transition: opacity 120ms ease-out, color 120ms ease-out, background 120ms ease-out, transform 120ms ease-out;
+  transition: opacity 120ms ease-out, color 120ms ease-out, background 120ms ease-out;
 }
 @container (max-width: 320px) {
   .topbar .tab-history-controls,
@@ -1242,14 +1253,13 @@ button:focus-visible > .shortcut-tooltip {
   .topbar .tab-strip-spacer { display: none; }
   .topbar .tab-scroll-region { width: 100%; flex: 1 1 auto; }
   .topbar .tab-shell { min-width: 0; max-width: 100%; flex: 0 0 auto; }
-  .topbar .tab { min-width: 0; max-width: 100%; padding-inline: 10px 28px; }
+  .topbar .tab { min-width: 0; max-width: 100%; padding-inline: 10px 26px; }
 }
 .tab-shell:hover .tab-close,
-.tab-shell:focus-within .tab-close { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
+.tab-shell:focus-within .tab-close { opacity: 1; pointer-events: auto; }
 .tab-shell[data-active] .tab-close {
   opacity: 1;
   pointer-events: auto;
-  transform: translate(0, -50%);
   color: var(--text-muted);
   background: transparent;
 }
@@ -1423,6 +1433,16 @@ button:focus-visible > .shortcut-tooltip {
   flex-direction: column;
   background: transparent;
   overflow: hidden;
+  /* Project rows, the settings nav and the app title are chrome, not copy: a
+     drag across them must not paint a selection. Fields inside opt back in. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sidebar :is(input, textarea, [contenteditable="true"]),
+.topbar :is(input, textarea),
+.dock-header :is(input, textarea) {
+  user-select: text;
+  -webkit-user-select: text;
 }
 .sidebar[data-mode="settings"] {
   z-index: 4;
@@ -2668,6 +2688,8 @@ img.radix-menu-item-icon {
   padding: 7px 8px;
   border-bottom: 1px solid var(--line-subtler);
   box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .dock-tab-strip {
   min-width: 0;
@@ -2714,6 +2736,8 @@ img.radix-menu-item-icon {
   font: inherit;
   font-size: 13px;
   cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
   transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
 .dock-tab svg {
@@ -4548,7 +4572,7 @@ img.radix-menu-item-icon {
   gap: 4px;
   min-height: 24px;
   padding: 0;
-  border-radius: 5px;
+  border-radius: 8px;
 }
 .structure-inspector-tree .structure-brief-action-summary,
 .structure-inspector-tree .structure-brief-action-row,
@@ -4557,7 +4581,7 @@ img.radix-menu-item-icon {
   flex: 1 1 auto;
   min-width: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 3px 2px;
   background: transparent;
   box-shadow: none;
@@ -4654,10 +4678,13 @@ input.structure-inspector-composition-search {
 .structure-brief-action-entry[data-hidden="true"] .structure-brief-chip-button {
   opacity: 0.45;
 }
-.structure-inspector-row-bar[data-tone="polymer"] { background: #54d98c; }
-.structure-inspector-row-bar[data-tone="ligand"] { background: #54d98c; }
-.structure-inspector-row-bar[data-tone="ion"] { background: #54d98c; }
-.structure-inspector-row-bar[data-tone="water"] { background: #54d98c; }
+/* Same four tones as the segmented composition bar above, so a row's bar and
+   its slice in the summary read as one thing. A row whose entity the viewer
+   has already coloured overrides this inline with that exact colour. */
+.structure-inspector-row-bar[data-tone="polymer"] { background: #4e79a7; }
+.structure-inspector-row-bar[data-tone="ligand"] { background: #59a14f; }
+.structure-inspector-row-bar[data-tone="ion"] { background: #e8973a; }
+.structure-inspector-row-bar[data-tone="water"] { background: #9aa0a6; }
 .structure-inspector-row-actions {
   display: flex;
   align-items: center;

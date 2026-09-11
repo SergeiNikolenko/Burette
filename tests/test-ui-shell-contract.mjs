@@ -2328,13 +2328,21 @@ assert.match(styles, /\.tab:hover \{[^}]*backdrop-filter: blur\(40px\)/);
 assert.match(styles, /--tab-active-bg: rgb\(29 29 29\);/);
 assert.doesNotMatch(styles, /--tab-active-bg: color-mix\(/);
 assert.match(styles, /\.tab\.active \{[^}]*background: var\(--tab-active-bg\);[^}]*backdrop-filter: blur\(40px\)/s);
-assert.match(styles, /\.tab-close \{[^}]*transform: translate\(100%, -50%\);/s);
-// Every tab reserves its close-button space before hover reveals the button.
-assert.match(styles, /\.tab \{[^}]*padding: 0 34px 0 14px;/s);
+// The close button sits inside the pill's right padding from the start and
+// only fades in; sliding it in from outside forced every tab to reserve the
+// slide distance on top of the button, which spread the strip out.
+assert.match(styles, /\.tab-close \{[^}]*right: 4px;[^}]*transform: translateY\(-50%\);/s);
+assert.doesNotMatch(styles, /\.tab-close \{[^}]*translate\(100%/s);
+// Every tab reserves exactly the close button's room before hover reveals it,
+// so nothing shifts on hover and inactive tabs carry no dead space.
+assert.match(styles, /\.tab \{[^}]*padding: 0 26px 0 12px;/s);
+// A tab with no close button (pinned, read-only) closes up on the right.
+assert.match(styles, /\.tab-shell > \.tab:last-child \{ padding-right: 12px; \}/);
 assert.match(styles, /@container \(max-width: 320px\) \{[\s\S]*\.topbar \.tab-shell \{[^}]*flex: 0 0 auto;/);
-assert.match(styles, /\.tab-shell\[data-active\] \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;[^}]*transform: translate\(0, -50%\);[^}]*background: transparent;/s);
+assert.match(styles, /@container \(max-width: 320px\) \{[\s\S]*\.topbar \.tab \{[^}]*padding-inline: 10px 26px;/);
+assert.match(styles, /\.tab-shell\[data-active\] \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;[^}]*background: transparent;/s);
 assert.match(styles, /\.tab-shell:hover \.tab-close/);
-assert.match(styles, /\.tab-shell:focus-within \.tab-close \{[^}]*transform: translate\(0, -50%\);/s);
+assert.match(styles, /\.tab-shell:focus-within \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;/s);
 assert.match(styles, /\.tab-close:hover \{[^}]*color: var\(--text-secondary\);[^}]*background: color-mix\(in srgb, var\(--fg-base\) calc\(var\(--contrast\) \* 26%\), var\(--bg-base\)\);[^}]*box-shadow: inset 0 0 0 1px var\(--line-subtle\)/s);
 assert.match(closeIcon, /export function CloseIcon/);
 assert.match(closeIcon, /className="close-glyph"/);
@@ -2991,7 +2999,10 @@ assert.match(styles, /\.structure-brief \{[\s\S]*?grid-auto-rows: max-content/);
 assert.doesNotMatch(styles, /\.structure-inspector-details > summary/);
 assert.match(styles, /\.structure-inspector-details-body \{[^}]*border-top: 1px solid var\(--line-subtler\)/s);
 assert.match(styles, /\.structure-inspector-style-option\[data-selected="true"\]/);
-assert.match(styles, /right: max\(146px, var\(--right-dock-edge, var\(--right-dock-width, 0px\)\)\)/);
+// The right dock starts below the toolbar and renders its own header there, so
+// the tab strip only clears the trailing controls and never yields to the dock.
+assert.match(styles, /\.topbar \{[^}]*right: 146px;/s);
+assert.doesNotMatch(styles, /\.topbar \{[^}]*--right-dock-(?:edge|width)/s);
 assert.match(styles, /@container \(max-width: 320px\)/);
 assert.match(previewRuntimeCss, /@media \(max-width: 360px\)[\s\S]*?top: 64px;[\s\S]*?width: calc\(100vw - 24px\)/);
 assert.match(previewRuntimeCss, /grid-template-columns: 28px auto minmax\(62px, 1fr\) auto auto/);

@@ -3945,7 +3945,7 @@ function StructureActionRow({
   // only in what the panel knows that the tree does not.
   const content = () => tone ? (
     <span className="structure-inspector-row-content" data-tree="true">
-      <span className="structure-inspector-row-bar" data-tone={tone} aria-hidden="true" />
+      <span className="structure-inspector-row-bar" data-tone={tone} style={color ? { backgroundColor: color } : undefined} aria-hidden="true" />
       <span className="structure-inspector-row-label">{row.label}</span>
       <em title={row.value}>{compositionShortValue(row.label, row.value)}</em>
     </span>
