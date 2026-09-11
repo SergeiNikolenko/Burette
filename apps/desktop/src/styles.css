@@ -555,12 +555,26 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 2px 10px;
 }
-.calculate-properties-option {
+/* One checkbox row for every dialog: the property pickers, the column
+   deleter and the folder opener all read the same way. */
+.calculate-properties-option,
+.radix-dialog-check-row {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   padding: 2px 0;
+  color: var(--text-primary);
+}
+.calculate-properties-option input[type="checkbox"],
+.radix-dialog-check-row input[type="checkbox"] {
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.radix-dialog-check-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .calculate-properties-runtime {
   display: flex;
@@ -626,7 +640,8 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   color: var(--text-secondary);
 }
 .calculated-column-field input,
-.calculated-column-field textarea {
+.calculated-column-field textarea,
+.calculated-column-field select:not([data-slot="native-select"]) {
   padding: 6px 8px;
   border: 1px solid var(--line-subtler);
   border-radius: 6px;
@@ -639,6 +654,9 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .calculated-column-field textarea {
   resize: vertical;
   font-family: var(--font-mono, ui-monospace, monospace);
+}
+.calculated-column-field [data-slot="native-select-wrapper"] {
+  width: 100%;
 }
 .calculated-column-problem {
   margin: -6px 0 12px;
@@ -8680,6 +8698,43 @@ input.structure-inspector-composition-search {
   gap: 8px;
   padding: 0 16px 16px;
 }
+/* The footer of the table and file dialogs: actions sit at the right, and a
+   .calculate-properties-footer pushes its status text to the left edge. */
+.radix-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+.radix-dialog-footer.calculate-properties-footer {
+  justify-content: space-between;
+}
+/* A muted second line under the title: the path a dialog acts on. */
+.radix-dialog-subline {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+/* A bounded list inside the body that scrolls on its own instead of growing
+   the dialog past the viewport. */
+.radix-dialog-scroll-list {
+  display: grid;
+  max-height: 240px;
+  margin: 0 0 12px;
+  padding: 4px 8px;
+  overflow-y: auto;
+  border: 1px solid var(--line-subtler);
+  border-radius: 6px;
+  background: var(--surface-input, transparent);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.radix-dialog-body ul.radix-dialog-scroll-list {
+  padding-left: 24px;
+}
 .database-query-form {
   display: grid;
   gap: 12px;
@@ -9492,5 +9547,8 @@ img.settings-open-destination-icon {
 .file-operation-dialog .radix-dialog-header h2 { font-weight: 600; }
 .file-operation-dialog .radix-dialog-body { padding: 8px 20px 20px; overflow-wrap: anywhere; }
 .file-operation-dialog .radix-dialog-body p { margin: 0; }
+/* Here the description is the message itself, so it keeps the body type. */
+.file-operation-dialog .radix-dialog-subline { font-size: 13px; color: var(--text-secondary); }
+.file-operation-dialog .radix-dialog-body .radix-dialog-subline + * { margin-top: 10px; }
 .file-operation-dialog .radix-dialog-actions { padding: 0 20px 20px; }
 .file-operation-dialog .radix-dialog-actions button { min-height: 30px; padding: 5px 12px; }
