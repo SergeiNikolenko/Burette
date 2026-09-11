@@ -1974,6 +1974,37 @@ kbd span { margin-left: 2px; }
   opacity: 1;
   pointer-events: auto;
 }
+/* The rows past the "Show more" limit stay in the DOM inside this shell so the
+   button can slide them open with the same 0fr -> 1fr recipe the folder shells
+   use, instead of the tail popping in as a hard slice. It is one row of the
+   parent's 1px-gap grid, so while collapsed it pulls up by that gap to keep the
+   button exactly where a plain slice would have left it. */
+.project-tail-shell {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: -1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: grid-template-rows 160ms ease-out, margin-top 160ms ease-out, opacity 120ms ease-out;
+}
+.project-tail-shell[data-expanded="true"] {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  opacity: 1;
+  pointer-events: auto;
+}
+.project-tail {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  gap: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .project-group-children-shell,
+  .project-folder-children-shell,
+  .project-tail-shell { transition: none; }
+}
 .project-folder-children {
   position: relative;
   min-height: 0;

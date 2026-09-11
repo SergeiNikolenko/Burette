@@ -3881,6 +3881,16 @@ assert.match(styles, /\n\.project \{[^}]*color: var\(--text-secondary\);/s);
 assert.match(styles, /\.project:hover \{\s*background: var\(--surface-subtle\);\s*\}/);
 assert.match(styles, /\.project-folder-children-shell \{[^}]*grid-template-rows: 0fr;[^}]*overflow: hidden;[^}]*transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;/s);
 assert.match(styles, /\.project-folder-children-shell\[data-expanded="true"\] \{[^}]*grid-template-rows: 1fr;[^}]*pointer-events: auto;/s);
+// "Show more" slides the overflow rows open through the same shell recipe
+// instead of splicing them in; the collapsed tail is inert so it never
+// catches focus, and reduced motion drops the transition on every shell.
+assert.match(sidebarSurface, /className="project-tail-shell"[^>]*data-expanded=\{showAllItems \? "true" : "false"\}[^>]*aria-hidden=\{!showAllItems\}[^>]*inert=\{!showAllItems\}/s);
+assert.match(sidebarSurface, /className="project-tail-shell"[^>]*data-expanded=\{showAllChildren \? "true" : "false"\}[^>]*aria-hidden=\{!showAllChildren\}[^>]*inert=\{!showAllChildren\}/s);
+assert.match(sidebarSurface, /aria-expanded=\{showAllItems\}\s*aria-label=\{showAllItems \?/);
+assert.match(sidebarSurface, /aria-expanded=\{showAllChildren\}\s*aria-label=\{showAllChildren \?/);
+assert.match(styles, /\.project-tail-shell \{[^}]*grid-template-rows: 0fr;[^}]*overflow: hidden;[^}]*transition: grid-template-rows 160ms ease-out, margin-top 160ms ease-out, opacity 120ms ease-out;/s);
+assert.match(styles, /\.project-tail-shell\[data-expanded="true"\] \{[^}]*grid-template-rows: 1fr;[^}]*pointer-events: auto;/s);
+assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{\s*\.project-group-children-shell,\s*\.project-folder-children-shell,\s*\.project-tail-shell \{ transition: none; \}/);
 assert.match(styles, /\.project-folder-children \{[^}]*min-height: 0;[^}]*overflow: hidden;/s);
 assert.match(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-visible\s*\{\s*background: var\(--surface-subtle\);\s*outline: none;\s*\}/);
 assert.doesNotMatch(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-visible\s*\{[^}]*box-shadow:/);

@@ -83,8 +83,21 @@ const crowdedHtml = renderProjectGroup({
 assert.match(crowdedHtml, /results/);
 assert.match(crowdedHtml, /Show more/);
 assert.match(crowdedHtml, /Show 2 more files in results/);
+assert.match(crowdedHtml, /class="project-show-more"[^>]*aria-expanded="false"/);
 assert.match(crowdedHtml, /pose-5\.sdf/);
-assert.doesNotMatch(crowdedHtml, /pose-6\.sdf/);
+
+// The rows past the limit are still rendered, but only inside the collapsed
+// tail shell: "Show more" animates that shell open (grid-template-rows 0fr ->
+// 1fr) instead of splicing the rows in, so the tail has to exist in the DOM
+// while hidden from both assistive tech and the tab order.
+const [leadingHtml, tailHtml] = crowdedHtml.split('<div class="project-tail-shell"');
+assert.ok(tailHtml, "the overflow rows need a project-tail-shell wrapper");
+assert.doesNotMatch(leadingHtml, /pose-6\.sdf/);
+assert.match(tailHtml, /^ data-expanded="false" aria-hidden="true" inert=""><div class="project-tail">/);
+assert.match(tailHtml, /pose-6\.sdf/);
+assert.match(tailHtml, /pose-7\.sdf/);
+assert.doesNotMatch(tailHtml, /pose-5\.sdf/);
+assert.equal(crowdedHtml.split("project-tail-shell").length, 2, "only the crowded folder gets a tail shell");
 
 // A file row is identified by the scientific role of its contents, not by one
 // shared document glyph, so the fixture's four files must land on three kinds.
