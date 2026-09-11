@@ -68,9 +68,6 @@ export function MergeColumnsDialog({
             </Dialog.Close>
           </div>
           <div id="merge-columns-body" className="radix-dialog-body">
-            <p className="calculate-properties-target">
-              Joins two columns of <strong>{request?.documentTitle}</strong> into a new one.
-            </p>
             <label className="calculated-column-field">
               <span>First column</span>
               <NativeSelect size="sm" value={first} onChange={(event) => setFirst(event.target.value)}>

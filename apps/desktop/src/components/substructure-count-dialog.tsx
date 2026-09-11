@@ -88,9 +88,6 @@ export function SubstructureCountDialog({
             </Dialog.Close>
           </div>
           <div id="substructure-count-body" className="radix-dialog-body">
-            <p className="calculate-properties-target">
-              Counts how often the query occurs in each molecule of <strong>{request?.documentTitle}</strong>.
-            </p>
             <label className="calculated-column-field">
               <span>Query (SMARTS or SMILES)</span>
               <input
@@ -130,15 +127,10 @@ export function SubstructureCountDialog({
                   </button>
                 ))}
               </div>
-              <p className="calculated-column-note">
-                Each distinct set of matched atoms counts once: benzene occurs twice in naphthalene.
-              </p>
             </div>
           </div>
           <div className="radix-dialog-footer calculate-properties-footer">
-            <span className="calculate-properties-count">
-              {checking ? "Checking the query…" : ready ? `Adds “${columnName}”` : "Enter a query"}
-            </span>
+            {checking ? <span className="calculate-properties-count">Checking…</span> : null}
             <div className="calculate-properties-actions">
               <Dialog.Close asChild>
                 <button type="button" className="dock-action">Cancel</button>

@@ -2832,9 +2832,8 @@ assert.match(gridFilterSection, /from "\.\/ui\/button"/);
 assert.match(gridFilterSection, /from "\.\/ui\/input"/);
 assert.match(gridFilterSection, /from "\.\/ui\/badge"/);
 assert.match(gridFilterSection, /from "\.\/ui\/tooltip"/);
-// One owner coordinates manual, default, and bulk expansion state.
+// One owner coordinates manual and default column expansion state.
 assert.match(gridFilterSection, /const isColumnOpen = \(column: GridFilterColumn\) => columnOpen\[column\.id\]\s*\?\? Boolean\(column\.filter\?\.min \|\| column\.filter\?\.max \|\| column\.filter\?\.text \|\| column\.id === defaultOpenColumnId\)/);
-assert.match(gridFilterSection, /const allOpen = shown\.length > 0 && shown\.every\(isColumnOpen\)/);
 assert.match(gridFilterSection, /return scale && !scale\.flat;/);
 assert.match(gridFilterSection, /open=\{isColumnOpen\(column\)\}/);
 assert.match(gridFilterSection, /<Collapsible ref=\{cardRef\} className="grid-filter-card"/);
@@ -4720,7 +4719,7 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v186"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v187"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v72"/);
 assert.match(
   browserDevDocuments,
