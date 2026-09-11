@@ -159,3 +159,35 @@ assert.equal((content.match(/onReset: resetScale,/g) ?? []).length, 2);
 assert.equal((content.match(/onFit: fitWidth,/g) ?? []).length, 2);
 
 console.log("image viewer scale ok");
+
+// Run the scale hook, not a duplicate of its formula: a single tall image must
+// fit both axes, including below the manual zoom floor; explicit zoom remains.
+{
+const { Window } = await import('happy-dom');
+const React = await import('react');
+const dom = new Window({ url: 'http://localhost/' });
+Object.assign(globalThis, { window: dom, document: dom.document, HTMLElement: dom.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true });
+const { createRoot } = await import('react-dom/client');
+const { useImageViewerScale } = await import('../apps/desktop/src/components/ui/image-viewer-hooks.ts');
+const root = createRoot(document.createElement('div'));
+let current;
+const source = { frames: [{ intrinsicSize: { width: 1200, height: 16000 } }] };
+function ScaleHarness({ height }) {
+  current = useImageViewerScale(source, undefined, undefined, undefined, 900, height);
+  return null;
+}
+await React.act(async () => root.render(React.createElement(ScaleHarness, { height: 600 })));
+assert.ok(current.scale < 0.1, 'automatic fit can be smaller than manual zoom minimum');
+assert.ok(16000 / current.pixelRatio * current.scale <= 568, 'portrait fits available height');
+assert.equal(current.isFitWidth, false, 'height fit does not use width-only surface animation');
+await React.act(async () => current.rotateClockwise());
+assert.ok(16000 / current.pixelRatio * current.scale <= 900, 'rotated image fits width');
+await React.act(async () => current.setViewerScale(1));
+await React.act(async () => root.render(React.createElement(ScaleHarness, { height: 400 })));
+assert.equal(current.scale, 1, 'explicit 100% survives resize');
+await React.act(async () => current.setViewerScale(null));
+assert.ok(1200 / current.pixelRatio * current.scale <= 368, 'Fit returns to both-axis containment');
+await React.act(async () => root.unmount());
+await dom.happyDOM.abort();
+console.log('image viewport hook integration passed');
+}

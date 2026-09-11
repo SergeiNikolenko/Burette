@@ -432,6 +432,9 @@ export function ImageViewerContent({
       ? `Page ${Math.min(currentFrameNumber, frameCount)} of ${frameCount}`
       : `${frameCount} image${frameCount === 1 ? "" : "s"}`;
   const zoomOut = React.useCallback(() => {
+    // Automatic fit may be below the manual zoom floor. Minus must never
+    // enlarge such an image by snapping it back up to that floor.
+    if (scale <= MIN_VIEWER_SCALE) return;
     beginZoomMotion();
     setViewerScale(clamp(scale / 1.2, MIN_VIEWER_SCALE, MAX_VIEWER_SCALE));
   }, [beginZoomMotion, scale, setViewerScale]);
