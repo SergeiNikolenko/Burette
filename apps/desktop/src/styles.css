@@ -8650,6 +8650,21 @@ input.structure-inspector-composition-search {
   backdrop-filter: blur(28px) saturate(1.2);
   -webkit-backdrop-filter: blur(28px) saturate(1.2);
 }
+/* Keep actions visible when a long dialog body reaches the viewport limit. */
+.radix-dialog:has(> .radix-dialog-body) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.radix-dialog > .radix-dialog-body {
+  min-height: 0;
+  overflow: auto;
+}
+.radix-dialog > .radix-dialog-header,
+.radix-dialog > .radix-dialog-footer,
+.radix-dialog > .radix-dialog-actions {
+  flex-shrink: 0;
+}
 .radix-dialog-header {
   min-height: 48px;
   display: flex;
