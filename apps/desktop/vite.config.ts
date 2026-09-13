@@ -9,6 +9,7 @@ import { gunzipSync } from "node:zlib";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { ketcherUiPlugin } from "./vite/ketcher-ui";
+import { ketcherCspValidationPlugin } from "./vite/ketcher-csp-validation";
 import tailwindcss from "@tailwindcss/vite";
 import {
   deferKetcherCssPlugin,
@@ -4041,6 +4042,7 @@ export default defineConfig({
     tailwindcss(),
     react(),
     ketcherUiPlugin(),
+    ketcherCspValidationPlugin(hostedMcpBuild),
     ketcherRaphaelImportShimPlugin(),
     ketcherDisabledMacromoleculesPlugin(),
     deferKetcherCssPlugin(),

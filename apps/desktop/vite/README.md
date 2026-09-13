@@ -10,6 +10,7 @@ route modules, but route bodies belong under `apps/desktop/vite/`.
 | Path | Owns |
 | --- | --- |
 | `build-plugins.ts` | Ketcher/Raphael shims, manual chunks, module preload filtering, and build-time plugin helpers. |
+| `ketcher-csp-validation.ts`, `ketcher-schema-catalog.ts` | Hosted-only build-time extraction and Ajv standalone compilation of the installed Ketcher forms and saved settings. |
 | `browser-dev/http.ts` | Shared request parsing and JSON response helpers for local dev endpoints. |
 | `browser-dev/files.ts` | File discovery, text reads, file bundles, and browser-dev structure serving. |
 | `browser-dev/assets.ts` | RDKit WASM and app icon endpoints. |
@@ -45,6 +46,22 @@ fall back to initials in menus and the Open In trigger.
   and the Quick Look/dev-flavor scripts.
 
 ## Validation
+
+Hosted Ketcher uses Paper Core (no PaperScript interpreter) and precompiled Ajv
+validators, keeping the widget's CSP free of `unsafe-eval`. Schema extraction
+reads only the pinned package's trusted declaration dependency closure at build
+time. Runtime custom-format closures, serializers and error-message functions
+remain Ketcher's own. Unknown schema shapes fail closed; upstream upgrades must
+pass the differential and actual browser-bundle test before publishing:
+
+```bash
+bun tests/test-ketcher-csp-validation.mjs
+```
+
+Also test the built hosted card under its production CSP: load a seeded sketch,
+open Settings, reject invalid input, save a valid setting and reload, open Atom
+and Bond Properties, and validate/export the current drawing. Desktop and the
+standalone web demo retain their existing validation path.
 
 For route or config extraction, start with:
 

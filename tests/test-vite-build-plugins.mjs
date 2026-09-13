@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import "./test-ketcher-csp-validation.mjs";
 import { readFileSync } from "node:fs";
 
 import {
