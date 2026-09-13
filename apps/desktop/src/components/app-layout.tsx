@@ -322,7 +322,7 @@ export function AppLayout({
   const workbenchWidth = viewportWidth - sidebarLayoutWidth;
   // The viewer column may be squeezed this far below its floor; the dock covers
   // the difference rather than the content shrinking into it.
-  const mainMinLayoutWidth = Math.max(0, MAIN_MIN_WIDTH - rightDockOverlap(workbenchWidth));
+  const mainMinLayoutWidth = hostedMcpWidget ? 0 : Math.max(0, MAIN_MIN_WIDTH - rightDockOverlap(workbenchWidth));
   const rightDockWidth = clampRightDockWidth(state.rightDockWidth, workbenchWidth);
   const activeGridId = state.activeDocument?.renderer === "grid2d" ? state.activeDocument.id : null;
   const layoutState = sidebarWidth === state.sidebarWidth && rightDockWidth === state.rightDockWidth ? state : { ...state, sidebarWidth, rightDockWidth };
@@ -643,7 +643,8 @@ export function AppLayout({
                   <ResizablePanelGroup
                     orientation="vertical"
                     className="workbench-main-panels"
-                    style={{ minWidth: MAIN_MIN_WIDTH }}
+                    // Hosted cards have no overlapping docks and must fit phone widths.
+                    style={{ minWidth: hostedMcpWidget ? 0 : MAIN_MIN_WIDTH }}
                     elementRef={workbenchMainGroupRef}
                     data-panels-animating={bottomDockAnimating || undefined}
                     onLayoutChanged={(_layout, meta) => {

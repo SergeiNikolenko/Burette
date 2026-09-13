@@ -1,0 +1,24 @@
+/* Only hosted cards: desktop dialogs retain their existing two-column layout. */
+@media (max-width: 600px) {
+  .app-shell[data-hosted-mcp-widget="true"] .ketcher-ui-dialog[data-slot="dialog-content"] {
+    display: flex; flex-direction: column; gap: 12px;
+    width: calc(100vw - 24px); max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px); padding: 16px;
+  }
+  .app-shell[data-hosted-mcp-widget="true"] .ketcher-ui-dialog-body {
+    flex: 1 1 auto; min-width: 0; max-height: none;
+  }
+  .app-shell[data-hosted-mcp-widget="true"] .ketcher-settings-groups {
+    padding: 0; margin: 0;
+  }
+  .app-shell[data-hosted-mcp-widget="true"] .ketcher-settings-groups fieldset > label,
+  .app-shell[data-hosted-mcp-widget="true"] .ketcher-ui-dialog-body [class*="Atom-module_accordionDetails"] label {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px;
+  }
+  .app-shell[data-hosted-mcp-widget="true"] .ketcher-ui-dialog [data-slot="dialog-footer"] {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex-shrink: 0;
+  }
+  .app-shell[data-hosted-mcp-widget="true"] .ketcher-ui-dialog [data-slot="dialog-footer"]:has(> :nth-child(3)) > :first-child {
+    grid-column: 1 / -1;
+  }
+}

@@ -794,7 +794,7 @@ assert.match(desmondPreviewExtract, /parser\.add_argument\("--target-mb"/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
 assert.match(
   viteConfig,
-  /plugins: \[\s*tailwindcss\(\),\s*react\(\),\s*ketcherUiPlugin\(\),\s*ketcherRaphaelImportShimPlugin\(\),\s*ketcherDisabledMacromoleculesPlugin\(\),\s*deferKetcherCssPlugin\(\),\s*browserDevXyzrenderPlugin\(\),\s*\]/u,
+  /plugins: \[\s*tailwindcss\(\),\s*react\(\),\s*ketcherUiPlugin\(\),\s*ketcherCspValidationPlugin\(hostedMcpBuild\),\s*ketcherRaphaelImportShimPlugin\(\),\s*ketcherDisabledMacromoleculesPlugin\(\),\s*deferKetcherCssPlugin\(\),\s*browserDevXyzrenderPlugin\(\),\s*\]/u,
 );
 assert.doesNotMatch(viteConfig, /join\(homedir\(\), "Desktop"\),/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
@@ -1236,6 +1236,8 @@ assert.match(app, /useAppQuickLookDocumentOpen/);
 assert.match(appShellActionsHook, /closeQuickLookPreview/);
 assert.match(appBrowserDevStartupHook, /const browserDevQuickLookPath = browserDevQuickLookFileFromLocation\(\)/);
 assert.match(appLayout, /state\.quickLookStandalone/);
+assert.match(appLayout, /mainMinLayoutWidth = hostedMcpWidget \? 0 :/);
+assert.match(appLayout, /minWidth: hostedMcpWidget \? 0 : MAIN_MIN_WIDTH/);
 assert.match(appLayout, /QuickLookPreview/);
 assert.match(componentsTypes, /quickLookDocument: ViewerDocument \| null/);
 assert.match(componentsTypes, /quickLookStandalone: boolean/);
