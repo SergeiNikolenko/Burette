@@ -45,7 +45,7 @@
         const swatches = Array.from(element.querySelectorAll('button')).filter(button => color(button));
         const colors = swatches.map(color);
         const items = [];
-        if (colors.length) items.push({ kind: 'control', text: element.previousElementSibling?.textContent?.trim() || 'Colour',
+        if (colors.length) items.push({ kind: 'control', text: element.previousElementSibling?.matches('span') ? element.previousElementSibling.textContent.trim() : 'Colour',
           id: bind((value, phase) => { if (phase === 'input') swatches[colors.indexOf(value)]?.click(); }),
           control: { kind: 'palette', colors, selected: color(swatches.find(button => button.getAttribute('aria-pressed') === 'true') || document.createElement('span')) }
         });
@@ -83,6 +83,7 @@
           ? Array.from(menu.querySelectorAll('[data-scene-tree-picker-list]')).find(child => child.dataset.sceneTreePickerList === element.dataset.sceneTreePicker) : null;
         if (submenu || picker) {
           const entry = command(element);
+          if (picker) entry.text = element.previousElementSibling?.textContent?.trim() || entry.text;
           hover.set(entry.id, phase => { if (phase === 'enter') { if (picker) { if (picker.hidden) element.click(); } else element.dispatchEvent(new FocusEvent('focus')); } });
           return [{ ...entry, kind: 'submenu',
           items: picker ? Array.from(picker.querySelectorAll('button')).map(button => command(button, title(button), () => { if (picker.hidden) element.click(); button.click(); })) : nodes(submenu) }]; }
