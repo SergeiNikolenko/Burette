@@ -8747,7 +8747,7 @@ SOFTWARE.
   }
 
   function initSequenceResize() {
-    let initialHeight = 196;
+    let initialHeight = 88;
     try {
       const saved = Number(window.localStorage.getItem('buret.sequence.height'));
       if (Number.isFinite(saved) && saved >= 64) initialHeight = saved;
@@ -11719,6 +11719,7 @@ SOFTWARE.
         data,
         format: normalized,
         label: config.label || 'MolViewSpec scene',
+        sourceUrl: config.mvsSourceUrl,
         mvsKind: normalized === 'mvsj' ? molViewSpecJsonKind(data) : null
       };
     }
@@ -16091,7 +16092,7 @@ SOFTWARE.
       if (typeof viewer.loadMvsData !== 'function') {
         throw new Error('Mol* viewer.loadMvsData is not available in this runtime.');
       }
-      await viewer.loadMvsData(prepared.data, prepared.format, { replaceExisting: true });
+      await viewer.loadMvsData(prepared.data, prepared.format, { replaceExisting: true, sourceUrl: prepared.sourceUrl });
       installDockingPoseControls(viewer, null);
       return;
     }
@@ -23578,13 +23579,13 @@ SOFTWARE.
         <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="minimize" aria-label="Minimize preview" title="Minimize preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.minimize)}</button>
         <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Close preview" title="Close preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
       </div>
-      <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
-      <div class="buret-molecule-card-footer">
+      <div class="buret-molecule-card-toolbar" role="toolbar" aria-label="Molecule preview actions">
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Ketcher</span></button>
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
         <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Lasso atoms in 2D">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}</button>
         <span class="buret-molecule-card-sizes" role="group" aria-label="Preview size">${sizes}</span>
       </div>
+      <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
       ${molstarMoleculePreviewResizeHandlesHTML()}`;
   }
 
@@ -23655,8 +23656,8 @@ SOFTWARE.
 
   function molstarMoleculePreviewFitHeight(popover, width) {
     const header = popover.querySelector('.buret-molecule-card-header')?.getBoundingClientRect().height || 24;
-    const footer = popover.querySelector('.buret-molecule-card-footer')?.getBoundingClientRect().height || 24;
-    return Math.ceil(width + header + footer);
+    const toolbar = popover.querySelector('.buret-molecule-card-toolbar')?.getBoundingClientRect().height || 24;
+    return Math.ceil(width + header + toolbar);
   }
 
   function fitMolstarMoleculePreviewDrawing(popover) {
@@ -23847,8 +23848,10 @@ SOFTWARE.
     popover.addEventListener('pointerdown', event => {
       const handle = event.target instanceof Element ? event.target.closest('[data-buret-molecule-preview-resize]') : null;
       if (event.button !== 0) return;
-      // Only the header and the drawing move the card; the footer buttons and the
-      // title are ordinary controls, so a press there must not start a drag.
+      // Header controls must keep their pointer target through click. Capturing
+      // their pointer on the card turns a close/minimize click into a drag.
+      if (event.target.closest?.('[data-buret-molecule-preview-action]')) return;
+      // Only the header background and the drawing move the card.
       if (!handle && !event.target.closest?.('[data-buret-molecule-preview-drag]')) return;
       const direction = handle?.getAttribute('data-buret-molecule-preview-resize') || '';
       const rect = popover.getBoundingClientRect();
@@ -25877,11 +25880,15 @@ SOFTWARE.
       );
     }
 
-    if (typeof window.molstar.Viewer.create === 'function') {
-      return window.molstar.Viewer.create('app', createViewerOptions());
-    }
-
-    return new window.molstar.Viewer('app', createViewerOptions());
+    const viewer = typeof window.molstar.Viewer.create === 'function'
+      ? await window.molstar.Viewer.create('app', createViewerOptions())
+      : new window.molstar.Viewer('app', createViewerOptions());
+    // Set before loading data, when Mol* initializes the sequence state.
+    viewer.plugin.spec.components = {
+      ...viewer.plugin.spec.components,
+      sequenceViewer: { ...viewer.plugin.spec.components?.sequenceViewer, defaultMode: 'all' }
+    };
+    return viewer;
   }
 
   function ensureMolstarStylesheet() {
