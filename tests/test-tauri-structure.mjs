@@ -386,6 +386,7 @@ for (const commandPath of [
   'commands::shell::reveal_path',
   'commands::shell::write_base64_file',
   'commands::shell::write_text_file',
+  'commands::clipboard::write_clipboard_text',
   'commands::quicklook::reset_quick_look',
   'commands::pubchem::open_pubchem_search',
   'commands::updater::install_update',

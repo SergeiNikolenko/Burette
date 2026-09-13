@@ -137,6 +137,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::clipboard::write_clipboard_text,
             compute::commands::compute_capabilities,
             compute::commands::compute_register_inline_source,
             compute::commands::compute_align_grid_poses,

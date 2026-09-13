@@ -105,6 +105,7 @@ commands.allow = [
   "reveal_path",
   "write_base64_file",
   "write_text_file",
+  "write_clipboard_text",
   "reset_quick_look",
   "open_pubchem_search",
   "install_update",
