@@ -57,6 +57,10 @@ const nextConfig: NextConfig = {
         headers: crossOriginAssetHeaders,
       },
       {
+        source: "/viewer-shell/assets/burette-hosted-shell.js",
+        headers: [{ key: "Cache-Control", value: "no-cache, max-age=0, must-revalidate" }],
+      },
+      {
         source: "/burette-viewer/:path*",
         headers: crossOriginAssetHeaders,
       },

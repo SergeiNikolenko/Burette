@@ -61,7 +61,10 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
 }
 
 function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
-  const shellScript = `${assetUrl(assetOrigin, VIEWER_SHELL_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
+  // Lazy chunks import this entry by its bare URL. A query here creates a
+  // second ES module instance and mounts a second app that loses the seed.
+  // The stable entry is explicitly revalidated by next.config.ts instead.
+  const shellScript = assetUrl(assetOrigin, VIEWER_SHELL_SCRIPT_PATH);
   const shellStyles = `${assetUrl(assetOrigin, VIEWER_SHELL_STYLES_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   const viewerAssets = assetUrl(assetOrigin, VIEWER_RUNTIME_ASSETS_PATH);
   const mobileScript = `${assetUrl(assetOrigin, VIEWER_MOBILE_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;

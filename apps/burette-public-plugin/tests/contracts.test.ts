@@ -13,6 +13,7 @@ import {
 import {
   createViewerResourceMeta,
   createViewerWidgetHtml,
+  createKetcherWidgetHtml,
   VIEWER_RESOURCE_URI,
   VIEWER_MOBILE_SCRIPT_PATH,
   VIEWER_APP_BRIDGE_SCRIPT_PATH,
@@ -446,6 +447,39 @@ describe("viewer resource contract", () => {
     expect(source).not.toContain("/private/tmp");
     expect(source).not.toContain("/Users/");
     expect(existsSync(path.join(publicRoot, "demo/1htb.pdb"))).toBe(false);
+  });
+
+  test("uses one entry module identity for widget startup and built chunk back-imports", async () => {
+    const origin = "https://burette.example";
+    const entryUrl = new URL(VIEWER_SHELL_SCRIPT_PATH, origin).href;
+    const assets = path.resolve(import.meta.dir, "../public/viewer-shell/assets");
+    let backImports = 0;
+    for (const name of readdirSync(assets).filter((name) => name.endsWith(".js"))) {
+      if (name === path.basename(VIEWER_SHELL_SCRIPT_PATH)) continue;
+      const source = readFileSync(path.join(assets, name), "utf8");
+      for (const [, specifier] of source.matchAll(/from["']([^"']+)["']/gu)) {
+        const imported = new URL(specifier, new URL(name, entryUrl));
+        if (imported.pathname !== VIEWER_SHELL_SCRIPT_PATH) continue;
+        expect(imported.href).toBe(entryUrl);
+        backImports++;
+      }
+    }
+    expect(backImports).toBeGreaterThan(0);
+    for (const html of [createViewerWidgetHtml(origin), createKetcherWidgetHtml(origin)]) {
+      const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/gu)];
+      const bootstrap = scripts.at(-1)![1];
+      const appended: { src?: string }[] = [];
+      vm.runInNewContext(bootstrap, {
+        navigator: { userAgent: "Desktop" },
+        window: { matchMedia: () => ({ matches: false }), setTimeout: () => 1, clearTimeout() {} },
+        document: { createElement: () => ({ addEventListener() {} }), body: { appendChild: (script: { src?: string }) => appended.push(script) } },
+      });
+      expect(appended.map((script) => script.src)).toEqual([entryUrl]);
+    }
+    const headers = await nextConfig.headers?.();
+    expect(headers?.find((entry) => entry.source === VIEWER_SHELL_SCRIPT_PATH)?.headers).toContainEqual({
+      key: "Cache-Control", value: "no-cache, max-age=0, must-revalidate",
+    });
   });
 
   test("does not resandbox Mol* inside the isolated hosted widget", () => {
