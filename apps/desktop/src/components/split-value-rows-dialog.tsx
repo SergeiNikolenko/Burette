@@ -72,15 +72,10 @@ export function SplitValueRowsDialog({
               />
             </label>
             <p className="calculated-column-note">
-              A row whose cell holds several values becomes one row per value; the other columns are
-              copied. The row that was there keeps the first value, so everything already computed
-              for it stays attached. Undo takes the split back.
+              Creates one row per value, copying the other columns.
             </p>
           </div>
           <div className="radix-dialog-footer calculate-properties-footer">
-            <span className="calculate-properties-count">
-              {ready ? `Splitting on "${delimiter}"` : "Pick a column and a separator"}
-            </span>
             <div className="calculate-properties-actions">
               <Dialog.Close asChild>
                 <button type="button" className="dock-action">Cancel</button>

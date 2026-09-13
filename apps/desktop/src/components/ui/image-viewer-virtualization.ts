@@ -86,12 +86,15 @@ export function createImageFrameLayout({
   frames,
   scale,
   rotation,
+  pixelRatio = 1,
   gap = IMAGE_FRAME_GAP,
   padding = IMAGE_FRAME_PADDING,
 }: {
   frames: readonly FrameDescriptor[];
+  /** Display scale: 1 is one CSS pixel per intrinsic pixel / pixelRatio. */
   scale: number;
   rotation: QuarterTurn;
+  pixelRatio?: number;
   gap?: number;
   padding?: number;
 }): ImageFrameLayoutModel {
@@ -105,7 +108,12 @@ export function createImageFrameLayout({
   let offsetTop = blockPadding;
   let maxFrameWidth = 0;
   const frameLayouts = frames.map((frame, frameIndex) => {
-    const frameRect = frameCssSize(frame.intrinsicSize, scale, rotation);
+    const frameRect = frameCssSize(
+      frame.intrinsicSize,
+      scale,
+      rotation,
+      pixelRatio,
+    );
     const layout = {
       frameIndex,
       frameNumber: frameIndexToNumber(frameIndex),

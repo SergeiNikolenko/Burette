@@ -52,6 +52,9 @@ export function useAppMolstarActionSenders({
       pushStatus(`Open ${document.title} in the main viewer first`, "error");
       return;
     }
+    // The removed inspector row loses focus. Keep Undo with the scene edit
+    // instead of falling through to an unrelated workspace layout change.
+    if (action.type === "remove_components") iframe.focus();
     iframe.contentWindow.postMessage({
       source: "burette-agent-host",
       body: {

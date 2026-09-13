@@ -95,7 +95,6 @@
     visibleCount: 0,
     renderedCount: 0,
     query: '',
-    searchMode: 'text',
     searchTimer: 0,
     searchTextCache: new WeakMap(),
     dataToken: 0,
@@ -1735,7 +1734,6 @@
       exportEnabled: caps.export,
       selectionEnabled: caps.selection,
       substructureSearch: caps.substructureSearch,
-      searchMode: state.searchMode,
       exportScopeLabel: exportScopeLabel(),
       exportPending: Boolean(state.searchTimer || state.remoteLoading || !collectionIndexReady()),
       supportsXyzrenderCards: supportsXyzrenderCards(cfg),
@@ -1744,6 +1742,8 @@
       xyzrenderPreset: currentXyzrenderPreset(cfg),
       xyzrenderPresetOptions: xyzrenderPresetOptions(cfg),
       ketcherOpen: caps.ketcherOpen,
+      molstarOpen: caps.molstarOpen,
+      ...gridSelectionState(),
       rendererSwitch: caps.rendererSwitch,
       generating3d: state.generating3d,
       conformerVariant: state.conformerVariant,
@@ -1759,18 +1759,11 @@
       clusterRepresentativesAvailable: Boolean(latestRepresentativeAnalysisColumn()),
       similarityQuerySelected: state.selected.size === 1,
       clusterCutoff: state.clusterCutoff,
-      selectedCount: state.selected.size,
       selectedInput3d: selectedRowsHaveInput3dCoordinates(),
       ...gridEditState(),
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
         scheduleSearch(value || '', cfg);
-      },
-      onSearchModeChange(value) {
-        state.searchMode = value;
-        setUnifiedSearchQuery(state.query, cfg, value);
-        refreshGridControls(cfg);
-        refresh(cfg);
       },
       onSortChange(value) {
         state.sort = value || 'index';
@@ -1782,7 +1775,7 @@
         applyGridPreferences(cfg);
       },
       onClearSmarts() {
-        setUnifiedSearchQuery('', cfg, state.searchMode);
+        setUnifiedSearchQuery('', cfg);
         const input = document.getElementById('search');
         if (input) input.value = '';
         refresh(cfg);
@@ -1834,8 +1827,6 @@
         render(cfg);
       }
     });
-    const search = document.getElementById('search');
-    if (search) search.setAttribute('aria-label', state.searchMode === 'structure' ? 'Search structures with SMARTS' : 'Search text');
     const sortControl = document.getElementById('sort');
     if (sortControl) {
       const currentSort = tableActiveSort();
@@ -1927,6 +1918,18 @@
     };
   }
 
+  // React owns selection controls together, so re-rendering the toolbar cannot
+  // restore a stale hidden/disabled attribute after the runtime updates it.
+  function gridSelectionState() {
+    const indexes = selectableRowIndexes();
+    return {
+      selectedCount: state.selected.size,
+      selectableCount: indexes.length,
+      allVisibleSelected: indexes.length > 0 && indexes.every(index => state.selected.has(index)),
+      ketcherPending: Date.now() < state.ketcherOpenPendingUntil
+    };
+  }
+
   function syncGridEditControls() {
     const edit = gridEditState();
     const apply = (id, enabled, title) => {
@@ -1939,9 +1942,9 @@
     apply('undo-grid-edit', edit.undoEnabled, edit.undoTitle);
     apply('save-grid-as', edit.saveAsEnabled, edit.saveAsTitle);
     // File actions live in the Actions menu, which is absent from the DOM until
-    // it opens. Re-render whenever edit state changes so the menu is built from
-    // fresh props rather than stale markup.
-    const signature = `${edit.saveEnabled}|${edit.saveAsEnabled}|${edit.undoEnabled}|${exportScopeLabel()}|${Boolean(state.searchTimer || state.remoteLoading)}`;
+    // it opens. Re-render when edit or selection state changes so both the menu
+    // and the persistent selection controls receive fresh props.
+    const signature = `${edit.saveEnabled}|${edit.saveAsEnabled}|${edit.undoEnabled}|${exportScopeLabel()}|${Boolean(state.searchTimer || state.remoteLoading)}|${JSON.stringify(gridSelectionState())}`;
     if (state.gridEditSignature !== signature) {
       state.gridEditSignature = signature;
       const cfg = safeConfig();
@@ -2985,21 +2988,21 @@
   }
 
   function shouldFallbackSMARTSToTextSearch() {
-    return state.searchMode !== 'structure' && !!state.smartsError && !!state.smarts.trim() && !queryLooksLikeExplicitSMARTS(state.query);
+    return !!state.smartsError && !!state.smarts.trim() && !queryLooksLikeExplicitSMARTS(state.query);
   }
 
-  // Explicit UI modes are predictable; callers that omit mode retain the
-  // legacy automatic SMARTS/SMILES-fragment interpretation.
-  function setUnifiedSearchQuery(value, cfg, mode = 'auto') {
+  // The single search input is interpreted automatically: SMARTS and
+  // SMILES-fragment queries drive the substructure filter, anything else is
+  // matched as text.
+  function setUnifiedSearchQuery(value, cfg) {
     state.query = value || '';
-    state.smarts = capabilities(cfg).substructureSearch
-      && (mode === 'structure' || (mode === 'auto' && queryLooksLikeSMARTS(value))) ? value || '' : '';
+    state.smarts = capabilities(cfg).substructureSearch && queryLooksLikeSMARTS(value) ? value || '' : '';
   }
 
   function scheduleSearch(value, cfg) {
     const wasPending = Boolean(state.searchTimer);
     clearTimeout(state.searchTimer);
-    setUnifiedSearchQuery(value, cfg, state.searchMode);
+    setUnifiedSearchQuery(value, cfg);
     // Obsolete page/SMARTS requests must stop applying while the user types,
     // rather than remaining valid until the debounce expires.
     state.token += 1;
@@ -3218,7 +3221,7 @@
     if (!pattern) return rows;
     if (!state.rdkit || typeof state.rdkit.get_qmol !== 'function') {
       state.smartsError = 'This RDKit build does not support SMARTS queries.';
-      return state.searchMode === 'structure' ? [] : rows;
+      return rows;
     }
 
     let qmol = null;
@@ -3235,7 +3238,7 @@
       return matches;
     } catch (error) {
       state.smartsError = error?.message || String(error);
-      return state.searchMode === 'structure' ? [] : rows;
+      return rows;
     } finally {
       try { qmol?.delete?.(); } catch (_) {}
     }
@@ -3986,24 +3989,6 @@
     if (clearSMARTS) clearSMARTS.hidden = !state.query.trim();
     const searchInput = document.getElementById('search');
     if (searchInput) searchInput.classList.toggle('invalid', !!state.smartsError);
-    const selectableIndexes = selectableRowIndexes();
-    const allCurrentSelected = selectableIndexes.length > 0 && selectableIndexes.every(index => state.selected.has(index));
-    const selectAllButton = document.getElementById('select-all');
-    if (selectAllButton) {
-      selectAllButton.hidden = selectableIndexes.length === 0;
-      selectAllButton.disabled = selectableIndexes.length === 0 || allCurrentSelected;
-    }
-    const clearSelectionButton = document.getElementById('clear-selection');
-    if (clearSelectionButton) {
-      clearSelectionButton.hidden = state.selected.size === 0;
-      clearSelectionButton.disabled = state.selected.size === 0;
-    }
-    const selectedOpenActions = document.getElementById('selected-open-actions');
-    if (selectedOpenActions) selectedOpenActions.hidden = state.selected.size === 0;
-    const openSelectedMolstar = document.getElementById('open-selected-molstar');
-    if (openSelectedMolstar) openSelectedMolstar.disabled = state.selected.size === 0;
-    const openSelectedKetcher = document.getElementById('open-selected-ketcher');
-    if (openSelectedKetcher) openSelectedKetcher.disabled = state.selected.size === 0 || Date.now() < state.ketcherOpenPendingUntil;
     syncGridClusterControls();
     syncRdkitCoordinatesControl();
     syncGridEditControls();
@@ -4020,16 +4005,12 @@
       footerText = `Showing first ${included.toLocaleString()} of ${total.toLocaleString()} records.`;
     } else if (hasMoreRows()) {
       footerText = `Scroll to load more. ${scrollable.toLocaleString()} of ${visible.toLocaleString()} visible ${effectiveMolecularGrid(cfg) ? 'molecules' : 'rows'} are scrollable.`;
-    } else if (state.remoteMode) {
-      footerText = 'Desktop grid runtime loads rows on demand and keeps only the active window mounted.';
     } else {
-      footerText = !effectiveMolecularGrid(cfg)
-        ? 'Tabular data preview with search, sort, columns, and filters.'
-        : state.cardRenderer === 'xyzrender'
-        ? 'External xyzrender card rendering.'
-        : 'Offline RDKit.js rendering with windowed cards. No network access required.';
+      footerText = '';
     }
-    document.getElementById('footer').textContent = footerText;
+    const footer = document.getElementById('footer');
+    footer.textContent = footerText;
+    footer.hidden = !footerText;
     updateGridRail();
     notifyGridMenuState(cfg);
   }
@@ -4689,7 +4670,7 @@
     const cover = state.gridViewportCover;
     host.dataset.viewportCover = String(cover);
     host.style.maxWidth = cover > 0
-      ? Math.max(0, document.documentElement.clientWidth - cover) + 'px'
+      ? Math.max(0, document.documentElement.clientWidth - cover - Math.max(0, host.getBoundingClientRect().left) - 8) + 'px'
       : '';
   }
 
@@ -5185,7 +5166,7 @@
   }
 
   function tableSearchQuery() {
-    return state.searchMode === 'structure' ? '' : normalize(state.query).trim();
+    return normalize(state.query).trim();
   }
 
   function tableColumnPanelHTML(catalog, visibleColumns) {
@@ -8137,7 +8118,6 @@
     state.remoteLoading = false;
     window.clearTimeout(state.searchTimer);
     state.searchTimer = 0;
-    state.searchMode = 'text';
     state.searchTextCache = new WeakMap();
     state.chemicalSpaceVisibilitySubscribers.clear();
     state.chemicalSpaceVisibilityRequest = null;

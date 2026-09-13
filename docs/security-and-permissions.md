@@ -7,6 +7,11 @@ native command permissions.
 
 ## Local File Access
 
+Desktop Copy actions use the `write_clipboard_text` command to write plain text
+to the macOS pasteboard, including actions that finish asynchronously. This
+command does not read the clipboard. Browser previews use the Web Clipboard API
+with a selection-copy fallback.
+
 - The desktop app opens files selected by the user, command-palette actions,
   drag-and-drop, recent/project roots, or explicit agent-session commands.
 - Background project enumeration stays inside project roots explicitly selected

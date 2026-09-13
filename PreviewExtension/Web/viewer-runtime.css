@@ -1,4 +1,7 @@
 /* Shared Quick Look viewer shell style. Keep app runtimes linked here; do not fork host-specific Mol* chrome. */
+/* Empty scenes and loading states use Burette's own shell on every surface. */
+.msp-plugin .msp-logo { display: none !important; }
+
 :root {
   color-scheme: dark;
   --buret-viewer-ui-scale: 0.9;
@@ -4062,13 +4065,17 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   width: 100%;
   padding: 4px;
   box-sizing: border-box;
+  /* Rows are controls, not prose: a drag or a double click must not paint a
+     text selection across labels and notes. */
+  -webkit-user-select: none;
+  user-select: none;
 }
 .buret-tree-highlight {
   position: absolute;
   left: 0;
   top: 0;
   z-index: 0;
-  border-radius: 5px;
+  border-radius: 8px;
   background: var(--buret-molstar-hover-background);
   opacity: 0;
   pointer-events: none;
@@ -4092,7 +4099,7 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   gap: 4px;
   min-height: 24px;
   padding: 0 3px 0 0;
-  border-radius: 5px;
+  border-radius: 8px;
 }
 .buret-tree-twisty {
   display: grid;
@@ -4188,7 +4195,7 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
    over a panel that is otherwise greyscale; a flat tint carries it quietly. */
 .buret-tree-item[data-selected="true"] > .buret-tree-row {
   background: color-mix(in srgb, var(--buret-molstar-text) 9%, transparent);
-  border-radius: 5px;
+  border-radius: 8px;
 }
 .buret-tree-item[data-selected="true"] > .buret-tree-row > .buret-tree-trigger > .buret-tree-label {
   color: var(--buret-molstar-text);
@@ -5065,4 +5072,40 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level
 .buret-molecule-card-icon[aria-pressed="true"] {
   background: var(--buret-molstar-hover-background);
   color: var(--buret-molstar-text);
+}
+
+/* Measurement is an active tool, so its prompt uses the viewer control material. */
+#buret-measure-prompt {
+  position: fixed;
+  z-index: 100;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  box-sizing: border-box;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 12px;
+  background: var(--buret-toolbar-background);
+  color: var(--buret-toolbar-color);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 12%);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
+  user-select: none;
+}
+#buret-measure-prompt button {
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 9px;
+  background: var(--buret-toolbar-hover);
+  color: inherit;
+  font: inherit;
+}
+#buret-measure-prompt button:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
 }

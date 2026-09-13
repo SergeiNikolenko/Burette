@@ -8066,6 +8066,8 @@ SOFTWARE.
     scheduleSceneTreeRender();
   }
 
+  let sceneTreeColorPickerMissingReported = false;
+
   function sceneTreeMenuSwatches(menu, label, action, currentValue) {
     const swatches = document.createElement('div');
     swatches.className = 'buret-tree-swatches buret-tree-swatches-with-picker';
@@ -8080,6 +8082,18 @@ SOFTWARE.
       swatch.setAttribute('aria-pressed', currentValue === entry.value ? 'true' : 'false');
       swatch.title = entry.label;
       swatches.appendChild(swatch);
+    }
+    // The picker lives in color-picker.js, loaded next to this file. When that
+    // script is missing (a packaged build once shipped without it) the preset
+    // swatches still work on their own; only the custom-colour button is dropped,
+    // rather than the whole menu dying before it renders.
+    if (typeof window.BuretteColorPicker?.create !== 'function') {
+      if (!sceneTreeColorPickerMissingReported) {
+        sceneTreeColorPickerMissingReported = true;
+        debug('[web] BuretteColorPicker is unavailable; scene tree menus offer preset colours only');
+      }
+      menu.appendChild(swatches);
+      return;
     }
     const custom = document.createElement('button');
     custom.type = 'button';
@@ -15569,21 +15583,44 @@ SOFTWARE.
     if (plugin?.behaviors?.state?.isUpdating?.value) return;
     const viewer = activeMolstarViewer();
     const structures = molstarCurrentStructures(viewer);
-    if (!structures.length) return;
-    const { StructureElement } = molstarStructureRuntime();
+    if (!plugin?.canvas3d) return;
+    const { Structure, StructureElement } = molstarStructureRuntime();
     const rows = [...molstarCompositionQueries.keys()].map(query => {
       const matched = [];
+      const counts = { atoms: 0, residues: 0, chains: 0, types: 0 };
+      const residueTypes = new Set();
       for (const structure of structures) {
         const loci = compositionQueryLoci(structure, query);
         if (!loci) continue;
+        let represented = null;
         for (const component of structure.components || []) {
           const data = component.cell?.obj?.data;
-          if (data && StructureElement.Loci.size(StructureElement.Loci.remap(loci, data))) matched.push(component);
+          if (!data) continue;
+          const overlap = StructureElement.Loci.remap(loci, data);
+          if (!StructureElement.Loci.size(overlap)) continue;
+          matched.push(component);
+          const parentLoci = StructureElement.Loci.remap(overlap, loci.structure);
+          represented = represented ? StructureElement.Loci.union(represented, parentLoci) : parentLoci;
+        }
+        if (represented) {
+          // Count the union: overlapping representations must not count atoms twice.
+          const data = StructureElement.Loci.toStructure(represented);
+          counts.atoms += data.elementCount;
+          Structure.eachAtomicHierarchyElement(data, {
+            chain: () => { counts.chains++; },
+            residue: location => {
+              counts.residues++;
+              residueTypes.add(location.unit.model.atomicHierarchy.atoms.label_comp_id.value(location.element));
+            }
+          });
         }
       }
+      counts.types = residueTypes.size;
       const tint = sceneTreeColorState(matched).value;
       return {
         query,
+        present: matched.length > 0,
+        counts,
         hidden: !matched.some(component => !component.cell.state.isHidden
           && component.representations?.some(repr => !repr.cell.state.isHidden)),
         color: Number.isFinite(tint) ? sceneTreeColorHex(tint) : null
@@ -17284,6 +17321,18 @@ SOFTWARE.
     });
   }
 
+  function clearMolstarTrajectoryHover(plugin) {
+    const highlights = plugin?.managers?.interactivity?.lociHighlights;
+    if (!highlights) return;
+    // A hover arriving during a frame update can refer to the outgoing model.
+    // Remove the highlight bit across the current representations as well as
+    // clearing the manager's old loci. Mol* MarkerAction.RemoveHighlight = 2;
+    // unlike Clear, this leaves the explicit selection bit untouched.
+    highlights.clearHighlights();
+    const everyLoci = window.molstar?.lib?.loci?.EveryLoci;
+    if (everyLoci) plugin.canvas3d?.mark?.({ loci: everyLoci }, 2);
+  }
+
   async function setNativeTrajectoryPoseDirect(index, poseCount) {
     const transform = nativeTrajectoryModelTransform(poseCount);
     if (!transform) return false;
@@ -17292,12 +17341,17 @@ SOFTWARE.
     // end leaves the model on its last one while we report success.
     const limit = transform.frameCount > 0 ? transform.frameCount : poseCount;
     const target = Math.max(0, Math.min(limit - 1, index));
+    // Hover loci belong to the outgoing model. Clear their markers before Mol*
+    // replaces it: afterwards those loci may no longer match the representation,
+    // and a pointer-leave event can also be skipped while the plugin is busy.
+    clearMolstarTrajectoryHover(transform.plugin);
     await transform.plugin.state.updateTransform(
       transform.plugin.state.data,
       transform.ref,
       { ...transform.params, modelIndex: target },
       'Model Index'
     );
+    clearMolstarTrajectoryHover(transform.plugin);
     await afterNativeTrajectoryPaint();
     return true;
   }
@@ -17315,8 +17369,10 @@ SOFTWARE.
     for (let step = 0; step < stepCount; step += 1) {
       const button = nativeTrajectoryStepButton(direction);
       if (!button || button.disabled || button.getAttribute('aria-disabled') === 'true') return false;
+      clearMolstarTrajectoryHover(activeViewer?.plugin);
       button.click();
       await afterNativeTrajectoryPaint();
+      clearMolstarTrajectoryHover(activeViewer?.plugin);
     }
     return true;
   }
@@ -20487,7 +20543,7 @@ SOFTWARE.
   // fires when the selection was actually wiped, so a click that legitimately
   // makes a new one is left alone.
   function beginMolstarSelectionPreserve(event) {
-    if (molstarLassoEnabled || molstarLassoStroke || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
+    if (molstarMeasureSession || molstarLassoEnabled || molstarLassoStroke || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
     const lociList = molstarCurrentSelectionLociList();
     if (!lociList.length) return;
     molstarSelectionPreserveClick = {
@@ -21546,6 +21602,11 @@ SOFTWARE.
   function molstarExportToMmCif() {
     const runtime = molstarRuntime();
     const lib = molstarExportLib();
+    // The vendored bundle (scripts/molstar-viewer-entry.js) exposes the exporter
+    // under the lowercase `lib.structure` namespace; the other probes cover
+    // older layouts that hoisted it to the root or a capitalised `Structure`.
+    const structureLib = molstarStructureRuntime();
+    if (typeof structureLib?.to_mmCIF === 'function') return structureLib.to_mmCIF;
     if (typeof lib.to_mmCIF === 'function') return lib.to_mmCIF;
     if (typeof runtime?.to_mmCIF === 'function') return runtime.to_mmCIF;
     if (typeof lib.Structure?.to_mmCIF === 'function') return lib.Structure.to_mmCIF;
@@ -22284,11 +22345,26 @@ SOFTWARE.
   };
 
   let molstarMeasureSession = null;
-  function showMolstarMeasureToast(message, timeoutMs = 0) {
-    setStatus(message, 'info', { visible: true, timeoutMs });
+  function showMolstarMeasurePrompt(message) {
+    let panel = document.getElementById('buret-measure-prompt');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'buret-measure-prompt';
+      const label = document.createElement('span');
+      label.setAttribute('role', 'status');
+      label.setAttribute('aria-live', 'polite');
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.textContent = 'Cancel';
+      cancel.title = 'Cancel measurement (Esc)';
+      cancel.addEventListener('click', () => cancelMolstarMeasurement());
+      panel.append(label, cancel);
+      document.body.appendChild(panel);
+    }
+    panel.firstElementChild.textContent = message;
   }
 
-  function cancelMolstarMeasurement(message) {
+  function cancelMolstarMeasurement() {
     const session = molstarMeasureSession;
     if (!session) return;
     molstarMeasureSession = null;
@@ -22300,16 +22376,13 @@ SOFTWARE.
       plugin.managers.interactivity.setProps({ granularity: session.restoreGranularity });
       plugin.managers.structure.selection.setSnapshot(session.restoreSelection);
     }
-    if (message) showMolstarMeasureToast(message, 3200);
+    document.getElementById('buret-measure-prompt')?.remove();
   }
 
   function molstarMeasurePrompt(kind, picked) {
     const spec = MOLSTAR_MEASURE_KINDS[kind];
-    const remaining = spec.points - picked;
     const title = spec.noun[0].toUpperCase() + spec.noun.slice(1);
-    if (!picked) return `[web] ${title}: click ${spec.points} atoms. Esc cancels.`;
-    const suffix = remaining === 1 ? 'point' : 'points';
-    return `[web] ${title}: ${picked}/${spec.points} points selected. Click ${remaining} more ${suffix}. Esc cancels.`;
+    return `${title} · ${picked} / ${spec.points} atoms`;
   }
 
   function beginMolstarMeasurement(kind = 'distance') {
@@ -22332,7 +22405,7 @@ SOFTWARE.
       onKeyDown: null
     };
     session.onKeyDown = event => {
-      if (event.key === 'Escape') cancelMolstarMeasurement(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measurement cancelled.`);
+      if (event.key === 'Escape') cancelMolstarMeasurement();
     };
     plugin.managers.structure.selection.clear();
     plugin.managers.interactivity.setProps({ granularity: 'element' });
@@ -22344,7 +22417,7 @@ SOFTWARE.
       if (!loci || molstarLociIsEmpty(loci) || (atomCount !== undefined && atomCount !== 1)) {
         plugin.managers.structure.selection.clear();
         for (const point of session.points) plugin.managers.structure.selection.fromLoci('add', point, false);
-        showMolstarMeasureToast(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)}: no atom at that point. Click directly on an atom. Esc cancels.`);
+        showMolstarMeasurePrompt(`${molstarMeasurePrompt(kind, session.points.length)} · Pick an atom`);
         return;
       }
       // One physical click can arrive through two overlapping representations.
@@ -22363,7 +22436,7 @@ SOFTWARE.
       plugin.managers.structure.selection.clear();
       for (const point of session.points) plugin.managers.structure.selection.fromLoci('add', point, false);
       if (session.points.length < spec.points) {
-        showMolstarMeasureToast(molstarMeasurePrompt(kind, session.points.length));
+        showMolstarMeasurePrompt(molstarMeasurePrompt(kind, session.points.length));
         return;
       }
       const points = session.points;
@@ -22371,15 +22444,17 @@ SOFTWARE.
       // The measurement appears once the last point is picked, not when the menu
       // item was chosen, so its undo entry is taken here.
       const undoSnapshot = captureMolstarSceneUndoSnapshot(`${spec.noun} measurement`);
-      Promise.resolve(measurement[spec.method](...points))
+      Promise.resolve(measurement[spec.method](...points, { lineParams: { linesSize: 0.02 }, labelParams: { borderWidth: 0 } }))
         .then(() => {
           pushMolstarEditUndoSnapshot(undoSnapshot);
-          showMolstarMeasureToast(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measured.`, 3200);
+          // Clear after Mol* has processed the last click and created the label.
+          // Escape still restores the selection that preceded measurement mode.
+          if (!molstarMeasureSession) plugin.managers.interactivity.lociSelects.deselectAll();
         })
         .catch(error => setStatus(`[web] Measure ${spec.noun} failed.\n\n` + (error?.message || String(error)), 'error'));
     });
     molstarMeasureSession = session;
-    showMolstarMeasureToast(molstarMeasurePrompt(kind, 0));
+    showMolstarMeasurePrompt(molstarMeasurePrompt(kind, 0));
     return true;
   }
 

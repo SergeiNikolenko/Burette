@@ -32,7 +32,16 @@ assert.match(app, /windowDocumentDirty: hasDirtyGridDocuments \|\| sourceEditing
 assert.match(nativeMenuHook, /canSave: sourceSaveEnabled\s*\|\| Boolean\(isGrid/u);
 assert.match(nativeMenuHook, /case "file\.save":\s*if \(sourceSaveEnabled\) await saveActiveSource\(\);\s*else gridCommand\(\);/su);
 assert.match(nativeMenuHook, /closeTransitionActive: snapshot\.closeTransitionActive\s*\|\| barrier\.closeTransitionActive/su);
-// The close button quits the app through the shared quit command.
-assert.match(nativeMenuHook, /onCloseRequested\(\(event\) => \{[\s\S]*event\.preventDefault\(\);\s*void invoke\("request_app_quit"\)/su);
+// The close button and File > Close Window go through the one close
+// coordinator: it seals window mutations, honours the source-editing confirm
+// (dirty sources) and the generic discard prompt, then destroys just this
+// window; the last window still quits the app through request_app_quit.
+assert.match(nativeMenuHook, /onCloseRequested\(\(event\) => \{[\s\S]*event\.preventDefault\(\);\s*void closeCurrentWindow\(\);/su);
+assert.match(nativeMenuHook, /case "file\.close-window":\s*await closeCurrentWindow\(\);/su);
+assert.match(nativeMenuHook, /const closeCurrentWindow = useCallback\(async \(\) => \{[\s\S]*if \(windowCount <= 1\) \{\s*void invoke\("request_app_quit"\)[\s\S]*const barrier = sealWindowMutations\(\);\s*const snapshot = getWindowDocumentDirtySnapshotRef\.current\(\);\s*const decision = await decideWindowClose\(\{/su);
+assert.match(nativeMenuHook, /sourceConfirm: \(\) => confirmSourceCloseWindowRef\.current\(\)/u);
+assert.match(nativeMenuHook, /if \(decision === "abort"\) \{\s*resumeWindowMutations\(\);\s*return;/su);
+assert.match(app, /confirmSourceCloseWindow: sourceEditing\.confirmCloseWindow/u);
+assert.match(app, /gridDirty: gridSnapshot\.dirty,\s*sourceDirty: sourceSnapshot\.dirty/su);
 
 console.log("source editing window lifecycle tests passed");

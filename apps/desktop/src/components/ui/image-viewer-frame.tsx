@@ -12,6 +12,7 @@ import {
   type FrameSource,
 } from "@/lib/image-frame-source";
 import {
+  frameBackingScale,
   frameCssSize,
   frameIndexToNumber,
   type FrameOverlayProps,
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/image-viewer-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+import { getImageDevicePixelRatio } from "./image-viewer-hooks";
 import {
   getImageFrameLayout,
   getImagePhysicalScrollHeight,
@@ -92,7 +94,12 @@ export function ImageFrame({
   onFrameRenderTiming,
 }: ImageFrameProps) {
   const descriptor = source.frames[frameIndex];
-  const frameRect = frameCssSize(descriptor.intrinsicSize, scale, rotation);
+  const frameRect = frameCssSize(
+    descriptor.intrinsicSize,
+    scale,
+    rotation,
+    getImageDevicePixelRatio(),
+  );
   const frameNumber = frameIndexToNumber(frameIndex);
 
   return (
@@ -149,12 +156,15 @@ function ImageFrameCanvas({
     descriptor.intrinsicSize,
     layoutScale,
     rotation,
+    dpr,
   );
   // One resample generation: the canvas backing never exceeds the bitmap's
   // intrinsic resolution. Rastering past intrinsic only launders the same
   // pixels through a second resample, and the compositor's in-flight rescale
   // then beats against that pre-resampled texture (visible stroke shimmer).
-  const rasterDeviceScale = Math.min(rasterScale * dpr, 1);
+  // The scale counts logical pixels, so the backing (CSS box x dpr) is the
+  // scale itself in intrinsic pixels, whatever the screen's ratio.
+  const rasterDeviceScale = frameBackingScale(rasterScale);
   const backingFrameRect = frameCssSize(
     descriptor.intrinsicSize,
     rasterDeviceScale,
@@ -674,7 +684,7 @@ function useImageFrameRenderScheduler({
   maxRunning?: number;
   maxLowPriorityRunning?: number;
 }) {
-  const renderScale = Math.min(rasterScale * pixelRatio, 1);
+  const renderScale = frameBackingScale(rasterScale);
   const requestedRenders = React.useMemo<ImageFrameRenderRequest[]>(
     () =>
       mergeImageFrameNumbers(frameNumbers).map((frameNumber) => ({
@@ -1279,11 +1289,6 @@ function preserveCanvasImage(
   } catch {
     /* Best-effort preservation must not fail the real frame render. */
   }
-}
-
-function getImageDevicePixelRatio() {
-  const dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio;
-  return Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
 }
 
 function setImagePixelStyle(

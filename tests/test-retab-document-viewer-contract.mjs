@@ -109,8 +109,14 @@ assert.match(documentPage, /PdfViewerThumbnails \/>/);
 assert.match(documentPage, /<FileViewerDocument controls \/>/);
 assert.match(documentPage, /import "katex\/dist\/katex\.min\.css";/);
 assert.match(documentPage, /PdfViewerPages bare className="h-full" defaultScale=\{1\}/);
+// Images open fitted to the viewport: the natural-size override made a Retina
+// screenshot open at twice its captured size (test-image-viewer-scale.mjs).
 const fileViewerRoute = source('apps/desktop/src/components/ui/file-viewer-route.tsx');
-assert.match(fileViewerRoute, /image[\s\S]{0,300}defaultScale=\{1\}/);
+assert.match(fileViewerRoute, /image: \(\{[\s\S]{0,400}<ImageResourceContent/);
+assert.doesNotMatch(
+  fileViewerRoute,
+  /<ImageResourceContent[\s\S]{0,300}defaultScale=/,
+);
 
 // Plain delimited files open in the Retab table; molecular ones keep the grid.
 assert.match(fileOpen, /isMolecularDelimitedFile\(path\)/);
