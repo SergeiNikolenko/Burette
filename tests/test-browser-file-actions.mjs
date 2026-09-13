@@ -4,7 +4,8 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const source = await readFile("apps/desktop/src/hooks/use-app-file-actions.ts", "utf8");
-const executable = ts.transpile(source.replace(/^import[\s\S]*?;\n/gm, "").replace("export function", "function"));
+const availability = await readFile("apps/desktop/src/lib/browser-availability.ts", "utf8");
+const executable = ts.transpile((availability + source).replace(/^import[\s\S]*?;\n/gm, "").replaceAll("export function", "function"));
 const calls = [];
 const statuses = [];
 const notices = [];

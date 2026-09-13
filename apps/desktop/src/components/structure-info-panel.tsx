@@ -39,6 +39,7 @@ import type { GridFilterModel } from "./types";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { getMdsmoothCapabilities, installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
 import { isTauriRuntime } from "../lib/tauri";
+import { showMacAvailability } from "../lib/browser-availability";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings, HoveredGridRow } from "../types";
 
 // The filter charts pull in recharts. This panel is the right dock's default tab
@@ -877,6 +878,10 @@ function TrajectorySmoothingCard({
   const latestSettingsSignature = useRef(settingsSignature);
   latestSettingsSignature.current = settingsSignature;
   const build = async () => {
+    if (import.meta.env.VITE_BURETTE_WEB_DEMO === "1") {
+      showMacAvailability("Trajectory smoothing uses a local runtime in the Mac app and is not available in this browser preview.");
+      return;
+    }
     const requestedSignature = settingsSignature;
     const updatingExisting = built;
     const serial = requestSerial.current + 1;

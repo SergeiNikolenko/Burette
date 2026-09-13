@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 
-import { toast } from "../components/ui/toast";
+import { showMacAvailability } from "../lib/browser-availability";
 import { formatBytes } from "../components/format";
 import type { ChemicalEditorTarget } from "../components/types";
 import { basename } from "../lib/sidebar-projects";
@@ -239,11 +239,3 @@ export function useAppFileActions({
   };
 }
 
-function showMacAvailability() {
-  toast.add({
-    title: "Available in Burette for Mac",
-    description: "Opening local apps and Finder is not available in this browser preview.",
-    type: "info",
-    timeout: 7000,
-  });
-}
