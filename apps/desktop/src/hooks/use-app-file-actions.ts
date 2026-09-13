@@ -4,7 +4,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 
 import { formatBytes } from "../components/format";
 import type { ChemicalEditorTarget } from "../components/types";
-import { basename, parentDirectory } from "../lib/sidebar-projects";
+import { basename } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
 import type { TextFileDocument, ViewerDocument } from "../types";
 
@@ -104,8 +104,7 @@ export function useAppFileActions({
   const openPathInChemicalEditor = useCallback(async (path: string, targetId: string, targetName: string) => {
     try {
       if (!isTauriRuntime()) {
-        await openPath(path);
-        pushStatus(`Opened ${basename(path)}`);
+        pushStatus("This action is available in Burette for Mac. The browser preview cannot open local applications.", "info");
         return;
       }
       await invoke("open_in_chemical_editor", { path, targetId });
@@ -116,6 +115,10 @@ export function useAppFileActions({
   }, [pushErrorStatus, pushStatus]);
 
   const openPathWithDefaultApp = useCallback(async (path: string) => {
+    if (!isTauriRuntime()) {
+      pushStatus("This action is available in Burette for Mac. The browser preview cannot open local applications.", "info");
+      return;
+    }
     try {
       await openPath(path);
       pushStatus(`Opened ${basename(path)}`);
@@ -129,7 +132,8 @@ export function useAppFileActions({
       if (isTauriRuntime()) {
         await invoke("reveal_path", { path });
       } else {
-        await openPath(parentDirectory(path) ?? path);
+        pushStatus("This action is available in Burette for Mac. The browser preview cannot open Finder.", "info");
+        return;
       }
       pushStatus(`Revealed ${label} in Finder`);
     } catch (error) {
