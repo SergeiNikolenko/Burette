@@ -1101,6 +1101,7 @@ impl AssetProfile {
                 "molecule-preview-interactions.js",
                 "color-picker.js",
                 "scene-file-actions.js",
+                "native-viewer-menu.js",
                 "viewer.js",
             ],
             Self::Mesoscale => &["mesoscale.js", "mesoscale.css"],
@@ -1295,6 +1296,14 @@ fn viewer_html(
     let color_picker_js = asset_url(&assets.join("color-picker.js"));
     let molecule_preview_interactions_js =
         asset_url(&assets.join("molecule-preview-interactions.js"));
+    let native_menu_script = if renderer == "molstar" {
+        format!(
+            r#"<script src="{}"></script>"#,
+            asset_url(&assets.join("native-viewer-menu.js"))
+        )
+    } else {
+        String::new()
+    };
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
     let molstar_js = asset_url(&assets.join("molstar.js"));
@@ -1347,6 +1356,7 @@ fn viewer_html(
   <script src="{color_picker_js}"></script>
   <script src="{molecule_preview_interactions_js}"></script>
   <script src="{viewer_js}"></script>
+  {native_menu_script}
 </body>
 </html>"#
     )

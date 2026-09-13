@@ -29,6 +29,7 @@ pub(crate) enum MenuEntry {
         symbol: Option<String>,
         image: Option<String>,
         items: Vec<MenuEntry>,
+        checked: Option<bool>,
     },
 }
 
@@ -358,7 +359,10 @@ mod macos {
                         let _: () = msg_send![item, setKeyEquivalentModifierMask: mask];
                     }
                 }
-                MenuEntry::Submenu { items, .. } => {
+                MenuEntry::Submenu { items, checked, .. } => {
+                    if let Some(value) = checked {
+                        let _: () = msg_send![item, setState: isize::from(*value)];
+                    }
                     let child = make_menu(items, target, ids, controls);
                     let _: () = msg_send![item, setSubmenu: child];
                 }
@@ -457,6 +461,7 @@ mod tests {
             symbol: None,
             image: None,
             items,
+            checked: None,
         };
         assert!(validate(&[item("rename"), submenu(vec![item("text")])], None).is_ok());
         assert!(validate(&[item("rename"), submenu(vec![item("rename")])], None).is_err());

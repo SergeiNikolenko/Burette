@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { installNativeViewerMenus } from "../lib/native-viewer-menu";
 
 import {
   dispatchViewerBridgeMessage,
@@ -30,6 +31,7 @@ export function useAppViewerBridgeMessages({
   isKnownViewerMessageSource,
   markViewerFirstRenderMessage,
 }: UseAppViewerBridgeMessagesOptions) {
+  useEffect(installNativeViewerMenus, []);
   useEffect(() => {
     const onMessage = async (event: MessageEvent) => {
       const message = parseViewerBridgeMessage(event);

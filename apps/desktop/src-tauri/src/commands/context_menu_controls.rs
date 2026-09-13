@@ -362,15 +362,24 @@ pub(super) mod macos {
                     let _: () = msg_send![alert, setAccessoryView: input];
                     let window: id = msg_send![alert, window];
                     let _: () = msg_send![window, setInitialFirstResponder: input];
-                    let response: isize = msg_send![alert, runModal];
-                    if response == 1000 {
-                        let value: id = msg_send![input, stringValue];
-                        let bytes: *const std::ffi::c_char = msg_send![value, UTF8String];
-                        if !bytes.is_null() {
-                            let text = std::ffi::CStr::from_ptr(bytes).to_string_lossy();
-                            if text.len() <= 4096 {
-                                binding.value = text.into_owned().into();
-                                binding.dirty = true;
+                    loop {
+                        let response: isize = msg_send![alert, runModal];
+                        if response != 1000 {
+                            break;
+                        }
+                        if response == 1000 {
+                            let value: id = msg_send![input, stringValue];
+                            let bytes: *const std::ffi::c_char = msg_send![value, UTF8String];
+                            if !bytes.is_null() {
+                                let text = std::ffi::CStr::from_ptr(bytes).to_string_lossy();
+                                if text.len() <= 4096 {
+                                    binding.value = text.into_owned().into();
+                                    binding.dirty = true;
+                                    break;
+                                }
+                                let _: () = msg_send![alert, setInformativeText: string("Text is too long (maximum 4096 bytes).")];
+                            } else {
+                                break;
                             }
                         }
                     }
