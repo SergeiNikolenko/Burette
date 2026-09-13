@@ -19,10 +19,12 @@
   function project(menu) {
     const actions = new Map();
     const hover = new Map();
+    const previewScopes = new Map();
     let count = 0;
     const bind = callback => { if (++count > 500) throw Error('Menu too large'); const id = `control-${count}`; actions.set(id, callback); return id; };
     const command = (element, text = title(element), callback = () => element.click()) => {
       const id = bind(callback);
+      previewScopes.set(id, element.closest('.buret-representation-type-menu'));
       hover.set(id, phase => {
         element.dispatchEvent(new PointerEvent(phase === 'enter' ? 'pointerenter' : 'pointerleave'));
         element.dispatchEvent(new PointerEvent(phase === 'enter' ? 'pointerover' : 'pointerout', { bubbles: true }));
@@ -91,7 +93,7 @@
       }
       return nodes(element);
     });
-    return { items: nodes(menu), actions, hover };
+    return { items: nodes(menu), actions, hover, previewScopes };
   }
   function show(menu) {
     if (session || menu.dataset.nativeMenuAttempted || !menu.isConnected) return;
@@ -101,7 +103,7 @@
     if (!projection.items.length) return;
     const rect = menu.getBoundingClientRect();
     const token = crypto.randomUUID();
-    session = { menu, token, actions: projection.actions, hover: projection.hover, visibility: menu.style.visibility };
+    session = { menu, token, actions: projection.actions, hover: projection.hover, previewScopes: projection.previewScopes, previewScope: null, visibility: menu.style.visibility };
     // Retain nodes for delegated input/change handlers and their undo state.
     menu.style.visibility = 'hidden';
     post({ type: 'nativeMenuOpen', token, x: rect.left, y: rect.top, items: projection.items });
@@ -120,7 +122,16 @@
     }
     if (!session || message.token !== session.token) return;
     if (message.kind === 'control') {
-      if (['enter', 'leave'].includes(message.phase)) { session.hover.get(message.id)?.(message.phase); return; }
+      if (!session.menu.isConnected) return;
+      if (['enter', 'leave'].includes(message.phase)) {
+        if (message.phase === 'enter') {
+          const scope = session.previewScopes.get(message.id);
+          if (session.previewScope && session.previewScope !== scope) session.previewScope.dispatchEvent(new PointerEvent('pointerleave'));
+          session.previewScope = scope;
+        }
+        session.hover.get(message.id)?.(message.phase);
+        return;
+      }
       if (session.menu.isConnected && ['input', 'change'].includes(message.phase)) session.actions.get(message.id)?.(message.value, message.phase);
       return;
     }

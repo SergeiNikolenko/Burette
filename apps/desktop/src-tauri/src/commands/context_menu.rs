@@ -314,6 +314,7 @@ mod macos {
                 MenuEntry::Control { id, text, control } => {
                     let item = controls.make_item(id, text, control);
                     let _: () = msg_send![menu, addItem: item];
+                    controls.watch(menu, item, id);
                     continue;
                 }
                 MenuEntry::Item {

@@ -59,6 +59,18 @@ assert.equal(dismissed,false,'native closing must not cancel an in-flight repres
 complete(); await settle();
 assert.equal(dismissed,true,'menu closes after the selected representation is applied');
 delayed.remove();
+const hoverMenu = menu();
+hoverMenu.insertAdjacentHTML('beforeend','<div class="buret-representation-type-menu"><button>Preview type</button><button>Apply type</button></div>');
+let restored = 0;
+hoverMenu.querySelector('.buret-representation-type-menu').addEventListener('pointerleave',()=>restored++);
+window.document.body.append(hoverMenu); await settle();
+const hoverOpen = sent.at(-1);
+const enter = id => message({kind:'control',token:hoverOpen.token,id,phase:'enter'});
+enter(hoverOpen.items.at(-2).id); enter(hoverOpen.items.at(-1).id);
+assert.equal(restored,0,'moving into the type action menu keeps its preview');
+enter(hoverOpen.items[2].id);
+assert.equal(restored,1,'moving from the type branch to a slider restores the original representation');
+message({kind:'closed',token:hoverOpen.token}); await settle(); hoverMenu.remove();
 const fallback = menu(); window.document.body.append(fallback); await settle();
 message({kind:'fallback',token:sent.at(-1).token});
 assert.equal(fallback.style.visibility,'','an older native host keeps the complete web menu');
