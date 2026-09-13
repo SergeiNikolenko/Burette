@@ -43,6 +43,10 @@ type GridControlProps = {
   xyzrenderPreset: string;
   xyzrenderPresetOptions: XyzrenderPresetOption[];
   ketcherOpen: boolean;
+  molstarOpen: boolean;
+  ketcherPending: boolean;
+  selectableCount: number;
+  allVisibleSelected: boolean;
   rendererSwitch: boolean;
   generating3d: boolean;
   aligningPoses: boolean;
@@ -152,11 +156,7 @@ const ICONS = {
   cluster: <Icon paths={<><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>} />,
   findSimilar: <Icon paths={<><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>} />,
   exportDiverse: <Icon paths={<><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" /><path d="M12 3v13" /><path d="m7 8 5-5 5 5" /></>} />,
-  selectAll: <Icon paths={<><rect x="3" y="3" width="18" height="18" rx="3" /><path d="m8 12 3 3 5-6" /></>} />,
-  clearSelection: <Icon paths={<><rect x="3" y="3" width="18" height="18" rx="3" /><path d="m9 9 6 6M15 9l-6 6" /></>} />,
   copy: <Icon paths={<><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></>} />,
-  molstar: <Icon paths={<><circle cx="12" cy="6" r="2.4" /><circle cx="6" cy="16.5" r="2.4" /><circle cx="18" cy="16.5" r="2.4" /><path d="M10.4 7.9 7.6 14.6M13.6 7.9l2.8 6.7M8.4 16.5h7.2" /></>} />,
-  ketcher: <Icon paths={<><path d="M14.5 4.5 19.5 9.5 9 20H4v-5Z" /><path d="M12.5 6.5 17.5 11.5" /></>} />,
 };
 
 function MiniSelect<T extends string>({ value, options, ariaLabel, disabled, formatOption, onChange }: {
@@ -451,33 +451,6 @@ function SelectionSection(props: GridControlProps & { onRun: (action: () => void
       <div className="ab-group">Selection</div>
       <div className="ab-row">
         <button
-          id="select-all"
-          className="ab-item"
-          type="button"
-          role="menuitem"
-          aria-description="Select all visible molecules"
-          onClick={() => props.onRun(props.onSelectAll)}
-        >
-          {ICONS.selectAll}
-          <span className="ab-item-title">Select all</span>
-        </button>
-      </div>
-      <div className="ab-row">
-        <button
-          id="clear-selection"
-          className="ab-item"
-          type="button"
-          role="menuitem"
-          disabled={noSelection}
-          aria-description="Clear selected molecules"
-          onClick={() => props.onRun(props.onClearSelection)}
-        >
-          {ICONS.clearSelection}
-          <span className="ab-item-title">Clear selection</span>
-        </button>
-      </div>
-      <div className="ab-row">
-        <button
           className="ab-item"
           type="button"
           role="menuitem"
@@ -659,9 +632,6 @@ function ActionsMenu(props: GridControlProps) {
         onClick={() => setOpen((value) => !value)}
       >
         Actions
-        {selectedCount > 0 ? (
-          <span className="ab-badge">{selectedCount.toLocaleString()}</span>
-        ) : null}
       </button>
       {open ? (
         <div className="ab-menu" role="menu" ref={menuRef} style={menuStyle}>
@@ -760,27 +730,44 @@ function GridActionToolbar(props: GridControlProps) {
       </button>
       <span className="ab-spacer" aria-hidden="true" />
       {props.selectionEnabled ? (
-        <div id="selected-open-actions" className="buret-selected-open-actions" hidden>
-          <button
-            id="open-selected-molstar"
-            className="ab-btn ab-btn-icon"
-            type="button"
-            aria-label="Open in Molstar"
-            onClick={() => props.onRendererSwitch("molstar")}
-          >
-            {ICONS.molstar}
-            <ControlTooltip label="Open selected molecules in Molstar" />
+        <div className="buret-selection-actions" role="group" aria-label="Selection">
+          <button id="select-all" className="ab-btn" type="button"
+            disabled={props.selectableCount === 0 || props.allVisibleSelected}
+            onClick={props.onSelectAll}>
+            Select all
+            <ControlTooltip label="Select all visible molecules" />
           </button>
-          <button
+          {props.selectedCount > 0 ? <>
+            <span className="buret-selection-count" role="status">{props.selectedCount.toLocaleString()} selected</span>
+            <button id="clear-selection" className="ab-btn" type="button"
+              aria-label="Clear selection" onClick={props.onClearSelection}>Clear</button>
+          </> : null}
+        </div>
+      ) : null}
+      {props.selectionEnabled && (props.ketcherOpen || props.molstarOpen) ? (
+        <div id="selected-open-actions" className="buret-selected-open-actions" role="group" aria-label="Open selection">
+          {props.ketcherOpen ? <button
             id="open-selected-ketcher"
-            className="ab-btn ab-btn-icon"
+            className="ab-btn"
             type="button"
             aria-label="Open in Ketcher"
+            disabled={props.selectedCount === 0 || props.ketcherPending}
             onClick={props.onOpenKetcher}
           >
-            {ICONS.ketcher}
-            <ControlTooltip label="Open selected molecule in Ketcher" />
-          </button>
+            Ketcher
+            <ControlTooltip label={props.selectedCount ? "Edit selected molecules in Ketcher" : "Select molecules to edit in Ketcher"} />
+          </button> : null}
+          {props.molstarOpen ? <button
+            id="open-selected-molstar"
+            className="ab-btn"
+            type="button"
+            aria-label="Open in Molstar"
+            disabled={props.selectedCount === 0}
+            onClick={() => props.onRendererSwitch("molstar")}
+          >
+            Mol*
+            <ControlTooltip label={props.selectedCount ? "View selected molecules in Molstar" : "Select molecules to view in Molstar"} />
+          </button> : null}
         </div>
       ) : null}
       <ActionsMenu {...props} />

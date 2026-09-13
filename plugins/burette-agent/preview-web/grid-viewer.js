@@ -1742,6 +1742,8 @@
       xyzrenderPreset: currentXyzrenderPreset(cfg),
       xyzrenderPresetOptions: xyzrenderPresetOptions(cfg),
       ketcherOpen: caps.ketcherOpen,
+      molstarOpen: caps.molstarOpen,
+      ...gridSelectionState(),
       rendererSwitch: caps.rendererSwitch,
       generating3d: state.generating3d,
       conformerVariant: state.conformerVariant,
@@ -1757,7 +1759,6 @@
       clusterRepresentativesAvailable: Boolean(latestRepresentativeAnalysisColumn()),
       similarityQuerySelected: state.selected.size === 1,
       clusterCutoff: state.clusterCutoff,
-      selectedCount: state.selected.size,
       selectedInput3d: selectedRowsHaveInput3dCoordinates(),
       ...gridEditState(),
       sortOptions: propertyOptionList(cfg),
@@ -1917,6 +1918,18 @@
     };
   }
 
+  // React owns selection controls together, so re-rendering the toolbar cannot
+  // restore a stale hidden/disabled attribute after the runtime updates it.
+  function gridSelectionState() {
+    const indexes = selectableRowIndexes();
+    return {
+      selectedCount: state.selected.size,
+      selectableCount: indexes.length,
+      allVisibleSelected: indexes.length > 0 && indexes.every(index => state.selected.has(index)),
+      ketcherPending: Date.now() < state.ketcherOpenPendingUntil
+    };
+  }
+
   function syncGridEditControls() {
     const edit = gridEditState();
     const apply = (id, enabled, title) => {
@@ -1929,9 +1942,9 @@
     apply('undo-grid-edit', edit.undoEnabled, edit.undoTitle);
     apply('save-grid-as', edit.saveAsEnabled, edit.saveAsTitle);
     // File actions live in the Actions menu, which is absent from the DOM until
-    // it opens. Re-render whenever edit state changes so the menu is built from
-    // fresh props rather than stale markup.
-    const signature = `${edit.saveEnabled}|${edit.saveAsEnabled}|${edit.undoEnabled}|${exportScopeLabel()}|${Boolean(state.searchTimer || state.remoteLoading)}`;
+    // it opens. Re-render when edit or selection state changes so both the menu
+    // and the persistent selection controls receive fresh props.
+    const signature = `${edit.saveEnabled}|${edit.saveAsEnabled}|${edit.undoEnabled}|${exportScopeLabel()}|${Boolean(state.searchTimer || state.remoteLoading)}|${JSON.stringify(gridSelectionState())}`;
     if (state.gridEditSignature !== signature) {
       state.gridEditSignature = signature;
       const cfg = safeConfig();
@@ -3976,24 +3989,6 @@
     if (clearSMARTS) clearSMARTS.hidden = !state.query.trim();
     const searchInput = document.getElementById('search');
     if (searchInput) searchInput.classList.toggle('invalid', !!state.smartsError);
-    const selectableIndexes = selectableRowIndexes();
-    const allCurrentSelected = selectableIndexes.length > 0 && selectableIndexes.every(index => state.selected.has(index));
-    const selectAllButton = document.getElementById('select-all');
-    if (selectAllButton) {
-      selectAllButton.hidden = selectableIndexes.length === 0;
-      selectAllButton.disabled = selectableIndexes.length === 0 || allCurrentSelected;
-    }
-    const clearSelectionButton = document.getElementById('clear-selection');
-    if (clearSelectionButton) {
-      clearSelectionButton.hidden = state.selected.size === 0;
-      clearSelectionButton.disabled = state.selected.size === 0;
-    }
-    const selectedOpenActions = document.getElementById('selected-open-actions');
-    if (selectedOpenActions) selectedOpenActions.hidden = state.selected.size === 0;
-    const openSelectedMolstar = document.getElementById('open-selected-molstar');
-    if (openSelectedMolstar) openSelectedMolstar.disabled = state.selected.size === 0;
-    const openSelectedKetcher = document.getElementById('open-selected-ketcher');
-    if (openSelectedKetcher) openSelectedKetcher.disabled = state.selected.size === 0 || Date.now() < state.ketcherOpenPendingUntil;
     syncGridClusterControls();
     syncRdkitCoordinatesControl();
     syncGridEditControls();
@@ -4675,7 +4670,7 @@
     const cover = state.gridViewportCover;
     host.dataset.viewportCover = String(cover);
     host.style.maxWidth = cover > 0
-      ? Math.max(0, document.documentElement.clientWidth - cover) + 'px'
+      ? Math.max(0, document.documentElement.clientWidth - cover - Math.max(0, host.getBoundingClientRect().left) - 8) + 'px'
       : '';
   }
 

@@ -4719,7 +4719,7 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v187"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v188"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v72"/);
 assert.match(
   browserDevDocuments,
@@ -7952,7 +7952,7 @@ assert.match(gridViewer, /saveAsTitle: !editing[\s\S]*?'Save this collection as 
 assert.match(gridUi, /ariaLabel="Grid view mode"/);
 assert.match(gridUi, /dataAttribute="buret-grid-view-mode"/);
 assert.match(gridUi, /id="table-columns"/);
-assert.match(gridUi, /<ControlTooltip label="Open selected molecules in Molstar" \/>/);
+assert.match(gridUi, /View selected molecules in Molstar/);
 assert.match(gridUi, /id="generate-3d-selected"/);
 assert.match(gridUi, /data-buret-grid-generate-3d-label/);
 assert.match(gridUi, /Generate 3D/);
@@ -8567,7 +8567,7 @@ assert.match(gridViewer, /function handleGridScroll\(cfg\) \{\s*updateGridToolba
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-grid-toolbar \{[^}]*padding: 8px;/s);
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-load-status \{[^}]*display: none;/s);
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-toolbar-row-main \{[^}]*display: none;/s);
-assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-grid-xyzrender-preset-control,[\s\S]*\.buret-selected-open-actions \{[^}]*display: none;/s);
+assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-grid-xyzrender-preset-control \{[^}]*display: none;/s);
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-renderer-control \{[^}]*width: 112px;/s);
 assert.match(gridCss, /#grid-controls \.ab-menu \{[^}]*min-width: 304px;[^}]*max-height: min\(52vh, 360px\);/s);
 assert.match(gridCss, /\.buret-grid-molecule-detail-overlay \{[\s\S]*display: grid;[\s\S]*place-items: center;/);
