@@ -140,6 +140,33 @@ The shell is a workspace, not a brand canvas.
 - Reports and agent-rendered panels should stay bounded, reviewable, and clear
   about source files or workflow artifacts.
 
+Desktop Sequence uses `apps/desktop/src/preview-sequence/adapter.js`
+(bundled into `PreviewExtension/Web/sequence-panel.js` with `vp run build:sequence-ui`) to present Mol*
+controls as compact named menus in a single header row. Selection actions remain
+in the shared viewport toolbar.
+The sequence is an opaque, flat, edge-to-edge dock with thin dividers, no outer card or
+shadow. Its menus and resize target use the shared `Select` and `ResizableHandle`
+components and the shared pixel-size guard; the preview stylesheet maps them
+onto its existing theme tokens. User resizing persists the height across reloads.
+Mol* still owns the hidden selects, residue nodes, numbering, and picking.
+Dragging within a chain previews its range and scrolls at the reading-area edges
+(vertically in wrapped mode, horizontally in compact mode). Releasing outside
+commits the last endpoint; blur or cancellation clears the drag preview.
+Blank reading-area clicks preserve the current selection.
+Dragging the shared separator to the top collapses the dock. The same separator
+remains at the viewport edge to reopen it by dragging down; Seq restores its last
+expanded size, capped at the intrinsic content height and 60% of the viewport.
+The cap is recalculated when the chain or available width changes. Below 112px,
+the dock becomes a horizontal sequence track; it can shrink to 88px before collapsing.
+The 3D viewport starts below the dock and resizes with it.
+Single-letter sequences up to 10,000 residues use responsive groups of ten;
+multi-letter residues and larger sequences retain the flexible Mol* layout.
+The mobile host keeps its existing controls. Selection in the sequence uses a
+high-contrast flat accent fill without per-letter outlines: dark text on a light
+fill in dark mode, white text on a dark fill in light mode. Hover has a lighter tint. All chains
+and All components use labeled, separated sections with sticky chain headings. The initial 3D selection
+colour matches the accent, while authored snapshot renderer settings take precedence.
+
 ### iPhone App
 
 - The iPhone app is source-built and phone-first. It should not inherit desktop

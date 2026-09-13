@@ -4707,72 +4707,89 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   }
 }
 
-/* Sequence strip.
-   Mol* renders it edge to edge across the top region with hard dividers; this
-   reshapes it into the same floating card as the scene tree. The region keeps its
-   layout height — that is what pushes the 3D view down — while the card floats
-   inside it. */
+/* Sequence is an edge-to-edge dock, sharing the shell's flat dividers. */
 body .msp-plugin .msp-layout-region.msp-layout-top {
   background: transparent !important;
   border: 0 !important;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-/* Mol* pins the region to a fixed 100px; the grip below drives this instead. */
+/* Leave room for the header and two numbered rows; the grip can expand it. */
 body:not(.burette-mobile-host) .msp-plugin .msp-layout-region.msp-layout-top {
-  height: var(--buret-sequence-height, 100px) !important;
+  height: clamp(64px, var(--buret-sequence-height, 196px), max(64px, 60vh)) !important;
 }
-.buret-sequence-resize {
+body.buret-sequence-open:not(.burette-mobile-host) .msp-plugin .msp-layout-region.msp-layout-main {
+  top: var(--buret-viewport-top-inset, 196px) !important;
+}
+/* Same ResizableHandle component as the shell docks, using preview tokens. */
+.buret-sequence-layout {
   position: absolute;
-  left: var(--buret-control-island-right);
-  right: var(--buret-control-island-right);
-  top: calc(var(--buret-viewport-top-inset, 0px) - 9px);
+  inset: 0;
   z-index: 37;
-  height: 12px;
-  display: none;
-  cursor: ns-resize;
+  pointer-events: none;
+}
+.buret-sequence-panels { height: 100%; pointer-events: none; overflow: clip !important; }
+.buret-sequence-layout .resizable-handle {
+  position: relative;
+  z-index: 3;
+  flex: 0 0 14px;
+  height: 14px;
+  margin: -7px 0;
+  cursor: row-resize;
   touch-action: none;
+  outline: none;
+  user-select: none;
+  pointer-events: auto;
 }
-body.buret-sequence-open .buret-sequence-resize {
-  display: block;
-}
-.buret-sequence-resize::after {
+.buret-sequence-layout .resizable-handle::after {
   content: "";
   position: absolute;
-  left: 12px;
-  right: 12px;
-  top: 5px;
-  height: 2px;
-  border-radius: 1px;
-  background: transparent;
-  transition: background 130ms ease;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--buret-molstar-border);
+  pointer-events: none;
 }
-.buret-sequence-resize:hover::after,
-.buret-sequence-resize.buret-sequence-resizing::after {
-  background: var(--buret-molstar-accent);
+.buret-sequence-layout .resizable-handle-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--buret-molstar-muted-text);
+  opacity: 0;
+  pointer-events: none;
 }
+.buret-sequence-layout .resizable-handle:hover .resizable-handle-grip,
+.buret-sequence-layout .resizable-handle:focus-visible .resizable-handle-grip,
+.buret-sequence-layout .resizable-handle:active .resizable-handle-grip { opacity: 1; }
 body .msp-plugin .msp-sequence {
   position: absolute;
-  inset: 6px var(--buret-control-island-right) 6px var(--buret-control-island-right);
+  inset: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   max-height: none !important;
-  border: 1px solid var(--buret-molstar-border) !important;
-  border-radius: var(--buret-molstar-panel-radius);
-  background: var(--buret-molstar-panel-background) !important;
-  box-shadow: 0 18px 44px var(--buret-molstar-shadow) !important;
+  border: 0 !important;
+  border-radius: 0;
+  background: var(--buret-dock-background, var(--buret-menu-background)) !important;
+  box-shadow: none !important;
 }
 body .msp-plugin .msp-sequence .msp-sequence-select {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex: 0 0 auto;
-  height: 30px;
-  padding: 0 7px;
+  height: 38px;
+  margin-bottom: 0;
+  padding: 0 40px 0 10px;
   border-bottom: 1px solid var(--buret-molstar-border) !important;
   background: var(--buret-molstar-row-background) !important;
-  font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   white-space: nowrap;
 }
 /* The leading material icon carries no meaning next to the label. */
@@ -4781,27 +4798,29 @@ body .msp-plugin .msp-sequence .msp-sequence-select > .msp-icon {
 }
 body .msp-plugin .msp-sequence .msp-sequence-select > span {
   flex: 0 0 auto;
-  padding: 0 3px 0 3px;
+  padding: 0 6px 0 2px;
   border: 0 !important;
   background: transparent !important;
   color: var(--buret-molstar-muted-text) !important;
-  font-size: 10px;
-  font-weight: 590;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: normal;
+  letter-spacing: normal;
+  text-transform: none;
 }
 body .msp-plugin .msp-sequence .msp-sequence-select > select.msp-form-control {
   flex: 0 1 auto;
   min-width: 0;
-  height: 20px;
+  max-width: min(280px, 35%);
+  height: 26px;
   border: 0 !important;
-  border-radius: 5px;
-  padding: 0 18px 0 7px;
+  border-radius: 6px;
+  padding: 0 22px 0 8px;
   color: var(--buret-molstar-text) !important;
   background-color: var(--buret-molstar-field-background) !important;
   background-image: var(--buret-select-chevron);
   background-repeat: no-repeat;
-  background-position: right 5px center;
+  background-position: right 8px center;
   font: inherit;
   -webkit-appearance: none;
   appearance: none;
@@ -4810,25 +4829,38 @@ body .msp-plugin .msp-sequence .msp-sequence-select > select.msp-form-control:ho
   background-color: var(--buret-molstar-hover-background) !important;
   outline: none !important;
 }
+body .msp-plugin .msp-sequence .msp-sequence-select > select.msp-form-control:last-of-type {
+  min-width: 44px;
+}
+body .msp-plugin .msp-sequence .msp-sequence-select > select.msp-form-control:focus-visible {
+  outline: 2px solid var(--buret-molstar-accent) !important;
+  outline-offset: 1px;
+}
 body .msp-plugin .msp-sequence .msp-sequence-wrapper-non-empty {
+  /* Reset Mol*'s absolute 25px inset so header and reading area cannot overlap. */
+  position: relative;
+  inset: auto;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 8px 10px 10px;
+  padding: 0;
+  scrollbar-gutter: stable;
   border-top: 0 !important;
   background: transparent !important;
   box-shadow: none;
 }
 body .msp-plugin .msp-sequence .msp-sequence-wrapper {
   background: transparent !important;
-  font: 400 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace !important;
-  letter-spacing: 0.04em;
+  padding: 12px 14px 8px;
+  font: 400 12px/30px ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  letter-spacing: 0.02em;
   word-break: break-all;
 }
 body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-number {
   color: var(--buret-molstar-muted-text) !important;
   font-size: 10px;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-present {
@@ -4837,29 +4869,10 @@ body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-present {
 body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-missing {
   opacity: 0.5;
 }
-/* Dark gets its header strip for free — panel and row fills differ there. Light
-   maps both onto the same tint, so the controls melt into the sequence and the
-   whole card reads as one flat slab. Put the reading surface on the brighter
-   fill and leave the strip on the panel tint, which restores the same split. */
-body.buret-theme-light .msp-plugin .msp-sequence .msp-sequence-wrapper-non-empty {
-  background: var(--buret-molstar-field-background) !important;
-}
-body.buret-theme-light .msp-plugin .msp-sequence .msp-sequence-select {
-  background: var(--buret-control-fill) !important;
-}
-/* ...and the card itself takes the reading surface, otherwise its own fill shows
-   as a grey ring around the white sequence. */
-body.buret-theme-light .msp-plugin .msp-sequence {
-  background: var(--buret-molstar-field-background) !important;
-}
 /* Mol* offers no way to dismiss the strip from the strip; the toolbar toggle is a
    long way off once you are reading sequence. Pinned rather than laid out in the
    row: Mol* re-renders the header on every chain change and would shuffle a flex
    child back among its own selects. */
-body .msp-plugin .msp-sequence .msp-sequence-select {
-  position: relative;
-  padding-right: 30px;
-}
 .buret-sequence-close {
   position: absolute;
   right: 6px;
@@ -4867,8 +4880,8 @@ body .msp-plugin .msp-sequence .msp-sequence-select {
   transform: translateY(-50%);
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   border: 0;
   border-radius: 5px;
   padding: 0;
@@ -4887,6 +4900,197 @@ body .msp-plugin .msp-sequence .msp-sequence-select {
 .buret-sequence-close:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
+}
+@media (max-width: 560px) {
+  body .msp-plugin .msp-sequence .msp-sequence-select {
+    gap: 4px;
+    padding-left: 6px;
+  }
+  body .msp-plugin .msp-sequence .msp-sequence-select > span {
+    display: none;
+  }
+  body .msp-plugin .msp-sequence .msp-sequence-select > select.msp-form-control {
+    max-width: 40%;
+  }
+}
+
+/* Sequence adapter: native Mol* nodes stay in place for selection and updates. */
+body .msp-plugin .buret-seq-enhanced > .msp-sequence-select { display: none; }
+.buret-seq-header {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+  padding: 0 14px;
+  color: var(--buret-molstar-text);
+  font: 400 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
+}
+.buret-seq-header {
+  order: -1;
+  min-height: 40px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--buret-molstar-border);
+}
+.buret-seq-title { font-size: 13px; font-weight: 600; order: -5; }
+.buret-seq-context { color: var(--buret-molstar-muted-text); white-space: nowrap; }
+.buret-seq-header [data-role="Structure"] { order: -4; }
+.buret-seq-header [data-role="Chain"] {
+  order: -3;
+  padding: 4px 8px;
+  color: var(--buret-molstar-text);
+  font-weight: 500;
+}
+.buret-seq-header [data-role="Molecule"] {
+  order: -2;
+  flex: 1;
+  min-width: 40px;
+  text-align: left;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.buret-seq-header [data-role="View"] { margin-left: auto; flex-shrink: 0; }
+.buret-seq-button {
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.buret-seq-control { display: inline-flex; min-width: 0; }
+.buret-seq-control > .buret-seq-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.buret-seq-control > .buret-seq-button > span { overflow: hidden; text-overflow: ellipsis; }
+.buret-seq-control svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--buret-molstar-muted-text); }
+.buret-seq-button:hover, .buret-seq-button[aria-expanded="true"] {
+  background-color: var(--buret-molstar-hover-background);
+}
+.buret-seq-button:focus-visible {
+  outline: 1px solid var(--buret-molstar-muted-text);
+  outline-offset: -1px;
+  box-shadow: none;
+}
+.buret-seq-button:disabled { opacity: .45; cursor: default; }
+body .msp-plugin .buret-seq-enhanced .msp-sequence-chain-label {
+  margin: 0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 7px 16px;
+  border-block: 1px solid var(--buret-molstar-border);
+  background: var(--buret-dock-background, var(--buret-menu-background));
+  color: var(--buret-molstar-text) !important;
+  font: 500 11px/18px -apple-system, BlinkMacSystemFont, sans-serif;
+}
+body .msp-plugin .msp-sequence .buret-seq-grid {
+  display: grid;
+  padding: 10px 16px 12px;
+  font: 400 12px/22px SFMono-Regular, ui-monospace, Menlo, monospace !important;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0;
+  align-content: start;
+}
+body .msp-plugin .msp-sequence .buret-seq-grid > [data-seqid] {
+  text-align: center;
+  font-weight: 400 !important;
+  min-width: 0;
+  margin: 0;
+  border-radius: 0;
+}
+body .msp-plugin .msp-sequence .buret-seq-grid > .msp-sequence-number {
+  position: static;
+  margin: 0;
+  padding: 0;
+  width: max-content;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 14px;
+  letter-spacing: 0;
+}
+body .msp-plugin .msp-sequence .msp-sequence-wrapper [data-buret-drag-selected],
+body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-residue-selected {
+  background: color-mix(in srgb, var(--buret-molstar-accent) 72%, #000) !important;
+  color: #fff !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+body.buret-theme-dark .msp-plugin .msp-sequence .msp-sequence-wrapper [data-buret-drag-selected],
+body.buret-theme-dark .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-residue-selected {
+  background: color-mix(in srgb, var(--buret-molstar-accent) 65%, #fff) !important;
+  color: #17101c !important;
+}
+body .msp-plugin .msp-sequence .msp-sequence-residue-highlighted:not(.msp-sequence-residue-selected):not([data-buret-drag-selected]) {
+  background: color-mix(in srgb, var(--buret-molstar-accent) 18%, var(--buret-dock-background, var(--buret-menu-background))) !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+/* A shallow dock becomes a single horizontal sequence track. */
+.buret-seq-compact .buret-seq-header { min-height: 32px; }
+.buret-seq-compact .buret-seq-button { height: 24px; padding: 3px 6px; line-height: 18px; }
+body .msp-plugin .buret-seq-compact .buret-seq-grid {
+  width: max-content;
+  padding-block: 3px 5px;
+}
+body .msp-plugin .buret-seq-compact .msp-sequence-chain-label {
+  position: relative;
+  padding-block: 0;
+  font-size: 10px;
+  line-height: 12px;
+}
+body .msp-plugin .buret-seq-compact .msp-sequence-wrapper-non-empty {
+  overflow-x: auto;
+}
+.buret-seq-menu {
+  z-index: 2147483647;
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  max-height: min(320px, var(--radix-select-content-available-height));
+  padding: 4px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 8px;
+  background: var(--buret-menu-background);
+  color: var(--buret-molstar-text);
+  box-shadow: 0 4px 16px var(--buret-molstar-shadow);
+  overflow: auto;
+  font: 400 12px/1.5 -apple-system, BlinkMacSystemFont, sans-serif;
+}
+.buret-seq-menu [data-radix-select-viewport] { min-width: 0 !important; }
+.buret-seq-menu [data-slot="select-item"] {
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 28px 5px 8px;
+  border-radius: 4px;
+  cursor: default;
+  outline: none;
+  overflow-wrap: anywhere;
+}
+.buret-seq-menu [data-slot="select-item"] > span:first-child {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+}
+.buret-seq-menu [data-highlighted] { background: var(--buret-molstar-hover-background); }
+.buret-seq-menu [data-disabled] { opacity: .45; }
+.buret-seq-menu svg { width: 14px; height: 14px; }
+.buret-seq-menu [data-slot^="select-scroll-"] { display: flex; justify-content: center; }
+@media (max-width: 700px) {
+  .buret-seq-header { gap: 4px; padding: 0 10px; }
+  .buret-seq-header [data-role="Chain"] { padding: 4px; }
 }
 
 /* Molecule context menu.

@@ -89,6 +89,7 @@
       "superposition-panel.js",
       "molecule-preview-interactions.js",
       "color-picker.js",
+      "sequence-panel.js",
       "scene-file-actions.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
@@ -120,6 +121,7 @@
       "superposition-panel.js",
       "molecule-preview-interactions.js",
       "color-picker.js",
+      "sequence-panel.js",
       "scene-file-actions.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
@@ -145,6 +147,7 @@
       "superposition-panel.js",
       "molecule-preview-interactions.js",
       "color-picker.js",
+      "sequence-panel.js",
       "viewer.js"
     ]
   },

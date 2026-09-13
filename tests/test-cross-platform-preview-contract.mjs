@@ -38,6 +38,16 @@ const [
   source("PreviewExtension/Info.plist"),
 ]);
 
+// Quick Look constructs its own document and copies an explicit runtime subset.
+// A helper in the shared index alone is not available in Finder's temporary runtime.
+const quickLookRuntime = await source("PreviewExtension/Platform/PreviewViewController.swift");
+const runtimeAssets = quickLookRuntime.slice(quickLookRuntime.indexOf("    private static func runtimeAssets("), quickLookRuntime.indexOf("    private static func copyAssetIfNeeded("));
+for (const list of runtimeAssets.matchAll(/return \[([^\]]+)\]/g)) {
+  if (!list[1].includes('"viewer.js"')) continue;
+  assert.ok(list[1].includes('"sequence-panel.js"'), "Every Quick Look viewer runtime must copy the sequence helper");
+}
+assert.match(quickLookRuntime, /<script src="\.\.\/assets\/sequence-panel\.js"><\/script>\s*<script src="\.\.\/assets\/viewer\.js"><\/script>/);
+
 const matrix = JSON.parse(matrixSource);
 const surfaceDocs = `${testingSurfaces}\n${scriptsReadme}\n${mobileReadme}`;
 const documentedSurfacePatterns = {

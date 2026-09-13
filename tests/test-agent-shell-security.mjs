@@ -51,6 +51,12 @@ try {
   assert.equal(bootstrap.status, 200);
   const cookie = bootstrap.headers.get('set-cookie')?.split(';')[0];
   const headers = { Authorization: 'Bearer fixture-secret-token' };
+  // Packaged shells may request only bundled, explicitly allowed runtime assets.
+  const sequence = await fetch(`${base}/__burette/runtime/sequence-panel.js`, { headers });
+  assert.equal(sequence.status, 200);
+  assert.match(sequence.headers.get('content-type'), /^text\/javascript/);
+  assert.match(await sequence.text(), /BuretteSequencePanel/);
+  assert.equal((await fetch(`${base}/__burette/runtime/not-a-runtime-asset.js`, { headers })).status, 404);
   for (const [path, method] of [['observe.json', 'GET'], ['actions.json', 'PUT']]) {
     const url = `${base}/__burette/agent-session/${path}`;
     const options = { method, ...(method === 'PUT' ? { body: '{"actions":[]}' } : {}) };

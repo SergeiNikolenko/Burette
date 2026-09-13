@@ -850,6 +850,7 @@ mod tests {
             "molecule-preview-interactions.js",
             "color-picker.js",
             "scene-file-actions.js",
+            "sequence-panel.js",
         ] {
             assert!(AssetProfile::Molstar.files().contains(&helper));
             assert!(AssetProfile::ExternalXyzrender.files().contains(&helper));
@@ -873,6 +874,7 @@ mod tests {
         assert!(assets.join("molstar.js").is_file());
         assert!(assets.join("molstar.css").is_file());
         assert!(assets.join("viewer.js").is_file());
+        assert!(assets.join("sequence-panel.js").is_file());
         assert!(!assets.join("grid-viewer.js").exists());
         assert!(!assets.join("grid.css").exists());
         assert!(assets.join("rdkit").join("RDKit_minimal.js").is_file());
@@ -975,6 +977,7 @@ mod tests {
             "superposition-panel.js",
             "color-picker.js",
             "molecule-preview-interactions.js",
+            "sequence-panel.js",
         ] {
             let helper_index = scripts
                 .iter()
@@ -1101,6 +1104,7 @@ impl AssetProfile {
                 "molecule-preview-interactions.js",
                 "color-picker.js",
                 "scene-file-actions.js",
+                "sequence-panel.js",
                 "viewer.js",
             ],
             Self::Mesoscale => &["mesoscale.js", "mesoscale.css"],
@@ -1116,6 +1120,7 @@ impl AssetProfile {
                 "molecule-preview-interactions.js",
                 "color-picker.js",
                 "scene-file-actions.js",
+                "sequence-panel.js",
                 "viewer.js",
             ],
         }
@@ -1293,6 +1298,7 @@ fn viewer_html(
     let scene_files_js = asset_url(&assets.join("scene-file-actions.js"));
     let superposition_panel_js = asset_url(&assets.join("superposition-panel.js"));
     let color_picker_js = asset_url(&assets.join("color-picker.js"));
+    let sequence_panel_js = asset_url(&assets.join("sequence-panel.js"));
     let molecule_preview_interactions_js =
         asset_url(&assets.join("molecule-preview-interactions.js"));
     let viewer_js = asset_url(&assets.join("viewer.js"));
@@ -1345,6 +1351,7 @@ fn viewer_html(
   <script src="{preset_preview_controller_js}"></script>
   <script src="{superposition_panel_js}"></script>
   <script src="{color_picker_js}"></script>
+  <script src="{sequence_panel_js}"></script>
   <script src="{molecule_preview_interactions_js}"></script>
   <script src="{viewer_js}"></script>
 </body>
