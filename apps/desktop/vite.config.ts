@@ -13,6 +13,7 @@ import tailwindcss from "@tailwindcss/vite";
 import {
   deferKetcherCssPlugin,
   desktopManualChunks,
+  ketcherDisabledMacromoleculesPlugin,
   ketcherRaphaelImportShimPlugin,
   resolveModulePreloadDependencies,
 } from "./vite/build-plugins";
@@ -4036,12 +4037,23 @@ function normalizeOrientationRef(value: string | null) {
 export default defineConfig({
   root: desktopRoot,
   base: "./",
-  plugins: [tailwindcss(), react(), ketcherUiPlugin(), ketcherRaphaelImportShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin()],
+  plugins: [
+    tailwindcss(),
+    react(),
+    ketcherUiPlugin(),
+    ketcherRaphaelImportShimPlugin(),
+    ketcherDisabledMacromoleculesPlugin(),
+    deferKetcherCssPlugin(),
+    browserDevXyzrenderPlugin(),
+  ],
   resolve: {
     alias: {
       "@": resolve(desktopRoot, "src"),
       ...(hostedMcpBuild
         ? {
+            // Ketcher uses Paper graphics, not the PaperScript interpreter.
+            // The full distribution initializes Acorn with dynamic Function.
+            paper: "paper/dist/paper-core.js",
             "./lib/ketcher-browser-require": resolve(
               desktopRoot,
               "src/lib/hosted-browser-require.ts",

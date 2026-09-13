@@ -11,17 +11,11 @@
 - **Terms:** https://burette-landing.vercel.app/terms
 - **Logo:** `plugins/burette-agent/assets/app-icon.png` in the main Burette
   repository (512 × 512 PNG)
-- **ChatGPT web screenshot:** capture a new screenshot from the production v21
-  widget in a fresh ChatGPT conversation after deploying this resubmission and
-  rescanning the MCP endpoint.
-- **Live ChatGPT proof:** replace this field with a fresh reviewer-accessible
-  conversation URL created from the rescanned production plugin.
-- **Desktop demo video:** https://burette-landing.vercel.app/assets/burette-chatgpt-plugin-demo.mp4
-- **Physical iPhone demo video:** record and upload a fresh run after the
-  production resubmission build is deployed.
-- **Mobile verification:** verify the rescanned production version on a
-  physical iPhone before resubmitting; do not reuse the July 15 evidence as
-  proof of the new version.
+
+Screenshots, videos, and conversation links are submission-run evidence rather
+than reusable listing copy. Capture them from the exact rescanned production
+connector on ChatGPT web and a physical iPhone; this repository does not claim
+that an older artifact proves the current build.
 
 ### Long description
 
@@ -30,8 +24,10 @@ structure files as interactive 3D molecular scenes in ChatGPT and Codex. It can
 also retrieve an explicitly requested public Protein Data Bank entry by PDB ID.
 Each result includes bounded composition counts and opens directly as a focused
 Burette molecular preview without desktop document tabs, sidebars, or docks.
-The preview preserves viewer controls, sequence, selection, measurements, and
-representations.
+The preview supports interactive molecular inspection. Available controls vary
+by host and screen size; the compact mobile view does not expose all desktop
+panels. Do not assume desktop sequence or measurement panels are available on
+the phone.
 The hosted viewer starts with its floating control toolbar collapsed to keep the
 molecule unobstructed; the visible grip button expands the complete toolbar.
 The hosted Ketcher editor can also open an ephemeral chemical sketch surface,
@@ -52,8 +48,9 @@ account, and do not control local files or desktop sessions.
 
 Resubmission after review-case corrections. Burette now reports verified chain,
 residue, atom, bond, and element counts for the submitted PDB, mmCIF, and SDF
-fixtures; every structured tool result declares an output schema; and the five
-positive review cases are independent. The no-auth MCP server still provides
+fixtures pinned to an immutable source revision; every structured tool result
+declares an output schema; and the five positive review cases are independent.
+The no-auth MCP server still provides
 supported molecular attachments, explicit RCSB PDB lookups, an isolated
 revisioned Ketcher editor, and interactive CSP-compatible previews. No reviewer
 account or credentials are required.
@@ -72,9 +69,25 @@ supported.
 - **Reviewer credentials:** Not required.
 - **CSP connect domains:** The stable production app origin only, for self-hosted runtime assets such as RDKit WASM.
 - **CSP resource domains:** The stable production app origin only.
-- **CSP frame domains:** The stable production app origin only.
+- **CSP frame domains:** None; the widgets do not embed a nested application frame.
 
 ## Portal prerequisites
+
+- The live privacy policy must first be updated to cover hosted Ketcher and
+  widget analytics. The following is proposed technical disclosure for owner
+  review, not a published policy or a legal-compliance attestation:
+
+  "Hosted Ketcher uses an authenticated, encrypted continuation token carrying
+  up to 64 KiB of sketch content. It expires after 15 minutes of inactivity.
+  A successful action issues a new token and renews that period. Our shared
+  Redis service processes the consumed token's digest, mutation claim and
+  encrypted successor token until the consumed token expires, to prevent
+  conflicting updates across server instances. This is temporary editor state,
+  not a durable saved workspace. OpenAI may retain tool results and associated
+  metadata under your account and workspace settings. The hosted widget sends
+  a Vercel Analytics pageview for the fixed path /mcp/widget, without molecular
+  content, filenames, PDB IDs, selections or chat/session identifiers. Do not
+  submit protected health information or credentials through this plugin."
 
 - Open the rejected submission ID from the review email and confirm that it is
   the same app as the personal ChatGPT card before changing or resubmitting it.

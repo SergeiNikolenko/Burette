@@ -693,6 +693,7 @@ assert.doesNotMatch(viteConfig, /onlyExplicitManualChunks/);
 assert.doesNotMatch(viteConfig, /require: "globalThis\.__buretteRequire"/);
 assert.match(viteConfig, /desktopManualChunks/);
 assert.match(viteConfig, /manualChunks: hostedMcpBuild \? undefined : desktopManualChunks/);
+assert.match(viteConfig, /hostedMcpBuild[\s\S]*?paper: "paper\/dist\/paper-core\.js"/);
 assert.match(viteConfig, /"\.\/lib\/ketcher-browser-require": resolve\(\s*desktopRoot,\s*"src\/lib\/hosted-browser-require\.ts"/s);
 assert.match(viteBuildPlugins, /function desktopManualChunks\(id: string\)/);
 assert.match(viteBuildPlugins, /const packagePath = normalized\.split\("\/node_modules\/"\)\.at\(-1\) \?\? "";/);
@@ -791,7 +792,10 @@ assert.match(desmondPreviewExtract, /backbone_quota = max\(128, atom_limit \/\/ 
 assert.match(desmondPreviewExtract, /0 means all atoms unless --target-mb is set/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--target-mb"/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
-assert.match(viteConfig, /plugins: \[tailwindcss\(\), react\(\), ketcherUiPlugin\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
+assert.match(
+  viteConfig,
+  /plugins: \[\s*tailwindcss\(\),\s*react\(\),\s*ketcherUiPlugin\(\),\s*ketcherRaphaelImportShimPlugin\(\),\s*ketcherDisabledMacromoleculesPlugin\(\),\s*deferKetcherCssPlugin\(\),\s*browserDevXyzrenderPlugin\(\),\s*\]/u,
+);
 assert.doesNotMatch(viteConfig, /join\(homedir\(\), "Desktop"\),/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
@@ -2150,6 +2154,22 @@ assert.doesNotMatch(styles, /\.ketcher-editor-shell\s*\{[^}]*contain: layout pai
 // that style the primitives.
 assert.match(ketcherPage, /<ButtonGroup className="ketcher-scale-control" aria-label="Ketcher scale">/);
 assert.match(ketcherPage, /<ButtonGroupText className="[^"]*tabular-nums[^"]*">\{ketcherZoomPercent\}%<\/ButtonGroupText>/);
+// The compact hosted ChatGPT surface must not claim readiness from the server
+// snapshot alone. It waits for Indigo, applies the seed, and verifies the
+// actual Ketcher canvas before exposing the ready state.
+assert.match(ketcherPage, /withKetcherTimeout\(waitForKetcherStructServiceReady\(\), "Ketcher structure service"\);[\s\S]*?await instance\.setMolecule\(seed\.content, \{ needZoom: true \}\);[\s\S]*?await waitForKetcherCanvasUpdate\(\);[\s\S]*?instance\.getKet\(\)/);
+assert.match(ketcherPage, /if \(!hasHostedKetcherCanvasContent\(seededKet\)\)[\s\S]*?Ketcher returned an empty structure after applying the hosted seed\./);
+assert.match(ketcherPage, /seed\.format === "rxn" && !instance\.containsReaction\(\)/);
+assert.match(ketcherPage, /!IS_KETCHER_WEB_DEMO && !IS_HOSTED_KETCHER_BUILD/);
+// Hosted Ketcher keeps shared scale controls and one SDF download action; the full
+// workspace header/actions and the import/export dock remain desktop-only.
+assert.match(ketcherPage, /const hostedKetcherWidget = isHostedKetcherWidget\(\);/);
+assert.match(ketcherPage, /hostedKetcherWidget \? \(\s*<>\s*<TooltipProvider>\{ketcherScaleControl\}<\/TooltipProvider>/);
+assert.match(ketcherPage, /aria-label="Download current structure as SDF"[\s\S]*?>\s*SDF\s*<\/Button>/);
+assert.match(ketcherPage, /ketcher\.containsReaction\(\)[\s\S]*?BuretteHostedAppBridge\?\.downloadTextFile\([\s\S]*?"chemical\/x-mdl-sdfile"/);
+assert.match(ketcherPage, /hostedKetcherError && \([\s\S]*?<Alert[^>]*role="alert"[\s\S]*?Ketcher action failed/);
+assert.match(ketcherPage, /if \(!isActive \|\| hostedKetcherWidget\) \{\s*setDockPortalElement\(null\);/);
+assert.match(ketcherPage, /isActive && panelMode && dockPortalElement \? createPortal\(\(\s*<KetcherTextPanel/);
 assert.doesNotMatch(styles, /\.ketcher-page-actions button/);
 assert.doesNotMatch(styles, /\.ketcher-scale-control button/);
 assert.doesNotMatch(styles, /\.ketcher-scale-control\s*\{/);
@@ -3490,7 +3510,7 @@ assert.match(ketcherEditor, /subscribeChange: \(handler: \(\) => void\) => \{/);
 assert.match(ketcherEditor, /editorInstance\.changeEvent\?\.add\(handler\)/);
 assert.match(ketcherEditor, /subscribeOnZoomEvent\?\.bind|subscribeOnZoomEvent\?\.\(zoomHandler\)/);
 assert.doesNotMatch(ketcherPage, /editor\.event\.zoomChanged\.dispatch/);
-assert.doesNotMatch(ketcherEditor, /disableMacromoleculesEditor/);
+assert.match(ketcherEditor, /disableMacromoleculesEditor/);
 assert.match(ketcherEditor, /new MolSerializer\(\)\.serialize\(struct\)/);
 assert.match(ketcherEditor, /addMolfileFragment: async \(molfile: string\) => \{/);
 assert.match(ketcherEditor, /setMolfile: async \(molfile: string\) => \{/);
@@ -3755,7 +3775,7 @@ assert.match(ketcherPage, /await withKetcherTimeout\(loadInteractiveKetcherImpor
 assert.match(ketcherPage, /const handleDrop = useCallback[\s\S]*?const payload = readStructureDragPayload\(event\.dataTransfer\);\s*const choices = shellDropActionChoices[\s\S]*?if \(choices\.length === 0\) return;\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);/);
 assert.match(ketcherPage, /ketcherImportUsesStructService\(format\)\s*\?\s*instance\.setMolecule\(text, \{ needZoom: true \}\)\s*:\s*instance\.setMolfile\(firstMolBlock\(text\)\)/);
 assert.match(ketcherPage, /if \(ketcherStructServiceReady\) return Promise\.resolve\(\)/);
-assert.match(ketcherPage, /if \(!IS_KETCHER_WEB_DEMO\) fallbackId = window\.setTimeout\(finish, 750\)/);
+assert.match(ketcherPage, /if \(!IS_KETCHER_WEB_DEMO && !IS_HOSTED_KETCHER_BUILD\) fallbackId = window\.setTimeout\(finish, 750\)/);
 assert.match(ketcherPage, /locallySavedDraftRef\.current = molfile\.trimEnd\(\)/);
 assert.match(ketcherPage, /actions\.saveKetcherDraft\(molfile\)/);
 assert.doesNotMatch(ketcherPage, /<select[\s\S]*value=\{panelMode\.format\}/);

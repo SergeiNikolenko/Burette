@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   HOSTED_MCP_WIDGET_MESSAGE_SOURCE,
+  hasHostedKetcherCanvasContent,
+  isHostedMolecularViewerWidget,
   isHostedMcpWidgetLocation,
   isHostedMcpToolResultMessage,
   parseHostedMcpStructureMessage,
@@ -19,6 +21,23 @@ import { defaultPreferences } from "../apps/desktop/src/stores/settings-store.ts
 
 assert.equal(isHostedMcpWidgetLocation({ search: "?mcpWidget=1" }), true);
 assert.equal(isHostedMcpWidgetLocation({ search: "?mcpWidget=0" }), false);
+assert.equal(hasHostedKetcherCanvasContent('{"ket_version":1,"root":{"nodes":[]}}'), false);
+assert.equal(hasHostedKetcherCanvasContent('{"root":{"nodes":[{"$ref":"mol0"}]}}'), false);
+assert.equal(hasHostedKetcherCanvasContent('{"root":{"nodes":[{"$ref":"mol0"}]},"mol0":{"type":"molecule","atoms":[{"label":"C"}],"bonds":[]}}'), true);
+assert.equal(hasHostedKetcherCanvasContent('{"root":{"nodes":[{"type":"arrow"}]}}'), true);
+assert.equal(hasHostedKetcherCanvasContent("not-json"), false);
+
+const originalWindow = globalThis.window;
+globalThis.window = {
+  __BURETTE_HOSTED_MCP_WIDGET__: true,
+  __BURETTE_HOSTED_KETCHER_WIDGET__: true,
+  location: { search: "" },
+};
+assert.equal(isHostedMolecularViewerWidget(), false);
+globalThis.window.__BURETTE_HOSTED_KETCHER_WIDGET__ = false;
+assert.equal(isHostedMolecularViewerWidget(), true);
+if (originalWindow === undefined) delete globalThis.window;
+else globalThis.window = originalWindow;
 
 const structure = parseHostedMcpStructureMessage({
   source: HOSTED_MCP_WIDGET_MESSAGE_SOURCE,
@@ -185,4 +204,5 @@ assert.deepEqual(selectionContext?.structuredContent.burette.activeSelection.ato
 ]);
 assert.equal(createSelectionContext(null, "document-1").structuredContent.burette.activeSelection, null);
 
+await import("./test-hosted-mcp-widget-globals.mjs");
 console.log("Hosted MCP widget contract tests passed");

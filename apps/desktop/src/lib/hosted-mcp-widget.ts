@@ -73,17 +73,29 @@ export function isHostedKetcherWidget() {
   return typeof window !== "undefined" && window.__BURETTE_HOSTED_KETCHER_WIDGET__ === true;
 }
 
-export function hostedKetcherSeedFromWindow(): HostedKetcherSeed | null {
-  if (!isHostedKetcherWidget()) return null;
-  const seed = window.__BURETTE_HOSTED_KETCHER_SEED__;
-  if (!seed || typeof seed.content !== "string" || !HOSTED_KETCHER_FORMATS.has(seed.format)) return null;
-  let content = seed.content.slice(0, 65536);
-  while (new TextEncoder().encode(content).byteLength > 65536) content = content.slice(0, -1);
-  return {
-    ...(typeof seed.surfaceId === "string" ? { surfaceId: seed.surfaceId.slice(0, 160) } : {}),
-    format: seed.format as HostedKetcherSeed["format"],
-    content,
-  };
+export function hasHostedKetcherCanvasContent(ket: string) {
+  try {
+    const document = record(JSON.parse(ket));
+    const root = record(document?.root);
+    if (!document || !root || !Array.isArray(root.nodes) || root.nodes.length === 0) return false;
+    return root.nodes.some((node) => {
+      const candidate = record(node);
+      if (!candidate) return false;
+      if (typeof candidate.$ref !== "string") return true;
+      return Object.hasOwn(document, candidate.$ref) && record(document[candidate.$ref]) !== null;
+    });
+  } catch {
+    return false;
+  }
+}
+
+export function isHostedMolecularViewerWidget() {
+  return isHostedMcpWidget() && !isHostedKetcherWidget();
+}
+
+export function takeHostedKetcherResultsFromWindow(): unknown[] {
+  if (!isHostedKetcherWidget() || !Array.isArray(window.__BURETTE_HOSTED_KETCHER_RESULTS__)) return [];
+  return window.__BURETTE_HOSTED_KETCHER_RESULTS__.splice(0);
 }
 
 export function parseHostedMcpStructureResult(value: unknown): HostedMcpStructure | null {

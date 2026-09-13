@@ -32,6 +32,36 @@ For a PDB lookup, Burette receives the requested four-character PDB ID and sends
 that ID to the RCSB Protein Data Bank. RCSB does not receive a user's attachment
 through this tool.
 
+The hosted Ketcher editor carries bounded continuation state between stateless
+tool requests in an authenticated, AES-256-GCM-encrypted token. The token may
+contain up to 64 KiB of inline molecular structure content together with editor
+revisions, atom selections, highlights, and last-action metadata. It expires 15
+minutes after issuance, and Burette rejects expired or modified tokens. To
+serialize this ephemeral token chain across serverless instances, Burette stores
+the consumed token digest, mutation claim, and encrypted successor token in
+Redis only until the consumed token's TTL expires. The continuation token also
+passes through the OpenAI tool result and may therefore be retained by the
+OpenAI host under the account, workspace, data-control, and retention settings
+described above. This short-lived Redis record is not a saved chemical file or
+a durable shared molecular workspace. Routine `open_ketcher`, `set_structure`,
+and `highlight_atoms` seed content is delivered to the sandboxed editor through
+tool-result metadata rather than model-visible output. When a user or tool
+explicitly requests `get_structure`, the bounded requested export formats
+remain model-visible in that tool result and may be retained by the OpenAI host
+under the settings described above. Successful Ketcher tool results also
+include a bounded model-visible editor snapshot whose structure summary may
+contain a length-limited SMILES or reaction SMILES, but not the raw KET, MOL,
+or RXN seed payload; the OpenAI host may retain that snapshot under the same
+settings.
+
+When a user selects the xyzrender renderer in the public browser demo, the demo
+sends up to 3 MiB of the selected molecular input to Burette's hosted
+`/api/xyzrender` endpoint. The service writes the input and generated SVG only to
+a temporary execution directory, removes that directory after the request, and
+does not save either artifact to Burette application storage. Vercel hosts this
+endpoint and may process the associated network and request metadata described
+below.
+
 ## Service providers and technical metadata
 
 OpenAI processes tool inputs and results so ChatGPT or Codex can run the app and

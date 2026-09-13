@@ -9,7 +9,7 @@ export const VIEWER_SHELL_STYLES_PATH =
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burette-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burette-hosted-mobile.js";
 export const VIEWER_APP_BRIDGE_SCRIPT_PATH = "/burette-hosted-app.js";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-v21";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-v23";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
@@ -93,7 +93,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
         const config = ${bootstrap};
         window.__BURETTE_HOSTED_MCP_WIDGET__ = true;
         window.__BURETTE_HOSTED_KETCHER_WIDGET__ = config.ketcherWidget === true;
-        window.__BURETTE_HOSTED_KETCHER_SEED__ = null;
+        window.__BURETTE_HOSTED_KETCHER_RESULTS__ = [];
         window.__BURETTE_WEB_ASSETS_BASE__ = config.viewerAssets;
         window.__BURETTE_HOSTED_ANALYTICS_ORIGIN__ = config.analyticsOrigin;
         window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
@@ -107,31 +107,68 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
           if (!bridge?.callServerTool) throw new Error("Burette Apps bridge does not expose server tool calls.");
           return bridge.callServerTool(name, arguments_);
         });
+        const downloadTextFile = (fileName, text, mimeType) => appReady.then((ready) => {
+          if (!ready) throw new Error("Burette Apps bridge is not ready for file downloads.");
+          const bridge = window.BuretteHostedAppBridge;
+          if (!bridge?.downloadTextFile) throw new Error("Burette Apps bridge does not expose file downloads.");
+          return bridge.downloadTextFile(fileName, text, mimeType);
+        });
         const acceptKetcherResult = (value) => {
           if (!window.__BURETTE_HOSTED_KETCHER_WIDGET__) return;
-          const containers = [value, value?._meta, value?.meta, value?.structuredContent, value?.structuredContent?._meta];
-          const source = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherSeed"));
-          if (!source) return;
-          const meta = source.ketcherSeed;
-          if (meta == null) {
-            window.__BURETTE_HOSTED_KETCHER_SEED__ = {
-              surfaceId: undefined,
-              format: "smiles",
-              content: "",
-            };
-            window.dispatchEvent(new CustomEvent("burette-ketcher-seed"));
-            return;
+          const baseContainers = [value, value?._meta, value?.meta, value?.structuredContent, value?.structuredContent?._meta];
+          const containers = [...baseContainers];
+          for (const candidate of baseContainers) {
+            if (!candidate || typeof candidate !== "object") continue;
+            containers.push(candidate._meta);
+            for (const key of ["mcp_tool_result", "call_tool_result"]) {
+              const envelope = candidate[key];
+              if (!envelope || typeof envelope !== "object") continue;
+              const nestedResult = envelope.result;
+              containers.push(envelope, envelope._meta, envelope.structuredContent);
+              if (nestedResult && typeof nestedResult === "object") {
+                containers.push(nestedResult, nestedResult._meta, nestedResult.structuredContent);
+              }
+            }
           }
-          if (typeof meta !== "object" || typeof meta.content !== "string") return;
-          if (!["ket", "mol", "rxn", "smiles"].includes(meta.format)) return;
-          let content = meta.content.slice(0, 65536);
-          while (new TextEncoder().encode(content).byteLength > 65536) content = content.slice(0, -1);
-          window.__BURETTE_HOSTED_KETCHER_SEED__ = {
-            surfaceId: typeof meta.surfaceId === "string" ? meta.surfaceId : undefined,
-            format: meta.format,
-            content,
+          const stateSource = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherState"));
+          const state = stateSource?.ketcherState;
+          if (
+            !state
+            || typeof state !== "object"
+            || typeof state.surfaceId !== "string"
+            || typeof state.continuationToken !== "string"
+          ) return;
+          const snapshotSource = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "snapshot"));
+          const ketcherSource = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcher"));
+          const result = {
+            state: {
+              surfaceId: state.surfaceId,
+              continuationToken: state.continuationToken,
+              snapshot: snapshotSource?.snapshot ?? ketcherSource?.ketcher ?? null,
+            },
           };
-          window.dispatchEvent(new CustomEvent("burette-ketcher-seed"));
+          const source = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherSeed"));
+          if (source) {
+            const meta = source.ketcherSeed;
+            if (meta == null) result.seed = null;
+            else {
+              if (typeof meta !== "object" || typeof meta.content !== "string") return;
+              if (!["ket", "mol", "rxn", "smiles"].includes(meta.format)) return;
+              if (typeof meta.surfaceId === "string" && meta.surfaceId !== state.surfaceId) return;
+              let content = meta.content.slice(0, 65536);
+              while (new TextEncoder().encode(content).byteLength > 65536) content = content.slice(0, -1);
+              result.seed = {
+                surfaceId: typeof meta.surfaceId === "string" ? meta.surfaceId : undefined,
+                format: meta.format,
+                content,
+              };
+            }
+          }
+          window.__BURETTE_HOSTED_KETCHER_RESULTS__.push(result);
+          if (window.__BURETTE_HOSTED_KETCHER_RESULTS__.length > 16) {
+            window.__BURETTE_HOSTED_KETCHER_RESULTS__.splice(0, window.__BURETTE_HOSTED_KETCHER_RESULTS__.length - 16);
+          }
+          window.dispatchEvent(new CustomEvent("burette-ketcher-result", { detail: result }));
         };
         window.BuretteHostedAppBridge = {
           ready: appReady,
@@ -144,7 +181,12 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
             appQueue.push({ method: "updateScene", args });
             return appReady;
           },
+          updateKetcher: (...args) => {
+            appQueue.push({ method: "updateKetcher", args });
+            return appReady;
+          },
           callServerTool,
+          downloadTextFile,
           sanitizeViewerActions: () => [],
         };
         window.addEventListener("message", (event) => {
@@ -159,9 +201,8 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
             window.__BURETTE_HOSTED_MCP_RESULTS__.push(message.params);
           }
         }, { passive: true });
-        window.addEventListener("openai:set_globals", (event) => {
-          const globals = event.detail?.globals;
-          if (!globals || window.__BURETTE_HOSTED_MCP_BRIDGE_READY__) return;
+        const acceptOpenAiGlobals = (globals) => {
+          if (!globals) return;
           if (Object.hasOwn(globals, "toolOutput")) {
             window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolOutput = globals.toolOutput;
           }
@@ -172,11 +213,17 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
             structuredContent: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolOutput,
             _meta: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
           });
-          window.__BURETTE_HOSTED_MCP_RESULTS__.push({
-            structuredContent: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolOutput,
-            _meta: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
-          });
+          if (!window.__BURETTE_HOSTED_MCP_BRIDGE_READY__) {
+            window.__BURETTE_HOSTED_MCP_RESULTS__.push({
+              structuredContent: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolOutput,
+              _meta: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
+            });
+          }
+        };
+        window.addEventListener("openai:set_globals", (event) => {
+          acceptOpenAiGlobals(event.detail?.globals);
         }, { passive: true });
+        acceptOpenAiGlobals(window.openai);
       })();
     </script>
     <script type="module" crossorigin src="${appBridgeScript}"></script>

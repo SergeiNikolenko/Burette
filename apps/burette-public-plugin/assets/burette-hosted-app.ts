@@ -1,3 +1,4 @@
+import "./widget-csp";
 import { App, type McpUiUpdateModelContextRequest } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { inject, pageview } from "@vercel/analytics";
@@ -14,10 +15,12 @@ declare global {
       setSource: (source: unknown) => void;
       updateSelection: (selection: unknown, documentId: string) => Promise<boolean>;
       updateScene: (report: unknown) => Promise<boolean>;
+      updateKetcher: (state: unknown) => Promise<boolean>;
       callServerTool: (
         name: string,
         arguments_?: Record<string, unknown>,
       ) => Promise<CallToolResult>;
+      downloadTextFile: (fileName: string, text: string, mimeType: string) => Promise<boolean>;
       sanitizeViewerActions: (actions: unknown) => Record<string, unknown>[];
     };
     __BURETTE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;
@@ -56,6 +59,59 @@ const ready = appConnected.then((initialized) => (
   initialized && app.getHostCapabilities()?.updateModelContext !== undefined
 ));
 
+function ketcherModelContext(value: unknown): McpUiUpdateModelContextRequest["params"] {
+  const state = record(value);
+  const snapshot = record(state?.snapshot);
+  const structure = record(snapshot?.structure);
+  const surfaceId = bounded(state?.surfaceId, "hosted-ketcher").slice(0, 160);
+  const continuationToken = boundedString(state?.continuationToken, 128 * 1024);
+  const structureRevision = boundedNonnegativeInteger(snapshot?.structureRevision);
+  const interactionRevision = boundedNonnegativeInteger(snapshot?.interactionRevision);
+  const atomCount = boundedNonnegativeInteger(structure?.atomCount);
+  const bondCount = boundedNonnegativeInteger(structure?.bondCount);
+  const componentCount = boundedNonnegativeInteger(structure?.componentCount);
+  const kind = ["empty", "molecule", "reaction"].includes(String(structure?.kind))
+    ? String(structure?.kind)
+    : "empty";
+  return {
+    content: [{
+      type: "text" as const,
+      text: `Hosted Ketcher surface ${surfaceId} is at structure revision ${structureRevision}.`,
+    }],
+    structuredContent: {
+      burette: {
+        ketcher: {
+          surfaceId,
+          continuationToken,
+          structureRevision,
+          interactionRevision,
+          structure: { kind, atomCount, bondCount, componentCount },
+        },
+      },
+    },
+  };
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function bounded(value: unknown, fallback: string) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return (text || fallback).slice(0, 255);
+}
+
+function boundedString(value: unknown, maxLength: number) {
+  return typeof value === "string" ? value.slice(0, maxLength) : "";
+}
+
+function boundedNonnegativeInteger(value: unknown) {
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 ? number : 0;
+}
+
 async function updateModelContext(params: McpUiUpdateModelContextRequest["params"]) {
   if (!(await ready) || !connected) return false;
   await app.updateModelContext(params);
@@ -72,6 +128,26 @@ async function callServerTool(
   return app.callServerTool({ name, arguments: arguments_ });
 }
 
+async function downloadTextFile(fileName: string, text: string, mimeType: string) {
+  if (!(await appConnected) || !connected) {
+    throw new Error("Burette Apps bridge is not ready for file downloads.");
+  }
+  if (!app.getHostCapabilities()?.downloadFile) {
+    throw new Error("This ChatGPT host does not support file downloads.");
+  }
+  const result = await app.downloadFile({
+    contents: [{
+      type: "resource",
+      resource: {
+        uri: `file:///${encodeURIComponent(fileName)}`,
+        mimeType,
+        text,
+      },
+    }],
+  });
+  return result.isError !== true;
+}
+
 const queuedCalls = Array.isArray(window.__BURETTE_HOSTED_APP_QUEUE__)
   ? window.__BURETTE_HOSTED_APP_QUEUE__.splice(0)
   : [];
@@ -85,7 +161,11 @@ const bridge = {
   updateScene(report: unknown) {
     return updateModelContext(createSceneContext(report, sourceDescriptor));
   },
+  updateKetcher(state: unknown) {
+    return updateModelContext(ketcherModelContext(state));
+  },
   callServerTool,
+  downloadTextFile,
   sanitizeViewerActions,
   ready,
 };
@@ -95,5 +175,6 @@ for (const call of queuedCalls) {
   else if (call.method === "updateSelection") {
     void bridge.updateSelection(call.args[0], String(call.args[1] || "active-structure"));
   } else if (call.method === "updateScene") void bridge.updateScene(call.args[0]);
+  else if (call.method === "updateKetcher") void bridge.updateKetcher(call.args[0]);
 }
 void appConnected.then((initialized) => window.__BURETTE_HOSTED_APP_READY__?.(initialized));

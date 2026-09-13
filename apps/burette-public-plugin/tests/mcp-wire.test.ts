@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import * as OCL from "openchemlib";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod/v4";
 import { runInNewContext } from "node:vm";
 import { KETCHER_AGENT_API_VERSION } from "@burette/ketcher-agent-contract";
@@ -11,6 +13,13 @@ import {
   NOAUTH_SECURITY_SCHEMES,
 } from "../lib/contracts";
 import { POST as handleMcpPost } from "../app/mcp/route";
+import { callInFreshInstance, startSharedRedisRest } from "./review-instance-client";
+import {
+  acceptHostedKetcherResult,
+  createHostedKetcherLineage,
+  type HostedKetcherResult,
+  type HostedKetcherState,
+} from "../../desktop/src/lib/hosted-ketcher-sync";
 
 async function readSseResponse(response: Response) {
   const dataLine = (await response.text())
@@ -22,93 +31,128 @@ async function readSseResponse(response: Response) {
 
 describe("MCP wire contract", () => {
   test("preserves the hosted drawing across reads and failures, and clears only on request", async () => {
-    let nextId = 1;
-    async function call(name: string, args: Record<string, unknown>) {
-      const response = await handleMcpPost(new Request("https://burette.example/mcp", {
-        method: "POST",
-        headers: {
-          accept: "application/json, text/event-stream",
-          "content-type": "application/json",
-          "mcp-protocol-version": LATEST_PROTOCOL_VERSION,
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", id: nextId++, method: "tools/call", params: { name, arguments: args } }),
-      }));
-      expect(response.status).toBe(200);
-      const payload = await readSseResponse(response) as {
-        error?: unknown;
-        result?: {
-          isError?: boolean;
-          structuredContent: { ok: boolean; surfaceId?: string; action?: Record<string, unknown> };
-          _meta?: Record<string, unknown>;
-        };
-      };
-      expect(payload.error).toBeUndefined();
-      expect(payload.result).toBeDefined();
-      return payload.result!;
-    }
-
+    const redis = await startSharedRedisRest();
+    const environment = {
+      NODE_ENV: "production",
+      PUBLIC_APP_ORIGIN: "https://burette.example",
+      KETCHER_STATE_SECRET: "wire-drawing-review-secret",
+      KETCHER_CAS_REDIS_REST_URL: "https://redis.example",
+      KETCHER_CAS_REDIS_REST_TOKEN: "test-token",
+      KV_REST_API_URL: "",
+      KV_REST_API_TOKEN: "",
+      BURETTE_REVIEW_REDIS_PROXY_URL: redis.url,
+    };
+    type Seed = { format: string; content: string; surfaceId?: string };
     const listeners = new Map<string, (event: unknown) => void>();
-    let seedEvents = 0;
+    const queued: HostedKetcherResult<Seed>[] = [];
     const widgetWindow = {
       parent: {},
-      __BURETTE_HOSTED_KETCHER_SEED__: null as { format: string; content: string } | null,
       addEventListener: (type: string, listener: (event: unknown) => void) => listeners.set(type, listener),
-      dispatchEvent: (event: Event) => { if (event.type === "burette-ketcher-seed") seedEvents++; },
+      dispatchEvent: (event: CustomEvent<HostedKetcherResult<Seed>>) => {
+        if (event.type === "burette-ketcher-result") queued.push(event.detail);
+      },
     };
     const bootstrap = createKetcherWidgetHtml("https://burette.example").match(/<script>([\s\S]*?)<\/script>/u)?.[1];
     expect(bootstrap).toBeDefined();
     runInNewContext(bootstrap!, { window: widgetWindow, TextEncoder, CustomEvent });
-    const deliver = (result: unknown) => listeners.get("message")?.({
-      source: widgetWindow.parent,
-      data: { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: result },
-    });
-
-    const opened = await call("open_ketcher", { structure: { format: "smiles", content: "CCO" } });
-    expect(opened.structuredContent.ok).toBe(true);
-    deliver(opened);
-    expect(widgetWindow.__BURETTE_HOSTED_KETCHER_SEED__?.content).toBe("CCO");
-    const surfaceId = opened.structuredContent.surfaceId;
+    const lineage = createHostedKetcherLineage();
+    let current: HostedKetcherState | null = null;
+    let drawing: Seed | null = null;
+    function currentState(): HostedKetcherState {
+      if (!current) throw new Error("The widget has not accepted a Ketcher state.");
+      return current;
+    }
+    async function deliver(result: CallToolResult) {
+      listeners.get("message")?.({
+        source: widgetWindow.parent,
+        data: { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: result },
+      });
+      for (const envelope of queued.splice(0)) {
+        const outcome = await acceptHostedKetcherResult({
+          current, lineage, result: envelope,
+          applySeed: async (seed) => { drawing = seed; },
+        });
+        current = outcome.state;
+      }
+    }
+    let nextActionId = 1;
     async function control(command: string, extra: Record<string, unknown> = {}, expectedRevision = 1) {
-      return call("control_ketcher", { action: {
+      expect(current?.continuationToken).toBeString();
+      return callInFreshInstance("control_ketcher", { action: {
         apiVersion: KETCHER_AGENT_API_VERSION, type: "control_ketcher", command,
-        surfaceId, expectedRevision, ...extra,
-      } });
+        surfaceId: currentState().surfaceId,
+        continuationToken: currentState().continuationToken,
+        actionId: "wire-drawing-" + nextActionId++,
+        expectedRevision, ...extra,
+      } }, environment);
     }
+    const drawingSmiles = () => drawing
+      ? OCL.Molecule.fromMolfile(drawing.content).toSmiles()
+      : "";
 
-    for (const [command, extra, ok] of [
-      ["get_structure", { formats: ["smiles"] }, true],
-      ["highlight_atoms", { indexes: [0] }, true],
-      ["request_persist", { format: "smiles" }, true],
-      ["highlight_atoms", { indexes: [99] }, false],
-    ] as const) {
-      const result = await control(command, extra);
-      expect(result.structuredContent.ok).toBe(ok);
-      expect(result._meta).not.toHaveProperty("ketcherSeed");
-      deliver(result);
-      expect(widgetWindow.__BURETTE_HOSTED_KETCHER_SEED__?.content).toBe("CCO");
-      expect(seedEvents).toBe(1);
+    try {
+      const opened = await callInFreshInstance("open_ketcher", {
+        structure: { format: "smiles", content: "CCO" },
+      }, environment);
+      expect(opened.structuredContent?.ok).toBe(true);
+      await deliver(opened);
+      expect(drawingSmiles()).toBe("CCO");
+      const initialDrawing = drawing;
+      const initialToken = currentState().continuationToken;
+
+      for (const [command, extra] of [
+        ["get_structure", { formats: ["smiles"], delivery: "inline" }],
+        ["highlight_atoms", { indexes: [0] }],
+        ["request_persist", { format: "smiles" }],
+      ] as const) {
+        const result = await control(command, extra);
+        expect(result.structuredContent?.ok).toBe(true);
+        expect(result.structuredContent).not.toHaveProperty("result.result.ketcherSeed");
+        await deliver(result);
+        // Remount recovery carries a seed even for reads, but the drawing must
+        // remain byte-for-byte identical while the continuation advances.
+        expect(drawing).toEqual(initialDrawing);
+        expect(currentState().snapshot?.structureRevision).toBe(1);
+      }
+      expect(currentState().continuationToken).not.toBe(initialToken);
+
+      for (const [command, extra, revision, errorCode] of [
+        ["highlight_atoms", { indexes: [99] }, 1, "INVALID_ATOM_INDEX"],
+        ["clear_structure", {}, 0, "REVISION_CONFLICT"],
+      ] as const) {
+        const beforeFailure = current;
+        const result = await control(command, extra, revision);
+        expect(result.isError).toBe(true);
+        expect(result.structuredContent).toMatchObject({ ok: false, error: { code: errorCode } });
+        expect(result._meta).not.toHaveProperty("ketcherSeed");
+        await deliver(result);
+        expect(drawing).toEqual(initialDrawing);
+        expect(current).toEqual(beforeFailure);
+      }
+
+      const set = await control("set_structure", { format: "smiles", content: "CCN" });
+      expect(set.isError).not.toBe(true);
+      expect(set.structuredContent?.ok).toBe(true);
+      expect(set.structuredContent).not.toHaveProperty("result.result.ketcherSeed");
+      await deliver(set);
+      expect(drawingSmiles()).toBe("CCN");
+      expect(currentState().snapshot?.structureRevision).toBe(2);
+
+      // A delayed original tool result must not roll back the newer drawing.
+      await deliver(opened);
+      expect(drawingSmiles()).toBe("CCN");
+      expect(currentState().snapshot?.structureRevision).toBe(2);
+
+      const cleared = await control("clear_structure", {}, 2);
+      expect(cleared.structuredContent?.ok).toBe(true);
+      expect(cleared._meta?.ketcherSeed).toBeNull();
+      await deliver(cleared);
+      expect(drawing).toBeNull();
+      expect(currentState().snapshot?.structureRevision).toBe(3);
+    } finally {
+      await redis.close();
     }
-    const stale = await control("clear_structure", {}, 0);
-    expect(stale.isError).toBe(true);
-    deliver(stale);
-    expect(widgetWindow.__BURETTE_HOSTED_KETCHER_SEED__?.content).toBe("CCO");
-    expect(seedEvents).toBe(1);
-
-    const set = await control("set_structure", { format: "smiles", content: "CCN" });
-    expect(set.isError).toBeUndefined();
-    expect(set.structuredContent.ok).toBe(true);
-    expect(set.structuredContent.action).not.toHaveProperty("input");
-    deliver(set);
-    expect(widgetWindow.__BURETTE_HOSTED_KETCHER_SEED__?.content).toBe("CCN");
-    expect(seedEvents).toBe(2);
-
-    const cleared = await control("clear_structure", {}, 2);
-    expect(cleared.structuredContent.ok).toBe(true);
-    expect(cleared._meta?.ketcherSeed).toBeNull();
-    deliver(cleared);
-    expect(widgetWindow.__BURETTE_HOSTED_KETCHER_SEED__?.content).toBe("");
-    expect(seedEvents).toBe(3);
-  });
+  }, 30_000);
 
   test("serializes noauth security schemes at top level and in _meta", async () => {
     const server = new McpServer({ name: "wire-test", version: "1.0.0" });

@@ -13,8 +13,9 @@ plugin. It is intentionally separate from the local stdio plugin under
 
 Tool results open directly in a focused Burette molecular preview. The hosted
 widget omits desktop document tabs, sidebars, and docks while preserving the
-native interactive viewer controls, sequence, selection, measurements, and
-representations. The package does not expose a separate branded viewer page:
+native interactive viewer. Available controls differ by host and screen size;
+the compact mobile view hides desktop panels, including the sequence panel.
+The package does not expose a separate branded viewer page:
 the root URL redirects to the public plugin documentation.
 
 ## MCP contract
@@ -32,8 +33,8 @@ an isolated Ketcher editor contract:
 | `control_ketcher` | Applies a revision-checked Ketcher action and returns a bounded editor snapshot plus widget seed. |
 
 The three public-structure tools are read-only and idempotent. Ketcher actions
-are scoped to an in-memory relay, are bounded and revision-checked, and never
-write files or the public internet. Each Ketcher result renders
+are bounded and revision-checked, carry an opaque continuation token between
+stateless requests, and never write files or the public internet. Each Ketcher result renders
 `ui://burette/ketcher-editor-v1.html`; the structure-preview tools render
 `ui://burette/molecular-viewer-v21.html`, both with MIME type
 `text/html;profile=mcp-app`.
@@ -48,12 +49,26 @@ The widgets use the MCP Apps handshake before publishing bounded selection,
 scene, or chemical-editor state through `ui/update-model-context`. Lasso
 selection includes up to 96 atom identities and residues, and clearing the
 selection explicitly clears the model-visible state. Ketcher mutations run
-through the revision-checked relay; the server does not persist a shared
-molecular workspace.
+through the revision-checked relay. A shared Redis REST CAS consumes each
+continuation token at most once across serverless instances; Redis stores only
+the token digest, mutation claim, and encrypted successor token until the
+consumed token's TTL expires. This is concurrency control for an ephemeral
+chain, not a persistent shared molecular workspace.
 
-The model receives only bounded structure summaries. Original molecular text
-is placed in tool-result `_meta`, which is delivered to the viewer but hidden
-from the model and conversation transcript.
+The public-structure tools expose only bounded structure summaries to the
+model; original attachment or PDB text is placed in tool-result `_meta`, which
+is delivered to the viewer but hidden from the model and conversation
+transcript. Seed content from routine `open_ketcher`, `set_structure`, or
+`highlight_atoms` results follows the same `_meta` path. When a user or tool
+explicitly requests `get_structure`, the bounded requested export formats
+remain model-visible in that tool result. The hosted relay returns the current
+representation or a complete SDF record derived from MOL; it does not claim
+server-side conversion for other format pairs and returns `EXPORT_FAILED`
+instead. Hosted `get_structure` delivery is inline-only; artifact or download
+delivery requests fail explicitly instead of returning a fake reference.
+Successful Ketcher tool results also include a bounded model-visible editor
+snapshot; its structure summary may contain a length-limited SMILES or reaction
+SMILES, but not the raw KET, MOL, or RXN seed payload.
 
 ## Data and security boundaries
 
@@ -66,10 +81,15 @@ from the model and conversation transcript.
   and Host header, preventing a second DNS resolution from changing the target.
 - Downloads time out after 15 seconds and are bounded while streaming.
 - PDB lookups use the fixed `files.rcsb.org` download origin.
-- Hosted Ketcher surfaces are process-local and ephemeral. Inline structure
-  content is capped at 64 KiB, atom-index lists at 256 entries, and inline
-  exports at 64 KiB. `contentRef` is rejected until a scoped artifact relay is
-  deployed.
+- Hosted Ketcher surfaces are ephemeral but not process-affine. An authenticated,
+  encrypted continuation token carries up to 64 KiB of inline structure content
+  and expires 15 minutes after each successful action. Atom-index lists are
+  capped at 256 entries and inline exports at 64 KiB. `contentRef` is rejected
+  until a scoped artifact relay is deployed. Redis REST `SET NX`, `GET`, and
+  atomic `EVAL` compare-and-complete operations serialize that token chain
+  across instances. If Redis is unavailable or its configuration is missing,
+  mutations fail closed instead of falling back to process-local state. The
+  token is not a durable or multi-writer workspace.
 - The MCP resource mounts the compiled Burette React shell directly instead of
   wrapping a separate viewer page. Its CSP permits only the stable production
   origin for runtime fetches and resources; the widget does not embed subframes.
@@ -81,8 +101,10 @@ from the model and conversation transcript.
   that bundle contains dynamic code generation forbidden by the MCP Apps
   sandbox CSP.
 - Every string and collection copied into model-visible `structuredContent` is
-  bounded by the declared output schema. Raw structure text remains only in
-  widget-only `_meta`.
+  bounded by the declared output schema. Original attachment or PDB text and
+  routine hosted Ketcher seed content remain in widget-only `_meta`; explicit
+  bounded `get_structure` exports and the snapshot's bounded SMILES summary
+  remain model-visible.
 
 Hosting infrastructure may retain ordinary request metadata in platform logs.
 The hosted widget also sends one anonymized Vercel Web Analytics pageview for
@@ -129,10 +151,19 @@ The production server exposes:
 | --- | --- |
 | `PUBLIC_APP_ORIGIN` | Stable production origin used by MCP App domain and CSP metadata. |
 | `OPENAI_APPS_CHALLENGE` | Exact token supplied by the OpenAI plugin portal for domain verification. |
+| `KETCHER_STATE_SECRET` | Stable secret used only to authenticate and encrypt ephemeral hosted Ketcher continuation tokens. |
+| `KETCHER_CAS_REDIS_REST_URL` | Explicit HTTPS endpoint for a shared Redis REST database supporting `SET NX`, `GET`, and `EVAL`. Must be paired with `KETCHER_CAS_REDIS_REST_TOKEN`; takes priority over the Marketplace pair. |
+| `KETCHER_CAS_REDIS_REST_TOKEN` | Explicit bearer token for the shared Redis REST database. Must be paired with `KETCHER_CAS_REDIS_REST_URL`. |
+| `KV_REST_API_URL` | Standard Vercel Marketplace Upstash REST endpoint. Used only when neither explicit `KETCHER_CAS_*` variable is set and must be paired with `KV_REST_API_TOKEN`. |
+| `KV_REST_API_TOKEN` | Standard Vercel Marketplace Upstash REST token. Must be paired with `KV_REST_API_URL`. |
 
 Do not change the production origin after publication. Preview deployments can
 use Vercel-provided deployment origins, while production should set
-`PUBLIC_APP_ORIGIN` explicitly.
+`PUBLIC_APP_ORIGIN` explicitly. Production and every preview deployment used
+for Ketcher review must configure one complete CAS variable pair for a shared
+Redis database. Variables from different pairs are never combined, and a
+partial pair is a configuration error. Serverless instance-local memory is
+intentionally unsupported.
 
 The local Burette desktop app remains the primary workspace. The hosted service
 only supplies the public MCP endpoint, widget assets, and one isolated
@@ -153,8 +184,10 @@ build output and are not committed.
   skill for the plugin submission.
 - `submission/portal-copy.md` — starter prompts, release notes, and portal
   checklist.
-- `submission/screenshots/chatgpt-pdb-viewer-mobile.jpg` — production v9
-  ChatGPT mobile-width review screenshot captured with CSP enforcement enabled.
+
+Review screenshots, videos, and conversation links must be captured from the
+exact rescanned production connector on ChatGPT web and a physical iPhone. The
+repository does not treat older visual artifacts as proof of the current build.
 
 The existing logo at `plugins/burette-agent/assets/app-icon.png` is the
 production-ready 512 × 512 listing asset.

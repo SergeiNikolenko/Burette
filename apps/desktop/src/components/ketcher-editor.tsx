@@ -60,6 +60,7 @@ type KetcherZoomTool = {
 type KetcherZoomToolConstructor = {
   instance?: KetcherZoomTool;
 };
+const HOSTED_KETCHER_BUILD = import.meta.env.VITE_BURETTE_BUILD_IDENTIFIER === "hosted-mcp-widget";
 type KetcherDirectEditor = {
   canvas?: SVGSVGElement;
   event?: {
@@ -425,7 +426,9 @@ export function KetcherEditor({
         return Promise.all([
           import("ketcher-react"),
           import("ketcher-core"),
-          import("ketcher-standalone/dist/binaryWasm"),
+          HOSTED_KETCHER_BUILD
+            ? import("ketcher-standalone")
+            : import("ketcher-standalone/dist/binaryWasm"),
         ]);
       })
       .then(([reactModule, coreModule, standaloneModule]) => {
@@ -517,6 +520,7 @@ export function KetcherEditor({
         staticResourcesUrl={import.meta.env.BASE_URL}
         structServiceProvider={structServiceProvider}
         buttons={BURETTE_KETCHER_BUTTONS}
+        disableMacromoleculesEditor
         onInit={handleInit}
         errorHandler={handleError}
       />

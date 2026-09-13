@@ -220,10 +220,26 @@ confirms the file write.
 
 The hosted public plugin mirrors the same action schema through
 `open_ketcher`/`control_ketcher` and the resource
-`ui://burette/ketcher-editor-v1.html`. Its relay is process-local and ephemeral:
-it is suitable for the current MCP widget turn, not a durable shared workspace;
+`ui://burette/ketcher-editor-v1.html`. Hosted actions additionally carry an
+opaque, authenticated continuation token containing the bounded editor state.
+The token makes the ephemeral editor portable across stateless server instances
+and expires after 15 minutes of inactivity. It supports one serialized widget
+chain, not a durable or concurrent multi-writer workspace. A shared Redis REST
+CAS atomically consumes each token once across serverless instances and retains
+only its digest, claim, and encrypted successor token through the token TTL.
+Hosted mutations fail closed when that CAS is unavailable or unconfigured;
 reference-backed content fails closed until an authenticated artifact relay is
-added.
+added. Every successful hosted action that issues a successor token advances a
+revision: structural actions advance both revisions, while `highlight_atoms`,
+`get_structure`, and `request_persist` advance only `interactionRevision`.
+Idempotent replay reuses the issued snapshot without advancing again.
+
+The hosted CAS accepts either the explicit
+`KETCHER_CAS_REDIS_REST_URL`/`KETCHER_CAS_REDIS_REST_TOKEN` pair or, when both
+explicit variables are absent, Vercel Marketplace Upstash's standard
+`KV_REST_API_URL`/`KV_REST_API_TOKEN` pair. Each pair is resolved atomically:
+the explicit pair has priority, partial pairs are configuration errors, and
+credentials from different pairs are never combined.
 
 ## Preview Response And CLI Output Bounds
 

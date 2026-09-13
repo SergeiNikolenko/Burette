@@ -7,6 +7,7 @@ const packageRoot = resolve(import.meta.dir, "..");
 const submission = JSON.parse(
   readFileSync(resolve(packageRoot, "chatgpt-app-submission.json"), "utf8"),
 ) as {
+  $schema: string;
   schema_version: number;
   app_info: { subtitle: string };
   tools: Record<
@@ -19,7 +20,10 @@ const submission = JSON.parse(
       };
     }
   >;
-  test_cases: Array<{ tools_triggered: string }>;
+  test_cases: Array<{
+    tools_triggered: string;
+    file_attachment_urls: string[] | null;
+  }>;
   negative_test_cases: Array<{ tools_triggered: null }>;
 };
 
@@ -33,14 +37,19 @@ const publicToolNames = [
 
 const publicToolAnnotations = {
   preview_molecular_file: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
-  preview_pdb_structure: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
-  render_molecular_scene: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
+  preview_pdb_structure: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
+  render_molecular_scene: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
   open_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
-  control_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
+  control_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: true },
 } as const;
+
+const submissionSchemaUrl =
+  "https://developers.openai.com/plugins/schemas/chatgpt-app-submission.v1.json";
+const reviewFixtureRevision = "e4a701b953a08f4a12ae03d8d1184502fd43d5f5";
 
 describe("plugin submission bundle", () => {
   test("keeps listing metadata within portal limits", () => {
+    expect(submission.$schema).toBe(submissionSchemaUrl);
     expect(submission.schema_version).toBe(1);
     expect(submission.app_info.subtitle.length).toBeLessThanOrEqual(30);
   });
@@ -66,6 +75,13 @@ describe("plugin submission bundle", () => {
       "preview_molecular_file",
       "preview_pdb_structure",
       "open_ketcher",
+    ]);
+    expect(
+      submission.test_cases.flatMap((testCase) => testCase.file_attachment_urls ?? []),
+    ).toEqual([
+      `https://raw.githubusercontent.com/SergeiNikolenko/Burette/${reviewFixtureRevision}/samples/mini.pdb`,
+      `https://raw.githubusercontent.com/SergeiNikolenko/Burette/${reviewFixtureRevision}/samples/mini.cif`,
+      `https://raw.githubusercontent.com/SergeiNikolenko/Burette/${reviewFixtureRevision}/samples/mini.sdf`,
     ]);
     for (const testCase of submission.negative_test_cases) {
       expect(testCase.tools_triggered).toBeNull();

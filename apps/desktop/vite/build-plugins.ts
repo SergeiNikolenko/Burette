@@ -18,6 +18,28 @@ export function ketcherRaphaelImportShimPlugin(): Plugin {
   };
 }
 
+export function ketcherDisabledMacromoleculesPlugin(): Plugin {
+  const target = "children: ketcherId && jsx(MacromoleculesEditorComponent, {";
+  const replacement = "children: !props.disableMacromoleculesEditor && ketcherId && jsx(MacromoleculesEditorComponent, {";
+
+  return {
+    name: "burette-ketcher-disabled-macromolecules",
+    transform(code, id) {
+      const normalized = id.replaceAll("\\", "/");
+      if (!normalized.endsWith("/node_modules/ketcher-react/dist/index.js")) return null;
+      if (code.includes(replacement)) return null;
+      const occurrences = code.split(target).length - 1;
+      if (occurrences !== 1) {
+        throw new Error(`Expected one Ketcher macromolecules mount, found ${occurrences}`);
+      }
+      return {
+        code: code.replace(target, replacement),
+        map: null,
+      };
+    },
+  };
+}
+
 export function deferKetcherCssPlugin(): Plugin {
   return {
     name: "burette-defer-ketcher-css",

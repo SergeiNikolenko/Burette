@@ -21,20 +21,18 @@ interface Window {
   __BURETTE_HOSTED_MCP_RESULTS__?: unknown[];
   __BURETTE_HOSTED_MCP_WIDGET__?: boolean;
   __BURETTE_HOSTED_KETCHER_WIDGET__?: boolean;
-  __BURETTE_HOSTED_KETCHER_SEED__?: {
-    surfaceId?: string;
-    format: "ket" | "mol" | "rxn" | "smiles";
-    content: string;
-  } | null;
+  __BURETTE_HOSTED_KETCHER_RESULTS__?: unknown[];
   BuretteHostedAppBridge?: {
     ready: Promise<boolean>;
     setSource: (source: unknown) => void;
     updateSelection: (selection: unknown, documentId: string) => Promise<boolean>;
     updateScene: (report: unknown) => Promise<boolean>;
+    updateKetcher: (state: unknown) => Promise<boolean>;
     callServerTool: (
       name: string,
       arguments_?: Record<string, unknown>,
     ) => Promise<unknown>;
+    downloadTextFile: (fileName: string, text: string, mimeType: string) => Promise<boolean>;
     sanitizeViewerActions: (actions: unknown) => Record<string, unknown>[];
   };
   __BURETTE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;

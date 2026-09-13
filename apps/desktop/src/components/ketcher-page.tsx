@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { KETCHER_AGENT_API_VERSION, type KetcherSnapshot } from "@burette/ketcher-agent-contract";
 
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily as collectionFamilyForExtension, type CollectionFamily } from "../lib/collection-documents";
@@ -20,7 +21,17 @@ import { readStructureText } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
 import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
-import { hostedKetcherSeedFromWindow, isHostedKetcherWidget, type HostedKetcherSeed } from "../lib/hosted-mcp-widget";
+import { hasHostedKetcherCanvasContent, isHostedKetcherWidget, takeHostedKetcherResultsFromWindow, type HostedKetcherSeed } from "../lib/hosted-mcp-widget";
+import {
+  acceptHostedKetcherResult,
+  createHostedKetcherLineage,
+  createHostedKetcherPendingSync,
+  hostedKetcherErrorFromToolResult,
+  hostedKetcherStateFromToolResult,
+  syncHostedKetcherEditorEdit,
+  type HostedKetcherResult,
+  type HostedKetcherState,
+} from "../lib/hosted-ketcher-sync";
 import { runWindowMutation } from "../lib/window-mutation-barrier";
 import type { StructureDragRecord } from "../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "./drop-action-executor";
@@ -76,9 +87,11 @@ const DEFAULT_KETCHER_ZOOM = 1;
 const KETCHER_EXPORT_TIMEOUT_MS = 15000;
 const KETCHER_IMPORT_INSTANCE_RETRY_DELAYS_MS = [0, 250, 750, 1500, 2500] as const;
 const KETCHER_IMPORT_REQUEST_RETRY_MS = 5000;
+const HOSTED_KETCHER_SYNC_DEBOUNCE_MS = 400;
 const KETCHER_NARROW_SHELL_WIDTH = 864;
 type KetcherImportResult = "success" | "transient-failure" | "failure";
 const IS_KETCHER_WEB_DEMO = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
+const IS_HOSTED_KETCHER_BUILD = import.meta.env.VITE_BURETTE_BUILD_IDENTIFIER === "hosted-mcp-widget";
 let ketcherStructServiceReady = false;
 if (typeof window !== "undefined") {
   window.addEventListener("struct-service-initialized", () => {
@@ -338,6 +351,68 @@ function installKetcherTooltips(root: HTMLElement) {
   return () => observer.disconnect();
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function hostedKetcherState(value: unknown): HostedKetcherState | null {
+  const state = record(value);
+  if (
+    !state
+    || typeof state.surfaceId !== "string"
+    || typeof state.continuationToken !== "string"
+    || !state.surfaceId.trim()
+    || !state.continuationToken.trim()
+  ) return null;
+  return {
+    surfaceId: state.surfaceId.slice(0, 160),
+    continuationToken: state.continuationToken,
+    snapshot: record(state.snapshot) as KetcherSnapshot | null,
+  };
+}
+
+function parseHostedKetcherSeed(value: unknown, surfaceId: string) {
+  if (value === null) return { ok: true as const, value: null };
+  const seed = record(value);
+  if (
+    !seed
+    || typeof seed.content !== "string"
+    || !["ket", "mol", "rxn", "smiles"].includes(String(seed.format))
+    || (typeof seed.surfaceId === "string" && seed.surfaceId !== surfaceId)
+  ) return { ok: false as const };
+  let content = seed.content.slice(0, 65536);
+  while (new TextEncoder().encode(content).byteLength > 65536) content = content.slice(0, -1);
+  return {
+    ok: true as const,
+    value: {
+      ...(typeof seed.surfaceId === "string" ? { surfaceId: seed.surfaceId.slice(0, 160) } : {}),
+      format: seed.format as HostedKetcherSeed["format"],
+      content,
+    },
+  };
+}
+
+function hostedKetcherResult(value: unknown): HostedKetcherResult<HostedKetcherSeed> | null {
+  const raw = record(value);
+  const state = hostedKetcherState(raw?.state);
+  if (!raw || !state) return null;
+  if (!Object.hasOwn(raw, "seed")) return { state };
+  const seed = parseHostedKetcherSeed(raw.seed, state.surfaceId);
+  return seed.ok ? { state, seed: seed.value } : null;
+}
+
+function hostedKetcherResultFromToolResult(value: unknown): HostedKetcherResult<HostedKetcherSeed> | null {
+  const result = record(value);
+  const metadata = record(result?._meta) ?? record(result?.meta);
+  const state = hostedKetcherStateFromToolResult(value);
+  if (!state) return null;
+  if (!metadata || !Object.hasOwn(metadata, "ketcherSeed")) return { state };
+  const seed = parseHostedKetcherSeed(metadata.ketcherSeed, state.surfaceId);
+  return seed.ok ? { state, seed: seed.value } : null;
+}
+
 export function KetcherPage({
   tabId,
   location,
@@ -353,12 +428,22 @@ export function KetcherPage({
   isActive: boolean;
   acceptImportRequests?: boolean;
 }) {
+  const hostedKetcherWidget = isHostedKetcherWidget();
   const [ketcher, setKetcher] = useState<KetcherEditorApi | null>(null);
   const ketcherAgentControllerRef = useRef<ReturnType<typeof registerKetcherAgentController> | null>(null);
   const [status, setStatus] = useState("Loading editor");
+  const [hostedKetcherError, setHostedKetcherError] = useState<string | null>(null);
   const [output, setOutput] = useState("");
   const [panelMode, setPanelMode] = useState<KetcherPanelMode | null>(null);
   const hostedSeedKeyRef = useRef<string | null>(null);
+  const hostedKetcherStateRef = useRef<HostedKetcherState | null>(null);
+  const hostedKetcherLineageRef = useRef(createHostedKetcherLineage());
+  const hostedKetcherPendingSyncRef = useRef(createHostedKetcherPendingSync());
+  const hostedKetcherRequestSyncRef = useRef<(() => void) | null>(null);
+  const hostedKetcherMutationDepthRef = useRef(0);
+  const hostedKetcherResultQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const hostedKetcherSyncQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const hostedKetcherActionIdRef = useRef(0);
   const [editorReloadKey, setEditorReloadKey] = useState(0);
   const [dropActive, setDropActive] = useState(false);
   const [editorHasActivated, setEditorHasActivated] = useState(false);
@@ -409,7 +494,7 @@ export function KetcherPage({
   }, []);
 
   useEffect(() => {
-    if (!isActive) {
+    if (!isActive || hostedKetcherWidget) {
       setDockPortalElement(null);
       return undefined;
     }
@@ -419,7 +504,7 @@ export function KetcherPage({
     syncPortalElement();
     const frameId = window.requestAnimationFrame(syncPortalElement);
     return () => window.cancelAnimationFrame(frameId);
-  }, [isActive, state.rightDockOpen, state.rightDockTool, state.rightDockActiveTab]);
+  }, [hostedKetcherWidget, isActive, state.rightDockOpen, state.rightDockTool, state.rightDockActiveTab]);
 
   useEffect(() => {
     if (!isActive || editorHasActivated) return;
@@ -471,18 +556,83 @@ export function KetcherPage({
       });
   }, [liveImportDirty, location.draftKet, location.draftMolfile, location.importRequest, panelMode, state.ketcherDraftMolfile]);
 
-  const applyHostedSeed = useCallback(async (instance: KetcherEditorApi, seed: HostedKetcherSeed | null) => {
-    if (!seed) return;
-    const key = `${seed.surfaceId ?? ""}:${seed.format}:${seed.content}`;
+  const applyHostedSeed = useCallback(async (
+    instance: KetcherEditorApi,
+    seed: HostedKetcherSeed | null,
+    clearWhenMissing = false,
+  ) => {
+    if (!seed && !clearWhenMissing) return;
+    const key = seed ? `${seed.surfaceId ?? ""}:${seed.format}:${seed.content}` : "clear";
     if (hostedSeedKeyRef.current === key) return;
-    if (seed.format === "mol") await instance.setMolfile(seed.content);
-    else await instance.setMolecule(seed.content, { needZoom: true });
-    hostedSeedKeyRef.current = key;
-    setOutput("");
-    setPanelMode(null);
-    setHasSketch(Boolean(seed.content.trim()));
-    setStatus("Ready");
+    hostedKetcherMutationDepthRef.current += 1;
+    try {
+      setHostedKetcherError(null);
+      if (seed && seed.format !== "mol") {
+        setStatus("Loading structure");
+        await withKetcherTimeout(waitForKetcherStructServiceReady(), "Ketcher structure service");
+      }
+      if (!seed) await instance.setMolecule("");
+      else if (seed.format === "mol") await instance.setMolfile(seed.content);
+      else await instance.setMolecule(seed.content, { needZoom: true });
+      await waitForKetcherCanvasUpdate();
+      if (seed) {
+        const seededKet = await withKetcherTimeout(instance.getKet(), "Hosted seed verification");
+        if (!hasHostedKetcherCanvasContent(seededKet)) {
+          throw new Error("Ketcher returned an empty structure after applying the hosted seed.");
+        }
+        if (seed.format === "rxn" && !instance.containsReaction()) {
+          throw new Error("Ketcher did not apply the hosted reaction seed.");
+        }
+      }
+      hostedSeedKeyRef.current = key;
+      setOutput("");
+      setPanelMode(null);
+      setHasSketch(Boolean(seed?.content.trim()));
+      setStatus("Ready");
+    } finally {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        hostedKetcherMutationDepthRef.current = Math.max(0, hostedKetcherMutationDepthRef.current - 1);
+      }));
+    }
   }, []);
+
+  const reportHostedKetcherSeedError = useCallback((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    setHostedKetcherError(message);
+    setStatus("Ketcher seed failed: " + message);
+  }, []);
+
+  const queueHostedKetcherResult = useCallback((
+    instance: KetcherEditorApi,
+    result: HostedKetcherResult<HostedKetcherSeed>,
+    predecessor?: HostedKetcherState,
+  ) => {
+    let accepted = false;
+    const pending = hostedKetcherResultQueueRef.current.then(async () => {
+      const previous = hostedKetcherStateRef.current;
+      const outcome = await acceptHostedKetcherResult({
+        current: previous,
+        lineage: hostedKetcherLineageRef.current,
+        result,
+        predecessor,
+        applySeed: (seed) => applyHostedSeed(instance, seed, true),
+      });
+      if (!outcome.accepted) return;
+      accepted = true;
+      hostedKetcherStateRef.current = outcome.state;
+      instance.setAgentHighlightedAtomIndexes(outcome.state.snapshot?.highlightedAtoms ?? []);
+      void window.BuretteHostedAppBridge?.updateKetcher({
+        surfaceId: outcome.state.surfaceId,
+        continuationToken: outcome.state.continuationToken,
+        snapshot: outcome.state.snapshot,
+      });
+      if (hostedKetcherPendingSyncRef.current.takeAfterStateAdvance(previous, outcome.state)) {
+        window.queueMicrotask(() => hostedKetcherRequestSyncRef.current?.());
+      }
+    });
+    hostedKetcherResultQueueRef.current = pending.catch(() => {});
+    return pending.then(() => accepted);
+  }, [applyHostedSeed]);
 
   const handleReady = useCallback((instance: KetcherEditorApi) => {
     instance.switchToMoleculesMode();
@@ -490,14 +640,17 @@ export function KetcherPage({
     void restoreDraft(instance).then(async () => {
       if (isHostedKetcherWidget()) {
         try {
-          await applyHostedSeed(instance, hostedKetcherSeedFromWindow());
+          for (const value of takeHostedKetcherResultsFromWindow()) {
+            const result = hostedKetcherResult(value);
+            if (result) await queueHostedKetcherResult(instance, result);
+          }
         } catch (error) {
-          setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
+          reportHostedKetcherSeedError(error);
         }
       }
       ketcherAgentControllerRef.current = registerKetcherAgentController(tabId, instance);
     }).finally(() => applyDefaultKetcherZoom(instance));
-  }, [applyDefaultKetcherZoom, applyHostedSeed, restoreDraft, tabId]);
+  }, [applyDefaultKetcherZoom, queueHostedKetcherResult, reportHostedKetcherSeedError, restoreDraft, tabId]);
 
   useEffect(() => () => {
     unregisterKetcherAgentController(tabId, ketcherAgentControllerRef.current ?? undefined);
@@ -518,15 +671,102 @@ export function KetcherPage({
 
   useEffect(() => {
     if (!ketcher || !isHostedKetcherWidget()) return undefined;
-    const handleSeed = () => {
-      void applyHostedSeed(ketcher, hostedKetcherSeedFromWindow()).catch((error) => {
-        setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
-      });
+    const handleResult = () => {
+      for (const value of takeHostedKetcherResultsFromWindow()) {
+        const result = hostedKetcherResult(value);
+        if (!result) continue;
+        void queueHostedKetcherResult(ketcher, result).catch((error) => {
+          reportHostedKetcherSeedError(error);
+        });
+      }
     };
-    window.addEventListener("burette-ketcher-seed", handleSeed);
-    handleSeed();
-    return () => window.removeEventListener("burette-ketcher-seed", handleSeed);
-  }, [applyHostedSeed, ketcher]);
+    window.addEventListener("burette-ketcher-result", handleResult);
+    handleResult();
+    return () => {
+      window.removeEventListener("burette-ketcher-result", handleResult);
+    };
+  }, [ketcher, queueHostedKetcherResult, reportHostedKetcherSeedError]);
+
+  useEffect(() => {
+    if (!ketcher || !isHostedKetcherWidget()) return undefined;
+    let cancelled = false;
+    let timerId: number | null = null;
+    const sync = () => {
+      hostedKetcherSyncQueueRef.current = hostedKetcherSyncQueueRef.current
+        .then(async () => {
+          if (cancelled || hostedKetcherMutationDepthRef.current > 0) return;
+          await syncHostedKetcherEditorEdit({
+            currentState: () => cancelled ? null : hostedKetcherStateRef.current,
+            readCanvas: async () => {
+              await hostedKetcherResultQueueRef.current;
+              return ketcher.getSmiles();
+            },
+            mutate: async (mutationBase, smiles) => {
+              hostedSeedKeyRef.current = `${mutationBase.surfaceId}:smiles:${smiles}`;
+              const actionId = `widget-${Date.now()}-${++hostedKetcherActionIdRef.current}`;
+              const value = await window.BuretteHostedAppBridge?.callServerTool("control_ketcher", {
+                action: {
+                  apiVersion: KETCHER_AGENT_API_VERSION,
+                  type: "control_ketcher",
+                  command: "set_structure",
+                  surfaceId: mutationBase.surfaceId,
+                  continuationToken: mutationBase.continuationToken,
+                  actionId,
+                  expectedRevision: mutationBase.snapshot!.structureRevision,
+                  format: "smiles",
+                  content: smiles,
+                },
+              });
+              if (cancelled) return { retry: false };
+              if (!value) {
+                return { retry: false, error: new Error("The hosted Ketcher bridge is unavailable.") };
+              }
+              const syncError = hostedKetcherErrorFromToolResult(value);
+              const result = hostedKetcherResultFromToolResult(value);
+              const accepted = result
+                ? await queueHostedKetcherResult(ketcher, result, mutationBase)
+                : false;
+              if (syncError) {
+                if (syncError.code === "REVISION_CONFLICT" && !accepted) {
+                  hostedKetcherPendingSyncRef.current.defer();
+                  return { retry: false, pending: true };
+                }
+                return {
+                  retry: syncError.code === "REVISION_CONFLICT" && accepted,
+                  error: new Error(syncError.message),
+                };
+              }
+              if (!result) {
+                return { retry: false, error: new Error("Hosted Ketcher returned no continuation state.") };
+              }
+              return {
+                retry: !accepted,
+                ...(!accepted ? { error: new Error("Hosted Ketcher returned a superseded continuation state.") } : {}),
+              };
+            },
+          });
+        })
+        .catch((error) => {
+          if (!cancelled) setStatus("Ketcher sync failed: " + (error instanceof Error ? error.message : String(error)));
+        });
+    };
+    const requestSync = () => {
+      if (timerId !== null) window.clearTimeout(timerId);
+      timerId = window.setTimeout(sync, HOSTED_KETCHER_SYNC_DEBOUNCE_MS);
+    };
+    const scheduleSync = () => {
+      if (hostedKetcherMutationDepthRef.current > 0) return;
+      requestSync();
+    };
+    hostedKetcherRequestSyncRef.current = requestSync;
+    const unsubscribe = ketcher.subscribeChange(scheduleSync);
+    return () => {
+      cancelled = true;
+      if (hostedKetcherRequestSyncRef.current === requestSync) hostedKetcherRequestSyncRef.current = null;
+      if (timerId !== null) window.clearTimeout(timerId);
+      unsubscribe();
+    };
+  }, [ketcher, queueHostedKetcherResult]);
 
   useEffect(() => {
     if (!shouldMountEditor || !editorShellRef.current) return undefined;
@@ -785,6 +1025,35 @@ export function KetcherPage({
       setExportingSketch(false);
     }
   }, [actions, exportingSketch, ketcher, preserved3dSource]);
+
+  const downloadHostedKetcherSdf = useCallback(async () => {
+    if (!ketcher || exportingSketch) return;
+    setHostedKetcherError(null);
+    setExportingSketch(true);
+    try {
+      if (ketcher.containsReaction()) {
+        throw new Error("SDF download is available for molecules, not reactions.");
+      }
+      const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "SDF export");
+      if (isBlankKetcherMolfile(molfile)) {
+        setStatus("Draw a molecule first");
+        return;
+      }
+      const downloaded = await window.BuretteHostedAppBridge?.downloadTextFile(
+        "ketcher-sketch.sdf",
+        molfileToSdf(molfile),
+        "chemical/x-mdl-sdfile",
+      );
+      if (!downloaded) throw new Error("ChatGPT did not complete the SDF download.");
+      setStatus("Downloaded SDF");
+    } catch (error) {
+      const message = ketcherExportErrorMessage(error);
+      setHostedKetcherError(message);
+      setStatus(message);
+    } finally {
+      setExportingSketch(false);
+    }
+  }, [exportingSketch, ketcher]);
 
   // The Database dialog asks for a SMILES query, and the sketch on the canvas is
   // the fragment the user means. Ketcher exports it itself, so the fragment
@@ -1120,6 +1389,28 @@ export function KetcherPage({
     setKetcherZoom(nextZoom);
   }, [ketcher, ketcherZoom]);
 
+  const ketcherScaleControl = (
+    <ButtonGroup className="ketcher-scale-control" aria-label="Ketcher scale">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button type="button" variant="outline" size="icon" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
+            <Minus aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent showArrow={false}>Decrease Ketcher scale</TooltipContent>
+      </Tooltip>
+      <ButtonGroupText className="min-w-12 justify-center border-border tabular-nums">{ketcherZoomPercent}%</ButtonGroupText>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button type="button" variant="outline" size="icon" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
+            <Plus aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent showArrow={false}>Increase Ketcher scale</TooltipContent>
+      </Tooltip>
+    </ButtonGroup>
+  );
+
   return (
     <section
       className="ketcher-page"
@@ -1131,8 +1422,30 @@ export function KetcherPage({
       onDragLeaveCapture={handleDragLeave}
       onDropCapture={handleDrop}
     >
-      <header className="ketcher-page-header">
-        <div className="ketcher-page-title">
+      <header className="ketcher-page-header" data-hosted={hostedKetcherWidget || undefined}>
+        {hostedKetcherWidget ? (
+          <>
+            <TooltipProvider>{ketcherScaleControl}</TooltipProvider>
+            {hostedKetcherError && (
+              <Alert variant="destructive" role="alert" className="grow">
+                <AlertTitle>Ketcher action failed</AlertTitle>
+                <AlertDescription>{hostedKetcherError}</AlertDescription>
+              </Alert>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label="Download current structure as SDF"
+              disabled={!ketcher || exportingSketch || !hasSketch}
+              onClick={() => void downloadHostedKetcherSdf()}
+            >
+              SDF
+            </Button>
+          </>
+        ) : (
+          <>
+          <div className="ketcher-page-title">
           <span
             className="ketcher-page-icon"
             aria-hidden="true"
@@ -1332,25 +1645,7 @@ export function KetcherPage({
           )}
           <TooltipContent showArrow={false}>{gridEditSource ? saveToCollectionTooltip : "Add sketch to SDF collection"}</TooltipContent>
           </Tooltip>}
-          <ButtonGroup className="ketcher-scale-control" aria-label="Ketcher scale">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="icon" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
-                  <Minus aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent showArrow={false}>Decrease Ketcher scale</TooltipContent>
-            </Tooltip>
-            <ButtonGroupText className="min-w-12 justify-center border-border tabular-nums">{ketcherZoomPercent}%</ButtonGroupText>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="icon" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
-                  <Plus aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent showArrow={false}>Increase Ketcher scale</TooltipContent>
-            </Tooltip>
-          </ButtonGroup>
+          {ketcherScaleControl}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -1365,7 +1660,9 @@ export function KetcherPage({
             <TooltipContent showArrow={false}>{ketcherThemeTitle}</TooltipContent>
           </Tooltip>
         </div>
-        </TooltipProvider>
+          </TooltipProvider>
+          </>
+        )}
       </header>
       <div className="ketcher-page-body">
         <div
@@ -1707,7 +2004,7 @@ function waitForKetcherStructServiceReady() {
       finish();
     };
     window.addEventListener("struct-service-initialized", markReady, { once: true });
-    if (!IS_KETCHER_WEB_DEMO) fallbackId = window.setTimeout(finish, 750);
+    if (!IS_KETCHER_WEB_DEMO && !IS_HOSTED_KETCHER_BUILD) fallbackId = window.setTimeout(finish, 750);
   });
 }
 

@@ -6,6 +6,7 @@ import {
 } from "../lib/browser-dev-documents";
 import {
   isHostedMcpWidget,
+  isHostedMolecularViewerWidget,
   isHostedMcpToolResultMessage,
   parseHostedMcpStructureMessage,
   parseHostedMcpStructureResult,
@@ -34,6 +35,18 @@ export function useHostedMcpWidget({
   useEffect(() => {
     if (!isHostedMcpWidget()) return undefined;
     document.documentElement.dataset.hostedMcpWidget = "true";
+    window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = true;
+
+    const cleanupBridge = () => {
+      window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = false;
+      window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
+      delete document.documentElement.dataset.hostedMcpWidget;
+    };
+
+    if (!isHostedMolecularViewerWidget()) {
+      window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
+      return cleanupBridge;
+    }
 
     const forgetOpenedDocument = () => {
       if (!openedDocumentPathRef.current) return;
@@ -103,15 +116,25 @@ export function useHostedMcpWidget({
       if (structure) openStructure(structure);
       else clearOpenedStructure();
     };
+    // ChatGPT may deliver output and private structure metadata separately.
+    // Keep their latest values; unrelated host updates must not clear a scene.
+    let latestToolOutput = window.openai?.toolOutput;
+    let latestToolMetadata = window.openai?.toolResponseMetadata;
     const onOpenAiGlobals = (event: Event) => {
       const globals = (event as CustomEvent<{ globals?: {
         toolOutput?: unknown;
         toolResponseMetadata?: unknown;
       } }>).detail?.globals;
-      if (globals?.toolOutput === undefined) return;
+      if (!globals) return;
+      const hasOutput = Object.hasOwn(globals, "toolOutput");
+      const hasMetadata = Object.hasOwn(globals, "toolResponseMetadata");
+      if (!hasOutput && !hasMetadata) return;
+      if (hasOutput) latestToolOutput = globals.toolOutput;
+      if (hasMetadata) latestToolMetadata = globals.toolResponseMetadata;
+      if (latestToolMetadata === undefined) return;
       const structure = parseHostedMcpStructureResult({
-        structuredContent: globals.toolOutput,
-        _meta: globals.toolResponseMetadata,
+        structuredContent: latestToolOutput,
+        _meta: latestToolMetadata,
       });
       if (structure) openStructure(structure);
       else clearOpenedStructure();
@@ -119,8 +142,6 @@ export function useHostedMcpWidget({
 
     window.addEventListener("message", onMessage);
     window.addEventListener("openai:set_globals", onOpenAiGlobals);
-    window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = true;
-
     const queuedResults = window.__BURETTE_HOSTED_MCP_RESULTS__?.splice(0) ?? [];
     const initialStructure = selectHostedMcpInitialStructure(
       queuedResults,
@@ -137,10 +158,8 @@ export function useHostedMcpWidget({
     return () => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("openai:set_globals", onOpenAiGlobals);
-      window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = false;
-      window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
       forgetOpenedDocument();
-      delete document.documentElement.dataset.hostedMcpWidget;
+      cleanupBridge();
     };
   }, [addDocuments, closeAllDocuments, preferences, pushErrorStatus]);
 }
