@@ -31,6 +31,12 @@ demo separate from this complete operator test matrix.
   and Form-backed dialogs compile validators when opened. This requires a
   separately scoped, behavior-preserving validation integration; do not clear
   user settings, disable validation or add `unsafe-eval` as a workaround.
+- Browser fixture after Paper Core change: editor chrome mounted under unchanged
+  strict CSP; the shared zoom group changed `100% -> 110% -> 100%` using click
+  and Enter. Opening Ketcher Settings reproduced an Ajv CSP exception and
+  removed the editor canvas. This is a confirmed browser release blocker,
+  not merely a source-review concern. The seed/SDF, mobile and native-host
+  acceptance checks remain unverified for this integrated candidate.
 - Public privacy policy was updated on September 13 in landing deployment
   `dpl_8jxL8zJarqjuLSAseq92fZsj5dVg`. The canonical `/privacy` URL was checked
   for the continuation/CAS retention and widget analytics disclosures.
