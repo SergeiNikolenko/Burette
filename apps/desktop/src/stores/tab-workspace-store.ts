@@ -3,7 +3,6 @@ import { persist } from "zustand/middleware";
 import {
   createDockTab,
   dockTabCatalog,
-  ensureDefaultDockTabs,
   firstDockTabKind,
   normalizeDockActiveTab,
   normalizeDockTabs,
@@ -83,10 +82,9 @@ function normalizeSize(area: DockArea, size: number) {
 
 function normalizeArea(area: DockArea, input: Partial<DockAreaWorkspace> | undefined): DockAreaWorkspace {
   const fallback = defaultDockArea(area);
-  const normalizedTabs = area === "bottom"
+  const tabs = area === "bottom"
     ? persistentDockTabs(area, input?.tabs)
     : normalizeDockTabs(area, input?.tabs);
-  const tabs = input?.open ? ensureDefaultDockTabs(area, normalizedTabs) : normalizedTabs;
   return {
     open: input?.open ?? fallback.open,
     size: normalizeSize(area, input?.size ?? fallback.size),
@@ -222,7 +220,6 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
         [area]: {
           ...workspace[area],
           open,
-          ...(open ? { tabs: ensureDefaultDockTabs(area, workspace[area].tabs) } : {}),
         },
       }))),
       setDockSize: (tabId, area, size) => set((state) => updateWorkspace(state, tabId, (workspace) => ({
@@ -234,7 +231,6 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
         [area]: {
           ...workspace[area],
           open: !workspace[area].open,
-          ...(!workspace[area].open ? { tabs: ensureDefaultDockTabs(area, workspace[area].tabs) } : {}),
         },
       }))),
       openDockTab: (tabId, area, kind) => set((state) => {
@@ -261,7 +257,6 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
         [area]: {
           ...workspace[area],
           open: true,
-          tabs: ensureDefaultDockTabs(area, workspace[area].tabs),
           documentId,
           tool: null,
           activeTab: "files",
@@ -272,7 +267,6 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
         [area]: {
           ...workspace[area],
           open: true,
-          tabs: ensureDefaultDockTabs(area, workspace[area].tabs),
           documentId: null,
           tool,
           activeTab: "files",

@@ -209,7 +209,7 @@ export function persistentDockTabs(area: DockArea, tabs: DockTab[] | undefined) 
 }
 
 export function normalizeDockActiveTab(area: DockArea, tabs: DockTab[], activeTab: DockTabKind) {
-  return tabs.some((tab) => tab.kind === activeTab) ? activeTab : firstDockTabKind(area);
+  return tabs.some((tab) => tab.kind === activeTab) ? activeTab : tabs[0]?.kind ?? firstDockTabKind(area);
 }
 
 export function dockFileEntries({
