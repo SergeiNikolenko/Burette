@@ -94,6 +94,9 @@ overrides for debugging, CI, or known local toolchains.
 | `BURETTE_RELEASE_ALLOW_ADHOC=1` | Builds and validates an ad-hoc release artifact when Developer ID credentials are unavailable. |
 | `BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX` | Public key used by update manifest validation. |
 | `BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM` | Private key used to sign update manifests. Do not print or commit it. |
+| `BURETTE_SPARKLE_PUBLIC_KEY` | Base64 Ed25519 public key; enables Sparkle in packaged macOS builds. Also a GitHub repository variable. |
+| `BURETTE_SPARKLE_PRIVATE_KEY` | Base64 32-byte seed for signing final update ZIPs; release environment or GitHub secret only. Never print or commit it. |
+| `SPARKLE_FRAMEWORK_PATH` | SDK directory containing `Sparkle.framework`; set by `scripts/build.sh`, or explicitly for focused Cargo checks with the feature enabled. |
 | `HOMEBREW_TAP_TOKEN` | GitHub token used by stable release automation to update the external Homebrew tap. |
 
 Secrets belong in the local environment or GitHub Actions secrets, never in

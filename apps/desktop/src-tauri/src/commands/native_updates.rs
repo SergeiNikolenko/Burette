@@ -10,9 +10,15 @@ use tauri::Manager;
 )]
 #[serde(tag = "engine", rename_all = "camelCase")]
 pub(crate) enum Availability {
+    #[cfg_attr(
+        all(target_os = "macos", feature = "sparkle-updater"),
+        allow(dead_code)
+    )]
     Legacy,
     Sparkle,
-    Unavailable { reason: String },
+    Unavailable {
+        reason: String,
+    },
 }
 
 #[derive(Deserialize)]
@@ -49,7 +55,11 @@ pub(crate) fn initialize(app: &tauri::AppHandle) {
 #[cfg(all(target_os = "macos", feature = "sparkle-updater"))]
 fn initialize_sparkle(app: &tauri::AppHandle) -> Result<Availability, String> {
     use tauri_plugin_sparkle_updater::SparkleUpdaterExt;
-    if app.config().identifier != "com.local.BuretteV10" {
+    // dev-namespace rewrites canonical identifier literals in the build tree.
+    // The namespace marker must remain an independent guard after that rewrite.
+    if app.config().identifier.contains(".Dev.")
+        || app.config().identifier != "com.local.BuretteV10"
+    {
         return Err("Updates are disabled for dev builds.".into());
     }
     let executable = std::env::current_exe().map_err(|error| error.to_string())?;
@@ -57,9 +67,6 @@ fn initialize_sparkle(app: &tauri::AppHandle) -> Result<Availability, String> {
         .ancestors()
         .find(|path| path.extension().is_some_and(|ext| ext == "app"))
         .ok_or("Updates require an installed application bundle.")?;
-    if homebrew_manages(bundle) {
-        return Err("Updates are managed by Homebrew. Run brew upgrade --cask burette.".into());
-    }
     app.plugin(tauri_plugin_sparkle_updater::init())
         .map_err(|error| error.to_string())?;
     if app.sparkle_updater().is_none() {
@@ -90,33 +97,6 @@ fn initialize_sparkle(app: &tauri::AppHandle) -> Result<Availability, String> {
         }
     });
     Ok(Availability::Sparkle)
-}
-
-#[cfg(all(target_os = "macos", feature = "sparkle-updater"))]
-fn homebrew_manages(bundle: &std::path::Path) -> bool {
-    let Ok(bundle) = bundle.canonicalize() else {
-        return false;
-    };
-    if bundle
-        .components()
-        .any(|part| part.as_os_str() == "Caskroom")
-    {
-        return true;
-    }
-    ["/opt/homebrew", "/usr/local"].into_iter().any(|prefix| {
-        std::fs::read_dir(std::path::Path::new(prefix).join("Caskroom/burette"))
-            .into_iter()
-            .flatten()
-            .take(100)
-            .filter_map(Result::ok)
-            .any(|version| {
-                version
-                    .path()
-                    .join("Burette.app")
-                    .canonicalize()
-                    .is_ok_and(|path| path == bundle)
-            })
-    })
 }
 
 #[tauri::command]

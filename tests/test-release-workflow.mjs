@@ -29,7 +29,8 @@ try {
     ['1', 77, 'build-mode=release;adhoc=1'],
     ['0', 1, 'BURETTE_CODESIGN_IDENTITY must be a Developer ID Application identity'],
   ]) {
-    const env = { ...cleanEnv, PATH: `${temporary}/bin:${process.env.PATH}` };
+    const env = { ...cleanEnv, PATH: `${temporary}/bin:${process.env.PATH}`,
+      BURETTE_SPARKLE_PUBLIC_KEY: 'fixture', BURETTE_SPARKLE_PRIVATE_KEY: 'fixture' };
     if (mode !== undefined) env.BURETTE_RELEASE_ALLOW_ADHOC = mode;
     const result = spawnSync('bash', ['scripts/release.sh'], { cwd: temporary, env, encoding: 'utf8' });
     assert.equal(result.status, expectedStatus, result.stderr);
@@ -38,10 +39,19 @@ try {
   const signed = spawnSync('bash', ['scripts/release.sh'], {
     cwd: temporary, encoding: 'utf8', env: { ...cleanEnv, PATH: `${temporary}/bin:${process.env.PATH}`,
       BURETTE_CODESIGN_IDENTITY: 'Developer ID Application: Fixture (TEAM)',
-      BURETTE_DEVELOPMENT_TEAM: 'TEAM', BURETTE_NOTARY_KEYCHAIN_PROFILE: 'Fixture' },
+      BURETTE_DEVELOPMENT_TEAM: 'TEAM', BURETTE_NOTARY_KEYCHAIN_PROFILE: 'Fixture',
+      BURETTE_SPARKLE_PUBLIC_KEY: 'fixture', BURETTE_SPARKLE_PRIVATE_KEY: 'fixture' },
   });
   assert.equal(signed.status, 77, signed.stderr);
   assert.ok(signed.stdout.includes('build-mode=release;adhoc=0'));
+
+  for (const keys of [{}, { BURETTE_SPARKLE_PUBLIC_KEY: 'fixture' }]) {
+    const result = spawnSync('bash', ['scripts/release.sh'], { cwd: temporary, encoding: 'utf8',
+      env: { ...cleanEnv, PATH: `${temporary}/bin:${process.env.PATH}`, ...keys } });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Sparkle .*key is required/);
+    assert.ok(!result.stdout.includes('build-mode='));
+  }
 
   // Run the workflow's release step with a recording gh, including both release channels.
   const workflow = readFileSync(path.join(root, '.github/workflows/release.yml'), 'utf8');
@@ -59,6 +69,21 @@ try {
     assert.equal(args[args.indexOf('--target') + 1], 'a'.repeat(40));
     assert.equal(args.includes('--prerelease'), prerelease === 'true');
   }
+
+  const tapBlock = workflow.split('      - name: Update Homebrew cask\n')[1];
+  const tapRun = tapBlock.split('        run: |\n')[1].split('\n      - name:')[0]
+    .replace(/^          /gm, '').replaceAll('${{ steps.version.outputs.version }}', '2.3.19');
+  write('bin/git', '#!/bin/sh\nexit 0\n', true);
+  write('Burette-2.3.19.zip.sha256', 'a'.repeat(64) + '  Burette-2.3.19.zip\n');
+  write('tap/Casks/burette.rb', `cask "burette" do\n  version "2.3.18"\n  sha256 "${'b'.repeat(64)}"\n  depends_on macos: :monterey\n  app "Burette.app"\nend\n`);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = spawnSync('bash', ['-e', '-c', tapRun], { cwd: path.join(temporary, 'tap'), encoding: 'utf8',
+      env: { ...cleanEnv, PATH: `${temporary}/bin:${process.env.PATH}` } });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(path.join(temporary, 'tap/Casks/burette.rb'), 'utf8'),
+      `cask "burette" do\n  version "2.3.19"\n  sha256 "${'a'.repeat(64)}"\n  auto_updates true\n  depends_on arch: :arm64\n  depends_on macos: :monterey\n  app "Burette.app"\nend\n`);
+  }
+  rmSync(path.join(temporary, 'bin/git'));
 
   // Check the actual version guard against a fixed PR base commit, without fetching.
   for (const source of ['scripts/check-release-version.mjs', 'scripts/bun-lock.mjs', 'apps/desktop/src/lib/semver.ts']) {

@@ -69,8 +69,9 @@ jobs:
           BURETTE_SPARKLE_PUBLIC_KEY: ${{ vars.BURETTE_SPARKLE_PUBLIC_KEY }}
           BURETTE_SPARKLE_PRIVATE_KEY: ${{ secrets.BURETTE_SPARKLE_PRIVATE_KEY }}
         run: |
-          if [[ -n "$BURETTE_SPARKLE_PUBLIC_KEY" || -n "$BURETTE_SPARKLE_PRIVATE_KEY" ]]; then
-            test -n "$BURETTE_SPARKLE_PUBLIC_KEY" && test -n "$BURETTE_SPARKLE_PRIVATE_KEY"
+          if [[ -z "$BURETTE_SPARKLE_PUBLIC_KEY" || -z "$BURETTE_SPARKLE_PRIVATE_KEY" ]]; then
+            echo '::error::Native updates require BURETTE_SPARKLE_PUBLIC_KEY (variable) and BURETTE_SPARKLE_PRIVATE_KEY (secret).'
+            exit 1
           fi
 
       - name: Resolve release capabilities
@@ -237,6 +238,7 @@ jobs:
             exit 1
           fi
           ruby -0pi -e "gsub(/version \"[^\"]+\"/, \"version \\\"${version}\\\"\"); gsub(/sha256 \"[a-f0-9]{64}\"/, \"sha256 \\\"${sha256}\\\"\"); gsub(/depends_on macos: \">= :monterey\"/, \"depends_on macos: :monterey\")" "$cask"
+          ruby -0pi -e 'sub(/^  auto_updates .*\n/, ""); sub(/^  depends_on arch: .*\n/, ""); sub(/^  depends_on macos:/, "  auto_updates true\n  depends_on arch: :arm64\n  depends_on macos:")' "$cask"
           git diff -- "$cask"
           git diff --quiet -- "$cask" && {
             echo "Homebrew cask already points to ${version}."

@@ -113,6 +113,7 @@ bun scripts/check-js-syntax.mjs \
 if [[ "$DRY_RUN" == "1" ]]; then
   "$ROOT/scripts/create-dmg.sh" --dry-run
   echo "Release dry run passed."
+  echo "Distribution also requires BURETTE_SPARKLE_PUBLIC_KEY and BURETTE_SPARKLE_PRIVATE_KEY."
   echo "No build, notarization, stapling, packaging, or publishing was performed."
   echo "Developer ID release requires:"
   echo "  BURETTE_CODESIGN_IDENTITY='Developer ID Application: ...'"
@@ -128,10 +129,9 @@ require_tool hdiutil "hdiutil is normally present on macOS."
 require_tool shasum "shasum is normally present on macOS."
 require_tool xcrun "Install full Xcode from the App Store."
 resolve_signing_mode
-if [[ -n "${BURETTE_SPARKLE_PUBLIC_KEY:-}" ]]; then
-  : "${BURETTE_SPARKLE_PRIVATE_KEY:?Sparkle release signing key is required}"
-fi
 require_release_env
+: "${BURETTE_SPARKLE_PUBLIC_KEY:?Sparkle public key is required for release distribution}"
+: "${BURETTE_SPARKLE_PRIVATE_KEY:?Sparkle release signing key is required}"
 export BURETTE_RELEASE_ALLOW_ADHOC="$ALLOW_ADHOC"
 export BURETTE_BUILD_MODE=release
 export BURETTE_XCODE_CONFIGURATION="${BURETTE_XCODE_CONFIGURATION:-Release}"

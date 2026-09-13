@@ -10,6 +10,14 @@ Release identity is Burette-specific:
 
 ## Release Triggers
 
+Local macOS builds, signing, Quick Look and updater acceptance run on this Mac:
+it is the only available Mac, and the remote compute hosts run Linux. This
+includes large native builds required by a requested release/update check.
+Use an isolated `BURETTE_DEV_FLAVOR` for development builds. Canonical release
+bundle verification must preserve the user's installed app and documents.
+Hosted macOS CI remains an additional gate, not evidence of local native
+update acceptance.
+
 The Release workflow (`.github/workflows/release.yml`) runs on:
 
 - a pushed tag matching `v*` (the tag must equal `v<package.json version>`), or
@@ -184,6 +192,11 @@ packaging. Without the complete credential set, or with
 notarization.
 
 ## Artifact Requirements
+
+Current packaging builds an arm64 app and compute helper. The Homebrew cask
+must require Apple Silicon; the Sparkle appcast must advertise `arm64` hardware
+requirements and the bundle's minimum macOS version. Do not advertise Intel
+compatibility based only on Sparkle's own universal framework.
 
 Every release app bundle must satisfy:
 
