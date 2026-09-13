@@ -91,3 +91,10 @@ bun run check:release
 ```
 
 Release builds should not use `BURETTE_DEV_FLAVOR`.
+
+### Sequence preview controls
+
+`vp run build:sequence-ui` bundles `apps/desktop/src/preview-sequence/adapter.js`
+and `controls.tsx` into `PreviewExtension/Web/sequence-panel.js`. Rebuild after
+changing these sources or their shared Select/Resizable components. The runtime
+uses the same primitives as the desktop docks with preview theme tokens.

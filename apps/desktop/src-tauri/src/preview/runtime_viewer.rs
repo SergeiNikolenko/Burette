@@ -962,7 +962,11 @@ mod tests {
             .lines()
             .filter(|line| line.contains("<script src="))
             .collect();
-        for helper in ["color-picker.js", "molecule-preview-interactions.js"] {
+        for helper in [
+            "color-picker.js",
+            "molecule-preview-interactions.js",
+            "sequence-panel.js",
+        ] {
             let helper_index = scripts
                 .iter()
                 .position(|line| line.contains(helper))
@@ -1191,6 +1195,7 @@ fn viewer_html(
         asset_url(&assets.join("molstar-preset-preview-controller.js"));
     let scene_files_js = asset_url(&assets.join("scene-file-actions.js"));
     let color_picker_js = asset_url(&assets.join("color-picker.js"));
+    let sequence_panel_js = asset_url(&assets.join("sequence-panel.js"));
     let molecule_preview_interactions_js =
         asset_url(&assets.join("molecule-preview-interactions.js"));
     let viewer_js = asset_url(&assets.join("viewer.js"));
@@ -1242,6 +1247,7 @@ fn viewer_html(
   <script src="{trajectory_smoothing_js}"></script>
   <script src="{preset_preview_controller_js}"></script>
   <script src="{color_picker_js}"></script>
+  <script src="{sequence_panel_js}"></script>
   <script src="{molecule_preview_interactions_js}"></script>
   <script src="{viewer_js}"></script>
 </body>

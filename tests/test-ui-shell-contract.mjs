@@ -2265,7 +2265,7 @@ assert.match(styles, /inset: var\(--chrome-height\) 0 0/);
 assert.match(styles, /--accent: #af52de/);
 assert.match(styles, /--control-radius: 10px/);
 assert.ok((styles.match(/border-radius: 8px/g)?.length ?? 0) >= 4);
-assert.match(styles, /--chrome-drag-height: 72px/);
+assert.match(styles, /--chrome-drag-height: var\(--chrome-height\)/);
 assert.match(styles, /\.app-shell\[data-theme="light"\] \{[^}]*--bg-base: #ffffff;[^}]*--fg-base: #0d0d0d;[^}]*--bg: rgba\(255, 255, 255, 0\.715\);[^}]*--surface-card: transparent;/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\] \{[^}]*--bg-base: #ffffff;[^}]*--bg: rgba\(255, 255, 255, 0\.715\);[^}]*--surface-card: transparent;/);
 assert.match(themeSource, /useSyncExternalStore/);
@@ -2412,18 +2412,19 @@ assert.doesNotMatch(appLayout, /\[data-separator=/);
 assert.match(appLayout, /if \(!settingsMode\) setSidebarOpen\(isPanelOpen\(panel, px\)\);/);
 assert.match(appLayout, /if \(open !== rightDockOpenRef\.current\) actions\.setDockOpen\("right", open\);/);
 assert.match(appLayout, /if \(open !== bottomDockOpenRef\.current\) actions\.setDockOpen\("bottom", open\);/);
+const groupPixelGuard = await source("apps/desktop/src/components/ui/use-group-pixel-guard.ts");
 // The other half: a panel the group collapsed under pressure keeps its open
 // flag, so the pixel guard has to expand it again once the room is back.
-assert.match(appLayout, /if \(panel\.isCollapsed\(\)\) panel\.expand\(\);/);
+assert.match(groupPixelGuard, /if \(panel\.isCollapsed\(\)\) panel\.expand\(\);/);
 assert.doesNotMatch(appLayout, /animatingRef/);
 // groupResizeBehavior="preserve-pixel-size" is inert in react-resizable-panels
 // 4.12.2, so fixed panels re-assert their stored pixel size when the group's
 // container resizes — deferred to the next frame because a resize() inside the
 // ResizeObserver callback races the library's own observer and converts px→%
 // through a stale cached group size.
-assert.match(appLayout, /function useGroupPixelGuard/);
-assert.match(appLayout, /frame = requestAnimationFrame\(correct\)/);
-assert.match(appLayout, /panel\.resize\(`\$\{want\}px`\)/);
+assert.match(appLayout, /import \{ useGroupPixelGuard \}/);
+assert.match(groupPixelGuard, /frame = requestAnimationFrame\(correct\)/);
+assert.match(groupPixelGuard, /panel\.resize\(`\$\{want\}px`\)/);
 assert.doesNotMatch(appLayout, /\{rightDockOpen \? <DockPanel/);
 assert.doesNotMatch(appLayout, /\{bottomDockOpen \? <DockPanel/);
 assert.match(dockPanel, /data-open=\{open \? "true" : "false"\}/);
@@ -4669,7 +4670,7 @@ assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v186"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v72"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v85"/);
 assert.match(
   browserDevDocuments,
   /viewerProfile === "mesoscale"\) return !document\.runtimePath\.includes\(MESOSCALE_ASSET_VERSION\)/,
@@ -5232,7 +5233,7 @@ assert.match(previewViewer, /requestGenerated3DCameraView\(activeViewer\)/);
 assert.match(previewViewer, /function installMolstarControlTooltips\(\)/);
 assert.match(previewViewer, /window\.__buretteMolstarControlTooltipsInstalled/);
 assert.match(previewViewer, /\.msp-plugin button\[aria-label\], \.msp-plugin button\[title\]/);
-assert.match(previewViewer, /control\.closest\('\.msp-hover-box-wrapper'\)/);
+assert.match(previewViewer, /control\.closest\('\.msp-hover-box-wrapper, \.buret-seq-header, \.buret-seq-footer'\)/);
 assert.doesNotMatch(previewViewer, /scheduleViewportPopoverRefresh/);
 assert.match(previewViewer, /function molstarTooltipLabel\(control\)/);
 assert.match(previewViewer, /control\.getAttribute\('aria-label'\) \|\| control\.getAttribute\('title'\)/);
@@ -5318,7 +5319,7 @@ assert.match(previewViewer, /function positionOpenViewportMenu\(rail = document\
 assert.match(previewViewer, /rail\.dataset\.horizontalPlacement === 'right'/);
 assert.match(previewViewer, /rail\.dataset\.verticalPlacement === 'above'/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-viewport-panel-max-height', panelMaxHeight \+ 'px'\);\s*positionOpenViewportMenu\(\);/);
-assert.match(previewViewer, /positionOpenViewportMenu\(trigger\.closest\('#buret-viewport-rail'\)\);/);
+assert.match(previewViewer, /positionOpenViewportMenu\(trigger\.closest\('#buret-viewport-rail, \.buret-seq-footer'\)\);/);
 // The rail carries its own animation button, the way Mol*'s viewport controls did:
 // a trackball that keeps turning plus the plugin's timed animations, each listed
 // once and each able to say why it is unavailable.

@@ -361,7 +361,7 @@
       '.msp-plugin input[aria-label], .msp-plugin input[title]'
     );
     if (!control || control.closest('#buret-toolbar, .buret-preview-dock, .buret-generate-3d-control')) return null;
-    if (control.closest('.msp-hover-box-wrapper')) return null;
+    if (control.closest('.msp-hover-box-wrapper, .buret-seq-header, .buret-seq-footer')) return null;
     return control;
   }
 
@@ -2001,6 +2001,7 @@
     root.style.setProperty('--buret-molstar-accent', accent);
     root.style.setProperty('--buret-menu-accent', accent);
     root.style.setProperty('--buret-menu-background', background);
+    root.style.setProperty('--buret-dock-background', background);
     root.style.setProperty('--buret-menu-section-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 16)}%, transparent)`);
     root.style.setProperty('--buret-menu-input-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 22)}%, transparent)`);
     root.style.setProperty('--buret-menu-input-focus-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 30)}%, transparent)`);
@@ -8673,6 +8674,10 @@ SOFTWARE.
   // Mol* rebuilds the strip's header whenever the chain or entity changes, so the
   // button is re-added rather than bound once.
   function installSequenceCloseButton() {
+    if (window.BuretteSequencePanel && !document.body.classList.contains('burette-mobile-host')) {
+      window.BuretteSequencePanel.sync();
+      return;
+    }
     const strip = document.querySelector('.msp-sequence .msp-sequence-select');
     if (!strip || strip.querySelector('.buret-sequence-close')) return;
     const button = document.createElement('button');
@@ -8711,11 +8716,13 @@ SOFTWARE.
     // first just made. The press that ends the run arrives here before Mol* has
     // acted on it, so the 3D view still gets its usual focus-on-click.
     const enter = event => {
-      if (!event.target?.closest?.('.msp-sequence')) {
+      if (!event.target?.closest?.('.msp-sequence, .buret-seq-menu, .buret-sequence-layout, #buret-viewport-menu')) {
         leave();
         return;
       }
-      if (previousMode !== null) return;
+      // Header/menu interactions keep an existing selection alive, but
+      // browsing controls alone must not enter Mol* selection mode.
+      if (previousMode !== null || !event.target.closest('.msp-sequence-wrapper [data-seqid]')) return;
       const plugin = activeMolstarViewer()?.plugin;
       if (!plugin) return;
       previousMode = plugin.selectionMode === true;
@@ -8725,40 +8732,24 @@ SOFTWARE.
     window.addEventListener('blur', leave);
   }
 
-  // Mol* pins the sequence region to a fixed height; this drags it, in the same
-  // shape as the molecule preview's resize edges.
   function initSequenceResize() {
-    const grip = document.getElementById('buret-sequence-resize');
-    if (!grip || grip.dataset.bound === '1') return;
-    grip.dataset.bound = '1';
-    let drag = null;
-    const onPointerDown = event => {
-      if (event.button !== 0) return;
-      const region = document.querySelector('.msp-layout-region.msp-layout-top');
-      if (!region) return;
-      drag = { pointerId: event.pointerId, top: region.getBoundingClientRect().top };
-      try { grip.setPointerCapture(event.pointerId); } catch (_) {}
-      grip.classList.add('buret-sequence-resizing');
-      event.preventDefault();
-    };
-    const onPointerMove = event => {
-      if (!drag || event.pointerId !== drag.pointerId) return;
-      const height = Math.max(64, Math.min(event.clientY - drag.top + 6, window.innerHeight * 0.6));
-      document.documentElement.style.setProperty('--buret-sequence-height', `${Math.round(height)}px`);
-      updateViewportCornerLayout();
-      event.preventDefault();
-    };
-    const finishResize = event => {
-      if (!drag || event.pointerId !== drag.pointerId) return;
-      try { grip.releasePointerCapture(event.pointerId); } catch (_) {}
-      grip.classList.remove('buret-sequence-resizing');
-      drag = null;
-      scheduleViewerResize(activeMolstarViewer(), 40);
-    };
-    grip.addEventListener('pointerdown', onPointerDown);
-    grip.addEventListener('pointermove', onPointerMove);
-    grip.addEventListener('pointerup', finishResize);
-    grip.addEventListener('pointercancel', finishResize);
+    let initialHeight = 196;
+    try {
+      const saved = Number(window.localStorage.getItem('buret.sequence.height'));
+      if (Number.isFinite(saved) && saved >= 64) initialHeight = saved;
+    } catch (_) {}
+    window.BuretteSequencePanel?.initResize({
+      initialHeight,
+      onCollapse() { toggleLayoutRegion('sequence', activeMolstarViewer()); },
+      onExpand() { toggleLayoutRegion('sequence', activeMolstarViewer()); },
+      onResize() {
+        updateViewportCornerLayout();
+        scheduleViewerResize(activeMolstarViewer(), 40);
+      },
+      onCommit(height) {
+        try { window.localStorage.setItem('buret.sequence.height', String(height)); } catch (_) {}
+      }
+    });
   }
 
   function initViewportPanelDrag(panel) {
@@ -8878,7 +8869,7 @@ SOFTWARE.
 
   function closeViewportMenu() {
     document.getElementById('buret-viewport-menu')?.remove();
-    for (const trigger of document.querySelectorAll('#buret-viewport-rail [aria-expanded], #buret-selection-bar [aria-expanded]')) {
+    for (const trigger of document.querySelectorAll('#buret-viewport-rail [aria-expanded], #buret-selection-bar [aria-expanded], .buret-seq-footer [aria-expanded]')) {
       trigger.setAttribute('aria-expanded', 'false');
     }
   }
@@ -8913,7 +8904,7 @@ SOFTWARE.
     build(menu);
     document.body.appendChild(menu);
     trigger.setAttribute('aria-expanded', 'true');
-    positionOpenViewportMenu(trigger.closest('#buret-viewport-rail'));
+    positionOpenViewportMenu(trigger.closest('#buret-viewport-rail, .buret-seq-footer'));
   }
 
   function viewportMenuItem(menu, label, action, options = {}) {
@@ -25918,6 +25909,13 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     setStatus(`[web] WebGL viewer created. Parsing structure…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyViewerBackground(viewer);
+    // Match the default 3D selection to the sequence accent. Authored snapshot
+    // renderer settings loaded below can still override this initial palette.
+    const selectionAccent = getComputedStyle(document.body).getPropertyValue('--buret-molstar-accent').trim();
+    if (/^#[0-9a-f]{6}$/i.test(selectionAccent)) {
+      const selectColor = parseInt(selectionAccent.slice(1), 16);
+      viewer.plugin?.canvas3d?.setProps({ renderer: { selectColor }, marking: { selectEdgeColor: selectColor } });
+    }
     window.BuretteViewer = viewer;
     window.BuretteViewer = viewer;
     try {

@@ -70,6 +70,7 @@ assert.deepEqual(storageConstants(gridViewer), sortedPairs([
 assert.deepEqual(literalStorageKeys(viewer), [
   "buret.dockingPoseControls.position",
   "buret.dockingPoseControls.position.version",
+  "buret.sequence.height",
   "buret.toolbar.collapsed",
   "buret.toolbar.collapsed.version",
   "buret.toolbar.position",
