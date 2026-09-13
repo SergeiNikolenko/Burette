@@ -2146,12 +2146,8 @@ function ChemicalSpace2D({
     baseContext.clearRect(0, 0, viewport.width, viewport.height);
     const styles = getComputedStyle(canvas);
     const selectedColor = styles.getPropertyValue("--primary").trim() || "#af52de";
-    // The inherited foreground is solid #0d0d0d in the light theme, which renders a
-    // dense map as an ink blot. The secondary text tone carries its own alpha and
-    // stays legible on either background.
-    const pointColor = styles.getPropertyValue("--chemical-space-point").trim() || "#659cc8"
-      || styles.color
-      || "#f5f5f7";
+    // A shared blue keeps dense maps legible in both themes.
+    const pointColor = styles.getPropertyValue("--chemical-space-point").trim() || "#659cc8";
     const ringColor = pointColor;
     const basePointRadius = adaptivePointRadius(result.successfulRecords);
     // Points share the camera's sense of depth: zooming in grows them, zooming
@@ -3384,6 +3380,7 @@ function requestChemicalSpaceColumnValues(
       const entries: Array<[number, number]> = [];
       for (const entry of body.values) {
         if (!Array.isArray(entry) || entry.length < 2) continue;
+        if (entry[1] == null || (typeof entry[1] === "string" && !entry[1].trim())) continue;
         const sourceRecordId = Number(entry[0]);
         const value = Number(entry[1]);
         if (Number.isSafeInteger(sourceRecordId) && sourceRecordId >= 0 && Number.isFinite(value)) {

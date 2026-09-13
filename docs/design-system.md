@@ -206,3 +206,5 @@ and keyboard focus while preserving their resting color and geometry.
 ### Molecular property plots
 
 Chemical Space provides a Properties view of existing numeric Grid columns alongside the Similarity embedding workflow. Property plots use muted blue points and a pale-blue selected point, with source record IDs linking selection to the Grid and inspector. Opening Properties does not start a compute job. Large collections display at most 2,000 evenly sampled points and report the displayed count.
+
+Sample provenance for the presentation dataset is tracked in [docs/presentation-samples.md](./presentation-samples.md).

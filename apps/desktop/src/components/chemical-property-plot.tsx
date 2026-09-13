@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
@@ -21,10 +21,12 @@ export function ChemicalPropertyPlot({ document: source, columns: readColumns, v
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
+  const sourceRevision = useRef(-1);
+  const selectedRef = useRef<number | null>(null);
   const post = (body: Record<string, unknown>) => activeViewerIframeForDocument(source.id, "grid2d")?.contentWindow?.postMessage({ source: "burette-grid-host", body: { ...body, documentId: source.id } }, "*");
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true); setError(""); setPoints([]); setPreview(null); setSelected(null);
+    setLoading(true); setError(""); setPoints([]); setPreview(null); setSelected(null); selectedRef.current = null;
     readColumns(source.id, controller.signal).then(result => {
       if (controller.signal.aborted) return;
       setColumns(result);
@@ -53,14 +55,17 @@ export function ChemicalPropertyPlot({ document: source, columns: readColumns, v
     const onMessage = (event: MessageEvent) => {
       const body = event.data?.body;
       if (event.data?.source !== "burette-grid" || body?.documentId !== source.id || !isKnownViewerMessageSource(event.source, source.id)) return;
-      if (body.type === "chemicalSpaceMoleculePreview" && body.sourceRecordId === selected && typeof body.svgBase64 === "string" && body.svgBase64.length < 1_000_000) {
-        setPreview({ name: String(body.name || `Molecule ${selected! + 1}`).slice(0, 160), url: `data:image/svg+xml;base64,${body.svgBase64}` });
+      if (body.type === "chemicalSpaceMoleculePreview" && body.sourceRecordId === selectedRef.current && typeof body.svgBase64 === "string" && body.svgBase64.length < 350_000) {
+        setPreview({ name: String(body.name || `Molecule ${selectedRef.current! + 1}`).slice(0, 160), url: `data:image/svg+xml;base64,${body.svgBase64}` });
       }
-      if (body.type === "gridSourceChanged") setRevision(value => value + 1);
+      if (body.type === "gridDirtyChanged" && Number.isSafeInteger(body.sourceRevision) && body.sourceRevision !== sourceRevision.current) {
+        sourceRevision.current = body.sourceRevision;
+        setRevision(value => value + 1);
+      }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [source.id, selected]);
+  }, [source.id]);
   const bounds = useMemo(() => {
     const range = (key: "x" | "y") => {
       let min = Infinity, max = -Infinity;
@@ -72,6 +77,7 @@ export function ChemicalPropertyPlot({ document: source, columns: readColumns, v
     return { x: range("x"), y: range("y") };
   }, [points]);
   const choose = (id: number) => {
+    selectedRef.current = id;
     setSelected(id); setPreview(null);
     post({ type: "chemicalSpaceSelectionChanged", sourceRecordIds: [id], focusSourceRecordId: id, filterToSelection: false });
     post({ type: "chemicalSpaceHoverChanged", sourceRecordId: id });
