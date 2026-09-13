@@ -178,6 +178,11 @@ build output and are not committed.
 
 ## Submission materials
 
+Publication is manual and budget-gated. Git-triggered deployments are disabled
+in this project's `vercel.json`; see the
+[budget-safe deployment procedure](../../docs/hosted-plugin-deployment.md).
+This does not make manual deployments or runtime traffic free.
+
 - `chatgpt-app-submission.json` — listing suggestions and exactly five independent
   positive plus three negative review tests.
 - `submission/skills/preview-molecular-structures/SKILL.md` — public bundled

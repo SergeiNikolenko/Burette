@@ -63,6 +63,14 @@ demo separate from this complete operator test matrix.
 - Public privacy policy was updated on September 13 in landing deployment
   `dpl_8jxL8zJarqjuLSAseq92fZsj5dVg`. The canonical `/privacy` URL was checked
   for the continuation/CAS retention and widget analytics disclosures.
+- Budget follow-up: the latest 100 plugin deployment records contained 99
+  Git-triggered deployments and one blocked CLI attempt. The plugin's Vercel
+  Git integration was disconnected to prevent automatic rebuilds, and source
+  configuration now disables Git deployments too. The repository itself is
+  unchanged by the disconnect. No project was resumed, no budget was raised,
+  and no new deployment was started. Follow the
+  [budget-safe procedure](../../../docs/hosted-plugin-deployment.md); production
+  and host acceptance remain blocked, not passed.
 
 ### Earlier same-day checkpoint (before main integration and policy publication)
 
