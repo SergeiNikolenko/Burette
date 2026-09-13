@@ -1,4 +1,3 @@
-import { ChemicalPropertyPlot } from "./chemical-property-plot";
 import {
   lazy,
   Suspense,
@@ -252,21 +251,7 @@ function indexingProgressLabel(state: GridIndexState | null) {
   return `${percent}% · ${records} molecules indexed`;
 }
 
-export function ChemicalSpacePanel(props: ChemicalSpacePanelProps) {
-  const [mode, setMode] = useState<"properties" | "embedding">("properties");
-  if (!props.document || props.document.renderer !== "grid2d") return <ChemicalSpaceEmpty message="Open a molecular Grid to explore its chemical space." />;
-  return <div className="flex h-full min-h-0 flex-col">
-    <div className="flex gap-1 border-b border-border px-2 py-1">
-      <Button size="sm" variant={mode === "properties" ? "secondary" : "ghost"} aria-label="Plot molecular properties" aria-pressed={mode === "properties"} onClick={() => setMode("properties")}>Properties</Button>
-      <Button size="sm" variant={mode === "embedding" ? "secondary" : "ghost"} aria-pressed={mode === "embedding"} onClick={() => setMode("embedding")}>Similarity</Button>
-    </div>
-    <div className="min-h-0 flex-1">{mode === "properties"
-      ? <ChemicalPropertyPlot key={props.document.id} document={props.document} columns={requestChemicalSpaceColumns} values={requestChemicalSpaceColumnValues} />
-      : <ChemicalSpaceEmbedding {...props} />}</div>
-  </div>;
-}
-
-function ChemicalSpaceEmbedding({ document, inspectorOpen = false, visible = true }: ChemicalSpacePanelProps) {
+export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = true }: ChemicalSpacePanelProps) {
   const portalContainer = useThemePortalContainer();
   const [draft, setDraft] = useState(DEFAULT_OPTIONS);
   const [options, setOptions] = useState(DEFAULT_OPTIONS);
