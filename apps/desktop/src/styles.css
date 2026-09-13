@@ -5826,7 +5826,7 @@ input.structure-inspector-composition-search {
   grid-template-rows: auto minmax(0, 1fr);
   background: var(--bg-base);
   color: var(--text-primary);
-  --editor-selection-bg: color-mix(in srgb, var(--accent) 34%, transparent);
+  --editor-selection-bg: color-mix(in srgb, var(--text-primary) 20%, transparent);
 }
 .text-file-toolbar {
   min-width: 0;
@@ -6089,9 +6089,8 @@ input.structure-inspector-composition-search {
 .text-file-rich-editor .cm-panels-bottom {
   display: none !important;
 }
-.text-file-rich-editor .cm-selectionBackground,
-.text-file-rich-editor .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground,
-.text-file-rich-editor .cm-content ::selection {
+:is(.text-file-editor, .text-file-rich-editor) .cm-selectionBackground,
+:is(.text-file-editor, .text-file-rich-editor) .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground {
   background-color: var(--editor-selection-bg);
 }
 .ketcher-page {
@@ -7857,7 +7856,7 @@ input.structure-inspector-composition-search {
   color: var(--text-primary);
   --code-bg: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 14%), transparent);
   --blockquote-border: var(--line-subtle);
-  --editor-selection-bg: color-mix(in srgb, var(--accent) 34%, transparent);
+  --editor-selection-bg: color-mix(in srgb, var(--text-primary) 20%, transparent);
   --pm-header-mark-color: var(--text-muted);
   --pm-link-color: var(--link-color);
   --pm-muted-color: var(--text-muted);
@@ -7955,11 +7954,6 @@ input.structure-inspector-composition-search {
 .text-file-rich-editor .cm-cursorLayer .cm-cursor,
 .text-file-rich-editor .cm-cursorLayer .cm-dropCursor {
   border-left-color: var(--text-primary);
-}
-.text-file-rich-editor .cm-selectionBackground,
-.text-file-rich-editor .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground,
-.text-file-rich-editor .cm-content ::selection {
-  background-color: var(--editor-selection-bg);
 }
 .text-file-rich-editor .cm-scroller {
   overflow: visible !important;
