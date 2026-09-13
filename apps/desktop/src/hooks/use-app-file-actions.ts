@@ -2,9 +2,10 @@ import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 
+import { showMacAvailability } from "../lib/browser-availability";
 import { formatBytes } from "../components/format";
 import type { ChemicalEditorTarget } from "../components/types";
-import { basename, parentDirectory } from "../lib/sidebar-projects";
+import { basename } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
 import type { TextFileDocument, ViewerDocument } from "../types";
 
@@ -104,8 +105,7 @@ export function useAppFileActions({
   const openPathInChemicalEditor = useCallback(async (path: string, targetId: string, targetName: string) => {
     try {
       if (!isTauriRuntime()) {
-        await openPath(path);
-        pushStatus(`Opened ${basename(path)}`);
+        showMacAvailability();
         return;
       }
       await invoke("open_in_chemical_editor", { path, targetId });
@@ -116,6 +116,10 @@ export function useAppFileActions({
   }, [pushErrorStatus, pushStatus]);
 
   const openPathWithDefaultApp = useCallback(async (path: string) => {
+    if (!isTauriRuntime()) {
+      showMacAvailability();
+      return;
+    }
     try {
       await openPath(path);
       pushStatus(`Opened ${basename(path)}`);
@@ -129,7 +133,8 @@ export function useAppFileActions({
       if (isTauriRuntime()) {
         await invoke("reveal_path", { path });
       } else {
-        await openPath(parentDirectory(path) ?? path);
+        showMacAvailability();
+        return;
       }
       pushStatus(`Revealed ${label} in Finder`);
     } catch (error) {
@@ -233,3 +238,4 @@ export function useAppFileActions({
     showTextFileMetadata,
   };
 }
+
