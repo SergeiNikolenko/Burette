@@ -64,3 +64,42 @@ message({kind:'fallback',token:sent.at(-1).token});
 assert.equal(fallback.style.visibility,'','an older native host keeps the complete web menu');
 await window.happyDOM.close();
 console.log('Native viewer menu capability, projection, callbacks, stale events and browser fallback passed');
+
+// Exercise the shell's source routing and the ordered control/close handshake.
+const ts = (await import('typescript')).default;
+const hostSource = readFileSync(new URL('../apps/desktop/src/lib/native-viewer-menu.ts', import.meta.url), 'utf8')
+ .replace(/^import .*;\n/gm, '').replace('export function', 'function');
+const js = ts.transpileModule(hostSource, {compilerOptions:{target:ts.ScriptTarget.ESNext}}).outputText;
+let listener;
+let native = false;
+let wire;
+let nativeResult = {kind:'shown',controlsVersion:1,selection:'focus'};
+let replies = [];
+const sourceWindow = {};
+const shell = {addEventListener: (_,fn) => { listener = fn; },removeEventListener: () => { listener = undefined; }};
+const install = new Function('window','navigator','document','isTauriRuntime','isKnownViewerMessageSource','postMessageToViewerSource','Channel','invoke',`${js}\nreturn installNativeViewerMenus;`)(
+ shell,{platform:'MacIntel'}, {querySelectorAll:()=>[{contentWindow:sourceWindow,getBoundingClientRect:()=>({left:100,top:40})}]},
+ ()=>native, (source,id)=>source===sourceWindow && id==='molecule-a', (_,reply)=>replies.push(reply), class {},
+ async (_,args)=>{wire=args; if(nativeResult instanceof Error) throw nativeResult; return nativeResult;}
+);
+install(); assert.equal(listener,undefined,'browser shell does not install a native listener');
+native=true; const dispose=install();
+const request = (body,source=sourceWindow)=>listener({source,data:{source:'burette-viewer',body:{documentId:'molecule-a',...body}}});
+await request({type:'nativeMenuReady'},{}); assert.deepEqual(replies,[],'unknown windows cannot request a native menu');
+await request({type:'nativeMenuReady'}); assert.equal(replies.at(-1).kind,'available');
+const openedNative=request({type:'nativeMenuOpen',token:'one',x:12,y:18,items:[]});
+await settle();
+assert.deepEqual(wire.at,{x:112,y:58});
+assert.equal(replies.at(-1).kind,'available','invoke completion alone does not close a menu before final control values');
+wire.onControl.onmessage({id:'slider',value:0.25,phase:'change'});
+wire.onControl.onmessage({id:'',value:null,phase:'finished'});
+await openedNative;
+assert.deepEqual(replies.slice(-2),[
+ {source:'burette-native-menu',kind:'control',token:'one',id:'slider',value:0.25,phase:'change'},
+ {source:'burette-native-menu',kind:'closed',token:'one',selection:'focus'},
+]);
+nativeResult=new Error('Older native binary');
+await request({type:'nativeMenuOpen',token:'two',x:0,y:0,items:[]});
+assert.equal(replies.at(-1).kind,'fallback');
+dispose(); assert.equal(listener,undefined);
+console.log('Native menu shell source isolation, coordinates, callback ordering and old-host fallback passed');
