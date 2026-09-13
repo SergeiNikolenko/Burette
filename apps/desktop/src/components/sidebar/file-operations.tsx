@@ -9,6 +9,7 @@ import { useShellStore } from "../../stores/shell-store";
 import type { MenuItemSpec } from "../menu-types";
 import type { ShellActions, ShellViewState } from "../types";
 import { useAppShellPortalContainer } from "../ui/portal-container";
+import { CloseIcon } from "../close-icon";
 
 type Request =
   | { operation: "rename" | "renameFolder" | "createFolder"; path: string; name: string }
@@ -136,9 +137,10 @@ export function SidebarFileOperations({ state, actions, children }: {
             event.preventDefault();
             if (request && !invalidName && !busy) void run(needsName ? { ...request, name } as Request : request);
           }}>
-            <div className="radix-dialog-header"><Dialog.Title>{request ? labels[request.operation] : "File"}</Dialog.Title></div>
+            <div className="radix-dialog-header"><Dialog.Title>{request ? labels[request.operation] : "File"}</Dialog.Title>
+              <Dialog.Close asChild><button type="button" className="radix-dialog-close" aria-label="Close file operation" disabled={busy}><CloseIcon size={14} /></button></Dialog.Close></div>
             <div className="radix-dialog-body">
-              <Dialog.Description>{(request?.operation === "trash" || request?.operation === "trashFolder")
+              <Dialog.Description className="radix-dialog-subline">{(request?.operation === "trash" || request?.operation === "trashFolder")
                 ? `“${basename(request.path)}” can be restored from Trash.`
                 : request?.path}</Dialog.Description>
               {needsName ? <label className="calculated-column-field"><span>Name</span><input aria-label="File or folder name"

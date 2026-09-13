@@ -296,18 +296,16 @@ export function TextFileViewer({
       <div className="min-w-0">
       <div className="text-file-toolbar">
         <div className="text-file-title">
-          <span>{document.title}</span>
+          <span title={document.title}>{document.title}</span>
           {document.truncated && <span className="text-file-badge">Truncated</span>}
         </div>
         <div className="text-file-meta">
-          {sourceEditing && (
+          {sourceEditing && (sourceEditing.editable || sourceEditing.dirty) && (
             <span className="source-edit-status" aria-live="polite">
               {sourceEditing.dirty && <span className="source-edit-dirty" aria-label="Unsaved changes">●</span>}
               {sourceEditing.status}
             </span>
           )}
-          <span>{document.language}</span>
-          <span>{formatBytes(imageDocument ? document.byteCount : new TextEncoder().encode(editorContent).byteLength)}</span>
           {!nonEditorDocument && (
             <Button type="button" variant="ghost" size="icon-xs" aria-label="Find in text" title="Find in text (⌘F)" onClick={() => { if (viewRef.current) toggleTextSearch(viewRef.current); }}>
               <Search />
@@ -458,7 +456,7 @@ const textViewerTheme = EditorView.theme({
     backgroundColor: "color-mix(in srgb, var(--surface-hover) 58%, transparent)",
   },
   ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-    backgroundColor: "color-mix(in srgb, var(--accent) 34%, transparent)",
+    backgroundColor: "var(--editor-selection-bg)",
   },
   ".cm-structure-record": {
     color: "color-mix(in srgb, var(--accent) 82%, var(--text-primary))",

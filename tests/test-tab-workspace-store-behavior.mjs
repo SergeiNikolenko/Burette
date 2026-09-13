@@ -108,4 +108,21 @@ assert.deepEqual(
 workspace.pruneWorkspaces(["tab-b"]);
 assert.deepEqual(Object.keys(useTabWorkspaceStore.getState().workspaces), ["tab-b"]);
 
+// Closing a panel must survive the next normalization, resize and reopen.
+resetStore();
+workspace.setDockOpen("close-test", "right", true);
+workspace.closeDockTab("close-test", "right", "dock-text");
+workspace.closeDockTab("close-test", "right", "dock-inspector");
+workspace.setDockSize("close-test", "right", 420);
+workspace.setDockDocument("close-test", "right", "document-2");
+workspace.toggleDock("close-test", "right");
+workspace.toggleDock("close-test", "right");
+assert.deepEqual(getTabWorkspace("close-test").right.tabs, [{ id: "dock-files", kind: "files" }]);
+assert.equal(getTabWorkspace("close-test").right.activeTab, "files");
+await useTabWorkspaceStore.persist.rehydrate();
+assert.deepEqual(getTabWorkspace("close-test").right.tabs, [{ id: "dock-files", kind: "files" }]);
+workspace.openDockTab("close-test", "right", "inspector");
+assert.deepEqual(getTabWorkspace("close-test").right.tabs.map(tab => tab.kind), ["files", "inspector"]);
+assert.equal(getTabWorkspace("close-test").right.activeTab, "inspector");
+
 console.log("tab workspace store behavior tests passed");

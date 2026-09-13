@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { ChevronDown as ArrowDown01Icon, ChevronUpDown as ArrowUpDownIcon, X as Cancel01Icon, BarChart as ChartHistogramIcon, Search as Search01Icon } from "@/components/ui/app-icon-data";
+import { ChevronDown as ArrowDown01Icon, X as Cancel01Icon, BarChart as ChartHistogramIcon, Search as Search01Icon } from "@/components/ui/app-icon-data";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Filter } from "./ui/app-icons";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
@@ -382,7 +382,6 @@ export function GridFilterSection({
   );
   const isColumnOpen = (column: GridFilterColumn) => columnOpen[column.id]
     ?? Boolean(column.filter?.min || column.filter?.max || column.filter?.text || column.id === defaultOpenColumnId);
-  const allOpen = shown.length > 0 && shown.every(isColumnOpen);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -407,26 +406,6 @@ export function GridFilterSection({
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1"><AccordionTrigger>Filters</AccordionTrigger></div>
           <div className="grid-filter-host-actions">
-            {open ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-2xs"
-                    aria-expanded={allOpen}
-                    aria-label={allOpen ? "Collapse all filters" : "Expand all filters"}
-                    onClick={() => setColumnOpen((current) => ({
-                      ...current,
-                      ...Object.fromEntries(shown.map((column) => [column.id, !allOpen])),
-                    }))}
-                  >
-                    <HugeiconsIcon icon={ArrowUpDownIcon} aria-hidden="true" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent showArrow={false}>{allOpen ? "Collapse all" : "Expand all"}</TooltipContent>
-              </Tooltip>
-            ) : null}
             {activeCount ? (
               <Button type="button" variant="ghost" size="xs" onClick={() => actions.clearGridColumnFilters()}>
                 <Filter size={14} aria-hidden="true" />

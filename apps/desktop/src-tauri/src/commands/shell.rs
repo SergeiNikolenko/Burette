@@ -212,6 +212,24 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
     Ok(label)
 }
 
+/// Close the calling workspace window. With other windows still open the window
+/// is destroyed on its own (its per-window registries unwind on `Destroyed`)
+/// and `true` is returned. The last window keeps the quit behaviour instead:
+/// closing it runs the shared quit flow with the unsaved-changes preflight, and
+/// `false` tells the caller that flow now owns the window.
+#[tauri::command]
+pub(crate) fn close_workspace_window<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    window: WebviewWindow<R>,
+) -> Result<bool, String> {
+    if app.webview_windows().len() > 1 {
+        window.destroy().map_err(|error| error.to_string())?;
+        return Ok(true);
+    }
+    crate::menu::request_quit(&app);
+    Ok(false)
+}
+
 #[tauri::command]
 pub(crate) fn read_external_preview_svg(runtime_path: String) -> Result<String, String> {
     let index_path = PathBuf::from(&runtime_path)

@@ -159,9 +159,6 @@ export function PerformReactionDialog({
             </div>
           </div>
           <div className="radix-dialog-footer calculate-properties-footer">
-            <span className="calculate-properties-count">
-              {ready ? "Ready" : "Name the column and enter a reaction"}
-            </span>
             <div className="calculate-properties-actions">
               <Dialog.Close asChild>
                 <button type="button" className="dock-action">Cancel</button>

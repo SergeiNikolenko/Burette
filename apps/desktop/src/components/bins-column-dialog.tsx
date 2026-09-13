@@ -80,14 +80,10 @@ export function BinsColumnDialog({
             </label>
             {problem ? <div className="calculated-column-problem">{problem}</div> : null}
             <p className="calculated-column-note">
-              Every value lands in the interval it belongs to - a width of 1 turns 7.3 into
-              [7 - 8). The bin floor rides along invisibly, so the column sorts numerically.
+              Example: width 1 groups 7.3 into [7, 8).
             </p>
           </div>
           <div className="radix-dialog-footer calculate-properties-footer">
-            <span className="calculate-properties-count">
-              {column ? `Binning ${column.label}` : "Pick a numeric column"}
-            </span>
             <div className="calculate-properties-actions">
               <Dialog.Close asChild>
                 <button type="button" className="dock-action">Cancel</button>

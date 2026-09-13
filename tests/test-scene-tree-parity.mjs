@@ -101,6 +101,18 @@ for (const property of ["width", "height", "border-radius"]) {
 // on the bar itself.
 assert.equal(declaration(treeBar, "opacity"), null);
 assert.equal(declaration(panelBar, "opacity"), null);
+// Each tone wears its own colour, the one its slice has in the segmented
+// composition bar; a single colour for all four once collapsed the tree.
+const toneColours = ["polymer", "ligand", "ion", "water"].map((tone) => {
+  const rowTone = declaration(ruleBody(styles, `.structure-inspector-row-bar[data-tone="${tone}"]`, "panel"), "background");
+  const barTone = declaration(ruleBody(styles, `.structure-inspector-composition-bar i[data-tone="${tone}"]`, "panel"), "background");
+  assert.ok(rowTone, `the ${tone} row bar has no colour`);
+  assert.equal(rowTone, barTone, `the ${tone} row bar and composition slice disagree`);
+  return rowTone;
+});
+assert.equal(new Set(toneColours).size, 4, `the four row-bar tones must be distinct, got ${toneColours.join(", ")}`);
+// The viewer's own colour for the entity, when known, beats the tone.
+assert.match(panel, /className="structure-inspector-row-bar" data-tone=\{tone\} style=\{color \? \{ backgroundColor: color \} : undefined\}/);
 assert.ok(styles.includes('.structure-brief-action-entry[data-hidden="true"] .structure-brief-chip-button'), "hidden child rows must fade their contents once");
 assert.match(viewerCss, /\.buret-tree-item\[data-hidden="true"\][^{]*\.buret-tree-bar/);
 
@@ -173,3 +185,11 @@ assert.match(styles, /\.structure-inspector-tree \.structure-brief-action-entry\
 assert.match(viewerCss, /\.buret-tree-item\[data-selected="true"\][^{]*\.buret-tree-label \{[\s\S]*?font-weight: 590/);
 
 console.log("scene tree parity contract ok");
+
+// Both trees round their rows the same way; the panel mirrors the viewer's tree
+// row, so a radius change on one side has to land on the other.
+assert.equal(
+  declaration(ruleBody(styles, ".structure-inspector-tree .structure-brief-action-entry", "panel"), "border-radius"),
+  declaration(ruleBody(viewerCss, ".buret-tree-row", "viewer"), "border-radius"),
+  "the composition rows' border-radius no longer matches the scene tree's"
+);

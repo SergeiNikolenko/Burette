@@ -103,7 +103,10 @@ and a separately controllable subset, copying representation parameters before
 hiding it. Remove drops just the queried subset from the scene; the source file
 is unchanged. The operation runs in a Mol* transaction and preserves selection.
 `compositionVisibilityChanged` reports at most 128 registered queries and their
-visibility, so Composition follows changes made in the scene tree too. The
+visibility and presence, so Composition follows changes made in the scene tree too.
+Removed subsets leave the list; hidden subsets remain available to show again.
+Snapshots include live atom, residue, chain and residue-type counts, computed over
+the union of matching components. Empty scenes also report absence. The
 inspector registers its bounded query list with `compositionVisibilityRequest`
 on mount. Snapshots also include a uniform colour when the matched representations
 agree; the read-only query evaluation does not create scene cells.

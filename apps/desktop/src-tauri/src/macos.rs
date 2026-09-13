@@ -1,13 +1,70 @@
-use cocoa::appkit::NSApplicationTerminateReply;
+use cocoa::appkit::{NSApplicationTerminateReply, NSView, NSWindow, NSWindowButton};
 use cocoa::base::{id, NO, YES};
+use cocoa::foundation::NSRect;
 use dispatch2::DispatchQueue;
 use objc::runtime::{class_addMethod, class_getInstanceMethod, object_getClass, Imp, Object, Sel};
 use objc::{class, msg_send, sel, sel_impl};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+use tauri::LogicalPosition;
 
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 static TERMINATION_PENDING: AtomicBool = AtomicBool::new(false);
+
+/// Logical inset of the close/minimize/zoom buttons inside the overlay title bar.
+/// Shared by the window builder and the manual re-layout below so both agree.
+pub(crate) const TRAFFIC_LIGHT_INSET: LogicalPosition<f64> = LogicalPosition { x: 20.0, y: 29.0 };
+
+/// Re-applies the traffic light inset tao computes inside its `drawRect:`.
+///
+/// tao only lays the buttons out when its content view redraws, so a window
+/// that is shown without a subsequent resize keeps the macOS default button
+/// positions until something else triggers a redraw. Calling this after
+/// `show()` and on resize/focus/theme events keeps the buttons aligned with the
+/// toolbar. The layout mirrors `inset_traffic_lights` in tao 0.35.3.
+pub(crate) fn reposition_traffic_lights<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    let target = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        let Ok(ns_window) = target.ns_window() else {
+            return;
+        };
+        if ns_window.is_null() {
+            return;
+        }
+        unsafe { inset_traffic_lights(ns_window as id, TRAFFIC_LIGHT_INSET) };
+    });
+}
+
+unsafe fn inset_traffic_lights(window: id, position: LogicalPosition<f64>) {
+    let close = window.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
+    let miniaturize = window.standardWindowButton_(NSWindowButton::NSWindowMiniaturizeButton);
+    let zoom = window.standardWindowButton_(NSWindowButton::NSWindowZoomButton);
+    if close.is_null() || miniaturize.is_null() || zoom.is_null() {
+        return;
+    }
+    let button_row = NSView::superview(close);
+    if button_row.is_null() {
+        return;
+    }
+    let title_bar_container = NSView::superview(button_row);
+    if title_bar_container.is_null() {
+        return;
+    }
+
+    let close_frame = NSView::frame(close);
+    let title_bar_height = close_frame.size.height + position.y;
+    let mut title_bar_frame: NSRect = NSView::frame(title_bar_container);
+    title_bar_frame.size.height = title_bar_height;
+    title_bar_frame.origin.y = NSWindow::frame(window).size.height - title_bar_height;
+    let _: () = msg_send![title_bar_container, setFrame: title_bar_frame];
+
+    let spacing = NSView::frame(miniaturize).origin.x - close_frame.origin.x;
+    for (index, button) in [close, miniaturize, zoom].into_iter().enumerate() {
+        let mut frame = NSView::frame(button);
+        frame.origin.x = position.x + index as f64 * spacing;
+        NSView::setFrameOrigin(button, frame.origin);
+    }
+}
 
 pub(crate) fn after_current_appkit_event<F>(work: F)
 where

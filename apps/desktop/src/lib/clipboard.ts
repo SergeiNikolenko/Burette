@@ -1,4 +1,11 @@
+import { invoke } from "@tauri-apps/api/core";
+import { isTauriRuntime } from "./tauri";
+
 export async function writeClipboardText(text: string) {
+  if (isTauriRuntime()) {
+    await invoke<void>("write_clipboard_text", { text });
+    return;
+  }
   try {
     if (typeof navigator.clipboard?.writeText === "function") {
       await navigator.clipboard.writeText(text);
