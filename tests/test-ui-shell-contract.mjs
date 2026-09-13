@@ -4720,7 +4720,7 @@ assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v188"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v72"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v73"/);
 assert.match(
   browserDevDocuments,
   /viewerProfile === "mesoscale"\) return !document\.runtimePath\.includes\(MESOSCALE_ASSET_VERSION\)/,

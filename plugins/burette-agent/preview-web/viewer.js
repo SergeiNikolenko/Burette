@@ -17321,6 +17321,18 @@ SOFTWARE.
     });
   }
 
+  function clearMolstarTrajectoryHover(plugin) {
+    const highlights = plugin?.managers?.interactivity?.lociHighlights;
+    if (!highlights) return;
+    // A hover arriving during a frame update can refer to the outgoing model.
+    // Remove the highlight bit across the current representations as well as
+    // clearing the manager's old loci. Mol* MarkerAction.RemoveHighlight = 2;
+    // unlike Clear, this leaves the explicit selection bit untouched.
+    highlights.clearHighlights();
+    const everyLoci = window.molstar?.lib?.loci?.EveryLoci;
+    if (everyLoci) plugin.canvas3d?.mark?.({ loci: everyLoci }, 2);
+  }
+
   async function setNativeTrajectoryPoseDirect(index, poseCount) {
     const transform = nativeTrajectoryModelTransform(poseCount);
     if (!transform) return false;
@@ -17329,12 +17341,17 @@ SOFTWARE.
     // end leaves the model on its last one while we report success.
     const limit = transform.frameCount > 0 ? transform.frameCount : poseCount;
     const target = Math.max(0, Math.min(limit - 1, index));
+    // Hover loci belong to the outgoing model. Clear their markers before Mol*
+    // replaces it: afterwards those loci may no longer match the representation,
+    // and a pointer-leave event can also be skipped while the plugin is busy.
+    clearMolstarTrajectoryHover(transform.plugin);
     await transform.plugin.state.updateTransform(
       transform.plugin.state.data,
       transform.ref,
       { ...transform.params, modelIndex: target },
       'Model Index'
     );
+    clearMolstarTrajectoryHover(transform.plugin);
     await afterNativeTrajectoryPaint();
     return true;
   }
@@ -17352,8 +17369,10 @@ SOFTWARE.
     for (let step = 0; step < stepCount; step += 1) {
       const button = nativeTrajectoryStepButton(direction);
       if (!button || button.disabled || button.getAttribute('aria-disabled') === 'true') return false;
+      clearMolstarTrajectoryHover(activeViewer?.plugin);
       button.click();
       await afterNativeTrajectoryPaint();
+      clearMolstarTrajectoryHover(activeViewer?.plugin);
     }
     return true;
   }
