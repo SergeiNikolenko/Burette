@@ -469,7 +469,7 @@ const preloadSource = viewerSource.slice(
 );
 const bytes = new TextEncoder().encode('ATOM native resource');
 const manager = new AssetManager();
-const preload = new Function('loadPayloadBytes', `${preloadSource}; return preloadMolViewSpecResources;`)(async () => bytes);
+const preload = new Function('loadPayloadBytes', `${preloadSource}; return preloadMolViewSpecResources;`)(async (fileName) => { assert.equal(fileName, 'mvs-resource-0'); return bytes; });
 const url = 'asset://localhost/staged/mvs-resource-0';
 await preload({ plugin: { managers: { asset: manager } } }, [url]);
 const cached = Asset.getUrlAsset(manager, url);

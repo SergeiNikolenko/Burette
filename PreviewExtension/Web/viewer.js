@@ -16086,7 +16086,8 @@ SOFTWARE.
     // Mol* XHR rejects status 0 from WKWebView's asset protocol. Use the
     // existing native payload loader and retain files across Story snapshots.
     for (const [index, url] of urls.entries()) {
-      const bytes = await loadPayloadBytes(url);
+      const fileName = decodeURIComponent(new URL(url).pathname).split('/').pop();
+      const bytes = await loadPayloadBytes(fileName);
       const asset = { kind: 'url', id: `burette-mvs-local-${index}`, url };
       manager.set(asset, new File([bytes], `mvs-resource-${index}`), {
         isStatic: true, tag: 'burette-mvs-local'
