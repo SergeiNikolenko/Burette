@@ -1,3 +1,6 @@
+import kras from "../../../../samples/structures/proteins/7rpz.pdb?raw";
+import imatinibPoses from "../../../../samples/structures/small-molecules/imatinib-poses.sdf?raw";
+import mosesProperties from "../../../../samples/collections/tables/moses-properties.csv?raw";
 import type { SidebarProjectStructure } from "./sidebar-projects";
 import { writeBrowserDevVirtualTextDocument } from "./browser-dev-documents";
 import moses10k from "../../../../samples/collections/tables/moses-10k.csv?raw";
@@ -43,6 +46,8 @@ H 0.629 -0.629 -0.629
 
 const DEMO_STRUCTURES = [
   ["proteins/1HTB.pdb", oneHtb],
+  ["proteins/7RPZ.pdb", kras],
+  ["small-molecules/imatinib-poses.sdf", imatinibPoses],
   ["proteins/paired.pdb", pairedPdb],
   ["crystals/caffeine.cif", caffeineCif],
   ["structures/bimp.v000.xyz", bimp],
@@ -54,6 +59,7 @@ const DEMO_STRUCTURES = [
   ["structures/sn2.v000.xyz", sn2],
   ["spectra/massspecgym-0075191.ms", massSpecGym],
   ["collections/tables/moses-10k.csv", moses10k],
+  ["collections/tables/moses-properties.csv", mosesProperties],
   ["small-molecules/benzene.xyz", benzene],
   ["small-molecules/caffeine.sdf", caffeineSdf],
   ["small-molecules/multi-molecule.sdf", multiMolecule],
@@ -89,7 +95,7 @@ export function initializeWebDemoWorkspace() {
     registerText(`${WEB_DEMO_ROOT}/notes/README.md`, "# Burette browser workspace\n\nOpen a structure or choose a local project folder.\n");
     emitChange();
   }
-  return [`${WEB_DEMO_ROOT}/proteins/1HTB.pdb`];
+  return [`${WEB_DEMO_ROOT}/proteins/${new URLSearchParams(window.location.search).has("presentation") ? "7RPZ" : "1HTB"}.pdb`];
 }
 
 export function webDemoProjectRoot() {
