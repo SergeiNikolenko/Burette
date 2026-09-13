@@ -98,7 +98,7 @@ pub(super) mod macos {
 
     extern "C" fn change(this: &mut Object, _: Sel, sender: id) {
         unsafe {
-            let state = &mut *(*this.get_ivar::<*mut State>("state"));
+            let state = &mut *(*this.get_ivar::<*mut std::ffi::c_void>("state") as *mut State);
             let tag: isize = msg_send![sender, tag];
             if let Some(binding) = state.bindings.get(tag as usize) {
                 if matches!(binding.control, MenuControl::Palette { .. }) {
@@ -167,7 +167,7 @@ pub(super) mod macos {
     }
     extern "C" fn highlight(this: &mut Object, _: Sel, _: id, item: id) {
         unsafe {
-            let state = &mut *(*this.get_ivar::<*mut State>("state"));
+            let state = &mut *(*this.get_ivar::<*mut std::ffi::c_void>("state") as *mut State);
             let next = if item.is_null() {
                 None
             } else {
@@ -195,7 +195,7 @@ pub(super) mod macos {
         CLASS.get_or_init(|| {
             let mut c = ClassDecl::new("BuretteMenuControlTarget", class!(NSObject))
                 .expect("unique menu control class");
-            c.add_ivar::<*mut State>("state");
+            c.add_ivar::<*mut std::ffi::c_void>("state");
             unsafe {
                 c.add_method(
                     sel!(menu:willHighlightItem:),
@@ -228,7 +228,10 @@ pub(super) mod macos {
                 hovered: None,
             });
             let target: id = msg_send![target_class(), new];
-            (*target).set_ivar("state", &mut *state as *mut State);
+            (*target).set_ivar(
+                "state",
+                (&mut *state as *mut State).cast::<std::ffi::c_void>(),
+            );
             Self { target, state }
         }
         pub(in crate::commands::context_menu) unsafe fn watch(
