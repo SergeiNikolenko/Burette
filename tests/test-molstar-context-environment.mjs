@@ -81,7 +81,7 @@ assert.equal(originalCalls, 1, 'real measurement picks must still reach Mol*');
 console.log(`Pinned environment verified: ${StructureElement.Loci.size(neighbors)} receptor atoms; measurement cleanup survives 200 calls.`);
 
 // Atom picking must override a molecule-level preference only for the session,
-// display exactly the accepted points, and restore state on finish or Escape.
+// display accepted points, clear them on success, and restore state on Escape.
 let click;
 let keydown;
 let now = 0;
@@ -92,7 +92,7 @@ const pickPlugin = {
   selectionMode: false,
   behaviors: { interaction: { click: { subscribe(fn) { click = fn; return { unsubscribe() {} }; } } } },
   managers: {
-    interactivity: { props: { granularity: 'structure' }, setProps(value) { Object.assign(this.props, value); } },
+    interactivity: { props: { granularity: 'structure' }, setProps(value) { Object.assign(this.props, value); }, lociSelects: { deselectAll() { picked = []; } } },
     structure: {
       selection: { getSnapshot: () => priorSelection, setSnapshot(value) { picked = value; }, clear() { picked = []; }, fromLoci(_op, value) { picked.push(value); } },
       measurement: { addAngle(...points) { measured.push(points); return Promise.resolve(); } },
@@ -102,21 +102,37 @@ const pickPlugin = {
 const measurementFns = new Function('activeMolstarViewer', 'window', 'document', 'performance', 'molstarContextElementLoci', 'molstarLociIsEmpty', 'captureMolstarSceneUndoSnapshot', 'pushMolstarEditUndoSnapshot', 'setStatus', `
   const MOLSTAR_MEASURE_KINDS = { angle: { points: 3, method: 'addAngle', noun: 'angle' } };
   let molstarMeasureSession = null;
-  ${['showMolstarMeasureToast', 'cancelMolstarMeasurement', 'molstarMeasurePrompt', 'beginMolstarMeasurement'].map(functionSource).join('\n')}
-  return { beginMolstarMeasurement };
+  const showMolstarMeasurePrompt = () => {};
+  const molstarLassoEnabled = false, molstarLassoStroke = null;
+  const isMolstarContextMenuTarget = () => true;
+  const molstarCurrentSelectionLociList = () => ['existing selection'];
+  let molstarSelectionPreserveClick = null;
+  ${functionSource('beginMolstarSelectionPreserve')}
+
+  ${['cancelMolstarMeasurement', 'molstarMeasurePrompt', 'beginMolstarMeasurement'].map(functionSource).join('\n')}
+  return { beginMolstarMeasurement, checkPreservation() {
+    molstarSelectionPreserveClick = null;
+    beginMolstarSelectionPreserve({ button: 0 });
+    return molstarSelectionPreserveClick;
+  } };
 `)(() => ({ plugin: pickPlugin }), { molstar: { lib: { loci: { Loci: { areEqual: (a, b) => a === b } } } } },
-  { addEventListener(_name, fn) { keydown = fn; }, removeEventListener() {} }, { now: () => now }, x => x, x => !x,
+  { addEventListener(_name, fn) { keydown = fn; }, removeEventListener() {}, getElementById() { return null; } }, { now: () => now }, x => x, x => !x,
   () => ({}), () => {}, () => {});
+assert.ok(measurementFns.checkPreservation(), 'normal viewport clicks preserve selection');
 measurementFns.beginMolstarMeasurement('angle');
+assert.equal(measurementFns.checkPreservation(), null, 'measurement picks must not restore temporary selection');
 assert.equal(pickPlugin.managers.interactivity.props.granularity, 'element');
 for (let i = 1; i <= 3; i++) {
   now += 200;
   click({ current: { loci: i } });
   if (i < 3) assert.deepEqual(picked, Array.from({ length: i }, (_, index) => index + 1));
 }
-assert.deepEqual(measured, [[1, 2, 3]]);
+assert.deepEqual(measured, [[1, 2, 3, { lineParams: { linesSize: 0.02 }, labelParams: { borderWidth: 0 } }]]);
+// Mol* may process its own final-pick handler after our click subscription.
+picked = [3];
+await Promise.resolve();
+assert.deepEqual(picked, [], "successful measurement removes atom selection, including the final click");
 assert.equal(pickPlugin.managers.interactivity.props.granularity, 'structure');
-assert.equal(picked, priorSelection);
 measurementFns.beginMolstarMeasurement('angle');
 keydown({ key: 'Escape' });
 assert.equal(pickPlugin.managers.interactivity.props.granularity, 'structure');

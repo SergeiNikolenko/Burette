@@ -20524,7 +20524,7 @@ SOFTWARE.
   // fires when the selection was actually wiped, so a click that legitimately
   // makes a new one is left alone.
   function beginMolstarSelectionPreserve(event) {
-    if (molstarLassoEnabled || molstarLassoStroke || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
+    if (molstarMeasureSession || molstarLassoEnabled || molstarLassoStroke || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
     const lociList = molstarCurrentSelectionLociList();
     if (!lociList.length) return;
     molstarSelectionPreserveClick = {
@@ -22326,11 +22326,26 @@ SOFTWARE.
   };
 
   let molstarMeasureSession = null;
-  function showMolstarMeasureToast(message, timeoutMs = 0) {
-    setStatus(message, 'info', { visible: true, timeoutMs });
+  function showMolstarMeasurePrompt(message) {
+    let panel = document.getElementById('buret-measure-prompt');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'buret-measure-prompt';
+      const label = document.createElement('span');
+      label.setAttribute('role', 'status');
+      label.setAttribute('aria-live', 'polite');
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.textContent = 'Cancel';
+      cancel.title = 'Cancel measurement (Esc)';
+      cancel.addEventListener('click', () => cancelMolstarMeasurement());
+      panel.append(label, cancel);
+      document.body.appendChild(panel);
+    }
+    panel.firstElementChild.textContent = message;
   }
 
-  function cancelMolstarMeasurement(message) {
+  function cancelMolstarMeasurement() {
     const session = molstarMeasureSession;
     if (!session) return;
     molstarMeasureSession = null;
@@ -22342,16 +22357,13 @@ SOFTWARE.
       plugin.managers.interactivity.setProps({ granularity: session.restoreGranularity });
       plugin.managers.structure.selection.setSnapshot(session.restoreSelection);
     }
-    if (message) showMolstarMeasureToast(message, 3200);
+    document.getElementById('buret-measure-prompt')?.remove();
   }
 
   function molstarMeasurePrompt(kind, picked) {
     const spec = MOLSTAR_MEASURE_KINDS[kind];
-    const remaining = spec.points - picked;
     const title = spec.noun[0].toUpperCase() + spec.noun.slice(1);
-    if (!picked) return `[web] ${title}: click ${spec.points} atoms. Esc cancels.`;
-    const suffix = remaining === 1 ? 'point' : 'points';
-    return `[web] ${title}: ${picked}/${spec.points} points selected. Click ${remaining} more ${suffix}. Esc cancels.`;
+    return `${title} · ${picked} / ${spec.points} atoms`;
   }
 
   function beginMolstarMeasurement(kind = 'distance') {
@@ -22374,7 +22386,7 @@ SOFTWARE.
       onKeyDown: null
     };
     session.onKeyDown = event => {
-      if (event.key === 'Escape') cancelMolstarMeasurement(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measurement cancelled.`);
+      if (event.key === 'Escape') cancelMolstarMeasurement();
     };
     plugin.managers.structure.selection.clear();
     plugin.managers.interactivity.setProps({ granularity: 'element' });
@@ -22386,7 +22398,7 @@ SOFTWARE.
       if (!loci || molstarLociIsEmpty(loci) || (atomCount !== undefined && atomCount !== 1)) {
         plugin.managers.structure.selection.clear();
         for (const point of session.points) plugin.managers.structure.selection.fromLoci('add', point, false);
-        showMolstarMeasureToast(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)}: no atom at that point. Click directly on an atom. Esc cancels.`);
+        showMolstarMeasurePrompt(`${molstarMeasurePrompt(kind, session.points.length)} · Pick an atom`);
         return;
       }
       // One physical click can arrive through two overlapping representations.
@@ -22405,7 +22417,7 @@ SOFTWARE.
       plugin.managers.structure.selection.clear();
       for (const point of session.points) plugin.managers.structure.selection.fromLoci('add', point, false);
       if (session.points.length < spec.points) {
-        showMolstarMeasureToast(molstarMeasurePrompt(kind, session.points.length));
+        showMolstarMeasurePrompt(molstarMeasurePrompt(kind, session.points.length));
         return;
       }
       const points = session.points;
@@ -22413,15 +22425,17 @@ SOFTWARE.
       // The measurement appears once the last point is picked, not when the menu
       // item was chosen, so its undo entry is taken here.
       const undoSnapshot = captureMolstarSceneUndoSnapshot(`${spec.noun} measurement`);
-      Promise.resolve(measurement[spec.method](...points))
+      Promise.resolve(measurement[spec.method](...points, { lineParams: { linesSize: 0.02 }, labelParams: { borderWidth: 0 } }))
         .then(() => {
           pushMolstarEditUndoSnapshot(undoSnapshot);
-          showMolstarMeasureToast(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measured.`, 3200);
+          // Clear after Mol* has processed the last click and created the label.
+          // Escape still restores the selection that preceded measurement mode.
+          if (!molstarMeasureSession) plugin.managers.interactivity.lociSelects.deselectAll();
         })
         .catch(error => setStatus(`[web] Measure ${spec.noun} failed.\n\n` + (error?.message || String(error)), 'error'));
     });
     molstarMeasureSession = session;
-    showMolstarMeasureToast(molstarMeasurePrompt(kind, 0));
+    showMolstarMeasurePrompt(molstarMeasurePrompt(kind, 0));
     return true;
   }
 
