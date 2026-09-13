@@ -73,9 +73,9 @@ supported.
 
 ## Portal prerequisites
 
-- The live privacy policy must first be updated to cover hosted Ketcher and
-  widget analytics. The following is proposed technical disclosure for owner
-  review, not a published policy or a legal-compliance attestation:
+- The live privacy policy was updated on September 13, 2026 to cover hosted
+  Ketcher and widget analytics. The following summarizes that published technical
+  disclosure; it is not a legal-compliance attestation:
 
   "Hosted Ketcher uses an authenticated, encrypted continuation token carrying
   up to 64 KiB of sketch content. It expires after 15 minutes of inactivity.

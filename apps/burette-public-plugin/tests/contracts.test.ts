@@ -155,7 +155,7 @@ describe("viewer resource contract", () => {
     expect(VIEWER_RESOURCE_URI).toBe("ui://burette/molecular-viewer-v21.html");
     expect(html).toContain(`https://burette.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burette.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-v23");
+    expect(html).toContain("?v=viewer-v24");
     expect(html).toContain(`https://burette.example${VIEWER_MOBILE_SCRIPT_PATH}`);
     expect(html).toContain(`https://burette.example${VIEWER_APP_BRIDGE_SCRIPT_PATH}`);
     expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
