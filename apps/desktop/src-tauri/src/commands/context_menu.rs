@@ -1,9 +1,18 @@
 use serde::{Deserialize, Serialize};
 
+#[path = "context_menu_controls.rs"]
+mod controls;
+use controls::{ControlEvent, MenuControl};
+
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub(crate) enum MenuEntry {
     Separator,
+    Control {
+        id: String,
+        text: String,
+        control: MenuControl,
+    },
     Item {
         id: String,
         text: String,
@@ -76,6 +85,18 @@ fn validate(items: &[MenuEntry], at: Option<&MenuPosition>) -> Result<(), String
             }
             let (id, text, symbol, image) = match entry {
                 MenuEntry::Separator => continue,
+                MenuEntry::Control { id, text, control } => {
+                    control.validate()?;
+                    if id.is_empty()
+                        || id.len() > 160
+                        || !ids.insert(id.clone())
+                        || text.len() > 1024
+                        || text.contains('\0')
+                    {
+                        return Err("Invalid context menu control".into());
+                    }
+                    continue;
+                }
                 MenuEntry::Item {
                     id,
                     text,
@@ -136,6 +157,7 @@ pub(crate) async fn popup_macos_context_menu(
     window: tauri::WebviewWindow,
     items: Vec<MenuEntry>,
     at: Option<MenuPosition>,
+    on_control: Option<tauri::ipc::Channel<ControlEvent>>,
 ) -> Result<PopupResult, String> {
     validate(&items, at.as_ref())?;
     #[cfg(target_os = "macos")]
@@ -144,7 +166,7 @@ pub(crate) async fn popup_macos_context_menu(
         let owner = window.clone();
         window
             .run_on_main_thread(move || {
-                let result = macos::popup(&owner, &items, at.as_ref());
+                let result = macos::popup(&owner, &items, at.as_ref(), on_control);
                 let _ = sender.try_send(result);
             })
             .map_err(|error| error.to_string())?;
@@ -155,7 +177,7 @@ pub(crate) async fn popup_macos_context_menu(
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = window;
+        let _ = (window, on_control);
         Ok(PopupResult::Unsupported)
     }
 }
@@ -195,7 +217,7 @@ mod macos {
         })
     }
 
-    unsafe fn string(value: &str) -> id {
+    pub(super) unsafe fn string(value: &str) -> id {
         let value = NSString::alloc(nil).init_str(value);
         msg_send![value, autorelease]
     }
@@ -254,7 +276,12 @@ mod macos {
         let _: () = msg_send![item, setImage: image];
     }
 
-    unsafe fn make_menu(entries: &[MenuEntry], target: id, ids: &mut Vec<String>) -> id {
+    unsafe fn make_menu(
+        entries: &[MenuEntry],
+        target: id,
+        ids: &mut Vec<String>,
+        controls: &mut controls::macos::Controls,
+    ) -> id {
         let menu: id = msg_send![class!(NSMenu), new];
         let menu: id = msg_send![menu, autorelease];
         let _: () = msg_send![menu, setAutoenablesItems: NO];
@@ -263,6 +290,11 @@ mod macos {
                 MenuEntry::Separator => {
                     let separator: id = msg_send![class!(NSMenuItem), separatorItem];
                     let _: () = msg_send![menu, addItem: separator];
+                    continue;
+                }
+                MenuEntry::Control { id, text, control } => {
+                    let item = controls.make_item(id, text, control);
+                    let _: () = msg_send![menu, addItem: item];
                     continue;
                 }
                 MenuEntry::Item {
@@ -309,10 +341,10 @@ mod macos {
                     }
                 }
                 MenuEntry::Submenu { items, .. } => {
-                    let child = make_menu(items, target, ids);
+                    let child = make_menu(items, target, ids, controls);
                     let _: () = msg_send![item, setSubmenu: child];
                 }
-                MenuEntry::Separator => unreachable!(),
+                MenuEntry::Separator | MenuEntry::Control { .. } => unreachable!(),
             }
             let _: () = msg_send![menu, addItem: item];
         }
@@ -323,6 +355,7 @@ mod macos {
         window: &tauri::WebviewWindow,
         items: &[MenuEntry],
         at: Option<&MenuPosition>,
+        on_control: Option<tauri::ipc::Channel<ControlEvent>>,
     ) -> Result<PopupResult, String> {
         let native_window = window.ns_window().map_err(|error| error.to_string())? as id;
         unsafe {
@@ -330,7 +363,8 @@ mod macos {
             let target: id = msg_send![target_class(), new];
             (*target).set_ivar("selectedTag", 0isize);
             let mut ids = Vec::new();
-            let menu = make_menu(items, target, &mut ids);
+            let mut controls = controls::macos::Controls::new(on_control);
+            let menu = make_menu(items, target, &mut ids, &mut controls);
             let view: id = msg_send![native_window, contentView];
             let (point, view) = if let Some(at) = at {
                 let bounds: NSRect = msg_send![view, bounds];
@@ -356,6 +390,8 @@ mod macos {
                 .checked_sub(1)
                 .and_then(|index| ids.get(index as usize))
                 .cloned();
+            controls.finish();
+            drop(controls);
             let _: () = msg_send![target, release];
             let _: () = msg_send![pool, drain];
             Ok(PopupResult::Shown { selection })
