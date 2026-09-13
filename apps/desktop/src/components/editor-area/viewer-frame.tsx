@@ -15,6 +15,46 @@ import {
   replayPendingGridCloseTransitionRequests,
 } from "../../lib/window-mutation-barrier";
 
+// Every mounted viewer iframe, frozen at the pixel size it had when the shell
+// started a layout gesture. `.viewer-iframe` is sized 100% x 100%, so a panel
+// drag re-laid the iframe out on every frame and Mol* inside redrew each time;
+// pinning the frame for the duration of the gesture (measured earlier: ~30 to
+// ~50 fps on a dock drag) leaves one reflow for the release. The pin is
+// reference counted because a drag can overlap a toggle animation, and the
+// shell carries `data-resizing` while any pin is held so the CSS can drop
+// pointer events on the frames (an iframe under the pointer would otherwise
+// swallow the drag).
+let framePinDepth = 0;
+let pinnedFrames: HTMLIFrameElement[] = [];
+let pinnedRoot: HTMLElement | null = null;
+
+export function pinViewerFrames(root: HTMLElement): () => void {
+  if (framePinDepth++ === 0) {
+    pinnedRoot = root;
+    pinnedFrames = Array.from(root.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe"));
+    for (const frame of pinnedFrames) {
+      const rect = frame.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      frame.style.width = `${rect.width}px`;
+      frame.style.height = `${rect.height}px`;
+    }
+    root.setAttribute("data-resizing", "true");
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--framePinDepth > 0) return;
+    for (const frame of pinnedFrames) {
+      frame.style.removeProperty("width");
+      frame.style.removeProperty("height");
+    }
+    pinnedFrames = [];
+    pinnedRoot?.removeAttribute("data-resizing");
+    pinnedRoot = null;
+  };
+}
+
 export function viewerFrameSandbox() {
   if (isTauriRuntime()) return "allow-scripts allow-downloads";
   return isHostedMcpWidget()

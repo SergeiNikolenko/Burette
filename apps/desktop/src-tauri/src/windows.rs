@@ -1,10 +1,7 @@
 use tauri::window::Color;
 #[cfg(target_os = "macos")]
 use tauri::window::{Effect, EffectState, EffectsBuilder};
-use tauri::{
-    LogicalPosition, LogicalSize, Manager, Runtime, Size, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
-};
+use tauri::{LogicalSize, Manager, Runtime, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::commands::source_editing::{OpenedSourceRegistry, SourceEditRegistry};
 use crate::preview::grid_store::GridRuntimeRegistry;
@@ -75,6 +72,7 @@ pub(crate) fn focus_or_create_workspace_window<R: Runtime>(
         return Err("A window cannot be shown while Burette is quitting or restarting.".into());
     }
     window.show().map_err(|error| error.to_string())?;
+    reposition_traffic_lights(&window);
     window.unminimize().map_err(|error| error.to_string())?;
     normalize_workspace_window(&window);
     window.set_focus().map_err(|error| error.to_string())?;
@@ -99,6 +97,7 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
         );
     }
     window.show().map_err(|error| error.to_string())?;
+    reposition_traffic_lights(&window);
     window.unminimize().map_err(|error| error.to_string())?;
     normalize_workspace_window(&window);
     window.set_focus().map_err(|error| error.to_string())?;
@@ -122,6 +121,7 @@ pub(crate) fn restore_workspace_windows<R: Runtime>(
         match create_workspace_window(app, label.clone()) {
             Ok(window) => {
                 window.show().map_err(|error| error.to_string())?;
+                reposition_traffic_lights(&window);
                 normalize_workspace_window(&window);
                 registry.apply_window_mode(&window);
                 restored.push(window);
@@ -176,7 +176,7 @@ fn create_workspace_window<R: Runtime>(
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
         .hidden_title(true)
-        .traffic_light_position(LogicalPosition::new(20.0, 29.0))
+        .traffic_light_position(crate::macos::TRAFFIC_LIGHT_INSET)
         .effects(
             EffectsBuilder::new()
                 .effect(Effect::HudWindow)
@@ -214,6 +214,14 @@ pub(crate) fn attach_window_cleanup<R: Runtime>(
                 !crate::menu::should_prevent_exit(&app),
             );
         }
+        if matches!(
+            event,
+            tauri::WindowEvent::Resized(_)
+                | tauri::WindowEvent::Focused(true)
+                | tauri::WindowEvent::ThemeChanged(_)
+        ) {
+            reposition_traffic_lights(&event_window);
+        }
         if matches!(event, tauri::WindowEvent::Destroyed) {
             let _ = app
                 .state::<GridRuntimeRegistry>()
@@ -225,6 +233,13 @@ pub(crate) fn attach_window_cleanup<R: Runtime>(
             crate::menu::window_destroyed(&app, &label);
         }
     });
+}
+
+fn reposition_traffic_lights<R: Runtime>(window: &WebviewWindow<R>) {
+    #[cfg(target_os = "macos")]
+    crate::macos::reposition_traffic_lights(window);
+    #[cfg(not(target_os = "macos"))]
+    let _ = window;
 }
 
 pub(crate) fn normalize_workspace_window<R: Runtime>(window: &WebviewWindow<R>) {

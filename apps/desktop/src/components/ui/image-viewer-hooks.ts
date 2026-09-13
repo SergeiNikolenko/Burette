@@ -4,7 +4,11 @@ import * as React from "react";
 
 import { useKeyedMountEffect } from "@/hooks/use-keyed-mount-effect";
 import { type FrameSource } from "@/lib/image-frame-source";
-import { normalizeRotation, rotatedSize } from "@/lib/image-geometry";
+import {
+  normalizePixelRatio,
+  normalizeRotation,
+  rotatedSize,
+} from "@/lib/image-geometry";
 import {
   type ImageViewerHandle,
   type ImageViewerProps,
@@ -37,6 +41,50 @@ export const IMAGE_VIEWER_HORIZONTAL_PADDING = 32;
 /** Bounds for the viewer's zoom range, shared by fit-width and the controls. */
 export const MIN_VIEWER_SCALE = 0.1;
 export const MAX_VIEWER_SCALE = 5;
+
+export function getImageDevicePixelRatio() {
+  return normalizePixelRatio(
+    typeof window === "undefined" ? 1 : window.devicePixelRatio,
+  );
+}
+
+// The dppx query matches only the CURRENT ratio, so every change re-arms it
+// against the ratio the window just moved to.
+function subscribeToImageDevicePixelRatio(onChange: () => void) {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return () => {};
+  }
+  let query: MediaQueryList | null = null;
+  function listen() {
+    query?.removeEventListener("change", handleChange);
+    query = window.matchMedia(
+      `(resolution: ${getImageDevicePixelRatio()}dppx)`,
+    );
+    query.addEventListener("change", handleChange);
+  }
+  function handleChange() {
+    listen();
+    onChange();
+  }
+  listen();
+  return () => query?.removeEventListener("change", handleChange);
+}
+
+/**
+ * The screen's device pixels per CSS pixel, tracked across screen moves. The
+ * viewer's scale counts logical pixels, so the layout re-fits when the ratio
+ * changes while the canvas backing (device pixels) stays put.
+ */
+export function useImageDevicePixelRatio() {
+  return React.useSyncExternalStore(
+    subscribeToImageDevicePixelRatio,
+    getImageDevicePixelRatio,
+    () => 1,
+  );
+}
 
 export function useFrameListWidth({
   enabled = true,
@@ -75,6 +123,7 @@ export function useImageViewerScale(
   defaultScale: number | undefined,
   onScaleChange: ImageViewerProps["onScaleChange"],
   frameListWidth: number | null,
+  viewportHeight: number | null,
 ) {
   const isScaleControlled = controlledScale !== undefined;
   const [uncontrolledScale, setUncontrolledScale] = React.useState<
@@ -95,27 +144,40 @@ export function useImageViewerScale(
   );
 
   const rotation = normalizeRotation(rawRotation);
-  const widestFrameWidth = Math.max(
-    1,
-    ...source.frames.map(
-      (frame) => rotatedSize(frame.intrinsicSize, rotation).width,
-    ),
-  );
+  // Scale counts LOGICAL pixels: 100% lays one CSS pixel per logical image
+  // pixel (intrinsic / devicePixelRatio), so a Retina screenshot opens at the
+  // size it was captured at. Fit-width is therefore solved against the
+  // logical width, and its readout (43%, say) is on the same axis as 100%.
+  const pixelRatio = useImageDevicePixelRatio();
+  const widestFrameLogicalWidth =
+    Math.max(
+      1,
+      ...source.frames.map(
+        (frame) => rotatedSize(frame.intrinsicSize, rotation).width,
+      ),
+    ) / pixelRatio;
   const fitWidthScale = frameListWidth
     ? getFileViewerFitWidthScale({
         availableInlineSize: frameListWidth,
-        contentInlineSize: widestFrameWidth,
+        contentInlineSize: widestFrameLogicalWidth,
         stageInlinePadding: IMAGE_VIEWER_HORIZONTAL_PADDING,
       })
     : 1;
+  // Single images open entirely inside the viewport. Multi-page documents
+  // retain width fit and scrolling between pages.
+  const fitHeightScale = source.frames.length === 1 && viewportHeight
+    ? Math.max(1, viewportHeight - 32) * pixelRatio
+      / Math.max(1, rotatedSize(source.frames[0].intrinsicSize, rotation).height)
+    : Infinity;
+  const fitScale = Math.min(fitWidthScale, fitHeightScale);
   const scale =
     controlledScale !== undefined
       ? normalizeViewerScale(controlledScale)
       : uncontrolledScale !== null
         ? normalizeViewerScale(uncontrolledScale)
-        : Math.min(MAX_VIEWER_SCALE, Math.max(MIN_VIEWER_SCALE, fitWidthScale));
+        : Math.min(MAX_VIEWER_SCALE, Math.max(Number.EPSILON, fitScale));
   const isFitWidth =
-    controlledScale === undefined && uncontrolledScale === null;
+    controlledScale === undefined && uncontrolledScale === null && fitWidthScale <= fitHeightScale;
 
   const scaleControlsDisabled = isScaleControlled && !onScaleChange;
   const setViewerScale = React.useCallback(
@@ -136,12 +198,13 @@ export function useImageViewerScale(
 
   return {
     isFitWidth,
+    pixelRatio,
     rotateClockwise,
     rotation,
     scale,
     scaleControlsDisabled,
     setViewerScale,
-    widestFrameWidth,
+    widestFrameLogicalWidth,
   };
 }
 

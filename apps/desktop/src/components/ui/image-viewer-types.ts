@@ -46,13 +46,17 @@ export interface ImageViewerProps {
   /** Canonical image source. PNG/JPEG/WebP/GIF/AVIF/BMP/ICO or TIFF. */
   source: ImageDocumentSource;
   className?: string;
-  /** Fixed scale; when omitted the viewer fits frame width to the container. */
+  /**
+   * Fixed scale in logical pixels (1 is one CSS pixel per intrinsic pixel /
+   * devicePixelRatio); when omitted a single image fits the viewport and multi-page
+   * images fit the container width.
+   */
   scale?: number;
-  /** Initial uncontrolled scale. When omitted, uncontrolled mode starts fit-width. */
+  /** Initial uncontrolled scale. When omitted, uncontrolled mode starts fitted to the viewport. */
   defaultScale?: number;
-  /** Intrinsic size used to reserve the first frame while image metadata loads. */
+  /** Intrinsic (raster) size reserving the first frame while metadata loads. */
   fallbackFrameSize?: { width: number; height: number };
-  /** Called by zoom controls. `null` means return to fit-width mode. */
+  /** Called by zoom controls. `null` means return to automatic fit mode. */
   onScaleChange?: (scale: number | null) => void;
   controls?: boolean;
   /** Show download actions in this viewer's controls/error state. */

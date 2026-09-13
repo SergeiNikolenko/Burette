@@ -13,3 +13,4 @@ export function workspaceStorageKey(baseKey: string, options: WorkspaceStorageKe
   if (options.windowScoped === false) return baseKey;
   return `${baseKey}${currentWindowStorageSuffix()}`;
 }
+

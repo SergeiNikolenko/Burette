@@ -137,6 +137,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::clipboard::write_clipboard_text,
             compute::commands::compute_capabilities,
             compute::commands::compute_register_inline_source,
             compute::commands::compute_align_grid_poses,
@@ -256,6 +257,7 @@ pub fn run() {
             commands::shell::existing_paths,
             commands::shell::watch_project_roots,
             commands::shell::open_new_workspace_window,
+            commands::shell::close_workspace_window,
             commands::shell::read_external_preview_svg,
             commands::shell::read_viewer_runtime_file_base64,
             commands::shell::reveal_path,

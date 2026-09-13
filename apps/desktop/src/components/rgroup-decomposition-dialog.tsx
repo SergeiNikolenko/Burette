@@ -41,10 +41,6 @@ export function RGroupDecompositionDialog({
             </Dialog.Close>
           </div>
           <div id="rgroup-decomposition-body" className="radix-dialog-body">
-            <p className="calculate-properties-target">
-              Splits every molecule of <strong>{request?.documentTitle}</strong> into a shared core and the
-              groups hanging off it, one column per position.
-            </p>
             <label className="calculated-column-field">
               <span>Core (SMILES or SMARTS, optional)</span>
               <input
@@ -52,21 +48,12 @@ export function RGroupDecompositionDialog({
                 value={core}
                 maxLength={400}
                 spellCheck={false}
-                placeholder="Leave empty to use the collection's most common scaffold"
+                placeholder="Auto: most common scaffold"
                 onChange={(event) => setCore(event.target.value)}
               />
             </label>
-            <div className="calculated-column-help">
-              <p className="calculated-column-note">
-                Molecules that do not contain the core keep empty cells and are reported when the run finishes.
-                The decomposition runs in the managed Python RDKit runtime.
-              </p>
-            </div>
           </div>
           <div className="radix-dialog-footer calculate-properties-footer">
-            <span className="calculate-properties-count">
-              {core.trim() ? "Uses the core you entered" : "Uses the most common scaffold"}
-            </span>
             <div className="calculate-properties-actions">
               <Dialog.Close asChild>
                 <button type="button" className="dock-action">Cancel</button>

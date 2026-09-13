@@ -68,8 +68,7 @@ export function DeleteColumnsDialog({
               ))}
             </div>
             <p className="calculated-column-note">
-              The columns disappear from the table and from every save until Undo. Structure,
-              name and computed columns stay.
+              Removes selected columns from the table and saved file.
             </p>
           </div>
           <div className="radix-dialog-footer calculate-properties-footer">

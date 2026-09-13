@@ -240,17 +240,16 @@ button:disabled {
 }
 
 #grid-controls.buret-grid-controls-condensed .buret-toolbar-row-view {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 4px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 #grid-controls.buret-grid-controls-condensed .buret-toolbar-row-view > * {
   flex-shrink: 0;
 }
 
-#grid-controls.buret-grid-controls-condensed .buret-grid-xyzrender-preset-control,
-#grid-controls.buret-grid-controls-condensed .buret-selected-open-actions {
+#grid-controls.buret-grid-controls-condensed .buret-grid-xyzrender-preset-control {
   display: none;
 }
 
@@ -606,8 +605,11 @@ button:disabled {
   background: transparent;
 }
 
-.buret-selected-open-actions[hidden] {
-  display: none;
+.buret-selection-count {
+  color: var(--buret-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .buret-toolbar-spacer {

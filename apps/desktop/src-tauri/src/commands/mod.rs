@@ -1,6 +1,7 @@
 pub(crate) mod agent_integration;
 pub(crate) mod chemical_editors;
 pub(crate) mod chemical_space_models;
+pub(crate) mod clipboard;
 pub(crate) mod conformer;
 pub(crate) mod context_menu;
 pub(crate) mod database;

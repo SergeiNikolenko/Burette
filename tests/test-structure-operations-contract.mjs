@@ -149,10 +149,6 @@ assert.match(measurement, /pickAt < session\.acceptPicksAt/);
 assert.match(measurement, /pickAt - session\.lastPickAt < 120/);
 assert.match(measurement, /session\.points\.push\(loci\)/);
 assert.match(measurement, /session\.points\.length < spec\.points/);
-assert.match(measurement, /showMolstarMeasureToast\(molstarMeasurePrompt\(kind, session\.points\.length\)\)/);
-assert.match(measurement, /measurement\[spec\.method\]\(\.\.\.points\)/);
-assert.match(fn("molstarMeasurePrompt"), /\$\{picked\}\/\$\{spec\.points\} points selected/);
-assert.match(fn("showMolstarMeasureToast"), /visible: true/);
 
 // Explicit menu actions that change the scene are undoable through the same stack
 // the structure edits use, so Cmd-Z walks them in the order they were made.

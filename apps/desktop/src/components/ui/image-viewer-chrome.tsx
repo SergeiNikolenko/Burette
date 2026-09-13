@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import { logicalFrameSize } from "@/lib/image-geometry";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/retab-skeleton";
 import { ViewerControlsSkeleton } from "@/components/ui/viewer-controls";
@@ -51,15 +52,23 @@ function ImageFrameSkeleton({
     scale !== undefined && Number.isFinite(scale) && scale > 0
       ? Math.min(5, Math.max(0.1, scale))
       : null;
-  const style: React.CSSProperties | undefined = frameSize
+  // The scale counts logical pixels (image-viewer-hooks), so the reserved
+  // box is the frame's CSS size at 100% times the scale.
+  const logicalSize = frameSize
+    ? logicalFrameSize(
+        frameSize,
+        typeof window === "undefined" ? 1 : window.devicePixelRatio,
+      )
+    : null;
+  const style: React.CSSProperties | undefined = logicalSize
     ? normalizedScale !== null
       ? {
-          width: frameSize.width * normalizedScale,
-          height: frameSize.height * normalizedScale,
+          width: logicalSize.width * normalizedScale,
+          height: logicalSize.height * normalizedScale,
         }
       : {
-          aspectRatio: `${frameSize.width} / ${frameSize.height}`,
-          minWidth: frameSize.width * 0.1,
+          aspectRatio: `${logicalSize.width} / ${logicalSize.height}`,
+          minWidth: logicalSize.width * 0.1,
         }
     : { aspectRatio: "4 / 3" };
 
