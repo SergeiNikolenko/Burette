@@ -123,6 +123,7 @@ export function SidebarFileOperations({ state, actions, children }: {
       { kind: "item", id: "trash-file", text: "Move to Trash…", action: () => choose({ operation: "trash", path }) },
     ];
   };
+  const renaming = request?.operation === "rename" || request?.operation === "renameFolder";
   const needsName = request !== null && "name" in request;
   const invalidName = needsName && (!name.trim() || name !== name.trim() || /[/\\\0:]/.test(name) || name === "." || name === "..");
 
@@ -132,7 +133,7 @@ export function SidebarFileOperations({ state, actions, children }: {
     <Dialog.Root open={request !== null} onOpenChange={open => { if (!open) dismiss(); }}>
       <Dialog.Portal container={portalContainer}>
         <Dialog.Overlay className="radix-dialog-overlay" />
-        <Dialog.Content className="radix-dialog file-operation-dialog" onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}>
+        <Dialog.Content className={`radix-dialog file-operation-dialog${renaming ? " file-operation-dialog-rename" : ""}`} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}>
           <form onSubmit={event => {
             event.preventDefault();
             if (request && !invalidName && !busy) void run(needsName ? { ...request, name } as Request : request);
@@ -140,10 +141,10 @@ export function SidebarFileOperations({ state, actions, children }: {
             <div className="radix-dialog-header"><Dialog.Title>{request ? labels[request.operation] : "File"}</Dialog.Title>
               <Dialog.Close asChild><button type="button" className="radix-dialog-close" aria-label="Close file operation" disabled={busy}><CloseIcon size={14} /></button></Dialog.Close></div>
             <div className="radix-dialog-body">
-              <Dialog.Description className="radix-dialog-subline">{(request?.operation === "trash" || request?.operation === "trashFolder")
+              <Dialog.Description className={renaming ? "sr-only" : "radix-dialog-subline"}>{(request?.operation === "trash" || request?.operation === "trashFolder")
                 ? `“${basename(request.path)}” can be restored from Trash.`
                 : request?.path}</Dialog.Description>
-              {needsName ? <label className="calculated-column-field"><span>Name</span><input aria-label="File or folder name"
+              {needsName ? <label className="calculated-column-field"><span className={renaming ? "sr-only" : undefined}>Name</span><input aria-label="File or folder name"
                 value={name} onChange={event => setName(event.target.value)} onFocus={event => event.target.select()} disabled={busy} /></label> : null}
               {invalidName ? <p role="alert">Enter a name without path separators.</p> : null}
               {error ? <p role="alert">{error}</p> : null}
@@ -151,7 +152,7 @@ export function SidebarFileOperations({ state, actions, children }: {
             <div className="radix-dialog-actions">
               <button type="button" className="dock-action" disabled={busy} onClick={dismiss}>Cancel</button>
               {request ? <button type="submit" className="dock-action calculate-properties-run" disabled={busy || Boolean(invalidName)}>
-                {busy ? "Working…" : request ? labels[request.operation] : "Apply"}
+                {busy ? "Working…" : renaming ? "Save" : request ? labels[request.operation] : "Apply"}
               </button> : null}
             </div>
           </form>

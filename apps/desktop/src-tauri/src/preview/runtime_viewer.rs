@@ -175,7 +175,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     };
     copy_web_assets(app, &assets, asset_profile)?;
 
-    let payload = if renderer == "molstar" {
+    let mut payload = if renderer == "molstar" {
         XyzPayload {
             data: external_molstar_data
                 .as_ref()
@@ -189,6 +189,10 @@ pub(crate) fn create_runtime<R: Runtime>(
             frame_count: None,
         }
     };
+
+    if renderer == "molstar" && extension == "mvsj" {
+        payload.data = super::mvs_resources::stage_resources(file_path, &runtime, &payload.data)?;
+    }
 
     let molstar_format = if renderer == "molstar" && external_molstar_data.is_some() {
         external_molstar_data

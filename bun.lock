@@ -6,6 +6,7 @@
       "name": "burette",
       "dependencies": {
         "@codemirror/commands": "6.10.4",
+        "@codemirror/lang-json": "^6.0.2",
         "@codemirror/lang-markdown": "^6.4.0",
         "@codemirror/language": "6.12.3",
         "@codemirror/language-data": "^6.5.1",
@@ -14,6 +15,7 @@
         "@codemirror/view": "^6.43.7",
         "@hugeicons/core-free-icons": "^4.1.2",
         "@hugeicons/react": "^1.1.9",
+        "@lezer/highlight": "^1.2.3",
         "@lezer/markdown": "^1.6.1",
         "@prosemark/core": "^0.0.5",
         "@radix-ui/react-context-menu": "^2.3.7",

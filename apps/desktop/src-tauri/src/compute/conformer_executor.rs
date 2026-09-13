@@ -395,8 +395,12 @@ pub(crate) fn execute_conformer_distance_geometry_with_service(
                     final_stereo_flags[local] = stereo_validation.failure_flags[attempt_index];
                     final_positions[local] = attempt.positions[start..end].to_vec();
                     final_seeds[local] = seeds[attempt_index];
+                    // A converged final MMFF optimization supersedes intermediate
+                    // ETK convergence. Require ETK convergence when MMFF is unavailable;
+                    // retain every original status above for validation and provenance.
                     if (!converged(attempt.statuses[attempt_index])
-                        || !converged(refinement.statuses[attempt_index])
+                        || (mmff_refinement.statuses[attempt_index] == 4
+                            && !converged(refinement.statuses[attempt_index]))
                         || !matches!(mmff_refinement.statuses[attempt_index], 0 | 1 | 4)
                         || stereo_validation.failure_flags[attempt_index] != 0)
                         && retry_index + 1 < request.parameters.max_attempts_per_conformer
@@ -1592,6 +1596,64 @@ mod tests {
         }
         assert!(maximum_attempt_count <= 32);
         eprintln!("32-case conformer corpus maximum attempt count: {maximum_attempt_count}");
+    }
+
+    #[test]
+    #[ignore = "requires Metal; set BURETTE_METAL_RUNTIME_ROOT"]
+    fn converged_mmff_does_not_retry_intermediate_etk_failure() {
+        let root = std::env::var_os("BURETTE_METAL_RUNTIME_ROOT").expect("Metal runtime root");
+        let runtime =
+            MetalTanimotoRuntime::load(std::path::Path::new(&root), &"0".repeat(64)).unwrap();
+        let bytes = include_bytes!(
+            "../../../../../compute/rdkit-conformer/fixtures/mmff-retry-conformer.bcex"
+        );
+        let variant = burette_compute_protocol::ConformerVariant::EtkdgV3;
+        let extracted = ExtractedConformerParameters::decode(bytes, variant, 1024 * 1024).unwrap();
+        let mmff = burette_compute_core::decode_native_mmff_parameters(
+            include_bytes!(
+                "../../../../../compute/rdkit-conformer/fixtures/mmff-retry-parameters.bin"
+            ),
+            1024 * 1024,
+        )
+        .unwrap();
+        let mut builder = ConformerEnginePackBuilder::new(variant, 1024 * 1024);
+        builder.append_valid(extracted).unwrap();
+        let mut request = request();
+        request.parameters.conformers_per_molecule = 16;
+        request.parameters.max_attempts_per_conformer = 32;
+        let result = execute_conformer_distance_geometry(
+            Uuid::parse_str("da20bac7-05a6-4909-bbcf-c872d15cd4ca").unwrap(),
+            &request,
+            builder.finish(1).unwrap(),
+            &[ConformerMoleculeIdentity {
+                source_record_id: 0,
+                molecule_content_sha256:
+                    "b74dc043d48a2246afedb2b9fc3984d36250fa7c471dece3ad005a4191cc171f".into(),
+            }],
+            &[Some(mmff)],
+            &[None],
+            Backend::NativeMetal,
+            Backend::NativeMetal,
+            Some(&runtime),
+        )
+        .unwrap();
+        assert_eq!(result.embedding_attempt_counts, vec![1; 16]);
+        assert!(result.etk_statuses.iter().any(|status| *status >= 2));
+        assert!(result.mmff_statuses.iter().all(|status| *status <= 1));
+        let stereo =
+            crate::compute::conformer_stereo_executor::execute_conformer_stereo_validation(
+                &result,
+                Backend::NativeMetal,
+                Some(&runtime),
+                MIN_COMPUTE_MEMORY_BYTES,
+            )
+            .unwrap();
+        let validation =
+            crate::compute::conformer_reference_validator::validate_conformer_reference(
+                &result, &stereo,
+            )
+            .unwrap();
+        assert_eq!((validation.passed_count, validation.failed_count), (16, 0));
     }
 
     fn extracted() -> ExtractedConformerParameters {

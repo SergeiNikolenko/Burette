@@ -1,3 +1,6 @@
+import { publishConformerJob } from "./conformer-job-events";
+import type { ConformerJob } from "../types";
+
 import { invoke } from "@tauri-apps/api/core";
 
 import {
@@ -65,7 +68,7 @@ async function withInlineSource<T>(
   }
 }
 
-export function runStandaloneConformerWorkflow(
+export async function runStandaloneConformerWorkflow(
   source: StandaloneComputeSource,
   onProgress: Parameters<typeof runConformerWorkflow>[2],
   options: {
@@ -75,17 +78,57 @@ export function runStandaloneConformerWorkflow(
     conformersPerMolecule?: number;
   } = {},
 ): Promise<ConformerWorkflowResult> {
-  return withInlineSource(source, ({ documentId, sourceIndexes }) => runConformerWorkflow(
-    documentId,
-    sourceIndexes,
-    onProgress,
-    {
-      variant: options.variant ?? "ETKDGv3",
-      initialization: options.initialization ?? "generated",
-      mmffVariant: options.mmffVariant ?? "MMFF94s",
-      conformersPerMolecule: options.conformersPerMolecule ?? 1,
-    },
-  ));
+  let job: ConformerJob = {
+    id: crypto.randomUUID(),
+    title: options.initialization === "inputGeometry" ? "Optimize geometry" : "Generate 3D",
+    operation: options.initialization === "inputGeometry" ? "grid-optimize" : "grid-generate",
+    inputTitle: source.title,
+    status: "running",
+    startedAt: Date.now(),
+    progress: "Preparing molecular constraints…",
+    backend: "nativeMetal",
+    cancelable: false,
+  };
+  const update = (patch: Partial<ConformerJob>) => {
+    job = { ...job, ...patch };
+    publishConformerJob(job);
+  };
+  update({});
+  try {
+    const result = await withInlineSource(source, ({ documentId, sourceIndexes }) => runConformerWorkflow(
+      documentId,
+      sourceIndexes,
+      (phase, snapshot) => {
+        const labels = {
+          extracting: "Preparing molecular constraints…",
+          embedding: "Building and optimizing geometry…",
+          stereo: "Validating stereochemistry…",
+          validation: "Checking reference parity…",
+          publishing: "Saving conformers…",
+        };
+        update({ durableJobId: snapshot.jobId, progress: labels[phase] });
+        onProgress(phase, snapshot);
+      },
+      {
+        variant: options.variant ?? "ETKDGv3",
+        initialization: options.initialization ?? "generated",
+        mmffVariant: options.mmffVariant ?? "MMFF94s",
+        conformersPerMolecule: options.conformersPerMolecule ?? 1,
+      },
+    ));
+    update({
+      status: result.failedCount ? "recovered" : "success",
+      completedAt: Date.now(),
+      progress: `${result.passedCount} validated conformers; ${result.failedCount} failed`,
+      primaryOpenPath: result.primaryOpenPath,
+      reportPath: result.reportPath,
+    });
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    update({ status: "failed", completedAt: Date.now(), progress: "Generation failed", error: message });
+    throw error;
+  }
 }
 
 export function runStandaloneSemiempirical(

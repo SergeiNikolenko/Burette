@@ -6483,6 +6483,7 @@ input.structure-inspector-composition-search {
   background-color: var(--surface-selected) !important;
 }
 :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="RightToolbar-module_buttons"] button.selected {
+  background-color: var(--surface-selected) !important;
   border-color: var(--line-strong) !important;
 }
 :is(.ketcher-editor-shell, .ketcher-ui-dialog) [class*="ButtonGenSet-module_button"]:hover:not(:disabled) {
@@ -9574,3 +9575,9 @@ img.settings-open-destination-icon {
 .file-operation-dialog .radix-dialog-body .radix-dialog-subline + * { margin-top: 10px; }
 .file-operation-dialog .radix-dialog-actions { padding: 0 20px 20px; }
 .file-operation-dialog .radix-dialog-actions button { min-height: 30px; padding: 5px 12px; }
+
+.file-operation-dialog-rename { width: min(320px, calc(100vw - 32px)); }
+.file-operation-dialog-rename .radix-dialog-body { padding-top: 14px; padding-bottom: 12px; }
+.file-operation-dialog-rename .calculated-column-field { gap: 0; }
+
+.project-folder-icon { display: inline-flex; flex: 0 0 16px; align-items: center; color: var(--text-icon-muted); }

@@ -65,5 +65,32 @@ pointer('pointermove', 60, 95);
 pointer('pointerup', 60, 60);
 assert.deepEqual(results, [[[1, 2, 3]], [[4, 5, 6]]]);
 image._burettePreviewDispose();
+const viewerSource = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
+const resizeSource = viewerSource.slice(
+  viewerSource.indexOf('  function installMolstarMoleculePreviewResize('),
+  viewerSource.indexOf('  function molstarPreviewLoadScript('),
+);
+const actions = [];
+const installResize = new Function('window', 'document', 'Element', 'runMolstarMoleculePreviewAction', `
+  let molstarMoleculePreviewDrag = null;
+  const rememberMolstarMoleculePreviewGeometry = () => {};
+  ${resizeSource}
+  return installMolstarMoleculePreviewResize;
+`)(window, document, window.Element, (action) => actions.push(action));
+const card = document.createElement('div');
+card.innerHTML = '<div data-buret-molecule-preview-drag><button data-buret-molecule-preview-action="close"><span>Close</span></button></div>';
+document.body.appendChild(card);
+let cardCaptures = 0;
+card.setPointerCapture = () => { cardCaptures++; };
+card.releasePointerCapture = () => {};
+installResize(card);
+const closeGlyph = card.querySelector('span');
+closeGlyph.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1 }));
+assert.equal(cardCaptures, 0, 'Close must not capture the pointer as a header drag');
+closeGlyph.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+assert.deepEqual(actions, ['close']);
+card.firstElementChild.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 2 }));
+assert.equal(cardCaptures, 1, 'The header background must remain draggable');
+card.dispatchEvent(new window.PointerEvent('pointerup', { pointerId: 2 }));
 window.happyDOM.abort();
 console.log('2D preview zoom, lasso, cancellation and replacement passed');
