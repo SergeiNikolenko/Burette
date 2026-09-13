@@ -190,8 +190,11 @@ pub(crate) fn create_runtime<R: Runtime>(
         }
     };
 
+    let mut mvs_resource_urls = Vec::new();
     if renderer == "molstar" && extension == "mvsj" {
-        payload.data = super::mvs_resources::stage_resources(file_path, &runtime, &payload.data)?;
+        let staged = super::mvs_resources::stage_resources(file_path, &runtime, &payload.data)?;
+        payload.data = staged.data;
+        mvs_resource_urls = staged.resource_urls;
     }
 
     let molstar_format = if renderer == "molstar" && external_molstar_data.is_some() {
@@ -216,6 +219,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "xyzrenderSourcePath": xyzrender_source_path,
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
+        "mvsResourceUrls": mvs_resource_urls,
         "sourceExtension": extension,
         "quickLookBuild": "burette-tauri",
         "debug": false,

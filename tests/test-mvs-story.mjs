@@ -456,3 +456,25 @@ function deflatedZipEntry(name, data) {
   end.writeUInt32LE(local.length, 16);
   return Buffer.concat([local, central, end]);
 }
+
+// Native Story resources must be available without Mol* issuing asset: XHRs,
+// and must remain cached when a snapshot releases its reference.
+const { createRequire } = await import('node:module');
+const require = createRequire(import.meta.url);
+const { AssetManager, Asset } = require('molstar/lib/commonjs/mol-util/assets.js');
+const viewerSource = await readFile(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
+const preloadSource = viewerSource.slice(
+  viewerSource.indexOf('  async function preloadMolViewSpecResources('),
+  viewerSource.indexOf('  async function loadPreparedStructure('),
+);
+const bytes = new TextEncoder().encode('ATOM native resource');
+const manager = new AssetManager();
+const preload = new Function('loadPayloadBytes', `${preloadSource}; return preloadMolViewSpecResources;`)(async () => bytes);
+const url = 'asset://localhost/staged/mvs-resource-0';
+await preload({ plugin: { managers: { asset: manager } } }, [url]);
+const cached = Asset.getUrlAsset(manager, url);
+assert.equal(await manager.get(cached).file.text(), 'ATOM native resource');
+manager.release(cached);
+assert.ok(manager.has(cached), 'Story snapshot changes retain preloaded resource');
+await preload({ plugin: { managers: { asset: manager } } }, [url]);
+assert.equal(manager.assets.length, 1, 'Reload replaces its own resource generation');

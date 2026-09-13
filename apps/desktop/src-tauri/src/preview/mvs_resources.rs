@@ -7,11 +7,16 @@ const MAX_RESOURCES: usize = 64;
 const MAX_RESOURCE_BYTES: u64 = 25 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 100 * 1024 * 1024;
 
+pub(super) struct StagedMvs {
+    pub data: Vec<u8>,
+    pub resource_urls: Vec<String>,
+}
+
 pub(super) fn stage_resources(
     source: &Path,
     runtime: &Path,
     data: &[u8],
-) -> Result<Vec<u8>, String> {
+) -> Result<StagedMvs, String> {
     let mut document: Value = serde_json::from_slice(data)
         .map_err(|error| format!("Invalid MolViewSpec JSON: {error}"))?;
     let parent = source
@@ -22,7 +27,10 @@ pub(super) fn stage_resources(
     let mut resources = BTreeMap::new();
     let mut total = 0;
     visit(&mut document, &parent, runtime, &mut resources, &mut total)?;
-    serde_json::to_vec(&document).map_err(|error| error.to_string())
+    Ok(StagedMvs {
+        data: serde_json::to_vec(&document).map_err(|error| error.to_string())?,
+        resource_urls: resources.into_values().collect(),
+    })
 }
 
 fn visit(
@@ -107,7 +115,9 @@ mod tests {
         fs::write(root.join("outside.pdb"), b"outside").unwrap();
         let input = br#"{"children":[{"params":{"url":"protein.pdb"}},{"params":{"url":"protein.pdb"}},{"params":{"url":"https://example.org/protein.cif"}}]}"#;
         let result: Value = serde_json::from_slice(
-            &stage_resources(&source.join("story.mvsj"), &runtime, input).unwrap(),
+            &stage_resources(&source.join("story.mvsj"), &runtime, input)
+                .unwrap()
+                .data,
         )
         .unwrap();
         assert_eq!(

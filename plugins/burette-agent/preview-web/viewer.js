@@ -11720,6 +11720,7 @@ SOFTWARE.
         format: normalized,
         label: config.label || 'MolViewSpec scene',
         sourceUrl: config.mvsSourceUrl,
+        resourceUrls: config.mvsResourceUrls,
         mvsKind: normalized === 'mvsj' ? molViewSpecJsonKind(data) : null
       };
     }
@@ -16078,6 +16079,21 @@ SOFTWARE.
     return trajectories;
   }
 
+  async function preloadMolViewSpecResources(viewer, urls) {
+    if (!Array.isArray(urls) || !urls.length) return;
+    const manager = viewer.plugin.managers.asset;
+    manager.clearTag('burette-mvs-local');
+    // Mol* XHR rejects status 0 from WKWebView's asset protocol. Use the
+    // existing native payload loader and retain files across Story snapshots.
+    for (const [index, url] of urls.entries()) {
+      const bytes = await loadPayloadBytes(url);
+      const asset = { kind: 'url', id: `burette-mvs-local-${index}`, url };
+      manager.set(asset, new File([bytes], `mvs-resource-${index}`), {
+        isStatic: true, tag: 'burette-mvs-local'
+      });
+    }
+  }
+
   async function loadPreparedStructure(viewer, prepared) {
     cancelScheduledMolstarWaterRepresentation();
     activeMolstarPrepared = prepared;
@@ -16092,6 +16108,7 @@ SOFTWARE.
       if (typeof viewer.loadMvsData !== 'function') {
         throw new Error('Mol* viewer.loadMvsData is not available in this runtime.');
       }
+      await preloadMolViewSpecResources(viewer, prepared.resourceUrls);
       await viewer.loadMvsData(prepared.data, prepared.format, { replaceExisting: true, sourceUrl: prepared.sourceUrl });
       installDockingPoseControls(viewer, null);
       return;
