@@ -8689,6 +8689,7 @@ SOFTWARE.
   // button is re-added rather than bound once.
   function installSequenceCloseButton() {
     if (window.BuretteSequencePanel && !document.body.classList.contains('burette-mobile-host')) {
+      initSequenceResize();
       window.BuretteSequencePanel.sync();
       return;
     }

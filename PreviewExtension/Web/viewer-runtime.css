@@ -4714,12 +4714,12 @@ body .msp-plugin .msp-layout-region.msp-layout-top {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-/* Leave room for the header and two numbered rows; the grip can expand it. */
+/* Start with one numbered track while the resize control initializes. */
 body:not(.burette-mobile-host) .msp-plugin .msp-layout-region.msp-layout-top {
-  height: clamp(64px, var(--buret-sequence-height, 196px), max(64px, 60vh)) !important;
+  height: clamp(64px, var(--buret-sequence-height, 88px), max(64px, 60vh)) !important;
 }
 body.buret-sequence-open:not(.burette-mobile-host) .msp-plugin .msp-layout-region.msp-layout-main {
-  top: var(--buret-viewport-top-inset, 196px) !important;
+  top: var(--buret-viewport-top-inset, 88px) !important;
 }
 /* Same ResizableHandle component as the shell docks, using preview tokens. */
 .buret-sequence-layout {
