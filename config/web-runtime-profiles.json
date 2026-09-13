@@ -14,7 +14,6 @@
       "molecule-preview-interactions.js",
       "color-picker.js",
       "scene-file-actions.js",
-      "native-viewer-menu.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"

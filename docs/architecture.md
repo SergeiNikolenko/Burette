@@ -183,19 +183,3 @@ remote selections before exporting. Native grid paging accepts `desc:` and
 `numeric:` prefixes on property sort keys (for example
 `desc:numeric:prop:pIC50`); property names remain SQL parameters. Analysis
 column sorting remains unavailable for remote pages.
-
-### Desktop Mol* menus
-
-The macOS desktop viewer loads `native-viewer-menu.js` to project its existing
-scene and molecule menu controls into AppKit. The shell acknowledges this
-capability only for known viewer frames in a Tauri Mac runtime. Browser-dev,
-hosted, iPhone, and Quick Look viewers retain their web menus. The renderer
-continues to own actions, parameter changes, preview rollback, and undo. Native
-controls return values through a channel scoped to one popup; the shell waits
-for the final control event before dismissing the renderer menu. Unsupported
-payloads fall back to the complete original web menu.
-
-`popup_macos_context_menu` accepts optional `onControl` and `control` entries
-(slider, palette, text, color). Ordinary menus keep the existing 128-entry bound;
-rich viewer menus allow up to 512 entries with the same bounded depth and text.
-The result advertises `controlsVersion: 1`; its channel ends with `finished`.

@@ -8104,24 +8104,15 @@ SOFTWARE.
     custom.setAttribute('aria-haspopup', 'dialog');
     custom.setAttribute('aria-expanded', 'false');
     let colourUndoSnapshot = null;
-    const previewColour = value => {
+    const picker = window.BuretteColorPicker.create(Number.isFinite(currentValue) ? currentValue : 0xffffff, value => {
       const ref = menu.closest('[data-ref]')?.dataset.ref;
       if (!ref) return;
       if (!colourUndoSnapshot) colourUndoSnapshot = captureMolstarSceneUndoSnapshot(molstarSceneMenuUndoLabel(action, ref, custom));
       void streamSceneTreeTheme(ref, action, 'tint', value);
-    };
-    const commitColour = () => {
+    }, () => {
       if (colourUndoSnapshot) pushMolstarEditUndoSnapshot(colourUndoSnapshot);
       colourUndoSnapshot = null;
-    };
-    custom.dataset.nativeColor = sceneTreeColorHex(Number.isFinite(currentValue) ? currentValue : 0xffffff);
-    custom.addEventListener('burette-native-color', event => {
-      const value = event.detail?.value;
-      if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) return;
-      if (event.detail.phase === 'input') previewColour(parseInt(value.slice(1), 16));
-      if (event.detail.phase === 'change') commitColour();
     });
-    const picker = window.BuretteColorPicker.create(Number.isFinite(currentValue) ? currentValue : 0xffffff, previewColour, commitColour);
     picker.addEventListener('toggle', event => custom.setAttribute('aria-expanded', String(event.newState === 'open')));
     custom.addEventListener('click', event => {
       event.stopPropagation();
@@ -8364,9 +8355,6 @@ SOFTWARE.
 
     const menu = document.createElement('div');
     menu.id = 'buret-scene-tree-menu';
-    menu.addEventListener('burette-native-menu-close', () => {
-      if (document.getElementById('buret-scene-tree-menu') === menu) closeSceneTreeMenu();
-    });
     menu.className = 'buret-tree-menu';
     menu.dataset.ref = ref;
     menu.setAttribute('role', 'menu');
@@ -24951,26 +24939,21 @@ SOFTWARE.
         text.className = 'buret-tree-menu-label';
         text.textContent = actionLabel;
         action.append(icon, text);
-        action.addEventListener('click', event => {
+        action.addEventListener('click', async event => {
           event.preventDefault();
           event.stopPropagation();
-          // Native dismissal must wait for a queued hover preview to commit.
-          menu._buretPendingAction = (async () => {
-            const activeRef = getActiveRef();
-            action.disabled = true;
-            try {
-              if (actionLabel === 'Update current') {
-                await typePreview.commit(type.name);
-                finish(activeRef, type.label, actionLabel);
-              } else {
-                await typePreview.restore();
-                const createdRef = await duplicateSceneTreeRepresentation(activeRef, type.name);
-                finish(createdRef, type.label, actionLabel);
-              }
-            } finally {
-              action.disabled = false;
-            }
-          })();
+          const activeRef = getActiveRef();
+          action.disabled = true;
+          if (actionLabel === 'Update current') {
+            await typePreview.commit(type.name);
+            action.disabled = false;
+            finish(activeRef, type.label, actionLabel);
+          } else {
+            await typePreview.restore();
+            const createdRef = await duplicateSceneTreeRepresentation(activeRef, type.name);
+            action.disabled = false;
+            finish(createdRef, type.label, actionLabel);
+          }
         });
         actionMenu.appendChild(action);
       }
@@ -25186,9 +25169,6 @@ SOFTWARE.
     }
     const menu = document.createElement('div');
     menu.className = 'buret-molecule-context-menu';
-    menu.addEventListener('burette-native-menu-close', () => {
-      if (menu.isConnected) hideMolstarContextMenu();
-    });
     menu.setAttribute('role', 'menu');
     menu.setAttribute('aria-label', proteinScope ? 'Protein actions' : 'Molecule actions');
     const title = document.createElement('div');
