@@ -128,6 +128,9 @@ require_tool hdiutil "hdiutil is normally present on macOS."
 require_tool shasum "shasum is normally present on macOS."
 require_tool xcrun "Install full Xcode from the App Store."
 resolve_signing_mode
+if [[ -n "${BURETTE_SPARKLE_PUBLIC_KEY:-}" ]]; then
+  : "${BURETTE_SPARKLE_PRIVATE_KEY:?Sparkle release signing key is required}"
+fi
 require_release_env
 export BURETTE_RELEASE_ALLOW_ADHOC="$ALLOW_ADHOC"
 export BURETTE_BUILD_MODE=release
@@ -147,6 +150,9 @@ ditto -c -k --keepParent "$APP" "$ZIP"
 "$ROOT/scripts/create-dmg.sh" "$APP" "$DMG"
 write_digest "$ZIP"
 write_digest "$DMG"
+if [[ -n "${BURETTE_SPARKLE_PUBLIC_KEY:-}" ]]; then
+  python3 "$ROOT/scripts/sparkle-appcast.py" "$ZIP" "$APP" "$(dirname "$ZIP")/appcast.xml"
+fi
 if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
   bun "$ROOT/scripts/sign-update-manifest.mjs" "$ZIP" "$(dirname "$ZIP")"
 fi

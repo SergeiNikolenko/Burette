@@ -89,7 +89,12 @@ jobs:
       - name: Build native bundle
         env:
           BURETTE_DEV_FLAVOR: pr${{ github.event.number }}
+          # Compile and package Sparkle without enabling updates in the dev namespace.
+          BURETTE_SPARKLE_PUBLIC_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: ./scripts/build.sh
+
+      - name: Verify Sparkle signing and feed generation
+        run: bun tests/test-sparkle-signing.mjs
 
       - name: Archive isolated app for native acceptance
         env:

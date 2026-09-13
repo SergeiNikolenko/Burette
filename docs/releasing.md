@@ -310,5 +310,8 @@ Quick Look extension, `qlmanage`, and the app version.
 
 ## In-App Updates
 
-The desktop app checks Burette GitHub Releases on launch and from the app menu.
-A newer release can be downloaded from the update dialog.
+Builds configured with `BURETTE_SPARKLE_PUBLIC_KEY` use Sparkle for background
+checks/downloads, native update UI and installation. See
+[Sparkle updates](sparkle-updates.md) for keys, feed publishing, migration and
+native acceptance. Unconfigured builds retain the existing GitHub Releases
+updater. The ZIP and SHA-256 sidecars remain required for those older clients.

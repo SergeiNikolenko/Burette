@@ -575,6 +575,10 @@ fi
 if [[ "$BUILD_MODE" == "release" ]]; then
   enable_release_hardened_runtime
 fi
+if [[ -n "${BURETTE_SPARKLE_PUBLIC_KEY:-}" ]]; then
+  export SPARKLE_FRAMEWORK_PATH
+  SPARKLE_FRAMEWORK_PATH="$("$ROOT/scripts/prepare-sparkle.sh" "$SAFE_ROOT")"
+fi
 build_compute_metal_runtime
 
 pushd "$SAFE_ROOT" >/dev/null
@@ -638,6 +642,7 @@ if [[ "$SIGN_IDENTITY" != "-" ]]; then
 fi
 sign_bundled_xyzrender_runtime "$TAURI_BUILT_APP"
 sign_quicklook_xyzrender_launcher "$TAURI_BUILT_APP"
+"$ROOT/scripts/sign-sparkle.sh" "$TAURI_BUILT_APP" "$SIGN_IDENTITY"
 codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/Helpers/burette-compute-service" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex/Contents/Resources/burette-core-bridge" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurettePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex" >/dev/null
