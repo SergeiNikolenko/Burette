@@ -12,6 +12,7 @@ pub(crate) mod file_operations;
 pub(crate) mod folding_results;
 pub(crate) mod grid;
 pub(crate) mod mdsmooth;
+pub(crate) mod native_updates;
 pub(crate) mod numpy_artifact;
 pub(crate) mod preview_cache;
 pub(crate) mod pubchem;

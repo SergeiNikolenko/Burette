@@ -269,6 +269,7 @@ pub fn run() {
             commands::quicklook::reset_quick_look,
             commands::pubchem::open_pubchem_search,
             commands::updater::install_update,
+            commands::native_updates::native_update,
             commands::xtb::xtb_status,
             commands::xtb::select_xtb_executable,
             commands::xtb::install_xtb,
@@ -281,6 +282,8 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     macos::install_termination_handler(app.handle())
         .expect("failed to install the macOS termination handler");
+
+    commands::native_updates::initialize(app.handle());
 
     app.run(|app, event| match event {
         RunEvent::Opened { urls } => {

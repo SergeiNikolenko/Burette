@@ -33,6 +33,7 @@ export type UpdateRelease = {
 };
 
 export type UpdateState = {
+  nativeUpdates?: boolean;
   preferences: UpdatePreferences;
   isChecking: boolean;
   isInstalling: boolean;

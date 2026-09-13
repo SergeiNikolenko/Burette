@@ -11,6 +11,69 @@ const MANIFEST_RELATIVE_PATH: &str = ".codex-plugin/plugin.json";
 const CLAUDE_MANIFEST_RELATIVE_PATH: &str = ".claude-plugin/plugin.json";
 const COMPATIBILITY_RELATIVE_PATH: &str = "compatibility.json";
 
+/// Refresh an existing owned plugin after Sparkle replaces the application bundle.
+/// The bundled installer remains the owner of marketplace and cache mutations.
+#[cfg(all(target_os = "macos", feature = "sparkle-updater"))]
+pub(super) fn refresh_bundled_codex_plugin(
+    app_bundle: &Path,
+    app_data: &Path,
+) -> Result<(), String> {
+    use std::process::{Command, Stdio};
+    let Some(home) = env::var_os("HOME").map(PathBuf::from) else {
+        return Ok(());
+    };
+    let plugin = app_bundle
+        .join("Contents/Resources")
+        .join(PLUGIN_RELATIVE_PATH);
+    let Some(bundled) = read_json(&plugin.join(MANIFEST_RELATIVE_PATH)) else {
+        return Ok(());
+    };
+    let Some(version) = bundled.get("version").and_then(Value::as_str) else {
+        return Ok(());
+    };
+    let revision = format!("{}:{version}", env!("CARGO_PKG_VERSION"));
+    let receipt = app_data.join("sparkle-plugin-refresh");
+    if fs::read_to_string(&receipt).is_ok_and(|value| value == revision) {
+        return Ok(());
+    }
+    let installed = [
+        ".codex/plugins/burette-marketplace/plugins/burette",
+        ".codex/plugins/burette",
+    ]
+    .into_iter()
+    .find_map(|root| read_json(&home.join(root).join(MANIFEST_RELATIVE_PATH)));
+    if installed.is_none() {
+        return Ok(());
+    }
+    let runtime = [
+        "/opt/homebrew/bin/node",
+        "/usr/local/bin/node",
+        "/opt/homebrew/bin/bun",
+        "/usr/local/bin/bun",
+    ]
+    .into_iter()
+    .map(PathBuf::from)
+    .chain(
+        env::split_paths(&env::var_os("PATH").unwrap_or_default())
+            .flat_map(|dir| [dir.join("node"), dir.join("bun")]),
+    )
+    .find(|path| path.is_file())
+    .ok_or("Node or Bun is required to refresh the installed plugin.")?;
+    let status = Command::new(runtime)
+        .arg(plugin.join("scripts/install-local.mjs"))
+        .env("BURETTE_APP_BUNDLE", app_bundle)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .status()
+        .map_err(|error| error.to_string())?;
+    if !status.success() {
+        return Err(format!("Plugin installer exited with {status}."));
+    }
+    fs::create_dir_all(app_data).map_err(|error| error.to_string())?;
+    fs::write(receipt, revision).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AgentIntegrationStatus {

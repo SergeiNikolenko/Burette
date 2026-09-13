@@ -82,7 +82,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
   const updateRows: SettingRow[] = [
     {
       label: "Automatic checks",
-      description: "Check GitHub releases in the background.",
+      description: update.nativeUpdates ? "Check and download updates in the background. Install when quitting or restarting." : "Check GitHub releases in the background.",
       control: (
         <ToggleControl
           label="Automatic checks"
