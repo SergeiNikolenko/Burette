@@ -112,5 +112,7 @@ termination with dirty documents in multiple windows, relaunch, Quick Look, and
 installed plugin refresh. A dev bundle build or signature test does not prove
 that end-to-end path. External `sparkle-cli` replacement validates the installer;
 it does not prove Burette's own update settings, scheduling or standard update
-dialog. Before enabling the repository variable, complete the canonical app
-acceptance and upload a valid feed with the first enabled release.
+dialog. Repository keys may be provisioned before acceptance; setting them does not
+publish a release or deliver an update. Complete canonical app acceptance before
+publishing the first enabled release, then verify its public feed and the
+previous released app's real download, installation and relaunch.
