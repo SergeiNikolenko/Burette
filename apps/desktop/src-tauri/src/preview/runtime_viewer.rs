@@ -219,7 +219,6 @@ pub(crate) fn create_runtime<R: Runtime>(
         "xyzrenderSourcePath": xyzrender_source_path,
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
-        "mvsResourceUrls": mvs_resource_urls,
         "sourceExtension": extension,
         "quickLookBuild": "burette-tauri",
         "debug": false,
@@ -258,6 +257,7 @@ pub(crate) fn create_runtime<R: Runtime>(
             json!(base64::engine::general_purpose::STANDARD.encode(input_data));
         config["xyzrenderInputExtension"] = json!("xyz");
     }
+    config["mvsResourceUrls"] = json!(mvs_resource_urls);
     if let Some(index) = active_model {
         config["activeModel"] = json!(index);
     }
