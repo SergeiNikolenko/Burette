@@ -74,7 +74,7 @@ pub(super) mod macos {
     use objc::declare::ClassDecl;
     use objc::runtime::{Class, Object, Sel};
     use objc::{class, msg_send, sel, sel_impl};
-    use std::sync::OnceLock;
+    use std::{cell::UnsafeCell, sync::OnceLock};
 
     struct Binding {
         id: String,
@@ -93,7 +93,9 @@ pub(super) mod macos {
     }
     pub(in crate::commands::context_menu) struct Controls {
         target: id,
-        state: Box<State>,
+        // AppKit re-enters this state from target/delegate callbacks while a
+        // popup or accessory panel runs its modal loop, on the main thread.
+        state: Box<UnsafeCell<State>>,
     }
 
     extern "C" fn change(this: &mut Object, _: Sel, sender: id) {
@@ -220,18 +222,15 @@ pub(super) mod macos {
         pub(in crate::commands::context_menu) unsafe fn new(
             channel: Option<tauri::ipc::Channel<ControlEvent>>,
         ) -> Self {
-            let mut state = Box::new(State {
+            let state = Box::new(UnsafeCell::new(State {
                 channel,
                 bindings: Vec::new(),
                 text: None,
                 hover_ids: Default::default(),
                 hovered: None,
-            });
+            }));
             let target: id = msg_send![target_class(), new];
-            (*target).set_ivar(
-                "state",
-                (&mut *state as *mut State).cast::<std::ffi::c_void>(),
-            );
+            (*target).set_ivar("state", state.get().cast::<std::ffi::c_void>());
             Self { target, state }
         }
         pub(in crate::commands::context_menu) unsafe fn watch(
@@ -240,7 +239,9 @@ pub(super) mod macos {
             item: id,
             key: &str,
         ) {
-            self.state.hover_ids.insert(item as usize, key.into());
+            (*self.state.get())
+                .hover_ids
+                .insert(item as usize, key.into());
             let _: () = msg_send![menu, setDelegate: self.target];
         }
         unsafe fn bind(
@@ -251,8 +252,9 @@ pub(super) mod macos {
             value: serde_json::Value,
             readout: id,
         ) {
-            let tag = self.state.bindings.len() as isize;
-            self.state.bindings.push(Binding {
+            let state = &mut *self.state.get();
+            let tag = state.bindings.len() as isize;
+            state.bindings.push(Binding {
                 id: id.into(),
                 control: control.clone(),
                 value,
@@ -333,8 +335,17 @@ pub(super) mod macos {
             item
         }
         pub(in crate::commands::context_menu) unsafe fn finish(&mut self) {
-            if let Some(index) = self.state.text {
-                if let MenuControl::Color { value } = &self.state.bindings[index].control {
+            // Do not keep a State/Binding reference across an AppKit modal loop:
+            // the colour well can call change() before runModal returns.
+            let editor = {
+                let state = &*self.state.get();
+                state.text.map(|index| {
+                    let binding = &state.bindings[index];
+                    (index, binding.control.clone(), binding.value.clone())
+                })
+            };
+            if let Some((index, control, initial_value)) = editor {
+                if let MenuControl::Color { value } = control {
                     let rgb = u32::from_str_radix(&value[1..], 16).unwrap_or(0);
                     let alert: id = msg_send![class!(NSAlert), new];
                     let _: () = msg_send![alert, setMessageText: string("Colour")];
@@ -347,21 +358,23 @@ pub(super) mod macos {
                     let _: () = msg_send![well, setTarget: self.target];
                     let _: () = msg_send![well, setAction: sel!(change:)];
                     let _: () = msg_send![well, setTag: index as isize];
-                    self.state.bindings[index].readout = well;
+                    (&mut *self.state.get()).bindings[index].readout = well;
                     let _: () = msg_send![alert, setAccessoryView: well];
                     let _: isize = msg_send![alert, runModal];
                     let _: () = msg_send![well, deactivate];
+                    let _: () = msg_send![well, setTarget: nil];
+                    let _: () = msg_send![well, setAction: Sel::from_ptr(std::ptr::null())];
+                    (&mut *self.state.get()).bindings[index].readout = nil;
                     let _: () = msg_send![well, release];
                     let _: () = msg_send![alert, release];
                 } else {
-                    let binding = &mut self.state.bindings[index];
                     let alert: id = msg_send![class!(NSAlert), new];
                     let _: () = msg_send![alert, setMessageText: string("Edit text")];
                     let _: id = msg_send![alert, addButtonWithTitle: string("Apply")];
                     let _: id = msg_send![alert, addButtonWithTitle: string("Cancel")];
                     let input: id = msg_send![class!(NSTextField), alloc];
                     let input: id = msg_send![input, initWithFrame: frame(0.0, 0.0, 300.0, 24.0)];
-                    let _: () = msg_send![input, setStringValue: string(binding.value.as_str().unwrap_or(""))];
+                    let _: () = msg_send![input, setStringValue: string(initial_value.as_str().unwrap_or(""))];
                     let _: () = msg_send![alert, setAccessoryView: input];
                     let window: id = msg_send![alert, window];
                     let _: () = msg_send![window, setInitialFirstResponder: input];
@@ -370,35 +383,41 @@ pub(super) mod macos {
                         if response != 1000 {
                             break;
                         }
-                        if response == 1000 {
-                            let value: id = msg_send![input, stringValue];
-                            let bytes: *const std::ffi::c_char = msg_send![value, UTF8String];
-                            if !bytes.is_null() {
-                                let text = std::ffi::CStr::from_ptr(bytes).to_string_lossy();
-                                if text.len() <= 4096 {
-                                    binding.value = text.into_owned().into();
-                                    binding.dirty = true;
-                                    break;
-                                }
-                                let _: () = msg_send![alert, setInformativeText: string("Text is too long (maximum 4096 bytes).")];
-                            } else {
-                                break;
-                            }
+                        let value: id = msg_send![input, stringValue];
+                        let bytes: *const std::ffi::c_char = msg_send![value, UTF8String];
+                        if bytes.is_null() {
+                            break;
                         }
+                        let text = std::ffi::CStr::from_ptr(bytes).to_string_lossy();
+                        if text.len() <= 4096 {
+                            let binding = &mut (&mut *self.state.get()).bindings[index];
+                            binding.value = text.into_owned().into();
+                            binding.dirty = true;
+                            break;
+                        }
+                        let _: () = msg_send![alert, setInformativeText: string("Text is too long (maximum 4096 bytes).")];
                     }
                     let _: () = msg_send![input, release];
                     let _: () = msg_send![alert, release];
                 }
             }
-            if let Some(channel) = &self.state.channel {
-                for binding in &self.state.bindings {
-                    if binding.dirty {
-                        let _ = channel.send(ControlEvent {
-                            id: binding.id.clone(),
-                            value: binding.value.clone(),
-                            phase: "change",
-                        });
-                    }
+            let (channel, changes) = {
+                let state = &*self.state.get();
+                let changes: Vec<_> = state
+                    .bindings
+                    .iter()
+                    .filter(|binding| binding.dirty)
+                    .map(|binding| ControlEvent {
+                        id: binding.id.clone(),
+                        value: binding.value.clone(),
+                        phase: "change",
+                    })
+                    .collect();
+                (state.channel.clone(), changes)
+            };
+            if let Some(channel) = channel {
+                for change in changes {
+                    let _ = channel.send(change);
                 }
                 let _ = channel.send(ControlEvent {
                     id: String::new(),
