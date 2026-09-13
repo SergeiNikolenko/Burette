@@ -18,6 +18,9 @@ pub(crate) enum MenuControl {
     Text {
         value: String,
     },
+    Color {
+        value: String,
+    },
 }
 
 #[derive(Serialize, Clone)]
@@ -48,6 +51,7 @@ impl MenuControl {
                     && colors.iter().all(|x| valid_color(x))
                     && selected.as_ref().is_none_or(|x| valid_color(x))
             }
+            Self::Color { value } => valid_color(value),
             Self::Text { value } => value.len() <= 4096 && !value.contains('\0'),
         };
         if valid {
@@ -84,6 +88,8 @@ pub(super) mod macos {
         channel: Option<tauri::ipc::Channel<ControlEvent>>,
         bindings: Vec<Binding>,
         text: Option<usize>,
+        hover_ids: std::collections::HashMap<usize, String>,
+        hovered: Option<usize>,
     }
     pub(in crate::commands::context_menu) struct Controls {
         target: id,
@@ -124,7 +130,25 @@ pub(super) mod macos {
                     // Each swatch has its own binding with the chosen value.
                     let _: () = msg_send![sender, setState: 1isize];
                 }
-                MenuControl::Text { .. } => {
+                MenuControl::Color { .. } if binding.readout != nil => {
+                    let color: id = msg_send![sender, color];
+                    let space: id = msg_send![class!(NSColorSpace), sRGBColorSpace];
+                    let color: id = msg_send![color, colorUsingColorSpace: space];
+                    if color.is_null() {
+                        return;
+                    }
+                    let r: f64 = msg_send![color, redComponent];
+                    let g: f64 = msg_send![color, greenComponent];
+                    let b: f64 = msg_send![color, blueComponent];
+                    binding.value = format!(
+                        "#{:02x}{:02x}{:02x}",
+                        (r.clamp(0.0, 1.0) * 255.0).round() as u8,
+                        (g.clamp(0.0, 1.0) * 255.0).round() as u8,
+                        (b.clamp(0.0, 1.0) * 255.0).round() as u8
+                    )
+                    .into();
+                }
+                MenuControl::Text { .. } | MenuControl::Color { .. } => {
                     state.text = Some(tag as usize);
                     let menu: id = msg_send![sender, menu];
                     let _: () = msg_send![menu, cancelTracking];
@@ -141,6 +165,31 @@ pub(super) mod macos {
             }
         }
     }
+    extern "C" fn highlight(this: &mut Object, _: Sel, _: id, item: id) {
+        unsafe {
+            let state = &mut *(*this.get_ivar::<*mut State>("state"));
+            let next = if item.is_null() {
+                None
+            } else {
+                Some(item as usize)
+            };
+            if state.hovered == next {
+                return;
+            }
+            if let Some(channel) = &state.channel {
+                for (key, phase) in [(state.hovered, "leave"), (next, "enter")] {
+                    if let Some(id) = key.and_then(|key| state.hover_ids.get(&key)) {
+                        let _ = channel.send(ControlEvent {
+                            id: id.clone(),
+                            value: serde_json::Value::Null,
+                            phase,
+                        });
+                    }
+                }
+            }
+            state.hovered = next;
+        }
+    }
     fn target_class() -> &'static Class {
         static CLASS: OnceLock<&'static Class> = OnceLock::new();
         CLASS.get_or_init(|| {
@@ -148,6 +197,10 @@ pub(super) mod macos {
                 .expect("unique menu control class");
             c.add_ivar::<*mut State>("state");
             unsafe {
+                c.add_method(
+                    sel!(menu:willHighlightItem:),
+                    highlight as extern "C" fn(&mut Object, Sel, id, id),
+                );
                 c.add_method(sel!(change:), change as extern "C" fn(&mut Object, Sel, id));
             }
             c.register()
@@ -171,10 +224,21 @@ pub(super) mod macos {
                 channel,
                 bindings: Vec::new(),
                 text: None,
+                hover_ids: Default::default(),
+                hovered: None,
             });
             let target: id = msg_send![target_class(), new];
             (*target).set_ivar("state", &mut *state as *mut State);
             Self { target, state }
+        }
+        pub(in crate::commands::context_menu) unsafe fn watch(
+            &mut self,
+            menu: id,
+            item: id,
+            key: &str,
+        ) {
+            self.state.hover_ids.insert(item as usize, key.into());
+            let _: () = msg_send![menu, setDelegate: self.target];
         }
         unsafe fn bind(
             &mut self,
@@ -206,7 +270,7 @@ pub(super) mod macos {
             let item: id = msg_send![class!(NSMenuItem), alloc];
             let item: id = msg_send![item, initWithTitle: string(text) action: sel!(change:) keyEquivalent: string("")];
             let item: id = msg_send![item, autorelease];
-            if let MenuControl::Text { value } = control {
+            if let MenuControl::Text { value } | MenuControl::Color { value } = control {
                 self.bind(item, id, control, value.clone().into(), nil);
                 return item;
             }
@@ -259,7 +323,7 @@ pub(super) mod macos {
                         let _: () = msg_send![button, release];
                     }
                 }
-                MenuControl::Text { .. } => unreachable!(),
+                MenuControl::Text { .. } | MenuControl::Color { .. } => unreachable!(),
             }
             let _: () = msg_send![item, setView: view];
             let _: () = msg_send![view, release];
@@ -267,32 +331,52 @@ pub(super) mod macos {
         }
         pub(in crate::commands::context_menu) unsafe fn finish(&mut self) {
             if let Some(index) = self.state.text {
-                let binding = &mut self.state.bindings[index];
-                let alert: id = msg_send![class!(NSAlert), new];
-                let _: () = msg_send![alert, setMessageText: string("Edit text")];
-                let _: id = msg_send![alert, addButtonWithTitle: string("Apply")];
-                let _: id = msg_send![alert, addButtonWithTitle: string("Cancel")];
-                let input: id = msg_send![class!(NSTextField), alloc];
-                let input: id = msg_send![input, initWithFrame: frame(0.0, 0.0, 300.0, 24.0)];
-                let _: () =
-                    msg_send![input, setStringValue: string(binding.value.as_str().unwrap_or(""))];
-                let _: () = msg_send![alert, setAccessoryView: input];
-                let window: id = msg_send![alert, window];
-                let _: () = msg_send![window, setInitialFirstResponder: input];
-                let response: isize = msg_send![alert, runModal];
-                if response == 1000 {
-                    let value: id = msg_send![input, stringValue];
-                    let bytes: *const std::ffi::c_char = msg_send![value, UTF8String];
-                    if !bytes.is_null() {
-                        let text = std::ffi::CStr::from_ptr(bytes).to_string_lossy();
-                        if text.len() <= 4096 {
-                            binding.value = text.into_owned().into();
-                            binding.dirty = true;
+                if let MenuControl::Color { value } = &self.state.bindings[index].control {
+                    let rgb = u32::from_str_radix(&value[1..], 16).unwrap_or(0);
+                    let alert: id = msg_send![class!(NSAlert), new];
+                    let _: () = msg_send![alert, setMessageText: string("Colour")];
+                    let _: id = msg_send![alert, addButtonWithTitle: string("Done")];
+                    let well: id = msg_send![class!(NSColorWell), alloc];
+                    let well: id = msg_send![well, initWithFrame: frame(0.0, 0.0, 280.0, 36.0)];
+                    let tint: id = msg_send![class!(NSColor), colorWithSRGBRed: ((rgb >> 16) & 255) as f64 / 255.0 green: ((rgb >> 8) & 255) as f64 / 255.0 blue: (rgb & 255) as f64 / 255.0 alpha: 1.0f64];
+                    let _: () = msg_send![well, setColor: tint];
+                    let _: () = msg_send![well, setContinuous: YES];
+                    let _: () = msg_send![well, setTarget: self.target];
+                    let _: () = msg_send![well, setAction: sel!(change:)];
+                    let _: () = msg_send![well, setTag: index as isize];
+                    self.state.bindings[index].readout = well;
+                    let _: () = msg_send![alert, setAccessoryView: well];
+                    let _: isize = msg_send![alert, runModal];
+                    let _: () = msg_send![well, deactivate];
+                    let _: () = msg_send![well, release];
+                    let _: () = msg_send![alert, release];
+                } else {
+                    let binding = &mut self.state.bindings[index];
+                    let alert: id = msg_send![class!(NSAlert), new];
+                    let _: () = msg_send![alert, setMessageText: string("Edit text")];
+                    let _: id = msg_send![alert, addButtonWithTitle: string("Apply")];
+                    let _: id = msg_send![alert, addButtonWithTitle: string("Cancel")];
+                    let input: id = msg_send![class!(NSTextField), alloc];
+                    let input: id = msg_send![input, initWithFrame: frame(0.0, 0.0, 300.0, 24.0)];
+                    let _: () = msg_send![input, setStringValue: string(binding.value.as_str().unwrap_or(""))];
+                    let _: () = msg_send![alert, setAccessoryView: input];
+                    let window: id = msg_send![alert, window];
+                    let _: () = msg_send![window, setInitialFirstResponder: input];
+                    let response: isize = msg_send![alert, runModal];
+                    if response == 1000 {
+                        let value: id = msg_send![input, stringValue];
+                        let bytes: *const std::ffi::c_char = msg_send![value, UTF8String];
+                        if !bytes.is_null() {
+                            let text = std::ffi::CStr::from_ptr(bytes).to_string_lossy();
+                            if text.len() <= 4096 {
+                                binding.value = text.into_owned().into();
+                                binding.dirty = true;
+                            }
                         }
                     }
+                    let _: () = msg_send![input, release];
+                    let _: () = msg_send![alert, release];
                 }
-                let _: () = msg_send![input, release];
-                let _: () = msg_send![alert, release];
             }
             if let Some(channel) = &self.state.channel {
                 for binding in &self.state.bindings {
@@ -304,6 +388,11 @@ pub(super) mod macos {
                         });
                     }
                 }
+                let _ = channel.send(ControlEvent {
+                    id: String::new(),
+                    value: serde_json::Value::Null,
+                    phase: "finished",
+                });
             }
         }
     }

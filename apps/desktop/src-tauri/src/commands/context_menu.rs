@@ -42,7 +42,11 @@ pub(crate) struct MenuPosition {
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub(crate) enum PopupResult {
     #[cfg(target_os = "macos")]
-    Shown { selection: Option<String> },
+    Shown {
+        selection: Option<String>,
+        #[serde(rename = "controlsVersion")]
+        controls_version: u8,
+    },
     #[cfg(not(target_os = "macos"))]
     Unsupported,
 }
@@ -69,19 +73,28 @@ fn decode_image(encoded: &str) -> Result<Vec<u8>, String> {
 }
 
 fn validate(items: &[MenuEntry], at: Option<&MenuPosition>) -> Result<(), String> {
+    validate_with_limit(items, at, 128)
+}
+
+fn validate_with_limit(
+    items: &[MenuEntry],
+    at: Option<&MenuPosition>,
+    limit: usize,
+) -> Result<(), String> {
     fn entries(
         items: &[MenuEntry],
         depth: usize,
         ids: &mut std::collections::HashSet<String>,
         count: &mut usize,
+        limit: usize,
     ) -> Result<(), String> {
         if depth > 3 {
             return Err("Context menu nesting exceeds three levels".into());
         }
         for entry in items {
             *count += 1;
-            if *count > 128 {
-                return Err("Context menu exceeds 128 entries".into());
+            if *count > limit {
+                return Err("Context menu exceeds entry limit".into());
             }
             let (id, text, symbol, image) = match entry {
                 MenuEntry::Separator => continue,
@@ -118,7 +131,7 @@ fn validate(items: &[MenuEntry], at: Option<&MenuPosition>) -> Result<(), String
                     items,
                     ..
                 } => {
-                    entries(items, depth + 1, ids, count)?;
+                    entries(items, depth + 1, ids, count, limit)?;
                     (id, text, symbol, image)
                 }
             };
@@ -147,7 +160,7 @@ fn validate(items: &[MenuEntry], at: Option<&MenuPosition>) -> Result<(), String
     if at.is_some_and(|point| !point.x.is_finite() || !point.y.is_finite()) {
         return Err("Invalid context menu position".into());
     }
-    entries(items, 0, &mut Default::default(), &mut 0)
+    entries(items, 0, &mut Default::default(), &mut 0, limit)
 }
 
 /// AppKit owns the menu, its material, template icons, highlighting and submenus.
@@ -157,9 +170,14 @@ pub(crate) async fn popup_macos_context_menu(
     window: tauri::WebviewWindow,
     items: Vec<MenuEntry>,
     at: Option<MenuPosition>,
-    on_control: Option<tauri::ipc::Channel<ControlEvent>>,
+    on_control: Option<tauri::ipc::JavaScriptChannelId>,
 ) -> Result<PopupResult, String> {
-    validate(&items, at.as_ref())?;
+    let on_control = on_control.map(|channel| channel.channel_on(window.as_ref().clone()));
+    if on_control.is_some() {
+        validate_with_limit(&items, at.as_ref(), 512)?;
+    } else {
+        validate(&items, at.as_ref())?;
+    }
     #[cfg(target_os = "macos")]
     {
         let (sender, mut receiver) = tauri::async_runtime::channel(1);
@@ -347,6 +365,9 @@ mod macos {
                 MenuEntry::Separator | MenuEntry::Control { .. } => unreachable!(),
             }
             let _: () = msg_send![menu, addItem: item];
+            if let MenuEntry::Item { id, .. } | MenuEntry::Submenu { id, .. } = entry {
+                controls.watch(menu, item, id);
+            }
         }
         menu
     }
@@ -394,7 +415,10 @@ mod macos {
             drop(controls);
             let _: () = msg_send![target, release];
             let _: () = msg_send![pool, drain];
-            Ok(PopupResult::Shown { selection })
+            Ok(PopupResult::Shown {
+                selection,
+                controls_version: 1,
+            })
         }
     }
 }
