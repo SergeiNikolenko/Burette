@@ -7,9 +7,11 @@ const source = await readFile("apps/desktop/src/hooks/use-app-file-actions.ts", 
 const executable = ts.transpile(source.replace(/^import[\s\S]*?;\n/gm, "").replace("export function", "function"));
 const calls = [];
 const statuses = [];
+const notices = [];
 let native = false;
 const context = {
   useCallback: callback => callback,
+  toast: { add: notice => notices.push(notice) },
   isTauriRuntime: () => native,
   invoke: async (...args) => calls.push(args),
   openPath: async (...args) => calls.push(["openPath", ...args]),
@@ -23,8 +25,8 @@ await context.actions.openPathInChemicalEditor("/demo.pdb", "chimerax", "Chimera
 await context.actions.openPathWithDefaultApp("/demo.pdb");
 await context.actions.revealPath("/demo.pdb");
 assert.deepEqual(calls, [], "Browser actions must not call native APIs");
-assert.equal(statuses.length, 3);
-assert.ok(statuses.every(([message, kind]) => kind === "info" && message.includes("Burette for Mac")));
+assert.equal(notices.length, 3);
+assert.ok(notices.every(notice => notice.type === "info" && notice.title.includes("Burette for Mac") && notice.description.includes("browser preview")));
 native = true;
 await context.actions.openPathInChemicalEditor("/demo.pdb", "chimerax", "ChimeraX");
 await context.actions.openPathWithDefaultApp("/demo.pdb");
