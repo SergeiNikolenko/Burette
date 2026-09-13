@@ -1032,6 +1032,9 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   .activity-indicator-spinner { animation-duration: 2.4s; }
 }
 .open-editor-trigger {
+  /* Preserve application artwork when WebKit paints pressed/inactive controls. */
+  -webkit-appearance: none;
+  appearance: none;
   width: auto;
   min-width: 56px;
   height: 28px;
