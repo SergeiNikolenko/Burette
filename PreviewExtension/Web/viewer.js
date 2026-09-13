@@ -8747,7 +8747,7 @@ SOFTWARE.
   }
 
   function initSequenceResize() {
-    let initialHeight = 196;
+    let initialHeight = 88;
     try {
       const saved = Number(window.localStorage.getItem('buret.sequence.height'));
       if (Number.isFinite(saved) && saved >= 64) initialHeight = saved;
@@ -25880,11 +25880,15 @@ SOFTWARE.
       );
     }
 
-    if (typeof window.molstar.Viewer.create === 'function') {
-      return window.molstar.Viewer.create('app', createViewerOptions());
-    }
-
-    return new window.molstar.Viewer('app', createViewerOptions());
+    const viewer = typeof window.molstar.Viewer.create === 'function'
+      ? await window.molstar.Viewer.create('app', createViewerOptions())
+      : new window.molstar.Viewer('app', createViewerOptions());
+    // Set before loading data, when Mol* initializes the sequence state.
+    viewer.plugin.spec.components = {
+      ...viewer.plugin.spec.components,
+      sequenceViewer: { ...viewer.plugin.spec.components?.sequenceViewer, defaultMode: 'all' }
+    };
+    return viewer;
   }
 
   function ensureMolstarStylesheet() {

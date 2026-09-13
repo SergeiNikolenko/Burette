@@ -57,6 +57,7 @@ import { mountSelect, initResize, setContentHeight, sequenceOptionLabel } from '
     if (!current.panel.clientWidth) { dismiss(); return; }
     const { panel, header } = current;
     const compact = panel.getBoundingClientRect().height <= 112;
+    const enteringCompact = compact && !panel.classList.contains('buret-seq-compact');
     panel.classList.toggle('buret-seq-compact', compact);
     const native = panel.querySelector('.msp-sequence-select');
     const selects = Array.from(native?.querySelectorAll('select') || []);
@@ -88,9 +89,11 @@ import { mountSelect, initResize, setContentHeight, sequenceOptionLabel } from '
     wrappers.forEach(layout);
     panel.querySelectorAll('.msp-sequence-chain-label').forEach(label => {
       if (!label.textContent.startsWith('Chain ')) label.textContent = `Chain ${label.textContent}`;
+      label.title = label.textContent;
     });
     const reading = panel.querySelector('.msp-sequence-wrapper-non-empty');
     const last = reading?.lastElementChild;
+    if (reading && enteringCompact) reading.scrollTop = 0;
     if (last) {
       if (compact) {
         // Measure the expanded capacity independently of the one-line track,
