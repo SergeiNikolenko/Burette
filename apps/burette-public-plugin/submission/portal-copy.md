@@ -108,7 +108,8 @@ supported.
 - Separately test all five tools in ChatGPT Developer Mode on web and mobile,
   including `render_molecular_scene` selection/focus/visibility, the two-step
   `open_ketcher` then `control_ketcher` edit/export flow, Ketcher revision
-  conflicts, and resizing of the inline preview/editor.
+  conflicts, host-supported display-mode transitions, and narrow-screen layout.
+  The widget does not provide a custom drag-to-resize handle.
 - Capture the required submission screenshots from the real ChatGPT widget
   after the Developer Mode checks; do not substitute a direct shell URL or a
   local preview for the final portal screenshots.

@@ -26,17 +26,40 @@ demo separate from this complete operator test matrix.
   `paper-core` distribution; native and standalone-demo builds are unchanged.
   Do not promote or record submission video until real hosted loading and
   interactions pass after this change.
-- Release remains blocked by Ketcher's runtime Ajv compilation under strict
-  CSP: saved `ketcher-opts` settings are validated during module initialization,
-  and Form-backed dialogs compile validators when opened. This requires a
-  separately scoped, behavior-preserving validation integration; do not clear
-  user settings, disable validation or add `unsafe-eval` as a workaround.
-- Browser fixture after Paper Core change: editor chrome mounted under unchanged
-  strict CSP; the shared zoom group changed `100% -> 110% -> 100%` using click
-  and Enter. Opening Ketcher Settings reproduced an Ajv CSP exception and
-  removed the editor canvas. This is a confirmed browser release blocker,
-  not merely a source-review concern. The seed/SDF, mobile and native-host
-  acceptance checks remain unverified for this integrated candidate.
+- The Ajv CSP blocker is fixed in `96f30cd51`: hosted builds precompile the
+  actual pinned Ketcher schemas, including all 22 Form variants and settings.
+  2,718 differential cases preserve validation/error behavior and live custom
+  format closures. The real browser bundle also passes with dynamic code
+  generation blocked. CSP, user settings and chemistry rules were not weakened.
+- Strict-CSP browser QA of `674904ab2` verified ethanol (3 atoms, 2 bonds),
+  Settings validation/persistence, Save and atom/bond property dialogs, and a
+  complete SDF payload delivered through an isolated host download callback.
+  This callback is not proof of a real ChatGPT download. At 390 × 844, the
+  final built styles keep the canvas, SDF button and Settings dialog inside the
+  viewport. A repeated-load check exposed a second app mount: the versioned
+  entry URL and bare chunk back-import resolved to different ES modules. The
+  shell now uses one canonical entry URL with explicit HTTP revalidation.
+  Five successive strict-CSP reloads preserved the visible seed, taking
+  0.83–1.21 seconds each. A built-chunk/bootstrap regression test protects the
+  module identity. Real host acceptance is still a separate gate.
+- Final source `9186af298`: all 95 hosted tests (1,437 assertions), TypeScript
+  and the Next.js production build passed on Gauss. The earlier full hosted
+  asset and agent-shell builds passed before this bootstrap-only correction.
+  The remote wire tests need `NO_PROXY=127.0.0.1,localhost` (also lowercase)
+  in this environment; tests and timeouts were not weakened.
+- Published Vercel firewall rules now enforce the two limits below. The shared
+  Upstash store is available, free, `iad1`, with eviction, automatic upgrade and
+  production pack disabled. Production Redis tokens/credential URLs were marked
+  Sensitive without rotating their values; the continuation secret was already
+  Sensitive.
+- Deployment attempt `dpl_74GSwaf8TgpFtS6bQgekmQPGhdXK` for `674904ab2` was
+  BLOCKED before build because the project is paused. Vercel event
+  `uev_8y7EnChZWhom3iQGKWnnTsYv` records an automatic spend-budget pause at
+  `2026-09-13T19:25:27Z`; the configured budget is $1 with project pausing.
+  Do not resume, increase the budget or promote a deployment without explicit
+  approval of the resulting spending. The canonical alias was not switched.
+  Candidate/live preflight and real ChatGPT, Codex and iPhone acceptance remain
+  incomplete. No OpenAI submission was made.
 - Public privacy policy was updated on September 13 in landing deployment
   `dpl_8jxL8zJarqjuLSAseq92fZsj5dVg`. The canonical `/privacy` URL was checked
   for the continuation/CAS retention and widget analytics disclosures.
@@ -165,7 +188,7 @@ demo separate from this complete operator test matrix.
 
 - [ ] Use one fresh post-rescan ChatGPT web conversation for the entire flow and record the active card/result after every step.
 - [ ] Ask: “Open a Ketcher editor and seed it with ethanol using the SMILES CCO.” Confirm a visible ethanol sketch, `3` atoms, structure revision `1`, and no user-visible continuation token.
-- [ ] Confirm the compact card shows only the native Ketcher editor plus one top `SDF` button: no Burette icon/title/subtitle, no Grid/Molstar/compute/database/collection/scale/theme row, and no bottom status/Import/Export row.
+- [ ] Confirm the compact card shows the Ketcher editor with a small shared zoom group and one top `SDF` button: no Burette icon/title/subtitle, no Grid/Molstar/compute/database/collection/theme row, no custom resize handle, and no bottom status/Import/Export row.
 - [ ] Click `SDF` and inspect the downloaded `ketcher-sketch.sdf`. Confirm it contains the current visible structure, one valid `M  END`, and one `$$$$` record terminator.
 - [ ] Edit the sketch directly in the visible Ketcher canvas from ethanol (`CCO`) to ethylamine (`CCN`) without asking the agent to replace it.
 - [ ] Confirm that the widget's debounced synchronization of that direct edit completes without repeated destructive-action confirmation prompts. Stop if one visible edit causes a confirmation loop or leaves model state behind the canvas.
