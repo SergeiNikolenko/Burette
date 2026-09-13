@@ -37,13 +37,49 @@ its Vercel Git integration is disconnected.
 5. Verify the prepared artifact, including the Python rendering function,
    assets and routes, before one `vercel deploy --prebuilt` publication.
    If this path is not yet validated, stop instead of silently falling back to
-   another Vercel-hosted build. Prebuilt packaging is not currently acceptance-
-   tested for this mixed Next.js/Python project.
+   another Vercel-hosted build. See the local packaging checkpoint below;
+   live Vercel acceptance remains separate.
 6. Validate the candidate, then promote that same deployment without rebuilding.
    Keep the production origin stable and check deployment protection before
    using a candidate with an external host.
 
 ## Acceptance remains separate
+
+### Local packaging checkpoint — 2026-09-14
+
+The mixed Next.js/Python package was built on Gauss with Vercel CLI 59.1.4,
+Node 24.13.0, Bun 1.3.8 and Python 3.12 in an Amazon Linux 2023 container
+(base digest `sha256:181f98c48832fe926f8ca3b6ffeafcce128e96e77b93d08fbe9a9bc9403ce284`).
+The container used 8 CPUs and 16 GiB, no Vercel credentials, and only the public
+production origin as application configuration. No upload or deployment ran.
+
+Plain Linux CLI packaging assumed manylinux 2.17 and forced large scientific
+dependencies into a 422.61 MiB function, exceeding its 225 MiB check. With the
+Amazon Linux build environment and Python exposed at `/uv/python/bin/python3.12`,
+`vercel build --prod --standalone` completed. No large-function feature, plan
+change, dependency removal or chemistry-code change was used.
+
+Output verification passed for 3,510 unique files (344.58 MiB), widget assets,
+MCP, health aliases, Python handler and filesystem routing. Symlinks remain
+within the output directory; no `.env` files were found there. This is a
+structural check, not an exhaustive secret scan or a live route check.
+
+The Python function occupies about 177 MiB on disk. Vercel's standard optimizer
+externalized dependencies into a locked runtime installation. In a clean
+Amazon Linux container with the output mounted read-only, the generated
+handler installed them in 1.78 seconds and rendered water XYZ and ethanol
+SMILES to valid SVG (1,342 and 1,769 bytes). This does not prove Vercel cold-start
+latency, outbound dependency access, request routing or live host behavior.
+
+Reproduction evidence is retained on Gauss under
+`/home/nikolenko/work/Projects/burette-csp-validation.kr2myZ`:
+`prebuilt-al2023.log`, `prebuilt-python-smoke.log`, `.vercel/Dockerfile.prebuilt`,
+`.vercel/verify-output.mjs`, `.vercel/smoke-xyzrender.py`, and `.vercel/output`.
+The remote runtime sources were checksum-compared with the local integration
+branch. The Vercel Python builder generated a temporary Python manifest and
+lockfile in this scratch checkout; these are not repository source changes.
+Preserve the complete artifact and its lockfile for candidate review instead
+of assuming a later fresh dependency resolution is identical.
 
 After publication, run the production preflight and refresh the ChatGPT
 connector. Only then record the one-command demo from
