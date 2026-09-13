@@ -850,6 +850,7 @@ mod tests {
             "molecule-preview-interactions.js",
             "color-picker.js",
             "scene-file-actions.js",
+            "sequence-panel.js",
         ] {
             assert!(AssetProfile::Molstar.files().contains(&helper));
             assert!(AssetProfile::ExternalXyzrender.files().contains(&helper));
@@ -873,6 +874,7 @@ mod tests {
         assert!(assets.join("molstar.js").is_file());
         assert!(assets.join("molstar.css").is_file());
         assert!(assets.join("viewer.js").is_file());
+        assert!(assets.join("sequence-panel.js").is_file());
         assert!(!assets.join("grid-viewer.js").exists());
         assert!(!assets.join("grid.css").exists());
         assert!(assets.join("rdkit").join("RDKit_minimal.js").is_file());
@@ -1102,6 +1104,7 @@ impl AssetProfile {
                 "molecule-preview-interactions.js",
                 "color-picker.js",
                 "scene-file-actions.js",
+                "sequence-panel.js",
                 "viewer.js",
             ],
             Self::Mesoscale => &["mesoscale.js", "mesoscale.css"],
@@ -1117,6 +1120,7 @@ impl AssetProfile {
                 "molecule-preview-interactions.js",
                 "color-picker.js",
                 "scene-file-actions.js",
+                "sequence-panel.js",
                 "viewer.js",
             ],
         }
