@@ -3569,19 +3569,26 @@ img.radix-menu-item-icon {
 }
 .structure-story-markdown {
   min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--text-primary);
+  font: 400 13px/1.52 -apple-system, BlinkMacSystemFont, sans-serif;
 }
-.structure-story-markdown .text-file-rich-editor,
-.structure-story-markdown .text-file-rich-editor .cm-editor {
-  min-height: 0;
-}
-.structure-story-markdown .text-file-rich-editor .cm-content {
-  max-width: none;
-  margin: 0;
-  padding: 0;
-  font-size: 12px;
-  line-height: 1.5;
-}
+.structure-story-markdown > :first-child { margin-top: 0; }
+.structure-story-markdown > :last-child { margin-bottom: 0; }
+.structure-story-markdown :is(h1, h2, h3, h4) { margin: 18px 0 7px; font-weight: 650; line-height: 1.25; }
+.structure-story-markdown h1, .structure-story-markdown h2 { font-size: 18px; }
+.structure-story-markdown h3 { font-size: 15px; }
+.structure-story-markdown h4 { font-size: 13px; }
+.structure-story-card .structure-story-markdown p { margin: 0 0 12px; color: inherit; font: inherit; }
+.structure-story-markdown :is(ul, ol) { margin: 0 0 13px; padding-left: 20px; }
+.structure-story-markdown ul { list-style: disc; }
+.structure-story-markdown ol { list-style: decimal; }
+.structure-story-markdown li { margin: 3px 0; }
+.structure-story-markdown code { padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, var(--text-primary) 9%, transparent); font: 500 .92em ui-monospace, monospace; }
+.structure-story-markdown table { width: 100%; margin: 10px 0 15px; border-collapse: separate; border-spacing: 0; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+.structure-story-markdown :is(th, td) { padding: 7px 9px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.structure-story-markdown th { background: color-mix(in srgb, var(--text-primary) 6%, transparent); font-weight: 650; }
+.structure-story-markdown tr:last-child td { border-bottom: 0; }
 
 .structure-story-controls {
   display: grid;

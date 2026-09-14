@@ -1685,6 +1685,7 @@ async function main() {
           .replaceAll('./molstar-preset-preview-controller.js"', `./molstar-preset-preview-controller.js?v=${assetVersion}"`)
           .replaceAll('./superposition-panel.js"', `./superposition-panel.js?v=${assetVersion}"`)
           .replaceAll('./molecule-preview-interactions.js"', `./molecule-preview-interactions.js?v=${assetVersion}"`)
+          .replaceAll('./renderer-view-state.js"', `./renderer-view-state.js?v=${assetVersion}"`)
           .replaceAll('./color-picker.js"', `./color-picker.js?v=${assetVersion}"`)
           .replaceAll('./sequence-panel.js"', `./sequence-panel.js?v=${assetVersion}"`)
           .replaceAll('./scene-file-actions.js"', `./scene-file-actions.js?v=${assetVersion}"`)

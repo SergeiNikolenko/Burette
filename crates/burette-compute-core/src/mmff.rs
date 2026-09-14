@@ -417,7 +417,7 @@ fn scale(value: [f64; 3], factor: f64) -> [f64; 3] {
 pub struct MmffError(String);
 
 impl MmffError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
 }
@@ -517,6 +517,20 @@ mod tests {
             [2.4, 1.1, 0.7, 0.0],
         ];
         let result = evaluate_mmff(&parameters, &positions).unwrap();
+        let analytic =
+            crate::mmff_analytic::evaluate_mmff_analytic(&parameters, &positions).unwrap();
+        assert_eq!(analytic.energy, result.energy);
+        for (actual, expected) in analytic
+            .gradients
+            .iter()
+            .flatten()
+            .zip(result.gradients.iter().flatten())
+        {
+            assert!(
+                (actual - expected).abs() < 0.02 + expected.abs() * 0.001,
+                "analytic {actual}, reference {expected}"
+            );
+        }
         assert!(result.energy.bond_stretch != 0.0);
         assert!(result.energy.angle_bend != 0.0);
         assert!(result.energy.stretch_bend != 0.0);
@@ -593,6 +607,24 @@ mod tests {
                 .expect("decode BMFX fixture");
             let native = crate::decode_native_mmff_parameters(&bytes, bytes.len())
                 .unwrap_or_else(|error| panic!("{} {} BMFX: {error}", case.name, case.variant));
+            let analytic =
+                crate::mmff_analytic::evaluate_mmff_analytic(&native.parameters, &case.positions)
+                    .expect("analytic corpus gradient");
+            let reference = evaluate_mmff(&native.parameters, &case.positions)
+                .expect("reference corpus gradient");
+            for (actual, expected) in analytic
+                .gradients
+                .iter()
+                .flatten()
+                .zip(reference.gradients.iter().flatten())
+            {
+                assert!(
+                    (actual - expected).abs() <= 0.02 + expected.abs() * 0.001,
+                    "{} {} gradient {actual} reference {expected}",
+                    case.name,
+                    case.variant
+                );
+            }
             let observed = evaluate_mmff_energy(&native.parameters, &case.positions)
                 .expect("evaluate native MMFF corpus case")
                 .total();

@@ -1290,6 +1290,7 @@ function viewerHtml(
     sdfPosePager: renderer === "molstar" && format.molstarFormat === "sdf" && !format.binary,
     trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1,
     trajectoryFrameCount,
+    rendererViewState: reloadOptions?.rendererViewState,
     ...(reloadOptions?.activeModel != null ? { activeModel: reloadOptions.activeModel } : {}),
     rdkitWasmPath: RDKIT_WASM_PATH,
     ...(reloadOptions?.sdfPoseControlLabel ? { sdfPoseControlLabel: reloadOptions.sdfPoseControlLabel } : {}),
@@ -1363,6 +1364,7 @@ function viewerHtml(
   <script src="${viewerAsset("molstar-preset-preview-controller.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("superposition-panel.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("molecule-preview-interactions.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("renderer-view-state.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("color-picker.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("sequence-panel.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("scene-file-actions.js")}?v=${runtimeAssetVersion}"></script>

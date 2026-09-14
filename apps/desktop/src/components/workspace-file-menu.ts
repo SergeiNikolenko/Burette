@@ -27,7 +27,8 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
       ...(caps.every(cap => cap.poses) ? [command("open-poses", "As Poses", () => workflows.openPoses(paths))] : []),
     ] : []),
     ...submenu("open-as", "As", [
-      ...(single && caps[0].scene ? [command("open-3d", "3D", () => actions.openStructurePaths(paths, { rendererMode: "molstar" }))] : []),
+      ...(single && (caps[0].scene || caps[0].xyzrender) ? [command("open-3d", "Mol*", () => actions.openStructurePaths(paths, { rendererMode: "molstar" }))] : []),
+      ...(single && caps[0].xyzrender ? [command("open-xyzrender", "xyzrender", () => actions.openStructurePaths(paths, { rendererMode: "xyzrender-external" }))] : []),
       ...(single && caps[0].collection ? [
         command("open-table", "Table", () => workflows.gridView(path, "table")),
         command("open-cards", "Cards", () => workflows.gridView(path, "cards")),

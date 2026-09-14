@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-renderer-view-state.mjs": () => import("./test-renderer-view-state.mjs"),
   "test-json-display.mjs": () => import("./test-json-display.mjs"),
   "test-standalone-conformer-jobs.mjs": () => import("./test-standalone-conformer-jobs.mjs"),
   "test-browser-file-actions.mjs": () => import("./test-browser-file-actions.mjs"),

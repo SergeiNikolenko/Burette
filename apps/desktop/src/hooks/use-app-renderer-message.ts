@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { rememberRendererViewState, rendererViewReloadOptions } from "../lib/renderer-view-state";
 import type { ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
 type RefValue<T> = { current: T };
@@ -41,6 +42,11 @@ export function useAppRendererMessage({
   xyzrenderOrientationRefRef,
 }: UseAppRendererMessageOptions) {
   const handleRendererMessage = useCallback((body: RendererMessageBody) => {
+    if (body?.type === "rendererViewStateChanged") {
+      const document = documents.find((item) => item.id === body.documentId);
+      if (document) rememberRendererViewState(document.path, body.viewState);
+      return true;
+    }
     if (body?.type !== "setRenderer") return false;
     const renderer = body.value;
     if (renderer === "auto" || renderer === "molstar" || renderer === "xyzrender-external") {
@@ -48,24 +54,28 @@ export function useAppRendererMessage({
       const targetDocument = (documentId
         ? documents.find((document) => document.id === documentId)
         : null) ?? activeDocument;
+      if (targetDocument) rememberRendererViewState(targetDocument.path, body.viewState);
+      const viewOptions = targetDocument ? rendererViewReloadOptions(targetDocument.path) : {};
       const orientationRef = bodyString(body.orientationRef);
       const preset = bodyString(body.preset);
       const activeModel = bodyActiveModel(body.activeModel);
       const reloadOptions = renderer === "xyzrender-external"
         ? {
+            ...viewOptions,
             xyzrenderOrientationRef: orientationRef ?? xyzrenderOrientationRefRef.current,
             xyzrenderPreset: preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
             xyzrenderControls: body.controls ?? pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
             activeModel,
           }
         : renderer === "molstar"
-          ? {}
+          ? { ...viewOptions, activeModel }
           : undefined;
       if (renderer === "xyzrender-external" && orientationRef) {
         xyzrenderOrientationRefRef.current = orientationRef;
       }
       pendingViewerReloadOptionsRef.current = renderer === "xyzrender-external"
         ? {
+            ...viewOptions,
             xyzrenderOrientationRef: orientationRef ?? xyzrenderOrientationRefRef.current,
             xyzrenderPreset: preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
             xyzrenderControls: body.controls ?? pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,

@@ -2538,12 +2538,34 @@
     return values.every(number => Number.isFinite(number) && number > 0) ? values : null;
   }
 
+  let externalArtifactViewSnapshot = null;
+
+  function saveRendererViewState() {
+    const config = activeConfig || window.BuretteConfig || {};
+    const patch = config.renderer === 'xyzrender-external'
+      ? { xyz: externalArtifactViewSnapshot?.() }
+      : { camera: captureMolstarCameraSnapshot(activeViewer) };
+    window.BuretteRendererViewState?.save(config.documentId, patch);
+    const viewState = window.BuretteRendererViewState?.read(config.documentId);
+    postHostMessage({ type: 'rendererViewStateChanged', viewState });
+    return viewState;
+  }
+  window.addEventListener('pagehide', saveRendererViewState);
+  let rendererViewSaveTimer;
+  const scheduleRendererViewSave = () => {
+    clearTimeout(rendererViewSaveTimer);
+    rendererViewSaveTimer = setTimeout(saveRendererViewState, 250);
+  };
+  window.addEventListener('pointerup', scheduleRendererViewSave);
+  window.addEventListener('wheel', scheduleRendererViewSave, { passive: true });
+
   function requestRendererSwitch(renderer) {
+    const viewState = saveRendererViewState();
     const value = normalizeRenderer(renderer);
     if (requestBrowserDevRendererSwitch(value)) return;
     const orientationRef = value === 'xyzrender-external' ? captureCurrentXyzrenderOrientationRef() : null;
-    const activeModel = value === 'xyzrender-external' ? activeTrajectoryFrameIndexForRendererSwitch() : null;
-    const payload = { type: 'setRenderer', value };
+    const activeModel = activeTrajectoryFrameIndexForRendererSwitch();
+    const payload = { type: 'setRenderer', value, viewState };
     if (orientationRef) {
       payload.orientationRef = orientationRef.text;
       payload.orientationAtomCount = orientationRef.atomCount;
@@ -13544,9 +13566,10 @@ SOFTWARE.
     const stage = root.querySelector('.buret-external-artifact-stage');
     if (!stage) return;
 
-    let scale = 1;
-    let translateX = 0;
-    let translateY = 0;
+    const savedView = window.BuretteRendererViewState?.read(activeConfig?.documentId, activeConfig?.rendererViewState).xyz;
+    let scale = savedView?.scale ?? 1;
+    let translateX = savedView?.x ?? 0;
+    let translateY = savedView?.y ?? 0;
     let dragPointerId = null;
     let dragClientX = 0;
     let dragClientY = 0;
@@ -13663,6 +13686,19 @@ SOFTWARE.
     };
     installExternalArtifactBaseItemInteractions(root, () => scale);
     const sheetCleanup = installExternalArtifactSheet(root, stage, toStagePoint, () => scale);
+    const baseItem = root.querySelector('.buret-xyzrender-sheet-item-base');
+    if (baseItem && savedView?.item) {
+      for (const key of ['left', 'top', 'width', 'height']) baseItem.style[key] = `${savedView.item[key]}px`;
+      setSheetItemRotation(baseItem, savedView.item.rotation);
+    }
+    externalArtifactViewSnapshot = () => ({
+      scale, x: translateX, y: translateY,
+      item: baseItem ? {
+        left: baseItem.offsetLeft, top: baseItem.offsetTop,
+        width: baseItem.offsetWidth, height: baseItem.offsetHeight,
+        rotation: Number(baseItem.dataset.rotation || 0)
+      } : null
+    });
 
     root.addEventListener('wheel', onWheel, { passive: false });
     root.addEventListener('pointerdown', onPointerDown);
@@ -13674,6 +13710,8 @@ SOFTWARE.
     root.addEventListener('gesturechange', onGestureChange, { passive: false });
     apply();
     externalArtifactInteractionsCleanup = () => {
+      saveRendererViewState();
+      externalArtifactViewSnapshot = null;
       root.removeEventListener('wheel', onWheel);
       root.removeEventListener('pointerdown', onPointerDown);
       root.removeEventListener('pointermove', onPointerMove);
@@ -26104,7 +26142,11 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     } catch (error) {
       debug('Configured Mol* preset failed: ' + (error?.message || String(error)));
     }
-    if (!hasMolstarContextFocus(config)) {
+    const savedCamera = window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
+    if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
+      molstarStructureFocusSerial += 1;
+      restoreMolstarCameraSnapshotNow(viewer, savedCamera);
+    } else if (!hasMolstarContextFocus(config)) {
       scheduleMolstarStructureFocus(viewer, { reason: 'initial-load', durationMs: 120 });
     }
     {

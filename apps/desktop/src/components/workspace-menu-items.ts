@@ -1,3 +1,4 @@
+import previewFormatRegistry from "../../../../config/preview-formats.json";
 import type { MenuItemSpec } from "./menu-types";
 
 export function menuItem(id: string, text: string, action: () => unknown | Promise<unknown>): MenuItemSpec {
@@ -13,7 +14,9 @@ export function menuSections(...sections: MenuItemSpec[][]): MenuItemSpec[] {
 }
 export function fileCapabilities(path: string) {
   const extension = path.split('.').pop()?.toLowerCase() ?? '';
+  const format = previewFormatRegistry.formats.find(format => format.extensions.includes(extension));
   return {
+    xyzrender: format?.preview?.capabilities?.canSwitchRenderer === true,
     scene: ['pdb', 'cif', 'mmcif', 'mol', 'mol2', 'sdf', 'xyz'].includes(extension),
     molecule: ['mol', 'mol2', 'sdf', 'smi', 'smiles', 'cxsmiles'].includes(extension),
     poses: ['mol', 'sdf'].includes(extension),

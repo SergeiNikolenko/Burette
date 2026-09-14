@@ -328,3 +328,9 @@ checks/downloads, native update UI and installation. See
 [Sparkle updates](sparkle-updates.md) for keys, feed publishing, migration and
 native acceptance. Unconfigured builds retain the existing GitHub Releases
 updater. The ZIP and SHA-256 sidecars remain required for those older clients.
+
+Launching either a release or development bundle does not claim default file
+handlers. Existing associations remain untouched; Launch Services maintenance
+only cleans up owned obsolete update bundles. Explicit Quick Look repair in
+Settings remains the opt-in registration path. This prevents repeated Finder
+confirmation prompts for previously unclaimed file extensions.

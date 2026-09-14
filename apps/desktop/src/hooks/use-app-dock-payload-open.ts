@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { rendererViewReloadOptions } from "../lib/renderer-view-state";
 import { invoke } from "@tauri-apps/api/core";
 
 import type { StatusKind } from "../components/types";
@@ -94,7 +95,10 @@ export function useAppDockPayloadOpen({
       return;
     }
 
-    const { existingDocumentId, unopenedPaths } = resolveDockDropPaths(cleanPaths, documents, textDocuments);
+    const { existingDocumentId, unopenedPaths } = input.rendererMode
+      ? { existingDocumentId: null, unopenedPaths: cleanPaths }
+      : resolveDockDropPaths(cleanPaths, documents, textDocuments);
+    const dockPreferences = input.rendererMode ? { ...preferences, rendererMode: input.rendererMode } : preferences;
     if (existingDocumentId) setDockDocument(input.area, existingDocumentId);
     if (unopenedPaths.length === 0 && cleanRecords.length === 0) {
       addDockDrop(input);
@@ -177,11 +181,11 @@ export function useAppDockPayloadOpen({
         ? isTauriRuntime()
           ? await invoke<OpenDocumentsResult>("open_documents", {
               paths: structurePaths,
-              preferences,
-              reloadOptions: undefined,
+              preferences: dockPreferences,
+              reloadOptions: structurePaths.length === 1 ? rendererViewReloadOptions(structurePaths[0]) : undefined,
               openStateRevision: currentDocumentRegistryRevision(),
             })
-          : await openBrowserDevDocuments(structurePaths, preferences, undefined, browserDevDockDocumentIds(input.area, structurePaths))
+          : await openBrowserDevDocuments(structurePaths, dockPreferences, structurePaths.length === 1 ? rendererViewReloadOptions(structurePaths[0]) : undefined, browserDevDockDocumentIds(input.area, structurePaths))
         : { documents: [], errors: [] };
       unmaterializedDocuments.push(...structurePathResult.documents);
       const spectrumTextResult = spectrumPaths.length > 0
@@ -200,11 +204,11 @@ export function useAppDockPayloadOpen({
           const result = isTauriRuntime()
             ? await invoke<OpenDocumentsResult>("open_documents", {
                 paths: [path],
-                preferences,
-                reloadOptions: undefined,
+                preferences: dockPreferences,
+                reloadOptions: rendererViewReloadOptions(path),
                 openStateRevision: currentDocumentRegistryRevision(),
               })
-            : await openBrowserDevDocuments([path], preferences, undefined, browserDevDockDocumentIds(input.area, [path]));
+            : await openBrowserDevDocuments([path], dockPreferences, rendererViewReloadOptions(path), browserDevDockDocumentIds(input.area, [path]));
           unmaterializedDocuments.push(...result.documents);
           const documents = result.documents.filter((document) => document.renderer !== NOT_RENDERABLE_RENDERER);
           const discardedDocuments = result.documents.filter((document) => document.renderer === NOT_RENDERABLE_RENDERER);
