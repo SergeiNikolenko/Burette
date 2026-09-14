@@ -9196,10 +9196,15 @@ img.settings-open-destination-icon {
   height: 16px;
   border-radius: 999px;
   background: #fff;
+  /* Tailwind uses the independent translate property; do not combine it with
+     this settings-specific transform or the thumb moves twice. */
+  translate: none;
+  transform: translateX(0);
   transition: transform 160ms ease;
 }
-.settings-toggle[data-checked] span,
-.settings-toggle[data-state="checked"] span { transform: translateX(16px); }
+.settings-toggle:is([data-checked], [data-state="checked"]) > [data-slot="switch-thumb"] {
+  transform: translateX(16px);
+}
 .settings-action-button {
   min-width: 96px;
   height: 34px;
