@@ -3580,7 +3580,10 @@ img.radix-menu-item-icon {
 .structure-story-markdown h3 { font-size: 15px; }
 .structure-story-markdown h4 { font-size: 13px; }
 .structure-story-card .structure-story-markdown p { margin: 0 0 12px; color: inherit; font: inherit; }
-.structure-story-markdown ul { margin: 0 0 13px; padding-left: 20px; }
+.structure-story-markdown :is(ul, ol) { margin: 0 0 13px; padding-left: 20px; }
+.structure-story-markdown ul { list-style: disc; }
+.structure-story-markdown ol { list-style: decimal; }
+.structure-story-markdown li { margin: 3px 0; }
 .structure-story-markdown code { padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, var(--text-primary) 9%, transparent); font: 500 .92em ui-monospace, monospace; }
 .structure-story-markdown table { width: 100%; margin: 10px 0 15px; border-collapse: separate; border-spacing: 0; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
 .structure-story-markdown :is(th, td) { padding: 7px 9px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }

@@ -238,7 +238,10 @@ fn optimize_geometry(
         if !slope.is_finite() || slope >= 0.0 {
             history.clear();
             if let Some(hessian) = &mut inverse_hessian {
-                *hessian = identity_matrix(gradient.len());
+                hessian.fill(0.0);
+                for index in 0..gradient.len() {
+                    hessian[index * gradient.len() + index] = 1.0;
+                }
             }
             direction.clone_from(&gradient);
             for value in &mut direction {
