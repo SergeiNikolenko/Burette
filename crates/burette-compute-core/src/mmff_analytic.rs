@@ -40,6 +40,8 @@ impl Sub for Dual {
         self + -rhs
     }
 }
+// The product rule necessarily adds the two derivative contributions.
+#[allow(clippy::suspicious_arithmetic_impl)]
 impl Mul for Dual {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self {
@@ -148,8 +150,8 @@ fn accumulate<const N: usize>(
     });
     let result = energy(&points);
     for (slot, atom) in atoms.iter().enumerate() {
-        for axis in 0..3 {
-            gradients[*atom as usize][axis] += result.gradient[slot * 3 + axis] as f32;
+        for (axis, gradient) in gradients[*atom as usize][..3].iter_mut().enumerate() {
+            *gradient += result.gradient[slot * 3 + axis] as f32;
         }
     }
 }
