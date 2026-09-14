@@ -4661,7 +4661,7 @@ assert.match(appDockPayloadHook, /setDockTool\(input\.area, "ketcher"\)/);
 assert.match(appDockPayloadHook, /function browserDevDockDocumentIds\(area: DockArea, paths: string\[\]\)/);
 assert.match(appDockPayloadHook, /const rightDockTextPaths = unopenedPaths\.filter\(\(path\) => \{/);
 assert.match(appDockPayloadHook, /invoke<OpenTextFilesResult>\("open_text_files"/);
-assert.match(appDockPayloadHook, /openBrowserDevDocuments\(structurePaths, dockPreferences, undefined, browserDevDockDocumentIds\(input\.area, structurePaths\)\)/);
+assert.match(appDockPayloadHook, /openBrowserDevDocuments\(structurePaths, dockPreferences, structurePaths\.length === 1 \? rendererViewReloadOptions\(structurePaths\[0\]\) : undefined, browserDevDockDocumentIds\(input\.area, structurePaths\)\)/);
 assert.match(appDockPayloadHook, /addDockDrop\(input\)/);
 assert.match(appDockPayloadHook, /const textOpenPaths = \[\.\.\.textPaths, \.\.\.structureAndTextPaths\]/);
 assert.match(appDockPayloadHook, /const recordResult = cleanRecords\.length > 0/);
