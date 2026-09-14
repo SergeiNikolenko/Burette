@@ -45,6 +45,7 @@ export function useNativeUpdates(
     if (!enabled || availability?.engine !== "sparkle") return;
     const subscriptions = [
       ["will-download-update", "Downloading update in the background…"],
+      ["did-extract-update", "Update ready. Check to review and restart, or install when quitting."],
       ["will-install-update-on-quit", "Update downloaded. Check to review and restart, or install when quitting."],
       ["user-did-cancel-download", "Update download cancelled."],
       ["did-finish-update-cycle", "Update check finished. Details are shown in the update window."],
