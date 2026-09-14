@@ -66,6 +66,7 @@ const RUNTIME_ASSET_PATHS = new Set([
   'trajectory-smoothing.js',
   'superposition-panel.js',
   'molecule-preview-interactions.js',
+  'renderer-view-state.js',
   'color-picker.js',
   'sequence-panel.js',
   'scene-file-actions.js',

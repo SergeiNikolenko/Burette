@@ -131,8 +131,8 @@ export function useAppGenerate3DConformer({
           (phase) => {
             const labels = {
               extracting: "Preparing molecular constraints...",
-              embedding: mode === "ensemble" ? "Generating and optimizing conformer ensemble on Metal..." : "Generating and optimizing 3D geometry on Metal...",
-              stereo: "Validating stereochemistry on Metal...",
+              embedding: mode === "ensemble" ? "Generating and optimizing conformer ensemble on Metal..." : "Generating and optimizing 3D geometry...",
+              stereo: "Validating stereochemistry...",
               validation: "Checking CPU reference parity...",
               publishing: "Publishing conformer artifact...",
             } as const;
@@ -148,7 +148,7 @@ export function useAppGenerate3DConformer({
           { inActiveTab: true },
         );
         pushStatus(
-          `Generated ${result.passedCount.toLocaleString()} validated conformer${result.passedCount === 1 ? "" : "s"} via Metal GPU and opened the artifact in Molstar.`,
+          `Generated ${result.passedCount.toLocaleString()} validated conformer${result.passedCount === 1 ? "" : "s"} via ${result.backend === "nativeMetal" ? "Metal GPU" : "native CPU"} and opened the artifact in Molstar.`,
           result.failedCount ? "error" : "success",
         );
         return;

@@ -253,13 +253,9 @@ pub(crate) fn maintain_launch_services_on_startup() -> Result<(), String> {
         return Ok(());
     }
 
-    cleanup_owned_update_bundles(&app_bundle)?;
-    let report = register_default_document_handlers(&app_bundle, &app_bundle_id, false);
-    if report.success {
-        Ok(())
-    } else {
-        Err(report.message)
-    }
+    // Default handlers require a deliberate Settings action. Launching an app
+    // must not trigger one Finder confirmation per previously unclaimed format.
+    cleanup_owned_update_bundles(&app_bundle)
 }
 
 #[cfg(target_os = "macos")]

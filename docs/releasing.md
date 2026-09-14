@@ -10,6 +10,14 @@ Release identity is Burette-specific:
 
 ## Release Triggers
 
+Local macOS builds, signing, Quick Look and updater acceptance run on this Mac:
+it is the only available Mac, and the remote compute hosts run Linux. This
+includes large native builds required by a requested release/update check.
+Use an isolated `BURETTE_DEV_FLAVOR` for development builds. Canonical release
+bundle verification must preserve the user's installed app and documents.
+Hosted macOS CI remains an additional gate, not evidence of local native
+update acceptance.
+
 The Release workflow (`.github/workflows/release.yml`) runs on:
 
 - a pushed tag matching `v*` (the tag must equal `v<package.json version>`), or
@@ -185,6 +193,11 @@ notarization.
 
 ## Artifact Requirements
 
+Current packaging builds an arm64 app and compute helper. The Homebrew cask
+must require Apple Silicon; the Sparkle appcast must advertise `arm64` hardware
+requirements and the bundle's minimum macOS version. Do not advertise Intel
+compatibility based only on Sparkle's own universal framework.
+
 Every release app bundle must satisfy:
 
 - `Burette.app` launches as the desktop shell.
@@ -310,5 +323,14 @@ Quick Look extension, `qlmanage`, and the app version.
 
 ## In-App Updates
 
-The desktop app checks Burette GitHub Releases on launch and from the app menu.
-A newer release can be downloaded from the update dialog.
+Builds configured with `BURETTE_SPARKLE_PUBLIC_KEY` use Sparkle for background
+checks/downloads, native update UI and installation. See
+[Sparkle updates](sparkle-updates.md) for keys, feed publishing, migration and
+native acceptance. Unconfigured builds retain the existing GitHub Releases
+updater. The ZIP and SHA-256 sidecars remain required for those older clients.
+
+Launching either a release or development bundle does not claim default file
+handlers. Existing associations remain untouched; Launch Services maintenance
+only cleans up owned obsolete update bundles. Explicit Quick Look repair in
+Settings remains the opt-in registration path. This prevents repeated Finder
+confirmation prompts for previously unclaimed file extensions.

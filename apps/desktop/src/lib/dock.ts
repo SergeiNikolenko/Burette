@@ -37,6 +37,7 @@ export type DockDroppedStructure = {
 };
 
 export type DockDropInput = {
+  rendererMode?: "auto" | "molstar" | "xyzrender-external";
   area: DockArea;
   tabKind: DockTabKind;
   payload: StructureDragPayload;

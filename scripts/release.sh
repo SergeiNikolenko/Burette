@@ -113,6 +113,7 @@ bun scripts/check-js-syntax.mjs \
 if [[ "$DRY_RUN" == "1" ]]; then
   "$ROOT/scripts/create-dmg.sh" --dry-run
   echo "Release dry run passed."
+  echo "Distribution also requires BURETTE_SPARKLE_PUBLIC_KEY and BURETTE_SPARKLE_PRIVATE_KEY."
   echo "No build, notarization, stapling, packaging, or publishing was performed."
   echo "Developer ID release requires:"
   echo "  BURETTE_CODESIGN_IDENTITY='Developer ID Application: ...'"
@@ -129,6 +130,8 @@ require_tool shasum "shasum is normally present on macOS."
 require_tool xcrun "Install full Xcode from the App Store."
 resolve_signing_mode
 require_release_env
+: "${BURETTE_SPARKLE_PUBLIC_KEY:?Sparkle public key is required for release distribution}"
+: "${BURETTE_SPARKLE_PRIVATE_KEY:?Sparkle release signing key is required}"
 export BURETTE_RELEASE_ALLOW_ADHOC="$ALLOW_ADHOC"
 export BURETTE_BUILD_MODE=release
 export BURETTE_XCODE_CONFIGURATION="${BURETTE_XCODE_CONFIGURATION:-Release}"
@@ -147,6 +150,9 @@ ditto -c -k --keepParent "$APP" "$ZIP"
 "$ROOT/scripts/create-dmg.sh" "$APP" "$DMG"
 write_digest "$ZIP"
 write_digest "$DMG"
+if [[ -n "${BURETTE_SPARKLE_PUBLIC_KEY:-}" ]]; then
+  python3 "$ROOT/scripts/sparkle-appcast.py" "$ZIP" "$APP" "$(dirname "$ZIP")/appcast.xml"
+fi
 if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
   bun "$ROOT/scripts/sign-update-manifest.mjs" "$ZIP" "$(dirname "$ZIP")"
 fi

@@ -18,6 +18,7 @@ mod distance_geometry;
 mod distance_optimizer;
 mod etk_geometry;
 mod mmff;
+mod mmff_analytic;
 mod mmff_extract;
 mod semiempirical;
 mod tmap;

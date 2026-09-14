@@ -3786,6 +3786,7 @@ mod tests {
             },
             preferences,
             Some(super::ViewerReloadOptions {
+                renderer_view_state: None,
                 xyzrender_orientation_ref: None,
                 xyzrender_preset: None,
                 xyzrender_controls: None,

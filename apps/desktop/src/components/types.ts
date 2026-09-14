@@ -128,7 +128,7 @@ export type ChemicalEditorTarget = {
 
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
-  openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" }) => void | Promise<void>;
+  openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external" }) => void | Promise<void>;
   openTextPaths: (paths: string[]) => void | Promise<void>;
   openPaths: (paths: string[]) => void | Promise<void>;
   openStructureRecords: (records: StructureDragPayload["records"]) => void | Promise<void>;

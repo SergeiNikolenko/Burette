@@ -1,3 +1,5 @@
+import { StoryMarkdown } from "./story-markdown";
+import { DockFileTabs } from "./dock-file-tabs";
 import { useDropHighlightReset } from "../hooks/use-drop-highlight-reset";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type ComponentProps } from "react";
 import { Plus as Add01Icon, Atom as Atom01Icon, X as Cancel01Icon, FileBlank as File02Icon, Folder as Folder01Icon, Search as Search01Icon } from "@/components/ui/app-icon-data";
@@ -320,6 +322,7 @@ function DockPanelContent({
   actions: ShellActions;
   dockDrops: ShellViewState["dockDroppedStructures"];
 }) {
+  const [textViews, setTextViews] = useState<Record<string, boolean>>({});
   const activeDocument = state.activeDocument;
   const activePageKind = state.activeTab?.location.kind ?? null;
   const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
@@ -372,10 +375,18 @@ function DockPanelContent({
         area={area}
         entries={fileEntries}
         activeKey={activeFileEntryKey}
+        textViews={textViews}
+        onTextView={(key, text) => setTextViews((previous) => ({ ...previous, [key]: text }))}
         actions={actions}
       />
     );
     if (dockTool === "ketcher") return <KetcherDockTool area={area} state={state} fileTabs={fileTabs} actions={actions} />;
+    if (activeFileEntryKey && textViews[activeFileEntryKey]) {
+      return <div className="dock-files-view">{fileTabs}<div className="dock-viewer">
+        <SingleDocumentTextPanel activeDocument={effectiveDockDocument} activeTextDocument={effectiveDockTextDocument}
+          textDocuments={state.textDocuments} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
+      </div></div>;
+    }
     if (dockDocument) {
       return (
         <div className="dock-files-view">
@@ -1926,48 +1937,6 @@ function activeDockFileEntryKey(
   return null;
 }
 
-function DockFileTabs({
-  area,
-  entries,
-  activeKey,
-  actions,
-}: {
-  area: DockArea;
-  entries: DockFileEntry[];
-  activeKey: string | null;
-  actions: ShellActions;
-}) {
-  if (entries.length <= 1) return null;
-  return (
-    <Tabs
-      className="dock-file-tabs"
-      value={activeKey ?? ""}
-      onValueChange={(key) => {
-        const entry = entries.find((candidate) => candidate.key === key);
-        if (!entry) return;
-        if (entry.kind === "tool") {
-          actions.setDockTool(area, "ketcher");
-          return;
-        }
-        actions.setDockDocument(area, entry.documentId);
-      }}
-    >
-      <TabsList variant="line" aria-label={`${area} dock files`}>
-        {entries.map((entry) => (
-          <TabsTrigger
-            key={entry.key}
-            value={entry.key}
-            className="dock-file-tab"
-            title={entry.kind === "tool" ? entry.title : entry.path}
-          >
-            <span>{entry.title}</span>
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </Tabs>
-  );
-}
-
 function dockFilesDragPayload(
   dockDocument: ShellViewState["documents"][number] | null,
   dockTextDocument: ShellViewState["textDocuments"][number] | null,
@@ -2008,16 +1977,6 @@ function dockFilesDragPayload(
 }
 
 function StructureStoryPanel({ story, document, actions }: { story: StructureStory; document: ViewerDocument | null; actions: ShellActions }) {
-  const markdownDocument = useMemo<TextFileDocument>(() => ({
-    id: `mvs-story:${story.documentId}:${story.key ?? story.stepIndex}`,
-    path: story.fileName,
-    title: story.stage,
-    extension: "md",
-    language: "markdown",
-    byteCount: story.summary.length,
-    content: story.summary,
-    truncated: false,
-  }), [story.documentId, story.fileName, story.key, story.stage, story.stepIndex, story.summary]);
   return (
     <div className="dock-content structure-story-dock">
       <section className="structure-brief-card structure-story-card">
@@ -2029,7 +1988,7 @@ function StructureStoryPanel({ story, document, actions }: { story: StructureSto
         </div>
         <p className="structure-story-file" title={story.fileName}>{story.fileName}</p>
         {story.descriptionFormat === "markdown" ? (
-          <div className="structure-story-markdown"><MarkdownRichViewer document={markdownDocument} /></div>
+          <StoryMarkdown text={story.summary} />
         ) : (
           <p className="structure-story-summary">{story.summary}</p>
         )}

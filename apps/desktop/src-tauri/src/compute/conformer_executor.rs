@@ -1656,6 +1656,60 @@ mod tests {
         assert_eq!((validation.passed_count, validation.failed_count), (16, 0));
     }
 
+    #[test]
+    fn interactive_cpu_recovers_the_reported_timeout_seed() {
+        let bytes = include_bytes!(
+            "../../../../../compute/rdkit-conformer/fixtures/mmff-retry-conformer.bcex"
+        );
+        let variant = burette_compute_protocol::ConformerVariant::EtkdgV3;
+        let extracted = ExtractedConformerParameters::decode(bytes, variant, 1024 * 1024).unwrap();
+        let mmff = burette_compute_core::decode_native_mmff_parameters(
+            include_bytes!(
+                "../../../../../compute/rdkit-conformer/fixtures/mmff-retry-parameters.bin"
+            ),
+            1024 * 1024,
+        )
+        .unwrap();
+        let mut builder = ConformerEnginePackBuilder::new(variant, 1024 * 1024);
+        builder.append_valid(extracted).unwrap();
+        let mut request = request();
+        request.parameters.conformers_per_molecule = 1;
+        request.parameters.max_attempts_per_conformer = 32;
+        let result = execute_conformer_distance_geometry(
+            Uuid::parse_str("6c55678a-a3a9-45ec-8cf7-6f82fee70079").unwrap(),
+            &request,
+            builder.finish(1).unwrap(),
+            &[ConformerMoleculeIdentity {
+                source_record_id: 0,
+                molecule_content_sha256:
+                    "b74dc043d48a2246afedb2b9fc3984d36250fa7c471dece3ad005a4191cc171f".into(),
+            }],
+            &[Some(mmff)],
+            &[None],
+            Backend::ReferenceCpu,
+            Backend::ReferenceCpu,
+            None,
+        )
+        .unwrap();
+        assert_eq!(result.embedding_attempt_counts, vec![1; 1]);
+        assert!(result.etk_statuses.iter().any(|status| *status >= 2));
+        assert!(result.mmff_statuses.iter().all(|status| *status <= 1));
+        let stereo =
+            crate::compute::conformer_stereo_executor::execute_conformer_stereo_validation(
+                &result,
+                Backend::ReferenceCpu,
+                None,
+                MIN_COMPUTE_MEMORY_BYTES,
+            )
+            .unwrap();
+        let validation =
+            crate::compute::conformer_reference_validator::validate_conformer_reference(
+                &result, &stereo,
+            )
+            .unwrap();
+        assert_eq!((validation.passed_count, validation.failed_count), (1, 0));
+    }
+
     fn extracted() -> ExtractedConformerParameters {
         ExtractedConformerParameters {
             variant: burette_compute_protocol::ConformerVariant::EtkdgV3,

@@ -38,7 +38,7 @@ assert.match(gridViewer, /optimizeGeometryGridSelection/);
 assert.match(nativeConformerWorkflow, /workflowTemplate: "conformer\.v1"/);
 assert.match(nativeConformerWorkflow, /initialization: options\.initialization/);
 assert.match(nativeConformerWorkflow, /mmffVariant: options\.mmffVariant/);
-assert.match(nativeConformerWorkflow, /backendPolicy: "gpuRequired"/);
+assert.match(nativeConformerWorkflow, /backendPolicy: options\.backendPolicy \?\? "gpuRequired"/);
 assert.match(nativeConformerWorkflow, /compute_get_job/);
 assert.match(nativeConformerWorkflow, /latest\.revision/);
 assert.match(gridConformerMessages, /statusErrorMessage\(error\)/);

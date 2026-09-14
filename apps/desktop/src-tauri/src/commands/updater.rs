@@ -127,6 +127,12 @@ pub(crate) async fn install_update(
     app: tauri::AppHandle,
     request: UpdateInstallRequest,
 ) -> Result<bool, String> {
+    if app
+        .try_state::<super::native_updates::Availability>()
+        .is_some_and(|state| !matches!(state.inner(), super::native_updates::Availability::Legacy))
+    {
+        return Err("This build uses native updates. Open Check for Updates instead.".into());
+    }
     let _install_lease = UpdateInstallLease::acquire()?;
     let package_version = app.package_info().version.to_string();
     let app_data_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;

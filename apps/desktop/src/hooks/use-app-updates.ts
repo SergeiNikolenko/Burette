@@ -19,6 +19,7 @@ import {
   type UpdateState,
 } from "../update";
 import { useAppBootstrap } from "./use-app-bootstrap";
+import { useNativeUpdates } from "./use-native-updates";
 
 type UseAppUpdatesArgs = {
   enabled?: boolean;
@@ -35,6 +36,7 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
     availableRelease: null,
   }));
   const { buildInfo, buildInfoLoaded } = useAppBootstrap(setUpdate);
+  const native = useNativeUpdates(enabled && buildInfoLoaded && !buildInfo.isDevBuild, update.preferences, setUpdate);
   const updatesDisabledText = buildInfo.isBrowserDev ? "Updates are disabled in browser sessions." : "Updates are disabled for dev builds.";
 
   const setUpdatePreferences = useCallback((preferences: UpdatePreferences) => {
@@ -51,6 +53,10 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
     if (!enabled) return;
     if (buildInfo.isBrowserDev) {
       pushStatus("Updates are disabled in browser sessions.");
+      return;
+    }
+    if (native.engine !== "legacy") {
+      try { await native.check(); } catch (error) { pushErrorStatus(error, "Update check failed"); }
       return;
     }
     const release = releaseOverride ?? update.availableRelease;
@@ -113,7 +119,7 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
       }));
       pushErrorStatus(error, "Update install failed");
     }
-  }, [buildInfo.isBrowserDev, enabled, pushErrorStatus, pushStatus, update.availableRelease]);
+  }, [buildInfo.isBrowserDev, enabled, native, pushErrorStatus, pushStatus, update.availableRelease]);
 
   const promptForUpdate = useCallback(async (release: UpdateRelease, automatic: boolean) => {
     if (!enabled) return;
@@ -155,6 +161,12 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
       return;
     }
     const channel = channelOverride ?? update.preferences.channel;
+    if (native.engine !== "legacy") {
+      if (!automatic) {
+        try { await native.check(); } catch (error) { pushErrorStatus(error, "Update check failed"); }
+      }
+      return;
+    }
     setUpdate((previous) => ({
       ...previous,
       isChecking: true,
@@ -185,7 +197,7 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
       if (automatic) markAutomaticCheck(false);
       if (!automatic) pushErrorStatus(error, "Update check failed");
     }
-  }, [buildInfo.isDevBuild, buildInfoLoaded, enabled, promptForUpdate, pushErrorStatus, pushStatus, update.preferences.channel, updatesDisabledText]);
+  }, [buildInfo.isDevBuild, buildInfoLoaded, enabled, native, promptForUpdate, pushErrorStatus, pushStatus, update.preferences.channel, updatesDisabledText]);
 
   const openUpdateRelease = useCallback(async () => {
     if (!enabled) return;
@@ -207,14 +219,14 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
   }, [buildInfo.isBrowserDev, enabled, pushErrorStatus, pushStatus, update.availableRelease]);
 
   useEffect(() => {
-    if (!enabled || !buildInfoLoaded || buildInfo.isDevBuild) return undefined;
+    if (!enabled || !buildInfoLoaded || buildInfo.isDevBuild || native.engine !== "legacy") return undefined;
     const loadedPreferences = loadUpdatePreferences();
     if (!shouldCheckAutomatically(loadedPreferences)) return undefined;
     const timeout = window.setTimeout(() => {
       void checkForUpdates(true, loadedPreferences.channel);
     }, 1200);
     return () => window.clearTimeout(timeout);
-  }, [buildInfo.isDevBuild, buildInfoLoaded, checkForUpdates, enabled]);
+  }, [buildInfo.isDevBuild, buildInfoLoaded, checkForUpdates, enabled, native.engine]);
 
   return {
     buildInfo: buildInfo as BuildInfo,

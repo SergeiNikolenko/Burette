@@ -28,5 +28,17 @@ const table = flatten(workspaceFileMenu(['/library.csv'], state, actions, { ...w
 table.find(item => item.id === 'open-cards').action();
 assert.deepEqual(called.pop(), ['gridView', '/library.csv', 'cards']);
 assert.ok(!table.some(item => item.id === 'open-3d'));
+for (const extension of ['pdb', 'ent', 'cif', 'mcif', 'sdf', 'sd', 'xyz']) {
+  const path = `/structure.${extension}`;
+  const modes = flatten(withMenuIcons(workspaceFileMenu([path], state, actions, workflows, [], run)));
+  for (const [id, label, renderer] of [['open-3d', 'Mol*', 'molstar'], ['open-xyzrender', 'xyzrender', 'xyzrender-external']]) {
+    const option = modes.find(item => item.id === id);
+    assert.equal(option.text, label);
+    assert.ok(option.iconUrl?.startsWith('data:image/svg+xml'));
+    option.action();
+    assert.deepEqual(called.pop(), ['openStructurePaths', [path], { rendererMode: renderer }]);
+  }
+}
+assert.ok(!table.some(item => item.id === 'open-xyzrender'));
 assert.deepEqual(workspaceFileMenu(Array(201).fill('/x.pdb'), state, actions, workflows, [], run), []);
 console.log('Workspace menus: compatible modes, actual scene targets, exact multi-file payloads and SDK icons passed');

@@ -42,8 +42,16 @@ vp test
 
 For packaged desktop or Finder Quick Look changes, browser checks are not
 enough. Require the documented build/install/smoke flow with a unique
-`BURETTE_DEV_FLAVOR` unless the user explicitly scoped the task away from native
-verification.
+`BURETTE_DEV_FLAVOR` unless verifying canonical release bundles. Run macOS
+builds and native tests on this Mac, the only available Mac; do not route them
+to Linux compute hosts. An explicit request for native verification already
+authorizes its necessary local build and focused tests.
+
+For updater work, distinguish compilation/launch, signed archive verification,
+real Sparkle bundle replacement, Burette's update UI/scheduling, dirty-document
+termination, and public release delivery. Test the intended installation route;
+development builds intentionally disable the in-app updater. Preserve the
+installed app and user documents during canonical release acceptance.
 
 ## Output
 

@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use crate::{
-    evaluate_distance_constraints, evaluate_etk_geometry, evaluate_mmff, DistanceConstraint,
+    evaluate_distance_constraints, evaluate_etk_geometry, DistanceConstraint,
     DistanceGeometryError, EtkGeometryTerms, MmffParameters,
 };
 
@@ -11,7 +11,7 @@ const MAX_OPTIMIZER_ITERATIONS: u32 = 10_000;
 const MAX_LINE_SEARCH_STEPS: u8 = 64;
 const MAX_HISTORY_SIZE: u8 = 64;
 const MIN_CURVATURE: f32 = 1.0e-10;
-const MMFF_BFGS_MAX_ATOMS: u32 = 32;
+pub(crate) const MMFF_BFGS_MAX_ATOMS: u32 = 128;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DistanceGeometryOptimizationOptions {
@@ -168,9 +168,10 @@ pub fn optimize_mmff(
         initial_positions,
         options,
         |positions| {
-            let evaluation = evaluate_mmff(parameters, positions).map_err(|error| {
-                invalid(format!("MMFF optimizer objective is invalid: {error}"))
-            })?;
+            let evaluation = crate::mmff_analytic::evaluate_mmff_analytic(parameters, positions)
+                .map_err(|error| {
+                    invalid(format!("MMFF optimizer objective is invalid: {error}"))
+                })?;
             Ok(ObjectiveEvaluation {
                 energy: evaluation.energy.total() as f32,
                 gradients: evaluation.gradients,
@@ -237,7 +238,10 @@ fn optimize_geometry(
         if !slope.is_finite() || slope >= 0.0 {
             history.clear();
             if let Some(hessian) = &mut inverse_hessian {
-                *hessian = identity_matrix(gradient.len());
+                hessian.fill(0.0);
+                for index in 0..gradient.len() {
+                    hessian[index * gradient.len() + index] = 1.0;
+                }
             }
             direction.clone_from(&gradient);
             for value in &mut direction {
@@ -679,7 +683,7 @@ mod tests {
             equilibrium_distance: 1.5,
         });
         let positions = [[0.0; 4], [1.7, 0.0, 0.0, 0.0]];
-        let initial = evaluate_mmff(&parameters, &positions)
+        let initial = crate::evaluate_mmff(&parameters, &positions)
             .expect("initial MMFF energy")
             .energy
             .total();

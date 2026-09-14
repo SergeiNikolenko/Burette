@@ -44,6 +44,8 @@ environment.
 
 ## Download
 
+Current macOS release bundles require Apple Silicon and macOS 12 or later.
+
 You can install Burette with the Homebrew tap:
 
 ```bash

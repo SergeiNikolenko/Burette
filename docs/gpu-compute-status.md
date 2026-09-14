@@ -638,3 +638,15 @@ signature, notarization, or UI-triggered installed-app acceptance run.
 1. run the installed-app and hardware acceptance matrices;
 2. sign with Developer ID, verify hardened runtime, notarize, and publish the
    v20 benchmark and scientific-parity evidence with the release.
+
+### Interactive single-conformer routing
+
+Standalone generation of one conformer from one molecule uses the native CPU
+backend with term-local analytic MMFF derivatives and bounded dense BFGS for
+up to 128 atoms. Batch and ensemble requests retain the Metal policy. The
+independent finite-difference MMFF evaluator remains the reference; source
+freezing, stereochemistry checks, validation, durable Jobs, and artifact
+publication still run for both backends. The scheduler accounts for dense
+Hessian storage. This avoids using a serial GPU optimization dispatch for the
+latency-sensitive single-molecule action; it does not guarantee a sub-second
+result for arbitrary molecules.

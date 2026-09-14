@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: burette-release
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Build and Publish Release
@@ -58,6 +62,16 @@ jobs:
         run: |
           if [[ -z "${HOMEBREW_TAP_TOKEN:-}" ]]; then
             echo "::warning::HOMEBREW_TAP_TOKEN is not set; skipping the Homebrew cask update. The app release is still built and published."
+          fi
+
+      - name: Validate Sparkle credentials
+        env:
+          BURETTE_SPARKLE_PUBLIC_KEY: ${{ vars.BURETTE_SPARKLE_PUBLIC_KEY }}
+          BURETTE_SPARKLE_PRIVATE_KEY: ${{ secrets.BURETTE_SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$BURETTE_SPARKLE_PUBLIC_KEY" || -z "$BURETTE_SPARKLE_PRIVATE_KEY" ]]; then
+            echo '::error::Native updates require BURETTE_SPARKLE_PUBLIC_KEY (variable) and BURETTE_SPARKLE_PRIVATE_KEY (secret).'
+            exit 1
           fi
 
       - name: Resolve release capabilities
@@ -110,6 +124,7 @@ jobs:
       - name: Build app
         env:
           BURETTE_BUILD_MODE: release
+          BURETTE_SPARKLE_PUBLIC_KEY: ${{ vars.BURETTE_SPARKLE_PUBLIC_KEY }}
           BURETTE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
           BURETTE_CODESIGN_IDENTITY: ${{ secrets.BURETTE_CODESIGN_IDENTITY }}
           BURETTE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
@@ -139,6 +154,7 @@ jobs:
 
       - name: Package app
         env:
+          BURETTE_SPARKLE_PRIVATE_KEY: ${{ secrets.BURETTE_SPARKLE_PRIVATE_KEY }}
           BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
           BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
         run: |
@@ -151,6 +167,9 @@ jobs:
           shasum -a 256 "Burette-${{ steps.version.outputs.version }}.dmg" > "Burette-${{ steps.version.outputs.version }}.dmg.sha256"
           if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" && -n "${BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" ]]; then
             bun scripts/sign-update-manifest.mjs "Burette-${{ steps.version.outputs.version }}.zip" .
+          fi
+          if [[ -n "${BURETTE_SPARKLE_PRIVATE_KEY:-}" ]]; then
+            python3 scripts/sparkle-appcast.py "Burette-${{ steps.version.outputs.version }}.zip" build/Burette.app build/sparkle/release-appcast.xml
           fi
 
       - name: Create GitHub release
@@ -184,6 +203,13 @@ jobs:
             --title "Burette ${{ steps.version.outputs.version }}" \
             --generate-notes
 
+      - name: Publish Sparkle feed
+        if: vars.BURETTE_SPARKLE_PUBLIC_KEY != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BURETTE_SPARKLE_PRIVATE_KEY: ${{ secrets.BURETTE_SPARKLE_PRIVATE_KEY }}
+        run: ./scripts/publish-sparkle-feed.sh '${{ steps.version.outputs.version }}'
+
       - name: Checkout Homebrew tap
         if: steps.version.outputs.prerelease != 'true' && steps.capabilities.outputs.homebrew == 'true'
         uses: actions/checkout@v7
@@ -212,6 +238,7 @@ jobs:
             exit 1
           fi
           ruby -0pi -e "gsub(/version \"[^\"]+\"/, \"version \\\"${version}\\\"\"); gsub(/sha256 \"[a-f0-9]{64}\"/, \"sha256 \\\"${sha256}\\\"\"); gsub(/depends_on macos: \">= :monterey\"/, \"depends_on macos: :monterey\")" "$cask"
+          ruby -0pi -e 'sub(/^  auto_updates .*\n/, ""); sub(/^  depends_on arch: .*\n/, ""); sub(/^  depends_on macos:/, "  auto_updates true\n  depends_on arch: :arm64\n  depends_on macos:")' "$cask"
           git diff -- "$cask"
           git diff --quiet -- "$cask" && {
             echo "Homebrew cask already points to ${version}."
