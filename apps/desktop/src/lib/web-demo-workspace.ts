@@ -91,6 +91,7 @@ export async function initializeWebDemoWorkspace() {
   if (!WEB_DEMO_ENABLED) return [];
   const standalone = !new URLSearchParams(window.location.search).has("presentation");
   if (standalone) {
+    if (files.size > 0) return standaloneDemoScenes.map(scene => `${WEB_DEMO_ROOT}/${scene.path}`);
     const sources = await Promise.all(standaloneDemoScenes.map(async scene => {
       const response = await fetch(`/demo-scenes/${scene.asset}`);
       if (!response.ok) throw new Error(`Could not load demo file ${scene.asset}`);
