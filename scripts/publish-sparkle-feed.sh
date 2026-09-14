@@ -21,10 +21,9 @@ PY
     cp "$WORK/$ASSET" "$WORK/previous.xml"
   fi
 fi
-PREVIOUS=()
-[[ ! -f "$WORK/previous.xml" ]] || PREVIOUS=("$WORK/previous.xml")
-python3 "$ROOT/scripts/sparkle-appcast.py" "$ROOT/Burette-$VERSION.zip" \
-  "$ROOT/build/Burette.app" "$WORK/next.xml" "${PREVIOUS[@]}"
+ARGS=("$ROOT/Burette-$VERSION.zip" "$ROOT/build/Burette.app" "$WORK/next.xml")
+[[ ! -f "$WORK/previous.xml" ]] || ARGS+=("$WORK/previous.xml")
+python3 "$ROOT/scripts/sparkle-appcast.py" "${ARGS[@]}"
 if [[ "$EXISTS" == "0" ]]; then
   # If the read failed for another reason, create fails on the existing tag;
   # never fall through to clobbering it. Generate before creating an empty feed.
