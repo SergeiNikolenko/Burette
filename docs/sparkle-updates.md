@@ -116,3 +116,18 @@ dialog. Repository keys may be provisioned before acceptance; setting them does 
 publish a release or deliver an update. Complete canonical app acceptance before
 publishing the first enabled release, then verify its public feed and the
 previous released app's real download, installation and relaunch.
+
+### Diagnosing termination acceptance
+
+Before clicking Install Update, verify that the edited document still displays
+Unsaved Changes after switching to the other workspace window. Keep the test
+app's stderr log: bounded `[exit]` entries record the AppKit callback, quit
+origin, preflight request and dirty-window count, dialog decision, authorization
+and final AppKit reply. They contain no document paths or source text.
+
+For the cancellation case, require a nonzero dirty-window count, a Cancel or
+Review decision, a negative AppKit reply, and the unchanged unsaved buffer in
+the still-running app. Then explicitly save or discard only the test document
+and repeat installation. A changed bundle version or successful relaunch alone
+does not demonstrate preservation of unsaved documents. If UI control is
+unavailable, keep this acceptance pending rather than infer it from unit tests.
