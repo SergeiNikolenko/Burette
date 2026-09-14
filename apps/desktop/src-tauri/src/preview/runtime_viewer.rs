@@ -247,6 +247,9 @@ pub(crate) fn create_runtime<R: Runtime>(
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
     config["autoFocusStructure"] = json!(true);
+    config["rendererViewState"] = json!(reload_options
+        .and_then(|options| options.renderer_view_state.as_deref())
+        .filter(|value| value.len() <= 8192));
     config["viewerProfile"] = json!(if mesoscale { "mesoscale" } else { "structure" });
     if mesoscale {
         config["graphicsMode"] = json!("balanced");
@@ -856,6 +859,7 @@ mod tests {
         for helper in [
             "superposition-panel.js",
             "molecule-preview-interactions.js",
+            "renderer-view-state.js",
             "color-picker.js",
             "scene-file-actions.js",
             "sequence-panel.js",
@@ -985,6 +989,7 @@ mod tests {
             "superposition-panel.js",
             "color-picker.js",
             "molecule-preview-interactions.js",
+            "renderer-view-state.js",
             "sequence-panel.js",
         ] {
             let helper_index = scripts
@@ -1110,6 +1115,7 @@ impl AssetProfile {
                 "molstar-preset-preview-controller.js",
                 "superposition-panel.js",
                 "molecule-preview-interactions.js",
+                "renderer-view-state.js",
                 "color-picker.js",
                 "scene-file-actions.js",
                 "sequence-panel.js",
@@ -1126,6 +1132,7 @@ impl AssetProfile {
                 "molstar-preset-preview-controller.js",
                 "superposition-panel.js",
                 "molecule-preview-interactions.js",
+                "renderer-view-state.js",
                 "color-picker.js",
                 "scene-file-actions.js",
                 "sequence-panel.js",
@@ -1309,6 +1316,7 @@ fn viewer_html(
     let sequence_panel_js = asset_url(&assets.join("sequence-panel.js"));
     let molecule_preview_interactions_js =
         asset_url(&assets.join("molecule-preview-interactions.js"));
+    let renderer_view_state_js = asset_url(&assets.join("renderer-view-state.js"));
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
     let molstar_js = asset_url(&assets.join("molstar.js"));
@@ -1361,6 +1369,7 @@ fn viewer_html(
   <script src="{color_picker_js}"></script>
   <script src="{sequence_panel_js}"></script>
   <script src="{molecule_preview_interactions_js}"></script>
+  <script src="{renderer_view_state_js}"></script>
   <script src="{viewer_js}"></script>
 </body>
 </html>"#

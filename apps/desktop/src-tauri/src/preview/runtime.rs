@@ -153,6 +153,7 @@ pub(crate) struct ViewerPreferences {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ViewerReloadOptions {
+    pub(crate) renderer_view_state: Option<String>,
     pub(crate) xyzrender_orientation_ref: Option<String>,
     pub(crate) xyzrender_preset: Option<String>,
     pub(crate) xyzrender_controls: Option<XyzrenderControls>,
@@ -2321,6 +2322,7 @@ Atoms # charge
                 path.clone(),
                 &preferences,
                 Some(&ViewerReloadOptions {
+                    renderer_view_state: None,
                     xyzrender_orientation_ref: None,
                     xyzrender_preset: None,
                     xyzrender_controls: None,

@@ -20,7 +20,7 @@ const names: Record<string, string> = {
   'file-edit': 'Edit', 'row-edit': 'Edit', 'file-copy': 'Copy', 'folder-copy': 'Copy', 'row-copy': 'Copy',
   'file-export': 'Download', 'row-export': 'Download', 'row-select': 'SelectText', 'row-search': 'Search',
   'folder-new': 'Plus', 'close-tabs': 'CloseBold', 'open-tabs': 'Plus', 'open-window': 'ExternalLink',
-  'row-together': 'Cube', 'row-poses': 'CompareArrows', 'row-new-tab': 'Plus', 'open-right': 'OpenRight', 'row-right-panel': 'OpenRight', 'open-as': 'Grid', 'open-3d': 'Cube',
+  'row-together': 'Cube', 'row-poses': 'CompareArrows', 'row-new-tab': 'Plus', 'open-right': 'OpenRight', 'row-right-panel': 'OpenRight', 'open-as': 'Grid', 'open-3d': 'Cube', 'open-xyzrender': 'ImageSquare',
   'open-together': 'Cube', 'open-poses': 'CompareArrows', 'open-aligned': 'CompareArrows', 'open-table': 'TableFilled',
   'open-cards': 'Grid', 'open-text': 'Text', 'open-finder': 'FolderDocumentsFinder', 'folder-finder': 'FolderDocumentsFinder',
   'open-external': 'ExternalLink', 'open-default-app': 'ExternalLink', 'open-folder': 'FolderOpen',

@@ -1,3 +1,4 @@
+import { rendererViewReloadOptions } from "../lib/renderer-view-state";
 import { useEffect, useMemo, useState } from "react";
 import type { ShellActions } from "../components/types";
 import type { DockDropInput } from "../lib/dock";
@@ -968,8 +969,8 @@ export function useAppShellActions({
 
   return useMemo<ShellActions>(() => createWorkspaceHistoryShellActions(createAppShellActions({
     chooseFiles,
-    openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" }) => {
-      await openDocuments(paths, options?.rendererMode ? {} : undefined, options?.rendererMode ? { rendererMode: options.rendererMode } : undefined, options);
+    openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external" }) => {
+      await openDocuments(paths, options?.rendererMode ? rendererViewReloadOptions(paths[0]) : undefined, options?.rendererMode ? { rendererMode: options.rendererMode } : undefined, options);
     },
     openTextPaths: async (paths: string[]) => {
       await openTextDocuments(paths);

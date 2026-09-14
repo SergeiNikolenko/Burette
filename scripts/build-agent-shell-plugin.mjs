@@ -27,6 +27,7 @@ const requiredPreviewAssets = [
   'molstar-preset-preview-controller.js',
   'superposition-panel.js',
   'molecule-preview-interactions.js',
+  'renderer-view-state.js',
   'color-picker.js',
   'sequence-panel.js',
   'scene-file-actions.js',

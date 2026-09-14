@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ViewerDocument, ViewerPreferences } from "../types";
 import type { DockTabKind } from "../lib/dock";
@@ -56,6 +56,7 @@ export function useAppViewerStateMessages({
   setStructureStories,
   toggleSidebar,
 }: UseAppViewerStateMessagesOptions) {
+  const openedStories = useRef(new Set<string>());
   const handleViewerStateMessage = useCallback((sourceName: unknown, body: ViewerStateMessageBody) => {
     if ((sourceName === "burette-viewer" || sourceName === "burette-grid") && body?.type === "openCommandPalette") {
       openCommandPalette();
@@ -109,10 +110,12 @@ export function useAppViewerStateMessages({
       const story = structureStoryFromViewerMessage(body);
       if (!story) return true;
       setStructureStories((previous) => ({ ...previous, [story.documentId]: story }));
-      // Every Story step reports itself, so opening the dock on the report kept
-      // re-opening a panel the user had closed. Only the explicit "open Story"
-      // action from the viewer controls does that now.
-      if (body.type === "openStructureStory") openDockTab("right", "story");
+      const firstStory = activeDocument?.id === story.documentId && !openedStories.current.has(story.documentId);
+      if (firstStory) {
+        openedStories.current.add(story.documentId);
+        if (openedStories.current.size > 64) openedStories.current.delete(openedStories.current.values().next().value!);
+      }
+      if (firstStory || body.type === "openStructureStory") openDockTab("right", "story");
       return true;
     }
 

@@ -64,6 +64,7 @@ export type OpenTextFilesResult = {
 };
 
 export type ViewerReloadOptions = {
+  rendererViewState?: string | null;
   xyzrenderOrientationRef?: string | null;
   xyzrenderPreset?: string | null;
   xyzrenderControls?: XyzrenderControls | null;
@@ -197,7 +198,7 @@ export type ConformerJob = {
   reportPath?: string | null;
   primaryOpenPath?: string | null;
   progress?: string | null;
-  backend?: "nativeMetal" | "rdkitCpu" | null;
+  backend?: "nativeMetal" | "referenceCpu" | "rdkitCpu" | null;
   durableJobId?: string | null;
   cancelable?: boolean;
   completedAt?: number;
