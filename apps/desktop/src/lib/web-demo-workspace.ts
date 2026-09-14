@@ -1,3 +1,4 @@
+import { standaloneDemoScenes } from "./web-demo-scenes";
 import kras from "../../../../samples/structures/proteins/7rpz.pdb?raw";
 import imatinibPoses from "../../../../samples/structures/small-molecules/imatinib-poses.sdf?raw";
 import mosesProperties from "../../../../samples/collections/tables/moses-properties.csv?raw";
@@ -86,8 +87,20 @@ export function isWebDemoHeroEmbed() {
     && new URLSearchParams(window.location.search).get("embed") === "hero";
 }
 
-export function initializeWebDemoWorkspace() {
+export async function initializeWebDemoWorkspace() {
   if (!WEB_DEMO_ENABLED) return [];
+  const standalone = !new URLSearchParams(window.location.search).has("presentation");
+  if (standalone) {
+    if (files.size > 0) return standaloneDemoScenes.map(scene => `${WEB_DEMO_ROOT}/${scene.path}`);
+    const sources = await Promise.all(standaloneDemoScenes.map(async scene => {
+      const response = await fetch(`/demo-scenes/${scene.asset}`);
+      if (!response.ok) throw new Error(`Could not load demo file ${scene.asset}`);
+      return { path: `${WEB_DEMO_ROOT}/${scene.path}`, text: await response.text() };
+    }));
+    for (const source of sources) registerText(source.path, source.text);
+    emitChange();
+    return sources.map(source => source.path);
+  }
   if (files.size === 0) {
     for (const [relativePath, text] of DEMO_STRUCTURES) {
       registerText(`${WEB_DEMO_ROOT}/${relativePath}`, text);

@@ -1,3 +1,4 @@
+import { standaloneDemoSnapshot } from "./web-demo-scenes";
 import { collectionExtension, mergeCollectionSources, parseReactionCollectionRecords, parseSdfCollectionRecords } from "./collection-documents";
 import { runBrowserDevMetalConformer } from "./browser-dev-compute";
 import { parseDataWarrior } from "./datawarrior";
@@ -1304,6 +1305,7 @@ function viewerHtml(
     molstarAvailable: !format.externalOnly || externalMolstarAvailable,
     canOpenInVesta: format.canOpenInVesta,
     showPanelControls: true,
+    ...(WEB_DEMO_ENABLED ? { demoSnapshotUrl: standaloneDemoSnapshot(path) } : {}),
     defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
     ...(ketcherConfig ? { ketcherEditable: true, ...ketcherConfig } : { ketcherEditable: false }),
     ...(externalArtifact ? { externalArtifact } : {}),
@@ -2159,7 +2161,7 @@ function browserDevReadUrl(path: string, extension: string) {
   if (virtualText !== undefined) {
     return `data:text/plain;charset=utf-8,${encodeURIComponent(virtualText)}`;
   }
-  if (extension === "maegz") {
+  if (extension === "maegz" || /[&#?%]/u.test(path)) {
     return `/__burette/read-file?path=${encodeURIComponent(path)}`;
   }
   return fsUrl(path);

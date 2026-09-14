@@ -467,7 +467,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
               </Button>
             </>
           ) : jobScopedToSelection ? "Scope: selected object" : undefined}
-          footer={oversizedNotice[0]?.hint}
           notice={(
             <>
               <EngineToolNotice
