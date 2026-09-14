@@ -51,6 +51,7 @@ function createHarness() {
   const listeners = new Map();
   const timeouts = [];
   const document = {
+    currentScript: { src: "http://localhost/boot-overlay.js" },
     elements: new Map(),
     appShellMounted: false,
     head: null,
@@ -75,6 +76,8 @@ function createHarness() {
   document.body = new TestElement(document, "body");
   const window = {
     document,
+    localStorage: { getItem: () => null },
+    matchMedia: () => ({ matches: false }),
     setTimeout(callback) {
       timeouts.push(callback);
       return timeouts.length;
@@ -83,7 +86,7 @@ function createHarness() {
       listeners.set(type, [...(listeners.get(type) ?? []), callback]);
     },
   };
-  const context = vm.createContext({ document, window });
+  const context = vm.createContext({ document, window, URL });
   return {
     context,
     document,
@@ -105,6 +108,10 @@ assert.match(
   /Burette is starting/,
 );
 
+harness.flushTimeouts();
+assert.equal(harness.document.getElementById("burette-boot-overlay").attributes.get("role"), "status");
+assert.match(harness.document.getElementById("burette-boot-overlay").innerHTML, /Spin Burette symbol/);
+
 harness.dispatch("unhandledrejection", { reason: new Error("startup failed") });
 assert.match(
   harness.document.getElementById("burette-boot-overlay")?.innerHTML ?? "",
@@ -112,6 +119,7 @@ assert.match(
 );
 
 harness.context.window.__BURETTE_BOOT_OVERLAY__.markMounted();
+harness.flushTimeouts();
 assert.equal(harness.document.getElementById("burette-boot-overlay"), null);
 
 harness.document.appShellMounted = true;

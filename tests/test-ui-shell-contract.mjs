@@ -1142,7 +1142,7 @@ assert.match(app, /lazy\(\(\) => import\("\.\/components\/command-palette"\)/);
 assert.match(appBootstrapHook, /markPerformanceOnce\("app:shell-visible"\)/);
 assert.match(appFileOpenHook, /markPerformanceOnce\("app:first-document-opened"\)/);
 assert.match(appViewerRuntimeMessagesHook, /markPerformanceOnce\("viewer:first-render"\)/);
-assert.match(desktopIndex, /<script src="\.\/boot-overlay\.js"><\/script>[\s\S]*?<body>\s*<div id="root"><\/div>\s*<script type="module" src="\/src\/main\.tsx"><\/script>/);
+assert.match(desktopIndex, /<body>\s*<script src="\.\/boot-overlay\.js"><\/script>\s*<div id="root"><\/div>\s*<script type="module" src="\/src\/main\.tsx"><\/script>/);
 assert.doesNotMatch(desktopIndex, /<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/);
 assert.match(main, /import "\.\/performance-start"/);
 assert.match(main, /markPerformanceOnce\("app:react-mounted"\)/);
