@@ -62,3 +62,7 @@ apps/burette-public-plugin/public/demo-library/Quantum/base-pair-dens.cube
 apps/burette-public-plugin/public/demo-library/Quantum/base-pair-grad.cube
 apps/burette-public-plugin/public/demo-library/Quantum/caffeine_dens.cube
 apps/burette-public-plugin/public/demo-library/Quantum/caffeine_homo.cube
+
+# Regenerated bundled Markdown renderer for the Story panel.
+plugins/burette-agent/browser-shell-dist/assets/dist-DJBUnT_G.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-C4fTLC7O.js
