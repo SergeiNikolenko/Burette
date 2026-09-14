@@ -108,6 +108,7 @@ pub(crate) fn install_termination_handler(app: &tauri::AppHandle) -> Result<(), 
             return Err("failed to install applicationShouldTerminate:".into());
         }
     }
+    eprintln!("[exit] AppKit termination handler installed");
     Ok(())
 }
 
@@ -116,7 +117,9 @@ extern "C" fn application_should_terminate(
     _selector: Sel,
     _application: id,
 ) -> NSApplicationTerminateReply {
+    eprintln!("[exit] AppKit termination callback received");
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(termination_reply)).unwrap_or_else(|_| {
+        eprintln!("[exit] AppKit termination cancelled after callback panic");
         TERMINATION_PENDING.store(false, Ordering::Release);
         NSApplicationTerminateReply::NSTerminateCancel
     })
@@ -129,6 +132,7 @@ fn termination_reply() -> NSApplicationTerminateReply {
         return NSApplicationTerminateReply::NSTerminateNow;
     };
     if TERMINATION_PENDING.load(Ordering::Acquire) {
+        eprintln!("[exit] AppKit termination remains pending");
         return NSApplicationTerminateReply::NSTerminateLater;
     }
     if TERMINATION_PENDING
@@ -138,12 +142,17 @@ fn termination_reply() -> NSApplicationTerminateReply {
         return NSApplicationTerminateReply::NSTerminateLater;
     }
     match crate::menu::request_system_quit(app) {
-        SystemQuitRequest::Pending => NSApplicationTerminateReply::NSTerminateLater,
+        SystemQuitRequest::Pending => {
+            eprintln!("[exit] AppKit termination deferred for preflight");
+            NSApplicationTerminateReply::NSTerminateLater
+        }
         SystemQuitRequest::Authorized => {
+            eprintln!("[exit] AppKit termination already authorized");
             TERMINATION_PENDING.store(false, Ordering::Release);
             NSApplicationTerminateReply::NSTerminateNow
         }
         SystemQuitRequest::Busy => {
+            eprintln!("[exit] AppKit termination cancelled: exit guard busy");
             TERMINATION_PENDING.store(false, Ordering::Release);
             NSApplicationTerminateReply::NSTerminateCancel
         }
@@ -155,14 +164,17 @@ pub(crate) fn reply_to_pending_termination<R: tauri::Runtime>(
     should_terminate: bool,
 ) -> Result<bool, String> {
     if !TERMINATION_PENDING.swap(false, Ordering::AcqRel) {
+        eprintln!("[exit] AppKit termination reply skipped: no pending request");
         return Ok(false);
     }
     let scheduled = app.run_on_main_thread(move || unsafe {
         let application: id = msg_send![class!(NSApplication), sharedApplication];
         let response = if should_terminate { YES } else { NO };
+        eprintln!("[exit] AppKit termination reply allow={should_terminate}");
         let _: () = msg_send![application, replyToApplicationShouldTerminate: response];
     });
     if scheduled.is_err() {
+        eprintln!("[exit] AppKit termination reply dispatch failed");
         TERMINATION_PENDING.store(true, Ordering::Release);
         return Err("failed to reply to the pending macOS termination request".into());
     }

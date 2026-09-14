@@ -577,6 +577,7 @@ pub(crate) async fn confirm_exit<R: Runtime>(
         .try_state::<ExitPreflightCoordinator>()
         .ok_or_else(|| "exit preflight coordinator is not configured".to_string())?;
     let (request_id, receiver) = coordinator.begin(app)?;
+    eprintln!("[exit] preflight started request={request_id}");
     let dirty_result = match tauri::async_runtime::spawn_blocking(move || {
         receiver.recv_timeout(EXIT_PREFLIGHT_RESPONSE_TIMEOUT)
     })
@@ -611,6 +612,10 @@ pub(crate) async fn confirm_exit<R: Runtime>(
             return Err(error);
         }
     };
+    eprintln!(
+        "[exit] preflight completed request={request_id} dirty_windows={}",
+        dirty_windows.len()
+    );
     if dirty_windows.is_empty() {
         if let Err(error) = transition.pause_window_interaction() {
             let _ = coordinator.finish(&request_id);
@@ -626,6 +631,7 @@ pub(crate) async fn confirm_exit<R: Runtime>(
             return Err(error);
         }
     };
+    eprintln!("[exit] unsaved dialog request={request_id} decision={decision:?}");
     if decision == UnsavedChangesDecision::Proceed {
         if let Err(error) = transition.pause_window_interaction() {
             let _ = coordinator.finish(&request_id);
@@ -641,7 +647,7 @@ pub(crate) async fn confirm_exit<R: Runtime>(
     Ok(None)
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum UnsavedChangesDecision {
     Proceed,
     Review,
@@ -789,7 +795,7 @@ pub(crate) enum SystemQuitRequest {
     Pending,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum QuitOrigin {
     Menu,
     AppKit,
@@ -833,6 +839,7 @@ fn begin_quit_request<R: Runtime>(app: &tauri::AppHandle<R>) -> Option<QuitReque
 }
 
 fn spawn_quit_flow<R: Runtime>(app: &tauri::AppHandle<R>, origin: QuitOrigin) {
+    eprintln!("[exit] quit flow started origin={origin:?}");
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         #[cfg(not(target_os = "macos"))]
@@ -877,6 +884,7 @@ fn spawn_quit_flow<R: Runtime>(app: &tauri::AppHandle<R>, origin: QuitOrigin) {
                 false
             }
         };
+        eprintln!("[exit] quit flow origin={origin:?} authorized={exit_authorized}");
         if exit_authorized {
             #[cfg(target_os = "macos")]
             if matches!(origin, QuitOrigin::AppKit) {
