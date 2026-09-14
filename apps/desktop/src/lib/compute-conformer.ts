@@ -109,6 +109,7 @@ export type ConformerWorkflowResult = ConformerPublicationStep & {
 };
 
 export type ConformerWorkflowOptions = {
+  backendPolicy?: "gpuRequired" | "referenceCpu";
   variant: ConformerVariant;
   initialization: ConformerInitialization;
   mmffVariant: MmffVariant;
@@ -175,8 +176,8 @@ export async function runConformerWorkflow(
       maxAttemptsPerConformer: 32,
     },
     executionPolicy: {
-      backendPolicy: "gpuRequired",
-      schedulingPolicy: "throughput",
+      backendPolicy: options.backendPolicy ?? "gpuRequired",
+      schedulingPolicy: options.backendPolicy === "referenceCpu" ? "interactive" : "throughput",
     },
     limits: {
       maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
@@ -205,7 +206,7 @@ export async function runConformerWorkflow(
     const backend = numericStages.some((stage) => stage.effectiveBackend === "nativeMetal")
       ? "nativeMetal"
       : "referenceCpu";
-    if (backend !== "nativeMetal") {
+    if (options.backendPolicy !== "referenceCpu" && backend !== "nativeMetal") {
       throw new Error("Metal-only conformer workflow rejected a non-Metal result.");
     }
     return {

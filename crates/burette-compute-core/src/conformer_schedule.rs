@@ -205,8 +205,18 @@ fn conformer_work_bytes(
         .checked_mul(u64::from(lbfgs_history.get()))
         .and_then(|count| count.checked_mul(size_of::<f32>() as u64))
         .ok_or(ConformerScheduleError::Overflow)?;
+    let dense_hessian_bytes = if atom_count.get() <= crate::distance_optimizer::MMFF_BFGS_MAX_ATOMS
+    {
+        coordinates
+            .checked_mul(coordinates)
+            .and_then(|values| values.checked_mul(4))
+            .ok_or(ConformerScheduleError::Overflow)?
+    } else {
+        0
+    };
     coordinate_bytes
-        .checked_add(history_scalars)
+        .checked_add(dense_hessian_bytes)
+        .and_then(|bytes| bytes.checked_add(history_scalars))
         .and_then(|bytes| bytes.checked_add(SCALAR_OUTPUT_BYTES))
         .ok_or(ConformerScheduleError::Overflow)
 }
@@ -356,7 +366,7 @@ mod tests {
     fn identity_seed_is_invariant_under_adaptive_rebatching() {
         let molecules = [molecule(10, 40, 6), molecule(20, 80, 5)];
         let small =
-            plan_conformer_batches(&molecules, options(512 * 1024, 2)).expect("small batches");
+            plan_conformer_batches(&molecules, options(1024 * 1024, 2)).expect("small batches");
         let large = plan_conformer_batches(&molecules, options(8 * 1024 * 1024, 16))
             .expect("large batches");
         assert_ne!(small.batches.len(), large.batches.len());
@@ -430,7 +440,7 @@ mod tests {
                 NonZeroU32::new(1).expect("one atom"),
                 NonZeroU32::new(1).expect("one history slot"),
             ),
-            Ok(204)
+            Ok(268)
         );
     }
 }
