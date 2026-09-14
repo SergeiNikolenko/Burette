@@ -9568,8 +9568,7 @@ img.settings-open-destination-icon {
 
 .app-shell[data-effective-theme="light"] .sidebar :is(
   .sidebar-search-toggle,
-  .sidebar-tool-icon,
-  .project-folder-icon
+  .sidebar-tool-icon
 ) svg {
   color: var(--text-primary);
 }
@@ -9595,4 +9594,3 @@ img.settings-open-destination-icon {
 .file-operation-dialog-rename .radix-dialog-body { padding-top: 14px; padding-bottom: 12px; }
 .file-operation-dialog-rename .calculated-column-field { gap: 0; }
 
-.project-folder-icon { display: inline-flex; flex: 0 0 16px; align-items: center; color: var(--text-icon-muted); }

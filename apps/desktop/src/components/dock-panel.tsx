@@ -1546,9 +1546,8 @@ function ConformerJobList({
                   {job.inputTitle}
                 </span>
                 {job.progress ? (
-                  <span className="dock-job-meta">
+                  <span className="dock-job-meta" title={job.durableJobId ? `Job ${job.durableJobId}` : undefined}>
                     {job.progress}
-                    {job.durableJobId ? ` · job ${job.durableJobId}` : ""}
                   </span>
                 ) : null}
               </div>
