@@ -47,10 +47,11 @@ class TestElement {
   }
 }
 
-function createHarness() {
+function createHarness({ native = false, storage = () => null, reducedMotion = false } = {}) {
   const listeners = new Map();
   const timeouts = [];
   const document = {
+    currentScript: { src: "http://localhost/boot-overlay.js" },
     elements: new Map(),
     appShellMounted: false,
     head: null,
@@ -75,6 +76,8 @@ function createHarness() {
   document.body = new TestElement(document, "body");
   const window = {
     document,
+    localStorage: { getItem: storage },
+    matchMedia: (query) => ({ matches: query.includes("reduced-motion") && reducedMotion }),
     setTimeout(callback) {
       timeouts.push(callback);
       return timeouts.length;
@@ -83,7 +86,8 @@ function createHarness() {
       listeners.set(type, [...(listeners.get(type) ?? []), callback]);
     },
   };
-  const context = vm.createContext({ document, window });
+  if (native) window.__TAURI_INTERNALS__ = {};
+  const context = vm.createContext({ document, window, URL });
   return {
     context,
     document,
@@ -105,6 +109,10 @@ assert.match(
   /Burette is starting/,
 );
 
+harness.flushTimeouts();
+assert.equal(harness.document.getElementById("burette-boot-overlay").attributes.get("role"), "status");
+assert.match(harness.document.getElementById("burette-boot-overlay").innerHTML, /Spin Burette symbol/);
+
 harness.dispatch("unhandledrejection", { reason: new Error("startup failed") });
 assert.match(
   harness.document.getElementById("burette-boot-overlay")?.innerHTML ?? "",
@@ -112,6 +120,8 @@ assert.match(
 );
 
 harness.context.window.__BURETTE_BOOT_OVERLAY__.markMounted();
+assert.equal(harness.document.getElementById("burette-boot-overlay").attributes.get("data-ready"), "");
+harness.flushTimeouts();
 assert.equal(harness.document.getElementById("burette-boot-overlay"), null);
 
 harness.document.appShellMounted = true;
@@ -119,5 +129,15 @@ harness.dispatch("unhandledrejection", { reason: new Error("late unregisterListe
 harness.dispatch("error", { message: "late startup error", error: new Error("late startup error") });
 harness.flushTimeouts();
 assert.equal(harness.document.getElementById("burette-boot-overlay"), null);
+
+for (const storage of [() => "invalid json", () => { throw new Error("storage unavailable"); }]) {
+  const nativeHarness = createHarness({ native: true, storage, reducedMotion: true });
+  vm.runInContext(source, nativeHarness.context);
+  assert.equal(nativeHarness.document.getElementById("burette-boot-overlay").attributes.get("role"), "status");
+  assert.match(nativeHarness.document.getElementById("burette-boot-overlay-style").textContent, /#burette-boot-overlay \{[^}]*background: transparent;/);
+  nativeHarness.context.window.__BURETTE_BOOT_OVERLAY__.markMounted();
+  nativeHarness.flushTimeouts();
+  assert.equal(nativeHarness.document.getElementById("burette-boot-overlay"), null);
+}
 
 console.log("boot overlay behavior tests passed");
