@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
+const source = readFileSync(new URL('../apps/desktop/src/components/text-file-viewer/json-display.ts', import.meta.url), 'utf8');
+const module = { exports: {} };
+new Function('exports', ts.transpile(source, { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }))(module.exports);
+const { jsonDisplayContent } = module.exports;
+const input = '{"large":900719925474099312345,"text":"a\\\"b,{}","values":[{},[],true,null,-1.2e+30]}';
+const output = jsonDisplayContent(input);
+assert.ok(output.includes('900719925474099312345'));
+assert.ok(output.includes('-1.2e+30'));
+assert.deepEqual(JSON.parse(output), JSON.parse(input));
+assert.ok(output.includes('\n  "values": [\n    {},\n    [],'));
+for (const invalid of ['{"broken":}', 'plain text', '['.repeat(101) + ']'.repeat(101), ' '.repeat(2_000_001)]) assert.equal(jsonDisplayContent(invalid), null);
+const story = readFileSync(new URL('../samples/mvs/docking_story.mvsj', import.meta.url), 'utf8');
+assert.deepEqual(JSON.parse(jsonDisplayContent(story)), JSON.parse(story));
+console.log('JSON display precision, nesting, bounds and Story checks passed');

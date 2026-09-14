@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 import { defaultKeymap } from "@codemirror/commands";
+import { json, jsonLanguage } from "@codemirror/lang-json";
+import { jsonDisplayContent } from "./text-file-viewer/json-display";
+import { tags } from "@lezer/highlight";
 import { markdown } from "@codemirror/lang-markdown";
-import { bracketMatching, defaultHighlightStyle, foldGutter, indentOnInput, LanguageDescription, syntaxHighlighting } from "@codemirror/language";
+import { bracketMatching, HighlightStyle, defaultHighlightStyle, foldGutter, indentOnInput, LanguageDescription, syntaxHighlighting } from "@codemirror/language";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, keymap, lineNumbers } from "@codemirror/view";
@@ -59,8 +62,10 @@ export function TextFileViewer({
   const maestroDocument = isMaestroText(document);
   const imageDocument = isImageDocument(document);
   const nonEditorDocument = markdownDocument || maestroDocument || imageDocument;
-  const editorContent = sourceEditing?.content ?? document.content;
   const editable = Boolean(sourceEditing?.editable);
+  const rawContent = sourceEditing?.content ?? document.content;
+  const formattedJson = useMemo(() => jsonDisplayContent(rawContent), [rawContent]);
+  const editorContent = editable ? rawContent : formattedJson ?? rawContent;
   const editDisabledReason = useMemo(() => {
     const eligibility = classifySourceEditEligibility({
       extension: document.extension,
@@ -121,6 +126,7 @@ export function TextFileViewer({
           }),
           EditorView.contentAttributes.of({ tabindex: "0", "aria-label": `${document.title} text` }),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+          syntaxHighlighting(jsonHighlightStyle),
           ...(editable
             ? [EditorState.readOnly.of(false), EditorView.editable.of(true)]
             : [EditorState.readOnly.of(true), EditorView.editable.of(false)]),
@@ -349,6 +355,7 @@ export function TextFileViewer({
 }
 
 function baseLanguageSupport(document: TextFileDocument): Extension {
+  if (jsonDisplayContent(document.content) !== null) return json();
   if (isMarkdown(document)) {
     return markdown();
   }
@@ -357,6 +364,7 @@ function baseLanguageSupport(document: TextFileDocument): Extension {
 }
 
 async function resolveLanguageSupport(document: TextFileDocument): Promise<Extension> {
+  if (jsonDisplayContent(document.content) !== null) return json();
   const languages = await loadCodeLanguages();
   if (isMarkdown(document)) return markdown({ codeLanguages: languages });
   if (hasStructureTextHighlighting(document.extension)) return structureTextHighlighting(document.extension);
@@ -408,6 +416,12 @@ function ImageFilePreview({ document }: { document: TextFileDocument }) {
     </div>
   );
 }
+
+const jsonHighlightStyle = HighlightStyle.define([
+  { tag: tags.propertyName, color: "var(--text-primary)" },
+  { tag: tags.string, color: "var(--pm-syntax-string)" },
+  { tag: [tags.number, tags.bool, tags.null], color: "var(--pm-syntax-atom)" },
+], { scope: jsonLanguage });
 
 const textViewerTheme = EditorView.theme({
   "&": {

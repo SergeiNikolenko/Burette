@@ -15,7 +15,7 @@ plugins/burette-agent/preview-web/openchemlib/openchemlib.js
 plugins/burette-agent/preview-web/rdkit-conformer/Burette_rdkit_conformer.wasm
 plugins/burette-agent/browser-shell-dist/assets/Burette_rdkit_conformer-BA7plZBF.wasm
 plugins/burette-agent/browser-shell-dist/assets/RDKit_minimal-tnscgqxm.wasm
-plugins/burette-agent/browser-shell-dist/assets/dist-4V-vVRAk.js
+plugins/burette-agent/browser-shell-dist/assets/dist-ByPD0_Hs.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-BmjV2ZLw.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-CT0VIV_p.js
 plugins/burette-agent/browser-shell-dist/assets/indigo-ketcher-1.43.0-uUo-NEHL.wasm
@@ -42,7 +42,7 @@ plugins/burette-agent/browser-shell-dist/assets/resources-D5ymtJwZ.json
 plugins/burette-agent/browser-shell-dist/assets/pdf.worker.min-BGUT02Us.mjs
 plugins/burette-agent/browser-shell-dist/assets/openchemlib-BteEtxM3.js
 plugins/burette-agent/browser-shell-dist/assets/PptxViewJS.es-CWh08j7b.js
-plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-Cwc3Uzq2.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-DzW3sAaS.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-document.worker-qen7HUVU.js
 plugins/burette-agent/browser-shell-dist/assets/chunk-KEIR6QF5-CUuuYsZ_.js
 plugins/burette-agent/browser-shell-dist/assets/cluster-fingerprint.worker-Q1HfNbxv.js
