@@ -87,6 +87,18 @@ function gridState(overrides = {}) {
   };
 }
 
+// Missing properties must not appear as zero-valued molecules in a plot.
+{
+  const state = gridState({ rows: ["", "  ", "0", "-1.5", "<0.1", "335.4"].map((value, index) => ({ index, props: { MW: value } })) });
+  const grid = harness(state, ["tableColumnRawDisplayValue", "tableColumnRawNumericValue", "tableColumnNumericValue", "clampToValueRange", "postChemicalSpaceColumnValues"], `
+    const CHEMICAL_SPACE_RECORD_LIMIT = 100;
+    function chemicalSpaceColumnPool() { return state.rows; }
+    function post(type, message, body) { statuses.push({ type, ...body }); }
+  `);
+  grid.postChemicalSpaceColumnValues("test-values", "prop:MW");
+  assert.deepEqual(state.statuses, [{ type: "chemicalSpaceColumnValues", requestId: "test-values", columnId: "prop:MW", values: [[2, 0], [3, -1.5], [5, 335.4]] }]);
+}
+
 // --- Set Value Range -------------------------------------------------------
 {
   const state = gridState();

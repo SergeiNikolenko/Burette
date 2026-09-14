@@ -1,0 +1,1 @@
+import{a as e}from"./document-page-DjsS03vB.js";export{e as PdfResourceContent};

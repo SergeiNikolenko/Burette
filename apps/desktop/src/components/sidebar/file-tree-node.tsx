@@ -1,6 +1,6 @@
 import { useWorkspaceMenus } from "../workspace-menus";
 import { SidebarTooltip } from "./sidebar-tooltip";
-import { Pin, PinFilled, DotsHorizontal } from "../ui/app-icons";
+import { Pin, PinFilled, DotsHorizontal, Folder, FolderOpen } from "../ui/app-icons";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload } from "../../lib/structure-drag";
@@ -256,6 +256,7 @@ export function ProjectGroup({
         aria-expanded={expanded}
         aria-label={`${project.title}, ${project.items.length} file${project.items.length === 1 ? "" : "s"}`}
       >
+        <span className="project-folder-icon" aria-hidden="true">{expanded ? <FolderOpen size={16} /> : <Folder size={16} />}</span>
         <span className="project-group-copy">
           {renaming ? (
             <input
@@ -472,6 +473,7 @@ function ProjectTreeNodeView({
         aria-expanded={expanded}
         aria-label={node.path}
       >
+        <span className="project-folder-icon" aria-hidden="true">{expanded ? <FolderOpen size={16} /> : <Folder size={16} />}</span>
         <MarqueeName className="project-folder-name">{displayName}</MarqueeName>
         <button
           type="button"

@@ -5436,7 +5436,9 @@
       const value = row.analyses?.[columnId.slice('analysis:'.length)]?.value;
       return typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
     }
-    const value = Number(tableColumnRawDisplayValue(row, columnId));
+    const text = tableColumnRawDisplayValue(row, columnId).trim();
+    if (!text) return Number.NaN;
+    const value = Number(text);
     return Number.isFinite(value) ? value : Number.NaN;
   }
 

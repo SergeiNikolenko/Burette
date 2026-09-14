@@ -175,7 +175,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     };
     copy_web_assets(app, &assets, asset_profile)?;
 
-    let payload = if renderer == "molstar" {
+    let mut payload = if renderer == "molstar" {
         XyzPayload {
             data: external_molstar_data
                 .as_ref()
@@ -189,6 +189,13 @@ pub(crate) fn create_runtime<R: Runtime>(
             frame_count: None,
         }
     };
+
+    let mut mvs_resource_urls = Vec::new();
+    if renderer == "molstar" && extension == "mvsj" {
+        let staged = super::mvs_resources::stage_resources(file_path, &runtime, &payload.data)?;
+        payload.data = staged.data;
+        mvs_resource_urls = staged.resource_urls;
+    }
 
     let molstar_format = if renderer == "molstar" && external_molstar_data.is_some() {
         external_molstar_data
@@ -250,6 +257,7 @@ pub(crate) fn create_runtime<R: Runtime>(
             json!(base64::engine::general_purpose::STANDARD.encode(input_data));
         config["xyzrenderInputExtension"] = json!("xyz");
     }
+    config["mvsResourceUrls"] = json!(mvs_resource_urls);
     if let Some(index) = active_model {
         config["activeModel"] = json!(index);
     }

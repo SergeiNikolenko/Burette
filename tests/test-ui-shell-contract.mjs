@@ -5880,7 +5880,7 @@ assert.match(previewViewer, /agentActionFailure\(type, 'NOT_IMPLEMENTED'/);
 assert.match(previewViewer, /function isMolViewSpecFormat\(format\)/);
 assert.match(previewViewer, /if \(isMolViewSpecFormat\(normalized\)\) \{/);
 assert.match(previewViewer, /kind: 'mvs'/);
-assert.match(previewViewer, /viewer\.loadMvsData\(prepared\.data, prepared\.format, \{ replaceExisting: true \}\)/);
+assert.match(previewViewer, /viewer\.loadMvsData\(prepared\.data, prepared\.format, \{ replaceExisting: true, sourceUrl: prepared\.sourceUrl \}\)/);
 assert.match(previewViewer, /loadPreparedStructure\(viewer, prepared\)[\s\S]*?applyLayoutState\(viewer\);[\s\S]*?notifyStructureLoaded/);
 assert.match(previewViewer, /notifyStructureLoaded[\s\S]*?postHostMessage\(\{ type: 'agentReady', message: 'Burette agent ready' \}\)/);
 assert.match(previewViewer, /notifyStructureLoaded[\s\S]*?void reportBuretteAgentState\(\);[\s\S]*?trackMolstarOrientation/);

@@ -3,6 +3,9 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-json-display.mjs": () => import("./test-json-display.mjs"),
+  "test-standalone-conformer-jobs.mjs": () => import("./test-standalone-conformer-jobs.mjs"),
+  "test-browser-file-actions.mjs": () => import("./test-browser-file-actions.mjs"),
   "test-workspace-export-guards.mjs": () => import("./test-workspace-export-guards.mjs"),
   "test-workspace-file-menu.mjs": () => import("./test-workspace-file-menu.mjs"),
   "test-scene-file-actions.mjs": () => import("./test-scene-file-actions.mjs"),

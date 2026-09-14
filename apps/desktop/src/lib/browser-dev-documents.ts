@@ -1271,6 +1271,7 @@ function viewerHtml(
     previewByteCount: bytes.length,
     dataPath: renderer === "xyzrender-external" ? browserDevReadUrl(path, extension) : undefined,
     sourcePath: path,
+    mvsSourceUrl: extension === "mvsj" ? new URL(`/@fs${path.split("/").map(encodeURIComponent).join("/")}`, window.location.href).href : undefined,
     sourceExtension: extension,
     viewerProfile: mesoscale ? "mesoscale" : "structure",
     ...(mesoscale ? { graphicsMode: "balanced", uiMode: "hosted" } : {}),
