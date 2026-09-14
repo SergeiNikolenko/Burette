@@ -1,3 +1,4 @@
+import { demoLibraryFiles } from "./web-demo-library";
 import { standaloneDemoScenes } from "./web-demo-scenes";
 import kras from "../../../../samples/structures/proteins/7rpz.pdb?raw";
 import imatinibPoses from "../../../../samples/structures/small-molecules/imatinib-poses.sdf?raw";
@@ -98,6 +99,11 @@ export async function initializeWebDemoWorkspace() {
       return { path: `${WEB_DEMO_ROOT}/${scene.path}`, text: await response.text() };
     }));
     for (const source of sources) registerText(source.path, source.text);
+    for (const file of demoLibraryFiles) {
+      const title = file.path.split("/").pop()!;
+      const path = `${WEB_DEMO_ROOT}/${file.path}`;
+      files.set(path, { path, title, extension: title.split(".").pop()!.toLowerCase(), renderer: "molstar", byteCount: file.byteCount, openedAt: null });
+    }
     emitChange();
     return sources.map(source => source.path);
   }

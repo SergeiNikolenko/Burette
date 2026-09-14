@@ -1,3 +1,4 @@
+import { demoLibraryUrl } from "./web-demo-library";
 import { standaloneDemoSnapshot } from "./web-demo-scenes";
 import { collectionExtension, mergeCollectionSources, parseReactionCollectionRecords, parseSdfCollectionRecords } from "./collection-documents";
 import { runBrowserDevMetalConformer } from "./browser-dev-compute";
@@ -2161,6 +2162,8 @@ function browserDevReadUrl(path: string, extension: string) {
   if (virtualText !== undefined) {
     return `data:text/plain;charset=utf-8,${encodeURIComponent(virtualText)}`;
   }
+  const libraryUrl = WEB_DEMO_ENABLED ? demoLibraryUrl(path) : undefined;
+  if (libraryUrl) return libraryUrl;
   if (extension === "maegz" || /[&#?%]/u.test(path)) {
     return `/__burette/read-file?path=${encodeURIComponent(path)}`;
   }
