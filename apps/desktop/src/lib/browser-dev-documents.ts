@@ -1,3 +1,4 @@
+import { standaloneDemoSnapshot } from "./web-demo-scenes";
 import { collectionExtension, mergeCollectionSources, parseReactionCollectionRecords, parseSdfCollectionRecords } from "./collection-documents";
 import { runBrowserDevMetalConformer } from "./browser-dev-compute";
 import { parseDataWarrior } from "./datawarrior";
@@ -1304,6 +1305,7 @@ function viewerHtml(
     molstarAvailable: !format.externalOnly || externalMolstarAvailable,
     canOpenInVesta: format.canOpenInVesta,
     showPanelControls: true,
+    ...(WEB_DEMO_ENABLED ? { demoSnapshotUrl: standaloneDemoSnapshot(path) } : {}),
     defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
     ...(ketcherConfig ? { ketcherEditable: true, ...ketcherConfig } : { ketcherEditable: false }),
     ...(externalArtifact ? { externalArtifact } : {}),
