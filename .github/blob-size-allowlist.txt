@@ -54,3 +54,11 @@ packaging/dmg/background.tiff
 apps/burette-public-plugin/public/demo-scenes/1HTB.pdb
 apps/burette-public-plugin/public/demo-scenes/metadynamics-binding.mae
 apps/burette-public-plugin/public/demo-scenes/metadynamics-binding.mae.molj
+
+# User-selected scientific demo library; loaded only when opened.
+apps/burette-public-plugin/public/demo-library/Motion & Reactions/bimp.out
+apps/burette-public-plugin/public/demo-library/Motion & Reactions/mn-h2.log
+apps/burette-public-plugin/public/demo-library/Quantum/base-pair-dens.cube
+apps/burette-public-plugin/public/demo-library/Quantum/base-pair-grad.cube
+apps/burette-public-plugin/public/demo-library/Quantum/caffeine_dens.cube
+apps/burette-public-plugin/public/demo-library/Quantum/caffeine_homo.cube
