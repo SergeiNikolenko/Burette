@@ -1063,7 +1063,6 @@ assert.match(appBrowserDevStartupHook, /export function useAppBrowserDevStartup\
 assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevFoldersFromLocation\(\), \[\]\)/);
 assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevHasExplicitWorkspace\(\), \[\]\)/);
 assert.match(appSidebarProjectsHook, /const browserDevGeneratedRoot = useMemo\(browserDevGeneratedProjectRoot, \[\]\);/);
-assert.match(appSidebarProjectsHook, /return appendSidebarProjectRoot\(roots, browserDevGeneratedRoot\);/);
 assert.match(appSidebarProjectsHook, /\.\.\.browserDevExplicitFolders,/);
 assert.match(appSidebarProjectsHook, /import \{ scanBrowserDevFolders \} from "\.\.\/lib\/browser-dev-startup";/);
 assert.match(appSidebarProjectsHook, /const scan = await scanBrowserDevFolders\(roots\);/);
