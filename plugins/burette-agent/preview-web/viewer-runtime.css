@@ -5344,3 +5344,8 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level
 .buret-molecule-card-toolbar > .buret-molecule-card-icon:hover {
   background: var(--buret-molstar-hover-background);
 }
+
+/* Compact viewports keep the scene clear; the host Story tab owns the prose. */
+@media (max-width: 1000px), (max-height: 650px) {
+  body .msp-plugin .msp-snapshot-description-wrapper { display: none !important; }
+}
