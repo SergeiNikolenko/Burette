@@ -5349,3 +5349,7 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level
 @media (max-width: 1000px), (max-height: 650px) {
   body .msp-plugin .msp-snapshot-description-wrapper { display: none !important; }
 }
+/* Snapshot navigation is owned by Burette scene controls. */
+.msp-state-snapshot-viewport-controls {
+  display: none !important;
+}

@@ -135,8 +135,11 @@ export function useAppSidebarProjects({
     } else if (browserDevSampleRoot && !projectRoots.includes(browserDevSampleRoot)) {
       roots = [...projectRoots, browserDevSampleRoot];
     }
-    return appendSidebarProjectRoot(roots, browserDevGeneratedRoot);
-  }, [browserDevExplicitFolders, browserDevGeneratedRoot, browserDevSampleRoot, projectRoots]);
+    const hasGeneratedFiles = browserDevGeneratedRoot && projectStructures.some(
+      (file) => file.path.startsWith(`${browserDevGeneratedRoot}/`),
+    );
+    return hasGeneratedFiles ? appendSidebarProjectRoot(roots, browserDevGeneratedRoot) : roots;
+  }, [browserDevExplicitFolders, browserDevGeneratedRoot, browserDevSampleRoot, projectRoots, projectStructures]);
   const sidebarProjectStructures = useMemo(() => {
     const samples = browserDevSampleProjectStructures(browserDevHasExplicitWorkspace);
     return samples.length > 0 ? [...projectStructures, ...samples] : projectStructures;

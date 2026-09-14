@@ -15,6 +15,8 @@ const MOBILE_VIEWER_OUTPUT = path.join(APP_ROOT, "public/burette-hosted-mobile.j
 const HOSTED_APP_SOURCE = path.join(APP_ROOT, "assets/burette-hosted-app.ts");
 const HOSTED_APP_OUTPUT = path.join(APP_ROOT, "public/burette-hosted-app.js");
 const VIEWER_FILES = [
+  "mesoscale.js",
+  "mesoscale.css",
   "burette-agent.js",
   "grid.css",
   "grid-ui.js",
