@@ -26051,6 +26051,11 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       45000,
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
+    if (config.demoSnapshotUrl) {
+      const response = await fetch(config.demoSnapshotUrl);
+      if (!response.ok) throw new Error('Could not load the saved demo scene.');
+      await viewer.plugin.managers.snapshot.setStateSnapshot(await response.json());
+    }
     // MVSX snapshots can carry an authored canvas color. Restore the active
     // Burette theme after the snapshot has finished loading.
     applyBackgroundMode();

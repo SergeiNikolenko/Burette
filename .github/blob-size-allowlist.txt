@@ -49,3 +49,16 @@ plugins/burette-agent/browser-shell-dist/assets/cluster-fingerprint.worker-Q1HfN
 plugins/burette-agent/browser-shell-dist/assets/RDKit_minimal-CSQ_4EtA.js
 plugins/burette-agent/browser-shell-dist/assets/resources-BTLdlx-p.js
 packaging/dmg/background.tiff
+
+# Curated standalone demo source data and authored scene (2026-09-14).
+apps/burette-public-plugin/public/demo-scenes/1HTB.pdb
+apps/burette-public-plugin/public/demo-scenes/metadynamics-binding.mae
+apps/burette-public-plugin/public/demo-scenes/metadynamics-binding.mae.molj
+
+# User-selected scientific demo library; loaded only when opened.
+apps/burette-public-plugin/public/demo-library/Motion & Reactions/bimp.out
+apps/burette-public-plugin/public/demo-library/Motion & Reactions/mn-h2.log
+apps/burette-public-plugin/public/demo-library/Quantum/base-pair-dens.cube
+apps/burette-public-plugin/public/demo-library/Quantum/base-pair-grad.cube
+apps/burette-public-plugin/public/demo-library/Quantum/caffeine_dens.cube
+apps/burette-public-plugin/public/demo-library/Quantum/caffeine_homo.cube
