@@ -181,15 +181,8 @@ export function useAppSidebarProjects({
       const changedRoots = new Set(pendingChangedProjectRootsRef.current);
       if (changedRoots.size === 0) return;
       pendingChangedProjectRootsRef.current.clear();
-      const { documents, projectRoots, pinnedProjectRoots, pinnedStructurePaths, recentStructures, textDocuments } = sidebarPathsRef.current;
-      const paths = Array.from(new Set([
-        ...projectRoots,
-        ...pinnedProjectRoots,
-        ...pinnedStructurePaths,
-        ...documents.map((document) => document.path),
-        ...textDocuments.map((document) => document.path),
-        ...recentStructures.map((structure) => structure.path),
-      ].filter(Boolean)));
+      const { recentStructures } = sidebarPathsRef.current;
+      const paths = sidebarPaths(sidebarPathsRef.current);
       void invoke<string[]>("existing_paths", { paths })
         .then((existingPaths) => {
           setMissingSidebarPaths(missingPaths(paths, existingPaths));
@@ -399,6 +392,7 @@ export function useAppSidebarProjects({
           );
           const resultsByRoot = new Map(results.map((result) => [result.root, result]));
           const partialMessages: string[] = [];
+          const failedRoots: string[] = [];
           projectScanSessionEntriesRef.current += results.reduce(
             (total, result) => total + Math.max(0, result.scannedEntries),
             0,
@@ -419,9 +413,7 @@ export function useAppSidebarProjects({
               partialProjectScanResultsRef.current.set(root, result);
               completeProjectScanCacheRef.current.delete(root);
             }
-            if (result.error) {
-              pushErrorStatus(new Error(result.error), `Project scan failed for ${projectRootTitle(root)}`);
-            }
+            if (result.error) failedRoots.push(root);
             if (result.truncated) {
               partialMessages.push(
                 `Showing the first ${result.files.length.toLocaleString()} files from ${projectRootTitle(root)}; `
@@ -431,10 +423,36 @@ export function useAppSidebarProjects({
               );
             }
           }
+          // A root that vanished from disk (deleted, renamed, or on an unmounted
+          // volume) is dropped from the sidebar instead of re-reporting the same
+          // scan failure on every refresh.
+          const vanishedRoots = await vanishedProjectRoots(failedRoots);
+          const vanished = new Set(vanishedRoots);
+          if (vanishedRoots.length > 0) {
+            for (const root of vanishedRoots) {
+              completeProjectScanCacheRef.current.delete(root);
+              partialProjectScanResultsRef.current.delete(root);
+            }
+            pruneSidebarPaths(sidebarPaths(sidebarPathsRef.current).filter((path) => !vanished.has(path)));
+            pushStatus(
+              vanishedRoots.length === 1
+                ? `Removed ${projectRootTitle(vanishedRoots[0])} from Projects because the folder no longer exists`
+                : `Removed ${vanishedRoots.length} projects whose folders no longer exist`,
+            );
+          }
+          for (const root of failedRoots) {
+            if (vanished.has(root)) continue;
+            const result = resultsByRoot.get(root);
+            if (result?.error) {
+              pushErrorStatus(new Error(result.error), `Project scan failed for ${projectRootTitle(root)}`);
+            }
+          }
           const currentRoots = activeProjectRootsRef.current;
           const nextFiles = Array.from(currentRoots).flatMap((root) => (
-            completeProjectScanCacheRef.current.get(root)
-            ?? partialProjectScanResultsRef.current.get(root)
+            vanished.has(root) ? undefined : (
+              completeProjectScanCacheRef.current.get(root)
+              ?? partialProjectScanResultsRef.current.get(root)
+            )
           )?.files ?? []);
           setProjectStructures(nextFiles);
           for (const message of partialMessages) pushStatus(message);
@@ -453,18 +471,11 @@ export function useAppSidebarProjects({
         .catch(() => undefined);
     }
     return undefined;
-  }, [browserDevExplicitFolders, browserDevGeneratedRoot, projectIndexRevision, projectRoots, projectRootsToScan, pushErrorStatus, pushStatus]);
+  }, [browserDevExplicitFolders, browserDevGeneratedRoot, projectIndexRevision, projectRoots, projectRootsToScan, pruneSidebarPaths, pushErrorStatus, pushStatus]);
 
   useEffect(() => {
     if (prunedPersistedPathsRef.current || !isTauriRuntime()) return;
-    const paths = Array.from(new Set([
-      ...projectRoots,
-      ...pinnedProjectRoots,
-      ...pinnedStructurePaths,
-      ...documents.map((document) => document.path),
-      ...textDocuments.map((document) => document.path),
-      ...recentStructures.map((structure) => structure.path),
-    ].filter(Boolean)));
+    const paths = sidebarPaths({ documents, projectRoots, pinnedProjectRoots, pinnedStructurePaths, recentStructures, textDocuments });
     if (paths.length === 0) return;
     prunedPersistedPathsRef.current = true;
     let cancelled = false;
@@ -519,6 +530,38 @@ function projectRootTitle(root: string) {
 function appendSidebarProjectRoot(roots: string[], root: string | null) {
   if (!root || roots.includes(root)) return roots;
   return [...roots, root];
+}
+
+type SidebarPathSources = {
+  documents: { path: string }[];
+  projectRoots: string[];
+  pinnedProjectRoots: string[];
+  pinnedStructurePaths: string[];
+  recentStructures: { path: string }[];
+  textDocuments: { path: string }[];
+};
+
+function sidebarPaths({ documents, projectRoots, pinnedProjectRoots, pinnedStructurePaths, recentStructures, textDocuments }: SidebarPathSources) {
+  return Array.from(new Set([
+    ...projectRoots,
+    ...pinnedProjectRoots,
+    ...pinnedStructurePaths,
+    ...documents.map((document) => document.path),
+    ...textDocuments.map((document) => document.path),
+    ...recentStructures.map((structure) => structure.path),
+  ].filter(Boolean)));
+}
+
+/** Roots whose scan failed because the folder itself is gone from disk. */
+async function vanishedProjectRoots(failedRoots: string[]) {
+  if (failedRoots.length === 0) return [];
+  try {
+    const existing = new Set(await invoke<string[]>("existing_paths", { paths: failedRoots }));
+    return failedRoots.filter((root) => !existing.has(root));
+  } catch {
+    // An unanswered existence check keeps the root and its error visible.
+    return [];
+  }
 }
 
 function missingPaths(paths: string[], existingPaths: string[]) {

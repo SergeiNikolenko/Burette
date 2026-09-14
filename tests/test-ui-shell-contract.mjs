@@ -1064,6 +1064,15 @@ assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevFoldersFromLo
 assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevHasExplicitWorkspace\(\), \[\]\)/);
 assert.match(appSidebarProjectsHook, /const browserDevGeneratedRoot = useMemo\(browserDevGeneratedProjectRoot, \[\]\);/);
 assert.match(appSidebarProjectsHook, /\.\.\.browserDevExplicitFolders,/);
+// A project root deleted from disk leaves the sidebar instead of re-reporting
+// the same scan failure on every refresh; other scan errors still surface.
+assert.match(appSidebarProjectsHook, /const vanishedRoots = await vanishedProjectRoots\(failedRoots\);/);
+assert.match(appSidebarProjectsHook, /pruneSidebarPaths\(sidebarPaths\(sidebarPathsRef\.current\)\.filter\(\(path\) => !vanished\.has\(path\)\)\);/);
+assert.match(appSidebarProjectsHook, /from Projects because the folder no longer exists/);
+assert.match(appSidebarProjectsHook, /if \(vanished\.has\(root\)\) continue;\s*const result = resultsByRoot\.get\(root\);\s*if \(result\?\.error\) \{\s*pushErrorStatus\(new Error\(result\.error\), `Project scan failed for/);
+assert.match(appSidebarProjectsHook, /invoke<string\[\]>\("existing_paths", \{ paths: failedRoots \}\)/);
+// Sidebar folder rows carry no open/closed folder glyph.
+assert.doesNotMatch(sidebarFileTreeNode, /project-folder-icon|FolderOpen/);
 assert.match(appSidebarProjectsHook, /import \{ scanBrowserDevFolders \} from "\.\.\/lib\/browser-dev-startup";/);
 assert.match(appSidebarProjectsHook, /const scan = await scanBrowserDevFolders\(roots\);/);
 assert.match(browserDevStartup, /export async function scanBrowserDevFolders/);
@@ -8436,7 +8445,8 @@ assert.match(appGridConformerMessagesHook, /status: metalError \|\| errors\.leng
 assert.match(app, /openDockTab\("bottom", "jobs"\)/);
 assert.match(app, /setConformerJobs,/);
 assert.match(dockPanel, /job\.progress/);
-assert.match(dockPanel, /job\.durableJobId \? ` · job \$\{job\.durableJobId\}`/);
+assert.match(dockPanel, /title=\{job\.durableJobId \? `Job \$\{job\.durableJobId\}` : undefined\}/);
+assert.doesNotMatch(dockPanel, /` · job \$\{job\.durableJobId\}`/);
 assert.match(appGridConformerMessagesHook, /invoke<ConformerGenerationResult>\("generate_3d_conformer", \{ request \}\)/);
 assert.match(appGridConformerMessagesHook, /generateBrowserDev3DConformer\(request\)/);
 assert.match(appGridConformerMessagesHook, /\.\.\.conformerGenerationPreferences\(preferences\)/);
