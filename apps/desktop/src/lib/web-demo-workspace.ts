@@ -36,6 +36,7 @@ const WEB_DEMO_ENABLED = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
 const MAX_FILE_BYTES = 3 * 1024 * 1024;
 const listeners = new Set<() => void>();
 const files = new Map<string, SidebarProjectStructure>();
+let standaloneInitialized = false;
 
 const methaneXyz = `5
 Methane
@@ -92,12 +93,13 @@ export async function initializeWebDemoWorkspace() {
   if (!WEB_DEMO_ENABLED) return [];
   const standalone = !new URLSearchParams(window.location.search).has("presentation");
   if (standalone) {
-    if (files.size > 0) return standaloneDemoScenes.map(scene => `${WEB_DEMO_ROOT}/${scene.path}`);
+    if (standaloneInitialized) return standaloneDemoScenes.map(scene => `${WEB_DEMO_ROOT}/${scene.path}`);
     const sources = await Promise.all(standaloneDemoScenes.map(async scene => {
       const response = await fetch(`/demo-scenes/${scene.asset}`);
       if (!response.ok) throw new Error(`Could not load demo file ${scene.asset}`);
       return { path: `${WEB_DEMO_ROOT}/${scene.path}`, text: await response.text() };
     }));
+    files.clear();
     for (const source of sources) registerText(source.path, source.text);
     for (const file of demoLibraryFiles) {
       const title = file.path.split("/").pop()!;
@@ -105,6 +107,7 @@ export async function initializeWebDemoWorkspace() {
       files.set(path, { path, title, extension: title.split(".").pop()!.toLowerCase(), renderer: "molstar", byteCount: file.byteCount, openedAt: null });
     }
     emitChange();
+    standaloneInitialized = true;
     return sources.map(source => source.path);
   }
   if (files.size === 0) {
