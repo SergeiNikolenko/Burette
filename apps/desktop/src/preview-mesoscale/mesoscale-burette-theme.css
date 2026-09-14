@@ -479,3 +479,8 @@ body .msp-plugin .msp-hover-box-body button.msp-btn { width: 100%; border-radius
 
 body .msp-plugin ::-webkit-scrollbar-track { background-color: var(--buret-meso-surface) !important; }
 body .msp-plugin ::-webkit-scrollbar-thumb { background-color: var(--buret-meso-muted) !important; }
+
+/* Snapshot navigation is owned by Burette scene controls. */
+.msp-state-snapshot-viewport-controls {
+  display: none !important;
+}

@@ -2159,7 +2159,7 @@ function browserDevReadUrl(path: string, extension: string) {
   if (virtualText !== undefined) {
     return `data:text/plain;charset=utf-8,${encodeURIComponent(virtualText)}`;
   }
-  if (extension === "maegz") {
+  if (extension === "maegz" || /[&#?%]/u.test(path)) {
     return `/__burette/read-file?path=${encodeURIComponent(path)}`;
   }
   return fsUrl(path);

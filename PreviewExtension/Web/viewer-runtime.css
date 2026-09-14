@@ -5344,3 +5344,8 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level
 .buret-molecule-card-toolbar > .buret-molecule-card-icon:hover {
   background: var(--buret-molstar-hover-background);
 }
+
+/* Snapshot navigation is owned by Burette scene controls. */
+.msp-state-snapshot-viewport-controls {
+  display: none !important;
+}
