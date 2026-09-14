@@ -312,3 +312,9 @@ Quick Look extension, `qlmanage`, and the app version.
 
 The desktop app checks Burette GitHub Releases on launch and from the app menu.
 A newer release can be downloaded from the update dialog.
+
+Launching either a release or development bundle does not claim default file
+handlers. Existing associations remain untouched; Launch Services maintenance
+only cleans up owned obsolete update bundles. Explicit Quick Look repair in
+Settings remains the opt-in registration path. This prevents repeated Finder
+confirmation prompts for previously unclaimed file extensions.

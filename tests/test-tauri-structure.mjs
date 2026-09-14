@@ -701,6 +701,7 @@ assert.match(quickLookCommand, /"\/usr\/bin\/pluginkit"/);
 assert.match(quickLookCommand, /bundle_id\(&preview_extension\)/);
 assert.match(quickLookCommand, /\.output\(\)/);
 assert.match(lib, /commands::quicklook::maintain_launch_services_on_startup\(\)/);
+assert.doesNotMatch(quickLookCommand.split("fn maintain_launch_services_on_startup")[1].split("fn cleanup_owned_update_bundles")[0], /register_default_document_handlers/);
 assert.match(quickLookCommand, /K_LS_ROLES_ALL/);
 assert.match(quickLookCommand, /LEGACY_APP_ID/);
 assert.match(updaterCommand, /"\$LSREGISTER" -f -R "\$DEST_APP"/);
