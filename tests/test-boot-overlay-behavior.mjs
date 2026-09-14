@@ -47,7 +47,7 @@ class TestElement {
   }
 }
 
-function createHarness() {
+function createHarness({ native = false, storage = () => null, reducedMotion = false } = {}) {
   const listeners = new Map();
   const timeouts = [];
   const document = {
@@ -76,8 +76,8 @@ function createHarness() {
   document.body = new TestElement(document, "body");
   const window = {
     document,
-    localStorage: { getItem: () => null },
-    matchMedia: () => ({ matches: false }),
+    localStorage: { getItem: storage },
+    matchMedia: (query) => ({ matches: query.includes("reduced-motion") && reducedMotion }),
     setTimeout(callback) {
       timeouts.push(callback);
       return timeouts.length;
@@ -86,6 +86,7 @@ function createHarness() {
       listeners.set(type, [...(listeners.get(type) ?? []), callback]);
     },
   };
+  if (native) window.__TAURI_INTERNALS__ = {};
   const context = vm.createContext({ document, window, URL });
   return {
     context,
@@ -119,6 +120,7 @@ assert.match(
 );
 
 harness.context.window.__BURETTE_BOOT_OVERLAY__.markMounted();
+assert.equal(harness.document.getElementById("burette-boot-overlay").attributes.get("data-ready"), "");
 harness.flushTimeouts();
 assert.equal(harness.document.getElementById("burette-boot-overlay"), null);
 
@@ -127,5 +129,15 @@ harness.dispatch("unhandledrejection", { reason: new Error("late unregisterListe
 harness.dispatch("error", { message: "late startup error", error: new Error("late startup error") });
 harness.flushTimeouts();
 assert.equal(harness.document.getElementById("burette-boot-overlay"), null);
+
+for (const storage of [() => "invalid json", () => { throw new Error("storage unavailable"); }]) {
+  const nativeHarness = createHarness({ native: true, storage, reducedMotion: true });
+  vm.runInContext(source, nativeHarness.context);
+  assert.equal(nativeHarness.document.getElementById("burette-boot-overlay").attributes.get("role"), "status");
+  assert.match(nativeHarness.document.getElementById("burette-boot-overlay-style").textContent, /#burette-boot-overlay \{[^}]*background: transparent;/);
+  nativeHarness.context.window.__BURETTE_BOOT_OVERLAY__.markMounted();
+  nativeHarness.flushTimeouts();
+  assert.equal(nativeHarness.document.getElementById("burette-boot-overlay"), null);
+}
 
 console.log("boot overlay behavior tests passed");
