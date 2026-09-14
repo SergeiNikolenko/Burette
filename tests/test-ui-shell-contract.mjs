@@ -8086,7 +8086,7 @@ assert.match(appUpdatesHook, /if \(!enabled\) return;\s*if \(!buildInfoLoaded\) 
 assert.match(appUpdatesHook, /statusText: updatesDisabledText,[\s\S]*?if \(!automatic\) pushStatus\(updatesDisabledText\);/);
 assert.match(appUpdatesHook, /const openUpdateRelease = useCallback\(async \(\) => \{\s*if \(!enabled\) return;\s*if \(buildInfo\.isBrowserDev\) \{\s*pushStatus\("Updates are disabled in browser sessions\."\);\s*return;\s*\}/s);
 assert.match(appBootstrapHook, /statusText: info\.isBrowserDev \? "Updates are disabled in browser sessions\." : "Updates are disabled for dev builds\."/);
-assert.match(appUpdatesHook, /if \(!enabled \|\| !buildInfoLoaded \|\| buildInfo\.isDevBuild\) return undefined;\s*const loadedPreferences = loadUpdatePreferences\(\);/s);
+assert.match(appUpdatesHook, /if \(!enabled \|\| !buildInfoLoaded \|\| buildInfo\.isDevBuild \|\| native\.engine !== "legacy"\) return undefined;\s*const loadedPreferences = loadUpdatePreferences\(\);/s);
 assert.match(browserDevDocuments, /documentId: documentId \?\? stableId\(path\)/);
 assert.match(browserDevDocuments, /const html = await gridHtml\(path, id, grid\.records, grid\.format, preferences, bytes\.length\)/);
 assert.match(browserDevDocuments, /browserDevVirtualTextDocuments\.set\(path, merged\.text\)/);

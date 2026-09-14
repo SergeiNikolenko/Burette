@@ -51,12 +51,12 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
 
   const installUpdate = useCallback(async (releaseOverride?: UpdateRelease | null) => {
     if (!enabled) return;
-    if (native.engine !== "legacy") {
-      try { await native.check(); } catch (error) { pushErrorStatus(error, "Update check failed"); }
-      return;
-    }
     if (buildInfo.isBrowserDev) {
       pushStatus("Updates are disabled in browser sessions.");
+      return;
+    }
+    if (native.engine !== "legacy") {
+      try { await native.check(); } catch (error) { pushErrorStatus(error, "Update check failed"); }
       return;
     }
     const release = releaseOverride ?? update.availableRelease;
