@@ -42,7 +42,7 @@ for (const file of await runtimeWebFiles()) {
   const text = await source(`PreviewExtension/Web/${file}`);
   if (/\b(?:localStorage|sessionStorage)\b/.test(text)) storageRuntimeFiles.push(file);
 }
-assert.deepEqual(storageRuntimeFiles, ["grid-viewer.js", "viewer.js"]);
+assert.deepEqual(storageRuntimeFiles, ["grid-viewer.js", "renderer-view-state.js", "viewer.js"]);
 
 assert.deepEqual(storageConstants(viewer), sortedPairs([
   ["SDF_CONTEXT_COLOR_STORAGE_KEY", "buret.sdf.contextColor"],
