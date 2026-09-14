@@ -390,6 +390,7 @@ for (const commandPath of [
   'commands::quicklook::reset_quick_look',
   'commands::pubchem::open_pubchem_search',
   'commands::updater::install_update',
+  'commands::native_updates::native_update',
 ]) {
   assert.match(lib, new RegExp(commandPath.replaceAll('::', '::')));
   assert.match(tauriPermissionSource, new RegExp(`"${commandPath.split('::').at(-1)}"`));
@@ -422,7 +423,8 @@ assert.match(agentIntegrationCommand, /claude_registry_install/);
 assert.match(agentIntegrationCommand, /mcp\/lib\/server-bundle\.mjs/);
 assert.match(agentIntegrationCommand, /"scripts\/burette-agent\.mjs"/);
 assert.match(agentIntegrationCommand, /"browser-shell-dist\/index\.html"/);
-assert.doesNotMatch(agentIntegrationCommand, /Command::new|spawn|remove_file|write\(/);
+// The status query remains read-only; startup refresh above it installs updates.
+assert.doesNotMatch(agentIntegrationCommand.slice(agentIntegrationCommand.indexOf('pub(crate) fn agent_integration_status')), /Command::new|spawn|remove_file|write\(/);
 assert.match(startupSource, /pub\(crate\) enum LaunchMode/);
 assert.match(startupSource, /BURETTE_LAUNCH_MODE/);
 assert.match(startupSource, /--burette-launch-mode=register/);

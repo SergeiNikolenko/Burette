@@ -109,6 +109,7 @@ commands.allow = [
   "reset_quick_look",
   "open_pubchem_search",
   "install_update",
+  "native_update",
   "xtb_status",
   "select_xtb_executable",
   "install_xtb",
