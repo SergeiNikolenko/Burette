@@ -13,7 +13,7 @@
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@burette/ketcher-agent-contract": "workspace:*",
-    "@chenglou/pretext": "^0.0.8",
+    "@chenglou/pretext": "^0.0.9",
     "@e965/xlsx": "0.20.3",
     "@kenjiuno/msgreader": "^1.28.0",
     "@radix-ui/react-slot": "^1.1.1",

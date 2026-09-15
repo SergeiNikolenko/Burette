@@ -91,7 +91,7 @@
       "dependencies": {
         "@base-ui/react": "^1.6.0",
         "@burette/ketcher-agent-contract": "workspace:*",
-        "@chenglou/pretext": "^0.0.8",
+        "@chenglou/pretext": "^0.0.9",
         "@e965/xlsx": "0.20.3",
         "@kenjiuno/msgreader": "^1.28.0",
         "@radix-ui/react-slot": "^1.1.1",
@@ -233,7 +233,7 @@
 
     "@burette/public-plugin": ["@burette/public-plugin@workspace:apps/burette-public-plugin"],
 
-    "@chenglou/pretext": ["@chenglou/pretext@0.0.8", "", {}, "sha512-yqm2GMxnPI7VHcHwe84P8ZF0JK/2d2DMKPqMN+s95jQhwDMYYXKVFVJUMEaVWckQStdsjdLav/0Vu+d9YbtGxA=="],
+    "@chenglou/pretext": ["@chenglou/pretext@0.0.9", "", {}, "sha512-vInlpC//3vjRfWTs78k2BBIq/0bUdpjIp8TIn9fXe0NvnChhTQZfjioVzERQQbkQvCVpPpw7PDOrTWMHpq27VA=="],
 
     "@chevrotain/types": ["@chevrotain/types@11.1.2", "", {}, "sha512-U+HFai5+zmJCkK86QsaJtoITlboZHBqrVketcO2ROv865xfCMSFpELQoz1GkX5GzME8pTa+3kbKrZHQtI0gdbw=="],
 
