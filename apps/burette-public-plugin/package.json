@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@burette/ketcher-agent-contract": "workspace:*",
-    "@modelcontextprotocol/ext-apps": "1.7.4",
+    "@modelcontextprotocol/ext-apps": "2.0.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@vercel/analytics": "2.0.1",
     "molstar": "5.11.0",
