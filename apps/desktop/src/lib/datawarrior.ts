@@ -30,14 +30,21 @@ export function parseDataWarrior(text: string): DataWarriorGridRecord[] {
     if (line.trim()) tableRows.push(parseTabLine(line));
   }
 
-  const structureIndexes = headers
+  const idcodeIndexes = headers
     .map((header, index) => {
       const specialType = columns.get(header)?.specialType?.toLowerCase();
-      if (specialType === "idcode") return { index, kind: "idcode" as const };
-      if (isSmilesHeader(header)) return { index, kind: "smiles" as const };
-      return null;
+      return specialType === "idcode" ? { index, kind: "idcode" as const } : null;
     })
     .filter((value): value is { index: number; kind: "idcode" | "smiles" } => value !== null);
+  const smilesIndexes = headers
+        .map((header, index) => {
+          const specialType = columns.get(header)?.specialType?.toLowerCase();
+          // DataWarrior uses names such as `SmilesFragFp` for fingerprints. A
+          // non-structure specialType wins over the column-name heuristic.
+          return !specialType && isSmilesHeader(header) ? { index, kind: "smiles" as const } : null;
+        })
+        .filter((value): value is { index: number; kind: "smiles" } => value !== null);
+  const structureIndexes = [...idcodeIndexes, ...smilesIndexes];
   if (!structureIndexes.length) return [];
 
   const coordinateIndexes = new Map<string, number>();
@@ -54,11 +61,13 @@ export function parseDataWarrior(text: string): DataWarriorGridRecord[] {
   const nameIndex = headers.findIndex((header, index) => (
     !specialIndexes.has(index) && NAME_HEADERS.has(normalizeHeader(header))
   ));
-  const multipleStructureColumns = structureIndexes.length > 1;
+  const multipleStructureColumns = (idcodeIndexes.length || smilesIndexes.length) > 1 && idcodeIndexes.length === 0;
   const records: DataWarriorGridRecord[] = [];
 
   tableRows.forEach((row, rowIndex) => {
+    const hasIdCodeValue = idcodeIndexes.some(({ index }) => Boolean(row[index]?.trim()));
     for (const structure of structureIndexes) {
+      if (structure.kind === "smiles" && hasIdCodeValue) continue;
       const value = row[structure.index]?.trim() ?? "";
       if (!value) continue;
       const columnName = headers[structure.index] || `Column ${structure.index + 1}`;
