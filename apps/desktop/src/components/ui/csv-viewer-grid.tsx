@@ -1,3 +1,4 @@
+import { csvSortKey, sortedRowOrderFromKeys, sortedRowOrderCooperatively } from "./csv-viewer-sort";
 "use client";
 
 import * as React from "react";
@@ -18,7 +19,7 @@ import {
 } from "./csv-viewer-scrollbar";
 import {
   sortCsvRowsInWorker,
-  sortCsvRowsOnMainThread,
+  createCsvSortWorker,
 } from "./csv-viewer-sort-worker";
 import type { CsvCellAddress } from "./csv-viewer-state";
 import { CsvStyleScope } from "./csv-viewer-style-scope";
@@ -451,59 +452,39 @@ function useCsvSortedRowOrder({
   const [workerRowOrder, setWorkerRowOrder] = React.useState<number[] | null>(
     null,
   );
-  const sourceRows = React.useMemo(
-    () => (sort ? rowStore.materializeRows() : null),
-    [rowStore, sort],
-  );
-  const shouldUseWorker =
-    !!sort &&
-    !!sourceRows &&
-    sourceRows.length >= WORKER_SORT_ROW_THRESHOLD &&
-    typeof Worker !== "undefined";
-
-  const workerSortKey =
-    sort && sourceRows && shouldUseWorker
-      ? joinEffectKey(["csv-worker-sort", shouldUseWorker, sort, sourceRows])
-      : null;
-  useKeyedMountEffect(workerSortKey, () => {
-    if (!sort || !sourceRows || !shouldUseWorker) {
-      setWorkerRowOrder(null);
-      return;
-    }
+  const workerRef = React.useRef<Worker | null>(null);
+  React.useEffect(() => () => { workerRef.current?.terminate(); workerRef.current = null; }, []);
+  const keys = React.useMemo(() => sort ? Array.from({ length: rowStore.rowCount }, (_, index) =>
+    csvSortKey(rowStore.getRow(index)?.[sort.columnIndex] ?? "", index)) : null,
+    [rowStore, sort?.columnIndex]);
+  const shouldUseWorker = !!keys && keys.length >= WORKER_SORT_ROW_THRESHOLD;
+  React.useEffect(() => {
+    if (!sort || !keys || !shouldUseWorker) { setWorkerRowOrder(null); return; }
     setWorkerRowOrder(null);
-
     const controller = new AbortController();
-    void sortCsvRowsInWorker({
-      sourceRows,
-      columnIndex: sort.columnIndex,
-      descending: sort.descending,
-      signal: controller.signal,
-    }).then(
-      (rowOrder) => setWorkerRowOrder(rowOrder),
-      (error) => {
+    let settled = false;
+    void (async () => {
+      let order: number[];
+      try {
+        workerRef.current ??= createCsvSortWorker();
+        order = await sortCsvRowsInWorker({ worker: workerRef.current, keys, descending: sort.descending, signal: controller.signal });
+      } catch {
         if (controller.signal.aborted) return;
-        setWorkerRowOrder(
-          sortCsvRowsOnMainThread({
-            sourceRows,
-            columnIndex: sort.columnIndex,
-            descending: sort.descending,
-          }),
-        );
-      },
-    );
-
-    return () => controller.abort();
-  });
-
+        workerRef.current?.terminate();
+        workerRef.current = null;
+        order = await sortedRowOrderCooperatively(keys, sort.descending, controller.signal);
+      }
+      if (!controller.signal.aborted) setWorkerRowOrder(order);
+    })().catch(() => {}).finally(() => { settled = true; });
+    return () => {
+      controller.abort();
+      if (!settled) { workerRef.current?.terminate(); workerRef.current = null; }
+    };
+  }, [keys, sort, shouldUseWorker]);
   return React.useMemo(() => {
-    if (!sort || !sourceRows) return null;
-    if (shouldUseWorker) return workerRowOrder;
-    return sortCsvRowsOnMainThread({
-      sourceRows,
-      columnIndex: sort.columnIndex,
-      descending: sort.descending,
-    });
-  }, [shouldUseWorker, sort, sourceRows, workerRowOrder]);
+    if (!sort || !keys) return null;
+    return shouldUseWorker ? workerRowOrder : sortedRowOrderFromKeys(keys, sort.descending);
+  }, [shouldUseWorker, sort, keys, workerRowOrder]);
 }
 
 function Spacer({ width, className }: { width: number; className?: string }) {
