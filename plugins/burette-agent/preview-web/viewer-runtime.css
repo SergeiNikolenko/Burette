@@ -4601,57 +4601,21 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   pointer-events: none;
 }
 .buret-tree-swatch-custom:hover { transform: none; }
-.buret-tree-swatches-with-picker { flex-wrap: nowrap; gap: 2px; }
-.buret-tree-swatches-with-picker .buret-tree-swatch { flex-shrink: 1; min-width: 0; }
-.buret-color-picker {
-  position: fixed;
-  inset: auto;
-  margin: 0;
-  width: 208px;
-  box-sizing: border-box;
-  padding: 12px;
-  border: 1px solid var(--buret-toolbar-border);
-  border-radius: 10px;
-  background: var(--buret-molstar-panel-background);
-  color: var(--buret-molstar-text);
-  box-shadow: 0 8px 28px #0005;
-  font: 12px/1.4 system-ui, sans-serif;
-}
-.buret-color-picker-field {
-  position: relative;
-  height: 112px;
-  border-radius: 5px;
-  background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent);
-  touch-action: none;
-  cursor: crosshair;
-}
-.buret-color-picker-field > span {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border: 2px solid white;
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px #0008;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-.buret-color-picker-hue {
-  appearance: none;
-  width: 100%;
-  height: 8px;
-  margin: 14px 0;
-  border-radius: 4px;
-  background: linear-gradient(to right, red, #ff0, #0f0, cyan, blue, #f0f, red);
-}
-.buret-color-picker-hue::-webkit-slider-thumb {
-  appearance: none;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid white;
-  background: transparent;
-  box-shadow: 0 0 0 1px #0006;
-}
+.buret-tree-swatches-with-picker { flex-wrap: nowrap; align-items: center; gap: 8px; }
+.buret-tree-swatch-rail { display: flex; gap: 3px; min-width: 0; flex: 1; overflow-x: auto; padding: 0; scrollbar-width: none; overscroll-behavior: contain; }
+.buret-tree-swatch-rail::-webkit-scrollbar { display: none; }
+.buret-tree-swatch-rail .buret-tree-swatch { flex: 0 0 14px; width: 14px; height: 14px; min-height: 14px; padding: 0; border: 0; border-radius: 50%; transform: none; }
+.buret-tree-swatches-with-picker .buret-tree-swatch-custom { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 6px; }
+.buret-tree-swatch-custom > svg { width: 16px; height: 16px; }
+.buret-color-picker { box-sizing: border-box; padding: 10px; margin-bottom: 10px; border: 1px solid var(--buret-toolbar-border); border-radius: 10px; color: var(--buret-molstar-text); font: 12px/1.4 system-ui, sans-serif; }
+.buret-color-picker[hidden] { display: none; }
+.buret-color-picker-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: var(--buret-molstar-muted-text); }
+.buret-color-picker-title select { min-width: 0; max-width: 130px; font: inherit; color: var(--buret-molstar-text); background: var(--buret-molstar-panel-background); border: 1px solid var(--buret-toolbar-border); border-radius: 4px; padding: 3px; }
+.buret-color-picker-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; margin-bottom: 12px; }
+.buret-color-picker .buret-color-picker-shade { display: block; width: 100%; height: 28px; min-height: 28px; padding: 0; margin: 0; border: 0; border-radius: 7px; }
+.buret-color-picker-shade:hover { box-shadow: inset 0 0 0 2px #ffffffb0; }
+.buret-color-picker .buret-color-picker-shade[aria-pressed="true"],
+.buret-tree-swatch-rail .buret-tree-swatch[aria-pressed="true"] { outline: none; box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3px #0009; }
 .buret-color-picker-hex { display: flex; align-items: center; gap: 12px; }
 .buret-color-picker-hex > span { color: var(--buret-molstar-muted-text); font-size: 10px; }
 .buret-color-picker-hex > input {
@@ -5326,7 +5290,7 @@ body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-
 body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-item-destructive {
   color: #ff6b5e;
 }
-body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-tree-swatch {
+body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-tree-swatches:not(.buret-tree-swatches-with-picker) .buret-tree-swatch {
   display: block;
   flex: 0 0 auto;
   width: 14px;

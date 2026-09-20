@@ -6776,18 +6776,12 @@ SOFTWARE.
     collapseAll: APP_ICON_DATA.Collapse,
     expandAll: APP_ICON_DATA.Expand
   };
-  // Apple system colours: the uniform tints offered next to the real colour themes.
-  const SCENE_TREE_UNIFORM_COLORS = [
-    { label: 'Purple', value: 0xaf52de },
-    { label: 'Blue', value: 0x0a84ff },
-    { label: 'Cyan', value: 0x40c8e0 },
-    { label: 'Green', value: 0x32d74b },
-    { label: 'Yellow', value: 0xffd60a },
-    { label: 'Orange', value: 0xff9f0a },
-    { label: 'Red', value: 0xff453a },
-    { label: 'Pink', value: 0xff6482 },
-    { label: 'Grey', value: 0x98989d },
-    { label: 'White', value: 0xf2f2f7 }
+  // Keep quick tints and the shade palette in the same muted colour families.
+  const SCENE_TREE_UNIFORM_COLORS = window.BuretteColorPicker?.presets || [
+    { label: 'Lavender', value: 0xa58abd }, { label: 'Blue', value: 0x7da5c7 },
+    { label: 'Teal', value: 0x75aaa3 }, { label: 'Sage', value: 0x94ad7c },
+    { label: 'Sand', value: 0xc6af73 }, { label: 'Clay', value: 0xc7997d },
+    { label: 'Rose', value: 0xbf8a9a }, { label: 'Stone', value: 0xaaa9a5 }
   ];
   const sceneTreeExpandedRefs = new Set();
   const sceneTreeKnownRefs = new Set();
@@ -8152,6 +8146,16 @@ SOFTWARE.
   function sceneTreeMenuSwatches(menu, label, action, currentValue) {
     const swatches = document.createElement('div');
     swatches.className = 'buret-tree-swatches buret-tree-swatches-with-picker';
+    const rail = document.createElement('div');
+    rail.className = 'buret-tree-swatch-rail';
+    rail.addEventListener('wheel', event => {
+      if (event.ctrlKey || rail.scrollWidth <= rail.clientWidth) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      rail.scrollLeft += delta * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rail.clientWidth : 1);
+    }, { passive: false });
+    swatches.appendChild(rail);
     for (const entry of SCENE_TREE_UNIFORM_COLORS) {
       const swatch = document.createElement('button');
       swatch.type = 'button';
@@ -8162,7 +8166,7 @@ SOFTWARE.
       swatch.setAttribute('aria-label', `Tint ${label} ${entry.label.toLowerCase()}`);
       swatch.setAttribute('aria-pressed', currentValue === entry.value ? 'true' : 'false');
       swatch.title = entry.label;
-      swatches.appendChild(swatch);
+      rail.appendChild(swatch);
     }
     // The picker lives in color-picker.js, loaded next to this file. When that
     // script is missing (a packaged build once shipped without it) the preset
@@ -8179,10 +8183,9 @@ SOFTWARE.
     const custom = document.createElement('button');
     custom.type = 'button';
     custom.className = 'buret-tree-swatch buret-tree-swatch-custom';
-    custom.title = 'Choose custom colour';
-    custom.appendChild(sceneTreeIconElement(['M12 5v14', 'M5 12h14']));
-    custom.setAttribute('aria-label', `Choose custom colour for ${label}`);
-    custom.setAttribute('aria-haspopup', 'dialog');
+    custom.title = 'Colour palette';
+    custom.appendChild(sceneTreeIconElement(APP_ICON_DATA.ColorTheme));
+    custom.setAttribute('aria-label', `Toggle colour palette for ${label}`);
     custom.setAttribute('aria-expanded', 'false');
     let colourUndoSnapshot = null;
     const picker = window.BuretteColorPicker.create(Number.isFinite(currentValue) ? currentValue : 0xffffff, value => {
@@ -8194,20 +8197,34 @@ SOFTWARE.
       if (colourUndoSnapshot) pushMolstarEditUndoSnapshot(colourUndoSnapshot);
       colourUndoSnapshot = null;
     });
-    picker.addEventListener('toggle', event => custom.setAttribute('aria-expanded', String(event.newState === 'open')));
+    const owner = menu.closest('.buret-molecule-context-submenu, #buret-scene-tree-menu') || menu;
+    const rootMenu = owner.closest('.buret-molecule-context-menu');
+    const reposition = () => {
+      if (owner._buretTrigger) moleculeMenuPositionSubmenu(owner, owner._buretTrigger);
+    };
+    picker.addEventListener('change', reposition);
     custom.addEventListener('click', event => {
+      event.preventDefault();
       event.stopPropagation();
-      if (picker.matches(':popover-open')) { picker.hidePopover(); return; }
-      const owner = menu.closest('.buret-molecule-context-submenu, #buret-scene-tree-menu') || menu;
-      const ownerRect = owner.getBoundingClientRect();
-      picker.style.width = `${ownerRect.width}px`;
-      picker.style.left = `${ownerRect.left}px`;
-      picker.showPopover();
-      picker.style.top = `${Math.max(8, ownerRect.top - picker.offsetHeight - 8)}px`;
-      picker.querySelector('input[type="text"]').focus();
+      if (rootMenu) {
+        moleculeMenuCancelHoverIntent(rootMenu);
+        moleculeMenuCloseSubmenus(rootMenu, owner);
+      }
+      picker.hidden = !picker.hidden;
+      custom.setAttribute('aria-expanded', String(!picker.hidden));
+      reposition();
     });
-    swatches.append(custom, picker);
-    menu.appendChild(swatches);
+    picker.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      picker.hidden = true;
+      custom.setAttribute('aria-expanded', 'false');
+      reposition();
+      custom.focus();
+    });
+    swatches.appendChild(custom);
+    menu.append(swatches);
+    owner.prepend(picker);
   }
 
   // A representation carries 30–55 parameters; all but a handful are renderer
@@ -25200,7 +25217,6 @@ SOFTWARE.
           || typeMenu.querySelector('.buret-representation-type-item'))?.focus();
       }
     };
-    trigger.addEventListener('pointerenter', () => openTypeMenu(false));
     trigger.addEventListener('focus', () => {
       if (!suppressFocusOpen) openTypeMenu(false);
     });
