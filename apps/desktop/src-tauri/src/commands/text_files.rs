@@ -277,13 +277,21 @@ fn read_text_file_impl_with_image_limit(
         });
     }
 
-    let truncated = text_bytes.len() > read_limit;
+    let mut truncated = text_bytes.len() > read_limit;
     let readable_bytes = if truncated {
         &text_bytes[..read_limit]
     } else {
         text_bytes.as_slice()
     };
-    let content = String::from_utf8_lossy(readable_bytes).into_owned();
+    let mut content = String::from_utf8_lossy(readable_bytes).into_owned();
+    if content.len() > read_limit {
+        let mut end = read_limit;
+        while !content.is_char_boundary(end) {
+            end -= 1;
+        }
+        content.truncate(end);
+        truncated = true;
+    }
 
     Ok(TextFileDocument {
         id: uuid::Uuid::new_v4().to_string(),
@@ -537,6 +545,16 @@ mod tests {
             .content
             .contains("Burette does not have an inline renderer"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn limits_decoded_invalid_utf8_content() {
+        let path = temp_path("invalid-utf8.txt");
+        fs::write(&path, vec![0xff; 4096]).unwrap();
+        let document = read_text_file_impl(path.clone(), Some(4096)).unwrap();
+        assert!(document.content.len() <= 4096);
+        assert!(document.truncated);
+        fs::remove_file(path).unwrap();
     }
 
     #[test]

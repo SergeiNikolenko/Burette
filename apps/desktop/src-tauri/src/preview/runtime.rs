@@ -624,11 +624,16 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     let extension = structure_path_extension(&canonical);
     let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     let is_sdf = matches!(extension.as_str(), "sd" | "sdf");
+    let streamed_table = matches!(
+        extension.as_str(),
+        "csv" | "tsv" | "smi" | "smiles" | "dwar"
+    );
     let should_use_viewer_for_sdf = is_sdf
         && reload_options.is_some()
         && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external");
     let desktop_limit = preferences.desktop_preview_limit_bytes();
-    if metadata.len() > desktop_limit && (!is_sdf || should_use_viewer_for_sdf) {
+    if metadata.len() > desktop_limit && ((!is_sdf && !streamed_table) || should_use_viewer_for_sdf)
+    {
         return Err(format!(
             "{} is larger than the {} MiB desktop preview limit",
             canonical.display(),
@@ -680,20 +685,22 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     let document_id = stable_id(&canonical);
     let title = file_title(&canonical);
     let mut preloaded_sdf_data = None;
-    if is_sdf && !should_use_viewer_for_sdf {
+    if (is_sdf || streamed_table) && !should_use_viewer_for_sdf {
         // Small SDFs still need the ordinary single-molecule fallback. Feeding
         // them through the strict streaming collection parser first would make
         // a valid molecule with a large property block fail the 512 KiB
         // collection-record guard before we could discover that it is not a
         // collection. Large sources and sources beyond the configured preview
         // budget stay file-backed and are never read wholesale.
-        let grid_source =
-            if metadata.len() <= MAX_STRUCTURE_FILE_SIZE && metadata.len() <= desktop_limit {
-                preloaded_sdf_data = Some(fs::read(&canonical).map_err(|error| error.to_string())?);
-                preloaded_sdf_data.as_deref()
-            } else {
-                None
-            };
+        let grid_source = if is_sdf
+            && metadata.len() <= MAX_STRUCTURE_FILE_SIZE
+            && metadata.len() <= desktop_limit
+        {
+            preloaded_sdf_data = Some(fs::read(&canonical).map_err(|error| error.to_string())?);
+            preloaded_sdf_data.as_deref()
+        } else {
+            None
+        };
         let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
         if let Some(runtime_path) = create_grid_runtime_with_options(
             app,

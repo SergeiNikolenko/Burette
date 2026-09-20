@@ -388,11 +388,14 @@ fn normalized_indexes(indexes: &[usize]) -> ComputeResult<Vec<usize>> {
     Ok(normalized)
 }
 
+type AtomSignature = (String, i32, Vec<(String, u8)>);
+type AtomSignatureIndex = std::collections::BTreeMap<AtomSignature, Vec<usize>>;
+
 fn infer_atom_mapping(
     probe: &ParsedMolfile,
     reference: &ParsedMolfile,
     reference_graph: &[u8],
-    reference_signatures: &std::collections::BTreeMap<(String, i32, Vec<(String, u8)>), Vec<usize>>,
+    reference_signatures: &AtomSignatureIndex,
 ) -> ComputeResult<Vec<AtomMapping>> {
     if probe.atoms.len() != reference.atoms.len() || probe.bonds.len() != reference.bonds.len() {
         return Err(ComputeCoordinatorError::Validation(
@@ -430,7 +433,7 @@ fn infer_atom_mapping(
         &search_order,
         &candidates,
         &probe_graph,
-        &reference_graph,
+        reference_graph,
         &mut assigned,
         &mut used,
     ) {
@@ -487,10 +490,7 @@ fn degree(graph: &[u8], atom: usize) -> usize {
         .count()
 }
 
-fn atom_signature_index(
-    molecule: &ParsedMolfile,
-    graph: &[u8],
-) -> std::collections::BTreeMap<(String, i32, Vec<(String, u8)>), Vec<usize>> {
+fn atom_signature_index(molecule: &ParsedMolfile, graph: &[u8]) -> AtomSignatureIndex {
     let mut signatures = std::collections::BTreeMap::new();
     for atom in 0..molecule.atoms.len() {
         signatures
@@ -501,11 +501,7 @@ fn atom_signature_index(
     signatures
 }
 
-fn atom_signature(
-    molecule: &ParsedMolfile,
-    graph: &[u8],
-    atom: usize,
-) -> (String, i32, Vec<(String, u8)>) {
+fn atom_signature(molecule: &ParsedMolfile, graph: &[u8], atom: usize) -> AtomSignature {
     let atom_count = molecule.atoms.len();
     let mut neighbors = (0..atom_count)
         .filter_map(|neighbor| {
