@@ -389,6 +389,42 @@ function applyAgentHighlights(root: HTMLElement | null, indexes: number[]) {
   }
 }
 
+type KetcherRuntime = {
+  Editor: KetcherReactModule["Editor"];
+  getSvgFromDrawnStructures: KetcherCoreModule["getSvgFromDrawnStructures"];
+  MolSerializer: KetcherCoreModule["MolSerializer"];
+  StandaloneStructServiceProvider: KetcherStandaloneModule["StandaloneStructServiceProvider"];
+  ZoomTool: KetcherZoomToolConstructor;
+};
+
+let runtimePromise: Promise<KetcherRuntime> | null = null;
+
+// Start at navigation time; reuse the same load when the editor mounts.
+export function loadKetcherRuntime(): Promise<KetcherRuntime> {
+  if (runtimePromise) return runtimePromise;
+  installKetcherBrowserRequire();
+  runtimePromise = import("eve-raphael")
+    .then((eveModule) => import("raphael").then((raphaelModule) => {
+      installRaphaelBrowserModules(eveModule, raphaelModule);
+    }))
+    // Standalone also imports core, so all Ketcher modules follow the Raphael shim.
+    .then(() => Promise.all([
+      import("ketcher-react"),
+      import("ketcher-core"),
+      import("ketcher-standalone/dist/binaryWasm"),
+    ])).then(([reactModule, coreModule, standaloneModule]) => ({
+    Editor: reactModule.Editor,
+    getSvgFromDrawnStructures: coreModule.getSvgFromDrawnStructures,
+    MolSerializer: coreModule.MolSerializer,
+    StandaloneStructServiceProvider: standaloneModule.StandaloneStructServiceProvider,
+    ZoomTool: coreModule.ZoomTool,
+  })).catch((error: unknown) => {
+    runtimePromise = null;
+    throw error;
+  });
+  return runtimePromise;
+}
+
 export function KetcherEditor({
   onReady,
   onStatus,
@@ -401,13 +437,7 @@ export function KetcherEditor({
   onLoadError?: (error: Error) => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const [runtime, setRuntime] = useState<{
-    Editor: KetcherReactModule["Editor"];
-    getSvgFromDrawnStructures: KetcherCoreModule["getSvgFromDrawnStructures"];
-    MolSerializer: KetcherCoreModule["MolSerializer"];
-    StandaloneStructServiceProvider: KetcherStandaloneModule["StandaloneStructServiceProvider"];
-    ZoomTool: KetcherZoomToolConstructor;
-  } | null>(null);
+  const [runtime, setRuntime] = useState<KetcherRuntime | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
 
   useEffect(() => {
@@ -415,28 +445,9 @@ export function KetcherEditor({
     installKetcherBrowserRequire();
     setLoadError(null);
     setRuntime(null);
-    import("eve-raphael")
-      .then((eveModule) => (
-        import("raphael").then((raphaelModule) => {
-          installRaphaelBrowserModules(eveModule, raphaelModule);
-        })
-      ))
-      .then(() => {
-        return Promise.all([
-          import("ketcher-react"),
-          import("ketcher-core"),
-          import("ketcher-standalone/dist/binaryWasm"),
-        ]);
-      })
-      .then(([reactModule, coreModule, standaloneModule]) => {
-        if (cancelled) return;
-        setRuntime({
-          Editor: reactModule.Editor,
-          getSvgFromDrawnStructures: coreModule.getSvgFromDrawnStructures,
-          MolSerializer: coreModule.MolSerializer,
-          StandaloneStructServiceProvider: standaloneModule.StandaloneStructServiceProvider,
-          ZoomTool: coreModule.ZoomTool,
-        });
+    loadKetcherRuntime()
+      .then((loadedRuntime) => {
+        if (!cancelled) setRuntime(loadedRuntime);
       })
       .catch((error: unknown) => {
         if (cancelled) return;

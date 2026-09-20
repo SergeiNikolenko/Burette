@@ -3170,7 +3170,7 @@ assert.match(sidebarFileBrowser, /const hideProjectPreviews = state\.buildInfo\.
 assert.match(sidebarFileBrowser, /const visibleProjects = hideProjectPreviews \? \[\] : filterSidebarProjects/);
 assert.match(sidebarFileBrowser, /\{!hideProjectPreviews && \(/);
 assert.match(ketcherKind, /export const ketcherKind = definePageKind/);
-assert.match(ketcherKind, /lazy\(\(\) => import\("\.\.\/\.\.\/ketcher-page"\)/);
+assert.match(ketcherKind, /lazy\(\(\) => \{[\s\S]*?return import\("\.\.\/\.\.\/ketcher-page"\)/);
 assert.match(ketcherKind, /<Suspense fallback=\{null\}>/);
 assert.match(ketcherKind, /export type KetcherLocationImportRequest = \{/);
 assert.match(ketcherKind, /export type KetcherLocation = \{/);

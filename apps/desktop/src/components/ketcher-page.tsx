@@ -882,7 +882,6 @@ export function KetcherPage({
       setStatus("Ketcher is not ready");
       return "transient-failure";
     }
-    await waitForKetcherStructServiceReady();
     const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
     const cleanFragments = fragments.filter((fragment) => fragment.text.trim());
     if (cleanPaths.length === 0 && cleanFragments.length === 0) return "failure";
@@ -1633,6 +1632,10 @@ async function importKetcherStructure(
   let lastError: unknown = null;
   for (const candidate of candidates) {
     try {
+      // MOL imports use the local serializer and do not need Indigo to start.
+      if (!looksLikeMolBlock(candidate) || looksLikeReactionBlock(candidate)) {
+        await waitForKetcherStructServiceReady();
+      }
       await loadKetcherImportCandidate(candidate, loadCandidate);
       await waitForKetcherCanvasUpdate();
       return;
