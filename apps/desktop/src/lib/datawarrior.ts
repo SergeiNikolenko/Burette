@@ -35,15 +35,15 @@ export function parseDataWarrior(text: string): DataWarriorGridRecord[] {
       const specialType = columns.get(header)?.specialType?.toLowerCase();
       return specialType === "idcode" ? { index, kind: "idcode" as const } : null;
     })
-    .filter((value): value is { index: number; kind: "idcode" | "smiles" } => value !== null);
+    .filter((value): value is { index: number; kind: "idcode" } => value !== null);
   const smilesIndexes = headers
-        .map((header, index) => {
-          const specialType = columns.get(header)?.specialType?.toLowerCase();
-          // DataWarrior uses names such as `SmilesFragFp` for fingerprints. A
-          // non-structure specialType wins over the column-name heuristic.
-          return !specialType && isSmilesHeader(header) ? { index, kind: "smiles" as const } : null;
-        })
-        .filter((value): value is { index: number; kind: "smiles" } => value !== null);
+    .map((header, index) => {
+      const specialType = columns.get(header)?.specialType?.toLowerCase();
+      // DataWarrior uses names such as `SmilesFragFp` for fingerprints. A
+      // non-structure specialType wins over the column-name heuristic.
+      return !specialType && isSmilesHeader(header) ? { index, kind: "smiles" as const } : null;
+    })
+    .filter((value): value is { index: number; kind: "smiles" } => value !== null);
   const structureIndexes = [...idcodeIndexes, ...smilesIndexes];
   if (!structureIndexes.length) return [];
 
