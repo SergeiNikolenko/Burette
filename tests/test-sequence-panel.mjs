@@ -22,9 +22,9 @@ const mountSelect = (native, role, label) => {
   node.append(button);
   return { node, close() {}, destroy() { disposed++; } };
 };
-new Function('bindSequenceDrag', 'mountSelect', 'initResize', 'setContentHeight', 'sequenceOptionLabel', 'window', 'document', 'Event', 'ResizeObserver', 'requestAnimationFrame',
+new Function('decorateComponents', 'bindSequenceDrag', 'mountSelect', 'initResize', 'setContentHeight', 'sequenceOptionLabel', 'window', 'document', 'Event', 'ResizeObserver', 'requestAnimationFrame',
   readFileSync(new URL('../apps/desktop/src/preview-sequence/adapter.js', import.meta.url), 'utf8').replace(/^import .*;\n/gm, ''))(
-  () => () => {}, mountSelect, () => {}, height => { measuredHeight = height; }, label => label, window, document, window.Event, ResizeObserver, callback => frames.push(callback));
+  () => {}, () => () => {}, mountSelect, () => {}, height => { measuredHeight = height; }, label => label, window, document, window.Event, ResizeObserver, callback => frames.push(callback));
 document.body.innerHTML = `<div class="msp-sequence"><div class="msp-sequence-select">
   <select><option>1HTB</option></select><select><option>Chain</option><option>Polymers</option></select>
   <select><option value="a">Protein A</option><option value="b">Protein B</option><option disabled>Unavailable</option></select>
