@@ -88,14 +88,14 @@ tell application "Finder"
     set toolbar visible of container window to false
     set statusbar visible of container window to false
     set pathbar visible of container window to false
-    set bounds of container window to {100, 100, 760, 500}
+    set bounds of container window to {100, 100, 456, 652}
     set viewOptions to icon view options of container window
     set arrangement of viewOptions to not arranged
-    set icon size of viewOptions to 104
-    set text size of viewOptions to 13
+    set icon size of viewOptions to 128
+    set text size of viewOptions to 16
     set background picture of viewOptions to file ".background:background.tiff"
-    set position of item "Burette.app" of container window to {145, 205}
-    set position of item "Applications" of container window to {515, 205}
+    set position of item "Burette.app" of container window to {178, 184}
+    set position of item "Applications" of container window to {178, 386}
     update without registering applications
     delay 2
     close

@@ -38,8 +38,8 @@ if (process.platform === "darwin") {
     ["-info", join(repoRoot, "packaging/dmg/background.tiff")],
     { encoding: "utf8" },
   );
-  assert.match(tiffInfo, /Image Width: 660 Image Length: 400[\s\S]*Resolution: 72, 72/u);
-  assert.match(tiffInfo, /Image Width: 1320 Image Length: 800[\s\S]*Resolution: 144, 144/u);
+  assert.match(tiffInfo, /Image Width: 356 Image Length: 520[\s\S]*Resolution: 72, 72/u);
+  assert.match(tiffInfo, /Image Width: 712 Image Length: 1040[\s\S]*Resolution: 144, 144/u);
 }
 
 console.log("DMG background contract OK");
