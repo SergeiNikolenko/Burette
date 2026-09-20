@@ -6072,6 +6072,8 @@ assert.match(browserDevDocuments, /return records\.length >= 1 \? \{ format: "sd
 assert.match(previewViewer, /records\.length >= 1 && config\.sdfPosePager === true/);
 assert.match(previewViewer, /const controlLabel = String\(config\.sdfPoseControlLabel \|\| 'Pose'\)\.trim\(\) \|\| 'Pose'/);
 assert.match(previewViewer, /const molecules = records\.map\(parseV2000SdfRecord\)/);
+assert.match(previewViewer, /if \(\/\\bV3000\\b\/u\.test\(String\(record \|\| ''\)\)\) return parseV3000SdfRecord\(record\);/);
+assert.match(previewViewer, /function parseV3000SdfRecord\(record\)/);
 assert.match(previewViewer, /const collection = records\.length > 1 && allMoleculesParsed/);
 assert.match(previewViewer, /kind: 'sdf-collection'/);
 assert.match(previewViewer, /sdfPoseMode: 'collection'/);
