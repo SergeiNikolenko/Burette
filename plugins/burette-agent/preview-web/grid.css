@@ -214,6 +214,8 @@ button:disabled {
 }
 
 .buret-grid-toolbar {
+  width: 100%;
+  box-sizing: border-box;
   display: grid;
   gap: 8px;
   margin-bottom: 12px;
@@ -275,6 +277,11 @@ button:disabled {
 
 .buret-toolbar-row-main {
   grid-template-columns: minmax(0, 1fr) minmax(112px, 148px) auto;
+}
+
+.buret-search-control,
+.buret-sort-control {
+  min-width: 0;
 }
 
 .buret-toolbar-row-view {
@@ -2680,3 +2687,19 @@ body.buret-hide-properties .buret-card-body {
 
 .buret-grid-molecule-context-menu { max-width: min(360px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; }
 .buret-grid-statistics-menu .buret-grid-molecule-context-menu-subtitle { white-space: normal; line-height: 1.6; }
+
+/* Same measured reading pace as workspace tab names; the cell never reflows. */
+.buret-cell-marquee { display: block; overflow: hidden; white-space: nowrap; }
+.buret-cell-marquee > span { display: inline-block; min-width: 100%; transition: transform 160ms ease-out; }
+td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marquee-shift, 0px))); transition: transform var(--marquee-duration, 1.6s) cubic-bezier(0.4, 0, 0.2, 1) 120ms; }
+@media (prefers-reduced-motion: reduce) { td:hover .buret-cell-marquee > span { transition: none; } }
+
+/* The grid can become a narrow rail beside a wide inspector. */
+#grid-controls { container: grid-controls / inline-size; }
+@container grid-controls (max-width: 400px) {
+  .buret-toolbar-row-main { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .buret-actionbar .ab-spacer, .buret-actionbar .ab-divider { display: none; }
+  .buret-selection-actions { flex-basis: 100%; justify-content: flex-start; }
+  .buret-toolbar-row-view { gap: 6px; }
+}
+.buret-actionbar .ab-actions-menu { margin-left: auto; }

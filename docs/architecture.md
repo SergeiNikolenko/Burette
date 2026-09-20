@@ -190,3 +190,7 @@ remote selections before exporting. Native grid paging accepts `desc:` and
 `numeric:` prefixes on property sort keys (for example
 `desc:numeric:prop:pIC50`); property names remain SQL parameters. Analysis
 column sorting remains unavailable for remote pages.
+
+### Grid inspector opening
+
+The mini Mol* inspector sends `burette-inspector-open` to its parent on a click (not a drag). The host dispatches `structure.open-in-molstar` with `rowIndex`; the grid emits `openSdfMolstarDocument` with `openTarget: "new-tab"`. The SDF message handler adds the prepared document as a new tab, preserving the source collection. Existing messages without `openTarget` retain their active-tab behavior.
