@@ -18,7 +18,7 @@ except Exception as exc:
     sys.exit(3)
 
 text = str(payload.get("text") or "")
-engine = str(payload.get("engine") or "datamol").strip().lower()
+engine = str(payload.get("engine") or "rdkit").strip().lower()
 operation = str(payload.get("operation") or "generate").strip().lower()
 mode = str(payload.get("mode") or "single").strip().lower()
 extension = str(payload.get("extension") or "").strip().lower().lstrip(".")
@@ -26,8 +26,11 @@ source3d = payload.get("source3d")
 if not text.strip():
     sys.stderr.write("Structure text is empty.")
     sys.exit(3)
-if engine not in ("datamol", "rdkit"):
-    sys.stderr.write("3D conformer generation supports Datamol and RDKit engines.")
+# Accept the retired engine name for requests saved by older clients.
+if engine == "datamol":
+    engine = "rdkit"
+if engine != "rdkit":
+    sys.stderr.write("This legacy conformer endpoint supports RDKit only; use native compute for Metal.")
     sys.exit(3)
 if operation not in ("generate", "optimize"):
     sys.stderr.write("Conformer operation must be generate or optimize.")
@@ -187,34 +190,6 @@ def embed_params(random_coords=False):
     return params
 
 
-def datamol_module():
-    try:
-        import datamol as dm
-        return dm
-    except Exception as exc:
-        sys.stderr.write("Datamol Python is not available: " + str(exc))
-        sys.exit(2)
-
-
-def datamol_forcefield(value):
-    probe = Chem.AddHs(Chem.Mol(value))
-    return "MMFF94s" if AllChem.MMFFHasAllMoleculeParams(probe) else "UFF"
-
-
-def conformer_energy_property(conf, forcefield):
-    for key in (
-        "rdkit_" + forcefield + "_energy",
-        "rdkit_MMFF94s_energy",
-        "rdkit_UFF_energy",
-    ):
-        if conf.HasProp(key):
-            try:
-                return float(conf.GetProp(key))
-            except Exception:
-                pass
-    return math.inf
-
-
 def select_ensemble_conformer_ids(scored):
     return [item[2] for item in sorted(scored, key=lambda item: (item[0], item[1], item[2]))]
 
@@ -251,144 +226,92 @@ if operation == "optimize":
     sys.exit(0)
 
 
-used_datamol = engine == "datamol" and core is None
-
-if used_datamol:
-    dm = datamol_module()
-    forcefield = datamol_forcefield(mol)
-    try:
-        generated = dm.conformers.generate(
-            mol,
-            n_confs=ENSEMBLE_CANDIDATE_COUNT if mode == "ensemble" else 32,
-            use_random_coords=True,
-            enforce_chirality=True,
-            num_threads=1,
-            rms_cutoff=ENSEMBLE_RMSD_CUTOFF if mode == "ensemble" else 0.25,
-            clear_existing=True,
-            align_conformers=True,
-            minimize_energy=True,
-            sort_by_energy=True,
-            method="ETKDGv3",
-            forcefield=forcefield,
-            energy_iterations=500,
-            random_seed=0xB00,
-            add_hs=True,
-            ignore_failure=False,
-        )
-    except Exception as exc:
-        sys.stderr.write("Datamol failed to generate 3D conformers: " + str(exc))
-        sys.exit(4)
-    if generated is None or generated.GetNumConformers() == 0:
-        sys.stderr.write("Datamol did not produce conformer coordinates.")
-        sys.exit(4)
-    mol = generated
-    scored = []
-    for conformer in mol.GetConformers():
-        conf_id = int(conformer.GetId())
-        scored.append((
-            conformer_energy_property(conformer, forcefield),
-            -conformer_plane_thickness(mol, conf_id),
-            conf_id,
-        ))
-    if not scored:
-        sys.stderr.write("Datamol did not produce conformer coordinates.")
-        sys.exit(4)
-    if mode == "ensemble":
-        selected_conf_ids = select_ensemble_conformer_ids(scored)
-        method = "Datamol+ETKDGv3+" + forcefield + "+conformer-set"
-    else:
-        _, _, selected_conf_id = sorted(scored, key=lambda item: (item[1], item[0], item[2]))[0]
-        selected_conf_ids = [selected_conf_id]
-        method = "Datamol+ETKDGv3+" + forcefield
-        keep_only_conformer(mol, selected_conf_id)
-else:
-    mol = Chem.AddHs(mol)
+mol = Chem.AddHs(mol)
 
 params = embed_params(False)
 coord_map = {}
 conformer_ids = []
-if not used_datamol:
-    if core is not None:
-        core_conf = core.GetConformer()
-        for core_idx, mol_idx in enumerate(core_match):
-            coord_map[int(mol_idx)] = core_conf.GetAtomPosition(core_idx)
-        if hasattr(params, "SetCoordMap"):
-            params.SetCoordMap(coord_map)
-            if mode == "ensemble":
-                conformer_ids = list(AllChem.EmbedMultipleConfs(mol, numConfs=ENSEMBLE_CANDIDATE_COUNT, params=params))
-                status = 0 if conformer_ids else -1
-            else:
-                status = AllChem.EmbedMolecule(mol, params)
-                conformer_ids = [mol.GetConformer().GetId()] if status == 0 else []
+if core is not None:
+    core_conf = core.GetConformer()
+    for core_idx, mol_idx in enumerate(core_match):
+        coord_map[int(mol_idx)] = core_conf.GetAtomPosition(core_idx)
+    if hasattr(params, "SetCoordMap"):
+        params.SetCoordMap(coord_map)
+        if mode == "ensemble":
+            conformer_ids = list(AllChem.EmbedMultipleConfs(mol, numConfs=ENSEMBLE_CANDIDATE_COUNT, params=params))
+            status = 0 if conformer_ids else -1
         else:
-            status = AllChem.EmbedMolecule(
-                mol,
-                coordMap=coord_map,
-                randomSeed=0xB00,
-                useExpTorsionAnglePrefs=True,
-                useBasicKnowledge=True,
-                enforceChirality=True,
-            )
-            conformer_ids = [mol.GetConformer().GetId()] if status == 0 else []
-    else:
-        mol.RemoveAllConformers()
-        params = embed_params(True)
-        conformer_ids = list(AllChem.EmbedMultipleConfs(mol, numConfs=ENSEMBLE_CANDIDATE_COUNT if mode == "ensemble" else 32, params=params))
-        if not conformer_ids:
             status = AllChem.EmbedMolecule(mol, params)
             conformer_ids = [mol.GetConformer().GetId()] if status == 0 else []
-        else:
-            status = 0
-    if status != 0:
-        if core is not None and not hasattr(params, "SetCoordMap"):
-            status = AllChem.EmbedMolecule(
-                mol,
-                coordMap=coord_map,
-                randomSeed=0xB00,
-                useRandomCoords=True,
-                useExpTorsionAnglePrefs=True,
-                useBasicKnowledge=True,
-                enforceChirality=True,
-            )
-        else:
-            params.useRandomCoords = True
-            if core is not None and hasattr(params, "SetCoordMap"):
-                params.SetCoordMap(coord_map)
-            if mode == "ensemble":
-                conformer_ids = list(AllChem.EmbedMultipleConfs(mol, numConfs=ENSEMBLE_CANDIDATE_COUNT, params=params))
-                status = 0 if conformer_ids else -1
-            else:
-                status = AllChem.EmbedMolecule(mol, params)
-                conformer_ids = [mol.GetConformer().GetId()] if status == 0 else []
-    if status != 0:
-        sys.stderr.write("RDKit failed to embed a 3D conformer.")
-        sys.exit(4)
-
-    method = "ETKDG"
-    scored = []
-    family = "MMFF" if AllChem.MMFFHasAllMoleculeParams(mol) else "UFF"
-    for conf_id in conformer_ids or [mol.GetConformer().GetId()]:
-        try:
-            energy, family = optimize_conformer(mol, conf_id, coord_map.keys() if core is not None else None)
-        except Exception:
-            energy = math.inf
-        scored.append((energy, -conformer_plane_thickness(mol, conf_id), int(conf_id)))
-    if not scored:
-        sys.stderr.write("RDKit did not produce conformer coordinates.")
-        sys.exit(4)
-    if mode == "ensemble":
-        selected_conf_ids = select_ensemble_conformer_ids(scored)
-        method = "ETKDG+" + family + "+conformer-set"
     else:
-        _, _, selected_conf_id = sorted(scored, key=lambda item: (item[1], item[0], item[2]))[0]
-        selected_conf_ids = [selected_conf_id]
-        method = "ETKDG+" + family + ("+fixed-core" if core is not None else "+ensemble")
-        keep_only_conformer(mol, selected_conf_id)
+        status = AllChem.EmbedMolecule(
+            mol,
+            coordMap=coord_map,
+            randomSeed=0xB00,
+            useExpTorsionAnglePrefs=True,
+            useBasicKnowledge=True,
+            enforceChirality=True,
+        )
+        conformer_ids = [mol.GetConformer().GetId()] if status == 0 else []
+else:
+    mol.RemoveAllConformers()
+    params = embed_params(True)
+    conformer_ids = list(AllChem.EmbedMultipleConfs(mol, numConfs=ENSEMBLE_CANDIDATE_COUNT if mode == "ensemble" else 32, params=params))
+    if not conformer_ids:
+        status = AllChem.EmbedMolecule(mol, params)
+        conformer_ids = [mol.GetConformer().GetId()] if status == 0 else []
+    else:
+        status = 0
+if status != 0:
+    if core is not None and not hasattr(params, "SetCoordMap"):
+        status = AllChem.EmbedMolecule(
+            mol,
+            coordMap=coord_map,
+            randomSeed=0xB00,
+            useRandomCoords=True,
+            useExpTorsionAnglePrefs=True,
+            useBasicKnowledge=True,
+            enforceChirality=True,
+        )
+    else:
+        params.useRandomCoords = True
+        if core is not None and hasattr(params, "SetCoordMap"):
+            params.SetCoordMap(coord_map)
+        if mode == "ensemble":
+            conformer_ids = list(AllChem.EmbedMultipleConfs(mol, numConfs=ENSEMBLE_CANDIDATE_COUNT, params=params))
+            status = 0 if conformer_ids else -1
+        else:
+            status = AllChem.EmbedMolecule(mol, params)
+            conformer_ids = [mol.GetConformer().GetId()] if status == 0 else []
+if status != 0:
+    sys.stderr.write("RDKit failed to embed a 3D conformer.")
+    sys.exit(4)
 
-    if core is not None:
-        for conf in mol.GetConformers():
-            for atom_idx, position in coord_map.items():
-                conf.SetAtomPosition(int(atom_idx), position)
+method = "ETKDG"
+scored = []
+family = "MMFF" if AllChem.MMFFHasAllMoleculeParams(mol) else "UFF"
+for conf_id in conformer_ids or [mol.GetConformer().GetId()]:
+    try:
+        energy, family = optimize_conformer(mol, conf_id, coord_map.keys() if core is not None else None)
+    except Exception:
+        energy = math.inf
+    scored.append((energy, -conformer_plane_thickness(mol, conf_id), int(conf_id)))
+if not scored:
+    sys.stderr.write("RDKit did not produce conformer coordinates.")
+    sys.exit(4)
+if mode == "ensemble":
+    selected_conf_ids = select_ensemble_conformer_ids(scored)
+    method = "ETKDG+" + family + "+conformer-set"
+else:
+    _, _, selected_conf_id = sorted(scored, key=lambda item: (item[1], item[0], item[2]))[0]
+    selected_conf_ids = [selected_conf_id]
+    method = "ETKDG+" + family + ("+fixed-core" if core is not None else "+ensemble")
+    keep_only_conformer(mol, selected_conf_id)
+
+if core is not None:
+    for conf in mol.GetConformers():
+        for atom_idx, position in coord_map.items():
+            conf.SetAtomPosition(int(atom_idx), position)
 
 try:
     output_mol = Chem.RemoveHs(mol, sanitize=False)

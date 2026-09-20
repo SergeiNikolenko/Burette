@@ -1161,11 +1161,16 @@ fn generate_3d_conformer_impl(
     let engine = request
         .engine
         .as_deref()
-        .unwrap_or("datamol")
+        .unwrap_or("rdkit")
         .trim()
         .to_lowercase();
+    // Older clients may still request the retired Datamol engine. Both names
+    // use RDKit; Metal generation is routed through the native compute service.
     if !matches!(engine.as_str(), "datamol" | "rdkit") {
-        return Err("3D conformer generation supports Datamol and RDKit engines.".to_string());
+        return Err(
+            "This legacy conformer endpoint supports RDKit only; use native compute for Metal."
+                .to_string(),
+        );
     }
     let mode = if request.mode.as_deref().unwrap_or("single").trim() == "ensemble" {
         "ensemble"
@@ -1211,7 +1216,7 @@ fn generate_3d_conformer_impl(
     let input_payload = serde_json::json!({
         "text": request.text,
         "extension": extension,
-        "engine": engine,
+        "engine": "rdkit",
         "mode": mode,
         "candidateCount": candidate_count,
         "rmsdCutoff": rmsd_cutoff,
@@ -1219,7 +1224,7 @@ fn generate_3d_conformer_impl(
     })
     .to_string();
     let mut candidate_errors = Vec::new();
-    for python in conformer_python_candidates(&engine) {
+    for python in conformer_python_candidates() {
         let mut command = Command::new(&python.command);
         command
             .args(&python.args)
@@ -1276,16 +1281,11 @@ fn generate_3d_conformer_impl(
         });
     }
 
-    let (engine_label, env_name) = if engine == "datamol" {
-        ("Datamol", "BURETTE_DATAMOL_PYTHON")
-    } else {
-        ("RDKit", "BURETTE_RDKIT_PYTHON")
-    };
     Err(if candidate_errors.is_empty() {
-        format!("{engine_label} Python is required for 3D conformer generation. Set {env_name} to a Python executable with {engine} installed.")
+        "RDKit Python is required for 3D conformer generation. Set BURETTE_RDKIT_PYTHON to a Python executable with rdkit installed.".to_string()
     } else {
         format!(
-            "{engine_label} conformer generation failed: {}",
+            "RDKit conformer generation failed: {}",
             format_conformer_candidate_errors(&candidate_errors)
         )
     })
@@ -1338,28 +1338,23 @@ pub(crate) struct ConformerPythonRuntimeStatus {
     last_error: Option<String>,
 }
 
-struct ConformerPythonRuntimeSpec {
-    engine: &'static str,
-    package_name: &'static str,
-    env_name: &'static str,
-    label: &'static str,
-}
-
-pub(crate) fn conformer_python_runtime_status(engine: &str) -> ConformerPythonRuntimeStatus {
-    let spec = conformer_python_runtime_spec(engine);
+pub(crate) fn conformer_python_runtime_status() -> ConformerPythonRuntimeStatus {
     let mut last_error = None;
-    for python in conformer_python_status_candidates(spec.engine) {
-        match conformer_python_status_probe(&python, conformer_python_status_script(spec.engine)) {
+    for python in conformer_python_status_candidates() {
+        match conformer_python_status_probe(
+            &python,
+            "import rdkit\nprint(getattr(rdkit, '__version__', 'unknown'))",
+        ) {
             Ok(version) => {
                 return ConformerPythonRuntimeStatus {
                     available: true,
-                    engine: spec.engine,
-                    package_name: spec.package_name,
+                    engine: "rdkit",
+                    package_name: "rdkit",
                     python_label: Some(python.label.clone()),
                     executable_path: Some(python.command.clone()),
                     command: Some(python.argv()),
                     version,
-                    message: format!("{} conformer Python is available", spec.label),
+                    message: "RDKit conformer Python is available".to_string(),
                     install_hint: None,
                     last_error: None,
                 };
@@ -1369,32 +1364,24 @@ pub(crate) fn conformer_python_runtime_status(engine: &str) -> ConformerPythonRu
     }
     ConformerPythonRuntimeStatus {
         available: false,
-        engine: spec.engine,
-        package_name: spec.package_name,
+        engine: "rdkit",
+        package_name: "rdkit",
         python_label: None,
         executable_path: None,
         command: None,
         version: None,
         message: match &last_error {
-            Some(error) => format!("{} conformer Python was not found: {error}", spec.label),
-            None => format!("{} conformer Python was not found", spec.label),
+            Some(error) => format!("RDKit conformer Python was not found: {error}"),
+            None => "RDKit conformer Python was not found".to_string(),
         },
-        install_hint: Some(format!(
-            "Set {} to a Python executable with {} installed, or install {} into python3.",
-            spec.env_name, spec.package_name, spec.package_name
-        )),
+        install_hint: Some("Set BURETTE_RDKIT_PYTHON to a Python executable with rdkit installed, or install rdkit into python3.".to_string()),
         last_error,
     }
 }
 
-fn conformer_python_candidates(engine: &str) -> Vec<PythonCommand> {
+fn conformer_python_candidates() -> Vec<PythonCommand> {
     let mut candidates = Vec::new();
-    let (env_name, package_name) = if engine == "datamol" {
-        ("BURETTE_DATAMOL_PYTHON", "datamol")
-    } else {
-        ("BURETTE_RDKIT_PYTHON", "rdkit")
-    };
-    if let Ok(value) = env::var(env_name) {
+    if let Ok(value) = env::var("BURETTE_RDKIT_PYTHON") {
         let value = value.trim();
         if !value.is_empty() {
             candidates.push(PythonCommand {
@@ -1421,11 +1408,11 @@ fn conformer_python_candidates(engine: &str) -> Vec<PythonCommand> {
         ],
     ) {
         candidates.push(PythonCommand {
-            label: format!("{} --from {package_name} python", uvx.display()),
+            label: format!("{} --from rdkit python", uvx.display()),
             command: uvx.to_string_lossy().to_string(),
             args: vec![
                 "--from".to_string(),
-                package_name.to_string(),
+                "rdkit".to_string(),
                 "python".to_string(),
             ],
             envs: Vec::new(),
@@ -1517,26 +1504,8 @@ impl PythonCommand {
     }
 }
 
-fn conformer_python_runtime_spec(engine: &str) -> ConformerPythonRuntimeSpec {
-    if engine == "datamol" {
-        ConformerPythonRuntimeSpec {
-            engine: "datamol",
-            package_name: "datamol",
-            env_name: "BURETTE_DATAMOL_PYTHON",
-            label: "Datamol",
-        }
-    } else {
-        ConformerPythonRuntimeSpec {
-            engine: "rdkit",
-            package_name: "rdkit",
-            env_name: "BURETTE_RDKIT_PYTHON",
-            label: "RDKit",
-        }
-    }
-}
-
-fn conformer_python_status_candidates(engine: &str) -> Vec<PythonCommand> {
-    conformer_python_candidates(engine)
+fn conformer_python_status_candidates() -> Vec<PythonCommand> {
+    conformer_python_candidates()
         .into_iter()
         .filter(|candidate| !is_uvx_from_python_candidate(candidate))
         .collect()
@@ -1545,14 +1514,6 @@ fn conformer_python_status_candidates(engine: &str) -> Vec<PythonCommand> {
 fn is_uvx_from_python_candidate(candidate: &PythonCommand) -> bool {
     candidate.args.first().map(String::as_str) == Some("--from")
         && candidate.args.last().map(String::as_str) == Some("python")
-}
-
-fn conformer_python_status_script(engine: &str) -> &'static str {
-    if engine == "datamol" {
-        "import datamol as dm\nprint(getattr(dm, '__version__', 'unknown'))"
-    } else {
-        "import rdkit\nprint(getattr(rdkit, '__version__', 'unknown'))"
-    }
 }
 
 fn conformer_python_status_probe(
@@ -3333,16 +3294,16 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 mod tests {
     use super::{
         bundled_conformer_python_candidates_from_executable, classify_open_paths,
-        conformer_python_candidates, conformer_python_runtime_spec,
-        conformer_python_status_candidates, copy_file_atomically, expand_open_document_paths,
-        expand_open_targets, expand_project_structure_targets, generated_conformer_title,
+        conformer_python_candidates, conformer_python_status_candidates, copy_file_atomically,
+        expand_open_document_paths, expand_open_targets, expand_project_structure_targets,
+        generate_3d_conformer_impl, generated_conformer_title,
         list_project_structure_files_blocking, list_project_structure_files_blocking_with_limits,
         looks_like_supported_structure_file, normalize_inline_structure_extension,
         open_text_structure_for_window_label, open_with_provisional_claim,
         open_with_provisional_read_claims, read_sdf_file_with_limit, smiles_from_sheet_data,
         supported_open_target_extensions, write_collection_with_provisional_claim,
-        write_text_atomically, CollectionWriteTarget, ProjectStructureScan,
-        ProjectStructureScanLimits, TextStructureRequest,
+        write_text_atomically, CollectionWriteTarget, ConformerGenerationRequest,
+        ProjectStructureScan, ProjectStructureScanLimits, TextStructureRequest,
     };
     use crate::menu::OpenDocumentRegistry;
     use crate::preview::grid_store::GridRuntimeRegistry;
@@ -3507,13 +3468,36 @@ mod tests {
 
     #[test]
     fn conformer_python_candidates_include_default_python_names() {
-        let candidates = conformer_python_candidates("datamol");
+        let candidates = conformer_python_candidates();
         assert!(candidates
             .iter()
             .any(|candidate| candidate.label == "python3"));
         assert!(candidates
             .iter()
             .any(|candidate| candidate.label == "python"));
+    }
+
+    #[test]
+    fn legacy_conformer_endpoint_accepts_rdkit_and_retired_engine_name() {
+        for engine in [None, Some("rdkit"), Some("datamol"), Some(" Datamol ")] {
+            let request: ConformerGenerationRequest = serde_json::from_value(serde_json::json!({
+                "title": "test.smi", "extension": "smi", "text": "", "engine": engine
+            }))
+            .unwrap();
+            // Accepted engine names reach structure validation without probing Python.
+            assert_eq!(
+                generate_3d_conformer_impl(request).unwrap_err(),
+                "Draw a molecule first"
+            );
+        }
+        let request: ConformerGenerationRequest = serde_json::from_value(serde_json::json!({
+            "title": "test.smi", "extension": "smi", "text": "CC", "engine": "metal"
+        }))
+        .unwrap();
+        assert_eq!(
+            generate_3d_conformer_impl(request).unwrap_err(),
+            "This legacy conformer endpoint supports RDKit only; use native compute for Metal."
+        );
     }
 
     #[test]
@@ -3558,20 +3542,13 @@ mod tests {
 
     #[test]
     fn conformer_python_status_candidates_skip_uvx_from_python_probe() {
-        let status_candidates = conformer_python_status_candidates("datamol");
+        let status_candidates = conformer_python_status_candidates();
         assert!(status_candidates.iter().all(|candidate| !(candidate
             .args
             .first()
             .map(String::as_str)
             == Some("--from")
             && candidate.args.last().map(String::as_str) == Some("python"))));
-
-        let datamol = conformer_python_runtime_spec("datamol");
-        assert_eq!(datamol.package_name, "datamol");
-        assert_eq!(datamol.env_name, "BURETTE_DATAMOL_PYTHON");
-        let rdkit = conformer_python_runtime_spec("rdkit");
-        assert_eq!(rdkit.package_name, "rdkit");
-        assert_eq!(rdkit.env_name, "BURETTE_RDKIT_PYTHON");
     }
 
     #[test]

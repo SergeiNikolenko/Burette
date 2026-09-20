@@ -45,6 +45,7 @@ for (const file of await runtimeWebFiles()) {
 assert.deepEqual(storageRuntimeFiles, ["grid-viewer.js", "renderer-view-state.js", "viewer.js"]);
 
 assert.deepEqual(storageConstants(viewer), sortedPairs([
+  ["MOLSTAR_OUTLINE_BRIGHTNESS_STORAGE_KEY", "buret.molstar.outlineBrightness"],
   ["SDF_CONTEXT_COLOR_STORAGE_KEY", "buret.sdf.contextColor"],
   ["SDF_CONTEXT_OPACITY_STORAGE_KEY", "buret.sdf.contextOpacity"],
   ["SDF_CONTEXT_STYLE_STORAGE_KEY", "buret.sdf.contextStyle"],

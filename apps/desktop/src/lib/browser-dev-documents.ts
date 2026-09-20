@@ -112,7 +112,7 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v188";
+const GRID_ASSET_VERSION = "grid-ui-v192";
 const VIEWER_ASSET_VERSION = "viewer-ui-v86";
 const MESOSCALE_ASSET_VERSION = "mesoscale-ui-v1";
 // One cache-buster per page load, not per render: the viewer iframe is keyed by
@@ -172,7 +172,6 @@ type BrowserDevConformerGenerationRequest = {
   title: string;
   extension: string;
   text: string;
-  engine?: ViewerPreferences["conformerEngine"];
   operation?: "generate" | "optimize";
   mode?: "single" | "ensemble";
   candidateCount?: number;
@@ -1350,6 +1349,7 @@ function viewerHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   ${hostedMcpBootstrap ? "" : `<base href="${WEB_ASSETS_BASE}" />`}
   <title>Burette - ${escapeHtml(label)}</title>
+  <style>html{color-scheme:${visuals.theme === "auto" ? "light dark" : visuals.theme};background:${visuals.transparentBackground ? "transparent" : visuals.theme === "light" ? "#ffffff" : "#111111"}}body{background:inherit}${visuals.theme === "auto" && !visuals.transparentBackground ? "@media(prefers-color-scheme:light){html{background:#ffffff}}" : ""}</style>
   <link rel="stylesheet" href="${viewerAsset("viewer-runtime.css")}?v=${runtimeAssetVersion}" />
 </head>
 <body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">

@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { pluginPath } from "./lib/plugin-root.mjs";
+import { registerDeepLinks } from "./registrations/deep-links/register.mjs";
 import { registerFetch } from "./registrations/fetch/register.mjs";
 import { registerMolecularReport } from "./registrations/molecular-report/register.mjs";
 import { registerMolecularWorkspace } from "./registrations/molecular-workspace/register.mjs";
@@ -25,6 +26,7 @@ const server = new McpServer(
 );
 
 registerFetch(server);
+registerDeepLinks(server);
 registerMolecularWorkspace(server);
 registerMvsStory(server);
 registerMoleculeTable(server);

@@ -1545,12 +1545,26 @@ fn maestro_pdb_data_from_text(data: &[u8], extension: &str) -> Option<ConvertedS
         return None;
     }
 
-    let data = if models.len() == 1 {
+    let independent_entries = models.len() > 1 && !maestro_models_share_topology(&models);
+    let data = if independent_entries {
+        maestro_independent_entries_to_pdb(&models)
+    } else if models.len() == 1 {
         maestro_atoms_to_pdb(&models[0])
     } else {
         maestro_models_to_pdb(&models)
     };
     let mut staged_entries = Vec::new();
+    if independent_entries {
+        for (index, atoms) in models.iter().enumerate() {
+            staged_entries.push(ConvertedStagedEntry {
+                label: format!("Structure {}", index + 1),
+                data: maestro_single_entry_to_pdb(atoms, &format!("Structure {}", index + 1))
+                    .into_bytes(),
+                extension: "pdb",
+                representation: "structure-scene-entry",
+            });
+        }
+    }
     if has_non_solvent_primary {
         let solvent_atoms = maestro_staged_solvent_atoms(&blocks);
         if !solvent_atoms.is_empty() {
@@ -2027,6 +2041,63 @@ fn maestro_models_to_pdb(models: &[Vec<MaestroAtom>]) -> String {
     pdb
 }
 
+fn maestro_models_share_topology(models: &[Vec<MaestroAtom>]) -> bool {
+    let Some(first) = models.first() else {
+        return true;
+    };
+    models.iter().skip(1).all(|model| {
+        model.len() == first.len()
+            && model.iter().zip(first).all(|(left, right)| {
+                left.symbol == right.symbol
+                    && left.atom_name == right.atom_name
+                    && left.residue_name == right.residue_name
+                    && left.residue_number == right.residue_number
+                    && left.chain_name == right.chain_name
+            })
+    })
+}
+
+fn maestro_independent_entries_to_pdb(models: &[Vec<MaestroAtom>]) -> String {
+    let mut pdb = String::from("REMARK Combined independent Maestro CT entries\n");
+    let mut serial = 1usize;
+    for (model_index, atoms) in models.iter().enumerate() {
+        if serial > 99_999 {
+            break;
+        }
+        let chain = maestro_entry_chain_name(model_index);
+        let capped_len = atoms.len().min(100_000usize.saturating_sub(serial));
+        let mut entry = atoms[..capped_len].to_vec();
+        for atom in &mut entry {
+            atom.chain_name = chain.clone();
+        }
+        for (index, atom) in entry.iter().enumerate() {
+            pdb.push_str(&maestro_pdb_atom_line(serial + index, atom));
+            pdb.push('\n');
+        }
+        push_pdb_conect_lines_with_offset(&mut pdb, &entry, serial - 1);
+        pdb.push_str("TER\n");
+        serial += entry.len();
+    }
+    pdb.push_str("END\n");
+    pdb
+}
+
+fn maestro_single_entry_to_pdb(atoms: &[MaestroAtom], label: &str) -> String {
+    let mut pdb = format!("REMARK {label}\n");
+    for (index, atom) in atoms.iter().take(99_999).enumerate() {
+        pdb.push_str(&maestro_pdb_atom_line(index + 1, atom));
+        pdb.push('\n');
+    }
+    push_pdb_conect_lines(&mut pdb, atoms);
+    pdb.push_str("END\n");
+    pdb
+}
+
+fn maestro_entry_chain_name(index: usize) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    (ALPHABET[index % ALPHABET.len()] as char).to_string()
+}
+
 fn generic_atoms_to_pdb(atoms: &[Atom], label: &str) -> String {
     let mut pdb = format!("REMARK Converted from {label}\n");
     for (index, atom) in atoms.iter().take(99_999).enumerate() {
@@ -2096,6 +2167,14 @@ impl PdbBondAtom for MaestroAtom {
 }
 
 fn push_pdb_conect_lines<T: PdbBondAtom>(pdb: &mut String, atoms: &[T]) {
+    push_pdb_conect_lines_with_offset(pdb, atoms, 0);
+}
+
+fn push_pdb_conect_lines_with_offset<T: PdbBondAtom>(
+    pdb: &mut String,
+    atoms: &[T],
+    serial_offset: usize,
+) {
     let bonds = infer_pdb_bonds(atoms);
     if bonds.is_empty() {
         return;
@@ -2107,9 +2186,9 @@ fn push_pdb_conect_lines<T: PdbBondAtom>(pdb: &mut String, atoms: &[T]) {
     }
     for (index, neighbors) in adjacency.iter().enumerate() {
         for chunk in neighbors.chunks(4) {
-            pdb.push_str(&format!("CONECT{:>5}", index + 1));
+            pdb.push_str(&format!("CONECT{:>5}", serial_offset + index + 1));
             for serial in chunk {
-                pdb.push_str(&format!("{serial:>5}"));
+                pdb.push_str(&format!("{:>5}", serial_offset + serial));
             }
             pdb.push('\n');
         }
@@ -3108,6 +3187,54 @@ f_m_ct {
         assert!(pdb.contains("   1.000   2.000   3.000"));
         assert!(pdb.contains("   5.000   6.000   7.000"));
         assert!(pdb.ends_with("END\n"));
+    }
+
+    #[test]
+    fn keeps_independent_maestro_cts_out_of_trajectory_models() {
+        let data = br#"
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  solute
+  m_atom[2] {
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    :::
+    6 0.0 0.0 0.0 "LIG " " C1 "
+    8 1.2 0.0 0.0 "LIG " " O1 "
+    :::
+  }
+}
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  solute
+  m_atom[1] {
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    :::
+    7 4.0 0.0 0.0 "LIG " " N1 "
+    :::
+  }
+}
+"#;
+        let converted = converted_data_from_text(data, "mae", "ligprep.mae").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+        assert!(!pdb.contains("MODEL"));
+        assert!(pdb.contains("Combined independent Maestro CT entries"));
+        assert_eq!(converted.staged_entries.len(), 2);
+        assert!(converted
+            .staged_entries
+            .iter()
+            .all(|entry| entry.representation == "structure-scene-entry"));
     }
 
     #[test]

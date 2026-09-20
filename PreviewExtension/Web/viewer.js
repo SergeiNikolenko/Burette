@@ -16,6 +16,7 @@
   const TOOLBAR_ORIENTATION_HYSTERESIS = 48;
   const PANEL_CLOSE_HIT_WIDTH = 38;
   const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;
+  const FINDER_PREVIEW_MAX_WIDTH_PX = 760;
   const MOLSTAR_TOUCH_CONTEXT_MENU_DELAY_MS = 520;
   const MOLSTAR_TOUCH_CONTEXT_MENU_MOVE_THRESHOLD_PX = 12;
   const MOLSTAR_TOUCH_PICK_RADIUS_PX = 18;
@@ -36,6 +37,7 @@
   const SDF_CONTEXT_STYLE_STORAGE_KEY = 'buret.sdf.contextStyle';
   const SDF_CONTEXT_OPACITY_STORAGE_KEY = 'buret.sdf.contextOpacity';
   const SDF_CONTEXT_COLOR_STORAGE_KEY = 'buret.sdf.contextColor';
+  const MOLSTAR_OUTLINE_BRIGHTNESS_STORAGE_KEY = 'buret.molstar.outlineBrightness';
   const XYZ_FRAME_MODE_STORAGE_KEY = 'buret.xyz.frameMode';
   const XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT = 80;
   const MAX_STRUCTURE_OVERLAY_FRAME_COUNT = 50;
@@ -63,7 +65,7 @@
     { value: 'illustrative-surface', label: 'Ghost Surface', group: 'Burette', legacyStyle: 'illustrative-surface' },
     { value: 'ball-and-stick', label: 'Ball & Stick', group: 'Burette', legacyStyle: 'ball-and-stick' },
     { value: 'spacefill', label: 'Spacefill by Element', group: 'Burette', legacyStyle: 'spacefill' },
-    { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line', defaultAppearance: 'default' },
+    { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line' },
     { value: 'atomic-detail', label: 'Atomic Detail', group: 'Basic', provider: 'preset-structure-representation-atomic-detail' },
     { value: 'polymer-cartoon', label: 'Polymer Cartoon', group: 'Basic', provider: 'preset-structure-representation-polymer-cartoon' },
     { value: 'polymer-ligand', label: 'Polymer & Ligand', group: 'Basic', provider: 'preset-structure-representation-polymer-and-ligand' },
@@ -139,6 +141,7 @@
   const xyzrenderSheetRequests = new Map();
   const xyzrenderSheetItemEntries = new WeakMap();
   let molstarWindowResizeHandler = null;
+  let molstarOutlineBrightness = 0;
   let molstarContainerResizeCleanup = null;
   let molstarContextMenuCleanup = null;
   let molstarBrowserAnnotationTargetCleanup = null;
@@ -1846,7 +1849,6 @@
   }
 
   function molstarPresetAppearance(option, config) {
-    if (option?.defaultAppearance) return normalizeMolstarAppearance(option.defaultAppearance);
     return configuredMolstarAppearance(config);
   }
 
@@ -2036,6 +2038,42 @@
     const opacity = Number(value);
     if (!Number.isFinite(opacity)) return 0.90;
     return Math.min(Math.max(opacity, 0.72), 0.98);
+  }
+
+  function normalizeMolstarOutlineBrightness(value) {
+    const brightness = Number(value);
+    if (!Number.isFinite(brightness)) return 0;
+    return Math.min(Math.max(brightness, 0), 1);
+  }
+
+  function readMolstarOutlineBrightness() {
+    try {
+      return normalizeMolstarOutlineBrightness(window.localStorage?.getItem(MOLSTAR_OUTLINE_BRIGHTNESS_STORAGE_KEY));
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function molstarOutlineColor() {
+    const channel = Math.round(molstarOutlineBrightness * 255);
+    return (channel << 16) | (channel << 8) | channel;
+  }
+
+  function setMolstarOutlineBrightness(value, viewer = activeMolstarViewer()) {
+    molstarOutlineBrightness = normalizeMolstarOutlineBrightness(value);
+    try {
+      window.localStorage?.setItem(MOLSTAR_OUTLINE_BRIGHTNESS_STORAGE_KEY, molstarOutlineBrightness.toFixed(2));
+    } catch (_) {}
+    const canvas = viewer?.plugin?.canvas3d;
+    if (!canvas || canvas.props.postprocessing.outline.name !== 'on') return;
+    canvas.setProps({
+      postprocessing: {
+        outline: {
+          name: 'on',
+          params: { ...canvas.props.postprocessing.outline.params, color: molstarOutlineColor() }
+        }
+      }
+    });
   }
 
   function resolvedCanvasBackground() {
@@ -3054,6 +3092,7 @@
   }
 
   function scheduleMolstarStructureFocus(viewer, options = {}) {
+    if (activeConfig?.inspectorPreview === true) return;
     if (options.force !== true && !molstarAutoFocusEnabled(activeConfig)) return;
     if (options.allowWithContextFocus !== true && hasMolstarContextFocus(activeConfig)) return;
     const serial = ++molstarStructureFocusSerial;
@@ -4344,18 +4383,7 @@
   function requestMolstarStyle(style) {
     const value = normalizeMolstarStyle(style);
     const preset = molstarPresetForLegacyStyle(value);
-    const appearance = value === 'illustrative' || value === 'illustrative-surface' ? 'illustrative' : 'default';
-    updateMolstarPresentationConfig(preset, appearance, value);
-    if (!activeViewer) {
-      setStatus('Mol* style can be changed after the viewer loads.', 'error');
-      return;
-    }
-    const serial = ++molstarStyleApplySerial;
-    setStatus(`[web] Applying Mol* ${molstarStyleLabel(value)} style…`);
-    void reloadMolstarStyle(activeViewer, value, serial).catch(error => {
-      if (serial !== molstarStyleApplySerial) return;
-      setStatus(`Mol* style switch failed.\n\n${error?.message || String(error)}`, 'error');
-    });
+    void requestMolstarPreset(preset, { preserveCamera: true });
   }
 
   function molstarStyleLabel(value) {
@@ -4425,7 +4453,7 @@
     }
   }
 
-  async function requestMolstarPreset(preset, { preserveCamera = false } = {}) {
+  async function requestMolstarPreset(preset, { preserveCamera = true } = {}) {
     const value = normalizeMolstarPreset(preset);
     const controller = ensureMolstarPresetPreviewController();
     if (controller) {
@@ -4461,7 +4489,16 @@
       if (wasStoryPlaying) await controlMolstarStory({ operation: 'pause' });
       sceneSnapshot = viewer.plugin?.state?.data?.getSnapshot?.();
       if (option.provider) await applyMolstarProviderPreset(viewer, option);
-      else await reloadMolstarStyle(viewer, legacyStyle, serial, appearance);
+      else if (molstarStoryState().available) await reloadMolstarStyle(viewer, legacyStyle, serial, appearance);
+      else {
+        // Keep parsed models, trajectories, selections and the camera alive.
+        // Ghost Surface needs a base representation before adding its envelope.
+        if (legacyStyle === 'illustrative-surface') {
+          await applyMolstarProviderPreset(viewer, molstarPresetOption('automatic'));
+        }
+        await applyMolstarStyle(viewer, legacyStyle);
+        await applyMolstarWaterLineRepresentation(viewer);
+      }
       if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
       await applyMolstarAppearance(viewer, appearance);
       if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
@@ -4598,7 +4635,7 @@
       // is set here, including turning the illustrative post-processing back off,
       // and the scene half comes from re-applying the current snapshot.
       if (normalized === 'illustrative' || normalized === 'illustrative-surface') {
-        await applyMolstarIllustrativePostprocessing(viewer, { includeTransparent: normalized === 'illustrative-surface' });
+        await applyMolstarIllustrativePostprocessing(viewer, { includeTransparent: true });
       } else {
         await applyMolstarNonIllustrativePostprocessing(viewer);
       }
@@ -5350,6 +5387,7 @@
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
     installToolbarAutoLayoutTracking(toolbar);
+    installMolstarDragDropGuard();
     installMolstarFloatingPanelTracking();
     initSceneTree(viewer);
     initViewportControls(viewer);
@@ -5360,6 +5398,26 @@
     updateSdfPoseButton();
     updateThemeButton();
     applyLayoutState(viewer);
+  }
+
+  // Finder exposes its selected file as a drag payload while the pointer moves
+  // through the compact preview pane. Keep that host gesture away from Mol*,
+  // which would otherwise replace the structure with its "Drop file here"
+  // layer. Larger Quick Look windows retain Mol*'s normal file-drop behavior.
+  function installMolstarDragDropGuard() {
+    if (window.__buretteMolstarDragDropGuardInstalled) return;
+    window.__buretteMolstarDragDropGuardInstalled = true;
+    const guard = event => {
+      const config = activeConfig || window.BuretteConfig || {};
+      const isCompactFinderPreview = config.quickLookViewer === true && window.innerWidth <= FINDER_PREVIEW_MAX_WIDTH_PX;
+      const carriesFiles = Array.from(event?.dataTransfer?.types || []).includes('Files');
+      if (!isCompactFinderPreview || !carriesFiles) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    document.addEventListener('dragenter', guard, true);
+    document.addEventListener('dragover', guard, true);
+    document.addEventListener('drop', guard, true);
   }
 
   function setMolstarStructureDirty(dirty) {
@@ -8372,6 +8430,9 @@ SOFTWARE.
     }
     sceneTreeSurfaceFillRow(menu, viewer, target);
     sceneTreeMenuSlider(menu, 'Opacity', 'opacity', Math.round(alpha * 100));
+    if (alpha < 0.999) {
+      sceneTreeMenuSlider(menu, 'Outline brightness', 'outline-brightness', Math.round(molstarOutlineBrightness * 100));
+    }
 
     sceneTreeMenuSection(menu, 'Colour');
     sceneTreeMenuThemePicker(menu, 'Theme', 'representation-color',
@@ -10288,9 +10349,22 @@ SOFTWARE.
         if (readout) readout.textContent = `${percent}%`;
         streamSceneTreeReprAlpha(ref, percent / 100);
       });
+      document.addEventListener('input', event => {
+        const slider = event.target.closest('[data-scene-tree-slider="outline-brightness"]');
+        const ref = slider?.closest('[data-ref]')?.dataset.ref;
+        if (!slider || !ref) return;
+        const percent = Number(slider.value);
+        const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
+        if (readout) readout.textContent = `${percent}%`;
+        setMolstarOutlineBrightness(percent / 100);
+      });
       document.addEventListener('change', event => {
         const slider = event.target.closest('[data-scene-tree-slider="opacity"]');
         if (slider) commitSceneTreeControlUndo(slider);
+      });
+      document.addEventListener('change', event => {
+        const slider = event.target.closest('[data-scene-tree-slider="outline-brightness"]');
+        if (slider) scheduleSceneTreeRender();
       });
       // Numeric advanced rows follow the thumb like opacity does. Surfaces rebuild
       // their mesh on every commit, so these share the same latest-wins queue
@@ -14308,9 +14382,13 @@ SOFTWARE.
   }
 
   function parseV2000SdfRecord(record) {
+    // RDKit and several docking tools emit V3000 mol blocks. Keep the
+    // existing call sites (grid, pose pager and overlay) format-agnostic by
+    // dispatching those records through the matching parser here.
+    if (/\bV3000\b/u.test(String(record || ''))) return parseV3000SdfRecord(record);
     const lines = String(record || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const countsIndex = lines.findIndex(line => /\bV2000\b/u.test(line) || /^\s*\d+\s+\d+\s+/.test(line));
-    if (countsIndex < 0 || lines[countsIndex].includes('V3000')) return null;
+    if (countsIndex < 0) return null;
     const countParts = lines[countsIndex].trim().split(/\s+/u);
     const atomCount = parseInt(lines[countsIndex].slice(0, 3), 10) || parseInt(countParts[0], 10);
     const bondCount = parseInt(lines[countsIndex].slice(3, 6), 10) || parseInt(countParts[1], 10);
@@ -14332,6 +14410,69 @@ SOFTWARE.
       if (!bond) return null;
       bonds.push(bond);
     }
+
+    const xs = atoms.map(atom => atom.x);
+    const ys = atoms.map(atom => atom.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    return {
+      atomCount,
+      bondCount,
+      atoms,
+      bonds,
+      width: maxX - minX,
+      height: maxY - minY,
+      centerX: (minX + maxX) / 2,
+      centerY: (minY + maxY) / 2
+    };
+  }
+
+  function parseV3000SdfRecord(record) {
+    const lines = String(record || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const countsLine = lines.find(line => /^\s*M\s+V30\s+COUNTS\s+/u.test(line));
+    const counts = countsLine?.match(/^\s*M\s+V30\s+COUNTS\s+(\d+)\s+(\d+)/u);
+    if (!counts) return null;
+    const atomCount = Number(counts[1]);
+    const bondCount = Number(counts[2]);
+    if (!Number.isInteger(atomCount) || !Number.isInteger(bondCount) || atomCount <= 0) return null;
+
+    const atomStart = lines.findIndex(line => /^\s*M\s+V30\s+BEGIN\s+ATOM\s*$/u.test(line));
+    const bondStart = lines.findIndex(line => /^\s*M\s+V30\s+BEGIN\s+BOND\s*$/u.test(line));
+    if (atomStart < 0 || bondStart < 0) return null;
+
+    const atoms = [];
+    const atomIds = new Map();
+    for (let index = atomStart + 1; index < lines.length && atoms.length < atomCount; index += 1) {
+      const line = lines[index].trim();
+      if (!line || /^M\s+V30\s+END\s+ATOM$/u.test(line)) break;
+      const parts = line.split(/\s+/u);
+      if (parts.length < 7 || parts[0] !== 'M' || parts[1] !== 'V30') return null;
+      const id = Number(parts[2]);
+      const element = normalizeSdfElement(parts[3]);
+      const x = Number(parts[4]);
+      const y = Number(parts[5]);
+      const z = Number(parts[6]);
+      if (!Number.isInteger(id) || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+      atomIds.set(id, atoms.length + 1);
+      atoms.push({ x, y, z, element, label: parts[3] });
+    }
+    if (atoms.length !== atomCount) return null;
+
+    const bonds = [];
+    for (let index = bondStart + 1; index < lines.length && bonds.length < bondCount; index += 1) {
+      const line = lines[index].trim();
+      if (!line || /^M\s+V30\s+END\s+BOND$/u.test(line)) break;
+      const parts = line.split(/\s+/u);
+      if (parts.length < 6 || parts[0] !== 'M' || parts[1] !== 'V30') return null;
+      const order = normalizeSdfBondOrder(parts[3]);
+      const a = atomIds.get(Number(parts[4]));
+      const b = atomIds.get(Number(parts[5]));
+      if (!a || !b) return null;
+      bonds.push({ a, b, order });
+    }
+    if (bonds.length !== bondCount) return null;
 
     const xs = atoms.map(atom => atom.x);
     const ys = atoms.map(atom => atom.y);
@@ -15366,11 +15507,12 @@ SOFTWARE.
   }
 
   // `includeTransparent` is always written out: the outline otherwise skips
-  // translucent geometry, and leaving the previous value in place would leak the
-  // surface preset's outlining into the plain illustrative style.
+  // translucent geometry, which makes the illustrative contour disappear as soon
+  // as a chain's opacity is lowered.
   async function applyMolstarIllustrativePostprocessing(viewer, options = {}) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
+    molstarOutlineBrightness = readMolstarOutlineBrightness();
     await plugin.managers.structure.component.setOptions({
       ...plugin.managers.structure.component.state.options,
       ignoreLight: true
@@ -15386,10 +15528,10 @@ SOFTWARE.
               ? postprocessing.outline.params
               : {
                   scale: 1,
-                  color: 0x000000,
                   threshold: 0.33
                 }),
-            includeTransparent: options.includeTransparent === true
+            color: molstarOutlineColor(),
+            includeTransparent: options.includeTransparent !== false
           }
         },
         occlusion: {
@@ -18473,6 +18615,7 @@ SOFTWARE.
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
     const hasFileList = prepared.dockingSceneMode || hasTrajectorySegments;
+    root.classList.toggle('buret-docking-poses-frames', !hasFileList);
     const listEntries = prepared.dockingSceneMode ? prepared.poses : trajectorySegments;
     const label = hasFileList ? document.createElement('button') : document.createElement('span');
     const currentName = hasFileList ? document.createElement('span') : null;
@@ -26113,9 +26256,21 @@ SOFTWARE.
       );
     }
 
-    const viewer = typeof window.molstar.Viewer.create === 'function'
-      ? await window.molstar.Viewer.create('app', createViewerOptions())
-      : new window.molstar.Viewer('app', createViewerOptions());
+    // Mol* applies viewportBackgroundColor after its first canvas render.
+    // Keep that default-colour frame hidden until the configured canvas draws.
+    const app = document.getElementById('app');
+    app?.classList.add('buret-molstar-initializing');
+    let viewer;
+    try {
+      viewer = typeof window.molstar.Viewer.create === 'function'
+        ? await window.molstar.Viewer.create('app', createViewerOptions())
+        : new window.molstar.Viewer('app', createViewerOptions());
+      viewer.plugin.canvas3d?.setProps({ transparentBackground, renderer: { backgroundColor: canvasBackgroundColor() } });
+      viewer.plugin.canvas3d?.requestDraw();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    } finally {
+      app?.classList.remove('buret-molstar-initializing');
+    }
     // Set before loading data, when Mol* initializes the sequence state.
     viewer.plugin.spec.components = {
       ...viewer.plugin.spec.components,
@@ -26365,6 +26520,54 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     }
 
     await startMolstar(config, cb);
+    if (config.inspectorPreview === true) {
+      activeViewer.plugin.canvas3d?.setProps({ cameraResetDurationMs: 0, camera: { helper: { axes: { name: 'off', params: {} } } } });
+      const settlePreview = async () => {
+        const plugin = activeViewer.plugin;
+        plugin.canvas3d?.commit(true);
+        requestMolstarStructureFocus(activeViewer, { durationMs: 0 });
+        await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
+        plugin.managers.camera.orientAxes(undefined, 0);
+        await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
+      };
+      await settlePreview();
+      document.getElementById('app')?.classList.remove('buret-inspector-updating');
+      let pending = null;
+      let running = false;
+      let current = structureDataForMolstar(config).data;
+      window.addEventListener('message', async event => {
+        if (event.source !== window.parent || event.data?.source !== 'burette-inspector-host') return;
+        const data = event.data.molblock;
+        if (typeof data !== 'string' || !data || data.length > 350000) return;
+        pending = data;
+        if (running) return;
+        running = true;
+        const previousFrame = captureMolstarTransitionFrame();
+        const app = document.getElementById('app');
+        app?.classList.add('buret-inspector-updating');
+        activeViewer.plugin.animationLoop.stop({ noDraw: true });
+        try {
+          while (pending !== null) {
+            const next = pending;
+            pending = null;
+            if (next === current) continue;
+            await activeViewer.plugin.clear();
+            await loadPreparedStructure(activeViewer, { data: next, format: 'mol', label: 'Molecule' });
+            await applyConfiguredMolstarPreset(activeViewer, activeConfig);
+            current = next;
+            await settlePreview();
+          }
+        } catch (error) { console.error('Inspector preview:', error); }
+        finally {
+          app?.classList.remove('buret-inspector-updating');
+          removeMolstarTransitionFrame(previousFrame);
+          activeViewer.plugin.animationLoop.start();
+          running = false;
+        }
+      });
+      window.parent.postMessage({ source: 'burette-inspector-ready' }, '*');
+    }
+
   }
 
   function waitForFirstPaint() {

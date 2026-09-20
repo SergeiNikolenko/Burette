@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, get as httpGet } from 'node:http';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
 function get(url, headers = {}) {
@@ -111,6 +111,31 @@ try {
   assert.equal(payload.result.mode, 'browser-preview');
   assert.equal(payload.result.activeDocument.title, 'mini.pdb');
   assert.equal(payload.result.scene.known, false);
+
+  const actionFile = resolve(tmpdir(), `burette-agent-action-${process.pid}.json`);
+  await writeFile(actionFile, JSON.stringify({ type: 'reset_camera' }));
+  const statusAlias = runCli(['status', '--url', ready.url]);
+  assert.equal(statusAlias.status, 0, statusAlias.stderr);
+  assert.equal(JSON.parse(statusAlias.stdout).result.activeDocument.title, 'mini.pdb');
+  const actionFileResult = runCli(['action', '--url', ready.url, '--action-file', actionFile]);
+  assert.equal(actionFileResult.status, 0, actionFileResult.stderr);
+  assert.equal(JSON.parse(actionFileResult.stdout).result.action.type, 'reset_camera');
+  const namedSceneResult = runCli(['scene', 'show-surface', '--url', ready.url]);
+  assert.equal(namedSceneResult.status, 0, namedSceneResult.stderr);
+  assert.equal(JSON.parse(namedSceneResult.stdout).result.action.type, 'show_surface');
+  const stdinResult = spawnSync(process.execPath, ['scripts/burette-agent.mjs', 'action', '--url', ready.url, '--stdin'], {
+    encoding: 'utf8',
+    input: JSON.stringify({ type: 'hide_waters' })
+  });
+  assert.equal(stdinResult.status, 0, stdinResult.stderr);
+  assert.equal(JSON.parse(stdinResult.stdout).result.action.type, 'hide_waters');
+  const oversizedInput = spawnSync(process.execPath, ['scripts/burette-agent.mjs', 'action', '--url', ready.url, '--stdin'], {
+    encoding: 'utf8',
+    input: JSON.stringify({ type: 'reset_camera', padding: 'x'.repeat(256 * 1024) })
+  });
+  assert.equal(oversizedInput.status, 2);
+  assert.equal(JSON.parse(oversizedInput.stderr).error.code, 'INVALID_ARGS');
+  await rm(actionFile, { force: true });
 
   const action = runCli(['act', '--url', ready.url, '{"type":"reset_camera"}']);
   assert.equal(action.status, 0, action.stderr);
@@ -397,6 +422,10 @@ try {
     assert.equal(desktopPayload.result.mode, 'desktop-app');
     assert.equal(desktopPayload.result.sessionDir, sessionDir);
     assert.equal(desktopPayload.result.launched, false);
+    const sessionLink = new URL(desktopPayload.result.deepLink);
+    assert.equal(sessionLink.protocol, 'burette:');
+    assert.equal(sessionLink.hostname, 'session');
+    await rm(resolve(homedir(), 'Library/Application Support/com.local.BuretteV10/deep-links', `${sessionLink.pathname.slice(1)}.json`));
 
     const session = JSON.parse(await readFile(resolve(sessionDir, 'session.json'), 'utf8'));
     assert.equal(session.mode, 'desktop-app');

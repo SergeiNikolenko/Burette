@@ -1038,6 +1038,7 @@ export default function App() {
     openFepSetupWorkspace,
     openKetcherWithStructures,
     openPaths,
+    fetchPdbStructure,
     openStructureRecords,
     openTextDocuments,
     pushErrorStatus,

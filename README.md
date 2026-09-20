@@ -243,7 +243,7 @@ Burette settings cover:
 Optional integrations include a local `xyzrender` executable, VESTA, external
 chemistry editors discovered by macOS, and managed or detected scientific
 runtimes (xTB via a managed Conda install or an existing binary, CREST,
-descriptor/RDKit and Datamol Python environments, and Schrödinger tools).
+descriptor/RDKit Python environments, and Schrödinger tools).
 
 ## Unsupported file or format?
 

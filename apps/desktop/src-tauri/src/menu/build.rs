@@ -53,6 +53,8 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let new_window = MenuItemBuilder::with_id("file.new-window", "New Window")
         .accelerator("CmdOrCtrl+N")
         .build(app)?;
+    let resume =
+        MenuItemBuilder::with_id("file.resume-session", "Resume Last Session").build(app)?;
     let new_tab = MenuItemBuilder::with_id("file.new-tab", "New Tab")
         .accelerator("CmdOrCtrl+T")
         .build(app)?;
@@ -128,6 +130,7 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let file_menu = SubmenuBuilder::new(app, "File")
         .items(&[
             &new_window,
+            &resume,
             &new_tab,
             &PredefinedMenuItem::separator(app)?,
             &open,

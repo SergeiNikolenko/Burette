@@ -2174,7 +2174,7 @@ fn parse_datawarrior_batch(
         .into_iter()
         .map(|value| value.trim().to_string())
         .collect();
-    let structure_columns: Vec<_> = headers
+    let idcode_columns: Vec<_> = headers
         .iter()
         .enumerate()
         .filter_map(|(index, header)| {
@@ -2183,14 +2183,25 @@ fn parse_datawarrior_batch(
                 .and_then(|column| column.special_type.as_deref())
                 .unwrap_or("")
                 .to_ascii_lowercase();
-            if special_type == "idcode" {
-                Some((index, true))
-            } else if is_smiles_column(&normalize_column_name(header)) {
-                Some((index, false))
-            } else {
-                None
-            }
+            (special_type == "idcode").then_some((index, true))
         })
+        .collect();
+    let smiles_columns: Vec<_> = headers
+        .iter()
+        .enumerate()
+        .filter_map(|(index, header)| {
+            let special_type = columns
+                .get(header)
+                .and_then(|column| column.special_type.as_deref())
+                .unwrap_or("");
+            (special_type.is_empty() && is_smiles_column(&normalize_column_name(header)))
+                .then_some((index, false))
+        })
+        .collect();
+    let structure_columns: Vec<_> = idcode_columns
+        .iter()
+        .chain(smiles_columns.iter())
+        .copied()
         .collect();
     if structure_columns.is_empty() {
         return ParsedGridBatch {
@@ -2223,7 +2234,7 @@ fn parse_datawarrior_batch(
                 "compound_id" | "id" | "name" | "title" | "compound"
             )
     });
-    let multiple_structure_columns = structure_columns.len() > 1;
+    let multiple_structure_columns = idcode_columns.is_empty() && smiles_columns.len() > 1;
     let mut records = Vec::new();
     let mut complete = true;
     // A row can hold several structure columns, so a batch may stop mid-row. The
@@ -2249,8 +2260,16 @@ fn parse_datawarrior_batch(
             continue;
         }
         let cells = parse_delimited_line(line, '\t');
+        let has_idcode_value = idcode_columns.iter().any(|(index, _)| {
+            cells
+                .get(*index)
+                .is_some_and(|cell| !cell.trim().is_empty())
+        });
         let mut emitted_in_row = 0usize;
         for (structure_index, is_idcode) in &structure_columns {
+            if !is_idcode && has_idcode_value {
+                continue;
+            }
             let value = cells
                 .get(*structure_index)
                 .map(|cell| cell.trim())

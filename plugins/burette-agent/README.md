@@ -58,7 +58,10 @@ bun scripts/burette-agent.mjs open --mode browser-preview samples/mini.pdb
 bun scripts/burette-agent.mjs open --mode browser-agent-shell samples/mini.pdb
 bun scripts/burette-agent.mjs open --mode desktop-app samples/mini.pdb
 bun scripts/burette-agent.mjs observe --session-dir /tmp/burette-agent-session
+bun scripts/burette-agent.mjs status --session-dir /tmp/burette-agent-session
 bun scripts/burette-agent.mjs act --session-dir /tmp/burette-agent-session '{"type":"reset_camera"}'
+bun scripts/burette-agent.mjs scene focus-ligand --session-dir /tmp/burette-agent-session --wait-ms 12000
+bun scripts/burette-agent.mjs action --session-dir /tmp/burette-agent-session --action-file action.json
 bun scripts/burette-agent.mjs act --session-dir /tmp/burette-agent-session '{"type":"apply_scene","components":[{"selector":"protein","label":"Protein","highlight":true},{"selector":{"chain":"A","range":[45,58]},"label":"Active loop","select":true,"focus":true}]}'
 bun scripts/burette-agent.mjs render-panel --session-dir /tmp/burette-agent-session --kind markdown --file notes.md
 bun scripts/burette-agent.mjs story-create --spec story.json --output story.mvsx --asset protein.cif=/path/protein.cif
@@ -70,6 +73,15 @@ bun scripts/burette-agent.mjs story-schema --schema scene --node component
 ```
 
 MCP tools wrap this CLI instead of reimplementing the app control layer.
+
+The CLI has two levels. `open`, `status`, `scene`, and `render` are the compact
+operator interface; `act` remains the escape hatch for the complete typed
+action contract. `status` is an alias for `observe`, `action` for `act`, and
+`render` for `render-panel`. Actions can be supplied as a positional JSON
+object, with `--action-file`, or through `--stdin`, which keeps shell quoting
+out of repeatable scripts. Named `scene` commands map directly to the
+allowlisted Mol* actions and still use the same session queue, wait behavior,
+and structured errors as `act`.
 
 External agents should use the short facade first:
 

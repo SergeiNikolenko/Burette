@@ -383,6 +383,13 @@
     root.dataset.hoverPreviewBound = '1';
     let lastHoverIndex = null;
     root.addEventListener('pointerover', (event) => {
+      const cell = event.target?.closest?.('td');
+      const text = cell?.querySelector('.buret-cell-marquee');
+      if (text) {
+        const shift = Math.max(0, text.firstElementChild.scrollWidth - text.clientWidth);
+        text.style.setProperty('--marquee-shift', `${shift}px`);
+        text.style.setProperty('--marquee-duration', `${Math.max(0.45, shift / 34)}s`);
+      }
       const target = event.target?.closest?.(
         '.buret-card[data-index], .buret-grid-table-row[data-index], .buret-grid-rail-tick[data-buret-grid-rail-index]'
       );
@@ -1112,10 +1119,16 @@
       case 'view.grid-renderer-xyzrender':
         setCardRenderer('xyzrender', cfgValue);
         return;
-      case 'structure.open-in-molstar':
+      case 'structure.open-in-molstar': {
+        const targetRow = commandTargetRow(body);
+        if (targetRow && caps.molstarOpen) {
+          void requestSingleMolstarDocument(targetRow, cfgValue, 'new-tab');
+          return;
+        }
         if ((!caps.molstarOpen && !caps.rendererSwitch) || selectedStructureCount < 1 || selectedStructureCount > NATIVE_MOLSTAR_SELECTION_LIMIT) return;
         requestRendererSwitch('molstar', cfgValue);
         return;
+      }
       case 'structure.edit-in-ketcher': {
         if (!caps.ketcherOpen) return;
         const targetRow = commandTargetRow(body);
@@ -2277,6 +2290,8 @@
     toggle.disabled = !hasInputCoordinates;
     toggle.title = hasInputCoordinates ? 'Use coordinates embedded in the file' : 'No file coordinates in this grid';
     toggle.setAttribute('aria-pressed', hasInputCoordinates && state.rdkitUseInputCoords ? 'true' : 'false');
+    const label = toggle.querySelector('[data-coordinate-mode]');
+    if (label) label.textContent = hasInputCoordinates && state.rdkitUseInputCoords ? '3D' : '2D';
   }
 
   function hasInputCoordinateRows() {
@@ -2344,7 +2359,7 @@
     setStatus(`[grid] Opening ${records.length.toLocaleString()} selected molecule${records.length === 1 ? '' : 's'} in Molstar.`);
   }
 
-  async function requestSingleMolstarDocument(row, cfg) {
+  async function requestSingleMolstarDocument(row, cfg, openTarget = 'active-tab') {
     const records = await sdfRecordTextsForMolstar([row]);
     const record = records[0] || null;
     const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
@@ -2355,6 +2370,7 @@
     const receptorPath = String(cfg?.dockingReceptorPath || '').trim();
     const title = `${safeStructureFileStem(label, Number(row?.index))}.sdf`;
     post('openSdfMolstarDocument', `[grid] Open ${label} in Molstar.`, {
+      openTarget,
       documentId: cfg?.documentId || null,
       title,
       extension: 'sdf',
@@ -3981,8 +3997,6 @@
         ? `Indexing failed: ${state.indexError}`
         : state.indexing
         ? `Indexing ${included.toLocaleString()}${state.recordsTotalHint ? ` / ${state.recordsTotalHint.toLocaleString()}` : ''} ${effectiveMolecularGrid(cfg) ? 'molecules' : 'rows'}`
-        : hasMoreRows()
-        ? 'More rows available'
         : '';
     }
     const clearSMARTS = document.getElementById('clear-smarts');
@@ -5130,7 +5144,7 @@
 
   function tableCellHTML(row, column, cfg) {
     if (column.html) return column.html(row, cfg);
-    return tableHighlightedTextHTML(String(column.get(row) ?? ''));
+    return `<span class="buret-cell-marquee"><span>${tableHighlightedTextHTML(String(column.get(row) ?? ''))}</span></span>`;
   }
 
   function tableHighlightedTextHTML(text) {

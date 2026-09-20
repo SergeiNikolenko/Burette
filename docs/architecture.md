@@ -55,6 +55,13 @@ The desktop shell is a compact molecule workspace:
 - tab strip for active structure pages and settings
 - command palette for app actions
 - native macOS menu bar with stateful, context-dependent items
+- macOS Dock menu for New Workspace, Open Structure, up to seven recent
+  documents, Resume Last Session, Open from Clipboard, and Settings. Commands
+  reuse the File/App menu handlers; recent entries refresh when the Dock menu
+  opens. Resume restores missing saved windows and focuses the saved active
+  window without replacing currently open work. Clipboard contents are validated
+  by the existing import flow after selection. Custom Dock commands are available
+  while the app is running; macOS owns the menu shown when it is quit.
 - native context menus for sidebar files, folders, projects, and sidebar menu buttons;
   editor tabs also use the native menu adapter. Pinned tabs persist in workspace
   sessions, stay at the left edge, and survive Close Other Tabs / Close Tabs to
@@ -183,3 +190,7 @@ remote selections before exporting. Native grid paging accepts `desc:` and
 `numeric:` prefixes on property sort keys (for example
 `desc:numeric:prop:pIC50`); property names remain SQL parameters. Analysis
 column sorting remains unavailable for remote pages.
+
+### Grid inspector opening
+
+The mini Mol* inspector sends `burette-inspector-open` to its parent on a click (not a drag). The host dispatches `structure.open-in-molstar` with `rowIndex`; the grid emits `openSdfMolstarDocument` with `openTarget: "new-tab"`. The SDF message handler adds the prepared document as a new tab, preserving the source collection. Existing messages without `openTarget` retain their active-tab behavior.

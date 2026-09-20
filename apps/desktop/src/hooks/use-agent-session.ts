@@ -142,6 +142,8 @@ export function useAgentSession({
   const openTextDocumentsRef = useRef(openTextDocuments);
   const pushErrorStatusRef = useRef(pushErrorStatus);
   const setDockDocumentRef = useRef(setDockDocument);
+  const pollingRef = useRef<Promise<void> | null>(null);
+  const activationRef = useRef(Promise.resolve());
   const pendingViewerActionsRef = useRef(new Map<string, (result: unknown) => void>());
   const workspacePanelsRef = useRef<AgentWorkspacePanel[]>([]);
   const viewerAgentStatesRef = useRef<Record<string, ViewerAgentState>>({});
@@ -166,11 +168,28 @@ export function useAgentSession({
     setDockDocumentRef.current = setDockDocument;
   }, [openDockingDocument, openKetcherTab, openPaths, openTextDocuments, pushErrorStatus, setDockDocument]);
 
-  const activateSession = useCallback((sessionDir: string | null | undefined) => {
-    const cleanSessionDir = typeof sessionDir === "string" ? sessionDir.trim() : "";
-    if (!cleanSessionDir) return;
-    sessionDirRef.current = cleanSessionDir;
-    void writeObserve(cleanSessionDir, activeDocumentRef.current, documentsRef.current, tabsRef.current, workspacePanelsRef.current, viewerAgentStatesRef.current, activeTabIdRef.current, activeTabKindRef.current);
+  const activateSession = useCallback((sessionDir: string | null | undefined, prepare?: () => void | Promise<void>) => {
+    activationRef.current = activationRef.current.then(async () => {
+      const cleanSessionDir = typeof sessionDir === "string" ? sessionDir.trim() : "";
+      if (!cleanSessionDir) return;
+      const previous = sessionDirRef.current;
+      sessionDirRef.current = null;
+      try {
+        // Finish the previous session's action before replacing its document or transport.
+        await pollingRef.current;
+        if (isTauriRuntime()) {
+          const claimed = await invoke<boolean>("claim_agent_session", { sessionDir: cleanSessionDir });
+          if (!claimed) throw new Error("This agent session is already open in another Burette window.");
+        }
+        await prepare?.();
+        sessionDirRef.current = cleanSessionDir;
+        await writeObserve(cleanSessionDir, activeDocumentRef.current, documentsRef.current, tabsRef.current, workspacePanelsRef.current, viewerAgentStatesRef.current, activeTabIdRef.current, activeTabKindRef.current);
+      } catch (error) {
+        sessionDirRef.current = previous;
+        pushErrorStatusRef.current(error, "Cannot attach agent session");
+      }
+    });
+    return activationRef.current;
   }, []);
 
   useEffect(() => {
@@ -178,7 +197,7 @@ export function useAgentSession({
     let cancelled = false;
     void invoke<string | null>("startup_agent_session")
       .then((sessionDir) => {
-        if (!cancelled) activateSession(sessionDir);
+        if (!cancelled && !sessionDirRef.current) void activateSession(sessionDir);
       })
       .catch((error) => pushErrorStatusRef.current(error, "Agent session startup failed"));
 
@@ -281,7 +300,7 @@ export function useAgentSession({
       const sessionDir = sessionDirRef.current;
       if (!sessionDir || busy) return;
       busy = true;
-      void pollAgentActions(
+      pollingRef.current = pollAgentActions(
         sessionDir,
         openPathsRef.current,
         openDockingDocumentRef.current,
@@ -301,6 +320,7 @@ export function useAgentSession({
         .catch((error) => pushErrorStatusRef.current(error, "Agent action failed"))
         .finally(() => {
           busy = false;
+          pollingRef.current = null;
         });
     };
     const timer = window.setInterval(pollNow, ACTION_POLL_INTERVAL_MS);
@@ -314,6 +334,7 @@ export function useAgentSession({
       browserActionEvents?.close();
     };
   }, []);
+  return activateSession;
 }
 
 async function writeObserve(
