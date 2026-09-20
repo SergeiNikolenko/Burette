@@ -26,6 +26,7 @@ const apiVersion = 'burette-agent-cli/v1';
 const supportedModes = new Set(['auto', 'browser-preview', 'browser-agent-shell', 'browser-dev-shell', 'desktop-app']);
 const MAX_AGENT_ACTION_HISTORY = 128;
 const MAX_PENDING_AGENT_ACTIONS = 64;
+const MAX_ACTION_INPUT_BYTES = 256 * 1024;
 
 function usage() {
   console.error(`Usage:
@@ -37,14 +38,18 @@ function usage() {
   node scripts/burette-agent.mjs link --session-dir <desktop-agent-session>
   node scripts/burette-agent.mjs observe --url <tokenized-preview-url>
   node scripts/burette-agent.mjs observe --session-dir <desktop-agent-session>
+  node scripts/burette-agent.mjs status --session-dir <session>
   node scripts/burette-agent.mjs act --url <tokenized-preview-url> '<json-action>' [--wait-ms 5000]
-  node scripts/burette-agent.mjs act --session-dir <desktop-agent-session> '<json-action>' [--wait-ms 5000]
+  node scripts/burette-agent.mjs act --session-dir <desktop-agent-session> '<json-action>' [--action-file action.json] [--stdin] [--wait-ms 5000]
+  node scripts/burette-agent.mjs scene <reset-camera|hide-waters|show-waters|show-surface|color-by-chain|focus-ligand|contacts> --session-dir <session> [--wait-ms 5000]
   node scripts/burette-agent.mjs render-panel --session-dir <desktop-agent-session> --kind markdown --file /tmp/notes.md [--area right]
   node scripts/burette-agent.mjs story-create --spec /tmp/story.json --output /tmp/story.mvsx [--asset protein.pdb=/path/protein.pdb]
   node scripts/burette-agent.mjs story-validate --file /tmp/story.mvsx
   node scripts/burette-agent.mjs story-template-list
   node scripts/burette-agent.mjs story-template-create --template binding-site-tour --output /tmp/story.mvsx --var protein_url=protein.pdb --var ligand_url=ligand.sdf [--asset protein.pdb=/path/protein.pdb]
   node scripts/burette-agent.mjs story-schema [--schema scene|animation] [--node component]
+
+Aliases: status=observe, action=act, render=render-panel. Use --action-file or --stdin when shell quoting JSON is inconvenient.
 
 The CLI is the readable Burette agent contract. Auto mode starts the full
 browser-agent-shell when available and falls back to browser-preview when the
@@ -152,6 +157,15 @@ function parseOptions(args) {
       index += 1;
       continue;
     }
+    if (arg === '--action-file') {
+      out.actionFile = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--stdin') {
+      out.stdin = true;
+      continue;
+    }
     if (arg === '--no-launch') {
       out.noLaunch = true;
       continue;
@@ -198,15 +212,19 @@ async function main() {
     await open(options);
     return;
   }
-  if (command === 'observe') {
+  if (command === 'observe' || command === 'status') {
     await observe(options);
     return;
   }
-  if (command === 'act') {
+  if (command === 'act' || command === 'action') {
     await act(options);
     return;
   }
-  if (command === 'render-panel') {
+  if (command === 'scene') {
+    await scene(options);
+    return;
+  }
+  if (command === 'render-panel' || command === 'render') {
     await renderPanel(options);
     return;
   }
@@ -778,6 +796,28 @@ async function observe(options) {
   }
 }
 
+const SCENE_ACTIONS = new Map([
+  ['reset-camera', { type: 'reset_camera' }],
+  ['hide-waters', { type: 'hide_waters' }],
+  ['show-waters', { type: 'show_waters' }],
+  ['show-surface', { type: 'show_surface' }],
+  ['color-by-chain', { type: 'color_by_chain' }],
+  ['focus-ligand', { type: 'focus_ligand' }],
+  ['show-ligands', { type: 'show_ligands' }],
+  ['contacts', { type: 'contacts' }],
+]);
+
+async function scene(options) {
+  const name = options.rest[0];
+  if (!name || name === 'help') {
+    fail('INVALID_ARGS', `scene requires one of: ${Array.from(SCENE_ACTIONS.keys()).join(', ')}.`, 2);
+  }
+  const action = SCENE_ACTIONS.get(String(name).toLowerCase());
+  if (!action) fail('INVALID_ARGS', `Unknown scene action: ${name}.`, 2);
+  options.rest = [JSON.stringify(action)];
+  await act(options);
+}
+
 async function act(options) {
   if (options.sessionDir) {
     await actDesktopSession(options);
@@ -790,14 +830,7 @@ async function act(options) {
     await actDesktopSession({ ...options, sessionDir: shellSessionDir });
     return;
   }
-  const actionText = options.rest[0];
-  if (!actionText) fail('INVALID_ARGS', 'act requires a JSON action argument.', 2);
-  let action;
-  try {
-    action = JSON.parse(actionText);
-  } catch (error) {
-    fail('INVALID_ARGS', `Action is not valid JSON: ${error?.message || String(error)}.`, 2);
-  }
+  let action = await readAction(options);
   action = await normalizeAgentActionPaths(action);
   const response = await fetch(buildAgentUrl(localUrl, '/__agent/act'), {
     method: 'POST',
@@ -898,14 +931,7 @@ async function observeDesktopSession(options) {
 
 async function actDesktopSession(options) {
   await assertSessionResponsive(options.sessionDir);
-  const actionText = options.rest[0];
-  if (!actionText) fail('INVALID_ARGS', 'act requires a JSON action argument.', 2);
-  let action;
-  try {
-    action = JSON.parse(actionText);
-  } catch (error) {
-    fail('INVALID_ARGS', `Action is not valid JSON: ${error?.message || String(error)}.`, 2);
-  }
+  let action = await readAction(options);
   action = await normalizeAgentActionPaths(action);
   const actionsPath = resolve(options.sessionDir, 'actions.json');
   const actionsFile = await readJsonFile(actionsPath, { apiVersion: 'burette-agent-control/v1', actions: [] });
@@ -930,6 +956,63 @@ async function actDesktopSession(options) {
   }
   const result = await waitForDesktopAction(actionsPath, resolve(options.sessionDir, 'observe.json'), item.id, waitMs);
   console.log(JSON.stringify({ ok: true, apiVersion, result }, null, 2));
+}
+
+async function readAction(options) {
+  const sources = [options.rest[0], options.actionFile, options.stdin ? 'stdin' : null].filter(Boolean);
+  if (sources.length !== 1) {
+    fail('INVALID_ARGS', 'act requires exactly one action source: a JSON argument, --action-file, or --stdin.', 2);
+  }
+  let actionText;
+  if (options.actionFile) {
+    try {
+      const actionPath = resolve(options.actionFile);
+      const actionInfo = await stat(actionPath);
+      if (!actionInfo.isFile()) fail('INVALID_ARGS', '--action-file must point to a file.', 2);
+      if (actionInfo.size > MAX_ACTION_INPUT_BYTES) {
+        fail('INVALID_ARGS', `Action exceeds the ${MAX_ACTION_INPUT_BYTES}-byte input limit.`, 2);
+      }
+      actionText = await readFile(actionPath, 'utf8');
+    } catch (error) {
+      fail('INVALID_ARGS', `Could not read --action-file: ${error?.message || String(error)}.`, 2);
+    }
+  } else if (options.stdin) {
+    try {
+      actionText = await readStdin();
+    } catch (error) {
+      fail('INVALID_ARGS', error?.message || String(error), 2);
+    }
+  } else {
+    actionText = options.rest[0];
+  }
+  if (Buffer.byteLength(actionText, 'utf8') > MAX_ACTION_INPUT_BYTES) {
+    fail('INVALID_ARGS', `Action exceeds the ${MAX_ACTION_INPUT_BYTES}-byte input limit.`, 2);
+  }
+  try {
+    return JSON.parse(actionText);
+  } catch (error) {
+    fail('INVALID_ARGS', `Action is not valid JSON: ${error?.message || String(error)}.`, 2);
+  }
+}
+
+let stdinPromise;
+function readStdin() {
+  if (!stdinPromise) {
+    stdinPromise = (async () => {
+      const chunks = [];
+      let byteCount = 0;
+      for await (const chunk of process.stdin) {
+        const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        byteCount += bytes.length;
+        if (byteCount > MAX_ACTION_INPUT_BYTES) {
+          throw new Error(`Action exceeds the ${MAX_ACTION_INPUT_BYTES}-byte input limit.`);
+        }
+        chunks.push(bytes);
+      }
+      return Buffer.concat(chunks).toString('utf8');
+    })();
+  }
+  return stdinPromise;
 }
 
 async function normalizeAgentActionPaths(action) {
