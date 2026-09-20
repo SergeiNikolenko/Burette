@@ -10,10 +10,7 @@ use burette_compute_core::{
     SemiempiricalError, SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfOptions,
     SemiempiricalScfStatus,
 };
-use burette_compute_metal::{
-    MetalPm6CorrectionBatch, MetalPm6OneCenterFockBatch, MetalTanimotoRuntime,
-    Pm6CorrectionMoleculeDescriptor,
-};
+use burette_compute_metal::{MetalPm6OneCenterFockBatch, MetalTanimotoRuntime};
 use burette_compute_protocol::{
     AnalysisResourceLimits, BackendPolicy, CapabilityMaturity, ComputeJobSchemaVersion,
     ExecutionPolicy, GridScope, GridSourceReference, RepresentativePolicy, SchedulingPolicy,
@@ -470,23 +467,9 @@ pub(super) fn evaluate_semiempirical_molecule(
         evaluate_semiempirical(molecule, SemiempiricalScfOptions::default())
     }
     .map_err(|error| error.to_string())?;
-    if molecule.method == SemiempiricalMethod::Pm6D3H4 {
-        if let Some(runtime) = runtime {
-            let correction = runtime
-                .evaluate_pm6_d3h4_profiled(
-                    MetalPm6CorrectionBatch {
-                        atoms: &molecule.atoms,
-                        molecules: &[Pm6CorrectionMoleculeDescriptor {
-                            atom_start: 0,
-                            atom_count: molecule.atoms.len(),
-                        }],
-                    },
-                    max_memory_bytes,
-                )
-                .map_err(|error| error.to_string())?;
-            gpu_time_ms.set(gpu_time_ms.get().saturating_add(correction.gpu_time_ms));
-        }
-    }
+    // The evaluator already includes D3/H4/HH in total_energy_ev.
+    // Do not dispatch a second correction whose energies are discarded.
+
     Ok((evaluation, gpu_time_ms.get()))
 }
 

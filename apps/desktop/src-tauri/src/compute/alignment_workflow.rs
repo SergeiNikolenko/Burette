@@ -204,13 +204,16 @@ fn execute_alignment_rows(
     charge_model: String,
 ) -> ComputeResult<GridAlignmentResult> {
     let reference = &parsed[0];
+    let reference_graph = bond_matrix(reference.atoms.len(), &reference.bonds)?;
+    let reference_signatures = atom_signature_index(reference, &reference_graph);
     let mut probe_atoms = Vec::new();
     let mut reference_atoms = Vec::new();
     let mut mappings = Vec::new();
     let mut pair_mappings = Vec::new();
     let mut descriptors = Vec::new();
     for probe in parsed.iter().skip(1) {
-        let pair_mapping = infer_atom_mapping(probe, reference)?;
+        let pair_mapping =
+            infer_atom_mapping(probe, reference, &reference_graph, &reference_signatures)?;
         let probe_start = probe_atoms.len() as u64;
         let reference_start = reference_atoms.len() as u64;
         let mapping_start = mappings.len() as u64;
@@ -388,6 +391,8 @@ fn normalized_indexes(indexes: &[usize]) -> ComputeResult<Vec<usize>> {
 fn infer_atom_mapping(
     probe: &ParsedMolfile,
     reference: &ParsedMolfile,
+    reference_graph: &[u8],
+    reference_signatures: &std::collections::BTreeMap<(String, i32, Vec<(String, u8)>), Vec<usize>>,
 ) -> ComputeResult<Vec<AtomMapping>> {
     if probe.atoms.len() != reference.atoms.len() || probe.bonds.len() != reference.bonds.len() {
         return Err(ComputeCoordinatorError::Validation(
@@ -396,15 +401,13 @@ fn infer_atom_mapping(
     }
     let atom_count = probe.atoms.len();
     let probe_graph = bond_matrix(atom_count, &probe.bonds)?;
-    let reference_graph = bond_matrix(atom_count, &reference.bonds)?;
     let mut candidates = Vec::with_capacity(atom_count);
     for probe_atom in 0..atom_count {
         let signature = atom_signature(probe, &probe_graph, probe_atom);
-        let matches = (0..atom_count)
-            .filter(|&reference_atom| {
-                atom_signature(reference, &reference_graph, reference_atom) == signature
-            })
-            .collect::<Vec<_>>();
+        let matches = reference_signatures
+            .get(&signature)
+            .cloned()
+            .unwrap_or_default();
         if matches.is_empty() {
             return Err(ComputeCoordinatorError::Validation(
                 "Pose alignment could not match the element and bond environments".into(),
@@ -482,6 +485,20 @@ fn degree(graph: &[u8], atom: usize) -> usize {
         .iter()
         .filter(|&&order| order != 0)
         .count()
+}
+
+fn atom_signature_index(
+    molecule: &ParsedMolfile,
+    graph: &[u8],
+) -> std::collections::BTreeMap<(String, i32, Vec<(String, u8)>), Vec<usize>> {
+    let mut signatures = std::collections::BTreeMap::new();
+    for atom in 0..molecule.atoms.len() {
+        signatures
+            .entry(atom_signature(molecule, graph, atom))
+            .or_insert_with(Vec::new)
+            .push(atom);
+    }
+    signatures
 }
 
 fn atom_signature(
@@ -1025,6 +1042,18 @@ fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    fn map_atoms(
+        probe: &ParsedMolfile,
+        reference: &ParsedMolfile,
+    ) -> ComputeResult<Vec<AtomMapping>> {
+        let graph = bond_matrix(reference.atoms.len(), &reference.bonds)?;
+        infer_atom_mapping(
+            probe,
+            reference,
+            &graph,
+            &atom_signature_index(reference, &graph),
+        )
+    }
     use super::*;
 
     #[test]
@@ -1045,7 +1074,7 @@ mod tests {
             "methanol pose\n  Burette\n\n  3  2  0  0  0  0            999 V2000\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n  2  3  1  0  0  0  0\n  3  1  1  0  0  0  0\nM  END",
         )
         .expect("parse reordered pose");
-        let mapping = infer_atom_mapping(&reordered, &reference).expect("infer mapping");
+        let mapping = map_atoms(&reordered, &reference).expect("infer mapping");
         let pairs = mapping
             .iter()
             .map(|item| (item.probe_atom, item.reference_atom))
@@ -1063,7 +1092,7 @@ mod tests {
             "disconnected\n  Burette\n\n  3  1  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\nM  END",
         )
         .expect("parse disconnected");
-        assert!(infer_atom_mapping(&disconnected, &connected).is_err());
+        assert!(map_atoms(&disconnected, &connected).is_err());
     }
 
     #[test]

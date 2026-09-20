@@ -17,7 +17,7 @@ use std::time::SystemTime;
 use super::{
     grid_analysis,
     grid_database::open_grid_database,
-    grid_identity, grid_predicate,
+    grid_identity, grid_page_cache, grid_predicate,
     runtime_utils::{clipped, decode_text},
 };
 
@@ -911,17 +911,28 @@ fn fetch_predicate_page(
     } else {
         format!(" where {}", predicate.predicate_sql)
     };
-    let count_sql = format!("select count(*) from molecules{where_sql}");
-    let total_rows = connection
-        .query_row(
-            &count_sql,
-            params_from_iter(predicate.params.iter()),
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(|err| err.to_string())? as usize;
-    let fts_query = predicate.fts_query.as_deref().filter(|fts_query| {
-        fts_candidates_cover_exact_result(connection, predicate, fts_query, total_rows)
-    });
+    let cache_key = grid_page_cache::key(connection, predicate);
+    let (total_rows, use_fts) =
+        if let Some(stats) = cache_key.as_ref().and_then(grid_page_cache::get) {
+            stats
+        } else {
+            let count_sql = format!("select count(*) from molecules{where_sql}");
+            let total_rows = connection
+                .query_row(
+                    &count_sql,
+                    params_from_iter(predicate.params.iter()),
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|err| err.to_string())? as usize;
+            let use_fts = predicate.fts_query.as_deref().is_some_and(|query| {
+                fts_candidates_cover_exact_result(connection, predicate, query, total_rows)
+            });
+            if let Some(key) = cache_key {
+                grid_page_cache::put(key, (total_rows, use_fts));
+            }
+            (total_rows, use_fts)
+        };
+    let fts_query = predicate.fts_query.as_deref().filter(|_| use_fts);
     let fts_sql = if fts_query.is_some() {
         " and molecules.id in (
              select rowid from molecules_fts where molecules_fts match ?
@@ -1638,7 +1649,8 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
         let _ = install_fts_triggers(connection);
     }
     grid_identity::initialize(connection)?;
-    grid_analysis::initialize(connection)
+    grid_analysis::initialize(connection)?;
+    grid_page_cache::initialize(connection)
 }
 
 fn initialize_fts_table(connection: &Connection) -> Result<(), String> {

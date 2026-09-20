@@ -1137,7 +1137,15 @@ fn fetch_pdb_structure_blocking(pdb_id: &str) -> Result<FetchStructureResult, St
 }
 
 #[tauri::command]
-pub(crate) fn generate_3d_conformer(
+pub(crate) async fn generate_3d_conformer(
+    request: ConformerGenerationRequest,
+) -> Result<ConformerGenerationResult, String> {
+    tauri::async_runtime::spawn_blocking(move || generate_3d_conformer_impl(request))
+        .await
+        .map_err(|error| format!("conformer task failed: {error}"))?
+}
+
+fn generate_3d_conformer_impl(
     request: ConformerGenerationRequest,
 ) -> Result<ConformerGenerationResult, String> {
     let extension = request
@@ -1221,30 +1229,18 @@ pub(crate) fn generate_3d_conformer(
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut child = match command.spawn() {
-            Ok(child) => child,
-            Err(error) => {
+        let output = match super::conformer_process::run(
+            &mut command,
+            input_payload.as_bytes(),
+            Duration::from_secs(180),
+        ) {
+            Ok(output) => output,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 candidate_errors.push(format!("{}: {error}", python.label));
                 continue;
             }
+            Err(error) => return Err(format!("{}: {error}", python.label)),
         };
-        if let Some(mut stdin) = child.stdin.take() {
-            if let Err(error) = stdin.write_all(input_payload.as_bytes()) {
-                candidate_errors.push(format!(
-                    "{}: failed to send structure text: {error}",
-                    python.label
-                ));
-                let _ = child.kill();
-                let _ = child.wait();
-                continue;
-            }
-        }
-        let output = child.wait_with_output().map_err(|error| {
-            format!(
-                "{}: failed to run conformer generator: {error}",
-                python.label
-            )
-        })?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             candidate_errors.push(if stderr.is_empty() {
