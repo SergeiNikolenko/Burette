@@ -55,7 +55,9 @@ assert.match(gridWorkspaceMenuHook, /const readOnly = isReadOnlyViewerMessageSou
 assert.match(gridWorkspaceMenuHook, /const READ_ONLY_HIDDEN_ENTRIES = new Set\(\["ketcher", "duplicate", "remove"\]\);/);
 assert.match(gridWorkspaceMenuHook, /if \(readOnly && READ_ONLY_HIDDEN_ENTRIES\.has\(id\)\) return \[\];/);
 assert.match(gridWorkspaceMenuHook, /querySelectorAll<HTMLIFrameElement>\('\.viewer-iframe\[data-renderer="grid2d"\]'\)/);
-for (const id of ["open", "copy", "copy-smiles", "copy-name", "export", "select-row", "pubchem-identity", "filter-cell"]) {
+assert.match(gridWorkspaceMenuHook, /const opening = \[\s*\.\.\.take\("open", "Preview"\),\s*\.\.\.take\("molstar", "Mol\*"\),\s*\.\.\.take\("ketcher", "Ketcher"\),\s*\];/);
+assert.match(gridWorkspaceMenuHook, /submenu\("row-edit", "Edit", \[\.\.\.take\("duplicate", "Duplicate"\)\]\)/);
+for (const id of ["open", "molstar", "copy", "copy-smiles", "copy-name", "export", "select-row", "pubchem-identity", "filter-cell"]) {
   assert.match(gridWorkspaceMenuHook, new RegExp(`take\\("${id}", `), `${id} stays available in a read-only frame`);
 }
 
