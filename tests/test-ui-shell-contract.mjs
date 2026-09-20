@@ -2071,7 +2071,8 @@ assert.match(gridCss, /\.buret-grid-spacer \{[^}]*grid-column: 1 \/ -1;/s);
 assert.match(gridCss, /\.buret-grid-spacer \{[^}]*overflow-anchor: none;/s);
 assert.match(gridCss, /\.buret-card \{[^}]*contain: layout paint style;/s);
 assert.doesNotMatch(gridCss, /\.buret-card \{[^}]*content-visibility: auto;/s);
-assert.match(gridCss, /--buret-grid-rail-gutter: 42px;/);
+assert.match(gridCss, /--buret-grid-rail-gutter: 24px;/);
+assert.match(gridCss, /--buret-grid-content-padding-inline: 0px;/);
 assert.match(gridCss, /\.buret-grid-shell \{[^}]*padding: var\(--buret-grid-shell-padding\) var\(--buret-grid-shell-padding\) var\(--buret-grid-shell-padding\) calc\(var\(--buret-grid-shell-padding\) \+ var\(--buret-grid-rail-gutter\)\);/s);
 assert.match(gridCss, /\.buret-grid \{[^}]*padding-inline: var\(--buret-grid-content-padding-inline\);/s);
 assert.doesNotMatch(gridCss, /\.buret-grid \{[^}]*justify-content: start;/s);
@@ -2822,7 +2823,7 @@ assert.ok(
 assert.match(app, /activeDocument\?\.renderer === "grid2d" && activeGridFilterModel\?\.columns\.length/);
 assert.match(app, /setDockOpen\("right", true\);\s*setDockActiveTab\("right", "inspector"\);/);
 assert.match(gridFilterSection, /CHART_CONFIG = \{ count: \{ label: "Rows"/);
-assert.match(gridFilterSection, /model\.visible\.toLocaleString\(\)\} of \{model\.total\.toLocaleString\(\)\} rows/);
+assert.doesNotMatch(gridFilterSection, /model\.visible\.toLocaleString\(\)\} of \{model\.total\.toLocaleString\(\)\} rows/);
 assert.match(gridFilterSection, /Loaded-page range · \{\(column\.statsRows \?\? 0\)\.toLocaleString\(\)\} of \{\(column\.statsTotal \?\? 0\)\.toLocaleString\(\)\} rows/);
 // Remote pages can widen the observed min/max without changing the active
 // filter. The slider draft must follow that new committed range instead of
@@ -8101,7 +8102,7 @@ assert.match(gridViewer, /body\.type === 'gridPage' \|\| body\.type === 'xyzrend
 assert.match(gridUi, /buret-search-control buret-filter-control/);
 assert.doesNotMatch(gridUi, /aria-label="Search mode"/);
 assert.doesNotMatch(gridUi, /ToggleGroup/);
-assert.match(gridUi, /"Search by name, value or SMARTS"/);
+assert.match(gridUi, /"Search or SMARTS"/);
 assert.match(gridUi, /placeholder=\{searchPlaceholder\}/);
 assert.match(gridViewer, /function queryLooksLikeExplicitSMARTS\(value\)/);
 assert.match(gridViewer, /function queryLooksLikeSMILESFragment\(value\)/);
@@ -8166,7 +8167,7 @@ assert.doesNotMatch(gridCss, /--buret-card-max:/);
 assert.doesNotMatch(gridViewer, /--buret-card-max/);
 assert.match(gridCss, /grid-template-columns: repeat\(auto-fill, minmax\(var\(--buret-card-min\), 1fr\)\);/);
 assert.match(gridCss, /justify-content: stretch;/);
-assert.match(gridCss, /padding-inline: 24px;/);
+assert.match(gridCss, /--buret-grid-content-padding-inline: 0px;/);
 assert.match(gridCss, /\.buret-xyzrender-preview\s*\{[^}]*width: 100%;[^}]*height: 100%;[^}]*min-height: var\(--buret-picture-min-height\);/s);
 assert.match(gridCss, /\.buret-card-resize-handle\s*\{/);
 assert.match(gridCss, /\.buret-card-resize-handle-x\s*\{/);

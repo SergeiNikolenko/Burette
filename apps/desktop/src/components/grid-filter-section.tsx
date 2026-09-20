@@ -419,9 +419,6 @@ export function GridFilterSection({
           </div>
         </div>
         <AccordionContent className="h-auto">
-          <div className="grid-filter-count">
-            {model.visible.toLocaleString()} of {model.total.toLocaleString()} rows
-          </div>
           <Field className="grid-filter-search-field">
             <FieldLabel className="sr-only">Find a column to filter</FieldLabel>
             <div className="grid-filter-search-wrap">

@@ -777,8 +777,8 @@ function GridActionToolbar(props: GridControlProps) {
 
 function GridControls(props: GridControlProps) {
   const searchPlaceholder = props.substructureSearch
-    ? "Search by name, value or SMARTS"
-    : "Search by name or value";
+    ? "Search or SMARTS"
+    : "Search";
 
   return (
     <div className="buret-grid-toolbar">

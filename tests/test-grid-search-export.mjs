@@ -105,5 +105,5 @@ for (const enabled of [false, true]) {
 assert.match(ui, /<FileSection \{\.\.\.props\}/, "file actions remain available");
 assert.doesNotMatch(ui, /<ComputeSection \{\.\.\.props\}/, "unfinished compute actions stay hidden");
 assert.doesNotMatch(ui, /ToggleGroupItem/, "the single search input replaces the Text/Structure mode toggle");
-assert.match(ui, /"Search by name, value or SMARTS"/);
+assert.match(ui, /"Search or SMARTS"/);
 console.log("Grid search, export scope and stable file actions passed.");
