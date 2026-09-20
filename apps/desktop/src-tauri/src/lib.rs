@@ -280,6 +280,8 @@ pub fn run() {
         .expect("error while building Burette Tauri application");
 
     #[cfg(target_os = "macos")]
+    menu::dock::install(app.handle()).expect("failed to install the macOS Dock menu");
+    #[cfg(target_os = "macos")]
     macos::install_termination_handler(app.handle())
         .expect("failed to install the macOS termination handler");
 

@@ -1,4 +1,6 @@
 mod build;
+#[cfg(target_os = "macos")]
+pub(crate) mod dock;
 mod events;
 mod quit;
 mod state;
