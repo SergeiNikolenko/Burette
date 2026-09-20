@@ -26,6 +26,7 @@
           <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light<span class="buret-tooltip" role="tooltip">Switch to light theme</span></button>
           <button class="buret-button buret-save-modified hidden" type="button" data-buret-action="save-modified-structure" aria-label="Save modified structure" title="Save modified structure">Save<span class="buret-tooltip" role="tooltip">Save modified Mol* structure</span></button>
           <button class="buret-button hidden" type="button" data-buret-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">Ketcher<span class="buret-tooltip" role="tooltip">Open this structure in Ketcher</span></button>
+          <button class="buret-button buret-xyzrender-inspector" type="button" data-buret-action="xyzrender-inspector" aria-label="Open xyzrender inspector">Appearance</button>
           <div class="buret-xyzrender-preset-slot" data-buret-xyzrender-preset-slot>
             <select class="buret-select" data-buret-xyzrender-preset aria-label="External xyzrender preset" title="External xyzrender preset"></select>
             <span class="buret-tooltip" role="tooltip">Choose xyzrender preset</span>

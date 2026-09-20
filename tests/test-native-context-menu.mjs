@@ -106,3 +106,19 @@ assert.match(editSvg, /fill="#000"/);
 assert.match(editSvg, /fill-rule="evenodd"/);
 assert.ok(Edit.every(([tag, attributes]) => tag !== 'path' || editSvg.includes(`d="${attributes.d}"`)));
 assert.doesNotMatch(editSvg, /currentColor|className| key=/);
+
+const { xyzrenderContextMenuItems } = await import('../apps/desktop/src/components/xyzrender-context-menu.ts');
+const xyzActions = [];
+const xyzItems = xyzrenderContextMenuItems({ label: 'caffeine.xyz', hasSelection: true, hasHidden: true }, action => xyzActions.push(action));
+assert.deepEqual(xyzItems.map(item => item.id || item.kind), [
+  'canvas:select-all', 'canvas:duplicate', 'canvas:arrange', 'canvas:animate', 'separator',
+  'view:hide', 'view:show-all', 'xyzrender-selection', 'separator', 'xyzrender-export',
+]);
+xyzItems[1].action();
+xyzItems[7].items[0].action();
+xyzItems[9].items[1].action();
+assert.deepEqual(xyzActions, ['canvas:duplicate', 'select:hide', 'save-format:png']);
+const minimalXyzItems = xyzrenderContextMenuItems({ label: 'a', hasSelection: false, hasHidden: false }, () => {});
+assert.equal(minimalXyzItems.length, 8);
+assert.ok(!minimalXyzItems.some(item => item.kind === 'label'), 'native menu omits the filename label');
+console.log('xyzrender native menu context and action routing passed');

@@ -26,6 +26,8 @@
     "docx-preview": "^0.3.7",
     "dompurify": "^3.3.3",
     "eve-raphael": "0.5.0",
+    "gifenc": "^1.0.3",
+    "gifuct-js": "^2.1.2",
     "hast-util-to-jsx-runtime": "^2.3.6",
     "katex": "^0.18.4",
     "ketcher-core": "3.15.0",

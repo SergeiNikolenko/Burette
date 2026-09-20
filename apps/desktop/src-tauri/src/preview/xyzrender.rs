@@ -1148,11 +1148,11 @@ fn build_xyzrender_args(
                 match mode {
                     "density" => args.push("--dens".to_string()),
                     "mo" => args.push("--mo".to_string()),
-                    "esp" => {
+                    "esp" if !args.iter().any(|arg| arg == "--esp") => {
                         args.push("--esp".to_string());
                         args.push(input_path.display().to_string());
                     }
-                    "nci" => {
+                    "nci" if !args.iter().any(|arg| arg == "--nci-surf") => {
                         args.push("--nci-surf".to_string());
                         args.push(input_path.display().to_string());
                     }
@@ -1166,8 +1166,10 @@ fn build_xyzrender_args(
                 args.push(value.to_string());
             }
             if let Some(value) = finite_non_negative(controls.field_opacity) {
-                args.push("--opacity".to_string());
-                args.push(value.to_string());
+                if !args.iter().any(|arg| arg == "--opacity") {
+                    args.push("--opacity".to_string());
+                    args.push(value.to_string());
+                }
             }
             if let Some(value) = normalized_surface_style(controls.field_surface_style.as_deref()) {
                 args.push("--surface-style".to_string());
@@ -1478,48 +1480,23 @@ fn sanitized_extra_arguments(value: Option<&str>, strip_field_arguments: bool) -
     blocked.push("--region");
     blocked_value_count_flags.push(("--region", 2usize));
     blocked.push("--hull");
-    blocked_value_flags.extend([
-        "--hull-color",
-        "--hull-opacity",
-        "--hull-color-type",
-        "--hull-edge-width-ratio",
-        "--ring-max-size",
-        "--ring-min-size",
-        "--face-planarity",
-        "--pore-color",
-        "--pore-opacity",
-    ]);
-    blocked.extend([
-        "--hull-color",
-        "--hull-opacity",
-        "--hull-color-type",
-        "--hull-edge-width-ratio",
-        "--ring-max-size",
-        "--ring-min-size",
-        "--face-planarity",
-        "--pore-color",
-        "--pore-opacity",
-        "--pore",
-        "--hull-edge",
-        "--no-hull-edge",
-    ]);
+    // Advanced geometry styling is user-controlled; only duplicate core controls
+    // and host-owned output/configuration arguments are removed.
+    blocked_value_flags.extend(["--hull-opacity", "--pore-opacity"]);
+    blocked.extend(["--hull-opacity", "--pore-opacity", "--pore"]);
     blocked.extend(["--hy", "--no-hy", "--bo", "--no-bo", "-k"]);
     if strip_field_arguments {
-        blocked_value_flags.extend([
-            "--esp",
-            "--nci-surf",
-            "--iso",
-            "--opacity",
-            "--surface-style",
-            "--dens-color",
-            "--cmap-palette",
-        ]);
+        if !split_command_line(value.unwrap_or_default())
+            .iter()
+            .any(|arg| arg == "--overlay" || arg == "--ensemble")
+        {
+            blocked.push("--opacity");
+            blocked_value_flags.push("--opacity");
+        }
+        blocked_value_flags.extend(["--iso", "--surface-style", "--dens-color", "--cmap-palette"]);
         blocked_value_count_flags.extend([("--mo-colors", 2usize), ("--cmap-range", 2usize)]);
         blocked.extend([
-            "--esp",
-            "--nci-surf",
             "--iso",
-            "--opacity",
             "--surface-style",
             "--dens-color",
             "--cmap-palette",

@@ -5424,3 +5424,46 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level
 .msp-state-snapshot-viewport-controls {
   display: none !important;
 }
+
+/* Sheet actions share the viewer's light/dark menu tokens. */
+.buret-xyzrender-editor-actions {
+  position: absolute; left: 16px; bottom: 16px; z-index: 100;
+  display: flex; gap: 2px; padding: 5px; border-radius: 10px;
+  background: var(--buret-menu-background); color: var(--buret-toolbar-color);
+  box-shadow: var(--buret-menu-shadow); pointer-events: auto;
+}
+.buret-xyzrender-editor-actions button {
+  appearance: none; border: 0; border-radius: 6px; padding: 7px 10px;
+  background: transparent; color: inherit; font: 12px -apple-system, sans-serif;
+}
+.buret-xyzrender-editor-actions button:hover,
+.buret-xyzrender-editor-actions button:focus-visible {
+  background: color-mix(in srgb, var(--buret-toolbar-color) 12%, transparent);
+}
+.buret-external-artifact-root:has(.buret-xyzrender-editor-actions) .buret-xyz-badge { bottom: 66px; }
+
+body:has(#buret-toolbar[data-active-renderer="xyzrender-external"]) { --buret-accent: #888; }
+#buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-toggle],
+body:has(#buret-toolbar[data-active-renderer="xyzrender-external"]) #buret-viewport-rail,
+body:has(#buret-toolbar[data-active-renderer="xyzrender-external"]) #buret-scene-tree-toggle,
+#buret-toolbar.buret-xyzrender-app[data-active-renderer="xyzrender-external"] [data-buret-xyzrender-preset-slot] { display: none !important; }
+.buret-xyzrender-inspector { display: none; }
+#buret-toolbar.buret-xyzrender-app[data-active-renderer="xyzrender-external"] .buret-xyzrender-inspector { display: inline-flex; }
+.buret-xyzrender-3d-dialog {
+  width: min(900px, calc(100vw - 40px)); height: min(740px, calc(100vh - 40px));
+  box-sizing: border-box; padding: 16px; border: 1px solid var(--buret-toolbar-border);
+  border-radius: 14px; background: var(--buret-menu-background, #171717); color: var(--buret-toolbar-color);
+  font: 13px -apple-system, sans-serif;
+}
+.buret-xyzrender-3d-dialog[open] { display: flex; flex-direction: column; gap: 12px; }
+.buret-xyzrender-3d-dialog::backdrop { background: #0008; }
+.buret-xyzrender-3d-dialog header, .buret-xyzrender-3d-dialog footer { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.buret-xyzrender-3d-dialog header span { flex: 1; opacity: .6; }
+.buret-xyzrender-3d-stage { flex: 1; min-height: 160px; position: relative; overflow: hidden; border-radius: 8px; }
+.buret-xyzrender-3d-dialog button, .buret-xyzrender-3d-dialog select {
+  border: 1px solid var(--buret-toolbar-border); background: var(--buret-toolbar-hover);
+  color: inherit; font: inherit; padding: 7px 12px; border-radius: 7px;
+}
+.buret-xyzrender-3d-dialog button:disabled { opacity: .45; }
+.buret-xyzrender-3d-dialog input { accent-color: #888; max-width: 160px; }
+.buret-xyzrender-3d-dialog p { margin: 0; min-height: 18px; opacity: .7; }

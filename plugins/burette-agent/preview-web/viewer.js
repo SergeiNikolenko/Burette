@@ -2366,6 +2366,12 @@
       return;
     }
 
+    const inspector = toolbar.querySelector('[data-buret-action="xyzrender-inspector"]');
+    if (inspector && !inspector.dataset.bound) {
+      inspector.dataset.bound = '1';
+      inspector.addEventListener('click', () => postHostMessage({ type: 'openXyzrenderInspector' }));
+    }
+    toolbar.classList.toggle('buret-xyzrender-app', config.appViewer === true);
     const select = toolbar.querySelector('[data-buret-xyzrender-preset]');
     if (select) {
       populateXyzrenderPresetSelect(select, config.xyzrenderPresetOptions);
@@ -2377,14 +2383,14 @@
       }
     }
     if (tuneButton) {
-      tuneButton.classList.toggle('hidden', renderer !== 'xyzrender-external');
-      if (renderer !== 'xyzrender-external') {
+      tuneButton.classList.toggle('hidden', renderer !== 'xyzrender-external' || config.appViewer === true);
+      if (renderer !== 'xyzrender-external' || config.appViewer === true) {
         setXyzrenderPopoverVisibility(toolbar, false, { persist: false });
       }
       if (renderer === 'xyzrender-external') {
         populateXyzrenderControlsForm(toolbar, normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
         updateXyzrenderFormVisibility(toolbar);
-        if (popoverWasOpen) {
+        if (popoverWasOpen && config.appViewer !== true) {
           setXyzrenderPopoverVisibility(toolbar, true, { resetScroll: false });
           if (popover) popover.scrollTop = popoverScrollTop;
         }
@@ -2854,6 +2860,68 @@
     const data = event.data || {};
     const body = data.source === 'burette-host' ? data.body : null;
     if (!body) return;
+    if (event.source === window.parent && body.type === 'openXyzrenderEditor') { void openXyzrender3DEditor(); return; }
+    if (event.source === window.parent && body.type === 'applyXyzrenderAnimationFrame') {
+      const { width, height, pixels } = body;
+      if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 1024 || height > 1024 || !(pixels instanceof Uint8ClampedArray) || pixels.length !== width * height * 4) return;
+      const item = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item')).find(node => node.dataset.buretXyzrenderEditorId === body.itemId);
+      const content = item?.querySelector('.buret-xyzrender-sheet-item-body');
+      if (!content) return;
+      let canvas = content.querySelector('.buret-xyzrender-animation-canvas');
+      if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.className = 'buret-xyzrender-animation-canvas';
+        canvas.setAttribute('aria-label', 'Molecular animation');
+        canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:inherit;pointer-events:none';
+        content.append(canvas);
+      }
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
+      canvas.getContext('2d').putImageData(new ImageData(pixels, width, height), 0, 0);
+      for (const node of content.querySelectorAll('svg, .buret-xyzrender-animation-image')) node.style.visibility = 'hidden';
+      return;
+    }
+    if (event.source === window.parent && body.type === 'applyXyzrenderAnimation') {
+      const item = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item')).find(node => node.dataset.buretXyzrenderEditorId === body.itemId);
+      const content = item?.querySelector('.buret-xyzrender-sheet-item-body');
+      if (!content || typeof body.image !== 'string' || body.image.length > 24000000 || !/^data:image\/(png|gif);base64,[A-Za-z0-9+/=]+$/.test(body.image)) return;
+      content.querySelector('.buret-xyzrender-animation-canvas')?.remove();
+      if (body.commit) pushXyzrenderActionHistory(item, 'apply animation');
+      const svg = content.querySelector('svg');
+      if (svg) svg.style.visibility = 'hidden';
+      let image = content.querySelector('.buret-xyzrender-animation-image');
+      if (!image) {
+        image = document.createElement('img');
+        image.className = 'buret-xyzrender-animation-image';
+        image.alt = 'Molecular animation';
+        image.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:inherit;pointer-events:none';
+        content.append(image);
+      }
+      image.style.visibility = 'visible';
+      image.src = body.image;
+      return;
+    }
+    if (event.source === window.parent && body.type === 'applyXyzrenderOrientation') {
+      const item = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item')).find(node => node.dataset.buretXyzrenderEditorId === body.itemId);
+      if (!item || typeof body.svg !== 'string' || typeof body.orientationRef !== 'string') return;
+      pushXyzrenderActionHistory(item, 'change molecular orientation');
+      updateXyzrenderSheetItemBody(item, body.svg);
+      if (body.controls) {
+        item.dataset.buretXyzrenderControls = JSON.stringify(normalizeXyzrenderControls(body.controls));
+        const background = item.querySelector('.buret-xyzrender-sheet-item-background');
+        if (background) background.style.display = body.controls.transparentBackground ? 'none' : '';
+      }
+      item.dataset.buretXyzrenderOrientationRef = body.orientationRef;
+      return;
+    }
+    if (body.type === 'xyzrenderContextMenuResult') {
+      const pending = xyzrenderContextMenuPending;
+      if (!pending || pending.requestId !== body.requestId) return;
+      xyzrenderContextMenuPending = null;
+      if (body.unsupported) pending.fallback();
+      else if (typeof body.action === 'string') pending.run(body.action);
+      return;
+    }
     if (body.type === 'structureExportResult') {
       if (pendingMolstarSave?.requestId === body.requestId) {
         const unchanged = pendingMolstarSave.revision === molstarPresetPreviewSceneRevision;
@@ -2905,6 +2973,7 @@
         return;
       }
       const options = { controls, preset };
+      if (requestSelectedXyzrenderSheetItemsUpdate(options)) return;
       if (requestBrowserDevXyzrenderUpdate(options)) return;
       const sent = postHostMessage({ type: 'setXyzrenderControls', documentId, controls, preset, ...xyzrenderOrientationPayload(options) });
       if (!sent) setStatus('xyzrender controls are available only in the app or Quick Look viewer.', 'error');
@@ -4754,7 +4823,7 @@
         container.innerHTML = `
           <div class="buret-external-artifact-root">
             <div class="buret-external-artifact-stage">${externalArtifactSheetHTML(externalArtifactBaseItemHTML(payload.svg, label))}</div>
-            <div class="buret-xyz-badge"><strong>External xyzrender</strong><span>SVG</span></div>
+            <a class="buret-xyz-badge" href="https://github.com/aligfellow/xyzrender" target="_blank" rel="noopener noreferrer" title="xyzrender — project and authors"><strong>xyzrender ↗</strong><span>SVG</span></a>
           </div>`;
         const root = container.querySelector('.buret-external-artifact-root');
         if (root) installExternalArtifactInteractions(root);
@@ -4806,7 +4875,23 @@
   function updateXyzrenderSheetItemBody(item, svg) {
     const body = item?.querySelector?.('.buret-xyzrender-sheet-item-body');
     if (!body) return false;
+    // Replace appearance without replacing the positioned, rotated sheet item.
+    const selectedBefore = Array.from(xyzrenderSelectedElements)
+      .filter(element => element?.isConnected && element.closest('.buret-xyzrender-sheet-item') === item);
+    const selectedAtoms = xyzrenderAtomSetFromSelector(
+      xyzrenderAtomSelectorForElements(item, selectedBefore),
+    );
     body.innerHTML = svg;
+    cleanupXyzrenderSelectionSet();
+    if (selectedAtoms.size > 0) {
+      for (const element of xyzrenderSelectableElements(item)) {
+        const atomSelector = xyzrenderAtomSelectorForElements(item, [element]);
+        if (xyzrenderAtomSetsIntersect(selectedAtoms, xyzrenderAtomSetFromSelector(atomSelector))) {
+          markXyzrenderElementSelected(element);
+        }
+      }
+      updateXyzrenderSelectionRoots();
+    }
     return true;
   }
 
@@ -12083,7 +12168,7 @@ SOFTWARE.
     container.innerHTML = `
       <div class="buret-external-artifact-root">
         ${content}
-        <div class="buret-xyz-badge"><strong>External xyzrender</strong><span>SVG${preset}${elapsed}</span></div>
+        <a class="buret-xyz-badge" href="https://github.com/aligfellow/xyzrender" target="_blank" rel="noopener noreferrer" title="xyzrender — project and authors"><strong>xyzrender ↗</strong><span>SVG${preset}${elapsed}</span></a>
       </div>`;
     const root = container.querySelector('.buret-external-artifact-root');
     if (root) installExternalArtifactInteractions(root);
@@ -12347,108 +12432,128 @@ SOFTWARE.
   }
 
   function hideXyzrenderSheetContextMenu() {
-    document.querySelector('.buret-xyzrender-context-menu')?.remove();
+    const menu = document.querySelector('.buret-xyzrender-context-menu');
+    if (menu) { moleculeMenuCloseSubmenus(menu); moleculeMenuCancelHoverIntent(menu); menu.remove(); }
   }
 
-  function appendXyzrenderMenuButton(actions, label, action) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = label;
-    button.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      Promise.resolve()
-        .then(action)
-        .catch(error => setStatus(error instanceof Error ? error.message : String(error), 'error'));
+  let xyzrenderContextMenuPending = null;
+
+  function selectedXyzrenderSheetItemsForAction(item) {
+    const root = item?.closest?.('.buret-external-artifact-root');
+    if (!root) return { root: null, items: item ? [item] : [] };
+    const selected = Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item.selected'));
+    return { root, items: selected.length ? selected : (item ? [item] : []) };
+  }
+
+  function duplicateXyzrenderSheetItems(item) {
+    const { root, items } = selectedXyzrenderSheetItemsForAction(item);
+    const stage = root?.querySelector('.buret-external-artifact-stage');
+    if (!root || !stage || !items.length) return;
+    const sheet = ensureXyzrenderSheet(stage);
+    const getStageScale = () => parseFloat(root.dataset.buretXyzrenderStageScale || '1') || 1;
+    const copies = items.map(original => {
+      const position = sheetItemCenterPosition(original);
+      const copy = addXyzrenderSheetItem(sheet, original.querySelector('.buret-xyzrender-sheet-item-body').innerHTML,
+        sheetItemExportLabel(original), { x: position.left + 40, y: position.top + 40 }, 1, getStageScale, xyzrenderSheetItemEntry(original));
+      for (const key of ['buretXyzrenderPreset', 'buretXyzrenderRegions', 'buretXyzrenderVdwAtoms', 'buretXyzrenderOrientationRef']) {
+        if (original.dataset[key]) copy.dataset[key] = original.dataset[key];
+      }
+      copy.style.width = `${original.offsetWidth}px`;
+      copy.style.height = `${original.offsetHeight}px`;
+      setSheetItemRotation(copy, Number(original.dataset.rotation || 0));
+      return copy;
     });
-    actions.appendChild(button);
+    clearRotatableArtifactSelection(root);
+    copies.forEach(copy => copy.classList.add('selected'));
   }
 
-  function appendXyzrenderMenuLabel(actions, label) {
-    const element = document.createElement('div');
-    element.className = 'buret-molecule-context-menu-section-label';
-    element.textContent = label;
-    actions.appendChild(element);
+  function arrangeXyzrenderSheetItems(item) {
+    const { root, items } = selectedXyzrenderSheetItemsForAction(item);
+    if (!root || !items.length) return;
+    const columns = Math.ceil(Math.sqrt(items.length));
+    const rows = Math.ceil(items.length / Math.max(columns, 1));
+    const cell = Math.min(340, (root.clientWidth - 40) / Math.max(columns, 1), (root.clientHeight - 40) / Math.max(rows, 1));
+    const originX = (root.clientWidth - columns * cell) / 2;
+    const originY = (root.clientHeight - rows * cell) / 2;
+    items.forEach((entry, index) => {
+      entry.style.width = `${cell * 0.82}px`;
+      entry.style.height = `${cell * 0.82}px`;
+      entry.style.left = `${originX + cell * (index % columns + 0.5)}px`;
+      entry.style.top = `${originY + cell * (Math.floor(index / columns) + 0.5)}px`;
+    });
   }
 
-  function showXyzrenderSheetContextMenu(event, item) {
+  function showXyzrenderSheetContextMenu(event, item, forceWeb = false) {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation?.();
     hideMolstarContextMenu({ keepMoleculePreview: true });
     hideXyzrenderSheetContextMenu();
-
-    const label = sheetItemExportLabel(item);
+    if (!item.classList.contains('selected')) selectRotatableArtifact(item);
+    const label = sheetItemExportLabel(item).replace(/^Sheet structure /u, '');
     const baseName = safeExportBaseName(label, 'xyzrender');
+    const actions = new Map([
+      ['view:hide', () => item.remove()],
+      ['view:show-all', () => { pushXyzrenderActionHistory(item, 'show hidden'); showHiddenXyzrenderElements(item); }],
+      ['select:hide', () => { pushXyzrenderActionHistory(item, 'hide selected'); hideSelectedXyzrenderElements(); }],
+      ['view:isolate', () => { pushXyzrenderActionHistory(item, 'dim others'); dimUnselectedXyzrenderElements(item); }],
+      ['canvas:select-all', () => selectAllRotatableArtifacts(item.closest('.buret-external-artifact-root') || document)],
+      ['canvas:duplicate', () => duplicateXyzrenderSheetItems(item)],
+      ['canvas:arrange', () => arrangeXyzrenderSheetItems(item)],
+      ['canvas:animate', () => openXyzrender3DEditor()],
+    ]);
+    for (const format of ['svg', 'png', 'gif']) {
+      actions.set(`save-format:${format}`, async () => {
+        const svg = await xyzrenderSheetItemSvgText(item);
+        if (!svg) throw new Error('No xyzrender SVG payload to export.');
+        const blob = format === 'svg' ? new Blob([normalizeSvgForExport(svg)], { type: 'image/svg+xml;charset=utf-8' })
+          : format === 'png' ? await svgTextToPngBlob(svg, item) : await svgTextToGifBlob(svg, item);
+        downloadBlob(blob, `${baseName}.${format}`);
+      });
+    }
+    const run = action => {
+      hideXyzrenderSheetContextMenu();
+      Promise.resolve().then(() => actions.get(action)?.())
+        .catch(error => setStatus(error instanceof Error ? error.message : String(error), 'error'));
+    };
+    const entries = [
+      ['canvas:select-all', 'Select all'],
+      ['canvas:duplicate', 'Duplicate'],
+      ['canvas:arrange', 'Arrange'],
+      ['canvas:animate', '3D & animation…'],
+      ['view:hide', 'Hide structure'],
+    ];
+    if (hasHiddenXyzrenderElements(item)) entries.push(['view:show-all', 'Show hidden graphics']);
+    if (hasXyzrenderSelection()) entries.push(moleculeMenuNestedAction('select:menu', 'Selection', [
+      ['select:hide', 'Hide selected'], ['view:isolate', 'Dim others'],
+    ]));
+    entries.push(moleculeMenuNestedAction('save-format:menu', 'Export', [
+      ['save-format:svg', 'SVG…'], ['save-format:png', 'PNG…'], ['save-format:gif', 'GIF…'],
+    ]));
+    const config = activeConfig || window.BuretteConfig || {};
+    if (!forceWeb && config.appViewer === true) {
+      const requestId = `xyzrender-menu-${++xyzrenderSheetRequestSerial}`;
+      xyzrenderContextMenuPending = { requestId, run, fallback: () => showXyzrenderSheetContextMenu(event, item, true) };
+      if (postHostMessage({ type: 'xyzrenderContextMenu', requestId, label,
+        clientX: event.clientX, clientY: event.clientY,
+        hasSelection: hasXyzrenderSelection(), hasHidden: hasHiddenXyzrenderElements(item) })) return;
+      xyzrenderContextMenuPending = null;
+    }
     const menu = document.createElement('div');
     menu.className = 'buret-molecule-context-menu buret-xyzrender-context-menu';
     menu.setAttribute('role', 'menu');
-    menu.setAttribute('aria-label', 'xyzrender actions');
-
+    menu.setAttribute('aria-label', 'Structure actions');
     const title = document.createElement('div');
     title.className = 'buret-molecule-context-menu-title';
-    title.textContent = 'xyzrender';
-    menu.appendChild(title);
-
-    const subtitle = document.createElement('div');
-    subtitle.className = 'buret-molecule-context-menu-subtitle';
-    subtitle.textContent = label;
-    menu.appendChild(subtitle);
-
-    const actions = document.createElement('div');
-    actions.className = 'buret-molecule-context-menu-actions';
-    menu.appendChild(actions);
-
-    appendXyzrenderMenuButton(actions, 'Hide Display', () => {
-      item.remove();
-      hideXyzrenderSheetContextMenu();
-      setStatus(`[web] Hid xyzrender display: ${baseName}`);
-      setTimeout(hideStatus, 900);
-    });
-    if (hasHiddenXyzrenderElements(item)) {
-      appendXyzrenderMenuButton(actions, 'Show Hidden', () => {
-        pushXyzrenderActionHistory(item, 'show hidden');
-        showHiddenXyzrenderElements(item);
-        hideXyzrenderSheetContextMenu();
-      });
-    }
-    if (hasXyzrenderSelection()) {
-      appendXyzrenderMenuButton(actions, 'Hide Selected', () => {
-        pushXyzrenderActionHistory(item, 'hide selected');
-        hideSelectedXyzrenderElements();
-        hideXyzrenderSheetContextMenu();
-      });
-      appendXyzrenderMenuButton(actions, 'Dim Others', () => {
-        pushXyzrenderActionHistory(item, 'dim others');
-        dimUnselectedXyzrenderElements(item);
-        hideXyzrenderSheetContextMenu();
-      });
-    }
-    appendXyzrenderMenuLabel(actions, 'Save to');
-    appendXyzrenderMenuButton(actions, 'SVG', async () => {
-      const svgText = normalizeSvgForExport(await xyzrenderSheetItemSvgText(item));
-      if (!svgText) throw new Error('No xyzrender SVG payload to export.');
-      downloadBlob(new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' }), `${baseName}.svg`);
-      hideXyzrenderSheetContextMenu();
-      setStatus(`[web] Saved xyzrender SVG: ${baseName}.svg`);
-      setTimeout(hideStatus, 900);
-    });
-    appendXyzrenderMenuButton(actions, 'PNG', async () => {
-      const pngBlob = await svgTextToPngBlob(await xyzrenderSheetItemSvgText(item), item);
-      downloadBlob(pngBlob, `${baseName}.png`);
-      hideXyzrenderSheetContextMenu();
-      setStatus(`[web] Saved xyzrender PNG: ${baseName}.png`);
-      setTimeout(hideStatus, 900);
-    });
-    appendXyzrenderMenuButton(actions, 'GIF', async () => {
-      const gifBlob = await svgTextToGifBlob(await xyzrenderSheetItemSvgText(item), item);
-      downloadBlob(gifBlob, `${baseName}.gif`);
-      hideXyzrenderSheetContextMenu();
-      setStatus(`[web] Saved xyzrender GIF: ${baseName}.gif`);
-      setTimeout(hideStatus, 900);
-    });
+    title.textContent = 'Structure actions';
+    const container = document.createElement('div');
+    container.className = 'buret-molecule-context-menu-actions';
+    for (const entry of entries) container.appendChild(moleculeMenuActionItem(entry, menu, null, { onAction: run }));
+    menu.append(title, container);
     document.body.appendChild(menu);
+    installMoleculeMenuKeyboard(menu, hideXyzrenderSheetContextMenu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
+    container.querySelector('button')?.focus({ preventScroll: true });
   }
 
   function escapeHTML(value) {
@@ -12483,25 +12588,25 @@ SOFTWARE.
       .buret-xyzrender-sheet-item.rotating { cursor: grabbing; }
       .buret-xyzrender-sheet-item.resizing { cursor: nwse-resize; }
       body.buret-xyzrender-lasso-active .buret-xyzrender-sheet-item { cursor: crosshair; }
-      .buret-xyzrender-sheet-item.selected { outline: 0 solid transparent; box-shadow: none; }
+      .buret-xyzrender-sheet-item.selected { outline: 1px solid #999; outline-offset: 3px; box-shadow: none; }
       .buret-xyzrender-sheet-item.has-xyzrender-selection { box-shadow: none; }
       .buret-xyzrender-svg-selection { outline: none; }
       .buret-xyzrender-sheet-item:has(.buret-xyzrender-resize-handle:hover),
       .buret-xyzrender-sheet-item.resizing { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
-      .buret-xyzrender-sheet-item-large .buret-xyzrender-sheet-item-background { border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,0.28); }
+      .buret-xyzrender-sheet-item-large .buret-xyzrender-sheet-item-background { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.10); border: 1px solid rgba(128,128,128,0.18); }
       .buret-xyzrender-sheet-item-body { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
       .buret-xyzrender-sheet-item-body > svg,
       .buret-external-artifact-object { display: block; width: 100%; height: 100%; overflow: visible; border: 0; border-radius: inherit; }
       .buret-xyzrender-rotate-hud { position: absolute; left: 50%; top: 50%; z-index: 7; width: calc(var(--buret-rotate-radius) * 2 + 78px); height: calc(var(--buret-rotate-radius) * 2 + 78px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 50% 50%; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
-      .buret-xyzrender-rotate-ring { position: absolute; inset: 29px; border: 1.25px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 18%, rgba(160,173,214,0.24)); border-radius: 999px; }
+      .buret-xyzrender-rotate-ring { position: absolute; inset: 29px; border: 1.25px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 18%, rgba(160,160,160,0.24)); border-radius: 999px; }
       .buret-xyzrender-rotate-needle { position: absolute; left: 50%; top: 50%; width: 1px; height: var(--buret-rotate-radius); transform: translateX(-50%) rotate(var(--buret-active-angle)); transform-origin: 50% 0%; border-left: 1.5px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 46%, transparent); }
       .buret-xyzrender-rotate-needle::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 15px; height: 15px; transform: translateX(-50%); border-radius: 999px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 58%, var(--buret-toolbar-background, #111)); box-shadow: 0 6px 14px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-xyzrender-rotate-current { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-active-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 18px))) rotate(calc(-1 * var(--buret-active-angle))); transform-origin: 50% 50%; color: var(--buret-toolbar-color, rgba(255,255,255,0.94)); }
       .buret-xyzrender-rotate-current span { display: block; padding: 5px 11px; border-radius: 999px; background: color-mix(in srgb, var(--buret-toolbar-background, rgba(17,19,24,0.82)) 84%, transparent); border: 1px solid color-mix(in srgb, var(--buret-accent, #b45cff) 34%, var(--buret-toolbar-border, rgba(255,255,255,0.16))); font: 400 18px/1.15 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; box-shadow: 0 8px 18px rgba(0,0,0,0.20); }
-      .buret-xyzrender-rotate-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 38px))) rotate(var(--buret-degree-counter-angle)); color: rgba(160,173,214,0.64); font: 400 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+      .buret-xyzrender-rotate-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 38px))) rotate(var(--buret-degree-counter-angle)); color: rgba(160,160,160,0.64); font: 400 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
       .buret-xyzrender-rotate-label.active { color: color-mix(in srgb, var(--buret-accent, #b45cff) 70%, var(--buret-toolbar-color, #fff)); }
-      .buret-xyzrender-rotate-tick { position: absolute; left: 50%; top: 50%; width: 1.25px; height: 10px; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * var(--buret-rotate-radius))); transform-origin: 50% 100%; background: rgba(125,142,183,0.25); border-radius: 999px; }
+      .buret-xyzrender-rotate-tick { position: absolute; left: 50%; top: 50%; width: 1.25px; height: 10px; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * var(--buret-rotate-radius))); transform-origin: 50% 100%; background: rgba(142,142,142,0.25); border-radius: 999px; }
       .buret-xyzrender-sheet-rotate-handle { position: absolute; left: 50%; top: 0; z-index: 12; width: 54px; height: 54px; transform: translate(-50%, calc(-1 * var(--buret-rotate-lift) - 50%)) scale(var(--buret-rotate-handle-scale)); border: 0; border-radius: 999px; cursor: grab; opacity: 0; pointer-events: auto; touch-action: none; transition: opacity 120ms ease, transform 120ms ease; }
       .buret-xyzrender-sheet-rotate-handle::before { content: ""; position: absolute; left: 50%; top: 34px; width: 1.5px; height: max(18px, calc(var(--buret-rotate-lift) - 12px)); transform: translateX(-50%); background: color-mix(in srgb, var(--buret-accent, #b45cff) 38%, transparent); border-radius: 999px; }
       .buret-xyzrender-rotate-handle-dot { position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); border: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, var(--buret-toolbar-color, #fff)); border-radius: 999px; background: var(--buret-toolbar-background, rgba(12,13,14,0.92)); box-shadow: 0 8px 16px rgba(0,0,0,0.22); }
@@ -12544,7 +12649,8 @@ SOFTWARE.
       .buret-xyzrender-resize-sw { bottom: -16px; left: -16px; cursor: nesw-resize; }
       .buret-xyzrender-sheet-item-label { position: absolute; left: 50%; bottom: -23px; transform: translateX(-50%); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border-radius: 999px; color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.84)); font: 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; transition: opacity 120ms ease; }
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-item-label { opacity: 1; }
-      .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
+      .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: auto; cursor: pointer; text-decoration: none; }
+      .buret-xyz-badge:hover, .buret-xyz-badge:focus-visible { border-color: currentColor; }
       .buret-xyz-badge strong { display: block; font-size: 11px; }
       .buret-xyz-badge span { display: block; opacity: 0.76; }
     `;
@@ -13131,8 +13237,14 @@ SOFTWARE.
     const controls = normalizeXyzrenderControls(options.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
     const preset = normalizeXyzrenderPreset(options.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
     setStatus(`[web] Updating ${items.length} selected xyzrender structure${items.length === 1 ? '' : 's'}…`);
+    const revisions = items.map(item => {
+      const revision = (Number(item.dataset.renderRevision) || 0) + 1;
+      item.dataset.renderRevision = String(revision);
+      return revision;
+    });
     let updated = 0;
-    for (const item of items) {
+    for (const [index, item] of items.entries()) {
+      const revision = revisions[index];
       const entry = xyzrenderSheetItemEntry(item);
       if (!entry) continue;
       try {
@@ -13141,16 +13253,30 @@ SOFTWARE.
           vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || controls.vdwAtoms,
           regions: xyzrenderSheetItemRegions(item)
         }, config);
-        const payload = await renderXyzrenderSheetItemPayload(entry, preset, itemControls, options);
+        const itemPreset = options.preset ? preset : xyzrenderSheetItemPreset(item);
+        const payload = await renderXyzrenderSheetItemPayload(entry, itemPreset, itemControls, { ...options, orientationRef: options.orientationRef || item.dataset.buretXyzrenderOrientationRef });
+        if (!item.isConnected || Number(item.dataset.renderRevision) !== revision) continue;
+        pushXyzrenderActionHistory(item, 'change appearance');
         updateXyzrenderSheetItemBody(item, payload.svg);
         setXyzrenderSheetItemEntry(item, entry);
-        item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || preset);
+        item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || itemPreset);
+        item.dataset.buretXyzrenderControls = JSON.stringify(itemControls);
+        const background = item.querySelector('.buret-xyzrender-sheet-item-background');
+        if (background) background.style.display = itemControls.transparentBackground ? 'none' : '';
         updated += 1;
       } catch (error) {
         setStatus(`Could not update ${sheetEntryLabel(entry)}: ${error instanceof Error ? error.message : String(error)}`, 'error');
       }
     }
     if (updated > 0) {
+      activeConfig = { ...config, xyzrenderControls: controls, xyzrenderPreset: preset,
+        externalArtifact: { ...config.externalArtifact, preset } };
+      window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
+      postHostMessage({ type: 'rendererChanged', documentId: config.documentId,
+        renderer: 'xyzrender-external', preset, controls, presetOptions: config.xyzrenderPresetOptions || [] });
+      configureRendererControls(activeConfig);
+      const badge = document.querySelector('.buret-xyz-badge span');
+      if (badge) badge.textContent = `${updated} selected · ${preset}`;
       setStatus(`[web] Updated ${updated} selected xyzrender structure${updated === 1 ? '' : 's'}.`);
       setTimeout(hideStatus, 700);
     }
@@ -13165,7 +13291,7 @@ SOFTWARE.
     const orientationRef = captureCurrentXyzrenderOrientationRef(options);
     if (!endpoint) return requestHostXyzrenderSheetItem(entry, preset, controls, options);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), options.animation ? 125000 : 30000);
     let response;
     try {
       response = await fetch(xyzrenderBrowserDevEndpointUrl(endpoint), {
@@ -13178,7 +13304,8 @@ SOFTWARE.
           controls,
           inputDataBase64,
           inputExtension,
-          orientationRef: orientationRef?.text || undefined
+          animation: options.animation,
+          orientationRef: options.orientationRef || orientationRef?.text || undefined
         })
       });
     } catch (error) {
@@ -13222,7 +13349,7 @@ SOFTWARE.
         controls,
         inputDataBase64: sheetEntryInputDataBase64(entry),
         inputExtension: sheetEntryInputExtension(entry),
-        orientationRef: captureCurrentXyzrenderOrientationRef(options)?.text || null
+        orientationRef: options.orientationRef || captureCurrentXyzrenderOrientationRef(options)?.text || null
       });
       if (!sent) {
         clearTimeout(timeout);
@@ -13271,6 +13398,7 @@ SOFTWARE.
     sheet.appendChild(item);
     selectRotatableArtifact(item);
     installXyzrenderSheetItemInteractions(item, getStageScale, { removable: true });
+    return item;
   }
 
   function setSheetItemRotation(item, rotation) {
@@ -13327,10 +13455,10 @@ SOFTWARE.
     item.style.setProperty('--buret-rotate-lift', `${Math.max(18, nextRadius - rect.height / 2).toFixed(1)}px`);
   }
 
-  function selectRotatableArtifact(item) {
+  function selectRotatableArtifact(item, additive = false) {
     const root = item?.closest?.('.buret-external-artifact-root') || document;
     root.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => {
-      if (existing !== item) existing.classList.remove('selected');
+      if (!additive && existing !== item) existing.classList.remove('selected');
     });
     item.classList.add('selected');
     bringXyzrenderSheetItemToFront(item, root);
@@ -13361,7 +13489,7 @@ SOFTWARE.
     root.dataset.buretSelectionClearInstalled = 'true';
     const clearSelectionOnPointerDown = event => {
       if (event.button !== 0) return;
-      if (event.target?.closest?.('.buret-xyzrender-sheet-item, #buret-toolbar, .buret-xyzrender-popover, .buret-xyz-badge')) return;
+      if (event.target?.closest?.('.buret-xyzrender-sheet-item, #buret-toolbar, .buret-xyzrender-popover, .buret-xyz-badge, .buret-xyzrender-context-menu')) return;
       clearRotatableArtifactSelection(root);
     };
     root.addEventListener('pointerdown', clearSelectionOnPointerDown, true);
@@ -13474,7 +13602,8 @@ SOFTWARE.
       if (!handle || !item.contains(handle)) return;
       event.preventDefault();
       event.stopPropagation();
-      selectRotatableArtifact(item);
+      if (xyzrenderLassoEnabled) return;
+      selectRotatableArtifact(item, event.shiftKey || event.metaKey || event.ctrlKey);
       try { item.focus({ preventScroll: true }); } catch (_) {}
       pointerId = event.pointerId;
       handleName = String(handle.getAttribute('data-buret-resize-handle') || '');
@@ -13578,12 +13707,13 @@ SOFTWARE.
   function installXyzrenderSheetItemInteractions(item, getStageScale, options = {}) {
     if (!item || item.dataset.buretRotatableInstalled === 'true') return;
     item.dataset.buretRotatableInstalled = 'true';
+    item.tabIndex = 0;
     initializeSheetItemCenterPosition(item);
     item.addEventListener('contextmenu', event => showXyzrenderSheetContextMenu(event, item));
     item.addEventListener('click', event => {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || xyzrenderLassoEnabled) return;
       event.stopPropagation();
-      selectRotatableArtifact(item);
+      selectRotatableArtifact(item, item.classList.contains('selected') || event.shiftKey || event.metaKey || event.ctrlKey);
       try { item.focus({ preventScroll: true }); } catch (_) {}
     });
     item.addEventListener('dblclick', event => {
@@ -13608,29 +13738,29 @@ SOFTWARE.
     let pointerId = null;
     let startX = 0;
     let startY = 0;
-    let startLeft = 0;
-    let startTop = 0;
+    let positions = [];
     const onPointerDown = event => {
       if (xyzrenderLassoEnabled) return;
       if (event.button !== 0) return;
       if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle, [data-buret-resize-handle]')) return;
       event.preventDefault();
       event.stopPropagation();
-      selectRotatableArtifact(item);
+      selectRotatableArtifact(item, item.classList.contains('selected') || event.shiftKey || event.metaKey || event.ctrlKey);
       pointerId = event.pointerId;
       startX = event.clientX;
       startY = event.clientY;
-      const position = sheetItemCenterPosition(item);
-      startLeft = position.left;
-      startTop = position.top;
+      positions = Array.from(item.closest('.buret-external-artifact-root').querySelectorAll('.buret-xyzrender-sheet-item.selected'))
+        .map(element => ({ element, ...sheetItemCenterPosition(element) }));
       item.classList.add('dragging');
       try { item.setPointerCapture(event.pointerId); } catch (_) {}
     };
     const onPointerMove = event => {
       if (pointerId !== event.pointerId) return;
       const stageScale = Math.max(0.05, Number(getStageScale?.() || 1));
-      item.style.left = `${startLeft + (event.clientX - startX) / stageScale}px`;
-      item.style.top = `${startTop + (event.clientY - startY) / stageScale}px`;
+      for (const position of positions) {
+        position.element.style.left = `${position.left + (event.clientX - startX) / stageScale}px`;
+        position.element.style.top = `${position.top + (event.clientY - startY) / stageScale}px`;
+      }
     };
     const finish = event => {
       if (pointerId !== event.pointerId) return;
@@ -13642,7 +13772,7 @@ SOFTWARE.
     item.addEventListener('pointermove', onPointerMove);
     item.addEventListener('pointerup', finish);
     item.addEventListener('pointercancel', finish);
-    item.addEventListener('click', event => { event.stopPropagation(); selectRotatableArtifact(item); });
+    item.addEventListener('click', event => { event.stopPropagation(); });
   }
 
   function installXyzrenderSheetItemRotation(item) {
@@ -13703,6 +13833,109 @@ SOFTWARE.
     resetRotatableArtifactRotateRadius(item);
   }
 
+  async function openXyzrender3DEditor() {
+    try {
+      const config = activeConfig || window.BuretteConfig || {};
+      const item = selectedXyzrenderSheetItems()[0] || frontmostXyzrenderSheetItem();
+      if (!item) throw new Error('Select a structure first.');
+      const entry = xyzrenderSheetItemEntry(item);
+      if (!config.xyzrenderEndpoint) throw new Error('xyzrender animation preview currently requires the browser renderer.');
+      if (config.appViewer === true) {
+        item.dataset.buretXyzrenderEditorId ||= `xyzr-${Date.now()}-${++xyzrenderSheetRequestSerial}`;
+        postHostMessage({
+          itemId: item.dataset.buretXyzrenderEditorId,
+          type: 'openXyzrenderAnimation', documentId: config.documentId, label: sheetEntryLabel(entry).split('/').pop(),
+          path: sheetEntryLabel(entry), inputDataBase64: sheetEntryInputDataBase64(entry),
+          inputExtension: sheetEntryInputExtension(entry),
+          previewSvg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML || '',
+          preset: item.dataset.buretXyzrenderPreset || config.xyzrenderPreset || 'default',
+          controls: normalizeXyzrenderControls({ ...(item.dataset.buretXyzrenderControls ? JSON.parse(item.dataset.buretXyzrenderControls) : config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS), regions: xyzrenderSheetItemRegions(item), vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || config.xyzrenderControls?.vdwAtoms }, config),
+          orientationRef: item.dataset.buretXyzrenderOrientationRef || captureCurrentXyzrenderOrientationRef()?.text,
+        });
+        return;
+      }
+      if (!window.BuretteXyzrender3D) {
+        const engineUrl = new URL(runtimeURL('BuretteMolstarURL', './molstar.js'), document.baseURI);
+        await loadScript(new URL('xyzrender-3d-editor.js', engineUrl).href, 'xyzrender animation', 15000);
+      }
+      await window.BuretteXyzrender3D.open({
+        label: sheetEntryLabel(entry).split('/').pop(), download: downloadBlob,
+        previewSvg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML,
+        render: animation => renderXyzrenderSheetItemPayload(entry,
+          item.dataset.buretXyzrenderPreset || config.xyzrenderPreset || 'default',
+          normalizeXyzrenderControls({ ...(item.dataset.buretXyzrenderControls ? JSON.parse(item.dataset.buretXyzrenderControls) : config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS), regions: xyzrenderSheetItemRegions(item), vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || config.xyzrenderControls?.vdwAtoms }, config),
+          { animation, orientationRef: item.dataset.buretXyzrenderOrientationRef }),
+      });
+    } catch (error) { setStatus(error instanceof Error ? error.message : String(error), 'error'); }
+  }
+
+  function installExternalArtifactKeyboard(root, onFrame) {
+    const codes = new Set(['KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF']);
+    const held = new Set();
+    let frame = 0, lastTime = 0, fast = false;
+    let velocity = { x: 0, y: 0, zoom: 0, roll: 0 };
+    const stop = () => {
+      held.clear();
+      cancelAnimationFrame(frame); frame = 0;
+      velocity = { x: 0, y: 0, zoom: 0, roll: 0 };
+    };
+    const editable = target => target?.closest?.('input, textarea, select, button, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="spinbutton"], [role="combobox"], [role="menu"]');
+    const tick = now => {
+      frame = 0;
+      if (!root.isConnected || document.hidden || !held.size) { stop(); return; }
+      const dt = Math.min(0.05, Math.max(0, (now - lastTime) / 1000));
+      lastTime = now;
+      const target = {
+        x: Number(held.has('KeyA')) - Number(held.has('KeyD')),
+        y: Number(held.has('KeyR')) - Number(held.has('KeyF')),
+        zoom: Number(held.has('KeyW')) - Number(held.has('KeyS')),
+        roll: Number(held.has('KeyE')) - Number(held.has('KeyQ')),
+      };
+      const distance = Math.hypot(target.x, target.y);
+      if (distance > 1) { target.x /= distance; target.y /= distance; }
+      const motion = {};
+      const blend = 1 - Math.exp(-dt / 0.06);
+      for (const axis of Object.keys(target)) {
+        const speed = target[axis] * (fast ? 2 : 1);
+        // Integrate the easing analytically, so 60 Hz and 144 Hz travel equally.
+        motion[axis] = dt ? speed + (velocity[axis] - speed) * 0.06 * blend / dt : 0;
+        velocity[axis] += (speed - velocity[axis]) * blend;
+      }
+      onFrame(motion, dt);
+      frame = requestAnimationFrame(tick);
+    };
+    const down = event => {
+      if (event.altKey || event.ctrlKey || event.metaKey || editable(event.target)) { stop(); return; }
+      fast = event.shiftKey;
+      if (!codes.has(event.code)) return;
+      event.preventDefault();
+      if (held.has(event.code)) return;
+      held.add(event.code);
+      if (!frame) { lastTime = performance.now() - 16; tick(performance.now()); }
+    };
+    const up = event => {
+      fast = event.shiftKey;
+      if (!held.delete(event.code)) return;
+      event.preventDefault();
+      if (!held.size) stop();
+    };
+    document.addEventListener('keydown', down);
+    document.addEventListener('keyup', up);
+    document.addEventListener('visibilitychange', stop);
+    document.addEventListener('pointerdown', stop, true);
+    document.addEventListener('focusin', stop);
+    window.addEventListener('blur', stop);
+    return () => {
+      stop();
+      document.removeEventListener('keydown', down);
+      document.removeEventListener('keyup', up);
+      document.removeEventListener('visibilitychange', stop);
+      document.removeEventListener('pointerdown', stop, true);
+      document.removeEventListener('focusin', stop);
+      window.removeEventListener('blur', stop);
+    };
+  }
+
   function installExternalArtifactInteractions(root) {
     disposeExternalArtifactInteractions();
     const stage = root.querySelector('.buret-external-artifact-stage');
@@ -13721,14 +13954,8 @@ SOFTWARE.
 
     const clampScale = value => Math.min(8, Math.max(0.05, value));
     const clampTranslation = () => {
-      if (Math.abs(scale - 1) < 0.001) {
-        scale = 1;
-        translateX = 0;
-        translateY = 0;
-        return;
-      }
-      const maxX = root.clientWidth * Math.abs(scale - 1) * 0.5;
-      const maxY = root.clientHeight * Math.abs(scale - 1) * 0.5;
+      const maxX = root.clientWidth * Math.max(1, scale);
+      const maxY = root.clientHeight * Math.max(1, scale);
       translateX = Math.min(maxX, Math.max(-maxX, translateX));
       translateY = Math.min(maxY, Math.max(-maxY, translateY));
     };
@@ -13771,6 +13998,7 @@ SOFTWARE.
       zoomAt(scale * factor, event.clientX, event.clientY);
     };
     const onPointerDown = event => {
+      if (event.target?.closest?.('.buret-xyz-badge')) return;
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (pointers.size === 1) {
         dragPointerId = event.pointerId;
@@ -13842,6 +14070,33 @@ SOFTWARE.
       } : null
     });
 
+    // Camera motion is time-based, independent of the OS key-repeat rate.
+    const keyboardCleanup = installExternalArtifactKeyboard(root, (motion, seconds) => {
+      const rect = root.getBoundingClientRect();
+      if (motion.zoom) zoomAt(scale * Math.exp(motion.zoom * seconds * 0.9), rect.left + rect.width / 2, rect.top + rect.height / 2);
+      translateX += motion.x * seconds * 220;
+      translateY += motion.y * seconds * 220;
+      if (motion.roll) {
+        const angle = motion.roll * seconds * 60;
+        const radians = angle * Math.PI / 180;
+        const centerX = root.clientWidth / 2 - translateX / scale;
+        const centerY = root.clientHeight / 2 - translateY / scale;
+        // Read the layout once, retain fractional positions across frames.
+        const items = Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item')).map(item => ({
+          item,
+          left: item.style.left.endsWith('px') ? parseFloat(item.style.left) : item.offsetLeft,
+          top: item.style.top.endsWith('px') ? parseFloat(item.style.top) : item.offsetTop,
+        }));
+        for (const { item, left, top } of items) {
+          const x = left - centerX, y = top - centerY;
+          item.style.left = `${centerX + x * Math.cos(radians) - y * Math.sin(radians)}px`;
+          item.style.top = `${centerY + x * Math.sin(radians) + y * Math.cos(radians)}px`;
+          setSheetItemRotation(item, Number(item.dataset.rotation || 0) + angle);
+        }
+      }
+      apply();
+    });
+
     root.addEventListener('wheel', onWheel, { passive: false });
     root.addEventListener('pointerdown', onPointerDown);
     root.addEventListener('pointermove', onPointerMove);
@@ -13852,6 +14107,7 @@ SOFTWARE.
     root.addEventListener('gesturechange', onGestureChange, { passive: false });
     apply();
     externalArtifactInteractionsCleanup = () => {
+      keyboardCleanup();
       saveRendererViewState();
       externalArtifactViewSnapshot = null;
       root.removeEventListener('wheel', onWheel);
@@ -20198,8 +20454,9 @@ SOFTWARE.
 
   function onXyzrenderLassoPointerDown(event) {
     if (!xyzrenderLassoEnabled || event.button !== 0) return;
-    const item = xyzrenderSheetItemFromEvent(event);
-    if (!item) return;
+    const root = event.target?.closest?.('.buret-external-artifact-root');
+    if (!root || event.target?.closest?.('button, [role=toolbar]')) return;
+    const item = xyzrenderSheetItemFromEvent(event) || root;
     hideXyzrenderSheetContextMenu();
     xyzrenderLassoStroke = {
       pointerId: event.pointerId,
@@ -20239,7 +20496,8 @@ SOFTWARE.
     if (!stroke || event.pointerId !== stroke.pointerId) return;
     if (!stroke.dragging) {
       xyzrenderLassoStroke = null;
-      clearXyzrenderSelection();
+      try { stroke.item.releasePointerCapture?.(event.pointerId); } catch (_) {}
+      if (!stroke.additive) clearXyzrenderSelection();
       return;
     }
     if (Math.hypot(event.clientX - stroke.points[0].x, event.clientY - stroke.points[0].y) >= MOLSTAR_LASSO_MIN_DISTANCE_PX) {
@@ -20307,9 +20565,14 @@ SOFTWARE.
       setStatus('[web] xyzrender lasso was too small.');
       return;
     }
-    const result = selectXyzrenderElementsInLasso(stroke.item, stroke.points, stroke.additive);
-    const selected = result.count;
-    const label = result.kind === 'atom' ? 'atom' : 'graphic';
+    const root = stroke.item.closest('.buret-external-artifact-root') || stroke.item;
+    if (!stroke.additive) clearXyzrenderSelection();
+    let selected = 0;
+    for (const item of root.querySelectorAll('.buret-xyzrender-sheet-item')) {
+      const result = selectXyzrenderElementsInLasso(item, stroke.points, true);
+      selected += result.count;
+    }
+    const label = 'element';
     setStatus(selected > 0
       ? `[web] Selected ${selected} xyzrender ${label}${selected === 1 ? '' : 's'} with lasso.`
       : '[web] xyzrender lasso did not match visible graphics.');
@@ -20485,7 +20748,7 @@ SOFTWARE.
     halo.setAttribute('data-buret-xyzrender-selection-halo', 'true');
     halo.setAttribute('aria-hidden', 'true');
     halo.setAttribute('fill', 'none');
-    halo.setAttribute('stroke', '#b45cff');
+    halo.setAttribute('stroke', '#808080');
     halo.setAttribute('stroke-opacity', '0.72');
     halo.setAttribute('stroke-width', xyzrenderSelectionHaloStrokeWidth(element));
     halo.setAttribute('stroke-linecap', 'round');
@@ -20533,7 +20796,7 @@ SOFTWARE.
       dx: '0',
       dy: '0',
       stdDeviation: '2.8',
-      'flood-color': '#b45cff',
+      'flood-color': '#808080',
       'flood-opacity': '0.22',
       result: 'selectionHalo'
     });
@@ -20542,7 +20805,7 @@ SOFTWARE.
       dx: '0',
       dy: '0',
       stdDeviation: '1.1',
-      'flood-color': '#b45cff',
+      'flood-color': '#808080',
       'flood-opacity': '0.55',
       result: 'selectionGlow'
     });
@@ -20807,6 +21070,11 @@ SOFTWARE.
       item.classList.toggle('has-xyzrender-selection', !!item.querySelector('[data-buret-xyzrender-selected="true"]'));
     });
     syncXyzrenderSelectionEffects();
+    const selections = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item.has-xyzrender-selection')).map(item => ({
+      label: sheetEntryLabel(xyzrenderSheetItemEntry(item)),
+      atoms: xyzrenderAtomSelectorForElements(item, Array.from(xyzrenderSelectedElements).filter(element => item.contains(element))),
+    }));
+    postHostMessage({ type: 'xyzrenderAtomSelection', selections: selections.slice(0, 32) });
   }
 
   function clearXyzrenderSelection() {
@@ -24966,7 +25234,8 @@ SOFTWARE.
       const target = options.target
         ? { ...options.target, pickingLevel: options.pickingLevel || options.target.pickingLevel }
         : null;
-      void moleculeContextMenuAction(action, label, target);
+      if (options.onAction) options.onAction(action);
+      else void moleculeContextMenuAction(action, label, target);
     });
     if (options.menu) {
       const closeChildren = () => moleculeMenuCloseSubmenus(options.menu, options.parentSubmenu || null);
@@ -25093,7 +25362,7 @@ SOFTWARE.
     group.className = 'buret-molecule-context-menu-group';
     group.setAttribute('role', 'group');
     for (const child of moleculeMenuActionChildren(entry)) {
-      group.appendChild(moleculeMenuActionItem(child, menu, target, { parentSubmenu: submenu }));
+      group.appendChild(moleculeMenuActionItem(child, menu, target, { ...options, parentSubmenu: submenu }));
     }
     submenu.appendChild(group);
 
@@ -25136,6 +25405,7 @@ SOFTWARE.
       pickingLevel: target?.pickingLevel,
       menu,
       parentSubmenu: options.parentSubmenu || null,
+      onAction: options.onAction,
     });
   }
 
@@ -25532,7 +25802,7 @@ SOFTWARE.
     return { element: container, update };
   }
 
-  function installMoleculeMenuKeyboard(menu) {
+  function installMoleculeMenuKeyboard(menu, closeMenu = hideMolstarContextMenu) {
     menu.addEventListener('keydown', event => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
@@ -25548,7 +25818,7 @@ SOFTWARE.
           currentMenu._buretTrigger?.setAttribute('aria-expanded', 'false');
           currentMenu._buretTrigger?.focus();
         } else {
-          hideMolstarContextMenu();
+          closeMenu();
         }
         return;
       }
@@ -25565,7 +25835,7 @@ SOFTWARE.
       if (event.key === 'Tab') {
         if (currentMenu.closest('[data-buret-representation-menu]')) return;
         event.stopPropagation();
-        hideMolstarContextMenu();
+        closeMenu();
         return;
       }
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;

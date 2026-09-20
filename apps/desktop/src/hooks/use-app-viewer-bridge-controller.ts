@@ -114,6 +114,7 @@ type UseAppViewerBridgeControllerOptions = {
   openKetcherWithStructures: OpenKetcherWithStructures;
   openCommandPalette: () => void;
   openDockTab: (area: "right", kind: DockTabKind) => void;
+  toggleDockTab: (area: "right", kind: DockTabKind) => void;
   openPoseReviewWorkspace: OpenPoseReviewWorkspace;
   pendingMolstarReplaceRef: RefValue<Map<string, PendingMolstarReplaceResolver>>;
   pendingViewerReloadDocumentIdRef: RefValue<string | null>;
@@ -161,6 +162,7 @@ export function useAppViewerBridgeController({
   openKetcherWithStructures,
   openCommandPalette,
   openDockTab,
+  toggleDockTab,
   openPoseReviewWorkspace,
   pendingMolstarReplaceRef,
   pendingViewerReloadDocumentIdRef,
@@ -300,6 +302,7 @@ export function useAppViewerBridgeController({
     documents,
     openCommandPalette,
     openDockTab,
+  toggleDockTab,
     setPreference,
     setViewerLigandSelections,
     setStructureOverlayModes,

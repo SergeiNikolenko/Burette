@@ -1,3 +1,8 @@
+import { Switch } from "./ui/switch";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { ChevronDown } from "./ui/app-icons";
+import { XyzrenderProperties } from "./xyzrender-properties";
 import { StoryMarkdown } from "./story-markdown";
 import { DockFileTabs } from "./dock-file-tabs";
 import { useDropHighlightReset } from "../hooks/use-drop-highlight-reset";
@@ -251,7 +256,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
                       role="tab"
                       aria-selected={active}
                     >
-                      <HugeiconsIcon icon={Icon} strokeWidth={2} aria-hidden="true" />
+                      <HugeiconsIcon icon={Icon} className="size-[18px]" strokeWidth={2} aria-hidden="true" />
                       <span>{DOCK_TAB_LABELS[tab.kind]}</span>
                     </Button>
                     {!readOnly && !(tab.kind === "xyzrender" && !rawTabs.some((rawTab) => rawTab.kind === "xyzrender")) && (
@@ -746,6 +751,7 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
     controlsRef.current = nextControls;
     presetRef.current = nextPreset;
     lastAppliedSignature.current = xyzrenderDockSignature(nextControls, nextPreset);
+    window.dispatchEvent(new CustomEvent("burette:xyzrender-style", { detail: { documentId: document.id, label: document.title, path: document.path, preset: nextPreset, controls: nextControls } }));
     void actions.reloadXyzrenderDocument(document, {
       xyzrenderPreset: nextPreset,
       xyzrenderControls: nextControls,
@@ -776,21 +782,15 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
   return (
     <div className="dock-content xyzrender-dock-panel">
       <section className="structure-brief-card xyzrender-dock-card">
+        <Button type="button" variant="outline" className="xyzrender-editor-launch w-full h-10" onClick={() => { for (const frame of window.document.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe")) frame.contentWindow?.postMessage({ source: "burette-host", body: { type: "openXyzrenderEditor" } }, "*"); }}>Orientation & animation…</Button>
+        <div id="xyzrender-editor-controls" />
         <div className="structure-inspector-section-header">
           <div>
-            <h3>xyzrender</h3>
+            <h3>Style</h3>
             <p>{document.title}</p>
           </div>
           <span className="xyzrender-dock-badge">SVG</span>
         </div>
-        <label className="xyzrender-dock-field">
-          <span>Preset</span>
-          <select value={preset} onChange={(event) => setPresetState(event.currentTarget.value)}>
-            {xyzrenderPresetOptions(document).map((option) => (
-              <option value={option.value} key={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
         <XyzrenderPresetGallery
           preset={preset}
           onSelect={(value) => {
@@ -855,6 +855,7 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
             apply(nextControls, presetRef.current);
           }}
         />
+
         <XyzrenderDockCheckbox
           label="Transparent"
           checked={controls.transparentBackground === true}
@@ -864,30 +865,16 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         <XyzrenderDockTriState label="Fog" value={controls.fog} onChange={(value) => updateControl("fog", value)} />
         <XyzrenderDockCheckbox label="Hide bonds" checked={controls.hideBonds === true} onChange={(checked) => updateControl("hideBonds", checked)} />
       </section>
-      <section className="structure-brief-card xyzrender-dock-card">
-        <div className="structure-inspector-section-header">
-          <div>
-            <h3>Field overlay</h3>
-            <p>Surface mode and opacity</p>
-          </div>
-        </div>
-        <label className="xyzrender-dock-field">
-          <span>Mode</span>
-          <select
-            value={controls.fieldMode ?? "auto"}
-            onChange={(event) => updateControl("fieldMode", normalizeXyzrenderFieldMode(event.currentTarget.value))}
-          >
-            <option value="auto">Auto</option>
-            <option value="off">Off</option>
-            <option value="density">Density</option>
-            <option value="mo">MO</option>
-            <option value="esp">ESP</option>
-            <option value="nci">NCI</option>
-          </select>
-        </label>
-        <XyzrenderDockNumber label="Iso" value={controls.fieldIso} step="0.1" onChange={(value) => updateControl("fieldIso", value)} />
-        <XyzrenderDockNumber label="Opacity" value={controls.fieldOpacity} min={0} max={1} step="0.05" onChange={(value) => updateControl("fieldOpacity", value)} />
-      </section>
+      <Collapsible className="xyzrender-advanced-settings">
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" className="w-full justify-between">
+            Advanced settings<ChevronDown data-icon="inline-end" />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-2">
+          <XyzrenderProperties controls={controls} onChange={setControlsState} />
+        </CollapsibleContent>
+      </Collapsible>
       <div className="xyzrender-dock-actions">
         <button type="button" className="dock-action" onClick={() => apply()}>Apply</button>
         <button type="button" className="dock-action" onClick={reset}>Reset</button>
@@ -1058,7 +1045,7 @@ function XyzrenderDockCheckbox({ label, checked, onChange }: { label: string; ch
   return (
     <label className="xyzrender-dock-check">
       <span>{label}</span>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.currentTarget.checked)} />
+      <Switch aria-label={label} checked={checked} onCheckedChange={onChange} />
     </label>
   );
 }
@@ -1067,11 +1054,10 @@ function XyzrenderDockTriState({ label, value, onChange }: { label: string; valu
   return (
     <label className="xyzrender-dock-field">
       <span>{label}</span>
-      <select value={value === true ? "on" : value === false ? "off" : "default"} onChange={(event) => onChange(xyzrenderTriStateValue(event.currentTarget.value))}>
-        <option value="default">Default</option>
-        <option value="on">On</option>
-        <option value="off">Off</option>
-      </select>
+      <Select value={value === true ? "on" : value === false ? "off" : "default"} onValueChange={next => onChange(xyzrenderTriStateValue(next))}>
+        <SelectTrigger aria-label={label} className="w-28"><SelectValue /></SelectTrigger>
+        <SelectContent><SelectGroup><SelectItem value="default">Default</SelectItem><SelectItem value="on">On</SelectItem><SelectItem value="off">Off</SelectItem></SelectGroup></SelectContent>
+      </Select>
     </label>
   );
 }
@@ -1141,13 +1127,6 @@ function xyzrenderVisibleOpacity(value: number | null | undefined, fallback: num
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-function xyzrenderPresetOptions(document: ViewerDocument) {
-  const options = document.xyzrenderPresetOptions?.length
-    ? document.xyzrenderPresetOptions
-    : [{ value: "default", label: "Default" }];
-  if (options.some((option) => option.value === (document.xyzrenderPreset || "default"))) return options;
-  return [{ value: document.xyzrenderPreset || "default", label: document.xyzrenderPreset || "Default" }, ...options];
-}
 
 function xyzrenderTriStateValue(value: string) {
   if (value === "on") return true;
