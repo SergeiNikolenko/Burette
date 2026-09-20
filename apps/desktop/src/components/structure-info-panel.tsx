@@ -4024,10 +4024,18 @@ function StructureActionRow({
   const showContextMenu = (event: MouseEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    if (hideAction?.type === "hide_components" && hideAction.query && hideAction.kind) {
+      actions.runStructureViewerAction(document, {
+        type: "open_components_menu", label: row.label, componentLabel: row.label,
+        query: hideAction.query, kind: hideAction.kind,
+        x: event.clientX, y: event.clientY, notify: false,
+      });
+      return;
+    }
     void showNativeContextMenu(contextMenuItems({
       row,
       document,
-          primaryAction,
+      primaryAction,
       secondaryAction,
       selected,
       hidden: hidden === true,
@@ -4037,7 +4045,7 @@ function StructureActionRow({
         actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear selection" });
         setActiveActionKey(null);
       },
-    }), { x: event.clientX, y: event.clientY });
+    }), { x: event.clientX, y: event.clientY }, { forceWeb: true });
   };
 
   if (secondaryAction) {

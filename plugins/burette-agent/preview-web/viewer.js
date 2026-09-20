@@ -706,6 +706,9 @@
     if (type === 'edit_components') {
       return window.BuretteSceneActions?.editComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'Component editing is unavailable.');
     }
+    if (type === 'open_components_menu') {
+      return openCompositionSceneMenu(action);
+    }
     if (type === 'remove_components') {
       return window.BuretteSceneActions?.removeComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.removeComponents is unavailable.');
     }
@@ -15960,7 +15963,7 @@ SOFTWARE.
     const next = molstarQueryComponentActions.then(async () => {
       const snapshot = captureMolstarSceneUndoSnapshot(`${operation} ${action.componentLabel || 'component'}`);
       const result = await changeMolstarQueryComponents(action, operation);
-      if (result?.ok) pushMolstarEditUndoSnapshot(snapshot);
+      if (result?.ok && (operation !== 'prepare' || result.result.splitCount > 0)) pushMolstarEditUndoSnapshot(snapshot);
       return result;
     });
     molstarQueryComponentActions = next.catch(() => {});
@@ -15996,6 +15999,7 @@ SOFTWARE.
     const representation = representationForSceneComponentKind(normalizeSceneComponentKind(action.kind));
     const affectedRefs = new Set();
     let componentCount = 0;
+    let splitCount = 0;
     let atoms = 0;
     try {
       await plugin.dataTransaction(async () => {
@@ -16026,7 +16030,7 @@ SOFTWARE.
               affectedRefs.add(ref);
               if (operation === 'remove') {
                 await plugin.state.data.build().delete(ref).commit();
-              } else if (operation !== 'edit') {
+              } else if (operation !== 'edit' && operation !== 'prepare') {
                 if (operation === 'show' && !component.representations?.length) {
                   await plugin.builders.structure.representation.addRepresentation(component.cell, representation);
                 }
@@ -16046,6 +16050,7 @@ SOFTWARE.
               label
             }, `burette-inspector-${component.cell.transform.ref}-${query}`, ['burette-inspector-subset']);
             if (!split) throw new Error(`Could not separate ${label}.`);
+            splitCount++;
             affectedRefs.add(split.ref);
             // Copy the existing representation parameters, including colours,
             // sizes and opacity. A hide/show cycle must not reset visual style.
@@ -16057,11 +16062,11 @@ SOFTWARE.
             if (operation === 'show' && !component.representations?.length) {
               await plugin.builders.structure.representation.addRepresentation(split, representation);
             }
-            plugin.state.data.updateCellState(split.ref, { isHidden: operation === 'edit' ? !!component.cell.state.isHidden : operation === 'hide' });
+            plugin.state.data.updateCellState(split.ref, { isHidden: operation === 'edit' || operation === 'prepare' ? !!component.cell.state.isHidden : operation === 'hide' });
             const splitRepresentations = [...plugin.state.data.cells.values()].filter(cell => cell.transform.parent === split.ref);
             for (let index = 0; index < splitRepresentations.length; index++) {
               plugin.state.data.updateCellState(splitRepresentations[index].transform.ref, {
-                isHidden: operation === 'edit' ? !!component.representations?.[index]?.cell.state.isHidden : operation === 'hide'
+                isHidden: operation === 'edit' || operation === 'prepare' ? !!component.representations?.[index]?.cell.state.isHidden : operation === 'hide'
               });
             }
           }
@@ -16112,7 +16117,63 @@ SOFTWARE.
       scheduleSceneTreeRender();
     }
     if (!atoms) return sceneActionFailure(command, 'SELECTION_EMPTY', `Nothing matched ${label}.`);
-    return { ok: true, command, result: { query, label, componentCount, atoms, ...(edit ? { edit } : { hidden: operation !== 'show' }) } };
+    return { ok: true, command, result: { query, label, componentCount, atoms, ...(operation === 'prepare' ? { componentRefs: [...affectedRefs], splitCount } : edit ? { edit } : { hidden: operation !== 'show' }) } };
+  }
+
+  // Composition rows may cover only part of a scene component. Resolve that exact
+  // subset before opening the existing scene editor; never point a chain's menu
+  // at a representation that also contains its siblings. This lives beside the
+  // query splitter because both need the private Mol* hierarchy/runtime helpers.
+  async function openCompositionSceneMenu(action) {
+    if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) {
+      return sceneActionFailure('open_components_menu', 'INVALID_ARGUMENT', 'A menu position is required.');
+    }
+    const result = await queueMolstarQueryComponentAction(action, 'prepare');
+    if (!result?.ok) return result;
+    const refs = new Set(result.result.componentRefs);
+    const viewer = activeMolstarViewer();
+    const targets = [];
+    for (const structure of molstarCurrentStructures(viewer)) {
+      for (const component of structure.components || []) {
+        if (!refs.has(component.cell.transform.ref)) continue;
+        const representations = component.representations || [];
+        if (!representations.length) {
+          targets.push({ ref: component.cell.transform.ref, label: component.cell.obj.label });
+        }
+        for (const representation of representations) {
+          targets.push({ ref: representation.cell.transform.ref,
+            label: `${component.cell.obj.label} · ${representation.cell.obj.label}` });
+        }
+      }
+    }
+    if (!targets.length) return sceneActionFailure('open_components_menu', 'SELECTION_EMPTY', 'No scene objects matched this row.');
+    const open = ref => {
+      openSceneTreeMenu(ref, action.x, action.y);
+      const menu = document.getElementById('buret-scene-tree-menu');
+      if (!menu || targets.length === 1) return;
+      // Overlapping representations remain independently editable, just as they
+      // are in Scene. Make the target explicit rather than editing the first only.
+      const row = document.createElement('label');
+      row.className = 'buret-tree-menu-field';
+      const caption = document.createElement('span');
+      caption.textContent = 'Object';
+      const select = document.createElement('select');
+      select.className = 'buret-select';
+      select.setAttribute('aria-label', 'Scene object');
+      for (const target of targets) {
+        const option = document.createElement('option');
+        option.value = target.ref;
+        option.textContent = target.label;
+        select.appendChild(option);
+      }
+      select.value = ref;
+      select.addEventListener('change', event => { event.stopPropagation(); open(select.value); });
+      row.append(caption, select);
+      menu.querySelector('.buret-tree-menu-header')?.after(row);
+      menu.style.top = `${Math.round(Math.max(6, Math.min(action.y, window.innerHeight - menu.getBoundingClientRect().height - 6)))}px`;
+    };
+    open(targets[0].ref);
+    return { ok: true, command: 'open_components_menu', result: { targetCount: targets.length } };
   }
 
   async function hideMolstarComponents(action = {}) {
