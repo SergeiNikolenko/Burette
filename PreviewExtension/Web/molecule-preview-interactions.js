@@ -98,6 +98,11 @@
       points.push(pointAt(event));
       const selected = atoms.filter(atom => inside({ x: Number(atom.getAttribute('cx')), y: Number(atom.getAttribute('cy')) }, points));
       for (const atom of atoms) atom.classList.toggle('buret-preview-atom-selected', selected.includes(atom));
+      const selectedIds = new Set(selected.flatMap(atom => [...atom.classList].filter(name => /^atom-\d+$/.test(name))));
+      for (const path of svg.querySelectorAll('path[class*="bond-"]')) {
+        const endpoints = [...path.classList].filter(name => /^atom-\d+$/.test(name));
+        path.classList.toggle('buret-preview-bond-selected', endpoints.length === 2 && endpoints.every(id => selectedIds.has(id)));
+      }
       cancel();
       onSelect(selected.map(atom => atom.dataset.sourcePosition?.split(',').map(Number)).filter(position => position?.length === 3 && position.every(Number.isFinite)));
     }, { signal });

@@ -89,6 +89,11 @@ changes are broadcast without rebuilding the viewer. Leaving Settings returns
 to the tab that was active on entry. Unsaved grids show a tab marker, and the
 Inspector molecule card resets its retained hover state when its document changes.
 
+The Mol* 2D molecule card keeps its hidden state for the current viewer document.
+Changing or clearing selection, Escape, and viewport resize do not reopen it;
+the bottom restore chip does. Viewer teardown resets that state. The card uses
+one hide control and edge resizing, with actions below the depiction.
+
 Collection tables show a floating molecule preview when hovering the Mol cell
 with the right dock closed. Opening the dock dismisses that preview. The shell
 includes `rightDockOpen` in its `gridViewportCover` message; standalone grid

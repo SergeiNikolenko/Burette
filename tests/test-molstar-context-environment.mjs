@@ -144,9 +144,10 @@ assert.equal(picked, priorSelection);
 let selectedPreviewLoci = null;
 const selectPreviewAtoms = new Function('molstarStructureFromRef', 'activeMolstarViewer', 'molstarContextElementLoci', 'scheduleSceneTreeRender',
   `${functionSource('selectMolstarMoleculePreviewAtoms')}; return selectMolstarMoleculePreviewAtoms;`)(
-  value => value, () => ({ plugin: { managers: { structure: { selection: {
-    clear() { selectedPreviewLoci = null; },
-    fromLoci(_modifier, loci, applyGranularity) { assert.equal(applyGranularity, false); selectedPreviewLoci = loci; },
+  value => value, () => ({ plugin: { managers: { interactivity: { lociSelects: {
+    deselectAll() { selectedPreviewLoci = null; },
+  } }, structure: { selection: {
+    fromLoci(modifier, loci, applyGranularity) { assert.equal(modifier, 'set'); assert.equal(applyGranularity, false); selectedPreviewLoci = loci; },
   } } } } }), value => value, () => {},
 );
 const previewUnit = ligand.units[0];
