@@ -3548,6 +3548,29 @@ body.burette-mobile-host .buret-docking-poses button {
     flex: 1 1 auto;
   }
 }
+/* A plain frame counter needs no reserved width for structure names. Keep
+   the closed stepper at its content width even in a narrow desktop pane. */
+.buret-docking-poses.buret-docking-poses-frames:not(.buret-docking-poses-animation-open):not(.buret-docking-poses-collapsed) {
+  width: max-content;
+}
+.buret-docking-poses-frames .buret-docking-pose-main {
+  display: inline-flex;
+  flex-wrap: wrap;
+  width: auto;
+  gap: 4px;
+}
+.buret-docking-poses-frames .buret-docking-pose-main > * {
+  flex-shrink: 0;
+}
+.buret-docking-poses-frames .buret-docking-pose-main > span {
+  min-width: 0;
+  padding-inline: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.buret-docking-poses-frames.buret-docking-poses-compact.buret-docking-poses-animation-open .buret-docking-pose-animation {
+  max-height: 140px;
+}
 .buret-superposition-panel {
   position: fixed;
   top: 64px;

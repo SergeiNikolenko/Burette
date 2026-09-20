@@ -78,7 +78,6 @@ export async function runStandaloneConformerWorkflow(
     conformersPerMolecule?: number;
   } = {},
 ): Promise<ConformerWorkflowResult> {
-  const backendPolicy = (options.conformersPerMolecule ?? 1) === 1 ? "referenceCpu" : "gpuRequired";
   let job: ConformerJob = {
     id: crypto.randomUUID(),
     title: options.initialization === "inputGeometry" ? "Optimize geometry" : "Generate 3D",
@@ -87,7 +86,7 @@ export async function runStandaloneConformerWorkflow(
     status: "running",
     startedAt: Date.now(),
     progress: "Preparing molecular constraints…",
-    backend: backendPolicy === "referenceCpu" ? "referenceCpu" : "nativeMetal",
+    backend: "nativeMetal",
     cancelable: false,
   };
   const update = (patch: Partial<ConformerJob>) => {
@@ -111,7 +110,7 @@ export async function runStandaloneConformerWorkflow(
         onProgress(phase, snapshot);
       },
       {
-        backendPolicy: sourceIndexes.length === 1 ? backendPolicy : "gpuRequired",
+        backendPolicy: "gpuRequired",
         variant: options.variant ?? "ETKDGv3",
         initialization: options.initialization ?? "generated",
         mmffVariant: options.mmffVariant ?? "MMFF94s",

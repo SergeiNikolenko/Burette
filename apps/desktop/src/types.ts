@@ -477,7 +477,6 @@ export type ViewerPreferences = {
   rendererMode: "auto" | "grid2d" | "molstar" | "xyzrender-external";
   molstarStyle: "default" | "illustrative" | "illustrative-surface" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface";
   desktopPreviewLimitMiB: number;
-  conformerEngine: "datamol" | "rdkit";
   conformerCandidateCount: number;
   conformerRmsdCutoff: number;
   themeLightAccent: string;

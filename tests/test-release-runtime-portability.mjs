@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -13,10 +15,20 @@ const runtimeViewer = source("apps/desktop/src-tauri/src/preview/runtime_viewer.
 const updater = source("apps/desktop/src-tauri/src/commands/updater.rs");
 const registry = JSON.parse(source("config/preview-formats.json"));
 
+// Exercise the packaging transformation, including ditto on macOS, rather
+// than only matching the build script's source.
+execFileSync("python3", [fileURLToPath(new URL("./test-deduplicate-web-resources.py", import.meta.url))], { stdio: "inherit" });
+
 assert.match(buildScript, /relocate_bundled_python_runtime/);
 assert.match(buildScript, /install_name_tool/);
 assert.match(buildScript, /assert_no_external_python_dependencies/);
 assert.match(buildScript, /prepare_bundled_python_for_signing/);
+assert.match(buildScript, /prune_bundled_xyzrender_runtime\(\)/);
+assert.match(buildScript, /BURETTE_KEEP_FULL_XYZRENDER_RUNTIME/);
+assert.match(
+  buildScript,
+  /relocate_bundled_python_runtime "\$python_root"\s*\n\s*prune_bundled_xyzrender_runtime "\$runtime" "\$python_root"/,
+);
 assert.match(
   buildScript,
   /prepare_bundled_python_for_signing\(\) \{\s*local python_root="\$1"\s*\[\[ -d "\$python_root" \]\] \|\| return 0/,

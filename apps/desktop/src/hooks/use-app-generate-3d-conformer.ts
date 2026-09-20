@@ -222,7 +222,6 @@ export function useAppGenerate3DConformer({
           pushStatus("Optimizing the current 3D geometry with MMFF94s on Metal...");
           const optimized = await generateBrowserDev3DConformer({
             ...source,
-            engine: "rdkit",
             operation: "optimize",
             mode: "single",
           });

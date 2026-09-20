@@ -126,7 +126,7 @@ const browserDevGeneratedFileRoots = [BROWSER_DEV_GENERATED_FILES_ROOT, BROWSER_
 const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...browserDevGeneratedFileRoots, ...extraFsAllow]
   .map(canonicalExistingPath);
 const BROWSER_DEV_CCD_CACHE_ROOT = join(homedir(), ".cache", "burette", "ccd-ligands");
-const BROWSER_DEV_CHEMISTRY_PREP_PROJECT = join(repoRoot, "tools", "chemistry-prep");
+const RDKIT_CREST_PREP_SCRIPT_PATH = join(repoRoot, "scripts", "rdkit_crest_prep.py");
 const BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR = process.env.BURETTE_DESCRIPTOR_RUNTIME_DIR
   ? resolve(process.env.BURETTE_DESCRIPTOR_RUNTIME_DIR)
   : join(homedir(), "Library", "Application Support", "Burette", "descriptor-python");
@@ -154,7 +154,6 @@ type PythonCommand = {
   command: string;
   args: string[];
 };
-type ConformerPythonEngine = "datamol" | "rdkit";
 type BrowserDevDescriptorCellValue = {
   id: string;
   label: string;
@@ -1004,11 +1003,11 @@ function browserDevSchrodingerStatus() {
       };
 }
 
-function conformerPythonCandidates(engine: string) {
+function conformerPythonCandidates() {
   const candidates: PythonCommand[] = [];
-  const configuredPython = String(engine === "datamol" ? process.env.BURETTE_DATAMOL_PYTHON || "" : process.env.BURETTE_RDKIT_PYTHON || "").trim();
+  const configuredPython = String(process.env.BURETTE_RDKIT_PYTHON || "").trim();
   if (configuredPython) candidates.push({ label: configuredPython, command: configuredPython, args: [] });
-  const packageName = engine === "datamol" ? "datamol" : "rdkit";
+  const packageName = "rdkit";
   const uvx = resolveExecutable("uvx", [
     process.env.HOME ? join(process.env.HOME, ".local/bin/uvx") : "",
     "/opt/homebrew/bin/uvx",
@@ -1028,36 +1027,24 @@ function conformerPythonCandidates(engine: string) {
   });
 }
 
-function conformerPythonStatusCandidates(engine: ConformerPythonEngine) {
-  return conformerPythonCandidates(engine).filter((candidate) => !isUvxFromPythonCandidate(candidate));
+function conformerPythonStatusCandidates() {
+  return conformerPythonCandidates().filter((candidate) => !isUvxFromPythonCandidate(candidate));
 }
 
 function isUvxFromPythonCandidate(candidate: PythonCommand) {
   return candidate.args[0] === "--from" && candidate.args.at(-1) === "python";
 }
 
-function conformerPythonRuntimeSpec(engine: ConformerPythonEngine) {
-  return engine === "datamol"
-    ? {
-        engine,
-        packageName: "datamol",
-        envName: "BURETTE_DATAMOL_PYTHON",
-        label: "Datamol",
-        script: "import datamol as dm\nprint(getattr(dm, '__version__', 'unknown'))",
-      }
-    : {
-        engine,
-        packageName: "rdkit",
-        envName: "BURETTE_RDKIT_PYTHON",
-        label: "RDKit",
-        script: "import rdkit\nprint(getattr(rdkit, '__version__', 'unknown'))",
-      };
-}
-
-async function browserDevConformerPythonStatus(engine: ConformerPythonEngine) {
-  const spec = conformerPythonRuntimeSpec(engine);
+async function browserDevConformerPythonStatus() {
+  const spec = {
+    engine: "rdkit",
+    packageName: "rdkit",
+    envName: "BURETTE_RDKIT_PYTHON",
+    label: "RDKit",
+    script: "import rdkit\nprint(getattr(rdkit, '__version__', 'unknown'))",
+  };
   let lastError: string | null = null;
-  for (const python of conformerPythonStatusCandidates(engine)) {
+  for (const python of conformerPythonStatusCandidates()) {
     try {
       const version = await browserDevConformerPythonVersion(python, spec.script);
       return {
@@ -1852,7 +1839,8 @@ function readConformerRequestBody(body: unknown) {
   const title = typeof request.title === "string" && request.title.trim() ? request.title : "ketcher-sketch.sdf";
   const extension = String(request.extension || "").trim().replace(/^\./u, "").toLowerCase();
   const text = typeof request.text === "string" ? request.text : "";
-  const engine = String(request.engine || "datamol").trim().toLowerCase();
+  const requestedEngine = String(request.engine || "rdkit").trim().toLowerCase();
+  const engine = requestedEngine === "datamol" ? "rdkit" : requestedEngine;
   const operation = String(request.operation || "generate").trim().toLowerCase();
   const mode = String(request.mode || "single").trim().toLowerCase() === "ensemble" ? "ensemble" : "single";
   const candidateCount = boundedNumber(request.candidateCount, 128, 1, 512);
@@ -1871,8 +1859,8 @@ function readConformerRequestBody(body: unknown) {
   if (!["sdf", "sd", "mol", "smi", "smiles"].includes(extension)) {
     throw new Error("3D conformer generation currently supports MOL, SDF, and SMILES input.");
   }
-  if (!["datamol", "rdkit"].includes(engine)) {
-    throw new Error("3D conformer generation supports Datamol and RDKit engines.");
+  if (engine !== "rdkit") {
+    throw new Error("Legacy Python conformer generation supports the RDKit engine.");
   }
   if (!["generate", "optimize"].includes(operation)) {
     throw new Error("Browser dev conformer operation must be generate or optimize.");
@@ -1919,7 +1907,7 @@ async function generate3DConformerForBrowserDev(body: unknown) {
     source3d: request.source3d,
   });
   const errors: string[] = [];
-  for (const python of conformerPythonCandidates(request.engine)) {
+  for (const python of conformerPythonCandidates()) {
     try {
       const outputText = await runPythonWithStdin(python, script, input, conformerGenerationTimeoutMs(request.candidateCount));
       const generated = JSON.parse(outputText) as { text?: unknown; method?: unknown; conformerCount?: unknown };
@@ -1939,11 +1927,9 @@ async function generate3DConformerForBrowserDev(body: unknown) {
       errors.push(error instanceof Error ? error.message : `${python.label}: ${String(error)}`);
     }
   }
-  const engineLabel = request.engine === "datamol" ? "Datamol" : "RDKit";
-  const envName = request.engine === "datamol" ? "BURETTE_DATAMOL_PYTHON" : "BURETTE_RDKIT_PYTHON";
   throw new Error(errors.length
-    ? `${engineLabel} conformer generation failed: ${errors.join("; ")}`
-    : `${engineLabel} Python is required for 3D conformer generation. Set ${envName} to a Python executable with ${request.engine} installed.`);
+    ? `RDKit conformer generation failed: ${errors.join("; ")}`
+    : "RDKit Python is required for legacy 3D conformer generation. Set BURETTE_RDKIT_PYTHON to a Python executable with rdkit installed.");
 }
 
 function conformerGenerationTimeoutMs(candidateCount: number) {
@@ -2391,8 +2377,8 @@ function browserDevConformerInputExtension(request: BrowserDevConformerRunReques
 async function prepareBrowserDevCrestInput(inputPath: string, inputText: string, workDir: string, jobKey: string | null) {
   const rawPdbLigandSelection = isRawPdbLigandSelection(inputText);
   if (!rawPdbLigandSelection && shouldUsePreparedSdfDirectly(inputPath, inputText)) {
-    const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(inputPath, workDir, "input:prepared_sdf", jobKey);
-    if (datamolPrepared) return datamolPrepared;
+    const rdkitPrepared = await prepareBrowserDevCrestInputWithRdkit(inputPath, workDir, "input:prepared_sdf", jobKey);
+    if (rdkitPrepared) return rdkitPrepared;
     return { path: inputPath, text: inputText, source: "input:prepared_sdf" };
   }
   const ligandCode = rawPdbLigandSelection ? rawPdbLigandCode(inputText) : null;
@@ -2401,8 +2387,8 @@ async function prepareBrowserDevCrestInput(inputPath: string, inputText: string,
     if (ccdSdf) {
       const preparedPath = join(workDir, `prepared_${ligandCode.toLowerCase()}_ccd.sdf`);
       await writeFile(preparedPath, ccdSdf.text, "utf8");
-      const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(preparedPath, workDir, ccdSdf.source, jobKey);
-      if (datamolPrepared) return datamolPrepared;
+      const rdkitPrepared = await prepareBrowserDevCrestInputWithRdkit(preparedPath, workDir, ccdSdf.source, jobKey);
+      if (rdkitPrepared) return rdkitPrepared;
       return { path: preparedPath, text: ccdSdf.text, source: ccdSdf.source };
     }
   }
@@ -2417,20 +2403,20 @@ async function prepareBrowserDevCrestInput(inputPath: string, inputText: string,
     if (status === 0 && existsSync(preparedPath)) {
       const preparedText = await readFile(preparedPath, "utf8");
       const source = prepArgs.includes("--gen3d") ? "obabel:gen3d_add_h" : "obabel:add_h";
-      const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(preparedPath, workDir, source, jobKey);
-      if (datamolPrepared) return datamolPrepared;
+      const rdkitPrepared = await prepareBrowserDevCrestInputWithRdkit(preparedPath, workDir, source, jobKey);
+      if (rdkitPrepared) return rdkitPrepared;
       return { path: preparedPath, text: preparedText, source };
     }
   }
   const xTbPreparedPath = await prepareBrowserDevXtbInputWithHydrogens(inputPath, workDir, "input-with-h");
   if (xTbPreparedPath !== inputPath) {
     const preparedText = await readFile(xTbPreparedPath, "utf8");
-    const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(xTbPreparedPath, workDir, "obabel:add_h", jobKey);
-    if (datamolPrepared) return datamolPrepared;
+    const rdkitPrepared = await prepareBrowserDevCrestInputWithRdkit(xTbPreparedPath, workDir, "obabel:add_h", jobKey);
+    if (rdkitPrepared) return rdkitPrepared;
     return { path: xTbPreparedPath, text: preparedText, source: "obabel:add_h" };
   }
-  const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(inputPath, workDir, "input", jobKey);
-  if (datamolPrepared) return datamolPrepared;
+  const rdkitPrepared = await prepareBrowserDevCrestInputWithRdkit(inputPath, workDir, "input", jobKey);
+  if (rdkitPrepared) return rdkitPrepared;
   return { path: inputPath, text: inputText, source: "input" };
 }
 
@@ -2453,152 +2439,35 @@ function shouldGenerateBrowserDevCrestInput3d(inputText: string) {
   return false;
 }
 
-async function prepareBrowserDevCrestInputWithDatamol(inputPath: string, workDir: string, source: string, jobKey: string | null) {
-  if (!shouldPrepareBrowserDevCrestInputWithDatamol(inputPath)) return null;
-  const preparedPath = join(workDir, "prepared_datamol.sdf");
-  const prepLogPath = join(workDir, "datamol-prep.log");
-  const commands = await browserDevDatamolPrepCommands(inputPath, preparedPath);
+async function prepareBrowserDevCrestInputWithRdkit(inputPath: string, workDir: string, source: string, jobKey: string | null) {
+  if (!shouldPrepareBrowserDevCrestInputWithRdkit(inputPath)) return null;
+  const preparedPath = join(workDir, "prepared_rdkit.sdf");
+  const prepLogPath = join(workDir, "rdkit-prep.log");
+  const commands = browserDevRdkitPrepCommands(inputPath, preparedPath);
   for (const command of commands) {
     const { status } = await runBrowserDevLoggedExecutable(command.executable, command.args, workDir, prepLogPath, 300_000, jobKey);
     if (status !== 0 || !existsSync(preparedPath)) continue;
     const preparedText = await readFile(preparedPath, "utf8");
     if (!isValidSdfText(preparedText)) continue;
-    return { path: preparedPath, text: preparedText, source: `${source}:datamol_mmff` };
+    return { path: preparedPath, text: preparedText, source: `${source}:rdkit_mmff` };
   }
   return null;
 }
 
-function shouldPrepareBrowserDevCrestInputWithDatamol(inputPath: string) {
+function shouldPrepareBrowserDevCrestInputWithRdkit(inputPath: string) {
   const extension = fileExtension(inputPath);
   return ["sdf", "sd", "mol", "mol2", "pdb", "pdbqt", "ent"].includes(extension);
 }
 
-const browserDevDatamolPythonCache = new Map<string, boolean>();
-
-async function browserDevDatamolPrepCommands(inputPath: string, outputPath: string) {
-  const script = browserDevDatamolPrepScript();
-  const commands: Array<{ executable: string; args: string[] }> = [];
+function browserDevRdkitPrepCommands(inputPath: string, outputPath: string) {
+  const scriptArgs = [RDKIT_CREST_PREP_SCRIPT_PATH, inputPath, outputPath];
+  const commands = conformerPythonStatusCandidates().map((python) => ({
+    executable: python.command,
+    args: [...python.args, ...scriptArgs],
+  }));
   const uv = resolveExecutable("uv");
-  if (uv && existsSync(BROWSER_DEV_CHEMISTRY_PREP_PROJECT)) {
-    commands.push({ executable: uv, args: ["run", "--project", BROWSER_DEV_CHEMISTRY_PREP_PROJECT, "python", "-c", script, inputPath, outputPath] });
-  } else if (uv) {
-    commands.push({ executable: uv, args: ["run", "--with", "datamol", "--with", "rdkit", "python", "-c", script, inputPath, outputPath] });
-  }
-  const python = resolveExecutable("python3") ?? resolveExecutable("python");
-  if (python && await browserDevPythonHasDatamol(python)) {
-    commands.push({ executable: python, args: ["-c", script, inputPath, outputPath] });
-  }
+  if (uv) commands.push({ executable: uv, args: ["run", "--with", "rdkit", "python", ...scriptArgs] });
   return commands;
-}
-
-async function browserDevPythonHasDatamol(python: string) {
-  const cached = browserDevDatamolPythonCache.get(python);
-  if (cached !== undefined) return cached;
-  try {
-    await execFileAsync(python, ["-c", "import datamol, rdkit"], { timeout: 8_000, maxBuffer: 1024 * 1024 });
-    browserDevDatamolPythonCache.set(python, true);
-    return true;
-  } catch {
-    browserDevDatamolPythonCache.set(python, false);
-    return false;
-  }
-}
-
-function browserDevDatamolPrepScript() {
-  return String.raw`
-import sys
-import datamol as dm
-from rdkit import Chem
-from rdkit.Chem import AllChem
-
-dm.disable_rdkit_log()
-input_path, output_path = sys.argv[1], sys.argv[2]
-lower = input_path.lower()
-
-def first_sdf_mol(path):
-    supplier = Chem.SDMolSupplier(path, removeHs=False, sanitize=True)
-    for mol in supplier:
-        if mol is not None:
-            return mol
-    return None
-
-if lower.endswith((".sdf", ".sd")):
-    mols = dm.read_sdf(input_path, as_df=False)
-    mol = next((item for item in mols if item is not None), None) if mols else None
-    if mol is None:
-        mol = first_sdf_mol(input_path)
-elif lower.endswith(".mol2"):
-    mol = Chem.MolFromMol2File(input_path, removeHs=False, sanitize=True)
-elif lower.endswith(".mol"):
-    mol = Chem.MolFromMolFile(input_path, removeHs=False, sanitize=True)
-elif lower.endswith((".pdb", ".pdbqt", ".ent")):
-    mol = Chem.MolFromPDBFile(input_path, removeHs=False, sanitize=True)
-else:
-    mol = None
-
-if mol is None:
-    raise SystemExit("Datamol/RDKit could not parse input molecule")
-
-try:
-    mol = dm.fix_mol(mol)
-except Exception as error:
-    print(f"datamol fix_mol skipped: {error}", file=sys.stderr)
-
-try:
-    mol = dm.sanitize_mol(mol, sanifix=True, charge_neutral=False)
-except TypeError:
-    mol = dm.sanitize_mol(mol)
-except Exception as error:
-    print(f"datamol sanitize_mol skipped: {error}", file=sys.stderr)
-
-try:
-    mol = dm.standardize_mol(mol, disconnect_metals=False, normalize=True, reionize=True, uncharge=False, stereo=True)
-except TypeError:
-    mol = dm.standardize_mol(mol)
-except Exception as error:
-    print(f"datamol standardize_mol skipped: {error}", file=sys.stderr)
-
-mol = Chem.AddHs(mol, addCoords=True)
-needs_embed = mol.GetNumConformers() == 0
-if not needs_embed:
-    conf = mol.GetConformer()
-    z_values = [abs(conf.GetAtomPosition(i).z) for i in range(mol.GetNumAtoms())]
-    needs_embed = max(z_values, default=0.0) < 1e-4
-
-if needs_embed:
-    params = AllChem.ETKDGv3()
-    params.randomSeed = 0xB00
-    params.useRandomCoords = True
-    status = AllChem.EmbedMolecule(mol, params)
-    if status != 0:
-        status = AllChem.EmbedMolecule(mol, useRandomCoords=True, randomSeed=0xB00)
-    if status != 0:
-        raise SystemExit("RDKit ETKDG embedding failed")
-
-optimized = False
-props = AllChem.MMFFGetMoleculeProperties(mol, mmffVariant="MMFF94s")
-if props is not None:
-    ff = AllChem.MMFFGetMoleculeForceField(mol, props, confId=0)
-    if ff is not None:
-        ff.Minimize(maxIts=1000)
-        optimized = True
-
-if not optimized:
-    ff = AllChem.UFFGetMoleculeForceField(mol, confId=0)
-    if ff is not None:
-        ff.Minimize(maxIts=1000)
-        optimized = True
-
-if not optimized:
-    raise SystemExit("RDKit could not initialize MMFF94s or UFF")
-
-try:
-    dm.to_sdf([mol], output_path)
-except Exception:
-    writer = Chem.SDWriter(output_path)
-    writer.write(mol)
-    writer.close()
-`;
 }
 
 function sdfAtomBlockStats(inputText: string) {
@@ -3749,9 +3618,8 @@ export function browserDevXyzrenderPlugin() {
       });
       registerBrowserDevRuntimeDoctorRoute(server, {
         conformerStatus: browserDevConformerStatus,
-        datamolConformerStatus: () => browserDevConformerPythonStatus("datamol"),
         descriptorStatus: browserDevDescriptorStatus,
-        rdkitConformerStatus: () => browserDevConformerPythonStatus("rdkit"),
+        rdkitConformerStatus: browserDevConformerPythonStatus,
         schrodingerStatus: browserDevSchrodingerStatus,
         xtbStatus: browserDevXtbStatus,
         xyzrenderStatus: browserDevXyzrenderStatus,
@@ -4081,7 +3949,10 @@ export default defineConfig({
     emptyOutDir: true,
     assetsInlineLimit: (filePath) => (
       filePath.endsWith("/RDKit_minimal.wasm")
-        ? true
+        // The plugin serves binary assets over HTTP. Keep one emitted WASM
+        // instead of a base64 copy in both the shell and fingerprint worker.
+        // Preserve the packaged WKWebView and hosted-widget loading contract.
+        ? !prebuiltAgentShellBuild
         : undefined
     ),
     cssCodeSplit: !hostedMcpBuild,

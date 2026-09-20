@@ -5269,10 +5269,7 @@ input.structure-inspector-composition-search {
   font-size: 10px;
 }
 .trajectory-smoothing-power button[data-selected] { background: color-mix(in srgb, var(--accent) 17%, var(--surface-card)); color: var(--text-primary); font-weight: 650; }
-.trajectory-smoothing-intro,
 .trajectory-smoothing-note { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
-.trajectory-smoothing-strength-copy { color: var(--text-secondary); font-size: 11px; line-height: 1.35; }
-.trajectory-smoothing-strength-copy strong { color: var(--text-primary); font-weight: 650; }
 .trajectory-smoothing-presets {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -9593,4 +9590,3 @@ img.settings-open-destination-icon {
 .file-operation-dialog-rename { width: min(320px, calc(100vw - 32px)); }
 .file-operation-dialog-rename .radix-dialog-body { padding-top: 14px; padding-bottom: 12px; }
 .file-operation-dialog-rename .calculated-column-field { gap: 0; }
-

@@ -39,7 +39,8 @@ APP_METADATA_PLIST="$ROOT/apps/desktop/src-tauri/AppMetadata.plist"
 LOCAL_XYZRENDER_ENV="$HOME/.local/share/uv/tools/xyzrender"
 LOCAL_XYZRENDER_PYTHON_HOME="$(sed -n 's/^home = //p' "$LOCAL_XYZRENDER_ENV/pyvenv.cfg" 2>/dev/null | head -n 1 || true)"
 LOCAL_XYZRENDER_PYTHON_ROOT=""
-XYZRENDER_RUNTIME_PYTHON_PACKAGES=("datamol==0.12.5")
+# Retain the full source runtime only when diagnosing upstream packaging.
+KEEP_FULL_XYZRENDER_RUNTIME="${BURETTE_KEEP_FULL_XYZRENDER_RUNTIME:-0}"
 if [[ -n "$LOCAL_XYZRENDER_PYTHON_HOME" ]]; then
   LOCAL_XYZRENDER_PYTHON_ROOT="$(cd -P "$LOCAL_XYZRENDER_PYTHON_HOME/.." && pwd -P)"
 fi
@@ -177,27 +178,23 @@ require_xyzrender_runtime_for_release() {
   [[ "$BUILD_MODE" != "release" ]] && return 0
   [[ -d "$LOCAL_XYZRENDER_ENV" ]] || {
     echo "error: release builds require bundled xyzrender runtime source: $LOCAL_XYZRENDER_ENV" >&2
-    echo "Install it before release builds with: uv tool install xyzrender" >&2
+    echo "Install it before release builds with: uv tool install --with rdkit xyzrender" >&2
     exit 1
   }
 }
-ensure_xyzrender_runtime_python_packages() {
+ensure_xyzrender_rdkit() {
   [[ -d "$LOCAL_XYZRENDER_ENV" ]] || return 0
-  [[ -x "$LOCAL_XYZRENDER_ENV/bin/python3" ]] || {
-    echo "error: local xyzrender runtime is missing Python: $LOCAL_XYZRENDER_ENV/bin/python3" >&2
+  local python="$LOCAL_XYZRENDER_ENV/bin/python3"
+  [[ -x "$python" ]] || {
+    echo "error: local xyzrender runtime is missing Python: $python" >&2
     exit 1
   }
-  if "$LOCAL_XYZRENDER_ENV/bin/python3" - <<'PY' >/dev/null 2>&1
-import datamol
-PY
-  then
+  if PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 "$python" -c 'from rdkit import Chem' >/dev/null 2>&1; then
     return 0
   fi
-  require_tool uv "Install uv to refresh the bundled xyzrender Python runtime."
-  uv pip install --python "$LOCAL_XYZRENDER_ENV/bin/python3" "${XYZRENDER_RUNTIME_PYTHON_PACKAGES[@]}"
-  "$LOCAL_XYZRENDER_ENV/bin/python3" - <<'PY' >/dev/null
-import datamol
-PY
+  require_tool uv "Install uv to add RDKit to the bundled xyzrender runtime."
+  uv pip install --python "$python" rdkit
+  PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 "$python" -c 'from rdkit import Chem'
 }
 relocate_bundled_python_runtime() {
   local python_root="$1"
@@ -290,13 +287,19 @@ prepare_bundled_python_for_signing() {
   find "$python_root" -type f -name '*.pyc' -delete
   find "$python_root" -type d -name __pycache__ -prune -exec rm -rf {} +
 }
+prune_bundled_xyzrender_runtime() {
+  local runtime="$1"
+  local python_root="$2"
+  [[ "$KEEP_FULL_XYZRENDER_RUNTIME" == "1" ]] && return 0
+  PYTHONDONTWRITEBYTECODE=1 "$LOCAL_XYZRENDER_ENV/bin/python3" \
+    "$ROOT/scripts/prune-xyzrender-runtime.py" "$runtime" "$python_root"
+}
 bundle_xyzrender_runtime() {
   local app="$1"
   local runtime="$app/Contents/Resources/xyzrender-runtime"
   local python_root="$app/Contents/Resources/xyzrender-python"
   require_xyzrender_runtime_for_release
   [[ -d "$LOCAL_XYZRENDER_ENV" ]] || return 0
-  ensure_xyzrender_runtime_python_packages
   [[ -n "$LOCAL_XYZRENDER_PYTHON_ROOT" && -x "$LOCAL_XYZRENDER_PYTHON_ROOT/bin/python3" ]] || {
     echo "error: could not resolve relocatable xyzrender python runtime from $LOCAL_XYZRENDER_ENV/pyvenv.cfg" >&2
     exit 1
@@ -307,6 +310,7 @@ bundle_xyzrender_runtime() {
   rsync -a --delete "$LOCAL_XYZRENDER_PYTHON_ROOT/" "$python_root/"
   clean_detritus "$python_root"
   relocate_bundled_python_runtime "$python_root"
+  prune_bundled_xyzrender_runtime "$runtime" "$python_root"
   assert_no_external_python_dependencies "$python_root"
   prepare_bundled_python_for_signing "$python_root"
   cat >"$runtime/bin/xyzrender" <<'EOF'
@@ -530,6 +534,10 @@ case "$ROOT" in *"/.Trash/"*|*"/Library/Mobile Documents/.Trash/"*)
   exit 1;;
 esac
 
+# Validate/provision the offline Python tools before starting native builds.
+require_xyzrender_runtime_for_release
+ensure_xyzrender_rdkit
+
 # Prevent stale or misaligned version metadata from reaching native packaging.
 bun scripts/check-release-version.mjs
 grep -q 'com.local.BuretteV10.Preview' Burette.xcodeproj/project.pbxproj || { echo "error: this Xcode project is not v10." >&2; exit 1; }
@@ -630,6 +638,15 @@ copy_app_plist_metadata "$TAURI_BUILT_APP"
 bundle_xyzrender_runtime "$TAURI_BUILT_APP"
 bundle_quicklook_xyzrender_launcher "$TAURI_BUILT_APP"
 bundle_compute_service "$TAURI_BUILT_APP" "$COMPUTE_SERVICE"
+# Strip only completed Rust executables, never host proc-macro libraries.
+# Original unstripped executables remain in the Cargo target directory.
+for binary in \
+  "$TAURI_BUILT_APP/Contents/MacOS/burette" \
+  "$TAURI_BUILT_APP/Contents/Helpers/burette-compute-service" \
+  "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex/Contents/Resources/burette-core-bridge"; do
+  xcrun strip -x "$binary"
+done
+python3 "$ROOT/scripts/deduplicate-web-resources.py" "$TAURI_BUILT_APP"
 assert_bundled_compute_metal_runtime "$TAURI_BUILT_APP" "before signing"
 assert_bundled_compute_service "$TAURI_BUILT_APP" "before signing"
 smoke_bundled_compute_service "$TAURI_BUILT_APP"

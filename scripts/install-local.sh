@@ -298,6 +298,7 @@ if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
     exit 1
   }
 fi
+python3 "$ROOT/scripts/deduplicate-web-resources.py" "$STAGING_DEST"
 codesign "${CODESIGN_ARGS[@]}" "$STAGING_APPEX/Contents/Resources/burette-core-bridge" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurettePreview.entitlements" "$STAGING_APPEX" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" "$STAGING_DEST" >/dev/null

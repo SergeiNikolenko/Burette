@@ -25,7 +25,6 @@ import { KeyboardShortcutsSection } from "./keyboard-shortcuts-section";
 import { ThemesSection } from "./themes-section";
 
 const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "molstar", "xyzrender-external"];
-const conformerEngineOptions: Array<ViewerPreferences["conformerEngine"]> = ["datamol", "rdkit"];
 type SettingsPanelLocation = { kind: "settings"; section: AppSettingsSectionId };
 type OpenInDefaultDestination = ViewerPreferences["openInDefaultDestination"];
 type OpenDestinationOption = {
@@ -152,7 +151,6 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                       reset: () => actions.setPreference("desktopPreviewLimitMiB", defaultPreferences.desktopPreviewLimitMiB),
                       isModified: preferences.desktopPreviewLimitMiB !== defaultPreferences.desktopPreviewLimitMiB,
                     },
-                    preferenceRow<"conformerEngine">("3D engine", "Choose the engine used to generate 3D conformers.", preferences.conformerEngine, conformerEngineOptions, defaultPreferences.conformerEngine, (conformerEngine) => actions.setPreference("conformerEngine", conformerEngine)),
                     {
                       label: "Conformer set candidates",
                       description: "How many conformers to ask the engine for before RMSD pruning.",

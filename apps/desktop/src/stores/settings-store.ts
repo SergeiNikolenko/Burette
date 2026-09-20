@@ -21,7 +21,6 @@ export const defaultPreferences: ViewerPreferences = {
   rendererMode: "auto",
   molstarStyle: "illustrative",
   desktopPreviewLimitMiB: 1024,
-  conformerEngine: "rdkit",
   conformerCandidateCount: 128,
   conformerRmsdCutoff: 0.75,
   themeLightAccent: "#AF52DE",
@@ -56,7 +55,7 @@ export const useSettingsStore = create<SettingsState>()(
 	    (set) => ({
 	      preferences: defaultPreferences,
 	      setPreference: (key, value) => set((state) => ({ preferences: { ...state.preferences, [key]: value } })),
-	      restoreSnapshot: (snapshot) => set({ preferences: cloneJson(snapshot.preferences) }),
+	      restoreSnapshot: (snapshot) => set({ preferences: normalizePreferences(cloneJson(snapshot.preferences)) }),
 	    }),
     {
       name: "burette.shell",
@@ -68,13 +67,7 @@ export const useSettingsStore = create<SettingsState>()(
         const storedPreferences = stored?.preferences ?? {};
         return {
           ...current,
-          preferences: {
-            ...current.preferences,
-            ...storedPreferences,
-            desktopPreviewLimitMiB: normalizeDesktopPreviewLimitMiB(
-              (storedPreferences as Partial<ViewerPreferences>).desktopPreviewLimitMiB,
-            ),
-          },
+          preferences: normalizePreferences({ ...current.preferences, ...storedPreferences }),
         };
       },
     },
@@ -85,4 +78,12 @@ function normalizeDesktopPreviewLimitMiB(value: unknown) {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.round(Math.min(Math.max(value, 1), 4096))
     : defaultPreferences.desktopPreviewLimitMiB;
+}
+
+function normalizePreferences(preferences: ViewerPreferences): ViewerPreferences {
+  // Drop the obsolete engine selector from persisted settings and history snapshots.
+  const normalized = { ...preferences } as ViewerPreferences & { conformerEngine?: unknown };
+  delete normalized.conformerEngine;
+  normalized.desktopPreviewLimitMiB = normalizeDesktopPreviewLimitMiB(normalized.desktopPreviewLimitMiB);
+  return normalized;
 }

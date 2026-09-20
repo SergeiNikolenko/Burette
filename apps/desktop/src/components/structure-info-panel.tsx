@@ -1023,9 +1023,6 @@ function TrajectorySmoothingCard({
         </ToggleGroup>
       </div>
       <AccordionContent className="h-auto grid gap-3">
-          {built ? null : (
-            <p className="trajectory-smoothing-intro">Smooths playback without changing the original trajectory or analysis data.</p>
-          )}
           <ToggleGroup type="single" variant="outline" size="sm" spacing={0} className="w-full" aria-label="Smoothing strength" value={preset} disabled={mode === "kinetic"} onValueChange={(value) => {
             if (value === "light" || value === "balanced" || value === "strong") selectPreset(value);
           }}>
@@ -1040,9 +1037,6 @@ function TrajectorySmoothingCard({
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
-          <div className="trajectory-smoothing-strength-copy">
-            {mode === "kinetic" ? `${kineticStates} MSM/PCCA+ macrostates` : <>{frameCount} source frames <span aria-hidden="true">→</span> <strong>{targetFrames}</strong> played back</>}
-          </div>
           <Accordion type="single" collapsible value={advanced ? "science" : ""} onValueChange={(value) => setAdvanced(Boolean(value))}>
             <AccordionItem value="science">
             <AccordionTrigger>Scientific settings</AccordionTrigger>

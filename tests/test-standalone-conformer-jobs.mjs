@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 const source = readFileSync(new URL('../apps/desktop/src/lib/standalone-compute.ts', import.meta.url), 'utf8');
 const code = ts.transpile(source, { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 });
-const jobs = [], calls = [];
+const jobs = [], calls = [], workflows = [];
 let fail = false;
 const module = { exports: {} };
 new Function('require', 'exports', code)((name) => {
@@ -12,10 +12,11 @@ new Function('require', 'exports', code)((name) => {
     calls.push([command, payload]);
     return { documentId: 'inline', sourceIndexes: [0] };
   } };
-  if (name === './compute-conformer') return { runConformerWorkflow: async (_id, _indexes, progress) => {
+  if (name === './compute-conformer') return { runConformerWorkflow: async (_id, _indexes, progress, options) => {
+    workflows.push(options);
     progress('embedding', { jobId: 'durable-job' });
     if (fail) throw new Error('service failed');
-    return { passedCount: 1, failedCount: 0, primaryOpenPath: '/result.sdf', reportPath: '/report.md' };
+    return { backend: "nativeMetal", passedCount: 1, failedCount: 0, primaryOpenPath: '/result.sdf', reportPath: '/report.md' };
   } };
   throw new Error(name);
 }, module.exports);
@@ -26,9 +27,18 @@ assert.equal(new Set(jobs.map(job => job.id)).size, 1);
 assert.equal(jobs[1].durableJobId, 'durable-job');
 assert.equal(jobs.at(-1).primaryOpenPath, '/result.sdf');
 assert.equal(calls.at(-1)[0], 'grid_close_runtime');
+assert.equal(workflows[0].backendPolicy, 'gpuRequired');
+assert.ok(jobs.every(job => job.backend === 'nativeMetal'));
+await module.exports.runStandaloneConformerWorkflow(input, () => {}, { conformersPerMolecule: 16 });
+assert.equal(workflows[1].backendPolicy, 'gpuRequired');
+assert.equal(workflows[1].conformersPerMolecule, 16);
+await module.exports.runStandaloneConformerWorkflow(input, () => {}, { initialization: 'inputGeometry' });
+assert.equal(workflows[2].backendPolicy, 'gpuRequired');
+assert.equal(workflows[2].initialization, 'inputGeometry');
 jobs.length = 0; fail = true;
 await assert.rejects(module.exports.runStandaloneConformerWorkflow(input, () => {}), /service failed/);
 assert.equal(jobs.at(-1).status, 'failed');
 assert.equal(jobs.at(-1).error, 'service failed');
+assert.equal(workflows.length, 4, 'a Metal failure must not start a CPU retry');
 assert.equal(calls.at(-1)[0], 'grid_close_runtime');
 console.log('Standalone conformer Jobs lifecycle and cleanup passed');

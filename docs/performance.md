@@ -44,6 +44,50 @@ Current profiles:
 manifest. `scripts/size-report.sh` prints profile sizes and asset membership so
 large duplicated files have an explicit explanation.
 
+## Bundled Python Footprint
+
+Release builds package the `xyzrender` CLI and RDKit in a relocatable Python
+environment (`uv tool install --with rdkit xyzrender`). Datamol is not installed
+by the build; missing RDKit is installed directly before native compilation.
+The staged copy is reduced to the dependency closure of xyzrender, RDKit, and installed xyzrender file-format
+extras, excluding xyzrender's notebook-only `ipykernel` dependency. Shared
+requirements such as SciPy (through cclib) are retained. Datamol-only packages
+are removed using their distribution RECORDs; pruning never deletes from source environments.
+
+The pruning helper keeps package resources, headers, and test/data directories
+because these can be imported or loaded at runtime. It removes bytecode caches
+and the interpreter's test suite, IDLE, and ensurepip in both framework and uv
+standalone Python layouts. It also removes the immutable bundled interpreter's
+pip installation. RDKit `Contrib` is retained because it includes descriptor
+models and scoring datasets. The Metal compiler module cache is also excluded
+from the app. Dependency metadata checks and pruning fixtures do not replace
+smoke rendering and native acceptance of a newly packaged app. Run the pruning
+fixtures with the source xyzrender environment's Python:
+`~/.local/share/uv/tools/xyzrender/bin/python3 tests/test-prune-xyzrender-runtime.py`.
+
+Set `BURETTE_KEEP_FULL_XYZRENDER_RUNTIME=1` only when diagnosing an upstream
+`xyzrender` packaging change. `scripts/size-report.sh` can be used to compare
+the resulting `xyzrender-runtime` and `xyzrender-python` directories.
+
+### Shared static resources
+
+Before signing, `scripts/deduplicate-web-resources.py` hard-links identical
+non-executable JS, CSS, WASM and JSON files of at least 128 KiB across the
+desktop viewer, Quick Look and packaged plugin. Paths and contents remain
+unchanged, so each runtime and an independently copied plugin remain usable.
+The local installer repeats this step after refreshing viewer resources.
+`ditto` preserves the shared files; ZIP extraction may expand them. Report
+allocated disk size separately from the sum of file sizes, and do not assume
+the same savings for ZIP/updater installations. Run
+`python3 tests/test-deduplicate-web-resources.py` to check bytes, permissions,
+idempotence and macOS copying.
+
+The browser-agent-shell build emits RDKit WASM as a separate binary shared by
+its shell and worker, avoiding repeated base64 copies. Desktop WKWebView and
+the hosted widget retain their existing loading policy. Completed Rust app
+and helper executables have local symbols stripped before signing; original
+unstripped executables remain in Cargo's target directory.
+
 ## Runtime Cache Layout
 
 Desktop generated preview runtimes use the app cache directory:
@@ -201,3 +245,11 @@ The scheduled GitHub workflow `.github/workflows/nightly-smoke.yml` keeps the
 full packaged-app and Quick Look smoke path out of fast PR validation while
 still exercising the build, install, forced preview, and perf report scripts on
 `main`.
+
+The normal desktop and browser-dev Generate 3D, ensemble, and geometry
+optimization actions use the native Metal compute path. Metal errors are
+reported without retrying Python generation. The retired engine preference is
+removed on settings rehydration and snapshot restore. The legacy Python command
+remains available to older clients using direct RDKit (the old `datamol` request
+name is accepted as an alias); explicit external CREST preparation also uses
+RDKit directly.
