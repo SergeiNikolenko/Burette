@@ -1,3 +1,4 @@
+import { cancelComputeJob } from "../lib/compute-cluster";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribeConformerJobs } from "../lib/conformer-job-events";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -174,7 +175,10 @@ export function useAppChemistryJobs({
       error: "Conformer job cancelled.",
     } : job));
     try {
-      await cancelConformerRequest(jobId);
+      const job = conformerJobs.find((entry) => entry.id === jobId);
+      if (job?.durableJobId) {
+        if (!await cancelComputeJob(job.durableJobId)) throw new Error("The calculation finished before cancellation was accepted.");
+      } else await cancelConformerRequest(jobId);
       pushStatus("Conformer job cancelled");
     } catch (error) {
       cancelledConformerJobIdsRef.current.delete(jobId);
@@ -190,7 +194,7 @@ export function useAppChemistryJobs({
       }));
       pushErrorStatus(error, "Cancel conformer job failed");
     }
-  }, [pushErrorStatus, pushStatus]);
+  }, [conformerJobs, pushErrorStatus, pushStatus]);
 
   useEffect(() => {
     let cancelled = false;

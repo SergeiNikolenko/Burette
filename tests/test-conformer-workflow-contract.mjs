@@ -44,7 +44,6 @@ assert.match(nativeConformerWorkflow, /latest\.revision/);
 assert.match(gridConformerMessages, /statusErrorMessage\(error\)/);
 assert.match(gridConformerMessages, /conformersPerMolecule: 1/);
 assert.doesNotMatch(gridConformerMessages, /conformersPerMolecule: optimizeInputGeometry \? 1 : 16/);
-assert.match(gridConformerMessages, /Metal 3D generation failed; retrying the selected molecules with RDKit CPU/);
 assert.match(gridViewer, /sourceIndex: Number\(row\.index\)/);
 assert.match(gridConformerMessages, /const sourceIndex = Number\(item\.sourceIndex\)/);
 assert.match(gridConformerMessages, /openDocuments\(\[result\.primaryOpenPath\][\s\S]*rendererMode: "molstar"/);

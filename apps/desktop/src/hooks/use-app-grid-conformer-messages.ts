@@ -62,6 +62,7 @@ type GridSemiempiricalResult = {
   gpuTimeMs: number;
   backend: "nativeMetalScfHybrid" | "nativeCpuReference";
   gridApplied: boolean;
+  gridWarning: string | null;
   reportPath: string | null;
 };
 
@@ -147,15 +148,17 @@ export function useAppGridConformerMessages({
       void invoke<GridSemiempiricalResult>("compute_evaluate_grid_semiempirical", {
         request: { documentId, sourceIndexes, method },
       }).then((result) => {
-        if (result.reportPath) void openTextDocuments([result.reportPath], { background: true });
+        if (result.reportPath) void Promise.resolve().then(() => openTextDocuments([result.reportPath!], { background: true }))
+          .catch((error) => pushErrorStatus("Result saved; could not open report", error));
         const converged = result.rows.filter((row) => row.converged).length;
         const failed = result.rows.length - converged;
         const execution = result.backend === "nativeMetalScfHybrid"
           ? `with Metal SCF kernels (${result.gpuTimeMs.toLocaleString()} ms GPU, ${result.hostTimeMs.toLocaleString()} ms host)`
           : `on the CPU reference backend in ${result.hostTimeMs.toLocaleString()} ms`;
         pushStatus(
-          `Calculated native ${result.method} energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} ${execution}${failed ? `; ${failed.toLocaleString()} failed` : ""}; results were written to Grid.`,
-          failed ? "error" : "success",
+          `Calculated native ${result.method} energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} ${execution}${failed ? `; ${failed.toLocaleString()} failed` : ""}; ${result.gridApplied ? "results were written to Grid" : "results were saved but could not be applied to Grid"}.`,
+          failed || !result.gridApplied ? "error" : "success",
+          result.gridWarning ? [result.gridWarning] : undefined,
         );
         reply("gridSemiempiricalFinished", {
           runId: result.runId,
@@ -199,7 +202,8 @@ export function useAppGridConformerMessages({
             maxMemoryBytes: 2 * 1_024 * 1_024 * 1_024,
           },
         });
-        if (result.reportPath) void openTextDocuments([result.reportPath], { background: true });
+        if (result.reportPath) void Promise.resolve().then(() => openTextDocuments([result.reportPath!], { background: true }))
+          .catch((error) => pushErrorStatus("Result saved; could not open report", error));
         const document = await invoke<ViewerDocument>("open_text_structure", {
           request: {
             title: result.title,
@@ -213,7 +217,7 @@ export function useAppGridConformerMessages({
         rememberRecentStructures([document]);
         const compared = Math.max(0, result.scores.length - 1);
         pushStatus(
-          `Aligned and scored ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"} against the first selected row on Metal in ${result.gpuTimeMs.toLocaleString()} ms; scores were written to Grid.`,
+          `Aligned and scored ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"} against the first selected row on Metal in ${result.gpuTimeMs.toLocaleString()} ms; ${result.gridApplied ? "scores were written to Grid" : "scores were saved but could not be applied to Grid"}.`,
           result.gridApplied ? "success" : "error",
         );
         reply("gridAlignmentFinished", {
@@ -299,14 +303,14 @@ export function useAppGridConformerMessages({
             publishing: "Publishing optimized geometries and updating Grid",
           } as const : {
             extracting: "Extracting conformer constraints",
-            embedding: `Generating ${conformerVariant} conformers on Metal GPU`,
-            stereo: "Validating stereochemistry on Metal GPU",
+            embedding: `Generating ${conformerVariant} conformers`,
+            stereo: "Validating stereochemistry",
             validation: "Checking CPU reference parity",
             publishing: "Publishing the generated conformer artifact",
           } as const;
           const onProgress = (phase: keyof typeof progressLabels, job: { jobId: string }) => {
             const progress = progressLabels[phase];
-            updateGridJob({ durableJobId: job.jobId, progress, backend: "nativeMetal" });
+            updateGridJob({ durableJobId: job.jobId, cancelable: true, progress });
             pushStatus(`${progress}...`);
           };
           const result = optimizeInputGeometry
@@ -317,23 +321,17 @@ export function useAppGridConformerMessages({
                 conformersPerMolecule: 1,
               })
             : await runStandaloneConformerWorkflow(source!, onProgress, {
+                job: pendingJob,
                 variant: conformerVariant,
                 initialization: "generated",
                 mmffVariant,
                 conformersPerMolecule: 1,
               });
-          void openTextDocuments([result.reportPath], { background: true });
-          if (!optimizeInputGeometry) {
-            await openDocuments([result.primaryOpenPath], {}, {
-              rendererMode: "molstar",
-              molstarStyle: "ball-and-stick",
-            });
-          }
           updateGridJob({
             status: result.failedCount ? "recovered" : "success",
             completedAt: Date.now(),
             progress: `${result.passedCount.toLocaleString()} of ${result.conformerCount.toLocaleString()} geometries passed validation`,
-            backend: "nativeMetal",
+            backend: result.backend,
             durableJobId: result.job.jobId,
             reportPath: result.reportPath,
             primaryOpenPath: result.primaryOpenPath,
@@ -341,28 +339,42 @@ export function useAppGridConformerMessages({
           });
           pushStatus(
             optimizeInputGeometry
-              ? `Processed and validated ${result.passedCount.toLocaleString()} input geometries with ${mmffVariant} via Metal GPU; per-row convergence status and energy were written to Grid.`
-              : `Generated and ${mmffVariant}-optimized ${result.passedCount.toLocaleString()} valid 3D geometries with ${conformerVariant} via Metal GPU and opened the generated conformer artifact.`,
+              ? `Processed and validated ${result.passedCount.toLocaleString()} input geometries with ${mmffVariant} via Metal GPU; ${result.gridApplied ? "per-row convergence status and energy were written to Grid" : "results were saved but could not be applied to Grid"}.`
+              : `Generated and ${mmffVariant}-optimized ${result.passedCount.toLocaleString()} valid 3D geometries with ${conformerVariant} via ${result.backend === "nativeMetal" ? "Metal GPU" : "CPU"}.`,
             optimizeInputGeometry ? (result.gridApplied ? "success" : "error") : (result.failedCount ? "error" : "success"),
             result.gridWarning ? [result.gridWarning] : undefined,
           );
+          // Opening is not computation: a viewer failure must never recalculate
+          // an already published result or replace it with a different method.
+          try {
+            await openTextDocuments([result.reportPath], { background: true });
+          } catch (error) {
+            pushErrorStatus(error, "Calculation saved; could not open report", [result.reportPath]);
+          }
+          try {
+            if (!optimizeInputGeometry) {
+              await openDocuments([result.primaryOpenPath], {}, {
+                rendererMode: "molstar",
+                molstarStyle: "ball-and-stick",
+              });
+            }
+          } catch (error) {
+            pushErrorStatus(error, "Calculation saved; could not open result", [result.primaryOpenPath]);
+          }
           return;
         } catch (error) {
-          if (optimizeInputGeometry) throw error;
+          if (optimizeInputGeometry || (error instanceof Error && error.name === "AbortError")) throw error;
           metalError = statusErrorMessage(error);
-          updateGridJob({
-            progress: "Metal GPU attempt failed; retrying with RDKit CPU",
-            backend: "rdkitCpu",
-            error: metalError,
-          });
-          pushStatus(
-            `Metal 3D generation failed; retrying the selected molecules with RDKit CPU. ${metalError}`,
-          );
+
         }
       }
       if (optimizeInputGeometry) {
         throw new Error("Input geometry optimization requires the native desktop Metal runtime.");
       }
+      if (conformerVariant !== "ETKDGv3" || mmffVariant !== "MMFF94s") {
+        throw new Error(`The CPU fallback does not support ${conformerVariant} with ${mmffVariant}. The requested method was not changed. ${metalError ?? ""}`.trim());
+      }
+      updateGridJob({ status: "running", completedAt: undefined, cancelable: false, durableJobId: undefined, backend: "rdkitCpu", error: metalError, progress: "Generating with RDKit CPU" });
       let generatedCount = 0;
       const generatedStructures: Array<{ sourceIndex: number; molblock: string }> = [];
       const errors: string[] = [];
@@ -392,6 +404,9 @@ export function useAppGridConformerMessages({
           const conformer = isTauriRuntime()
             ? await invoke<ConformerGenerationResult>("generate_3d_conformer", { request })
             : await generateBrowserDev3DConformer(request);
+          if (/UFF/i.test(conformer.method)) {
+            throw new Error(`RDKit could not parameterize ${mmffVariant}; the ${conformer.method} result was not applied because it changes the requested force field.`);
+          }
           generatedCount += 1;
           const molblock = conformerMolblock(conformer.text);
           const sourceIndex = Number(item.sourceIndex);
@@ -444,10 +459,11 @@ export function useAppGridConformerMessages({
     })()
       .catch((error) => {
         const message = statusErrorMessage(error);
+        const cancelled = error instanceof Error && error.name === "AbortError";
         updateGridJob({
-          status: "failed",
+          status: cancelled ? "cancelled" : "failed",
           completedAt: Date.now(),
-          progress: "Compute failed",
+          progress: cancelled ? "Compute cancelled" : "Compute failed",
           error: message,
         });
         reply("gridGenerate3DError", { jobId: gridJobId, error: message });

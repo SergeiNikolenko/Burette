@@ -222,6 +222,7 @@ export async function runConformerWorkflow(
       const latest = await invoke<ConformerComputeJob>("compute_get_job", {
         jobId: activeJob.jobId,
       }).catch(() => activeJob);
+      if (latest.state === "cancelled") throw new DOMException("Conformer generation cancelled", "AbortError");
       if (!["succeeded", "succeededWithFailures", "failed", "cancelled"].includes(latest.state)) {
         await invoke("compute_cancel_job", {
           jobId: latest.jobId,

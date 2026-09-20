@@ -76,10 +76,11 @@ export async function runStandaloneConformerWorkflow(
     initialization?: ConformerInitialization;
     mmffVariant?: MmffVariant;
     conformersPerMolecule?: number;
+    job?: ConformerJob;
   } = {},
 ): Promise<ConformerWorkflowResult> {
   const backendPolicy = (options.conformersPerMolecule ?? 1) === 1 ? "referenceCpu" : "gpuRequired";
-  let job: ConformerJob = {
+  let job: ConformerJob = options.job ?? {
     id: crypto.randomUUID(),
     title: options.initialization === "inputGeometry" ? "Optimize geometry" : "Generate 3D",
     operation: options.initialization === "inputGeometry" ? "grid-optimize" : "grid-generate",
@@ -107,7 +108,7 @@ export async function runStandaloneConformerWorkflow(
           validation: "Checking reference parity…",
           publishing: "Saving conformers…",
         };
-        update({ durableJobId: snapshot.jobId, progress: labels[phase] });
+        update({ durableJobId: snapshot.jobId, cancelable: true, progress: labels[phase] });
         onProgress(phase, snapshot);
       },
       {
@@ -129,7 +130,8 @@ export async function runStandaloneConformerWorkflow(
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    update({ status: "failed", completedAt: Date.now(), progress: "Generation failed", error: message });
+    const cancelled = error instanceof Error && error.name === "AbortError";
+    update({ status: cancelled ? "cancelled" : "failed", completedAt: Date.now(), cancelable: false, progress: cancelled ? "Generation cancelled" : "Generation failed", error: message });
     throw error;
   }
 }
