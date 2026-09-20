@@ -55,6 +55,13 @@ The desktop shell is a compact molecule workspace:
 - tab strip for active structure pages and settings
 - command palette for app actions
 - native macOS menu bar with stateful, context-dependent items
+- macOS Dock menu for New Workspace, Open Structure, up to seven recent
+  documents, Resume Last Session, Open from Clipboard, and Settings. Commands
+  reuse the File/App menu handlers; recent entries refresh when the Dock menu
+  opens. Resume restores missing saved windows and focuses the saved active
+  window without replacing currently open work. Clipboard contents are validated
+  by the existing import flow after selection. Custom Dock commands are available
+  while the app is running; macOS owns the menu shown when it is quit.
 - native context menus for sidebar files, folders, projects, and sidebar menu buttons;
   editor tabs also use the native menu adapter. Pinned tabs persist in workspace
   sessions, stay at the left edge, and survive Close Other Tabs / Close Tabs to

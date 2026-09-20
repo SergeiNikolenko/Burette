@@ -1304,7 +1304,7 @@ fn set_checked<R: Runtime>(
         .map_err(|error| error.to_string())
 }
 
-fn find_app_menu_item<R: Runtime>(
+pub(super) fn find_app_menu_item<R: Runtime>(
     app: &tauri::AppHandle<R>,
     id: &str,
 ) -> Result<MenuItemKind<R>, String> {
