@@ -6196,7 +6196,10 @@ assert.match(previewViewer, /illustrative: \{ ignoreLight: true \}/);
 // Switching styles inside a Story sets the canvas half here and takes the scene
 // half from re-applying the current snapshot, so leaving Illustrative also turns
 // its post-processing back off.
-assert.match(previewViewer, /await applyMolstarIllustrativePostprocessing\(viewer, \{ includeTransparent: normalized === 'illustrative-surface' \}\)/);
+assert.match(previewViewer, /await applyMolstarIllustrativePostprocessing\(viewer, \{ includeTransparent: true \}\)/);
+assert.match(previewViewer, /sceneTreeMenuSlider\(menu, 'Outline brightness', 'outline-brightness', Math\.round\(molstarOutlineBrightness \* 100\)\)/);
+assert.match(previewViewer, /includeTransparent: options\.includeTransparent !== false/);
+assert.match(previewViewer, /setMolstarOutlineBrightness\(percent \/ 100\)/);
 assert.match(previewViewer, /await applyMolstarNonIllustrativePostprocessing\(viewer\);\s*\}\s*if \(current\?\.snapshot\)/);
 // Both spellings of the action share one path, so style preservation and step
 // serialization do not depend on which one the caller used.
