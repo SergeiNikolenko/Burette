@@ -1,3 +1,4 @@
+import { runAnalysisWorkflow } from "./compute-analysis";
 import { publishConformerJob } from "./conformer-job-events";
 import type { ConformerJob } from "../types";
 
@@ -76,9 +77,10 @@ export async function runStandaloneConformerWorkflow(
     initialization?: ConformerInitialization;
     mmffVariant?: MmffVariant;
     conformersPerMolecule?: number;
+    job?: ConformerJob;
   } = {},
 ): Promise<ConformerWorkflowResult> {
-  let job: ConformerJob = {
+  let job: ConformerJob = options.job ?? {
     id: crypto.randomUUID(),
     title: options.initialization === "inputGeometry" ? "Optimize geometry" : "Generate 3D",
     operation: options.initialization === "inputGeometry" ? "grid-optimize" : "grid-generate",
@@ -106,7 +108,7 @@ export async function runStandaloneConformerWorkflow(
           validation: "Checking reference parity…",
           publishing: "Saving conformers…",
         };
-        update({ durableJobId: snapshot.jobId, progress: labels[phase] });
+        update({ durableJobId: snapshot.jobId, cancelable: true, progress: labels[phase] });
         onProgress(phase, snapshot);
       },
       {
@@ -128,7 +130,8 @@ export async function runStandaloneConformerWorkflow(
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    update({ status: "failed", completedAt: Date.now(), progress: "Generation failed", error: message });
+    const cancelled = error instanceof Error && error.name === "AbortError";
+    update({ status: cancelled ? "cancelled" : "failed", completedAt: Date.now(), cancelable: false, progress: cancelled ? "Generation cancelled" : "Generation failed", error: message });
     throw error;
   }
 }
@@ -137,9 +140,9 @@ export function runStandaloneSemiempirical(
   source: StandaloneComputeSource,
   method = "RM1",
 ): Promise<StandaloneSemiempiricalResult> {
-  return withInlineSource(source, ({ documentId, sourceIndexes }) => invoke<StandaloneSemiempiricalResult>(
+  return withInlineSource(source, ({ documentId, sourceIndexes }) => runAnalysisWorkflow<StandaloneSemiempiricalResult>(
     "compute_evaluate_grid_semiempirical",
-    { request: { documentId, sourceIndexes, method } },
+    { documentId, sourceIndexes, method }, source.title,
   ));
 }
 
@@ -150,12 +153,10 @@ export function runStandaloneAlignment(
     if (sourceIndexes.length < 2) {
       throw new Error("Alignment requires an SDF ensemble with at least two poses.");
     }
-    return invoke<StandaloneAlignmentResult>("compute_align_grid_poses", {
-      request: {
+    return runAnalysisWorkflow<StandaloneAlignmentResult>("compute_align_grid_poses", {
         documentId,
         sourceIndexes,
         maxMemoryBytes: 2 * 1_024 * 1_024 * 1_024,
-      },
-    });
+    }, source.title);
   });
 }

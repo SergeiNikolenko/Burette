@@ -1137,7 +1137,15 @@ fn fetch_pdb_structure_blocking(pdb_id: &str) -> Result<FetchStructureResult, St
 }
 
 #[tauri::command]
-pub(crate) fn generate_3d_conformer(
+pub(crate) async fn generate_3d_conformer(
+    request: ConformerGenerationRequest,
+) -> Result<ConformerGenerationResult, String> {
+    tauri::async_runtime::spawn_blocking(move || generate_3d_conformer_impl(request))
+        .await
+        .map_err(|error| format!("conformer task failed: {error}"))?
+}
+
+fn generate_3d_conformer_impl(
     request: ConformerGenerationRequest,
 ) -> Result<ConformerGenerationResult, String> {
     let extension = request
@@ -1226,30 +1234,18 @@ pub(crate) fn generate_3d_conformer(
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut child = match command.spawn() {
-            Ok(child) => child,
-            Err(error) => {
+        let output = match super::conformer_process::run(
+            &mut command,
+            input_payload.as_bytes(),
+            Duration::from_secs(180),
+        ) {
+            Ok(output) => output,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 candidate_errors.push(format!("{}: {error}", python.label));
                 continue;
             }
+            Err(error) => return Err(format!("{}: {error}", python.label)),
         };
-        if let Some(mut stdin) = child.stdin.take() {
-            if let Err(error) = stdin.write_all(input_payload.as_bytes()) {
-                candidate_errors.push(format!(
-                    "{}: failed to send structure text: {error}",
-                    python.label
-                ));
-                let _ = child.kill();
-                let _ = child.wait();
-                continue;
-            }
-        }
-        let output = child.wait_with_output().map_err(|error| {
-            format!(
-                "{}: failed to run conformer generator: {error}",
-                python.label
-            )
-        })?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             candidate_errors.push(if stderr.is_empty() {
@@ -3300,14 +3296,14 @@ mod tests {
         bundled_conformer_python_candidates_from_executable, classify_open_paths,
         conformer_python_candidates, conformer_python_status_candidates, copy_file_atomically,
         expand_open_document_paths, expand_open_targets, expand_project_structure_targets,
-        generate_3d_conformer, generated_conformer_title, list_project_structure_files_blocking,
-        list_project_structure_files_blocking_with_limits, looks_like_supported_structure_file,
-        normalize_inline_structure_extension, open_text_structure_for_window_label,
-        open_with_provisional_claim, open_with_provisional_read_claims, read_sdf_file_with_limit,
-        smiles_from_sheet_data, supported_open_target_extensions,
-        write_collection_with_provisional_claim, write_text_atomically, CollectionWriteTarget,
-        ConformerGenerationRequest, ProjectStructureScan, ProjectStructureScanLimits,
-        TextStructureRequest,
+        generate_3d_conformer_impl, generated_conformer_title,
+        list_project_structure_files_blocking, list_project_structure_files_blocking_with_limits,
+        looks_like_supported_structure_file, normalize_inline_structure_extension,
+        open_text_structure_for_window_label, open_with_provisional_claim,
+        open_with_provisional_read_claims, read_sdf_file_with_limit, smiles_from_sheet_data,
+        supported_open_target_extensions, write_collection_with_provisional_claim,
+        write_text_atomically, CollectionWriteTarget, ConformerGenerationRequest,
+        ProjectStructureScan, ProjectStructureScanLimits, TextStructureRequest,
     };
     use crate::menu::OpenDocumentRegistry;
     use crate::preview::grid_store::GridRuntimeRegistry;
@@ -3490,7 +3486,7 @@ mod tests {
             .unwrap();
             // Accepted engine names reach structure validation without probing Python.
             assert_eq!(
-                generate_3d_conformer(request).unwrap_err(),
+                generate_3d_conformer_impl(request).unwrap_err(),
                 "Draw a molecule first"
             );
         }
@@ -3499,7 +3495,7 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(
-            generate_3d_conformer(request).unwrap_err(),
+            generate_3d_conformer_impl(request).unwrap_err(),
             "This legacy conformer endpoint supports RDKit only; use native compute for Metal."
         );
     }

@@ -20,6 +20,7 @@ new Function('require', 'exports', code)(name => {
   if (name === '../lib/tauri') return { isTauriRuntime: () => native };
   if (name === '../lib/standalone-compute') return { runStandaloneConformerWorkflow: run('standalone') };
   if (name === '../lib/compute-conformer') return { runConformerWorkflow: run('grid') };
+  if (name === '../lib/compute-analysis') return { runAnalysisWorkflow: run('analysis') };
   if (name === './use-app-status') return { statusErrorMessage: error => error.message };
   if (name === '../lib/conformer-generation') return { conformerGenerationPreferences: () => ({}) };
   if (name === '../lib/file-routing') return { pathExtension: () => 'smi' };

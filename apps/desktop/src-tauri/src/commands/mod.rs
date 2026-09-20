@@ -3,6 +3,7 @@ pub(crate) mod chemical_editors;
 pub(crate) mod chemical_space_models;
 pub(crate) mod clipboard;
 pub(crate) mod conformer;
+mod conformer_process;
 pub(crate) mod context_menu;
 pub(crate) mod database;
 pub(crate) mod derived;

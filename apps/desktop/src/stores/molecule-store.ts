@@ -420,14 +420,16 @@ export function getMoleculeSessionSnapshot(state: Pick<MoleculeState, "tabs" | "
 
 export function getMoleculeStoreSnapshot(): MoleculeStoreSnapshot {
   const state = useMoleculeStore.getState();
-  return cloneJson({
+  const snapshot = cloneJson({
     documents: state.documents,
-    textDocuments: state.textDocuments,
     tabs: state.tabs,
     activeTabId: state.activeTabId,
     activeDocumentId: state.activeDocumentId,
     recentStructures: state.recentStructures,
   });
+  // Store updates replace document records. Keep their immutable content shared
+  // across navigation history rather than serializing every open file.
+  return { ...snapshot, textDocuments: [...state.textDocuments] };
 }
 
 export const useMoleculeStore = create<MoleculeState>()(
@@ -967,7 +969,7 @@ export const useMoleculeStore = create<MoleculeState>()(
       restoreSnapshot: (snapshot) =>
         set(() => {
           const documents = cloneJson(snapshot.documents);
-          const textDocuments = cloneJson(snapshot.textDocuments);
+          const textDocuments = snapshot.textDocuments.map((document) => ({ ...document }));
           const tabs = ensureTabs(cloneJson(snapshot.tabs));
           syncTabSequence(tabs);
           const activeTabId = activeTabIdOrFirst(tabs, snapshot.activeTabId);

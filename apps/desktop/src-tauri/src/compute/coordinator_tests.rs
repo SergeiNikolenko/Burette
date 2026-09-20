@@ -70,6 +70,7 @@ fn semiempirical_grid_workflow_fails_closed_without_native_metal_runtime() {
             registry
                 .acquire_snapshot_lease("main:semi-durable")
                 .expect("lease Grid fixture"),
+            &|_| {},
         )
         .expect_err("semiempirical workflow must not fall back without Metal");
     assert!(matches!(
@@ -791,4 +792,85 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
     let _ = std::fs::remove_dir_all(compute_root);
     let _ = std::fs::remove_dir_all(grid_root);
     let _ = std::fs::remove_dir_all(export_root);
+}
+
+#[test]
+#[ignore = "requires a packaged helper and a real Apple Metal runtime"]
+fn alignment_cancellation_preserves_completed_pose_report() {
+    let root = std::fs::canonicalize(std::env::temp_dir())
+        .unwrap()
+        .join(format!("burette-analysis-cancel-{}", Uuid::new_v4()));
+    let grid_root = root.join("grid");
+    std::fs::create_dir_all(&grid_root).unwrap();
+    let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let sdf =
+        std::fs::read(repository.join("samples/structures/small-molecules/imatinib-poses.sdf"))
+            .unwrap();
+    let handle = build_grid_store(&grid_root, "sdf", &sdf).unwrap().unwrap();
+    let registry = GridRuntimeRegistry::default();
+    registry
+        .register(
+            "main:cancel-poses",
+            handle.database_path,
+            "sdf",
+            handle.cancel_token,
+            handle.ingest_worker,
+        )
+        .unwrap();
+    let coordinator = ComputeCoordinator::initialize_with_service(
+        root.join("compute"),
+        Some(PathBuf::from(
+            std::env::var("BURETTE_TEST_COMPUTE_RUNTIME").unwrap(),
+        )),
+        Some(repository.join("PreviewExtension/Web")),
+        Some(PathBuf::from(
+            std::env::var("BURETTE_TEST_COMPUTE_SERVICE").unwrap(),
+        )),
+    );
+    let progress = std::cell::RefCell::new(Vec::new());
+    let error = coordinator
+        .align_grid_poses(
+            "main",
+            &GridAlignmentRequest {
+                document_id: "cancel-poses".into(),
+                source_indexes: vec![0, 1, 2],
+                max_memory_bytes: None,
+            },
+            registry
+                .acquire_snapshot_lease("main:cancel-poses")
+                .unwrap(),
+            &|event| {
+                let event = serde_json::to_value(event).unwrap();
+                if event["completed"] == 2 {
+                    let id = event["jobId"].as_str().unwrap().parse().unwrap();
+                    let job = coordinator.get_job("main", id).unwrap();
+                    coordinator.cancel_job("main", id, job.revision).unwrap();
+                }
+                progress.borrow_mut().push(event);
+            },
+        )
+        .unwrap_err();
+    assert!(matches!(error, ComputeCoordinatorError::Cancelled));
+    let progress = progress.into_inner();
+    assert_eq!(progress.first().unwrap()["completed"], 0);
+    assert_eq!(progress.last().unwrap()["completed"], 2);
+    let report = std::fs::read_to_string(
+        progress.last().unwrap()["partialReportPath"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    let rows: Vec<serde_json::Value> = report
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(rows.len(), 3, "header plus exactly two completed poses");
+    assert_eq!(rows[0]["schema"], "burette.partial-analysis.v1");
+    assert_eq!(rows[0]["status"], "partial");
+    assert!(rows[0]["request"].is_object());
+    assert!(rows[2]["alignedSdf"].as_str().unwrap().contains("V2000"));
+    assert_eq!(rows[2]["transform"].as_array().unwrap().len(), 16);
+    drop(coordinator);
+    drop(registry);
+    std::fs::remove_dir_all(root).unwrap();
 }

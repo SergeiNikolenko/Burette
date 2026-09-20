@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, type Dispatch, type SetStateAction } from "react";
+import { runAnalysisWorkflow } from "../lib/compute-analysis";
 import { generateBrowserDev3DConformer, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { conformerGenerationPreferences } from "../lib/conformer-generation";
 import { pathExtension } from "../lib/file-routing";
@@ -62,6 +63,7 @@ type GridSemiempiricalResult = {
   gpuTimeMs: number;
   backend: "nativeMetalScfHybrid" | "nativeCpuReference";
   gridApplied: boolean;
+  gridWarning: string | null;
   reportPath: string | null;
 };
 
@@ -144,18 +146,20 @@ export function useAppGridConformerMessages({
         return true;
       }
       reply("gridSemiempiricalStarted");
-      void invoke<GridSemiempiricalResult>("compute_evaluate_grid_semiempirical", {
-        request: { documentId, sourceIndexes, method },
-      }).then((result) => {
-        if (result.reportPath) void openTextDocuments([result.reportPath], { background: true });
+      showGridComputeJobs();
+      void runAnalysisWorkflow<GridSemiempiricalResult>("compute_evaluate_grid_semiempirical",
+        { documentId, sourceIndexes, method }, "Grid selection").then((result) => {
+        if (result.reportPath) void Promise.resolve().then(() => openTextDocuments([result.reportPath!], { background: true }))
+          .catch((error) => pushErrorStatus(error, "Result saved; could not open report"));
         const converged = result.rows.filter((row) => row.converged).length;
         const failed = result.rows.length - converged;
         const execution = result.backend === "nativeMetalScfHybrid"
           ? `with Metal SCF kernels (${result.gpuTimeMs.toLocaleString()} ms GPU, ${result.hostTimeMs.toLocaleString()} ms host)`
           : `on the CPU reference backend in ${result.hostTimeMs.toLocaleString()} ms`;
         pushStatus(
-          `Calculated native ${result.method} energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} ${execution}${failed ? `; ${failed.toLocaleString()} failed` : ""}; results were written to Grid.`,
-          failed ? "error" : "success",
+          `Calculated native ${result.method} energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} ${execution}${failed ? `; ${failed.toLocaleString()} failed` : ""}; ${result.gridApplied ? "results were written to Grid" : "results were saved but could not be applied to Grid"}.`,
+          failed || !result.gridApplied ? "error" : "success",
+          result.gridWarning ? [result.gridWarning] : undefined,
         );
         reply("gridSemiempiricalFinished", {
           runId: result.runId,
@@ -192,14 +196,14 @@ export function useAppGridConformerMessages({
       }
       reply("gridAlignmentStarted");
       void (async () => {
-        const result = await invoke<GridAlignmentResult>("compute_align_grid_poses", {
-          request: {
+        showGridComputeJobs();
+        const result = await runAnalysisWorkflow<GridAlignmentResult>("compute_align_grid_poses", {
             documentId,
             sourceIndexes,
             maxMemoryBytes: 2 * 1_024 * 1_024 * 1_024,
-          },
-        });
-        if (result.reportPath) void openTextDocuments([result.reportPath], { background: true });
+        }, "Grid selection");
+        if (result.reportPath) void Promise.resolve().then(() => openTextDocuments([result.reportPath!], { background: true }))
+          .catch((error) => pushErrorStatus(error, "Result saved; could not open report"));
         const document = await invoke<ViewerDocument>("open_text_structure", {
           request: {
             title: result.title,
@@ -213,7 +217,7 @@ export function useAppGridConformerMessages({
         rememberRecentStructures([document]);
         const compared = Math.max(0, result.scores.length - 1);
         pushStatus(
-          `Aligned and scored ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"} against the first selected row on Metal in ${result.gpuTimeMs.toLocaleString()} ms; scores were written to Grid.`,
+          `Aligned and scored ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"} against the first selected row on Metal in ${result.gpuTimeMs.toLocaleString()} ms; ${result.gridApplied ? "scores were written to Grid" : "scores were saved but could not be applied to Grid"}.`,
           result.gridApplied ? "success" : "error",
         );
         reply("gridAlignmentFinished", {
@@ -307,7 +311,7 @@ export function useAppGridConformerMessages({
         } as const;
         const onProgress = (phase: keyof typeof progressLabels, job: { jobId: string }) => {
           const progress = progressLabels[phase];
-          updateGridJob({ durableJobId: job.jobId, progress, backend: "nativeMetal" });
+          updateGridJob({ durableJobId: job.jobId, cancelable: true, progress, backend: "nativeMetal" });
           pushStatus(`${progress}...`);
         };
         const result = optimizeInputGeometry || !source
@@ -324,13 +328,6 @@ export function useAppGridConformerMessages({
               mmffVariant,
               conformersPerMolecule: 1,
             });
-        void openTextDocuments([result.reportPath], { background: true });
-        if (!optimizeInputGeometry) {
-          await openDocuments([result.primaryOpenPath], {}, {
-            rendererMode: "molstar",
-            molstarStyle: "ball-and-stick",
-          });
-        }
         updateGridJob({
           status: result.failedCount ? "recovered" : "success",
           completedAt: Date.now(),
@@ -348,6 +345,23 @@ export function useAppGridConformerMessages({
           optimizeInputGeometry ? (result.gridApplied ? "success" : "error") : (result.failedCount ? "error" : "success"),
           result.gridWarning ? [result.gridWarning] : undefined,
         );
+        // Opening is presentation, not computation. Keep the published result
+        // successful when a viewer cannot be created or restored.
+        try {
+          await openTextDocuments([result.reportPath], { background: true });
+        } catch (error) {
+          pushErrorStatus(error, "Calculation saved; could not open report", [result.reportPath]);
+        }
+        try {
+          if (!optimizeInputGeometry) {
+            await openDocuments([result.primaryOpenPath], {}, {
+              rendererMode: "molstar",
+              molstarStyle: "ball-and-stick",
+            });
+          }
+        } catch (error) {
+          pushErrorStatus(error, "Calculation saved; could not open result", [result.primaryOpenPath]);
+        }
         return;
       }
       if (optimizeInputGeometry) {
@@ -426,10 +440,11 @@ export function useAppGridConformerMessages({
     })()
       .catch((error) => {
         const message = statusErrorMessage(error);
+        const cancelled = error instanceof Error && error.name === "AbortError";
         updateGridJob({
-          status: "failed",
+          status: cancelled ? "cancelled" : "failed",
           completedAt: Date.now(),
-          progress: "Compute failed",
+          progress: cancelled ? "Compute cancelled" : "Compute failed",
           error: message,
         });
         reply("gridGenerate3DError", { jobId: gridJobId, error: message });

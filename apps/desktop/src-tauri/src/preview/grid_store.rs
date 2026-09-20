@@ -17,9 +17,12 @@ use std::time::SystemTime;
 use super::{
     grid_analysis,
     grid_database::open_grid_database,
-    grid_identity, grid_predicate,
+    grid_identity, grid_page_cache, grid_predicate,
     runtime_utils::{clipped, decode_text},
 };
+
+#[path = "grid_streamed_table.rs"]
+mod streamed_table;
 
 const GRID_INITIAL_ROWS: usize = 192;
 const GRID_INGEST_BATCH_ROWS: usize = 1_000;
@@ -322,6 +325,7 @@ struct SdfFileReader {
     source_identity: SdfSourceIdentity,
     byte_offset: u64,
     skip_line_feed_after_carriage_return: bool,
+    table: Option<streamed_table::TableStream>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -369,6 +373,7 @@ impl SdfFileReader {
             source_identity,
             byte_offset: 0,
             skip_line_feed_after_carriage_return: false,
+            table: None,
         };
         source.verify_unchanged()?;
         Ok(source)
@@ -714,7 +719,10 @@ pub(crate) fn build_grid_store_from_file_with_options(
     source_path: &Path,
     options: &GridParseOptions,
 ) -> Result<Option<GridStoreHandle>, String> {
-    if !matches!(extension, "sdf" | "sd") {
+    if !matches!(
+        extension,
+        "sdf" | "sd" | "csv" | "tsv" | "smi" | "smiles" | "dwar"
+    ) {
         return Err(format!(
             "file-backed grid indexing is only supported for SDF sources, not {extension}"
         ));
@@ -728,8 +736,16 @@ pub(crate) fn build_grid_store_from_file_with_options(
     prepare_deferred_fts_index(&connection)?;
     let cancel_token = Arc::new(AtomicBool::new(false));
     let mut source = SdfFileReader::open(source_path)?;
-    let first_batch = parse_sdf_file_batch(&mut source, 0, GRID_INITIAL_ROWS, None)?;
+    if !matches!(extension, "sdf" | "sd") {
+        source.table = Some(streamed_table::TableStream::new(extension, options));
+    }
+    let first_batch = parse_file_grid_batch(&mut source, 0, GRID_INITIAL_ROWS, None)?;
     source.verify_unchanged()?;
+    let has_molecules = source
+        .table
+        .as_ref()
+        .map(|table| table.has_molecules)
+        .unwrap_or(true);
     if first_batch.records.is_empty() && first_batch.complete {
         let _ = std::fs::remove_file(&database_path);
         return Ok(None);
@@ -749,7 +765,11 @@ pub(crate) fn build_grid_store_from_file_with_options(
         Some(source.byte_offset),
         Some(source.source_identity.len),
     )?;
-    if first_batch.complete && !options.include_single_sdf && records_indexed <= 1 {
+    if matches!(extension, "sdf" | "sd")
+        && first_batch.complete
+        && !options.include_single_sdf
+        && records_indexed <= 1
+    {
         let _ = std::fs::remove_file(&database_path);
         return Ok(None);
     }
@@ -780,7 +800,7 @@ pub(crate) fn build_grid_store_from_file_with_options(
         ingest_worker,
         summary: GridCollectionSummary {
             format,
-            has_molecules: true,
+            has_molecules,
             records_total: records_indexed,
             records_indexed,
             index_ready: first_batch.complete,
@@ -911,17 +931,28 @@ fn fetch_predicate_page(
     } else {
         format!(" where {}", predicate.predicate_sql)
     };
-    let count_sql = format!("select count(*) from molecules{where_sql}");
-    let total_rows = connection
-        .query_row(
-            &count_sql,
-            params_from_iter(predicate.params.iter()),
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(|err| err.to_string())? as usize;
-    let fts_query = predicate.fts_query.as_deref().filter(|fts_query| {
-        fts_candidates_cover_exact_result(connection, predicate, fts_query, total_rows)
-    });
+    let cache_key = grid_page_cache::key(connection, predicate);
+    let (total_rows, use_fts) =
+        if let Some(stats) = cache_key.as_ref().and_then(grid_page_cache::get) {
+            stats
+        } else {
+            let count_sql = format!("select count(*) from molecules{where_sql}");
+            let total_rows = connection
+                .query_row(
+                    &count_sql,
+                    params_from_iter(predicate.params.iter()),
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|err| err.to_string())? as usize;
+            let use_fts = predicate.fts_query.as_deref().is_some_and(|query| {
+                fts_candidates_cover_exact_result(connection, predicate, query, total_rows)
+            });
+            if let Some(key) = cache_key {
+                grid_page_cache::put(key, (total_rows, use_fts));
+            }
+            (total_rows, use_fts)
+        };
+    let fts_query = predicate.fts_query.as_deref().filter(|_| use_fts);
     let fts_sql = if fts_query.is_some() {
         " and molecules.id in (
              select rowid from molecules_fts where molecules_fts match ?
@@ -1461,7 +1492,7 @@ fn spawn_sdf_file_ingest_worker(
             record_sdf_ingest_failure(&connection, next_index, &source, &error);
             return;
         }
-        let batch = match parse_sdf_file_batch(
+        let batch = match parse_file_grid_batch(
             &mut source,
             next_index,
             GRID_INGEST_BATCH_ROWS,
@@ -1638,7 +1669,8 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
         let _ = install_fts_triggers(connection);
     }
     grid_identity::initialize(connection)?;
-    grid_analysis::initialize(connection)
+    grid_analysis::initialize(connection)?;
+    grid_page_cache::initialize(connection)
 }
 
 fn initialize_fts_table(connection: &Connection) -> Result<(), String> {
@@ -2520,7 +2552,7 @@ fn line_at(text: &str, offset: usize) -> Option<(&str, usize)> {
 // cheap — re-splitting the whole file to get it was not.
 fn first_non_empty_line(text: &str) -> Option<(&str, usize)> {
     let mut offset = 0usize;
-    while let Some((line, next_offset)) = line_at(text, offset) {
+    while let Some((line, next_offset)) = streamed_table::record_at(text, offset) {
         offset = next_offset;
         if !line.trim().is_empty() {
             return Some((line, offset));
@@ -2764,6 +2796,21 @@ fn parse_rdf_batch(
     }
 }
 
+fn parse_file_grid_batch(
+    source: &mut SdfFileReader,
+    start_index: usize,
+    max_records: usize,
+    cancel: Option<&AtomicBool>,
+) -> Result<ParsedGridBatch, String> {
+    if let Some(mut table) = source.table.take() {
+        let result = table.next_batch(source, start_index, max_records, cancel);
+        source.table = Some(table);
+        result
+    } else {
+        parse_sdf_file_batch(source, start_index, max_records, cancel)
+    }
+}
+
 fn parse_sdf_file_batch(
     source: &mut SdfFileReader,
     start_index: usize,
@@ -2943,7 +2990,7 @@ fn parse_generic_delimited_table_batch(
     };
     let mut row_number = cursor.row;
     let mut next_index = start_index;
-    while let Some((line, next_offset)) = line_at(text, offset) {
+    while let Some((line, next_offset)) = streamed_table::record_at(text, offset) {
         offset = next_offset;
         if line.trim().is_empty() {
             continue;
@@ -3005,6 +3052,27 @@ fn parse_delimited_table_batch(
     max_records: usize,
     options: &GridParseOptions,
 ) -> Result<ParsedGridBatch, String> {
+    parse_delimited_table_with_inference(
+        text,
+        separator,
+        cursor,
+        start_index,
+        max_records,
+        options,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn parse_delimited_table_with_inference(
+    text: &str,
+    separator: char,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+    options: &GridParseOptions,
+    inference: Option<&[usize]>,
+) -> Result<ParsedGridBatch, String> {
     let Some((header_line, after_header)) = first_non_empty_line(text) else {
         return Ok(ParsedGridBatch {
             records: Vec::new(),
@@ -3030,8 +3098,9 @@ fn parse_delimited_table_batch(
             }
         })
         .collect();
-    let inferred_smiles_indexes =
-        infer_smiles_columns_from_source(text, after_header, headers.len(), separator);
+    let inferred_smiles_indexes = inference.map(<[usize]>::to_vec).unwrap_or_else(|| {
+        infer_smiles_columns_from_source(text, after_header, headers.len(), separator)
+    });
     let first_row_looks_like_data = headers.iter().any(|value| looks_like_smiles(value));
     if !is_likely_delimited_header(&headers)
         && (inferred_smiles_indexes.is_empty() || first_row_looks_like_data)
@@ -3071,7 +3140,7 @@ fn parse_delimited_table_batch(
     };
     let mut row_number = cursor.row.max(1);
     let mut next_index = start_index;
-    while let Some((line, next_offset)) = line_at(text, offset) {
+    while let Some((line, next_offset)) = streamed_table::record_at(text, offset) {
         offset = next_offset;
         if line.trim().is_empty() {
             continue;
@@ -3218,7 +3287,7 @@ fn parse_delimited_rows_as_smiles_batch(
     };
     let mut row_number = cursor.row;
     let mut next_index = start_index;
-    while let Some((line, next_offset)) = line_at(text, offset) {
+    while let Some((line, next_offset)) = streamed_table::record_at(text, offset) {
         offset = next_offset;
         if line.trim().is_empty() {
             continue;
@@ -3505,7 +3574,7 @@ fn infer_smiles_columns_from_source(
     let mut offset = start_offset;
     let mut scanned = 0usize;
     while scanned < SMILES_INFERENCE_MAX_SCANNED_ROWS {
-        let Some((line, next_offset)) = line_at(text, offset) else {
+        let Some((line, next_offset)) = streamed_table::record_at(text, offset) else {
             break;
         };
         offset = next_offset;

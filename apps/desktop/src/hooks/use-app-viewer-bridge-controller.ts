@@ -263,6 +263,7 @@ export function useAppViewerBridgeController({
   });
   const { handlePubChemSearchMessage } = useAppPubChemMessages({ pushStatus });
   const { handleViewerFileMessage } = useAppViewerFileActions({
+    postMessageToViewerSource,
     pushErrorStatus,
     pushStatus,
   });
@@ -293,6 +294,7 @@ export function useAppViewerBridgeController({
     postMessageToViewerSource,
   });
   const { handleViewerStateMessage } = useAppViewerStateMessages({
+    updateDirtyGridDocument,
     activeDocument,
     addDocuments,
     documents,

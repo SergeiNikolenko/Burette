@@ -482,7 +482,11 @@ assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_delim
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) async fn fetch_pdb_structure/);
 assert.match(documentsCommand, /https:\/\/files\.rcsb\.org\/download\/\{pdb_id\}\.pdb/);
-assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn generate_3d_conformer/);
+assert.match(
+  documentsCommand,
+  /#\[tauri::command\]\s+pub\(crate\) async fn generate_3d_conformer[\s\S]*?spawn_blocking/,
+  'native conformer generation must not block the WebKit UI thread',
+);
 assert.match(documentsCommand, /engine: Option<String>/);
 assert.match(documentsCommand, /mode: Option<String>/);
 assert.match(documentsCommand, /candidate_count: Option<usize>/);

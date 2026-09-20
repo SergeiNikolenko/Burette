@@ -4,12 +4,14 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { downloadBase64File, downloadTextFile, exportDialogFilters, safeExportFileName } from "../lib/file-export";
 import { basename } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
+import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 type ViewerFileMessageBody = Record<string, unknown> | null | undefined;
 
 type UseAppViewerFileActionsOptions = {
+  postMessageToViewerSource: PostMessageToViewerSource;
   pushErrorStatus: PushErrorStatus;
   pushStatus: PushStatus;
 };
@@ -19,32 +21,43 @@ function bodyString(value: unknown, fallback: string) {
 }
 
 export function useAppViewerFileActions({
+  postMessageToViewerSource,
   pushErrorStatus,
   pushStatus,
 }: UseAppViewerFileActionsOptions) {
-  const handleViewerFileMessage = useCallback((body: ViewerFileMessageBody) => {
+  const handleViewerFileMessage = useCallback((body: ViewerFileMessageBody, source: MessageEventSource | null) => {
     if (body?.type === "exportText") {
       const text = typeof body.text === "string" ? body.text : "";
       const name = safeExportFileName(bodyString(body.name, "molstar-export.cif"));
+      const reply = (status: "saved" | "cancelled" | "error") => {
+        if (typeof body.requestId !== "string") return;
+        postMessageToViewerSource(source, {
+          source: "burette-host",
+          body: { type: "structureExportResult", requestId: body.requestId, status },
+        });
+      };
       void (async () => {
         try {
           if (!isTauriRuntime()) {
             downloadTextFile(name, text);
             pushStatus(`Exported ${name}`);
+            reply("saved");
             return;
           }
           const outputPath = await save({
             defaultPath: name,
             filters: exportDialogFilters(name, bodyString(body.mimeType, "")),
           });
-          if (!outputPath) return;
+          if (!outputPath) { reply("cancelled"); return; }
           const savedPath = await invoke<string>("save_text_as", {
             text,
             outputPath,
             sourcePath: null,
           });
           pushStatus(`Exported ${basename(savedPath)}`);
+          reply("saved");
         } catch (error) {
+          reply("error");
           pushErrorStatus(error, "Molstar export failed");
         }
       })();
@@ -79,7 +92,7 @@ export function useAppViewerFileActions({
     }
 
     return false;
-  }, [pushErrorStatus, pushStatus]);
+  }, [postMessageToViewerSource, pushErrorStatus, pushStatus]);
 
   return { handleViewerFileMessage };
 }

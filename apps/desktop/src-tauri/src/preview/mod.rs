@@ -6,6 +6,7 @@ pub(crate) mod formats;
 pub(crate) mod grid_analysis;
 pub(crate) mod grid_database;
 pub(crate) mod grid_identity;
+mod grid_page_cache;
 pub(crate) mod grid_predicate;
 #[allow(
     dead_code,

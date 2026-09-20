@@ -32,6 +32,26 @@ native build scope to advance the version past the last release.
 
 ## Version Discipline
 
+Starting with `2026.9.1`, use calendar versions: `YEAR.MONTH.RELEASE`.
+The middle number is the calendar month (1–12, without leading zeroes).
+The last number counts published releases within that month, starting at 1.
+Examples: `2026.9.1`, `2026.9.2`, then `2026.10.1` and `2027.1.1`.
+Both fixes and feature releases increment the same monthly counter. Betas
+for an upcoming release use, for example, `2026.9.2-beta.1`.
+This is a Burette naming choice, not an Apple platform requirement.
+
+Keep all three components in app metadata and release titles so Cargo, npm,
+Tauri, the legacy updater and Sparkle share one unambiguous version. Public
+release titles are `Burette 2026.9.1`; Git tags remain `v2026.9.1`. Do not
+rename historical tags or reset the version to the old `2.x` series. Plugin
+protocol versions and bundled third-party versions follow their own lifecycles.
+Before publishing, verify the intended release month and select the next unused
+counter for that month; do not reset the counter for every PR or rebuild.
+
+Set a version from the repository root with
+`bun scripts/set-release-version.mjs 2026.9.1`, then run the alignment check.
+A metadata change prepares a release; it does not publish or install it.
+
 Advance the version past the last released tag before cutting a release, and
 keep these locations aligned:
 

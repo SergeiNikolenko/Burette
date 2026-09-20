@@ -31,6 +31,23 @@ Acceptance contract:
 Upstream ledger:
 [mlxmolkit Provenance and Adaptation Ledger](third-party/mlxmolkit-provenance.md)
 
+## Interactive analysis control (2026-09-21)
+
+`compute_align_grid_poses` and `compute_evaluate_grid_semiempirical` retain their
+final result payload and accept an optional `onProgress` Tauri Channel. Events
+carry `{ jobId, completed, total, partialReportPath }`, starting immediately after
+durable submission. Cancellation uses the existing job revision contract and is
+checked between molecules and again after service admission, before dispatch.
+Alignment/semiempirical service requests have a 30-second response deadline.
+The UI keeps the job in a stopping state until the active call returns.
+
+Completed rows are flushed into `partial-analysis/<jobId>.jsonl` under the compute
+artifact root (64 MiB maximum). The first line uses schema
+`burette.partial-analysis.v1` and includes request, frozen source, runtime and
+backend provenance. Alignment rows include scores, transforms and aligned SDF.
+These reports are explicitly partial and never applied as a successful Grid run.
+The normal published result replaces the partial report link on success.
+
 ## Current Outcome
 
 Burette now has one complete source-level desktop workflow for molecular

@@ -16,6 +16,24 @@ type TextLine = {
   end: number;
 };
 
+type TextIndex = { content: string; lines: string[]; starts: number[]; atomRange: ReturnType<typeof atomLineRangeFor> };
+const textIndexes = new WeakMap<TextFileDocument, TextIndex>();
+
+function textIndex(document: TextFileDocument): TextIndex {
+  const cached = textIndexes.get(document);
+  if (cached?.content === document.content) return cached;
+  const lines = document.content.split("\n");
+  let offset = 0;
+  const starts = lines.map((line) => {
+    const start = offset;
+    offset += line.length + 1;
+    return start;
+  });
+  const index = { content: document.content, lines, starts, atomRange: atomLineRangeFor(lines, document.extension.toLowerCase().replace(/^\./u, "")) };
+  textIndexes.set(document, index);
+  return index;
+}
+
 type PdbAtomRecord = {
   serial: number | null;
   atomName: string;
@@ -31,12 +49,14 @@ export function textStructureSelectionFromRange(
   to: number,
   options: { preferAtom?: boolean } = {},
 ): TextStructureSelection | null {
-  const selectedLines = selectedTextLines(document.content, from, to);
-  if (selectedLines.length === 0) return null;
   const extension = document.extension.toLowerCase().replace(/^\./u, "");
+  if (!["pdb", "ent", "pqr", "xyz", "extxyz", "gro", "mol", "sdf", "sd", "mol2", "cube", "cub", "cif", "mmcif", "mcif"].includes(extension)) return null;
+  const index = textIndex(document);
+  const selectedLines = selectedTextLines(index, from, to);
+  if (selectedLines.length === 0) return null;
 
   return pdbSelection(selectedLines, options) ??
-    indexedAtomSelection(document.content, selectedLines, extension) ??
+    indexedAtomSelection(index.atomRange, selectedLines) ??
     null;
 }
 
@@ -57,19 +77,26 @@ export function textStructureSelectionFromSelectedText(
   return pdbSelection(selectedLines, options);
 }
 
-function selectedTextLines(text: string, from: number, to: number) {
+function selectedTextLines(index: TextIndex, from: number, to: number) {
   const start = Math.max(0, Math.min(from, to));
   const end = Math.max(0, Math.max(from, to));
   if (start === end) return [];
   const lines: TextLine[] = [];
-  let offset = 0;
-  for (const [index, line] of text.split(/\n/u).entries()) {
-    const lineStart = offset;
+  let low = 0;
+  let high = index.starts.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (index.starts[middle] <= start) low = middle + 1;
+    else high = middle;
+  }
+  for (let number = Math.max(0, low - 1); number < index.lines.length; number += 1) {
+    const line = index.lines[number];
+    const lineStart = index.starts[number];
+    if (lineStart >= end) break;
     const lineEnd = lineStart + line.length;
-    offset = lineEnd + 1;
     if (lineEnd <= start || lineStart >= end) continue;
     if (!line.trim()) continue;
-    lines.push({ number: index, text: line.replace(/\r$/u, ""), start: lineStart, end: lineEnd });
+    lines.push({ number, text: line.replace(/\r$/u, ""), start: lineStart, end: lineEnd });
   }
   return lines;
 }
@@ -138,12 +165,9 @@ function parsePdbAtomRecord(line: string): PdbAtomRecord | null {
 }
 
 function indexedAtomSelection(
-  text: string,
+  atomLineRange: TextIndex["atomRange"],
   selectedLines: TextLine[],
-  extension: string,
 ): TextStructureSelection | null {
-  const lines = text.split(/\n/u).map((line) => line.replace(/\r$/u, ""));
-  const atomLineRange = atomLineRangeFor(lines, extension);
   if (!atomLineRange) return null;
   const atomIndices = uniqueNumbers(selectedLines.flatMap((line) => {
     if (line.number < atomLineRange.start || line.number >= atomLineRange.end) return [];

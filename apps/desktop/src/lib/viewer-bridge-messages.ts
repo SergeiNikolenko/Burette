@@ -42,11 +42,11 @@ export type ViewerBridgeMessageHandlers = {
   handleRendererMessage: BodyMessageHandler;
   handleSdfViewerMessage: AsyncBodyMessageHandler;
   handleViewerConformerMessage: BodyEventMessageHandler;
-  handleViewerFileMessage: BodyMessageHandler;
+  handleViewerFileMessage: BodyEventMessageHandler;
   handleViewerHostMessage: SourceMessageHandler;
   handleViewerRuntimeFileMessage: SourceEventMessageHandler;
   handleViewerRuntimeMessage: BodyMessageHandler;
-  handleViewerStateMessage: SourceMessageHandler;
+  handleViewerStateMessage: SourceEventMessageHandler;
   handleXyzrenderSheetMessage: SourceEventMessageHandler;
   isKnownViewerMessageSource: KnownViewerMessageSource;
   markViewerFirstRenderMessage: FirstRenderMessageHandler;
@@ -93,7 +93,7 @@ export async function dispatchViewerBridgeMessage(
   if (handlers.handleViewerHostMessage(source, body)) {
     return true;
   }
-  if (handlers.handleViewerStateMessage(source, body)) {
+  if (handlers.handleViewerStateMessage(source, body, eventSource)) {
     return true;
   }
   if (handlers.handleViewerRuntimeFileMessage(source, body, eventSource)) {
@@ -103,7 +103,7 @@ export async function dispatchViewerBridgeMessage(
     return true;
   }
   handlers.markViewerFirstRenderMessage(source, body);
-  if (source === "burette-viewer" && handlers.handleViewerFileMessage(body)) {
+  if (source === "burette-viewer" && handlers.handleViewerFileMessage(body, eventSource)) {
     return true;
   }
   if (handlers.handleXyzrenderSheetMessage(source, body, eventSource)) {

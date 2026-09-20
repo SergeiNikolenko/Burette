@@ -180,7 +180,9 @@ def keep_only_conformer(value, conf_id):
 
 
 def embed_params(random_coords=False):
-    params = AllChem.ETKDGv3() if hasattr(AllChem, "ETKDGv3") else AllChem.ETKDG()
+    if not hasattr(AllChem, "ETKDGv3"):
+        raise RuntimeError("This RDKit installation does not support the requested ETKDGv3 method")
+    params = AllChem.ETKDGv3()
     params.randomSeed = 0xB00
     params.useRandomCoords = bool(random_coords)
     if hasattr(params, "pruneRmsThresh"):

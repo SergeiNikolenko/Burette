@@ -10,10 +10,7 @@ use burette_compute_core::{
     SemiempiricalError, SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfOptions,
     SemiempiricalScfStatus,
 };
-use burette_compute_metal::{
-    MetalPm6CorrectionBatch, MetalPm6OneCenterFockBatch, MetalTanimotoRuntime,
-    Pm6CorrectionMoleculeDescriptor,
-};
+use burette_compute_metal::{MetalPm6OneCenterFockBatch, MetalTanimotoRuntime};
 use burette_compute_protocol::{
     AnalysisResourceLimits, BackendPolicy, CapabilityMaturity, ComputeJobSchemaVersion,
     ExecutionPolicy, GridScope, GridSourceReference, RepresentativePolicy, SchedulingPolicy,
@@ -176,6 +173,7 @@ pub(crate) fn execute_snapshot_semiempirical_with_run_id(
     source_rows: Vec<GridAlignmentSourceRow>,
     request: &GridSemiempiricalRequest,
     run_id: Uuid,
+    checkpoint: super::analysis_control::AnalysisCheckpoint<'_>,
 ) -> ComputeResult<GridSemiempiricalResult> {
     let indexes = normalized_indexes(&request.source_indexes)?;
     if source_rows.len() != indexes.len()
@@ -188,7 +186,14 @@ pub(crate) fn execute_snapshot_semiempirical_with_run_id(
             "Frozen semiempirical records differ from the normalized selected scope".into(),
         ));
     }
-    execute_semiempirical_rows(runtime, compute_service, request, run_id, source_rows)
+    execute_semiempirical_rows(
+        runtime,
+        compute_service,
+        request,
+        run_id,
+        source_rows,
+        checkpoint,
+    )
 }
 
 fn execute_semiempirical_rows(
@@ -197,6 +202,7 @@ fn execute_semiempirical_rows(
     request: &GridSemiempiricalRequest,
     run_id: Uuid,
     source_rows: Vec<GridAlignmentSourceRow>,
+    checkpoint: super::analysis_control::AnalysisCheckpoint<'_>,
 ) -> ComputeResult<GridSemiempiricalResult> {
     let method = GridSemiempiricalMethod::parse(&request.method)?;
     let backend = if runtime.is_some() || compute_service.is_some() {
@@ -206,10 +212,18 @@ fn execute_semiempirical_rows(
     };
 
     let started = Instant::now();
-    let evaluated = source_rows
-        .iter()
-        .map(|row| evaluate_row(row, method, runtime, compute_service, run_id))
-        .collect::<Vec<_>>();
+    let mut evaluated = Vec::with_capacity(source_rows.len());
+    for (index, row) in source_rows.iter().enumerate() {
+        checkpoint(index, None)?;
+        let result = evaluate_row(row, method, runtime, compute_service, run_id, &|| {
+            checkpoint(index, None).map_err(|e| e.to_string())
+        });
+        if result.0.error.is_some() {
+            checkpoint(index, None)?;
+        }
+        checkpoint(index + 1, Some(serde_json::to_value(&result.0)?))?;
+        evaluated.push(result);
+    }
     let gpu_time_ms = evaluated.iter().map(|(_, gpu_time)| gpu_time).sum();
     let rows = evaluated
         .into_iter()
@@ -285,8 +299,16 @@ fn evaluate_row(
     runtime: Option<&MetalTanimotoRuntime>,
     compute_service: Option<&ComputeServiceClient>,
     job_id: Uuid,
+    before_dispatch: &dyn Fn() -> Result<(), String>,
 ) -> (GridSemiempiricalRow, u64) {
-    match evaluate_row_inner(row, method, runtime, compute_service, job_id) {
+    match evaluate_row_inner(
+        row,
+        method,
+        runtime,
+        compute_service,
+        job_id,
+        before_dispatch,
+    ) {
         Ok(result) => result,
         Err(error) => (
             GridSemiempiricalRow {
@@ -311,6 +333,7 @@ fn evaluate_row_inner(
     runtime: Option<&MetalTanimotoRuntime>,
     compute_service: Option<&ComputeServiceClient>,
     job_id: Uuid,
+    before_dispatch: &dyn Fn() -> Result<(), String>,
 ) -> Result<(GridSemiempiricalRow, u64), String> {
     let molblock = row
         .molblock
@@ -342,7 +365,12 @@ fn evaluate_row_inner(
     let molecule = SemiempiricalMolecule::new(method.method, atoms, charge)
         .map_err(|error| error.to_string())?;
     let (evaluation, gpu_time_ms) = if let Some(service) = compute_service {
-        service.evaluate_semiempirical(job_id, &molecule, DEFAULT_MAX_MEMORY_BYTES)?
+        service.evaluate_semiempirical(
+            job_id,
+            &molecule,
+            DEFAULT_MAX_MEMORY_BYTES,
+            before_dispatch,
+        )?
     } else {
         evaluate_semiempirical_molecule(runtime, &molecule, DEFAULT_MAX_MEMORY_BYTES)?
     };
@@ -470,23 +498,9 @@ pub(super) fn evaluate_semiempirical_molecule(
         evaluate_semiempirical(molecule, SemiempiricalScfOptions::default())
     }
     .map_err(|error| error.to_string())?;
-    if molecule.method == SemiempiricalMethod::Pm6D3H4 {
-        if let Some(runtime) = runtime {
-            let correction = runtime
-                .evaluate_pm6_d3h4_profiled(
-                    MetalPm6CorrectionBatch {
-                        atoms: &molecule.atoms,
-                        molecules: &[Pm6CorrectionMoleculeDescriptor {
-                            atom_start: 0,
-                            atom_count: molecule.atoms.len(),
-                        }],
-                    },
-                    max_memory_bytes,
-                )
-                .map_err(|error| error.to_string())?;
-            gpu_time_ms.set(gpu_time_ms.get().saturating_add(correction.gpu_time_ms));
-        }
-    }
+    // The evaluator already includes D3/H4/HH in total_energy_ev.
+    // Do not dispatch a second correction whose energies are discarded.
+
     Ok((evaluation, gpu_time_ms.get()))
 }
 
@@ -715,6 +729,37 @@ mod tests {
     }
 
     #[test]
+    fn cancellation_after_first_molecule_preserves_its_progress_and_stops_the_batch() {
+        let completed = std::cell::RefCell::new(Vec::new());
+        let error = execute_semiempirical_rows(
+            None,
+            None,
+            &GridSemiempiricalRequest {
+                document_id: "test".into(),
+                source_indexes: vec![0, 1],
+                method: "RM1".into(),
+            },
+            Uuid::new_v4(),
+            vec![water_row(), water_row()],
+            &|count, row| {
+                if let Some(row) = row {
+                    completed.borrow_mut().push(row);
+                }
+                if count == 1 {
+                    Err(ComputeCoordinatorError::Cancelled)
+                } else {
+                    Ok(())
+                }
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(error, ComputeCoordinatorError::Cancelled));
+        let rows = completed.borrow();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["converged"], true);
+    }
+
+    #[test]
     fn evaluates_explicit_water_from_a_grid_molfile() {
         let row = water_row();
         for method in [
@@ -722,7 +767,7 @@ mod tests {
         ] {
             let method = GridSemiempiricalMethod::parse(method).unwrap();
             let (result, gpu_time_ms) =
-                evaluate_row_inner(&row, method, None, None, Uuid::new_v4())
+                evaluate_row_inner(&row, method, None, None, Uuid::new_v4(), &|| Ok(()))
                     .expect("evaluate water");
             assert_eq!(gpu_time_ms, 0);
             assert!(result.converged, "{} did not converge", method.display_name);
@@ -731,9 +776,15 @@ mod tests {
         }
         for method in ["AM1", "PM3", "PM6_SP"] {
             let method = GridSemiempiricalMethod::parse(method).unwrap();
-            let (result, _) =
-                evaluate_row_inner(&hydrogen_chloride_row(), method, None, None, Uuid::new_v4())
-                    .expect("evaluate extended element domain");
+            let (result, _) = evaluate_row_inner(
+                &hydrogen_chloride_row(),
+                method,
+                None,
+                None,
+                Uuid::new_v4(),
+                &|| Ok(()),
+            )
+            .expect("evaluate extended element domain");
             assert!(result.converged, "{} did not converge", method.display_name);
             assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-8);
         }
@@ -757,6 +808,7 @@ mod tests {
             },
             Uuid::new_v4(),
             vec![water_row()],
+            &|_, _| Ok(()),
         )
         .expect("evaluate and classify Metal result");
         assert_eq!(classified.backend, "nativeMetalScfHybrid");
@@ -764,9 +816,15 @@ mod tests {
             "RM1", "AM1", "PM3", "PM6", "PM6_D", "PM6_D3H4", "PM6_SP", "AM1*",
         ] {
             let method = GridSemiempiricalMethod::parse(method).unwrap();
-            let (result, _) =
-                evaluate_row_inner(&water_row(), method, Some(&runtime), None, Uuid::new_v4())
-                    .expect("evaluate water on Metal");
+            let (result, _) = evaluate_row_inner(
+                &water_row(),
+                method,
+                Some(&runtime),
+                None,
+                Uuid::new_v4(),
+                &|| Ok(()),
+            )
+            .expect("evaluate water on Metal");
             assert!(result.converged, "{} did not converge", method.display_name);
             assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-6);
         }
@@ -778,6 +836,7 @@ mod tests {
                 Some(&runtime),
                 None,
                 Uuid::new_v4(),
+                &|| Ok(()),
             )
             .expect("evaluate extended element domain on Metal");
             assert!(result.converged);
@@ -789,6 +848,7 @@ mod tests {
             Some(&runtime),
             None,
             Uuid::new_v4(),
+            &|| Ok(()),
         )
         .expect("evaluate full-d hydrogen sulfide on Metal");
         assert!(result.converged);
