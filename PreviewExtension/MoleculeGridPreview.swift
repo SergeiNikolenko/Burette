@@ -262,12 +262,17 @@ enum MoleculeGridPreviewBuilder {
         let headers = parseDelimitedLine(lines[tableStart], separator: "\t").map {
             $0.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        let structureColumns: [(index: Int, isIDCode: Bool)] = headers.enumerated().compactMap { index, header in
+        let idcodeColumns: [(index: Int, isIDCode: Bool)] = headers.enumerated().compactMap { index, header in
             let specialType = columns[header]?.specialType?.lowercased() ?? ""
             if specialType == "idcode" { return (index, true) }
-            if isSmilesColumn(header.lowercased().replacingOccurrences(of: " ", with: "_")) { return (index, false) }
             return nil
         }
+        let smilesColumns: [(index: Int, isIDCode: Bool)] = headers.enumerated().compactMap { index, header in
+                let specialType = columns[header]?.specialType?.lowercased() ?? ""
+                if specialType.isEmpty && isSmilesColumn(header.lowercased().replacingOccurrences(of: " ", with: "_")) { return (index, false) }
+                return nil
+            }
+        let structureColumns = idcodeColumns + smilesColumns
         guard !structureColumns.isEmpty else {
             return MoleculeGridCollection(format: "dwar", records: [], recordsTotal: 0)
         }
@@ -289,12 +294,16 @@ enum MoleculeGridPreviewBuilder {
         }?.offset
         var records: [MoleculeGridRecord] = []
         var recordsTotal = 0
-        let multipleStructureColumns = structureColumns.count > 1
+        let multipleStructureColumns = idcodeColumns.isEmpty && smilesColumns.count > 1
         for (rowIndex, line) in lines.dropFirst(tableStart + 1).enumerated() {
             if dataWarriorSectionTag(line) { break }
             guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
             let cells = parseDelimitedLine(line, separator: "\t")
+            let hasIDCodeValue = idcodeColumns.contains { index, _ in
+                index < cells.count && !cells[index].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
             for structure in structureColumns {
+                if !structure.isIDCode && hasIDCodeValue { continue }
                 guard structure.index < cells.count else { continue }
                 let value = cells[structure.index].trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !value.isEmpty else { continue }

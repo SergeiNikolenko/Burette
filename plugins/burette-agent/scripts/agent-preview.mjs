@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
+import { gunzipSync } from 'node:zlib';
 import { createReadStream, existsSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve, normalize } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -95,8 +96,8 @@ function inferFormat(file) {
 }
 
 function isMaestroPreviewFile(file) {
-  const ext = extname(file).toLowerCase().replace(/^\./, '');
-  return ext === 'cms' || ext === 'mae';
+  const name = basename(file).toLowerCase();
+  return name.endsWith('.cms') || name.endsWith('.mae') || name.endsWith('.maegz') || name.endsWith('.mae.gz');
 }
 
 function isAmberNetcdfFile(file) {
@@ -116,9 +117,16 @@ function preparePreviewPayload(file, bytes) {
     return { bytes, format: 'text', binary: looksBinary(bytes), textPreview: true };
   }
   if (!isMaestroPreviewFile(file)) return { bytes, format: inferFormat(file), binary: isBinaryFormat(file) };
-  const converted = maestroPdbDataFromText(bytes.toString('utf8'));
+  const maestroBytes = /\.mae(?:\.gz|gz)$/iu.test(basename(file)) ? gunzipSync(bytes) : bytes;
+  const converted = maestroPdbDataFromText(maestroBytes.toString('utf8'));
   if (!converted) return { bytes, format: inferFormat(file), binary: isBinaryFormat(file) };
-  return { bytes: Buffer.from(converted, 'utf8'), format: 'pdb', binary: false };
+  return {
+    bytes: Buffer.from(converted.text, 'utf8'),
+    format: 'pdb',
+    binary: false,
+    ...(converted.stagedEntries?.length ? { stagedEntries: converted.stagedEntries } : {}),
+    ...(converted.structureSceneMode ? { structureSceneMode: converted.structureSceneMode } : {}),
+  };
 }
 
 function previewExtension(file) {
@@ -752,15 +760,56 @@ function maestroPdbDataFromText(text) {
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   const models = parseMaestroPdbModels(lines, 99999);
   if (!models?.length) return null;
-  if (models.length === 1) {
-    return [
+  const independentEntries = models.length > 1 && !maestroModelsShareTopology(models);
+  const pdb = independentEntries
+    ? maestroIndependentEntriesToPdb(models)
+    : models.length === 1 ? [
       ...models[0].map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
       ...pdbConectLines(models[0]),
       'END',
       ''
-    ].join('\n');
-  }
-  return maestroModelsToPdb(models);
+    ].join('\n') : maestroModelsToPdb(models);
+  const stagedEntries = independentEntries ? models.map((atoms, index) => ({
+    label: `Structure ${index + 1}`,
+    format: 'pdb',
+    binary: false,
+    representation: 'structure-scene-entry',
+    requiredForReady: true,
+    dataBase64: Buffer.from(maestroSingleEntryToPdb(atoms, `Structure ${index + 1}`), 'utf8').toString('base64'),
+  })) : [];
+  return { text: pdb, stagedEntries, structureSceneMode: independentEntries ? 'structurePoses' : undefined };
+}
+
+function maestroModelsShareTopology(models) {
+  const first = models[0];
+  return models.slice(1).every(model => model.length === first.length && model.every((atom, index) => maestroAtomTopologyKey(atom) === maestroAtomTopologyKey(first[index])));
+}
+
+function maestroAtomTopologyKey(atom) {
+  return [atom.symbol, atom.atomName, atom.residueName, atom.residueNumber, atom.chainName].join('|');
+}
+
+function maestroIndependentEntriesToPdb(models) {
+  const lines = ['REMARK Combined independent Maestro CT entries'];
+  let serial = 1;
+  models.forEach((atoms, modelIndex) => {
+    if (serial > 99999) return;
+    const chainName = maestroEntryChainName(modelIndex);
+    const capped = atoms.slice(0, 100000 - serial).map(atom => ({ ...atom, chainName }));
+    lines.push(...capped.map((atom, index) => maestroPdbAtomLine(serial + index, atom)));
+    lines.push(...pdbConectLines(capped, serial - 1), 'TER');
+    serial += capped.length;
+  });
+  lines.push('END', '');
+  return lines.join('\n');
+}
+
+function maestroSingleEntryToPdb(atoms, label) {
+  return [`REMARK ${label}`, ...atoms.slice(0, 99999).map((atom, index) => maestroPdbAtomLine(index + 1, atom)), ...pdbConectLines(atoms.slice(0, 99999)), 'END', ''].join('\n');
+}
+
+function maestroEntryChainName(index) {
+  return 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[index % 62] || 'A';
 }
 
 function parseMaestroPdbModels(lines, atomLimit) {
@@ -918,7 +967,7 @@ function maestroPdbAtomLine(serial, atom) {
   ].join('');
 }
 
-function pdbConectLines(atoms) {
+function pdbConectLines(atoms, serialOffset = 0) {
   const bonds = inferPdbBonds(atoms);
   if (!bonds.length) return [];
   const adjacency = Array.from({ length: Math.min(atoms.length, 99999) }, () => []);
@@ -929,7 +978,7 @@ function pdbConectLines(atoms) {
   const lines = [];
   adjacency.forEach((neighbors, index) => {
     for (let offset = 0; offset < neighbors.length; offset += 4) {
-      lines.push(`CONECT${String(index + 1).padStart(5, ' ')}${neighbors.slice(offset, offset + 4).map(serial => String(serial).padStart(5, ' ')).join('')}`);
+      lines.push(`CONECT${String(serialOffset + index + 1).padStart(5, ' ')}${neighbors.slice(offset, offset + 4).map(serial => String(serialOffset + serial).padStart(5, ' ')).join('')}`);
     }
   });
   return lines;
@@ -1432,7 +1481,7 @@ async function main() {
   const preview = await amberNcPreviewPayload(structurePath)
     ?? await nativeTrajectoryPairPayload(structurePath, sourceBytes)
     ?? preparePreviewPayload(structurePath, sourceBytes);
-  const extension = extname(structurePath).toLowerCase().replace(/^\./, '');
+  const extension = basename(structurePath).toLowerCase().endsWith('.mae.gz') ? 'maegz' : extname(structurePath).toLowerCase().replace(/^\./, '');
   const trajectoryFrameCount = Number(preview.trajectoryFrameCount || 0);
   const config = {
     label: preview.label || (preview.topologyPath ? `${basename(structurePath)} + ${basename(preview.topologyPath)}` : basename(structurePath)),
@@ -1445,6 +1494,8 @@ async function main() {
     trajectoryPath: preview.trajectoryPath || null,
     trajectoryControls: trajectoryFrameCount > 1,
     trajectoryFrameCount,
+    ...(preview.stagedEntries?.length ? { stagedEntries: preview.stagedEntries } : {}),
+    ...(preview.structureSceneMode ? { structureSceneMode: preview.structureSceneMode } : {}),
     ...(preview.docking ? { docking: preview.docking } : {}),
     textPreview: Boolean(preview.textPreview),
     showPanelControls: true,
