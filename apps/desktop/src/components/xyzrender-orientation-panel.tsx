@@ -1,7 +1,6 @@
 import { ScrubNumberField } from "./ui/scrub-number-input";
 import { exportXyzrenderFigure } from "../lib/xyzrender-export";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
-import { Slider } from "./ui/slider";
 import { ArrowRotateCcw, ChevronDown } from "./ui/app-icons";
 import { useEffect, useRef, useState } from 'react';
 
@@ -77,9 +76,8 @@ function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSo
   useEffect(() => { if (result) apply(); }, [result]);
   return <div className="flex flex-col gap-4">
     <div>
-      <FieldGroup className="gap-3">{['X', 'Y', 'Z'].map((axis, index) => <Field key={axis} orientation="horizontal" className="xyzrender-angle-row"><FieldLabel>{axis}</FieldLabel>
-        <Slider tone="neutral" aria-label={`${axis} rotation slider`} min={-180} max={180} step={1} value={[angles[index]]} onValueChange={values => setAngles(current => current.map((angle, i) => i === index ? values[0] : angle))} className="flex-1" />
-        <ScrubNumberField aria-label={`${axis} orientation`} formatValue={value => `${value}°`} min={-180} max={180} step={1} smallStep={1} value={angles[index]} onValueChange={value => setAngles(current => current.map((angle, i) => i === index ? value : angle))} className="w-20" />
+      <FieldGroup className="xyzrender-angle-fields">{['X', 'Y', 'Z'].map((axis, index) => <Field key={axis} orientation="horizontal" className="xyzrender-angle-row"><FieldLabel>{axis}</FieldLabel>
+        <ScrubNumberField aria-label={`${axis} orientation`} formatValue={value => `${value}°`} min={-180} max={180} step={1} smallStep={1} value={angles[index]} onValueChange={value => setAngles(current => current.map((angle, i) => i === index ? value : angle))} className="min-w-0 flex-1" />
       </Field>)}
       </FieldGroup>
     </div>
