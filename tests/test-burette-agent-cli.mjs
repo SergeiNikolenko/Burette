@@ -112,6 +112,31 @@ try {
   assert.equal(payload.result.activeDocument.title, 'mini.pdb');
   assert.equal(payload.result.scene.known, false);
 
+  const actionFile = resolve(tmpdir(), `burette-agent-action-${process.pid}.json`);
+  await writeFile(actionFile, JSON.stringify({ type: 'reset_camera' }));
+  const statusAlias = runCli(['status', '--url', ready.url]);
+  assert.equal(statusAlias.status, 0, statusAlias.stderr);
+  assert.equal(JSON.parse(statusAlias.stdout).result.activeDocument.title, 'mini.pdb');
+  const actionFileResult = runCli(['action', '--url', ready.url, '--action-file', actionFile]);
+  assert.equal(actionFileResult.status, 0, actionFileResult.stderr);
+  assert.equal(JSON.parse(actionFileResult.stdout).result.action.type, 'reset_camera');
+  const namedSceneResult = runCli(['scene', 'show-surface', '--url', ready.url]);
+  assert.equal(namedSceneResult.status, 0, namedSceneResult.stderr);
+  assert.equal(JSON.parse(namedSceneResult.stdout).result.action.type, 'show_surface');
+  const stdinResult = spawnSync(process.execPath, ['scripts/burette-agent.mjs', 'action', '--url', ready.url, '--stdin'], {
+    encoding: 'utf8',
+    input: JSON.stringify({ type: 'hide_waters' })
+  });
+  assert.equal(stdinResult.status, 0, stdinResult.stderr);
+  assert.equal(JSON.parse(stdinResult.stdout).result.action.type, 'hide_waters');
+  const oversizedInput = spawnSync(process.execPath, ['scripts/burette-agent.mjs', 'action', '--url', ready.url, '--stdin'], {
+    encoding: 'utf8',
+    input: JSON.stringify({ type: 'reset_camera', padding: 'x'.repeat(256 * 1024) })
+  });
+  assert.equal(oversizedInput.status, 2);
+  assert.equal(JSON.parse(oversizedInput.stderr).error.code, 'INVALID_ARGS');
+  await rm(actionFile, { force: true });
+
   const action = runCli(['act', '--url', ready.url, '{"type":"reset_camera"}']);
   assert.equal(action.status, 0, action.stderr);
   const actionPayload = JSON.parse(action.stdout);
