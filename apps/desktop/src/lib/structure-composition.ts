@@ -25,6 +25,7 @@ export type CompositionSceneEdit =
   | { operation: "color"; value: string };
 
 export type StructureViewerAction =
+  | { type: "open_components_menu"; label: string; query: string; componentLabel: string; kind: "polymer" | "ligand" | "ion" | "water"; x: number; y: number; notify: false }
   | { type: "edit_components"; label: string; query: string; componentLabel: string; kind: "polymer" | "ligand" | "ion" | "water"; edit: CompositionSceneEdit }
   | { type: "focus_selection"; label: string; selector: StructureViewerSelector }
   | {

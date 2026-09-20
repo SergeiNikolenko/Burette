@@ -315,6 +315,15 @@ bun tests/test-viewer-bridge-message-contract.mjs
 
 ### Inspector context operations
 
+Composition right-clicks send `open_components_menu` with an exact `query`,
+`componentLabel`, `kind`, and finite viewer-local `x`/`y` coordinates. The desktop
+bridge translates the pointer position into the active iframe. The viewer opens
+the same scene-tree editor (Type, Opacity, Theme, palette and Advanced), clamped
+inside the viewport. Partial components are separated with their existing style,
+visibility and selection preserved; that separation can be undone. Rows spanning
+multiple representations expose an Object selector so the edited target is explicit.
+Opening an already separate component does not add an undo step.
+
 The desktop inspector uses `edit_components` with `query` (exact PyMOL, maximum
 4096 characters), `componentLabel`, `kind`, and a discriminated `edit`:
 `{ operation: "representation", value: string }`, `{ operation: "opacity",

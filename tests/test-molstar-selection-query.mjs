@@ -5,6 +5,7 @@
 // composition panel prints for the same row. They are recorded as comments so a
 // future change to the mapping can be re-checked the same way.
 import assert from "node:assert/strict";
+import "./test-composition-scene-menu.mjs";
 
 const { pymolQueryForSelector } = await import("../apps/desktop/src/lib/molstar-selection-query.ts");
 
