@@ -6729,7 +6729,7 @@ assert.doesNotMatch(previewRuntimeCss, /\.buret-molecule-tool-dialog-layer \{/);
 // menus down with a TypeError; the preset swatches must render without it.
 assert.match(previewViewer, /if \(typeof window\.BuretteColorPicker\?\.create !== 'function'\) \{[\s\S]*?menu\.appendChild\(swatches\);\s*return;\s*\}/);
 assert.match(previewViewer, /let sceneTreeColorPickerMissingReported = false;/);
-assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-representation-menu\] \.buret-tree-swatch \{[\s\S]*width: 14px;[\s\S]*height: 14px;[\s\S]*min-height: 14px;/);
+assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-representation-menu\] \.buret-tree-swatches:not\(\.buret-tree-swatches-with-picker\) \.buret-tree-swatch \{[\s\S]*width: 14px;[\s\S]*height: 14px;[\s\S]*min-height: 14px;/);
 assert.match(previewRuntimeCss, /\.buret-representation-type-item \.buret-representation-type-check \{[\s\S]*opacity: 0;/);
 assert.match(previewRuntimeCss, /\.buret-representation-type-item\[data-current="true"\] \.buret-representation-type-check \{[\s\S]*opacity: 1;/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-representation-mode-radio/);
