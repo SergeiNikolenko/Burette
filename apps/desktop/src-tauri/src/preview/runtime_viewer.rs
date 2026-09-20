@@ -307,6 +307,13 @@ pub(crate) fn create_runtime<R: Runtime>(
     }
     if let Some(converted) = external_molstar_data.as_ref() {
         if !converted.staged_entries.is_empty() {
+            if converted
+                .staged_entries
+                .iter()
+                .any(|entry| entry.representation == "structure-scene-entry")
+            {
+                config["structureSceneMode"] = json!("structurePoses");
+            }
             config["stagedEntries"] = json!(converted
                 .staged_entries
                 .iter()
