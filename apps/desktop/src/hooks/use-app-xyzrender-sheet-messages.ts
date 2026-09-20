@@ -1,5 +1,7 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { showNativeContextMenu } from "../components/native-context-menu";
+import { xyzrenderContextMenuItems } from "../components/xyzrender-context-menu";
 import { isTauriRuntime } from "../lib/tauri";
 import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 
@@ -22,6 +24,27 @@ export function useAppXyzrenderSheetMessages({
       sourceName !== "burette-grid"
     ) {
       return false;
+    }
+    if (body?.type === "xyzrenderContextMenu") {
+      if (sourceName !== "burette-viewer" || typeof body.requestId !== "string") return true;
+      const reply = (result: { action?: string; unsupported?: boolean }) => postMessageToViewerSource(source, {
+        source: "burette-host", body: { type: "xyzrenderContextMenuResult", requestId: body.requestId, ...result },
+      });
+      const items = xyzrenderContextMenuItems({
+        label: typeof body.label === "string" ? body.label : "Structure",
+        hasSelection: body.hasSelection === true,
+        hasHidden: body.hasHidden === true,
+      }, action => reply({ action }));
+      const frame = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe"))
+        .find(candidate => candidate.contentWindow === source);
+      const frameRect = frame?.getBoundingClientRect();
+      const clientX = Number(body.clientX);
+      const clientY = Number(body.clientY);
+      const at = frameRect && Number.isFinite(clientX) && Number.isFinite(clientY)
+        ? { x: frameRect.left + clientX, y: frameRect.top + clientY }
+        : undefined;
+      void showNativeContextMenu(items, at).catch(() => reply({ unsupported: true }));
+      return true;
     }
     if (body?.type !== "renderXyzrenderSheetItem") return false;
     if (!body.requestId) return true;

@@ -1077,6 +1077,7 @@ export default function App() {
     openKetcherWithStructures,
     openCommandPalette,
     openDockTab,
+    toggleDockTab,
     openPoseReviewWorkspace,
     pendingMolstarReplaceRef,
     pendingViewerReloadDocumentIdRef,

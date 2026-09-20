@@ -1,3 +1,4 @@
+import { XyzrenderAnimationDialog } from "./xyzrender-animation-dialog";
 import { useGroupPixelGuard } from "./ui/use-group-pixel-guard";
 import { SidebarFileOperations } from "./sidebar/file-operations";
 import { WorkspaceMenus } from "./workspace-menus";
@@ -493,6 +494,7 @@ export function AppLayout({
       onContextMenu={heroEmbed ? (event) => event.preventDefault() : undefined}
       style={shellStyle}
     >
+      <XyzrenderAnimationDialog />
       {!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region />}
       {chromeVisible && (
         <>

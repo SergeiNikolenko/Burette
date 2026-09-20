@@ -30,6 +30,7 @@ type UseAppViewerStateMessagesOptions = {
   documents: ViewerDocument[];
   openCommandPalette: () => void;
   openDockTab: (area: "right", kind: DockTabKind) => void;
+  toggleDockTab: (area: "right", kind: DockTabKind) => void;
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
   setViewerLigandSelections: SetViewerLigandSelections;
   setStructureOverlayModes: SetStructureOverlayModes;
@@ -53,6 +54,7 @@ export function useAppViewerStateMessages({
   documents,
   openCommandPalette,
   openDockTab,
+  toggleDockTab,
   setPreference,
   setViewerLigandSelections,
   setStructureOverlayModes,
@@ -83,6 +85,24 @@ export function useAppViewerStateMessages({
     if (sourceName === "burette-viewer" && body?.type === "setTheme") {
       const theme = body.value === "light" || body.value === "dark" ? body.value : null;
       if (theme) setPreference("theme", theme);
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && body?.type === "xyzrenderAtomSelection") {
+      if (Array.isArray(body.selections) && body.selections.length <= 32) window.dispatchEvent(new CustomEvent("burette:xyzrender-selection", { detail: body.selections }));
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && body?.type === "openXyzrenderAnimation") {
+      if (typeof body.path === "string" && typeof body.previewSvg === "string" && body.previewSvg.length <= 2_000_000) {
+        openDockTab("right", "xyzrender");
+        window.dispatchEvent(new CustomEvent("burette:xyzrender-animation", { detail: body }));
+      }
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && body?.type === "openXyzrenderInspector") {
+      toggleDockTab("right", "xyzrender");
       return true;
     }
 
@@ -190,7 +210,7 @@ export function useAppViewerStateMessages({
     }
 
     return false;
-  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar, updateDirtyGridDocument]);
+  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, toggleDockTab, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar, updateDirtyGridDocument]);
 
   return { handleViewerStateMessage };
 }

@@ -88,11 +88,19 @@
   display: grid;
   place-items: center;
   min-height: 240px;
-  aspect-ratio: 1;
-  max-height: 55vh;
+  width: 100%;
+  min-width: 0;
+  height: clamp(240px, 55vh, 560px);
   overflow: hidden;
   border-radius: var(--radius-lg);
   background: var(--surface-input);
 }
-.xyzrender-animation-preview img { width: 100%; height: 100%; object-fit: contain; }
-.xyzrender-animation-preview canvas { width: 100%; height: 100%; object-fit: contain; }
+.xyzrender-animation-preview img { display: block; min-width: 0; min-height: 0; width: 100%; height: 100%; object-fit: contain; }
+.xyzrender-animation-preview canvas { display: block; min-width: 0; min-height: 0; width: 100%; height: 100%; object-fit: contain; }
+
+/* The launch action yields its space to the open inspector. */
+.xyzrender-dock-card:has(.xyzrender-motion-controls) > .xyzrender-editor-launch { display: none; }
+.xyzrender-angle-row > [data-slot="field-label"] { flex: 0 0 18px; }
+.xyzrender-angle-row { gap: 12px; }
+.xyzrender-dock-panel .xyzrender-dock-card { background: transparent; border: 0; padding: 4px; }
+.xyzrender-dock-panel .xyzrender-dock-preset-tile { background: var(--surface-input); }

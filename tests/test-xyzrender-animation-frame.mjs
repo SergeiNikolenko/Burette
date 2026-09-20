@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { Window } from 'happy-dom';
+const source = readFileSync('PreviewExtension/Web/viewer.js', 'utf8');
+const start = source.indexOf("    if (event.source === window.parent && body.type === 'applyXyzrenderAnimationFrame')");
+const end = source.indexOf("    if (event.source === window.parent && body.type === 'applyXyzrenderAnimation')", start);
+const window = new Window();
+const { document } = window;
+document.body.innerHTML = '<div class="buret-xyzrender-sheet-item" data-buret-xyzrender-editor-id="test"><div class="buret-xyzrender-sheet-item-body"><svg></svg></div></div>';
+let painted;
+window.HTMLCanvasElement.prototype.getContext = () => ({ putImageData: data => { painted = data; } });
+class ImageData { constructor(pixels, width, height) { Object.assign(this, {pixels, width, height}); } }
+const receive = new Function('event', 'body', 'window', 'document', 'ImageData', source.slice(start, end));
+const body = { type: 'applyXyzrenderAnimationFrame', itemId: 'test', width: 2, height: 2, pixels: new Uint8ClampedArray(16).fill(255) };
+const send = (message, sender = window.parent) => receive({ source: sender }, message, window, document, ImageData);
+send(body, {}); assert.equal(document.querySelector('canvas'), null);
+send({...body, pixels: new Uint8ClampedArray(3)}); assert.equal(document.querySelector('canvas'), null);
+send(body); const canvas = document.querySelector('canvas');
+assert.deepEqual([canvas.width, canvas.height, painted.pixels.length], [2,2,16]);
+assert.equal(document.querySelector('svg').style.visibility, 'hidden');
+send({...body, pixels: new Uint8ClampedArray(16)});
+assert.equal(document.querySelector('canvas'), canvas); assert.equal(painted.pixels[0], 0);
+console.log('animation frame bridge: validates sender and pixels, reuses canvas, updates pixels');

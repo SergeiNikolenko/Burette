@@ -30,6 +30,7 @@ const requiredPreviewAssets = [
   'superposition-panel.js',
   'molecule-preview-interactions.js',
   'renderer-view-state.js',
+  'xyzrender-3d-editor.js',
   'color-picker.js',
   'sequence-panel.js',
   'scene-file-actions.js',
