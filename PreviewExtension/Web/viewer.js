@@ -1621,6 +1621,7 @@
   let leftPanelVisibilityGuardInstalled = false;
   let viewportCornerLayoutHandle = 0;
   let molstarStructureDirty = false;
+  let pendingMolstarSave = null;
 
   // A viewer in a hidden tab still has a full-size iframe, so it used to redraw
   // on every window resize alongside the visible one. A collapsed container has
@@ -2815,8 +2816,17 @@
     const data = event.data || {};
     const body = data.source === 'burette-host' ? data.body : null;
     if (!body) return;
+    if (body.type === 'structureExportResult') {
+      if (pendingMolstarSave?.requestId === body.requestId) {
+        const unchanged = pendingMolstarSave.revision === molstarPresetPreviewSceneRevision;
+        pendingMolstarSave = null;
+        if (body.status === 'saved' && unchanged) setMolstarStructureDirty(false);
+      }
+      return;
+    }
     if (body.type === 'viewerVisibilityChanged') {
       hostViewerVisible = body.visible !== false;
+      activeTrajectoryPlaybackControl?.visibilityChanged?.();
       if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer, 0);
       return;
     }
@@ -5355,6 +5365,7 @@
   function setMolstarStructureDirty(dirty) {
     molstarPresetPreviewSceneRevision += 1;
     molstarStructureDirty = dirty === true;
+    postHostMessage({ type: 'structureDirtyChanged', dirty: molstarStructureDirty });
     updateSaveModifiedStructureButton();
   }
 
@@ -5419,7 +5430,6 @@
       try {
         const saved = saveMolstarModifiedStructure();
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
-        setMolstarStructureDirty(false);
       } catch (error) {
         setStatus(`[web] Save modified structure failed.\n\n${error?.message || String(error)}`, 'error');
       }
@@ -6956,6 +6966,13 @@ SOFTWARE.
   function sceneTreeNodes(viewer) {
     const state = viewer?.plugin?.state?.data;
     if (!state?.cells) return [];
+    const cachedRoots = new Set();
+    for (const scene of [activeSdfCollectionVisibilityState, activeDockingPoseCollectionState, activeXyzFrameOverlayState]) {
+      if (scene?.viewer !== viewer) continue;
+      for (const [index, entry] of scene.poseCache || []) {
+        if (index !== scene.activeIndex) cachedRoots.add(entry.raw.ref);
+      }
+    }
     const { children, rootRef } = sceneTreeChildRefs(state);
     if (rootRef === null) return [];
     const colorTargets = sceneTreeColorTargets(viewer);
@@ -6978,6 +6995,7 @@ SOFTWARE.
       const nodes = [];
       for (const parentRef of refs) {
         for (const childRef of children.get(parentRef) || []) {
+          if (cachedRoots.has(childRef)) continue;
           const cell = state.cells.get(childRef);
           if (!cell || isSceneTreeDecorator(cell)) continue;
           // Mol* hides ghost and pending cells but keeps showing their children.
@@ -10737,15 +10755,20 @@ SOFTWARE.
     }
   }
 
+  let decodedStructureCache = null;
   function rawStructureData(config) {
-    if (window.BuretteDataBytes instanceof Uint8Array) {
-      return config.binary ? window.BuretteDataBytes : new TextDecoder('utf-8', { fatal: false }).decode(window.BuretteDataBytes);
+    const source = window.BuretteDataBytes instanceof Uint8Array
+      ? window.BuretteDataBytes : window.BuretteDataBase64;
+    if (!source) throw new Error('Preview payload was not loaded.');
+    const binary = !!config.binary;
+    if (decodedStructureCache?.source === source && decodedStructureCache.binary === binary) {
+      return decodedStructureCache.value;
     }
-    const base64 = window.BuretteDataBase64;
-    if (!base64 || typeof base64 !== 'string') {
-      throw new Error('Preview payload was not loaded.');
-    }
-    return config.binary ? base64ToBytes(base64) : base64ToText(base64);
+    const value = source instanceof Uint8Array
+      ? (binary ? source : new TextDecoder('utf-8', { fatal: false }).decode(source))
+      : (binary ? base64ToBytes(source) : base64ToText(source));
+    decodedStructureCache = { source, binary, value };
+    return value;
   }
 
   function dockingPayloadData(source, payload) {
@@ -11241,25 +11264,29 @@ SOFTWARE.
     return best;
   }
 
-  function alignXyzFramesToFirst(frames) {
+  async function alignXyzFramesToFirst(frames) {
     if (!xyzFramesAlignable(frames)) {
       throw new Error('Alignment needs every structure to list the same atoms in the same order.');
     }
     const referencePoints = frames[0].atoms.map(atom => [atom.x, atom.y, atom.z]);
     let rmsdTotal = 0;
-    const aligned = frames.map((frame, index) => {
-      if (index === 0) return frame;
+    const aligned = [frames[0]];
+    const owner = activeMolstarPrepared;
+    for (let index = 1; index < frames.length; index++) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      if (activeMolstarPrepared !== owner) throw new Error("The active structure changed during alignment.");
+      const frame = frames[index];
       const alignment = pdbRigidAlignment(frame.atoms.map(atom => [atom.x, atom.y, atom.z]), referencePoints);
       if (!alignment) throw new Error('Not enough atoms to align these structures.');
       rmsdTotal += alignment.rmsd;
-      return {
+      aligned.push({
         ...frame,
         atoms: frame.atoms.map(atom => {
           const [x, y, z] = alignment.apply([atom.x, atom.y, atom.z]);
           return { ...atom, x, y, z };
         })
-      };
-    });
+      });
+    }
     return {
       frames: aligned,
       averageRmsd: rmsdTotal / Math.max(1, frames.length - 1),
@@ -14055,7 +14082,9 @@ SOFTWARE.
     }
   }
 
+  let xyzParsedFrameCache = null;
   function splitXyzFrames(text) {
+    if (xyzParsedFrameCache?.text === text) return xyzParsedFrameCache.frames;
     const lines = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const frames = [];
     let index = 0;
@@ -14082,6 +14111,7 @@ SOFTWARE.
       frames.push({ atoms });
       index += atomCount + 2;
     }
+    xyzParsedFrameCache = { text, frames };
     return frames;
   }
 
@@ -14186,8 +14216,6 @@ SOFTWARE.
       frames.length,
       style,
       contextStyle,
-      contextOpacity,
-      contextColor,
       backgroundIndexes.join(',')
     ].join('|');
   }
@@ -14240,8 +14268,6 @@ SOFTWARE.
       style,
       allMode ? 'all' : 'single',
       contextStyle,
-      contextOpacity,
-      contextColor
     ].join('|');
   }
 
@@ -14427,6 +14453,43 @@ SOFTWARE.
     return job;
   }
 
+  async function switchCachedPoseLayer(viewer, state, index, entry, applyStyle) {
+    const plugin = viewer.plugin;
+    state.poseCache ||= new Map();
+    const previous = state.poseCache.get(state.activeIndex);
+    if (previous) {
+      // Retain parsed trajectories, never inactive structures: full exports and
+      // selections enumerate the live structure hierarchy.
+      const remove = plugin.state.data.build();
+      for (const trajectory of previous.trajectories) {
+        for (const child of plugin.state.data.tree.children.get(trajectory.ref) || []) remove.delete(child);
+      }
+      await remove.commit();
+    }
+    let cached = state.poseCache.get(index);
+    if (!cached || !plugin.state.data.cells.has(cached.raw.ref)) {
+      const normalized = normalizeFormat(entry.format);
+      const payload = normalized === 'cifCore' ? { data: coreCifToPdb(entry.data), format: 'pdb' } : { data: entry.data, format: normalized };
+      const raw = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
+      cached = { raw, trajectories: await parseMolstarStructureTrajectories(plugin, raw, payload.format), sourceBytes: (payload.data?.length || 0) * 2 };
+    }
+    state.poseCache.delete(index);
+    state.poseCache.set(index, cached);
+    const before = molstarStructureCellRefs(viewer);
+    for (const trajectory of cached.trajectories) await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', { representationPreset: 'empty' });
+    const structures = Array.from(molstarCurrentStructures(viewer)).filter(structure => !before.has(structure.cell.transform.ref));
+    await applyStyle(structures);
+    state.activeRefs = molstarStructureRefsOf(structures);
+    state.activeIndex = index;
+    let bytes = Array.from(state.poseCache.values()).reduce((sum, item) => sum + item.sourceBytes, 0);
+    while (state.poseCache.size > 1 && (state.poseCache.size > 4 || bytes > 16 * 1024 * 1024)) {
+      const [oldIndex, old] = state.poseCache.entries().next().value;
+      await plugin.state.data.build().delete(old.raw.ref).commit();
+      state.poseCache.delete(oldIndex);
+      bytes -= old.sourceBytes;
+    }
+  }
+
   function applySdfCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
     return queueMolstarSceneRebuild(() => applySdfCollectionVisibilityNow(viewer, prepared, activePose, options));
   }
@@ -14504,19 +14567,22 @@ SOFTWARE.
       activeSdfCollectionVisibilityState = state;
     }
 
+    const appearanceKey = `${contextOpacity}|${contextColor}`;
+    if (state.appearanceKey !== appearanceKey) {
+      const background = molstarStructuresByRefs(viewer, state.backgroundRefs);
+      if (background.length) await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, background, contextOpacity, contextColor);
+      state.appearanceKey = appearanceKey;
+    }
+
     if (state.activeIndex === activeIndex && sdfCollectionVisibilityStateStillLoaded(viewer, state)) {
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
       return;
     }
 
-    await removeMolstarStructures(viewer, molstarStructuresByRefs(viewer, state.activeRefs));
-    state.activeRefs = [];
-    const label = `${prepared.label || 'Molecule collection'} (${prepared.controlLabel || 'Molecule'} ${activeIndex + 1})`;
-    const structures = await loadSdfCollectionPdbLayer(viewer, activeData, label);
-    await applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored');
-    state.activeRefs = molstarStructureRefsOf(structures);
-    state.activeIndex = activeIndex;
+    await switchCachedPoseLayer(viewer, state, activeIndex, {
+      data: activeData, format: 'pdb', label: `${prepared.label || 'Molecule collection'} (${activeIndex + 1})`
+    }, structures => applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored'));
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
   }
@@ -14537,8 +14603,6 @@ SOFTWARE.
       style,
       allMode ? 'all' : 'single',
       contextStyle,
-      contextOpacity,
-      contextColor
     ].join('|');
   }
 
@@ -14610,20 +14674,21 @@ SOFTWARE.
       activeDockingPoseCollectionState = state;
     }
 
+    const appearanceKey = `${contextOpacity}|${contextColor}`;
+    if (state.appearanceKey !== appearanceKey) {
+      const background = molstarStructuresByRefs(viewer, state.backgroundRefs);
+      if (background.length) await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, background, contextOpacity, contextColor);
+      state.appearanceKey = appearanceKey;
+    }
+
     if (state.activeIndex === activeIndex && dockingPoseCollectionStateStillLoaded(viewer, state)) {
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
       return;
     }
 
-    await removeMolstarStructures(viewer, molstarStructuresByRefs(viewer, state.activeRefs));
-    state.activeRefs = [];
-    const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
-    if (activeStructures.length) {
-      await applySdfCollectionMolstarStyle(viewer, style, activeStructures, 1, 'colored');
-    }
-    state.activeRefs = molstarStructureRefsOf(activeStructures);
-    state.activeIndex = activeIndex;
+    await switchCachedPoseLayer(viewer, state, activeIndex, activeEntry,
+      structures => applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored'));
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     await applyMolstarWaterLineRepresentation(viewer);
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
@@ -14658,17 +14723,22 @@ SOFTWARE.
     const style = configuredMolstarStyle(activeConfig);
     const foregroundStyle = xyzFrameForegroundStyle(style);
     if (activeSdfPoseMode !== 'all' || !structureOverlayToggleAvailable(prepared)) {
-      resetXyzFrameOverlayState(viewer);
-      resetSdfCollectionVisibilityState(viewer);
-      resetDockingPoseCollectionState(viewer);
-      resetDockingSceneVisibilityState(viewer);
-      if (typeof plugin.clear === 'function') await plugin.clear();
-      const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
-      if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
-      const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
-      if (!activeStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
-      await applyXyzFrameMolstarStyle(viewer, foregroundStyle, activeStructures, 1, 'colored');
-      await applyMolstarWaterLineRepresentation(viewer);
+      const key = `single|${rawSignature}|${framesAligned}|${foregroundStyle}`;
+      let state = activeXyzFrameOverlayState;
+      if (!state || state.key !== key || !molstarRefsStillLoaded(viewer, state.activeRefs)) {
+        resetSdfCollectionVisibilityState(viewer);
+        resetDockingPoseCollectionState(viewer);
+        resetDockingSceneVisibilityState(viewer);
+        if (typeof plugin.clear === 'function') await plugin.clear();
+        state = { viewer, key, rawSignature, frames, aligned: framesAligned, activeRefs: [], activeIndex: -1 };
+        activeXyzFrameOverlayState = state;
+      }
+      if (state.activeIndex !== activeIndex) {
+        const entry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
+        if (!entry) throw new Error('XYZ frame data is unavailable.');
+        await switchCachedPoseLayer(viewer, state, activeIndex, entry,
+          structures => applyXyzFrameMolstarStyle(viewer, foregroundStyle, structures, 1, 'colored'));
+      }
       if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'xyz-frame', durationMs: 180 });
@@ -14714,6 +14784,14 @@ SOFTWARE.
         activeIndex: -1
       };
       activeXyzFrameOverlayState = state;
+    }
+
+    const appearanceKey = `${contextOpacity}|${contextColor}`;
+    if (state.appearanceKey !== appearanceKey) {
+      const activeSet = new Set(state.activeRefs);
+      const background = molstarStructuresByRefs(viewer, state.backgroundRefs.filter(ref => !activeSet.has(ref)));
+      if (background.length) await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, background, backgroundLayerOpacity(state.sampledIndexes.indexOf(activeIndex)), contextColor, XYZ_FRAME_BACKGROUND_MIN_ALPHA);
+      state.appearanceKey = appearanceKey;
     }
 
     if (state.activeIndex === activeIndex && xyzFrameOverlayStateStillLoaded(viewer, state)) {
@@ -17077,14 +17155,15 @@ SOFTWARE.
     };
   }
 
-  function dockingPoseControlsBounds(mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
+  function dockingPoseControlsBounds(mainRect = visibleRect('.msp-plugin .msp-layout-main'), top = TOOLBAR_MARGIN) {
     const margin = TOOLBAR_MARGIN;
     const left = mainRect ? Math.max(margin, Math.ceil(mainRect.left + margin)) : margin;
     const right = mainRect ? Math.min(window.innerWidth - margin, Math.floor(mainRect.right - margin)) : window.innerWidth - margin;
     // Keep the trajectory toolbar glued to the left edge but clear of the scene-tree
     // corner toggle, so it sits right next to that button instead of on top of it.
     const cornerRect = visibleRect('#buret-viewport-corner');
-    const clearedLeft = cornerRect ? Math.max(left, Math.ceil(cornerRect.right + 8)) : left;
+    const clearedLeft = cornerRect && top < cornerRect.bottom + FLOATING_LAYOUT_GAP
+      ? Math.max(left, Math.ceil(cornerRect.right + 8)) : left;
     const viewportRailRect = visibleRect('#buret-viewport-rail');
     const clearedRight = viewportRailRect
       ? Math.min(right, Math.floor(viewportRailRect.left - FLOATING_LAYOUT_GAP))
@@ -17098,7 +17177,7 @@ SOFTWARE.
   }
 
   function moveDockingPoseControls(root, left, top, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
-    const bounds = dockingPoseControlsBounds(mainRect);
+    const bounds = dockingPoseControlsBounds(mainRect, top);
     // The toolbar and the scene tree no longer share a band — the toolbar ends at the
     // corner button's baseline and the tree starts below it — so clearing that button
     // is enough and the toolbar can stay at the left edge.
@@ -17161,7 +17240,8 @@ SOFTWARE.
   function applyDefaultDockingPoseControlsPosition(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     root.dataset.defaultPosition = '1';
     const bounds = dockingPoseControlsBounds(mainRect);
-    moveDockingPoseControls(root, bounds.left, defaultDockingPoseControlsTop(root, bounds), mainRect);
+    const top = defaultDockingPoseControlsTop(root, bounds);
+    moveDockingPoseControls(root, dockingPoseControlsBounds(mainRect, top).left, top, mainRect);
   }
 
   function repositionDockingPoseControls(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
@@ -18421,7 +18501,7 @@ SOFTWARE.
     const xyzCandidateFrames = xyzAlignSignature ? splitXyzFrames(rawStructureData(activeConfig)) : null;
     const xyzAlignFrames = xyzCandidateFrames
       && (xyzFrameAlignment?.signature === xyzAlignSignature
-        || xyzFrameAlignmentGain(xyzCandidateFrames) > XYZ_ALIGNMENT_GAIN_THRESHOLD)
+        || xyzFramesAlignable(xyzCandidateFrames))
       ? xyzCandidateFrames
       : null;
     // The toolbar often receives a control summary from trajectoryControlsForPrepared
@@ -18722,9 +18802,13 @@ SOFTWARE.
       return Math.max(minimumTrajectoryLoopTimerDelay(prepared), Math.min(delay, untilNextFrame));
     };
     const scheduleLoopStep = (delayMs = loopNextDelay(), expectedLoopEpoch = loopEpoch) => {
+      if (!hostViewerVisible) return;
       loopTimer = window.setTimeout(() => {
         loopTimer = null;
         if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
+        if (!hostViewerVisible) {
+          return;
+        }
         if (loopBusy || loopPointerHeld) {
           scheduleLoopStep(undefined, expectedLoopEpoch);
           return;
@@ -18743,6 +18827,14 @@ SOFTWARE.
       }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
     };
     const trajectoryPlaybackControl = {
+      visibilityChanged: () => {
+        if (loopTimer !== null) { window.clearTimeout(loopTimer); loopTimer = null; }
+        if (hostViewerVisible && loopActive) {
+          loopStartedAt = loopNow();
+          loopStartPose = activePose;
+          scheduleLoopStep();
+        }
+      },
       play: () => {
         if (loopActive) return;
         setLoopActive(true);
@@ -18880,13 +18972,13 @@ SOFTWARE.
       });
     }
     if (align && alignmentSupported && xyzAlignFrames) {
-      const toggleXyzAlignment = () => {
+      const toggleXyzAlignment = async () => {
         align.disabled = true;
         const enabling = xyzFrameAlignment?.signature !== xyzAlignSignature;
         try {
           let result = null;
           if (enabling) {
-            result = alignXyzFramesToFirst(xyzAlignFrames);
+            result = await alignXyzFramesToFirst(xyzAlignFrames);
             xyzFrameAlignment = { signature: xyzAlignSignature, frames: result.frames };
           } else {
             xyzFrameAlignment = null;
@@ -18916,13 +19008,13 @@ SOFTWARE.
       };
       align.addEventListener('click', () => { void toggleXyzAlignment(); });
     } else if (align && alignmentSupported && sdfCollectionAlignFrames) {
-      const toggleSdfCollectionAlignment = () => {
+      const toggleSdfCollectionAlignment = async () => {
         align.disabled = true;
         const enabling = sdfCollectionAlignment?.signature !== sdfAlignSignature;
         try {
           let result = null;
           if (enabling) {
-            result = alignXyzFramesToFirst(sdfCollectionAlignFrames);
+            result = await alignXyzFramesToFirst(sdfCollectionAlignFrames);
             const alignedMolecules = sdfAlignTarget.collectionMolecules.map((molecule, index) => ({
               ...molecule,
               atoms: (molecule.atoms || []).map((atom, atomIndex) => {
@@ -19175,8 +19267,7 @@ SOFTWARE.
       window.removeEventListener('pointercancel', onLoopPointerUp, true);
     };
     mainRow.append(animation, previous, label, next);
-    const smoothAvailable = !xyzAlignFrames
-      && (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
+    const smoothAvailable = (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
     const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
     if (smoothAvailable && toggleRow) mainRow.append(smooth);
     if (toggleRow) {
@@ -21922,23 +22013,29 @@ SOFTWARE.
     throw new Error(`Unsupported structure export format: ${format || 'unknown'}.`);
   }
 
-  function postMolstarModifiedStructureExport(payload) {
+  function postMolstarModifiedStructureExport(payload, fullStructure = false) {
+    const requestId = crypto.randomUUID();
+    if (fullStructure) pendingMolstarSave = { requestId, revision: molstarPresetPreviewSceneRevision };
     const posted = postHostMessage({
       type: 'exportText',
+      requestId,
       name: payload.name,
       mimeType: payload.mimeType,
       text: payload.text
     });
-    if (!posted) throw new Error('Structure saving is unavailable in this host.');
+    if (!posted) {
+      if (pendingMolstarSave?.requestId === requestId) pendingMolstarSave = null;
+      throw new Error('Structure saving is unavailable in this host.');
+    }
     return payload;
   }
 
   function saveMolstarModifiedStructure() {
-    return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayload());
+    return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayload(), true);
   }
 
   function saveMolstarModifiedStructureAs(format, target) {
-    return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayloadForFormat(format, target));
+    return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayloadForFormat(format, target), normalizeFormat(format) !== 'sdf');
   }
 
   function molstarEditSnapshotFormat(payload) {
@@ -21994,7 +22091,13 @@ SOFTWARE.
     if (!snapshot) return;
     if (snapshot.kind !== 'scene' && !snapshot.payload?.text) return;
     stack.push(snapshot);
-    while (stack.length > MOLSTAR_EDIT_HISTORY_LIMIT) stack.shift();
+    // Text is UTF-16 in the JS heap. Bound retained destructive snapshots as
+    // well as their count; keep the latest operation undoable even if oversized.
+    const byteBudget = 64 * 1024 * 1024;
+    let bytes = stack.reduce((sum, entry) => sum + (entry.payload?.text?.length || 0) * 2, 0);
+    while (stack.length > 1 && (stack.length > MOLSTAR_EDIT_HISTORY_LIMIT || bytes > byteBudget)) {
+      bytes -= (stack.shift().payload?.text?.length || 0) * 2;
+    }
   }
 
   function notifyMolstarEditHistoryChanged() {
@@ -23237,12 +23340,11 @@ SOFTWARE.
       } else if (action === 'save-modified') {
         const saved = saveMolstarModifiedStructure();
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
-        setMolstarStructureDirty(false);
       } else if (action.startsWith('save-format:')) {
         const format = action.slice('save-format:'.length);
         const saved = saveMolstarModifiedStructureAs(format, target);
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
-        if (normalizeFormat(format) !== 'sdf') setMolstarStructureDirty(false);
+
       } else if (action.startsWith('pubchem:')) {
         const searchType = action.slice('pubchem:'.length);
         await openMolstarPubChemSearch(target, searchType);

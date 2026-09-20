@@ -12,8 +12,8 @@ let nextWindowDirtyRevision = 0;
 
 async function confirmCloseWithoutSaving(dirtyCount: number) {
   const subject = dirtyCount === 1
-    ? "This grid has unsaved or in-progress changes."
-    : `${dirtyCount} grid documents have unsaved or in-progress changes.`;
+    ? "This document has unsaved or in-progress changes."
+    : `${dirtyCount} documents have unsaved or in-progress changes.`;
   const detail = `${subject} Review before closing, or close without saving.`;
   if (!isTauriRuntime()) return window.confirm(`${detail}\n\nClose without saving?`);
 
