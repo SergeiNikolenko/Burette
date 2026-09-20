@@ -49,15 +49,12 @@
   font-weight: var(--ui-weight-control);
 }
 .trajectory-smoothing-card { gap: 12px; }
-.trajectory-smoothing-intro,
 .trajectory-smoothing-note,
-.trajectory-smoothing-strength-copy,
 .trajectory-smoothing-method-note {
   font-size: var(--ui-caption-size);
   line-height: var(--ui-caption-line);
   color: var(--text-muted);
 }
-.trajectory-smoothing-strength-copy strong { font-weight: 500; color: var(--text-primary); }
 .structure-brief :is(.trajectory-smoothing-group-label, .structure-inspector-settings-group-title) {
   font-size: 12px;
   line-height: 18px;

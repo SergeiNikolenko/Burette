@@ -132,7 +132,6 @@ export function generated3DStatus(conformer: ConformerGenerationResult, action: 
 
 export function conformerGenerationPreferences(preferences: ViewerPreferences) {
   return {
-    engine: preferences.conformerEngine,
     candidateCount: preferences.conformerCandidateCount,
     rmsdCutoff: preferences.conformerRmsdCutoff,
   };

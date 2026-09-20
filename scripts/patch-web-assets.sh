@@ -86,6 +86,17 @@ clean_detritus "$APP_WEB"
 clean_detritus "$APPEX_WEB"
 clean_detritus "$APP_GALLERY"
 
+# Keep the independently installable plugin's preview assets in sync too.
+PLUGIN_WEB="$APP/Contents/Resources/plugins/burette-agent/preview-web"
+if [[ -d "$PLUGIN_WEB" ]]; then
+  rm -rf "$PLUGIN_WEB"
+  ditto --norsrc --noextattr "$WEB_SOURCE" "$PLUGIN_WEB"
+  clean_detritus "$PLUGIN_WEB"
+  if [[ -d "$APP/Contents/Resources/plugins/burette-agent/browser-shell-dist" ]]; then
+    python3 "$ROOT/scripts/deduplicate-web-resources.py" "$APP"
+  fi
+fi
+
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APPEX" >/dev/null
 codesign --force --sign - "$APP" >/dev/null
 codesign --verify --deep --strict "$APP"
