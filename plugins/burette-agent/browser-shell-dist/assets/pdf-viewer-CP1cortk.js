@@ -1,1 +1,0 @@
-import{a as e}from"./document-page-K3PSOF4s.js";export{e as PdfResourceContent};
