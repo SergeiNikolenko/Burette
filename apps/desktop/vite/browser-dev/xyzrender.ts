@@ -1,6 +1,10 @@
+import { createXyzrenderWorker } from "./xyzrender-worker";
+import { rotateXyzrenderReference } from "./xyzrender-orientation";
+import { xyzrenderAnimationArguments } from "./xyzrender-animation-options";
+import { registerXyzrenderExportRoute } from "./xyzrender-export";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import type { ViteDevServer } from "vite";
 
 import { readJsonBody, sendJson, sendJsonError } from "./http";
@@ -8,7 +12,7 @@ import { readJsonBody, sendJson, sendJsonError } from "./http";
 type ExecFileAsync = (
   file: string,
   args: string[],
-  options: { timeout: number; maxBuffer: number },
+  options: { timeout: number; maxBuffer: number; signal?: AbortSignal; env?: NodeJS.ProcessEnv },
 ) => Promise<{ stdout?: string; stderr?: string }>;
 
 const XYZRENDER_REF_UNSUPPORTED_FOR_PERIODIC = "--ref is not supported for periodic structures";
@@ -83,6 +87,9 @@ export function selectedXyzFrameInputData(
 }
 
 export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options: BrowserDevXyzrenderRouteOptions) {
+  const worker = createXyzrenderWorker();
+  server.httpServer?.once("close", worker.stop);
+  registerXyzrenderExportRoute(server);
   server.middlewares.use("/__burette/xyzrender", async (req, res) => {
     if ((req.method || "GET").toUpperCase() !== "POST") {
       sendJson(res, 405, { error: "Method not allowed" });
@@ -96,13 +103,22 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
         return;
       }
       const preset = options.normalizePreset(typeof body.preset === "string" ? body.preset : null);
-      const orientationRef = options.normalizeOrientationRef(typeof body.orientationRef === "string" ? body.orientationRef : null);
+      let orientationRef = options.normalizeOrientationRef(typeof body.orientationRef === "string" ? body.orientationRef : null);
       const controls = options.normalizeControls(body.controls);
+      if (body.orientation !== undefined) {
+        try { rotateXyzrenderReference('1\nvalidate\nH 0 0 0\n', body.orientation); }
+        catch (error) { sendJson(res, 400, { error: String(error) }); return; }
+      }
       const inputData = typeof body.inputDataBase64 === "string"
         ? Buffer.from(body.inputDataBase64, "base64")
         : null;
       const inputExtension = options.normalizeInputExtension(typeof body.inputExtension === "string" ? body.inputExtension : null);
-      const activeModel = activeModelIndex(body.activeModel);
+      const animation = body.animation;
+      const exportFormat = body.exportFormat;
+      if (exportFormat !== undefined && !['svg', 'png', 'pdf', 'tiff'].includes(String(exportFormat))) { sendJson(res, 400, { error: 'Unsupported export format' }); return; }
+      try { if (animation) xyzrenderAnimationArguments(animation, 'animation.gif'); }
+      catch (error) { sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) }); return; }
+      const activeModel = animation ? null : activeModelIndex(body.activeModel);
       const executable = options.resolveExecutable();
       if (!executable) {
         sendJson(res, 404, { error: "External xyzrender executable was not found." });
@@ -113,32 +129,67 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
       const convertedInputPath = join(tempDirectory, `xyzrender-input.${inputExtension}`);
       const orientationRefPath = join(tempDirectory, "orientation-ref.xyz");
       const startedAt = Date.now();
+      const renderAbort = new AbortController();
+      const onClose = () => { if (!res.writableEnded) renderAbort.abort(); };
+      res.on("close", onClose);
       try {
         const pathInputData = !inputData?.length && activeModel !== null && inputExtension === "xyz"
           ? await readFile(inputPath)
           : null;
         const selectedFrameInputData = selectedXyzFrameInputData(inputData ?? pathInputData, inputExtension, activeModel);
         const effectiveInputData = selectedFrameInputData ?? inputData;
-        const effectiveInputPath = effectiveInputData?.length ? convertedInputPath : inputPath;
+        let effectiveInputPath = effectiveInputData?.length ? convertedInputPath : inputPath;
         if (effectiveInputData?.length) {
           await writeFile(convertedInputPath, effectiveInputData);
+        } else if (animation) {
+          // Vibration extraction writes .vNNN.xyz beside its input. Never let
+          // a preview overwrite a user's trajectory beside the calculation.
+          effectiveInputPath = join(tempDirectory, `animation-input${extname(inputPath)}`);
+          await writeFile(effectiveInputPath, await readFile(inputPath));
+        }
+        if (animation?.mode === 'trajectory' && extname(effectiveInputPath).toLowerCase() === '.xyz' && splitXyzFrameTexts(await readFile(effectiveInputPath)).length < 2) {
+          sendJson(res, 422, { error: 'Trajectory needs at least two coordinate frames. This file contains one structure.', code: 'animation_unavailable' });
+          return;
         }
         if (orientationRef) {
           await writeFile(orientationRefPath, orientationRef, "utf8");
         }
         const execute = async (refPath: string | null) => {
           const args = options.buildArgs(effectiveInputPath, outputPath, preset, refPath, controls);
+          if (animation) {
+            args.push(...xyzrenderAnimationArguments(animation, join(tempDirectory, 'animation.gif')));
+          }
+          if (!animation) {
+            const rendered = await worker.run(executable, args, renderAbort.signal);
+            if (rendered) return rendered;
+          }
           return options.execFileAsync(
             executable,
             args,
-            { timeout: XYZRENDER_BROWSER_DEV_TIMEOUT, maxBuffer: XYZRENDER_BROWSER_DEV_MAX_BUFFER },
+            { timeout: animation ? 120_000 : XYZRENDER_BROWSER_DEV_TIMEOUT, maxBuffer: XYZRENDER_BROWSER_DEV_MAX_BUFFER, signal: renderAbort.signal,
+              // Avoid spawning one Python interpreter per logical CPU for a
+              // small interactive GIF. Explicit user tuning takes precedence.
+              env: animation ? { ...process.env, PYTHON_CPU_COUNT: process.env.PYTHON_CPU_COUNT || '4',
+                OPENBLAS_NUM_THREADS: process.env.OPENBLAS_NUM_THREADS || '1', OMP_NUM_THREADS: process.env.OMP_NUM_THREADS || '1' } : process.env },
           );
         };
+        let baseOrientationRef = orientationRef;
+        let initialRender: { stdout: string; stderr: string } | undefined;
+        if (body.orientation !== undefined) {
+          if (!baseOrientationRef) {
+            const baseArgs = options.buildArgs(effectiveInputPath, outputPath, preset, orientationRefPath, controls);
+            initialRender = await options.execFileAsync(executable, baseArgs, { timeout: XYZRENDER_BROWSER_DEV_TIMEOUT, maxBuffer: XYZRENDER_BROWSER_DEV_MAX_BUFFER, signal: renderAbort.signal });
+            baseOrientationRef = await readFile(orientationRefPath, 'utf8');
+          }
+          orientationRef = rotateXyzrenderReference(baseOrientationRef, body.orientation);
+          await writeFile(orientationRefPath, orientationRef, 'utf8');
+        }
         let fallbackLog = "";
         let stdout = "";
         let stderr = "";
         try {
-          const result = await execute(orientationRef ? orientationRefPath : null);
+          const result = initialRender && Array.isArray(body.orientation) && body.orientation.every(angle => angle === 0) && !animation
+            ? initialRender : await execute(orientationRef ? orientationRefPath : null);
           stdout = result.stdout || "";
           stderr = result.stderr || "";
         } catch (error) {
@@ -156,8 +207,31 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
           sendJson(res, 500, { error: "External xyzrender produced an empty SVG output file." });
           return;
         }
+        let artifactBase64: string | undefined;
+        if (exportFormat) {
+          if (exportFormat === 'svg') artifactBase64 = Buffer.from(svg).toString('base64');
+          else {
+            const exportPath = join(tempDirectory, `figure.${exportFormat}`);
+            await options.execFileAsync(executable, options.buildArgs(effectiveInputPath, exportPath, preset, orientationRef ? orientationRefPath : null, controls),
+              { timeout: XYZRENDER_BROWSER_DEV_TIMEOUT, maxBuffer: XYZRENDER_BROWSER_DEV_MAX_BUFFER, signal: renderAbort.signal,
+                // CairoSVG uses dlopen for PDF output; Homebrew's libraries are
+                // outside macOS' default loader search path in desktop shells.
+                env: exportFormat === 'pdf' && process.platform === 'darwin' ? { ...process.env,
+                  DYLD_FALLBACK_LIBRARY_PATH: [process.env.DYLD_FALLBACK_LIBRARY_PATH, '/opt/homebrew/lib', '/usr/local/lib'].filter(Boolean).join(':') } : process.env });
+            const artifact = await readFile(exportPath);
+            if (artifact.length > 16 * 1024 * 1024) throw new Error('Export exceeds 16 MB. Choose a smaller image.');
+            artifactBase64 = artifact.toString('base64');
+          }
+        }
+        const gif = animation ? await readFile(join(tempDirectory, 'animation.gif')) : null;
+        if (gif && gif.length > 16 * 1024 * 1024) throw new Error('Animation exceeds the 16 MB preview limit.');
         sendJson(res, 200, {
           svg,
+          orientationRef,
+          baseOrientationRef,
+          artifactBase64,
+          exportFormat,
+          gifBase64: gif?.toString('base64'),
           preset: options.resolveEffectivePreset(preset, controls),
           configArgument: options.resolveConfigArgument(preset, controls),
           elapsedMs: Date.now() - startedAt,
@@ -167,6 +241,7 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
           xyzrenderPresetOptions: options.presetOptions,
         });
       } finally {
+        res.off("close", onClose);
         await rm(tempDirectory, { recursive: true, force: true });
       }
     } catch (error) {

@@ -816,7 +816,7 @@ function splitCommandLine(value: string) {
   return tokens;
 }
 
-function sanitizedExtraArguments(value: string | null, stripFieldArguments = false) {
+function sanitizedExtraArguments(value: string | null, stripFieldArguments = false, fieldOff = false) {
   if (!value) return [];
   const blockedValueFlags = new Set(["-o", "--output", "-go", "--gif-output", "--config", "--ref"]);
   const blocked = new Set(blockedValueFlags);
@@ -824,14 +824,12 @@ function sanitizedExtraArguments(value: string | null, stripFieldArguments = fal
   blocked.add("--region");
   blockedValueCounts.set("--region", 2);
   blocked.add("--hull");
-  ["--hull-color", "--hull-opacity", "--hull-color-type", "--hull-edge-width-ratio", "--ring-max-size", "--ring-min-size", "--face-planarity", "--pore-color", "--pore-opacity"].forEach((flag) => {
-    blocked.add(flag);
-    blockedValueFlags.add(flag);
-  });
-  ["--pore", "--hull-edge", "--no-hull-edge"].forEach((flag) => blocked.add(flag));
+  ["--hull-opacity", "--pore-opacity"].forEach((flag) => { blocked.add(flag); blockedValueFlags.add(flag); });
+  blocked.add("--pore");
   ["--hy", "--no-hy", "--bo", "--no-bo", "-k"].forEach((flag) => blocked.add(flag));
   if (stripFieldArguments) {
-    ["--esp", "--nci-surf", "--iso", "--opacity", "--surface-style", "--dens-color", "--cmap-palette"].forEach((flag) => {
+    if (!splitCommandLine(value).some(token => token === "--overlay" || token === "--ensemble")) { blocked.add("--opacity"); blockedValueFlags.add("--opacity"); }
+    ["--iso", "--surface-style", "--dens-color", "--cmap-palette"].forEach((flag) => {
       blocked.add(flag);
       blockedValueFlags.add(flag);
     });
@@ -841,6 +839,7 @@ function sanitizedExtraArguments(value: string | null, stripFieldArguments = fal
     });
     ["--mo", "--dens"].forEach((flag) => blocked.add(flag));
   }
+  if (fieldOff) { for (const flag of ["--esp", "--nci-surf"]) { blocked.add(flag); blockedValueFlags.add(flag); } }
   const blockedPrefixes = [...blocked].map((flag) => `${flag}=`);
   const result: string[] = [];
   let skipNext = 0;
@@ -917,22 +916,24 @@ function buildXyzrenderArgs(
   if (controls.cellWidth) args.push("--cell-width", String(controls.cellWidth));
   if (controls.supercell) args.push("--supercell", ...controls.supercell.map(String));
   for (const region of controls.regions) args.push("--region", region.atoms, region.preset);
-  args.push(...sanitizedExtraArguments(controls.extraArguments, Boolean(controls.fieldMode)));
+  args.push(...sanitizedExtraArguments(controls.extraArguments, Boolean(controls.fieldMode), controls.fieldMode === "off"));
   if (controls.fieldMode && controls.fieldMode !== "auto") {
     if (controls.fieldMode === "density") args.push("--dens");
     else if (controls.fieldMode === "mo") args.push("--mo");
-    else if (controls.fieldMode === "esp") args.push("--esp", inputPath);
-    else if (controls.fieldMode === "nci") args.push("--nci-surf", inputPath);
+    else if (controls.fieldMode === "esp" && !args.includes("--esp")) throw new Error("Choose an ESP colour map file in Surfaces.");
+    else if (controls.fieldMode === "nci" && !args.includes("--nci-surf")) throw new Error("Choose an interaction surface cube in Surfaces.");
   }
   if (controls.fieldMode && controls.fieldMode !== "auto") {
     if (controls.fieldIso != null && controls.fieldIso > 0) args.push("--iso", String(controls.fieldIso));
-    if (controls.fieldOpacity != null) args.push("--opacity", String(controls.fieldOpacity));
+    if (controls.fieldOpacity != null && !args.includes("--opacity")) args.push("--opacity", String(controls.fieldOpacity));
     if (controls.fieldSurfaceStyle) args.push("--surface-style", controls.fieldSurfaceStyle);
     if (controls.fieldMoPositiveColor && controls.fieldMoNegativeColor) args.push("--mo-colors", controls.fieldMoPositiveColor, controls.fieldMoNegativeColor);
     if (controls.fieldDensityColor) args.push("--dens-color", controls.fieldDensityColor);
     if (controls.fieldCmapPalette) args.push("--cmap-palette", controls.fieldCmapPalette);
     if (controls.fieldCmapMin != null && controls.fieldCmapMax != null) args.push("--cmap-range", String(controls.fieldCmapMin), String(controls.fieldCmapMax));
   }
+  if ((!controls.fieldMode || controls.fieldMode === "auto") && controls.fieldCmapPalette) args.push("--cmap-palette", controls.fieldCmapPalette);
+  if ((!controls.fieldMode || controls.fieldMode === "auto") && controls.fieldCmapMin != null && controls.fieldCmapMax != null) args.push("--cmap-range", String(controls.fieldCmapMin), String(controls.fieldCmapMax));
   return args;
 }
 
