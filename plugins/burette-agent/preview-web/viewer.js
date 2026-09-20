@@ -37,6 +37,7 @@
   const SDF_CONTEXT_STYLE_STORAGE_KEY = 'buret.sdf.contextStyle';
   const SDF_CONTEXT_OPACITY_STORAGE_KEY = 'buret.sdf.contextOpacity';
   const SDF_CONTEXT_COLOR_STORAGE_KEY = 'buret.sdf.contextColor';
+  const MOLSTAR_OUTLINE_BRIGHTNESS_STORAGE_KEY = 'buret.molstar.outlineBrightness';
   const XYZ_FRAME_MODE_STORAGE_KEY = 'buret.xyz.frameMode';
   const XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT = 80;
   const MAX_STRUCTURE_OVERLAY_FRAME_COUNT = 50;
@@ -140,6 +141,7 @@
   const xyzrenderSheetRequests = new Map();
   const xyzrenderSheetItemEntries = new WeakMap();
   let molstarWindowResizeHandler = null;
+  let molstarOutlineBrightness = 0;
   let molstarContainerResizeCleanup = null;
   let molstarContextMenuCleanup = null;
   let molstarBrowserAnnotationTargetCleanup = null;
@@ -2035,6 +2037,42 @@
     const opacity = Number(value);
     if (!Number.isFinite(opacity)) return 0.90;
     return Math.min(Math.max(opacity, 0.72), 0.98);
+  }
+
+  function normalizeMolstarOutlineBrightness(value) {
+    const brightness = Number(value);
+    if (!Number.isFinite(brightness)) return 0;
+    return Math.min(Math.max(brightness, 0), 1);
+  }
+
+  function readMolstarOutlineBrightness() {
+    try {
+      return normalizeMolstarOutlineBrightness(window.localStorage?.getItem(MOLSTAR_OUTLINE_BRIGHTNESS_STORAGE_KEY));
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function molstarOutlineColor() {
+    const channel = Math.round(molstarOutlineBrightness * 255);
+    return (channel << 16) | (channel << 8) | channel;
+  }
+
+  function setMolstarOutlineBrightness(value, viewer = activeMolstarViewer()) {
+    molstarOutlineBrightness = normalizeMolstarOutlineBrightness(value);
+    try {
+      window.localStorage?.setItem(MOLSTAR_OUTLINE_BRIGHTNESS_STORAGE_KEY, molstarOutlineBrightness.toFixed(2));
+    } catch (_) {}
+    const canvas = viewer?.plugin?.canvas3d;
+    if (!canvas || canvas.props.postprocessing.outline.name !== 'on') return;
+    canvas.setProps({
+      postprocessing: {
+        outline: {
+          name: 'on',
+          params: { ...canvas.props.postprocessing.outline.params, color: molstarOutlineColor() }
+        }
+      }
+    });
   }
 
   function resolvedCanvasBackground() {
@@ -4587,7 +4625,7 @@
       // is set here, including turning the illustrative post-processing back off,
       // and the scene half comes from re-applying the current snapshot.
       if (normalized === 'illustrative' || normalized === 'illustrative-surface') {
-        await applyMolstarIllustrativePostprocessing(viewer, { includeTransparent: normalized === 'illustrative-surface' });
+        await applyMolstarIllustrativePostprocessing(viewer, { includeTransparent: true });
       } else {
         await applyMolstarNonIllustrativePostprocessing(viewer);
       }
@@ -8374,6 +8412,9 @@ SOFTWARE.
     }
     sceneTreeSurfaceFillRow(menu, viewer, target);
     sceneTreeMenuSlider(menu, 'Opacity', 'opacity', Math.round(alpha * 100));
+    if (alpha < 0.999) {
+      sceneTreeMenuSlider(menu, 'Outline brightness', 'outline-brightness', Math.round(molstarOutlineBrightness * 100));
+    }
 
     sceneTreeMenuSection(menu, 'Colour');
     sceneTreeMenuThemePicker(menu, 'Theme', 'representation-color',
@@ -10290,9 +10331,22 @@ SOFTWARE.
         if (readout) readout.textContent = `${percent}%`;
         streamSceneTreeReprAlpha(ref, percent / 100);
       });
+      document.addEventListener('input', event => {
+        const slider = event.target.closest('[data-scene-tree-slider="outline-brightness"]');
+        const ref = slider?.closest('[data-ref]')?.dataset.ref;
+        if (!slider || !ref) return;
+        const percent = Number(slider.value);
+        const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
+        if (readout) readout.textContent = `${percent}%`;
+        setMolstarOutlineBrightness(percent / 100);
+      });
       document.addEventListener('change', event => {
         const slider = event.target.closest('[data-scene-tree-slider="opacity"]');
         if (slider) commitSceneTreeControlUndo(slider);
+      });
+      document.addEventListener('change', event => {
+        const slider = event.target.closest('[data-scene-tree-slider="outline-brightness"]');
+        if (slider) scheduleSceneTreeRender();
       });
       // Numeric advanced rows follow the thumb like opacity does. Surfaces rebuild
       // their mesh on every commit, so these share the same latest-wins queue
@@ -15317,11 +15371,12 @@ SOFTWARE.
   }
 
   // `includeTransparent` is always written out: the outline otherwise skips
-  // translucent geometry, and leaving the previous value in place would leak the
-  // surface preset's outlining into the plain illustrative style.
+  // translucent geometry, which makes the illustrative contour disappear as soon
+  // as a chain's opacity is lowered.
   async function applyMolstarIllustrativePostprocessing(viewer, options = {}) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
+    molstarOutlineBrightness = readMolstarOutlineBrightness();
     await plugin.managers.structure.component.setOptions({
       ...plugin.managers.structure.component.state.options,
       ignoreLight: true
@@ -15337,10 +15392,10 @@ SOFTWARE.
               ? postprocessing.outline.params
               : {
                   scale: 1,
-                  color: 0x000000,
                   threshold: 0.33
                 }),
-            includeTransparent: options.includeTransparent === true
+            color: molstarOutlineColor(),
+            includeTransparent: options.includeTransparent !== false
           }
         },
         occlusion: {
