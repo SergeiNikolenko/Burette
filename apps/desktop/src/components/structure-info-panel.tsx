@@ -374,16 +374,12 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
             </button>
           ) : null}
         </div>
-        {(!compositionSummary || compositionPending || compositionError) ? (
+        {document.renderer !== "grid2d" && (!compositionSummary || compositionPending || compositionError) ? (
           <p>{inspectorSummaryLine(brief.kind, compositionSummary, compositionPending, compositionError)}</p>
         ) : null}
-        {document.renderer === "grid2d" && gridFilterModel?.documentId === document.id ? (
-          <div className="structure-inspector-header-stats">
-            <div><span>Molecules</span><strong>{gridFilterModel.total.toLocaleString()}</strong></div>
-            <div><span>Visible</span><strong>{gridFilterModel.visible.toLocaleString()}</strong></div>
-            <div><span>Properties</span><strong>{gridFilterModel.columns.length.toLocaleString()}</strong></div>
-          </div>
-        ) : <InspectorHeaderStats document={document} summary={compositionSummary} pending={compositionPending} />}
+        {document.renderer !== "grid2d" ? (
+          <InspectorHeaderStats document={document} summary={compositionSummary} pending={compositionPending} />
+        ) : null}
       </section>
 
       {document.renderer === "grid2d" ? (
@@ -592,7 +588,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         </>
       ) : null}
 
-      <StructureDetailsSection
+      {document.renderer !== "grid2d" ? <StructureDetailsSection
         dockDrops={dockDrops}
         xtbArtifact={structureXtbArtifact}
         brief={brief}
@@ -602,7 +598,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         document={document}
         hostedMcpWidget={hostedMcpWidget}
         actions={actions}
-      />
+      /> : null}
     </div>
   );
 }

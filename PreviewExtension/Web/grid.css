@@ -53,9 +53,9 @@
   --buret-picture-min-height: clamp(136px, 18vw, 190px);
   --buret-drawing-max-width: 100%;
   --buret-drawing-max-height: 100%;
-  --buret-grid-shell-padding: 18px;
-  --buret-grid-rail-gutter: 42px;
-  --buret-grid-content-padding-inline: 24px;
+  --buret-grid-shell-padding: 8px;
+  --buret-grid-rail-gutter: 24px;
+  --buret-grid-content-padding-inline: 0px;
   --buret-control-height: 32px;
   --buret-button-height: 28px;
   --buret-segment-height: 28px;
@@ -217,9 +217,9 @@ button:disabled {
   width: 100%;
   box-sizing: border-box;
   display: grid;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding: 10px;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 6px;
   border: 0;
   border-radius: 12px;
   background: var(--buret-table-surface);
@@ -277,6 +277,15 @@ button:disabled {
 
 .buret-toolbar-row-main {
   grid-template-columns: minmax(0, 1fr) minmax(112px, 148px) auto;
+}
+
+.buret-search-control {
+  width: 100%;
+  max-width: 320px;
+}
+
+.buret-load-status:empty {
+  display: none;
 }
 
 .buret-search-control,
@@ -770,7 +779,8 @@ button:disabled {
 .buret-grid-toolbar input[type="search"],
 .buret-grid-toolbar select {
   width: 100%;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--buret-input-border);
   background-color: var(--buret-input-surface);
   text-transform: none;
@@ -782,7 +792,7 @@ button:disabled {
 }
 
 .buret-sort-control select {
-  min-height: var(--buret-control-height);
+  min-height: 28px;
   padding: 0 30px 0 10px;
 }
 
@@ -2646,9 +2656,9 @@ body.buret-hide-properties .buret-card-body {
 
 @media (max-width: 520px) {
   .buret-grid-shell {
-    --buret-grid-shell-padding: 12px;
-    --buret-grid-rail-gutter: 32px;
-    --buret-grid-content-padding-inline: 12px;
+    --buret-grid-shell-padding: 8px;
+    --buret-grid-rail-gutter: 24px;
+    --buret-grid-content-padding-inline: 0px;
   }
 }
 .buret-grid-close-transition {
