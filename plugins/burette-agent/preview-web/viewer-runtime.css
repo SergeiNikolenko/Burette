@@ -4951,6 +4951,9 @@ body .msp-plugin .buret-seq-enhanced > .msp-sequence-select { display: none; }
   white-space: nowrap;
 }
 .buret-seq-header [data-role="View"] { margin-left: auto; flex-shrink: 0; }
+.buret-seq-header [data-role="View"] .buret-seq-button {
+  background: var(--buret-molstar-field-background);
+}
 .buret-seq-button {
   appearance: none;
   border: 0;
@@ -4988,11 +4991,88 @@ body .msp-plugin .buret-seq-enhanced .msp-sequence-chain-label {
   top: 0;
   z-index: 1;
   padding: 7px 16px;
-  border-block: 1px solid var(--buret-molstar-border);
+  border-top: 1px solid var(--buret-molstar-border);
   background: var(--buret-dock-background, var(--buret-menu-background));
   color: var(--buret-molstar-text) !important;
   font: 500 11px/18px -apple-system, BlinkMacSystemFont, sans-serif;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+/* Polymer tracks span the dock; native component controls form a quiet footer. */
+body .msp-plugin .buret-seq-enhanced:not(.buret-seq-compact) .msp-sequence-wrapper-non-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+}
+body .msp-plugin .buret-seq-enhanced:not(.buret-seq-compact) .msp-sequence-wrapper-non-empty > :not(.buret-component-row):not(.buret-component-label) {
+  flex: 0 0 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+body .msp-plugin .buret-seq-enhanced .buret-component-label { display: none; }
+body .msp-plugin .buret-seq-enhanced .buret-component-label:popover-open {
+  display: block;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(320px, calc(100vw - 24px));
+  padding: 14px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 10px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  box-shadow: 0 8px 28px #0003;
+}
+body .msp-plugin .buret-seq-enhanced .buret-component-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  margin: 0 0 0 16px;
+  padding: 5px 9px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 7px;
+  line-height: 20px !important;
+}
+body .msp-plugin .buret-component-row > .msp-sequence-number { display: none; }
+.buret-component-control {
+  border: 0;
+  background: transparent;
+  color: var(--buret-molstar-muted-text);
+  font: 11px/20px -apple-system, BlinkMacSystemFont, sans-serif;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.buret-component-control:hover { color: var(--buret-molstar-text); }
+.buret-component-control:focus-visible { outline: 2px solid var(--buret-molstar-accent); outline-offset: 3px; }
+body .msp-plugin .buret-seq-enhanced .buret-water-label {
+  display: block;
+  position: static;
+  padding: 5px 12px;
+  margin-left: auto;
+  border: 0;
+}
+.buret-water-label button::after { content: ' +'; }
+.buret-water-label button[aria-expanded="true"]::after { content: ' −'; }
+body .msp-plugin .buret-seq-enhanced .buret-water-row {
+  flex-basis: calc(100% - 32px);
+  margin-right: 16px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+body .msp-plugin .buret-seq-enhanced .buret-water-row > .msp-sequence-number {
+  display: inline-block;
+  position: static;
+  margin: 0;
+  width: auto;
+}
+body .msp-plugin .buret-seq-enhanced .buret-water-row[hidden] { display: none; }
 body .msp-plugin .msp-sequence .buret-seq-grid {
   display: grid;
   padding: 10px 16px 12px;

@@ -1,3 +1,4 @@
+import { decorateComponents } from './components';
 import { bindSequenceDrag } from './drag-selection';
 import { mountSelect, initResize, setContentHeight, sequenceOptionLabel } from './controls';
 /* Presentation adapter: Mol* retains ownership of selects, residue nodes and picking. */
@@ -71,7 +72,7 @@ import { mountSelect, initResize, setContentHeight, sequenceOptionLabel } from '
       selects.forEach((select, index) => {
         const role = index === 0 ? 'Structure' : index === 1 ? 'View' : selects.length >= 4 ? ['Molecule', 'Chain', 'Instance'][index - 2] : 'Instance';
         const value = select.selectedOptions[0]?.text || 'None';
-        const label = role === 'Chain' ? `Chain ${value}` : role === 'View' ? `View: ${sequenceOptionLabel(value, role)}` : value;
+        const label = role === 'Chain' ? `Chain ${value}` : role === 'View' ? sequenceOptionLabel(value, role) : value;
         let control;
         if (select.options.length === 1) {
           control = element('span', 'buret-seq-context', label);
@@ -88,11 +89,13 @@ import { mountSelect, initResize, setContentHeight, sequenceOptionLabel } from '
     const wrappers = panel.querySelectorAll('.msp-sequence-wrapper');
     wrappers.forEach(layout);
     panel.querySelectorAll('.msp-sequence-chain-label').forEach(label => {
+      if (label.classList.contains('buret-component-label')) return;
       if (!label.textContent.startsWith('Chain ')) label.textContent = `Chain ${label.textContent}`;
       label.title = label.textContent;
     });
+    decorateComponents(panel, schedule);
     const reading = panel.querySelector('.msp-sequence-wrapper-non-empty');
-    const last = reading?.lastElementChild;
+    const last = reading && Array.from(reading.children).findLast(node => !node.hidden && (!node.classList.contains('buret-component-label') || node.classList.contains('buret-water-label')));
     if (reading && enteringCompact) reading.scrollTop = 0;
     if (last) {
       if (compact) {
@@ -108,7 +111,9 @@ import { mountSelect, initResize, setContentHeight, sequenceOptionLabel } from '
         }
         setContentHeight(height);
       } else {
-        const height = last.getBoundingClientRect().bottom - reading.getBoundingClientRect().top + reading.scrollTop;
+        const visible = Array.from(reading.children).filter(node => !node.hidden && (!node.classList.contains('buret-component-label') || node.classList.contains('buret-water-label')));
+        const bottom = Math.max(...visible.map(node => node.getBoundingClientRect().bottom));
+        const height = bottom - reading.getBoundingClientRect().top + reading.scrollTop + (panel.querySelector('.buret-component-row') ? 12 : 0);
         setContentHeight(header.getBoundingClientRect().height + height);
       }
     }
