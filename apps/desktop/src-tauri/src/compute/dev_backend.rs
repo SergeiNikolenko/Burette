@@ -142,6 +142,7 @@ pub(crate) fn run() -> Result<(), String> {
                     method: "RM1".into(),
                 },
                 run_id,
+                &|_, _| Ok(()),
             )
             .map_err(|error| error.to_string())?,
         )
@@ -157,6 +158,7 @@ pub(crate) fn run() -> Result<(), String> {
                     max_memory_bytes: None,
                 },
                 run_id,
+                &|_, _| Ok(()),
             )
             .map_err(|error| error.to_string())?,
         )

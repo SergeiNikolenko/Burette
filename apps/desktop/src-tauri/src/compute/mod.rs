@@ -1,4 +1,5 @@
 mod alignment_workflow;
+mod analysis_control;
 mod analysis_plan;
 mod analysis_snapshot;
 mod artifact_publisher;

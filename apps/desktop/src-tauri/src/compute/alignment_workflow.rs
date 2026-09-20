@@ -158,6 +158,7 @@ fn execute_grid_alignment_with_run_id(
         rows,
         parsed,
         "molfileFormalCharge".into(),
+        &|_, _| Ok(()),
     )
 }
 
@@ -167,6 +168,7 @@ pub(crate) fn execute_snapshot_alignment_with_run_id(
     rows: Vec<GridAlignmentSourceRow>,
     request: &GridAlignmentRequest,
     run_id: Uuid,
+    checkpoint: super::analysis_control::AnalysisCheckpoint<'_>,
 ) -> ComputeResult<GridAlignmentResult> {
     let indexes = normalized_indexes(&request.source_indexes)?;
     if rows.len() != indexes.len()
@@ -191,9 +193,11 @@ pub(crate) fn execute_snapshot_alignment_with_run_id(
         rows,
         parsed,
         "molfileFormalCharge".into(),
+        checkpoint,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_alignment_rows(
     runtime: &MetalTanimotoRuntime,
     compute_service: Option<(&ComputeServiceClient, Uuid)>,
@@ -202,53 +206,13 @@ fn execute_alignment_rows(
     rows: Vec<GridAlignmentSourceRow>,
     parsed: Vec<ParsedMolfile>,
     charge_model: String,
+    checkpoint: super::analysis_control::AnalysisCheckpoint<'_>,
 ) -> ComputeResult<GridAlignmentResult> {
     let reference = &parsed[0];
     let reference_graph = bond_matrix(reference.atoms.len(), &reference.bonds)?;
     let reference_signatures = atom_signature_index(reference, &reference_graph);
-    let mut probe_atoms = Vec::new();
-    let mut reference_atoms = Vec::new();
-    let mut mappings = Vec::new();
-    let mut pair_mappings = Vec::new();
-    let mut descriptors = Vec::new();
-    for probe in parsed.iter().skip(1) {
-        let pair_mapping =
-            infer_atom_mapping(probe, reference, &reference_graph, &reference_signatures)?;
-        let probe_start = probe_atoms.len() as u64;
-        let reference_start = reference_atoms.len() as u64;
-        let mapping_start = mappings.len() as u64;
-        probe_atoms.extend_from_slice(&probe.atoms);
-        reference_atoms.extend_from_slice(&reference.atoms);
-        mappings.extend_from_slice(&pair_mapping);
-        descriptors.push(AlignmentPairDescriptor {
-            probe_atom_start: probe_start,
-            probe_atom_count: probe.atoms.len() as u64,
-            reference_atom_start: reference_start,
-            reference_atom_count: reference.atoms.len() as u64,
-            mapping_start,
-            mapping_count: pair_mapping.len() as u64,
-            mode: AlignmentMode::MappedHorn,
-        });
-        pair_mappings.push(pair_mapping);
-    }
     let max_memory_bytes = request.max_memory_bytes.unwrap_or(DEFAULT_MAX_MEMORY_BYTES);
-    let batch = MetalAlignmentBatch {
-        probe_atoms: &probe_atoms,
-        reference_atoms: &reference_atoms,
-        mappings: &mappings,
-        pairs: &descriptors,
-    };
-    let execution = compute_service
-        .map_or_else(
-            || {
-                runtime
-                    .align_and_score_profiled(batch, max_memory_bytes)
-                    .map_err(|error| error.to_string())
-            },
-            |(service, job_id)| service.align_and_score(job_id, batch, max_memory_bytes),
-        )
-        .map_err(|error| ComputeCoordinatorError::Unavailable(error.to_string()))?;
-
+    let mut gpu_time_ms = 0;
     let reference_has_charge = reference
         .atoms
         .iter()
@@ -271,9 +235,56 @@ fn execute_alignment_rows(
         &scores[0],
         runtime.device_identity().name.as_str(),
     )?];
-    for (pair_index, metal) in execution.pairs.iter().enumerate() {
-        let probe = &parsed[pair_index + 1];
-        validate_cpu_parity(probe, reference, &pair_mappings[pair_index], metal)?;
+    checkpoint(
+        1,
+        Some(
+            serde_json::json!({"score":scores[0], "transform":transforms[0], "alignedSdf":sdf_records[0]}),
+        ),
+    )?;
+    for (pair_index, probe) in parsed.iter().skip(1).enumerate() {
+        checkpoint(pair_index + 1, None)?;
+        let mapping =
+            infer_atom_mapping(probe, reference, &reference_graph, &reference_signatures)?;
+        let descriptors = [AlignmentPairDescriptor {
+            probe_atom_start: 0,
+            probe_atom_count: probe.atoms.len() as u64,
+            reference_atom_start: 0,
+            reference_atom_count: reference.atoms.len() as u64,
+            mapping_start: 0,
+            mapping_count: mapping.len() as u64,
+            mode: AlignmentMode::MappedHorn,
+        }];
+        let batch = MetalAlignmentBatch {
+            probe_atoms: &probe.atoms,
+            reference_atoms: &reference.atoms,
+            mappings: &mapping,
+            pairs: &descriptors,
+        };
+        let execution = compute_service.map_or_else(
+            || {
+                runtime
+                    .align_and_score_profiled(batch, max_memory_bytes)
+                    .map_err(|e| e.to_string())
+            },
+            |(service, job_id)| {
+                service.align_and_score(job_id, batch, max_memory_bytes, &|| {
+                    checkpoint(pair_index + 1, None).map_err(|e| e.to_string())
+                })
+            },
+        );
+        let execution = match execution {
+            Ok(execution) => execution,
+            Err(error) => {
+                // Restore typed cancellation after the service admission callback.
+                checkpoint(pair_index + 1, None)?;
+                return Err(ComputeCoordinatorError::Unavailable(error));
+            }
+        };
+        gpu_time_ms += execution.gpu_time_ms;
+        let metal = execution.pairs.first().ok_or_else(|| {
+            ComputeCoordinatorError::Protocol("Alignment returned no result".into())
+        })?;
+        validate_cpu_parity(probe, reference, &mapping, metal)?;
         let score = GridAlignmentScore {
             source_index: rows[pair_index + 1].source_index,
             name: rows[pair_index + 1].name.clone(),
@@ -293,6 +304,12 @@ fn execute_alignment_rows(
             runtime.device_identity().name.as_str(),
         )?);
         transforms.push(rigid_transform_matrix(metal.transform));
+        checkpoint(
+            pair_index + 2,
+            Some(
+                serde_json::json!({"score":score, "transform":transforms.last(), "alignedSdf":sdf_records.last()}),
+            ),
+        )?;
         scores.push(score);
     }
     let aligned_sdf = format!("{}\n", sdf_records.join("\n"));
@@ -310,7 +327,7 @@ fn execute_alignment_rows(
         title: format!("aligned-{}-poses.sdf", rows.len()),
         aligned_sdf,
         scores,
-        gpu_time_ms: execution.gpu_time_ms,
+        gpu_time_ms,
         backend: "nativeMetal",
         mapping: "deterministicElementBondGraph",
         charge_model,

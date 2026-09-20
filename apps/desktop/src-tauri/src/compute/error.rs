@@ -4,6 +4,7 @@ use burette_compute_protocol::ProtocolError;
 
 #[derive(Debug)]
 pub(crate) enum ComputeCoordinatorError {
+    Cancelled,
     Database(String),
     Filesystem(String),
     Serialization(String),
@@ -25,6 +26,7 @@ pub(crate) enum ComputeCoordinatorError {
 impl ComputeCoordinatorError {
     pub(crate) fn code(&self) -> &'static str {
         match self {
+            Self::Cancelled => "Cancelled",
             Self::Database(_) => "Database",
             Self::Filesystem(_) => "Filesystem",
             Self::Serialization(_) => "Serialization",
@@ -51,6 +53,7 @@ impl ComputeCoordinatorError {
 impl fmt::Display for ComputeCoordinatorError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Cancelled => formatter.write_str("Calculation cancelled"),
             Self::Database(message) => write!(formatter, "compute database failed: {message}"),
             Self::Filesystem(message) => write!(formatter, "compute filesystem failed: {message}"),
             Self::Serialization(message) => {
