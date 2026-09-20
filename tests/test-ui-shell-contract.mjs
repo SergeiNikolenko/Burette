@@ -6298,7 +6298,6 @@ assert.doesNotMatch(previewViewer, /actionContainer\.querySelector\('button'\)\?
 assert.doesNotMatch(previewViewer, /menu\.querySelector\('button'\)\?\.focus\(\)/);
 assert.match(previewViewer, /const onPointerUp = \(event\) => \{[\s\S]*?if \(contextPointer\.moved\) \{[\s\S]*?hideMolstarContextMenu\(\);[\s\S]*?contextPointer = null;[\s\S]*?return;[\s\S]*?\}[\s\S]*?const pointer = contextPointer;[\s\S]*?contextPointer = null;[\s\S]*?restoreContextPointerCamera\(pointer\);[\s\S]*?openFromEvent\(syntheticContextEvent\(event\), pointer\.pick\);/);
 assert.match(previewViewer, /document\.addEventListener\('pointerup', onPointerUp, true\)/);
-assert.match(previewViewer, /if \(contextPointer\) \{[\s\S]*?if \(!contextPointer\.moved\) \{[\s\S]*?const pointer = contextPointer;[\s\S]*?contextPointer = null;[\s\S]*?restoreContextPointerCamera\(pointer\);[\s\S]*?openFromEvent\(event, pointer\.pick\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?hideMolstarContextMenu\(\);[\s\S]*?contextPointer = null;[\s\S]*?return;/);
 assert.match(previewViewer, /function moleculeMenuOpenSubmenu\(menu, submenu, trigger, options = \{\}\) \{[\s\S]*?menu\.appendChild\(submenu\);[\s\S]*?moleculeMenuPositionSubmenu\(submenu, trigger\);/);
 assert.match(previewViewer, /button\.addEventListener\('click', event => \{\s*if \(event\.button !== 0\) \{/);
 assert.match(previewViewer, /buret-superposition-context-submenu/);

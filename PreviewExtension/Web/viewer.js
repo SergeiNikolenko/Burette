@@ -21223,7 +21223,7 @@ SOFTWARE.
     if (target?.selectionBased) return target?.loci || molstarContextMenuPick?.loci;
     const scope = target?.scope;
     const pickingLevel = target?.pickingLevel || molstarContextMenuMode;
-    if ((scope === 'ligand' || scope === 'water' || scope === 'ion') && target?.atom) {
+    if ((scope === 'ligand' || scope === 'water' || scope === 'ion' || scope === 'residue') && target?.atom) {
       const structure = molstarStructureFromRef(target.structure) || target?.loci?.structure;
       const residueLoci = molstarContextResidueAtomLociForStructure(structure, target.atom);
       if (pickingLevel === 'molecule') return residueLoci || target?.loci || molstarContextMenuPick?.loci;
@@ -22696,7 +22696,30 @@ SOFTWARE.
     return created;
   }
 
-  async function addGreySurfaceForContext(target) {
+  async function addMolstarPocketSurface(target) {
+    const { StructureElement } = molstarStructureRuntime();
+    const loci = molstarContextSelectionLoci({ ...target, pickingLevel: 'molecule' });
+    if (!loci) return 0;
+    let count = 0;
+    for (const structure of molstarCurrentStructures(activeMolstarViewer())) {
+      const protein = compositionQueryLoci(structure, 'polymer.protein');
+      if (!protein) continue;
+      const surroundings = molstarSurroundingsLoci({ ...target, loci }, 5, structure.cell?.obj?.data);
+      if (!surroundings) continue;
+      const pocket = StructureElement.Loci.intersect(surroundings, protein);
+      if (molstarLociIsEmpty(pocket)) continue;
+      if (await addGreySurfaceForContext({
+        ...target, structure, loci: pocket, selectionBased: true,
+        label: `Pocket (5 Å) · ${target.label || 'ligand'}`
+      }, {
+        illustrative: configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}) === 'illustrative'
+      })) count++;
+    }
+    return count;
+  }
+
+  async function addGreySurfaceForContext(target, options = {}) {
+    const illustrative = options.illustrative === true;
     const component = await addMolstarContextScopeComponent(
       target,
       'molecular-surface',
@@ -22709,9 +22732,27 @@ SOFTWARE.
     if (component && surface && typeof manager?.updateRepresentations === 'function') {
       await manager.updateRepresentations([component], surface, old => ({
         ...old,
-        type: { ...old.type, params: { ...old.type.params, alpha: 0.35 } },
-        colorTheme: { name: 'uniform', params: { value: 0x98989d } }
+        type: {
+          ...old.type,
+          params: illustrative
+            ? {
+                ...old.type.params,
+                alpha: 0.22,
+                transparentBackfaces: 'on',
+                ignoreLight: false,
+                celShaded: true,
+                material: { roughness: 0.2, metalness: 0 }
+              }
+            : { ...old.type.params, alpha: 0.35 }
+        },
+        colorTheme: {
+          name: 'uniform',
+          params: { value: illustrative ? 0xc8d0d8 : 0x98989d }
+        }
       }));
+      if (illustrative) {
+        await applyMolstarIllustrativePostprocessing(activeMolstarViewer(), { includeTransparent: true });
+      }
     }
     return !!component;
   }
@@ -23297,6 +23338,45 @@ SOFTWARE.
     return atom ? `${residue} atom ${atom}` : `${residue} atom`;
   }
 
+  function molstarSurfaceMenuAction(target, noun) {
+    if (target?.scope === 'ligand' && !target.selectionBased) {
+      return moleculeMenuNestedAction('represent:surface-options', 'Surface of…', [
+        ['represent:surface-ligand', 'Ligand'],
+        ['represent:surface-pocket', 'Pocket (5 Å)']
+      ]);
+    }
+    if (target?.scope === 'residue' && target.atom && !target.selectionBased) {
+      return moleculeMenuNestedAction('represent:surface-options', 'Surface of…', [
+        ['represent:surface-residue', 'Residue'],
+        ['represent:surface-chain', 'Chain'],
+        ['represent:surface-protein', 'Protein']
+      ]);
+    }
+    return ['represent:surface', `Surface of ${noun}`];
+  }
+
+  function molstarSurfaceTarget(target, action) {
+    if (action === 'represent:surface-ligand') {
+      return { ...target, pickingLevel: 'molecule', label: target?.label || 'Ligand' };
+    }
+    if (action === 'represent:surface-residue') {
+      return { ...target, pickingLevel: 'residue', label: molstarContextResidueLabel(target?.atom) };
+    }
+    if (action === 'represent:surface-chain') {
+      const loci = molstarContextChainLociFromPick(target);
+      return loci
+        ? { ...target, loci, selectionBased: true, label: molstarContextChainLabel(target?.atom) }
+        : null;
+    }
+    if (action === 'represent:surface-protein') {
+      const loci = compositionQueryLoci(target?.structure, 'polymer.protein');
+      return loci
+        ? { ...target, loci, selectionBased: true, label: 'Protein' }
+        : null;
+    }
+    return target;
+  }
+
   // Visibility and representation are short, frequent blocks and stay directly on
   // the first level. The Tools heading starts at Analyze, where the longer
   // Maestro/PyMOL toolsets continue as Base UI-style submenus.
@@ -23358,7 +23438,7 @@ SOFTWARE.
     if (name === 'view:hide') return SCENE_TREE_ICON.eye;
     if (name === 'view:isolate') return SCENE_TREE_ICON.isolate;
     if (name === 'view:show-all') return SCENE_TREE_ICON.restore;
-    if (name === 'represent:surface') return ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
+    if (name.startsWith('represent:surface')) return ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
     if (name === 'represent:menu') return APP_ICON_DATA.SettingsSlider;
     // A box with a plus: the selection becomes a new object in the scene.
     if (name === 'represent:component') return APP_ICON_DATA.FolderPlus;
@@ -23412,7 +23492,7 @@ SOFTWARE.
       const componentRef = molstarContextComponentRef(target);
       if (componentRef) {
         actions.push(['view:hide', `Hide ${noun}`]);
-        actions.push(['represent:surface', 'Add grey surface']);
+        actions.push(molstarSurfaceMenuAction(target, noun));
         actions.push(['represent:menu', 'Representation & colour…']);
       }
       if (target?.atom && target?.loci) {
@@ -23487,7 +23567,7 @@ SOFTWARE.
     if (name === 'analyze:interactions') return `interactions around ${targetLabel}`;
     if (name === 'analyze:label') return `label ${targetLabel}`;
     if (name === 'analyze:surroundings') return `surroundings of ${targetLabel}`;
-    if (name === 'represent:surface') return `surface on ${targetLabel}`;
+    if (name.startsWith('represent:surface')) return `surface on ${targetLabel}`;
     if (name === 'represent:component') return `component for ${targetLabel}`;
     if (name === 'view:hide') return `hiding ${targetLabel}`;
     if (name === 'view:isolate') return `isolating ${targetLabel}`;
@@ -23613,9 +23693,21 @@ SOFTWARE.
         if (!componentRef) throw new Error('No Mol* component is available for this action.');
         await applySceneTreeAction(componentRef, Number(action.slice('molstar-action:'.length)));
         setStatus(`[web] Applied ${label} to ${targetLabel}.`);
-      } else if (action === 'represent:surface') {
-        if (!await addGreySurfaceForContext(target)) throw new Error('No Mol* selection or target is available for a surface.');
-        setStatus(`[web] Added a translucent surface to ${targetLabel}.`);
+      } else if (action === 'represent:surface-pocket') {
+        const count = await addMolstarPocketSurface(target);
+        if (!count) throw new Error('No protein residues were found within 5 Å of this ligand.');
+        setStatus(`[web] Added a pocket surface within 5 Å of ${targetLabel}.`);
+      } else if ([
+        'represent:surface',
+        'represent:surface-ligand',
+        'represent:surface-residue',
+        'represent:surface-chain',
+        'represent:surface-protein'
+      ].includes(action)) {
+        const surfaceTarget = molstarSurfaceTarget(target, action);
+        if (!surfaceTarget) throw new Error('No Mol* target is available for this surface.');
+        if (!await addGreySurfaceForContext(surfaceTarget)) throw new Error('No Mol* selection or target is available for a surface.');
+        setStatus(`[web] Added a translucent surface to ${surfaceTarget.label || targetLabel}.`);
       } else if (action === 'represent:component') {
         // "Whatever is selected" means the live selection when there is one, and
         // the thing under the cursor when there is not - so the item works on a
@@ -25582,17 +25674,15 @@ SOFTWARE.
             heading.textContent = section.title;
             actionContainer.appendChild(heading);
           }
-          for (const [action, label] of entries) {
+          for (const entry of entries) {
+            const [action] = entry;
             if (action === 'represent:menu') {
               const item = moleculeMenuRepresentationSubmenu(menu, actionTarget);
               if (item) actionContainer.appendChild(item);
               continue;
             }
-            const item = moleculeMenuActionButton(action, label, {
+            const item = moleculeMenuActionItem(entry, menu, actionTarget, {
               destructive: section.destructive,
-              target: actionTarget,
-              pickingLevel: mode,
-              menu,
             });
             actionContainer.appendChild(item);
           }
@@ -25640,6 +25730,18 @@ SOFTWARE.
     }
     let contextPointer = null;
     let touchContextPointer = null;
+    // Secondary clicks belong to our context menu. Let Mol* receive mouseup
+    // to finish dragging, but remove its competing camera focus/reset action.
+    const cameraFocus = [...(viewer?.plugin?.state?.behaviors?.cells?.values() || [])]
+      .find(cell => cell.transform?.transformer?.id?.endsWith('camera-focus-loci'))?.obj?.data;
+    const originalFocusBindings = cameraFocus?.params?.bindings;
+    const contextFocusBindings = originalFocusBindings && Object.fromEntries(
+      Object.entries(originalFocusBindings).map(([name, binding]) => [name, {
+        ...binding,
+        triggers: binding.triggers.filter(trigger => !(Number(trigger.buttons) & 2))
+      }])
+    );
+    if (contextFocusBindings) cameraFocus.params.bindings = contextFocusBindings;
     const menuIsOpen = () => !!document.querySelector('.buret-molecule-context-menu');
     const menuIsInAtomMode = () => menuIsOpen() && ['atom', 'element'].includes(molstarContextMenuMode);
     const clearMolstarHoverHighlights = () => {
@@ -25716,36 +25818,29 @@ SOFTWARE.
         }
         restoreMolstarCameraSnapshot(viewer, snapshot);
       };
-      // Mol* maps secondary pointerdown to focus+zoom immediately and finishes
-      // its controls after pointerup. Restore after that cycle, then once more on
-      // the following frame so a short context click cannot retain camera motion.
+      // Undo sub-threshold pointer jitter after Mol* finishes its controls.
+      // Secondary-click focus is disabled separately, so no focus animation
+      // competes with this restoration.
       window.requestAnimationFrame(() => {
         restore();
         window.requestAnimationFrame(restore);
       });
     };
     const onContextMenu = (event) => {
+      // Browsers dispatch contextmenu either on press or after release. Mouse
+      // gestures are owned by pointerup so holding/dragging never opens a menu,
+      // and a late contextmenu cannot reopen it after a completed drag.
+      if (contextPointer || (event.button === 2 && isMolstarContextMenuTarget(event.target))) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (menuIsOpen() && !contextPointer) {
         event.preventDefault();
         event.stopPropagation();
         return;
       }
-      if (contextPointer) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!contextPointer.moved) {
-          const pointer = contextPointer;
-          contextPointer = null;
-          restoreContextPointerCamera(pointer);
-          openFromEvent(event, pointer.pick);
-          return;
-        }
-        hideMolstarContextMenu();
-        contextPointer = null;
-        return;
-      }
-      openFromEvent(event, contextPointer?.pick || null);
-      contextPointer = null;
+      openFromEvent(event);
     };
     const onPointerDown = (event) => {
       const target = event.target;
@@ -25948,6 +26043,9 @@ SOFTWARE.
     window.addEventListener('resize', onResize);
     window.addEventListener('scroll', hideMolstarMoleculePreview, true);
     molstarContextMenuCleanup = () => {
+      if (cameraFocus?.params?.bindings === contextFocusBindings && originalFocusBindings) {
+        cameraFocus.params.bindings = originalFocusBindings;
+      }
       document.removeEventListener('contextmenu', onContextMenu, true);
       document.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('pointermove', onPointerMove, true);

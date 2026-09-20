@@ -122,6 +122,15 @@ for (const removed of ["view:isolate", "view:show-all", "represent:component", "
   assert.ok(!viewportActions.includes(removed), `removed menu action still offered: ${removed}`);
 }
 assert.ok(viewportActions.includes("analyze:pin-environment"));
+assert.match(viewportActions, /molstarSurfaceMenuAction\(target, noun\)/);
+const surfaceMenu = fn("molstarSurfaceMenuAction");
+assert.match(surfaceMenu, /'represent:surface-options', 'Surface of…'/);
+assert.match(surfaceMenu, /\['represent:surface-ligand', 'Ligand'\]/);
+assert.match(surfaceMenu, /\['represent:surface-pocket', 'Pocket \(5 Å\)'\]/);
+assert.match(surfaceMenu, /\['represent:surface-residue', 'Residue'\]/);
+assert.match(surfaceMenu, /\['represent:surface-chain', 'Chain'\]/);
+assert.match(surfaceMenu, /\['represent:surface-protein', 'Protein'\]/);
+assert.match(fn("showMolstarContextMenu"), /moleculeMenuActionItem\(entry, menu, actionTarget/);
 
 
 // Typed contacts come from Mol*'s interactions representation, not from a distance
@@ -207,7 +216,7 @@ assert.doesNotMatch(viewer, /\{ id: 'appearance', title: 'Appearance'/);
 assert.match(viewer, /\{ id: 'align', title: 'Superposition' \}/);
 assert.match(viewer, /\{ id: 'danger', title: 'Delete', direct: true, destructive: true, hideTitle: true, breakBefore: true \}/);
 assert.match(fn("showMolstarContextMenu"), /const actionTarget = \{ \.\.\.menuTarget, pickingLevel: mode \}/);
-assert.match(fn("showMolstarContextMenu"), /if \(!section\.hideTitle\)[\s\S]*moleculeMenuActionButton\(action, label, \{[\s\S]*target: actionTarget/);
+assert.match(fn("showMolstarContextMenu"), /if \(!section\.hideTitle\)[\s\S]*moleculeMenuActionItem\(entry, menu, actionTarget/);
 assert.match(fn("moleculeMenuSubmenu"), /aria-haspopup[\s\S]*buret-tree-menu-sub-trigger[\s\S]*buret-molecule-context-submenu/);
 assert.match(fn("moleculeMenuRepresentationSubmenu"), /aria-haspopup[\s\S]*menu[\s\S]*sceneTreeRepresentationMenu/);
 assert.match(fn("moleculeMenuRepresentationSubmenu"), /trigger\.addEventListener\('click'[\s\S]*event\.stopPropagation\(\)[\s\S]*open\(true\)/);
