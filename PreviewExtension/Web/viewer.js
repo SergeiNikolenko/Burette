@@ -14258,9 +14258,13 @@ SOFTWARE.
   }
 
   function parseV2000SdfRecord(record) {
+    // RDKit and several docking tools emit V3000 mol blocks. Keep the
+    // existing call sites (grid, pose pager and overlay) format-agnostic by
+    // dispatching those records through the matching parser here.
+    if (/\bV3000\b/u.test(String(record || ''))) return parseV3000SdfRecord(record);
     const lines = String(record || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const countsIndex = lines.findIndex(line => /\bV2000\b/u.test(line) || /^\s*\d+\s+\d+\s+/.test(line));
-    if (countsIndex < 0 || lines[countsIndex].includes('V3000')) return null;
+    if (countsIndex < 0) return null;
     const countParts = lines[countsIndex].trim().split(/\s+/u);
     const atomCount = parseInt(lines[countsIndex].slice(0, 3), 10) || parseInt(countParts[0], 10);
     const bondCount = parseInt(lines[countsIndex].slice(3, 6), 10) || parseInt(countParts[1], 10);
@@ -14282,6 +14286,69 @@ SOFTWARE.
       if (!bond) return null;
       bonds.push(bond);
     }
+
+    const xs = atoms.map(atom => atom.x);
+    const ys = atoms.map(atom => atom.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    return {
+      atomCount,
+      bondCount,
+      atoms,
+      bonds,
+      width: maxX - minX,
+      height: maxY - minY,
+      centerX: (minX + maxX) / 2,
+      centerY: (minY + maxY) / 2
+    };
+  }
+
+  function parseV3000SdfRecord(record) {
+    const lines = String(record || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const countsLine = lines.find(line => /^\s*M\s+V30\s+COUNTS\s+/u.test(line));
+    const counts = countsLine?.match(/^\s*M\s+V30\s+COUNTS\s+(\d+)\s+(\d+)/u);
+    if (!counts) return null;
+    const atomCount = Number(counts[1]);
+    const bondCount = Number(counts[2]);
+    if (!Number.isInteger(atomCount) || !Number.isInteger(bondCount) || atomCount <= 0) return null;
+
+    const atomStart = lines.findIndex(line => /^\s*M\s+V30\s+BEGIN\s+ATOM\s*$/u.test(line));
+    const bondStart = lines.findIndex(line => /^\s*M\s+V30\s+BEGIN\s+BOND\s*$/u.test(line));
+    if (atomStart < 0 || bondStart < 0) return null;
+
+    const atoms = [];
+    const atomIds = new Map();
+    for (let index = atomStart + 1; index < lines.length && atoms.length < atomCount; index += 1) {
+      const line = lines[index].trim();
+      if (!line || /^M\s+V30\s+END\s+ATOM$/u.test(line)) break;
+      const parts = line.split(/\s+/u);
+      if (parts.length < 7 || parts[0] !== 'M' || parts[1] !== 'V30') return null;
+      const id = Number(parts[2]);
+      const element = normalizeSdfElement(parts[3]);
+      const x = Number(parts[4]);
+      const y = Number(parts[5]);
+      const z = Number(parts[6]);
+      if (!Number.isInteger(id) || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+      atomIds.set(id, atoms.length + 1);
+      atoms.push({ x, y, z, element, label: parts[3] });
+    }
+    if (atoms.length !== atomCount) return null;
+
+    const bonds = [];
+    for (let index = bondStart + 1; index < lines.length && bonds.length < bondCount; index += 1) {
+      const line = lines[index].trim();
+      if (!line || /^M\s+V30\s+END\s+BOND$/u.test(line)) break;
+      const parts = line.split(/\s+/u);
+      if (parts.length < 6 || parts[0] !== 'M' || parts[1] !== 'V30') return null;
+      const order = normalizeSdfBondOrder(parts[3]);
+      const a = atomIds.get(Number(parts[4]));
+      const b = atomIds.get(Number(parts[5]));
+      if (!a || !b) return null;
+      bonds.push({ a, b, order });
+    }
+    if (bonds.length !== bondCount) return null;
 
     const xs = atoms.map(atom => atom.x);
     const ys = atoms.map(atom => atom.y);
