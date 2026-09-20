@@ -623,7 +623,7 @@ function ActionsMenu(props: GridControlProps) {
   const selectedCount = props.selectedCount;
 
   return (
-    <div className="ab-menu-wrap" ref={wrapRef}>
+    <div className="ab-menu-wrap ab-actions-menu" ref={wrapRef}>
       <button
         className="ab-btn"
         type="button"
@@ -641,7 +641,7 @@ function ActionsMenu(props: GridControlProps) {
               : "No molecules selected"}
           </div>
           <FileSection {...props} onRun={onRun} />
-          <ComputeSection {...props} onRun={onRun} />
+          {/* Compute actions are temporarily hidden from the grid menu. */}
           <CollectionSection {...props} onRun={onRun} />
           <SelectionSection {...props} onRun={onRun} />
         </div>
@@ -712,7 +712,7 @@ function GridActionToolbar(props: GridControlProps) {
       <span id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
         <button
           id="rdkit-use-input-coords"
-          className="ab-btn ab-btn-icon"
+          className="ab-btn"
           type="button"
           aria-pressed="false"
           aria-label="Use file coords"
@@ -720,8 +720,8 @@ function GridActionToolbar(props: GridControlProps) {
             event.currentTarget.getAttribute("aria-pressed") !== "true",
           )}
         >
-          {ICONS.generate3d}
-          <ControlTooltip label="Use the coordinates embedded in the file" />
+          <span data-coordinate-mode>2D</span>
+          <ControlTooltip label="2D diagram / 3D file coordinates" />
         </button>
       </span>
       <button id="clear-smarts" className="ab-btn buret-clear-smarts" type="button" hidden onClick={props.onClearSmarts}>
@@ -777,14 +777,13 @@ function GridActionToolbar(props: GridControlProps) {
 
 function GridControls(props: GridControlProps) {
   const searchPlaceholder = props.substructureSearch
-    ? "name, table value or SMARTS"
-    : "name or table value";
+    ? "Search by name, value or SMARTS"
+    : "Search by name or value";
 
   return (
     <div className="buret-grid-toolbar">
       <div className="buret-toolbar-row buret-toolbar-row-main">
         <div className="buret-search-control buret-filter-control">
-          Search
           <input
             id="search"
             type="search"
@@ -796,7 +795,6 @@ function GridControls(props: GridControlProps) {
           />
         </div>
         <label className="buret-sort-control">
-          Sort
           <select id="sort" onChange={(event) => props.onSortChange(event.currentTarget.value || "index")}>
             {props.sortOptions.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>

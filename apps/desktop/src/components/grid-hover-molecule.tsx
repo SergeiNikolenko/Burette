@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { computeDerivedValue, computeRowProperties, loadDerivedEngines } from "../lib/derived-columns";
+import { loadDerivedEngines } from "../lib/derived-columns";
 import { describePropValue } from "../lib/grid-value-stats.mjs";
 import { writeClipboardText } from "../lib/clipboard";
 import { postGridCommand } from "../lib/viewer-bridge";
@@ -10,6 +10,8 @@ import { scaffoldStatusLine, useSelectionScaffold } from "./grid-selection-scaff
 import { showNativeContextMenu } from "./native-context-menu";
 import type { GridFilterColumn, GridFilterModel } from "./types";
 import type { HoveredGridRow } from "../types";
+
+const GridMolecule3D = lazy(() => import("./grid-molecule-3d"));
 
 const PROPS_HEIGHT_STORAGE_KEY = "burette-grid-hover-molecule-props-height";
 const PROPS_OPEN_STORAGE_KEY = "burette-grid-hover-molecule-props-open";
@@ -37,15 +39,6 @@ function formatPropValue(value: string): string {
   return numeric.toFixed(decimals).replace(/\.?0+$/u, "");
 }
 
-function propRangeLabel(column: GridFilterColumn | undefined): string | null {
-  if (!column || column.type !== "number") return null;
-  const hasAllowed = Number.isFinite(column.allowedMin) || Number.isFinite(column.allowedMax);
-  const lower = Number.isFinite(column.allowedMin) ? column.allowedMin : column.min;
-  const upper = Number.isFinite(column.allowedMax) ? column.allowedMax : column.max;
-  if (!Number.isFinite(lower) && !Number.isFinite(upper)) return null;
-  return `${hasAllowed ? "Allowed" : "Observed"} ${Number.isFinite(lower) ? formatPropValue(String(lower)) : "−∞"} … ${Number.isFinite(upper) ? formatPropValue(String(upper)) : "+∞"}`;
-}
-
 function storedPropsHeight(): number {
   const raw = Number(window.localStorage.getItem(PROPS_HEIGHT_STORAGE_KEY));
   return Number.isFinite(raw) && raw >= PROPS_MIN_HEIGHT ? raw : PROPS_DEFAULT_HEIGHT;
@@ -55,7 +48,6 @@ function storedPropsHeight(): number {
 // the window; this card is that surface for Burette. The grid posts the row
 // under the pointer, and the card renders it with the in-process RDKit.
 const svgCache = new Map<string, string>();
-const specCache = new Map<string, string>();
 const SVG_CACHE_LIMIT = 200;
 // The drawing is asked for at the well's measured size, so it fills the space
 // instead of being letterboxed inside it. Sizes round to this step so dragging
@@ -118,24 +110,6 @@ function useEffectiveTheme(): string {
   return theme;
 }
 
-// Formula, weight and cLogP are what DataWarrior's detail view always shows
-// next to the drawing, and they come from the same shared compute helpers the
-// derived columns use - no second implementation of the chemistry.
-function moleculeSpecLine(
-  engines: Awaited<ReturnType<typeof loadDerivedEngines>>,
-  row: { smiles?: string | null; molblock?: string | null },
-): string {
-  const parts: string[] = [];
-  const formula = computeDerivedValue("formula", engines, row);
-  if (formula.valueText) parts.push(formula.valueText);
-  const properties = computeRowProperties(engines, row, ["MolWeight", "cLogP"]);
-  const weight = properties.MolWeight?.valueReal;
-  if (typeof weight === "number") parts.push(`${weight.toFixed(1)} Da`);
-  const logP = properties.cLogP?.valueReal;
-  if (typeof logP === "number") parts.push(`cLogP ${logP.toFixed(2)}`);
-  return parts.join(" · ");
-}
-
 export function GridHoverMoleculeCard({
   row,
   filterModel,
@@ -161,8 +135,8 @@ export function GridHoverMoleculeCard({
   const showingScaffold = scaffold.kind !== "idle" && !scaffoldDismissed;
 
   const theme = useEffectiveTheme();
+  const [previewMode, setPreviewMode] = useState<"2d" | "3d">("2d");
   const [svg, setSvg] = useState<string | null>(null);
-  const [spec, setSpec] = useState("");
   // The well's real size, measured rather than assumed: the drawing is asked
   // for at these numbers so it fills the box at any drag height.
   const [wellSize, setWellSize] = useState<{ width: number; height: number } | null>(null);
@@ -175,7 +149,6 @@ export function GridHoverMoleculeCard({
   // the grid - DataWarrior does the same, and a flickering empty card would
   // make the preview useless while moving between rows.
   const shown = row ?? lastRowRef.current;
-  const showingXyzrender = !showingScaffold && shown?.cardRenderer === "xyzrender";
 
   // A callback ref, not a mount effect: the card is unmounted while nothing is
   // hovered and while it is collapsed, so an effect with an empty dependency
@@ -214,37 +187,13 @@ export function GridHoverMoleculeCard({
     const source = scaffoldSource || rowMolblock || (shown?.smiles ?? "").trim();
     if (!source) {
       setSvg(null);
-      setSpec("");
       return;
-    }
-    if (showingXyzrender) {
-      setSvg((shown?.previewSvg ?? "").trim() || null);
-      const cachedSpec = specCache.get(source);
-      if (cachedSpec !== undefined) {
-        setSpec(cachedSpec);
-        return;
-      }
-      void (async () => {
-        try {
-          const engines = await loadDerivedEngines();
-          if (renderTokenRef.current !== token) return;
-          const specLine = moleculeSpecLine(engines, rowMolblock ? { molblock: rowMolblock } : { smiles: source });
-          if (specCache.size >= SVG_CACHE_LIMIT) specCache.clear();
-          specCache.set(source, specLine);
-          setSpec(specLine);
-        } catch {
-          if (renderTokenRef.current === token) setSpec("");
-        }
-      })();
-      return () => { renderTokenRef.current += 1; };
     }
     const paper = paperColour(wellNodeRef.current, theme);
     const sizedKey = `${theme} ${paper.join(",")} ${wellSize.width}x${wellSize.height} ${source}`;
     const cachedSvg = svgCache.get(sizedKey);
-    const cachedSpec = specCache.get(source);
-    if (cachedSvg !== undefined && cachedSpec !== undefined) {
+    if (cachedSvg !== undefined) {
       setSvg(cachedSvg);
-      setSpec(cachedSpec);
       return;
     }
     void (async () => {
@@ -255,11 +204,11 @@ export function GridHoverMoleculeCard({
         if (!mol) {
           if (renderTokenRef.current === token) {
             setSvg(null);
-            setSpec("");
           }
           return;
         }
         try {
+          mol.set_new_coords();
           const palette = structurePalette(theme);
           const rendered = mol.get_svg_with_highlights(JSON.stringify({
             width: wellSize.width,
@@ -270,15 +219,8 @@ export function GridHoverMoleculeCard({
           }));
           if (svgCache.size >= SVG_CACHE_LIMIT) svgCache.clear();
           svgCache.set(sizedKey, rendered);
-          const specLine = cachedSpec ?? moleculeSpecLine(
-            engines,
-            rowMolblock ? { molblock: rowMolblock } : { smiles: source },
-          );
-          if (specCache.size >= SVG_CACHE_LIMIT) specCache.clear();
-          specCache.set(source, specLine);
           if (renderTokenRef.current === token) {
             setSvg(rendered);
-            setSpec(specLine);
           }
         } finally {
           mol.delete();
@@ -286,12 +228,11 @@ export function GridHoverMoleculeCard({
       } catch {
         if (renderTokenRef.current === token) {
           setSvg(null);
-          setSpec("");
         }
       }
     })();
     return () => { renderTokenRef.current += 1; };
-  }, [scaffold, showingScaffold, showingXyzrender, shown, theme, wellSize]);
+  }, [scaffold, showingScaffold, shown, theme, wellSize]);
 
   // The drawing IS the row's structure, so acting on it acts on that row: the
   // grid runs the same command the Structure menu sends, aimed at the row under
@@ -343,7 +284,7 @@ export function GridHoverMoleculeCard({
   const visibleProps = useMemo(() => (shown?.props ?? []).flatMap((entry) => {
     const column = (entry.columnId ? columnsById.get(entry.columnId) : undefined)
       ?? columnsByLabel.get(entry.label.trim().toLowerCase());
-    return column?.varied === true ? [{ entry, column }] : [];
+    return column ? [{ entry, column }] : [];
   }), [columnsById, columnsByLabel, shown]);
 
   const [propsHeight, setPropsHeight] = useState(storedPropsHeight);
@@ -388,14 +329,19 @@ export function GridHoverMoleculeCard({
   const scaffoldStatus = showingScaffold ? scaffoldStatusLine(scaffold) : null;
   const badge = showingScaffold
     ? (scaffold.kind === "failed" ? "" : `${scaffold.count} molecules`)
-    : `row ${(shown?.index ?? 0) + 1}`;
+    : "";
   return (
     <Card size="sm" className="structure-brief-card grid-hover-molecule">
       <header className="grid-hover-molecule-header">
         <span className="grid-hover-molecule-name" title={label}>{label}</span>
-        <span className="grid-hover-molecule-index">{badge}</span>
+        {!showingScaffold && <div className="grid-preview-mode" role="group" aria-label="Molecule preview mode">
+          {(["2d", "3d"] as const).map(mode => <Button key={mode} size="xs" variant={previewMode === mode ? "secondary" : "ghost"} aria-pressed={previewMode === mode} onClick={() => setPreviewMode(mode)}>{mode.toUpperCase()}</Button>)}
+        </div>}
+        {badge ? <span className="grid-hover-molecule-index">{badge}</span> : null}
       </header>
-      <div
+      {previewMode === "3d" && !showingScaffold ? <Suspense fallback={<div className="grid-molecule-3d" />}>
+        <GridMolecule3D key={documentId} molblock={shown?.molblock ?? ""} theme={theme} onOpen={() => { if (shown) postGridCommand(documentId, "structure.open-in-molstar", shown.index); }} />
+      </Suspense> : <div
         ref={attachWell}
         className="grid-hover-molecule-svg"
         role="button"
@@ -414,14 +360,9 @@ export function GridHoverMoleculeCard({
         ) : svg ? (
           <div className="grid-hover-molecule-drawing" dangerouslySetInnerHTML={{ __html: svg }} />
         ) : (
-          <span className="grid-hover-molecule-empty">{showingXyzrender ? "Rendering XYZRender preview…" : "Structure preview unavailable"}</span>
+          <span className="grid-hover-molecule-empty">Structure preview unavailable</span>
         )}
-      </div>
-      {showingScaffold ? (
-        scaffold.kind === "found"
-          ? <div className="grid-hover-molecule-spec" title={scaffold.smiles}>{scaffold.atoms} atoms · {scaffold.smiles}</div>
-          : null
-      ) : spec ? <div className="grid-hover-molecule-spec" title={spec}>{spec}</div> : null}
+      </div>}
       {!showingScaffold && visibleProps.length ? (
         <>
           <div className="grid-hover-molecule-props-bar">
@@ -452,7 +393,6 @@ export function GridHoverMoleculeCard({
               <div ref={propsNodeRef} className="grid-hover-molecule-props" style={{ maxHeight: propsHeight }}>
                 {visibleProps.map(({ entry, column }) => {
                   const described = describePropValue(entry.value, column);
-                  const rangeLabel = propRangeLabel(column);
                   return (
                     <Button
                       type="button"
@@ -474,7 +414,7 @@ export function GridHoverMoleculeCard({
                           </span>
                         ) : null}
                       </strong>
-                      {rangeLabel ? <small className="grid-hover-molecule-prop-range">{rangeLabel}</small> : null}
+
                       {described.position === null ? null : (
                         <span className="grid-hover-molecule-prop-track" aria-hidden="true">
                           <span style={{ left: `${(described.position * 100).toFixed(1)}%` }} />

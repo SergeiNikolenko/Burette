@@ -3045,6 +3045,7 @@
   }
 
   function scheduleMolstarStructureFocus(viewer, options = {}) {
+    if (activeConfig?.inspectorPreview === true) return;
     if (options.force !== true && !molstarAutoFocusEnabled(activeConfig)) return;
     if (options.allowWithContextFocus !== true && hasMolstarContextFocus(activeConfig)) return;
     const serial = ++molstarStructureFocusSerial;
@@ -26026,9 +26027,21 @@ SOFTWARE.
       );
     }
 
-    const viewer = typeof window.molstar.Viewer.create === 'function'
-      ? await window.molstar.Viewer.create('app', createViewerOptions())
-      : new window.molstar.Viewer('app', createViewerOptions());
+    // Mol* applies viewportBackgroundColor after its first canvas render.
+    // Keep that default-colour frame hidden until the configured canvas draws.
+    const app = document.getElementById('app');
+    app?.classList.add('buret-molstar-initializing');
+    let viewer;
+    try {
+      viewer = typeof window.molstar.Viewer.create === 'function'
+        ? await window.molstar.Viewer.create('app', createViewerOptions())
+        : new window.molstar.Viewer('app', createViewerOptions());
+      viewer.plugin.canvas3d?.setProps({ transparentBackground, renderer: { backgroundColor: canvasBackgroundColor() } });
+      viewer.plugin.canvas3d?.requestDraw();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    } finally {
+      app?.classList.remove('buret-molstar-initializing');
+    }
     // Set before loading data, when Mol* initializes the sequence state.
     viewer.plugin.spec.components = {
       ...viewer.plugin.spec.components,
@@ -26278,6 +26291,54 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     }
 
     await startMolstar(config, cb);
+    if (config.inspectorPreview === true) {
+      activeViewer.plugin.canvas3d?.setProps({ cameraResetDurationMs: 0, camera: { helper: { axes: { name: 'off', params: {} } } } });
+      const settlePreview = async () => {
+        const plugin = activeViewer.plugin;
+        plugin.canvas3d?.commit(true);
+        requestMolstarStructureFocus(activeViewer, { durationMs: 0 });
+        await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
+        plugin.managers.camera.orientAxes(undefined, 0);
+        await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
+      };
+      await settlePreview();
+      document.getElementById('app')?.classList.remove('buret-inspector-updating');
+      let pending = null;
+      let running = false;
+      let current = structureDataForMolstar(config).data;
+      window.addEventListener('message', async event => {
+        if (event.source !== window.parent || event.data?.source !== 'burette-inspector-host') return;
+        const data = event.data.molblock;
+        if (typeof data !== 'string' || !data || data.length > 350000) return;
+        pending = data;
+        if (running) return;
+        running = true;
+        const previousFrame = captureMolstarTransitionFrame();
+        const app = document.getElementById('app');
+        app?.classList.add('buret-inspector-updating');
+        activeViewer.plugin.animationLoop.stop({ noDraw: true });
+        try {
+          while (pending !== null) {
+            const next = pending;
+            pending = null;
+            if (next === current) continue;
+            await activeViewer.plugin.clear();
+            await loadPreparedStructure(activeViewer, { data: next, format: 'mol', label: 'Molecule' });
+            await applyConfiguredMolstarPreset(activeViewer, activeConfig);
+            current = next;
+            await settlePreview();
+          }
+        } catch (error) { console.error('Inspector preview:', error); }
+        finally {
+          app?.classList.remove('buret-inspector-updating');
+          removeMolstarTransitionFrame(previousFrame);
+          activeViewer.plugin.animationLoop.start();
+          running = false;
+        }
+      });
+      window.parent.postMessage({ source: 'burette-inspector-ready' }, '*');
+    }
+
   }
 
   function waitForFirstPaint() {

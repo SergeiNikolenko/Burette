@@ -70,3 +70,32 @@
 .structure-brief :is(input[type="checkbox"], input[type="range"]) { accent-color: var(--shadcn-primary); }
 .trajectory-smoothing-update-status { color: var(--text-muted); font-size: 12px; line-height: 18px; font-weight: 400; }
 .trajectory-smoothing-update-status[data-complete] { color: var(--status-success); }
+
+.grid-preview-mode { display: flex; margin-left: auto; gap: 2px; }
+.grid-molecule-3d { border: 0; display: block; position: relative; width: 100%; height: 260px; overflow: hidden; }
+.grid-molecule-3d canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.grid-molecule-3d-status { display: grid; place-items: center; min-height: 260px; color: var(--text-muted); font-size: 12px; }
+.grid-molecule-3d > .grid-molecule-3d-status { position: absolute; inset: 0; }
+
+.xyzrender-dock-panel { --accent: #888; accent-color: #888; }
+.grid-molecule-3d-menu { position: absolute; top: 4px; right: 4px; z-index: 2; }
+.grid-hover-molecule .grid-hover-molecule-props { grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); align-content: start; }
+.grid-hover-molecule .grid-hover-molecule-prop { min-height: 54px; }
+.xyzrender-dock-panel .xyzrender-dock-preset-tile[aria-pressed="true"] {
+  border-color: var(--text-muted);
+  box-shadow: none;
+  background: var(--surface-hover);
+}
+
+.xyzrender-animation-preview {
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  aspect-ratio: 1;
+  max-height: 55vh;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--surface-input);
+}
+.xyzrender-animation-preview img { width: 100%; height: 100%; object-fit: contain; }
+.xyzrender-animation-preview canvas { width: 100%; height: 100%; object-fit: contain; }

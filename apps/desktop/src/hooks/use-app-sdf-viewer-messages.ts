@@ -12,6 +12,7 @@ type SetPoseReviewSelections = (updater: (previous: Record<string, number>) => R
 
 type UseAppSdfViewerMessagesOptions = {
   activeDocument: ViewerDocument | null;
+  addDocuments: (documents: ViewerDocument[]) => void;
   documents: ViewerDocument[];
   openBrowserDevTextDocument: typeof openBrowserDevTextDocument;
   openDockingDocument: (receptorPath: string, ligandPaths: string[]) => Promise<unknown> | void;
@@ -40,6 +41,7 @@ function bodyString(value: unknown) {
 
 export function useAppSdfViewerMessages({
   activeDocument,
+  addDocuments,
   documents,
   openBrowserDevTextDocument,
   openDockingDocument,
@@ -102,7 +104,8 @@ export function useAppSdfViewerMessages({
           void openDockingDocument(receptorDocument.path, [document.path]);
           return true;
         }
-        openDocumentsInActiveTab([document]);
+        if (body.openTarget === "new-tab") addDocuments([document]);
+        else openDocumentsInActiveTab([document]);
         rememberRecentStructures([document]);
         pushStatus("Opened selected molecules in Molstar");
       } catch (error) {
@@ -173,7 +176,7 @@ export function useAppSdfViewerMessages({
     }
 
     return false;
-  }, [activeDocument, documents, openBrowserDevTextDocument, openDockingDocument, openDocuments, openDocumentsInActiveTab, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setPoseReviewSelections]);
+  }, [activeDocument, addDocuments, documents, openBrowserDevTextDocument, openDockingDocument, openDocuments, openDocumentsInActiveTab, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setPoseReviewSelections]);
 
   return { handleSdfViewerMessage };
 }

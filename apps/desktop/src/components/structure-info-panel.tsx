@@ -377,7 +377,13 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         {(!compositionSummary || compositionPending || compositionError) ? (
           <p>{inspectorSummaryLine(brief.kind, compositionSummary, compositionPending, compositionError)}</p>
         ) : null}
-        <InspectorHeaderStats document={document} summary={compositionSummary} pending={compositionPending} />
+        {document.renderer === "grid2d" && gridFilterModel?.documentId === document.id ? (
+          <div className="structure-inspector-header-stats">
+            <div><span>Molecules</span><strong>{gridFilterModel.total.toLocaleString()}</strong></div>
+            <div><span>Visible</span><strong>{gridFilterModel.visible.toLocaleString()}</strong></div>
+            <div><span>Properties</span><strong>{gridFilterModel.columns.length.toLocaleString()}</strong></div>
+          </div>
+        ) : <InspectorHeaderStats document={document} summary={compositionSummary} pending={compositionPending} />}
       </section>
 
       {document.renderer === "grid2d" ? (

@@ -2722,7 +2722,7 @@ assert.match(gridHoverMolecule, /aria-label="Resize data section"/);
 assert.match(gridHoverMolecule, /aria-expanded=\{propsOpen\}/);
 assert.match(gridHoverMolecule, /describePropValue\(entry\.value, column\)/);
 assert.match(gridHoverMolecule, /filterModel\?\.columns/);
-assert.match(gridHoverMolecule, /column\?\.varied === true/);
+assert.doesNotMatch(gridHoverMolecule, /column\?\.varied === true/);
 assert.match(gridHoverMolecule, /columnsById\.get\(entry\.columnId\)/);
 assert.match(gridHoverMolecule, /aria-label=\{`Open \$\{entry\.label\} filter`\}/);
 assert.match(gridHoverMolecule, /data-tone=\{described\.tone === "plain" \? undefined : described\.tone\}/);
@@ -2748,8 +2748,9 @@ assert.match(gridViewer, /state\.lastGridRowIndex/);
 assert.match(gridViewer, /HOVER_PREVIEW_SVG_LIMIT = 512_000/);
 assert.match(gridViewer, /columnId: String\(columnId\)\.slice\(0, 160\)/);
 assert.match(gridViewer, /state\.xyzrenderCardCache\.set\(key, \{ html, svg \}\)/);
-assert.match(gridHoverMolecule, /shown\?\.cardRenderer === "xyzrender"/);
-assert.match(gridHoverMolecule, /Rendering XYZRender preview/);
+assert.doesNotMatch(gridHoverMolecule, /shown\?\.cardRenderer === "xyzrender"/);
+assert.doesNotMatch(gridHoverMolecule, /Rendering XYZRender preview/);
+assert.match(gridHoverMolecule, /<GridMolecule3D/);
 assert.match(gridFilterSection, /focusRequestId/);
 assert.match(gridFilterSection, /scrollIntoView\(\{ block: "nearest" \}\)/);
 assert.match(gridViewer, /filterColumnVariationCache\.set\(column\.id, filterColumnVaries\(column\) && !filterColumnIsRowIndex\(column\)\)/);
@@ -4481,6 +4482,8 @@ assert.match(appSdfViewerMessagesHook, /void openDockingDocument\(receptorDocume
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening selected molecules in Molstar docking view\.\.\."\)/);
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opened selected molecules in Molstar"\)/);
 assert.match(appSdfViewerMessagesHook, /openDocumentsInActiveTab\(\[document\]\)/);
+assert.match(appSdfViewerMessagesHook, /body\.openTarget === "new-tab"/);
+assert.match(appSdfViewerMessagesHook, /addDocuments\(\[document\]\)/);
 assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfPoseDocument"/);
 assert.match(appSdfViewerMessagesHook, /const targetPath = requestedPath\.length > 0/);
 assert.match(appSdfViewerMessagesHook, /const requestedReceptorPath = bodyString\(body\.receptorPath\)\.trim\(\)/);
@@ -4727,7 +4730,7 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v188"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v192"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v86"/);
 assert.match(
   browserDevDocuments,
@@ -8117,7 +8120,7 @@ assert.match(gridViewer, /body\.type === 'gridPage' \|\| body\.type === 'xyzrend
 assert.match(gridUi, /buret-search-control buret-filter-control/);
 assert.doesNotMatch(gridUi, /aria-label="Search mode"/);
 assert.doesNotMatch(gridUi, /ToggleGroup/);
-assert.match(gridUi, /"name, table value or SMARTS"/);
+assert.match(gridUi, /"Search by name, value or SMARTS"/);
 assert.match(gridUi, /placeholder=\{searchPlaceholder\}/);
 assert.match(gridViewer, /function queryLooksLikeExplicitSMARTS\(value\)/);
 assert.match(gridViewer, /function queryLooksLikeSMILESFragment\(value\)/);
@@ -8432,7 +8435,8 @@ assert.match(gridViewer, /const molblock = typeof mol\.get_molblock === 'functio
 assert.match(gridViewer, /return sdfRecordFromMolblock\(molblock\)/);
 assert.match(gridViewer, /const text = String\(record\.text \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(!text\.trim\(\)\) return null;/);
 assert.match(gridViewer, /const molblock = String\(row\?\.molblock \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(molblock\.trim\(\)\) \{/);
-assert.match(gridViewer, /function requestSingleMolstarDocument\(row, cfg\)/);
+assert.match(gridViewer, /function requestSingleMolstarDocument\(row, cfg, openTarget = 'active-tab'\)/);
+assert.match(gridViewer, /openTarget,/);
 assert.match(gridViewer, /data-buret-detail-action="molstar">Open in Mol\*/);
 assert.match(gridViewer, /data-buret-detail-action="ketcher">Edit in Ketcher/);
 assert.match(gridViewer, /data-buret-detail-action="generate3d">Generate 3D/);

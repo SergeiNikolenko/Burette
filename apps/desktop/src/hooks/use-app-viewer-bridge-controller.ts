@@ -313,6 +313,7 @@ export function useAppViewerBridgeController({
   });
   const { handleSdfViewerMessage } = useAppSdfViewerMessages({
     activeDocument,
+    addDocuments,
     documents,
     openBrowserDevTextDocument,
     openDockingDocument,
