@@ -16,6 +16,7 @@
   const TOOLBAR_ORIENTATION_HYSTERESIS = 48;
   const PANEL_CLOSE_HIT_WIDTH = 38;
   const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;
+  const FINDER_PREVIEW_MAX_WIDTH_PX = 760;
   const MOLSTAR_TOUCH_CONTEXT_MENU_DELAY_MS = 520;
   const MOLSTAR_TOUCH_CONTEXT_MENU_MOVE_THRESHOLD_PX = 12;
   const MOLSTAR_TOUCH_PICK_RADIUS_PX = 18;
@@ -5340,6 +5341,7 @@
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
     installToolbarAutoLayoutTracking(toolbar);
+    installMolstarDragDropGuard();
     installMolstarFloatingPanelTracking();
     initSceneTree(viewer);
     initViewportControls(viewer);
@@ -5350,6 +5352,26 @@
     updateSdfPoseButton();
     updateThemeButton();
     applyLayoutState(viewer);
+  }
+
+  // Finder exposes its selected file as a drag payload while the pointer moves
+  // through the compact preview pane. Keep that host gesture away from Mol*,
+  // which would otherwise replace the structure with its "Drop file here"
+  // layer. Larger Quick Look windows retain Mol*'s normal file-drop behavior.
+  function installMolstarDragDropGuard() {
+    if (window.__buretteMolstarDragDropGuardInstalled) return;
+    window.__buretteMolstarDragDropGuardInstalled = true;
+    const guard = event => {
+      const config = activeConfig || window.BuretteConfig || {};
+      const isCompactFinderPreview = config.quickLookViewer === true && window.innerWidth <= FINDER_PREVIEW_MAX_WIDTH_PX;
+      const carriesFiles = Array.from(event?.dataTransfer?.types || []).includes('Files');
+      if (!isCompactFinderPreview || !carriesFiles) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    document.addEventListener('dragenter', guard, true);
+    document.addEventListener('dragover', guard, true);
+    document.addEventListener('drop', guard, true);
   }
 
   function setMolstarStructureDirty(dirty) {
