@@ -1076,33 +1076,41 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   z-index: 42;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   max-width: 220px;
-  height: 36px;
-  padding: 0 11px 0 9px;
+  height: 30px;
+  padding: 0 10px;
   border: 1px solid var(--buret-molstar-border);
-  border-radius: 999px;
-  background: var(--buret-molstar-panel-background);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--buret-molstar-panel-background) 92%, transparent);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
   color: var(--buret-molstar-text);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
-  font: inherit;
-  font-size: 12px;
+  box-shadow: 0 2px 8px var(--buret-molstar-shadow);
+  font: 500 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+  transition: background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 .buret-molecule-preview-chip:hover {
   background: var(--buret-molstar-hover-background);
-  transform: translateY(-1px);
+  box-shadow: 0 3px 12px var(--buret-molstar-shadow);
+}
+.buret-molecule-preview-chip:active {
+  transform: scale(.97);
 }
 .buret-molecule-preview-chip:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
+  outline: 1px solid var(--buret-molstar-muted-text);
   outline-offset: 2px;
 }
 .buret-molecule-preview-chip > svg {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
   flex: 0 0 auto;
-  color: var(--buret-molstar-accent);
+  color: var(--buret-molstar-muted-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-molecule-preview-chip { transition: none; }
+  .buret-molecule-preview-chip:active { transform: none; }
 }
 .buret-molecule-preview-chip-label {
   min-width: 0;
