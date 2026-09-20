@@ -38,6 +38,7 @@ const html = renderProjectGroup({ project, state, actions });
 
 for (const expected of [
   "project-folder-row",
+  "project-folder-icon",
   "project-folder-children",
   "aria-expanded=\"true\"",
   "aria-expanded=\"false\"",
