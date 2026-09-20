@@ -17,6 +17,17 @@ def feed(version, previous=None, arm64=False):
 
 
 class AppcastTests(unittest.TestCase):
+    def test_calendar_release_preserves_legacy_feed_and_download_identity(self):
+        result = feed('2026.9.1', feed('2.3.22'))
+        items = ET.fromstring(result).findall('channel/item')
+        self.assertEqual([item.findtext('s:version', namespaces=NS) for item in items],
+                         ['2026.9.1', '2.3.22'])
+        self.assertEqual(items[0].findtext('title'), 'Burette 2026.9.1')
+        self.assertEqual(items[0].findtext('s:shortVersionString', namespaces=NS), '2026.9.1')
+        self.assertEqual(items[0].find('enclosure').get('url'),
+                         'https://github.com/SergeiNikolenko/Burette/releases/download/v2026.9.1/Burette-2026.9.1.zip')
+        self.assertIsNone(items[0].find('s:channel', NS))
+
     def test_enclosure_and_compatibility(self):
         item = ET.fromstring(feed('2.3.19', arm64=True)).find('channel/item')
         self.assertEqual(item.find('enclosure').attrib, {
