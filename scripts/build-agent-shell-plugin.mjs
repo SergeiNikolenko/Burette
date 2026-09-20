@@ -15,6 +15,8 @@ const runtimeScripts = [
   'agent-preview.mjs',
   'agent-shell-server.mjs',
   'burette-agent.mjs',
+  'burette-deep-links.mjs',
+  'dev-namespace.mjs',
   'mvs-story.mjs',
   'mvs-story-templates.mjs',
 ];

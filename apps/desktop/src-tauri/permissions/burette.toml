@@ -36,6 +36,8 @@ commands.allow = [
   "database_secret_status",
   "database_forget_secret",
   "startup_documents",
+  "drain_deep_links",
+  "claim_agent_session",
   "startup_agent_session",
   "pick_open_targets",
   "classify_open_paths",

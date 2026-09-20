@@ -167,7 +167,7 @@ with open(source_path, "rb") as source_file:
     source = plistlib.load(source_file)
 with open(target_path, "rb") as target_file:
     target = plistlib.load(target_file)
-for key in ("CFBundleDocumentTypes", "UTExportedTypeDeclarations"):
+for key in ("CFBundleDocumentTypes", "UTExportedTypeDeclarations", "CFBundleURLTypes"):
     target[key] = source[key]
 with open(target_path, "wb") as target_file:
     plistlib.dump(target, target_file, sort_keys=False)

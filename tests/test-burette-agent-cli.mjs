@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, get as httpGet } from 'node:http';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
 function get(url, headers = {}) {
@@ -397,6 +397,10 @@ try {
     assert.equal(desktopPayload.result.mode, 'desktop-app');
     assert.equal(desktopPayload.result.sessionDir, sessionDir);
     assert.equal(desktopPayload.result.launched, false);
+    const sessionLink = new URL(desktopPayload.result.deepLink);
+    assert.equal(sessionLink.protocol, 'burette:');
+    assert.equal(sessionLink.hostname, 'session');
+    await rm(resolve(homedir(), 'Library/Application Support/com.local.BuretteV10/deep-links', `${sessionLink.pathname.slice(1)}.json`));
 
     const session = JSON.parse(await readFile(resolve(sessionDir, 'session.json'), 'utf8'));
     assert.equal(session.mode, 'desktop-app');

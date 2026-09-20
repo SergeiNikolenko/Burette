@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { navigationLink, registerSessionLink } from './burette-deep-links.mjs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -32,6 +33,8 @@ function usage() {
   node scripts/burette-agent.mjs open --mode browser-preview <file> [--port 5177] [--host 127.0.0.1]
   node scripts/burette-agent.mjs open --mode browser-agent-shell <file> [--host 127.0.0.1]
   node scripts/burette-agent.mjs open --mode desktop-app <file> [--app Burette] [--session-dir /tmp/session] [--no-launch]
+  node scripts/burette-agent.mjs link pdb <id> | link open <absolute-path> | link project <absolute-path>
+  node scripts/burette-agent.mjs link --session-dir <desktop-agent-session>
   node scripts/burette-agent.mjs observe --url <tokenized-preview-url>
   node scripts/burette-agent.mjs observe --session-dir <desktop-agent-session>
   node scripts/burette-agent.mjs act --url <tokenized-preview-url> '<json-action>' [--wait-ms 5000]
@@ -182,6 +185,13 @@ async function main() {
   const options = parseOptions(args);
   if (command === 'help' || options.help) {
     usage();
+    return;
+  }
+  if (command === 'link') {
+    const deepLink = options.sessionDir
+      ? await registerSessionLink(resolve(options.sessionDir))
+      : navigationLink(options.rest[0], options.rest[1] || '');
+    console.log(JSON.stringify({ ok: true, apiVersion, result: { deepLink } }, null, 2));
     return;
   }
   if (command === 'open') {
@@ -841,6 +851,7 @@ async function openDesktopApp(file, options) {
     apiVersion: 'burette-agent-control/v1',
     actions: []
   });
+  const deepLink = await registerSessionLink(sessionDir);
   if (!options.noLaunch) {
     const app = options.app || 'Burette';
     const child = spawn('open', desktopOpenArgs(app, sessionDir, resolve(file)), {
@@ -855,6 +866,7 @@ async function openDesktopApp(file, options) {
     apiVersion,
     result: {
       mode: 'desktop-app',
+      deepLink,
       sessionDir,
       launched: !options.noLaunch,
       initialPaths: [resolve(file)],

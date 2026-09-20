@@ -1,3 +1,4 @@
+import { useDeepLinks } from "./use-deep-links";
 import { useAgentSession } from "./use-agent-session";
 import { useAppClipboard } from "./use-app-clipboard";
 import { useAppOpenDropMergeCollections } from "./use-app-open-drop-merge-collections";
@@ -56,6 +57,7 @@ type UseAppOpenDropControllerOptions = {
   openFepSetupWorkspace: OpenFepSetupWorkspace;
   openKetcherWithStructures: OpenKetcherWithStructures;
   openPaths: OpenPaths;
+  fetchPdbStructure: (id: string) => Promise<void>;
   openStructureRecords: OpenStructureRecords;
   openTextDocuments: OpenTextDocuments;
   pushErrorStatus: PushErrorStatus;
@@ -83,6 +85,7 @@ export function useAppOpenDropController({
   openFepSetupWorkspace,
   openKetcherWithStructures,
   openPaths,
+  fetchPdbStructure,
   openStructureRecords,
   openTextDocuments,
   pushErrorStatus,
@@ -94,7 +97,7 @@ export function useAppOpenDropController({
     activeDocument,
     mergeMoleculeCollections,
   });
-  useAgentSession({
+  const activateSession = useAgentSession({
     activeDocument,
     activeTabId,
     activeTabKind,
@@ -108,6 +111,7 @@ export function useAppOpenDropController({
     pushErrorStatus,
     setDockDocument,
   });
+  useDeepLinks({ openPaths, fetchPdbStructure, activateSession, pushErrorStatus });
   const {
     dropActive,
     dropPreview,

@@ -36,6 +36,7 @@ const PUBLIC_CONTRACT = {
   tools: [
     "burette.get_context",
     "burette.open_workspace",
+    "burette.create_link",
     "burette.open_ketcher",
     "burette.observe_workspace",
     "burette.control_viewer",
