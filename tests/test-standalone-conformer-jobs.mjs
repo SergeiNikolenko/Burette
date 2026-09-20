@@ -7,6 +7,7 @@ const jobs = [], calls = [];
 let fail = false;
 const module = { exports: {} };
 new Function('require', 'exports', code)((name) => {
+  if (name === './compute-analysis') return {};
   if (name === './conformer-job-events') return { publishConformerJob: job => jobs.push(job) };
   if (name === '@tauri-apps/api/core') return { invoke: async (command, payload) => {
     calls.push([command, payload]);

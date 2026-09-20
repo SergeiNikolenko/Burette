@@ -22,7 +22,7 @@ assert.match(workflow, /column\("AtomicCharges"\)/);
 assert.match(workflow, /"PM6_SP"/);
 assert.match(workflow, /SemiempiricalMethod::Pm6, "PM6", "pm6"/);
 assert.match(workflow, /"AM1\*"/);
-assert.match(gridMessages, /invoke<GridSemiempiricalResult>\("compute_evaluate_grid_semiempirical"/);
+assert.match(gridMessages, /runAnalysisWorkflow<GridSemiempiricalResult>\("compute_evaluate_grid_semiempirical"/);
 assert.match(gridMessages, /Metal SCF kernels/);
 assert.match(gridMessages, /openTextDocuments\(\[result\.reportPath\], \{ background: true \}\)/);
 assert.match(gridViewer, /evaluateSemiempiricalGridSelection/);

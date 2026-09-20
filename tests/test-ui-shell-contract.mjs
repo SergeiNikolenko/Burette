@@ -6789,7 +6789,7 @@ for (const runtimeSource of [previewViewer]) {
   assert.match(runtimeSource, /if \(options\.installControls !== false\) installDockingPoseControls\(viewer, trajectoryControlsForPrepared\(prepared\)\)/);
   assert.match(runtimeSource, /const sampledIndexes = sampledXyzFrameIndexes\(frames\.length\)/);
   assert.match(runtimeSource, /xyzFrameOverlayStateKey\(rawSignature, frames, prepared, foregroundStyle, resolvedContextStyle, contextOpacity, contextColor, sampledIndexes\)/);
-  assert.match(runtimeSource, /function alignXyzFramesToFirst\(frames\)/);
+  assert.match(runtimeSource, /function alignXyzFramesToFirst\(frames, signal\)/);
   assert.match(runtimeSource, /const framesAligned = xyzFrameAlignment\?\.signature === rawSignature/);
   assert.match(runtimeSource, /frames = framesAligned \? xyzFrameAlignment\.frames : splitXyzFrames\(raw\)/);
   assert.match(runtimeSource, /if \(!state \|\| state\.key !== stateKey \|\| !xyzFrameOverlayStateStillLoaded\(viewer, state\)\) \{/);
@@ -6873,11 +6873,11 @@ assert.match(structureInfoPanel, /function normalizeSdfContextOpacity\(value: st
 // rebuilds (slider drags, rapid style clicks) must run through one queue -
 // while loadPreparedStructure keeps calling the *Now variants to avoid
 // deadlocking the queue from inside a running rebuild.
-assert.match(previewViewer, /function queueMolstarSceneRebuild\(run\)/);
-assert.match(previewViewer, /function applySdfCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applySdfCollectionVisibilityNow\(viewer, prepared, activePose, options\)\);/);
-assert.match(previewViewer, /function applyDockingPoseCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose, options\)\);/);
-assert.match(previewViewer, /function applyXyzFrameOverlayVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyXyzFrameOverlayVisibilityNow\(viewer, prepared, activePose, options\)\);/);
-assert.match(previewViewer, /function applyDockingSceneVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyDockingSceneVisibilityNow\(viewer, prepared, activePose, options\)\);/);
+assert.match(previewViewer, /function queueMolstarSceneRebuild\(run, appearanceKey = null\)/);
+assert.match(previewViewer, /function applySdfCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applySdfCollectionVisibilityNow\(viewer, prepared, activePose, options\),/);
+assert.match(previewViewer, /function applyDockingPoseCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose, options\),/);
+assert.match(previewViewer, /function applyXyzFrameOverlayVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyXyzFrameOverlayVisibilityNow\(viewer, prepared, activePose, options\),/);
+assert.match(previewViewer, /function applyDockingSceneVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyDockingSceneVisibilityNow\(viewer, prepared, activePose, options\),/);
 assert.match(previewViewer, /if \(prepared\.kind === 'sdf-collection'\) \{\s*await applySdfCollectionVisibilityNow\(viewer, prepared,/);
 assert.match(previewViewer, /await applyXyzFrameOverlayVisibilityNow\(viewer, prepared, readTrajectoryControlIndex\(/);
 assert.match(previewViewer, /if \(prepared\.dockingSceneMode\) \{\s*await applyDockingSceneVisibilityNow\(viewer, prepared, prepared\.activePose\);/);
@@ -6888,7 +6888,7 @@ assert.match(structureInfoPanel, /const SDF_CONTEXT_OPACITY_SEND_DELAY_MS = 150/
 assert.match(structureInfoPanel, /opacitySendTimer\.current = window\.setTimeout\(\(\) => \{[\s\S]*?type: "set_sdf_context_opacity",[\s\S]*?opacity: normalized,[\s\S]*?\}, SDF_CONTEXT_OPACITY_SEND_DELAY_MS\)/);
 // A ghost background surface over a whole collection would be re-sorted every
 // frame at full grid resolution; the coarser grid keeps it interactive.
-assert.match(previewViewer, /type: 'molecular-surface', typeParams: ghost \? \{ \.\.\.typeParams, resolution: 2 \} : typeParams/);
+assert.match(previewViewer, /type: 'molecular-surface', typeParams: \{ \.\.\.typeParams, resolution: ghost \? 2 : 0\.5 \}/);
 // SDF collections get the same atom-order Align toggle the XYZ overlay has:
 // enabled for homogeneous collections (conformers/poses of one molecule),
 // visible-but-disabled with an explanation otherwise, and re-applied when a

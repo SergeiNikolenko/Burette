@@ -1,3 +1,4 @@
+import { runAnalysisWorkflow } from "../lib/compute-analysis";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { generateBrowserDev3DConformer, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
@@ -145,11 +146,11 @@ export function useAppGridConformerMessages({
         return true;
       }
       reply("gridSemiempiricalStarted");
-      void invoke<GridSemiempiricalResult>("compute_evaluate_grid_semiempirical", {
-        request: { documentId, sourceIndexes, method },
-      }).then((result) => {
+      showGridComputeJobs();
+      void runAnalysisWorkflow<GridSemiempiricalResult>("compute_evaluate_grid_semiempirical",
+        { documentId, sourceIndexes, method }, "Grid selection").then((result) => {
         if (result.reportPath) void Promise.resolve().then(() => openTextDocuments([result.reportPath!], { background: true }))
-          .catch((error) => pushErrorStatus("Result saved; could not open report", error));
+          .catch((error) => pushErrorStatus(error, "Result saved; could not open report"));
         const converged = result.rows.filter((row) => row.converged).length;
         const failed = result.rows.length - converged;
         const execution = result.backend === "nativeMetalScfHybrid"
@@ -195,15 +196,14 @@ export function useAppGridConformerMessages({
       }
       reply("gridAlignmentStarted");
       void (async () => {
-        const result = await invoke<GridAlignmentResult>("compute_align_grid_poses", {
-          request: {
+        showGridComputeJobs();
+        const result = await runAnalysisWorkflow<GridAlignmentResult>("compute_align_grid_poses", {
             documentId,
             sourceIndexes,
             maxMemoryBytes: 2 * 1_024 * 1_024 * 1_024,
-          },
-        });
+        }, "Grid selection");
         if (result.reportPath) void Promise.resolve().then(() => openTextDocuments([result.reportPath!], { background: true }))
-          .catch((error) => pushErrorStatus("Result saved; could not open report", error));
+          .catch((error) => pushErrorStatus(error, "Result saved; could not open report"));
         const document = await invoke<ViewerDocument>("open_text_structure", {
           request: {
             title: result.title,

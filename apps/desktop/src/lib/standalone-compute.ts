@@ -1,3 +1,4 @@
+import { runAnalysisWorkflow } from "./compute-analysis";
 import { publishConformerJob } from "./conformer-job-events";
 import type { ConformerJob } from "../types";
 
@@ -140,9 +141,9 @@ export function runStandaloneSemiempirical(
   source: StandaloneComputeSource,
   method = "RM1",
 ): Promise<StandaloneSemiempiricalResult> {
-  return withInlineSource(source, ({ documentId, sourceIndexes }) => invoke<StandaloneSemiempiricalResult>(
+  return withInlineSource(source, ({ documentId, sourceIndexes }) => runAnalysisWorkflow<StandaloneSemiempiricalResult>(
     "compute_evaluate_grid_semiempirical",
-    { request: { documentId, sourceIndexes, method } },
+    { documentId, sourceIndexes, method }, source.title,
   ));
 }
 
@@ -153,12 +154,10 @@ export function runStandaloneAlignment(
     if (sourceIndexes.length < 2) {
       throw new Error("Alignment requires an SDF ensemble with at least two poses.");
     }
-    return invoke<StandaloneAlignmentResult>("compute_align_grid_poses", {
-      request: {
+    return runAnalysisWorkflow<StandaloneAlignmentResult>("compute_align_grid_poses", {
         documentId,
         sourceIndexes,
         maxMemoryBytes: 2 * 1_024 * 1_024 * 1_024,
-      },
-    });
+    }, source.title);
   });
 }

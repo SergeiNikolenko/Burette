@@ -53,7 +53,10 @@ export function useAppChemistryJobs({
   const cancelledXtbJobIdsRef = useRef(new Set<string>());
 
   useEffect(() => subscribeConformerJobs((job) => {
-    setConformerJobs((previous) => [job, ...previous.filter((entry) => entry.id !== job.id)].slice(0, 20));
+    const stopping = cancelledConformerJobIdsRef.current.has(job.id) && job.status === "running";
+    if (job.status !== "running") cancelledConformerJobIdsRef.current.delete(job.id);
+    const visibleJob = stopping ? { ...job, cancelable: false, progress: "Stopping after the current molecule…" } : job;
+    setConformerJobs((previous) => [visibleJob, ...previous.filter((entry) => entry.id !== job.id)].slice(0, 20));
   }), []);
 
   // The inspector decides what it can offer from these, and until now they were
@@ -170,21 +173,23 @@ export function useAppChemistryJobs({
     cancelledConformerJobIdsRef.current.add(jobId);
     setConformerJobs((previous) => previous.map((job) => job.id === jobId && job.status === "running" ? {
       ...job,
-      status: "cancelled",
-      completedAt: Date.now(),
-      error: "Conformer job cancelled.",
+      status: job.durableJobId ? "running" : "cancelled",
+      completedAt: job.durableJobId ? undefined : Date.now(),
+      cancelable: false,
+      progress: job.durableJobId ? "Stopping after the current molecule…" : "Calculation cancelled",
+      error: null,
     } : job));
     try {
       const job = conformerJobs.find((entry) => entry.id === jobId);
       if (job?.durableJobId) {
         if (!await cancelComputeJob(job.durableJobId)) throw new Error("The calculation finished before cancellation was accepted.");
       } else await cancelConformerRequest(jobId);
-      pushStatus("Conformer job cancelled");
+      pushStatus(job?.durableJobId ? "Cancellation requested; waiting for the current molecule to stop" : "Calculation cancelled");
     } catch (error) {
       cancelledConformerJobIdsRef.current.delete(jobId);
       setConformerJobs((previous) => previous.map((job) => {
-        if (job.id !== jobId || job.status !== "cancelled") return job;
-        if (!job.result) return { ...job, status: "running", completedAt: undefined, error: null };
+        if (job.id !== jobId || !["cancelled", "running"].includes(job.status)) return job;
+        if (!job.result) return { ...job, status: "running", cancelable: true, completedAt: undefined, error: null };
         return {
           ...job,
           status: job.result.exitCode === 130 ? "cancelled" : job.result.ok ? (job.result.exitCode === 0 ? "success" : "recovered") : "failed",

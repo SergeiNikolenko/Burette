@@ -11264,34 +11264,58 @@ SOFTWARE.
     return best;
   }
 
-  async function alignXyzFramesToFirst(frames) {
-    if (!xyzFramesAlignable(frames)) {
-      throw new Error('Alignment needs every structure to list the same atoms in the same order.');
-    }
+  async function alignXyzFramesToFirst(frames, signal) {
+    const owner = activeMolstarPrepared;
+    const assertCurrent = () => {
+      if (signal?.aborted || activeMolstarPrepared !== owner) throw new DOMException('Alignment cancelled', 'AbortError');
+    };
+    assertCurrent();
+    if (!xyzFramesAlignable(frames)) throw new Error('Alignment needs every structure to list the same atoms in the same order.');
     const referencePoints = frames[0].atoms.map(atom => [atom.x, atom.y, atom.z]);
+    const source = `${largestEigenvectorSymmetric4.toString()}; ${pdbRigidAlignment.toString()};
+      self.onmessage = ({ data }) => {
+        try {
+          const result = pdbRigidAlignment(data.moving, data.reference);
+          self.postMessage(result ? { matrix: result.matrix, rmsd: result.rmsd } : { error: 'Not enough atoms to align these structures.' });
+        } catch (error) { self.postMessage({ error: error.message }); }
+      };`;
+    const workerUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    let worker;
     let rmsdTotal = 0;
     const aligned = [frames[0]];
-    const owner = activeMolstarPrepared;
-    for (let index = 1; index < frames.length; index++) {
-      await new Promise(resolve => setTimeout(resolve, 0));
-      if (activeMolstarPrepared !== owner) throw new Error("The active structure changed during alignment.");
-      const frame = frames[index];
-      const alignment = pdbRigidAlignment(frame.atoms.map(atom => [atom.x, atom.y, atom.z]), referencePoints);
-      if (!alignment) throw new Error('Not enough atoms to align these structures.');
-      rmsdTotal += alignment.rmsd;
-      aligned.push({
-        ...frame,
-        atoms: frame.atoms.map(atom => {
-          const [x, y, z] = alignment.apply([atom.x, atom.y, atom.z]);
-          return { ...atom, x, y, z };
-        })
-      });
-    }
-    return {
-      frames: aligned,
-      averageRmsd: rmsdTotal / Math.max(1, frames.length - 1),
-      atomCount: frames[0].atoms.length
-    };
+    try {
+      worker = new Worker(workerUrl);
+      for (let index = 1; index < frames.length; index++) {
+        assertCurrent();
+        const frame = frames[index];
+        const result = await new Promise((resolve, reject) => {
+          const cleanup = () => { clearInterval(watch); signal?.removeEventListener('abort', cancel); };
+          const fail = error => { cleanup(); reject(error); };
+          const cancel = () => fail(new DOMException('Alignment cancelled', 'AbortError'));
+          const watch = setInterval(() => { if (activeMolstarPrepared !== owner) cancel(); }, 100);
+          signal?.addEventListener('abort', cancel, { once: true });
+          worker.onmessage = ({ data }) => { cleanup(); data.error ? reject(new Error(data.error)) : resolve(data); };
+          worker.onerror = event => fail(new Error(event.message || 'Alignment worker failed'));
+          worker.postMessage({ moving: frame.atoms.map(atom => [atom.x, atom.y, atom.z]), reference: referencePoints });
+        });
+        assertCurrent();
+        const matrix = result.matrix;
+        const atoms = [];
+        for (let atomIndex = 0; atomIndex < frame.atoms.length; atomIndex++) {
+          if (atomIndex % 4096 === 0) { await new Promise(resolve => setTimeout(resolve, 0)); assertCurrent(); }
+          const atom = frame.atoms[atomIndex];
+          atoms.push({ ...atom,
+            x: matrix[0] * atom.x + matrix[4] * atom.y + matrix[8] * atom.z + matrix[12],
+            y: matrix[1] * atom.x + matrix[5] * atom.y + matrix[9] * atom.z + matrix[13],
+            z: matrix[2] * atom.x + matrix[6] * atom.y + matrix[10] * atom.z + matrix[14] });
+        }
+        rmsdTotal += result.rmsd;
+        aligned.push({ ...frame, atoms });
+        setStatus(`[web] Aligning structures: ${index + 1} / ${frames.length}`);
+      }
+      assertCurrent();
+      return { frames: aligned, averageRmsd: rmsdTotal / Math.max(1, frames.length - 1), atomCount: frames[0].atoms.length };
+    } finally { worker?.terminate(); URL.revokeObjectURL(workerUrl); }
   }
 
   function structureSceneStoryStage(label, index) {
@@ -14447,10 +14471,19 @@ SOFTWARE.
   // color actions, pose stepping, toolbar toggles) is serialized through this
   // queue; callers that already run inside a rebuild use the *Now variants.
   let molstarSceneRebuildChain = Promise.resolve();
-  function queueMolstarSceneRebuild(run) {
-    const job = molstarSceneRebuildChain.then(() => run(), () => run());
-    molstarSceneRebuildChain = job.then(() => undefined, () => undefined);
-    return job;
+  const pendingSceneAppearance = new Map();
+  function queueMolstarSceneRebuild(run, appearanceKey = null) {
+    const pending = appearanceKey && pendingSceneAppearance.get(appearanceKey);
+    if (pending) { pending.run = run; return pending.job; }
+    const entry = { run, job: null };
+    const execute = () => {
+      if (appearanceKey) pendingSceneAppearance.delete(appearanceKey);
+      return entry.run();
+    };
+    entry.job = molstarSceneRebuildChain.then(execute, execute);
+    if (appearanceKey) pendingSceneAppearance.set(appearanceKey, entry);
+    molstarSceneRebuildChain = entry.job.then(() => undefined, () => undefined);
+    return entry.job;
   }
 
   async function switchCachedPoseLayer(viewer, state, index, entry, applyStyle) {
@@ -14491,7 +14524,8 @@ SOFTWARE.
   }
 
   function applySdfCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
-    return queueMolstarSceneRebuild(() => applySdfCollectionVisibilityNow(viewer, prepared, activePose, options));
+    return queueMolstarSceneRebuild(() => applySdfCollectionVisibilityNow(viewer, prepared, activePose, options),
+      options.contextOpacity != null || options.contextColor != null ? prepared : null);
   }
 
   function applySdfCollectionAlignmentLayers(prepared, layers) {
@@ -14622,7 +14656,8 @@ SOFTWARE.
   }
 
   function applyDockingPoseCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
-    return queueMolstarSceneRebuild(() => applyDockingPoseCollectionVisibilityNow(viewer, prepared, activePose, options));
+    return queueMolstarSceneRebuild(() => applyDockingPoseCollectionVisibilityNow(viewer, prepared, activePose, options),
+      options.contextOpacity != null || options.contextColor != null ? prepared : null);
   }
 
   async function applyDockingPoseCollectionVisibilityNow(viewer, prepared, activePose = 0, options = {}) {
@@ -14695,7 +14730,8 @@ SOFTWARE.
   }
 
   function applyXyzFrameOverlayVisibility(viewer, prepared, activePose = 0, options = {}) {
-    return queueMolstarSceneRebuild(() => applyXyzFrameOverlayVisibilityNow(viewer, prepared, activePose, options));
+    return queueMolstarSceneRebuild(() => applyXyzFrameOverlayVisibilityNow(viewer, prepared, activePose, options),
+      options.contextOpacity != null || options.contextColor != null ? prepared : null);
   }
 
   async function applyXyzFrameOverlayVisibilityNow(viewer, prepared, activePose = 0, options = {}) {
@@ -14940,16 +14976,17 @@ SOFTWARE.
     const contextOpacity = uniform ? 1 : readSdfCollectionContextOpacity(activeConfig);
     const contextColor = uniform ? 'colored' : readSdfCollectionContextColor(activeConfig);
     const params = { style, resolvedContextStyle, contextOpacity, contextColor, uniform };
-    const stateKey = [dockingSceneStateKey(prepared, style), 'all', resolvedContextStyle, contextOpacity, contextColor].join('|');
+    const stateKey = [dockingSceneStateKey(prepared, style), 'all', resolvedContextStyle].join('|');
+    const appearanceKey = `${contextOpacity}|${contextColor}`;
     const state = activeDockingSceneVisibilityState;
     if (state && state.key === stateKey && dockingSceneVisibilityStateStillLoaded(viewer, state)) {
-      if (state.activeIndex !== activeIndex && !uniform) {
+      if ((state.activeIndex !== activeIndex || state.appearanceKey !== appearanceKey) && !uniform) {
         const structuresByPose = dockingSceneStructuresByPose(viewer, state.poseRefs);
-        await clearMolstarMainRepresentationsForStructures(viewer, structuresByPose.flat());
         await styleDockingSceneOverlay(viewer, structuresByPose, activeIndex, params);
         await applyMolstarWaterLineRepresentation(viewer);
       }
       state.activeIndex = activeIndex;
+      state.appearanceKey = appearanceKey;
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
       return true;
@@ -14971,7 +15008,7 @@ SOFTWARE.
     }
     await styleDockingSceneOverlay(viewer, dockingSceneStructuresByPose(viewer, poseRefs), activeIndex, params);
     await applyMolstarWaterLineRepresentation(viewer);
-    activeDockingSceneVisibilityState = { viewer, key: stateKey, poseRefs, activeIndex };
+    activeDockingSceneVisibilityState = { viewer, key: stateKey, poseRefs, activeIndex, appearanceKey };
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
     return true;
@@ -15024,7 +15061,8 @@ SOFTWARE.
   }
 
   function applyDockingSceneVisibility(viewer, prepared, activePose = 0, options = {}) {
-    return queueMolstarSceneRebuild(() => applyDockingSceneVisibilityNow(viewer, prepared, activePose, options));
+    return queueMolstarSceneRebuild(() => applyDockingSceneVisibilityNow(viewer, prepared, activePose, options),
+      options.contextOpacity != null || options.contextColor != null ? prepared : null);
   }
 
   async function applyDockingSceneVisibilityNow(viewer, prepared, activePose = 0, options = {}) {
@@ -15146,7 +15184,7 @@ SOFTWARE.
       // every frame; a coarser grid keeps it interactive without visibly
       // changing a faded backdrop.
       const typeParams = withAlpha({ alpha: ghost ? 0.16 : 0.72 });
-      return themed({ type: 'molecular-surface', typeParams: ghost ? { ...typeParams, resolution: 2 } : typeParams });
+      return themed({ type: 'molecular-surface', typeParams: { ...typeParams, resolution: ghost ? 2 : 0.5 } });
     }
     return themed({ type: 'ball-and-stick', typeParams: withAlpha({ sizeFactor: ghost ? 0.095 : 0.16 }) });
   }
@@ -15168,14 +15206,34 @@ SOFTWARE.
     });
   }
 
+  const collectionRepresentations = new WeakMap();
   async function applyMolstarRepresentationsToStructures(viewer, structures, representation) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
+    const state = plugin.state.data;
+    const reusable = (structures || []).map(structure => collectionRepresentations.get(structure.cell));
+    if (reusable.length && reusable.every(entry => entry && state.cells.has(entry.ref)
+        && entry.type === representation.type && entry.color === representation.color)) {
+      const update = state.build();
+      for (const entry of reusable) update.to(entry.ref).update(old => ({ ...old,
+        type: { ...old.type, params: { ...entry.defaults, ...representation.typeParams } },
+        colorTheme: { ...old.colorTheme, params: { ...old.colorTheme.params, ...representation.colorParams } }
+      }));
+      await update.commit();
+      return;
+    }
     await clearMolstarMainRepresentationsForStructures(viewer, structures);
     let created = 0;
     for (const structure of structures || []) {
       const component = await tryCreateMolstarComponent(plugin, structure, 'all');
-      if (await addMolstarRepresentation(plugin, component, representation)) created += 1;
+      if (!component) continue;
+      const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation);
+      if (result?.ref && structure.cell) {
+        const params = state.cells.get(result.ref)?.transform?.params?.type?.params || {};
+        collectionRepresentations.set(structure.cell, { ref: result.ref, type: representation.type,
+          color: representation.color, defaults: { ...params, alpha: 1, transparentBackfaces: 'off' } });
+      }
+      if (result) created += 1;
     }
     if (created === 0) throw new Error('Mol* could not create a component for this style.');
   }
@@ -18971,18 +19029,24 @@ SOFTWARE.
         }
       });
     }
+    const alignmentOwner = activeMolstarPrepared;
+    let alignmentControlsDisposed = false;
+    let alignmentAbortController = null;
     if (align && alignmentSupported && xyzAlignFrames) {
       const toggleXyzAlignment = async () => {
-        align.disabled = true;
+        if (alignmentAbortController) { alignmentAbortController.abort(); return; }
+        alignmentAbortController = new AbortController();
+        align.textContent = 'Cancel';
         const enabling = xyzFrameAlignment?.signature !== xyzAlignSignature;
         try {
           let result = null;
           if (enabling) {
-            result = await alignXyzFramesToFirst(xyzAlignFrames);
+            result = await alignXyzFramesToFirst(xyzAlignFrames, alignmentAbortController.signal);
             xyzFrameAlignment = { signature: xyzAlignSignature, frames: result.frames };
           } else {
             xyzFrameAlignment = null;
           }
+          align.disabled = true;
           return applyXyzFrameOverlayVisibility(viewer, prepared, activePose, { focus: true, installControls: false }).then(() => {
             align.textContent = enabling ? 'Aligned' : 'Align';
             align.classList.toggle('active', enabling);
@@ -18996,25 +19060,29 @@ SOFTWARE.
             }
             setTimeout(hideStatus, 2200);
           }).catch(error => {
+            if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) return;
             if (enabling) xyzFrameAlignment = null;
-            setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
-          }).finally(() => { align.disabled = false; });
+            setStatus(error?.name === 'AbortError' ? '[web] Alignment cancelled.' : `[web] Could not align structures.\n\n${error?.message || String(error)}`, error?.name === 'AbortError' ? undefined : 'error');
+          }).finally(() => { align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align'; });
         } catch (error) {
+          if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) { alignmentAbortController = null; return; }
           if (enabling) xyzFrameAlignment = null;
-          align.disabled = false;
-          setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
+          align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align';
+          setStatus(error?.name === 'AbortError' ? '[web] Alignment cancelled.' : `[web] Could not align structures.\n\n${error?.message || String(error)}`, error?.name === 'AbortError' ? undefined : 'error');
           return Promise.resolve();
         }
       };
       align.addEventListener('click', () => { void toggleXyzAlignment(); });
     } else if (align && alignmentSupported && sdfCollectionAlignFrames) {
       const toggleSdfCollectionAlignment = async () => {
-        align.disabled = true;
+        if (alignmentAbortController) { alignmentAbortController.abort(); return; }
+        alignmentAbortController = new AbortController();
+        align.textContent = 'Cancel';
         const enabling = sdfCollectionAlignment?.signature !== sdfAlignSignature;
         try {
           let result = null;
           if (enabling) {
-            result = await alignXyzFramesToFirst(sdfCollectionAlignFrames);
+            result = await alignXyzFramesToFirst(sdfCollectionAlignFrames, alignmentAbortController.signal);
             const alignedMolecules = sdfAlignTarget.collectionMolecules.map((molecule, index) => ({
               ...molecule,
               atoms: (molecule.atoms || []).map((atom, atomIndex) => {
@@ -19022,6 +19090,7 @@ SOFTWARE.
                 return { ...atom, x: moved.x, y: moved.y, z: moved.z };
               })
             }));
+            if (alignmentAbortController.signal.aborted || (alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) throw new DOMException('Alignment cancelled', 'AbortError');
             const collection = sdfMoleculesToPdbCollection(alignedMolecules, sdfAlignTarget.label);
             if (!collection) throw new Error('Could not rebuild the aligned molecule collection.');
             sdfCollectionAlignment = {
@@ -19040,6 +19109,7 @@ SOFTWARE.
             if (original) applySdfCollectionAlignmentLayers(sdfAlignTarget, original);
             sdfCollectionAlignment = null;
           }
+          align.disabled = true;
           resetSdfCollectionVisibilityState(viewer);
           return applySdfCollectionVisibility(viewer, sdfAlignTarget, activePose, { focus: true }).then(() => {
             align.textContent = enabling ? 'Aligned' : 'Align';
@@ -19054,13 +19124,15 @@ SOFTWARE.
             }
             setTimeout(hideStatus, 2200);
           }).catch(error => {
+            if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) return;
             revertFailedSdfCollectionAlignment(enabling);
-            setStatus(`[web] Could not align molecules.\n\n${error?.message || String(error)}`, 'error');
-          }).finally(() => { align.disabled = false; });
+            setStatus(error?.name === 'AbortError' ? '[web] Alignment cancelled.' : `[web] Could not align molecules.\n\n${error?.message || String(error)}`, error?.name === 'AbortError' ? undefined : 'error');
+          }).finally(() => { align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align'; });
         } catch (error) {
+          if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) { alignmentAbortController = null; return; }
           revertFailedSdfCollectionAlignment(enabling);
-          align.disabled = false;
-          setStatus(`[web] Could not align molecules.\n\n${error?.message || String(error)}`, 'error');
+          align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align';
+          setStatus(error?.name === 'AbortError' ? '[web] Alignment cancelled.' : `[web] Could not align molecules.\n\n${error?.message || String(error)}`, error?.name === 'AbortError' ? undefined : 'error');
           return Promise.resolve();
         }
       };
@@ -19312,6 +19384,8 @@ SOFTWARE.
       }
     }
     dockingPoseControlsDisposer = () => {
+      alignmentControlsDisposed = true;
+      alignmentAbortController?.abort();
       stopPoseRepeat();
       if (sliderInputTimer) {
         clearTimeout(sliderInputTimer);
