@@ -5404,19 +5404,7 @@ const animateMenuSource = previewViewer.slice(
 );
 assert.ok(animateMenuSource.indexOf('viewportMotionControls(menu)') < animateMenuSource.indexOf('viewportWiggleControls(menu)'));
 assert.ok(animateMenuSource.indexOf('viewportWiggleControls(menu)') < animateMenuSource.indexOf("sceneTreeMenuSection(menu, 'Animations')"));
-// Closing the molecule card drops the selection, and the host has to be told
-// directly because clearing this way does not reach the selection manager events.
-// × parks the card without touching the selection: it latches "suppressed" and
-// hides, and the latch lifts on the next genuine click (pointerup, no drag).
-assert.match(previewViewer, /function dismissMolstarMoleculePreview\(\) \{\s*molstarMoleculePreviewSuppressed = true;\s*hideMolstarMoleculePreview\(\{ force: true \}\);\s*\}/);
-assert.doesNotMatch(previewViewer, /function dismissMolstarMoleculePreview\(\)[\s\S]{0,200}clearMolstarSelection\(\)/);
-assert.match(previewViewer, /if \(molstarMoleculePreviewSuppressed \|\| molstarMoleculePreviewMinimized\) return;/);
-assert.match(previewViewer, /if \(!moved && molstarMoleculePreviewSuppressed && !molstarMoleculePreviewMinimized\)/);
-// Minimize tucks the card into a corner chip that restores the same molecule.
-assert.match(previewViewer, /function minimizeMolstarMoleculePreview\(\)/);
-assert.match(previewViewer, /function restoreMolstarMoleculePreview\(\)/);
-assert.match(previewViewer, /data-buret-molecule-preview-action="minimize"/);
-assert.match(previewRuntimeCss, /\.buret-molecule-preview-chip \{/);
+// Molecule preview hide/restore lifecycle is exercised in test-molecule-preview-interactions.mjs.
 assert.match(structureInfoPanel, /setActiveActionKey\(\(current\) => current && current\.includes\("focus_ligand"\) \? null : current\)/);
 assert.match(previewViewer, /const VIEWPORT_CONTEXT_ANIMATIONS = new Set\(\[\s*'built-in\.animate-model-index'\s*\]\)/);
 // Raw Mol* animations either duplicate Motion or Story, or depend on plugin

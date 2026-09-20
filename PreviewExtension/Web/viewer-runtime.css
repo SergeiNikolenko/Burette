@@ -944,15 +944,17 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   max-width: min(340px, calc(100vw - 16px));
   max-height: min(420px, calc(100vh - 16px));
   box-sizing: border-box;
-  padding: 5px;
+  padding: 10px;
   overflow: hidden;
   pointer-events: auto;
   user-select: none;
   border: 1px solid var(--buret-molstar-border);
-  border-radius: var(--buret-molstar-panel-radius);
+  border-radius: 14px;
   color: var(--buret-molstar-text);
-  background: var(--buret-molstar-panel-background);
-  box-shadow: 0 18px 44px var(--buret-molstar-shadow);
+  background: color-mix(in srgb, var(--buret-molstar-panel-background) 92%, transparent);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 8px 28px var(--buret-molstar-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 /* Only the header and the drawing are the grab area; the buttons under them keep a
@@ -970,7 +972,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
-  padding: 1px 1px 5px 4px;
+  padding: 0 0 6px 2px;
 }
 .buret-molecule-card-heading {
   display: flex;
@@ -994,7 +996,6 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
    button itself is never swallowed by the handle crossing it. */
 .buret-molecule-card-icon,
 .buret-molecule-card-button,
-.buret-molecule-card-sizes,
 .buret-molecule-card-nav {
   position: relative;
   z-index: 3;
@@ -1006,7 +1007,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   flex: 0 0 auto;
   border-radius: 6px;
   padding: 1px;
-  background: var(--buret-molstar-field-background);
+  background: transparent;
 }
 .buret-molecule-card-step {
   display: grid;
@@ -1075,33 +1076,41 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   z-index: 42;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   max-width: 220px;
-  height: 36px;
-  padding: 0 11px 0 9px;
+  height: 30px;
+  padding: 0 10px;
   border: 1px solid var(--buret-molstar-border);
-  border-radius: 999px;
-  background: var(--buret-molstar-panel-background);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--buret-molstar-panel-background) 92%, transparent);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
   color: var(--buret-molstar-text);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
-  font: inherit;
-  font-size: 12px;
+  box-shadow: 0 2px 8px var(--buret-molstar-shadow);
+  font: 500 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+  transition: background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 .buret-molecule-preview-chip:hover {
   background: var(--buret-molstar-hover-background);
-  transform: translateY(-1px);
+  box-shadow: 0 3px 12px var(--buret-molstar-shadow);
+}
+.buret-molecule-preview-chip:active {
+  transform: scale(.97);
 }
 .buret-molecule-preview-chip:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
+  outline: 1px solid var(--buret-molstar-muted-text);
   outline-offset: 2px;
 }
 .buret-molecule-preview-chip > svg {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
   flex: 0 0 auto;
-  color: var(--buret-molstar-accent);
+  color: var(--buret-molstar-muted-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-molecule-preview-chip { transition: none; }
+  .buret-molecule-preview-chip:active { transform: none; }
 }
 .buret-molecule-preview-chip-label {
   min-width: 0;
@@ -1109,83 +1118,68 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-body.burette-mobile-host .buret-molecule-preview-chip {
-  display: none;
-}
 .buret-molecule-card-toolbar {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   flex: 0 0 auto;
-  padding-bottom: 5px;
+  padding: 5px 0 0;
+  order: 2;
+  border-top: 1px solid var(--buret-molstar-border);
 }
 .buret-molecule-card-button {
   display: flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
+  gap: 4px;
   flex: 0 1 auto;
   min-width: 0;
-  height: 22px;
-  border: 0;
+  height: 24px;
+  border: 1px solid transparent;
   border-radius: 6px;
-  padding: 0 5px;
+  padding: 0 6px;
   color: var(--buret-molstar-text);
-  background: var(--buret-molstar-field-background);
-  font: inherit;
-  font-size: 10px;
+  background: transparent;
+  font: 500 10px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   cursor: pointer;
-  transition: background 140ms ease;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
 }
 .buret-molecule-card-button > svg {
   flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
-  color: var(--buret-molstar-muted-text);
+  width: 13px;
+  height: 13px;
 }
 .buret-molecule-card-button > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.buret-molecule-card-button:hover {
+.buret-molecule-card-button:hover:not(:disabled) {
   background: var(--buret-molstar-hover-background);
+}
+.buret-molecule-card-button:active:not(:disabled) {
+  transform: scale(.97);
 }
 .buret-molecule-card-button:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
-  outline-offset: 1px;
+  outline: 1px solid var(--buret-molstar-muted-text);
+  outline-offset: 2px;
 }
-.buret-molecule-card-sizes {
-  display: flex;
-  flex: 0 0 auto;
+.buret-molecule-card-button[data-buret-molecule-preview-action="lasso"] {
   margin-left: auto;
-  border-radius: 6px;
-  padding: 1px;
-  background: var(--buret-molstar-field-background);
 }
-.buret-molecule-card-size {
-  width: 16px;
-  height: 20px;
-  border: 0;
-  border-radius: 5px;
-  padding: 0;
-  color: var(--buret-molstar-muted-text);
-  background: transparent;
-  font: inherit;
-  font-size: 9.5px;
-  font-weight: 590;
-  cursor: pointer;
-  transition: background 140ms ease, color 140ms ease;
-}
-.buret-molecule-card-size:hover {
-  color: var(--buret-molstar-text);
-}
-.buret-molecule-card-size[aria-pressed="true"] {
+.buret-molecule-card-button[aria-pressed="true"] {
   color: var(--buret-molstar-text);
   background: var(--buret-molstar-hover-background);
+  box-shadow: inset 0 0 0 1px var(--buret-molstar-border);
 }
-.buret-molecule-card-size:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
-  outline-offset: 1px;
+.buret-molecule-card-button:disabled {
+  opacity: .4;
+  cursor: default;
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-molecule-card-button { transition: none; }
+  .buret-molecule-card-button:hover:not(:disabled),
+  .buret-molecule-card-button:active:not(:disabled) { transform: none; }
 }
 /* The card is narrow, so the labels are the first thing to go when the buttons no
    longer fit — the icons alone still say Ketcher and copy. */
@@ -1197,12 +1191,9 @@ body.burette-mobile-host .buret-molecule-preview-chip {
 .buret-molstar-molecule-preview[data-compact="true"] .buret-molecule-card-button[data-copy-state] > span {
   display: inline;
 }
-.buret-molecule-card-button[data-copy-state] {
-  flex: 1 1 auto;
-}
 .buret-molecule-card-button[data-copy-state="done"],
 .buret-molecule-card-button[data-copy-state="done"] > svg {
-  color: #32d74b;
+  color: var(--buret-molstar-text);
 }
 .buret-molecule-card-button[data-copy-state="error"],
 .buret-molecule-card-button[data-copy-state="error"] > svg {
@@ -1274,12 +1265,12 @@ body.burette-mobile-host .buret-molecule-preview-chip {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--buret-molstar-border);
+  border: 0;
   border-radius: 7px;
   --depiction-carbon: #202124;
   --depiction-nitrogen: #2454d6;
   --depiction-oxygen: #d22b31;
-  background: var(--buret-molstar-panel-background);
+  background: transparent;
   color: #6e6e73;
   font-size: 10px;
   text-align: center;
@@ -5351,14 +5342,24 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level
 
 .buret-preview-atom { opacity: 0; pointer-events: none; }
 .buret-preview-atom.buret-preview-atom-selected {
-  opacity: 0.55;
-  fill: #8bdc65 !important;
-  stroke: #8bdc65 !important;
+  opacity: 1;
+  fill: rgb(117 167 223 / 24%) !important;
+  stroke: #75a7df !important;
+  stroke-width: 1px !important;
+  vector-effect: non-scaling-stroke;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(1.6);
+}
+.buret-preview-bond-selected {
+  stroke: #75a7df !important;
+  stroke-width: 2px !important;
+  vector-effect: non-scaling-stroke;
 }
 .buret-preview-lasso-active { cursor: crosshair; touch-action: none; }
 .buret-preview-lasso-path {
-  fill: rgb(139 220 101 / 14%);
-  stroke: #8bdc65;
+  fill: rgb(117 167 223 / 10%);
+  stroke: #75a7df;
   stroke-width: 1.5px;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
@@ -5408,7 +5409,8 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  background: var(--buret-molstar-field-background);
+  background: transparent;
+  margin-left: auto;
 }
 .buret-molecule-card-toolbar > .buret-molecule-card-icon:hover {
   background: var(--buret-molstar-hover-background);

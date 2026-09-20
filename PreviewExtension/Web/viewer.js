@@ -215,15 +215,12 @@
   // The card is destroyed and rebuilt whenever the selection changes, so the size
   // and the corner the user dragged it to live out here instead of on the element.
   let molstarMoleculePreviewGeometry = null;
-  let molstarMoleculePreviewSize = 's';
-  // Closing the card (×) leaves the selection alone but parks the card: nothing
-  // re-shows it until the next genuine click. Minimizing tucks it into a chip in
-  // the corner that the same molecule pops back out of.
+  // Hiding the card leaves the selection alone and parks it in a restore chip.
+  // The hidden state lasts until explicit restore or document teardown.
   let molstarMoleculePreviewSuppressed = false;
   let molstarMoleculePreviewMinimized = false;
   let molstarMoleculePreviewMinimizedTarget = null;
   let molstarMoleculePreviewChip = null;
-  let molstarPreviewRevealStart = null;
   let molstarSelectionHostSignature = '';
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
@@ -23679,16 +23676,10 @@ SOFTWARE.
     ).join('');
   }
 
-  const MOLECULE_PREVIEW_SIZES = {
-    s: { label: 'Small', width: 148, height: 196 },
-    m: { label: 'Medium', width: 208, height: 268 },
-    l: { label: 'Large', width: 288, height: 364 }
-  };
   const MOLECULE_PREVIEW_ICON = {
     close: APP_ICON_DATA.X,
-    minimize: APP_ICON_DATA.Minus,
     molecule: ['m12 3 7.5 4.33v8.66L12 20.33 4.5 16V7.33Z'],
-    ketcher: ['M12 3v4.5', 'm12 7.5 3.9 2.25', 'm12 7.5-3.9 2.25', 'M15.9 9.75v4.5L12 16.5l-3.9-2.25v-4.5', 'M4.2 6.75 12 2.25l7.8 4.5v9L12 20.25l-7.8-4.5Z'],
+    ketcher: APP_ICON_DATA.Edit,
     copy: APP_ICON_DATA.Copy
   };
 
@@ -23784,23 +23775,18 @@ SOFTWARE.
   }
 
   function molstarMoleculePreviewCardHTML(label, image) {
-    const sizes = Object.entries(MOLECULE_PREVIEW_SIZES).map(([key, preset]) =>
-      `<button type="button" class="buret-molecule-card-size" data-buret-molecule-preview-action="size" data-size="${key}" aria-pressed="${key === molstarMoleculePreviewSize}" aria-label="${escapeHTML(preset.label)} preview" title="${escapeHTML(preset.label)}">${key.toUpperCase()}</button>`
-    ).join('');
     return `
       <div class="buret-molecule-card-header" data-buret-molecule-preview-drag>
         <span class="buret-molecule-card-heading">
           <span class="buret-molecule-card-title" title="${escapeHTML(label)}">${escapeHTML(label)}</span>
         </span>
         ${molstarMoleculePreviewNavHTML()}
-        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="minimize" aria-label="Minimize preview" title="Minimize preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.minimize)}</button>
-        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Close preview" title="Close preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Hide preview" title="Hide preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
       </div>
       <div class="buret-molecule-card-toolbar" role="toolbar" aria-label="Molecule preview actions">
-        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Ketcher</span></button>
+        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Edit</span></button>
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
-        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Lasso atoms in 2D">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}</button>
-        <span class="buret-molecule-card-sizes" role="group" aria-label="Preview size">${sizes}</span>
+        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Select atoms by drawing a lasso · Esc to exit">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}<span>Lasso</span></button>
       </div>
       <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
       ${molstarMoleculePreviewResizeHandlesHTML()}`;
@@ -23847,16 +23833,6 @@ SOFTWARE.
       height: Math.round(rect.height)
     };
     popover.dataset.compact = rect.width < 190 ? 'true' : 'false';
-    // Dragging an edge lands on a size no preset describes, so S/M/L reflects the
-    // card rather than the last button pressed — none of them is lit for a custom
-    // size instead of one of them claiming it.
-    for (const button of popover.querySelectorAll('[data-buret-molecule-preview-action="size"]')) {
-      const preset = MOLECULE_PREVIEW_SIZES[button.dataset.size];
-      const matches = preset
-        && Math.abs(preset.width - rect.width) < 2
-        && Math.abs(molstarMoleculePreviewFitHeight(popover, preset.width) - rect.height) < 2;
-      button.setAttribute('aria-pressed', matches ? 'true' : 'false');
-    }
   }
 
   function applyMolstarMoleculePreviewGeometry(popover) {
@@ -23899,17 +23875,6 @@ SOFTWARE.
     rememberMolstarMoleculePreviewGeometry(popover);
   }
 
-  function setMolstarMoleculePreviewSize(size) {
-    const preset = MOLECULE_PREVIEW_SIZES[size];
-    const popover = molstarMoleculePreview;
-    if (!preset || !popover) return;
-    molstarMoleculePreviewSize = size;
-    popover.style.width = `${preset.width}px`;
-    popover.style.height = `${molstarMoleculePreviewFitHeight(popover, preset.width)}px`;
-    molstarMoleculePreviewClamp(popover);
-    rememberMolstarMoleculePreviewGeometry(popover);
-  }
-
   // The status line sits at the far edge of the window, so a copy started from the
   // card is answered on the card: the button itself reports copied or failed and
   // settles back after a moment.
@@ -23922,8 +23887,9 @@ SOFTWARE.
     if (caption) caption.textContent = label;
     button.dataset.copyState = state;
     button.title = label;
+    button.setAttribute('aria-label', label);
     const glyph = button.querySelector('svg');
-    if (glyph) glyph.replaceWith(sceneTreeIconElement(state === 'done' ? APP_ICON_DATA.CheckCircle : MOLECULE_PREVIEW_ICON.copy));
+    if (glyph) glyph.replaceWith(sceneTreeIconElement(state === 'done' ? APP_ICON_DATA.Check : MOLECULE_PREVIEW_ICON.copy));
     if (molstarMoleculePreviewCopyTimer) clearTimeout(molstarMoleculePreviewCopyTimer);
     molstarMoleculePreviewCopyTimer = setTimeout(() => {
       molstarMoleculePreviewCopyTimer = 0;
@@ -23933,6 +23899,7 @@ SOFTWARE.
       if (text) text.textContent = current.dataset.restLabel || 'SMILES';
       delete current.dataset.copyState;
       current.title = 'Copy SMILES';
+      current.setAttribute('aria-label', 'Copy SMILES');
       const glyph = current.querySelector('svg');
       if (glyph) glyph.replaceWith(sceneTreeIconElement(MOLECULE_PREVIEW_ICON.copy));
     }, 1800);
@@ -23989,18 +23956,15 @@ SOFTWARE.
     else if (action === 'ketcher') openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
     else if (action === 'copy-smiles') void copyMolstarMoleculePreviewSmiles(molstarMoleculePreviewTarget);
     else if (action === 'lasso') molstarMoleculePreview?.querySelector('.buret-molstar-molecule-preview-image')?.dispatchEvent(new Event('burette-toggle-lasso'));
-    else if (action === 'size') setMolstarMoleculePreviewSize(control.dataset.size);
     else if (action === 'prev') stepMolstarMoleculePreview(-1);
     else if (action === 'next') stepMolstarMoleculePreview(1);
   }
 
-  // × closes the card but leaves the selection standing. A plain hide is not
-  // enough - the next pointer move re-resolves the card from whatever is still
-  // selected - so it also latches "suppressed", which every show path checks. The
-  // latch lifts on the next genuine click (see the reveal handler on pointerup).
+  // Hidden state belongs to this viewer document, not its current selection.
+  // Only the bottom restore button or document teardown clears it.
   function dismissMolstarMoleculePreview() {
     molstarMoleculePreviewSuppressed = true;
-    hideMolstarMoleculePreview({ force: true });
+    minimizeMolstarMoleculePreview();
   }
 
   // Minimize tucks the card into a small chip in the bottom-left corner. The
@@ -24432,8 +24396,10 @@ SOFTWARE.
       }
       if (indices.length) elements.push({ unit, indices });
     }
-    plugin.managers.structure.selection.clear();
-    if (elements.length) plugin.managers.structure.selection.fromLoci('add', { kind: 'element-loci', structure, elements }, false);
+    // Replace the selection atomically: clearing first briefly removes the
+    // preview target and destroys the active 2D lasso controller.
+    if (elements.length) plugin.managers.structure.selection.fromLoci('set', { kind: 'element-loci', structure, elements }, false);
+    else plugin.managers.interactivity.lociSelects.deselectAll();
     scheduleSceneTreeRender();
   }
 
@@ -24557,16 +24523,10 @@ SOFTWARE.
   }
 
   function scheduleMolstarSelectedMoleculePreview(fallbackTarget = null) {
+    if (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized) return;
     const hasCandidate = Boolean(molstarSelectedMoleculePreviewTarget() || fallbackTarget);
     if (!hasCandidate) {
       hideMolstarMoleculePreview({ force: true });
-      // Nothing left to preview means nothing left to restore, so the parked chip
-      // goes with it.
-      if (molstarMoleculePreviewMinimized) {
-        molstarMoleculePreviewMinimized = false;
-        molstarMoleculePreviewMinimizedTarget = null;
-        removeMolstarMoleculePreviewChip();
-      }
       return;
     }
     if (showMolstarSelectedMoleculePreview(fallbackTarget)) return;
@@ -24588,7 +24548,11 @@ SOFTWARE.
       molstarMoleculePreview.contains(document.activeElement);
   }
 
-  function clearMolstarPersistentMoleculePreview() {
+  function clearMolstarPersistentMoleculePreview({ reset = false } = {}) {
+    if (!reset && (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized)) {
+      hideMolstarMoleculePreview({ force: true });
+      return;
+    }
     molstarMoleculePreviewSuppressed = false;
     molstarMoleculePreviewMinimized = false;
     molstarMoleculePreviewMinimizedTarget = null;
@@ -25619,11 +25583,6 @@ SOFTWARE.
       }
       beginMolstarSelectionPreserve(event);
       clearTouchContextPointer();
-      // Remember where a left press on the viewport began, so a click (not a drag
-      // to rotate) can lift a × dismissal on release.
-      molstarPreviewRevealStart = event.button === 0 && isMolstarContextMenuTarget(event.target)
-        ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
-        : null;
       if (event.button === 2) {
         if (!viewer || !isMolstarContextMenuTarget(event.target)) {
           contextPointer = null;
@@ -25710,16 +25669,6 @@ SOFTWARE.
     };
     const onPointerUp = (event) => {
       finishMolstarSelectionPreserve(event);
-      if (molstarPreviewRevealStart && event.pointerId === molstarPreviewRevealStart.pointerId) {
-        const moved = Math.hypot(event.clientX - molstarPreviewRevealStart.x, event.clientY - molstarPreviewRevealStart.y)
-          > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
-        molstarPreviewRevealStart = null;
-        // A click - not a drag - is the "next click" that a × dismissal waits for.
-        if (!moved && molstarMoleculePreviewSuppressed && !molstarMoleculePreviewMinimized) {
-          molstarMoleculePreviewSuppressed = false;
-          scheduleMolstarSelectedMoleculePreview();
-        }
-      }
       if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) {
         const opened = touchContextPointer.opened;
         clearTouchContextPointer();
@@ -25841,7 +25790,7 @@ SOFTWARE.
       window.removeEventListener('scroll', hideMolstarMoleculePreview, true);
       clearTouchContextPointer();
       hideMolstarContextMenu();
-      clearMolstarPersistentMoleculePreview();
+      clearMolstarPersistentMoleculePreview({ reset: true });
     };
   }
 

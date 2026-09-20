@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Molecule preview · Burette</title></head>
+<body class="buret-theme-dark">
+<button id="theme" aria-label="Switch theme">Light appearance</button>
+<style>
+body { background: #202225; }
+body.buret-theme-light { background: #e9e9ec; }
+#theme { position:fixed; right:24px; top:24px; border:0; border-radius:8px; padding:8px 12px; background:var(--buret-molstar-hover-background); color:var(--buret-molstar-text); font:inherit; }
+</style>
+<script type="module">
+// Development fixture: production markup, styles, geometry and visibility handlers.
+// The isolated surface has no desktop host; Ketcher handoff is disabled here.
+import source from '../../../PreviewExtension/Web/viewer.js?raw';
+import '../../../PreviewExtension/Web/viewer-runtime.css';
+import rdkitUrl from '../../../PreviewExtension/Web/rdkit/RDKit_minimal.js?url';
+import interactionsUrl from '../../../PreviewExtension/Web/molecule-preview-interactions.js?url';
+import wasmUrl from '../../../PreviewExtension/Web/rdkit/RDKit_minimal.wasm?url';
+const fn = name => { const match = source.match(new RegExp(`\\n  (?:async )?function ${name}\\([\\s\\S]*?\\n  \\}`, 'u')); if (!match) throw new Error(name); return match[0]; };
+await new Promise((resolve, reject) => { const s = document.createElement('script'); s.src = rdkitUrl; s.onload = resolve; s.onerror = reject; document.head.append(s); });
+await new Promise((resolve, reject) => { const s = document.createElement('script'); s.src = interactionsUrl; s.onload = resolve; s.onerror = reject; document.head.append(s); });
+const rdkit = await window.initRDKitModule({ locateFile: name => wasmUrl });
+const smiles = 'Nc1nc2n(cnc2c(=O)[nH]1)[C@@H]1O[C@H](COP(=O)(O)OP(=O)(O)O)[C@@H](O)[C@H]1O';
+const names = ['molstarMoleculePreviewRDKitSVG','molstarPreviewCacheSVG','reportMolstarMoleculePreviewCopy','writeTextToClipboard','molstarPreviewCleanRDKitSVG','sceneTreeIconElement','molstarMoleculePreviewIconHTML','molstarMoleculePreviewNavHTML','molstarMoleculePreviewCardHTML','molstarMoleculePreviewResizeHandlesHTML','molstarMoleculePreviewClamp','rememberMolstarMoleculePreviewGeometry','applyMolstarMoleculePreviewGeometry','molstarMoleculePreviewFitHeight','fitMolstarMoleculePreviewDrawing','installMolstarMoleculePreviewResize','dismissMolstarMoleculePreview','minimizeMolstarMoleculePreview','restoreMolstarMoleculePreview','showMolstarMoleculePreviewChip','removeMolstarMoleculePreviewChip','hideMolstarMoleculePreview','clearMolstarPersistentMoleculePreview'];
+const constants = source.match(/  const MOLECULE_PREVIEW_ICON = [\s\S]*?\n  };/)[0];
+const icons = source.match(/  const APP_ICON_DATA = .*;/)[0];
+new Function('rdkit','smiles', `${icons}\n${constants}\n${names.map(fn).join('\n')}
+const SCENE_TREE_SVG_NS = 'http://www.w3.org/2000/svg';
+let molstarMoleculePreview = null, molstarMoleculePreviewTarget = null, molstarMoleculePreviewChip = null;
+let molstarMoleculePreviewSuppressed = false, molstarMoleculePreviewMinimized = false, molstarMoleculePreviewMinimizedTarget = null;
+let molstarMoleculePreviewGeometry = null, molstarMoleculePreviewDrag = null, molstarMoleculePreviewFrame = 0;
+let index = 0, molstarMoleculePreviewCopyTimer = 0;
+const molstarPreviewSvgCache = new Map();
+const MOLSTAR_PREVIEW_RDKIT_SVG_SIZE = 400;
+const normalizeFormat = value => value;
+const molstarPreviewKey = entry => entry.data;
+const molstarPreviewInitRDKit = async () => rdkit;
+const splitSdfRecords = data => [data];
+const debug = console.warn;
+const molstarMoleculePreviewFallbackSVG = () => '';
+
+const escapeHTML = text => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+const molstarPreviewLigandEntries = () => ['A','B','C'];
+const molstarPreviewLigandIndex = () => index;
+const molstarSelectedMoleculePreviewTarget = () => ({ label: 'GDP ' + ['A','B','C'][index] + ' 201' });
+const scheduleMolstarSelectedMoleculePreview = () => showMolstarMoleculePreview(molstarSelectedMoleculePreviewTarget());
+async function showMolstarMoleculePreview(target) {
+ if (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized) return;
+ hideMolstarMoleculePreview(); molstarMoleculePreviewTarget = target;
+ const mol = rdkit.get_mol(smiles);
+ mol.set_new_coords(true);
+ const entry = { format: 'sdf', data: mol.get_molblock() }; mol.delete();
+ const drawing = await molstarMoleculePreviewRDKitSVG(entry);
+ if (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized) return;
+
+ const card = document.createElement('div'); card.className = 'buret-molstar-molecule-preview'; card.tabIndex = 0;
+ card.innerHTML = molstarMoleculePreviewCardHTML(target.label, drawing);
+ card.style.cssText = 'width:288px;left:calc(50% - 144px);bottom:calc(50% - 185px)';
+ document.body.append(card); molstarMoleculePreview = card;
+ card.querySelector('[data-buret-molecule-preview-action="ketcher"]').disabled = true;
+ card.querySelector('[data-buret-molecule-preview-action="ketcher"]').title = 'Available in the Burette workspace';
+ installMolstarMoleculePreviewResize(card); applyMolstarMoleculePreviewGeometry(card); fitMolstarMoleculePreviewDrawing(card);
+ window.BuretteMoleculePreviewInteractions.install(card.querySelector('.buret-molstar-molecule-preview-image'), () => {});
+}
+function runMolstarMoleculePreviewAction(action, control) {
+ if (action === 'close') dismissMolstarMoleculePreview();
+ if (action === 'prev' || action === 'next') { index = (index + (action === 'next' ? 1 : 2)) % 3; scheduleMolstarSelectedMoleculePreview(); }
+ if (action === 'copy-smiles') writeTextToClipboard(smiles).then(() => reportMolstarMoleculePreviewCopy('done', 'Copied')).catch(() => reportMolstarMoleculePreviewCopy('error', 'Failed'));
+ if (action === 'lasso') molstarMoleculePreview.querySelector('.buret-molstar-molecule-preview-image').dispatchEvent(new Event('burette-toggle-lasso'));
+
+}
+document.body.addEventListener('click', e => { if (e.target === document.body) scheduleMolstarSelectedMoleculePreview(); });
+window.addEventListener('resize', () => clearMolstarPersistentMoleculePreview());
+document.addEventListener('keydown', e => { if(e.key === 'Escape') clearMolstarPersistentMoleculePreview(); });
+scheduleMolstarSelectedMoleculePreview();
+`)(rdkit, smiles);
+document.querySelector('#theme').onclick = e => { const light = document.body.classList.toggle('buret-theme-light'); document.body.classList.toggle('buret-theme-dark', !light); e.target.textContent = light ? 'Dark appearance' : 'Light appearance'; };
+</script></body></html>
