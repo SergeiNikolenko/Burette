@@ -5632,7 +5632,7 @@ assert.match(previewViewer, /const MOLSTAR_APPEARANCE_OPTIONS = \[/);
 assert.match(previewViewer, /const MOLSTAR_PRESET_OPTIONS = \[/);
 assert.ok(previewViewer.indexOf("group: 'Burette'") < previewViewer.indexOf("group: 'Basic'"));
 assert.ok(previewViewer.indexOf("group: 'Basic'") < previewViewer.indexOf("group: 'Miscellaneous'"));
-assert.match(previewViewer, /\{ value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line', defaultAppearance: 'default' \}/);
+assert.match(previewViewer, /\{ value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line' \}/);
 assert.match(previewViewer, /provider: 'preset-structure-representation-polymer-and-ligand'/);
 assert.match(previewViewer, /provider: 'preset-structure-representation-molecular-surface'/);
 assert.match(previewViewer, /\{ value: 'molecular-surface', label: 'Surface' \}/);

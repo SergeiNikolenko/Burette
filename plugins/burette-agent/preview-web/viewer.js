@@ -64,7 +64,7 @@
     { value: 'illustrative-surface', label: 'Ghost Surface', group: 'Burette', legacyStyle: 'illustrative-surface' },
     { value: 'ball-and-stick', label: 'Ball & Stick', group: 'Burette', legacyStyle: 'ball-and-stick' },
     { value: 'spacefill', label: 'Spacefill by Element', group: 'Burette', legacyStyle: 'spacefill' },
-    { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line', defaultAppearance: 'default' },
+    { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line' },
     { value: 'atomic-detail', label: 'Atomic Detail', group: 'Basic', provider: 'preset-structure-representation-atomic-detail' },
     { value: 'polymer-cartoon', label: 'Polymer Cartoon', group: 'Basic', provider: 'preset-structure-representation-polymer-cartoon' },
     { value: 'polymer-ligand', label: 'Polymer & Ligand', group: 'Basic', provider: 'preset-structure-representation-polymer-and-ligand' },
@@ -1846,7 +1846,6 @@
   }
 
   function molstarPresetAppearance(option, config) {
-    if (option?.defaultAppearance) return normalizeMolstarAppearance(option.defaultAppearance);
     return configuredMolstarAppearance(config);
   }
 
@@ -4336,18 +4335,7 @@
   function requestMolstarStyle(style) {
     const value = normalizeMolstarStyle(style);
     const preset = molstarPresetForLegacyStyle(value);
-    const appearance = value === 'illustrative' || value === 'illustrative-surface' ? 'illustrative' : 'default';
-    updateMolstarPresentationConfig(preset, appearance, value);
-    if (!activeViewer) {
-      setStatus('Mol* style can be changed after the viewer loads.', 'error');
-      return;
-    }
-    const serial = ++molstarStyleApplySerial;
-    setStatus(`[web] Applying Mol* ${molstarStyleLabel(value)} style…`);
-    void reloadMolstarStyle(activeViewer, value, serial).catch(error => {
-      if (serial !== molstarStyleApplySerial) return;
-      setStatus(`Mol* style switch failed.\n\n${error?.message || String(error)}`, 'error');
-    });
+    void requestMolstarPreset(preset, { preserveCamera: true });
   }
 
   function molstarStyleLabel(value) {
@@ -4417,7 +4405,7 @@
     }
   }
 
-  async function requestMolstarPreset(preset, { preserveCamera = false } = {}) {
+  async function requestMolstarPreset(preset, { preserveCamera = true } = {}) {
     const value = normalizeMolstarPreset(preset);
     const controller = ensureMolstarPresetPreviewController();
     if (controller) {
@@ -4453,7 +4441,16 @@
       if (wasStoryPlaying) await controlMolstarStory({ operation: 'pause' });
       sceneSnapshot = viewer.plugin?.state?.data?.getSnapshot?.();
       if (option.provider) await applyMolstarProviderPreset(viewer, option);
-      else await reloadMolstarStyle(viewer, legacyStyle, serial, appearance);
+      else if (molstarStoryState().available) await reloadMolstarStyle(viewer, legacyStyle, serial, appearance);
+      else {
+        // Keep parsed models, trajectories, selections and the camera alive.
+        // Ghost Surface needs a base representation before adding its envelope.
+        if (legacyStyle === 'illustrative-surface') {
+          await applyMolstarProviderPreset(viewer, molstarPresetOption('automatic'));
+        }
+        await applyMolstarStyle(viewer, legacyStyle);
+        await applyMolstarWaterLineRepresentation(viewer);
+      }
       if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
       await applyMolstarAppearance(viewer, appearance);
       if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
