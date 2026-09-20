@@ -100,7 +100,8 @@
 
 /* The launch action yields its space to the open inspector. */
 .xyzrender-dock-card:has(.xyzrender-motion-controls) > .xyzrender-editor-launch { display: none; }
-.xyzrender-angle-row > [data-slot="field-label"] { flex: 0 0 18px; }
-.xyzrender-angle-row { gap: 12px; }
+.xyzrender-angle-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.xyzrender-angle-row > [data-slot="field-label"] { flex: 0 0 auto; }
+.xyzrender-angle-row { min-width: 0; gap: 6px; }
 .xyzrender-dock-panel .xyzrender-dock-card { background: transparent; border: 0; padding: 4px; }
 .xyzrender-dock-panel .xyzrender-dock-preset-tile { background: var(--surface-input); }
