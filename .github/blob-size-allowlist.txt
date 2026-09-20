@@ -40,7 +40,6 @@ plugins/burette-agent/browser-shell-dist/assets/PptxViewJS.es-CWh08j7b.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-document.worker-qen7HUVU.js
 plugins/burette-agent/browser-shell-dist/assets/chunk-KEIR6QF5-CUuuYsZ_.js
 plugins/burette-agent/browser-shell-dist/assets/cluster-fingerprint.worker-Q1HfNbxv.js
-plugins/burette-agent/browser-shell-dist/assets/RDKit_minimal-CSQ_4EtA.js
 plugins/burette-agent/browser-shell-dist/assets/resources-BTLdlx-p.js
 packaging/dmg/background.tiff
 
@@ -57,6 +56,9 @@ apps/burette-public-plugin/public/demo-library/Quantum/base-pair-grad.cube
 apps/burette-public-plugin/public/demo-library/Quantum/caffeine_dens.cube
 apps/burette-public-plugin/public/demo-library/Quantum/caffeine_homo.cube
 
-# Regenerated bundled Markdown renderer for the Story panel.
-plugins/burette-agent/browser-shell-dist/assets/dist-DJBUnT_G.js
-plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-C4fTLC7O.js
+# Generated browser-shell chemistry, viewer, and Story runtime assets.
+plugins/burette-agent/browser-shell-dist/assets/RDKit_minimal-tnscgqxm.wasm
+plugins/burette-agent/browser-shell-dist/assets/molstar-F2uvN7Xl.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-CP1otfDT.js
+plugins/burette-agent/browser-shell-dist/assets/dist-BeJOppfI.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CG_HBOBA.js
