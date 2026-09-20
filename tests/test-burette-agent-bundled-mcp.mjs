@@ -84,6 +84,7 @@ try {
   const toolNames = listed.tools.map(tool => tool.name).sort();
   for (const required of [
     "burette.get_context",
+    "burette.create_link",
     "burette.open_workspace",
     "burette.observe_workspace",
     "burette.control_viewer",
@@ -99,6 +100,14 @@ try {
     assert.equal(toolNames.includes(required), true, `Missing ${required}`);
   }
 
+  const linked = await request("tools/call", {
+    name: "burette.create_link", arguments: { kind: "pdb", target: "1htb" },
+  });
+  assert.equal(linked.structuredContent.deepLink, "burette://pdb/1HTB");
+  const rejected = await request("tools/call", {
+    name: "burette.create_link", arguments: { kind: "session", workspaceSessionId: "missing" },
+  });
+  assert.equal(rejected.isError, true);
   const context = await request("tools/call", {
     name: "burette.get_context",
     arguments: {},
