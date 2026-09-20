@@ -9590,3 +9590,41 @@ img.settings-open-destination-icon {
 .file-operation-dialog-rename { width: min(320px, calc(100vw - 32px)); }
 .file-operation-dialog-rename .radix-dialog-body { padding-top: 14px; padding-bottom: 12px; }
 .file-operation-dialog-rename .calculated-column-field { gap: 0; }
+
+.project-folder-icon {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-primary);
+}
+
+.project-folder-icon svg { display: block; }
+
+/* Primary navigation stays legible at rest; section captions, metadata and
+   trailing actions retain their quieter colors. */
+.sidebar :is(
+  .project-group-title,
+  .project-folder-name,
+  .project-name,
+  .sidebar-tool-label,
+  .sidebar-product-label,
+  .sidebar-settings-label,
+  .sidebar-settings-icon,
+  .sidebar-tool-icon
+) { color: var(--text-primary); }
+.sidebar .sidebar-tool-icon { opacity: 1; }
+
+.project-folder-icon .project-folder-badge {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  border-radius: 50%;
+  background: var(--sidebar);
+  box-shadow: 0 0 0 1px var(--sidebar);
+}
+.project-folder-icon .project-folder-badge-cyan { color: #20cbd4; }
+.project-folder-icon .project-folder-badge-blue { color: #39b5ff; }
+.project-folder-icon .project-folder-badge-purple { color: #bc83ff; }

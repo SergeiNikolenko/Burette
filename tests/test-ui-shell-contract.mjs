@@ -1068,8 +1068,6 @@ assert.match(appSidebarProjectsHook, /pruneSidebarPaths\(sidebarPaths\(sidebarPa
 assert.match(appSidebarProjectsHook, /from Projects because the folder no longer exists/);
 assert.match(appSidebarProjectsHook, /if \(vanished\.has\(root\)\) continue;\s*const result = resultsByRoot\.get\(root\);\s*if \(result\?\.error\) \{\s*pushErrorStatus\(new Error\(result\.error\), `Project scan failed for/);
 assert.match(appSidebarProjectsHook, /invoke<string\[\]>\("existing_paths", \{ paths: failedRoots \}\)/);
-// Sidebar folder rows carry no open/closed folder glyph.
-assert.doesNotMatch(sidebarFileTreeNode, /project-folder-icon|FolderOpen/);
 assert.match(appSidebarProjectsHook, /import \{ scanBrowserDevFolders \} from "\.\.\/lib\/browser-dev-startup";/);
 assert.match(appSidebarProjectsHook, /const scan = await scanBrowserDevFolders\(roots\);/);
 assert.match(browserDevStartup, /export async function scanBrowserDevFolders/);
