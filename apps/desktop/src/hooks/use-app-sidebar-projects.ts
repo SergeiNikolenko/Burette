@@ -479,9 +479,11 @@ export function useAppSidebarProjects({
     if (paths.length === 0) return;
     prunedPersistedPathsRef.current = true;
     let cancelled = false;
+    let completed = false;
     void invoke<string[]>("existing_paths", { paths })
       .then((existingPaths) => {
         if (cancelled) return;
+        completed = true;
         setMissingSidebarPaths(missingPaths(paths, existingPaths));
         pruneSidebarPaths(existingPaths);
         const checkedDocuments = recentStructures.map(({ path, openedAt }) => ({ path, openedAt }));
@@ -491,9 +493,11 @@ export function useAppSidebarProjects({
           existingPaths.filter((path) => checkedPaths.has(path)),
         );
       })
-      .catch(() => {});
+      .catch((error) => pushErrorStatus(error, "Sidebar refresh failed"));
     return () => {
       cancelled = true;
+      // A cancelled startup check must be retried after hydration or StrictMode replay.
+      if (!completed) prunedPersistedPathsRef.current = false;
     };
   }, [documents, pinnedProjectRoots, pinnedStructurePaths, projectRoots, pruneRecentStructures, pruneSidebarPaths, recentStructures, textDocuments]);
 

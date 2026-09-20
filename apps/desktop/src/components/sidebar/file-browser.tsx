@@ -241,6 +241,17 @@ export function FileBrowser({
               { kind: "separator" },
               {
                 kind: "item",
+                id: "hide-all-files",
+                text: "Hide All Files",
+                disabled: state.sidebarProjects.length === 0,
+                action: () => {
+                  for (const project of state.sidebarProjects) {
+                    if (project.rootPath) actions.removeProjectRoot(project.rootPath);
+                  }
+                },
+              },
+              {
+                kind: "item",
                 id: "close-all-tabs",
                 text: "Close All Tabs",
                 action: actions.clearAllDocuments,
