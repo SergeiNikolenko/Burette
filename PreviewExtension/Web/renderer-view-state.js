@@ -28,7 +28,31 @@
     if (value.item && ['left', 'top', 'width', 'height', 'rotation'].every(key => Number.isFinite(value.item[key]))) {
       result.item = Object.fromEntries(['left', 'top', 'width', 'height', 'rotation'].map(key => [key, value.item[key]]));
     }
+    if (value.viewport && ['width', 'height'].every(key => Number.isFinite(value.viewport[key]) && value.viewport[key] > 0)) {
+      result.viewport = { width: value.viewport.width, height: value.viewport.height };
+    }
     return result;
+  }
+  // Pixel-positioned sheet items follow the viewport center, just like the
+  // default 50% positions. Keep user pan, zoom and inter-item offsets intact.
+  function observeSheetViewport(root, initialViewport) {
+    let width = initialViewport?.width || root.clientWidth;
+    let height = initialViewport?.height || root.clientHeight;
+    const resize = () => {
+      const nextWidth = root.clientWidth, nextHeight = root.clientHeight;
+      if (!nextWidth || !nextHeight) return;
+      const dx = width ? (nextWidth - width) / 2 : 0;
+      const dy = height ? (nextHeight - height) / 2 : 0;
+      for (const item of root.querySelectorAll('.buret-xyzrender-sheet-item')) {
+        if (item.style.left.endsWith('px')) item.style.left = `${parseFloat(item.style.left) + dx}px`;
+        if (item.style.top.endsWith('px')) item.style.top = `${parseFloat(item.style.top) + dy}px`;
+      }
+      width = nextWidth; height = nextHeight;
+    };
+    resize();
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
+    observer?.observe(root);
+    return () => observer?.disconnect();
   }
   function read(id, initial) {
     if (typeof id !== 'string' || !id || id.length > 2048) return {};
@@ -53,5 +77,5 @@
     memory = values;
     try { window.sessionStorage.setItem(storageKey, JSON.stringify(values)); } catch (_) {}
   }
-  window.BuretteRendererViewState = { read, save };
+  window.BuretteRendererViewState = { read, save, observeSheetViewport };
 })();

@@ -1,1 +1,0 @@
-import{a as e}from"./document-page-dpklt5O3.js";export{e as PdfResourceContent};

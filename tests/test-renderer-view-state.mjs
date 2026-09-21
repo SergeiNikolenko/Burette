@@ -28,3 +28,25 @@ assert.equal(Object.keys(JSON.parse(stored)).length, 32, 'Session history stays 
 stored = '{broken';
 assert.doesNotThrow(() => runtime().read('file-0'));
 console.log('Renderer view state: iframe reload, camera/2D round trip, isolation and bounded storage passed');
+
+let resize, disconnected = false;
+const viewContext = vm.createContext({ window: { sessionStorage: storage }, ResizeObserver: class {
+  constructor(callback) { resize = callback; } observe() {} disconnect() { disconnected = true; }
+} });
+vm.runInContext(source, viewContext);
+const placed = { style: { left: '500px', top: '300px' } };
+const automatic = { style: { left: '50%', top: '50%' } };
+const viewport = { clientWidth: 1000, clientHeight: 600, querySelectorAll: () => [placed, automatic] };
+const stop = viewContext.window.BuretteRendererViewState.observeSheetViewport(viewport);
+viewport.clientWidth = 600; resize();
+assert.deepEqual(placed.style, { left: '300px', top: '300px' }, 'opening the inspector moves the sheet with the available center');
+assert.deepEqual(automatic.style, { left: '50%', top: '50%' }, 'CSS centered items must not be shifted twice');
+viewport.clientWidth = 0; resize();
+viewport.clientWidth = 1000; resize();
+assert.equal(placed.style.left, '500px', 'hiding and restoring an iframe does not drift the sheet');
+stop(); assert.equal(disconnected, true);
+viewport.clientWidth = 600;
+viewContext.window.BuretteRendererViewState.observeSheetViewport(viewport, { width: 1000, height: 600 });
+assert.equal(placed.style.left, '300px', 'restoring at a different dock width compensates stored pixel positions');
+first.save('viewport', { xyz: { ...xyz, viewport: { width: 1000, height: 600 } } });
+assert.deepEqual(copy(runtime().read('viewport').xyz.viewport), { width: 1000, height: 600 });

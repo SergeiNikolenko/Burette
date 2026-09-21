@@ -14110,8 +14110,10 @@ SOFTWARE.
       for (const key of ['left', 'top', 'width', 'height']) baseItem.style[key] = `${savedView.item[key]}px`;
       setSheetItemRotation(baseItem, savedView.item.rotation);
     }
+    const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root, savedView?.viewport);
     externalArtifactViewSnapshot = () => ({
       scale, x: translateX, y: translateY,
+      viewport: { width: root.clientWidth, height: root.clientHeight },
       item: baseItem ? {
         left: baseItem.offsetLeft, top: baseItem.offsetTop,
         width: baseItem.offsetWidth, height: baseItem.offsetHeight,
@@ -14157,6 +14159,7 @@ SOFTWARE.
     apply();
     externalArtifactInteractionsCleanup = () => {
       keyboardCleanup();
+      viewportCleanup?.();
       saveRendererViewState();
       externalArtifactViewSnapshot = null;
       root.removeEventListener('wheel', onWheel);
