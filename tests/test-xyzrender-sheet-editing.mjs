@@ -14,7 +14,8 @@ const window = new Window();
 const document = window.document;
 document.body.innerHTML = `<div class="buret-external-artifact-root"><div class="buret-xyzrender-sheet-item selected" style="left: 100px; top: 120px"></div><div class="buret-xyzrender-sheet-item selected" style="left: 300px; top: 120px"></div><div class="buret-xyzrender-context-menu"><button>Duplicate</button></div><div id="empty"></div></div>`;
 const names = ['selectRotatableArtifact', 'bringXyzrenderSheetItemToFront', 'clearRotatableArtifactSelection', 'installRotatableArtifactSelectionClear', 'sheetItemCenterPosition', 'installXyzrenderSheetItemDrag'];
-const api = new Function('document', `let xyzrenderLassoEnabled = false; ${names.map(declaration).join('\n')} return { ${names.join(',')} };`)(document);
+const published = [];
+const api = new Function('document', 'publishXyzrenderItem', `let xyzrenderLassoEnabled = false; ${names.map(declaration).join('\n')} return { ${names.join(',')} };`)(document, item => published.push(item));
 const root = document.querySelector('.buret-external-artifact-root');
 const items = [...root.querySelectorAll('.buret-xyzrender-sheet-item')];
 api.installRotatableArtifactSelectionClear(root);
@@ -43,3 +44,44 @@ const releaseLasso = new Function('stroke', 'clearXyzrenderSelection', `let xyzr
 releaseLasso({ pointerId: 2 });
 assert.deepEqual([clears, releases], [0, 1]);
 console.log('xyzrender additive lasso click preserves selection and releases capture');
+
+await new Promise(resolve => queueMicrotask(resolve));
+assert.ok(published.includes(items[1]), 'active structure is sent to the inspector after selection');
+
+const messages = [];
+const config = { appViewer: true, documentId: 'doc', xyzrenderPreset: 'default', xyzrenderControls: { fog: true } };
+const publish = new Function('document', 'window', 'activeConfig', 'postHostMessage', `
+  let xyzrenderSheetRequestSerial = 0;
+  const DEFAULT_XYZRENDER_CONTROLS = {};
+  const xyzrenderSheetItemEntry = () => 'caffeine.xyz';
+  const sheetEntryLabel = entry => entry;
+  const sheetEntryInputDataBase64 = () => undefined;
+  const sheetEntryInputExtension = () => 'xyz';
+  const normalizeXyzrenderControls = value => value;
+  const xyzrenderSheetItemRegions = () => [];
+  const xyzrenderSheetItemVdwAtoms = () => '';
+  const captureCurrentXyzrenderOrientationRef = () => null;
+  ${declaration('publishXyzrenderItem')}
+  return publishXyzrenderItem;
+`)(document, window, config, message => messages.push(message));
+publish(items[0]);
+config.xyzrenderPreset = 'skeletal';
+config.xyzrenderControls = { fog: false };
+items[1].dataset.buretXyzrenderPreset = 'bubble';
+items[1].dataset.buretXyzrenderControls = JSON.stringify({ fog: false });
+publish(items[1]);
+publish(items[0]);
+assert.notEqual(messages[0].itemId, messages[1].itemId);
+assert.deepEqual(messages.map(({type, preset, controls}) => [type, preset, controls.fog]), [
+  ['xyzrenderActiveItem', 'default', true], ['xyzrenderActiveItem', 'bubble', false], ['xyzrenderActiveItem', 'default', true],
+]);
+assert.equal(messages[0].itemId, messages[2].itemId);
+console.log('inspector selection preserves per-item identity and appearance across document default changes');
+
+const removals = [];
+const removeItem = new Function('postHostMessage', 'activeConfig', 'window', 'frontmostXyzrenderSheetItem', 'selectRotatableArtifact', `${declaration('removeXyzrenderSheetItem')} return removeXyzrenderSheetItem;`)(message => removals.push(message), config, window, () => items[0], () => {});
+removeItem(items[1]);
+assert.equal(items[1].isConnected, false);
+assert.deepEqual(removals.map(({type, itemId, documentId}) => [type, itemId, documentId]), [['xyzrenderItemRemoved', messages[1].itemId, 'doc']]);
+assert.match(declaration('showXyzrenderSheetContextMenu'), /\['view:hide', \(\) => removeXyzrenderSheetItem\(item\)\]/);
+assert.match(declaration('installRotatableArtifactKeyboard'), /removeXyzrenderSheetItem\(item\)/);

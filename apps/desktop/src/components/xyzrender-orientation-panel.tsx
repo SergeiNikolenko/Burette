@@ -12,7 +12,7 @@ import type { AnimationSource } from './xyzrender-animation-dialog';
 
 type RenderedOrientation = { svg: string; orientationRef: string; baseOrientationRef: string };
 function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSource; onPrepared: (source: AnimationSource) => void }) {
-  const [angles, setAngles] = useState([0, 0, 0]);
+  const [angles, setAngles] = useState(source.angles || [0, 0, 0]);
   const [result, setResult] = useState<RenderedOrientation | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -22,7 +22,7 @@ function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSo
   const [saved, setSaved] = useState('');
   const exportAbort = useRef<AbortController | null>(null);
   useEffect(() => () => exportAbort.current?.abort(), []);
-  const base = useRef(source.orientationRef);
+  const base = useRef(source.orientationBaseRef || source.orientationRef);
 
   const latestAngles = useRef(angles);
   latestAngles.current = angles;
@@ -64,12 +64,12 @@ function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSo
     return () => { disposed = true; controller.abort(); requestRender.current = () => {}; };
   }, [source]);
   useEffect(() => { requestRender.current(); }, [angles]);
-  const nextSource = () => ({ ...source, previewSvg: result?.svg || source.previewSvg, orientationRef: result?.orientationRef || source.orientationRef });
+  const nextSource = () => ({ ...source, previewSvg: result?.svg || source.previewSvg, orientationRef: result?.orientationRef || source.orientationRef, orientationBaseRef: result?.baseOrientationRef || source.orientationBaseRef, angles });
   useEffect(() => { onPrepared(nextSource()); }, [result, source, onPrepared]);
   const apply = () => {
     if (!result) return;
     for (const frame of document.querySelectorAll<HTMLIFrameElement>('iframe.viewer-iframe')) frame.contentWindow?.postMessage({ source: 'burette-host', body: {
-      type: 'applyXyzrenderOrientation', itemId: source.itemId, svg: result.svg, orientationRef: result.orientationRef, controls: source.controls,
+      type: 'applyXyzrenderOrientation', itemId: source.itemId, svg: result.svg, orientationRef: result.orientationRef, orientationBaseRef: result.baseOrientationRef, angles, controls: source.controls,
     } }, '*');
 
   };
