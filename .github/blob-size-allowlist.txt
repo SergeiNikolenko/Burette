@@ -65,7 +65,7 @@ plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CG_H
 
 # Regenerated browser-shell bundles for the xyzrender editor.
 plugins/burette-agent/browser-shell-dist/assets/index.modern-D6gEcQFq.js
-plugins/burette-agent/browser-shell-dist/assets/dist-DxziffxJ.js
-plugins/burette-agent/browser-shell-dist/assets/viewer-DhCWD4t9.js
-plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CCSnlLgi.js
+plugins/burette-agent/browser-shell-dist/assets/dist-BzVBA60x.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-a8fjIX0T.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-C_N3JVJ7.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-DQWd4CLe.js
