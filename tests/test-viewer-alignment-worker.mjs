@@ -51,3 +51,26 @@ const latest=queue(()=>calls.push('latest'),'same-document');
 release(); await Promise.all([blocker,old,latest]);
 assert.deepEqual(calls,['latest']);
 console.log('Worker alignment parity, cancellation, document replacement and appearance coalescing passed');
+
+// Rebuilding aligned or individual XYZ frames must retain the selected appearance.
+const appearances = [];
+const styledLayers = [];
+const styleFrame = new Function('applyMolstarRepresentationsToStructures', 'applyMolstarAppearance', `
+ let activeConfig = { molstarAppearance: 'illustrative' };
+ const configuredMolstarAppearance = config => config.molstarAppearance;
+ const xyzFrameRepresentationStyle = style => style;
+ const sdfCollectionRepresentationForStyle = (style, alpha, colorMode) => ({style, alpha, colorMode});
+ ${extract('applyXyzFrameMolstarStyle')}
+ return {apply: applyXyzFrameMolstarStyle, standard: () => {activeConfig.molstarAppearance = 'standard';}};
+`)(async (_viewer, structures, representation) => styledLayers.push({structures, representation}),
+   async (_viewer, appearance) => appearances.push(appearance));
+await styleFrame.apply({}, 'ball-and-stick', ['aligned-frame'], 1, 'colored');
+await styleFrame.apply({}, 'line', ['background-frame'], 0.2, 'gray');
+styleFrame.standard();
+await styleFrame.apply({}, 'ball-and-stick', ['original-frame'], 1, 'colored');
+assert.deepEqual(appearances, ['illustrative', 'illustrative', 'standard']);
+assert.deepEqual(styledLayers, [
+ {structures: ['aligned-frame'], representation: {style: 'ball-and-stick', alpha: 1, colorMode: 'colored'}},
+ {structures: ['background-frame'], representation: {style: 'line', alpha: 0.2, colorMode: 'gray'}},
+ {structures: ['original-frame'], representation: {style: 'ball-and-stick', alpha: 1, colorMode: 'colored'}}
+]);

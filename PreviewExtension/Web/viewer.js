@@ -14110,7 +14110,12 @@ SOFTWARE.
       for (const key of ['left', 'top', 'width', 'height']) baseItem.style[key] = `${savedView.item[key]}px`;
       setSheetItemRotation(baseItem, savedView.item.rotation);
     }
-    const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root, savedView?.viewport);
+    const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root, savedView?.viewport, view => {
+      scale = view.scale;
+      translateX = view.x;
+      translateY = view.y;
+      apply();
+    });
     externalArtifactViewSnapshot = () => ({
       scale, x: translateX, y: translateY,
       viewport: { width: root.clientWidth, height: root.clientHeight },
@@ -15352,7 +15357,8 @@ SOFTWARE.
     const normalized = xyzFrameRepresentationStyle(style);
     const targets = Array.isArray(structures) && structures.length ? structures : Array.from(molstarCurrentStructures(viewer));
     await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode, minAlpha));
-    await applyMolstarNonIllustrativePostprocessing(viewer);
+    // Frame/alignment rebuilds change geometry, not the user's appearance.
+    await applyMolstarAppearance(viewer, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
   }
 
   function dockingSceneStateKey(prepared, style) {

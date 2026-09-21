@@ -196,6 +196,8 @@ function addStructureToProjects(
   },
 ) {
   const normalizedPath = normalizePath(structure.path);
+  const fileName = basename(normalizedPath);
+  if (fileName === ".DS_Store" || fileName.startsWith("._")) return;
   const explicitRootPath = resolveProjectRoot(normalizedPath, projectRoots);
   if (!explicitRootPath && resolveProjectRoot(normalizedPath, hiddenProjectRoots)) return;
   const implicitRootPath = explicitRootPath ? null : parentDirectory(normalizedPath);

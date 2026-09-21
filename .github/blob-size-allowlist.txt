@@ -62,4 +62,4 @@ plugins/burette-agent/browser-shell-dist/assets/molstar-F2uvN7Xl.js
 # Regenerated browser-shell bundles for the xyzrender editor.
 plugins/burette-agent/browser-shell-dist/assets/dist-D8FXd8eI.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CkCXsTYH.js
-plugins/burette-agent/browser-shell-dist/assets/viewer-BF0m-RkT.js
+plugins/burette-agent/browser-shell-dist/assets/viewer--NQIdVp8.js
