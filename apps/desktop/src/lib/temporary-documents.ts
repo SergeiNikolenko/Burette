@@ -12,6 +12,7 @@ const TEMPORARY_DOCUMENT_PROTOCOLS = [
 const TEMPORARY_VIEWER_SEGMENTS = [
   "/viewer/ketcher/",
   "/viewer/merged/",
+  "/ssh-previews/",
 ];
 
 export function normalizeDocumentPath(path: string) {
