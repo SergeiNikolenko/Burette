@@ -1,5 +1,5 @@
-# Read-only remote worker. Requests arrive on stdin, never as shell arguments.
-import json, os, stat, sys
+# Remote file worker. Requests arrive on stdin, never as shell arguments.
+import json, os, stat, sys, shutil, inspect, signal
 
 MAX_BYTES = 64 * 1024 * 1024
 MAX_ENTRIES = 2000
@@ -31,6 +31,23 @@ def process_request(request):
     leaf = parts[-1] if parts else '.'
     path = os.path.join(root, *parts)
     try:
+        if request['operation'] == 'delete-folder':
+            if not parts:
+                raise ValueError('The project root cannot be deleted')
+            if not shutil.rmtree.avoids_symlink_attacks or 'dir_fd' not in inspect.signature(shutil.rmtree).parameters:
+                raise ValueError('Safe folder deletion requires Python 3.11 or later on the server')
+            if not stat.S_ISDIR(os.stat(leaf, dir_fd=parent, follow_symlinks=False).st_mode):
+                raise ValueError('Only real folders can be deleted')
+            def deadline(signum, frame):
+                raise TimeoutError('Deletion stopped after 35 seconds; refresh to inspect remaining contents')
+            previous_handler = signal.signal(signal.SIGALRM, deadline)
+            signal.alarm(35)
+            try:
+                shutil.rmtree(leaf, dir_fd=parent)
+            finally:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, previous_handler)
+            return json.dumps(dict(deleted='/'.join(parts))).encode()
         if request['operation'] == 'discover':
             directory = os.open(leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
             try:

@@ -24,6 +24,28 @@ class RemoteReader(unittest.TestCase):
                 self.assertNotEqual(response.returncode, 0)
                 self.assertEqual(response.stdout, b'')
 
+    def test_delete_folder_is_confined_and_preserves_symlink_targets(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary) / 'root'
+            root.mkdir()
+            outside = pathlib.Path(temporary) / 'outside'
+            outside.mkdir()
+            (outside / 'keep.txt').write_text('keep')
+            (root / 'escape').symlink_to(outside)
+            for path in ('.', './', '/', '../outside', 'escape', 'escape/subfolder'):
+                result = self.request(root, 'delete-folder', path)
+                self.assertNotEqual(result.returncode, 0, path)
+            folder = root / "nested folder ' quoted"
+            (folder / 'inner').mkdir(parents=True)
+            (folder / 'inner/file.xyz').write_text('example')
+            (folder / 'external').symlink_to(outside)
+            result = self.request(root, 'delete-folder', folder.name)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), {'deleted': folder.name})
+            self.assertFalse(folder.exists())
+            self.assertEqual((outside / 'keep.txt').read_text(), 'keep')
+            self.assertTrue(root.exists())
+
     def test_large_file_and_directory_are_not_read(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)

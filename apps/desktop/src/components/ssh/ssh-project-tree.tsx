@@ -1,10 +1,15 @@
+import { SshProjectCard, useSshProjectMenu } from "./ssh-project-details";
+import { useSshStatus } from "../../lib/ssh-connection-status";
+import { SshDeleteFolderDialog } from "./ssh-delete-folder-dialog";
+import { FolderExpandCollapseIcon } from "../sidebar/folder-expand-collapse-icon";
 import { useRef, useState, type ReactNode } from "react";
+import { MarqueeName } from "../marquee-name";
 import { SidebarFolderIcon } from "../sidebar/sidebar-folder-icon";
 import { FileKindIcon, fileKindForPath } from "../sidebar/file-kind-icon";
-import { DotsHorizontal, SidebarGlobe } from "../ui/app-icons";
+import { DotsHorizontal } from "../ui/app-icons";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "../ui/hover-card";
 import { NativeDropdownMenu } from "../native-dropdown-menu";
-import { removeSshProject, saveSshProject, sshList, sshPreview, type SshConnection, type SshDirectory, type SshProject } from "../../lib/ssh-projects";
+import { saveSshProject, sshList, sshPreview, type SshConnection, type SshDirectory, type SshProject } from "../../lib/ssh-projects";
 
 import { copyTextWithSelectionFallback } from "../../lib/clipboard";
 
@@ -17,11 +22,15 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
   const [lastSuccess, setLastSuccess] = useState<number | null>(null);
   const [selected, setSelected] = useState("");
   const [limits, setLimits] = useState<Record<string, number>>({});
+  const [deleting, setDeleting] = useState<{ path: string; fullPath: string } | null>(null);
   const lock = useRef(false);
+  const queued = useRef<{ operation: Operation; refresh: boolean } | null>(null);
+  const projectMenu = useSshProjectMenu(project, connection);
   const enabled = connection?.enabled !== false;
-  const status = !enabled ? "Disabled" : pending ? "Connecting…" : failure ? "Connection or file error" : lastSuccess ? "Last request succeeded" : "Connects when needed";
+  const health = useSshStatus(project.host);
+  const status = !enabled ? "Disabled" : pending ? "Connecting…" : failure ? "Connection or file error" : (health ? health.available : !!lastSuccess) ? "Available" : "Connects when needed";
   async function run(operation: Operation, refresh = false) {
-    if (lock.current) return;
+    if (lock.current) { queued.current = { operation, refresh }; return; }
     if (!enabled) { setFailure({ operation, message: "Enable this connection in Settings → Connections." }); return; }
     const cached = directories.get(operation.path);
     if (operation.type === "list" && !refresh && cached && Date.now() - cached.time < 30000) { setFailure(null); return; }
@@ -53,14 +62,18 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
       } else {
         await onOpen([await sshPreview(project, operation.path)]);
         setSelected(operation.path);
+        saveSshProject({ ...project, openedAt: Date.now() });
       }
       setLastSuccess(Date.now());
     } catch (error) { setFailure({ operation, message: String(error) }); }
-    finally { lock.current = false; setPending(null); }
+    finally {
+      lock.current = false; setPending(null);
+      const next = queued.current; queued.current = null;
+      if (next) void run(next.operation, next.refresh);
+    }
   }
   function toggle(path: string) {
     const opening = !expanded.has(path);
-    if (opening && lock.current && !directories.has(path)) return;
     setExpanded(previous => { const next = new Set(previous); if (opening) next.add(path); else next.delete(path); return next; });
     if (opening) void run({ type: "list", path });
   }
@@ -75,19 +88,22 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
         const kind = fileKindForPath(entry.name);
         return entry.directory ? <div className="project-folder-node" key={child}>
           <div className="project-folder-row" role="treeitem" tabIndex={0} aria-expanded={expanded.has(child)} aria-label={entry.name} onClick={() => toggle(child)} onKeyDown={event => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); toggle(child); } }}>
-            <SidebarFolderIcon expanded={expanded.has(child)} /><span className="project-folder-name">{entry.name}</span>
+            <SidebarFolderIcon expanded={expanded.has(child)} /><MarqueeName className="project-folder-name">{entry.name}</MarqueeName>
             <span className="project-group-actions" onClick={event => event.stopPropagation()}>
+              <button type="button" className="project-group-menu-button" aria-label={`${expanded.has(child) ? "Collapse" : "Expand"} ${entry.name}`} onClick={() => { if (expanded.has(child)) setExpanded(previous => new Set([...previous].filter(path => path !== child && !path.startsWith(`${child}/`)))); else toggle(child); }}><FolderExpandCollapseIcon collapse={expanded.has(child)} /></button>
               <NativeDropdownMenu items={[
                 { kind: "item", id: "refresh", text: "Refresh folder", disabled: !!pending, action: () => { setExpanded(previous => new Set([...previous, child])); void run({ type: "list", path: child }, true); } },
                 { kind: "item", id: "collapse", text: "Collapse folder", disabled: !expanded.has(child), action: () => setExpanded(previous => new Set([...previous].filter(path => path !== child && !path.startsWith(`${child}/`)))) },
                 { kind: "item", id: "add", text: "Add as project", action: () => { try { saveSshProject({ id: crypto.randomUUID(), name: entry.name, host: project.host, root: `${directory!.root.replace(/\/$/, "")}/${child}` }); } catch (error) { setFailure({ operation: { type: "list", path }, message: String(error) }); } } },
                 { kind: "item", id: "copy", text: "Copy path", action: () => { copyTextWithSelectionFallback(`${directory!.root.replace(/\/$/, "")}/${child}`); } },
+                { kind: "separator" },
+                { kind: "item", id: "delete", text: "Delete folder from server…", disabled: !!pending, action: () => setDeleting({ path: child, fullPath: `${directory!.root.replace(/\/$/, "")}/${child}` }) },
               ]} trigger={<button className="project-group-menu-button" aria-label={`Options for ${entry.name}`}><DotsHorizontal size={14} /></button>} />
             </span>
           </div>{children(child)}
         </div> : <div key={child}>
           <button className={`project${selected === child ? " active" : ""}`} role="treeitem" aria-selected={selected === child} data-sidebar-structure-path={`ssh://${project.host}/${project.root}/${child}`} disabled={pending?.type === "preview"} onClick={() => void run({ type: "preview", path: child })}>
-            <span className="project-icon" data-file-kind={kind} aria-hidden="true"><FileKindIcon kind={kind} /></span><span className="project-name">{entry.name}</span>
+            <span className="project-icon" data-file-kind={kind} aria-hidden="true"><FileKindIcon kind={kind} /></span><MarqueeName className="project-name">{entry.name}</MarqueeName>
             {pending?.path === child && <span className="ssh-activity" aria-label="Downloading" />}
           </button>
           {failure?.operation.path === child && <div className="ssh-tree-error" role="alert">{failure.message}<button onClick={() => void run(failure.operation, true)}>Retry</button></div>}
@@ -105,22 +121,26 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
           <SidebarFolderIcon expanded={expanded.has(".")} badge={connection?.color ?? "cyan"} />
           <span className="project-group-copy"><span className="project-group-title">{project.name}</span></span>
           <span className="ssh-host-name">{connection?.name ?? project.host}</span>
-          <span className={`ssh-connection-dot${enabled && lastSuccess && !failure ? " available" : failure ? " failed" : ""}${pending ? " ssh-activity" : ""}`} aria-label={status} />
+          <span className={`ssh-connection-dot${enabled && (health ? health.available : !!lastSuccess) && !failure ? " available" : failure ? " failed" : ""}${pending ? " ssh-activity" : ""}`} aria-label={status} />
           <span className="project-group-actions" onClick={event => event.stopPropagation()}>
             <NativeDropdownMenu items={[
               { kind: "item", id: "refresh", text: "Refresh", disabled: !!pending, action: () => { setDirectories(new Map()); setExpanded(new Set(["."])); void run({ type: "list", path: "." }, true); } },
-              { kind: "item", id: "remove", text: "Remove from Burette", action: () => removeSshProject(project.id) },
+              ...projectMenu.items,
             ]} trigger={<button className="project-group-menu-button" aria-label={`Options for ${project.name}`}><DotsHorizontal size={14} /></button>} />
           </span>
         </div>
       </HoverCardTrigger>
-      <HoverCardContent side="right" align="start" className="w-80 grid gap-3 p-4">
-        <div className="flex items-center gap-2"><SidebarFolderIcon expanded={false} badge={connection?.color ?? "cyan"} /><strong>{project.name}</strong></div>
-        <div className="flex items-center gap-2"><SidebarGlobe size={16} />{connection?.name ?? project.host}</div>
-        <div className="border-t border-border pt-3 text-muted-foreground">{status}</div>
-        <div className="break-all text-muted-foreground">{project.root}</div>
+      <HoverCardContent side="right" align="start" className="ssh-project-card">
+        <SshProjectCard project={project} connection={connection} status={status} available={enabled && !!(health ? health.available : !!lastSuccess) && !failure} />
       </HoverCardContent>
     </HoverCard>
+    {projectMenu.dialog}
     {children(".")}
+    {deleting && <SshDeleteFolderDialog project={project} path={deleting.path} fullPath={deleting.fullPath} onClose={() => setDeleting(null)} onDeleted={() => {
+      const removed = deleting.path;
+      setDirectories(previous => new Map([...previous].filter(([path]) => path !== removed && !path.startsWith(`${removed}/`)).map(([path, cached]) => [path, { ...cached, time: 0, value: { ...cached.value, entries: cached.value.entries.filter(entry => (path === "." ? entry.name : `${path}/${entry.name}`) !== removed) } }])));
+      setExpanded(previous => new Set([...previous].filter(path => path !== removed && !path.startsWith(`${removed}/`))));
+    }} />}
+
   </div>;
 }

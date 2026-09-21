@@ -1,3 +1,4 @@
+import { useProjectOrganization } from "./project-organization";
 import { Plus } from "../ui/app-icons";
 import { SshProjectDialog } from "../ssh/ssh-project-dialog";
 import { SshProjects } from "../ssh/ssh-projects";
@@ -81,13 +82,14 @@ export function FileBrowser({
 }) {
   const [sshDialogOpen, setSshDialogOpen] = useState(false);
   const sshProjects = useSshProjects();
+  const organization = useProjectOrganization();
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [ketcherDropActive, setKetcherDropActive] = useState(false);
   useDropHighlightReset(setKetcherDropActive);
   const hideProjectPreviews = state.buildInfo.isAgentShell && !state.workspacePath;
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
-  const visibleProjects = hideProjectPreviews ? [] : filterSidebarProjects(state.sidebarProjects, state.sidebarQuery);
+  const visibleProjects = hideProjectPreviews ? [] : filterSidebarProjects(state.sidebarProjects, state.sidebarQuery).sort((a, b) => organization.sort === "priority" ? Number(b.isPinned) - Number(a.isPinned) : organization.sort === "recent" ? Math.max(0, ...b.items.map(i => i.openedAt ?? 0)) - Math.max(0, ...a.items.map(i => i.openedAt ?? 0)) : 0);
   const pinnedItems = visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned));
   const pinnedExpanded = pinnedOpen || hasSidebarQuery;
   const projectsExpanded = state.projectsOpen || hasSidebarQuery;
@@ -237,6 +239,8 @@ export function FileBrowser({
           </button>
           <NativeDropdownMenu
             items={[
+              ...organization.items,
+              { kind: "separator" },
               {
                 kind: "item",
                 id: "add-project-folder",
@@ -283,6 +287,7 @@ export function FileBrowser({
             </div>
           ) : (
             <div className="project-tree" role="tree" id="sidebar-projects-tree" onKeyDown={handleSidebarTreeKeyDown}>
+              {organization.organization === "connection" && visibleProjects.length > 0 && <div className="ssh-project-section-title">This computer</div>}
               {visibleProjects.map((project) => (
                 <ProjectGroup
                   key={project.id}
@@ -292,7 +297,7 @@ export function FileBrowser({
                   expandFoldersByDefault={isWebDemoWorkspace() && project.rootPath === webDemoProjectRoot()}
                 />
               ))}
-              <SshProjects onOpen={actions.openPaths} query={sidebarQuery} />
+              <SshProjects onOpen={actions.openPaths} query={sidebarQuery} organization={organization.organization} sort={organization.sort} />
             </div>
           )
         )}

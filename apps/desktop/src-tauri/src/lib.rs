@@ -282,6 +282,7 @@ pub fn run() {
             commands::folder_contents::read_folder_contents,
             commands::ssh::ssh_hosts,
             commands::ssh::ssh_list,
+            commands::ssh::ssh_delete_folder,
             commands::ssh::ssh_preview,
             commands::shell::write_base64_file,
             commands::shell::write_text_file,

@@ -1,10 +1,11 @@
+import { recordSshStatus } from "./ssh-connection-status";
 import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "./tauri";
 
 export type SshConnection = { host: string; name: string; enabled: boolean; color?: "cyan" | "blue" | "purple" };
 function randomColor(): NonNullable<SshConnection["color"]> { return (["cyan", "blue", "purple"] as const)[crypto.getRandomValues(new Uint32Array(1))[0] % 3]; }
-export type SshProject = { id: string; name: string; host: string; root: string };
+export type SshProject = { id: string; name: string; host: string; root: string; pinned?: boolean; section?: string; openedAt?: number };
 export type SshEntry = { name: string; directory: boolean; size: number };
 export type SshDirectory = { root: string; path: string; entries: SshEntry[]; truncated: boolean; discovered?: SshDirectory[]; expanded?: string[]; partial?: boolean };
 const key = "burette.ssh-projects.v1";
@@ -49,7 +50,8 @@ export function removeSshConnection(host: string) {
 }
 export function saveSshProject(project: SshProject) {
   const connections = connectionSnapshot();
-  write([...snapshot().filter(p => p.id !== project.id), project], connections.some(c => c.host === project.host) ? connections : [...connections, { host: project.host, name: project.host, enabled: true, color: randomColor() }]);
+  const previous = snapshot();
+  write(previous.some(p => p.id === project.id) ? previous.map(p => p.id === project.id ? project : p) : [...previous, project], connections.some(c => c.host === project.host) ? connections : [...connections, { host: project.host, name: project.host, enabled: true, color: randomColor() }]);
 }
 export function removeSshProject(id: string) {
   write(snapshot().filter(p => p.id !== id), connectionSnapshot());
@@ -71,11 +73,22 @@ export function sshHosts() {
 }
 export async function sshList(host: string, root: string, path = ".", chemical = false) {
   requireEnabled(host);
-  if (!isTauriRuntime()) return browserSsh<SshDirectory>("list", { host, root, path, chemical });
-  return invoke<SshDirectory>("ssh_list", { request: { host, root, path, chemical } });
+  try {
+    const value = await (isTauriRuntime() ? invoke<SshDirectory>("ssh_list", { request: { host, root, path, chemical } }) : browserSsh<SshDirectory>("list", { host, root, path, chemical }));
+    recordSshStatus(host, true);
+    return value;
+  } catch (error) { recordSshStatus(host, false); throw error; }
 }
 export async function sshPreview(project: SshProject, path: string) {
   requireEnabled(project.host);
   if (!isTauriRuntime()) return browserSsh<string>("preview", { host: project.host, root: project.root, path });
   return invoke<string>("ssh_preview", { request: { host: project.host, root: project.root, path } });
+}
+
+export async function sshDeleteFolder(project: SshProject, path: string) {
+  requireEnabled(project.host);
+  const request = { host: project.host, root: project.root, path };
+  return isTauriRuntime()
+    ? invoke<{ deleted: string }>("ssh_delete_folder", { request })
+    : browserSsh<{ deleted: string }>("delete-folder", request);
 }

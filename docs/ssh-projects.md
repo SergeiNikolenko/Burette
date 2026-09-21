@@ -14,14 +14,24 @@ keys, save passwords, install remote software or modify SSH configuration.
 Host suggestions currently include literal aliases in the main config file;
 aliases defined by Include can also be entered manually.
 
+Projects → … controls grouping by project/section, by connection, or in one flat
+list of projects. Sort by priority (pinned first), last opened, or saved manual
+order. Remote project menus support pinning, editing, sections, and connection
+colors. The hover card shows the full path and last observed connection status.
+
 ## Data and limits
 
-- Server operations are read-only. Edits to a downloaded preview affect only its
-  local copy; export locally to retain edits. Remote writeback is not implemented.
+- Edits to a downloaded preview affect only its local copy. Folder menus also
+  offer Delete folder from server, with the full path and a typed-name confirmation.
+  Deletion requires Python 3.11+ with descriptor-relative, symlink-safe rmtree; the
+  project root cannot be deleted. Deletion stops on the server after 35 seconds;
+  errors may leave a partially deleted folder. Refresh before retrying.
+  Removing a project from Burette never invokes deletion. Remote edit writeback is not implemented.
 - Folder listings scan at most 2,000 entries per request. The tree initially
-  renders 100 entries per folder, with Show more for the rest. Up to 64 listings
-  are retained for 30 seconds; Refresh bypasses that cache. No recursive project
-  scan or background host polling occurs.
+  renders 100 entries per folder, with Show more for the rest. Up to 128 listings
+  are retained for 30 seconds; Refresh bypasses that cache. Chemistry discovery walks a bounded subtree and expands paths to supported
+  chemical files. Hosts are checked once when their projects mount; there is no
+  periodic background polling.
 - Preview downloads are limited to 64 MiB with a 45-second operation timeout.
   One native SSH request or two browser-server requests run at a time.
   Errors leave saved projects intact.
@@ -37,8 +47,8 @@ aliases defined by Include can also be entered manually.
 ## Runtime boundaries
 
 The SSH transport is native Tauri code in `commands/ssh`. Paths travel as JSON on
-stdin to a bundled read-only Python worker, never interpolated into shell code.
-The frontend uses three typed commands: `ssh_hosts`, `ssh_list`, `ssh_preview`.
+stdin to a bundled Python file worker, never interpolated into shell code.
+The frontend uses typed commands: `ssh_hosts`, `ssh_list`, `ssh_preview`, and `ssh_delete_folder`.
 The local browser-dev server also supports these operations when explicitly
 started with `BURETTE_DEV_SSH=1`. It uses the same Python worker and OpenSSH,
 requires loopback clients and exact same-origin POST requests with a custom

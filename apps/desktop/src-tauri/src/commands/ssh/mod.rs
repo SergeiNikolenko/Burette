@@ -220,6 +220,16 @@ pub(crate) async fn ssh_list(request: Request) -> Result<serde_json::Value, Stri
 }
 
 #[tauri::command]
+pub(crate) async fn ssh_delete_folder(request: Request) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = run(&request, "delete-folder")?;
+        serde_json::from_slice(&bytes).map_err(|e| format!("Invalid deletion response: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub(crate) async fn ssh_preview(app: tauri::AppHandle, request: Request) -> Result<String, String> {
     let cache = app
         .path()

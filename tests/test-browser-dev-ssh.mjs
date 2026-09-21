@@ -19,6 +19,8 @@ try {
   assert.equal((await post('/list', { host: 'research;id', root: '~', path: '.' })).status, 400);
   assert.equal((await post('/list', { host: 'research', root: '\0', path: '.' })).status, 400);
   assert.equal((await post('/list', { host: 'research', root: 'x'.repeat(9000), path: '.' })).status, 413);
+  assert.equal((await post('/delete-folder', { host: '-oProxyCommand=evil', root: '~', path: 'folder' })).status, 400);
+  assert.equal((await post('/delete-folder', {}, { Origin: 'http://attacker.example' })).status, 403);
   assert.equal((await post('/other', {})).status, 404);
   const hosts = await post('/hosts', {});
   assert.equal(hosts.status, 200);

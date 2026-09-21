@@ -9,7 +9,7 @@ const MAX_BYTES = 64 * 1024 * 1024;
 const validHost = (host: unknown): host is string => typeof host === "string" && /^[a-zA-Z0-9._@:][a-zA-Z0-9._@:-]{0,254}$/.test(host);
 
 // The browser never gets SSH credentials. This opt-in, loopback-only transport
-// runs the same read-only Python worker as the native app, through system SSH.
+// runs the same Python file worker as the native app, through system SSH.
 export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: string) {
   let active = 0;
   let bytesCached = 0;
@@ -50,13 +50,13 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
         sendJson(res, 200, [...new Set(aliases)].slice(0, 256).map(alias => ({ alias })), "no-store");
         return;
       }
-      if (action !== "/list" && action !== "/preview") { sendJson(res, 404, { error: "Unknown SSH operation" }); return; }
+      if (action !== "/list" && action !== "/preview" && action !== "/delete-folder") { sendJson(res, 404, { error: "Unknown SSH operation" }); return; }
       const { host, root, path } = request;
       if (!validHost(host) || typeof root !== "string" || typeof path !== "string" || (root + path).includes("\0")) throw new Error("Invalid SSH host or remote path");
       const chemical = action === "/list" && request.chemical === true;
       const registry = chemical ? JSON.parse(await readFile(join(repoRoot, "config/preview-formats.json"), "utf8")) : null;
       const extensions = registry?.formats.filter((format: { preview?: { strategy?: string } }) => format.preview?.strategy !== "text").flatMap((format: { extensions: string[] }) => format.extensions);
-      const payload = JSON.stringify({ operation: chemical ? "discover" : action === "/list" ? "list" : "read", root, path, ...(chemical ? { extensions } : {}) });
+      const payload = JSON.stringify({ operation: chemical ? "discover" : action === "/delete-folder" ? "delete-folder" : action === "/list" ? "list" : "read", root, path, ...(chemical ? { extensions } : {}) });
       if (Buffer.byteLength(payload) > 8192) throw new Error("Remote path request is too large");
       if (active >= 2) { sendJson(res, 429, { error: "Two SSH requests are running. Try again when they finish." }); return; }
       active++; acquired = true;
@@ -80,10 +80,10 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
       const abort = () => { if (!res.writableEnded) controller.abort(); };
       res.once("close", abort);
       let data: Buffer;
-      try { data = await session.run(payload, action === "/list" ? 2 * 1024 * 1024 : MAX_BYTES, controller.signal); }
+      try { data = await session.run(payload, action === "/preview" ? MAX_BYTES : 2 * 1024 * 1024, controller.signal); }
       finally { res.off("close", abort); }
       res.setHeader("Server-Timing", `ssh;dur=${(performance.now() - started).toFixed(1)}`);
-      if (action === "/list") sendJson(res, 200, JSON.parse(data.toString()), "no-store");
+      if (action !== "/preview") sendJson(res, 200, JSON.parse(data.toString()), "no-store");
       else {
         const parent = join(await cacheRoot(), "ssh-previews");
         await mkdir(parent, { recursive: true, mode: 0o700 });
