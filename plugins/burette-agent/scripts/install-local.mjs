@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { preserveNativeWidget } from "./preserve-native-widget.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(scriptDir, "..");
@@ -58,6 +59,10 @@ const requiredBundleFiles = [
   "mcp/lib/server-bundle.mjs",
 ];
 
+// Stop before building or deleting the currently staged plugin. Main and the
+// recovered native-widget snapshot are distinct runtime surfaces for now.
+preserveNativeWidget(pluginRoot, personalPluginRoot);
+
 if (isSourceCheckout() && (shouldBuild || missingBundleFiles().length > 0)) {
   await run("bun", ["run", "build:agent-shell"], { cwd: repoRoot });
 }
@@ -67,6 +72,7 @@ if (missingFiles.length > 0) {
   throw new Error(`Incomplete Burette plugin bundle. Missing: ${missingFiles.join(", ")}. Run bun run build:agent-shell before installing.`);
 }
 
+preserveNativeWidget(pluginRoot, personalPluginRoot);
 await rm(personalPluginRoot, { recursive: true, force: true });
 await mkdir(personalPluginRoot, { recursive: true });
 await run("rsync", [

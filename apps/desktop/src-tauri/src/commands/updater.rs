@@ -1180,6 +1180,18 @@ sync_burette_codex_plugin() {{
     echo "codex plugin sync skipped: HOME is not set"
     return 0
   fi
+  # Preserve native widget capability even when JavaScript is unavailable and
+  # synchronization would otherwise use the Python cache fallback.
+  local staged_plugin="$HOME/.codex/plugins/burette-marketplace/plugins/burette"
+  if [ -f "$staged_plugin/assets/native-workspace.html" ]; then
+    local required
+    for required in assets/native-workspace.html assets/native-workspace/manifest.json assets/local-viewer.html mcp/registrations/local-viewer/register.mjs scripts/mcp-app-session.mjs; do
+      if [ ! -f "$plugin_src/$required" ]; then
+        echo "codex plugin sync skipped: preserving installed native widget"
+        return 0
+      fi
+    done
+  fi
   local plugin_installer="$plugin_src/scripts/install-local.mjs"
   local javascript_bin
   javascript_bin="$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v node || PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v bun || true)"
