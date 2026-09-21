@@ -34,15 +34,6 @@ const MAIN_MIN_WIDTH = 420;
 // `--chrome-height` in styles.css, and test-ui-shell-contract keeps them equal.
 const CHROME_HEIGHT = 56;
 
-// How much further the right dock may be dragged once the viewer has hit
-// MAIN_MIN_WIDTH, as a share of the workbench. Past that point the dock keeps
-// taking layout width while the viewer's content stays at its floor, so the
-// dock floats over the content instead of squeezing it further.
-const RIGHT_DOCK_OVERLAY_RATIO = 0.2;
-
-// Sanity cap on a non-overlapping dock, kept from the pre-overlay clamp.
-const RIGHT_DOCK_MAX_WIDTH = 960;
-
 // react-resizable-panels writes `overflow: auto` inline on every panel, which
 // beats the `overflow: hidden` in our panel classes — content with its own
 // min-size would scroll inside the panel instead of being clipped by it. The
@@ -58,15 +49,9 @@ function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
 }
 
-function rightDockOverlap(workbenchWidth: number) {
-  return Math.round(Math.max(0, workbenchWidth) * RIGHT_DOCK_OVERLAY_RATIO);
-}
-
-// Widest the right dock may get: the room left beside a floored viewer, plus
-// the overlap it is allowed to float over that viewer.
+// The separator may travel to the leading edge, covering the entire viewer.
 function rightDockMaxWidth(workbenchWidth: number) {
-  const overlap = rightDockOverlap(workbenchWidth);
-  return Math.max(0, Math.min(RIGHT_DOCK_MAX_WIDTH + overlap, workbenchWidth - MAIN_MIN_WIDTH + overlap));
+  return Math.max(0, workbenchWidth);
 }
 
 function clampRightDockWidth(width: number, workbenchWidth: number) {
@@ -321,9 +306,6 @@ export function AppLayout({
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = sidebarVisible ? sidebarWidth : 0;
   const workbenchWidth = viewportWidth - sidebarLayoutWidth;
-  // The viewer column may be squeezed this far below its floor; the dock covers
-  // the difference rather than the content shrinking into it.
-  const mainMinLayoutWidth = Math.max(0, MAIN_MIN_WIDTH - rightDockOverlap(workbenchWidth));
   const rightDockWidth = clampRightDockWidth(state.rightDockWidth, workbenchWidth);
   const activeGridId = state.activeDocument?.renderer === "grid2d" ? state.activeDocument.id : null;
   const layoutState = sidebarWidth === state.sidebarWidth && rightDockWidth === state.rightDockWidth ? state : { ...state, sidebarWidth, rightDockWidth };
@@ -639,7 +621,7 @@ export function AppLayout({
                 <ResizablePanel
                   id="workbench-main"
                   className="workbench-main-panel"
-                  minSize={`${mainMinLayoutWidth}px`}
+                  minSize="0px"
                   style={SPILLING_PANEL_STYLE}
                 >
                   <ResizablePanelGroup

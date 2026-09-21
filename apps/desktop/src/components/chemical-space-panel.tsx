@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { ChevronDown, SettingsSlider as SlidersHorizontal } from "@/components/ui/app-icons";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +74,8 @@ import {
 import { isTauriRuntime } from "../lib/tauri";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
+import { ChemicalSpaceViewControls } from "./chemical-space-view-controls";
+import { useChemicalSpaceSetting } from "../hooks/use-chemical-space-setting";
 import { useThemePortalContainer } from "./radix-menu";
 
 const ChemicalSpace3D = lazy(() => import("./chemical-space-3d").then((module) => ({
@@ -252,9 +255,10 @@ function indexingProgressLabel(state: GridIndexState | null) {
 }
 
 export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = true }: ChemicalSpacePanelProps) {
+  const documentSettingsKey = document?.renderer === "grid2d" ? gridDocumentInstanceKey(document) : "empty";
   const portalContainer = useThemePortalContainer();
-  const [draft, setDraft] = useState(DEFAULT_OPTIONS);
-  const [options, setOptions] = useState(DEFAULT_OPTIONS);
+  const [draft, setDraft] = useChemicalSpaceSetting(documentSettingsKey, "draft", DEFAULT_OPTIONS);
+  const [options, setOptions] = useChemicalSpaceSetting(documentSettingsKey, "options", DEFAULT_OPTIONS);
   const [result, setResult] = useState<ChemicalSpaceResult | null>(null);
   const [progress, setProgress] = useState<ChemicalSpaceProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -265,17 +269,18 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
   const [errorNeedsModelRuntime, setErrorNeedsModelRuntime] = useState(false);
   const [learnedRepsInstalled, setLearnedRepsInstalled] = useState<boolean | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [visibilityProbed, setVisibilityProbed] = useState(false);
   const [visibleSourceIds, setVisibleSourceIds] = useState<Set<number> | null>(null);
   // "all" embeds the whole collection and dims filtered-out molecules;
   // "filtered" recomputes the embedding over just the filtered subset.
-  const [scope, setScope] = useState<"all" | "filtered">("all");
+  const [scope, setScope] = useChemicalSpaceSetting<"all" | "filtered">(documentSettingsKey, "scope", "all");
   const [hovered, setHovered] = useState<number | null>(null);
   const [preview, setPreview] = useState<MoleculePreview | null>(null);
   const [moleculePreviews, setMoleculePreviews] = useState<Map<number, MoleculePreview>>(new Map());
-  const [pointScale, setPointScale] = useState(1);
-  const [tmapLineScale, setTmapLineScale] = useState(DEFAULT_TMAP_LINE_SCALE);
-  const [tool, setTool] = useState<"navigate" | "lasso">("navigate");
-  const [study, setStudy] = useState(DEFAULT_STUDY);
+  const [pointScale, setPointScale] = useChemicalSpaceSetting(documentSettingsKey, "pointScale", 1);
+  const [tmapLineScale, setTmapLineScale] = useChemicalSpaceSetting(documentSettingsKey, "tmapLineScale", DEFAULT_TMAP_LINE_SCALE);
+  const [tool, setTool] = useChemicalSpaceSetting<"navigate" | "lasso">(documentSettingsKey, "tool", "navigate");
+  const [study, setStudy] = useChemicalSpaceSetting(documentSettingsKey, "study", DEFAULT_STUDY);
   const [completedStudy, setCompletedStudy] = useState<CompletedStudy | null>(null);
   const [studyPosition, setStudyPosition] = useState(0);
   const [studyPlaying, setStudyPlaying] = useState(false);
@@ -283,19 +288,19 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
   const [studyOpen, setStudyOpen] = useState(false);
   // "auto" lets the run tune its own cutoff; the coarser/finer nudges pin one
   // and switch to "manual" so a later run does not tune it back.
-  const [clusterMode, setClusterMode] = useState<"off" | "auto" | "manual">("off");
-  const [clusterCutoff, setClusterCutoff] = useState(CLUSTER_START_CUTOFF);
-  const [clusterAppliedCutoff, setClusterAppliedCutoff] = useState(CLUSTER_START_CUTOFF);
+  const [clusterMode, setClusterMode] = useChemicalSpaceSetting<"off" | "auto" | "manual">(documentSettingsKey, "clusterMode", "off");
+  const [clusterCutoff, setClusterCutoff] = useChemicalSpaceSetting(documentSettingsKey, "clusterCutoff", CLUSTER_START_CUTOFF);
+  const [clusterAppliedCutoff, setClusterAppliedCutoff] = useChemicalSpaceSetting(documentSettingsKey, "clusterAppliedCutoff", CLUSTER_START_CUTOFF);
   const [clusterResult, setClusterResult] = useState<ChemicalSpaceClusterResult | null>(null);
   const [clusterError, setClusterError] = useState<string | null>(null);
   const [clusterRunning, setClusterRunning] = useState(false);
   const [activityColumns, setActivityColumns] = useState<ActivityColumn[]>([]);
-  const [activityColumnId, setActivityColumnId] = useState<string | null>(null);
-  const [activityDirection, setActivityDirection] = useState<ActivityDirection>("higherActive");
+  const [activityColumnId, setActivityColumnId] = useChemicalSpaceSetting<string | null>(documentSettingsKey, "activityColumnId", null);
+  const [activityDirection, setActivityDirection] = useChemicalSpaceSetting<ActivityDirection>(documentSettingsKey, "activityDirection", "higherActive");
   const [activityValues, setActivityValues] = useState<Map<number, number>>(new Map());
-  const [cliffsEnabled, setCliffsEnabled] = useState(false);
-  const [cliffMinSimilarity, setCliffMinSimilarity] = useState(0.6);
-  const [cliffMinDelta, setCliffMinDelta] = useState(1);
+  const [cliffsEnabled, setCliffsEnabled] = useChemicalSpaceSetting(documentSettingsKey, "cliffsEnabled", false);
+  const [cliffMinSimilarity, setCliffMinSimilarity] = useChemicalSpaceSetting(documentSettingsKey, "cliffMinSimilarity", 0.6);
+  const [cliffMinDelta, setCliffMinDelta] = useChemicalSpaceSetting(documentSettingsKey, "cliffMinDelta", 1);
   const [indexState, setIndexState] = useState<GridIndexState | null>(null);
   const [indexStateDocumentKey, setIndexStateDocumentKey] = useState<string | null>(null);
   // Whether the index state above has been answered yet. Until it has, the size
@@ -304,9 +309,9 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
   const [indexProbed, setIndexProbed] = useState(false);
   const [indexProbeError, setIndexProbeError] = useState<string | null>(null);
   const [indexProbeAttempt, setIndexProbeAttempt] = useState(0);
-  const [confirmedLargeRunDocumentKey, setConfirmedLargeRunDocumentKey] = useState<string | null>(null);
-  const [sourceRevision, setSourceRevision] = useState(0);
-  const sourceRevisionRef = useRef(0);
+  const [confirmedLargeRunDocumentKey, setConfirmedLargeRunDocumentKey] = useChemicalSpaceSetting<string | null>(documentSettingsKey, "confirmedLargeRunDocumentKey", null);
+  const [sourceRevision, setSourceRevision] = useChemicalSpaceSetting(documentSettingsKey, "sourceRevision", 0);
+  const sourceRevisionRef = useRef(sourceRevision);
   useEffect(() => {
     let disposed = false;
     void fetchChemicalSpaceModelRuntimeStatus()
@@ -364,10 +369,10 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
     setProgress(null);
     setSelected(new Set());
     setVisibleSourceIds(null);
+    setVisibilityProbed(false);
     setHovered(null);
     setPreview(null);
     setMoleculePreviews(new Map());
-    setTmapLineScale(DEFAULT_TMAP_LINE_SCALE);
     setCompletedStudy(null);
     setStudyPosition(0);
     setStudyPlaying(false);
@@ -375,15 +380,8 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
     setClusterResult(null);
     setClusterError(null);
     setClusterRunning(false);
-    setActivityColumnId(null);
-    setActivityDirection("higherActive");
     setActivityValues(new Map());
-    setCliffsEnabled(false);
-    setCliffMinSimilarity(0.6);
-    setCliffMinDelta(1);
-    setConfirmedLargeRunDocumentKey(null);
-    sourceRevisionRef.current = 0;
-    setSourceRevision(0);
+    sourceRevisionRef.current = sourceRevision;
     setIndexProbeError(null);
   }, [documentInstanceKey]);
 
@@ -501,9 +499,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
     [scopedSourceIds],
   );
   const effectiveRecordCount = scopedSourceIds ? scopedSourceIds.length : recordCount;
-  useEffect(() => {
-    if (scope === "filtered" && !visibleSourceIds) setScope("all");
-  }, [scope, visibleSourceIds]);
+
   const largeRunConfirmationKey = documentInstanceKey === null
     ? null
     : `${documentInstanceKey}:${sourceRevision}:${scopeKey}`;
@@ -514,7 +510,8 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
   // An unanswered probe holds the job back: the collection could be mid-index or
   // far past the auto-run limit, and both are decided by the answer.
   const awaitingIndexState = indexStateDocumentKey !== documentInstanceKey || !indexProbed;
-  const computeBlockedByIndex = awaitingIndexState || indexProbeError !== null || !indexReady || indexing;
+  const computeBlockedByIndex = awaitingIndexState || indexProbeError !== null || !indexReady || indexing
+    || (scope === "filtered" && !visibilityProbed);
 
   useEffect(() => {
     if (!documentId || !documentInstanceKey) return;
@@ -716,6 +713,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
         }
       }
       if (data.body.type === "chemicalSpaceVisibilityChanged") {
+        setVisibilityProbed(true);
         if (data.body.kind === "filtered" && Array.isArray(data.body.sourceRecordIds)) {
           setVisibleSourceIds(new Set(data.body.sourceRecordIds
             .slice(0, GRID_SELECTION_BRIDGE_LIMIT)
@@ -723,6 +721,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
             .filter((index) => Number.isSafeInteger(index) && index >= 0)));
         } else {
           setVisibleSourceIds(null);
+          setScope("all");
         }
       }
       if (data.body.type === "gridHoverChanged") {
@@ -966,9 +965,8 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
       filterToSelection: false,
     });
   }, [postToGrid]);
-  // The header is a single row that must never wrap. Below this width the
-  // toggle groups and the status badge cannot fit next to the selects, so
-  // they fold into the Display popover instead of forcing a second row.
+  // Primary controls remain visible in either dock. Only secondary scope
+  // and timing details fold away when the panel is narrow.
   const controlsRowRef = useRef<HTMLDivElement | null>(null);
   const [controlsNarrow, setControlsNarrow] = useState(false);
   useEffect(() => {
@@ -981,52 +979,33 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
     return () => observer.disconnect();
   }, []);
   const dimensionsToggle = (
-    <ToggleGroup
-      className="shrink-0"
-      type="single"
+    <Button
+      className="shrink-0 min-w-9"
       variant="outline"
       size="sm"
-      spacing={0}
-      value={draft.dimensions.toString()}
-      aria-label="Embedding dimensions"
-      onValueChange={(value) => {
-        if (value !== "2" && value !== "3") return;
-        const dimensions = Number(value) as 2 | 3;
-        const next = { ...draft, dimensions };
+      aria-label={`Switch to ${draft.dimensions === 2 ? "3D" : "2D"} embedding`}
+      title={`Switch to ${draft.dimensions === 2 ? "3D" : "2D"}`}
+      onClick={() => {
+        const next = { ...draft, dimensions: (draft.dimensions === 2 ? 3 : 2) as 2 | 3 };
         setDraft(next);
         commitOptions(next);
       }}
     >
-      <ToggleGroupItem value="2" aria-label="2D embedding">2D</ToggleGroupItem>
-      <ToggleGroupItem value="3" aria-label="3D embedding">3D</ToggleGroupItem>
-    </ToggleGroup>
+      {draft.dimensions}D
+    </Button>
   );
   const toolToggle = (
-    <ToggleGroup
+    <Button
       className="shrink-0"
-      type="single"
-      variant="outline"
+      variant={tool === "lasso" ? "secondary" : "ghost"}
       size="sm"
-      spacing={0}
-      value={tool}
-      aria-label="Chemical-space interaction"
-      onValueChange={(value) => {
-        if (value === "navigate" || value === "lasso") setTool(value);
-      }}
+      aria-label="Lasso selection"
+      aria-pressed={tool === "lasso"}
+      title={tool === "lasso" ? "Turn off lasso to pan, orbit and inspect" : "Draw a selection linked to Grid"}
+      onClick={() => setTool((current) => current === "lasso" ? "navigate" : "lasso")}
     >
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <ToggleGroupItem value="navigate">Explore</ToggleGroupItem>
-        </TooltipTrigger>
-        <TooltipContent showArrow={false}>Pan, orbit, zoom, and inspect molecules</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <ToggleGroupItem value="lasso">Lasso</ToggleGroupItem>
-        </TooltipTrigger>
-        <TooltipContent showArrow={false}>Draw a free-form selection linked to Grid</TooltipContent>
-      </Tooltip>
-    </ToggleGroup>
+      Lasso
+    </Button>
   );
   const scopeToggle = visibleSourceIds || scope === "filtered" ? (
     <ToggleGroup
@@ -1059,14 +1038,18 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
   ) : null;
   return (
     <TooltipProvider>
-      <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-testid="chemical-space-panel">
+      <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-testid="chemical-space-panel"
+        onKeyDownCapture={(event) => {
+          if (event.key === "Tab" && tool === "lasso") setTool("navigate");
+        }}
+      >
         <div
           ref={controlsRowRef}
-          className="flex shrink-0 items-center gap-2 overflow-hidden border-b border-border px-3 py-1.5"
+          className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border px-3 py-1.5"
         >
             <NativeSelect
               size="sm"
-              className="w-44 shrink-0"
+              className="w-40 shrink-0"
               aria-label="Molecular representation engine"
               value={draft.representation}
               onChange={(event) => {
@@ -1101,13 +1084,22 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                 <NativeSelectOption key={method.value} value={method.value}>{method.label}</NativeSelectOption>
               ))}
             </NativeSelect>
-            {controlsNarrow ? null : (
-              <>
-                {dimensionsToggle}
-                {toolToggle}
-                {scopeToggle}
-              </>
-            )}
+            {dimensionsToggle}
+            {toolToggle}
+            <NativeSelect
+              size="sm"
+              className="w-32 min-w-24 max-w-48 flex-1"
+              aria-label="Activity colour column"
+              value={activityColumnId ?? ""}
+              disabled={activityColumns.length === 0}
+              onChange={(event) => setActivityColumnId(event.currentTarget.value || null)}
+            >
+              <NativeSelectOption value="">Activity: none</NativeSelectOption>
+              {activityColumns.map((column) => (
+                <NativeSelectOption key={column.id} value={column.id}>{column.label}</NativeSelectOption>
+              ))}
+            </NativeSelect>
+            {controlsNarrow ? null : scopeToggle}
             {controlsNarrow ? null : displayedResult ? (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1163,23 +1155,11 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                     Point size and colouring for this map.
                   </span>
                 </div>
-                {controlsNarrow ? (
-                  <FieldGroup className="gap-3">
-                    <Field className="gap-1.5">
-                      <FieldLabel className="text-xs">Dimensions</FieldLabel>
-                      {dimensionsToggle}
-                    </Field>
-                    <Field className="gap-1.5">
-                      <FieldLabel className="text-xs">Tool</FieldLabel>
-                      {toolToggle}
-                    </Field>
-                    {scopeToggle ? (
-                      <Field className="gap-1.5">
-                        <FieldLabel className="text-xs">Scope</FieldLabel>
-                        {scopeToggle}
-                      </Field>
-                    ) : null}
-                  </FieldGroup>
+                {controlsNarrow && scopeToggle ? (
+                  <Field className="gap-1.5">
+                    <FieldLabel className="text-xs">Scope</FieldLabel>
+                    {scopeToggle}
+                  </Field>
                 ) : null}
                 <FieldGroup className="gap-3">
                   <ParameterField label="Size" value={`${Math.round(pointScale * 100)}%`}>
@@ -1206,23 +1186,9 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                       />
                     </ParameterField>
                   ) : null}
-                  {activityColumns.length > 0 ? (
+                  {activityColumnId ? (
                     <Field className="gap-1.5">
-                      <FieldLabel htmlFor="chemical-space-activity-column" className="text-xs">Activity</FieldLabel>
-                      <NativeSelect
-                        id="chemical-space-activity-column"
-                        size="sm"
-                        className="w-full"
-                        aria-label="Activity colour column"
-                        value={activityColumnId ?? ""}
-                        onChange={(event) => setActivityColumnId(event.currentTarget.value || null)}
-                      >
-                        <NativeSelectOption value="">None</NativeSelectOption>
-                        {activityColumns.map((column) => (
-                          <NativeSelectOption key={column.id} value={column.id}>{column.label}</NativeSelectOption>
-                        ))}
-                      </NativeSelect>
-                      {activityColumnId ? (
+                      <FieldLabel className="text-xs">Activity direction</FieldLabel>
                         <NativeSelect
                           size="sm"
                           className="w-full"
@@ -1233,7 +1199,6 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                           <NativeSelectOption value="higherActive">High = active</NativeSelectOption>
                           <NativeSelectOption value="lowerActive">Low = active</NativeSelectOption>
                         </NativeSelect>
-                      ) : null}
                     </Field>
                   ) : null}
                 </FieldGroup>
@@ -1244,6 +1209,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
         <div className="relative min-h-0 flex-1">
           {displayedResult ? (
             <ChemicalSpaceCanvas
+              documentKey={documentSettingsKey}
               result={displayedResult}
               clusters={rankedClusters}
               selected={selected}
@@ -1353,7 +1319,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-3 py-1.5">
           <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label="Chemical-space tools">
           <Popover>
             <PopoverTrigger asChild>
@@ -1907,6 +1873,7 @@ function ParameterField({ label, value, children }: { label: string; value: stri
 }
 
 type ChemicalSpaceCanvasProps = {
+  documentKey: string;
   result: ChemicalSpaceResult;
   clusters: ChemicalSpaceClusterResult | null;
   selected: Set<number>;
@@ -1929,6 +1896,8 @@ type ChemicalSpaceCanvasProps = {
   onHover: (sourceRecordId: number | null) => void;
   onSelect: (sourceRecordIds: number[]) => void;
 };
+
+const DEFAULT_CAMERA_2D = { yaw: -0.45, pitch: 0.35, zoom: 1, panX: 0, panY: 0 };
 
 const DIMMED_POINT_COLOR = "#71717a";
 
@@ -1963,6 +1932,7 @@ function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
     return (
       <Suspense fallback={<ChemicalSpaceChecking message="Loading the 3D renderer…" />}>
         <ChemicalSpace3D
+          documentKey={props.documentKey}
           positions={normalized}
           treeEdges={props.result.treeEdges}
           sourceRecordIds={props.result.sourceRecordIds}
@@ -1987,6 +1957,7 @@ function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
 }
 
 function ChemicalSpace2D({
+  documentKey,
   result,
   clusters,
   selected,
@@ -2013,9 +1984,29 @@ function ChemicalSpace2D({
   const lassoPaintFrameRef = useRef(0);
   const hoverRef = useRef<number | null>(null);
   const [viewport, setViewport] = useState({ width: 1, height: 1, pixelRatio: 1 });
-  const [camera, setCamera] = useState({ yaw: -0.45, pitch: 0.35, zoom: 1, panX: 0, panY: 0 });
+  const [savedCamera, setSavedCamera] = useChemicalSpaceSetting(documentKey, "camera2d", DEFAULT_CAMERA_2D);
+  // Pan is stored relative to the viewport so changing dock size keeps the view.
+  const camera = useMemo(() => ({ ...savedCamera,
+    panX: savedCamera.panX * viewport.width,
+    panY: savedCamera.panY * viewport.height,
+  }), [savedCamera, viewport.width, viewport.height]);
+  const setCamera = (update: SetStateAction<typeof DEFAULT_CAMERA_2D>) => {
+    setSavedCamera((previous) => {
+      const pixels = { ...previous, panX: previous.panX * viewport.width, panY: previous.panY * viewport.height };
+      const next = typeof update === "function" ? update(pixels) : update;
+      return { ...next, panX: next.panX / viewport.width, panY: next.panY / viewport.height };
+    });
+  };
   const [lasso, setLasso] = useState<Point2[]>([]);
   const [cursor, setCursor] = useState<Point2 | null>(null);
+  useEffect(() => {
+    if (tool === "lasso") return;
+    pointerRef.current = null;
+    lassoRef.current = [];
+    if (lassoPaintFrameRef.current) cancelAnimationFrame(lassoPaintFrameRef.current);
+    lassoPaintFrameRef.current = 0;
+    setLasso([]);
+  }, [tool]);
   const clusterIds = useMemo(
     () => alignedClusterIds(result.sourceRecordIds, clusters),
     [clusters, result.sourceRecordIds],
@@ -2134,6 +2125,7 @@ function ChemicalSpace2D({
     // A shared blue keeps dense maps legible in both themes.
     const pointColor = styles.getPropertyValue("--chemical-space-point").trim() || "#659cc8";
     const ringColor = pointColor;
+    const hoverColor = styles.getPropertyValue("--foreground").trim() || "#f5f5f7";
     const basePointRadius = adaptivePointRadius(result.successfulRecords);
     // Points share the camera's sense of depth: zooming in grows them, zooming
     // out shrinks them. The square root keeps the growth gentler than the
@@ -2250,7 +2242,7 @@ function ChemicalSpace2D({
         const point = indexed
           ?? (hoveredBasePoint ? screenPointForCamera(hoveredBasePoint, viewport, camera) : null);
         if (point) {
-          const markerRadius = basePointRadius * pointScale * zoomPointScale;
+          const markerRadius = basePointRadius * pointScale * zoomPointScale * 1.3;
           const pointer = magnetPointerRef.current;
           // A catch from across the gap is only trustworthy if you can see what
           // it caught, so the pointer keeps a thread to the molecule it holds.
@@ -2264,8 +2256,13 @@ function ChemicalSpace2D({
             context.stroke();
           }
           context.beginPath();
-          context.arc(point.x, point.y, markerRadius, 0, Math.PI * 2);
+          context.arc(point.x, point.y, markerRadius * 1.65, 0, Math.PI * 2);
           context.fillStyle = selectedColor;
+          context.globalAlpha = 0.45;
+          context.fill();
+          context.beginPath();
+          context.arc(point.x, point.y, markerRadius, 0, Math.PI * 2);
+          context.fillStyle = hoverColor;
           context.globalAlpha = 1;
           context.fill();
           context.lineWidth = 1.5;
@@ -2277,8 +2274,12 @@ function ChemicalSpace2D({
         context.beginPath();
         context.moveTo(lassoNow[0].x, lassoNow[0].y);
         for (const point of lassoNow.slice(1)) context.lineTo(point.x, point.y);
-        context.strokeStyle = selectedColor;
-        context.lineWidth = 1.5;
+        context.globalAlpha = 1;
+        context.strokeStyle = "#171717";
+        context.lineWidth = 3.5;
+        context.stroke();
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 1.75;
         context.setLineDash([5, 4]);
         context.stroke();
         context.setLineDash([]);
@@ -2302,11 +2303,12 @@ function ChemicalSpace2D({
     layerContext.setTransform(viewport.pixelRatio, 0, 0, viewport.pixelRatio, 0, 0);
     layerContext.clearRect(0, 0, viewport.width, viewport.height);
     if (selected.size > 0) {
-      const selectedColor = getComputedStyle(canvas).getPropertyValue("--primary").trim() || "#af52de";
+      const selectedColor = getComputedStyle(canvas).color || "#af52de";
       const radius = adaptivePointRadius(result.successfulRecords)
         * pointScale
         * Math.max(0.6, Math.min(2.6, Math.sqrt(camera.zoom)));
-      layerContext.fillStyle = selectedColor;
+      layerContext.strokeStyle = selectedColor;
+      layerContext.lineWidth = 1.25;
       layerContext.globalAlpha = 0.9;
       let offIndexDrawn = 0;
       for (const sourceRecordId of selected) {
@@ -2320,8 +2322,8 @@ function ChemicalSpace2D({
           offIndexDrawn += 1;
         }
         layerContext.beginPath();
-        layerContext.arc(point.x, point.y, radius, 0, Math.PI * 2);
-        layerContext.fill();
+        layerContext.arc(point.x, point.y, radius + 2, 0, Math.PI * 2);
+        layerContext.stroke();
       }
       layerContext.globalAlpha = 1;
     }
@@ -2384,6 +2386,26 @@ function ChemicalSpace2D({
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-muted/20">
+      <ChemicalSpaceViewControls
+        hasSelection={projected.some((point) => selected.has(point.sourceRecordId))}
+        onFitAll={() => setCamera(DEFAULT_CAMERA_2D)}
+        onFitSelection={() => {
+          const points = projected.filter((point) => selected.has(point.sourceRecordId));
+          if (!points.length) return;
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (const point of points) {
+            minX = Math.min(minX, point.x); maxX = Math.max(maxX, point.x);
+            minY = Math.min(minY, point.y); maxY = Math.max(maxY, point.y);
+          }
+          const zoom = Math.max(0.35, Math.min(20,
+            viewport.width * 0.8 / Math.max(1, maxX - minX),
+            viewport.height * 0.8 / Math.max(1, maxY - minY)));
+          setCamera({ ...camera, zoom,
+            panX: (viewport.width / 2 - (minX + maxX) / 2) * zoom,
+            panY: (viewport.height / 2 - (minY + maxY) / 2) * zoom,
+          });
+        }}
+      />
       <canvas
         ref={canvasRef}
         className="size-full touch-none text-foreground outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-foreground/30"

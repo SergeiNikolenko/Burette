@@ -517,7 +517,7 @@ assert.match(
   "a terminal indexing error must not be treated as a ready collection",
 );
 assert.match(chemicalSpacePanel, /indexState\?\.indexError/);
-assert.match(chemicalSpacePanel, /const computeBlockedByIndex = awaitingIndexState \|\| indexProbeError !== null \|\| !indexReady \|\| indexing;/);
+assert.match(chemicalSpacePanel, /const computeBlockedByIndex = awaitingIndexState \|\| indexProbeError !== null \|\| !indexReady \|\| indexing\s*\|\| \(scope === "filtered" && !visibilityProbed\);/);
 assert.match(chemicalSpacePanel, /Retry index check/);
 assert.match(
   chemicalSpacePanel,
