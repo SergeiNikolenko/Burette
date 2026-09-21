@@ -217,6 +217,7 @@ button:disabled {
   width: 100%;
   box-sizing: border-box;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   margin-bottom: 8px;
   padding: 6px;
@@ -270,6 +271,7 @@ button:disabled {
 }
 
 .buret-toolbar-row {
+  min-width: 0;
   display: grid;
   gap: 10px;
   align-items: end;
@@ -619,6 +621,16 @@ button:disabled {
   border: 0;
   border-radius: 8px;
   background: transparent;
+}
+
+/* Selection counts grow with the collection; wrap the controls within the
+   visible grid strip rather than letting their intrinsic width escape it. */
+.buret-selection-actions,
+.buret-selected-open-actions {
+  flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
+  height: auto;
 }
 
 .buret-selection-count {
@@ -2713,3 +2725,48 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
   .buret-toolbar-row-view { gap: 6px; }
 }
 .buret-actionbar .ab-actions-menu { margin-left: auto; }
+
+/* Size against the exposed strip, not the iframe hidden beneath a dock. */
+
+@container grid-controls (max-width: 420px) {
+  #grid-controls .buret-toolbar-row-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #grid-controls .buret-sort-control,
+  #grid-controls .buret-load-status,
+  #grid-controls .buret-toolbar-row-view > :not(.ab-seg):not(.ab-menu-wrap):not(.buret-selection-actions) {
+    display: none;
+  }
+  #grid-controls .buret-toolbar-row-view {
+    gap: 4px;
+  }
+  #grid-controls .ab-menu-wrap {
+    margin-left: auto;
+  }
+  #grid-controls .buret-selection-actions {
+    order: 1;
+    flex-basis: 100%;
+    flex-wrap: nowrap;
+  }
+  #grid-controls .buret-selection-count {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@container grid-controls (max-width: 260px) {
+  #grid-controls .buret-selection-actions {
+    display: none;
+  }
+  #grid-controls .ab-seg button {
+    padding-inline: 6px;
+  }
+}
+
+@container grid-controls (max-width: 190px) {
+  #grid-controls .buret-toolbar-row-view > .ab-seg {
+    display: none;
+  }
+}
