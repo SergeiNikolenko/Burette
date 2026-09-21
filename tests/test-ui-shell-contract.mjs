@@ -5128,7 +5128,7 @@ assert.match(previewViewController, /executableURL\.deletingLastPathComponent\(\
 assert.match(previewViewController, /appendingPathComponent\("xyzrender-python", isDirectory: true\)/);
 assert.match(previewViewController, /private struct BundledXyzrenderPythonPaths/);
 assert.match(previewViewController, /private static func bundledSitePackages\(in runtimeRoot: URL\) -> URL\?/);
-assert.match(previewViewController, /for version in \["python3\.13", "python3\.12", "python3\.11"\]/);
+assert.match(previewViewController, /for version in \["python3\.14", "python3\.13", "python3\.12", "python3\.11"\]/);
 assert.match(previewViewController, /let cacheKeyPath: String/);
 assert.match(previewViewController, /executablePath: launch\.cacheKeyPath/);
 assert.match(previewViewController, /executablePath: paths\.python\.path/);
@@ -5255,7 +5255,7 @@ assert.match(previewViewer, /const transitionFrame = captureMolstarTransitionFra
 assert.match(previewViewer, /fadeMolstarTransitionFrame\(transitionFrame\)/);
 assert.match(previewViewer, /function captureMolstarTransitionFrame\(\)/);
 assert.match(previewViewer, /snapshot\.toDataURL\('image\/png'\)/);
-assert.doesNotMatch(previewViewer, /image\.src = canvas\.toDataURL\('image\/png'\)/);
+assert.doesNotMatch(previewViewer.slice(previewViewer.indexOf('  function captureMolstarTransitionFrame()'), previewViewer.indexOf('  function fadeMolstarTransitionFrame(')), /image\.src = canvas\.toDataURL\('image\/png'\)/);
 assert.match(previewViewer, /function requestGenerated3DCameraView\(viewer\)/);
 assert.match(previewViewer, /requestMolstarStructureFocus\(viewer, \{/);
 assert.match(previewViewer, /if \(options\.force !== true && !molstarAutoFocusEnabled\(activeConfig\)\) return/);

@@ -1,3 +1,4 @@
+import type { AnimationSource } from "./xyzrender-animation-dialog";
 import { Switch } from "./ui/switch";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
@@ -710,6 +711,8 @@ const XYZRENDER_DEFAULT_HULL_OPACITY = 0.45;
 const XYZRENDER_DEFAULT_PORE_OPACITY = 0.6;
 
 function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
+  const activeItem = useRef<AnimationSource | null>(null);
+  const [itemLabel, setItemLabel] = useState(document.title);
   const controlsRef = useRef<XyzrenderControls>(xyzrenderDockControls(document));
   const presetRef = useRef(document.xyzrenderPreset || "default");
   const [preset, setPreset] = useState(presetRef.current);
@@ -734,6 +737,7 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
   }, []);
 
   useEffect(() => {
+    if (activeItem.current?.documentId === document.id) return;
     const nextPreset = document.xyzrenderPreset || "default";
     const nextControls = xyzrenderDockControls(document);
     presetRef.current = nextPreset;
@@ -743,6 +747,25 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
     setControls(nextControls);
   }, [document.id, document.xyzrenderControls, document.xyzrenderPreset]);
 
+  useEffect(() => {
+    activeItem.current = null;
+    setItemLabel(document.title);
+    const receive = (event: Event) => {
+      const item = (event as CustomEvent<AnimationSource>).detail;
+      if (item.documentId !== document.id) return;
+      clearPendingApply();
+      activeItem.current = item;
+      setItemLabel(item.label);
+      const nextControls = xyzrenderDockControls({ ...document, xyzrenderControls: item.controls as XyzrenderControls });
+      lastAppliedSignature.current = xyzrenderDockSignature(nextControls, item.preset);
+      setControlsState(nextControls);
+      setPresetState(item.preset);
+    };
+    window.addEventListener('burette:xyzrender-active-item', receive);
+    window.addEventListener('burette:xyzrender-animation', receive);
+    return () => { clearPendingApply(); window.removeEventListener('burette:xyzrender-active-item', receive); window.removeEventListener('burette:xyzrender-animation', receive); };
+  }, [document.id, clearPendingApply, setControlsState, setPresetState]);
+
   const updateControl = <K extends keyof XyzrenderControls>(key: K, value: XyzrenderControls[K]) => {
     setControlsState({ ...controlsRef.current, [key]: value });
   };
@@ -751,7 +774,14 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
     controlsRef.current = nextControls;
     presetRef.current = nextPreset;
     lastAppliedSignature.current = xyzrenderDockSignature(nextControls, nextPreset);
-    window.dispatchEvent(new CustomEvent("burette:xyzrender-style", { detail: { documentId: document.id, label: document.title, path: document.path, preset: nextPreset, controls: nextControls } }));
+    window.dispatchEvent(new CustomEvent("burette:xyzrender-style", { detail: { documentId: document.id, itemId: activeItem.current?.itemId, label: document.title, path: document.path, preset: nextPreset, controls: nextControls } }));
+    if (activeItem.current?.itemId) {
+      for (const frame of window.document.querySelectorAll<HTMLIFrameElement>('iframe.viewer-iframe')) frame.contentWindow?.postMessage({ source: 'burette-host', body: {
+        type: 'setXyzrenderControls', documentId: document.id, itemId: activeItem.current.itemId,
+        controls: nextControls, preset: nextPreset, selectionAction: options.xyzrenderSelectionAction,
+      } }, '*');
+      return;
+    }
     void actions.reloadXyzrenderDocument(document, {
       xyzrenderPreset: nextPreset,
       xyzrenderControls: nextControls,
@@ -787,7 +817,7 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         <div className="structure-inspector-section-header">
           <div>
             <h3>Style</h3>
-            <p>{document.title}</p>
+            <p>{itemLabel}</p>
           </div>
           <span className="xyzrender-dock-badge">SVG</span>
         </div>

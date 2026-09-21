@@ -2912,6 +2912,8 @@
         if (background) background.style.display = body.controls.transparentBackground ? 'none' : '';
       }
       item.dataset.buretXyzrenderOrientationRef = body.orientationRef;
+      if (typeof body.orientationBaseRef === 'string') item.dataset.buretXyzrenderOrientationBase = body.orientationBaseRef;
+      if (Array.isArray(body.angles) && body.angles.length === 3 && body.angles.every(Number.isFinite)) item.dataset.buretXyzrenderOrientationAngles = JSON.stringify(body.angles);
       return;
     }
     if (body.type === 'xyzrenderContextMenuResult') {
@@ -2973,6 +2975,12 @@
         return;
       }
       const options = { controls, preset };
+      if (typeof body.itemId === 'string') {
+        if (event.source !== window.parent || (body.documentId && body.documentId !== documentId)) return;
+        const item = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item')).find(node => node.dataset.buretXyzrenderEditorId === body.itemId);
+        if (item) void updateSelectedXyzrenderSheetItems([item], options);
+        return;
+      }
       if (requestSelectedXyzrenderSheetItemsUpdate(options)) return;
       if (requestBrowserDevXyzrenderUpdate(options)) return;
       const sent = postHostMessage({ type: 'setXyzrenderControls', documentId, controls, preset, ...xyzrenderOrientationPayload(options) });
@@ -12453,9 +12461,23 @@ SOFTWARE.
     const getStageScale = () => parseFloat(root.dataset.buretXyzrenderStageScale || '1') || 1;
     const copies = items.map(original => {
       const position = sheetItemCenterPosition(original);
-      const copy = addXyzrenderSheetItem(sheet, original.querySelector('.buret-xyzrender-sheet-item-body').innerHTML,
+      const body = original.querySelector('.buret-xyzrender-sheet-item-body');
+      const snapshot = body.cloneNode(true);
+      const canvas = body.querySelector('.buret-xyzrender-animation-canvas');
+      if (canvas) {
+        // Canvas pixels are not serialized by innerHTML. Freeze the visible preview
+        // in the duplicate; committed GIF images already retain their animation.
+        snapshot.querySelectorAll('.buret-xyzrender-animation-image').forEach(image => image.remove());
+        const image = document.createElement('img');
+        image.className = 'buret-xyzrender-animation-image';
+        image.style.cssText = canvas.style.cssText;
+        image.style.visibility = 'visible';
+        image.src = canvas.toDataURL('image/png');
+        snapshot.querySelector('.buret-xyzrender-animation-canvas').replaceWith(image);
+      }
+      const copy = addXyzrenderSheetItem(sheet, snapshot.innerHTML,
         sheetItemExportLabel(original), { x: position.left + 40, y: position.top + 40 }, 1, getStageScale, xyzrenderSheetItemEntry(original));
-      for (const key of ['buretXyzrenderPreset', 'buretXyzrenderRegions', 'buretXyzrenderVdwAtoms', 'buretXyzrenderOrientationRef']) {
+      for (const key of ['buretXyzrenderPreset', 'buretXyzrenderRegions', 'buretXyzrenderVdwAtoms', 'buretXyzrenderOrientationRef', 'buretXyzrenderControls', 'buretXyzrenderOrientationAngles', 'buretXyzrenderOrientationBase']) {
         if (original.dataset[key]) copy.dataset[key] = original.dataset[key];
       }
       copy.style.width = `${original.offsetWidth}px`;
@@ -12493,7 +12515,7 @@ SOFTWARE.
     const label = sheetItemExportLabel(item).replace(/^Sheet structure /u, '');
     const baseName = safeExportBaseName(label, 'xyzrender');
     const actions = new Map([
-      ['view:hide', () => item.remove()],
+      ['view:hide', () => removeXyzrenderSheetItem(item)],
       ['view:show-all', () => { pushXyzrenderActionHistory(item, 'show hidden'); showHiddenXyzrenderElements(item); }],
       ['select:hide', () => { pushXyzrenderActionHistory(item, 'hide selected'); hideSelectedXyzrenderElements(); }],
       ['view:isolate', () => { pushXyzrenderActionHistory(item, 'dim others'); dimUnselectedXyzrenderElements(item); }],
@@ -13462,6 +13484,7 @@ SOFTWARE.
     });
     item.classList.add('selected');
     bringXyzrenderSheetItemToFront(item, root);
+    queueMicrotask(() => { if (item.isConnected && item.classList.contains('selected')) publishXyzrenderItem(item); });
   }
 
   function bringXyzrenderSheetItemToFront(item, root = document) {
@@ -13498,12 +13521,19 @@ SOFTWARE.
     document.addEventListener('click', clearSelectionOnPointerDown, true);
   }
 
+  function removeXyzrenderSheetItem(item) {
+        postHostMessage({ type: 'xyzrenderItemRemoved', itemId: item.dataset.buretXyzrenderEditorId, documentId: (activeConfig || window.BuretteConfig || {}).documentId });
+        item.remove();
+        const next = frontmostXyzrenderSheetItem();
+        if (next) selectRotatableArtifact(next);
+  }
+
   function installRotatableArtifactKeyboard(item, options = {}) {
     const removable = options.removable !== false;
     const onKeyDown = event => {
       if ((event.key === 'Backspace' || event.key === 'Delete') && removable && item.classList.contains('selected')) {
         event.preventDefault();
-        item.remove();
+        removeXyzrenderSheetItem(item);
         return;
       }
       if (!item.classList.contains('selected')) return;
@@ -13833,6 +13863,31 @@ SOFTWARE.
     resetRotatableArtifactRotateRadius(item);
   }
 
+  function publishXyzrenderItem(item, type = 'xyzrenderActiveItem') {
+    const config = activeConfig || window.BuretteConfig || {};
+    if (!item || config.appViewer !== true) return;
+    const entry = xyzrenderSheetItemEntry(item);
+    // Freeze each item's initial appearance before document defaults can change.
+    for (const node of document.querySelectorAll('.buret-xyzrender-sheet-item')) {
+      node.dataset.buretXyzrenderPreset ||= config.xyzrenderPreset || 'default';
+      node.dataset.buretXyzrenderControls ||= JSON.stringify(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS);
+    }
+    item.dataset.buretXyzrenderEditorId ||= `xyzr-${Date.now()}-${++xyzrenderSheetRequestSerial}`;
+    postHostMessage({
+          itemId: item.dataset.buretXyzrenderEditorId,
+          type, documentId: config.documentId, label: sheetEntryLabel(entry).split('/').pop(),
+          path: sheetEntryLabel(entry), inputDataBase64: sheetEntryInputDataBase64(entry),
+          inputExtension: sheetEntryInputExtension(entry),
+          previewSvg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML || '',
+          preset: item.dataset.buretXyzrenderPreset || config.xyzrenderPreset || 'default',
+          controls: normalizeXyzrenderControls({ ...(item.dataset.buretXyzrenderControls ? JSON.parse(item.dataset.buretXyzrenderControls) : config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS), regions: xyzrenderSheetItemRegions(item), vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || config.xyzrenderControls?.vdwAtoms }, config),
+          orientationRef: item.dataset.buretXyzrenderOrientationRef || captureCurrentXyzrenderOrientationRef()?.text,
+          orientationBaseRef: item.dataset.buretXyzrenderOrientationBase,
+          angles: item.dataset.buretXyzrenderOrientationAngles ? JSON.parse(item.dataset.buretXyzrenderOrientationAngles) : undefined,
+
+    });
+  }
+
   async function openXyzrender3DEditor() {
     try {
       const config = activeConfig || window.BuretteConfig || {};
@@ -13841,17 +13896,7 @@ SOFTWARE.
       const entry = xyzrenderSheetItemEntry(item);
       if (!config.xyzrenderEndpoint) throw new Error('xyzrender animation preview currently requires the browser renderer.');
       if (config.appViewer === true) {
-        item.dataset.buretXyzrenderEditorId ||= `xyzr-${Date.now()}-${++xyzrenderSheetRequestSerial}`;
-        postHostMessage({
-          itemId: item.dataset.buretXyzrenderEditorId,
-          type: 'openXyzrenderAnimation', documentId: config.documentId, label: sheetEntryLabel(entry).split('/').pop(),
-          path: sheetEntryLabel(entry), inputDataBase64: sheetEntryInputDataBase64(entry),
-          inputExtension: sheetEntryInputExtension(entry),
-          previewSvg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML || '',
-          preset: item.dataset.buretXyzrenderPreset || config.xyzrenderPreset || 'default',
-          controls: normalizeXyzrenderControls({ ...(item.dataset.buretXyzrenderControls ? JSON.parse(item.dataset.buretXyzrenderControls) : config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS), regions: xyzrenderSheetItemRegions(item), vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || config.xyzrenderControls?.vdwAtoms }, config),
-          orientationRef: item.dataset.buretXyzrenderOrientationRef || captureCurrentXyzrenderOrientationRef()?.text,
-        });
+        publishXyzrenderItem(item, 'openXyzrenderAnimation');
         return;
       }
       if (!window.BuretteXyzrender3D) {
