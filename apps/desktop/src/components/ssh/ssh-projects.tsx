@@ -1,62 +1,17 @@
+import { RemoteProject } from "./ssh-project-tree";
 import { Switch } from "../ui/switch";
-import { useState } from "react";
-import { Folder, FolderPlus, SidebarGlobe, DotsHorizontal, Plus } from "../ui/app-icons";
+import { useEffect, useState } from "react";
+import { FolderPlus, SidebarGlobe, DotsHorizontal, Plus } from "../ui/app-icons";
 import { Button } from "../ui/button";
 import { NativeDropdownMenu } from "../native-dropdown-menu";
 import { SshProjectDialog } from "./ssh-project-dialog";
-import { removeSshProject, removeSshConnection, saveSshConnection, sshList, sshPreview, useSshProjects, useSshConnections, type SshConnection, type SshProject, type SshDirectory } from "../../lib/ssh-projects";
+import { removeSshConnection, saveSshConnection, sshList, useSshProjects, useSshConnections, type SshConnection } from "../../lib/ssh-projects";
 
 export function SshProjects({ onOpen, query = "" }: { onOpen: (paths: string[]) => void | Promise<void>; query?: string }) {
   const projects = useSshProjects();
   const connections = useSshConnections();
-  return <>{projects.filter(p => `${p.name} ${p.host} ${p.root}`.toLowerCase().includes(query.toLowerCase())).map(project => <RemoteProject key={project.id} project={project} enabled={connections.find(c => c.host === project.host)?.enabled !== false} onOpen={onOpen} />)}</>;
-}
-function RemoteProject({ project, enabled, onOpen }: { project: SshProject; enabled: boolean; onOpen: (paths: string[]) => void | Promise<void> }) {
-  const [expanded, setExpanded] = useState(false);
-  const [directory, setDirectory] = useState<SshDirectory | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [failedList, setFailedList] = useState(".");
-  const [failedPreview, setFailedPreview] = useState<string | null>(null);
-  async function load(path = ".") {
-    setFailedList(path);
-    if (!enabled) { setError("Connection is disabled. Enable it in Settings → Connections."); return; }
-    setBusy(true); setError(""); setFailedPreview(null);
-    try { setDirectory(await sshList(project.host, project.root, path)); }
-    catch (e) { setError(String(e)); }
-    finally { setBusy(false); }
-  }
-  async function preview(path: string) {
-    if (!enabled) { setError("Connection is disabled. Enable it in Settings → Connections."); return; }
-    setBusy(true); setError("");
-    try { await onOpen([await sshPreview(project, path)]); }
-    catch (e) { setError(String(e)); setFailedPreview(path); }
-    finally { setBusy(false); }
-  }
-  return <div className="px-2 py-1" title={`${project.host}:${project.root}`}>
-    <div className="flex items-center gap-1">
-      <button className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-muted" aria-expanded={expanded} onClick={() => { setExpanded(!expanded); if (!expanded && !directory) void load(); }}>
-        <SidebarGlobe size={15} /><span className="truncate">{project.name}</span>
-      </button>
-      <NativeDropdownMenu items={[
-        { kind: "item", id: "refresh", text: "Refresh", action: () => { setExpanded(true); void load(directory?.path); } },
-        { kind: "item", id: "remove", text: "Remove from Burette", action: () => removeSshProject(project.id) },
-      ]} trigger={<button className="sidebar-section-menu-button opacity-100!" aria-label={`Options for ${project.name}`}><DotsHorizontal size={14} /></button>} />
-    </div>
-    {expanded && <div className="pl-3 text-sm">
-      <div className="px-2 pb-1 text-xs text-muted-foreground">{project.host}{busy ? " · Loading…" : ""}</div>
-      {error && <div role="alert" className="p-2 text-xs text-destructive break-words">{error}<button className="block underline" disabled={busy} onClick={() => { if (failedPreview) void preview(failedPreview); else void load(failedList); }}>Retry</button></div>}
-      {directory && <>
-        {directory.path !== "." && <button disabled={busy} className="px-2 py-1" onClick={() => void load(directory.path.split("/").slice(0, -1).join("/") || ".")}>Up one folder</button>}
-        {directory.entries.map(entry => <button key={entry.name} disabled={busy} className="flex w-full items-center gap-2 truncate rounded-md px-2 py-1 text-left hover:bg-muted disabled:opacity-50" onClick={() => {
-          const path = directory.path === "." ? entry.name : `${directory.path}/${entry.name}`;
-          if (entry.directory) void load(path); else void preview(path);
-        }}>{entry.directory && <Folder size={14} />}<span className="truncate">{entry.name}</span></button>)}
-        {!directory.entries.length && <p className="p-2 text-muted-foreground">Empty folder</p>}
-        {directory.truncated && <p className="p-2 text-xs">First 2,000 entries shown.</p>}
-      </>}
-    </div>}
-  </div>;
+  useEffect(() => { for (const connection of connections) if (!connection.color) saveSshConnection(connection); }, [connections]);
+  return <>{projects.filter(p => `${p.name} ${p.host} ${p.root}`.toLowerCase().includes(query.toLowerCase())).map(project => <RemoteProject key={project.id} project={project} connection={connections.find(c => c.host === project.host)} onOpen={onOpen} />)}</>;
 }
 export function SshConnections() {
   const [adding, setAdding] = useState(false);

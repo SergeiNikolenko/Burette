@@ -1,6 +1,7 @@
 import { Plus } from "../ui/app-icons";
 import { SshProjectDialog } from "../ssh/ssh-project-dialog";
 import { SshProjects } from "../ssh/ssh-projects";
+import { useSshProjects } from "../../lib/ssh-projects";
 import { sidebarCreationItems } from "./context-actions";
 import { showNativeContextMenu } from "../native-context-menu";
 import { SidebarTooltip } from "./sidebar-tooltip";
@@ -79,6 +80,7 @@ export function FileBrowser({
   actions: ShellActions;
 }) {
   const [sshDialogOpen, setSshDialogOpen] = useState(false);
+  const sshProjects = useSshProjects();
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [ketcherDropActive, setKetcherDropActive] = useState(false);
   useDropHighlightReset(setKetcherDropActive);
@@ -224,11 +226,7 @@ export function FileBrowser({
               <ChevronIcon />
             </span>
           </button>
-          <NativeDropdownMenu items={[
-            { kind: "item", id: "add-local-project", text: "Add Local Project…", action: () => { void actions.chooseWorkspace(); } },
-            { kind: "item", id: "add-ssh-project", text: "Add SSH Project…", action: () => setSshDialogOpen(true) },
-            { kind: "item", id: "connections", text: "Connections…", action: () => actions.openSettingsSection("connections") },
-          ]} trigger={<button type="button" className="sidebar-section-menu-button" aria-label="Add project"><Plus size={16} /></button>} />
+
           <button
             type="button"
             className="sidebar-section-menu-button sidebar-expand-projects"
@@ -276,9 +274,10 @@ export function FileBrowser({
               </button>
             )}
           />
+          <button type="button" className="sidebar-section-menu-button sidebar-add-project" aria-label="Add project" onClick={() => setSshDialogOpen(true)}><Plus size={16} /></button>
         </div>
         {projectsExpanded && (
-          visibleProjects.length === 0 ? (
+          visibleProjects.length === 0 && sshProjects.length === 0 ? (
             <div className="empty-sidebar">
               {hasSidebarQuery ? "No matching projects or structures" : "No project structures yet"}
             </div>
@@ -293,13 +292,13 @@ export function FileBrowser({
                   expandFoldersByDefault={isWebDemoWorkspace() && project.rootPath === webDemoProjectRoot()}
                 />
               ))}
+              <SshProjects onOpen={actions.openPaths} query={sidebarQuery} />
             </div>
           )
         )}
-        {projectsExpanded && <SshProjects onOpen={actions.openPaths} query={sidebarQuery} />}
       </section>
       )}
-      <SshProjectDialog open={sshDialogOpen} onOpenChange={setSshDialogOpen} />
+      {sshDialogOpen && <SshProjectDialog open onOpenChange={setSshDialogOpen} onLocal={actions.chooseWorkspace} />}
     </ScrollFade>
   );
 }

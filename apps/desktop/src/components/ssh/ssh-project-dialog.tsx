@@ -1,61 +1,69 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { Folder, SidebarGlobe } from "../ui/app-icons";
-import { saveSshProject, saveSshConnection, sshList, type SshDirectory } from "../../lib/ssh-projects";
-import { isTauriRuntime } from "../../lib/tauri";
+import { Folder, FolderPlus, ChevronDown, ArrowLeft } from "../ui/app-icons";
+import { NativeDropdownMenu } from "../native-dropdown-menu";
+import { SidebarFolderIcon } from "../sidebar/sidebar-folder-icon";
+import { saveSshProject, sshList, useSshConnections, type SshDirectory } from "../../lib/ssh-projects";
+import { SshConnectionDialog } from "./ssh-connection-dialog";
 
-export function SshProjectDialog({ open, onOpenChange, connectionOnly = false, initialHost = "" }: { open: boolean; onOpenChange: (open: boolean) => void; connectionOnly?: boolean; initialHost?: string }) {
-  const [hosts, setHosts] = useState<{ alias: string }[]>([]);
-  const [host, setHost] = useState(initialHost);
-  const [root, setRoot] = useState("~");
+export function SshProjectDialog({ open, onOpenChange, connectionOnly = false, initialHost = "", onLocal }: { open: boolean; onOpenChange: (open: boolean) => void; connectionOnly?: boolean; initialHost?: string; onLocal?: () => void | Promise<void> }) {
+  const connections = useSshConnections();
+  const [host, setHost] = useState(initialHost || connections.find(c => c.enabled)?.host || "");
   const [name, setName] = useState("");
-  const [directory, setDirectory] = useState<SshDirectory | null>(null);
+  const [folder, setFolder] = useState("");
+  const [path, setPath] = useState("~");
+  const [listing, setListing] = useState<SshDirectory | null>(null);
+  const [browsing, setBrowsing] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => {
-    if (!open || !isTauriRuntime()) return;
-    let cancelled = false;
-    void invoke<{ alias: string }[]>("ssh_hosts").then(value => { if (!cancelled) setHosts(value); }).catch(e => { if (!cancelled) setError(String(e)); });
-    return () => { cancelled = true; };
-  }, [open]);
-  async function browse(path = root) {
-    setBusy(true); setError(""); setDirectory(null);
-    try {
-      const result = await sshList(host, path);
-      setRoot(result.root); setDirectory(result);
-    } catch (e) { setError(String(e)); }
+  const connection = connections.find(c => c.host === host);
+  async function browse(root = path) {
+    setBusy(true); setError(""); setListing(null);
+    try { const result = await sshList(host, root); setListing(result); setPath(result.root); }
+    catch (e) { setError(String(e)); }
     finally { setBusy(false); }
   }
-  function add() {
-    if (!directory) return;
-    try {
-    if (connectionOnly) saveSshConnection({ host, name: name.trim() || host, enabled: true });
-    else saveSshProject({ id: crypto.randomUUID(), host, root: directory.root, name: name.trim() || directory.root.split("/").pop() || host });
-    onOpenChange(false);
-    } catch (e) { setError(String(e)); }
+  function create() {
+    try { saveSshProject({ id: crypto.randomUUID(), host, root: folder, name: name.trim() || folder.split("/").pop() || host }); onOpenChange(false); }
+    catch (e) { setError(String(e)); }
   }
-  return <Dialog open={open} onOpenChange={value => { if (!busy) onOpenChange(value); }}>
-    <DialogContent className="sm:max-w-lg">
-      <DialogHeader><DialogTitle>{connectionOnly ? "Add SSH connection" : "Add SSH project"}</DialogTitle><DialogDescription>{connectionOnly ? "Choose a machine from your SSH configuration or enter it manually." : "Choose a machine and a folder containing your structures."}</DialogDescription></DialogHeader>
-      <label className="grid gap-2 text-sm">SSH host
-        <Input list="burette-ssh-hosts" placeholder="Alias or user@hostname" value={host} disabled={busy} onChange={e => { setHost(e.target.value); setDirectory(null); }} />
-        <datalist id="burette-ssh-hosts">{hosts.map(h => <option key={h.alias} value={h.alias} />)}</datalist>
-      </label>
-      {hosts.length > 0 && !host && <div className="max-h-40 overflow-auto rounded-xl border border-border">{hosts.map(h => <button key={h.alias} className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-muted" onClick={() => setHost(h.alias)}><SidebarGlobe size={16} />{h.alias}</button>)}</div>}
-      {!connectionOnly && <label className="grid gap-2 text-sm">Remote folder<Input value={root} disabled={busy} onChange={e => { setRoot(e.target.value); setDirectory(null); }} /></label>}
-      <Button variant="outline" disabled={!host.trim() || busy} onClick={() => void browse()}>{busy ? "Connecting…" : connectionOnly ? "Test connection" : "Browse folder"}</Button>
-      {directory && !connectionOnly && <div className="max-h-44 overflow-auto rounded-xl border border-border" aria-label="Remote folders">
-        <div className="px-4 py-2 text-xs text-muted-foreground">{directory.root}</div>
-        {directory.entries.filter(e => e.directory).map(entry => <button key={entry.name} disabled={busy} className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-muted" onClick={() => void browse(`${directory.root}/${entry.name}`)}><Folder size={16} />{entry.name}</button>)}
-        {directory.truncated && <p className="p-3 text-xs">Showing the first 2,000 entries. Enter a subfolder path to browse further.</p>}
-      </div>}
-      <label className="grid gap-2 text-sm">{connectionOnly ? "Connection name" : "Project name"}<Input placeholder={connectionOnly ? "Use host name" : "Use folder name"} value={name} onChange={e => setName(e.target.value)} /></label>
-      {error && <p role="alert" className="text-sm text-destructive whitespace-pre-wrap">{error}</p>}
-      <p className="text-xs text-muted-foreground">Uses your SSH configuration and keys. The host must already be trusted. Python 3 is required on the server.</p>
-      <div className="flex justify-end"><Button disabled={!directory || busy} onClick={add}>{connectionOnly ? "Add connection" : "Add project"}</Button></div>
-    </DialogContent>
-  </Dialog>;
+  if (connectionOnly) return <SshConnectionDialog open={open} onOpenChange={onOpenChange} />;
+  return <>
+    <Dialog open={open && !adding} onOpenChange={value => { if (!busy) onOpenChange(value); }}>
+      <DialogContent className="ssh-dialog">
+        <DialogHeader><DialogTitle>{browsing ? "Choose a folder" : "Create project"}</DialogTitle><DialogDescription className="sr-only">Choose a source folder for your project.</DialogDescription></DialogHeader>
+        {browsing ? <>
+          <form className="ssh-folder-location" onSubmit={e => { e.preventDefault(); void browse(); }}>
+            <Button type="button" variant="ghost" size="icon" aria-label="Parent folder" disabled={busy || !listing || listing.root === "/"} onClick={() => void browse(listing!.root.split("/").slice(0, -1).join("/") || "/")}><ArrowLeft size={16} /></Button>
+            <Input aria-label="Remote folder path" value={path} onChange={e => setPath(e.target.value)} disabled={busy} />
+            <Button type="submit" variant="ghost" disabled={busy}>Go</Button>
+          </form>
+          <div className="ssh-folder-list" aria-label="Remote folders" aria-busy={busy}>
+            {busy && <div className="ssh-folder-loading" role="status">Loading…</div>}
+            {listing?.entries.filter(entry => entry.directory).map(entry => <button key={entry.name} disabled={busy} onClick={() => void browse(`${listing.root}/${entry.name}`)}><Folder size={16} />{entry.name}</button>)}
+            {listing && !listing.entries.some(e => e.directory) && <p className="p-4 text-muted-foreground">No subfolders</p>}
+            {listing?.truncated && <p className="p-4 text-muted-foreground">First 2,000 entries shown.</p>}
+          </div>
+          <div className="ssh-dialog-footer"><Button variant="ghost" disabled={busy} onClick={() => setBrowsing(false)}>Back</Button><Button className="ssh-primary" disabled={busy || !listing || path !== listing.root} onClick={() => { setFolder(listing!.root); setBrowsing(false); }}>Choose folder</Button></div>
+        </> : <>
+          <label className="ssh-project-name"><Folder size={19} /><Input autoFocus aria-label="Project name" placeholder="Project name" value={name} onChange={e => setName(e.target.value)} /></label>
+          <div className="ssh-source-label">Source folders</div>
+          <div className={`ssh-source-box${folder ? " has-folder" : ""}`}>
+            <NativeDropdownMenu align="center" items={[
+              ...(onLocal ? [{ kind: "item" as const, id: "local", text: "This computer", action: () => { onOpenChange(false); void onLocal(); } }, { kind: "separator" as const }] : []),
+              ...connections.map(c => ({ kind: "item" as const, id: c.host, text: c.name, disabled: !c.enabled, action: () => { setHost(c.host); setFolder(""); setPath("~"); setListing(null); } })),
+              { kind: "separator" }, { kind: "item", id: "add", text: "Add remote…", action: () => setAdding(true) },
+            ]} trigger={<button className="ssh-source-picker">{folder ? "Folder on" : "Add a folder on"} <span>{connection?.name || host || "a remote computer"}</span><ChevronDown size={15} /></button>} />
+            {folder ? <button className="ssh-chosen-folder" onClick={() => { setPath(folder); setBrowsing(true); void browse(folder); }}><SidebarFolderIcon expanded={false} badge={connection?.color} /><span>{folder.split("/").pop() || folder}</span></button> : <Button variant="secondary" className="rounded-full" onClick={() => { if (!host) { setAdding(true); return; } setBrowsing(true); void browse(); }}><FolderPlus size={17} /> Add</Button>}
+          </div>
+          <div className="ssh-dialog-footer justify-end"><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button className="ssh-primary" disabled={!folder || !host} onClick={create}>Create project</Button></div>
+        </>}
+        {error && <p role="alert" className="ssh-dialog-error">{error}</p>}
+      </DialogContent>
+    </Dialog>
+    {adding && <SshConnectionDialog open onOpenChange={setAdding} onAdded={value => { setHost(value); setFolder(""); setPath("~"); setListing(null); }} />}
+  </>;
 }
