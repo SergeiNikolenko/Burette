@@ -28,3 +28,25 @@ assert.equal(Object.keys(JSON.parse(stored)).length, 32, 'Session history stays 
 stored = '{broken';
 assert.doesNotThrow(() => runtime().read('file-0'));
 console.log('Renderer view state: iframe reload, camera/2D round trip, isolation and bounded storage passed');
+
+let resize, disconnected = false;
+const viewContext = vm.createContext({ window: { sessionStorage: storage }, ResizeObserver: class {
+  constructor(callback) { resize = callback; } observe() {} disconnect() { disconnected = true; }
+} });
+vm.runInContext(source, viewContext);
+const placed = { dataset: {}, offsetLeft: 500, offsetTop: 300, offsetWidth: 800, offsetHeight: 400 };
+const viewport = { clientWidth: 1000, clientHeight: 600, querySelectorAll: () => [placed] };
+let fitted;
+const stop = viewContext.window.BuretteRendererViewState.observeSheetViewport(viewport, null, view => { fitted = view; });
+assert.equal(fitted.scale, 1.17);
+viewport.clientWidth = 600; resize();
+assert.deepEqual(copy(fitted), { scale: 0.67, x: -134, y: 24 }, 'opening the inspector fits and centers the entire sheet');
+assert.equal(300 + fitted.x + fitted.scale * (placed.offsetLeft - 300), 300);
+viewport.clientWidth = 0; resize();
+viewport.clientWidth = 1000; resize();
+assert.equal(fitted.scale, 1.17, 'closing the inspector uses the newly available space');
+placed.dataset.rotation = '90'; viewport.clientWidth = 900; resize();
+assert.ok(Math.abs(fitted.scale - 0.59) < 1e-10, 'rotated bounds fit vertically');
+stop(); assert.equal(disconnected, true);
+first.save('viewport', { xyz: { ...xyz, viewport: { width: 1000, height: 600 } } });
+assert.deepEqual(copy(runtime().read('viewport').xyz.viewport), { width: 1000, height: 600 });

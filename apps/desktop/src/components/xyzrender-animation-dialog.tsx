@@ -1,6 +1,6 @@
+import { renderXyzrender, saveXyzrenderFile, type SavedXyzrenderFile } from "../lib/xyzrender-transport";
 import { createAnimationBudget } from "../lib/xyzrender-animation-budget";
 import { useXyzrenderPlayback } from "../hooks/use-xyzrender-playback";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { ScrubNumberField } from "./ui/scrub-number-input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { XyzrenderOrientationPanel } from "./xyzrender-orientation-panel";
@@ -10,7 +10,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "./ui/button";
 import { Field, FieldGroup, FieldLabel, FieldDescription } from "./ui/field";
-import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { Alert, AlertDescription } from "./ui/alert";
 import { ChevronDown, Download, X } from "./ui/app-icons";
 import { Progress } from "./ui/progress";
@@ -29,10 +28,15 @@ export type AnimationSource = {
   controls: Record<string, unknown>;
   inputDataBase64?: string;
   inputExtension?: string;
+  animationSourcePath?: string;
+  animationSourceExtension?: string;
   orientationRef?: string;
   orientationBaseRef?: string;
   angles?: number[];
 };
+const frameOptions = [24, 48, 60, 120, 180, 240];
+const sizeOptions = [256, 384, 480, 640, 800, 1024];
+
 type Mode = "rotation" | "bounce" | "trajectory" | "vibration" | "assembly";
 
 type AnimationSettings = { mode: Mode; selectedAxis: string; amplitude: number; rotate: boolean; rebuildBonds: boolean; noise: number; anchor: string; forward: boolean; fps: number; size: number; frames: number };
@@ -45,30 +49,26 @@ export function XyzrenderAnimationDialog() {
     if (settings.current.size > 32) settings.current.delete(settings.current.keys().next().value!);
   }, []);
   const [source, setSource] = useState<AnimationSource | null>(null);
-  const prepared = useRef<AnimationSource | null>(null);
-  const prepare = useCallback((next: AnimationSource) => { prepared.current = next; }, []);
-  const [animate, setAnimate] = useState(false);
   const [animationSources, setAnimationSources] = useState<AnimationSource[]>([]);
   const retainedSources = useRef(animationSources);
   retainedSources.current = animationSources;
-  useEffect(() => {
-    if (!source || !animate) return;
-    setAnimationSources(previousSources => {
-      const current = previousSources.filter(item => item.documentId === source.documentId);
-      const key = source.itemId || source.path;
+  const prepare = useCallback((next: AnimationSource) => {
+    setAnimationSources(previous => {
+      const current = previous.filter(item => item.documentId === next.documentId);
+      const key = next.itemId || next.path;
       const existing = current.findIndex(item => (item.itemId || item.path) === key);
-      if (existing >= 0) {
-        const previous = current[existing];
-        // Selection republishes the same source; it must not invalidate a render.
-        if (previous.preset === source.preset && previous.orientationRef === source.orientationRef && JSON.stringify(previous.controls) === JSON.stringify(source.controls)) return current;
-        return current.map((item, index) => index === existing ? source : item);
-      }
-      return [...current, source];
+      if (existing < 0) return [...current, next];
+      const item = current[existing];
+      if (item.preset === next.preset && item.orientationRef === next.orientationRef && JSON.stringify(item.controls) === JSON.stringify(next.controls)) return previous;
+      return current.map((item, index) => index === existing ? next : item);
     });
-  }, [source, animate]);
+  }, []);
+  useEffect(() => {
+    if (source && (source.inputExtension || source.path.split('.').pop())?.toLowerCase() === 'cif') prepare(source);
+  }, [source, prepare]);
   const [target, setTarget] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    const open = (event: Event) => { prepared.current = null; setAnimate(false); setSource((event as CustomEvent<AnimationSource>).detail); window.setTimeout(() => { const node = document.getElementById("xyzrender-editor-controls"); setTarget(node); node?.scrollIntoView({ block: "nearest" }); }, 50); };
+    const open = (event: Event) => { setSource((event as CustomEvent<AnimationSource>).detail); window.setTimeout(() => { const node = document.getElementById("xyzrender-editor-controls"); setTarget(node); node?.scrollIntoView({ block: "nearest" }); }, 50); };
     window.addEventListener("burette:xyzrender-animation", open);
     const style = (event: Event) => {
       const detail = (event as CustomEvent<AnimationSource>).detail;
@@ -78,7 +78,6 @@ export function XyzrenderAnimationDialog() {
       const next = (event as CustomEvent<AnimationSource>).detail;
       setSource(current => {
         if (!current || current.itemId === next.itemId) return current;
-        prepared.current = null;
         return next;
       });
     };
@@ -94,16 +93,13 @@ export function XyzrenderAnimationDialog() {
     return () => { window.removeEventListener("burette:xyzrender-item-removed", remove); window.removeEventListener("burette:xyzrender-active-item", select); window.removeEventListener("burette:xyzrender-animation", open); window.removeEventListener("burette:xyzrender-style", style); };
   }, []);
   return source && target ? createPortal(<section className="xyzrender-motion-controls flex flex-col gap-3 border-b border-border py-3">
-    <div className="flex items-center justify-between"><strong>Orientation & animation</strong><Button variant="ghost" size="icon-sm" aria-label="Close orientation and animation" onClick={() => setSource(null)}><X /></Button></div>
-    <Tabs value={animate ? "animation" : "orientation"} onValueChange={value => { if (value === "animation" && prepared.current) setSource(prepared.current); setAnimate(value === "animation"); }}>
-      <TabsList className="w-full"><TabsTrigger value="orientation">Orientation</TabsTrigger><TabsTrigger value="animation">Animation</TabsTrigger></TabsList>
-      <TabsContent value="orientation" className="pt-3"><XyzrenderOrientationPanel key={`${source.documentId || source.path}:${source.itemId || ""}`} source={source} onPrepared={prepare} /></TabsContent>
-      <TabsContent value="animation" className="pt-3" forceMount hidden={!animate}>
-        {animationSources.map(item => <div key={item.itemId || item.path} hidden={(item.itemId || item.path) !== (source.itemId || source.path)}>
-          <AnimationContent reserve={reserve} source={item} visible={animate && (item.itemId || item.path) === (source.itemId || source.path)} suspended={!animate && (item.itemId || item.path) === (source.itemId || source.path)} initial={settings.current.get(item.itemId || item.path)} remember={remember} />
-        </div>)}
-      </TabsContent>
-    </Tabs>
+    <div className="flex items-start gap-2">
+      <div className="min-w-0 flex-1"><XyzrenderOrientationPanel key={`${source.documentId || source.path}:${source.itemId || ""}`} source={source} onPrepared={prepare} /></div>
+      <Button variant="ghost" size="icon-sm" aria-label="Close orientation and animation" onClick={() => setSource(null)}><X /></Button>
+    </div>
+    {animationSources.map(item => <div key={item.itemId || item.path} hidden={(item.itemId || item.path) !== (source.itemId || source.path)}>
+      <AnimationContent reserve={reserve} source={item} visible={(item.itemId || item.path) === (source.itemId || source.path)} suspended={false} initial={settings.current.get(item.itemId || item.path)} remember={remember} />
+    </div>)}
   </section>, target) : null;
 }
 
@@ -134,13 +130,12 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
   }, [source.itemId, source.path, remember, mode, selectedAxis, amplitude, rotate, rebuildBonds, noise, anchor, forward, fps, size, frames]);
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [saved, setSaved] = useState<{ name: string; path: string; downloadUrl: string } | null>(null);
+  const [saved, setSaved] = useState<SavedXyzrenderFile | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const [unavailable, setUnavailable] = useState("");
   const [frame, setFrame] = useXyzrenderPlayback(animation, playing, fps, range, source.itemId, suspended, visible);
   useEffect(() => {
-    setAnimation(null); setPlaying(false); setPreview(false);
     const reservationKey = source.itemId || source.path;
     if (!reserve(reservationKey, size * size * frames)) {
       setError("Animation memory is full. Reduce the image size or remove another animated structure.");
@@ -150,22 +145,18 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 125_000);
     let disposed = false;
-    let retainedPixels = 0;
-    setBusy(true); setError(""); setUnavailable(""); setAnimation(null); setPreview(false); setPlaying(false); setSaved(null);
-    setFrame(0); setRange([0, frames - 1]);
+    let retainedPixels = animation ? animation.width * animation.height * animation.frames.length : 0;
+    setBusy(true); setError(""); setUnavailable(""); setSaved(null);
     const render = async () => {
       try {
         const { label: _label, previewSvg: _preview, ...input } = source;
         // Keep every motion frame from the first pass; refine only spatial resolution.
         // Trajectories retain their source frames, so do not render them twice.
         const passes = mode === "trajectory" ? [size] : [Math.min(size, 256), size];
-        let previewCount = 0;
+        let previewCount = animation?.frames.length || 0;
         for (const resolution of passes) {
           const draft = resolution !== size;
-          const response = await fetch("/__burette/xyzrender", {
-            method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal,
-            body: JSON.stringify({ ...input, animation: { mode, axis, size: resolution, frames, fps: 10, amplitude, rotate, rebuildBonds, noise, anchor, forward } }),
-          });
+          const response = await renderXyzrender({ ...input, animation: { mode, axis, size: resolution, frames, fps: 10, amplitude, rotate, rebuildBonds, noise, anchor, forward } }, controller.signal);
           const payload = await response.json();
           if (!response.ok && (payload.code === 'animation_unavailable' || (mode === 'vibration' && /vibrat|frequen|normal.mode|imaginary/i.test(payload.error || '')))) {
             if (!disposed) setUnavailable(mode === 'trajectory' ? 'This file contains one structure. A trajectory needs at least two coordinate frames.' : 'This file has no supported vibrational mode. Open a frequency calculation to animate vibrations.');
@@ -189,7 +180,7 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
           if (draft) previewCount = decoded.frames.length;
         }
       } catch (cause) {
-        if (!disposed) setError(controller.signal.aborted ? "Rendering timed out. Try again." : mode === "trajectory" ? "Trajectory needs a file containing multiple coordinate frames. Open a trajectory or choose Full rotation." : mode === "vibration" ? "This file has no supported vibrational data. Open a frequency calculation or choose Full rotation." : "Could not render this animation. Try another motion or reduce the export size.");
+        if (!disposed) setError(controller.signal.aborted ? "Rendering timed out. Try again." : cause instanceof Error ? cause.message : "Could not render this animation. Try another motion or reduce the export size.");
       } finally {
         window.clearTimeout(timeout);
         if (!disposed) { reserve(reservationKey, retainedPixels); setBusy(false); }
@@ -213,13 +204,8 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
         for (const iframe of document.querySelectorAll<HTMLIFrameElement>('iframe.viewer-iframe')) iframe.contentWindow?.postMessage({ source: 'burette-host', body: { type: 'applyXyzrenderAnimation', itemId: source.itemId, image: 'data:image/gif;base64,' + btoa(binary), commit: true } }, '*');
         return;
       }
-      const response = await fetch("/__burette/xyzrender-export", { signal: controller.signal, method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: safeExportFileName(`${source.label.replace(/\.[^.]+$/, "")}-${mode}.gif`), gifBase64: btoa(binary) }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Could not save GIF.");
+      const result = await saveXyzrenderFile(safeExportFileName(`${source.label.replace(/\.[^.]+$/, "")}-${mode}.gif`), "gif", btoa(binary), controller.signal);
       setSaved(result);
-      const link = document.createElement("a"); link.href = result.downloadUrl; link.download = result.name;
-      document.body.append(link); link.click(); link.remove();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setSaving(false); }
   };
@@ -267,21 +253,25 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
         </>}
         <Field orientation="horizontal"><FieldLabel htmlFor="xyzr-fps">Speed</FieldLabel>
           <ScrubNumberField pixelSensitivity={4} calligraph={{ variant: "number", animation: "none", stagger: 0, autoSize: false }} allowTextInput={false} id="xyzr-fps" aria-label="Frames per second" formatValue={value => `${value} fps`} min={30} max={120} step={1} smallStep={1} value={fps} disabled={saving} onValueChange={value => { setFps(value); setSaved(null); }} className="w-28" /></Field>
-        <Collapsible><CollapsibleTrigger asChild><Button variant="outline" className="group w-full justify-between h-10"><span>GIF settings</span><span className="ml-auto text-muted-foreground">{size} px · {frames} frames</span><ChevronDown className="transition-transform group-data-[state=open]:rotate-180" /></Button></CollapsibleTrigger>
+        <Collapsible><CollapsibleTrigger asChild><Button variant="outline" className="group w-full justify-between h-10"><span>GIF settings</span><span className="ml-auto text-muted-foreground">{size} px · {mode === "trajectory" ? animation ? `${animation.frames.length} frames` : "source frames" : `${frames} frames`}</span><ChevronDown className="transition-transform group-data-[state=open]:rotate-180" /></Button></CollapsibleTrigger>
           <CollapsibleContent className="flex flex-col gap-3 pt-3">
         <Field><FieldLabel>Export range · {position(range[0])} – {position(range[1])}</FieldLabel>
           <Slider tone="neutral" aria-label="Export frame range" min={0} max={Math.max(1, (animation?.frames.length || frames) - 1)} step={1} minStepsBetweenThumbs={1} value={range} disabled={!animation || animation.frames.length < 2 || saving}
             onValueChange={value => { setRange(value); setFrame(value[0]); setPlaying(false); setSaved(null); }} />
           <FieldDescription>{range[1] - range[0] + 1} frames · {((range[1] - range[0] + 1) / fps).toFixed(1)} seconds · loops</FieldDescription>
         </Field>
-        <Field><FieldLabel>Image size</FieldLabel>
-          <ToggleGroup type="single" value={String(size)} disabled={saving} onValueChange={value => { if (value) setSize(Number(value)); }} aria-label="Image size">
-            <ToggleGroupItem value="480">480 px</ToggleGroupItem><ToggleGroupItem value="640">640 px</ToggleGroupItem>
-          </ToggleGroup></Field>
-        {mode !== "trajectory" && <Field><FieldLabel>Rotation detail</FieldLabel>
-          <ToggleGroup type="single" value={String(frames)} disabled={saving} onValueChange={value => { if (value) setFrames(Number(value)); }} aria-label="Rotation detail">
-            <ToggleGroupItem value="120">120 frames</ToggleGroupItem><ToggleGroupItem value="240">240 frames</ToggleGroupItem>
-          </ToggleGroup></Field>}
+        <Field orientation="horizontal"><FieldLabel>Image size</FieldLabel>
+          <Select value={String(size)} disabled={saving} onValueChange={value => {
+            const next = Number(value); setSize(next);
+            setFrames(current => Math.min(current, frameOptions.filter(count => next * next * count <= 100_000_000).at(-1)!));
+          }}><SelectTrigger aria-label="Image size" className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectGroup>{sizeOptions.map(value => <SelectItem key={value} value={String(value)}>{value} px</SelectItem>)}</SelectGroup></SelectContent>
+          </Select></Field>
+        {mode !== "trajectory" && <Field orientation="horizontal"><FieldLabel>Animation detail</FieldLabel>
+          <Select value={String(frames)} disabled={saving} onValueChange={value => setFrames(Number(value))}>
+            <SelectTrigger aria-label="Animation detail" className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectGroup>{frameOptions.filter(value => size * size * value <= 100_000_000).map(value => <SelectItem key={value} value={String(value)}>{value} frames</SelectItem>)}</SelectGroup></SelectContent>
+          </Select></Field>}
           </CollapsibleContent>
         </Collapsible>
       </FieldGroup>
@@ -293,7 +283,7 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
       </div>
       {(busy || saving) && <Progress aria-label={busy ? "Rendering animation" : "Saving GIF"} indeterminate={busy} value={busy ? undefined : progress * 100} />}
       <div className="flex flex-wrap items-center gap-2">
-        {saved && <Button variant="outline" asChild><a href={saved.downloadUrl} download={saved.name}>Download again</a></Button>}
+        {saved?.downloadUrl && <Button variant="outline" asChild><a href={saved.downloadUrl} download={saved.name}>Download again</a></Button>}
         {error && <Button variant="outline" onClick={() => setRetry(value => value + 1)}>Try again</Button>}
         <Button disabled={busy || saving || preview || !animation} onClick={() => void save(true)}>Apply GIF to canvas</Button>
         <Button variant="outline" disabled={busy || saving || preview || !animation} onClick={() => void save()}><Download data-icon="inline-start" />Save GIF</Button>

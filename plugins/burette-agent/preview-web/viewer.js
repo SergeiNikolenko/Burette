@@ -12927,6 +12927,8 @@ SOFTWARE.
     return {
       path,
       inputDataBase64: inputDataBase64 || undefined,
+      animationSourcePath: config.xyzrenderAnimationSourcePath || undefined,
+      animationSourceExtension: config.sourceExtension || undefined,
       inputExtension: inputExtension || undefined
     };
   }
@@ -13877,6 +13879,8 @@ SOFTWARE.
           itemId: item.dataset.buretXyzrenderEditorId,
           type, documentId: config.documentId, label: sheetEntryLabel(entry).split('/').pop(),
           path: sheetEntryLabel(entry), inputDataBase64: sheetEntryInputDataBase64(entry),
+          animationSourcePath: entry?.animationSourcePath,
+          animationSourceExtension: entry?.animationSourceExtension,
           inputExtension: sheetEntryInputExtension(entry),
           previewSvg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML || '',
           preset: item.dataset.buretXyzrenderPreset || config.xyzrenderPreset || 'default',
@@ -13894,11 +13898,11 @@ SOFTWARE.
       const item = selectedXyzrenderSheetItems()[0] || frontmostXyzrenderSheetItem();
       if (!item) throw new Error('Select a structure first.');
       const entry = xyzrenderSheetItemEntry(item);
-      if (!config.xyzrenderEndpoint) throw new Error('xyzrender animation preview currently requires the browser renderer.');
       if (config.appViewer === true) {
         publishXyzrenderItem(item, 'openXyzrenderAnimation');
         return;
       }
+      if (!config.xyzrenderEndpoint) throw new Error('Open this structure in Burette to edit its animation.');
       if (!window.BuretteXyzrender3D) {
         const engineUrl = new URL(runtimeURL('BuretteMolstarURL', './molstar.js'), document.baseURI);
         await loadScript(new URL('xyzrender-3d-editor.js', engineUrl).href, 'xyzrender animation', 15000);
@@ -14106,8 +14110,15 @@ SOFTWARE.
       for (const key of ['left', 'top', 'width', 'height']) baseItem.style[key] = `${savedView.item[key]}px`;
       setSheetItemRotation(baseItem, savedView.item.rotation);
     }
+    const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root, savedView?.viewport, view => {
+      scale = view.scale;
+      translateX = view.x;
+      translateY = view.y;
+      apply();
+    });
     externalArtifactViewSnapshot = () => ({
       scale, x: translateX, y: translateY,
+      viewport: { width: root.clientWidth, height: root.clientHeight },
       item: baseItem ? {
         left: baseItem.offsetLeft, top: baseItem.offsetTop,
         width: baseItem.offsetWidth, height: baseItem.offsetHeight,
@@ -14153,6 +14164,7 @@ SOFTWARE.
     apply();
     externalArtifactInteractionsCleanup = () => {
       keyboardCleanup();
+      viewportCleanup?.();
       saveRendererViewState();
       externalArtifactViewSnapshot = null;
       root.removeEventListener('wheel', onWheel);
@@ -15345,7 +15357,8 @@ SOFTWARE.
     const normalized = xyzFrameRepresentationStyle(style);
     const targets = Array.isArray(structures) && structures.length ? structures : Array.from(molstarCurrentStructures(viewer));
     await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode, minAlpha));
-    await applyMolstarNonIllustrativePostprocessing(viewer);
+    // Frame/alignment rebuilds change geometry, not the user's appearance.
+    await applyMolstarAppearance(viewer, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
   }
 
   function dockingSceneStateKey(prepared, style) {

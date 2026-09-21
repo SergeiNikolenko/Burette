@@ -1,3 +1,4 @@
+import { renderXyzrender } from '../lib/xyzrender-transport';
 import { ScrubNumberField } from "./ui/scrub-number-input";
 import { exportXyzrenderFigure } from "../lib/xyzrender-export";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
@@ -42,8 +43,7 @@ function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSo
           renderedKey = requestedAngles.join(',');
           let body = cache.get(renderedKey);
           if (!body) {
-            const response = await fetch('/__burette/xyzrender', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
-              body: JSON.stringify({ ...source, previewSvg: undefined, orientationRef: base.current, orientation: requestedAngles }) });
+            const response = await renderXyzrender({ ...source, orientationRef: base.current, orientation: requestedAngles }, controller.signal);
             const payload = await response.json();
             if (!response.ok || !payload.orientationRef) throw new Error(payload.error || 'Could not render this orientation');
             body = payload as RenderedOrientation;
@@ -87,7 +87,7 @@ function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSo
       <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" disabled={busy || saving || Boolean(error)}>{saving ? 'Exporting…' : 'Export'}<ChevronDown data-icon="inline-end" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent><DropdownMenuGroup>{['svg', 'png', 'pdf', 'tiff'].map(format => <DropdownMenuItem key={format} onSelect={() => {
           setSaving(true); setError(''); const controller = new AbortController(); exportAbort.current = controller;
-          void exportXyzrenderFigure(nextSource(), format, controller.signal).then(file => setSaved(file.name)).catch(cause => { if (!controller.signal.aborted) setError(String(cause)); }).finally(() => setSaving(false));
+          void exportXyzrenderFigure(nextSource(), format, controller.signal).then(file => { if (file) setSaved(file.name); }).catch(cause => { if (!controller.signal.aborted) setError(String(cause)); }).finally(() => setSaving(false));
         }}>Save {format.toUpperCase()}</DropdownMenuItem>)}</DropdownMenuGroup></DropdownMenuContent>
       </DropdownMenu>
       <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setAngles([0, 0, 0])}><ArrowRotateCcw />Reset angles</Button>

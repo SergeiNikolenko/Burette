@@ -28,7 +28,40 @@
     if (value.item && ['left', 'top', 'width', 'height', 'rotation'].every(key => Number.isFinite(value.item[key]))) {
       result.item = Object.fromEntries(['left', 'top', 'width', 'height', 'rotation'].map(key => [key, value.item[key]]));
     }
+    if (value.viewport && ['width', 'height'].every(key => Number.isFinite(value.viewport[key]) && value.viewport[key] > 0)) {
+      result.viewport = { width: value.viewport.width, height: value.viewport.height };
+    }
     return result;
+  }
+  // Refit the complete sheet into the space left by the workspace docks.
+  // Measure layout coordinates so the previous camera transform cannot feed back.
+  function observeSheetViewport(root, initialViewport, fit) {
+    let width = initialViewport?.width || 0;
+    let height = initialViewport?.height || 0;
+    const resize = () => {
+      const nextWidth = root.clientWidth, nextHeight = root.clientHeight;
+      if (!nextWidth || !nextHeight || (width === nextWidth && height === nextHeight)) return;
+      width = nextWidth; height = nextHeight;
+      const items = Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item'));
+      if (!items.length) return;
+      let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+      for (const item of items) {
+        const angle = Number(item.dataset.rotation || 0) * Math.PI / 180;
+        const w = Math.abs(item.offsetWidth * Math.cos(angle)) + Math.abs(item.offsetHeight * Math.sin(angle));
+        const h = Math.abs(item.offsetWidth * Math.sin(angle)) + Math.abs(item.offsetHeight * Math.cos(angle));
+        left = Math.min(left, item.offsetLeft - w / 2);
+        right = Math.max(right, item.offsetLeft + w / 2);
+        top = Math.min(top, item.offsetTop - h / 2);
+        bottom = Math.max(bottom, item.offsetTop + h / 2);
+      }
+      if (!(right > left && bottom > top)) return;
+      const scale = Math.min(8, Math.max(0.05, Math.min(Math.max(1, width - 64) / (right - left), Math.max(1, height - 128) / (bottom - top))));
+      fit({ scale, x: -scale * ((left + right - width) / 2), y: 24 - scale * ((top + bottom - height) / 2) });
+    };
+    resize();
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
+    observer?.observe(root);
+    return () => observer?.disconnect();
   }
   function read(id, initial) {
     if (typeof id !== 'string' || !id || id.length > 2048) return {};
@@ -53,5 +86,5 @@
     memory = values;
     try { window.sessionStorage.setItem(storageKey, JSON.stringify(values)); } catch (_) {}
   }
-  window.BuretteRendererViewState = { read, save };
+  window.BuretteRendererViewState = { read, save, observeSheetViewport };
 })();

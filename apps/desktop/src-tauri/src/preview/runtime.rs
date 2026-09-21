@@ -2363,6 +2363,10 @@ Atoms # charge
 
             assert_eq!(config["activeModel"], 1);
             assert_eq!(config["trajectoryFrameCount"], 2);
+            assert_eq!(
+                config["xyzrenderAnimationSourcePath"],
+                path.canonicalize().unwrap().to_string_lossy().as_ref()
+            );
             assert!(input.contains("second frame"));
             assert!(!input.contains("first frame"));
 
