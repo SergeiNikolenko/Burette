@@ -1,0 +1,97 @@
+---
+name: external-agent-contract
+description: "Use when an external agent must open, observe, control, or render into a Burette molecular workspace without managing transport details."
+---
+
+# External Agent Contract
+
+Use this workflow when an external assistant needs to operate Burette but does
+not need to choose Browser preview, Browser shell, desktop app, URL, or session
+directory details directly.
+
+## Contract
+
+For local molecular work in the native Codex side pane, first use
+`burette.open_viewer`, then `burette.observe_inline_viewer` and
+`burette.control_inline_viewer` with its `sessionId`. No Browser URL is needed.
+This native viewer supports selection/focus, styles/colors, camera rotation,
+spin/rock and procedural wiggle, shared file tabs, collections, Ketcher,
+docking and packaged Stories. See [open-workspace](../open-workspace/SKILL.md)
+for `view` options and native controls. The `workspaceSessionId` facade below
+is for the separate Browser/desktop transport; do not mix its handles with
+native `sessionId` values.
+
+Prefer these short tools before advanced Burette tools:
+
+- `burette.get_context`: discover capabilities, supported formats, and known
+  sessions.
+- `burette.open_workspace`: open a molecular artifact and receive a
+  `workspaceSessionId`.
+- `burette.open_ketcher`: open the Ketcher chemical editor as the active
+  workspace surface.
+- `burette.observe_workspace`: refresh compact model context for a session.
+- `burette.control_viewer`: run one allowlisted viewer action against the
+  session and receive refreshed model context.
+- `burette.control_ketcher`: apply one revision-checked Ketcher action to the
+  active chemical editor.
+- `burette.render_panel`: render markdown, table, or chart content into a
+  workspace dock.
+- `burette.create_story` / `burette.validate_story`: author and validate MVSJ
+  or self-contained MVSX molecular narratives.
+- `burette.observe_story` / `burette.control_story`: inspect and navigate the
+  active MolViewSpec Story through typed Mol* snapshot state.
+
+`workspaceSessionId` is the external handle. `viewerSessionId` is returned as a
+compatibility alias for viewer-style workflows. Do not make downstream agents
+carry `url`, `sessionDir`, or transport mode unless attaching to a workspace
+that was opened before this contract existed.
+
+## Workflow
+
+1. Call `burette.get_context` if the available sessions or capabilities are not
+   already known.
+2. Call `burette.open_workspace` with the exact local file path. Use default
+   `mode: "auto"` unless the user explicitly asks for the real desktop app or
+   a specific Browser surface.
+3. Keep the returned `workspaceSessionId`. A successful open can return
+   `ok: true`, `ready: false`, and `completionState: "awaiting_browser"`; this
+   means the transport started correctly, not that the structure is visible.
+   Open the returned URL before continuing.
+4. After the Browser URL is open, call `burette.observe_workspace`. Continue
+   only when it returns `ready: true`; treat `completionState: "not_ready"` or
+   `VIEWER_NOT_READY` as a failed visualization and never claim the structure
+   is visible from file names or molecular counts alone.
+5. For scene changes, call `burette.control_viewer` with the same
+   `workspaceSessionId` and a serializable Burette action such as
+   `reset_camera`, `focus_ligand`, `select_residues`, `apply_scene`, or
+   `set_molstar_style`.
+6. For chemical editing, call `burette.open_ketcher`, then observe the returned
+   `modelContext.activeSurface` and `modelContext.chemicalEditor`. Send
+   `burette.control_ketcher` actions with the returned `surfaceId` and
+   `structureRevision` as `expectedRevision`. Refresh the observation after
+   every mutation; never reuse a revision after a conflict or tab switch.
+7. For adjacent notes or review panels, call `burette.render_panel`.
+
+## Handoff
+
+Keep transport details out of intermediate reasoning, but do not hide the
+user-facing Browser entry point. If `burette.open_workspace` returned a Browser
+URL, include that exact live URL as a clickable Markdown link in the final
+handoff, even when the Browser tab is already open. The `workspaceSessionId`
+remains the handle for agent follow-up; file, bundle, report, and screenshot
+links do not replace the Browser workspace link.
+
+## Boundaries
+
+- Do not read molecular file bytes merely to open the viewer.
+- Do not treat screenshots as molecular truth when `modelContext` or typed
+  observe/action output is available.
+- Do not claim an action changed the viewer when the tool returns
+  `applied: false` or `ok: false`.
+- Do not claim a Ketcher edit was persisted when `request_persist` returns
+  `status: "awaiting_user"`; a user confirmation and a separate save operation
+  are required.
+- Do not treat `completionState: "awaiting_browser"` as completed rendering.
+- Use advanced tools only when the short contract is missing a capability, such
+  as docking-specific setup, fragment extraction, trajectory review, or bounded
+  molecular report validation.

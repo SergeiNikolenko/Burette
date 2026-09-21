@@ -1,0 +1,5 @@
+compound_id,canonical_smiles,pIC50,vendor
+CMPD-001,CCO,5.1,TestVendor
+CMPD-002,c1ccccc1,6.4,TestVendor
+CMPD-003,CC(=O)O,4.8,Reference
+CMPD-004,CCN(CC)CC,7.2,Reference

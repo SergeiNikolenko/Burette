@@ -1,0 +1,6 @@
+export {
+  isPersistentRecentStructure,
+  isPersistentViewerDocument,
+  isTemporaryDocumentPath,
+  normalizeDocumentPath,
+} from "./temporary-documents.ts";

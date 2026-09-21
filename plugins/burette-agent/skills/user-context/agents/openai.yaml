@@ -1,0 +1,5 @@
+interface:
+  display_name: "Burette preflight"
+  short_description: "Check available transports and workspace capabilities"
+policy:
+  allow_implicit_invocation: false

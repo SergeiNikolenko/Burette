@@ -1,0 +1,10 @@
+{
+  "protocolVersion": 1,
+  "requestId": "018f48f2-2e20-7e53-976b-cf93e0897733",
+  "command": {
+    "kind": "jobStatus",
+    "sessionToken": "job-capability.v1.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "jobId": "018f48f2-2e20-7e53-976b-cf93e08976ff",
+    "capability": "session.v1.cccccccccccccccccccccccccccccccc"
+  }
+}

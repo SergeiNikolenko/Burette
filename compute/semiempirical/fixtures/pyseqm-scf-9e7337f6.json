@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/guillaume-osmo/mlxmolkit",
+    "commit": "9e7337f6f93c40a39ad0187991151944a4f1e274",
+    "path": "tests/test_rm1_scf.py",
+    "oracle": "PYSEQM",
+    "energyUnit": "eV",
+    "absoluteTolerance": 0.001
+  },
+  "molecules": [
+    {
+      "id": "h2",
+      "atoms": [
+        { "atomicNumber": 1, "positionAngstrom": [0.0, 0.0, 0.0] },
+        { "atomicNumber": 1, "positionAngstrom": [0.74, 0.0, 0.0] }
+      ]
+    },
+    {
+      "id": "h2o",
+      "atoms": [
+        { "atomicNumber": 8, "positionAngstrom": [0.0, 0.0, 0.0] },
+        { "atomicNumber": 1, "positionAngstrom": [0.9584, 0.0, 0.0] },
+        { "atomicNumber": 1, "positionAngstrom": [-0.2396, 0.9275, 0.0] }
+      ]
+    },
+    {
+      "id": "ch4",
+      "atoms": [
+        { "atomicNumber": 6, "positionAngstrom": [0.0, 0.0, 0.0] },
+        { "atomicNumber": 1, "positionAngstrom": [0.6276, 0.6276, 0.6276] },
+        { "atomicNumber": 1, "positionAngstrom": [0.6276, -0.6276, -0.6276] },
+        { "atomicNumber": 1, "positionAngstrom": [-0.6276, 0.6276, -0.6276] },
+        { "atomicNumber": 1, "positionAngstrom": [-0.6276, -0.6276, 0.6276] }
+      ]
+    },
+    {
+      "id": "nh3",
+      "atoms": [
+        { "atomicNumber": 7, "positionAngstrom": [0.0, 0.0, 0.0] },
+        { "atomicNumber": 1, "positionAngstrom": [0.9377, -0.3816, 0.0] },
+        { "atomicNumber": 1, "positionAngstrom": [-0.4689, 0.8119, 0.0] },
+        { "atomicNumber": 1, "positionAngstrom": [-0.4689, -0.4303, 0.8299] }
+      ]
+    }
+  ],
+  "references": [
+    { "method": "rm1", "molecule": "h2", "electronicEnergy": -42.279154, "nuclearEnergy": 13.780913, "totalEnergy": -28.498242 },
+    { "method": "rm1", "molecule": "h2o", "electronicEnergy": -488.951381, "nuclearEnergy": 143.380852, "totalEnergy": -345.570528 },
+    { "method": "rm1", "molecule": "ch4", "electronicEnergy": -391.804076, "nuclearEnergy": 209.044867, "totalEnergy": -182.759209 },
+    { "method": "rm1", "molecule": "nh3", "electronicEnergy": -439.119959, "nuclearEnergy": 186.812105, "totalEnergy": -252.307854 },
+    { "method": "am1", "molecule": "h2", "electronicEnergy": -40.847729, "nuclearEnergy": 13.376394, "totalEnergy": -27.471336 },
+    { "method": "am1", "molecule": "h2o", "electronicEnergy": -493.546003, "nuclearEnergy": 144.984542, "totalEnergy": -348.561461 },
+    { "method": "am1", "molecule": "ch4", "electronicEnergy": -386.849762, "nuclearEnergy": 203.668120, "totalEnergy": -183.181642 },
+    { "method": "am1", "molecule": "nh3", "electronicEnergy": -433.776574, "nuclearEnergy": 185.943634, "totalEnergy": -247.832940 },
+    { "method": "pm6", "molecule": "h2", "electronicEnergy": -43.504671, "nuclearEnergy": 15.391764, "totalEnergy": -28.112907 },
+    { "method": "pm6", "molecule": "h2o", "electronicEnergy": -457.613320, "nuclearEnergy": 138.540585, "totalEnergy": -319.072734 },
+    { "method": "pm6", "molecule": "ch4", "electronicEnergy": -393.765398, "nuclearEnergy": 216.596686, "totalEnergy": -177.168712 },
+    { "method": "pm6", "molecule": "nh3", "electronicEnergy": -409.149911, "nuclearEnergy": 189.328518, "totalEnergy": -219.821393 }
+  ]
+}

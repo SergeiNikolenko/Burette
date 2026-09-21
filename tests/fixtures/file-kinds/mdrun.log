@@ -1,0 +1,44 @@
+                      :-) GROMACS - gmx mdrun (fixture) (-:
+
+Executable:   /usr/local/gromacs/bin/gmx
+Command line:
+  gmx mdrun -deffnm md-run
+
+Back Off! I just backed up md-run.log to ./#md-run.log.1#
+
+Input Parameters:
+   integrator                     = md
+   nsteps                         = 10000
+   dt                             = 0.002
+   tcoupl                         = V-rescale
+   ref-t                          = 300
+   pcoupl                         = Parrinello-Rahman
+   ref-p                          = 1
+
+Using 1 MPI thread
+Using 8 OpenMP threads
+
+           Step           Time
+              0        0.00000
+
+   Energies (kJ/mol)
+           Bond          Angle    Proper Dih.          LJ-14     Coulomb-14
+    1.23448e+03    3.11902e+03    4.05517e+03    1.48210e+03    2.10442e+04
+    Potential    Kinetic En.   Total Energy  Conserved En.    Temperature
+   -1.25034e+05    2.44011e+04   -1.00633e+05   -1.00633e+05    2.99871e+02
+
+           Step           Time
+          10000       20.00000
+
+   Energies (kJ/mol)
+           Bond          Angle    Proper Dih.          LJ-14     Coulomb-14
+    1.25107e+03    3.14488e+03    4.03991e+03    1.47655e+03    2.10188e+04
+    Potential    Kinetic En.   Total Energy  Conserved En.    Temperature
+   -1.25355e+05    2.44528e+04   -1.00902e+05   -1.00639e+05    3.00506e+02
+
+               Core t (s)   Wall t (s)        (%)
+       Time:      148.320       18.540      800.0
+                 (ns/day)    (hour/ns)
+Performance:       93.204        0.258
+
+Finished mdrun on rank 0

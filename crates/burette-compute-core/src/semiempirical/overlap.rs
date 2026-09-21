@@ -1,0 +1,686 @@
+// Equations adapted from LANL PYSEQM at commit
+// 6ced9ea66160428e06d37df18e9f565b8123f84a, BSD-3-Clause.
+// Source: seqm/seqm_functions/diat_overlap_PM6_SP.py.
+// License: compute/semiempirical/licenses/PYSEQM-BSD-3-CLAUSE.txt.
+
+use super::{rotation::rotation_matrix, SemiempiricalElementParameters, SemiempiricalError};
+
+const ANGSTROM_TO_BOHR_MOPAC: f64 = 1.0 / 0.529_167;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Rm1OverlapMatrix {
+    pub rows: usize,
+    pub columns: usize,
+    /// Dense row-major storage; only `rows * columns` entries are active.
+    pub values: [f64; 16],
+}
+
+pub fn rm1_sp_overlap(
+    left: &SemiempiricalElementParameters,
+    right: &SemiempiricalElementParameters,
+    left_position_angstrom: [f64; 3],
+    right_position_angstrom: [f64; 3],
+) -> Result<Rm1OverlapMatrix, SemiempiricalError> {
+    let qn_left = principal_quantum_number(left.atomic_number);
+    let qn_right = principal_quantum_number(right.atomic_number);
+    if qn_left > 3 || qn_right > 3 {
+        return numerical_sp_overlap(left, right, left_position_angstrom, right_position_angstrom);
+    }
+    if qn_left < qn_right {
+        let swapped = rm1_sp_overlap(right, left, right_position_angstrom, left_position_angstrom)?;
+        let mut values = [0.0; 16];
+        for row in 0..swapped.rows {
+            for column in 0..swapped.columns {
+                values[column * swapped.rows + row] =
+                    swapped.values[row * swapped.columns + column];
+            }
+        }
+        return Ok(Rm1OverlapMatrix {
+            rows: swapped.columns,
+            columns: swapped.rows,
+            values,
+        });
+    }
+
+    let delta = [
+        right_position_angstrom[0] - left_position_angstrom[0],
+        right_position_angstrom[1] - left_position_angstrom[1],
+        right_position_angstrom[2] - left_position_angstrom[2],
+    ];
+    let distance_angstrom = delta.iter().map(|value| value * value).sum::<f64>().sqrt();
+    if !distance_angstrom.is_finite() || distance_angstrom <= 1.0e-8 {
+        return Err(SemiempiricalError::InvalidInput(
+            "overlap requires distinct finite coordinates".into(),
+        ));
+    }
+    let distance = distance_angstrom * ANGSTROM_TO_BOHR_MOPAC;
+    let jcall = match (qn_left, qn_right) {
+        (1, 1) => 2,
+        (2, 1) => 3,
+        (2, 2) => 4,
+        (3, 1) => 431,
+        (3, 2) => 5,
+        (3, 3) => 6,
+        _ => unreachable!(),
+    };
+    let integrals = |zeta_left: f64, zeta_right: f64| {
+        let alpha = 0.5 * distance * (zeta_left + zeta_right);
+        let beta = 0.5 * distance * (zeta_left - zeta_right);
+        (a_integrals(alpha), b_integrals(beta))
+    };
+    let (a_ss, b_ss) = integrals(left.zeta_s_bohr_inv, right.zeta_s_bohr_inv);
+    let (a_ps, b_ps) = integrals(left.zeta_p_bohr_inv, right.zeta_s_bohr_inv);
+    let (a_sp, b_sp) = integrals(left.zeta_s_bohr_inv, right.zeta_p_bohr_inv);
+    let (a_pp, b_pp) = integrals(left.zeta_p_bohr_inv, right.zeta_p_bohr_inv);
+
+    let (s_ss, s_ps, s_sp, s_pp_sigma, s_pp_pi) = match jcall {
+        2 => {
+            let ss = (left.zeta_s_bohr_inv * right.zeta_s_bohr_inv * distance.powi(2)).powf(1.5)
+                * (a_ss[2] * b_ss[0] - b_ss[2] * a_ss[0])
+                / 4.0;
+            (ss, 0.0, 0.0, 0.0, 0.0)
+        }
+        3 => {
+            let ss = right.zeta_s_bohr_inv.powf(1.5)
+                * left.zeta_s_bohr_inv.powf(2.5)
+                * distance.powi(4)
+                * (a_ss[3] * b_ss[0] - b_ss[3] * a_ss[0] + a_ss[2] * b_ss[1] - b_ss[2] * a_ss[1])
+                / (3.0_f64.sqrt() * 8.0);
+            let ps = right.zeta_s_bohr_inv.powf(1.5)
+                * left.zeta_p_bohr_inv.powf(2.5)
+                * distance.powi(4)
+                * (a_ps[2] * b_ps[0] - b_ps[2] * a_ps[0] + a_ps[3] * b_ps[1] - b_ps[3] * a_ps[1])
+                / 8.0;
+            (ss, ps, 0.0, 0.0, 0.0)
+        }
+        4 => {
+            let ss = (left.zeta_s_bohr_inv * right.zeta_s_bohr_inv).powf(2.5)
+                * distance.powi(5)
+                * (a_ss[4] * b_ss[0] + b_ss[4] * a_ss[0] - 2.0 * a_ss[2] * b_ss[2])
+                / 48.0;
+            let ps = (right.zeta_s_bohr_inv * left.zeta_p_bohr_inv).powf(2.5)
+                * distance.powi(5)
+                * (a_ps[3] * (b_ps[0] - b_ps[2]) - a_ps[1] * (b_ps[2] - b_ps[4])
+                    + b_ps[3] * (a_ps[0] - a_ps[2])
+                    - b_ps[1] * (a_ps[2] - a_ps[4]))
+                / (16.0 * 3.0_f64.sqrt());
+            let sp = (right.zeta_p_bohr_inv * left.zeta_s_bohr_inv).powf(2.5)
+                * distance.powi(5)
+                * (a_sp[3] * (b_sp[0] - b_sp[2])
+                    - a_sp[1] * (b_sp[2] - b_sp[4])
+                    - b_sp[3] * (a_sp[0] - a_sp[2])
+                    + b_sp[1] * (a_sp[2] - a_sp[4]))
+                / (16.0 * 3.0_f64.sqrt());
+            let weight =
+                (right.zeta_p_bohr_inv * left.zeta_p_bohr_inv).powf(2.5) * distance.powi(5) / 16.0;
+            let sigma = -weight * (b_pp[2] * (a_pp[4] + a_pp[0]) - a_pp[2] * (b_pp[4] + b_pp[0]));
+            let pi = 0.5
+                * weight
+                * (a_pp[4] * (b_pp[0] - b_pp[2])
+                    - b_pp[4] * (a_pp[0] - a_pp[2])
+                    - a_pp[2] * b_pp[0]
+                    + b_pp[2] * a_pp[0]);
+            (ss, ps, sp, sigma, pi)
+        }
+        431 => {
+            let ss = right.zeta_s_bohr_inv.powf(1.5)
+                * left.zeta_s_bohr_inv.powf(3.5)
+                * distance.powi(5)
+                * (a_ss[4] * b_ss[0] + 2.0 * b_ss[1] * a_ss[3]
+                    - 2.0 * a_ss[1] * b_ss[3]
+                    - b_ss[4] * a_ss[0])
+                / (10.0_f64.sqrt() * 24.0);
+            let ps = right.zeta_s_bohr_inv.powf(1.5)
+                * left.zeta_p_bohr_inv.powf(3.5)
+                * distance.powi(5)
+                * (a_ps[3] * (b_ps[0] + b_ps[2]) - a_ps[1] * (b_ps[4] + b_ps[2])
+                    + b_ps[1] * (a_ps[2] + a_ps[4])
+                    - b_ps[3] * (a_ps[2] + a_ps[0]))
+                / (8.0 * 30.0_f64.sqrt());
+            (ss, ps, 0.0, 0.0, 0.0)
+        }
+        5 => {
+            let scale = distance.powi(6);
+            let ss = right.zeta_s_bohr_inv.powf(2.5)
+                * left.zeta_s_bohr_inv.powf(3.5)
+                * scale
+                * (a_ss[5] * b_ss[0] + b_ss[1] * a_ss[4]
+                    - 2.0 * b_ss[2] * a_ss[3]
+                    - 2.0 * a_ss[2] * b_ss[3]
+                    + b_ss[4] * a_ss[1]
+                    + b_ss[5] * a_ss[0])
+                / (30.0_f64.sqrt() * 48.0);
+            let ps = right.zeta_s_bohr_inv.powf(2.5)
+                * left.zeta_p_bohr_inv.powf(3.5)
+                * scale
+                * (a_ps[4] * b_ps[0] + b_ps[1] * a_ps[5]
+                    - 2.0 * b_ps[3] * a_ps[3]
+                    - 2.0 * a_ps[2] * b_ps[2]
+                    + a_ps[1] * b_ps[5]
+                    + a_ps[0] * b_ps[4])
+                / (48.0 * 10.0_f64.sqrt());
+            let sp = right.zeta_p_bohr_inv.powf(2.5)
+                * left.zeta_s_bohr_inv.powf(3.5)
+                * scale
+                * ((a_sp[4] * b_sp[0] - a_sp[5] * b_sp[1])
+                    + 2.0 * (a_sp[3] * b_sp[1] - a_sp[4] * b_sp[2])
+                    - 2.0 * (a_sp[1] * b_sp[3] - a_sp[2] * b_sp[4])
+                    - (a_sp[0] * b_sp[4] - a_sp[1] * b_sp[5]))
+                / (48.0 * 10.0_f64.sqrt());
+            let sigma = right.zeta_p_bohr_inv.powf(2.5)
+                * left.zeta_p_bohr_inv.powf(3.5)
+                * scale
+                * ((a_pp[3] * b_pp[0] - a_pp[5] * b_pp[2])
+                    + (a_pp[2] * b_pp[1] - a_pp[4] * b_pp[3])
+                    - (a_pp[1] * b_pp[2] - a_pp[3] * b_pp[4])
+                    - (a_pp[0] * b_pp[3] - a_pp[2] * b_pp[5]))
+                / (16.0 * 30.0_f64.sqrt());
+            let pi = right.zeta_p_bohr_inv.powf(2.5)
+                * left.zeta_p_bohr_inv.powf(3.5)
+                * scale
+                * ((a_pp[5] - a_pp[3]) * (b_pp[0] - b_pp[2])
+                    + (a_pp[4] - a_pp[2]) * (b_pp[1] - b_pp[3])
+                    - (a_pp[3] - a_pp[1]) * (b_pp[2] - b_pp[4])
+                    - (a_pp[2] - a_pp[0]) * (b_pp[3] - b_pp[5]))
+                / (32.0 * 30.0_f64.sqrt());
+            (ss, ps, sp, sigma, pi)
+        }
+        6 => {
+            let scale = distance.powi(7);
+            let ss = (left.zeta_s_bohr_inv * right.zeta_s_bohr_inv).powf(3.5)
+                * scale
+                * (a_ss[6] * b_ss[0] - 3.0 * b_ss[2] * a_ss[4] + 3.0 * a_ss[2] * b_ss[4]
+                    - a_ss[0] * b_ss[6])
+                / 1440.0;
+            let ps = (right.zeta_s_bohr_inv * left.zeta_p_bohr_inv).powf(3.5)
+                * scale
+                * ((a_ps[5] * b_ps[0] + a_ps[6] * b_ps[1])
+                    + (-a_ps[4] * b_ps[1] - a_ps[5] * b_ps[2])
+                    - 2.0 * (a_ps[3] * b_ps[2] + a_ps[4] * b_ps[3])
+                    - 2.0 * (-a_ps[2] * b_ps[3] - a_ps[3] * b_ps[4])
+                    + (a_ps[1] * b_ps[4] + a_ps[2] * b_ps[5])
+                    + (-a_ps[0] * b_ps[5] - a_ps[1] * b_ps[6]))
+                / (480.0 * 3.0_f64.sqrt());
+            let sp = (right.zeta_p_bohr_inv * left.zeta_s_bohr_inv).powf(3.5)
+                * scale
+                * ((a_sp[5] * b_sp[0] - a_sp[6] * b_sp[1])
+                    + (a_sp[4] * b_sp[1] - a_sp[5] * b_sp[2])
+                    - 2.0 * (a_sp[3] * b_sp[2] - a_sp[4] * b_sp[3])
+                    - 2.0 * (a_sp[2] * b_sp[3] - a_sp[3] * b_sp[4])
+                    + (a_sp[1] * b_sp[4] - a_sp[2] * b_sp[5])
+                    + (a_sp[0] * b_sp[5] - a_sp[1] * b_sp[6]))
+                / (480.0 * 3.0_f64.sqrt());
+            let sigma = (right.zeta_p_bohr_inv * left.zeta_p_bohr_inv).powf(3.5)
+                * scale
+                * ((a_pp[4] * b_pp[0] - a_pp[6] * b_pp[2])
+                    - 2.0 * (a_pp[2] * b_pp[2] - a_pp[4] * b_pp[4])
+                    + (a_pp[0] * b_pp[4] - a_pp[2] * b_pp[6]))
+                / 480.0;
+            let pi = (right.zeta_p_bohr_inv * left.zeta_p_bohr_inv).powf(3.5)
+                * scale
+                * ((a_pp[6] - a_pp[4]) * (b_pp[0] - b_pp[2])
+                    - 2.0 * (a_pp[4] - a_pp[2]) * (b_pp[2] - b_pp[4])
+                    + (a_pp[2] - a_pp[0]) * (b_pp[4] - b_pp[6]))
+                / 960.0;
+            (ss, ps, sp, sigma, pi)
+        }
+        _ => unreachable!(),
+    };
+
+    let direction = [
+        delta[0] / distance_angstrom,
+        delta[1] / distance_angstrom,
+        delta[2] / distance_angstrom,
+    ];
+    let rotation = rotation_matrix(direction);
+    let (r0, r1, r2) = (rotation[0], rotation[1], rotation[2]);
+    let rows = usize::from(left.orbital_count);
+    let columns = usize::from(right.orbital_count);
+    let mut values = [0.0; 16];
+    values[0] = s_ss;
+    if matches!(jcall, 3 | 431) {
+        for k in 0..3 {
+            values[(k + 1) * columns] = s_ps * r0[k];
+        }
+    } else if matches!(jcall, 4..=6) {
+        for k in 0..3 {
+            values[(k + 1) * columns] = s_ps * r0[k];
+            values[k + 1] = -s_sp * r0[k];
+            for l in 0..3 {
+                values[(k + 1) * columns + l + 1] =
+                    -s_pp_sigma * r0[k] * r0[l] + s_pp_pi * (r1[k] * r1[l] + r2[k] * r2[l]);
+            }
+        }
+    }
+    Ok(Rm1OverlapMatrix {
+        rows,
+        columns,
+        values,
+    })
+}
+
+fn a_integrals(alpha: f64) -> [f64; 7] {
+    let mut values = [0.0; 7];
+    values[0] = (-alpha).exp() / alpha;
+    for index in 1..7 {
+        values[index] = values[0] + index as f64 * values[index - 1] / alpha;
+    }
+    values
+}
+
+fn b_integrals(beta: f64) -> [f64; 7] {
+    let mut values = [0.0; 7];
+    if beta.abs() <= 1.0e-6 {
+        for index in (0..7).step_by(2) {
+            values[index] = 2.0 / (index + 1) as f64;
+        }
+        return values;
+    }
+    if beta.abs() <= 0.5 {
+        let x2 = beta * beta;
+        let x3 = beta * x2;
+        let x4 = x2 * x2;
+        let x5 = x2 * x3;
+        let x6 = x2 * x4;
+        let even = [
+            (2.0, 1.0 / 3.0, 1.0 / 60.0, 1.0 / 2520.0),
+            (2.0 / 3.0, 1.0 / 5.0, 1.0 / 84.0, 1.0 / 3240.0),
+            (2.0 / 5.0, 1.0 / 7.0, 1.0 / 108.0, 1.0 / 3960.0),
+            (2.0 / 7.0, 1.0 / 9.0, 1.0 / 132.0, 1.0 / 4680.0),
+        ];
+        let odd = [
+            (-2.0 / 3.0, -1.0 / 15.0, -1.0 / 420.0),
+            (-2.0 / 5.0, -1.0 / 21.0, -1.0 / 540.0),
+            (-2.0 / 7.0, -1.0 / 27.0, -1.0 / 660.0),
+        ];
+        for index in 0..7 {
+            values[index] = if index % 2 == 0 {
+                let c = even[index / 2];
+                c.0 + c.1 * x2 + c.2 * x4 + c.3 * x6
+            } else {
+                let c = odd[index / 2];
+                c.0 * beta + c.1 * x3 + c.2 * x5
+            };
+        }
+        return values;
+    }
+    let bounded = beta.clamp(-500.0, 500.0);
+    let positive = bounded.exp() / beta;
+    let negative = -(-bounded).exp() / beta;
+    values[0] = positive + negative;
+    let mut sign = 1.0;
+    for index in 1..7 {
+        sign = -sign;
+        values[index] = sign * positive + negative + index as f64 * values[index - 1] / beta;
+    }
+    values
+}
+
+fn principal_quantum_number(atomic_number: u8) -> u8 {
+    match atomic_number {
+        1..=2 => 1,
+        3..=10 => 2,
+        11..=18 => 3,
+        19..=36 => 4,
+        37..=54 => 5,
+        _ => 6,
+    }
+}
+
+fn numerical_sp_overlap(
+    left: &SemiempiricalElementParameters,
+    right: &SemiempiricalElementParameters,
+    left_position_angstrom: [f64; 3],
+    right_position_angstrom: [f64; 3],
+) -> Result<Rm1OverlapMatrix, SemiempiricalError> {
+    let delta = [
+        right_position_angstrom[0] - left_position_angstrom[0],
+        right_position_angstrom[1] - left_position_angstrom[1],
+        right_position_angstrom[2] - left_position_angstrom[2],
+    ];
+    let distance_angstrom = delta.iter().map(|value| value * value).sum::<f64>().sqrt();
+    if !distance_angstrom.is_finite() || distance_angstrom <= 1.0e-8 {
+        return Err(SemiempiricalError::InvalidInput(
+            "overlap requires distinct finite coordinates".into(),
+        ));
+    }
+    let distance = distance_angstrom * ANGSTROM_TO_BOHR_MOPAC;
+    let left_n = principal_quantum_number(left.atomic_number);
+    let right_n = principal_quantum_number(right.atomic_number);
+    let s_ss = reduced_sto_overlap(
+        left_n,
+        0,
+        right_n,
+        0,
+        0,
+        left.zeta_s_bohr_inv,
+        right.zeta_s_bohr_inv,
+        distance,
+    );
+    let s_ps = (left.orbital_count > 1).then(|| {
+        reduced_sto_overlap(
+            left_n,
+            1,
+            right_n,
+            0,
+            0,
+            left.zeta_p_bohr_inv,
+            right.zeta_s_bohr_inv,
+            distance,
+        )
+    });
+    let s_sp = (right.orbital_count > 1).then(|| {
+        reduced_sto_overlap(
+            left_n,
+            0,
+            right_n,
+            1,
+            0,
+            left.zeta_s_bohr_inv,
+            right.zeta_p_bohr_inv,
+            distance,
+        )
+    });
+    let p_pair = (left.orbital_count > 1 && right.orbital_count > 1).then(|| {
+        (
+            reduced_sto_overlap(
+                left_n,
+                1,
+                right_n,
+                1,
+                0,
+                left.zeta_p_bohr_inv,
+                right.zeta_p_bohr_inv,
+                distance,
+            ),
+            reduced_sto_overlap(
+                left_n,
+                1,
+                right_n,
+                1,
+                1,
+                left.zeta_p_bohr_inv,
+                right.zeta_p_bohr_inv,
+                distance,
+            ),
+        )
+    });
+
+    let direction = [
+        delta[0] / distance_angstrom,
+        delta[1] / distance_angstrom,
+        delta[2] / distance_angstrom,
+    ];
+    let rotation = rotation_matrix(direction);
+    let (r0, r1, r2) = (rotation[0], rotation[1], rotation[2]);
+    let rows = usize::from(left.orbital_count);
+    let columns = usize::from(right.orbital_count);
+    let mut values = [0.0; 16];
+    values[0] = s_ss;
+    if let Some(s_ps) = s_ps {
+        for k in 0..3 {
+            values[(k + 1) * columns] = s_ps * r0[k];
+        }
+    }
+    if let Some(s_sp) = s_sp {
+        for k in 0..3 {
+            values[k + 1] = -s_sp * r0[k];
+        }
+    }
+    if let Some((sigma, pi)) = p_pair {
+        for k in 0..3 {
+            for l in 0..3 {
+                values[(k + 1) * columns + l + 1] =
+                    -sigma * r0[k] * r0[l] + pi * (r1[k] * r1[l] + r2[k] * r2[l]);
+            }
+        }
+    }
+    Ok(Rm1OverlapMatrix {
+        rows,
+        columns,
+        values,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn reduced_sto_overlap(
+    left_n: u8,
+    left_l: u8,
+    right_n: u8,
+    right_l: u8,
+    magnetic: u8,
+    left_zeta: f64,
+    right_zeta: f64,
+    distance_bohr: f64,
+) -> f64 {
+    let radial_left = radial_normalization(left_n, left_zeta);
+    let radial_right = radial_normalization(right_n, right_zeta);
+    let angular_left = angular_normalization(left_l, magnetic);
+    let angular_right = angular_normalization(right_l, magnetic);
+    let phi_integral = if magnetic == 0 {
+        2.0 * std::f64::consts::PI
+    } else {
+        std::f64::consts::PI
+    };
+    let half = 0.5 * distance_bohr;
+    let xi_max = 1.0 + 40.0 / ((left_zeta + right_zeta) * half).max(1.0e-6);
+    let (nodes, weights) = gauss_legendre_48();
+    let mut integral = 0.0;
+    for (&xi_node, &xi_weight) in nodes.iter().zip(&weights) {
+        let xi = 0.5 * ((xi_max - 1.0) * xi_node + xi_max + 1.0);
+        let scaled_xi_weight = 0.5 * (xi_max - 1.0) * xi_weight;
+        for (&eta, &eta_weight) in nodes.iter().zip(&weights) {
+            let radius_left = half * (xi + eta);
+            let radius_right = half * (xi - eta);
+            let cos_left = ((1.0 + xi * eta) / (xi + eta)).clamp(-1.0, 1.0);
+            let cos_right = ((1.0 - xi * eta) / (xi - eta)).clamp(-1.0, 1.0);
+            let radial = radial_left
+                * radius_left.powi(i32::from(left_n) - 1)
+                * (-left_zeta * radius_left).exp()
+                * radial_right
+                * radius_right.powi(i32::from(right_n) - 1)
+                * (-right_zeta * radius_right).exp();
+            let angular = associated_legendre(left_l, magnetic, cos_left)
+                * associated_legendre(right_l, magnetic, cos_right);
+            integral += scaled_xi_weight * eta_weight * radial * angular * (xi * xi - eta * eta);
+        }
+    }
+    angular_left * angular_right * phi_integral * half.powi(3) * integral
+}
+
+fn radial_normalization(n: u8, zeta: f64) -> f64 {
+    (2.0 * zeta).powf(f64::from(n) + 0.5) / factorial(2 * n).sqrt()
+}
+
+fn angular_normalization(l: u8, magnetic: u8) -> f64 {
+    let numerator = f64::from(2 * l + 1);
+    if magnetic == 0 {
+        (numerator / (4.0 * std::f64::consts::PI)).sqrt()
+    } else {
+        (numerator / (2.0 * std::f64::consts::PI) * factorial(l - magnetic)
+            / factorial(l + magnetic))
+        .sqrt()
+    }
+}
+
+fn associated_legendre(l: u8, magnetic: u8, cosine: f64) -> f64 {
+    match (l, magnetic) {
+        (0, 0) => 1.0,
+        (1, 0) => cosine,
+        (1, 1) => -(1.0 - cosine * cosine).max(0.0).sqrt(),
+        (2, 0) => 0.5 * (3.0 * cosine * cosine - 1.0),
+        (2, 1) => -3.0 * cosine * (1.0 - cosine * cosine).max(0.0).sqrt(),
+        (2, 2) => 3.0 * (1.0 - cosine * cosine),
+        _ => 0.0,
+    }
+}
+
+fn factorial(value: u8) -> f64 {
+    (1..=u64::from(value)).product::<u64>() as f64
+}
+
+fn gauss_legendre_48() -> ([f64; 48], [f64; 48]) {
+    let mut nodes = [0.0; 48];
+    let mut weights = [0.0; 48];
+    for root in 0..24 {
+        let mut value = (std::f64::consts::PI * (root as f64 + 0.75) / 48.5).cos();
+        loop {
+            let (polynomial, derivative) = legendre_48(value);
+            let next = value - polynomial / derivative;
+            if (next - value).abs() <= 1.0e-15 {
+                value = next;
+                break;
+            }
+            value = next;
+        }
+        let (_, derivative) = legendre_48(value);
+        let weight = 2.0 / ((1.0 - value * value) * derivative * derivative);
+        nodes[root] = value;
+        nodes[47 - root] = -value;
+        weights[root] = weight;
+        weights[47 - root] = weight;
+    }
+    (nodes, weights)
+}
+
+fn legendre_48(value: f64) -> (f64, f64) {
+    let mut previous = 1.0;
+    let mut current = value;
+    for order in 2..=48 {
+        let next = ((2 * order - 1) as f64 * value * current - (order - 1) as f64 * previous)
+            / order as f64;
+        previous = current;
+        current = next;
+    }
+    let derivative = 48.0 * (value * current - previous) / (value * value - 1.0);
+    (current, derivative)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rm1_parameters;
+
+    #[test]
+    fn organic_overlap_matrices_match_pinned_oracle() {
+        let oxygen_hydrogen = rm1_sp_overlap(
+            rm1_parameters(8).unwrap(),
+            rm1_parameters(1).unwrap(),
+            [0.0; 3],
+            [0.96, 0.0, 0.0],
+        )
+        .unwrap();
+        assert_eq!((oxygen_hydrogen.rows, oxygen_hydrogen.columns), (4, 1));
+        assert!((oxygen_hydrogen.values[0] - 0.350_187_056_984_342).abs() < 1.0e-14);
+        assert!((oxygen_hydrogen.values[1] - 0.311_750_384_601_171).abs() < 1.0e-14);
+
+        let carbon_oxygen = rm1_sp_overlap(
+            rm1_parameters(6).unwrap(),
+            rm1_parameters(8).unwrap(),
+            [0.0; 3],
+            [1.0, 1.0, 0.3],
+        )
+        .unwrap();
+        let expected = [
+            0.136_662_800_279_058,
+            -0.130_464_281_865_673,
+            -0.130_464_281_865_673,
+            -0.039_139_284_559_702,
+            0.153_721_375_166_471,
+            -0.066_904_711_352_402,
+            -0.162_631_323_120_11,
+            -0.048_789_396_936_033,
+            0.153_721_375_166_471,
+            -0.162_631_323_120_11,
+            -0.066_904_711_352_402,
+            -0.048_789_396_936_033,
+            0.046_116_412_549_941,
+            -0.048_789_396_936_033,
+            -0.048_789_396_936_033,
+            0.081_089_792_686_898,
+        ];
+        for (actual, expected) in carbon_oxygen.values.into_iter().zip(expected) {
+            assert!((actual - expected).abs() < 1.0e-13);
+        }
+    }
+
+    #[test]
+    fn third_row_and_numerical_higher_period_overlap_match_oracles() {
+        let sulfur_hydrogen = rm1_sp_overlap(
+            rm1_parameters(16).unwrap(),
+            rm1_parameters(1).unwrap(),
+            [0.0; 3],
+            [0.97, 0.0, 0.93],
+        )
+        .unwrap();
+        let expected = [
+            0.425_317_728_696_987,
+            0.345_070_299_767_074,
+            0.0,
+            0.330_840_596_683_895,
+        ];
+        for (actual, expected) in sulfur_hydrogen.values[..4].iter().zip(expected) {
+            assert!((*actual - expected).abs() < 1.0e-13);
+        }
+        let sulfur_oxygen = rm1_sp_overlap(
+            rm1_parameters(16).unwrap(),
+            rm1_parameters(8).unwrap(),
+            [0.0; 3],
+            [1.5, 0.2, 0.1],
+        )
+        .unwrap();
+        let expected_so = [
+            0.149_330_105_431_9,
+            -0.188_114_817_832_677,
+            -0.025_081_975_711_024,
+            -0.012_540_987_855_512,
+            0.276_790_037_475_652,
+            -0.246_203_489_325_531,
+            -0.048_053_205_195_144,
+            -0.024_026_602_597_572,
+            0.036_905_338_330_087,
+            -0.048_053_205_195_144,
+            0.107_788_455_612_032,
+            -0.003_203_547_013_01,
+            0.018_452_669_165_043,
+            -0.024_026_602_597_572,
+            -0.003_203_547_013_01,
+            0.112_593_776_131_546,
+        ];
+        for (actual, expected) in sulfur_oxygen.values.into_iter().zip(expected_so) {
+            assert!((actual - expected).abs() < 1.0e-12);
+        }
+        let sulfur_chlorine = rm1_sp_overlap(
+            rm1_parameters(16).unwrap(),
+            rm1_parameters(17).unwrap(),
+            [0.0; 3],
+            [2.0, 0.3, -0.2],
+        )
+        .unwrap();
+        assert!((sulfur_chlorine.values[0] - 0.049_279_655_009_174).abs() < 1.0e-13);
+        assert!((sulfur_chlorine.values[5] + 0.316_130_036_575_148).abs() < 1.0e-12);
+        assert!((sulfur_chlorine.values[15] - 0.117_201_352_836_058).abs() < 1.0e-12);
+        let bromine_hydrogen = rm1_sp_overlap(
+            rm1_parameters(35).unwrap(),
+            rm1_parameters(1).unwrap(),
+            [0.0; 3],
+            [2.4, 0.0, 0.0],
+        )
+        .unwrap();
+        assert!((bromine_hydrogen.values[0] - 0.018_869_291_837_46).abs() < 2.0e-10);
+        assert!((bromine_hydrogen.values[1] - 0.193_008_519_774_526).abs() < 2.0e-10);
+
+        let iodine_carbon = rm1_sp_overlap(
+            rm1_parameters(53).unwrap(),
+            rm1_parameters(6).unwrap(),
+            [0.0; 3],
+            [2.14, 0.0, 0.0],
+        )
+        .unwrap();
+        assert!((iodine_carbon.values[0] - 0.161_240_907_343_303).abs() < 2.0e-10);
+        assert!((iodine_carbon.values[4] - 0.272_975_050_886_505).abs() < 2.0e-10);
+        assert!((iodine_carbon.values[1] + 0.199_626_584_677_874).abs() < 2.0e-10);
+        assert!((iodine_carbon.values[5] + 0.285_293_336_714_26).abs() < 2.0e-10);
+        assert!((iodine_carbon.values[10] - 0.093_847_690_942_708).abs() < 2.0e-10);
+    }
+}

@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { selectionBookmarks } from '../scripts/molecular-selection-bookmarks.js';
+const ids = count => new Set(Array.from({ length: count }, (_, i) => `atom-${i}`));
+
+test('named selections are bounded, explicit-overwrite, immutable address snapshots', () => {
+  const book = selectionBookmarks();
+  const initial = ids(2);
+  assert.equal(book.save('site', initial, {}).applied, true);
+  initial.clear();
+  book.resolve('site', ids(2)).clear();
+  assert.equal(book.resolve('site', ids(2)).size, 2);
+  assert.throws(() => book.save('site', ids(1), {}), { code: 'SELECTION_EXISTS' });
+  assert.throws(() => book.save('site', ids(1), { overwrite: 'true' }), /boolean/);
+  assert.equal(book.save('site', ids(1), { overwrite: true, dryRun: true }).applied, false);
+  assert.equal(book.resolve('site', ids(2)).size, 2);
+  assert.deepEqual(book.list(ids(1)), [{ name: 'site', atomCount: 2, availableAtoms: 1, status: 'stale' }]);
+  assert.throws(() => book.resolve('site', ids(1)), { code: 'STALE_SELECTION' });
+  for (const name of ['', ' site', 'site\n', 'x'.repeat(65)]) assert.throws(() => book.save(name, ids(1), {}), { code: 'INVALID_SELECTION_NAME' });
+  assert.throws(() => book.save('large', ids(10001), {}), { code: 'SELECTION_LIMIT' });
+  book.save('site', ids(10000), { overwrite: true });
+  book.save('second', ids(10000), {});
+  assert.throws(() => book.save('third', ids(5001), {}), { code: 'SELECTION_LIMIT' });
+  book.remove('second', true);
+  assert.equal(book.list(ids(10000)).length, 2);
+  book.remove('second', false);
+  assert.equal(book.list(ids(10000)).length, 1);
+  const names = selectionBookmarks();
+  for (let i = 0; i < 32; i++) names.save(`name-${i}`, ids(0), {});
+  assert.throws(() => names.save('one more', ids(0), {}), { code: 'SELECTION_LIMIT' });
+});

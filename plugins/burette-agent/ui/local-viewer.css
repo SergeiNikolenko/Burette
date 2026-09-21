@@ -1,0 +1,66 @@
+@import "tailwindcss" source(none);
+@import "@openai/apps-sdk-ui/css";
+@import "../../../apps/desktop/src/components/editor-area/editor-tabs.css";
+@source "./local-viewer-header.tsx";
+@source "../../../node_modules/@openai/apps-sdk-ui/dist/es";
+@source "./local-viewer-tabs.tsx";
+@source "../../../apps/desktop/src/components/editor-area/document-tab.tsx";
+@source "../../../apps/desktop/src/components/ui/context-menu.tsx";
+@source "../../../apps/desktop/src/components/ui/badge.tsx";
+@source "../../../apps/desktop/src/components/ui/button.tsx";
+@source "../../../apps/desktop/src/components/ui/dropdown-menu.tsx";
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Compatibility tokens for existing document tabs; display controls use SDK UI. */
+@theme inline {
+  --font-sans: ui-sans-serif, -apple-system, system-ui, "Segoe UI", "Noto Sans", "Helvetica", "Arial", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --color-background: var(--surface);
+  --color-foreground: var(--text);
+  --color-muted: var(--surface-secondary);
+  --color-muted-foreground: var(--text-secondary);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-accent: var(--surface-secondary);
+  --color-accent-foreground: var(--text);
+  --color-ring: light-dark(#0169cc, #0285ff);
+  --radius-lg: 0.625rem;
+  --radius-md: 0.5rem;
+}
+:root {
+  color-scheme: light;
+  --surface: light-dark(#ffffff, #212121);
+  --surface-secondary: light-dark(#f9f9f9, #181818);
+  --text: light-dark(#0d0d0d, #ffffff);
+  --text-secondary: light-dark(#5d5d5d, #afafaf);
+  --border: light-dark(rgb(13 13 13 / 10%), rgb(255 255 255 / 12%));
+  --shadcn-disabled-opacity: 0.5;
+  --chrome-control-height: 28px;
+  --chrome-control-padding: 4px;
+  --control-radius: 8px;
+  --text-muted: var(--text-secondary);
+  --text-faint: var(--text-secondary);
+  --text-icon-muted: var(--text-secondary);
+  --tab-active-bg: var(--surface-secondary);
+  --surface-subtle: var(--surface-secondary);
+  --surface-selected: var(--surface-secondary);
+  --line-subtle: var(--border);
+  --line-strong: var(--border);
+  --fg-base: var(--text);
+  --bg-base: var(--surface);
+  --contrast: 1;
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body { display: flex; flex-direction: column; font-family: var(--font-sans); color: var(--text); background: var(--surface); }
+#mcp-header { position: fixed; right: 10px; bottom: 10px; z-index: 1000; }
+#mcp-tabs { flex: 0 0 auto; padding-inline: 8px; }
+#app[hidden] { display: none; }
+#mcp-scene { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+#app { position: absolute; inset: 0; width: 100%; height: 100%; }
+#status { font-family: var(--font-sans); font-size: 14px; line-height: 20px; }
+body[data-closed="true"] #status { position: static; transform: none; margin: 12px; padding: 0; display: block; }
+/* Inline media is single-purpose; the expanded view retains the full scene controls. */
+body[data-display-mode="inline"] :is(#buret-toolbar, #buret-scene-tree-toggle, #buret-viewport-rail) { display: none !important; }
+body[data-empty="true"] :is(#buret-toolbar, #buret-scene-tree-toggle, #buret-viewport-rail) { display: none !important; }

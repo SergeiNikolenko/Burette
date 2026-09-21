@@ -1,0 +1,5 @@
+interface:
+  display_name: "Molecular Stories"
+  short_description: "Create and navigate reproducible MolViewSpec Stories"
+policy:
+  allow_implicit_invocation: false

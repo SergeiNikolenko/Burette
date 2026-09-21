@@ -1,0 +1,8 @@
+HEADER    MINI ENT ALIAS FOR QUICK LOOK TEST
+TITLE     PDB ENT ALIAS SAMPLE
+ATOM      1  N   GLY A   1      -1.204   0.176   0.000  1.00 20.00           N
+ATOM      2  CA  GLY A   1       0.000   0.000   0.000  1.00 20.00           C
+ATOM      3  C   GLY A   1       0.722   1.271   0.000  1.00 20.00           C
+ATOM      4  O   GLY A   1       0.163   2.360   0.000  1.00 20.00           O
+TER       5      GLY A   1
+END

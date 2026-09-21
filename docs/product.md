@@ -1,0 +1,127 @@
+# Product Direction
+
+This document describes Burette's product intent. It is not a release checklist,
+marketing page, or complete feature specification. Keep it aligned with
+`README.md`, the active desktop app, the Quick Look extension, the source-built
+iPhone app, and the agent/plugin surface.
+
+## Current Product
+
+Burette is a molecular file workspace with five connected surfaces:
+
+- Finder Quick Look previews for molecular files.
+- A compact macOS desktop workspace for opening, comparing, editing, and
+  triaging molecular/project files.
+- A source-built iPhone preview app that reuses the preview runtime for mobile
+  document handoff.
+- Agent/plugin tooling for typed observe/action workflows, reports, and bounded
+  molecular workspace automation.
+- A hosted public plugin (`apps/burette-public-plugin`) with a public MCP
+  endpoint that previews authorized attachments and public PDB entries in a
+  sandboxed Burette workspace.
+
+The product is a local molecular workspace for inspection, workflow handoff,
+and a curated set of reproducible native compute operations. It is not a cloud
+ELN, collaborative notebook, arbitrary script environment, or unrestricted
+molecular-modeling suite.
+
+## Native Compute Layer Status
+
+The Apple Silicon Compute Layer is under active implementation. The first
+desktop source workflow now runs from immutable Grid scope through a pinned
+RDKit worker, checked CPU/Metal Tanimoto neighbor construction, deterministic
+Butina, immutable artifacts, and typed Grid results. Real Metal command-buffer
+dispatch exists; the packaged runtime identity is v22
+(`burette-native-metal-v22`), which added the Chemical Space family (Metal
+UMAP embeddings, clustering, activity colouring, cliffs). Releases ship
+through the Developer ID signing and notarization pipeline when credentials
+are configured; see [gpu-compute-status.md](gpu-compute-status.md) for the
+current per-family status.
+
+| Workflow family | Product status |
+| --- | --- |
+| Similarity and clustering | `Cluster selected`/`Cluster filtered`/`Cluster all` is wired end to end with active cancellation at durable stage boundaries; deterministic v20 tests cover a 100k exact query and 100k CSR construction without a dense matrix, priority-queue Butina, dense fill, exact cutoff boundaries, and rejection before fill under memory pressure |
+| Similarity search and diverse selection | `Find similar` reuses a verified cluster EnginePack for exact CPU/Metal top-50 ranking and Grid writeback; immutable diverse export includes structures, table, and provenance |
+| Conformer generation | Native Grid selection runs RDKit parameter extraction, adaptive `N x K` Metal DG/ETK/stereo execution, CPU reference validation, durable EnginePack/ResultPack publication, typed Grid writeback, and path-based Mol* ensemble opening; a 32-case all-variant packaged-RDKit/real-Metal corpus passes, while external coordinate-distribution and production-package gates remain |
+| MMFF94/MMFF94s optimization | Seven-term CPU/Metal evaluation, BMFX RDKit parameter ABI, fused Metal BFGS/L-BFGS selection, selectable conformer ranking, standalone input-coordinate `Optimize geometry`, and Grid/XYZ provenance are implemented; the 24-case pinned RDKit corpus passes on Apple M2 Pro |
+| Alignment, RMSD, shape/electrostatic scoring | Grid `Align & compare` performs bounded Metal Horn alignment, deterministic V2000/V3000 element/bond-graph remapping, CPU parity validation, typed Grid score writeback, aligned annotated SDF/Mol* ensemble opening, and electrostatic scoring from a complete common semiempirical charge run when available; the pinned upstream CHEESE transform/charge fixture and reordered Grid-to-Metal smoke pass |
+| Semiempirical energies and charges | Native Grid evaluation covers RM1, AM1, PM3, PM6, PM6_D, PM6_D3H4, PM6_SP, and AM1* with method-specific domains, SCF/DIIS/adaptive damping, full PM6 d orbitals, D3/H4/HH corrections, energies, charges, and CPU/Metal checks; broad external corpus and production-package gates remain |
+
+Production compute is native Metal plus native CPU/reference chemistry. Python
+and MLX are permitted only in development as pinned reference oracles and are
+not ordinary application dependencies.
+
+## Primary Users
+
+Burette is for people who inspect molecular and adjacent computational chemistry
+files as part of technical work:
+
+- computational chemists
+- structural biologists
+- cheminformaticians
+- molecular modeling practitioners
+- researchers and engineers reviewing generated structure/workflow artifacts
+
+They often enter through Finder, a project folder, a generated workflow output,
+or an agent session. They need fast visual feedback, predictable file handling,
+and a way to recover when renderer or Quick Look infrastructure needs attention.
+
+## Core Jobs
+
+- Preview a molecular file from Finder without opening a heavyweight tool.
+- Open multiple structures or related files in a desktop workspace and compare
+  them without losing renderer state.
+- Switch between Mol*, RDKit grids, text/spectrum fallbacks, and external
+  `xyzrender` when the file or workflow requires it.
+- Inspect SDF/SMILES/CSV/TSV collections with search, sorting, filtering,
+  selection, append/merge, export, and Ketcher handoff.
+- Sketch or edit small molecules in Ketcher and send them to preview or
+  collection workflows.
+- Review focused workflow artifacts such as docking/pose surfaces and FEP
+  network GraphML previews.
+- Diagnose and repair local preview infrastructure: Quick Look reset, cache
+  cleanup, logs, diagnostics, update checks, and install health.
+- Use typed agent workflows where screenshots are not enough: open, observe,
+  act, render bounded panels, and validate molecular artifacts.
+- Run curated similarity, conformer, optimization, alignment, and energy
+  workflows from Grid or the 3D inspector once each workflow reaches its
+  packaged-app completion gate.
+- Build and use the iPhone app from source for mobile file handoff and
+  inspection.
+
+## Product Principles
+
+- **Molecule first.** The structure, collection, trajectory, spectrum, or
+  workflow artifact is the visual center. Shell UI exists to support inspection.
+- **Native enough to trust.** Burette should feel like a serious macOS utility:
+  predictable menus, keyboard access, stable window behavior, familiar controls,
+  and clear recovery actions.
+- **Surface truth matters.** Finder Quick Look, desktop app, browser-dev,
+  tokenized browser preview, iPhone app, hosted public plugin, and agent
+  sessions are separate runtimes. Product claims must say which surface is
+  supported.
+- **File workflows beat dashboards.** Burette is organized around files,
+  project folders, tabs, previews, and handoff, not hero metrics or abstract
+  workspace cards.
+- **Local first.** The app should work from local files and local tools. External
+  integrations such as `xyzrender`, VESTA, chemistry editors, and agent tooling
+  remain optional and explicit.
+- **Maintenance is product UX.** Quick Look registration, renderer discovery,
+  logs, cache reset, and install checks are first-class because broken local
+  preview infrastructure is a common user problem.
+
+## Non-Goals
+
+- Replace full molecular modeling environments.
+- Provide macromolecule editing inside Ketcher.
+- Hide local tool requirements behind silent cloud execution.
+- Turn the desktop shell into a marketing-style dashboard.
+- Treat the source-built iPhone app as part of the Homebrew macOS release.
+- Let agent screenshots replace typed observe/action state or validation output.
+
+## Voice
+
+Burette should sound practical, direct, and precise. User-facing copy should say
+what the app can do, what surface it applies to, and what the user can do next.
+Avoid aspirational claims that are not backed by README, docs, tests, or the
+current runtime.

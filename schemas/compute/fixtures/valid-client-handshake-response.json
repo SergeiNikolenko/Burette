@@ -1,0 +1,10 @@
+{
+  "protocolVersion": 1,
+  "requestId": "018f48f2-2e20-7e53-976b-cf93e0897730",
+  "result": {
+    "kind": "handshakeAccepted",
+    "sessionToken": "session.v1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "clientNonce": "client_nonce_1234",
+    "serverNonce": "server_nonce_1234"
+  }
+}

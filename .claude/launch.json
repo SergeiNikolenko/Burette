@@ -1,0 +1,63 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "burette-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/.bin/vite",
+        "--config",
+        "apps/desktop/vite.config.ts",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "1451",
+        "--strictPort",
+        "false"
+      ],
+      "port": 1451
+    },
+    {
+      "name": "burette-tauri-frontend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/.bin/vite",
+        "--config",
+        "apps/desktop/vite.config.ts",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "1425",
+        "--strictPort"
+      ],
+      "port": 1425
+    },
+    {
+      "name": "story-preview",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "scripts/agent-preview.mjs",
+        "samples/mvs/docking_story.mvsx",
+        "--port",
+        "5177"
+      ],
+      "port": 5177
+    },
+    {
+      "name": "burette-tauri-1420",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/.bin/vite",
+        "--config",
+        "apps/desktop/vite.config.ts",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "1420",
+        "--strictPort",
+        "true"
+      ],
+      "port": 1420
+    }
+  ]
+}

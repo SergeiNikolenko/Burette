@@ -1,0 +1,267 @@
+#!/usr/bin/env node
+import { access, readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const pluginRoot = path.resolve(scriptDir, "..");
+const defaultRepoRoot = path.resolve(pluginRoot, "..", "..");
+const repoRootResolution = await resolveRepoRoot();
+const repoRoot = repoRootResolution.path;
+
+async function exists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readJson(filePath, fallback = null) {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+async function previewWebRuntimeExists(dir) {
+  const [hasIndex, hasViewer] = await Promise.all([
+    exists(path.join(dir, "index.html")),
+    exists(path.join(dir, "viewer.js")),
+  ]);
+  return hasIndex && hasViewer;
+}
+
+async function resolveRepoRoot() {
+  if (process.env.BURETTE_AGENT_REPO_ROOT) {
+    return { path: path.resolve(process.env.BURETTE_AGENT_REPO_ROOT), source: "env" };
+  }
+  const metadata = await readJson(path.join(pluginRoot, ".burette-agent-install.json"), {});
+  if (typeof metadata.repoRoot === "string" && metadata.repoRoot.trim()) {
+    return { path: path.resolve(metadata.repoRoot), source: "metadata" };
+  }
+  if (await exists(path.join(defaultRepoRoot, "scripts", "burette-agent.mjs"))) {
+    return { path: defaultRepoRoot, source: "source-checkout" };
+  }
+  return { path: defaultRepoRoot, source: "fallback-unverified" };
+}
+
+const pluginManifestPath = path.join(pluginRoot, ".codex-plugin", "plugin.json");
+const repoPackagePath = path.join(repoRoot, "package.json");
+const pluginCliPath = path.join(pluginRoot, "scripts", "burette-agent.mjs");
+const repoCliPath = path.join(repoRoot, "scripts", "burette-agent.mjs");
+const cliPath = await exists(pluginCliPath) ? pluginCliPath : repoCliPath;
+const pluginPreviewPath = path.join(pluginRoot, "scripts", "agent-preview.mjs");
+const repoPreviewPath = path.join(repoRoot, "scripts", "agent-preview.mjs");
+const previewPath = await exists(pluginPreviewPath) ? pluginPreviewPath : repoPreviewPath;
+const pluginAgentShellServerPath = path.join(pluginRoot, "scripts", "agent-shell-server.mjs");
+const repoAgentShellServerPath = path.join(repoRoot, "scripts", "agent-shell-server.mjs");
+const agentShellServerPath = await exists(pluginAgentShellServerPath) ? pluginAgentShellServerPath : repoAgentShellServerPath;
+const agentShellDistPath = process.env.BURETTE_AGENT_SHELL_DIST_DIR
+  ? path.resolve(process.env.BURETTE_AGENT_SHELL_DIST_DIR)
+  : await exists(path.join(pluginRoot, "browser-shell-dist", "index.html"))
+    ? path.join(pluginRoot, "browser-shell-dist")
+    : path.join(repoRoot, "apps", "desktop", "dist");
+const repoPreviewWebPath = path.join(repoRoot, "PreviewExtension", "Web");
+const pluginPreviewWebPath = path.join(pluginRoot, "preview-web");
+const usesBundledCli = cliPath === pluginCliPath;
+const previewWebPath = usesBundledCli ? pluginPreviewWebPath : repoPreviewWebPath;
+const desktopApp = process.env.BURETTE_AGENT_APP || null;
+const hasVp = commandExists("vp");
+
+const [pluginManifest, repoPackage, hasCli, hasPreview, hasPreviewWeb, hasAgentShellServer, hasAgentShellDist, hasDesktopApp] = await Promise.all([
+  readJson(pluginManifestPath, {}),
+  readJson(repoPackagePath, {}),
+  exists(cliPath),
+  exists(previewPath),
+  previewWebRuntimeExists(previewWebPath),
+  exists(agentShellServerPath),
+  exists(path.join(agentShellDistPath, "index.html")),
+  desktopApp ? exists(desktopApp) : Promise.resolve(false),
+]);
+const hasPrebuiltAgentShell = hasAgentShellServer && hasAgentShellDist && hasPreviewWeb;
+const hasFullBrowserAgentShell = hasCli && (hasPrebuiltAgentShell || (!usesBundledCli && hasVp));
+const inlineViewerPath = path.join(pluginRoot, 'assets', 'local-viewer.html');
+const hasInlineViewer = await exists(inlineViewerPath) && await exists(path.join(path.dirname(cliPath), 'mcp-app-session.mjs'));
+
+function commandExists(command) {
+  const result = spawnSync(command, ["--version"], {
+    encoding: "utf8",
+    stdio: "ignore",
+  });
+  return result.status === 0;
+}
+
+const payload = {
+  schema: "burette_agent_preflight.v1",
+  readOnly: true,
+  plugin: {
+    name: pluginManifest.name || "burette",
+    version: pluginManifest.version || "0.0.0",
+    root: pluginRoot,
+  },
+  repository: {
+    root: repoRoot,
+    source: repoRootResolution.source,
+    packageName: repoPackage.name || null,
+    packageVersion: repoPackage.version || null,
+  },
+  files: {
+    inlineViewerResource: {
+      path: inlineViewerPath,
+      status: hasInlineViewer ? 'available' : 'missing',
+    },
+    cli: {
+      path: cliPath,
+      status: hasCli ? "available" : "missing",
+    },
+    browserPreviewServer: {
+      path: previewPath,
+      status: hasPreview ? "available" : "missing",
+    },
+    browserPreviewWeb: {
+      path: previewWebPath,
+      status: hasPreviewWeb ? "available" : "missing",
+    },
+    browserAgentShellServer: {
+      path: agentShellServerPath,
+      status: hasAgentShellServer ? "available" : "missing",
+    },
+    browserAgentShellDist: {
+      path: agentShellDistPath,
+      status: hasAgentShellDist ? "available" : "missing",
+    },
+    preferredDesktopApp: {
+      path: desktopApp,
+      status: desktopApp ? (hasDesktopApp ? "available" : "missing") : "not_configured",
+    },
+    vitePlus: {
+      command: "vp",
+      status: hasVp ? "available" : "missing",
+    },
+  },
+  context: {
+    scope: "burette_agent_capability_registry",
+    preferredMode: "auto",
+    transports: [
+      {
+        id: "auto",
+        status: hasCli && hasPreview && hasPreviewWeb ? "available" : "blocked",
+        note: "Start the full browser agent shell when available; fall back to browser-preview when the shell cannot start.",
+      },
+      {
+        id: "browser-agent-shell",
+        status: hasFullBrowserAgentShell ? "available" : "blocked",
+        note: hasPrebuiltAgentShell
+          ? "Agent-owned full Browser shell from the prebuilt static bundle with local runtime endpoints."
+          : "Agent-owned full Browser shell on a fresh local port with ?devFiles=...; currently requires vp dev until the prebuilt bundle is present.",
+      },
+      {
+        id: "browser-preview",
+        status: hasCli && hasPreview && hasPreviewWeb ? "available" : "blocked",
+        note: "Token-gated localhost preview driven by scripts/agent-preview.mjs.",
+      },
+      {
+        id: "desktop-app",
+        status: hasCli ? "available" : "blocked",
+        note: "Explicit file-backed session directory passed through --burette-agent-session. MolViewSpec Story control requires Burette 2.1.16 or newer.",
+      },
+      {
+        id: 'mcp-app',
+        status: hasInlineViewer ? 'available' : 'blocked',
+        note: 'Bundled local PDB/mmCIF native side-pane or inline viewer. Use burette.open_viewer in Codex; requires an MCP Apps host. Package availability is not mounted readiness.',
+      },
+    ],
+    visualQaSurfaces: [
+      {
+        id: "Browser",
+        status: "available_when_plugin_present",
+        role: "Verify localhost/browser-preview visual state and screenshots.",
+      },
+      {
+        id: "Computer",
+        status: "available_when_plugin_present",
+        role: "Verify real desktop window, accessibility tree, and native/Tauri controls.",
+      },
+    ],
+    workflowRoutes: {
+      openWorkspace: ["open local PDB/CIF/XYZ/SDF-like artifacts", "choose auto, browser-agent-shell, browser-preview, or desktop-app"],
+      molstarScene: [
+        "observe scene",
+        "apply MolViewSpec-informed declarative scene schema",
+        "focus ligand",
+        "highlight/select/focus components",
+        "hide waters",
+        "surface",
+        "color",
+        "reset camera",
+        "load complete MolViewSpec scenes",
+      ],
+      mvsStory: [
+        "discover installed MolViewSpec scene and animation node contracts",
+        "author and validate multi-state MolViewSpec Stories",
+        "package local resources in MVSX",
+        "observe the current Story step",
+        "navigate, play, and pause Story playback",
+        "verify two rendered steps in Browser",
+      ],
+      moleculeCollection: ["render SDF/property tables", "filter/sort externally", "link row selection to viewer"],
+      trajectoryReview: ["load result bundles", "review frame metrics", "show trajectory controls when supported"],
+      workflowResults: ["accept server-produced prep/docking/MD artifacts", "surface logs and run reports"],
+      molecularReport: ["render notes, tables, charts, and provenance side panels"],
+      visualQa: ["Browser smoke", "Computer desktop smoke", "screenshot checks"],
+    },
+  },
+  capabilities: {
+    structures: {
+      pdb: "supported",
+      cif: "supported",
+      xyz: "supported",
+      sdf: "partial",
+      mvsj: "supported_with_accessible_resources",
+      mvsx: "supported_self_contained_story_bundle",
+    },
+    molstarActions: {
+      apply_scene: "supported",
+      scene_language: "mvs_informed_active_viewer_dsl",
+      reset_camera: "supported",
+      focus_ligand: "supported_when_detectable",
+      hide_waters: "supported",
+      show_waters: "supported",
+      show_surface: "best_effort",
+      color_by_chain: "best_effort",
+      contacts: "supported_when_structure_available",
+      load_mvs: "supported_for_complete_mvs_payloads",
+      full_mvs_scene: "supported_via_load_mvs",
+      story_create: "supported_with_official_mvs_schema_validation",
+      story_authoring_reference: "supported_from_installed_molstar_schema",
+      story_observe: "supported",
+      story_control: "supported",
+    },
+    storyTransports: {
+      "browser-agent-shell": "bundled",
+      "browser-preview": "bundled",
+      "desktop-app": "requires_burette_app_2.1.16_or_newer",
+    },
+    externalWorkflows: {
+      proteinPreparation: "external_workflow",
+      ligandPreparation: "external_workflow",
+      docking: "external_workflow",
+      molecularDynamics: "external_workflow",
+      trajectoryCleanup: "external_workflow",
+    },
+  },
+  control: {
+    proceed: hasCli && hasPreview && hasPreviewWeb,
+    blockers: [
+      ...(hasCli ? [] : ["scripts/burette-agent.mjs is missing"]),
+      ...(hasPreview ? [] : ["scripts/agent-preview.mjs is missing"]),
+      ...(hasPreviewWeb ? [] : ["preview web index.html or viewer.js is missing"]),
+    ],
+  },
+};
+
+console.log(JSON.stringify(payload, null, 2));

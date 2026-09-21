@@ -1,0 +1,224 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Publish Release
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Burette toolchain
+        uses: ./.github/actions/setup-burette-toolchain
+        with:
+          install-xyzrender: "true"
+
+      - name: Validate release version
+        run: bun run check:release
+
+      - name: Resolve version
+        id: version
+        run: |
+          version="$(bun --eval "console.log(require('./package.json').version)")"
+          tag="v${version}"
+          prerelease=false
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            if [[ "${GITHUB_REF_NAME:-}" != "${tag}" ]]; then
+              echo "Tag ${GITHUB_REF_NAME:-unknown} does not match package version ${version}." >&2
+              exit 1
+            fi
+          elif git rev-parse --verify "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Release tag ${tag} already exists. Bump package.json before merging another PR." >&2
+            exit 1
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
+
+      - name: Check Homebrew tap token
+        if: steps.version.outputs.prerelease != 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [[ -z "${HOMEBREW_TAP_TOKEN:-}" ]]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN is not set; skipping the Homebrew cask update. The app release is still built and published."
+          fi
+
+      - name: Resolve release capabilities
+        id: capabilities
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+          BURETTE_CODESIGN_IDENTITY: ${{ secrets.BURETTE_CODESIGN_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
+          BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [[ -n "${MACOS_CERTIFICATE_P12_BASE64:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_KEYCHAIN_PASSWORD:-}" && -n "${BURETTE_CODESIGN_IDENTITY:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+            echo "developer_id=true" >> "$GITHUB_OUTPUT"
+            echo "allow_adhoc=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "developer_id=false" >> "$GITHUB_OUTPUT"
+            echo "allow_adhoc=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Developer ID signing credentials are unavailable; publishing an ad-hoc signed release without notarization."
+          fi
+          if [[ -n "${BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" && -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
+            echo "signed_manifest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed_manifest=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ -n "${HOMEBREW_TAP_TOKEN:-}" ]]; then
+            echo "homebrew=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "homebrew=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Import Developer ID certificate
+        if: steps.capabilities.outputs.developer_id == 'true'
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          echo "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > certificate.p12
+          security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+
+      - name: Build app
+        env:
+          BURETTE_BUILD_MODE: release
+          BURETTE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
+          BURETTE_CODESIGN_IDENTITY: ${{ secrets.BURETTE_CODESIGN_IDENTITY }}
+          BURETTE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          BURETTE_XCODE_CONFIGURATION: Release
+          BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
+        run: ./scripts/build.sh
+
+      - name: Notarize app
+        if: steps.capabilities.outputs.developer_id == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          ditto -c -k --keepParent build/Burette.app notarization.zip
+          xcrun notarytool submit notarization.zip \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+          xcrun stapler staple build/Burette.app
+
+      - name: Validate release signing
+        env:
+          BURETTE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
+        run: ./scripts/check-release-signature.sh build/Burette.app
+
+      - name: Package app
+        env:
+          BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
+          BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
+        run: |
+          rm -rf release
+          mkdir -p release
+          cp -R build/Burette.app release/Burette.app
+          ditto -c -k --keepParent release/Burette.app "Burette-${{ steps.version.outputs.version }}.zip"
+          shasum -a 256 "Burette-${{ steps.version.outputs.version }}.zip" > "Burette-${{ steps.version.outputs.version }}.zip.sha256"
+          ./scripts/create-dmg.sh release/Burette.app "Burette-${{ steps.version.outputs.version }}.dmg"
+          shasum -a 256 "Burette-${{ steps.version.outputs.version }}.dmg" > "Burette-${{ steps.version.outputs.version }}.dmg.sha256"
+          if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" && -n "${BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" ]]; then
+            bun scripts/sign-update-manifest.mjs "Burette-${{ steps.version.outputs.version }}.zip" .
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          assets=(
+            "Burette-${{ steps.version.outputs.version }}.zip"
+            "Burette-${{ steps.version.outputs.version }}.dmg"
+          )
+          if [[ -f "Burette-${{ steps.version.outputs.version }}.zip.sha256" ]]; then
+            assets+=("Burette-${{ steps.version.outputs.version }}.zip.sha256")
+          fi
+          if [[ -f "Burette-${{ steps.version.outputs.version }}.dmg.sha256" ]]; then
+            assets+=("Burette-${{ steps.version.outputs.version }}.dmg.sha256")
+          fi
+          if [[ -f "Burette-${{ steps.version.outputs.version }}.zip.manifest.json" ]]; then
+            assets+=("Burette-${{ steps.version.outputs.version }}.zip.manifest.json")
+          fi
+          if [[ -f "Burette-${{ steps.version.outputs.version }}.zip.manifest.json.sig" ]]; then
+            assets+=("Burette-${{ steps.version.outputs.version }}.zip.manifest.json.sig")
+          fi
+          release_flags=()
+          if [[ "${{ steps.version.outputs.prerelease }}" == "true" ]]; then
+            release_flags+=(--prerelease)
+          fi
+          gh release create "${{ steps.version.outputs.tag }}" \
+            "${assets[@]}" \
+            "${release_flags[@]}" \
+            --target "$GITHUB_SHA" \
+            --title "Burette ${{ steps.version.outputs.version }}" \
+            --generate-notes
+
+      - name: Checkout Homebrew tap
+        if: steps.version.outputs.prerelease != 'true' && steps.capabilities.outputs.homebrew == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: SergeiNikolenko/homebrew-burette
+          path: homebrew-burette
+          ref: main
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Update Homebrew cask
+        if: steps.version.outputs.prerelease != 'true' && steps.capabilities.outputs.homebrew == 'true'
+        working-directory: homebrew-burette
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          sha256="$(awk '{print $1}' "../Burette-${version}.zip.sha256")"
+          if [[ ! "$sha256" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "::error::Invalid or missing SHA-256 for Burette-${version}.zip."
+            exit 1
+          fi
+          cask="Casks/burette.rb"
+          if [[ ! -f "$cask" ]]; then
+            cask="Casks/b/burette.rb"
+          fi
+          if [[ ! -f "$cask" ]]; then
+            echo "::error::Could not find burette.rb in the Homebrew tap checkout."
+            exit 1
+          fi
+          ruby -0pi -e "gsub(/version \"[^\"]+\"/, \"version \\\"${version}\\\"\"); gsub(/sha256 \"[a-f0-9]{64}\"/, \"sha256 \\\"${sha256}\\\"\"); gsub(/depends_on macos: \">= :monterey\"/, \"depends_on macos: :monterey\")" "$cask"
+          git diff -- "$cask"
+          git diff --quiet -- "$cask" && {
+            echo "Homebrew cask already points to ${version}."
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$cask"
+          git commit -m "Update Burette cask to ${version}"
+          git push origin HEAD:main

@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT" ]]; do
+  DIR="$(cd -P "$(dirname "$SCRIPT")" >/dev/null 2>&1 && pwd -P)"
+  SCRIPT="$(readlink "$SCRIPT")"
+  [[ "$SCRIPT" != /* ]] && SCRIPT="$DIR/$SCRIPT"
+done
+ROOT="$(cd -P "$(dirname "$SCRIPT")/.." >/dev/null 2>&1 && pwd -P)"
+cd "$ROOT"
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+export COPYFILE_DISABLE=1
+export COPY_EXTENDED_ATTRIBUTES_DISABLE=1
+export COPY_EXTENDED_ATTRIBUTES_DISABLE_RECURSIVE=1
+
+if [[ -n "${BURETTE_DEV_FLAVOR:-}" ]]; then
+  echo "error: BURETTE_DEV_FLAVOR is supported by scripts/build.sh, not scripts/build-dev.sh." >&2
+  echo "The fast dev build works in-place and must keep the source-tree bundle identifiers unchanged." >&2
+  echo "Run: BURETTE_DEV_FLAVOR=$BURETTE_DEV_FLAVOR ./scripts/build.sh" >&2
+  exit 2
+fi
+
+APP_ID="com.local.BuretteV10"
+PREVIEW_ID="com.local.BuretteV10.Preview"
+LOCAL_APP="$ROOT/build/Burette.app"
+TAURI_BUILT_APP_CANDIDATES=(
+  "$ROOT/apps/desktop/src-tauri/target/release/bundle/macos/Burette.app"
+  "$ROOT/target/release/bundle/macos/Burette.app"
+)
+TAURI_BUILT_APP=""
+XCODE_DERIVED="${BURETTE_DEV_DERIVED_DATA:-/private/tmp/BuretteV10XcodeDev}"
+XCODE_LOG="$ROOT/build/xcode-dev.log"
+QUICKLOOK_APPEX="$XCODE_DERIVED/Build/Products/Debug/BurettePreview.appex"
+REUSE_QUICKLOOK="${BURETTE_DEV_REUSE_QUICKLOOK:-0}"
+EXISTING_PREVIEW_APPEX="$LOCAL_APP/Contents/PlugIns/BurettePreview.appex"
+
+cat <<HDR
+Burette v10 dev build
+  source: $ROOT
+  app id: $APP_ID
+  preview id: $PREVIEW_ID
+HDR
+
+require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
+require_asset() {
+  local path="$1"
+  [[ -s "$path" ]] || {
+    echo "error: missing vendored web asset: $path" >&2
+    echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2
+    exit 1
+  }
+}
+clean_detritus() {
+  local path="$1"
+  [[ -e "$path" ]] || return 0
+  local attrs=(
+    com.apple.FinderInfo
+    'com.apple.fileprovider.fpfs#P'
+    com.apple.provenance
+    com.apple.ResourceFork
+  )
+  clean_bundle() {
+    local bundle="$1"
+    xattr -cr "$bundle" 2>/dev/null || true
+    dot_clean -m "$bundle" 2>/dev/null || true
+    while IFS= read -r -d '' entry; do
+      for attr in "${attrs[@]}"; do
+        xattr -d "$attr" "$entry" 2>/dev/null || true
+      done
+    done < <(find "$bundle" -print0 2>/dev/null)
+  }
+  for attr in "${attrs[@]}"; do
+    xattr -d "$attr" "$path" 2>/dev/null || true
+  done
+  if [[ "$path" == *.app || "$path" == *.appex ]]; then
+    clean_bundle "$path"
+  elif [[ -d "$path" ]]; then
+    find "$path" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true
+    while IFS= read -r -d '' bundle; do
+      clean_bundle "$bundle"
+    done < <(find "$path" -type d \( -name '*.app' -o -name '*.appex' \) -prune -print0 2>/dev/null)
+  fi
+}
+mark_regular_desktop_app() {
+  local app="$1"
+  local plist="$app/Contents/Info.plist"
+  [[ -f "$plist" ]] || { echo "error: app Info.plist missing: $plist" >&2; exit 1; }
+  printf 'APPL????' > "$app/Contents/PkgInfo"
+  /usr/libexec/PlistBuddy -c 'Delete :LSUIElement' "$plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Add :LSUIElement bool false' "$plist"
+  /usr/libexec/PlistBuddy -c 'Delete :LSBackgroundOnly' "$plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Delete :LSRequiresCarbon' "$plist" 2>/dev/null || true
+}
+copy_app_plist_metadata() {
+  local app="$1"
+  local plist="$app/Contents/Info.plist"
+  /usr/bin/python3 - "$ROOT/apps/desktop/src-tauri/AppMetadata.plist" "$plist" <<'PY'
+import plistlib
+import sys
+
+source_path, target_path = sys.argv[1:3]
+with open(source_path, "rb") as source_file:
+    source = plistlib.load(source_file)
+with open(target_path, "rb") as target_file:
+    target = plistlib.load(target_file)
+for key in ("CFBundleDocumentTypes", "UTExportedTypeDeclarations"):
+    target[key] = source[key]
+with open(target_path, "wb") as target_file:
+    plistlib.dump(target, target_file, sort_keys=False)
+PY
+}
+
+require_tool bun "Install it with: brew install oven-sh/bun/bun"
+require_tool xcodebuild "Install full Xcode from the App Store."
+require_tool ditto "ditto is normally present on macOS."
+
+require_asset PreviewExtension/Web/molstar.js
+require_asset PreviewExtension/Web/molstar.css
+require_asset PreviewExtension/Web/molstar-preset-preview-controller.js
+require_asset PreviewExtension/Web/burette-agent.js
+require_asset PreviewExtension/Web/viewer.js
+require_asset PreviewExtension/Web/grid-ui.js
+require_asset PreviewExtension/Web/grid-viewer.js
+require_asset PreviewExtension/Web/grid.css
+require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
+require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
+
+bun scripts/check-js-syntax.mjs \
+  PreviewExtension/Web/viewer.js \
+  PreviewExtension/Web/molstar-preset-preview-controller.js \
+  PreviewExtension/Web/burette-agent.js \
+  PreviewExtension/Web/grid-ui.js \
+  PreviewExtension/Web/grid-viewer.js >/dev/null
+
+if [[ ! -d node_modules || ! -d node_modules/@hugeicons/core-free-icons || ! -d node_modules/@tauri-apps/cli ]]; then
+  bun install --frozen-lockfile --ignore-scripts
+fi
+
+pushd apps/desktop >/dev/null
+../../node_modules/.bin/vite build --config vite.config.ts
+popd >/dev/null
+
+bun run build:tauri
+cargo build --release --manifest-path apps/desktop/src-tauri/Cargo.toml --bin burette-compute-service
+QUICKLOOK_APPEX_SOURCE="$QUICKLOOK_APPEX"
+if [[ "$REUSE_QUICKLOOK" == "1" ]]; then
+  [[ -d "$EXISTING_PREVIEW_APPEX" ]] || {
+    echo "error: BURETTE_DEV_REUSE_QUICKLOOK=1 requires an existing preview extension at: $EXISTING_PREVIEW_APPEX" >&2
+    echo "Run ./scripts/build-dev.sh once without BURETTE_DEV_REUSE_QUICKLOOK=1 after changing Swift or extension packaging." >&2
+    exit 1
+  }
+  QUICKLOOK_APPEX_SOURCE="$EXISTING_PREVIEW_APPEX"
+  echo "Reusing Quick Look extension: $QUICKLOOK_APPEX_SOURCE"
+else
+  mkdir -p "$XCODE_DERIVED" "$(dirname "$XCODE_LOG")"
+  if ! xcodebuild -project Burette.xcodeproj -scheme BurettePreview -configuration Debug -derivedDataPath "$XCODE_DERIVED" COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build >"$XCODE_LOG" 2>&1; then
+    echo "error: Xcode build failed. Last log lines:" >&2
+    tail -80 "$XCODE_LOG" >&2
+    exit 1
+  fi
+  echo "Xcode build log: $XCODE_LOG"
+fi
+
+for candidate in "${TAURI_BUILT_APP_CANDIDATES[@]}"; do
+  if [[ -d "$candidate" ]]; then
+    TAURI_BUILT_APP="$candidate"
+    break
+  fi
+done
+[[ -n "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing. Checked: ${TAURI_BUILT_APP_CANDIDATES[*]}" >&2; exit 1; }
+[[ -d "$QUICKLOOK_APPEX_SOURCE" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX_SOURCE" >&2; exit 1; }
+
+mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
+mkdir -p "$TAURI_BUILT_APP/Contents/Helpers"
+ditto --norsrc --noextattr "$ROOT/target/release/burette-compute-service" "$TAURI_BUILT_APP/Contents/Helpers/burette-compute-service"
+chmod 755 "$TAURI_BUILT_APP/Contents/Helpers/burette-compute-service"
+rm -f "$TAURI_BUILT_APP/Contents/MacOS/burette-compute-service"
+rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex"
+ditto --norsrc --noextattr "$QUICKLOOK_APPEX_SOURCE" "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex"
+mark_regular_desktop_app "$TAURI_BUILT_APP"
+copy_app_plist_metadata "$TAURI_BUILT_APP"
+clean_detritus "$TAURI_BUILT_APP"
+
+rm -rf "$LOCAL_APP"
+mkdir -p "$(dirname "$LOCAL_APP")"
+ditto --norsrc --noextattr "$TAURI_BUILT_APP" "$LOCAL_APP"
+
+actual_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
+[[ "$actual_id" == "$APP_ID" ]] || { echo "error: built app id mismatch: got '${actual_id:-unknown}', expected '$APP_ID'" >&2; exit 1; }
+actual_lsui="$(/usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
+[[ "$actual_lsui" == "false" ]] || { echo "error: built app is not marked as a regular Dock app (LSUIElement=false)." >&2; exit 1; }
+actual_carbon="$(/usr/libexec/PlistBuddy -c 'Print :LSRequiresCarbon' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
+[[ -z "$actual_carbon" ]] || { echo "error: built app must not set LSRequiresCarbon." >&2; exit 1; }
+actual_pkg_info="$(cat "$LOCAL_APP/Contents/PkgInfo" 2>/dev/null || true)"
+[[ "$actual_pkg_info" == "APPL????" ]] || { echo "error: built app PkgInfo missing or invalid." >&2; exit 1; }
+[[ -x "$LOCAL_APP/Contents/MacOS/burette" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burette" >&2; exit 1; }
+[[ -d "$LOCAL_APP/Contents/PlugIns/BurettePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
+if [[ -e "$LOCAL_APP/Contents/Resources/Web/index.html" ]] && grep -q 'Burette Preview' "$LOCAL_APP/Contents/Resources/Web/index.html"; then
+  echo "error: built desktop app Resources/Web was overwritten by the preview shell." >&2
+  exit 1
+fi
+grep -q 'aria-label="Collapse controls"' "$LOCAL_APP/Contents/Resources/ViewerWeb/viewer-shell.js" || { echo "error: built shared viewer shell is missing toolbar grip affordance." >&2; exit 1; }
+
+cat <<MSG
+
+DEV BUILD SUCCEEDED: Burette v10
+Built staging app:
+  $LOCAL_APP
+
+Install current staging app:
+  ./scripts/install.sh
+
+Full clean release verification:
+  ./scripts/build.sh
+MSG

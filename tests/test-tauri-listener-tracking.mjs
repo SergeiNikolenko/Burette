@@ -1,0 +1,77 @@
+#!/usr/bin/env node
+import assert from 'node:assert/strict';
+import { trackTauriListener } from '../apps/desktop/src/lib/tauri.ts';
+
+const warnings = [];
+const unhandled = [];
+const originalWarn = console.warn;
+
+function onUnhandled(reason) {
+  unhandled.push(reason);
+}
+
+async function settle() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+try {
+  console.warn = (...args) => {
+    warnings.push(args);
+  };
+  process.on('unhandledRejection', onUnhandled);
+
+  let resolveRegistration;
+  let cleanupCalls = 0;
+  const registration = new Promise((resolve) => {
+    resolveRegistration = resolve;
+  });
+  const cleanup = trackTauriListener(registration, 'test-listener');
+  cleanup();
+  resolveRegistration(() => {
+    cleanupCalls += 1;
+    return Promise.reject(new Error('cleanup failed'));
+  });
+  await settle();
+
+  assert.equal(cleanupCalls, 1);
+  assert.equal(unhandled.length, 0);
+  assert.ok(warnings.some((entry) => String(entry[0]).includes('test-listener listener cleanup failed')));
+
+  let thenableCleanupCalls = 0;
+  const thenableCleanup = trackTauriListener(Promise.resolve(() => ({
+    then(_resolve, reject) {
+      thenableCleanupCalls += 1;
+      reject(new Error('thenable cleanup failed'));
+    },
+  })), 'thenable-listener');
+  thenableCleanup();
+  await settle();
+
+  assert.equal(thenableCleanupCalls, 1);
+  assert.equal(unhandled.length, 0);
+  assert.ok(warnings.some((entry) => String(entry[0]).includes('thenable-listener listener cleanup failed')));
+
+  trackTauriListener(Promise.reject(new Error('setup failed')), 'setup-listener');
+  await settle();
+
+  assert.equal(unhandled.length, 0);
+  assert.ok(warnings.some((entry) => String(entry[0]).includes('setup-listener listener setup failed')));
+
+  let registeredCalls = 0;
+  trackTauriListener(Promise.resolve(() => {}), 'registered-listener', () => {
+    registeredCalls += 1;
+  });
+  trackTauriListener(Promise.reject(new Error('registration failed')), 'rejected-listener', () => {
+    registeredCalls += 1;
+  });
+  await settle();
+
+  assert.equal(registeredCalls, 1);
+  assert.equal(unhandled.length, 0);
+} finally {
+  process.off('unhandledRejection', onUnhandled);
+  console.warn = originalWarn;
+}
+
+console.log('tauri listener tracking tests passed');

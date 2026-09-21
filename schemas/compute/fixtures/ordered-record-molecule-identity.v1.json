@@ -1,0 +1,15 @@
+{
+  "domainUtf8": "burette.snapshot-record-identity.v1\u0000",
+  "tupleEncoding": "sourceRecordId:u64be,moleculeContentSha256:raw32",
+  "records": [
+    {
+      "sourceRecordId": 0,
+      "moleculeContentSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "sourceRecordId": 42,
+      "moleculeContentSha256": "abababababababababababababababababababababababababababababababab"
+    }
+  ],
+  "expectedSha256": "14076dad4dfb8c67c785ffe39b419d09ca6a8831ecc7b1cbb4b25ea8dfe8649e"
+}

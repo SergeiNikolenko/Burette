@@ -1,0 +1,5 @@
+interface:
+  display_name: "Molecular scenes"
+  short_description: "Select, style, measure and capture molecular scenes"
+policy:
+  allow_implicit_invocation: false

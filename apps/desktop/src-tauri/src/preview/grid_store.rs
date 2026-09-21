@@ -1,0 +1,6767 @@
+use rusqlite::{
+    params, params_from_iter, types::Value as SqlValue, Connection, OptionalExtension,
+    TransactionBehavior,
+};
+use serde::Serialize;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fs::{File, Metadata};
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc, Arc, Mutex, OnceLock,
+};
+use std::thread;
+use std::time::SystemTime;
+
+use super::{
+    grid_analysis,
+    grid_database::open_grid_database,
+    grid_identity, grid_predicate,
+    runtime_utils::{clipped, decode_text},
+};
+
+const GRID_INITIAL_ROWS: usize = 192;
+const GRID_INGEST_BATCH_ROWS: usize = 1_000;
+const MAX_STREAMED_SDF_LINE_BYTES: usize = 256 * 1024;
+const MAX_STREAMED_SDF_RECORD_BYTES: usize = 512 * 1024;
+const MAX_STREAMED_SDF_BATCH_BYTES: usize = 16 * 1024 * 1024;
+const SDF_INDEXING_CANCELLED: &str = "SDF indexing cancelled";
+
+struct GridRuntimeCleanup {
+    ingest_worker: Option<thread::JoinHandle<()>>,
+    runtime_dir: PathBuf,
+}
+
+impl GridRuntimeCleanup {
+    fn run(mut self) {
+        if let Some(worker) = self.ingest_worker.take() {
+            let _ = worker.join();
+        }
+        let _ = std::fs::remove_dir_all(self.runtime_dir);
+    }
+}
+
+pub(crate) fn cleanup_grid_runtime_async(
+    ingest_worker: Option<thread::JoinHandle<()>>,
+    runtime_dir: PathBuf,
+) {
+    static CLEANUP_SENDER: OnceLock<Option<mpsc::Sender<GridRuntimeCleanup>>> = OnceLock::new();
+    let cleanup = GridRuntimeCleanup {
+        ingest_worker,
+        runtime_dir,
+    };
+    let sender = CLEANUP_SENDER.get_or_init(|| {
+        let (sender, receiver) = mpsc::channel::<GridRuntimeCleanup>();
+        thread::Builder::new()
+            .name("burette-grid-cleanup".to_string())
+            .spawn(move || {
+                while let Ok(cleanup) = receiver.recv() {
+                    cleanup.run();
+                }
+            })
+            .ok()
+            .map(|_| sender)
+    });
+    let cleanup = if let Some(sender) = sender {
+        match sender.send(cleanup) {
+            Ok(()) => return,
+            Err(error) => error.0,
+        }
+    } else {
+        cleanup
+    };
+    // Thread creation can fail under extreme process pressure. At that point
+    // deterministic cleanup is safer than detaching a live SQLite writer.
+    cleanup.run();
+}
+
+#[derive(Default)]
+pub(crate) struct GridRuntimeRegistry {
+    entries: Mutex<HashMap<String, Arc<RegisteredGridRuntime>>>,
+}
+
+#[derive(Debug)]
+struct RegisteredGridRuntime {
+    database_path: PathBuf,
+    format: &'static str,
+    cancel_token: Arc<AtomicBool>,
+    ingest_worker: Option<thread::JoinHandle<()>>,
+}
+
+impl Drop for RegisteredGridRuntime {
+    fn drop(&mut self) {
+        self.cancel_token.store(true, Ordering::Relaxed);
+        if let Some(runtime_dir) = self.database_path.parent() {
+            cleanup_grid_runtime_async(self.ingest_worker.take(), runtime_dir.to_path_buf());
+        }
+    }
+}
+
+/// Pins the exact Grid runtime selected for snapshot materialization.
+///
+/// Removing or replacing the registry entry cancels ingestion immediately, but
+/// the runtime directory remains available until this lease is dropped.
+#[derive(Debug)]
+pub(crate) struct GridSnapshotLease {
+    namespaced_document_id: String,
+    runtime: Arc<RegisteredGridRuntime>,
+}
+
+impl GridSnapshotLease {
+    pub(crate) fn namespaced_document_id(&self) -> &str {
+        &self.namespaced_document_id
+    }
+
+    pub(crate) fn database_path_for_freeze(&self) -> &Path {
+        &self.runtime.database_path
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct GridCollectionSummary {
+    pub(crate) format: &'static str,
+    pub(crate) has_molecules: bool,
+    pub(crate) records_total: usize,
+    pub(crate) records_indexed: usize,
+    pub(crate) index_ready: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct GridStoreHandle {
+    pub(crate) database_path: PathBuf,
+    pub(crate) cancel_token: Arc<AtomicBool>,
+    pub(crate) ingest_worker: Option<thread::JoinHandle<()>>,
+    pub(crate) summary: GridCollectionSummary,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridPageResult {
+    pub(crate) rows: Vec<GridPageRow>,
+    pub(crate) total_rows: usize,
+    pub(crate) offset: usize,
+    pub(crate) limit: usize,
+    pub(crate) indexing: bool,
+    pub(crate) records_indexed: usize,
+    pub(crate) records_total_hint: Option<usize>,
+    pub(crate) index_ready: bool,
+    pub(crate) index_error: Option<String>,
+    pub(crate) bytes_indexed: Option<u64>,
+    pub(crate) bytes_total: Option<u64>,
+    pub(crate) descriptor_ids: Vec<String>,
+    pub(crate) analysis_columns: Vec<GridAnalysisColumn>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridAppendSummary {
+    pub(crate) records_appended: usize,
+    pub(crate) total_rows: usize,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct GridParseOptions {
+    pub(crate) smiles_column: Option<String>,
+    pub(crate) include_single_sdf: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridDelimitedColumnChoice {
+    pub(crate) index: usize,
+    pub(crate) name: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridPageRow {
+    pub(crate) row_id: i64,
+    pub(crate) index: usize,
+    pub(crate) name: String,
+    pub(crate) smiles: Option<String>,
+    pub(crate) molblock: Option<String>,
+    pub(crate) idcode: Option<String>,
+    pub(crate) idcoordinates: Option<String>,
+    pub(crate) props: BTreeMap<String, String>,
+    pub(crate) descriptors: BTreeMap<String, GridDescriptorCell>,
+    pub(crate) analyses: BTreeMap<String, GridAnalysisCell>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridDescriptorCell {
+    pub(crate) label: String,
+    pub(crate) value: Option<serde_json::Value>,
+    pub(crate) missing_kind: Option<String>,
+    pub(crate) error_text: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridAnalysisColumn {
+    pub(crate) run_id: String,
+    pub(crate) value_id: String,
+    pub(crate) label: String,
+    pub(crate) value_kind: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridAnalysisCell {
+    pub(crate) run_id: String,
+    pub(crate) value_id: String,
+    pub(crate) value_kind: String,
+    pub(crate) value: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GridQuery {
+    pub(crate) query: String,
+    pub(crate) sort: String,
+    pub(crate) column_filters: Vec<GridColumnFilter>,
+    pub(crate) descriptor_filters: Vec<GridDescriptorFilter>,
+    pub(crate) analysis_filters: Vec<GridAnalysisFilter>,
+    pub(crate) descriptor_sort: Option<GridDescriptorSort>,
+    pub(crate) offset: usize,
+    pub(crate) limit: usize,
+}
+
+pub(crate) type GridColumnFilter = burette_compute_protocol::ColumnFilter;
+pub(crate) type GridDescriptorFilter = burette_compute_protocol::DescriptorFilter;
+pub(crate) type GridAnalysisFilter = burette_compute_protocol::AnalysisFilter;
+
+#[derive(Debug, Clone)]
+pub(crate) struct GridDescriptorSort {
+    pub(crate) id: String,
+    pub(crate) direction: String,
+}
+
+#[derive(Debug)]
+struct GridInputRecord {
+    index: usize,
+    name: String,
+    smiles: Option<String>,
+    molblock: Option<String>,
+    idcode: Option<String>,
+    idcoordinates: Option<String>,
+    props: BTreeMap<String, String>,
+    source_byte_start: Option<u64>,
+    source_byte_end: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GridDescriptorSourceRow {
+    pub(crate) row_id: i64,
+    pub(crate) name: String,
+    pub(crate) smiles: Option<String>,
+    pub(crate) molblock: Option<String>,
+    pub(crate) source_index: i64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GridAlignmentSourceRow {
+    pub(crate) row_id: i64,
+    pub(crate) source_index: u64,
+    pub(crate) molecule_content_sha256: String,
+    pub(crate) name: String,
+    pub(crate) molblock: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GridDescriptorValueInput {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) value: Option<serde_json::Value>,
+    pub(crate) missing_kind: Option<String>,
+    pub(crate) error_text: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridDescriptorRunSummary {
+    pub(crate) total_rows: usize,
+    pub(crate) calculated_rows: usize,
+    pub(crate) failed_rows: usize,
+    pub(crate) descriptor_id_count: usize,
+    pub(crate) descriptor_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+struct GridIndexState {
+    records_indexed: usize,
+    records_total: Option<usize>,
+    index_ready: bool,
+    error: Option<String>,
+    bytes_indexed: Option<u64>,
+    bytes_total: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+struct PageSortClause {
+    join_sql: &'static str,
+    order_sql: String,
+    params: Vec<SqlValue>,
+}
+
+#[derive(Debug)]
+struct ParsedGridBatch {
+    records: Vec<GridInputRecord>,
+    next_cursor: GridCursor,
+    next_index: usize,
+    complete: bool,
+}
+
+/// Keeps a single sequential reader over an SDF collection. The byte offset is
+/// retained with the reader so every completed batch has an exact resume point
+/// without materializing the source file as a `String`.
+#[derive(Debug)]
+struct SdfFileReader {
+    reader: BufReader<File>,
+    source_path: PathBuf,
+    source_identity: SdfSourceIdentity,
+    byte_offset: u64,
+    skip_line_feed_after_carriage_return: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SdfSourceIdentity {
+    len: u64,
+    modified: SystemTime,
+    #[cfg(unix)]
+    device: u64,
+    #[cfg(unix)]
+    inode: u64,
+    #[cfg(unix)]
+    changed_seconds: i64,
+    #[cfg(unix)]
+    changed_nanoseconds: i64,
+}
+
+impl SdfSourceIdentity {
+    fn from_metadata(metadata: &Metadata) -> Result<Self, String> {
+        #[cfg(unix)]
+        use std::os::unix::fs::MetadataExt;
+
+        Ok(Self {
+            len: metadata.len(),
+            modified: metadata.modified().map_err(|error| error.to_string())?,
+            #[cfg(unix)]
+            device: metadata.dev(),
+            #[cfg(unix)]
+            inode: metadata.ino(),
+            #[cfg(unix)]
+            changed_seconds: metadata.ctime(),
+            #[cfg(unix)]
+            changed_nanoseconds: metadata.ctime_nsec(),
+        })
+    }
+}
+
+impl SdfFileReader {
+    fn open(path: &Path) -> Result<Self, String> {
+        let file = File::open(path).map_err(|error| error.to_string())?;
+        let source_identity =
+            SdfSourceIdentity::from_metadata(&file.metadata().map_err(|error| error.to_string())?)?;
+        let source = Self {
+            reader: BufReader::new(file),
+            source_path: path.to_path_buf(),
+            source_identity,
+            byte_offset: 0,
+            skip_line_feed_after_carriage_return: false,
+        };
+        source.verify_unchanged()?;
+        Ok(source)
+    }
+
+    fn verify_unchanged(&self) -> Result<(), String> {
+        let current = std::fs::metadata(&self.source_path)
+            .map_err(|error| format!("SDF source changed while indexing: {error}"))
+            .and_then(|metadata| SdfSourceIdentity::from_metadata(&metadata))?;
+        if current != self.source_identity {
+            return Err("SDF source changed while indexing".to_string());
+        }
+        Ok(())
+    }
+
+    fn read_line(
+        &mut self,
+        buffer: &mut Vec<u8>,
+        cancel_token: Option<&AtomicBool>,
+    ) -> Result<Option<String>, String> {
+        buffer.clear();
+        ensure_sdf_indexing_active(cancel_token)?;
+        if self.skip_line_feed_after_carriage_return {
+            let has_line_feed = self
+                .reader
+                .fill_buf()
+                .map_err(|error| error.to_string())?
+                .first()
+                == Some(&b'\n');
+            if has_line_feed {
+                self.reader.consume(1);
+                self.byte_offset += 1;
+            }
+            self.skip_line_feed_after_carriage_return = false;
+        }
+
+        loop {
+            ensure_sdf_indexing_active(cancel_token)?;
+            let available = self.reader.fill_buf().map_err(|error| error.to_string())?;
+            if available.is_empty() {
+                return Ok(
+                    (!buffer.is_empty()).then(|| String::from_utf8_lossy(buffer).into_owned())
+                );
+            }
+            let available_len = available.len();
+            let delimiter = available
+                .iter()
+                .position(|byte| matches!(byte, b'\n' | b'\r'));
+            let Some(delimiter) = delimiter else {
+                append_checked_sdf_line_bytes(buffer, available)?;
+                self.reader.consume(available_len);
+                self.byte_offset += available_len as u64;
+                continue;
+            };
+
+            let delimiter_byte = available[delimiter];
+            let has_following_line_feed = available.get(delimiter + 1) == Some(&b'\n');
+            append_checked_sdf_line_bytes(buffer, &available[..delimiter])?;
+            let bytes_consumed =
+                delimiter + 1 + usize::from(delimiter_byte == b'\r' && has_following_line_feed);
+            self.reader.consume(bytes_consumed);
+            self.byte_offset += bytes_consumed as u64;
+            self.skip_line_feed_after_carriage_return =
+                delimiter_byte == b'\r' && !has_following_line_feed;
+            return Ok(Some(String::from_utf8_lossy(buffer).into_owned()));
+        }
+    }
+}
+
+fn ensure_sdf_indexing_active(cancel_token: Option<&AtomicBool>) -> Result<(), String> {
+    if cancel_token.is_some_and(|token| token.load(Ordering::Relaxed)) {
+        return Err(SDF_INDEXING_CANCELLED.to_string());
+    }
+    Ok(())
+}
+
+fn append_checked_sdf_line_bytes(buffer: &mut Vec<u8>, bytes: &[u8]) -> Result<(), String> {
+    if buffer.len().saturating_add(bytes.len()) > MAX_STREAMED_SDF_LINE_BYTES {
+        return Err(format!(
+            "SDF line exceeds the {} byte indexing limit",
+            MAX_STREAMED_SDF_LINE_BYTES
+        ));
+    }
+    buffer.extend_from_slice(bytes);
+    Ok(())
+}
+
+// Where the next batch resumes. Callers only ever hand it back to the parser
+// that produced it, which is why one type covers formats that need different
+// things: the byte offset lets a parser continue without re-reading the source
+// from the start, and `row` carries the source-row number that the delimited
+// parsers put in each record's "CSV row" property.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct GridCursor {
+    offset: usize,
+    row: usize,
+    // DataWarrior only: how many records the row at `offset` already produced, so
+    // a batch that stopped part-way through a multi-structure row resumes inside
+    // it. The other parsers emit one record per row and leave this at zero.
+    row_records: usize,
+}
+
+impl GridRuntimeRegistry {
+    pub(crate) fn register(
+        &self,
+        document_id: &str,
+        database_path: PathBuf,
+        format: &'static str,
+        cancel_token: Arc<AtomicBool>,
+        ingest_worker: Option<thread::JoinHandle<()>>,
+    ) -> Result<(), String> {
+        let runtime = Arc::new(RegisteredGridRuntime {
+            database_path,
+            format,
+            cancel_token,
+            ingest_worker,
+        });
+        let existing = self
+            .entries
+            .lock()
+            .map_err(|_| "grid runtime registry is poisoned")?
+            .insert(document_id.to_string(), runtime);
+        if let Some(existing) = existing {
+            existing.cancel_token.store(true, Ordering::Relaxed);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn unregister(&self, document_id: &str) -> Result<(), String> {
+        let entry = self
+            .entries
+            .lock()
+            .map_err(|_| "grid runtime registry is poisoned")?
+            .remove(document_id);
+        if let Some(entry) = entry {
+            entry.cancel_token.store(true, Ordering::Relaxed);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn unregister_prefix(&self, document_id_prefix: &str) -> Result<(), String> {
+        let entries = {
+            let mut entries = self
+                .entries
+                .lock()
+                .map_err(|_| "grid runtime registry is poisoned")?;
+            let document_ids: Vec<String> = entries
+                .keys()
+                .filter(|document_id| document_id.starts_with(document_id_prefix))
+                .cloned()
+                .collect();
+            document_ids
+                .into_iter()
+                .filter_map(|document_id| entries.remove(&document_id))
+                .collect::<Vec<_>>()
+        };
+        for entry in entries {
+            entry.cancel_token.store(true, Ordering::Relaxed);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn acquire_snapshot_lease(
+        &self,
+        namespaced_document_id: &str,
+    ) -> Result<GridSnapshotLease, String> {
+        Ok(GridSnapshotLease {
+            namespaced_document_id: namespaced_document_id.to_owned(),
+            runtime: self.runtime_entry(namespaced_document_id)?,
+        })
+    }
+
+    pub(crate) fn fetch_page(
+        &self,
+        document_id: &str,
+        query: &GridQuery,
+    ) -> Result<GridPageResult, String> {
+        let runtime = self.runtime_entry(document_id)?;
+        fetch_page(&runtime.database_path, query)
+    }
+
+    pub(crate) fn append_text(
+        &self,
+        document_id: &str,
+        extension: &str,
+        text: &str,
+    ) -> Result<GridAppendSummary, String> {
+        self.append_text_with_options(document_id, extension, text, &GridParseOptions::default())
+    }
+
+    pub(crate) fn append_text_with_options(
+        &self,
+        document_id: &str,
+        extension: &str,
+        text: &str,
+        options: &GridParseOptions,
+    ) -> Result<GridAppendSummary, String> {
+        let runtime = self.runtime_entry(document_id)?;
+        let source_format = grid_format(extension)
+            .ok_or_else(|| format!("Unsupported grid append extension: {extension}"))?;
+        if source_format != runtime.format {
+            return Err(format!(
+                "Cannot append {source_format} records to {} grid",
+                runtime.format
+            ));
+        }
+        append_grid_text(&runtime.database_path, source_format, text, options)
+    }
+
+    pub(crate) fn descriptor_source_row_count(&self, document_id: &str) -> Result<usize, String> {
+        let runtime = self.runtime_entry(document_id)?;
+        descriptor_source_row_count(&runtime.database_path)
+    }
+
+    pub(crate) fn descriptor_database_path(&self, document_id: &str) -> Result<PathBuf, String> {
+        self.database_path(document_id)
+    }
+
+    pub(crate) fn descriptor_run_summary(
+        &self,
+        document_id: &str,
+    ) -> Result<GridDescriptorRunSummary, String> {
+        let runtime = self.runtime_entry(document_id)?;
+        descriptor_run_summary_in_database(&runtime.database_path)
+    }
+
+    pub(crate) fn set_virtual_edit_state(
+        &self,
+        document_id: &str,
+        dirty: bool,
+    ) -> Result<u64, String> {
+        let runtime = self.runtime_entry(document_id)?;
+        grid_identity::set_virtual_edit_state(&runtime.database_path, dirty)
+    }
+
+    fn database_path(&self, document_id: &str) -> Result<PathBuf, String> {
+        Ok(self.runtime_entry(document_id)?.database_path.clone())
+    }
+
+    fn runtime_entry(&self, document_id: &str) -> Result<Arc<RegisteredGridRuntime>, String> {
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| "grid runtime registry is poisoned")?;
+        entries
+            .get(document_id)
+            .cloned()
+            .ok_or_else(|| format!("grid runtime is unavailable for document {document_id}"))
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn build_grid_store(
+    runtime_dir: &Path,
+    extension: &str,
+    data: &[u8],
+) -> Result<Option<GridStoreHandle>, String> {
+    build_grid_store_with_options(runtime_dir, extension, data, &GridParseOptions::default())
+}
+
+pub(crate) fn build_grid_store_with_options(
+    runtime_dir: &Path,
+    extension: &str,
+    data: &[u8],
+    options: &GridParseOptions,
+) -> Result<Option<GridStoreHandle>, String> {
+    let Some(format) = grid_format(extension) else {
+        return Ok(None);
+    };
+    let text = decode_text(data);
+    let has_molecules = match extension {
+        "csv" => options.smiles_column.is_some() || !is_generic_delimited_table(&text, ','),
+        "tsv" => options.smiles_column.is_some() || !is_generic_delimited_table(&text, '\t'),
+        _ => true,
+    };
+    let database_path = runtime_dir.join("collection.sqlite");
+    let connection = open_grid_database(&database_path)?;
+    initialize_schema(&connection)?;
+    install_fts_triggers(&connection)?;
+    let cancel_token = Arc::new(AtomicBool::new(false));
+    let first_batch = parse_grid_batch_with_options(
+        extension,
+        &text,
+        GridCursor::default(),
+        0,
+        GRID_INITIAL_ROWS,
+        options,
+    )?;
+    if first_batch.records.is_empty() && first_batch.complete {
+        let _ = std::fs::remove_file(&database_path);
+        return Ok(None);
+    }
+    insert_records(&connection, &first_batch.records)?;
+    let records_indexed = first_batch.next_index;
+    update_index_state(
+        &connection,
+        records_indexed,
+        first_batch.complete.then_some(records_indexed),
+        first_batch.complete,
+        None,
+    )?;
+    if first_batch.complete
+        && !options.include_single_sdf
+        && ((extension == "sdf" || extension == "sd") && records_indexed <= 1)
+    {
+        let _ = std::fs::remove_file(&database_path);
+        return Ok(None);
+    }
+    let ingest_worker = if first_batch.complete {
+        grid_identity::finalize_source_revision(&connection)?;
+        None
+    } else {
+        Some(spawn_grid_ingest_worker(
+            connection,
+            extension.to_string(),
+            text,
+            first_batch.next_cursor,
+            first_batch.next_index,
+            options.smiles_column.clone(),
+            cancel_token.clone(),
+        ))
+    };
+    Ok(Some(GridStoreHandle {
+        database_path,
+        cancel_token,
+        ingest_worker,
+        summary: GridCollectionSummary {
+            format,
+            has_molecules,
+            records_total: records_indexed,
+            records_indexed,
+            index_ready: first_batch.complete,
+        },
+    }))
+}
+
+/// Builds an SDF grid directly from its source file. The initial page and the
+/// background ingest worker share one buffered reader, so opening a large SDF
+/// never requires an `fs::read` or a full decoded source string.
+pub(crate) fn build_grid_store_from_file_with_options(
+    runtime_dir: &Path,
+    extension: &str,
+    source_path: &Path,
+    options: &GridParseOptions,
+) -> Result<Option<GridStoreHandle>, String> {
+    if !matches!(extension, "sdf" | "sd") {
+        return Err(format!(
+            "file-backed grid indexing is only supported for SDF sources, not {extension}"
+        ));
+    }
+    let Some(format) = grid_format(extension) else {
+        return Ok(None);
+    };
+    let database_path = runtime_dir.join("collection.sqlite");
+    let connection = open_grid_database(&database_path)?;
+    initialize_schema(&connection)?;
+    prepare_deferred_fts_index(&connection)?;
+    let cancel_token = Arc::new(AtomicBool::new(false));
+    let mut source = SdfFileReader::open(source_path)?;
+    let first_batch = parse_sdf_file_batch(&mut source, 0, GRID_INITIAL_ROWS, None)?;
+    source.verify_unchanged()?;
+    if first_batch.records.is_empty() && first_batch.complete {
+        let _ = std::fs::remove_file(&database_path);
+        return Ok(None);
+    }
+    insert_records(&connection, &first_batch.records)?;
+    // A short source can finish in the initial batch, so it has no background
+    // worker to perform the normal post-write identity check. Do not publish a
+    // ready index if the source changed while SQLite was storing that batch.
+    source.verify_unchanged()?;
+    let records_indexed = first_batch.next_index;
+    update_index_state_with_byte_progress(
+        &connection,
+        records_indexed,
+        first_batch.complete.then_some(records_indexed),
+        false,
+        None,
+        Some(source.byte_offset),
+        Some(source.source_identity.len),
+    )?;
+    if first_batch.complete && !options.include_single_sdf && records_indexed <= 1 {
+        let _ = std::fs::remove_file(&database_path);
+        return Ok(None);
+    }
+    let ingest_worker = if first_batch.complete {
+        rebuild_deferred_fts_index(&connection)?;
+        grid_identity::finalize_source_revision(&connection)?;
+        update_index_state_with_byte_progress(
+            &connection,
+            records_indexed,
+            Some(records_indexed),
+            true,
+            None,
+            Some(source.byte_offset),
+            Some(source.source_identity.len),
+        )?;
+        None
+    } else {
+        Some(spawn_sdf_file_ingest_worker(
+            connection,
+            source,
+            first_batch.next_index,
+            cancel_token.clone(),
+        ))
+    };
+    Ok(Some(GridStoreHandle {
+        database_path,
+        cancel_token,
+        ingest_worker,
+        summary: GridCollectionSummary {
+            format,
+            has_molecules: true,
+            records_total: records_indexed,
+            records_indexed,
+            index_ready: first_batch.complete,
+        },
+    }))
+}
+
+fn append_grid_text(
+    database_path: &Path,
+    format: &'static str,
+    text: &str,
+    options: &GridParseOptions,
+) -> Result<GridAppendSummary, String> {
+    let connection = open_grid_database(database_path)?;
+    initialize_schema(&connection)?;
+    let index_state = read_index_state(&connection)?;
+    if let Some(error) = &index_state.error {
+        return Err(format!(
+            "Cannot append records because grid indexing failed: {error}"
+        ));
+    }
+    if !index_state.index_ready {
+        return Err("Cannot append records while grid indexing is still in progress".to_string());
+    }
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    let start_index = molecule_count(&transaction)?;
+    let mut records_appended = 0usize;
+    let mut next_cursor = GridCursor::default();
+    let mut next_index = start_index;
+    loop {
+        let batch = parse_grid_batch_with_options(
+            format,
+            text,
+            next_cursor,
+            next_index,
+            GRID_INGEST_BATCH_ROWS,
+            options,
+        )?;
+        if !batch.records.is_empty() {
+            records_appended += batch.records.len();
+            insert_records_in_connection(&transaction, &batch.records, None)?;
+        }
+        next_cursor = batch.next_cursor;
+        next_index = batch.next_index;
+        if batch.complete {
+            break;
+        }
+    }
+    if records_appended == 0 {
+        return Err(format!(
+            "{format} source does not contain supported molecule records"
+        ));
+    }
+    let total_rows = molecule_count(&transaction)?;
+    grid_identity::advance_source_revision(&transaction)?;
+    update_index_state(&transaction, total_rows, Some(total_rows), true, None)?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(GridAppendSummary {
+        records_appended,
+        total_rows,
+    })
+}
+
+fn molecule_count(connection: &Connection) -> Result<usize, String> {
+    connection
+        .query_row("select count(*) from molecules", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .map(|value| value as usize)
+        .map_err(|err| err.to_string())
+}
+
+fn grid_format(extension: &str) -> Option<&'static str> {
+    match extension {
+        "csv" => Some("csv"),
+        "dwar" => Some("dwar"),
+        "tsv" => Some("tsv"),
+        "smi" | "smiles" => Some("smiles"),
+        "sdf" | "sd" => Some("sdf"),
+        "rxn" => Some("rxn"),
+        "rdf" => Some("rdf"),
+        _ => None,
+    }
+}
+
+fn fetch_page(database_path: &Path, query: &GridQuery) -> Result<GridPageResult, String> {
+    let mut connection = open_grid_database(database_path)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Deferred)
+        .map_err(|err| err.to_string())?;
+    let index_state = read_index_state(&transaction)?;
+    let limit = query.limit.clamp(1, 240);
+    let offset = query.offset;
+    let sort_clause = page_sort_clause(query.descriptor_sort.as_ref(), &query.sort);
+    let text_query = burette_compute_protocol::GridTextQuery::Text {
+        text: query.query.clone(),
+    };
+    let predicate = grid_predicate::plan_grid_predicate(
+        &text_query,
+        &query.column_filters,
+        &query.descriptor_filters,
+        &query.analysis_filters,
+    )?;
+    let result = fetch_predicate_page(
+        &transaction,
+        &predicate,
+        &sort_clause,
+        limit,
+        offset,
+        index_state,
+    )?;
+    transaction.commit().map_err(|err| err.to_string())?;
+    Ok(result)
+}
+
+fn fetch_predicate_page(
+    connection: &Connection,
+    predicate: &grid_predicate::GridPredicatePlan,
+    sort_clause: &PageSortClause,
+    limit: usize,
+    offset: usize,
+    index_state: GridIndexState,
+) -> Result<GridPageResult, String> {
+    let where_sql = if predicate.predicate_sql.is_empty() {
+        String::new()
+    } else {
+        format!(" where {}", predicate.predicate_sql)
+    };
+    let count_sql = format!("select count(*) from molecules{where_sql}");
+    let total_rows = connection
+        .query_row(
+            &count_sql,
+            params_from_iter(predicate.params.iter()),
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|err| err.to_string())? as usize;
+    let fts_query = predicate.fts_query.as_deref().filter(|fts_query| {
+        fts_candidates_cover_exact_result(connection, predicate, fts_query, total_rows)
+    });
+    let fts_sql = if fts_query.is_some() {
+        " and molecules.id in (
+             select rowid from molecules_fts where molecules_fts match ?
+           )"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "select id, source_index, name, smiles, molblock, idcode, idcoordinates, props_json \
+         from molecules \
+         {join_sql} \
+         {where_sql}{fts_sql} \
+         order by {order_sql} \
+         limit ? offset ?",
+        join_sql = sort_clause.join_sql,
+        order_sql = sort_clause.order_sql
+    );
+    let mut statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
+    let mut page_params = sort_clause.params.clone();
+    page_params.extend(predicate.params.iter().cloned());
+    if let Some(fts_query) = fts_query {
+        page_params.push(SqlValue::Text(fts_query.to_string()));
+    }
+    page_params.push(SqlValue::Integer(limit as i64));
+    page_params.push(SqlValue::Integer(offset as i64));
+    let rows = statement
+        .query(params_from_iter(page_params.iter()))
+        .map_err(|err| err.to_string())?;
+    let mut page_rows = collect_page_rows(rows)?;
+    attach_descriptor_cells(connection, &mut page_rows)?;
+    let analysis_columns = attach_latest_analysis_runs(connection, &mut page_rows)?;
+    Ok(GridPageResult {
+        rows: page_rows,
+        total_rows,
+        offset,
+        limit,
+        indexing: !index_state.index_ready,
+        records_indexed: index_state.records_indexed,
+        records_total_hint: index_state.records_total,
+        index_ready: index_state.index_ready,
+        index_error: index_state.error,
+        bytes_indexed: index_state.bytes_indexed,
+        bytes_total: index_state.bytes_total,
+        descriptor_ids: descriptor_ids_in_connection(connection)?,
+        analysis_columns,
+    })
+}
+
+fn fts_candidates_cover_exact_result(
+    connection: &Connection,
+    predicate: &grid_predicate::GridPredicatePlan,
+    fts_query: &str,
+    exact_total: usize,
+) -> bool {
+    let where_sql = if predicate.predicate_sql.is_empty() {
+        "where".to_string()
+    } else {
+        format!("where {} and", predicate.predicate_sql)
+    };
+    let sql = format!(
+        "select count(*) from molecules
+         {where_sql} molecules.id in (
+           select rowid from molecules_fts where molecules_fts match ?
+         )"
+    );
+    let mut params = predicate.params.clone();
+    params.push(SqlValue::Text(fts_query.to_string()));
+    connection
+        .query_row(&sql, params_from_iter(params.iter()), |row| {
+            row.get::<_, i64>(0)
+        })
+        .map(|count| count as usize == exact_total)
+        .unwrap_or(false)
+}
+
+fn collect_page_rows(mut rows: rusqlite::Rows<'_>) -> Result<Vec<GridPageRow>, String> {
+    let mut page_rows = Vec::new();
+    while let Some(row) = rows.next().map_err(|err| err.to_string())? {
+        let row_id = row.get::<_, i64>(0).map_err(|err| err.to_string())?;
+        let props_json: String = row.get(7).map_err(|err| err.to_string())?;
+        page_rows.push(GridPageRow {
+            row_id,
+            index: row.get::<_, i64>(1).map_err(|err| err.to_string())? as usize,
+            name: row.get(2).map_err(|err| err.to_string())?,
+            smiles: row.get(3).map_err(|err| err.to_string())?,
+            molblock: row.get(4).map_err(|err| err.to_string())?,
+            idcode: row.get(5).map_err(|err| err.to_string())?,
+            idcoordinates: row.get(6).map_err(|err| err.to_string())?,
+            props: serde_json::from_str(&props_json).map_err(|err| err.to_string())?,
+            descriptors: BTreeMap::new(),
+            analyses: BTreeMap::new(),
+        });
+    }
+    Ok(page_rows)
+}
+
+fn attach_latest_analysis_runs(
+    connection: &Connection,
+    page_rows: &mut [GridPageRow],
+) -> Result<Vec<GridAnalysisColumn>, String> {
+    let mut columns = Vec::new();
+    for workflow_template in ["cluster.v1", "similaritySearch.v1", "conformer.v1"] {
+        columns.extend(attach_latest_analysis_run(
+            connection,
+            page_rows,
+            workflow_template,
+        )?);
+    }
+    Ok(columns)
+}
+
+fn attach_latest_analysis_run(
+    connection: &Connection,
+    page_rows: &mut [GridPageRow],
+    workflow_template: &str,
+) -> Result<Vec<GridAnalysisColumn>, String> {
+    let run_id = connection
+        .query_row(
+            "select analysis_run.run_id
+             from analysis_runs analysis_run
+             join grid_metadata metadata on metadata.id = 1
+             where analysis_run.workflow_template = ?1
+               and analysis_run.document_fingerprint_sha256 = metadata.document_fingerprint_sha256
+               and analysis_run.source_revision = metadata.source_revision
+             order by analysis_run.created_at_ms desc, analysis_run.run_id desc
+             limit 1",
+            [workflow_template],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some(run_id) = run_id else {
+        return Ok(Vec::new());
+    };
+
+    let mut columns_statement = connection
+        .prepare(
+            "select value_id, value_kind
+             from analysis_values
+             where run_id = ?1
+             group by value_id, value_kind
+             order by value_id collate nocase",
+        )
+        .map_err(|error| error.to_string())?;
+    let columns = columns_statement
+        .query_map([&run_id], |row| {
+            let value_id = row.get::<_, String>(0)?;
+            Ok(GridAnalysisColumn {
+                label: analysis_label(&value_id).into(),
+                run_id: run_id.clone(),
+                value_id,
+                value_kind: row.get(1)?,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    if page_rows.is_empty() {
+        return Ok(columns);
+    }
+
+    let row_ids = page_rows.iter().map(|row| row.row_id).collect::<Vec<_>>();
+    let placeholders = vec!["?"; row_ids.len()].join(", ");
+    let sql = format!(
+        "select molecule_id, value_id, value_kind, value_integer, value_real, value_text
+         from analysis_values
+         where run_id = ? and molecule_id in ({placeholders})
+         order by molecule_id, value_id collate nocase"
+    );
+    let mut values_statement = connection
+        .prepare(&sql)
+        .map_err(|error| error.to_string())?;
+    let mut parameters = Vec::with_capacity(row_ids.len() + 1);
+    parameters.push(SqlValue::Text(run_id.clone()));
+    parameters.extend(row_ids.iter().copied().map(SqlValue::Integer));
+    let mut rows = values_statement
+        .query(params_from_iter(parameters.iter()))
+        .map_err(|error| error.to_string())?;
+    let mut values_by_molecule: HashMap<i64, BTreeMap<String, GridAnalysisCell>> = HashMap::new();
+    while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+        let molecule_id = row.get::<_, i64>(0).map_err(|error| error.to_string())?;
+        let value_id = row.get::<_, String>(1).map_err(|error| error.to_string())?;
+        let value_kind = row.get::<_, String>(2).map_err(|error| error.to_string())?;
+        let value = match value_kind.as_str() {
+            "integer" => {
+                serde_json::Value::from(row.get::<_, i64>(3).map_err(|error| error.to_string())?)
+            }
+            "real" => {
+                serde_json::Value::from(row.get::<_, f64>(4).map_err(|error| error.to_string())?)
+            }
+            "boolean" => serde_json::Value::from(
+                row.get::<_, i64>(3).map_err(|error| error.to_string())? != 0,
+            ),
+            "text" => {
+                serde_json::Value::from(row.get::<_, String>(5).map_err(|error| error.to_string())?)
+            }
+            other => return Err(format!("Unsupported Grid analysis value kind: {other}")),
+        };
+        values_by_molecule.entry(molecule_id).or_default().insert(
+            value_id.clone(),
+            GridAnalysisCell {
+                run_id: run_id.clone(),
+                value_id,
+                value_kind,
+                value,
+            },
+        );
+    }
+    for page_row in page_rows {
+        page_row.analyses.extend(
+            values_by_molecule
+                .remove(&page_row.row_id)
+                .unwrap_or_default(),
+        );
+    }
+    Ok(columns)
+}
+
+fn analysis_label(value_id: &str) -> &str {
+    match value_id {
+        "clusterId" => "Cluster ID",
+        "isRepresentative" => "Representative",
+        "clusterStatus" => "Cluster status",
+        "clusterError" => "Cluster error",
+        "isSimilarityQuery" => "Similarity query",
+        "similarityRank" => "Similarity rank",
+        "similarityToQuery" => "Tanimoto to query",
+        "tanimotoIntersection" => "Tanimoto intersection",
+        "tanimotoUnion" => "Tanimoto union",
+        "conformerCount" => "Conformers",
+        "conformerPassedCount" => "Valid conformers",
+        "conformerStatus" => "Conformer status",
+        "geometryInitialization" => "Geometry source",
+        "bestEtkEnergy" => "Best ETK energy",
+        "mmffVariant" => "MMFF variant",
+        "bestMmffEnergy" => "Best MMFF energy",
+        "mmffOptimizationStatus" => "MMFF status",
+        "mmffOptimizationError" => "MMFF error",
+        "conformerError" => "Conformer error",
+        _ => value_id,
+    }
+}
+
+fn attach_descriptor_cells(
+    connection: &Connection,
+    page_rows: &mut [GridPageRow],
+) -> Result<(), String> {
+    if page_rows.is_empty() {
+        return Ok(());
+    }
+    let row_ids = page_rows.iter().map(|row| row.row_id).collect::<Vec<_>>();
+    let placeholders = vec!["?"; row_ids.len()].join(", ");
+    let sql = format!(
+        "select molecule_id, descriptor_id, label, value_real, value_text, missing_kind, error_text
+         from descriptor_values
+         where molecule_id in ({placeholders})
+         order by molecule_id, descriptor_id collate nocase"
+    );
+    let mut descriptor_statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
+    let mut rows = descriptor_statement
+        .query(params_from_iter(row_ids.iter()))
+        .map_err(|err| err.to_string())?;
+    let mut values_by_row_id: HashMap<i64, BTreeMap<String, GridDescriptorCell>> = HashMap::new();
+    while let Some(row) = rows.next().map_err(|err| err.to_string())? {
+        let molecule_id: i64 = row.get(0).map_err(|err| err.to_string())?;
+        let descriptor_id: String = row.get(1).map_err(|err| err.to_string())?;
+        let value_real: Option<f64> = row.get(3).map_err(|err| err.to_string())?;
+        let value_text: Option<String> = row.get(4).map_err(|err| err.to_string())?;
+        values_by_row_id.entry(molecule_id).or_default().insert(
+            descriptor_id,
+            GridDescriptorCell {
+                label: row.get(2).map_err(|err| err.to_string())?,
+                value: value_real
+                    .map(serde_json::Value::from)
+                    .or_else(|| value_text.map(serde_json::Value::from)),
+                missing_kind: row.get(5).map_err(|err| err.to_string())?,
+                error_text: row.get(6).map_err(|err| err.to_string())?,
+            },
+        );
+    }
+    for page_row in page_rows {
+        page_row.descriptors = values_by_row_id
+            .remove(&page_row.row_id)
+            .unwrap_or_default();
+    }
+    Ok(())
+}
+
+fn sort_sql(sort: &str) -> &'static str {
+    match sort {
+        "name" => "name collate nocase asc, source_index asc",
+        "smiles" => "coalesce(smiles, '') collate nocase asc, source_index asc",
+        _ => "source_index asc",
+    }
+}
+
+fn page_sort_clause(
+    descriptor_sort: Option<&GridDescriptorSort>,
+    fallback_sort: &str,
+) -> PageSortClause {
+    let Some(sort) = descriptor_sort else {
+        return PageSortClause {
+            join_sql: "",
+            order_sql: sort_sql(fallback_sort).to_string(),
+            params: Vec::new(),
+        };
+    };
+    if !is_descriptor_identifier(&sort.id) {
+        return PageSortClause {
+            join_sql: "",
+            order_sql: sort_sql(fallback_sort).to_string(),
+            params: Vec::new(),
+        };
+    }
+    let direction = if sort.direction.eq_ignore_ascii_case("desc") {
+        "desc"
+    } else {
+        "asc"
+    };
+    PageSortClause {
+        join_sql: "left join descriptor_values descriptor_sort on descriptor_sort.molecule_id = molecules.id and descriptor_sort.descriptor_id = ?",
+        order_sql: format!(
+            "descriptor_sort.value_real is null asc, descriptor_sort.value_real {direction}, source_index asc"
+        ),
+        params: vec![SqlValue::Text(sort.id.clone())],
+    }
+}
+
+fn is_descriptor_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 80
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+}
+
+fn descriptor_ids_in_connection(connection: &Connection) -> Result<Vec<String>, String> {
+    let mut statement = connection
+        .prepare("select distinct descriptor_id from descriptor_values order by descriptor_id")
+        .map_err(|err| err.to_string())?;
+    let descriptor_ids = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    Ok(descriptor_ids)
+}
+
+fn read_index_state(connection: &Connection) -> Result<GridIndexState, String> {
+    connection
+        .query_row(
+            "select records_indexed, records_total, index_ready, error,
+                    source_bytes_indexed, source_bytes_total
+             from grid_index_state where id = 1",
+            [],
+            |row| {
+                let total: Option<i64> = row.get(1)?;
+                Ok(GridIndexState {
+                    records_indexed: row.get::<_, i64>(0)? as usize,
+                    records_total: total.map(|value| value as usize),
+                    index_ready: row.get::<_, i64>(2)? != 0,
+                    error: row.get(3)?,
+                    bytes_indexed: row
+                        .get::<_, Option<i64>>(4)?
+                        .and_then(|value| u64::try_from(value).ok()),
+                    bytes_total: row
+                        .get::<_, Option<i64>>(5)?
+                        .and_then(|value| u64::try_from(value).ok()),
+                })
+            },
+        )
+        .map_err(|err| err.to_string())
+}
+
+fn update_index_state(
+    connection: &Connection,
+    records_indexed: usize,
+    records_total: Option<usize>,
+    index_ready: bool,
+    error: Option<&str>,
+) -> Result<(), String> {
+    update_index_state_with_byte_progress(
+        connection,
+        records_indexed,
+        records_total,
+        index_ready,
+        error,
+        None,
+        None,
+    )
+}
+
+fn update_index_state_with_byte_progress(
+    connection: &Connection,
+    records_indexed: usize,
+    records_total: Option<usize>,
+    index_ready: bool,
+    error: Option<&str>,
+    bytes_indexed: Option<u64>,
+    bytes_total: Option<u64>,
+) -> Result<(), String> {
+    connection
+        .execute(
+            "insert into grid_index_state (
+               id, records_indexed, records_total, index_ready, error,
+               source_bytes_indexed, source_bytes_total
+             )
+             values (1, ?1, ?2, ?3, ?4, ?5, ?6)
+             on conflict(id) do update set
+               records_indexed = excluded.records_indexed,
+               records_total = excluded.records_total,
+               index_ready = excluded.index_ready,
+               error = excluded.error,
+               source_bytes_indexed = excluded.source_bytes_indexed,
+               source_bytes_total = excluded.source_bytes_total",
+            params![
+                records_indexed as i64,
+                records_total.map(|value| value as i64),
+                if index_ready { 1 } else { 0 },
+                error,
+                bytes_indexed.map(u64_to_sql_i64),
+                bytes_total.map(u64_to_sql_i64),
+            ],
+        )
+        .map(|_| ())
+        .map_err(|err| err.to_string())
+}
+
+fn u64_to_sql_i64(value: u64) -> i64 {
+    i64::try_from(value).unwrap_or(i64::MAX)
+}
+
+fn spawn_grid_ingest_worker(
+    connection: Connection,
+    extension: String,
+    text: String,
+    mut next_cursor: GridCursor,
+    mut next_index: usize,
+    smiles_column: Option<String>,
+    cancel_token: Arc<AtomicBool>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let options = GridParseOptions {
+            smiles_column,
+            ..GridParseOptions::default()
+        };
+        loop {
+            if cancel_token.load(Ordering::Relaxed) {
+                return;
+            }
+            let batch = match parse_grid_batch_with_options(
+                &extension,
+                &text,
+                next_cursor,
+                next_index,
+                GRID_INGEST_BATCH_ROWS,
+                &options,
+            ) {
+                Ok(batch) => batch,
+                Err(error) => {
+                    record_grid_ingest_failure(&connection, next_index, &error);
+                    return;
+                }
+            };
+            if batch.records.is_empty() && !batch.complete {
+                next_cursor = batch.next_cursor;
+                next_index = batch.next_index;
+                continue;
+            }
+            if let Err(error) = insert_records(&connection, &batch.records) {
+                record_grid_ingest_failure(
+                    &connection,
+                    next_index,
+                    &format!("Failed to store indexed records: {error}"),
+                );
+                return;
+            }
+            next_cursor = batch.next_cursor;
+            next_index = batch.next_index;
+            let records_total = batch.complete.then_some(next_index);
+            if batch.complete {
+                if let Err(error) = grid_identity::finalize_source_revision(&connection) {
+                    record_grid_ingest_failure(
+                        &connection,
+                        next_index,
+                        &format!("Failed to finalize the collection index: {error}"),
+                    );
+                    return;
+                }
+            }
+            let _ =
+                update_index_state(&connection, next_index, records_total, batch.complete, None);
+            if batch.complete {
+                return;
+            }
+        }
+    })
+}
+
+fn spawn_sdf_file_ingest_worker(
+    connection: Connection,
+    mut source: SdfFileReader,
+    mut next_index: usize,
+    cancel_token: Arc<AtomicBool>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || loop {
+        if cancel_token.load(Ordering::Relaxed) {
+            return;
+        }
+        if let Err(error) = source.verify_unchanged() {
+            record_sdf_ingest_failure(&connection, next_index, &source, &error);
+            return;
+        }
+        let batch = match parse_sdf_file_batch(
+            &mut source,
+            next_index,
+            GRID_INGEST_BATCH_ROWS,
+            Some(cancel_token.as_ref()),
+        ) {
+            Ok(batch) => batch,
+            Err(error) => {
+                if error != SDF_INDEXING_CANCELLED {
+                    record_sdf_ingest_failure(&connection, next_index, &source, &error);
+                }
+                return;
+            }
+        };
+        if let Err(error) = source.verify_unchanged() {
+            record_sdf_ingest_failure(&connection, next_index, &source, &error);
+            return;
+        }
+        if let Err(error) =
+            insert_records_cancellable(&connection, &batch.records, Some(cancel_token.as_ref()))
+        {
+            if error == SDF_INDEXING_CANCELLED {
+                return;
+            }
+            record_sdf_ingest_failure(
+                &connection,
+                next_index,
+                &source,
+                &format!("Failed to store indexed records: {error}"),
+            );
+            return;
+        }
+        next_index = batch.next_index;
+        let records_total = batch.complete.then_some(next_index);
+        if batch.complete {
+            if let Err(error) = source.verify_unchanged() {
+                record_sdf_ingest_failure(&connection, next_index, &source, &error);
+                return;
+            }
+            let _ = update_index_state_with_byte_progress(
+                &connection,
+                next_index,
+                records_total,
+                false,
+                None,
+                Some(source.byte_offset),
+                Some(source.source_identity.len),
+            );
+            if let Err(error) = rebuild_deferred_fts_index(&connection) {
+                record_sdf_ingest_failure(
+                    &connection,
+                    next_index,
+                    &source,
+                    &format!("Failed to build the collection search index: {error}"),
+                );
+                return;
+            }
+            if let Err(error) = grid_identity::finalize_source_revision(&connection) {
+                record_sdf_ingest_failure(
+                    &connection,
+                    next_index,
+                    &source,
+                    &format!("Failed to finalize the collection index: {error}"),
+                );
+                return;
+            }
+        }
+        let _ = update_index_state_with_byte_progress(
+            &connection,
+            next_index,
+            records_total,
+            batch.complete,
+            None,
+            Some(source.byte_offset),
+            Some(source.source_identity.len),
+        );
+        if batch.complete {
+            return;
+        }
+    })
+}
+
+fn record_grid_ingest_failure(connection: &Connection, records_indexed: usize, error: &str) {
+    let _ = update_index_state(connection, records_indexed, None, true, Some(error));
+}
+
+fn record_sdf_ingest_failure(
+    connection: &Connection,
+    records_indexed: usize,
+    source: &SdfFileReader,
+    error: &str,
+) {
+    let _ = update_index_state_with_byte_progress(
+        connection,
+        records_indexed,
+        None,
+        true,
+        Some(error),
+        Some(source.byte_offset),
+        Some(source.source_identity.len),
+    );
+}
+
+fn initialize_schema(connection: &Connection) -> Result<(), String> {
+    connection
+        .execute_batch(
+            "pragma journal_mode = wal;
+             pragma synchronous = normal;
+             create table if not exists molecules (
+                 id integer primary key,
+                 source_index integer not null,
+                 name text not null,
+                 smiles text,
+                 molblock text,
+                 idcode text,
+                 idcoordinates text,
+                 molecule_content_sha256 text not null,
+                 props_json text not null,
+                 props_text text not null,
+                 search_text text not null,
+                 source_byte_start integer,
+                 source_byte_end integer
+             );
+             create index if not exists molecules_name on molecules(name collate nocase);
+             create index if not exists molecules_smiles on molecules(smiles collate nocase);
+             create table if not exists grid_index_state (
+                 id integer primary key check (id = 1),
+                 records_indexed integer not null default 0,
+                 records_total integer,
+                 index_ready integer not null default 0,
+                 error text,
+                 source_bytes_indexed integer,
+                 source_bytes_total integer
+             );
+             create table if not exists descriptor_values (
+                 molecule_id integer not null references molecules(id) on delete cascade,
+                 descriptor_id text not null,
+                 label text not null,
+                 value_real real,
+                 value_text text,
+                 missing_kind text,
+                 error_text text,
+                 updated_at_ms integer not null,
+                 primary key (molecule_id, descriptor_id)
+             );
+             create index if not exists descriptor_values_descriptor_real
+                 on descriptor_values(descriptor_id, value_real);
+             create table if not exists derived_columns (
+                 column_id text primary key,
+                 label text not null,
+                 kind text not null,
+                 params_json text,
+                 created_at_ms integer not null
+             );
+             insert or ignore into grid_index_state (id, records_indexed, index_ready) values (1, 0, 0);",
+        )
+        .map_err(|err| err.to_string())?;
+    for (table, column) in [
+        ("molecules", "source_byte_start"),
+        ("molecules", "source_byte_end"),
+        ("grid_index_state", "source_bytes_indexed"),
+        ("grid_index_state", "source_bytes_total"),
+    ] {
+        ensure_optional_grid_integer_column(connection, table, column)?;
+    }
+    let _ = initialize_fts_table(connection);
+    let index_ready = connection
+        .query_row(
+            "select index_ready from grid_index_state where id = 1",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .unwrap_or(false);
+    if index_ready {
+        let _ = install_fts_triggers(connection);
+    }
+    grid_identity::initialize(connection)?;
+    grid_analysis::initialize(connection)
+}
+
+fn initialize_fts_table(connection: &Connection) -> Result<(), String> {
+    connection
+        .execute_batch(
+            "create virtual table if not exists molecules_fts using fts5(
+             name,
+             smiles,
+             props_text,
+             content='molecules',
+             content_rowid='id'
+         );",
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn install_fts_triggers(connection: &Connection) -> Result<(), String> {
+    if !fts_table_exists(connection)? {
+        return Ok(());
+    }
+    connection
+        .execute_batch(
+            "create trigger if not exists molecules_ai after insert on molecules begin
+             insert into molecules_fts(rowid, name, smiles, props_text)
+             values (new.id, new.name, coalesce(new.smiles, ''), new.props_text);
+         end;
+         create trigger if not exists molecules_ad after delete on molecules begin
+             insert into molecules_fts(molecules_fts, rowid, name, smiles, props_text)
+             values ('delete', old.id, old.name, coalesce(old.smiles, ''), old.props_text);
+         end;
+         create trigger if not exists molecules_au after update on molecules begin
+             insert into molecules_fts(molecules_fts, rowid, name, smiles, props_text)
+             values ('delete', old.id, old.name, coalesce(old.smiles, ''), old.props_text);
+             insert into molecules_fts(rowid, name, smiles, props_text)
+             values (new.id, new.name, coalesce(new.smiles, ''), new.props_text);
+         end;",
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn prepare_deferred_fts_index(connection: &Connection) -> Result<(), String> {
+    if !fts_table_exists(connection)? {
+        return Ok(());
+    }
+    connection
+        .execute_batch(
+            "drop trigger if exists molecules_ai;
+             drop trigger if exists molecules_ad;
+             drop trigger if exists molecules_au;
+             pragma wal_autocheckpoint = 16384;",
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn rebuild_deferred_fts_index(connection: &Connection) -> Result<(), String> {
+    if !fts_table_exists(connection)? {
+        return Ok(());
+    }
+    ensure_deferred_fts_triggers_absent(connection)?;
+    connection
+        .execute_batch("insert into molecules_fts(molecules_fts) values('rebuild');")
+        .map_err(|error| error.to_string())?;
+    install_fts_triggers(connection)?;
+    connection
+        .execute_batch("pragma wal_autocheckpoint = 1000;")
+        .map_err(|error| error.to_string())
+}
+
+fn fts_table_exists(connection: &Connection) -> Result<bool, String> {
+    connection
+        .query_row(
+            "select exists(
+                 select 1 from sqlite_master
+                 where type = 'table' and name = 'molecules_fts'
+             )",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn ensure_deferred_fts_triggers_absent(connection: &Connection) -> Result<(), String> {
+    let trigger_count = connection
+        .query_row(
+            "select count(*) from sqlite_master
+             where type = 'trigger'
+               and name in ('molecules_ai', 'molecules_ad', 'molecules_au')",
+            [],
+            |row| row.get::<_, usize>(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if trigger_count == 0 {
+        Ok(())
+    } else {
+        Err("FTS triggers were restored before deferred indexing completed".to_string())
+    }
+}
+
+fn ensure_optional_grid_integer_column(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+) -> Result<(), String> {
+    let mut statement = connection
+        .prepare(&format!("pragma table_info({table})"))
+        .map_err(|error| error.to_string())?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    if columns.iter().any(|existing| existing == column) {
+        return Ok(());
+    }
+    connection
+        .execute_batch(&format!("alter table {table} add column {column} integer;"))
+        .map_err(|error| error.to_string())
+}
+
+pub(crate) fn descriptor_source_row_count(database_path: &Path) -> Result<usize, String> {
+    let connection = open_grid_database(database_path)?;
+    initialize_schema(&connection)?;
+    connection
+        .query_row("select count(*) from molecules", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .map_err(|err| err.to_string())
+        .and_then(|count| {
+            usize::try_from(count).map_err(|_| format!("Invalid molecule count: {count}"))
+        })
+}
+
+// Opens the collection once for a descriptor run. Every batch used to open the
+// database and run the full schema setup again - about 25,000 times for a 400k
+// collection at 16 rows per batch.
+pub(crate) fn open_descriptor_source(database_path: &Path) -> Result<Connection, String> {
+    let connection = open_grid_database(database_path)?;
+    initialize_schema(&connection)?;
+    Ok(connection)
+}
+
+// Pages by the last source_index seen rather than by OFFSET: SQLite walks the
+// skipped rows for every OFFSET, so paging a large collection 16 rows at a time
+// cost time quadratic in the row count.
+pub(crate) fn descriptor_source_row_batch(
+    connection: &Connection,
+    after_source_index: i64,
+    limit: usize,
+) -> Result<Vec<GridDescriptorSourceRow>, String> {
+    let mut statement = connection
+        .prepare(
+            "select id, name, smiles, molblock, source_index
+             from molecules
+             where source_index > ?2
+             order by source_index asc
+             limit ?1",
+        )
+        .map_err(|err| err.to_string())?;
+    let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+    let mut rows = statement
+        .query(params![limit, after_source_index])
+        .map_err(|err| err.to_string())?;
+    let mut source_rows = Vec::new();
+    while let Some(row) = rows.next().map_err(|err| err.to_string())? {
+        source_rows.push(GridDescriptorSourceRow {
+            row_id: row.get(0).map_err(|err| err.to_string())?,
+            name: row.get(1).map_err(|err| err.to_string())?,
+            smiles: row.get(2).map_err(|err| err.to_string())?,
+            molblock: row.get(3).map_err(|err| err.to_string())?,
+            source_index: row.get(4).map_err(|err| err.to_string())?,
+        });
+    }
+    Ok(source_rows)
+}
+
+pub(crate) fn descriptor_source_rows_by_indices(
+    database_path: &Path,
+    indexes: &[usize],
+) -> Result<Vec<GridDescriptorSourceRow>, String> {
+    if indexes.is_empty() {
+        return Ok(Vec::new());
+    }
+    let connection = open_grid_database(database_path)?;
+    initialize_schema(&connection)?;
+    let placeholders = std::iter::repeat_n("?", indexes.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "select id, name, smiles, molblock, source_index
+         from molecules
+         where source_index in ({placeholders})
+         order by source_index asc"
+    );
+    let params = indexes
+        .iter()
+        .map(|index| SqlValue::Integer(i64::try_from(*index).unwrap_or(i64::MAX)));
+    let mut statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
+    let mut rows = statement
+        .query(params_from_iter(params))
+        .map_err(|err| err.to_string())?;
+    let mut source_rows = Vec::new();
+    while let Some(row) = rows.next().map_err(|err| err.to_string())? {
+        source_rows.push(GridDescriptorSourceRow {
+            row_id: row.get(0).map_err(|err| err.to_string())?,
+            name: row.get(1).map_err(|err| err.to_string())?,
+            smiles: row.get(2).map_err(|err| err.to_string())?,
+            molblock: row.get(3).map_err(|err| err.to_string())?,
+            source_index: row.get(4).map_err(|err| err.to_string())?,
+        });
+    }
+    Ok(source_rows)
+}
+
+pub(crate) fn alignment_source_rows_by_indices(
+    database_path: &Path,
+    indexes: &[usize],
+) -> Result<Vec<GridAlignmentSourceRow>, String> {
+    if indexes.is_empty() {
+        return Ok(Vec::new());
+    }
+    let connection = open_grid_database(database_path)?;
+    initialize_schema(&connection)?;
+    let placeholders = std::iter::repeat_n("?", indexes.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "select id, source_index, molecule_content_sha256, name, molblock
+         from molecules
+         where source_index in ({placeholders})
+         order by source_index asc"
+    );
+    let params = indexes
+        .iter()
+        .map(|index| SqlValue::Integer(i64::try_from(*index).unwrap_or(i64::MAX)));
+    let mut statement = connection
+        .prepare(&sql)
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params_from_iter(params), |row| {
+            let source_index = row.get::<_, i64>(1)?;
+            Ok(GridAlignmentSourceRow {
+                row_id: row.get(0)?,
+                source_index: u64::try_from(source_index).unwrap_or(u64::MAX),
+                molecule_content_sha256: row.get(2)?,
+                name: row.get(3)?,
+                molblock: row.get(4)?,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    if rows.iter().any(|row| row.source_index == u64::MAX) {
+        return Err("Grid alignment source contains an invalid source index".into());
+    }
+    Ok(rows)
+}
+
+pub(crate) fn replace_descriptor_values_in_database(
+    connection: &mut Connection,
+    row_id: i64,
+    values: &[GridDescriptorValueInput],
+) -> Result<(), String> {
+    let tx = connection.transaction().map_err(|err| err.to_string())?;
+    tx.execute(
+        "delete from descriptor_values where molecule_id = ?1",
+        params![row_id],
+    )
+    .map_err(|err| err.to_string())?;
+    let updated_at_ms = current_time_millis();
+    {
+        let mut statement = tx
+            .prepare(
+                "insert into descriptor_values (
+                   molecule_id, descriptor_id, label, value_real, value_text,
+                   missing_kind, error_text, updated_at_ms
+                 )
+                 values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )
+            .map_err(|err| err.to_string())?;
+        for value in values {
+            let (value_real, value_text) = descriptor_storage_value(&value.value);
+            statement
+                .execute(params![
+                    row_id,
+                    value.id,
+                    value.label,
+                    value_real,
+                    value_text,
+                    value.missing_kind,
+                    value.error_text,
+                    updated_at_ms,
+                ])
+                .map_err(|err| err.to_string())?;
+        }
+    }
+    tx.commit().map_err(|err| err.to_string())
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DerivedValueInput {
+    pub(crate) row_id: i64,
+    pub(crate) value_real: Option<f64>,
+    pub(crate) value_text: Option<String>,
+    pub(crate) error_text: Option<String>,
+}
+
+// Derived columns ride the descriptor_values channel: values land as rows keyed
+// by their column id so pages, filters, sorting, and export pick them up with
+// no extra plumbing, while derived_columns keeps the recompute recipe. Unlike
+// replace_descriptor_values_in_database this touches only its own column.
+pub(crate) fn store_derived_values_in_database(
+    connection: &mut Connection,
+    column_id: &str,
+    label: &str,
+    kind: &str,
+    params_json: Option<&str>,
+    values: &[DerivedValueInput],
+) -> Result<usize, String> {
+    let tx = connection.transaction().map_err(|err| err.to_string())?;
+    let updated_at_ms = current_time_millis();
+    tx.execute(
+        "insert into derived_columns (column_id, label, kind, params_json, created_at_ms)
+         values (?1, ?2, ?3, ?4, ?5)
+         on conflict(column_id) do update set label = ?2, kind = ?3, params_json = ?4",
+        params![column_id, label, kind, params_json, updated_at_ms],
+    )
+    .map_err(|err| err.to_string())?;
+    let mut stored = 0usize;
+    {
+        let mut statement = tx
+            .prepare(
+                "insert or replace into descriptor_values (
+                   molecule_id, descriptor_id, label, value_real, value_text,
+                   missing_kind, error_text, updated_at_ms
+                 )
+                 values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )
+            .map_err(|err| err.to_string())?;
+        for value in values {
+            let missing_kind = value.error_text.as_ref().map(|_| "error");
+            statement
+                .execute(params![
+                    value.row_id,
+                    column_id,
+                    label,
+                    value.value_real,
+                    value.value_text,
+                    missing_kind,
+                    value.error_text,
+                    updated_at_ms,
+                ])
+                .map_err(|err| err.to_string())?;
+            stored += 1;
+        }
+    }
+    tx.commit().map_err(|err| err.to_string())?;
+    Ok(stored)
+}
+
+pub(crate) fn descriptor_run_summary_in_database(
+    database_path: &Path,
+) -> Result<GridDescriptorRunSummary, String> {
+    let connection = open_grid_database(database_path)?;
+    initialize_schema(&connection)?;
+    let total_rows = molecule_count(&connection)?;
+    let calculated_rows = connection
+        .query_row(
+            "select count(distinct molecule_id) from descriptor_values where descriptor_id <> 'error'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|err| err.to_string())? as usize;
+    let failed_rows = connection
+        .query_row(
+            "select count(distinct molecule_id) from descriptor_values where descriptor_id = 'error' and error_text is not null",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|err| err.to_string())? as usize;
+    let descriptor_ids = descriptor_ids_in_connection(&connection)?;
+    Ok(GridDescriptorRunSummary {
+        total_rows,
+        calculated_rows,
+        failed_rows,
+        descriptor_id_count: descriptor_ids.len(),
+        descriptor_ids,
+    })
+}
+
+fn descriptor_storage_value(value: &Option<serde_json::Value>) -> (Option<f64>, Option<String>) {
+    match value {
+        Some(serde_json::Value::Number(number)) => (number.as_f64(), None),
+        Some(serde_json::Value::String(text)) => (None, Some(clipped(text, 4096))),
+        Some(serde_json::Value::Bool(value)) => (None, Some(value.to_string())),
+        Some(other) => (None, Some(clipped(&other.to_string(), 4096))),
+        None => (None, None),
+    }
+}
+
+fn current_time_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn finish_sdf_record(lines: &[String], has_content: bool, index: usize) -> Option<GridInputRecord> {
+    if !has_content {
+        return None;
+    }
+    let props = parse_sdf_properties(lines);
+    let fallback_name = format!("Molecule {}", index + 1);
+    let title = lines
+        .first()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty());
+    let name = [props.get("Name"), props.get("NAME"), props.get("ID")]
+        .into_iter()
+        .flatten()
+        .map(String::as_str)
+        .chain(title)
+        .find(|value| !value.trim().is_empty())
+        .map(|value| clipped(value, 160))
+        .unwrap_or(fallback_name);
+    let smiles = [
+        props.get("SMILES"),
+        props.get("Smiles"),
+        props.get("smiles"),
+    ]
+    .into_iter()
+    .flatten()
+    .next()
+    .map(|value| clipped(value, 2048));
+    Some(GridInputRecord {
+        index,
+        name,
+        smiles,
+        molblock: Some(clipped(&extract_molblock(lines), 250_000)),
+        idcode: None,
+        idcoordinates: None,
+        props,
+        source_byte_start: None,
+        source_byte_end: None,
+    })
+}
+
+fn parse_grid_batch_with_options(
+    extension: &str,
+    text: &str,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+    options: &GridParseOptions,
+) -> Result<ParsedGridBatch, String> {
+    match extension {
+        "csv" => parse_delimited_batch(text, ',', "csv", cursor, start_index, max_records, options),
+        "tsv" => {
+            parse_delimited_batch(text, '\t', "tsv", cursor, start_index, max_records, options)
+        }
+        "dwar" => Ok(parse_datawarrior_batch(
+            text,
+            cursor,
+            start_index,
+            max_records,
+        )),
+        "smi" | "smiles" => Ok(parse_smiles_batch(text, cursor, start_index, max_records)),
+        "sdf" | "sd" => Ok(parse_sdf_batch(text, cursor, start_index, max_records)),
+        "rxn" => Ok(parse_rxn_batch(text, cursor, start_index)),
+        "rdf" => Ok(parse_rdf_batch(text, cursor, start_index, max_records)),
+        _ => Err(format!("unsupported grid extension: {extension}")),
+    }
+}
+
+#[derive(Default)]
+struct DataWarriorColumn {
+    parent: Option<String>,
+    special_type: Option<String>,
+}
+
+// Still re-reads the source per batch: a DataWarrior record can span several
+// lines and is located by record number rather than by offset, so making it
+// single-pass is a separate change from the byte-offset parsers above.
+fn parse_datawarrior_batch(
+    text: &str,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+) -> ParsedGridBatch {
+    // Only the header section is re-read per batch, not the whole file: the
+    // records live after it and are reached from the cursor's byte offset.
+    let Some(header) = datawarrior_header(text) else {
+        return ParsedGridBatch {
+            records: Vec::new(),
+            next_cursor: GridCursor::default(),
+            next_index: start_index,
+            complete: true,
+        };
+    };
+    let columns = datawarrior_column_properties(&header.lines);
+    let headers: Vec<_> = parse_delimited_line(header.table_line, '\t')
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .collect();
+    let structure_columns: Vec<_> = headers
+        .iter()
+        .enumerate()
+        .filter_map(|(index, header)| {
+            let special_type = columns
+                .get(header)
+                .and_then(|column| column.special_type.as_deref())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if special_type == "idcode" {
+                Some((index, true))
+            } else if is_smiles_column(&normalize_column_name(header)) {
+                Some((index, false))
+            } else {
+                None
+            }
+        })
+        .collect();
+    if structure_columns.is_empty() {
+        return ParsedGridBatch {
+            records: Vec::new(),
+            next_cursor: GridCursor::default(),
+            next_index: start_index,
+            complete: true,
+        };
+    }
+    let special_indexes: HashSet<_> = headers
+        .iter()
+        .enumerate()
+        .filter_map(|(index, header)| columns.get(header)?.special_type.as_ref().map(|_| index))
+        .collect();
+    let coordinate_indexes: HashMap<_, _> = headers
+        .iter()
+        .enumerate()
+        .filter_map(|(index, header)| {
+            let column = columns.get(header)?;
+            let special_type = column.special_type.as_deref()?.to_ascii_lowercase();
+            special_type
+                .starts_with("idcoordinates")
+                .then(|| column.parent.clone().map(|parent| (parent, index)))?
+        })
+        .collect();
+    let name_index = headers.iter().enumerate().position(|(index, header)| {
+        !special_indexes.contains(&index)
+            && matches!(
+                normalize_column_name(header).as_str(),
+                "compound_id" | "id" | "name" | "title" | "compound"
+            )
+    });
+    let multiple_structure_columns = structure_columns.len() > 1;
+    let mut records = Vec::new();
+    let mut complete = true;
+    // A row can hold several structure columns, so a batch may stop mid-row. The
+    // cursor therefore carries the row's own offset plus how many of its records
+    // were already emitted.
+    let mut offset = if cursor.offset == 0 {
+        header.data_offset
+    } else {
+        cursor.offset.min(text.len())
+    };
+    let mut skip_in_row = cursor.row_records;
+    // The row number is carried across batches: it names records when the file has
+    // no name column, and is published as the "DataWarrior row" property.
+    let mut row_offset = cursor.row;
+
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        let line_start = offset;
+        offset = next_offset;
+        if looks_like_datawarrior_section_tag(line) {
+            break;
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        let cells = parse_delimited_line(line, '\t');
+        let mut emitted_in_row = 0usize;
+        for (structure_index, is_idcode) in &structure_columns {
+            let value = cells
+                .get(*structure_index)
+                .map(|cell| cell.trim())
+                .unwrap_or("");
+            if value.is_empty() {
+                continue;
+            }
+            if emitted_in_row < skip_in_row {
+                emitted_in_row += 1;
+                continue;
+            }
+            if records.len() >= max_records {
+                complete = false;
+                break;
+            }
+            let column_name = headers
+                .get(*structure_index)
+                .map(|header| header.trim())
+                .filter(|header| !header.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("Column {}", structure_index + 1));
+            let raw_name = name_index
+                .and_then(|index| cells.get(index))
+                .map(|cell| cell.trim())
+                .unwrap_or("");
+            let base_name = if raw_name.is_empty() {
+                format!("Molecule {}", row_offset + 1)
+            } else {
+                clipped(raw_name, 160)
+            };
+            let name = if multiple_structure_columns {
+                clipped(&format!("{base_name} {column_name}"), 160)
+            } else {
+                base_name
+            };
+            let mut props = BTreeMap::from([
+                ("DataWarrior row".to_string(), (row_offset + 1).to_string()),
+                ("Structure column".to_string(), clipped(&column_name, 500)),
+            ]);
+            for (index, header) in headers.iter().enumerate() {
+                if index == *structure_index
+                    || Some(index) == name_index
+                    || special_indexes.contains(&index)
+                {
+                    continue;
+                }
+                if let Some(cell) = cells
+                    .get(index)
+                    .map(|cell| cell.trim())
+                    .filter(|cell| !cell.is_empty())
+                {
+                    if props.len() < 64 {
+                        props.insert(clipped(header, 80), clipped(cell, 500));
+                    }
+                }
+            }
+            let coordinates = coordinate_indexes
+                .get(&column_name)
+                .and_then(|index| cells.get(*index))
+                .map(|cell| cell.trim())
+                .filter(|cell| !cell.is_empty())
+                .map(|cell| clipped(cell, 16_384));
+            records.push(GridInputRecord {
+                index: start_index + records.len(),
+                name,
+                smiles: (!is_idcode).then(|| clipped(value, 2048)),
+                molblock: None,
+                idcode: is_idcode.then(|| clipped(value, 4096)),
+                idcoordinates: coordinates,
+                props,
+                source_byte_start: None,
+                source_byte_end: None,
+            });
+            emitted_in_row += 1;
+        }
+        skip_in_row = 0;
+        row_offset += 1;
+        if !complete {
+            // Stopped inside this row: resume at the row itself, past the records
+            // it already produced, and under its own number.
+            offset = line_start;
+            skip_in_row = emitted_in_row;
+            row_offset -= 1;
+            break;
+        }
+    }
+    ParsedGridBatch {
+        next_cursor: GridCursor {
+            offset,
+            row: row_offset,
+            row_records: skip_in_row,
+        },
+        next_index: start_index + records.len(),
+        records,
+        complete,
+    }
+}
+
+struct DataWarriorHeader<'a> {
+    lines: Vec<&'a str>,
+    table_line: &'a str,
+    data_offset: usize,
+}
+
+// Reads the DataWarrior preamble - the tagged sections and the table header row -
+// and reports where the data rows begin, so a batch never has to walk the records
+// that came before it.
+fn datawarrior_header(text: &str) -> Option<DataWarriorHeader<'_>> {
+    let mut lines = Vec::new();
+    let mut section: Option<&str> = None;
+    let mut offset = 0usize;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        let trimmed = line.trim();
+        if trimmed.starts_with("</") && trimmed.ends_with('>') {
+            section = None;
+            lines.push(line);
+            continue;
+        }
+        if trimmed.starts_with('<')
+            && trimmed.ends_with('>')
+            && !trimmed.contains('=')
+            && !trimmed.starts_with("</")
+        {
+            section = Some(trimmed);
+            lines.push(line);
+            continue;
+        }
+        if section.is_none() && !trimmed.is_empty() && !trimmed.starts_with('<') {
+            return Some(DataWarriorHeader {
+                lines,
+                table_line: line,
+                data_offset: offset,
+            });
+        }
+        lines.push(line);
+    }
+    None
+}
+
+fn datawarrior_column_properties(lines: &[&str]) -> HashMap<String, DataWarriorColumn> {
+    let mut columns = HashMap::new();
+    let mut current_name: Option<String> = None;
+    let mut in_properties = false;
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed == "<column properties>" {
+            in_properties = true;
+            continue;
+        }
+        if trimmed == "</column properties>" {
+            break;
+        }
+        if !in_properties {
+            continue;
+        }
+        if let Some(name) = datawarrior_tag_value(trimmed, "columnName") {
+            current_name = Some(name.clone());
+            columns.insert(name, DataWarriorColumn::default());
+            continue;
+        }
+        let Some(property) = datawarrior_tag_value(trimmed, "columnProperty") else {
+            continue;
+        };
+        let Some(name) = current_name.as_ref() else {
+            continue;
+        };
+        let mut parts = property.splitn(2, ['\t']);
+        let key = parts.next().unwrap_or("").trim();
+        let value = parts.next().unwrap_or("").trim();
+        let Some(column) = columns.get_mut(name) else {
+            continue;
+        };
+        match key {
+            "specialType" if !value.is_empty() => column.special_type = Some(value.to_string()),
+            "parent" if !value.is_empty() => column.parent = Some(value.to_string()),
+            _ => {}
+        }
+    }
+    columns
+}
+
+fn datawarrior_tag_value(line: &str, tag: &str) -> Option<String> {
+    let prefix = format!("<{tag}=\"");
+    line.strip_prefix(&prefix)
+        .and_then(|value| value.strip_suffix("\">"))
+        .map(|value| {
+            value
+                .replace("&#x09;", "\t")
+                .replace("&#9;", "\t")
+                .replace("&quot;", "\"")
+                .replace("&apos;", "'")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+        })
+}
+
+fn looks_like_datawarrior_section_tag(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with('<') && trimmed.ends_with('>')
+}
+
+// Resumes from a byte offset, like the SDF parser, so an ingest reads the source
+// once instead of once per batch.
+fn parse_smiles_batch(
+    text: &str,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+) -> ParsedGridBatch {
+    let mut offset = cursor.offset.min(text.len());
+    let mut records = Vec::new();
+    let mut next_index = start_index;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let mut parts = trimmed.splitn(2, char::is_whitespace);
+        let Some(smiles) = parts.next() else { continue };
+        if !looks_like_smiles(smiles) {
+            continue;
+        }
+        let name = parts
+            .next()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| clipped(value, 160))
+            .unwrap_or_else(|| format!("Molecule {}", next_index + 1));
+        records.push(GridInputRecord {
+            index: next_index,
+            name,
+            smiles: Some(clipped(smiles, 2048)),
+            molblock: None,
+            idcode: None,
+            idcoordinates: None,
+            props: BTreeMap::new(),
+            source_byte_start: None,
+            source_byte_end: None,
+        });
+        next_index += 1;
+        if records.len() >= max_records {
+            break;
+        }
+    }
+    ParsedGridBatch {
+        records,
+        next_cursor: GridCursor {
+            offset,
+            ..GridCursor::default()
+        },
+        next_index,
+        complete: offset >= text.len(),
+    }
+}
+
+// Reads the line starting at `offset` and reports where the next one begins.
+// The line breaks recognised here have to match `normalized_lines`, which treats
+// CRLF and a bare CR as breaks too, so classic-Mac SDF still splits correctly.
+fn line_at(text: &str, offset: usize) -> Option<(&str, usize)> {
+    if offset >= text.len() {
+        return None;
+    }
+    let rest = &text[offset..];
+    let Some(break_at) = rest.find(['\r', '\n']) else {
+        return Some((rest, text.len()));
+    };
+    let width = if rest[break_at..].starts_with("\r\n") {
+        2
+    } else {
+        1
+    };
+    Some((&rest[..break_at], offset + break_at + width))
+}
+
+// The header of a delimited source, plus where its data starts. Read per batch
+// because the columns are needed to interpret every row, and reading one line is
+// cheap — re-splitting the whole file to get it was not.
+fn first_non_empty_line(text: &str) -> Option<(&str, usize)> {
+    let mut offset = 0usize;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        if !line.trim().is_empty() {
+            return Some((line, offset));
+        }
+    }
+    None
+}
+
+// How many non-empty values per column the inference wants before it decides.
+// Scanning every row of every column per batch was the single most expensive part
+// of ingesting a large CSV.
+const SMILES_INFERENCE_SAMPLE_VALUES: usize = 512;
+
+// Ceiling on rows read while looking for those values. A structure column can sit
+// empty for a long stretch before it starts carrying data, so the scan continues
+// past a blank prefix - but never walks more of the file than this.
+const SMILES_INFERENCE_MAX_SCANNED_ROWS: usize = 20_000;
+
+// Resumes from a byte offset and walks the source once. Splitting the whole text
+// into a `Vec<String>` here instead made ingest quadratic: a collection indexed
+// in N batches re-copied and re-split the entire file N times, so a 1 GB SDF
+// took tens of minutes and gigabytes of transient allocations.
+fn parse_sdf_batch(
+    text: &str,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+) -> ParsedGridBatch {
+    let mut offset = cursor.offset.min(text.len());
+    let mut records = Vec::new();
+    let mut current = Vec::new();
+    let mut current_has_content = false;
+    let mut next_index = start_index;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        if line.trim() == "$$$$" {
+            if let Some(record) = finish_sdf_record(&current, current_has_content, next_index) {
+                records.push(record);
+                next_index += 1;
+            }
+            current.clear();
+            current_has_content = false;
+            if records.len() >= max_records {
+                break;
+            }
+        } else {
+            if !line.trim().is_empty() {
+                current_has_content = true;
+            }
+            current.push(line.to_string());
+        }
+    }
+    let complete = offset >= text.len();
+    if complete {
+        if let Some(record) = finish_sdf_record(&current, current_has_content, next_index) {
+            records.push(record);
+            next_index += 1;
+        }
+    }
+    ParsedGridBatch {
+        records,
+        next_cursor: GridCursor {
+            offset,
+            ..GridCursor::default()
+        },
+        next_index,
+        complete,
+    }
+}
+
+// MDL reaction sources. A .rxn file carries exactly one `$RXN` block; an .rdf
+// file carries a sequence of them, each introduced by `$RFMT` and followed by
+// `$DTYPE`/`$DATUM` field pairs. The reaction block is stored verbatim as the
+// record's molblock: RDKit draws a reaction straight from it, and the reaction
+// columns read its parts from there.
+fn reaction_record(
+    block: &[String],
+    props: BTreeMap<String, String>,
+    index: usize,
+) -> Option<GridInputRecord> {
+    let text = block.join("\n");
+    if text.trim().is_empty() {
+        return None;
+    }
+    let named_prop = ["Name", "NAME", "ID", "Id", "id"]
+        .into_iter()
+        .find_map(|key| props.get(key))
+        .map(String::as_str)
+        .filter(|value| !value.trim().is_empty());
+    // Line 2 of an RXN block is its name line; the two lines after it are the
+    // program stamp and a comment, which are never a useful row title.
+    let block_name = block
+        .get(1)
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty());
+    let name = named_prop
+        .or(block_name)
+        .map(|value| clipped(value, 160))
+        .unwrap_or_else(|| format!("Reaction {}", index + 1));
+    Some(GridInputRecord {
+        index,
+        name,
+        smiles: None,
+        molblock: Some(clipped(&text, 250_000)),
+        idcode: None,
+        idcoordinates: None,
+        props,
+        source_byte_start: None,
+        source_byte_end: None,
+    })
+}
+
+fn parse_rxn_batch(text: &str, cursor: GridCursor, start_index: usize) -> ParsedGridBatch {
+    let records = if cursor.offset > 0 {
+        Vec::new()
+    } else {
+        let lines: Vec<String> = text
+            .split_inclusive(['\n', '\r'])
+            .map(|line| line.trim_end_matches(['\n', '\r']).to_string())
+            .collect();
+        // A .rxn file opens with `$RXN`. Without this check any text file that
+        // happens to carry the extension would become one row holding a molblock
+        // that no renderer can read, which reads as a broken reaction rather than
+        // as the wrong file. The .rdf path cannot share the check: an `$MFMT`
+        // record there is a plain molecule and legitimately has no `$RXN` line.
+        let is_rxn = lines
+            .iter()
+            .find(|line| !line.trim().is_empty())
+            .is_some_and(|line| line.trim_start().starts_with("$RXN"));
+        if is_rxn {
+            reaction_record(&lines, BTreeMap::new(), start_index)
+                .into_iter()
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+    let next_index = start_index + records.len();
+    ParsedGridBatch {
+        records,
+        next_cursor: GridCursor {
+            offset: text.len(),
+            ..GridCursor::default()
+        },
+        next_index,
+        complete: true,
+    }
+}
+
+fn parse_rdf_batch(
+    text: &str,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+) -> ParsedGridBatch {
+    let mut offset = cursor.offset.min(text.len());
+    let mut records = Vec::new();
+    let mut next_index = start_index;
+    let mut block: Vec<String> = Vec::new();
+    let mut props: BTreeMap<String, String> = BTreeMap::new();
+    let mut field: Option<String> = None;
+    let mut in_structure = false;
+    let mut started = false;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        let trimmed = line.trim();
+        if trimmed.starts_with("$RFMT") || trimmed.starts_with("$MFMT") {
+            if started {
+                if let Some(record) =
+                    reaction_record(&block, std::mem::take(&mut props), next_index)
+                {
+                    records.push(record);
+                    next_index += 1;
+                }
+                block.clear();
+                props.clear();
+                field = None;
+                in_structure = false;
+            }
+            // The offset is only advanced past the marker once the batch has
+            // room for the record it introduces, so the next batch resumes here.
+            if records.len() >= max_records {
+                break;
+            }
+            started = true;
+            offset = next_offset;
+            continue;
+        }
+        offset = next_offset;
+        if !started {
+            continue;
+        }
+        if let Some(name) = trimmed.strip_prefix("$DTYPE ") {
+            // The fields follow the structure, so the block is finished here.
+            in_structure = false;
+            field = Some(clipped(name.trim(), 80)).filter(|value| !value.is_empty());
+            continue;
+        }
+        if let Some(value) = trimmed.strip_prefix("$DATUM ") {
+            if let Some(name) = field.clone() {
+                props.insert(name, clipped(value.trim(), 4096));
+            }
+            continue;
+        }
+        if trimmed.starts_with("$RXN") {
+            in_structure = true;
+            block.push(line.to_string());
+            continue;
+        }
+        if trimmed.starts_with("$MOL") {
+            // Inside a reaction block `$MOL` separates its components and has to
+            // stay; before one it is the marker that opens a molecule record.
+            if in_structure {
+                block.push(line.to_string());
+            } else {
+                in_structure = true;
+            }
+            continue;
+        }
+        if trimmed.starts_with('$') {
+            continue;
+        }
+        if in_structure {
+            block.push(line.to_string());
+        }
+    }
+    let complete = offset >= text.len();
+    if complete && started {
+        if let Some(record) = reaction_record(&block, props, next_index) {
+            records.push(record);
+            next_index += 1;
+        }
+    }
+    ParsedGridBatch {
+        records,
+        next_cursor: GridCursor {
+            offset,
+            ..GridCursor::default()
+        },
+        next_index,
+        complete,
+    }
+}
+
+fn parse_sdf_file_batch(
+    source: &mut SdfFileReader,
+    start_index: usize,
+    max_records: usize,
+    cancel_token: Option<&AtomicBool>,
+) -> Result<ParsedGridBatch, String> {
+    let mut records = Vec::new();
+    let mut current = Vec::new();
+    let mut current_has_content = false;
+    let batch_start_offset = source.byte_offset;
+    let mut current_record_start = source.byte_offset;
+    let mut current_record_bytes = 0usize;
+    let mut next_index = start_index;
+    let mut line_buffer = Vec::new();
+    loop {
+        ensure_sdf_indexing_active(cancel_token)?;
+        let line_start_offset = source.byte_offset;
+        let Some(line) = source.read_line(&mut line_buffer, cancel_token)? else {
+            break;
+        };
+        let line_bytes = source
+            .byte_offset
+            .saturating_sub(line_start_offset)
+            .min(usize::MAX as u64) as usize;
+        current_record_bytes = current_record_bytes.saturating_add(line_bytes);
+        if current_record_bytes > MAX_STREAMED_SDF_RECORD_BYTES {
+            return Err(format!(
+                "SDF record exceeds the {} byte indexing limit at byte {}",
+                MAX_STREAMED_SDF_RECORD_BYTES, current_record_start
+            ));
+        }
+        if line.trim() == "$$$$" {
+            if let Some(mut record) = finish_sdf_record(&current, current_has_content, next_index) {
+                record.source_byte_start = Some(current_record_start);
+                record.source_byte_end = Some(source.byte_offset);
+                records.push(record);
+                next_index += 1;
+            }
+            current.clear();
+            current_has_content = false;
+            current_record_bytes = 0;
+            current_record_start = source.byte_offset;
+            let batch_bytes = source
+                .byte_offset
+                .saturating_sub(batch_start_offset)
+                .min(usize::MAX as u64) as usize;
+            let batch_budget_reached = batch_bytes
+                >= MAX_STREAMED_SDF_BATCH_BYTES.saturating_sub(MAX_STREAMED_SDF_RECORD_BYTES);
+            if records.len() >= max_records || batch_budget_reached {
+                return Ok(ParsedGridBatch {
+                    records,
+                    next_cursor: GridCursor {
+                        offset: source.byte_offset.min(usize::MAX as u64) as usize,
+                        ..GridCursor::default()
+                    },
+                    next_index,
+                    complete: false,
+                });
+            }
+        } else {
+            if !line.trim().is_empty() {
+                current_has_content = true;
+            }
+            current.push(line);
+        }
+    }
+    ensure_sdf_indexing_active(cancel_token)?;
+    if let Some(mut record) = finish_sdf_record(&current, current_has_content, next_index) {
+        record.source_byte_start = Some(current_record_start);
+        record.source_byte_end = Some(source.byte_offset);
+        records.push(record);
+        next_index += 1;
+    }
+    Ok(ParsedGridBatch {
+        records,
+        next_cursor: GridCursor {
+            offset: source.byte_offset.min(usize::MAX as u64) as usize,
+            ..GridCursor::default()
+        },
+        next_index,
+        complete: true,
+    })
+}
+
+fn parse_delimited_batch(
+    text: &str,
+    separator: char,
+    format: &str,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+    options: &GridParseOptions,
+) -> Result<ParsedGridBatch, String> {
+    if options.smiles_column.is_none() && is_generic_delimited_table(text, separator) {
+        return Ok(parse_generic_delimited_table_batch(
+            text,
+            separator,
+            cursor,
+            start_index,
+            max_records,
+        ));
+    }
+    parse_delimited_table_batch(text, separator, cursor, start_index, max_records, options).or_else(
+        |error| {
+            if error != "missing smiles column" || options.smiles_column.is_some() {
+                return Err(error);
+            }
+            parse_delimited_rows_as_smiles_batch(
+                text,
+                separator,
+                format,
+                cursor,
+                start_index,
+                max_records,
+            )
+        },
+    )
+}
+
+fn is_generic_delimited_table(text: &str, separator: char) -> bool {
+    let Some((header_line, after_header)) = first_non_empty_line(text) else {
+        return false;
+    };
+    let headers: Vec<_> = parse_delimited_line(header_line, separator)
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .collect();
+    if headers.len() < 2 || !headers.iter().any(|value| !value.is_empty()) {
+        return false;
+    }
+    let has_named_structure_column = headers
+        .iter()
+        .map(|value| normalize_column_name(value))
+        .any(|value| is_smiles_column(&value) || matches!(value.as_str(), "molblock" | "molfile"));
+    !has_named_structure_column
+        && infer_smiles_columns_from_source(text, after_header, headers.len(), separator).is_empty()
+}
+
+fn parse_generic_delimited_table_batch(
+    text: &str,
+    separator: char,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+) -> ParsedGridBatch {
+    let Some((header_line, after_header)) = first_non_empty_line(text) else {
+        return ParsedGridBatch {
+            records: Vec::new(),
+            next_cursor: GridCursor::default(),
+            next_index: start_index,
+            complete: true,
+        };
+    };
+    let headers: Vec<_> = parse_delimited_line(header_line, separator)
+        .into_iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let value = value.trim();
+            if value.is_empty() {
+                format!("Column {}", index + 1)
+            } else {
+                clipped(value, 80)
+            }
+        })
+        .collect();
+    let name_index = headers.iter().position(|header| {
+        matches!(
+            normalize_column_name(header).as_str(),
+            "compound_id" | "id" | "name" | "title" | "compound"
+        )
+    });
+    let mut records = Vec::new();
+    let mut offset = if cursor.offset == 0 {
+        after_header
+    } else {
+        cursor.offset.min(text.len())
+    };
+    let mut row_number = cursor.row;
+    let mut next_index = start_index;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        if line.trim().is_empty() {
+            continue;
+        }
+        row_number += 1;
+        let cells = parse_delimited_line(line, separator);
+        if !cells.iter().any(|value| !value.trim().is_empty()) {
+            continue;
+        }
+        let raw_name = name_index
+            .and_then(|index| cells.get(index))
+            .map(|value| value.trim())
+            .unwrap_or("");
+        let name = if raw_name.is_empty() {
+            format!("Row {row_number}")
+        } else {
+            clipped(raw_name, 160)
+        };
+        let mut props = BTreeMap::new();
+        for (index, header) in headers.iter().enumerate().take(64) {
+            let value = cells.get(index).map(|value| value.trim()).unwrap_or("");
+            if !value.is_empty() {
+                props.insert(header.clone(), clipped(value, 500));
+            }
+        }
+        records.push(GridInputRecord {
+            index: next_index,
+            name,
+            smiles: None,
+            molblock: None,
+            idcode: None,
+            idcoordinates: None,
+            props,
+            source_byte_start: None,
+            source_byte_end: None,
+        });
+        next_index += 1;
+        if records.len() >= max_records {
+            break;
+        }
+    }
+    ParsedGridBatch {
+        records,
+        next_cursor: GridCursor {
+            offset,
+            row: row_number,
+            ..GridCursor::default()
+        },
+        next_index,
+        complete: offset >= text.len(),
+    }
+}
+
+fn parse_delimited_table_batch(
+    text: &str,
+    separator: char,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+    options: &GridParseOptions,
+) -> Result<ParsedGridBatch, String> {
+    let Some((header_line, after_header)) = first_non_empty_line(text) else {
+        return Ok(ParsedGridBatch {
+            records: Vec::new(),
+            next_cursor: GridCursor::default(),
+            next_index: start_index,
+            complete: true,
+        });
+    };
+    let raw_headers: Vec<_> = parse_delimited_line(header_line, separator)
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .collect();
+    let encoding_index = raw_headers
+        .iter()
+        .position(|value| normalize_column_name(value) == "burette_encoding");
+    let headers: Vec<_> = raw_headers
+        .into_iter()
+        .map(|value| {
+            if encoding_index.is_some() {
+                decode_saved_grid_cell(&value)
+            } else {
+                value
+            }
+        })
+        .collect();
+    let inferred_smiles_indexes =
+        infer_smiles_columns_from_source(text, after_header, headers.len(), separator);
+    let first_row_looks_like_data = headers.iter().any(|value| looks_like_smiles(value));
+    if !is_likely_delimited_header(&headers)
+        && (inferred_smiles_indexes.is_empty() || first_row_looks_like_data)
+    {
+        return Err("missing smiles column".to_string());
+    }
+    let normalized_headers: Vec<_> = headers
+        .iter()
+        .map(|value| normalize_column_name(value))
+        .collect();
+    let smiles_indexes = resolve_smiles_columns(
+        &headers,
+        &normalized_headers,
+        options.smiles_column.as_deref(),
+        &inferred_smiles_indexes,
+    )?;
+    let has_multiple_smiles_columns = smiles_indexes.len() > 1;
+    let name_index = normalized_headers
+        .iter()
+        .enumerate()
+        .position(|(index, value)| {
+            !smiles_indexes.contains(&index)
+                && matches!(
+                    value.as_str(),
+                    "compound_id" | "id" | "name" | "title" | "compound"
+                )
+        });
+    let molblock_index = normalized_headers
+        .iter()
+        .position(|value| matches!(value.as_str(), "molblock" | "molfile"));
+    let mut records = Vec::new();
+    // Row 0 is the header, so a fresh cursor starts at the first data row.
+    let mut offset = if cursor.offset == 0 {
+        after_header
+    } else {
+        cursor.offset.min(text.len())
+    };
+    let mut row_number = cursor.row.max(1);
+    let mut next_index = start_index;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let current_row = row_number;
+        row_number += 1;
+        let raw_cells = parse_delimited_line(line, separator);
+        let saved_grid_encoding = encoding_index
+            .and_then(|index| raw_cells.get(index))
+            .is_some_and(|value| value.trim() == "escaped-v1");
+        let cells: Vec<_> = raw_cells
+            .into_iter()
+            .map(|value| {
+                if saved_grid_encoding {
+                    decode_saved_grid_cell(&value)
+                } else {
+                    value
+                }
+            })
+            .collect();
+        let row_smiles: Vec<_> = smiles_indexes
+            .iter()
+            .filter_map(|smiles_index| {
+                cells
+                    .get(*smiles_index)
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty())
+                    .map(|smiles| (*smiles_index, smiles))
+            })
+            .collect();
+        let molblock = molblock_index
+            .and_then(|index| cells.get(index))
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(|value| clipped(value, 250_000));
+        if row_smiles.is_empty() && molblock.is_none() {
+            continue;
+        }
+        let record_sources: Vec<_> = if row_smiles.is_empty() {
+            vec![None]
+        } else {
+            row_smiles.into_iter().map(Some).collect()
+        };
+        for source in record_sources {
+            let raw_name = name_index
+                .and_then(|index| cells.get(index))
+                .map(|value| value.trim())
+                .unwrap_or("");
+            let base_name = if raw_name.is_empty() {
+                format!("Molecule {}", current_row)
+            } else {
+                clipped(raw_name, 160)
+            };
+            let name =
+                if let (true, Some((smiles_index, _))) = (has_multiple_smiles_columns, source) {
+                    clipped(
+                        &format!(
+                            "{} {}",
+                            base_name,
+                            column_label(&headers, smiles_index).trim_matches('\'')
+                        ),
+                        160,
+                    )
+                } else {
+                    base_name
+                };
+            let mut props = BTreeMap::new();
+            props.insert("CSV row".to_string(), current_row.to_string());
+            if let Some((smiles_index, _)) = source {
+                props.insert(
+                    "SMILES column".to_string(),
+                    clipped(column_label(&headers, smiles_index).trim_matches('\''), 500),
+                );
+            }
+            for (index, header) in headers.iter().enumerate() {
+                if smiles_indexes.contains(&index)
+                    || Some(index) == name_index
+                    || Some(index) == molblock_index
+                    || Some(index) == encoding_index
+                {
+                    continue;
+                }
+                if let Some(value) = cells
+                    .get(index)
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty())
+                {
+                    if !header.is_empty() && props.len() < 64 {
+                        props.insert(clipped(header, 80), clipped(value, 500));
+                    }
+                }
+            }
+            records.push(GridInputRecord {
+                index: next_index,
+                name,
+                smiles: source.map(|(_, smiles)| clipped(smiles, 2048)),
+                molblock: molblock.clone(),
+                idcode: None,
+                idcoordinates: None,
+                props,
+                source_byte_start: None,
+                source_byte_end: None,
+            });
+            next_index += 1;
+            if records.len() >= max_records {
+                break;
+            }
+        }
+        if records.len() >= max_records {
+            break;
+        }
+    }
+    Ok(ParsedGridBatch {
+        records,
+        next_cursor: GridCursor {
+            offset,
+            row: row_number,
+            ..GridCursor::default()
+        },
+        next_index,
+        complete: offset >= text.len(),
+    })
+}
+
+fn parse_delimited_rows_as_smiles_batch(
+    text: &str,
+    separator: char,
+    format: &str,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+) -> Result<ParsedGridBatch, String> {
+    // A leading header row is skipped, so a fresh cursor starts past it.
+    let first_line = first_non_empty_line(text);
+    let header_end = first_line
+        .filter(|(line, _)| is_likely_delimited_header(&parse_delimited_line(line, separator)))
+        .map(|(_, after)| after)
+        .unwrap_or(0);
+    let mut records = Vec::new();
+    let mut offset = if cursor.offset == 0 {
+        header_end
+    } else {
+        cursor.offset.min(text.len())
+    };
+    let mut row_number = cursor.row;
+    let mut next_index = start_index;
+    while let Some((line, next_offset)) = line_at(text, offset) {
+        offset = next_offset;
+        if line.trim().is_empty() {
+            continue;
+        }
+        row_number += 1;
+        let cells: Vec<_> = parse_delimited_line(line, separator)
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+        let Some(smiles) = cells.first().filter(|value| looks_like_smiles(value)) else {
+            continue;
+        };
+        let name = cells
+            .get(1)
+            .filter(|value| !value.is_empty())
+            .map(|value| clipped(value, 160))
+            .unwrap_or_else(|| format!("Molecule {}", next_index + 1));
+        let mut props = BTreeMap::new();
+        for (offset, value) in cells.iter().skip(2).enumerate() {
+            if props.len() < 64 {
+                props.insert(format!("Column {}", offset + 3), clipped(value, 500));
+            }
+        }
+        records.push(GridInputRecord {
+            index: next_index,
+            name,
+            smiles: Some(clipped(smiles, 2048)),
+            molblock: None,
+            idcode: None,
+            idcoordinates: None,
+            props,
+            source_byte_start: None,
+            source_byte_end: None,
+        });
+        next_index += 1;
+        if records.len() >= max_records {
+            break;
+        }
+    }
+    let complete = offset >= text.len();
+    if records.is_empty() && complete && start_index == 0 {
+        return Err(format!(
+            "{format} table does not contain supported molecule records"
+        ));
+    }
+    Ok(ParsedGridBatch {
+        records,
+        next_cursor: GridCursor {
+            offset,
+            row: row_number,
+            ..GridCursor::default()
+        },
+        next_index,
+        complete,
+    })
+}
+
+fn insert_records(connection: &Connection, records: &[GridInputRecord]) -> Result<(), String> {
+    insert_records_cancellable(connection, records, None)
+}
+
+fn insert_records_cancellable(
+    connection: &Connection,
+    records: &[GridInputRecord],
+    cancel_token: Option<&AtomicBool>,
+) -> Result<(), String> {
+    if records.is_empty() {
+        return Ok(());
+    }
+    ensure_sdf_indexing_active(cancel_token)?;
+    let tx = connection
+        .unchecked_transaction()
+        .map_err(|err| err.to_string())?;
+    insert_records_in_connection(&tx, records, cancel_token)?;
+    ensure_sdf_indexing_active(cancel_token)?;
+    tx.commit().map_err(|err| err.to_string())
+}
+
+fn insert_records_in_connection(
+    connection: &Connection,
+    records: &[GridInputRecord],
+    cancel_token: Option<&AtomicBool>,
+) -> Result<(), String> {
+    if records.is_empty() {
+        return Ok(());
+    }
+    let mut insert = connection
+        .prepare(
+            "insert into molecules (
+               source_index, name, smiles, molblock, idcode, idcoordinates,
+               molecule_content_sha256, props_json, props_text, search_text,
+               source_byte_start, source_byte_end
+             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        )
+        .map_err(|err| err.to_string())?;
+    for record in records {
+        ensure_sdf_indexing_active(cancel_token)?;
+        insert_record(&mut insert, record)?;
+    }
+    Ok(())
+}
+
+fn insert_record(
+    insert: &mut rusqlite::Statement<'_>,
+    record: &GridInputRecord,
+) -> Result<(), String> {
+    let props_json = serde_json::to_string(&record.props).map_err(|err| err.to_string())?;
+    let props_text = build_props_text(record);
+    let search_text = build_search_text(record);
+    let molecule_content_sha256 = grid_identity::molecule_content_sha256(
+        record.smiles.as_deref(),
+        record.molblock.as_deref(),
+        record.idcode.as_deref(),
+        record.idcoordinates.as_deref(),
+    );
+    insert
+        .execute(params![
+            record.index as i64,
+            record.name,
+            record.smiles,
+            record.molblock,
+            record.idcode,
+            record.idcoordinates,
+            molecule_content_sha256,
+            props_json,
+            props_text,
+            search_text,
+            record.source_byte_start.map(u64_to_sql_i64),
+            record.source_byte_end.map(u64_to_sql_i64),
+        ])
+        .map(|_| ())
+        .map_err(|err| err.to_string())
+}
+
+fn build_search_text(record: &GridInputRecord) -> String {
+    let mut parts = vec![record.name.to_lowercase()];
+    if let Some(smiles) = &record.smiles {
+        parts.push(smiles.to_lowercase());
+    }
+    let props_text = build_props_text(record);
+    if !props_text.is_empty() {
+        parts.push(props_text.to_lowercase());
+    }
+    parts.join("\n")
+}
+
+fn build_props_text(record: &GridInputRecord) -> String {
+    let mut parts = Vec::new();
+    for (key, value) in &record.props {
+        parts.push(key.as_str());
+        parts.push(value.as_str());
+    }
+    parts.join("\n")
+}
+
+fn parse_delimited_line(line: &str, separator: char) -> Vec<String> {
+    let chars: Vec<_> = line.chars().collect();
+    let mut fields = Vec::new();
+    let mut field = String::new();
+    let mut index = 0;
+    let mut in_quotes = false;
+    while index < chars.len() {
+        let ch = chars[index];
+        if ch == '"' {
+            if in_quotes && index + 1 < chars.len() && chars[index + 1] == '"' {
+                field.push(ch);
+                index += 1;
+            } else {
+                in_quotes = !in_quotes;
+            }
+        } else if ch == separator && !in_quotes {
+            fields.push(field);
+            field = String::new();
+        } else {
+            field.push(ch);
+        }
+        index += 1;
+    }
+    fields.push(field);
+    fields
+}
+
+fn decode_saved_grid_cell(value: &str) -> String {
+    let mut decoded = String::with_capacity(value.len());
+    let mut chars = value.chars();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            decoded.push(ch);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => decoded.push('\n'),
+            Some('t') => decoded.push('\t'),
+            Some('\\') => decoded.push('\\'),
+            Some(next) => {
+                decoded.push('\\');
+                decoded.push(next);
+            }
+            None => decoded.push('\\'),
+        }
+    }
+    decoded
+}
+
+fn is_smiles_column(value: &str) -> bool {
+    // "reaction_smiles" already carries "smiles"; a column called plainly "rxn"
+    // or "reaction" is matched exactly so that "reaction_id" stays a data column.
+    value == "smile" || value.contains("smiles") || value == "rxn" || value == "reaction"
+}
+
+fn resolve_smiles_columns(
+    headers: &[String],
+    normalized_headers: &[String],
+    explicit_column: Option<&str>,
+    inferred_indexes: &[usize],
+) -> Result<Vec<usize>, String> {
+    if let Some(column) = explicit_column
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return explicit_smiles_column_index(headers, normalized_headers, column)
+            .map(|index| vec![index]);
+    }
+
+    let named: Vec<_> = normalized_headers
+        .iter()
+        .enumerate()
+        .filter_map(|(index, value)| is_smiles_column(value).then_some(index))
+        .collect();
+    // A named structure column is an explicit schema signal. Do not supplement
+    // it with value-based guesses: molecular formulas such as C17H12ClN3O3 can
+    // be parsed as SMILES-like text and would otherwise duplicate every row.
+    if !named.is_empty() {
+        return Ok(named);
+    }
+
+    let mut indexes = Vec::new();
+    for index in inferred_indexes {
+        if !indexes.contains(index) {
+            indexes.push(*index);
+        }
+    }
+    indexes.sort_unstable();
+    if indexes.is_empty() {
+        Err("missing smiles column".to_string())
+    } else {
+        Ok(indexes)
+    }
+}
+
+fn explicit_smiles_column_index(
+    headers: &[String],
+    normalized_headers: &[String],
+    column: &str,
+) -> Result<usize, String> {
+    let normalized_column = normalize_column_name(column);
+    if let Some(index) = normalized_headers
+        .iter()
+        .position(|header| header == &normalized_column)
+    {
+        return Ok(index);
+    }
+    if let Ok(index) = column.parse::<usize>() {
+        if (1..=headers.len()).contains(&index) {
+            return Ok(index - 1);
+        }
+    }
+    Err(format!("unknown structure column: {column}"))
+}
+
+// Walks the data rows once, counting per column, and stops as soon as every
+// column has seen enough values (or the scan ceiling is reached). Parsing each row
+// once - rather than once per column, as the previous shape did - is what makes
+// this affordable per batch.
+fn infer_smiles_columns_from_source(
+    text: &str,
+    start_offset: usize,
+    column_count: usize,
+    separator: char,
+) -> Vec<usize> {
+    let mut values = vec![0usize; column_count];
+    let mut smiles_values = vec![0usize; column_count];
+    let mut offset = start_offset;
+    let mut scanned = 0usize;
+    while scanned < SMILES_INFERENCE_MAX_SCANNED_ROWS {
+        let Some((line, next_offset)) = line_at(text, offset) else {
+            break;
+        };
+        offset = next_offset;
+        if line.trim().is_empty() {
+            continue;
+        }
+        scanned += 1;
+        let cells = parse_delimited_line(line, separator);
+        for column_index in 0..column_count {
+            let value = cells
+                .get(column_index)
+                .map(|cell| cell.trim())
+                .unwrap_or("");
+            if value.is_empty() {
+                continue;
+            }
+            values[column_index] += 1;
+            if looks_like_smiles(value) || looks_like_reaction_smiles(value) {
+                smiles_values[column_index] += 1;
+            }
+        }
+        if values
+            .iter()
+            .all(|count| *count >= SMILES_INFERENCE_SAMPLE_VALUES)
+        {
+            break;
+        }
+    }
+    (0..column_count)
+        .filter(|index| is_likely_smiles_column(values[*index], smiles_values[*index]))
+        .collect()
+}
+
+fn is_likely_smiles_column(non_empty: usize, valid: usize) -> bool {
+    if non_empty == 0 || valid == 0 {
+        return false;
+    }
+    if valid < 2 && non_empty > 2 {
+        return false;
+    }
+    valid * 5 >= non_empty * 4
+}
+
+fn column_label(headers: &[String], index: usize) -> String {
+    headers
+        .get(index)
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("'{value}'"))
+        .unwrap_or_else(|| format!("column {}", index + 1))
+}
+
+pub(crate) fn delimited_smiles_column_choices(
+    extension: &str,
+    text: &str,
+) -> Result<Vec<GridDelimitedColumnChoice>, String> {
+    let separator = match extension {
+        "csv" => ',',
+        "tsv" => '\t',
+        _ => return Err(format!("Unsupported delimited extension: {extension}")),
+    };
+    let Some((header_line, after_header)) = first_non_empty_line(text) else {
+        return Ok(Vec::new());
+    };
+    let headers: Vec<_> = parse_delimited_line(header_line, separator)
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .collect();
+    if !is_likely_delimited_header(&headers) {
+        return Ok(Vec::new());
+    }
+    let normalized_headers: Vec<_> = headers
+        .iter()
+        .map(|value| normalize_column_name(value))
+        .collect();
+    let named: Vec<_> = normalized_headers
+        .iter()
+        .enumerate()
+        .filter_map(|(index, value)| is_smiles_column(value).then_some(index))
+        .collect();
+    let indexes = if named.is_empty() {
+        infer_smiles_columns_from_source(text, after_header, headers.len(), separator)
+    } else {
+        named
+    };
+    Ok(indexes
+        .into_iter()
+        .map(|index| GridDelimitedColumnChoice {
+            index: index + 1,
+            name: headers
+                .get(index)
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .unwrap_or("Column")
+                .to_string(),
+        })
+        .collect())
+}
+
+fn normalize_column_name(value: &str) -> String {
+    value.trim().to_lowercase().replace(' ', "_")
+}
+
+fn is_likely_delimited_header(cells: &[String]) -> bool {
+    cells
+        .iter()
+        .map(|value| normalize_column_name(value))
+        .any(|value| {
+            is_smiles_column(&value)
+                || matches!(
+                    value.as_str(),
+                    "id" | "name" | "title" | "compound" | "molecule" | "structure" | "inchi"
+                )
+        })
+}
+
+fn looks_like_smiles(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.contains(char::is_whitespace) {
+        return false;
+    }
+    if trimmed.starts_with("InChI=") {
+        return false;
+    }
+    if is_inchi_key(trimmed) {
+        return false;
+    }
+    let lowered = trimmed.to_lowercase();
+    if matches!(
+        lowered.as_str(),
+        "smiles"
+            | "smile"
+            | "id"
+            | "name"
+            | "title"
+            | "compound"
+            | "molecule"
+            | "structure"
+            | "inchi"
+    ) {
+        return false;
+    }
+    let mut chars = trimmed.chars().peekable();
+    let mut has_atom = false;
+    let mut has_aromatic_atom = false;
+    let mut has_structural_marker = false;
+    while let Some(ch) = chars.next() {
+        if ch == '[' {
+            let mut has_bracket_atom = false;
+            let mut closed_bracket = false;
+            for bracket_ch in chars.by_ref() {
+                if bracket_ch == ']' {
+                    closed_bracket = true;
+                    break;
+                }
+                if bracket_ch.is_ascii_alphabetic() {
+                    has_bracket_atom = true;
+                }
+            }
+            if !closed_bracket || !has_bracket_atom {
+                return false;
+            }
+            has_atom = true;
+            has_structural_marker = true;
+        } else if ch.is_ascii_digit() || "]=#@+-/\\().,:$%".contains(ch) {
+            has_structural_marker = true;
+        } else if matches!((ch, chars.peek()), ('B', Some(&'r')) | ('C', Some(&'l'))) {
+            has_atom = true;
+            chars.next();
+        } else if "BCNOFPSIKH".contains(ch) {
+            has_atom = true;
+        } else if "bcnops".contains(ch) {
+            has_atom = true;
+            has_aromatic_atom = true;
+        } else {
+            return false;
+        }
+    }
+    has_atom && (!has_aromatic_atom || has_structural_marker)
+}
+
+// A reaction SMILES is `reactants>agents>products`; the agent part is often
+// empty. Each side is a normal SMILES, so the components are validated with the
+// same reader the molecule columns use.
+fn looks_like_reaction_smiles(value: &str) -> bool {
+    let trimmed = value.trim();
+    let parts: Vec<&str> = trimmed.split('>').collect();
+    if parts.len() != 3 || parts[0].trim().is_empty() || parts[2].trim().is_empty() {
+        return false;
+    }
+    parts
+        .iter()
+        .filter(|part| !part.trim().is_empty())
+        .all(|part| part.split('.').all(looks_like_smiles))
+}
+
+fn is_inchi_key(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 27 || bytes[14] != b'-' || bytes[25] != b'-' {
+        return false;
+    }
+    bytes
+        .iter()
+        .enumerate()
+        .all(|(index, byte)| index == 14 || index == 25 || byte.is_ascii_uppercase())
+}
+
+fn parse_sdf_properties(lines: &[String]) -> BTreeMap<String, String> {
+    let mut props = BTreeMap::new();
+    let mut index = 0;
+    while index < lines.len() {
+        let line = &lines[index];
+        if !line.starts_with('>') {
+            index += 1;
+            continue;
+        }
+        let name = property_name(line);
+        index += 1;
+        let mut values = Vec::new();
+        while index < lines.len() {
+            let value_line = &lines[index];
+            if value_line.starts_with('>') {
+                break;
+            }
+            if value_line.trim().is_empty() {
+                index += 1;
+                break;
+            }
+            values.push(value_line.as_str());
+            index += 1;
+        }
+        if let Some(name) = name.filter(|value| !value.is_empty()) {
+            let value = values.join("\n").trim().to_string();
+            if !value.is_empty() && props.len() < 64 {
+                props.insert(clipped(&name, 80), clipped(&value, 500));
+            }
+        }
+    }
+    props
+}
+
+fn property_name(line: &str) -> Option<String> {
+    let open = line.find('<')?;
+    let close = line[open + 1..].find('>')? + open + 1;
+    (open < close).then(|| line[open + 1..close].trim().to_string())
+}
+
+fn extract_molblock(lines: &[String]) -> String {
+    let mut molblock_lines =
+        if let Some(end) = lines.iter().position(|line| line.trim() == "M  END") {
+            lines[..=end].to_vec()
+        } else {
+            lines.to_vec()
+        };
+    normalize_molblock_header(&mut molblock_lines);
+    molblock_lines.join("\n")
+}
+
+fn normalize_molblock_header(lines: &mut Vec<String>) {
+    let Some(mut counts_index) = lines.iter().position(|line| is_molfile_counts_line(line)) else {
+        return;
+    };
+    while counts_index < 3 {
+        lines.insert(counts_index, String::new());
+        counts_index += 1;
+    }
+}
+
+fn is_molfile_counts_line(line: &str) -> bool {
+    let fields: Vec<&str> = line.split_whitespace().collect();
+    fields.len() >= 10
+        && matches!(fields.last(), Some(&"V2000" | &"V3000"))
+        && fields[0].parse::<usize>().is_ok()
+        && fields[1].parse::<usize>().is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use burette_compute_protocol::{
+        AnalysisFilter, CapabilityMaturity, ColumnFilterKind, FilteredGridScope, GridScope,
+        GridTextQuery, RepresentativePolicy, WorkflowTemplateId,
+    };
+
+    fn temp_runtime_dir() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("burette-grid-store-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create temp runtime dir");
+        dir
+    }
+
+    fn build_store(
+        runtime_dir: &Path,
+        extension: &str,
+        data: &[u8],
+    ) -> (PathBuf, GridCollectionSummary) {
+        let handle = build_grid_store(runtime_dir, extension, data)
+            .expect("build grid store")
+            .expect("collection");
+        (handle.database_path, handle.summary)
+    }
+
+    fn wait_for_index_ready(database_path: &Path) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while std::time::Instant::now() < deadline {
+            let connection = Connection::open(database_path).expect("open database");
+            if read_index_state(&connection)
+                .expect("read index state")
+                .index_ready
+            {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("grid index did not become ready");
+    }
+
+    fn wait_for_path_removed(path: &Path) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while path.exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{} was not removed by the Grid cleanup worker",
+                path.display()
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn builds_datawarrior_store_with_idcode_coordinates() {
+        let runtime_dir = temp_runtime_dir();
+        let data = include_str!("../../../../../samples/collections/datawarrior/mini.dwar");
+        let (database_path, summary) = build_store(&runtime_dir, "dwar", data.as_bytes());
+        assert_eq!(summary.format, "dwar");
+        assert_eq!(summary.records_total, 2);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch DataWarrior page");
+        assert_eq!(page.rows[0].name, "Ethanol");
+        assert_eq!(page.rows[0].idcode.as_deref(), Some("eMHAIh@"));
+        assert_eq!(page.rows[0].idcoordinates.as_deref(), Some("!B_vq?Dp"));
+        assert_eq!(
+            page.rows[0].props.get("Activity").map(String::as_str),
+            Some("1.25")
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn bounds_datawarrior_structure_column_properties() {
+        let runtime_dir = temp_runtime_dir();
+        let structure_column = format!("Structure_{}", "s".repeat(600));
+        let data = format!(
+            "<datawarrior-fileinfo>\n<version=\"3.3\">\n<rowcount=\"1\">\n</datawarrior-fileinfo>\n<column properties>\n<columnName=\"{structure_column}\">\n<columnProperty=\"specialType\tidcode\">\n</column properties>\n{structure_column}\tName\neMHAIh@\tEthanol\n"
+        );
+
+        let (database_path, summary) = build_store(&runtime_dir, "dwar", data.as_bytes());
+        assert_eq!(summary.records_total, 1);
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch bounded DataWarrior record");
+        assert_eq!(page.rows.len(), 1);
+        assert_eq!(page.rows[0].props["Structure column"].chars().count(), 500);
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn builds_csv_store_and_fetches_sorted_pages() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.format, "csv");
+        assert_eq!(summary.records_total, 3);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "name".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 2,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.total_rows, 3);
+        assert_eq!(page.rows.len(), 2);
+        assert_eq!(page.rows[0].name, "Benzene");
+        assert_eq!(
+            page.rows[0].props.get("series").map(String::as_str),
+            Some("Beta")
+        );
+        assert_eq!(page.rows[1].name, "Ethanol");
+
+        let filtered = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "gamma".to_string(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch filtered page");
+        assert_eq!(filtered.total_rows, 1);
+        assert_eq!(filtered.rows.len(), 1);
+        assert_eq!(filtered.rows[0].name, "Ethylamine");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn fetches_table_column_filtered_pages() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "smiles,name,series,score\nCCO,Ethanol,Alpha,1.5\nc1ccccc1,Benzene,Beta,3.0\nCCN,Ethylamine,Alpha,2.2\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 3);
+
+        let property_filtered = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: vec![
+                    GridColumnFilter {
+                        id: "prop:series".to_string(),
+                        filter_type: ColumnFilterKind::Text,
+                        text: Some("alpha".to_string()),
+                        min: None,
+                        max: None,
+                    },
+                    GridColumnFilter {
+                        id: "prop:score".to_string(),
+                        filter_type: ColumnFilterKind::Number,
+                        text: None,
+                        min: Some(2.0),
+                        max: None,
+                    },
+                ],
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch property filtered page");
+        assert_eq!(property_filtered.total_rows, 1);
+        assert_eq!(property_filtered.rows[0].name, "Ethylamine");
+
+        let name_filtered = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: vec![GridColumnFilter {
+                    id: "name".to_string(),
+                    filter_type: ColumnFilterKind::Text,
+                    text: Some("benz".to_string()),
+                    min: None,
+                    max: None,
+                }],
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch name filtered page");
+        assert_eq!(name_filtered.total_rows, 1);
+        assert_eq!(name_filtered.rows[0].name, "Benzene");
+
+        let index_filtered = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: vec![GridColumnFilter {
+                    id: "index".to_string(),
+                    filter_type: ColumnFilterKind::Number,
+                    text: None,
+                    min: Some(2.0),
+                    max: Some(3.0),
+                }],
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch index filtered page");
+        assert_eq!(
+            index_filtered
+                .rows
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Benzene", "Ethylamine"]
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn fetches_filters_and_sorts_descriptor_values() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 3);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch initial page");
+        let connection = Connection::open(&database_path).expect("open database");
+        for row in &page.rows {
+            let molecular_weight = match row.name.as_str() {
+                "Ethanol" => 46.07,
+                "Benzene" => 78.11,
+                "Ethylamine" => 45.08,
+                _ => unreachable!("unexpected row"),
+            };
+            connection
+                .execute(
+                    "insert into descriptor_values (
+                        molecule_id, descriptor_id, label, value_real, value_text, missing_kind, error_text, updated_at_ms
+                    ) values (?1, ?2, ?3, ?4, null, null, null, ?5)",
+                    params![
+                        row.row_id,
+                        "MW",
+                        "Molecular weight",
+                        molecular_weight,
+                        current_time_millis()
+                    ],
+                )
+                .expect("insert descriptor value");
+        }
+
+        let filtered = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: vec![
+                    GridDescriptorFilter {
+                        id: "MW".to_string(),
+                        min: Some(46.0),
+                        max: None,
+                    },
+                    GridDescriptorFilter {
+                        id: "MW".to_string(),
+                        min: None,
+                        max: Some(80.0),
+                    },
+                ],
+                descriptor_sort: Some(GridDescriptorSort {
+                    id: "MW".to_string(),
+                    direction: "desc".to_string(),
+                }),
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch descriptor filtered page");
+
+        assert_eq!(filtered.total_rows, 2);
+        assert_eq!(filtered.descriptor_ids, vec!["MW"]);
+        assert_eq!(
+            filtered
+                .rows
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Benzene", "Ethanol"]
+        );
+        let benzene_mw = filtered.rows[0]
+            .descriptors
+            .get("MW")
+            .and_then(|cell| cell.value.as_ref())
+            .and_then(serde_json::Value::as_f64);
+        assert_eq!(benzene_mw, Some(78.11));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn analysis_filtered_page_matches_the_shared_predicate() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "smiles,name\nCCO,Ethanol\nc1ccccc1,Benzene\nCCN,Ethylamine\n";
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        wait_for_index_ready(&database_path);
+        let connection = Connection::open(&database_path).expect("open database");
+        let run_id = uuid::Uuid::from_u128(7);
+        let (document_fingerprint_sha256, source_revision) = connection
+            .query_row(
+                "select document_fingerprint_sha256, source_revision
+                 from grid_metadata where id = 1",
+                [],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?)),
+            )
+            .expect("read current Grid identity");
+        let molecules = {
+            let mut statement = connection
+                .prepare(
+                    "select id, source_index, molecule_content_sha256
+                     from molecules order by source_index",
+                )
+                .expect("prepare molecule identities");
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, u64>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                })
+                .expect("query molecule identities")
+                .collect::<Result<Vec<_>, _>>()
+                .expect("collect molecule identities");
+            rows
+        };
+        drop(connection);
+        grid_analysis::apply_analysis_run(
+            &database_path,
+            &grid_analysis::GridAnalysisApplyInput {
+                run_id,
+                workflow_template: WorkflowTemplateId::ClusterV1,
+                document_fingerprint_sha256,
+                source_revision,
+                snapshot_id: uuid::Uuid::from_u128(8),
+                snapshot_sha256: "c".repeat(64),
+                normalized_settings_sha256: "b".repeat(64),
+                maturity: CapabilityMaturity::Experimental,
+                representative_policy: RepresentativePolicy::ButinaMaxNeighborsV1,
+                provenance: serde_json::json!({}),
+                created_at_ms: 1,
+                values: molecules
+                    .into_iter()
+                    .map(|(molecule_id, source_index, molecule_content_sha256)| {
+                        grid_analysis::GridAnalysisValueInput {
+                            molecule_id,
+                            source_index,
+                            molecule_content_sha256,
+                            value_id: "clusterId".into(),
+                            value: grid_analysis::GridAnalysisValue::Integer(
+                                ((source_index + 1) * 10) as i64,
+                            ),
+                        }
+                    })
+                    .collect(),
+                artifacts: Vec::new(),
+            },
+        )
+        .expect("apply typed analysis values");
+
+        let analysis_filters = vec![AnalysisFilter {
+            run_id,
+            value_id: "clusterId".to_string(),
+            min: Some(15.0),
+            max: Some(25.0),
+        }];
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: analysis_filters.clone(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch analysis-filtered page");
+        let plan = grid_predicate::plan_grid_predicate(
+            &GridTextQuery::Text {
+                text: String::new(),
+            },
+            &[],
+            &[],
+            &analysis_filters,
+        )
+        .expect("plan matching predicate");
+        let connection = Connection::open(&database_path).expect("reopen database");
+        let direct_sql = format!(
+            "select source_index from molecules where {} order by source_index",
+            plan.predicate_sql
+        );
+        let direct_indexes = connection
+            .prepare(&direct_sql)
+            .expect("prepare direct predicate")
+            .query_map(params_from_iter(plan.params.iter()), |row| row.get(0))
+            .expect("query direct predicate")
+            .collect::<Result<Vec<usize>, _>>()
+            .expect("collect direct indexes");
+
+        assert_eq!(
+            page.rows.iter().map(|row| row.index).collect::<Vec<_>>(),
+            direct_indexes
+        );
+        assert_eq!(direct_indexes, vec![1]);
+        assert_eq!(page.analysis_columns.len(), 1);
+        assert_eq!(page.analysis_columns[0].run_id, run_id.to_string());
+        assert_eq!(page.analysis_columns[0].value_id, "clusterId");
+        assert_eq!(page.analysis_columns[0].label, "Cluster ID");
+        assert_eq!(page.analysis_columns[0].value_kind, "integer");
+        assert_eq!(
+            page.rows[0]
+                .analyses
+                .get("clusterId")
+                .map(|cell| &cell.value),
+            Some(&serde_json::json!(20))
+        );
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn duplicate_descriptor_page_filters_match_the_normalized_scope_predicate() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "smiles,name\nCCO,Ethanol\nc1ccccc1,Benzene\nCCN,Ethylamine\n";
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        wait_for_index_ready(&database_path);
+        let connection = Connection::open(&database_path).expect("open database");
+        let rows = {
+            let mut statement = connection
+                .prepare("select id, name from molecules order by source_index")
+                .expect("prepare molecules");
+            statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })
+                .expect("query molecules")
+                .collect::<Result<Vec<_>, _>>()
+                .expect("collect molecules")
+        };
+        for (molecule_id, name) in rows {
+            let value = match name.as_str() {
+                "Ethanol" => 46.07,
+                "Benzene" => 78.11,
+                "Ethylamine" => 45.08,
+                _ => unreachable!("unexpected molecule"),
+            };
+            connection
+                .execute(
+                    "insert into descriptor_values(
+                       molecule_id, descriptor_id, label, value_real, value_text,
+                       missing_kind, error_text, updated_at_ms
+                     ) values (?1, 'MW', 'Molecular weight', ?2, null, null, null, 1)",
+                    params![molecule_id, value],
+                )
+                .expect("insert descriptor");
+        }
+        drop(connection);
+
+        let descriptor_filters = vec![
+            GridDescriptorFilter {
+                id: "MW".to_string(),
+                min: Some(46.0),
+                max: None,
+            },
+            GridDescriptorFilter {
+                id: "MW".to_string(),
+                min: None,
+                max: Some(80.0),
+            },
+        ];
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: descriptor_filters.clone(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch duplicate descriptor filters");
+        let GridScope::Filtered(normalized) = GridScope::Filtered(FilteredGridScope {
+            query: GridTextQuery::Text {
+                text: String::new(),
+            },
+            column_filters: Vec::new(),
+            descriptor_filters,
+            analysis_filters: Vec::new(),
+        })
+        .normalized()
+        .expect("normalize duplicate descriptor filters") else {
+            unreachable!("test creates a filtered scope")
+        };
+        let plan = grid_predicate::plan_grid_predicate(
+            &normalized.query,
+            &normalized.column_filters,
+            &normalized.descriptor_filters,
+            &normalized.analysis_filters,
+        )
+        .expect("plan normalized descriptor predicate");
+        let direct_sql = format!(
+            "select source_index from molecules where {} order by source_index",
+            plan.predicate_sql
+        );
+        let direct_connection = Connection::open(&database_path).expect("reopen database");
+        let direct_indexes = direct_connection
+            .prepare(&direct_sql)
+            .expect("prepare normalized predicate")
+            .query_map(params_from_iter(plan.params.iter()), |row| {
+                row.get::<_, u64>(0)
+            })
+            .expect("query normalized predicate")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect normalized indexes");
+
+        assert_eq!(
+            page.rows
+                .iter()
+                .map(|row| row.index as u64)
+                .collect::<Vec<_>>(),
+            direct_indexes
+        );
+        assert_eq!(direct_indexes, vec![0, 1]);
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn sorts_descriptor_values_without_filtering() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 3);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch initial page");
+        let connection = Connection::open(&database_path).expect("open database");
+        for row in &page.rows {
+            let Some(molecular_weight) = (match row.name.as_str() {
+                "Ethanol" => Some(46.07),
+                "Benzene" => Some(78.11),
+                "Ethylamine" => None,
+                _ => unreachable!("unexpected row"),
+            }) else {
+                continue;
+            };
+            connection
+                .execute(
+                    "insert into descriptor_values (
+                        molecule_id, descriptor_id, label, value_real, value_text, missing_kind, error_text, updated_at_ms
+                    ) values (?1, ?2, ?3, ?4, null, null, null, ?5)",
+                    params![
+                        row.row_id,
+                        "MW",
+                        "Molecular weight",
+                        molecular_weight,
+                        current_time_millis()
+                    ],
+                )
+                .expect("insert descriptor value");
+        }
+
+        let sorted = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: Some(GridDescriptorSort {
+                    id: "MW".to_string(),
+                    direction: "asc".to_string(),
+                }),
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch descriptor sorted page");
+
+        assert_eq!(
+            sorted
+                .rows
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Ethanol", "Benzene", "Ethylamine"]
+        );
+        assert!(!sorted.rows[2].descriptors.contains_key("MW"));
+
+        let searched = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "alpha".to_string(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: Some(GridDescriptorSort {
+                    id: "MW".to_string(),
+                    direction: "desc".to_string(),
+                }),
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch descriptor sorted search page");
+        assert_eq!(searched.total_rows, 1);
+        assert_eq!(searched.rows[0].name, "Ethanol");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn fetches_descriptor_cells_for_page_rows_in_batch() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 3);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch initial page");
+        let connection = Connection::open(&database_path).expect("open database");
+        for row in &page.rows {
+            let (mw, bucket) = match row.name.as_str() {
+                "Ethanol" => (46.07, "small"),
+                "Benzene" => (78.11, "aromatic"),
+                "Ethylamine" => (45.08, "amine"),
+                _ => unreachable!("unexpected row"),
+            };
+            connection
+                .execute(
+                    "insert into descriptor_values (
+                        molecule_id, descriptor_id, label, value_real, value_text, missing_kind, error_text, updated_at_ms
+                    ) values (?1, ?2, ?3, ?4, null, null, null, ?5)",
+                    params![row.row_id, "MW", "Molecular weight", mw, current_time_millis()],
+                )
+                .expect("insert numeric descriptor value");
+            connection
+                .execute(
+                    "insert into descriptor_values (
+                        molecule_id, descriptor_id, label, value_real, value_text, missing_kind, error_text, updated_at_ms
+                    ) values (?1, ?2, ?3, null, ?4, null, null, ?5)",
+                    params![row.row_id, "bucket", "Bucket", bucket, current_time_millis()],
+                )
+                .expect("insert text descriptor value");
+        }
+
+        let fetched = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page with descriptor cells");
+
+        assert_eq!(fetched.rows.len(), 3);
+        assert_eq!(
+            fetched.rows[0]
+                .descriptors
+                .get("MW")
+                .and_then(|cell| cell.value.as_ref())
+                .and_then(serde_json::Value::as_f64),
+            Some(46.07)
+        );
+        assert_eq!(
+            fetched.rows[1]
+                .descriptors
+                .get("bucket")
+                .and_then(|cell| cell.value.as_ref())
+                .and_then(serde_json::Value::as_str),
+            Some("aromatic")
+        );
+        assert_eq!(fetched.rows[2].descriptors.len(), 2);
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn descriptor_summary_counts_only_row_level_failures_as_failed() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch initial page");
+
+        let mut descriptor_connection =
+            open_descriptor_source(&database_path).expect("open descriptor source");
+        replace_descriptor_values_in_database(
+            &mut descriptor_connection,
+            page.rows[0].row_id,
+            &[
+                GridDescriptorValueInput {
+                    id: "MW".into(),
+                    label: "Molecular weight".into(),
+                    value: Some(serde_json::Value::from(46.07)),
+                    missing_kind: None,
+                    error_text: None,
+                },
+                GridDescriptorValueInput {
+                    id: "ABC".into(),
+                    label: "ABC".into(),
+                    value: None,
+                    missing_kind: Some("Missing".into()),
+                    error_text: Some("descriptor is not available".into()),
+                },
+            ],
+        )
+        .expect("store descriptor values");
+        replace_descriptor_values_in_database(
+            &mut descriptor_connection,
+            page.rows[1].row_id,
+            &[GridDescriptorValueInput {
+                id: "error".into(),
+                label: "Descriptor error".into(),
+                value: None,
+                missing_kind: None,
+                error_text: Some("SMILES did not parse".into()),
+            }],
+        )
+        .expect("store row-level descriptor error");
+
+        let summary =
+            descriptor_run_summary_in_database(&database_path).expect("fetch descriptor summary");
+        assert_eq!(summary.total_rows, 3);
+        assert_eq!(summary.calculated_rows, 1);
+        assert_eq!(summary.failed_rows, 1);
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn fetches_descriptor_source_rows_in_batches() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 3);
+        assert_eq!(
+            descriptor_source_row_count(&database_path).expect("count descriptor source rows"),
+            3
+        );
+
+        let descriptor_connection =
+            open_descriptor_source(&database_path).expect("open descriptor source");
+        let first_batch =
+            descriptor_source_row_batch(&descriptor_connection, -1, 2).expect("fetch first batch");
+        assert_eq!(
+            first_batch
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Ethanol", "Benzene"]
+        );
+
+        let resume_from = first_batch
+            .last()
+            .expect("first batch is not empty")
+            .source_index;
+        let second_batch = descriptor_source_row_batch(&descriptor_connection, resume_from, 2)
+            .expect("fetch second batch");
+        assert_eq!(
+            second_batch
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Ethylamine"]
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn ingests_canonical_smiles_csv_fixture() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "compound_id,canonical_smiles,pIC50,vendor\n\
+                   CMPD-001,CCO,5.1,TestVendor\n\
+                   CMPD-002,c1ccccc1,6.4,TestVendor\n\
+                   CMPD-003,CC(=O)O,4.8,Reference\n\
+                   CMPD-004,CCN(CC)CC,7.2,Reference\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.format, "csv");
+        assert_eq!(summary.records_total, 4);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 144,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.total_rows, 4);
+        assert_eq!(page.rows.len(), 4);
+        assert_eq!(page.rows[0].name, "CMPD-001");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn named_smiles_column_does_not_infer_formula_as_a_second_structure() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "SMILES,Name,Formula\n\
+                   CCO,Ethanol,C2H6O\n\
+                   c1ccccc1,Benzene,C6H6\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 2);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.total_rows, 2);
+        assert_eq!(page.rows[0].name, "Ethanol");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(
+            page.rows[0].props.get("Formula").map(String::as_str),
+            Some("C2H6O")
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn reopens_saved_grid_rows_with_molblocks_or_smiles() {
+        let csv = "burette_encoding,index,name,smiles,molblock\n\
+                   escaped-v1,0,From SDF,,Molecule\\n  Burette\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n\
+                   escaped-v1,1,From SMILES,CC,\n";
+        let batch = parse_delimited_table_batch(
+            csv,
+            ',',
+            GridCursor::default(),
+            0,
+            100,
+            &GridParseOptions {
+                smiles_column: Some("smiles".into()),
+                include_single_sdf: false,
+            },
+        )
+        .expect("parse saved grid CSV");
+
+        assert_eq!(batch.records.len(), 2);
+        assert_eq!(batch.records[0].name, "From SDF");
+        assert_eq!(batch.records[0].smiles, None);
+        assert!(batch.records[0]
+            .molblock
+            .as_deref()
+            .is_some_and(|molblock| molblock.contains("\nM  END")));
+        assert_eq!(batch.records[1].name, "From SMILES");
+        assert_eq!(batch.records[1].smiles.as_deref(), Some("CC"));
+        assert_eq!(batch.records[1].molblock, None);
+    }
+
+    #[test]
+    fn reopens_saved_grid_cells_with_reversible_escapes() {
+        let csv = "burette_encoding,index,name,smiles,molblock,Note\n\
+                   escaped-v1,0,Path\\\\name,,Molecule \\\\ literal\\nM  END,Line 1\\nLine 2 \\\\ tail\n";
+        let batch = parse_delimited_table_batch(
+            csv,
+            ',',
+            GridCursor::default(),
+            0,
+            100,
+            &GridParseOptions {
+                smiles_column: Some("smiles".to_string()),
+                include_single_sdf: false,
+            },
+        )
+        .expect("parse escaped saved row");
+
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].name, r"Path\name");
+        assert_eq!(
+            batch.records[0].molblock.as_deref(),
+            Some("Molecule \\ literal\nM  END")
+        );
+        assert_eq!(
+            batch.records[0].props.get("Note").map(String::as_str),
+            Some("Line 1\nLine 2 \\ tail")
+        );
+    }
+
+    #[test]
+    fn accepts_molblock_only_rows_beside_multiple_smiles_columns() {
+        let csv = "burette_encoding,name,target_smiles,proposal_smiles,molblock\n\
+                   escaped-v1,From SDF,,,Molecule\\n  Burette\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n";
+        let batch = parse_delimited_table_batch(
+            csv,
+            ',',
+            GridCursor::default(),
+            0,
+            100,
+            &GridParseOptions::default(),
+        )
+        .expect("parse molblock-only row");
+
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].name, "From SDF");
+        assert_eq!(batch.records[0].smiles, None);
+        assert!(batch.records[0].molblock.is_some());
+    }
+
+    #[test]
+    fn ingests_all_smiles_columns_from_calibration_csv() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "target_smiles,target_inchi_key,proposal_smiles,spec_name\n\
+                   CCO,LFQSCWFLJHTTHZ,CCN,MassSpecGymID0001\n\
+                   c1ccccc1,UHOVQNZJYSORNB,CCCl,MassSpecGymID0002\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.format, "csv");
+        assert_eq!(summary.records_total, 4);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.total_rows, 4);
+        assert_eq!(page.rows[0].name, "Molecule 1 target_smiles");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(page.rows[1].name, "Molecule 1 proposal_smiles");
+        assert_eq!(page.rows[1].smiles.as_deref(), Some("CCN"));
+        assert_eq!(
+            page.rows[0].props.get("CSV row").map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            page.rows[0].props.get("SMILES column").map(String::as_str),
+            Some("target_smiles")
+        );
+        assert_eq!(
+            page.rows[1].props.get("SMILES column").map(String::as_str),
+            Some("proposal_smiles")
+        );
+        assert!(!page.rows[0].props.contains_key("proposal_smiles"));
+        assert!(!page.rows[1].props.contains_key("target_smiles"));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    fn reaction_page(database_path: &Path) -> GridPageResult {
+        fetch_page(
+            database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch reaction page")
+    }
+
+    // Real MDL fixtures, shared with the node reaction tests.
+    const AMIDATION_RXN: &str =
+        include_str!("../../../../../tests/fixtures/reactions/amidation.rxn");
+    const THREE_REACTIONS_RDF: &str =
+        include_str!("../../../../../tests/fixtures/reactions/three-reactions.rdf");
+
+    // A file that only carries the extension is the wrong file, not a broken
+    // reaction: it must not become a row holding a molblock no renderer reads.
+    #[test]
+    fn text_without_a_reaction_header_produces_no_rxn_row() {
+        let runtime_dir = temp_runtime_dir();
+        let built = build_grid_store(
+            &runtime_dir,
+            "rxn",
+            b"smiles,name\nCCO,ethanol\nCCN,ethylamine\n",
+        )
+        .expect("build grid store");
+        // No record means no collection at all, so the file falls through to the
+        // preview that can actually read it instead of opening as one dead row.
+        assert!(built.is_none());
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    // The RXN block reaches the row whole: the grid draws a reaction from it and
+    // the reaction columns read its parts, so losing a line here loses both.
+    #[test]
+    fn ingests_a_reaction_file_as_one_row() {
+        let runtime_dir = temp_runtime_dir();
+        let rxn = AMIDATION_RXN;
+
+        let (database_path, summary) = build_store(&runtime_dir, "rxn", rxn.as_bytes());
+        assert_eq!(summary.format, "rxn");
+        assert!(summary.has_molecules);
+        assert_eq!(summary.records_total, 1);
+
+        let page = reaction_page(&database_path);
+        assert_eq!(page.total_rows, 1);
+        assert_eq!(page.rows[0].name, "Amidation");
+        let molblock = page.rows[0].molblock.as_deref().unwrap_or_default();
+        assert!(molblock.starts_with("$RXN"), "row keeps the reaction block");
+        assert_eq!(molblock.matches("$MOL").count(), 3);
+        assert_eq!(page.rows[0].smiles, None);
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn ingests_an_rdfile_as_one_row_per_reaction() {
+        let runtime_dir = temp_runtime_dir();
+
+        let (database_path, summary) =
+            build_store(&runtime_dir, "rdf", THREE_REACTIONS_RDF.as_bytes());
+        assert_eq!(summary.format, "rdf");
+        assert_eq!(summary.records_total, 3);
+
+        let page = reaction_page(&database_path);
+        assert_eq!(page.total_rows, 3);
+        // The $DTYPE/$DATUM fields become row properties, and an ID field names
+        // the row the way an SDF Name field does.
+        assert_eq!(page.rows[0].name, "RXN-1");
+        assert_eq!(page.rows[1].name, "RXN-2");
+        assert_eq!(
+            page.rows[0].props.get("Yield").map(String::as_str),
+            Some("88")
+        );
+        assert_eq!(
+            page.rows[1].props.get("Yield").map(String::as_str),
+            Some("61")
+        );
+        for row in &page.rows {
+            let molblock = row.molblock.as_deref().unwrap_or_default();
+            assert!(molblock.starts_with("$RXN"));
+            assert!(!molblock.contains("$DTYPE"), "fields stay out of the block");
+            // The `$MOL` separators inside the reaction block are what divide its
+            // components; dropping them as RDfile markers would fuse them.
+            assert!(
+                molblock.matches("$MOL").count() >= 3,
+                "the reaction keeps its component separators"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    // Batching an RDfile has to resume at a record boundary, the way the SDF
+    // parser does; a cursor left mid-record would duplicate or drop reactions.
+    #[test]
+    fn rdfile_batches_resume_at_the_next_record() {
+        let mut rdf = String::from("$RDFILE 1\n");
+        for index in 0..5 {
+            rdf.push_str(&format!(
+                "$RFMT\n$RXN\nReaction {index}\n  Burette\n\n  1  1\n$MOL\nM  END\n$DTYPE ID\n$DATUM R{index}\n"
+            ));
+        }
+
+        let first = parse_rdf_batch(&rdf, GridCursor::default(), 0, 2);
+        assert_eq!(first.records.len(), 2);
+        assert_eq!(first.next_index, 2);
+        assert!(!first.complete);
+        assert_eq!(first.records[0].name, "R0");
+
+        let second = parse_rdf_batch(&rdf, first.next_cursor, first.next_index, 2);
+        assert_eq!(second.records.len(), 2);
+        assert_eq!(second.records[0].name, "R2");
+
+        let third = parse_rdf_batch(&rdf, second.next_cursor, second.next_index, 2);
+        assert_eq!(third.records.len(), 1);
+        assert_eq!(third.records[0].name, "R4");
+        assert!(third.complete);
+    }
+
+    // A reaction SMILES column has to be found the way a molecule SMILES column
+    // is, both by its header and by its values.
+    #[test]
+    fn ingests_a_reaction_smiles_csv_column() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "id,rxn,yield\n\
+                   R-1,CC(=O)O.NCC>>CCNC(C)=O,88\n\
+                   R-2,c1ccccc1C(=O)O.CCO>>CCOC(=O)c1ccccc1,61\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert!(summary.has_molecules);
+        let page = reaction_page(&database_path);
+        assert_eq!(page.total_rows, 2);
+        assert_eq!(
+            page.rows[0].smiles.as_deref(),
+            Some("CC(=O)O.NCC>>CCNC(C)=O")
+        );
+
+        let unnamed = temp_runtime_dir();
+        let inferred = "id,structure_column,yield\n\
+                        R-1,CC(=O)O.NCC>>CCNC(C)=O,88\n\
+                        R-2,c1ccccc1C(=O)O.CCO>>CCOC(=O)c1ccccc1,61\n";
+        let (inferred_path, inferred_summary) = build_store(&unnamed, "csv", inferred.as_bytes());
+        assert!(inferred_summary.has_molecules, "values alone identify it");
+        assert_eq!(
+            reaction_page(&inferred_path).rows[0].smiles.as_deref(),
+            Some("CC(=O)O.NCC>>CCNC(C)=O")
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+        let _ = std::fs::remove_dir_all(&unnamed);
+    }
+
+    #[test]
+    fn reaction_smiles_detection_rejects_plain_text() {
+        assert!(looks_like_reaction_smiles("CC(=O)O.NCC>>CCNC(C)=O"));
+        assert!(looks_like_reaction_smiles("CCO>[Pd]>CCO"));
+        assert!(!looks_like_reaction_smiles("CCO"));
+        assert!(!looks_like_reaction_smiles(">>"));
+        assert!(!looks_like_reaction_smiles("greater > than"));
+        assert!(!looks_like_reaction_smiles("a>b>c"));
+    }
+
+    #[test]
+    fn ingests_generic_csv_as_table_rows() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "coordinate_nm,pmf_kj_mol\n0.0,0.0\n0.1,1.25\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.format, "csv");
+        assert!(!summary.has_molecules);
+        assert_eq!(summary.records_total, 2);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch generic table page");
+        assert_eq!(page.total_rows, 2);
+        assert_eq!(page.rows[0].name, "Row 1");
+        assert_eq!(page.rows[0].smiles, None);
+        assert_eq!(
+            page.rows[1].props.get("pmf_kj_mol").map(String::as_str),
+            Some("1.25")
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn keeps_molecular_csv_controls_when_smiles_start_after_the_initial_page() {
+        let runtime_dir = temp_runtime_dir();
+        let mut csv = String::from("smiles,name\n");
+        for index in 0..GRID_INITIAL_ROWS {
+            csv.push_str(&format!(",blank-{index}\n"));
+        }
+        csv.push_str("CC,ethane\n");
+
+        let (_, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert!(summary.has_molecules);
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn ingests_headerless_tsv_rows_as_smiles_records() {
+        let runtime_dir = temp_runtime_dir();
+        let tsv = "CCO\tEthanol\t42\nCCN\tEthylamine\t17\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "tsv", tsv.as_bytes());
+        assert_eq!(summary.format, "tsv");
+        assert_eq!(summary.records_total, 2);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "column 3".to_string(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.total_rows, 2);
+        assert_eq!(page.rows.len(), 2);
+        assert_eq!(
+            page.rows[0].props.get("Column 3").map(String::as_str),
+            Some("42")
+        );
+        assert_eq!(page.rows[1].name, "Ethylamine");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn infers_single_smiles_column_from_csv_values() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "compound,structure,series\nLigand A,CCO,Alpha\nLigand B,c1ccccc1,Beta\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.format, "csv");
+        assert_eq!(summary.records_total, 2);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.rows[0].name, "Ligand A");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(
+            page.rows[0].props.get("series").map(String::as_str),
+            Some("Alpha")
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn ingests_inferred_delimited_structure_columns() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "compound,active,decoy\nLigand A,CCO,CCN\nLigand B,c1ccccc1,CCCl\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 4);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.rows[0].name, "Ligand A active");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(page.rows[1].name, "Ligand A decoy");
+        assert_eq!(page.rows[1].smiles.as_deref(), Some("CCN"));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn infers_smiles_columns_without_smiles_headers() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "candidate_1,candidate_2,label\nCCO,CCN,first\nc1ccccc1,CCCl,second\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 4);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.rows[0].name, "Molecule 1 candidate_1");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(page.rows[1].name, "Molecule 1 candidate_2");
+        assert_eq!(page.rows[1].smiles.as_deref(), Some("CCN"));
+        assert_eq!(
+            page.rows[0].props.get("CSV row").map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            page.rows[0].props.get("SMILES column").map(String::as_str),
+            Some("candidate_1")
+        );
+        assert_eq!(
+            page.rows[0].props.get("label").map(String::as_str),
+            Some("first")
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn ingests_multiple_named_smiles_columns() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "canonical_smiles,isomeric_smiles,name\nCCO,CCO,Ethanol\nCCN,CCN,Ethylamine\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 4);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.rows[0].name, "Ethanol canonical_smiles");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(page.rows[1].name, "Ethanol isomeric_smiles");
+        assert_eq!(page.rows[1].smiles.as_deref(), Some("CCO"));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn bounds_composite_names_and_smiles_column_properties() {
+        let runtime_dir = temp_runtime_dir();
+        let primary = format!("primary_smiles_{}", "a".repeat(600));
+        let alternate = format!("alternate_smiles_{}", "b".repeat(600));
+        let csv = format!("name,{primary},{alternate}\nCompound,CCO,CCN\n");
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 2);
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch bounded composite records");
+        assert_eq!(page.rows.len(), 2);
+        for row in &page.rows {
+            assert_eq!(row.name.chars().count(), 160);
+            assert_eq!(
+                row.props["SMILES column"].chars().count(),
+                500,
+                "snapshot-visible Grid properties must respect the public record contract"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn uses_explicit_column_for_ambiguous_delimited_table() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "compound,active,decoy\nLigand A,CCO,CCN\nLigand B,c1ccccc1,CCCl\n";
+
+        let handle = build_grid_store_with_options(
+            &runtime_dir,
+            "csv",
+            csv.as_bytes(),
+            &GridParseOptions {
+                smiles_column: Some("decoy".to_string()),
+                ..GridParseOptions::default()
+            },
+        )
+        .expect("build grid store")
+        .expect("collection");
+        assert_eq!(handle.summary.records_total, 2);
+
+        let page = fetch_page(
+            &handle.database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCN"));
+        assert_eq!(
+            page.rows[0].props.get("active").map(String::as_str),
+            Some("CCO")
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn build_grid_store_returns_after_initial_batch_for_large_collections() {
+        let runtime_dir = temp_runtime_dir();
+        let mut smiles = String::new();
+        for index in 0..10_000 {
+            smiles.push_str(&format!("CC{index} Molecule {index:05}\n"));
+        }
+
+        let (database_path, summary) = build_store(&runtime_dir, "smi", smiles.as_bytes());
+        assert_eq!(summary.format, "smiles");
+        assert_eq!(summary.records_indexed, GRID_INITIAL_ROWS);
+        assert_eq!(summary.records_total, GRID_INITIAL_ROWS);
+        assert!(!summary.index_ready);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch initial page");
+        assert_eq!(page.rows.len(), 96);
+        assert!(page.records_indexed >= GRID_INITIAL_ROWS);
+        assert!(!page.rows.is_empty());
+
+        wait_for_index_ready(&database_path);
+        let ready_page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "Molecule 09999".to_string(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch completed page");
+        assert!(ready_page.index_ready);
+        assert_eq!(ready_page.records_total_hint, Some(10_000));
+        assert_eq!(ready_page.total_rows, 1);
+        assert_eq!(ready_page.rows[0].name, "Molecule 09999");
+        let connection = Connection::open(&database_path).expect("open completed database");
+        let identity = grid_identity::read_source_identity(&connection)
+            .expect("read completed source identity");
+        assert_eq!(identity.source_revision, 1);
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn stores_and_reads_derived_column_values() {
+        let runtime_dir = temp_runtime_dir();
+        let (database_path, summary) = build_store(
+            &runtime_dir,
+            "smi",
+            b"CCO Ethanol\nCC(=O)Oc1ccccc1C(=O)O Aspirin\n",
+        );
+        assert_eq!(summary.records_total, 2);
+        wait_for_index_ready(&database_path);
+
+        let mut connection = open_descriptor_source(&database_path).expect("open source");
+        let rows = descriptor_source_row_batch(&connection, -1, 10).expect("source rows");
+        assert_eq!(rows.len(), 2);
+
+        let values = rows
+            .iter()
+            .map(|row| DerivedValueInput {
+                row_id: row.row_id,
+                value_real: None,
+                value_text: Some(format!("formula-of-{}", row.name)),
+                error_text: None,
+            })
+            .collect::<Vec<_>>();
+        let stored = store_derived_values_in_database(
+            &mut connection,
+            "Formula",
+            "Molecular Formula",
+            "formula",
+            None,
+            &values,
+        )
+        .expect("store derived values");
+        assert_eq!(stored, 2);
+
+        // A second column must not disturb the first, and a per-row error is a
+        // stored answer, not a hole.
+        let second = vec![DerivedValueInput {
+            row_id: rows[0].row_id,
+            value_real: None,
+            value_text: None,
+            error_text: Some("parse failed".into()),
+        }];
+        store_derived_values_in_database(&mut connection, "InChI", "InChI", "inchi", None, &second)
+            .expect("store second column");
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page with derived columns");
+        assert!(page.descriptor_ids.contains(&"Formula".to_string()));
+        assert!(page.descriptor_ids.contains(&"InChI".to_string()));
+        let formula_cell = page.rows[0]
+            .descriptors
+            .get("Formula")
+            .expect("formula cell on first row");
+        assert_eq!(formula_cell.label, "Molecular Formula");
+        assert_eq!(
+            formula_cell.value,
+            Some(serde_json::Value::String("formula-of-Ethanol".into()))
+        );
+        let inchi_cell = page.rows[0]
+            .descriptors
+            .get("InChI")
+            .expect("inchi error cell on first row");
+        assert_eq!(inchi_cell.error_text.as_deref(), Some("parse failed"));
+        assert!(page.rows[1].descriptors.contains_key("Formula"));
+        assert!(!page.rows[1].descriptors.contains_key("InChI"));
+
+        // Re-storing a row overwrites in place instead of duplicating.
+        let overwrite = vec![DerivedValueInput {
+            row_id: rows[0].row_id,
+            value_real: None,
+            value_text: Some("overwritten".into()),
+            error_text: None,
+        }];
+        store_derived_values_in_database(
+            &mut connection,
+            "Formula",
+            "Molecular Formula",
+            "formula",
+            None,
+            &overwrite,
+        )
+        .expect("overwrite derived value");
+        let count: i64 = connection
+            .query_row(
+                "select count(*) from descriptor_values where descriptor_id = 'Formula'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count formula rows");
+        assert_eq!(count, 2);
+
+        let (label, kind): (String, String) = connection
+            .query_row(
+                "select label, kind from derived_columns where column_id = 'Formula'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("derived column meta");
+        assert_eq!(label, "Molecular Formula");
+        assert_eq!(kind, "formula");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn fetch_page_exposes_terminal_indexing_error() {
+        let runtime_dir = temp_runtime_dir();
+        let (database_path, _) = build_store(&runtime_dir, "smi", b"CCO Ethanol\nCCN Ethylamine\n");
+        let connection = Connection::open(&database_path).expect("open database");
+        record_grid_ingest_failure(&connection, 2, "source changed while indexing");
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 1,
+            },
+        )
+        .expect("fetch page");
+        assert!(page.index_ready);
+        assert_eq!(
+            page.index_error.as_deref(),
+            Some("source changed while indexing")
+        );
+        let append_error = append_grid_text(
+            &database_path,
+            "smiles",
+            "CCC Propane\n",
+            &GridParseOptions::default(),
+        )
+        .expect_err("a failed index must not accept appended records");
+        assert!(append_error.contains("source changed while indexing"));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn streams_large_sdf_from_file_without_loading_the_collection() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("large.sdf");
+        let mut sdf = String::new();
+        for index in 0..10_000 {
+            sdf.push_str(&format!(
+                "Molecule {index:05}\n  Burette\n\nM  END\n>  <SMILES>\nCC{index}\n\n$$$$\n"
+            ));
+        }
+        std::fs::write(&source_path, sdf).expect("write source SDF");
+
+        let handle = build_grid_store_from_file_with_options(
+            &runtime_dir,
+            "sdf",
+            &source_path,
+            &GridParseOptions::default(),
+        )
+        .expect("build grid store")
+        .expect("collection");
+        assert_eq!(handle.summary.records_indexed, GRID_INITIAL_ROWS);
+        assert!(!handle.summary.index_ready);
+
+        wait_for_index_ready(&handle.database_path);
+        let connection = Connection::open(&handle.database_path).expect("open completed database");
+        let fts_matches = connection
+            .query_row(
+                "select count(*) from molecules_fts
+                 where molecules_fts match '09999'",
+                [],
+                |row| row.get::<_, usize>(0),
+            )
+            .expect("query rebuilt FTS index");
+        let fts_trigger_count = connection
+            .query_row(
+                "select count(*) from sqlite_master
+                 where type = 'trigger'
+                   and name in ('molecules_ai', 'molecules_ad', 'molecules_au')",
+                [],
+                |row| row.get::<_, usize>(0),
+            )
+            .expect("query restored FTS triggers");
+        assert_eq!(fts_matches, 1);
+        assert_eq!(fts_trigger_count, 3);
+        drop(connection);
+        let page = fetch_page(
+            &handle.database_path,
+            &GridQuery {
+                query: "Molecule 09999".to_string(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 1,
+            },
+        )
+        .expect("fetch completed page");
+        assert!(page.index_ready);
+        assert_eq!(page.records_total_hint, Some(10_000));
+        assert_eq!(page.rows[0].name, "Molecule 09999");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn schema_refresh_does_not_restore_fts_triggers_during_deferred_indexing() {
+        let runtime_dir = temp_runtime_dir();
+        let database_path = runtime_dir.join("collection.sqlite");
+        let connection = open_grid_database(&database_path).expect("open grid database");
+        initialize_schema(&connection).expect("initialize schema");
+        prepare_deferred_fts_index(&connection).expect("prepare deferred FTS");
+
+        initialize_schema(&connection).expect("refresh schema while indexing");
+        let trigger_count = || {
+            connection
+                .query_row(
+                    "select count(*) from sqlite_master
+                     where type = 'trigger'
+                       and name in ('molecules_ai', 'molecules_ad', 'molecules_au')",
+                    [],
+                    |row| row.get::<_, usize>(0),
+                )
+                .expect("query FTS triggers")
+        };
+        assert_eq!(trigger_count(), 0);
+
+        update_index_state(&connection, 0, Some(0), true, None).expect("mark indexing ready");
+        initialize_schema(&connection).expect("refresh completed schema");
+        assert_eq!(trigger_count(), 3);
+
+        drop(connection);
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_parser_preserves_crlf_and_carriage_return_record_boundaries() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("mixed-lines.sdf");
+        std::fs::write(
+            &source_path,
+            "Mol A\n  Burette\n\nM  END\n$$$$\nMol B\r\n  Burette\r\n\r\nM  END\r\n$$$$\r\nMol C\r  Burette\r\rM  END\r$$$$\n",
+        )
+        .expect("write source SDF");
+
+        let handle = build_grid_store_from_file_with_options(
+            &runtime_dir,
+            "sdf",
+            &source_path,
+            &GridParseOptions {
+                include_single_sdf: true,
+                ..GridParseOptions::default()
+            },
+        )
+        .expect("build grid store")
+        .expect("collection");
+        let page = fetch_page(
+            &handle.database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 3,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(
+            page.rows
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Mol A", "Mol B", "Mol C"]
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_rejects_oversized_line_without_scanning_the_tail() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("oversized-line.sdf");
+        let oversized = format!(
+            "{}\n{}\n",
+            "X".repeat(MAX_STREAMED_SDF_LINE_BYTES + 1),
+            "tail".repeat(1_000_000)
+        );
+        std::fs::write(&source_path, oversized).expect("write oversized SDF");
+
+        let mut source = SdfFileReader::open(&source_path).expect("open SDF reader");
+        let error = source
+            .read_line(&mut Vec::new(), None)
+            .expect_err("oversized line must fail instead of being silently clipped");
+
+        assert!(error.contains("line exceeds"));
+        assert!(
+            source.byte_offset <= MAX_STREAMED_SDF_LINE_BYTES as u64,
+            "the parser must stop as soon as the line limit is crossed"
+        );
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_rejects_oversized_record_instead_of_truncating_it() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("oversized-record.sdf");
+        let mut sdf = String::from("Oversized\n  Burette\n\nM  END\n");
+        while sdf.len() <= MAX_STREAMED_SDF_RECORD_BYTES + 16_384 {
+            sdf.push_str(&format!("{}\n", "P".repeat(8_192)));
+        }
+        sdf.push_str("$$$$\n");
+        std::fs::write(&source_path, sdf).expect("write oversized SDF record");
+
+        let mut source = SdfFileReader::open(&source_path).expect("open SDF reader");
+        let error = parse_sdf_file_batch(&mut source, 0, GRID_INITIAL_ROWS, None)
+            .expect_err("oversized record must fail instead of being silently clipped");
+
+        assert!(error.contains("record exceeds"));
+        assert!(
+            source.byte_offset
+                <= (MAX_STREAMED_SDF_RECORD_BYTES + MAX_STREAMED_SDF_LINE_BYTES) as u64
+        );
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_batch_is_bounded_by_aggregate_record_bytes() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("batch-budget.sdf");
+        let mut sdf = String::new();
+        for index in 0..48 {
+            sdf.push_str(&format!(
+                "Molecule {index}\n  Burette\n\nM  END\n{}\n{}\n$$$$\n",
+                "A".repeat(220_000),
+                "B".repeat(220_000)
+            ));
+        }
+        std::fs::write(&source_path, sdf).expect("write batch budget SDF");
+
+        let mut source = SdfFileReader::open(&source_path).expect("open SDF reader");
+        let batch = parse_sdf_file_batch(&mut source, 0, GRID_INGEST_BATCH_ROWS, None)
+            .expect("parse bounded SDF batch");
+
+        assert!(!batch.complete);
+        assert!(batch.records.len() < 48);
+        assert!(source.byte_offset <= MAX_STREAMED_SDF_BATCH_BYTES as u64);
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_parser_honors_cancellation_before_reading() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("cancelled.sdf");
+        std::fs::write(&source_path, "Mol\n  Burette\n\nM  END\n$$$$\n")
+            .expect("write cancellable SDF");
+        let mut source = SdfFileReader::open(&source_path).expect("open SDF reader");
+        let cancelled = AtomicBool::new(true);
+
+        let error = parse_sdf_file_batch(&mut source, 0, GRID_INGEST_BATCH_ROWS, Some(&cancelled))
+            .expect_err("cancelled parsing must stop");
+
+        assert_eq!(error, SDF_INDEXING_CANCELLED);
+        assert_eq!(source.byte_offset, 0);
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_detects_source_mutation_between_batches() {
+        use std::io::Write;
+
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("mutable.sdf");
+        std::fs::write(
+            &source_path,
+            "Mol A\n  Burette\n\nM  END\n$$$$\nMol B\n  Burette\n\nM  END\n$$$$\n",
+        )
+        .expect("write mutable SDF");
+        let mut source = SdfFileReader::open(&source_path).expect("open SDF reader");
+        let first = parse_sdf_file_batch(&mut source, 0, 1, None).expect("parse first batch");
+        assert!(!first.complete);
+
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&source_path)
+            .expect("open SDF for append");
+        file.write_all(b"Mol C\n  Burette\n\nM  END\n$$$$\n")
+            .expect("mutate SDF source");
+        file.sync_all().expect("sync mutated SDF");
+
+        let error = source
+            .verify_unchanged()
+            .expect_err("source identity must reject an appended file");
+        assert!(error.contains("changed while indexing"));
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn file_backed_sdf_persists_record_offsets_and_byte_progress() {
+        let runtime_dir = temp_runtime_dir();
+        let source_path = runtime_dir.join("offsets.sdf");
+        let first = "Mol A\n  Burette\n\nM  END\n$$$$\n";
+        let second = "Mol B\r\n  Burette\r\n\r\nM  END\r\n$$$$\r\n";
+        let sdf = format!("{first}{second}");
+        std::fs::write(&source_path, &sdf).expect("write offset SDF");
+
+        let handle = build_grid_store_from_file_with_options(
+            &runtime_dir,
+            "sdf",
+            &source_path,
+            &GridParseOptions {
+                include_single_sdf: true,
+                ..GridParseOptions::default()
+            },
+        )
+        .expect("build grid store")
+        .expect("collection");
+        let connection = Connection::open(&handle.database_path).expect("open grid database");
+        let offsets = connection
+            .prepare(
+                "select source_byte_start, source_byte_end
+                 from molecules order by source_index",
+            )
+            .expect("prepare offset query")
+            .query_map([], |row| Ok((row.get::<_, u64>(0)?, row.get::<_, u64>(1)?)))
+            .expect("query offsets")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect offsets");
+        assert_eq!(
+            offsets,
+            vec![
+                (0, first.len() as u64),
+                (first.len() as u64, sdf.len() as u64)
+            ]
+        );
+        let fts_matches = connection
+            .query_row(
+                "select count(*) from molecules_fts where molecules_fts match 'Mol'",
+                [],
+                |row| row.get::<_, usize>(0),
+            )
+            .expect("query rebuilt short-file FTS index");
+        assert_eq!(fts_matches, 2);
+        drop(connection);
+
+        let page = fetch_page(
+            &handle.database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 2,
+            },
+        )
+        .expect("fetch indexed page");
+        assert_eq!(page.bytes_indexed, Some(sdf.len() as u64));
+        assert_eq!(page.bytes_total, Some(sdf.len() as u64));
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn unregister_cancels_and_removes_grid_runtime() {
+        let runtime_dir = temp_runtime_dir();
+        let mut smiles = String::new();
+        for index in 0..2_000 {
+            smiles.push_str(&format!("CC{index} Molecule {index:05}\n"));
+        }
+        let handle = build_grid_store(&runtime_dir, "smi", smiles.as_bytes())
+            .expect("build grid store")
+            .expect("collection");
+        let registry = GridRuntimeRegistry::default();
+        registry
+            .register(
+                "doc-grid",
+                handle.database_path.clone(),
+                handle.summary.format,
+                handle.cancel_token.clone(),
+                handle.ingest_worker,
+            )
+            .expect("register grid runtime");
+        registry
+            .unregister("doc-grid")
+            .expect("unregister grid runtime");
+        assert!(handle.cancel_token.load(Ordering::Relaxed));
+        wait_for_path_removed(&runtime_dir);
+        let missing = registry.fetch_page(
+            "doc-grid",
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        );
+        assert!(missing.is_err());
+    }
+
+    #[test]
+    fn unregister_does_not_wait_for_a_slow_ingest_worker() {
+        let runtime_dir = temp_runtime_dir();
+        let database_path = runtime_dir.join("collection.sqlite");
+        std::fs::write(&database_path, b"pending").expect("write pending database");
+        let cancel_token = Arc::new(AtomicBool::new(false));
+        let slow_worker = thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(600));
+        });
+        let registry = GridRuntimeRegistry::default();
+        registry
+            .register(
+                "doc-slow-grid",
+                database_path,
+                "smi",
+                cancel_token.clone(),
+                Some(slow_worker),
+            )
+            .expect("register slow grid runtime");
+
+        let started = std::time::Instant::now();
+        registry
+            .unregister("doc-slow-grid")
+            .expect("unregister slow grid runtime");
+
+        assert!(cancel_token.load(Ordering::Relaxed));
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(200),
+            "closing a Grid tab waited for its background ingest worker"
+        );
+        wait_for_path_removed(&runtime_dir);
+    }
+
+    #[test]
+    fn unregister_keeps_runtime_alive_until_snapshot_lease_drops() {
+        fn assert_send_static<T: Send + 'static>() {}
+        assert_send_static::<GridSnapshotLease>();
+
+        let runtime_dir = temp_runtime_dir();
+        let handle = build_grid_store(&runtime_dir, "smi", b"CC Ethane\n")
+            .expect("build grid store")
+            .expect("collection");
+        let cancel_token = handle.cancel_token.clone();
+        let registry = GridRuntimeRegistry::default();
+        registry
+            .register(
+                "main:doc-grid",
+                handle.database_path,
+                handle.summary.format,
+                handle.cancel_token,
+                handle.ingest_worker,
+            )
+            .expect("register grid runtime");
+        let lease = registry
+            .acquire_snapshot_lease("main:doc-grid")
+            .expect("acquire snapshot lease");
+        let database_path = lease.database_path_for_freeze().to_path_buf();
+        let rendezvous = Arc::new(std::sync::Barrier::new(2));
+        let worker_rendezvous = Arc::clone(&rendezvous);
+        let worker = thread::spawn(move || {
+            assert!(lease.database_path_for_freeze().is_file());
+            worker_rendezvous.wait();
+            worker_rendezvous.wait();
+            assert!(lease.database_path_for_freeze().is_file());
+            drop(lease);
+        });
+
+        rendezvous.wait();
+        registry
+            .unregister("main:doc-grid")
+            .expect("unregister grid runtime");
+        assert!(cancel_token.load(Ordering::Relaxed));
+        assert!(database_path.is_file());
+        assert!(registry.acquire_snapshot_lease("main:doc-grid").is_err());
+        rendezvous.wait();
+        worker.join().expect("snapshot lease worker");
+        wait_for_path_removed(&runtime_dir);
+    }
+
+    #[test]
+    fn replacement_keeps_existing_lease_pinned_to_old_runtime() {
+        let old_runtime_dir = temp_runtime_dir();
+        let old_handle = build_grid_store(&old_runtime_dir, "smi", b"CC Ethane\n")
+            .expect("build old grid store")
+            .expect("old collection");
+        let old_database_path = old_handle.database_path.clone();
+        let old_cancel_token = old_handle.cancel_token.clone();
+        let registry = GridRuntimeRegistry::default();
+        registry
+            .register(
+                "main:doc-grid",
+                old_handle.database_path,
+                old_handle.summary.format,
+                old_handle.cancel_token,
+                old_handle.ingest_worker,
+            )
+            .expect("register old grid runtime");
+        let old_lease = registry
+            .acquire_snapshot_lease("main:doc-grid")
+            .expect("acquire old snapshot lease");
+
+        let new_runtime_dir = temp_runtime_dir();
+        let new_handle = build_grid_store(&new_runtime_dir, "smi", b"O Water\n")
+            .expect("build new grid store")
+            .expect("new collection");
+        let new_database_path = new_handle.database_path.clone();
+        let new_cancel_token = new_handle.cancel_token.clone();
+        registry
+            .register(
+                "main:doc-grid",
+                new_handle.database_path,
+                new_handle.summary.format,
+                new_handle.cancel_token,
+                new_handle.ingest_worker,
+            )
+            .expect("replace grid runtime");
+
+        assert!(old_cancel_token.load(Ordering::Relaxed));
+        assert_eq!(
+            old_lease.database_path_for_freeze(),
+            old_database_path.as_path()
+        );
+        assert!(old_database_path.is_file());
+        let new_lease = registry
+            .acquire_snapshot_lease("main:doc-grid")
+            .expect("acquire new snapshot lease");
+        assert_eq!(
+            new_lease.database_path_for_freeze(),
+            new_database_path.as_path()
+        );
+
+        drop(old_lease);
+        wait_for_path_removed(&old_runtime_dir);
+        assert!(new_runtime_dir.exists());
+        registry
+            .unregister("main:doc-grid")
+            .expect("unregister replacement");
+        assert!(new_cancel_token.load(Ordering::Relaxed));
+        assert!(new_runtime_dir.exists());
+        drop(new_lease);
+        wait_for_path_removed(&new_runtime_dir);
+    }
+
+    #[test]
+    fn snapshot_lease_uses_the_full_namespaced_document_id() {
+        let runtime_dir = temp_runtime_dir();
+        let handle = build_grid_store(&runtime_dir, "smi", b"CC Ethane\n")
+            .expect("build grid store")
+            .expect("collection");
+        let registry = GridRuntimeRegistry::default();
+        registry
+            .register(
+                "workspace-a:doc-grid",
+                handle.database_path,
+                handle.summary.format,
+                handle.cancel_token,
+                handle.ingest_worker,
+            )
+            .expect("register namespaced grid runtime");
+
+        assert!(registry.acquire_snapshot_lease("doc-grid").is_err());
+        assert!(registry
+            .acquire_snapshot_lease("workspace-b:doc-grid")
+            .is_err());
+        let lease = registry
+            .acquire_snapshot_lease("workspace-a:doc-grid")
+            .expect("acquire exact namespaced grid runtime");
+        assert!(lease.database_path_for_freeze().is_file());
+
+        registry
+            .unregister("workspace-a:doc-grid")
+            .expect("unregister namespaced grid runtime");
+        drop(lease);
+        wait_for_path_removed(&runtime_dir);
+    }
+
+    #[test]
+    fn fts_search_covers_name_smiles_and_properties() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "smiles,name,series,assay\n\
+                   CCO,Ethanol,Alpha,solvent\n\
+                   c1ccccc1,Benzene,Beta,aromatic\n\
+                   CCN,Ethylamine,Gamma,amine\n";
+
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        let connection = Connection::open(&database_path).expect("open database");
+        let fts_rows = connection
+            .query_row("select count(*) from molecules_fts", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("count fts rows");
+        assert_eq!(fts_rows, 3);
+
+        let by_name = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "benzene".to_string(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch by name");
+        assert_eq!(by_name.total_rows, 1);
+        assert_eq!(by_name.rows[0].name, "Benzene");
+
+        let by_smiles = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "CCN".to_string(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch by smiles");
+        assert_eq!(by_smiles.total_rows, 1);
+        assert_eq!(by_smiles.rows[0].name, "Ethylamine");
+
+        let by_property = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "aromatic".to_string(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch by property");
+        assert_eq!(by_property.total_rows, 1);
+        assert_eq!(by_property.rows[0].name, "Benzene");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn empty_query_and_fallback_preserve_existing_like_behavior() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+
+        let empty = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "   ".to_string(),
+                sort: "name".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 2,
+            },
+        )
+        .expect("fetch empty query");
+        assert_eq!(empty.total_rows, 3);
+        assert_eq!(empty.rows.len(), 2);
+        assert_eq!(empty.rows[0].name, "Benzene");
+
+        let substring = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "eth".to_string(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch substring fallback");
+        assert_eq!(substring.total_rows, 2);
+        assert_eq!(
+            substring
+                .rows
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Ethanol", "Ethylamine"]
+        );
+
+        let connection = Connection::open(&database_path).expect("open database");
+        let substring_plan = grid_predicate::plan_grid_predicate(
+            &GridTextQuery::Text {
+                text: "eth".to_string(),
+            },
+            &[],
+            &[],
+            &[],
+        )
+        .expect("plan substring query");
+        assert!(!fts_candidates_cover_exact_result(
+            &connection,
+            &substring_plan,
+            substring_plan.fts_query.as_deref().expect("FTS candidate"),
+            2,
+        ));
+        let exact_plan = grid_predicate::plan_grid_predicate(
+            &GridTextQuery::Text {
+                text: "gamma".to_string(),
+            },
+            &[],
+            &[],
+            &[],
+        )
+        .expect("plan exact-token query");
+        assert!(fts_candidates_cover_exact_result(
+            &connection,
+            &exact_plan,
+            exact_plan.fts_query.as_deref().expect("FTS candidate"),
+            1,
+        ));
+        connection
+            .execute("drop table molecules_fts", [])
+            .expect("drop fts table");
+        let missing_fts = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "gamma".to_string(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch through missing fts fallback");
+        assert_eq!(missing_fts.total_rows, 1);
+        assert_eq!(missing_fts.rows[0].name, "Ethylamine");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    #[ignore = "50k row perf smoke is opt-in for local developer runs"]
+    fn exact_fts_fast_path_is_faster_than_like_fallback_on_synthetic_collection() {
+        let runtime_dir = temp_runtime_dir();
+        let mut csv = String::from("smiles,name,series\n");
+        for index in 0..50_000 {
+            let marker = if index == 42_424 {
+                "NeedlePerfMarker"
+            } else {
+                "BulkPerfMarker"
+            };
+            csv.push_str(&format!("CC{index},Molecule {index:05},{marker}\n"));
+        }
+
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        wait_for_index_ready(&database_path);
+        let query = GridQuery {
+            query: "NeedlePerfMarker".to_string(),
+            sort: "index".to_string(),
+            analysis_filters: Vec::new(),
+            column_filters: Vec::new(),
+            descriptor_filters: Vec::new(),
+            descriptor_sort: None,
+            offset: 0,
+            limit: 96,
+        };
+        let started = std::time::Instant::now();
+        let indexed = fetch_page(&database_path, &query).expect("fetch through exact FTS path");
+        let indexed_elapsed = started.elapsed();
+
+        let connection = Connection::open(&database_path).expect("open database");
+        connection
+            .execute("drop table molecules_fts", [])
+            .expect("disable FTS fast path");
+        drop(connection);
+        let started = std::time::Instant::now();
+        let fallback = fetch_page(&database_path, &query).expect("fetch through LIKE fallback");
+        let fallback_elapsed = started.elapsed();
+
+        eprintln!(
+            "grid_exact_fts_ms={:?} grid_like_fallback_ms={:?}",
+            indexed_elapsed, fallback_elapsed
+        );
+        assert_eq!(indexed.total_rows, 1);
+        assert_eq!(fallback.total_rows, indexed.total_rows);
+        assert_eq!(fallback.rows[0].name, indexed.rows[0].name);
+        assert!(
+            indexed_elapsed < fallback_elapsed,
+            "expected exact FTS fast path ({indexed_elapsed:?}) to beat LIKE fallback ({fallback_elapsed:?})"
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn fts_filtered_pages_preserve_sort_and_pagination() {
+        let runtime_dir = temp_runtime_dir();
+        let mut csv = String::from("smiles,name,series\n");
+        for index in 0..260 {
+            let name = format!("Mol {:03}", 260 - index);
+            csv.push_str(&format!("CC{index},{name},SharedNeedle\n"));
+        }
+
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        wait_for_index_ready(&database_path);
+        let first_page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "SharedNeedle".to_string(),
+                sort: "name".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 25,
+            },
+        )
+        .expect("fetch first page");
+        let second_page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "SharedNeedle".to_string(),
+                sort: "name".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 25,
+                limit: 25,
+            },
+        )
+        .expect("fetch second page");
+        assert_eq!(first_page.total_rows, 260);
+        assert_eq!(first_page.rows.len(), 25);
+        assert_eq!(second_page.rows.len(), 25);
+        assert_eq!(first_page.rows[0].name, "Mol 001");
+        assert_eq!(first_page.rows[24].name, "Mol 025");
+        assert_eq!(second_page.rows[0].name, "Mol 026");
+        assert!(first_page.rows.iter().all(|row| !second_page
+            .rows
+            .iter()
+            .any(|other| other.index == row.index)));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn limit_clamp_and_unknown_sort_remain_deterministic() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        let oversized = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "prop:series".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 1000,
+            },
+        )
+        .expect("fetch oversized limit");
+        assert_eq!(oversized.limit, 240);
+        assert_eq!(
+            oversized
+                .rows
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Ethanol", "Benzene", "Ethylamine"]
+        );
+
+        let past_end = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "gamma".to_string(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 10,
+                limit: 0,
+            },
+        )
+        .expect("fetch past end");
+        assert_eq!(past_end.limit, 1);
+        assert_eq!(past_end.total_rows, 1);
+        assert!(past_end.rows.is_empty());
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn lists_delimited_structure_column_choices() {
+        let csv = "compound,active,decoy\nLigand A,CCO,CCN\nLigand B,c1ccccc1,CCCl\n";
+        let choices =
+            delimited_smiles_column_choices("csv", csv).expect("delimited column choices");
+        assert_eq!(choices.len(), 2);
+        assert_eq!(choices[0].index, 2);
+        assert_eq!(choices[0].name, "active");
+        assert_eq!(choices[1].index, 3);
+        assert_eq!(choices[1].name, "decoy");
+    }
+
+    #[test]
+    fn appends_sdf_records_to_existing_grid_store() {
+        let runtime_dir = temp_runtime_dir();
+        let sdf = "First\n  Burette\n\nM  END\n$$$$\nSecond\n  Burette\n\nM  END\n$$$$\n";
+
+        let handle = build_grid_store(&runtime_dir, "sdf", sdf.as_bytes())
+            .expect("build grid store")
+            .expect("collection");
+        assert_eq!(handle.summary.records_total, 2);
+        let connection = Connection::open(&handle.database_path).expect("open grid database");
+        let initial_identity =
+            grid_identity::read_source_identity(&connection).expect("read initial source identity");
+        assert_eq!(initial_identity.source_revision, 1);
+        drop(connection);
+
+        let appended = append_grid_text(
+            &handle.database_path,
+            "sdf",
+            "Third\n  Burette\n\nM  END\n$$$$\n",
+            &GridParseOptions::default(),
+        )
+        .expect("append sdf");
+        assert_eq!(appended.records_appended, 1);
+        assert_eq!(appended.total_rows, 3);
+        let connection = Connection::open(&handle.database_path).expect("open grid database");
+        let appended_identity = grid_identity::read_source_identity(&connection)
+            .expect("read appended source identity");
+        assert_eq!(appended_identity.source_revision, 2);
+        assert_ne!(
+            initial_identity.document_fingerprint_sha256,
+            appended_identity.document_fingerprint_sha256
+        );
+        let hashed_records: i64 = connection
+            .query_row(
+                "select count(*) from molecules where length(molecule_content_sha256) = 64",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count molecule hashes");
+        assert_eq!(hashed_records, 3);
+        drop(connection);
+
+        let page = fetch_page(
+            &handle.database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 2,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.total_rows, 3);
+        assert_eq!(page.rows.len(), 1);
+        assert_eq!(page.rows[0].index, 2);
+        assert_eq!(page.rows[0].name, "Third");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn normalizes_ketcher_molblock_with_missing_header_line() {
+        let lines = vec![
+            "Ketcher sketch".to_string(),
+            "".to_string(),
+            "  6  6  0  0  0  0  0  0  0  0999 V2000".to_string(),
+            "    5.1809   -4.2751    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0".to_string(),
+            "M  END".to_string(),
+        ];
+        let molblock = extract_molblock(&lines);
+        let normalized: Vec<&str> = molblock.lines().collect();
+        assert_eq!(
+            normalized[3].trim(),
+            "6  6  0  0  0  0  0  0  0  0999 V2000"
+        );
+    }
+
+    // Roughly 1.5 KiB per record, so a source large enough that re-reading it
+    // per batch dominates the ingest.
+    fn synthetic_sdf(records: usize) -> String {
+        let atoms: String = (0..20)
+            .map(|_| "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n")
+            .collect();
+        let mut sdf = String::with_capacity(records * 1600);
+        for index in 0..records {
+            sdf.push_str(&format!(
+                "Molecule {index}\n  Burette\n\n 20  0  0  0  0  0  0  0  0  0999 V2000\n{atoms}M  END\n> <ID>\n{index}\n\n$$$$\n"
+            ));
+        }
+        sdf
+    }
+
+    // Wide enough rows that re-reading the source per batch dominates the parse.
+    fn synthetic_smiles(records: usize) -> String {
+        let mut smi = String::with_capacity(records * 200);
+        for index in 0..records {
+            let chain = "C".repeat(120);
+            smi.push_str(&format!("{chain} Molecule {index:06}\n"));
+        }
+        smi
+    }
+
+    fn synthetic_dwar(records: usize) -> String {
+        let mut dwar = String::with_capacity(records * 200);
+        dwar.push_str("<datawarrior-fileinfo>\n<version=\"3.2\">\n</datawarrior-fileinfo>\n");
+        dwar.push_str("<column properties>\n<columnName=\"Structure\">\n<columnProperty=\"specialType\tidcode\">\n</column properties>\n");
+        dwar.push_str("Structure\tName\tvalue\n");
+        for index in 0..records {
+            let idcode = format!("d{}", "e".repeat(60));
+            dwar.push_str(&format!("{idcode}\tMolecule {index:06}\t{index}.5\n"));
+        }
+        dwar
+    }
+
+    fn synthetic_csv(records: usize) -> String {
+        let mut csv = String::with_capacity(records * 200);
+        csv.push_str("smiles,name,weight,logp,tpsa\n");
+        for index in 0..records {
+            let chain = "C".repeat(120);
+            csv.push_str(&format!(
+                "{chain},Molecule {index:06},{index}.5,2.{index},45.{index}\n"
+            ));
+        }
+        csv
+    }
+
+    // Walks a whole synthetic collection the way the ingest worker does, and
+    // reports how long the parsing alone took plus how many records it saw.
+    fn time_batched_parse(extension: &str, source: &str) -> (std::time::Duration, usize) {
+        let options = GridParseOptions::default();
+        let started = std::time::Instant::now();
+        let mut cursor = GridCursor::default();
+        let mut index = 0usize;
+        loop {
+            let batch = parse_grid_batch_with_options(
+                extension,
+                source,
+                cursor,
+                index,
+                GRID_INGEST_BATCH_ROWS,
+                &options,
+            )
+            .expect("parse batch");
+            cursor = batch.next_cursor;
+            index = batch.next_index;
+            if batch.complete {
+                break;
+            }
+        }
+        (started.elapsed(), index)
+    }
+
+    // A batched ingest must read the source once, not once per batch. Re-reading
+    // it per batch makes parsing quadratic, so doubling the record count roughly
+    // quadruples the time instead of doubling it — the 1 GB / 400k-record SDF
+    // that motivated this test needed tens of minutes to index.
+    fn assert_parse_scales_linearly(extension: &str, source: impl Fn(usize) -> String) {
+        let (base, base_records) = time_batched_parse(extension, &source(12_000));
+        let (doubled, doubled_records) = time_batched_parse(extension, &source(24_000));
+        assert_eq!(base_records, 12_000);
+        assert_eq!(doubled_records, 24_000);
+        let growth = doubled.as_secs_f64() / base.as_secs_f64().max(f64::EPSILON);
+        println!("{extension}: {base:?} -> {doubled:?} ({growth:.2}x)");
+        assert!(
+            growth < 2.6,
+            "doubling the {extension} collection multiplied parse time by {growth:.1}x ({base:?} -> {doubled:?}); the source is being re-read per batch"
+        );
+    }
+
+    // Measures wall time, so it needs the machine to itself: run it with
+    // `--ignored --test-threads=1`. Parsing must stay linear in the record count
+    // — re-reading the source per batch makes it quadratic, which is what made a
+    // 1 GB / 400k-record SDF take tens of minutes to index. The correctness half
+    // of that contract is pinned by the always-on `*_batches_tile_the_source`
+    // tests below.
+    #[test]
+    #[ignore = "timing-sensitive; run with --ignored --test-threads=1"]
+    fn batched_parse_scales_linearly_for_every_format() {
+        assert_parse_scales_linearly("sdf", synthetic_sdf);
+        assert_parse_scales_linearly("smi", synthetic_smiles);
+        assert_parse_scales_linearly("csv", synthetic_csv);
+        assert_parse_scales_linearly("dwar", synthetic_dwar);
+    }
+
+    // Parses a source one record per batch and returns each record's name and
+    // "CSV row" property, so a resumed batch can be compared against a single
+    // pass over the same source.
+    fn records_one_batch_at_a_time(extension: &str, source: &str) -> Vec<(String, Option<String>)> {
+        let options = GridParseOptions::default();
+        let mut cursor = GridCursor::default();
+        let mut index = 0usize;
+        let mut seen = Vec::new();
+        for _ in 0..64 {
+            let batch =
+                parse_grid_batch_with_options(extension, source, cursor, index, 1, &options)
+                    .expect("parse one record");
+            for record in &batch.records {
+                seen.push((record.name.clone(), record.props.get("CSV row").cloned()));
+            }
+            cursor = batch.next_cursor;
+            index = batch.next_index;
+            if batch.complete {
+                break;
+            }
+        }
+        seen
+    }
+
+    fn records_in_one_batch(extension: &str, source: &str) -> Vec<(String, Option<String>)> {
+        let batch = parse_grid_batch_with_options(
+            extension,
+            source,
+            GridCursor::default(),
+            0,
+            1_000,
+            &GridParseOptions::default(),
+        )
+        .expect("parse whole source");
+        assert!(batch.complete);
+        batch
+            .records
+            .iter()
+            .map(|record| (record.name.clone(), record.props.get("CSV row").cloned()))
+            .collect()
+    }
+
+    #[test]
+    fn smiles_batches_tile_the_source_exactly_once() {
+        let smi = "CCO Ethanol\n\n# comment\nc1ccccc1 Benzene\r\nCCC Propane\n";
+        let expected = records_in_one_batch("smi", smi);
+        assert_eq!(expected.len(), 3);
+        assert_eq!(records_one_batch_at_a_time("smi", smi), expected);
+    }
+
+    // The delimited parsers number records by source row, so a resumed batch has
+    // to keep counting rows from where the previous one stopped — blank lines and
+    // the header included.
+    #[test]
+    fn delimited_batches_tile_the_source_and_keep_row_numbers() {
+        let csv = "smiles,name\nCCO,Ethanol\n\nc1ccccc1,Benzene\r\nCCC,Propane\n";
+        let expected = records_in_one_batch("csv", csv);
+        assert_eq!(
+            expected,
+            vec![
+                ("Ethanol".to_string(), Some("1".to_string())),
+                ("Benzene".to_string(), Some("2".to_string())),
+                ("Propane".to_string(), Some("3".to_string())),
+            ]
+        );
+        assert_eq!(records_one_batch_at_a_time("csv", csv), expected);
+    }
+
+    // A DataWarrior row can carry several structure columns, so a batch can stop
+    // part-way through one; the cursor has to resume inside that row.
+    // Without a name column the record name comes from the row number, which must
+    // keep counting across batches rather than restarting at each one.
+    // A structure column that only starts carrying values well into the file must
+    // still be detected. A fixed row prefix misses it and the table falls through
+    // to the headerless fallback, which reads the wrong column or rejects the file.
+    #[test]
+    fn delimited_inference_finds_a_sparse_structure_column() {
+        let mut csv = String::from("id,note,structure\n");
+        for index in 0..900 {
+            csv.push_str(&format!("{index},blank,\n"));
+        }
+        for index in 900..930 {
+            csv.push_str(&format!("{index},filled,CCO\n"));
+        }
+        let batch = parse_grid_batch_with_options(
+            "csv",
+            &csv,
+            GridCursor::default(),
+            0,
+            1_000,
+            &GridParseOptions::default(),
+        )
+        .expect("sparse structure column should be inferred");
+        assert_eq!(batch.records.len(), 30);
+        assert_eq!(batch.records[0].smiles.as_deref(), Some("CCO"));
+    }
+
+    #[test]
+    fn datawarrior_row_numbers_survive_a_resumed_batch() {
+        let dwar = concat!(
+            "<column properties>\n",
+            "<columnName=\"Structure\">\n",
+            "<columnProperty=\"specialType\tidcode\">\n",
+            "</column properties>\n",
+            "Structure\tvalue\n",
+            "aaa\t1\n",
+            "bbb\t2\n",
+            "ccc\t3\n",
+        );
+        let expected = records_in_one_batch("dwar", dwar);
+        assert_eq!(
+            expected
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Molecule 1", "Molecule 2", "Molecule 3"]
+        );
+        assert_eq!(records_one_batch_at_a_time("dwar", dwar), expected);
+    }
+
+    #[test]
+    fn datawarrior_batches_tile_rows_with_several_structure_columns() {
+        let dwar = concat!(
+            "<column properties>\n",
+            "<columnName=\"Structure\">\n",
+            "<columnProperty=\"specialType\tidcode\">\n",
+            "<columnName=\"Structure 2\">\n",
+            "<columnProperty=\"specialType\tidcode\">\n",
+            "</column properties>\n",
+            "Structure\tStructure 2\tName\n",
+            "aaa\tbbb\tFirst\n",
+            "ccc\tddd\tSecond\n",
+        );
+        let expected = records_in_one_batch("dwar", dwar);
+        assert_eq!(expected.len(), 4);
+        assert_eq!(records_one_batch_at_a_time("dwar", dwar), expected);
+    }
+
+    // The resume cursor must tile the source exactly once: every record appears,
+    // in order, whether the collection arrives in one batch or one record at a
+    // time, and both CRLF and bare-CR line endings resume correctly.
+    #[test]
+    fn sdf_batches_tile_the_source_exactly_once() {
+        // No <ID> property: the record name then comes from the title line, so
+        // the assertions below read as the record order they are checking.
+        let sdf = "Mol A\n  Burette\n\nM  END\n$$$$\nMol B\r\n  Burette\r\n\r\nM  END\r\n$$$$\r\nMol C\r  Burette\r\rM  END\r$$$$\n";
+        let options = GridParseOptions::default();
+        let single =
+            parse_grid_batch_with_options("sdf", sdf, GridCursor::default(), 0, 100, &options)
+                .expect("parse whole source");
+        assert_eq!(single.records.len(), 3);
+        assert!(single.complete);
+        assert_eq!(single.records[1].name, "Mol B");
+
+        let mut cursor = GridCursor::default();
+        let mut index = 0usize;
+        let mut names = Vec::new();
+        for _ in 0..10 {
+            let batch = parse_grid_batch_with_options("sdf", sdf, cursor, index, 1, &options)
+                .expect("parse one record");
+            names.extend(batch.records.iter().map(|record| record.name.clone()));
+            cursor = batch.next_cursor;
+            index = batch.next_index;
+            if batch.complete {
+                break;
+            }
+        }
+        let expected: Vec<String> = single
+            .records
+            .iter()
+            .map(|record| record.name.clone())
+            .collect();
+        assert_eq!(names, expected);
+        assert_eq!(index, 3);
+    }
+}

@@ -1,0 +1,634 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { editStructureFragmentFile, extractStructureComponentFile } from "../plugins/burette-agent/mcp/lib/structure-components.mjs";
+import { summarizeStructureFile } from "../plugins/burette-agent/mcp/lib/structure-summary.mjs";
+import { validateMolecularArtifact } from "../plugins/burette-agent/mcp/lib/validation.mjs";
+
+const pluginRoot = path.resolve("plugins/burette-agent");
+
+async function read(relativePath) {
+  return readFile(path.join(pluginRoot, relativePath), "utf8");
+}
+
+function runNode(args, cwd = ".") {
+  return spawnSync("node", args, {
+    cwd,
+    encoding: "utf8",
+  });
+}
+
+function runCommand(command, args, cwd = ".") {
+  return spawnSync(command, args, {
+    cwd,
+    encoding: "utf8",
+  });
+}
+
+const manifest = JSON.parse(await read(".codex-plugin/plugin.json"));
+assert.equal(manifest.name, "burette");
+assert.equal(manifest.skills, "./skills/");
+assert.equal(manifest.mcpServers, "./.mcp.json");
+assert.equal(manifest.interface.displayName, "Burette");
+assert.equal(manifest.interface.composerIcon, "./assets/composer-icon.png");
+assert.equal(manifest.interface.logo, "./assets/app-icon.png");
+assert.deepEqual(manifest.interface.capabilities, ["Interactive", "Read", "Write"]);
+assert.match(manifest.interface.longDescription, /observe scene state as structured JSON/);
+assert.equal(manifest.homepage, "https://github.com/SergeiNikolenko/Burette");
+assert.equal(manifest.repository, "https://github.com/SergeiNikolenko/Burette");
+assert.equal(manifest.license, "MIT");
+assert.equal(manifest.interface.category, "Education & Research");
+assert.equal(manifest.interface.websiteURL, "https://github.com/SergeiNikolenko/Burette");
+assert.equal(manifest.interface.privacyPolicyURL, "https://github.com/SergeiNikolenko/Burette/blob/main/PRIVACY.md");
+assert.equal(manifest.interface.termsOfServiceURL, "https://github.com/SergeiNikolenko/Burette/blob/main/TERMS.md");
+assert.match(await readFile("PRIVACY.md", "utf8"), /local Codex\s+plugin/);
+assert.match(await readFile("TERMS.md", "utf8"), /MIT License/);
+
+const compatibility = JSON.parse(await read("compatibility.json"));
+assert.equal(compatibility.schema, "burette_agent_compatibility.v1");
+assert.equal(compatibility.plugin.name, "burette");
+assert.equal(compatibility.plugin.version, manifest.version);
+assert.equal(compatibility.requires.buretteApp, ">=2.1.16");
+assert.equal(compatibility.requires.agentCli, "burette-agent-cli/v1");
+assert.equal(compatibility.requires.controlApi, "burette-agent-control/v1");
+assert.equal(compatibility.bundle.relativePath, "plugins/burette-agent");
+
+const mcpConfig = JSON.parse(await read(".mcp.json"));
+assert.equal(mcpConfig.mcpServers.burette_agent_mcp.command, "node");
+assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.args, ["./mcp/lib/server-bundle.mjs", "--stdio"]);
+assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.icons, [
+  { src: "./assets/composer-icon.png", mimeType: "image/png", sizes: ["32x32"] },
+  { src: "./assets/app-icon.png", mimeType: "image/png", sizes: ["512x512"] },
+]);
+for (const icon of mcpConfig.mcpServers.burette_agent_mcp.icons) {
+  assert.equal((await readFile(path.join(pluginRoot, icon.src))).byteLength > 0, true);
+}
+
+const packageJson = JSON.parse(await read("package.json"));
+assert.equal(packageJson.version, manifest.version);
+assert.equal(packageJson.files.includes(".app.json"), false);
+assert.match(packageJson.scripts.check, /mcp\/server\.mjs/);
+assert.match(packageJson.scripts.check, /mcp\/lib\/server-bundle\.mjs/);
+assert.match(packageJson.scripts.check, /scripts\/burette_agent_preflight\.mjs/);
+assert.match(packageJson.scripts.check, /mcp\/registrations\/fetch\/register\.mjs/);
+assert.match(packageJson.scripts.check, /mcp\/registrations\/molecular-workspace\/register\.mjs/);
+assert.match(packageJson.scripts.check, /mcp\/lib\/session-registry\.mjs/);
+const preflightScript = await read("scripts/burette_agent_preflight.mjs");
+assert.match(preflightScript, /story_authoring_reference: "supported_from_installed_molstar_schema"/);
+
+const rootPackageJson = JSON.parse(await readFile("package.json", "utf8"));
+assert.equal(rootPackageJson.scripts["install:plugin"], "bun plugins/burette-agent/scripts/install-local.mjs");
+assert.equal(rootPackageJson.scripts["build:agent-shell"], "bun scripts/build-agent-shell-plugin.mjs");
+const shellBuilder = await readFile("scripts/build-agent-shell-plugin.mjs", "utf8");
+assert.ok(shellBuilder.includes("await run('bun', ['run', 'build:grid-ui'], { cwd: repoRoot });"), "Plugin build must refresh the shared grid UI before packaging it.");
+
+const repoMarketplace = JSON.parse(await readFile(".agents/plugins/marketplace.json", "utf8"));
+assert.equal(repoMarketplace.name, "burette");
+assert.equal(repoMarketplace.plugins[0].name, "burette");
+assert.equal(repoMarketplace.plugins[0].source.path, "./plugins/burette-agent");
+assert.deepEqual(repoMarketplace.plugins[0].policy.products, ["CODEX"]);
+assert.equal(repoMarketplace.plugins[0].category, "Education & Research");
+
+const skillInvocationPolicies = [
+  ["index", true],
+  ["external-agent-contract", false],
+  ["molecular-report", false],
+  ["molecule-collection", false],
+  ["molstar-scene", false],
+  ["mvs-story", false],
+  ["open-workspace", false],
+  ["trajectory-review", false],
+  ["user-context", false],
+  ["visual-qa", false],
+  ["workflow-results", false],
+];
+for (const [skill, allowImplicitInvocation] of skillInvocationPolicies) {
+  const policy = await read(`skills/${skill}/agents/openai.yaml`);
+  assert.match(policy, new RegExp(`allow_implicit_invocation: ${allowImplicitInvocation}`));
+}
+
+const installScript = await read("scripts/install-local.mjs");
+const requiredPreviewRuntimeAssets = [
+  "viewer-bootstrap.js",
+  "molstar-preset-preview-controller.js",
+  "trajectory-smoothing.js",
+  "openchemlib/openchemlib.js",
+];
+assert.match(installScript, /\.codex", "plugins", "burette-marketplace"/);
+assert.match(installScript, /"plugin", "marketplace", "add", marketplaceRoot, "--json"/);
+assert.match(installScript, /"plugin", "add", pluginId, "--json"/);
+assert.match(installScript, /"plugin", "list", "--json"/);
+assert.match(installScript, /"plugin", "remove", legacyPluginId, "--json"/);
+assert.match(installScript, /\.\/plugins\/burette/);
+assert.match(installScript, /readPluginVersion/);
+assert.match(installScript, /"mcp\/lib\/server-bundle\.mjs"/);
+assert.match(installScript, /"preview-web\/viewer\.js"/);
+assert.match(installScript, /"browser-shell-dist\/index\.js"/);
+assert.match(installScript, /"scripts\/agent-preview\.mjs"/);
+assert.match(installScript, /"scripts\/agent-shell-server\.mjs"/);
+assert.match(installScript, /"scripts\/mvs-story-templates\.mjs"/);
+assert.match(installScript, /"skills\/mvs-story\/references\/molviewspec-authoring\.md"/);
+for (const template of [
+  "aligned-structure-comparison",
+  "binding-site-tour",
+  "docking-pose-comparison",
+  "structure-overview",
+]) {
+  assert.equal(installScript.includes(`"assets/mvs-story-templates/${template}.json"`), true);
+}
+for (const asset of requiredPreviewRuntimeAssets) {
+  assert.equal(installScript.includes(`"preview-web/${asset}"`), true, `installer does not require ${asset}`);
+}
+assert.match(installScript, /missingBundleFiles/);
+assert.match(installScript, /process\.argv\.includes\("--build"\)/);
+assert.match(installScript, /mcp\/lib\/tool-response 2\.mjs/);
+assert.doesNotMatch(installScript, /\.agents\/plugins\/burette/);
+assert.doesNotMatch(installScript, /BURETTE_PLUGIN_MARKETPLACE/);
+assert.doesNotMatch(installScript, /"bun", \["install", "--production"\]/);
+
+const buildAgentShellScript = await readFile("scripts/build-agent-shell-plugin.mjs", "utf8");
+for (const asset of requiredPreviewRuntimeAssets) {
+  assert.equal(buildAgentShellScript.includes(`'${asset}'`), true, `generator does not require ${asset}`);
+}
+const bundledAgentShellServer = await read("scripts/agent-shell-server.mjs");
+for (const asset of requiredPreviewRuntimeAssets) {
+  assert.equal(bundledAgentShellServer.includes(`'${asset}'`), true, `bundled server does not serve ${asset}`);
+}
+
+const requiredBundleBlock = installScript.match(/const requiredBundleFiles = \[([\s\S]*?)\n\];/u)?.[1] ?? "";
+const installerRequiredFiles = [...requiredBundleBlock.matchAll(/"([^"]+)"/gu)].map(match => match[1]);
+assert.equal(installerRequiredFiles.length > 0, true);
+for (const missingAsset of [
+  ...requiredPreviewRuntimeAssets.map(asset => `preview-web/${asset}`),
+  "browser-shell-dist/assets/missing-chunk.js",
+  "mcp/lib/server-chunk-missing.mjs",
+]) {
+  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "burette-plugin-install-contract-"));
+  const fixturePluginRoot = path.join(fixtureRoot, "plugins", "burette-agent");
+  const fixtureHome = path.join(fixtureRoot, "home");
+  try {
+    await mkdir(path.join(fixturePluginRoot, "scripts"), { recursive: true });
+    await cp(path.join(pluginRoot, "scripts", "install-local.mjs"), path.join(fixturePluginRoot, "scripts", "install-local.mjs"));
+    await mkdir(path.join(fixturePluginRoot, ".codex-plugin"), { recursive: true });
+    await writeFile(path.join(fixturePluginRoot, ".codex-plugin", "plugin.json"), '{"version":"0.0.0"}\n');
+    for (const relativePath of installerRequiredFiles) {
+      if (relativePath === missingAsset) continue;
+      const target = path.join(fixturePluginRoot, relativePath);
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, relativePath === "browser-shell-dist/index.js"
+        ? 'import "./assets/missing-chunk.js";\n'
+        : relativePath === "mcp/lib/server-bundle.mjs"
+          ? 'import "./server-chunk-missing.mjs";\n'
+        : "fixture\n");
+    }
+    const chunkPath = path.join(fixturePluginRoot, "browser-shell-dist", "assets", "missing-chunk.js");
+    if (missingAsset !== "browser-shell-dist/assets/missing-chunk.js") {
+      await mkdir(path.dirname(chunkPath), { recursive: true });
+      await writeFile(chunkPath, "export {};\n");
+    }
+    const serverChunkPath = path.join(fixturePluginRoot, "mcp/lib/server-chunk-missing.mjs");
+    if (missingAsset !== "mcp/lib/server-chunk-missing.mjs") {
+      await mkdir(path.dirname(serverChunkPath), { recursive: true });
+      await writeFile(serverChunkPath, "export {};\n");
+    }
+    const result = spawnSync(process.execPath, [path.join(fixturePluginRoot, "scripts", "install-local.mjs")], {
+      encoding: "utf8",
+      env: { ...process.env, HOME: fixtureHome },
+    });
+    assert.notEqual(result.status, 0, `installer accepted bundle without ${missingAsset}`);
+    assert.match(result.stderr, new RegExp(missingAsset.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
+const server = await read("mcp/server.mjs");
+assert.match(server, /new McpServer/);
+assert.match(server, /registerFetch\(server\)/);
+assert.match(server, /registerMolecularWorkspace\(server\)/);
+assert.match(server, /registerMoleculeTable\(server\)/);
+assert.match(server, /registerTrajectoryReview\(server\)/);
+assert.match(server, /registerMolecularReport\(server\)/);
+
+const fetchRegistration = await read("mcp/registrations/fetch/register.mjs");
+assert.match(fetchRegistration, /registerAppTool/);
+assert.match(fetchRegistration, /"fetch"/);
+assert.match(fetchRegistration, /max_length/);
+assert.match(fetchRegistration, /start_index/);
+assert.match(fetchRegistration, /raw/);
+assert.match(fetchRegistration, /openWorldHint: true/);
+assert.match(fetchRegistration, /Local, private, and link-local hosts are blocked/);
+assert.match(fetchRegistration, /MAX_RESPONSE_BYTES/);
+
+const workspaceRegistration = await read("mcp/registrations/molecular-workspace/register.mjs");
+assert.match(workspaceRegistration, /registerAppTool/);
+assert.match(workspaceRegistration, /burette\.get_context/);
+assert.match(workspaceRegistration, /burette\.open_workspace/);
+assert.match(workspaceRegistration, /burette\.open_ketcher/);
+assert.match(workspaceRegistration, /workspaceSessionId/);
+assert.match(workspaceRegistration, /viewerSessionId/);
+assert.match(workspaceRegistration, /burette\.observe_workspace/);
+assert.match(workspaceRegistration, /burette\.control_viewer/);
+assert.match(workspaceRegistration, /burette\.control_ketcher/);
+assert.match(workspaceRegistration, /ketcherActionSchema/);
+assert.match(workspaceRegistration, /burette\.render_panel/);
+assert.match(workspaceRegistration, /PUBLIC_CONTRACT/);
+assert.match(workspaceRegistration, /open_burette_workspace/);
+assert.match(workspaceRegistration, /summarize_burette_structure/);
+assert.match(workspaceRegistration, /summarizeStructureFile/);
+assert.match(workspaceRegistration, /structureSummary/);
+assert.match(workspaceRegistration, /manage_burette_tabs/);
+assert.match(workspaceRegistration, /type: "manage_tabs"/);
+assert.match(workspaceRegistration, /operation: z\.enum\(\["list", "focus", "next", "previous", "open_file", "new", "close", "move"\]\)/);
+assert.match(workspaceRegistration, /manage_burette_structure_component/);
+assert.match(workspaceRegistration, /extractStructureComponentFile/);
+assert.match(workspaceRegistration, /type: "open_files"/);
+assert.match(workspaceRegistration, /type: "clear_selection"/);
+assert.match(workspaceRegistration, /hide_components/);
+assert.match(workspaceRegistration, /open_burette_docking_view/);
+assert.match(workspaceRegistration, /type: "open_docking_view"/);
+assert.match(workspaceRegistration, /sceneMode: z\.enum\(\["structureAll", "structurePoses"\]\)/);
+assert.match(workspaceRegistration, /set_burette_trajectory/);
+assert.match(workspaceRegistration, /"set_structure_pose"/);
+assert.match(workspaceRegistration, /"set_sdf_pose_index"/);
+assert.match(workspaceRegistration, /set_burette_representation_style/);
+assert.match(workspaceRegistration, /type: "set_molstar_style"/);
+assert.match(workspaceRegistration, /focus_burette_selection/);
+assert.match(workspaceRegistration, /type: "focus_selection"/);
+assert.match(workspaceRegistration, /edit_burette_fragment/);
+assert.match(workspaceRegistration, /editStructureFragmentFile/);
+assert.match(workspaceRegistration, /observe_burette_workspace/);
+assert.match(workspaceRegistration, /act_molstar_scene/);
+assert.match(workspaceRegistration, /declarative Mol\* scene action/);
+assert.match(workspaceRegistration, /runBuretteAgent/);
+assert.match(workspaceRegistration, /visibility: \["model"\]/);
+assert.doesNotMatch(workspaceRegistration, /openai\/outputTemplate/);
+assert.doesNotMatch(workspaceRegistration, /widgetData/);
+
+for (const registration of [
+  "mcp/registrations/molecule-table/register.mjs",
+  "mcp/registrations/trajectory-review/register.mjs",
+  "mcp/registrations/molecular-report/register.mjs",
+]) {
+  const source = await read(registration);
+  assert.match(source, /validateMolecularArtifact/);
+  assert.match(source, /visibility: \["model"\]/);
+  assert.doesNotMatch(source, /registerWidgetResource/);
+  assert.doesNotMatch(source, /openai\/outputTemplate/);
+  assert.doesNotMatch(source, /widgetData/);
+  assert.doesNotMatch(source, /render_.*_widget/);
+}
+
+const toolResponse = await read("mcp/lib/tool-response.mjs");
+assert.match(toolResponse, /toolText/);
+
+const packDryRun = runCommand("npm", ["pack", "--dry-run", "--json", "."], pluginRoot);
+assert.equal(packDryRun.status, 0, packDryRun.stderr);
+const packPayload = JSON.parse(packDryRun.stdout);
+const packedFiles = new Set(packPayload[0].files.map(file => file.path));
+for (const asset of [
+  'assets/local-viewer.html',
+  'scripts/mcp-app-session.mjs',
+  'scripts/mcp-app-open.mjs',
+  'scripts/local-file-actions.mjs',
+  "browser-shell-dist/boot-overlay.js",
+  "browser-shell-dist/index.html",
+  "browser-shell-dist/index.js",
+  "preview-web/index.html",
+  "preview-web/viewer.js",
+  "preview-web/viewer-bootstrap.js",
+  "preview-web/molstar-preset-preview-controller.js",
+  "preview-web/trajectory-smoothing.js",
+  "preview-web/grid-viewer.js",
+  "preview-web/grid-ui.js",
+  "preview-web/grid.css",
+  "preview-web/openchemlib/openchemlib.js",
+  "preview-web/rdkit/RDKit_minimal.js",
+  "preview-web/rdkit/RDKit_minimal.wasm",
+  "scripts/agent-preview.mjs",
+  "scripts/agent-shell-server.mjs",
+  "scripts/burette-agent.mjs",
+  "scripts/mvs-story-templates.mjs",
+  "scripts/install-local.mjs",
+  "skills/mvs-story/references/molviewspec-authoring.md",
+  "assets/mvs-story-templates/aligned-structure-comparison.json",
+  "assets/mvs-story-templates/binding-site-tour.json",
+  "assets/mvs-story-templates/docking-pose-comparison.json",
+  "assets/mvs-story-templates/structure-overview.json",
+]) {
+  assert.equal(packedFiles.has(asset), true, `npm package is missing ${asset}`);
+}
+
+const mvsStorySkill = await read("skills/mvs-story/SKILL.md");
+const mvsAuthoringReference = await read("skills/mvs-story/references/molviewspec-authoring.md");
+assert.match(mvsStorySkill, /burette\.get_mvs_authoring_reference/);
+for (const section of ["Tree Schema", "Selectors", "Annotations", "Camera Settings", "Primitives", "Volumetric Data", "Animations", "MVS Extension"]) {
+  assert.equal(mvsAuthoringReference.includes(section), true, `MolViewSpec reference is missing ${section}`);
+}
+assert.equal(packedFiles.has("scripts/rdkit_conformer.py"), false, "browser shell must not package the Python conformer fallback");
+
+for (const entrypoint of ["browser-shell-dist/index.html", "browser-shell-dist/index.js"]) {
+  const source = await read(entrypoint);
+  for (const match of source.matchAll(/["'`](?:\.\/)?(assets\/[^"'`?#\s]+)["'`]/gu)) {
+    const reference = path.posix.normalize(match[1]);
+    if (!reference.startsWith("assets/")) continue;
+    const referencedAsset = path.posix.join("browser-shell-dist", reference);
+    assert.equal(packedFiles.has(referencedAsset), true, `npm package is missing ${referencedAsset}`);
+  }
+}
+const browserShellIndex = await read("browser-shell-dist/index.js");
+assert.match(browserShellIndex, /molstar-preset-preview-controller\.js/);
+
+const bundledServerSource = await read("mcp/lib/server-bundle.mjs");
+for (const match of bundledServerSource.matchAll(/["']\.\/(server-chunk-[^"'/?#\s]+\.mjs)["']/gu)) {
+  const referencedChunk = path.posix.join("mcp/lib", match[1]);
+  assert.equal(packedFiles.has(referencedChunk), true, `npm package is missing ${referencedChunk}`);
+}
+
+const browserShellJavaScript = [
+  "browser-shell-dist/index.js",
+  ...(await readdir(path.join(pluginRoot, "browser-shell-dist", "assets")))
+    .filter(file => file.endsWith(".js"))
+    .map(file => `browser-shell-dist/assets/${file}`),
+];
+for (const asset of browserShellJavaScript) {
+  const source = await read(asset);
+  assert.equal(source.includes(path.resolve(".")), false, `${asset} contains the current build path`);
+  assert.doesNotMatch(
+    source,
+    /(?:(?:\/Users\/[^/]+|\/home\/[^/]+|\/root)(?:\/[^/"'`\s]+){0,12}\/(?:PreviewExtension\/Web|plugins\/burette-agent|apps\/desktop)|[A-Za-z]:[\\/]Users[\\/][^\\/]+(?:[\\/][^\\/"'`\s]+){0,12}[\\/](?:PreviewExtension[\\/]Web|plugins[\\/]burette-agent|apps[\\/]desktop))/u,
+    `${asset} contains a build-machine repository path`,
+  );
+}
+
+const indexSkill = await read("skills/index/SKILL.md");
+assert.match(indexSkill, /Direct native viewing/);
+assert.match(indexSkill, /Preflight for setup or other workflows/);
+assert.match(indexSkill, /external-agent-contract/);
+assert.match(indexSkill, /workspaceSessionId/);
+assert.match(indexSkill, /open-workspace/);
+assert.match(indexSkill, /molstar-scene/);
+assert.match(indexSkill, /molecule-collection/);
+assert.match(indexSkill, /trajectory-review/);
+assert.match(indexSkill, /workflow-results/);
+assert.match(indexSkill, /molecular-report/);
+assert.match(indexSkill, /visual-qa/);
+assert.match(indexSkill, /Completion Gate/);
+assert.match(indexSkill, /exact live URL as a clickable Markdown link/);
+
+const openWorkspaceSkill = await read("skills/open-workspace/SKILL.md");
+assert.match(openWorkspaceSkill, /\[Open Burette in Browser\]/);
+assert.match(openWorkspaceSkill, /bundle directory, report, or screenshot does not replace/);
+
+const externalAgentContractSkill = await read("skills/external-agent-contract/SKILL.md");
+assert.match(externalAgentContractSkill, /include that exact live URL as a clickable Markdown link/);
+
+const userContextSkill = await read("skills/user-context/SKILL.md");
+assert.match(userContextSkill, /burette_agent_preflight/);
+assert.match(userContextSkill, /capability registry/);
+assert.match(userContextSkill, /Do not store arbitrary molecule facts/);
+
+const externalAgentSkill = await read("skills/external-agent-contract/SKILL.md");
+assert.match(externalAgentSkill, /burette\.open_workspace/);
+assert.match(externalAgentSkill, /burette\.control_viewer/);
+assert.match(externalAgentSkill, /workspaceSessionId/);
+assert.match(externalAgentSkill, /url/);
+assert.match(externalAgentSkill, /completionState: "awaiting_browser"/);
+assert.match(externalAgentSkill, /ready: true/);
+
+const referenceAlignment = await read("REFERENCE_ALIGNMENT.md");
+assert.match(referenceAlignment, /Data Analytics/);
+assert.match(referenceAlignment, /Product Design/);
+assert.match(referenceAlignment, /Creative Production/);
+assert.match(referenceAlignment, /Browser/);
+assert.match(referenceAlignment, /Computer/);
+assert.match(referenceAlignment, /Completion Bar/);
+
+const visualQaSkill = await read("skills/visual-qa/SKILL.md");
+assert.match(visualQaSkill, /Browser/);
+assert.match(visualQaSkill, /Computer/);
+assert.match(visualQaSkill, /cannot reliably provide/);
+
+const goodManifest = {
+  version: 1,
+  surface: "molecular-report",
+  title: "Ligand Review",
+  blocks: [
+    { type: "markdown", body: "# Ligand Review\n\nReviewed ligands." },
+  ],
+};
+const goodSnapshot = {
+  version: 1,
+  status: "ready",
+  datasets: {
+    ligands: [
+      { id: "L1", smiles: "CCO", score: -7.2 },
+    ],
+  },
+  artifacts: [
+    { kind: "sdf", path: "/tmp/ligands.sdf" },
+  ],
+};
+const valid = validateMolecularArtifact({
+  manifest: goodManifest,
+  snapshot: goodSnapshot,
+  surface: "molecular-report",
+});
+assert.equal(valid.ok, true);
+assert.equal(valid.summary.datasetCount, 1);
+
+const invalid = validateMolecularArtifact({
+  manifest: { ...goodManifest, blocks: [] },
+  snapshot: {
+    version: 1,
+    status: "ready",
+    datasets: {
+      ligands: new Array(2001).fill(0).map((_, index) => ({ id: `L${index}` })),
+    },
+    accessIssues: [{ message: "should not be here when ready" }],
+  },
+  surface: "molecular-report",
+});
+assert.equal(invalid.ok, false);
+assert.match(invalid.errors.join("\n"), /manifest.blocks/);
+assert.match(invalid.errors.join("\n"), /maximum is 2000/);
+assert.match(invalid.errors.join("\n"), /accessIssues/);
+
+const tableShapeInvalid = validateMolecularArtifact({
+  manifest: goodManifest,
+  snapshot: {
+    version: 1,
+    status: "ready",
+    datasets: {
+      ligands: { columns: [{ key: "id" }], rows: [{ id: "L1" }] },
+    },
+  },
+  surface: "molecule-table",
+});
+assert.equal(tableShapeInvalid.ok, false);
+assert.match(tableShapeInvalid.errors.join("\n"), /\{columns, rows\}/);
+
+const preflight = runNode(["plugins/burette-agent/scripts/burette_agent_preflight.mjs"]);
+assert.equal(preflight.status, 0, preflight.stderr);
+const preflightPayload = JSON.parse(preflight.stdout);
+assert.equal(preflightPayload.schema, "burette_agent_preflight.v1");
+assert.equal(preflightPayload.repository.source, "source-checkout");
+assert.equal(preflightPayload.files.cli.status, "available");
+assert.equal(preflightPayload.files.browserPreviewServer.status, "available");
+assert.equal(preflightPayload.files.browserPreviewWeb.path, path.join(pluginRoot, "preview-web"));
+assert.equal(preflightPayload.files.browserPreviewWeb.status, "available");
+assert.equal(preflightPayload.context.transports[0].id, "auto");
+assert.equal(preflightPayload.context.transports[1].id, "browser-agent-shell");
+assert.equal(preflightPayload.context.transports[2].id, "browser-preview");
+assert.equal(preflightPayload.context.transports[3].id, "desktop-app");
+assert.equal(preflightPayload.files.inlineViewerResource.status, "available");
+assert.equal(preflightPayload.context.transports.find(item => item.id === 'mcp-app').status, 'available');
+assert.equal(preflightPayload.context.workflowRoutes.molstarScene.includes("observe scene"), true);
+assert.equal(preflightPayload.context.workflowRoutes.molstarScene.includes("apply MolViewSpec-informed declarative scene schema"), true);
+assert.equal(preflightPayload.context.workflowRoutes.molstarScene.includes("load complete MolViewSpec scenes"), true);
+assert.equal(preflightPayload.capabilities.molstarActions.apply_scene, "supported");
+assert.equal(preflightPayload.capabilities.molstarActions.scene_language, "mvs_informed_active_viewer_dsl");
+assert.equal(preflightPayload.capabilities.molstarActions.load_mvs, "supported_for_complete_mvs_payloads");
+assert.equal(preflightPayload.capabilities.molstarActions.full_mvs_scene, "supported_via_load_mvs");
+
+const molstarSceneSkill = await read("skills/molstar-scene/SKILL.md");
+assert.match(molstarSceneSkill, /apply_scene/);
+assert.match(molstarSceneSkill, /MolViewSpec-informed scene language/);
+assert.match(molstarSceneSkill, /https:\/\/molstar\.org\/mol-view-spec-docs\/tree-schema\//);
+assert.match(molstarSceneSkill, /https:\/\/molstar\.org\/mol-view-spec-docs\/selectors\//);
+assert.match(molstarSceneSkill, /camera movement\/orientation/);
+assert.match(molstarSceneSkill, /structure movement\/rotation\/instances/);
+assert.match(molstarSceneSkill, /"selector": "protein"/);
+assert.match(molstarSceneSkill, /"label": "Active loop"/);
+assert.match(molstarSceneSkill, /"type": "label_selection"/);
+
+const readme = await read("README.md");
+assert.match(readme, /bun run install:plugin/);
+assert.match(readme, /codex plugin marketplace add/);
+assert.match(readme, /burette@burette/);
+assert.match(readme, /--build/);
+assert.match(readme, /MolViewSpec Scene Language/);
+assert.match(readme, /"type":"apply_scene"/);
+assert.match(readme, /"selector":"protein"/);
+assert.match(readme, /load_mvs/);
+
+const structureSummary = await summarizeStructureFile("samples/mini.pdb");
+assert.equal(structureSummary.format, "PDB");
+assert.equal(structureSummary.counts.atoms, 9);
+assert.equal(structureSummary.counts.chains, 1);
+
+const extractedLigand = await extractStructureComponentFile({
+  file: "samples/structures/proteins/1htb.pdb",
+  component: "ligand",
+  chain: "A",
+  compId: "NAD",
+  seq: 377,
+  title: "test-nad-a-377",
+});
+assert.equal(extractedLigand.atomCount, 44);
+assert.match(extractedLigand.outputPath, /test-nad-a-377\.pdb$/);
+await unlink(extractedLigand.outputPath);
+
+const removedLigand = await editStructureFragmentFile({
+  file: "samples/structures/proteins/1htb.pdb",
+  operation: "remove_to_new_file",
+  component: "ligand",
+  chain: "A",
+  compId: "NAD",
+  seq: 377,
+  title: "test-1htb-without-nad",
+});
+assert.equal(removedLigand.removedAtomCount, 44);
+assert.equal(removedLigand.insertedAtomCount, 0);
+assert.match(removedLigand.outputPath, /test-1htb-without-nad\.pdb$/);
+const removedLigandText = await readFile(removedLigand.outputPath, "utf8");
+assert.doesNotMatch(removedLigandText, /^(?:ATOM|HETATM).{11}NAD A\s+377\b/m);
+assert.doesNotMatch(removedLigandText, /^CONECT/m);
+await unlink(removedLigand.outputPath);
+
+const replacementLigand = await editStructureFragmentFile({
+  file: "samples/structures/proteins/1htb.pdb",
+  operation: "replace_to_new_file",
+  component: "ligand",
+  chain: "A",
+  compId: "NAD",
+  seq: 377,
+  replacementFile: "samples/mini.pdb",
+  title: "test-1htb-nad-replaced",
+});
+assert.equal(replacementLigand.removedAtomCount, 44);
+assert.equal(replacementLigand.insertedAtomCount, 9);
+assert.match(replacementLigand.outputPath, /test-1htb-nad-replaced\.pdb$/);
+const replacementLigandText = await readFile(replacementLigand.outputPath, "utf8");
+assert.match(replacementLigandText, /REMARK Operation replace_to_new_file/);
+assert.doesNotMatch(replacementLigandText, /^(?:ATOM|HETATM).{11}NAD A\s+377\b/m);
+assert.doesNotMatch(replacementLigandText, /^CONECT/m);
+assert.match(replacementLigandText, /\bGLY A\s+1\b/);
+await unlink(replacementLigand.outputPath);
+
+const selfContainedPluginCheck = runNode([
+  "--input-type=module",
+  "--eval",
+  `
+    import { mkdtemp, cp, rm } from "node:fs/promises";
+    import { tmpdir } from "node:os";
+    import path from "node:path";
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "burette-plugin-cache-test-"));
+    const pluginRoot = path.join(tempRoot, "cache", "burette", "burette", ${JSON.stringify(manifest.version)});
+    await cp("plugins/burette-agent", pluginRoot, { recursive: true });
+    const bridge = await import(path.join(pluginRoot, "mcp", "lib", "cli-bridge.mjs"));
+    const result = await bridge.runBuretteAgent(["open", "--mode", "browser-preview", path.resolve("samples/mini.pdb")]);
+    console.log(JSON.stringify({
+      ok: result.ok,
+      mode: result.payload?.result?.mode,
+      processId: result.payload?.result?.processId ?? null,
+      url: result.payload?.result?.url ?? null
+    }));
+    if (result.payload?.result?.processId) {
+      try { process.kill(result.payload.result.processId, "SIGTERM"); } catch {}
+    }
+    await rm(tempRoot, { recursive: true, force: true });
+  `,
+]);
+assert.equal(selfContainedPluginCheck.status, 0, selfContainedPluginCheck.stderr);
+const selfContainedPlugin = JSON.parse(selfContainedPluginCheck.stdout);
+assert.equal(selfContainedPlugin.ok, true);
+assert.equal(selfContainedPlugin.mode, "browser-preview");
+assert.match(selfContainedPlugin.url, /^http:\/\/127\.0\.0\.1:/);
+
+const bundledMcpTargets = (await readdir("plugins/burette-agent/mcp/lib"))
+  .filter(file => /^server-(?:bundle|chunk)-?.*\.mjs$/u.test(file))
+  .map(file => `plugins/burette-agent/mcp/lib/${file}`);
+assert.equal(bundledMcpTargets.length >= 2, true);
+for (const target of bundledMcpTargets) {
+  assert.equal((await stat(target)).size <= 512000, true, `${target} exceeds the repository blob limit`);
+}
+
+const syntaxTargets = [
+  "plugins/burette-agent/mcp/server.mjs",
+  ...bundledMcpTargets,
+  "plugins/burette-agent/mcp/lib/cli-bridge.mjs",
+  "plugins/burette-agent/mcp/lib/plugin-root.mjs",
+  "plugins/burette-agent/mcp/lib/structure-components.mjs",
+  "plugins/burette-agent/mcp/lib/structure-summary.mjs",
+  "plugins/burette-agent/mcp/lib/validation.mjs",
+  "plugins/burette-agent/mcp/lib/tool-response.mjs",
+  "plugins/burette-agent/mcp/registrations/fetch/register.mjs",
+  "plugins/burette-agent/mcp/registrations/molecular-workspace/register.mjs",
+  "plugins/burette-agent/mcp/registrations/molecule-table/register.mjs",
+  "plugins/burette-agent/mcp/registrations/trajectory-review/register.mjs",
+  "plugins/burette-agent/mcp/registrations/molecular-report/register.mjs",
+  "plugins/burette-agent/scripts/burette_agent_preflight.mjs",
+  "plugins/burette-agent/scripts/validate_molecular_artifact.mjs",
+];
+
+for (const target of syntaxTargets) {
+  const checked = runNode(["--check", target]);
+  assert.equal(checked.status, 0, `${target}\n${checked.stderr}`);
+}
+
+console.log("burette-agent plugin tests passed");

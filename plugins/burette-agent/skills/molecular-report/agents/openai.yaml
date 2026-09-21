@@ -1,0 +1,5 @@
+interface:
+  display_name: "Molecular reports"
+  short_description: "Validate and display source-backed molecular reports"
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Molecule collections"
+  short_description: "Inspect molecular tables, properties and selections"
+policy:
+  allow_implicit_invocation: false

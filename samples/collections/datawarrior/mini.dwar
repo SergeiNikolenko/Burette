@@ -1,0 +1,17 @@
+<datawarrior-fileinfo>
+<version="3.3">
+<rowcount="2">
+</datawarrior-fileinfo>
+<column properties>
+<columnName="Structure">
+<columnProperty="specialType	idcode">
+<columnName="coords">
+<columnProperty="parent	Structure">
+<columnProperty="specialType	idcoordinates2D">
+</column properties>
+Structure	coords	Name	Activity
+eMHAIh@	!B_vq?Dp	Ethanol	1.25
+fI@@	!B	Water	0.10
+<datawarrior properties>
+<mainView="Table">
+</datawarrior properties>

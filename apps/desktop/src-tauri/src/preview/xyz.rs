@@ -1,0 +1,165 @@
+#[derive(Clone)]
+pub(crate) struct XyzPayload {
+    pub(crate) data: Vec<u8>,
+    pub(crate) frame_count: Option<usize>,
+}
+
+pub(crate) fn xyz_frame(data: &[u8], frame_index: usize) -> Option<XyzPayload> {
+    let text = String::from_utf8_lossy(data)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut start = 0;
+    while start < lines.len() && lines[start].trim().is_empty() {
+        start += 1;
+    }
+    let frame_count = count_xyz_frames(&lines, start)?;
+    let target_frame = frame_index.min(frame_count.saturating_sub(1));
+    start = xyz_frame_start(&lines, start, target_frame)?;
+    let atom_count: usize = lines.get(start)?.split_whitespace().next()?.parse().ok()?;
+    if atom_count == 0 || start + atom_count + 1 >= lines.len() {
+        return None;
+    }
+    if !has_xyz_atom_lines(&lines, start + 2, atom_count) {
+        return None;
+    }
+    let end = start + atom_count + 2;
+    let mut first_frame = lines[start..end].join("\n");
+    if !first_frame.ends_with('\n') {
+        first_frame.push('\n');
+    }
+    Some(XyzPayload {
+        data: first_frame.into_bytes(),
+        frame_count: Some(frame_count),
+    })
+}
+
+fn xyz_frame_start(lines: &[&str], mut index: usize, target_frame: usize) -> Option<usize> {
+    for frame in 0..=target_frame {
+        while index < lines.len() && lines[index].trim().is_empty() {
+            index += 1;
+        }
+        let atom_count: usize = lines.get(index)?.split_whitespace().next()?.parse().ok()?;
+        if atom_count == 0 || index + atom_count + 1 >= lines.len() {
+            return None;
+        }
+        if !has_xyz_atom_lines(lines, index + 2, atom_count) {
+            return None;
+        }
+        if frame == target_frame {
+            return Some(index);
+        }
+        index += atom_count + 2;
+    }
+    None
+}
+
+fn count_xyz_frames(lines: &[&str], mut index: usize) -> Option<usize> {
+    let mut frames = 0;
+    while index < lines.len() && frames < 100_000 {
+        while index < lines.len() && lines[index].trim().is_empty() {
+            index += 1;
+        }
+        let Some(atom_count) = lines
+            .get(index)
+            .and_then(|line| line.split_whitespace().next())
+            .and_then(|value| value.parse::<usize>().ok())
+        else {
+            break;
+        };
+        if atom_count == 0 || index + atom_count + 1 >= lines.len() {
+            break;
+        }
+        if !has_xyz_atom_lines(lines, index + 2, atom_count) {
+            break;
+        }
+        frames += 1;
+        index += atom_count + 2;
+    }
+    (frames > 0).then_some(frames)
+}
+
+fn has_xyz_atom_lines(lines: &[&str], first_atom_index: usize, atom_count: usize) -> bool {
+    let end = first_atom_index + atom_count;
+    end <= lines.len()
+        && lines[first_atom_index..end]
+            .iter()
+            .all(|line| !line.trim().is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_first_frame_and_counts_frames() {
+        let payload = xyz_frame(
+            b"\n2\nfirst frame\nH 0 0 0\nO 0 0 1\n2\nsecond frame\nH 1 0 0\nO 1 0 1\n",
+            0,
+        )
+        .expect("valid xyz should produce a payload");
+
+        assert_eq!(payload.frame_count, Some(2));
+        assert_eq!(
+            String::from_utf8(payload.data).expect("payload should be utf8"),
+            "2\nfirst frame\nH 0 0 0\nO 0 0 1\n"
+        );
+    }
+
+    #[test]
+    fn extracts_selected_frame_and_counts_frames() {
+        let payload = xyz_frame(
+            b"\n2\nfirst frame\nH 0 0 0\nO 0 0 1\n2\nsecond frame\nH 1 0 0\nO 1 0 1\n",
+            1,
+        )
+        .expect("valid xyz should produce a payload");
+
+        assert_eq!(payload.frame_count, Some(2));
+        assert_eq!(
+            String::from_utf8(payload.data).expect("payload should be utf8"),
+            "2\nsecond frame\nH 1 0 0\nO 1 0 1\n"
+        );
+    }
+
+    #[test]
+    fn clamps_selected_frame_to_last_frame() {
+        let payload = xyz_frame(b"1\nfirst frame\nH 0 0 0\n1\nsecond frame\nH 1 0 0\n", 99)
+            .expect("valid xyz should produce a payload");
+
+        assert_eq!(payload.frame_count, Some(2));
+        assert_eq!(
+            String::from_utf8(payload.data).expect("payload should be utf8"),
+            "1\nsecond frame\nH 1 0 0\n"
+        );
+    }
+
+    #[test]
+    fn normalizes_carriage_returns() {
+        let payload = xyz_frame(b"1\r\ncomment\r\nC 0 0 0\r\n", 0)
+            .expect("valid crlf xyz should produce a payload");
+
+        assert_eq!(
+            String::from_utf8(payload.data).expect("payload should be utf8"),
+            "1\ncomment\nC 0 0 0\n"
+        );
+    }
+
+    #[test]
+    fn rejects_empty_or_incomplete_frames() {
+        assert!(xyz_frame(b"", 0).is_none());
+        assert!(xyz_frame(b"0\ncomment\n", 0).is_none());
+        assert!(xyz_frame(b"2\ncomment\nH 0 0 0\n", 0).is_none());
+    }
+
+    #[test]
+    fn stops_counting_on_malformed_following_frame() {
+        let payload =
+            xyz_frame(b"1\nfirst\nC 0 0 0\n2\nbroken\nH 0 0 0\n", 0).expect("first frame is valid");
+
+        assert_eq!(payload.frame_count, Some(1));
+        assert_eq!(
+            String::from_utf8(payload.data).expect("payload should be utf8"),
+            "1\nfirst\nC 0 0 0\n"
+        );
+    }
+}

@@ -1,0 +1,20 @@
+# This file was created by gmx energy
+# gmx energy is part of G R O M A C S
+@    title "Potential Energy"
+@    xaxis  label "Time (ps)"
+@    yaxis  label "Energy (kJ/mol)"
+@TYPE xy
+@ view 0.15, 0.15, 0.75, 0.85
+@ legend on
+@ s0 legend "Potential"
+    0.000000  -125034.484375
+    2.000000  -125210.812500
+    4.000000  -125188.328125
+    6.000000  -125301.093750
+    8.000000  -125276.656250
+   10.000000  -125340.218750
+   12.000000  -125298.437500
+   14.000000  -125362.906250
+   16.000000  -125331.171875
+   18.000000  -125379.640625
+   20.000000  -125355.093750

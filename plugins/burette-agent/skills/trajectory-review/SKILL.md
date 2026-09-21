@@ -1,0 +1,38 @@
+---
+name: trajectory-review
+description: "Use when reviewing molecular trajectories, frame metrics, representative structures, or trajectory result bundles in Burette."
+---
+
+# Trajectory Review
+
+Use this workflow for MD trajectories, Desmond-like bundles, representative
+frames, RMSD/RMSF/contact plots, and trajectory cleanup outputs.
+
+## Workflow
+
+For the native workspace, reuse the existing session. Self-contained multi-frame
+XYZ/PDB files open with `control_inline_viewer` action `open_files`.
+Once the active viewer is ready, `observe_frames` returns `kind`, zero-based
+`frameIndex`, `frameCount`, and `playing`. `control_frames` takes `operation`:
+`next`, `previous`, `goto` (with zero-based `index`), `play`, or `pause`.
+The same commands operate supplied docking pose timelines. Verify a successful
+frame acknowledgement and re-observe after switching documents. Do not use
+camera spin or procedural wiggle as a substitute for trajectory playback.
+Missing topology/coordinates and `NO_FRAME_CONTROLS` must be reported explicitly.
+
+1. Run preflight.
+2. Identify the trajectory bundle and required companion files.
+3. Open the displayable structure or bundle through `open-workspace`.
+4. Validate trajectory metrics and artifacts as a bounded snapshot.
+5. Render metrics and artifact provenance in a Burette side panel or adjacent
+   report file.
+6. Use Browser or Computer visual QA when trajectory controls or frame display
+   must be verified.
+
+## Supported State Labels
+
+- `supported`: the bundle opens and observe reports trajectory-ready state.
+- `partial`: metrics or representative frames are reviewable, but interactive
+  trajectory controls are missing or incomplete.
+- `unsupported`: required topology/coordinate files are absent or unreadable.
+- `external_workflow`: cleanup or production MD must run outside Burette.

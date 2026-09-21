@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "path": "tests/fixtures/quicklook-compatibility/caffeine.mdl",
+      "formatId": "mol",
+      "observedContentType": "net.sourceforge.openbabel.mdl"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/emendXRay.cif",
+      "formatId": "cif",
+      "observedContentType": "com.local.burette10.cif"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/ketoconazole.mol",
+      "formatId": "mol",
+      "observedContentType": "com.schrodinger.mol"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/ketoconazole.mol",
+      "formatId": "mol",
+      "observedContentType": "com.revvity.external.mdl3000"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/ketoconazole.mol",
+      "formatId": "mol",
+      "observedContentType": "com.mdli.molfile"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/emendXRay.cif",
+      "formatId": "cif",
+      "observedContentType": "com.revvity.external.cif"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/single.smi",
+      "formatId": "smiles",
+      "observedContentType": "gg.flew.unfold.subtitle-smi"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/junk2.sdf",
+      "formatId": "sdf",
+      "observedContentType": "com.schrodinger.sdf"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/ketoconazole.sdf",
+      "formatId": "sdf",
+      "observedContentType": "com.schrodinger.sdf"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/ketoconazole.sdf",
+      "formatId": "sdf",
+      "observedContentType": "com.mdli.sketchfile"
+    }
+  ]
+}

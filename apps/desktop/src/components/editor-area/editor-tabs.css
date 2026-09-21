@@ -1,0 +1,146 @@
+.tab-strip {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  flex: 1;
+  height: calc(var(--chrome-control-height) + var(--chrome-control-padding) * 2);
+  padding-block: var(--chrome-control-padding);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  scrollbar-width: none;
+}
+.tab-strip::-webkit-scrollbar { display: none; }
+.tab-history-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+.tab-scroll-region {
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tab-scroll-region::-webkit-scrollbar { display: none; }
+.tab-strip-spacer { min-width: 0; align-self: stretch; flex: 1 1 28px; }
+.tab-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  will-change: transform;
+}
+.tab-shell[data-dragging="true"] {
+  z-index: 12;
+}
+.tab-history-button {
+  width: 28px;
+  height: var(--chrome-control-height);
+  border: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--text-icon-muted);
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 140ms ease-out, color 140ms ease-out, opacity 140ms ease-out, transform 140ms ease-out;
+}
+.tab-history-button:hover:not(:disabled) { background: var(--surface-subtle); color: var(--text-secondary); }
+.tab-history-button:active:not(:disabled) { transform: scale(0.94); }
+.tab-history-button:disabled { opacity: 0.3; }
+.tab {
+  position: relative;
+  max-width: 180px;
+  height: 28px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 1 auto;
+  min-width: 78px;
+  cursor: default;
+  line-height: 1.15;
+  touch-action: none;
+  user-select: none;
+  transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+}
+.tab > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; }
+.tab:hover { background: var(--tab-active-bg); color: var(--tab-active-fg, var(--text-secondary)); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
+.tab.active { background: var(--tab-active-bg); color: var(--tab-active-fg, var(--text-secondary)); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
+.tab-shell[data-active] .tab { padding-right: 34px; }
+.tab-shell[data-selected="true"] .tab {
+  background: var(--surface-selected);
+  color: var(--text-secondary);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+}
+.tab-shell[data-selected="true"] .tab.active {
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.tab:active { transform: scale(0.985); }
+.tab-shell[data-dragging="true"] .tab {
+  background: var(--tab-active-bg);
+  color: var(--text-secondary);
+  transform: none;
+  opacity: 0.72;
+}
+.close-glyph {
+  display: block;
+  flex: 0 0 auto;
+}
+.tab-close {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translate(100%, -50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  color: var(--text-faint);
+  background: transparent;
+  cursor: default;
+  transition: opacity 120ms ease-out, color 120ms ease-out, background 120ms ease-out, transform 120ms ease-out;
+}
+@container (max-width: 320px) {
+  .topbar .tab-history-controls,
+  .topbar .new-tab,
+  .topbar .tab-strip-spacer { display: none; }
+  .topbar .tab-scroll-region { width: 100%; flex: 1 1 auto; }
+  .topbar .tab-shell { min-width: 0; max-width: 100%; flex: 0 0 auto; }
+  .topbar .tab { min-width: 0; max-width: 100%; padding-inline: 10px 28px; }
+}
+.tab:hover > span:first-child {
+  -webkit-mask-image: linear-gradient(to right, black, black calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, black, black calc(100% - 28px), transparent);
+}
+.tab-shell:hover .tab-close,
+.tab-shell:focus-within .tab-close { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
+.tab-shell[data-active] .tab-close {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(0, -50%);
+  color: var(--tab-active-fg, var(--text-muted));
+  background: transparent;
+}
+.tab-close:hover {
+  color: var(--text-secondary);
+  /* Opaque: --surface-hover is alpha-blended and lets the tab title ghost
+     through the close pill. */
+  background: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 26%), var(--bg-base));
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+}
+.utility-tab { min-width: auto; }

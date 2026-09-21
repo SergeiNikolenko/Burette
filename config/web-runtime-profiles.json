@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "sourceRoot": "PreviewExtension/Web",
+  "profiles": {
+    "desktop-molstar": [
+      "molstar.js",
+      "molstar.css",
+      "viewer-runtime.css",
+      "viewer-shell.js",
+      "burette-agent.js",
+      "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
+      "superposition-panel.js",
+      "viewer.js",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
+    ],
+    "desktop-mesoscale": [
+      "mesoscale.js",
+      "mesoscale.css"
+    ],
+    "desktop-grid": [
+      "grid-viewer.js",
+      "openchemlib/openchemlib.js",
+      "grid.css",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
+    ],
+    "desktop-native-compute": [
+      "rdkit-conformer/Burette_rdkit_conformer.js",
+      "rdkit-conformer/Burette_rdkit_conformer.wasm"
+    ],
+    "quicklook-molstar": [
+      "molstar.js",
+      "molstar.css",
+      "viewer-runtime.css",
+      "viewer-shell.js",
+      "burette-agent.js",
+      "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
+      "superposition-panel.js",
+      "viewer.js",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
+    ],
+    "quicklook-mesoscale": [
+      "mesoscale.js",
+      "mesoscale.css"
+    ],
+    "quicklook-grid": [
+      "grid-viewer.js",
+      "openchemlib/openchemlib.js",
+      "grid.css",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
+    ],
+    "external-artifact": [
+      "viewer-runtime.css",
+      "viewer-shell.js",
+      "burette-agent.js",
+      "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
+      "superposition-panel.js",
+      "viewer.js"
+    ]
+  },
+  "bundleTargets": {
+    "tauri": {
+      "profiles": [
+        "desktop-molstar",
+        "desktop-mesoscale",
+        "desktop-grid",
+        "desktop-native-compute",
+        "external-artifact"
+      ],
+      "resourceRoot": "apps/desktop/src-tauri/tauri.conf.json#/bundle/resources/../../../PreviewExtension/Web=ViewerWeb"
+    },
+    "quicklook": {
+      "profiles": [
+        "quicklook-molstar",
+        "quicklook-mesoscale",
+        "quicklook-grid",
+        "external-artifact"
+      ],
+      "resourceRoot": "Burette.xcodeproj/project.pbxproj#PreviewExtension/Web"
+    }
+  }
+}

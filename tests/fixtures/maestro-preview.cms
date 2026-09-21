@@ -1,0 +1,16 @@
+f_m_ct {
+  s_m_title
+  m_atom[3] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_atom_name
+    :::
+    1 6 0.000000 0.000000 0.000000 "C1"
+    1 7 1.250000 0.000000 0.000000 "N1"
+    1 8 0.000000 1.250000 0.000000 "O1"
+    :::
+  }
+}

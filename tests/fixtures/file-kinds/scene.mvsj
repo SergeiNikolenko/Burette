@@ -1,0 +1,43 @@
+{
+  "kind": "single",
+  "metadata": {
+    "title": "Receptor cartoon",
+    "version": "1"
+  },
+  "root": {
+    "kind": "root",
+    "children": [
+      {
+        "kind": "download",
+        "params": { "url": "receptor.pdb" },
+        "children": [
+          {
+            "kind": "parse",
+            "params": { "format": "pdb" },
+            "children": [
+              {
+                "kind": "structure",
+                "params": { "type": "model" },
+                "children": [
+                  {
+                    "kind": "component",
+                    "params": { "selector": "polymer" },
+                    "children": [
+                      {
+                        "kind": "representation",
+                        "params": { "type": "cartoon" },
+                        "children": [
+                          { "kind": "color", "params": { "color": "#A9B7C8" } }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

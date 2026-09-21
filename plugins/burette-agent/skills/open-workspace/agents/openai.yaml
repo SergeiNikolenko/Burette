@@ -1,0 +1,5 @@
+interface:
+  display_name: "Open molecular workspace"
+  short_description: "Open local structures, collections and Stories"
+policy:
+  allow_implicit_invocation: false

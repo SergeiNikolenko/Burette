@@ -1,0 +1,47 @@
+# GitHub uses this file when `gh release create --generate-notes` builds the
+# release page. Keep section titles user-facing; detailed commit history belongs
+# in the generated full changelog.
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+      - ignore-for-release
+      - duplicate
+      - invalid
+      - wontfix
+    authors:
+      - "dependabot[bot]"
+  categories:
+    - title: New Features
+      labels:
+        - feature
+        - enhancement
+        - new-feature
+    - title: Bug Fixes
+      labels:
+        - bug
+        - fix
+        - regression
+    - title: Performance
+      labels:
+        - performance
+    - title: Quick Look And Packaging
+      labels:
+        - quick-look
+        - quicklook
+        - packaging
+        - release
+        - installer
+    - title: Documentation
+      labels:
+        - documentation
+        - docs
+    - title: Chores
+      labels:
+        - chore
+        - refactor
+        - maintenance
+        - dependencies
+    - title: Changelog
+      labels:
+        - "*"

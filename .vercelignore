@@ -1,0 +1,8 @@
+**/node_modules/
+.codegraph/
+target/
+apps/desktop/dist/
+apps/burette-public-plugin/.next/
+apps/burette-public-plugin/public/burette-viewer/
+apps/burette-public-plugin/public/viewer-shell/
+apps/burette-public-plugin/public/web-demo/

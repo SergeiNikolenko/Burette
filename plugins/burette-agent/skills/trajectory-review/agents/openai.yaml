@@ -1,0 +1,5 @@
+interface:
+  display_name: "Trajectory review"
+  short_description: "Inspect supplied trajectories and result bundles"
+policy:
+  allow_implicit_invocation: false

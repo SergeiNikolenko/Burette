@@ -1,0 +1,8 @@
+@import "tailwindcss" source(none);
+@import "@openai/apps-sdk-ui/css";
+@source "../node_modules/@openai/apps-sdk-ui/dist/es";
+@source "../../../node_modules/@openai/apps-sdk-ui/dist/es";
+@source "./components/native-workspace-placement-control.tsx";
+
+/* Loaded only by the MCP UI island. The host sets html[data-theme], including
+   for SDK menus portalled to body. Do not copy SDK colors or redraw its icons. */

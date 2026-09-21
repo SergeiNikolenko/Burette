@@ -1,0 +1,4 @@
+  # Mixed valid and malformed rows
+CCO ethanol
+not a smiles but useful fallback
+c1ccccc1 benzene

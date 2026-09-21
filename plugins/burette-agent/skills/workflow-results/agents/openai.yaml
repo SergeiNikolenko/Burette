@@ -1,0 +1,5 @@
+interface:
+  display_name: "Workflow results"
+  short_description: "Inspect supplied molecular workflow artifacts"
+policy:
+  allow_implicit_invocation: false

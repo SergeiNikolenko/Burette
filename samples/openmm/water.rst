@@ -1,0 +1,6 @@
+* Water CHARMM restart-like coordinates
+*
+    3
+    1 WAT O     1   0.0000   0.0000   0.0000
+    2 WAT H1    1   0.9572   0.0000   0.0000
+    3 WAT H2    1  -0.2390   0.9270   0.0000

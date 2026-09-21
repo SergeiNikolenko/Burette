@@ -1,0 +1,5 @@
+interface:
+  display_name: "Burette"
+  short_description: "Open and operate molecular workspaces"
+policy:
+  allow_implicit_invocation: true

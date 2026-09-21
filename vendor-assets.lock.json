@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 2,
+  "source": {
+    "bunLock": "bun.lock",
+    "profiles": "config/web-runtime-profiles.json"
+  },
+  "packages": {
+    "molstar": {
+      "packageName": "molstar",
+      "version": "5.11.0",
+      "integrity": "sha512-Jv2oHkKoCpzrhqLmGlknepm0pfRsoTDebsGRkvXpbUFb6p+JIAkhLyM3uqV2twC6VR83ZbXtdswOtouPhozpuQ=="
+    },
+    "@rdkit/rdkit": {
+      "packageName": "@rdkit/rdkit",
+      "version": "2025.3.4-1.0.0",
+      "integrity": "sha512-MJzNoeW2SWt2KCdIibfY213uLWyHZjFfS2ntJ/HuYNHdu6dEiim7jb6ZMU9wnt9Oovkc85BHMuupxkufIMvftQ=="
+    },
+    "openchemlib": {
+      "packageName": "openchemlib",
+      "version": "9.24.0",
+      "integrity": "sha512-aIZc4wxcIq4d1RK32WAkGjjyFUKPcf2zdlklvzkmmo2HuHTojFUubeSxp0CQ6MZDGLiK18iQJwxA4/O9Db2bvA=="
+    }
+  },
+  "assets": [
+    {
+      "path": "PreviewExtension/Web/molstar.js",
+      "package": "molstar",
+      "bytes": 5784188,
+      "sha256": "sha256-ZgvC07DAYa+y41u4o7kGnVHW6kjpvK0qNnZzxnGlrLQ="
+    },
+    {
+      "path": "PreviewExtension/Web/molstar.css",
+      "package": "molstar",
+      "bytes": 72842,
+      "sha256": "sha256-W2jOttNkJUm06bLAceWOQbmKU1CuJpGAWHs52oaSXVU="
+    },
+    {
+      "path": "PreviewExtension/Web/mesoscale.js",
+      "package": "molstar",
+      "bytes": 5403236,
+      "sha256": "sha256-LNiLiuTPNUadVlSCWoJ2VYzmBOHOjrZYdAANrh2X46E="
+    },
+    {
+      "path": "PreviewExtension/Web/mesoscale.css",
+      "package": "molstar",
+      "bytes": 91239,
+      "sha256": "sha256-Hz1g5H0LPEuzindJUya1aVTiWxUT5Ja13WnzDddhDZU="
+    },
+    {
+      "path": "PreviewExtension/Web/rdkit/RDKit_minimal.js",
+      "package": "@rdkit/rdkit",
+      "bytes": 128073,
+      "sha256": "sha256-WNPJlq3n4LATfU+TY/9sIEtUVolCj6CJjurtV573iNk="
+    },
+    {
+      "path": "PreviewExtension/Web/rdkit/RDKit_minimal.wasm",
+      "package": "@rdkit/rdkit",
+      "bytes": 6914823,
+      "sha256": "sha256-4JZ9RP7VnkSi0Hv8CPOoaCHFShTJW7fm45L+hnMzuMg="
+    },
+    {
+      "path": "PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js",
+      "package": "burette-rdkit-conformer",
+      "bytes": 36992,
+      "sha256": "sha256-VnVbCrMEui4TSnI9gHL3nLKCdWm2EI9LTAw8ieSkq7o="
+    },
+    {
+      "path": "PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm",
+      "package": "burette-rdkit-conformer",
+      "bytes": 2218771,
+      "sha256": "sha256-i6irdqmqMcDuAvnlD9zUB4UguILWqYyyVKFld1NIpYk="
+    },
+    {
+      "path": "PreviewExtension/Web/openchemlib/openchemlib.js",
+      "package": "openchemlib",
+      "bytes": 1108967,
+      "sha256": "sha256-uhMoUL+w9c9j44QzXjC4rjSlWQcx5YWC5DuPznstlqw="
+    }
+  ],
+  "profiles": {
+    "desktop-molstar": [
+      "molstar.js",
+      "molstar.css",
+      "viewer-runtime.css",
+      "viewer-shell.js",
+      "burette-agent.js",
+      "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
+      "superposition-panel.js",
+      "viewer.js",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
+    ],
+    "desktop-mesoscale": [
+      "mesoscale.js",
+      "mesoscale.css"
+    ],
+    "desktop-grid": [
+      "grid-viewer.js",
+      "openchemlib/openchemlib.js",
+      "grid.css",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
+    ],
+    "desktop-native-compute": [
+      "rdkit-conformer/Burette_rdkit_conformer.js",
+      "rdkit-conformer/Burette_rdkit_conformer.wasm"
+    ],
+    "quicklook-molstar": [
+      "molstar.js",
+      "molstar.css",
+      "viewer-runtime.css",
+      "viewer-shell.js",
+      "burette-agent.js",
+      "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
+      "superposition-panel.js",
+      "viewer.js",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
+    ],
+    "quicklook-mesoscale": [
+      "mesoscale.js",
+      "mesoscale.css"
+    ],
+    "quicklook-grid": [
+      "grid-viewer.js",
+      "openchemlib/openchemlib.js",
+      "grid.css",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
+    ],
+    "external-artifact": [
+      "viewer-runtime.css",
+      "viewer-shell.js",
+      "burette-agent.js",
+      "trajectory-smoothing.js",
+      "molstar-preset-preview-controller.js",
+      "superposition-panel.js",
+      "viewer.js"
+    ]
+  },
+  "bundleTargets": {
+    "tauri": {
+      "profiles": [
+        "desktop-molstar",
+        "desktop-mesoscale",
+        "desktop-grid",
+        "desktop-native-compute",
+        "external-artifact"
+      ],
+      "resourceRoot": "apps/desktop/src-tauri/tauri.conf.json#/bundle/resources/../../../PreviewExtension/Web=ViewerWeb"
+    },
+    "quicklook": {
+      "profiles": [
+        "quicklook-molstar",
+        "quicklook-mesoscale",
+        "quicklook-grid",
+        "external-artifact"
+      ],
+      "resourceRoot": "Burette.xcodeproj/project.pbxproj#PreviewExtension/Web"
+    }
+  }
+}

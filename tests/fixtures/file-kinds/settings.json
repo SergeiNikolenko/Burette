@@ -1,0 +1,12 @@
+{
+  "run": "md-run",
+  "engine": "gromacs",
+  "ensemble": "NPT",
+  "temperature_k": 300,
+  "pressure_bar": 1,
+  "timestep_ps": 0.002,
+  "steps": 10000,
+  "receptor": "receptor.pdb",
+  "ligand": "ligand.sdf",
+  "outputs": ["md-run.lammpstrj", "energy.xvg", "mdrun.log"]
+}

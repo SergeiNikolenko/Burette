@@ -1,0 +1,5 @@
+interface:
+  display_name: "Burette workspace control"
+  short_description: "Control workspaces through stable session handles"
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "cc9b6225c76b9642aa56850bbaab7953ddd64535977112ca7b2c2a65c1bb20ea",
+  "counts": {
+    "roots": 1,
+    "groups": 2,
+    "entities": 1,
+    "instances": 2,
+    "elements": 8,
+    "meshes": 0
+  },
+  "sampledTransforms": [
+    [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 18, 0, 0, 1]
+  ],
+  "sampledTransformedCoordinates": [
+    [0, 0, 0],
+    [18, 0, 0]
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "label": "Burette Mesoscale Smoke",
+  "description": "Two repeated molecular instances for cross-surface validation.",
+  "roots": [
+    {
+      "id": "location",
+      "label": "Location",
+      "children": [
+        {
+          "id": "membrane",
+          "root": "location",
+          "label": "Membrane"
+        }
+      ]
+    }
+  ],
+  "entities": [
+    {
+      "file": "mini.pdb",
+      "label": "Membrane proteins",
+      "description": "Two copies of a minimal peptide.",
+      "color": [75, 164, 225],
+      "groups": [
+        {
+          "id": "membrane",
+          "root": "location"
+        }
+      ],
+      "instances": {
+        "positions": {
+          "data": [0, 0, 0, 18, 0, 0]
+        },
+        "rotations": {
+          "variant": "quaternion",
+          "data": [0, 0, 0, 1, 0, 0, 0, 1]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+env:
+  BURETTE_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+
+jobs:
+  changes:
+    name: Detect Build Scope
+    runs-on: macos-latest
+    outputs:
+      native: ${{ steps.scope.outputs.native }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Detect native/package changes
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch --quiet origin "${{ github.base_ref }}"
+            changed="$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)"
+          else
+            before="${{ github.event.before }}"
+            if [[ -z "$before" || "$before" == "0000000000000000000000000000000000000000" ]] \
+              || ! git cat-file -e "$before^{commit}" 2>/dev/null; then
+              changed="$(git ls-tree -r --name-only HEAD)"
+            else
+              changed="$(git diff --name-only "$before" HEAD)"
+            fi
+          fi
+
+          native=false
+          while IFS= read -r path; do
+            case "$path" in
+              PreviewExtension/Web/*)
+                ;;
+              App/*|PreviewExtension/*|Burette.xcodeproj/*|apps/desktop/src-tauri/*|scripts/build*.sh|scripts/install*.sh|scripts/ci.sh|package.json|bun.lock)
+                native=true
+                ;;
+            esac
+          done <<< "$changed"
+          echo "native=$native" >> "$GITHUB_OUTPUT"
+
+  validate:
+    name: Fast PR Validation
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Burette toolchain
+        uses: ./.github/actions/setup-burette-toolchain
+        with:
+          install-dependencies: "false"
+
+      - name: Run fast CI
+        run: bun run ci:fast
+
+  native-build:
+    name: Native Bundle Build
+    needs:
+      - changes
+      - validate
+    if: github.event_name == 'pull_request' && needs.changes.outputs.native == 'true'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Burette toolchain
+        uses: ./.github/actions/setup-burette-toolchain
+        with:
+          install-xyzrender: "true"
+
+      - name: Build native bundle
+        run: ./scripts/build.sh

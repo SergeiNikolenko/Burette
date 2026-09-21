@@ -1,0 +1,280 @@
+{
+  "schema": "burette_mvs_story_template.v1",
+  "id": "binding-site-tour",
+  "title": "Binding-site tour",
+  "summary": "Explain a protein-ligand model from complex overview through pocket focus and an evidence-qualified conclusion.",
+  "category": "binding-site",
+  "scientificUse": "Use after a ligand pose exists and before adding computed residue contacts or interaction primitives.",
+  "variables": [
+    {
+      "name": "protein_url",
+      "description": "HTTPS URL or MVSX archive path for the protein PDB.",
+      "required": true,
+      "example": "protein.pdb",
+      "maxLength": 4096
+    },
+    {
+      "name": "ligand_url",
+      "description": "HTTPS URL or MVSX archive path for the positioned ligand SDF.",
+      "required": true,
+      "example": "ligand.sdf",
+      "maxLength": 4096
+    },
+    {
+      "name": "complex_label",
+      "description": "Short name for the protein-ligand complex.",
+      "required": false,
+      "default": "Protein-ligand complex",
+      "example": "EGFR pose 1",
+      "maxLength": 256
+    }
+  ],
+  "storyboard": [
+    {
+      "key": "overview",
+      "purpose": "Place protein and ligand in whole-complex context.",
+      "evidence": "Show source structures and pose provenance."
+    },
+    {
+      "key": "pocket",
+      "purpose": "Focus on the positioned ligand and its structural neighborhood.",
+      "evidence": "Add explicit pocket residue selectors only after they are computed or supplied."
+    },
+    {
+      "key": "interpretation",
+      "purpose": "Separate observations from hypotheses and next experiments.",
+      "evidence": "Only label contacts backed by coordinates and declared geometric rules."
+    }
+  ],
+  "caveats": [
+    "This scaffold does not compute contacts or binding affinity.",
+    "Add distance primitives only from measured coordinates, with the rule and units stated.",
+    "A docking pose is a hypothesis and should not be presented as experimentally confirmed binding."
+  ],
+  "story": {
+    "title": "{{complex_label}}: binding-site tour",
+    "description": "Reusable protein-ligand walkthrough. Replace scaffold text with observed evidence.",
+    "steps": [
+      {
+        "key": "overview",
+        "title": "Complex overview",
+        "description": "# {{complex_label}}\n\nProtein and positioned ligand in global context. Record structure and pose provenance here.",
+        "root": {
+          "kind": "root",
+          "children": [
+            {
+              "kind": "download",
+              "params": { "url": "{{protein_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#4E79A7" } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "download",
+              "params": { "url": "{{ligand_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "sdf" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "all" },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "ball_and_stick" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#F28E2B" } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "key": "pocket",
+        "title": "Pocket focus",
+        "description": "# Pocket focus\n\nThe ligand defines the visual focus. Add computed pocket residues as an explicit component selector; do not infer contacts from the image alone.",
+        "root": {
+          "kind": "root",
+          "children": [
+            {
+              "kind": "download",
+              "params": { "url": "{{protein_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#A9B7C8" } },
+                                { "kind": "opacity", "params": { "opacity": 0.35 } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "download",
+              "params": { "url": "{{ligand_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "sdf" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "all" },
+                          "children": [
+                            { "kind": "focus", "params": {} },
+                            {
+                              "kind": "representation",
+                              "params": { "type": "ball_and_stick" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#F28E2B" } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "key": "interpretation",
+        "title": "Evidence and next checks",
+        "description": "# Evidence and next checks\n\nList coordinate-derived contacts, scoring-method status, uncertainty, and the experiment or simulation needed to test the pose. This template itself computes none of them.",
+        "root": {
+          "kind": "root",
+          "children": [
+            {
+              "kind": "download",
+              "params": { "url": "{{protein_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#4E79A7" } },
+                                { "kind": "opacity", "params": { "opacity": 0.45 } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "download",
+              "params": { "url": "{{ligand_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "sdf" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "all" },
+                          "children": [
+                            { "kind": "focus", "params": {} },
+                            {
+                              "kind": "representation",
+                              "params": { "type": "ball_and_stick" },
+                              "children": [
+                                { "kind": "color", "params": { "color": "#F28E2B" } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,453 @@
+{
+  "schema": "burette_mvs_story_template.v1",
+  "id": "docking-pose-comparison",
+  "title": "Docking pose comparison",
+  "summary": "Compare two positioned ligand poses against the same receptor with required, explicitly computed key-interaction layers.",
+  "category": "docking",
+  "scientificUse": "Use to explain pose geometry, key receptor contacts, and method-specific ranking after docking outputs and interaction calculations have been checked.",
+  "variables": [
+    {
+      "name": "receptor_url",
+      "description": "HTTPS URL or MVSX archive path for the receptor PDB.",
+      "required": true,
+      "example": "receptor.pdb",
+      "maxLength": 4096
+    },
+    {
+      "name": "pose_a_url",
+      "description": "HTTPS URL or MVSX archive path for positioned pose A in SDF format.",
+      "required": true,
+      "example": "pose-a.sdf",
+      "maxLength": 4096
+    },
+    {
+      "name": "pose_b_url",
+      "description": "HTTPS URL or MVSX archive path for positioned pose B in SDF format.",
+      "required": true,
+      "example": "pose-b.sdf",
+      "maxLength": 4096
+    },
+    {
+      "name": "pose_a_interactions_url",
+      "description": "HTTPS URL or MVSX archive path for a non-empty MVS primitives node containing explicitly computed key interactions for pose A.",
+      "required": true,
+      "example": "pose-a-interactions.json",
+      "maxLength": 4096
+    },
+    {
+      "name": "pose_b_interactions_url",
+      "description": "HTTPS URL or MVSX archive path for a non-empty MVS primitives node containing explicitly computed key interactions for pose B.",
+      "required": true,
+      "example": "pose-b-interactions.json",
+      "maxLength": 4096
+    },
+    {
+      "name": "pose_a_residues_url",
+      "description": "HTTPS URL or MVSX archive path for a non-empty JSON annotation selecting every receptor residue used by the pose A interaction layer.",
+      "required": true,
+      "example": "pose-a-residues.json",
+      "maxLength": 4096
+    },
+    {
+      "name": "pose_b_residues_url",
+      "description": "HTTPS URL or MVSX archive path for a non-empty JSON annotation selecting every receptor residue used by the pose B interaction layer.",
+      "required": true,
+      "example": "pose-b-residues.json",
+      "maxLength": 4096
+    },
+    {
+      "name": "pose_a_interactions_summary",
+      "description": "Concise evidence-qualified summary of pose A interaction types, receptor residues, distances, and calculation method.",
+      "required": true,
+      "example": "Hydrogen-bond candidate to THR101 OG1 at 3.0 Å; hydrophobic contact to LEU104 CD1 at 3.7 Å (coordinate-derived rules).",
+      "maxLength": 4096
+    },
+    {
+      "name": "pose_b_interactions_summary",
+      "description": "Concise evidence-qualified summary of pose B interaction types, receptor residues, distances, and calculation method.",
+      "required": true,
+      "example": "Hydrogen-bond candidate to ASN55 OD1 at 3.1 Å; hydrophobic contact to VAL58 CG1 at 3.6 Å (coordinate-derived rules).",
+      "maxLength": 4096
+    },
+    {
+      "name": "comparison_label",
+      "description": "Short name for the comparison.",
+      "required": false,
+      "default": "Docking pose comparison",
+      "example": "Top two GNINA poses",
+      "maxLength": 256
+    }
+  ],
+  "storyboard": [
+    {
+      "key": "receptor",
+      "purpose": "Orient the receptor before comparing candidates.",
+      "evidence": "Record receptor preparation and docking box provenance."
+    },
+    {
+      "key": "pose-a",
+      "purpose": "Inspect pose A independently.",
+      "evidence": "Show the required computed interaction layer and report only method-specific scores and evidence-qualified contacts."
+    },
+    {
+      "key": "pose-b",
+      "purpose": "Inspect pose B with the same visual encoding.",
+      "evidence": "Show the required computed interaction layer and use the same receptor and representation to avoid presentation bias."
+    },
+    {
+      "key": "comparison",
+      "purpose": "Overlay both poses and state the decision with uncertainty.",
+      "evidence": "Separate geometric observations, scoring outputs, and experimental claims."
+    }
+  ],
+  "caveats": [
+    "Docking scores are method-specific ranking signals, not measured binding affinities.",
+    "Interaction layers, matching receptor-residue annotations, and summaries are required inputs; the template displays them but does not infer contact types, clashes, strain, or pose confidence.",
+    "Every interaction primitive must come from an explicit calculation on the displayed receptor and pose coordinates; uncertain geometry must be labelled as a candidate or generic contact.",
+    "Use identical receptor coordinates and visual encodings for a fair comparison."
+  ],
+  "story": {
+    "title": "{{comparison_label}}",
+    "description": "Reusable two-pose docking narrative with evidence boundaries.",
+    "steps": [
+      {
+        "key": "receptor",
+        "title": "Receptor context",
+        "description": "# Receptor context\n\nRecord receptor preparation, docking box, and method provenance before comparing poses.",
+        "root": {
+          "kind": "root",
+          "children": [
+            {
+              "kind": "download",
+              "params": { "url": "{{receptor_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "key": "pose-a",
+        "title": "Pose A",
+        "description": "# Pose A\n\n## Key interactions\n\n{{pose_a_interactions_summary}}\n\nThe visible dashed primitives are required, explicitly computed contacts for this pose. Every receptor endpoint is shown as a default-colored ball-and-stick residue and identifies itself on hover. Keep interaction type, receptor residue, distance, and method provenance together; do not call the docking score an experimental affinity.",
+        "root": {
+          "kind": "root",
+          "children": [
+            {
+              "kind": "download",
+              "params": { "url": "{{receptor_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" },
+                              "children": [
+                                { "kind": "opacity", "params": { "opacity": 0.35 } }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "component_from_uri",
+                          "params": {
+                            "uri": "{{pose_a_residues_url}}",
+                            "format": "json",
+                            "schema": "auth_residue"
+                          },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "ball_and_stick", "size_factor": 0.65, "ignore_hydrogens": true }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "tooltip_from_uri",
+                          "params": {
+                            "uri": "{{pose_a_residues_url}}",
+                            "format": "json",
+                            "schema": "auth_residue",
+                            "field_name": "label",
+                            "text_format": "{}"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "download",
+              "params": { "url": "{{pose_a_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "sdf" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "all" },
+                          "children": [
+                            { "kind": "focus", "params": {} },
+                            {
+                              "kind": "representation",
+                              "params": { "type": "ball_and_stick", "size_factor": 0.65, "ignore_hydrogens": true }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "primitives_from_uri",
+              "params": {
+                "uri": "{{pose_a_interactions_url}}",
+                "format": "mvs-node-json"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "key": "pose-b",
+        "title": "Pose B",
+        "description": "# Pose B\n\n## Key interactions\n\n{{pose_b_interactions_summary}}\n\nThe visible dashed primitives are required, explicitly computed contacts for this pose. Every receptor endpoint is shown as a default-colored ball-and-stick residue and identifies itself on hover. Use the same camera logic, representation, and evidence fields as Pose A so the comparison is not visually biased.",
+        "root": {
+          "kind": "root",
+          "children": [
+            {
+              "kind": "download",
+              "params": { "url": "{{receptor_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" },
+                              "children": [
+                                { "kind": "opacity", "params": { "opacity": 0.35 } }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "component_from_uri",
+                          "params": {
+                            "uri": "{{pose_b_residues_url}}",
+                            "format": "json",
+                            "schema": "auth_residue"
+                          },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "ball_and_stick", "size_factor": 0.65, "ignore_hydrogens": true }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "tooltip_from_uri",
+                          "params": {
+                            "uri": "{{pose_b_residues_url}}",
+                            "format": "json",
+                            "schema": "auth_residue",
+                            "field_name": "label",
+                            "text_format": "{}"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "download",
+              "params": { "url": "{{pose_b_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "sdf" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "all" },
+                          "children": [
+                            { "kind": "focus", "params": {} },
+                            {
+                              "kind": "representation",
+                              "params": { "type": "ball_and_stick", "size_factor": 0.65, "ignore_hydrogens": true }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "primitives_from_uri",
+              "params": {
+                "uri": "{{pose_b_interactions_url}}",
+                "format": "mvs-node-json"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "key": "comparison",
+        "title": "Pose overlay and decision",
+        "description": "# Pose overlay and decision\n\nBoth poses use Mol* default coloring. The dedicated pose steps show the required 3D key-interaction layers; this overlay keeps both evidence summaries without duplicating every line.\n\n**Pose A:** {{pose_a_interactions_summary}}\n\n**Pose B:** {{pose_b_interactions_summary}}\n\nState geometry, method-specific scores, contacts from explicit calculations, uncertainty, and the next validation step separately.",
+        "root": {
+          "kind": "root",
+          "children": [
+            {
+              "kind": "download",
+              "params": { "url": "{{receptor_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "pdb" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "polymer" },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "cartoon" },
+                              "children": [
+                                { "kind": "opacity", "params": { "opacity": 0.25 } }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "download",
+              "params": { "url": "{{pose_a_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "sdf" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "all" },
+                          "children": [
+                            { "kind": "focus", "params": {} },
+                            {
+                              "kind": "representation",
+                              "params": { "type": "ball_and_stick", "size_factor": 0.55, "ignore_hydrogens": true }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "download",
+              "params": { "url": "{{pose_b_url}}" },
+              "children": [
+                {
+                  "kind": "parse",
+                  "params": { "format": "sdf" },
+                  "children": [
+                    {
+                      "kind": "structure",
+                      "params": { "type": "model" },
+                      "children": [
+                        {
+                          "kind": "component",
+                          "params": { "selector": "all" },
+                          "children": [
+                            {
+                              "kind": "representation",
+                              "params": { "type": "ball_and_stick", "size_factor": 0.55, "ignore_hydrogens": true }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

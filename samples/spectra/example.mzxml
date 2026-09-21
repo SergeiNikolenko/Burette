@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mzXML>
+  <msRun>
+    <scan num="1" msLevel="2">
+      <peak mz="50.0000" intensity="12.0" />
+      <peak mz="75.5000" intensity="44.0" />
+      <peak mz="101.0710" intensity="100.0" />
+    </scan>
+  </msRun>
+</mzXML>

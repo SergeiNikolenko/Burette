@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT" ]]; do
+  DIR="$(cd -P "$(dirname "$SCRIPT")" >/dev/null 2>&1 && pwd -P)"
+  SCRIPT="$(readlink "$SCRIPT")"
+  [[ "$SCRIPT" != /* ]] && SCRIPT="$DIR/$SCRIPT"
+done
+ROOT="$(cd -P "$(dirname "$SCRIPT")/.." >/dev/null 2>&1 && pwd -P)"
+cd "$ROOT"
+
+APP="$ROOT/build/Burette.app"
+ZIP="$ROOT/build/release/Burette.zip"
+DMG="$ROOT/build/release/Burette.dmg"
+NOTARIZATION_ZIP="$ROOT/build/release/Burette-notarization.zip"
+DRY_RUN=0
+ALLOW_ADHOC="${BURETTE_RELEASE_ALLOW_ADHOC:-auto}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help)
+      echo "Usage: scripts/release.sh [--dry-run]"
+      exit 0
+      ;;
+    *) echo "error: unknown release.sh argument: $1" >&2; exit 2 ;;
+  esac
+done
+
+require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
+require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2; exit 1; }; }
+developer_id_credentials_available() {
+  [[ "${BURETTE_CODESIGN_IDENTITY:-}" == Developer\ ID\ Application:* ]] &&
+    [[ -n "${BURETTE_DEVELOPMENT_TEAM:-}" ]] &&
+    { [[ -n "${BURETTE_NOTARY_KEYCHAIN_PROFILE:-}" ]] ||
+      { [[ -n "${APPLE_ID:-}" ]] && [[ -n "${APPLE_TEAM_ID:-}" ]] && [[ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; }; }
+}
+resolve_signing_mode() {
+  case "$ALLOW_ADHOC" in
+    auto)
+      if developer_id_credentials_available; then
+        ALLOW_ADHOC=0
+      else
+        ALLOW_ADHOC=1
+        echo "warning: Developer ID signing credentials are unavailable; building an ad-hoc signed release without notarization." >&2
+      fi
+      ;;
+    0|1) ;;
+    *) echo "error: BURETTE_RELEASE_ALLOW_ADHOC must be 0 or 1 when set." >&2; exit 2 ;;
+  esac
+}
+require_release_env() {
+  if [[ "$ALLOW_ADHOC" == "1" ]]; then
+    return 0
+  fi
+  local missing=0
+  [[ "${BURETTE_CODESIGN_IDENTITY:-}" == Developer\ ID\ Application:* ]] || { echo "error: BURETTE_CODESIGN_IDENTITY must be a Developer ID Application identity." >&2; missing=1; }
+  [[ -n "${BURETTE_DEVELOPMENT_TEAM:-}" ]] || { echo "error: BURETTE_DEVELOPMENT_TEAM is required." >&2; missing=1; }
+  if [[ -z "${BURETTE_NOTARY_KEYCHAIN_PROFILE:-}" ]]; then
+    [[ -n "${APPLE_ID:-}" ]] || { echo "error: APPLE_ID is required unless BURETTE_NOTARY_KEYCHAIN_PROFILE is set." >&2; missing=1; }
+    [[ -n "${APPLE_TEAM_ID:-}" ]] || { echo "error: APPLE_TEAM_ID is required unless BURETTE_NOTARY_KEYCHAIN_PROFILE is set." >&2; missing=1; }
+    [[ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]] || { echo "error: APPLE_APP_SPECIFIC_PASSWORD is required unless BURETTE_NOTARY_KEYCHAIN_PROFILE is set." >&2; missing=1; }
+  fi
+  [[ "$missing" == "0" ]] || exit 1
+}
+notarize_and_staple() {
+  rm -f "$NOTARIZATION_ZIP"
+  ditto -c -k --keepParent "$APP" "$NOTARIZATION_ZIP"
+  if [[ -n "${BURETTE_NOTARY_KEYCHAIN_PROFILE:-}" ]]; then
+    xcrun notarytool submit "$NOTARIZATION_ZIP" \
+      --keychain-profile "$BURETTE_NOTARY_KEYCHAIN_PROFILE" \
+      --wait
+  else
+    xcrun notarytool submit "$NOTARIZATION_ZIP" \
+      --apple-id "$APPLE_ID" \
+      --team-id "$APPLE_TEAM_ID" \
+      --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+      --wait
+  fi
+  xcrun stapler staple "$APP"
+}
+write_digest() {
+  local artifact="$1"
+  (
+    cd "$(dirname "$artifact")"
+    shasum -a 256 "$(basename "$artifact")" > "$(basename "$artifact").sha256"
+  )
+}
+
+require_tool bun "Install it with: brew install oven-sh/bun/bun"
+
+require_asset PreviewExtension/Web/molstar.js
+require_asset PreviewExtension/Web/molstar.css
+require_asset PreviewExtension/Web/viewer-runtime.css
+require_asset PreviewExtension/Web/viewer-shell.js
+require_asset PreviewExtension/Web/molstar-preset-preview-controller.js
+require_asset PreviewExtension/Web/burette-agent.js
+require_asset PreviewExtension/Web/viewer.js
+require_asset PreviewExtension/Web/grid-ui.js
+require_asset PreviewExtension/Web/grid-viewer.js
+require_asset PreviewExtension/Web/grid.css
+require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
+require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
+bun scripts/check-js-syntax.mjs \
+  PreviewExtension/Web/viewer.js \
+  PreviewExtension/Web/viewer-shell.js \
+  PreviewExtension/Web/molstar-preset-preview-controller.js \
+  PreviewExtension/Web/burette-agent.js \
+  PreviewExtension/Web/grid-ui.js \
+  PreviewExtension/Web/grid-viewer.js >/dev/null
+
+if [[ "$DRY_RUN" == "1" ]]; then
+  "$ROOT/scripts/create-dmg.sh" --dry-run
+  echo "Release dry run passed."
+  echo "No build, notarization, stapling, packaging, or publishing was performed."
+  echo "Developer ID release requires:"
+  echo "  BURETTE_CODESIGN_IDENTITY='Developer ID Application: ...'"
+  echo "  BURETTE_DEVELOPMENT_TEAM=<Apple team id>"
+  echo "  BURETTE_NOTARY_KEYCHAIN_PROFILE or APPLE_ID + APPLE_TEAM_ID + APPLE_APP_SPECIFIC_PASSWORD"
+  echo "Without those credentials, release.sh automatically builds an ad-hoc release without notarization."
+  echo "Set BURETTE_RELEASE_ALLOW_ADHOC=0 to require Developer ID credentials."
+  exit 0
+fi
+
+require_tool ditto "ditto is normally present on macOS."
+require_tool hdiutil "hdiutil is normally present on macOS."
+require_tool shasum "shasum is normally present on macOS."
+require_tool xcrun "Install full Xcode from the App Store."
+resolve_signing_mode
+require_release_env
+export BURETTE_RELEASE_ALLOW_ADHOC="$ALLOW_ADHOC"
+export BURETTE_BUILD_MODE=release
+export BURETTE_XCODE_CONFIGURATION="${BURETTE_XCODE_CONFIGURATION:-Release}"
+"$ROOT/scripts/build.sh"
+mkdir -p "$(dirname "$ZIP")"
+[[ -d "$APP" ]] || { echo "error: exported app is missing: $APP" >&2; exit 1; }
+if [[ "$ALLOW_ADHOC" == "1" ]]; then
+  BURETTE_RELEASE_ALLOW_ADHOC=1 "$ROOT/scripts/check-release-signature.sh" "$APP"
+else
+  notarize_and_staple
+  "$ROOT/scripts/check-release-signature.sh" "$APP"
+fi
+
+rm -f "$ZIP" "$ZIP.sha256" "$DMG" "$DMG.sha256"
+ditto -c -k --keepParent "$APP" "$ZIP"
+"$ROOT/scripts/create-dmg.sh" "$APP" "$DMG"
+write_digest "$ZIP"
+write_digest "$DMG"
+if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
+  bun "$ROOT/scripts/sign-update-manifest.mjs" "$ZIP" "$(dirname "$ZIP")"
+fi
+
+echo "Release app: $APP"
+echo "Release zip: $ZIP"
+echo "Release digest: $ZIP.sha256"
+echo "Release dmg: $DMG"
+echo "Release dmg digest: $DMG.sha256"
+if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
+  echo "Release manifest: $ZIP.manifest.json"
+  echo "Release manifest signature: $ZIP.manifest.json.sig"
+else
+  echo "Release manifest: skipped (no BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM)"
+fi

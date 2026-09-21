@@ -1,0 +1,5 @@
+interface:
+  display_name: "Burette visual checks"
+  short_description: "Verify rendered scenes against typed workspace state"
+policy:
+  allow_implicit_invocation: false
