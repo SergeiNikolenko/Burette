@@ -2,7 +2,8 @@ import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "./tauri";
 
-export type SshConnection = { host: string; name: string; enabled: boolean };
+export type SshConnection = { host: string; name: string; enabled: boolean; color?: "cyan" | "blue" | "purple" };
+function randomColor(): NonNullable<SshConnection["color"]> { return (["cyan", "blue", "purple"] as const)[crypto.getRandomValues(new Uint32Array(1))[0] % 3]; }
 export type SshProject = { id: string; name: string; host: string; root: string };
 export type SshEntry = { name: string; directory: boolean; size: number };
 export type SshDirectory = { root: string; path: string; entries: SshEntry[]; truncated: boolean };
@@ -40,14 +41,15 @@ function write(projects: SshProject[], connections: SshConnection[]) {
 function connectionSnapshot() { snapshot(); return cachedConnections; }
 export function useSshConnections() { return useSyncExternalStore(subscribe, connectionSnapshot); }
 export function saveSshConnection(connection: SshConnection) {
-  write(snapshot(), [...connectionSnapshot().filter(c => c.host !== connection.host), connection]);
+  const previous = connectionSnapshot().find(c => c.host === connection.host);
+  write(snapshot(), [...connectionSnapshot().filter(c => c.host !== connection.host), { ...connection, color: connection.color ?? previous?.color ?? randomColor() }]);
 }
 export function removeSshConnection(host: string) {
   write(snapshot().filter(p => p.host !== host), connectionSnapshot().filter(c => c.host !== host));
 }
 export function saveSshProject(project: SshProject) {
   const connections = connectionSnapshot();
-  write([...snapshot().filter(p => p.id !== project.id), project], connections.some(c => c.host === project.host) ? connections : [...connections, { host: project.host, name: project.host, enabled: true }]);
+  write([...snapshot().filter(p => p.id !== project.id), project], connections.some(c => c.host === project.host) ? connections : [...connections, { host: project.host, name: project.host, enabled: true, color: randomColor() }]);
 }
 export function removeSshProject(id: string) {
   write(snapshot().filter(p => p.id !== id), connectionSnapshot());
@@ -55,12 +57,25 @@ export function removeSshProject(id: string) {
 function requireEnabled(host: string) {
   if (connectionSnapshot().some(c => c.host === host && !c.enabled)) throw new Error("This SSH connection is disabled. Enable it in Settings → Connections.");
 }
+async function browserSsh<T>(action: string, request: unknown = {}): Promise<T> {
+  const response = await fetch(`/__burette/ssh/${action}`, {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Burette-SSH": "1" }, body: JSON.stringify(request),
+  });
+  if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("Start the local preview server with BURETTE_DEV_SSH=1 to browse SSH projects.");
+  const value = await response.json();
+  if (!response.ok) throw new Error(value.error || "SSH request failed");
+  return value as T;
+}
+export function sshHosts() {
+  return isTauriRuntime() ? invoke<{ alias: string }[]>("ssh_hosts") : browserSsh<{ alias: string }[]>("hosts");
+}
 export async function sshList(host: string, root: string, path = ".") {
   requireEnabled(host);
-  if (!isTauriRuntime()) throw new Error("SSH connections are available in the Burette desktop app.");
+  if (!isTauriRuntime()) return browserSsh<SshDirectory>("list", { host, root, path });
   return invoke<SshDirectory>("ssh_list", { request: { host, root, path } });
 }
 export async function sshPreview(project: SshProject, path: string) {
   requireEnabled(project.host);
+  if (!isTauriRuntime()) return browserSsh<string>("preview", { host: project.host, root: project.root, path });
   return invoke<string>("ssh_preview", { request: { host: project.host, root: project.root, path } });
 }

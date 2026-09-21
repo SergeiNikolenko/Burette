@@ -8,7 +8,10 @@ const first = { id: 'one', name: 'Proteins', host: 'research', root: '/data/prot
 saveSshProject(first);
 saveSshProject({ ...first, id: 'two', root: '/data/ligands' });
 assert.equal(state().connections.length, 1);
+const color = state().connections[0].color;
+assert.ok(['cyan', 'blue', 'purple'].includes(color));
 saveSshConnection({ host: 'research', name: 'Lab', enabled: false });
+assert.equal(state().connections[0].color, color);
 await assert.rejects(sshList('research', '/data'), /disabled/);
 await assert.rejects(sshPreview(first, 'protein.pdb'), /disabled/);
 removeSshProject('one');

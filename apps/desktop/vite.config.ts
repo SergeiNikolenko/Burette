@@ -47,6 +47,7 @@ import { registerBrowserDevMdsmoothRoute } from "./vite/browser-dev/mdsmooth";
 import { registerBrowserDevModelRuntimeRoutes } from "./vite/browser-dev/model-runtime";
 import { registerBrowserDevNativeComputeRoute } from "./vite/browser-dev/native-compute";
 import { registerBrowserDevRuntimeDoctorRoute } from "./vite/browser-dev/runtime-doctor";
+import { registerBrowserDevSshRoutes } from "./vite/browser-dev/ssh";
 import { registerBrowserDevXtbRoutes } from "./vite/browser-dev/xtb";
 import {
   browserDevManagedInstallerName,
@@ -3566,6 +3567,7 @@ export function browserDevXyzrenderPlugin() {
   return {
     name: "burette-browser-dev-xyzrender",
     configureServer(server: import("vite").ViteDevServer) {
+      registerBrowserDevSshRoutes(server, repoRoot);
       const fileRoutes = {
         collectDefaultDevFiles,
         collectDevFiles,
