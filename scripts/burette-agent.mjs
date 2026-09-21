@@ -11,6 +11,7 @@ import { validateMvsDocumentFile, validateMvsStoryFile, writeMvsStoryFile } from
 import { instantiateMvsStoryTemplate, listMvsStoryTemplates } from './mvs-story-templates.mjs';
 import { getOfficialMvsAuthoringReference } from './mvs-schema-validator.mjs';
 import { runMcpAppOperation } from './mcp-app-session.mjs';
+import { navigationLink, registerSessionLink } from './burette-deep-links.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -31,6 +32,8 @@ function usage() {
   console.error(`Usage:
   node scripts/burette-agent.mjs open --mode auto <file> [--host 127.0.0.1]
   node scripts/burette-agent.mjs mcp-app '<json-operation>'
+  node scripts/burette-agent.mjs link <pdb|open|project> <target>
+  node scripts/burette-agent.mjs link --session-dir <desktop-agent-session>
   node scripts/burette-agent.mjs open --mode browser-preview <file> [--port 5177] [--host 127.0.0.1]
   node scripts/burette-agent.mjs open --mode browser-agent-shell <file> [--host 127.0.0.1]
   node scripts/burette-agent.mjs open --mode desktop-app <file> [--app Burette] [--session-dir /tmp/session] [--no-launch]
@@ -182,6 +185,13 @@ function fail(code, message, exitCode = 1, details) {
 async function main() {
   const [command = 'help', ...args] = process.argv.slice(2);
   const options = parseOptions(args);
+  if (command === 'link') {
+    const deepLink = options.sessionDir
+      ? await registerSessionLink(resolve(options.sessionDir))
+      : navigationLink(options.rest[0], options.rest[1] || '');
+    console.log(JSON.stringify({ ok: true, apiVersion, result: { deepLink } }, null, 2));
+    return;
+  }
   if (command === 'mcp-app') {
     console.log(JSON.stringify({ ok: true, apiVersion, result: await runMcpAppOperation(JSON.parse(options.rest[0])) }));
     return;

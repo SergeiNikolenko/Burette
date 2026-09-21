@@ -10,11 +10,14 @@ const pluginRoot = resolve(repoRoot, 'plugins/burette-agent');
 const shellDist = resolve(pluginRoot, 'browser-shell-dist');
 const previewWeb = resolve(pluginRoot, 'preview-web');
 const mcpLibDir = resolve(pluginRoot, 'mcp/lib');
+const mcpOnly = process.argv.includes('--mcp-only');
 const runtimeScripts = [
   'amber_nc_preview_extract.py',
   'agent-preview.mjs',
   'agent-shell-server.mjs',
   'burette-agent.mjs',
+  'burette-deep-links.mjs',
+  'dev-namespace.mjs',
   'mcp-app-session.mjs',
   'mcp-app-action-log.mjs',
   'mcp-app-open.mjs',
@@ -48,15 +51,18 @@ const requiredPreviewAssets = [
   'rdkit/RDKit_minimal.wasm',
 ];
 
+if (!mcpOnly) {
 await rm(shellDist, { recursive: true, force: true });
 await rm(previewWeb, { recursive: true, force: true });
 await mkdir(resolve(pluginRoot, 'scripts'), { recursive: true });
 await run('bun', ['run', 'build:grid-ui'], { cwd: repoRoot });
 await run('bun', [resolve(repoRoot, 'scripts/build-local-viewer.mjs')]);
+}
 
 for (const script of runtimeScripts) {
   await cp(resolve(repoRoot, 'scripts', script), resolve(pluginRoot, 'scripts', script));
 }
+if (!mcpOnly) {
 const storyTemplateAssets = resolve(pluginRoot, 'assets', 'mvs-story-templates');
 await rm(storyTemplateAssets, { recursive: true, force: true });
 await cp(resolve(repoRoot, 'templates', 'mvs-story'), storyTemplateAssets, { recursive: true });
@@ -82,6 +88,8 @@ for (const asset of requiredPreviewAssets) {
   const source = resolve(previewWeb, asset);
   const info = await stat(source).catch(() => null);
   if (!info?.isFile()) throw new Error(`Missing required preview runtime asset: ${asset}`);
+}
+
 }
 
 for (const file of await readdir(mcpLibDir)) {
@@ -113,6 +121,7 @@ for (const file of await readdir(mcpLibDir)) {
   await writeFile(outputPath, output.replace(/[ \t]+$/gmu, ''));
 }
 
+if (!mcpOnly) {
 await run('bun', ['run', 'build'], {
   cwd: resolve(repoRoot, 'apps/desktop'),
   env: {
@@ -126,6 +135,7 @@ await run('bun', ['run', 'build'], {
 });
 
 await run('bun', [resolve(repoRoot, 'scripts/build-native-workspace.mjs')]);
+}
 
 function run(command, args, options) {
   return new Promise((resolveRun, rejectRun) => {

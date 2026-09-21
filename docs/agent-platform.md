@@ -1,5 +1,30 @@
 # Agent Platform
 
+## Native plugin upgrades and desktop links
+
+The MCP server snapshots its packaged HTML and native asset directory before
+connecting. A cache replacement cannot remove resources from that running
+generation. Snapshots are private OS-temporary directories, one per server;
+normal process exit removes them. An abrupt kill can leave a temporary copy.
+This does not retrofit an already running older server: restart Codex after
+installing this fix and test in a fresh task. An old `awaiting_mount` card is
+not successful native acceptance.
+
+The recovered plugin includes the `burette.create_link` contract from main
+(PR #749): PDB, absolute file/project paths and registered desktop sessions.
+It generates a `burette://` link, not a placement change and not an app launch.
+Native MCP viewer session IDs are not desktop session IDs. Unsaved scene state
+is not embedded in URLs; use a saved MVSX for a portable scene handoff.
+Desktop link handling requires a Burette app containing PR #749.
+
+For server/CLI-only updates use
+`bun scripts/build-agent-shell-plugin.mjs --mcp-only`. This refreshes packaged
+CLI scripts and the MCP bundle while preserving the previously built UI.
+Changes to viewer or shell source still require a full native workspace build.
+The recovered UI has not been forward-ported wholesale onto current main;
+in particular, PR #777's shared theme changes require reconciliation, not an
+overwrite with this historical viewer.
+
 ## Revisioned representation layers
 
 Native actions `list_scene_layers` and `patch_scene_layers` use `selectionVersion:1`.

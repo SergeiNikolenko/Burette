@@ -10,7 +10,7 @@ import { pendingMcpActions } from '../scripts/mcp-app-action-log.mjs';
 
 test('layer MCP schema and native queue preserve the bounded revisioned patch', async t => {
   let schema;
-  registerLocalViewer({ registerResource() {}, registerTool(name, metadata) { if (name === 'burette.control_inline_viewer') schema = metadata.inputSchema.action; } });
+  await registerLocalViewer({ registerResource() {}, registerTool(name, metadata) { if (name === 'burette.control_inline_viewer') schema = metadata.inputSchema.action; } });
   const session = await run({ operation: 'open', file: new URL('../samples/mini.pdb', import.meta.url).pathname, workspace: true });
   const dir = join(tmpdir(), 'burette-mcp-app', session.sessionId);
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -54,7 +54,7 @@ test('close-first rejects file admission; enqueue-first preserves the queued rec
 
 test('registered workspace opener requests compact inline placement by default', async () => {
   const handlers = new Map();
-  registerLocalViewer({ registerResource() {}, registerTool(name, metadata, handler) { handlers.set(name, handler); } });
+  await registerLocalViewer({ registerResource() {}, registerTool(name, metadata, handler) { handlers.set(name, handler); } });
   const result = await handlers.get('burette.open_viewer')({ file: new URL('../samples/mini.pdb', import.meta.url).pathname });
   const session = result.structuredContent;
   try {

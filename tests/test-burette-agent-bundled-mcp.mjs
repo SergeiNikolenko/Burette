@@ -82,6 +82,9 @@ try {
   send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
   const listed = await request("tools/list");
+  assert.ok(listed.tools.some(tool => tool.name === 'burette.create_link'));
+  const link = await request('tools/call', { name: 'burette.create_link', arguments: { kind: 'pdb', target: '1htb' } });
+  assert.equal(link.structuredContent.deepLink, 'burette://pdb/1HTB');
   const workspaceTool = listed.tools.find(tool => tool.name === 'burette.open_viewer');
   const compactTool = listed.tools.find(tool => tool.name === 'burette.open_inline_viewer');
   assert.equal(workspaceTool._meta.ui.resourceUri, 'ui://burette/native-workspace-v1.html');

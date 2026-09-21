@@ -35,6 +35,7 @@ const PUBLIC_CONTRACT = {
   apiVersion: "burette-external-agent/v1",
   tools: [
     "burette.get_context",
+    "burette.create_link",
     "burette.open_workspace",
     "burette.open_ketcher",
     "burette.observe_workspace",

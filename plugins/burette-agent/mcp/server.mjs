@@ -11,6 +11,7 @@ import { registerMvsStory } from "./registrations/mvs-story/register.mjs";
 import { registerMoleculeTable } from "./registrations/molecule-table/register.mjs";
 import { registerTrajectoryReview } from "./registrations/trajectory-review/register.mjs";
 import { registerLocalViewer } from "./registrations/local-viewer/register.mjs";
+import { registerDeepLinks } from "./registrations/deep-links/register.mjs";
 
 const pluginManifest = JSON.parse(readFileSync(pluginPath(".codex-plugin", "plugin.json"), "utf8"));
 
@@ -27,11 +28,12 @@ const server = new McpServer(
 
 registerFetch(server);
 registerMolecularWorkspace(server);
+registerDeepLinks(server);
 registerMvsStory(server);
 registerMoleculeTable(server);
 registerTrajectoryReview(server);
 registerMolecularReport(server);
-registerLocalViewer(server);
+await registerLocalViewer(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

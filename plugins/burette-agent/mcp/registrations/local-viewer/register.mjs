@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { snapshotNativeResources } from '../../lib/native-resource-snapshot.mjs';
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
 import { runMcpAppOperation } from '../../../../../scripts/mcp-app-session.mjs';
@@ -20,11 +20,11 @@ const layerOperation = z.object({
 }).strict();
 const openRequestId = z.string().uuid().optional().describe('A fresh UUID v4 for each intentional workspace. Reuse the same ID and paths/options when retrying a timed-out opener; it reuses the snapshot/session, not a guaranteed single host card.');
 
-async function operation(input, privateResult = false) {
+async function runOperation(input, privateResult, assetRoot) {
   // Use the CLI-owned implementation in this persistent server, not one new
   // CLI process for every heartbeat and source chunk. The bundle includes it.
   let result;
-  try { result = await runMcpAppOperation(input, { assetRoot: pluginPath('assets', 'native-workspace') }); }
+  try { result = await runMcpAppOperation(input, { assetRoot }); }
   catch (error) { return { isError: true, content: [{ type: 'text', text: error.message || 'Local viewer operation failed.' }] }; }
   if (privateResult) return { content: [], _meta: { payload: result } };
   const capture = captureToolResult(result);
@@ -33,12 +33,14 @@ async function operation(input, privateResult = false) {
   return { ...(result.status === 'failed' ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(publicResult) }], structuredContent: publicResult, ...(token ? { _meta: { session: { sessionId: result.sessionId, token } } } : {}) };
 }
 
-export function registerLocalViewer(server) {
+export async function registerLocalViewer(server) {
+  const resources = await snapshotNativeResources(pluginPath('assets'));
+  const operation = (input, privateResult = false) => runOperation(input, privateResult, resources.assetRoot);
   registerAppResource(server, 'burette-native-workspace', workspaceUri, { mimeType: RESOURCE_MIME_TYPE }, async () => ({
-    contents: [{ uri: workspaceUri, mimeType: RESOURCE_MIME_TYPE, text: await readFile(pluginPath('assets', 'native-workspace.html'), 'utf8'), _meta: { ui: { csp: { connectDomains: ['blob:'], resourceDomains: ['blob:', 'data:'], frameDomains: ['blob:'] }, prefersBorder: false } } }],
+    contents: [{ uri: workspaceUri, mimeType: RESOURCE_MIME_TYPE, text: resources.workspace, _meta: { ui: { csp: { connectDomains: ['blob:'], resourceDomains: ['blob:', 'data:'], frameDomains: ['blob:'] }, prefersBorder: false } } }],
   }));
   registerAppResource(server, 'burette-local-viewer', uri, { mimeType: RESOURCE_MIME_TYPE }, async () => ({
-    contents: [{ uri, mimeType: RESOURCE_MIME_TYPE, text: await readFile(pluginPath('assets', 'local-viewer.html'), 'utf8'), _meta: { ui: { csp: { connectDomains: ['blob:'], resourceDomains: ['blob:', 'data:'], frameDomains: ['blob:'] }, prefersBorder: true } } }],
+    contents: [{ uri, mimeType: RESOURCE_MIME_TYPE, text: resources.compact, _meta: { ui: { csp: { connectDomains: ['blob:'], resourceDomains: ['blob:', 'data:'], frameDomains: ['blob:'] }, prefersBorder: true } } }],
   }));
   registerAppTool(server, 'burette.open_viewer', {
     title: 'Burette',
