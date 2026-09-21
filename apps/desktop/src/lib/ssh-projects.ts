@@ -6,7 +6,7 @@ export type SshConnection = { host: string; name: string; enabled: boolean; colo
 function randomColor(): NonNullable<SshConnection["color"]> { return (["cyan", "blue", "purple"] as const)[crypto.getRandomValues(new Uint32Array(1))[0] % 3]; }
 export type SshProject = { id: string; name: string; host: string; root: string };
 export type SshEntry = { name: string; directory: boolean; size: number };
-export type SshDirectory = { root: string; path: string; entries: SshEntry[]; truncated: boolean };
+export type SshDirectory = { root: string; path: string; entries: SshEntry[]; truncated: boolean; discovered?: SshDirectory[]; expanded?: string[]; partial?: boolean };
 const key = "burette.ssh-projects.v1";
 const event = "burette-ssh-projects-changed";
 let cachedRaw: string | null | undefined;
@@ -69,10 +69,10 @@ async function browserSsh<T>(action: string, request: unknown = {}): Promise<T> 
 export function sshHosts() {
   return isTauriRuntime() ? invoke<{ alias: string }[]>("ssh_hosts") : browserSsh<{ alias: string }[]>("hosts");
 }
-export async function sshList(host: string, root: string, path = ".") {
+export async function sshList(host: string, root: string, path = ".", chemical = false) {
   requireEnabled(host);
-  if (!isTauriRuntime()) return browserSsh<SshDirectory>("list", { host, root, path });
-  return invoke<SshDirectory>("ssh_list", { request: { host, root, path } });
+  if (!isTauriRuntime()) return browserSsh<SshDirectory>("list", { host, root, path, chemical });
+  return invoke<SshDirectory>("ssh_list", { request: { host, root, path, chemical } });
 }
 export async function sshPreview(project: SshProject, path: string) {
   requireEnabled(project.host);

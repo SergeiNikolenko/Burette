@@ -65,3 +65,19 @@ With `BURETTE_SSH_TEST_HOST` and `BURETTE_SSH_TEST_ROOT` set to an authorized
 folder containing `mini.pdb`, it also tests real listing, download, and traversal
 rejection. Browser acceptance must show an actual remote molecule, not just a
 connection status. Native and browser acceptance remain separate.
+
+## Chemical tree and folder actions
+
+Remote project expansion searches up to 64 directories, 12 levels, 2,000 entries
+and 1.5 seconds per request. It expands branches to the first chemical files.
+Hidden/service folders and plain JSON are excluded; ambiguous text formats are
+checked for chemical signatures within a 1 MiB total sniff budget. Incomplete
+branches stay available for manual expansion. The folder chooser remains an
+unfiltered directory picker. Nested folder menus refresh, collapse, copy a path,
+or save that folder as a separate project without modifying remote files.
+
+Browser development reuses one sequential Python worker per SSH host, with at
+most four sessions, two active requests globally, and a 60-second idle expiry.
+Responses have bounded length headers; cancellation or timeout closes the session.
+Native requests still use independent SSH processes; both surfaces share the
+bounded discovery worker.

@@ -10,7 +10,11 @@ use std::{
 use tauri::Manager;
 static REQUEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-const WORKER: &str = include_str!("reader.py");
+const WORKER: &str = concat!(
+    include_str!("chemistry.py"),
+    "\n",
+    include_str!("reader.py")
+);
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone, Deserialize)]
@@ -19,6 +23,8 @@ pub(crate) struct Request {
     host: String,
     root: String,
     path: String,
+    #[serde(default)]
+    chemical: bool,
 }
 
 #[derive(Serialize)]
@@ -51,9 +57,30 @@ fn run(request: &Request, operation: &str) -> Result<Vec<u8>, String> {
     let _guard = REQUEST_LOCK
         .try_lock()
         .map_err(|_| "Another SSH request is running; try again when it finishes")?;
-    let payload =
-        serde_json::json!({"operation": operation, "root": request.root, "path": request.path})
-            .to_string();
+    let mut payload =
+        serde_json::json!({"operation": operation, "root": request.root, "path": request.path});
+    if operation == "list" && request.chemical {
+        let registry: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../../../config/preview-formats.json"
+        ))
+        .map_err(|e| e.to_string())?;
+        let extensions: Vec<_> = registry["formats"]
+            .as_array()
+            .ok_or("Invalid format registry")?
+            .iter()
+            .filter(|format| format["preview"]["strategy"] != "text")
+            .flat_map(|format| {
+                format["extensions"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .cloned()
+            })
+            .collect();
+        payload["operation"] = "discover".into();
+        payload["extensions"] = extensions.into();
+    }
+    let payload = payload.to_string();
     if payload.len() > 8192 {
         return Err("Remote path request is too large".into());
     }
@@ -167,6 +194,7 @@ pub(crate) async fn ssh_hosts() -> Result<Vec<Host>, String> {
                     host: alias.into(),
                     root: String::new(),
                     path: String::new(),
+                    chemical: false,
                 })
                 .is_ok()
             {
@@ -255,6 +283,7 @@ mod tests {
                 host: host.into(),
                 root: "~".into(),
                 path: ".".into(),
+                chemical: false,
             };
             assert!(run(&request, "list").is_err());
         }
@@ -262,7 +291,8 @@ mod tests {
             assert!(validate(&Request {
                 host: host.into(),
                 root: "~/My structures".into(),
-                path: "ligand's molecule.sdf".into()
+                path: "ligand's molecule.sdf".into(),
+                chemical: false
             })
             .is_ok());
         }
@@ -276,6 +306,7 @@ mod tests {
             host,
             root,
             path: ".".into(),
+            chemical: false,
         };
         let listing: serde_json::Value =
             serde_json::from_slice(&run(&request, "list").expect("remote listing")).unwrap();

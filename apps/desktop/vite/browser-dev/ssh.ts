@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { SshSession } from "./ssh-session";
 import { mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -17,9 +17,9 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
   let downloads = 0;
   let cache: Promise<string> | undefined;
   const cacheRoot = () => cache ??= mkdir(join(repoRoot, "node_modules/.cache"), { recursive: true }).then(() => mkdtemp(join(repoRoot, "node_modules/.cache/burette-ssh-")));
-  const children = new Set<() => void>();
+  const sessions = new Map<string, SshSession>();
   server.httpServer?.once("close", () => {
-    for (const stop of children) stop();
+    for (const session of sessions.values()) session.close();
     if (cache) void cache.then(path => rm(path, { recursive: true, force: true }));
   });
   server.middlewares.use("/__burette/ssh", async (req, res) => {
@@ -53,7 +53,10 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
       if (action !== "/list" && action !== "/preview") { sendJson(res, 404, { error: "Unknown SSH operation" }); return; }
       const { host, root, path } = request;
       if (!validHost(host) || typeof root !== "string" || typeof path !== "string" || (root + path).includes("\0")) throw new Error("Invalid SSH host or remote path");
-      const payload = JSON.stringify({ operation: action === "/list" ? "list" : "read", root, path });
+      const chemical = action === "/list" && request.chemical === true;
+      const registry = chemical ? JSON.parse(await readFile(join(repoRoot, "config/preview-formats.json"), "utf8")) : null;
+      const extensions = registry?.formats.filter((format: { preview?: { strategy?: string } }) => format.preview?.strategy !== "text").flatMap((format: { extensions: string[] }) => format.extensions);
+      const payload = JSON.stringify({ operation: chemical ? "discover" : action === "/list" ? "list" : "read", root, path, ...(chemical ? { extensions } : {}) });
       if (Buffer.byteLength(payload) > 8192) throw new Error("Remote path request is too large");
       if (active >= 2) { sendJson(res, 429, { error: "Two SSH requests are running. Try again when they finish." }); return; }
       active++; acquired = true;
@@ -62,33 +65,23 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
         downloads++; downloading = true;
       }
       const started = performance.now();
-      const worker = await readFile(join(repoRoot, "apps/desktop/src-tauri/src/commands/ssh/reader.py"), "utf8");
-      const data = await new Promise<Buffer>((resolve, reject) => {
-        const child = spawn("/usr/bin/ssh", ["-T", "-oBatchMode=yes", "-oStrictHostKeyChecking=yes", "-oConnectTimeout=10", "-oServerAliveInterval=5", "-oServerAliveCountMax=2", "-oForwardAgent=no", "-oClearAllForwardings=yes", "--", host, `python3 -c '${worker.replaceAll("'", "'\\''")}'`], { detached: true, stdio: ["pipe", "pipe", "pipe"] });
-        let failure: Error | undefined;
-        const stop = () => { if (child.pid) { try { process.kill(-child.pid, "SIGKILL"); } catch { /* Already exited. */ } } };
-        children.add(stop);
-        const abort = () => { if (!res.writableEnded) { failure = new Error("SSH request cancelled"); stop(); } };
-        res.once("close", abort);
-        const timer = setTimeout(() => { failure = new Error("SSH request timed out after 45 seconds"); stop(); }, 45000);
-        const chunks: Buffer[] = [];
-        let size = 0;
-        let errors = "";
-        child.stdout.on("data", (chunk: Buffer) => {
-          size += chunk.length;
-          if (size > (action === "/list" ? 2 * 1024 * 1024 : MAX_BYTES)) { failure = new Error("SSH response exceeds the preview limit"); stop(); }
-          else chunks.push(chunk);
-        });
-        child.stderr.on("data", (chunk: Buffer) => { errors = (errors + chunk.toString()).slice(0, 8192); });
-        child.on("error", error => { failure = error; });
-        child.stdin.on("error", error => { failure = error; stop(); });
-        child.on("close", code => {
-          clearTimeout(timer); children.delete(stop); res.off("close", abort);
-          if (failure || code !== 0) reject(failure ?? new Error(errors.trim() || `SSH exited with status ${code}`));
-          else resolve(Buffer.concat(chunks));
-        });
-        child.stdin.end(payload);
-      });
+      const worker = (await Promise.all(["chemistry.py", "reader.py"].map(file => readFile(join(repoRoot, "apps/desktop/src-tauri/src/commands/ssh", file), "utf8")))).join("\n");
+      let session = sessions.get(host);
+      if (!session) {
+        if (sessions.size >= 4) {
+          const idle = [...sessions.values()].find(item => !item.busy);
+          if (!idle) throw new Error("SSH connections are busy. Try again shortly.");
+          idle.close();
+        }
+        session = new SshSession(host, worker, () => { if (sessions.get(host) === session) sessions.delete(host); });
+        sessions.set(host, session);
+      }
+      const controller = new AbortController();
+      const abort = () => { if (!res.writableEnded) controller.abort(); };
+      res.once("close", abort);
+      let data: Buffer;
+      try { data = await session.run(payload, action === "/list" ? 2 * 1024 * 1024 : MAX_BYTES, controller.signal); }
+      finally { res.off("close", abort); }
       res.setHeader("Server-Timing", `ssh;dur=${(performance.now() - started).toFixed(1)}`);
       if (action === "/list") sendJson(res, 200, JSON.parse(data.toString()), "no-store");
       else {

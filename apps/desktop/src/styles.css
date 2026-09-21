@@ -9649,13 +9649,13 @@ img.settings-open-destination-icon {
 @media (prefers-reduced-motion: reduce) { .ssh-activity { animation: none; } }
 
 .ssh-dialog[data-slot="dialog-content"] { width: min(520px, calc(100vw - 40px)); max-width: 520px; max-height: calc(100vh - 48px); overflow-y: auto; border-radius: 24px; padding: 28px 24px 24px; gap: 22px; }
-.ssh-dialog [data-slot="dialog-title"] { font-size: 23px; font-weight: 600; letter-spacing: -0.5px; }
+.ssh-dialog [data-slot="dialog-title"] { font-size: 22px; font-weight: 500; letter-spacing: -0.45px; }
 .ssh-dialog > [data-slot="dialog-close"] { top: 16px; right: 16px; }
 .ssh-dialog-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
 .ssh-dialog-footer.justify-end { justify-content: flex-end; }
 .ssh-primary { border-radius: 14px; min-height: 36px; padding-inline: 20px; }
 .ssh-project-name { display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: 14px; overflow: hidden; padding-left: 15px; }
-.ssh-project-name:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ssh-project-name:focus-within { border-color: var(--text-faint); box-shadow: none; }
 .ssh-project-name > svg { flex: 0 0 19px; }
 .ssh-project-name input { height: 42px; border: 0; background: transparent; box-shadow: none; outline: none; border-radius: 0; margin-left: 14px; border-left: 1px solid var(--border); }
 .ssh-project-name input:focus-visible { box-shadow: none; outline: none; }
@@ -9676,9 +9676,14 @@ img.settings-open-destination-icon {
 .ssh-form-fields input { min-height: 38px; border-radius: 10px; }
 .ssh-folder-location { display: flex; gap: 6px; align-items: center; }
 .ssh-folder-list { position: relative; height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; padding: 6px; }
-.ssh-folder-list > button { display: flex; gap: 10px; align-items: center; text-align: left; width: 100%; padding: 8px; border-radius: 6px; }
+.ssh-folder-list > button { display: flex; gap: 8px; align-items: center; text-align: left; width: 100%; min-height: 28px; padding: 4px 8px; border-radius: 6px; font-size: 13px; line-height: 20px; }
 .ssh-folder-list > button:hover { background: var(--surface-subtle); }
 .ssh-folder-loading { position: sticky; top: 0; padding: 6px; background: var(--popover); color: var(--text-muted); }
 .ssh-dialog-error { color: var(--destructive); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ssh-project-tree .project-folder-row { text-align: left; }
 .sidebar-add-project { opacity: 1; }
+
+.ssh-dialog input:focus-visible { border-color: var(--text-faint); outline: none; box-shadow: none; }
+
+.ssh-dialog button, .ssh-dialog input { font-weight: 400; }
+.ssh-dialog-footer > button:not(.ssh-primary) { color: var(--text-muted); }
