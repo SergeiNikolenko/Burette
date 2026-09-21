@@ -218,3 +218,7 @@ with `itemId`, integer `width`/`height` (1–1024), and an exact-sized RGBA
 reuses a canvas, avoiding PNG encoding on playback. Committed GIFs continue using
 `applyXyzrenderAnimation`. The molecular editor hides Miller directions for
 non-CIF inputs; those directions require crystal lattice data.
+
+### Native xyzrender editor
+
+The desktop Orientation & animation editor renders through the `render_xyzrender_editor` Tauri command using the bundled xyzrender runtime. It does not require a browser-dev server. GIF, SVG, PNG, PDF and TIFF exports use the native save dialog. Trajectory and vibration rendering read the original source file; the selected inline frame remains the input for static orientation and synthetic sheet items. Browser-dev keeps its HTTP transport. Native rendering stages input in a temporary cache directory, bounds inputs/outputs to 16 MiB and animation decoding to 100 million pixels, and allows two concurrent renders with a 120-second animation timeout. Closing a panel discards its result; an already running native render finishes within its timeout before releasing its slot.

@@ -80,6 +80,7 @@ commands.allow = [
   "grid_delimited_columns",
   "grid_append_delimited_records",
   "run_mdsmooth",
+  "render_xyzrender_editor",
   "render_xyzrender_sheet_item",
   "render_xyzrender_sheet_items",
   "sync_native_menu",

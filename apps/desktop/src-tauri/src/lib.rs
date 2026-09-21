@@ -254,6 +254,7 @@ pub fn run() {
             commands::documents::save_text_as,
             commands::documents::release_save_as_reservation,
             commands::documents::abort_open_document_claim,
+            commands::xyzrender_editor::render_xyzrender_editor,
             commands::documents::render_xyzrender_sheet_item,
             commands::documents::render_xyzrender_sheet_items,
             commands::grid::grid_fetch_page,

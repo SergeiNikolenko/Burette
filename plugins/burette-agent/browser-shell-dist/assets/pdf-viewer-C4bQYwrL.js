@@ -1,0 +1,1 @@
+import{a as e}from"./document-page-CPva5moi.js";export{e as PdfResourceContent};

@@ -43,3 +43,15 @@ document.querySelector('dialog').close();
 complete({ gifBase64: btoa('GIF89a') });
 await pending;
 assert.equal(document.querySelector('dialog'), null);
+
+// A packaged host has no browser endpoint but must receive the editor action.
+const viewer = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
+const nativeOpen = viewer.slice(viewer.indexOf('  async function openXyzrender3DEditor()'), viewer.indexOf('  function installExternalArtifactKeyboard', viewer.indexOf('  async function openXyzrender3DEditor()')));
+const selected = { id: 'native-molecule' };
+const published = [];
+const errors = [];
+await new Function('activeConfig', 'selectedXyzrenderSheetItems', 'xyzrenderSheetItemEntry', 'publishXyzrenderItem', 'setStatus', `${nativeOpen}; return openXyzrender3DEditor();`)(
+  { appViewer: true }, () => [selected], () => ({}), (...args) => published.push(args), (...args) => errors.push(args),
+);
+assert.deepEqual(published, [[selected, 'openXyzrenderAnimation']]);
+assert.deepEqual(errors, []);

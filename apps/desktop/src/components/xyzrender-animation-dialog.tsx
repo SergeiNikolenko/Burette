@@ -1,3 +1,4 @@
+import { renderXyzrender, saveXyzrenderFile, type SavedXyzrenderFile } from "../lib/xyzrender-transport";
 import { createAnimationBudget } from "../lib/xyzrender-animation-budget";
 import { useXyzrenderPlayback } from "../hooks/use-xyzrender-playback";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -29,6 +30,8 @@ export type AnimationSource = {
   controls: Record<string, unknown>;
   inputDataBase64?: string;
   inputExtension?: string;
+  animationSourcePath?: string;
+  animationSourceExtension?: string;
   orientationRef?: string;
   orientationBaseRef?: string;
   angles?: number[];
@@ -134,7 +137,7 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
   }, [source.itemId, source.path, remember, mode, selectedAxis, amplitude, rotate, rebuildBonds, noise, anchor, forward, fps, size, frames]);
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [saved, setSaved] = useState<{ name: string; path: string; downloadUrl: string } | null>(null);
+  const [saved, setSaved] = useState<SavedXyzrenderFile | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const [unavailable, setUnavailable] = useState("");
@@ -162,10 +165,7 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
         let previewCount = 0;
         for (const resolution of passes) {
           const draft = resolution !== size;
-          const response = await fetch("/__burette/xyzrender", {
-            method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal,
-            body: JSON.stringify({ ...input, animation: { mode, axis, size: resolution, frames, fps: 10, amplitude, rotate, rebuildBonds, noise, anchor, forward } }),
-          });
+          const response = await renderXyzrender({ ...input, animation: { mode, axis, size: resolution, frames, fps: 10, amplitude, rotate, rebuildBonds, noise, anchor, forward } }, controller.signal);
           const payload = await response.json();
           if (!response.ok && (payload.code === 'animation_unavailable' || (mode === 'vibration' && /vibrat|frequen|normal.mode|imaginary/i.test(payload.error || '')))) {
             if (!disposed) setUnavailable(mode === 'trajectory' ? 'This file contains one structure. A trajectory needs at least two coordinate frames.' : 'This file has no supported vibrational mode. Open a frequency calculation to animate vibrations.');
@@ -189,7 +189,7 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
           if (draft) previewCount = decoded.frames.length;
         }
       } catch (cause) {
-        if (!disposed) setError(controller.signal.aborted ? "Rendering timed out. Try again." : mode === "trajectory" ? "Trajectory needs a file containing multiple coordinate frames. Open a trajectory or choose Full rotation." : mode === "vibration" ? "This file has no supported vibrational data. Open a frequency calculation or choose Full rotation." : "Could not render this animation. Try another motion or reduce the export size.");
+        if (!disposed) setError(controller.signal.aborted ? "Rendering timed out. Try again." : cause instanceof Error ? cause.message : "Could not render this animation. Try another motion or reduce the export size.");
       } finally {
         window.clearTimeout(timeout);
         if (!disposed) { reserve(reservationKey, retainedPixels); setBusy(false); }
@@ -213,13 +213,8 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
         for (const iframe of document.querySelectorAll<HTMLIFrameElement>('iframe.viewer-iframe')) iframe.contentWindow?.postMessage({ source: 'burette-host', body: { type: 'applyXyzrenderAnimation', itemId: source.itemId, image: 'data:image/gif;base64,' + btoa(binary), commit: true } }, '*');
         return;
       }
-      const response = await fetch("/__burette/xyzrender-export", { signal: controller.signal, method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: safeExportFileName(`${source.label.replace(/\.[^.]+$/, "")}-${mode}.gif`), gifBase64: btoa(binary) }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Could not save GIF.");
+      const result = await saveXyzrenderFile(safeExportFileName(`${source.label.replace(/\.[^.]+$/, "")}-${mode}.gif`), "gif", btoa(binary), controller.signal);
       setSaved(result);
-      const link = document.createElement("a"); link.href = result.downloadUrl; link.download = result.name;
-      document.body.append(link); link.click(); link.remove();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setSaving(false); }
   };
@@ -293,7 +288,7 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
       </div>
       {(busy || saving) && <Progress aria-label={busy ? "Rendering animation" : "Saving GIF"} indeterminate={busy} value={busy ? undefined : progress * 100} />}
       <div className="flex flex-wrap items-center gap-2">
-        {saved && <Button variant="outline" asChild><a href={saved.downloadUrl} download={saved.name}>Download again</a></Button>}
+        {saved?.downloadUrl && <Button variant="outline" asChild><a href={saved.downloadUrl} download={saved.name}>Download again</a></Button>}
         {error && <Button variant="outline" onClick={() => setRetry(value => value + 1)}>Try again</Button>}
         <Button disabled={busy || saving || preview || !animation} onClick={() => void save(true)}>Apply GIF to canvas</Button>
         <Button variant="outline" disabled={busy || saving || preview || !animation} onClick={() => void save()}><Download data-icon="inline-start" />Save GIF</Button>

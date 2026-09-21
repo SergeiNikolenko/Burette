@@ -1,3 +1,4 @@
+pub(crate) mod editor;
 use serde::Serialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -1580,6 +1581,14 @@ fn run_xyzrender_command(
 ) -> Result<(ExitStatus, String), String> {
     let mut command = Command::new(executable);
     command.args(&args);
+    run_xyzrender_process(command, log_path, timeout)
+}
+
+fn run_xyzrender_process(
+    mut command: Command,
+    log_path: &Path,
+    timeout: Duration,
+) -> Result<(ExitStatus, String), String> {
     let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
