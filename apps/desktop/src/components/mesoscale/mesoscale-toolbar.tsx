@@ -1,11 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { ChevronDown } from "@/components/ui/app-icons";
+import { ChevronDown, ColorTheme } from "@/components/ui/app-icons";
 import type { ViewerDocument, ViewerPreferences } from "../../types";
 import type { ShellActions } from "../types";
 import { positionMesoscaleControls, requestMesoscale, useMesoscaleStore } from "../../stores/mesoscale-store";
 import type { MesoscaleGraphicsMode } from "../../lib/mesoscale-contract";
-import { resolveThemeMode, useSystemThemeMode } from "../../lib/theme";
 import { MesoscaleViewportRail } from "./mesoscale-viewport-rail";
 
 const GRAPHICS: Array<{ value: MesoscaleGraphicsMode; label: string }> = [
@@ -79,9 +78,8 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
   const suppressClickRef = useRef(false);
   const [collapsed, setCollapsed] = useState(readToolbarCollapsed);
   const [position, setPosition] = useState<ToolbarPosition | null>(readToolbarPosition);
-  const systemTheme = useSystemThemeMode();
-  const effectiveTheme = resolveThemeMode(preferences.theme, systemTheme);
-  const nextTheme = effectiveTheme === "dark" ? "light" : "dark";
+  const nextTheme = preferences.theme === "auto" ? "light" : preferences.theme === "light" ? "dark" : "auto";
+  const themeLabel = `Theme: ${preferences.theme === "auto" ? "Auto (system)" : preferences.theme}. Switch to ${nextTheme}`;
   const disabled = !session || session.status === "loading" || session.status === "disposed";
   const run = (action: Parameters<typeof requestMesoscale>[1]) => void requestMesoscale(document.id, action).catch(() => undefined);
   const toggleRegion = (region: "left" | "right") => run({
@@ -248,10 +246,10 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
         <button
           type="button"
           className="mesoscale-toolbar-theme"
-          aria-label={`Switch to ${nextTheme} theme`}
-          title={`Switch to ${nextTheme} theme`}
+          aria-label={themeLabel}
+          title={themeLabel}
           onClick={() => actions.setPreference("theme", nextTheme)}
-        >{nextTheme[0].toUpperCase() + nextTheme.slice(1)}</button>
+        ><ColorTheme size={17} aria-hidden="true" /></button>
       </div>
       <button
         type="button"

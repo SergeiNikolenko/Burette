@@ -94,4 +94,42 @@ assert.match(viewer, /return `burette\.trajectoryControl\.\$\{documentId\}`/);
 assert.match(viewer, /return `burette\.trajectoryControl\.fallback-\$\{stableTextHash\(fallback\)\}`/);
 assert.match(viewer, /return `\$\{trajectoryControlStorageKey\(config, prepared\)\}\.fps\.v1`/);
 
+// Exercise the real theme setters: returning to Auto must release the forced
+// canvas colour and persist Auto, so a later OS appearance change takes effect.
+const themeFunctions = ["normalizeViewerTheme", "readStoredViewerTheme", "resolveViewerTheme", "setViewerTheme", "toggleViewerTheme"]
+  .map((name) => {
+    const match = viewer.match(new RegExp(`\n  function ${name}\\([\\s\\S]*?\n  \\}`, "u"));
+    assert.ok(match, `missing ${name}`);
+    return match[0];
+  }).join("\n");
+const storedThemes = new Map();
+const systemTheme = { matches: false };
+const themeRuntime = new Function("window", `
+  let viewerTheme = 'auto', canvasBackground = 'auto', transparentBackground = false;
+  const activeViewer = null, VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
+  function applyBackgroundMode() {}
+  function applyViewerBackground() {}
+  function updateThemeButton() {}
+  function scheduleViewerResize() {}
+  function scheduleVisibleMolstarPresetPreviewRefresh() {}
+  ${themeFunctions}
+  return {
+    toggle: toggleViewerTheme,
+    stored: readStoredViewerTheme,
+    state: () => ({ theme: viewerTheme, resolved: resolveViewerTheme(), canvasBackground, transparentBackground }),
+  };
+`)({
+  matchMedia: () => systemTheme,
+  localStorage: { getItem: (key) => storedThemes.get(key), setItem: (key, value) => storedThemes.set(key, value) },
+});
+for (const [theme, resolved, canvasBackground] of [
+  ["light", "light", "white"], ["dark", "dark", "black"], ["auto", "dark", "auto"],
+]) {
+  assert.equal(themeRuntime.toggle(), theme);
+  assert.equal(themeRuntime.stored(), theme);
+  assert.deepEqual(themeRuntime.state(), { theme, resolved, canvasBackground, transparentBackground: false });
+}
+systemTheme.matches = true;
+assert.deepEqual(themeRuntime.state(), { theme: "auto", resolved: "light", canvasBackground: "auto", transparentBackground: false });
+
 console.log("runtime storage contract tests passed");

@@ -1952,7 +1952,7 @@
   function readStoredViewerTheme() {
     try {
       const storedTheme = window.localStorage && window.localStorage.getItem(VIEWER_THEME_STORAGE_KEY);
-      return storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : null;
+      return ['auto', 'dark', 'light'].includes(storedTheme) ? storedTheme : null;
     } catch (_) {
       return null;
     }
@@ -2159,6 +2159,9 @@
     } else if (viewerTheme === 'light') {
       canvasBackground = 'white';
       transparentBackground = false;
+    } else {
+      canvasBackground = 'auto';
+      transparentBackground = false;
     }
     if (persist) {
       try {
@@ -2173,7 +2176,7 @@
   }
 
   function toggleViewerTheme(viewer = activeViewer) {
-    const nextTheme = resolveViewerTheme() === 'dark' ? 'light' : 'dark';
+    const nextTheme = viewerTheme === 'auto' ? 'light' : viewerTheme === 'light' ? 'dark' : 'auto';
     setViewerTheme(nextTheme, viewer);
     return nextTheme;
   }
@@ -10538,13 +10541,16 @@ SOFTWARE.
   function updateThemeButton() {
     const button = document.querySelector('#buret-toolbar [data-buret-action="theme"]');
     if (!button) return;
-    const isDark = resolveViewerTheme() === 'dark';
-    const label = isDark ? 'Switch to light theme' : 'Switch to dark theme';
-    setButtonLabel(button, isDark ? 'Light' : 'Dark');
+    const nextTheme = viewerTheme === 'auto' ? 'light' : viewerTheme === 'light' ? 'dark' : 'auto';
+    const label = `Theme: ${viewerTheme === 'auto' ? 'Auto (system)' : viewerTheme}. Switch to ${nextTheme}`;
+    const tooltip = button.querySelector('.buret-tooltip');
+    button.replaceChildren(sceneTreeIconElement(APP_ICON_DATA.ColorTheme));
+    if (tooltip) button.append(tooltip);
+    button.dataset.theme = viewerTheme;
     button.setAttribute('aria-label', label);
     button.setAttribute('title', label);
     setTooltipLabel(button, label);
-    button.classList.toggle('active', !isDark);
+    button.classList.toggle('active', viewerTheme !== 'auto');
   }
 
   function setButtonLabel(button, label) {

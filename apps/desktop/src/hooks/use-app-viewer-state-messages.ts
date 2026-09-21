@@ -83,7 +83,7 @@ export function useAppViewerStateMessages({
     }
 
     if (sourceName === "burette-viewer" && body?.type === "setTheme") {
-      const theme = body.value === "light" || body.value === "dark" ? body.value : null;
+      const theme = body.value === "auto" || body.value === "light" || body.value === "dark" ? body.value : null;
       if (theme) setPreference("theme", theme);
       return true;
     }
