@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { test } from "node:test";
 import { spawnSync } from "node:child_process";
 import { preserveNativeWidget } from "../plugins/burette-agent/scripts/preserve-native-widget.mjs";
 
-test("native widget cannot be silently replaced by the browser-only bundle", async () => {
+// Native widget cannot be silently replaced by the browser-only bundle.
+{
   const root = await mkdtemp(path.join(os.tmpdir(), "burette-preservation-"));
   const source = path.join(root, "source");
   const installed = path.join(root, "installed");
@@ -32,9 +32,10 @@ test("native widget cannot be silently replaced by the browser-only bundle", asy
   } finally {
     await rm(root, { recursive: true, force: true });
   }
-});
+}
 
-test("updater skips both installer and fallback when native capability would be lost", async () => {
+// Updater skips both installer and fallback when native capability would be lost.
+{
   const root = await mkdtemp(path.join(os.tmpdir(), "burette-updater-preservation-"));
   try {
     const updater = await readFile(new URL("../apps/desktop/src-tauri/src/commands/updater.rs", import.meta.url), "utf8");
@@ -68,4 +69,5 @@ test("updater skips both installer and fallback when native capability would be 
   } finally {
     await rm(root, { recursive: true, force: true });
   }
-});
+}
+console.log("Native widget installer and updater preservation tests passed");
