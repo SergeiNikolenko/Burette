@@ -51,6 +51,12 @@ fn run(request: &Request, operation: &str) -> Result<Vec<u8>, String> {
     let _guard = REQUEST_LOCK
         .try_lock()
         .map_err(|_| "Another SSH request is running; try again when it finishes")?;
+    let payload =
+        serde_json::json!({"operation": operation, "root": request.root, "path": request.path})
+            .to_string();
+    if payload.len() > 8192 {
+        return Err("Remote path request is too large".into());
+    }
     // Only the bundled worker is shell-quoted. User paths travel as JSON on stdin.
     let remote_command = format!("python3 -c '{}'", WORKER.replace('\'', "'\\''"));
     let mut child = Command::new("/usr/bin/ssh")
@@ -92,9 +98,7 @@ fn run(request: &Request, operation: &str) -> Result<Vec<u8>, String> {
         let mut bytes = Vec::new();
         errors.take(8192).read_to_end(&mut bytes).map(|_| bytes)
     });
-    let payload =
-        serde_json::json!({"operation": operation, "root": request.root, "path": request.path});
-    let written = input.write_all(payload.to_string().as_bytes());
+    let written = input.write_all(payload.as_bytes());
     drop(input);
     let started = Instant::now();
     let status = loop {
