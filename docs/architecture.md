@@ -85,7 +85,11 @@ fails, or cancels the document switch.
 
 Settings that require new runtime HTML are applied when each open file next
 becomes active, after its unsaved edits have been resolved. Live theme and style
-changes are broadcast without rebuilding the viewer. Leaving Settings returns
+changes are broadcast without rebuilding the viewer. Theme defaults to Auto
+(system); the viewer's icon button cycles Auto, Light, and Dark. The preference
+also sets the native application appearance so AppKit menus and window materials
+match the web shell. Auto removes the native override and follows system
+changes. Leaving Settings returns
 to the tab that was active on entry. Unsaved grids show a tab marker, and the
 Inspector molecule card resets its retained hover state when its document changes.
 

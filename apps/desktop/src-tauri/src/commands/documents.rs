@@ -2464,7 +2464,17 @@ fn reject_private_ip(ip: IpAddr) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub(crate) fn sync_viewer_preferences(preferences: ViewerPreferences) -> Result<(), String> {
+pub(crate) fn sync_viewer_preferences(
+    app: tauri::AppHandle,
+    preferences: ViewerPreferences,
+) -> Result<(), String> {
+    // Keep AppKit menus, materials and dialogs aligned with the web shell.
+    // None removes the override so Auto follows subsequent system changes.
+    app.set_theme(match preferences.theme.as_str() {
+        "light" => Some(tauri::Theme::Light),
+        "dark" => Some(tauri::Theme::Dark),
+        _ => None,
+    });
     #[cfg(target_os = "macos")]
     {
         sync_viewer_preferences_macos(&preferences)
