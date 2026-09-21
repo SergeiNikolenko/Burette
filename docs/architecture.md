@@ -199,3 +199,21 @@ column sorting remains unavailable for remote pages.
 ### Grid inspector opening
 
 The mini Mol* inspector sends `burette-inspector-open` to its parent on a click (not a drag). The host dispatches `structure.open-in-molstar` with `rowIndex`; the grid emits `openSdfMolstarDocument` with `openTarget: "new-tab"`. The SDF message handler adds the prepared document as a new tab, preserving the source collection. Existing messages without `openTarget` retain their active-tab behavior.
+
+
+### xyzrender canvas inspector selection
+
+In the browser/app viewer, `xyzrenderActiveItem` publishes the selected sheet
+item's stable `itemId`, source and appearance to the inspector. The host routes
+it as `burette:xyzrender-active-item`; `setXyzrenderControls` with an `itemId`
+updates that item only. A missing or removed target is ignored. Appearance and
+orientation remain on the sheet item; animation settings are remembered per item
+for the editor session (up to 32 entries). Ready animations remain mounted per item while switching selection, preserving
+playback and avoiding repeated renders. Canvas playback uses the display clock;
+only the visible inspector updates its frame label, at most ten times a second.
+`xyzrenderItemRemoved` releases the removed item's animation and aborts its pending
+render. Changing animation parameters invalidates only that item's frames.
+
+Decoded animation storage is reserved before rendering, with a shared limit of
+200 million RGBA pixels. New renders that exceed the budget ask for a smaller
+image or removal of another animation; existing movies are not evicted.

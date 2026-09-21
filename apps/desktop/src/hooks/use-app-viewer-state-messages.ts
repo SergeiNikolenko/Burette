@@ -93,6 +93,18 @@ export function useAppViewerStateMessages({
       return true;
     }
 
+    if (sourceName === "burette-viewer" && body?.type === "xyzrenderItemRemoved") {
+      if (body.documentId === activeDocument?.id && typeof body.itemId === "string") window.dispatchEvent(new CustomEvent("burette:xyzrender-item-removed", { detail: body }));
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && body?.type === "xyzrenderActiveItem") {
+      if (body.documentId === activeDocument?.id && typeof body.itemId === "string" && typeof body.path === "string" && typeof body.previewSvg === "string" && body.previewSvg.length <= 2_000_000) {
+        window.dispatchEvent(new CustomEvent("burette:xyzrender-active-item", { detail: body }));
+      }
+      return true;
+    }
+
     if (sourceName === "burette-viewer" && body?.type === "openXyzrenderAnimation") {
       if (typeof body.path === "string" && typeof body.previewSvg === "string" && body.previewSvg.length <= 2_000_000) {
         openDockTab("right", "xyzrender");

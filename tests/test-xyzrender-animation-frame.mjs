@@ -21,3 +21,26 @@ assert.equal(document.querySelector('svg').style.visibility, 'hidden');
 send({...body, pixels: new Uint8ClampedArray(16)});
 assert.equal(document.querySelector('canvas'), canvas); assert.equal(painted.pixels[0], 0);
 console.log('animation frame bridge: validates sender and pixels, reuses canvas, updates pixels');
+
+// Duplicating a live frame must preserve pixels, not copy an empty canvas.
+window.HTMLCanvasElement.prototype.toDataURL = () => 'data:image/png;base64,cGl4ZWxz';
+const original = document.querySelector('.buret-xyzrender-sheet-item');
+const duplicateStart = source.indexOf('  function duplicateXyzrenderSheetItems(item)');
+const duplicateEnd = source.indexOf('  function arrangeXyzrenderSheetItems', duplicateStart);
+const stage = document.createElement('div');
+stage.className = 'buret-external-artifact-stage';
+const root = document.createElement('div'); root.append(stage);
+let copiedBody;
+const duplicate = new Function('document', 'selectedXyzrenderSheetItemsForAction', 'ensureXyzrenderSheet', 'sheetItemCenterPosition', 'addXyzrenderSheetItem', 'sheetItemExportLabel', 'xyzrenderSheetItemEntry', 'setSheetItemRotation', 'clearRotatableArtifactSelection', `${source.slice(duplicateStart, duplicateEnd)}; return duplicateXyzrenderSheetItems;`)(document,
+  () => ({root, items: [original]}), () => stage, () => ({left: 0, top: 0}),
+  (_sheet, html) => { copiedBody = document.createElement('div'); copiedBody.innerHTML = html; return copiedBody; },
+  () => 'caffeine.xyz', () => ({}), () => {}, () => {});
+duplicate(original);
+assert.equal(copiedBody.querySelector('canvas'), null);
+assert.equal(copiedBody.querySelector('img').src, 'data:image/png;base64,cGl4ZWxz');
+assert.equal(copiedBody.querySelector('img').style.visibility, 'visible');
+assert.equal(original.querySelector('canvas'), canvas);
+original.querySelector('.buret-xyzrender-sheet-item-body').innerHTML = '<svg style="visibility:hidden"></svg><img class="buret-xyzrender-animation-image" src="data:image/gif;base64,Z2lm">';
+duplicate(original);
+assert.equal(copiedBody.querySelector('img').src, 'data:image/gif;base64,Z2lm');
+console.log('animation duplication: preserves live pixels and committed GIFs');

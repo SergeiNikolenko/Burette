@@ -5255,7 +5255,7 @@ assert.match(previewViewer, /const transitionFrame = captureMolstarTransitionFra
 assert.match(previewViewer, /fadeMolstarTransitionFrame\(transitionFrame\)/);
 assert.match(previewViewer, /function captureMolstarTransitionFrame\(\)/);
 assert.match(previewViewer, /snapshot\.toDataURL\('image\/png'\)/);
-assert.doesNotMatch(previewViewer, /image\.src = canvas\.toDataURL\('image\/png'\)/);
+assert.doesNotMatch(previewViewer.slice(previewViewer.indexOf('  function captureMolstarTransitionFrame()'), previewViewer.indexOf('  function fadeMolstarTransitionFrame(')), /image\.src = canvas\.toDataURL\('image\/png'\)/);
 assert.match(previewViewer, /function requestGenerated3DCameraView\(viewer\)/);
 assert.match(previewViewer, /requestMolstarStructureFocus\(viewer, \{/);
 assert.match(previewViewer, /if \(options\.force !== true && !molstarAutoFocusEnabled\(activeConfig\)\) return/);
