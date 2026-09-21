@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import "./test-plugin-native-preservation.mjs";
 import { spawnSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -172,6 +173,7 @@ for (const missingAsset of [
   try {
     await mkdir(path.join(fixturePluginRoot, "scripts"), { recursive: true });
     await cp(path.join(pluginRoot, "scripts", "install-local.mjs"), path.join(fixturePluginRoot, "scripts", "install-local.mjs"));
+    await cp(path.join(pluginRoot, "scripts", "preserve-native-widget.mjs"), path.join(fixturePluginRoot, "scripts", "preserve-native-widget.mjs"));
     await mkdir(path.join(fixturePluginRoot, ".codex-plugin"), { recursive: true });
     await writeFile(path.join(fixturePluginRoot, ".codex-plugin", "plugin.json"), '{"version":"0.0.0"}\n');
     for (const relativePath of installerRequiredFiles) {
@@ -309,6 +311,7 @@ for (const asset of [
   "scripts/burette-agent.mjs",
   "scripts/mvs-story-templates.mjs",
   "scripts/install-local.mjs",
+  "scripts/preserve-native-widget.mjs",
   "skills/mvs-story/references/molviewspec-authoring.md",
   "assets/mvs-story-templates/aligned-structure-comparison.json",
   "assets/mvs-story-templates/binding-site-tour.json",

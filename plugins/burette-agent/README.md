@@ -168,6 +168,11 @@ declared in `.mcp.json`, and the repository marketplace is declared at
 
 ## Local Codex Installation
 
+For the recovered in-chat native widget, use the pinned source and installation
+instructions in [Local widget recovery](../../docs/local-widget-recovery.md).
+It is a separate preserved snapshot, not the current browser-only bundle.
+The installer refuses to silently remove an existing native-widget capability.
+
 For a clean local install from this repository, stage a self-contained plugin
 in a personal marketplace and ask the Codex CLI to register that marketplace
 and install the plugin:
