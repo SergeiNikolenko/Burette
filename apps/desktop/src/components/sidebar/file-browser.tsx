@@ -1,3 +1,6 @@
+import { Plus } from "../ui/app-icons";
+import { SshProjectDialog } from "../ssh/ssh-project-dialog";
+import { SshProjects } from "../ssh/ssh-projects";
 import { sidebarCreationItems } from "./context-actions";
 import { showNativeContextMenu } from "../native-context-menu";
 import { SidebarTooltip } from "./sidebar-tooltip";
@@ -75,6 +78,7 @@ export function FileBrowser({
   state: ShellViewState;
   actions: ShellActions;
 }) {
+  const [sshDialogOpen, setSshDialogOpen] = useState(false);
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [ketcherDropActive, setKetcherDropActive] = useState(false);
   useDropHighlightReset(setKetcherDropActive);
@@ -220,9 +224,14 @@ export function FileBrowser({
               <ChevronIcon />
             </span>
           </button>
+          <NativeDropdownMenu items={[
+            { kind: "item", id: "add-local-project", text: "Add Local Project…", action: () => { void actions.chooseWorkspace(); } },
+            { kind: "item", id: "add-ssh-project", text: "Add SSH Project…", action: () => setSshDialogOpen(true) },
+            { kind: "item", id: "connections", text: "Connections…", action: () => actions.openSettingsSection("connections") },
+          ]} trigger={<button type="button" className="sidebar-section-menu-button" aria-label="Add project"><Plus size={16} /></button>} />
           <button
             type="button"
-            className="sidebar-section-menu-button"
+            className="sidebar-section-menu-button sidebar-expand-projects"
             aria-label={allVisibleProjectsExpanded ? "Collapse all project folders" : "Expand all project folders"}
             onClick={toggleAllProjectFolders}
           >
@@ -287,8 +296,10 @@ export function FileBrowser({
             </div>
           )
         )}
+        {projectsExpanded && <SshProjects onOpen={actions.openPaths} query={sidebarQuery} />}
       </section>
       )}
+      <SshProjectDialog open={sshDialogOpen} onOpenChange={setSshDialogOpen} />
     </ScrollFade>
   );
 }

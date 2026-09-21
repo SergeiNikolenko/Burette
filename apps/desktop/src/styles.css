@@ -9628,3 +9628,7 @@ img.settings-open-destination-icon {
 .project-folder-icon .project-folder-badge-cyan { color: #20cbd4; }
 .project-folder-icon .project-folder-badge-blue { color: #39b5ff; }
 .project-folder-icon .project-folder-badge-purple { color: #bc83ff; }
+
+/* Keep the Projects expansion action visually unframed. */
+.sidebar-expand-projects:hover,
+.sidebar-expand-projects:focus-visible { background: transparent; }
