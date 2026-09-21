@@ -1,3 +1,4 @@
+import { SshConnections } from "../ssh/ssh-projects";
 import { useEffect, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ViewerPreferences, XtbSettings } from "../../types";
@@ -219,6 +220,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                 </>
               ) : null}
               {section === "updates" ? <SettingsSection title="Updates" rows={updateRows} /> : null}
+              {section === "connections" ? <SshConnections /> : null}
               {section === "workspace" ? (
                 <SettingsSection
                   title="Files and Projects"

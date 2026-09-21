@@ -31,3 +31,5 @@ pub(crate) mod xtb;
 pub(crate) mod xtb_runtime;
 
 pub(crate) mod folder_contents;
+
+pub(crate) mod ssh;

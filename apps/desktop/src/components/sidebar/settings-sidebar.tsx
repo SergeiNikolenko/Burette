@@ -1,7 +1,7 @@
 import { SidebarTooltip } from "./sidebar-tooltip";
 import { useMemo, useState } from "react";
 import { settingsNavGroups, type SettingsSectionId } from "../../lib/settings-sections";
-import { Atom, Agent as Bot, FolderOpen, Keyboard, ColorTheme as Palette, Reload as RefreshCw, SettingsSlider as SlidersHorizontal, SettingsWrench as Wrench, type AppIconType as LucideIcon } from "@/components/ui/app-icons";
+import { SidebarGlobe, Atom, Agent as Bot, FolderOpen, Keyboard, ColorTheme as Palette, Reload as RefreshCw, SettingsSlider as SlidersHorizontal, SettingsWrench as Wrench, type AppIconType as LucideIcon } from "@/components/ui/app-icons";
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -106,6 +106,7 @@ const SETTINGS_SECTION_ICONS: Record<SettingsSectionId, LucideIcon> = {
   updates: RefreshCw,
   workspace: FolderOpen,
   agent: Bot,
+  connections: SidebarGlobe,
   maintenance: Wrench,
 };
 
