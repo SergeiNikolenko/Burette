@@ -314,4 +314,19 @@ useMoleculeStore.getState().clearRecentStructures();
 assert.deepEqual(useMoleculeStore.getState().recentStructures, []);
 assert.deepEqual(JSON.parse(storage.get("burette.recent.structures")).documents, []);
 
+for (const native of [false, true]) {
+  window.BuretteMcpWorkspace = native ? {} : undefined;
+  for (const action of ["closeTab", "closeDocument", "closeActiveDocument", "closeAllDocuments"]) {
+    resetStore();
+    useMoleculeStore.getState().addDocuments([document("closing", "/tmp/closing.pdb")]);
+    const state = useMoleculeStore.getState();
+    state[action](action === "closeTab" ? state.activeTabId : "closing");
+    const closed = useMoleculeStore.getState();
+    assert.equal(closed.documents.length, 0);
+    assert.equal(closed.tabs.length, native ? 0 : 1, `${action}: native=${native}`);
+    if (native) assert.equal(closed.activeTabId, null);
+    else assert.equal(closed.tabs[0].location.kind, "launcher");
+  }
+}
+delete window.BuretteMcpWorkspace;
 console.log("molecule store behavior tests passed");

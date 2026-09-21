@@ -28,6 +28,6 @@ export function NativeWorkspacePlacementControl() {
           {state.disabled && <Menu.Item>Changing placement is unavailable in this host.</Menu.Item>}
         </Menu.Content>
       </Menu>
-    </div>, container
+    </div>, container.ownerDocument.body
   );
 }

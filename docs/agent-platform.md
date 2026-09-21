@@ -348,7 +348,9 @@ total memory limit. Closing the whole workspace unmounts React, disposes
 Mol*/WebGL, terminates workers and revokes loaded blob resources.
 The native workspace does not terminate when its last document closes or when
 the host changes display mode. An empty workspace stays available for its next
-document. Host teardown or page unload releases local renderers, workers and
+document, with no replacement launcher tab after the last document closes.
+The ordinary desktop keeps its launcher-tab behavior.
+Host teardown or page unload releases local renderers, workers and
 polling, and clears composer context, but does not mark the session closed or
 delete its persisted workspace state. A host remount can reuse that session;
 this is not a promise to keep a host-owned pane visible after the host removes it.
@@ -434,10 +436,11 @@ after the configured preset, required water representation, final camera and a
 new committed canvas draw; `agentReady` alone does not reveal the scene. This
 completion gate is native-MCP-only; desktop and Quick Look timing is unchanged.
 Inline startup requests a stable content height; use the side pane for more room.
-The inline widget suppresses the bottom dock, its menu toggle and internal resize
+The inline widget suppresses the top navigation and tab strip, bottom dock, its menu toggle and internal resize
 handle, including when restored state says it was open. Side-pane mode retains
-the dock state. Loading observations do not renegotiate size. The placement control floats inside
-the workspace, inset above the host's bottom-right controls, without a footer row.
+the dock state and shows top navigation. Loading observations do not renegotiate size.
+The placement control is portaled to the document body outside the inert loading
+root, so its menu remains interactive during loading and errors, without a footer row.
 Startup errors replace the cover with an explicit retry action.
 Molecular summaries are reused until the underlying structure objects change;
 acknowledgements run without an extra one-second heartbeat delay.

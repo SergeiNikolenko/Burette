@@ -350,7 +350,7 @@ function moveTabToIndex(tabs: MoleculeTab[], id: string, toIndex: number) {
 }
 
 function ensureTabs(tabs: MoleculeTab[]) {
-  return tabs.length > 0 ? tabs : [createLauncherTab()];
+  return tabs.length > 0 || (typeof window !== "undefined" && window.BuretteMcpWorkspace) ? tabs : [createLauncherTab()];
 }
 
 function collapseDuplicateKetcherTabs(tabs: MoleculeTab[], preferredActiveId: string | null = null) {
@@ -915,8 +915,8 @@ export const useMoleculeStore = create<MoleculeState>()(
           return { documents, textDocuments, tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
         }),
       closeAllDocuments: () => {
-        const tab = createLauncherTab();
-        return set({ documents: [], textDocuments: [], tabs: [tab], activeTabId: tab.id, activeDocumentId: null });
+        const tabs = ensureTabs([]);
+        return set({ documents: [], textDocuments: [], tabs, activeTabId: tabs[0]?.id ?? null, activeDocumentId: null });
       },
       pruneMissingFileTabs: (checkedPaths, existingPaths) =>
         set((state) => {

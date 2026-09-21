@@ -52,9 +52,9 @@ test('the Apps SDK display menu moves the existing workspace and reflects host a
       const requested = [];
       const target = mode === 'inline' ? 'fullscreen' : 'inline';
       const modules = {
-        'react-dom': { createPortal: (row, container) => { assert.equal(container, 'theme-shell'); return row; } },
+        'react-dom': { createPortal: (row, container) => { assert.equal(container, 'outside-inert-root'); return row; } },
         '../hooks/use-native-workspace-placement': { useNativeWorkspacePlacement: () => ({ mode, target, disabled }) },
-        './radix-menu': { useThemePortalContainer: () => 'theme-shell' },
+        './radix-menu': { useThemePortalContainer: () => ({ ownerDocument: { body: 'outside-inert-root' } }) },
         'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) },
         '@openai/apps-sdk-ui/components/Icon': { ChevronUp: 'ChevronUp', ExpandLarge: 'ExpandLarge', CollapseLarge: 'CollapseLarge' },
         '@openai/apps-sdk-ui/components/Button': { Button: 'SDKButton' },

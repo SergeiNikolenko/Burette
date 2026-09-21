@@ -7,8 +7,11 @@ export function createWorkspacePlacement(app, status) {
     body{display:flex;flex-direction:column;background:#fff;color:#202124}
     html[data-theme="dark"] body{background:#000;color:#eee}
     #root{position:relative;display:flex;flex-direction:column;flex:1;min-height:0;height:auto;box-sizing:border-box}
-    #root>.app-shell{width:100%;flex:1;min-height:0;height:auto}
-    #root>.app-shell .workbench{border-left:0;border-radius:0;box-shadow:none}
+    #root .app-shell{width:100%;flex:1;min-height:0;height:auto}
+    #root .app-shell .workbench{border-left:0;border-radius:0;box-shadow:none}
+    body>[data-workspace-placement-control]{position:fixed;right:12px;bottom:12px;z-index:100;pointer-events:auto}
+    body[data-display-mode="inline"] .app-shell{--chrome-height:0px;--chrome-drag-height:0px}
+    body[data-display-mode="inline"] :is(.topbar,.chrome-leading-controls,.chrome-trailing-controls,.tab-strip,.drag-region){display:none}
     #status{flex:none;max-height:72px;overflow:auto}
   `;
   document.head.appendChild(style);

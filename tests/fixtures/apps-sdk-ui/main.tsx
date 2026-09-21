@@ -6,6 +6,8 @@ import { NativeWorkspacePlacementControl } from "../../../apps/desktop/src/compo
 // Exercises the real component against the real placement state machine;
 // only the Codex host transport is simulated. No molecule or native-UI claim.
 import { createWorkspacePlacement } from "../../../plugins/burette-agent/ui/native-workspace-placement.mjs";
+// Native startup/error gates the shell with inert. Placement must remain usable.
+document.getElementById("root")!.inert = true;
 const status = document.createElement("p");
 status.id = "status";
 status.setAttribute("role", "status");
@@ -38,9 +40,10 @@ function Fixture() {
       <label><input type="checkbox" onChange={(event) => { rejectPlacement = event.target.checked; }} /> Reject placement</label>
       <label><input type="checkbox" onChange={(event) => placement.update({ availableDisplayModes: event.target.checked ? ["inline"] : ["inline", "fullscreen"] })} /> Disable expansion</label>
     </div>
-    <main className="app-shell" data-theme={theme} data-effective-theme={theme} style={{ height: "60vh", background: theme === "light" ? "white" : "#212121" }}>
-      <p style={{ padding: 24 }}>Real Apps SDK UI menu · simulated host</p>
-    </main>
+    <div><main className="app-shell" data-theme={theme} data-effective-theme={theme} style={{ height: "60vh", background: theme === "light" ? "white" : "#212121" }}>
+      <header className="topbar">Side-pane navigation</header>
+      <section className="workbench"><p style={{ padding: 24 }}>Real Apps SDK UI menu · simulated host</p></section>
+    </main></div>
     <NativeWorkspacePlacementControl />
   </>;
 }
