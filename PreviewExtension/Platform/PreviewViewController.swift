@@ -7551,7 +7551,8 @@ private enum PreviewExternalXyzrenderWorker {
                 }
             }
         }
-        for version in ["python3.13", "python3.12", "python3.11"] {
+        // Quick Look can deny directory enumeration while allowing known bundle paths.
+        for version in ["python3.14", "python3.13", "python3.12", "python3.11"] {
             let sitePackages = libDirectory
                 .appendingPathComponent(version, isDirectory: true)
                 .appendingPathComponent("site-packages", isDirectory: true)

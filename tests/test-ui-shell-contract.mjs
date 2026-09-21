@@ -5128,7 +5128,7 @@ assert.match(previewViewController, /executableURL\.deletingLastPathComponent\(\
 assert.match(previewViewController, /appendingPathComponent\("xyzrender-python", isDirectory: true\)/);
 assert.match(previewViewController, /private struct BundledXyzrenderPythonPaths/);
 assert.match(previewViewController, /private static func bundledSitePackages\(in runtimeRoot: URL\) -> URL\?/);
-assert.match(previewViewController, /for version in \["python3\.13", "python3\.12", "python3\.11"\]/);
+assert.match(previewViewController, /for version in \["python3\.14", "python3\.13", "python3\.12", "python3\.11"\]/);
 assert.match(previewViewController, /let cacheKeyPath: String/);
 assert.match(previewViewController, /executablePath: launch\.cacheKeyPath/);
 assert.match(previewViewController, /executablePath: paths\.python\.path/);
