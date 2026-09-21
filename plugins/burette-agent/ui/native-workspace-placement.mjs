@@ -8,6 +8,7 @@ export function createWorkspacePlacement(app, status) {
     html[data-theme="dark"] body{background:#000;color:#eee}
     #root{position:relative;display:flex;flex-direction:column;flex:1;min-height:0;height:auto;box-sizing:border-box}
     #root>.app-shell{width:100%;flex:1;min-height:0;height:auto}
+    #root>.app-shell .workbench{border-left:0;border-radius:0;box-shadow:none}
     #status{flex:none;max-height:72px;overflow:auto}
   `;
   document.head.appendChild(style);
@@ -43,9 +44,11 @@ export function createWorkspacePlacement(app, status) {
   function update(context = {}) {
     mode = context.displayMode || mode;
     if (Number.isFinite(context.containerDimensions?.width) && context.containerDimensions.width > 0) hostWidth = context.containerDimensions.width;
-    const available = context.availableDisplayModes || app.getHostContext()?.availableDisplayModes || ['inline'];
+    // Some hosts implement requestDisplayMode but omit the optional mode list.
+    // Absence is unknown, not an explicit denial; the host still decides.
+    const available = context.availableDisplayModes || app.getHostContext()?.availableDisplayModes;
     const target = mode === 'inline' ? 'fullscreen' : 'inline';
-    snapshot = { mode, target, disabled: pending || !available.includes(target) };
+    snapshot = { mode, target, disabled: pending || (Array.isArray(available) && !available.includes(target)) };
     document.body.dataset.displayMode = mode;
     resize();
     for (const listener of listeners) listener();

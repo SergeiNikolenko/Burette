@@ -5899,7 +5899,7 @@
   }
 
   function restoreToolbarCollapsed(toolbar, viewer) {
-    if (window.BuretteConfig?.hostedMcpWidgetBootstrap === true) {
+    if (window.BuretteConfig?.hostedMcpWidgetBootstrap === true || window.BuretteConfig?.defaultToolbarCollapsed === true) {
       setToolbarCollapsed(toolbar, true, viewer, false);
       return;
     }

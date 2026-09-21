@@ -71,7 +71,7 @@ test('the Apps SDK display menu moves the existing workspace and reflects host a
       const [trigger, content] = menu.props.children;
       const button = trigger.props.children;
       assert.equal(button.type, 'SDKButton');
-      assert.equal(button.props.disabled, disabled);
+      assert.equal(button.props.disabled, undefined, 'menu remains openable even when placement is unavailable');
       assert.equal(button.props.size, 'sm');
       assert.equal(button.props.variant, 'outline');
       assert.equal(button.props.style, undefined);
@@ -79,7 +79,8 @@ test('the Apps SDK display menu moves the existing workspace and reflects host a
       assert.equal(button.props.children[0].trim(), 'Codex');
       assert.equal(content.props.side, 'top');
       assert.equal(content.props.align, 'end');
-      const item = content.props.children;
+      const [item, explanation] = content.props.children;
+      assert.equal(Boolean(explanation), disabled);
       assert.equal(item.props.disabled, disabled);
       assert.equal(item.props.children[1], mode === 'inline' ? 'Open in side pane' : 'Return to chat');
       if (!disabled) { item.props.onSelect(); assert.deepEqual(requested, [target]); }

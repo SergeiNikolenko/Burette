@@ -34,6 +34,14 @@ test('placement state moves the same workspace without inserting a second contro
   assert.deepEqual(structuredClone({ requests, sizes }), { requests: [{ mode: 'fullscreen' }, { mode: 'inline' }], sizes: [{ height: 320 }, { height: 320 }, { height: 320 }] });
 });
 
+test('hosts without a mode list can still grant placement requests', async () => {
+  const { placement, requests } = fixture(null);
+  assert.equal(placement.getSnapshot().disabled, false);
+  await placement.set('fullscreen');
+  assert.equal(placement.mode, 'fullscreen');
+  assert.deepEqual(structuredClone(requests), [{ mode: 'fullscreen' }]);
+});
+
 test('inline geometry follows width and host return without height feedback or remount', () => {
   const { placement, document, sizes, requests, events, window } = fixture();
   placement.update({ containerDimensions: { width: 420, height: 200 } });

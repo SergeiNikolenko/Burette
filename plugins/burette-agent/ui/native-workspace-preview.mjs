@@ -93,6 +93,10 @@ function startPreview(installTooltipLayout) {
 
 export function prepareWorkspacePreview(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  const config = doc.getElementById('burette-runtime-config');
+  if (config) {
+    config.textContent = JSON.stringify({ ...JSON.parse(config.textContent), defaultToolbarCollapsed: true }).replaceAll('<', '\\u003c');
+  }
   doc.querySelectorAll('base').forEach(element => element.remove());
   for (const script of doc.querySelectorAll('script')) {
     // JSON data islands must remain available to viewer-bootstrap.js.
