@@ -62,7 +62,7 @@
     "build:web": "cd apps/desktop && bun run build && cd ../.. && bun scripts/bundle-report.mjs",
     "build-web": "bun run build:web",
     "build:web:desktop": "bun run build:web",
-    "build:tauri": "bun scripts/stage-native-widget.mjs && cd apps/desktop && bun run build:tauri",
+    "build:tauri": "cd apps/desktop && bun run build:tauri",
     "tauri": "cd apps/desktop && bun run tauri",
     "dev": "bun run dev:desktop",
     "test:ssh": "bun tests/test-browser-dev-ssh.mjs && python3 tests/test-ssh-reader.py && bun tests/test-ssh-projects.mjs"

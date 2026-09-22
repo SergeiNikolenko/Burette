@@ -234,7 +234,7 @@ assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
 assert.ok(mainWindowConfig);
 assert.equal(tauriConfig.build.beforeBuildCommand, 'true');
 assert.equal(desktopPackageConfig.scripts.build, '../../node_modules/.bin/vite build --config vite.config.ts');
-assert.equal(desktopPackageConfig.scripts['build:tauri'], 'bun run build && node ../../node_modules/@tauri-apps/cli/tauri.js build');
+assert.equal(desktopPackageConfig.scripts['build:tauri'], 'node ../../scripts/stage-native-widget.mjs && bun run build && node ../../node_modules/@tauri-apps/cli/tauri.js build');
 assert.equal(mainWindowConfig.create, false);
 assert.equal(mainWindowConfig.visible, true);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
