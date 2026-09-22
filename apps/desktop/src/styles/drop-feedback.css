@@ -21,7 +21,8 @@
 .file-drop-card {
   position: fixed;
   left: var(--file-drop-card-left);
-  top: var(--file-drop-card-top);
+  /* Sidebar targets span the title bar; keep feedback below native controls. */
+  top: max(var(--file-drop-card-top), calc(var(--chrome-height, 56px) + 8px));
   display: flex;
   align-items: center;
   gap: 8px;
