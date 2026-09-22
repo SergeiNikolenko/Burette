@@ -13,7 +13,7 @@ function write(relative, content, executable = false) {
   writeFileSync(target, content, executable ? { mode: 0o755 } : undefined);
 }
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
-  !key.startsWith('BURETTE_') && !key.startsWith('APPLE_') && !key.startsWith('GITHUB_')));
+  !key.startsWith('BURETTE_') && !key.startsWith('APPLE_') && !key.startsWith('GITHUB_') && !key.startsWith('GIT_')));
 try {
   // Execute the real release entrypoint until the build boundary; never build an app.
   const release = readFileSync(path.join(root, 'scripts/release.sh'), 'utf8');
