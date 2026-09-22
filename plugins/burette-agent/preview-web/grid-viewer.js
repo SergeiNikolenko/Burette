@@ -76,6 +76,7 @@
   const RDKIT_SVG_CACHE_LIMIT = 220;
   const XYZRENDER_CARD_CACHE_LIMIT = 1500;
   const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
+  let activeStructureDrag = false;
   const state = {
     rdkit: null,
     externalHoverIndex: null,
@@ -280,6 +281,12 @@
 
   function initShellShortcutBridge() {
     document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && activeStructureDrag) {
+        activeStructureDrag = false;
+        event.preventDefault();
+        post('structureDragCancel', '');
+        return;
+      }
       if (event.defaultPrevented || isEditableShortcutTarget(event.target)) return;
       const key = event.key?.toLowerCase();
       const commandKey = event.metaKey || event.ctrlKey;
@@ -4756,6 +4763,7 @@
       rowEl.addEventListener('dblclick', event => handleTableRowOpen(event, row, cfg));
       rowEl.addEventListener('contextmenu', event => showMoleculeContextMenu(event, row));
       installTableMoleculeHover(rowEl, row, cfg);
+      installCardDrag(rowEl, row);
       scheduleRdkitCard(rowEl, row);
       scheduleXyzrenderCard(rowEl, row, cfg);
     });
@@ -5529,7 +5537,13 @@
         event.preventDefault();
         return;
       }
-      const records = gridDragRecordsForRow(row);
+      const records = gridDragRecordsForRow(row, window.BuretteConfig?.documentId || window.location.href);
+      const selectedCount = state.selected.has(Number(row.index)) && state.selected.size > 1 ? state.selected.size : 1;
+      if (records.length !== selectedCount || records.length > 200 || records.reduce((size, record) => size + new TextEncoder().encode(record.text).length, 0) > 24 * 1024 * 1024) {
+        event.preventDefault();
+        setStatus('[grid] Drag up to 200 loaded molecules (24 MB). Load the selected rows before dragging the whole selection.', 'error');
+        return;
+      }
       if (!records.length) {
         event.preventDefault();
         return;
@@ -5539,10 +5553,20 @@
         event.dataTransfer?.setData(STRUCTURE_DRAG_MIME, JSON.stringify(payload));
         event.dataTransfer?.setData('text/plain', records.map(item => item.text.trimEnd()).join('\n') + '\n');
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
+        const preview = document.createElement('div');
+        preview.className = 'buret-structure-drag-preview';
+        preview.textContent = records.length === 1 ? records[0].path.split('/').pop() : `${records.length} molecules`;
+        document.body.appendChild(preview);
+        event.dataTransfer?.setDragImage(preview, 12, 12);
+        requestAnimationFrame(() => preview.remove());
+        activeStructureDrag = true;
+        post('structureDragStart', '', { payload });
       } catch (_) {}
     });
     el.addEventListener('dragend', () => {
+      activeStructureDrag = false;
       cardDragSourceAllowed = true;
+      post('structureDragEnd', '');
     });
   }
 
