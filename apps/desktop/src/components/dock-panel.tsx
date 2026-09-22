@@ -1,3 +1,4 @@
+import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
 import type { AnimationSource } from "./xyzrender-animation-dialog";
 import { Switch } from "./ui/switch";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -812,7 +813,7 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
   return (
     <div className="dock-content xyzrender-dock-panel">
       <section className="structure-brief-card xyzrender-dock-card">
-        <Button type="button" variant="outline" className="xyzrender-editor-launch w-full h-10" onClick={() => { for (const frame of window.document.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe")) frame.contentWindow?.postMessage({ source: "burette-host", body: { type: "openXyzrenderEditor" } }, "*"); }}>Orientation & animation…</Button>
+        <Button type="button" variant="outline" className="xyzrender-editor-launch w-full h-10" onClick={() => { activeViewerIframeForDocument(document.id)?.contentWindow?.postMessage({ source: "burette-host", body: { type: "openXyzrenderEditor", documentId: document.id } }, "*"); }}>Orientation & animation…</Button>
         <div id="xyzrender-editor-controls" />
         <div className="structure-inspector-section-header">
           <div>

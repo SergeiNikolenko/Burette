@@ -27,6 +27,10 @@ Current default theme values include:
 | Translucency | `30` | `20` |
 | Contrast | `20` | `16` |
 
+Dark shell text mixes the configured foreground at 84% with the background
+(about `#D6D6D6` with the defaults), keeping primary labels softer than white.
+Light shell text uses the configured foreground directly.
+
 The runtime derives border, surface, hover, selected, palette, tab, and scrollbar
 colors from these settings through CSS variables and `color-mix()`. Users can
 edit accent, background, foreground, font, translucency, and contrast in
