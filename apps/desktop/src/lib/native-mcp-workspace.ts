@@ -21,5 +21,5 @@ declare global {
 }
 
 export function nativePreviewHtml(html: string) {
-  return window.BuretteMcpWorkspace?.preparePreview(html) ?? html;
+  return typeof window === "undefined" ? html : window.BuretteMcpWorkspace?.preparePreview(html) ?? html;
 }

@@ -682,7 +682,7 @@ assert.match(browserDevDocuments, /const trajectoryFrameCount = Math\.max\(xyzFr
 assert.match(browserDevDocuments, /const shouldOpenTrajectoryInMolstar = trajectoryFrameCount > 1 && requestedMode === "auto";/);
 assert.match(browserDevDocuments, /function countXyzFrames\(text: string\)/);
 assert.match(browserDevDocuments, /function countPdbModels\(text: string\)/);
-assert.match(viewer, /window\.BuretteConfig\?\.hostedMcpWidgetBootstrap === true\) \{\s*setToolbarCollapsed\(toolbar, true, viewer, false\);\s*return;/);
+assert.match(viewer, /window\.BuretteConfig\?\.hostedMcpWidgetBootstrap === true \|\| window\.BuretteConfig\?\.defaultToolbarCollapsed === true\) \{\s*setToolbarCollapsed\(toolbar, true, viewer, false\);\s*return;/);
 assert.match(browserDevDocuments, /requestBrowserDevDesmondPreview/);
 assert.match(browserDevDocuments, /\/__burette\/desmond-preview\?path=/);
 assert.match(browserDevDocuments, /`\$\{path\}\.desmond-preview\.pdb`/);

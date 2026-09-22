@@ -179,7 +179,7 @@ assert.deepEqual(selectionContext?.structuredContent.burette.activeSelection.res
   { chain: "A", sequence: 12, compId: "CYS" },
   { chain: "A", sequence: 13, compId: "ARG" },
 ]);
-assert.match(selectionContext?.content[0].text ?? "", /active molecular selection/);
+assert.match(selectionContext?.content[0].text ?? "", /Selected: CYS A 12, ARG A 13/);
 assert.deepEqual(selectionContext?.structuredContent.burette.activeSelection.atomIdentities, [
   { chain: "A", sequence: 12, compId: "CYS", atomName: "CA" },
 ]);

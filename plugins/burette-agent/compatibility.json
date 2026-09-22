@@ -2,7 +2,7 @@
   "schema": "burette_agent_compatibility.v1",
   "plugin": {
     "name": "burette",
-    "version": "0.2.3+codex.20260923004239"
+    "version": "0.2.4+codex.20260923005107"
   },
   "requires": {
     "buretteApp": ">=2.1.16",
