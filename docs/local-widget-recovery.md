@@ -14,6 +14,8 @@ of the recovered tree, not a merge or rollback of the current application.
 extracts only its plugin subtree into ignored `plugins/burette-native-bundle`,
 checks its version and every compressed native asset, and records provenance.
 The first stage needs the pinned Git object (fetched from origin if missing).
+The standard Rust check command stages it too; before invoking Cargo directly
+in a fresh checkout, run `node scripts/stage-native-widget.mjs` once.
 Native application builds stage this package before copying the isolated build
 tree; Tauri includes it at the unchanged `plugins/burette-agent` resource path.
 This packages the preserved widget without reverting current desktop sources.
