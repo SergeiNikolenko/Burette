@@ -77,19 +77,15 @@ if (missingFiles.length > 0) {
   throw new Error(`Incomplete Burette plugin bundle. Missing: ${missingFiles.join(", ")}. Run bun run build:agent-shell before installing.`);
 }
 
-await rm(personalPluginRoot, { recursive: true, force: true });
-await mkdir(personalPluginRoot, { recursive: true });
-await run("rsync", [
-  "-a",
-  "--delete",
-  "--exclude", "node_modules",
-  "--exclude", "mcp/lib/tool-response 2.mjs",
-  `${pluginRoot}/`,
-  `${personalPluginRoot}/`,
-], { cwd: repoRoot });
-await writeFile(path.join(personalPluginRoot, ".burette-agent-install.json"), `${JSON.stringify({ repoRoot }, null, 2)}\n`);
+await stagePlugin();
 await updateMarketplace();
 const codexBinary = findWorkingCodexBinary();
+if (codexBinary) {
+  runCodexJson(codexBinary, ["plugin", "marketplace", "add", marketplaceRoot, "--json"], "marketplace registration");
+  // Registration can restore an older local marketplace snapshot. Re-stage
+  // the requested package before asking Codex to install it.
+  await stagePlugin();
+}
 const installation = codexBinary ? installWithCodex(codexBinary) : await installWithoutCodexCli();
 const legacyCleanup = await cleanupLegacySources();
 
@@ -154,10 +150,27 @@ async function updateMarketplace() {
   await writeFile(marketplacePath, `${JSON.stringify(data, null, 2)}\n`);
 }
 
+async function stagePlugin() {
+  await rm(personalPluginRoot, { recursive: true, force: true });
+  await mkdir(personalPluginRoot, { recursive: true });
+  await run("rsync", [
+    "-a", "--delete", "--exclude", "node_modules",
+    "--exclude", "mcp/lib/tool-response 2.mjs",
+    `${pluginRoot}/`, `${personalPluginRoot}/`,
+  ], { cwd: repoRoot });
+  await writeFile(path.join(personalPluginRoot, ".burette-agent-install.json"), `${JSON.stringify({ repoRoot }, null, 2)}\n`);
+}
+
 function installWithCodex(command) {
-  runCodexJson(command, ["plugin", "marketplace", "add", marketplaceRoot, "--json"], "marketplace registration");
   const payload = runCodexJson(command, ["plugin", "add", pluginId, "--json"], "plugin installation");
   const installed = runCodexJson(command, ["plugin", "list", "--json"], "plugin inventory").installed || [];
+  const actual = installed.find(plugin => plugin.pluginId === pluginId);
+  if (payload.version !== pluginVersion || actual?.version !== pluginVersion || !actual.enabled) {
+    throw new Error(`Codex did not activate Burette ${pluginVersion}; found ${actual?.version || 'no installation'}.`);
+  }
+  const installedPath = payload.installedPath || installRoot;
+  const installedManifest = JSON.parse(readFileSync(path.join(installedPath, ".codex-plugin", "plugin.json"), "utf8"));
+  if (installedManifest.version !== pluginVersion) throw new Error("Codex installed a stale Burette package.");
   const migratedPluginIds = installed
     .filter((plugin) => plugin.name === "burette" && plugin.pluginId !== pluginId)
     .map((plugin) => plugin.pluginId);
@@ -166,7 +179,7 @@ function installWithCodex(command) {
   }
   return {
     method: "codex-cli",
-    installedPath: payload.installedPath || installRoot,
+    installedPath,
     migratedPluginIds,
   };
 }
