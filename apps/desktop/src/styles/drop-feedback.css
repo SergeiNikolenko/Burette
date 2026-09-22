@@ -1,29 +1,70 @@
-/* Keep the molecule visible while identifying exactly one receiving surface. */
+/* One native drag image follows the pointer; this label belongs to the target. */
 .app-shell[data-drop-active] .viewer-iframe { pointer-events: none; }
+.file-drop-feedback {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  color: var(--text);
+  pointer-events: none;
+}
 .file-drop-target {
-  border: 1px solid var(--text-secondary);
-  background: color-mix(in srgb, var(--fg-base) 2%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bg-base) 65%, transparent);
-  border-radius: 8px;
+  position: fixed;
+  left: var(--file-drop-target-left);
+  top: var(--file-drop-target-top);
+  width: var(--file-drop-target-width);
+  height: var(--file-drop-target-height);
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line-strong));
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
+  border-radius: 7px;
+  box-sizing: border-box;
 }
 .file-drop-card {
-  background: var(--menu-surface);
-  border-color: var(--line-strong);
-  border-radius: 9px;
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-.file-drop-card-icon {
-  color: var(--text-secondary);
-  background: var(--surface-subtle);
-  box-shadow: none;
+  position: fixed;
+  left: var(--file-drop-card-left);
+  top: var(--file-drop-card-top);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(240px, calc(100vw - 16px));
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid var(--line-subtle);
   border-radius: 7px;
+  background: var(--menu-surface);
+  box-shadow: 0 2px 7px rgb(0 0 0 / 0.10);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
 }
-.file-drop-choice-count { background: var(--surface-subtle); box-shadow: none; }
+.file-drop-action { font-weight: 500; }
+.file-drop-destination {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
+  padding-left: 8px;
+  border-left: 1px solid var(--line-subtle);
+}
 .dock-panel[data-drop-active],
 .app-shell[data-structure-drag-active="true"] .dock-panel[data-open="true"]:hover {
   background: var(--bg-base);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
+  box-shadow: none;
 }
-.sidebar-tool-row[data-drop-active="true"] { background: var(--surface-hover); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.sidebar-tool-row[data-drop-active="true"] { background: var(--surface-hover); box-shadow: none; }
+.structure-drag-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483647;
+  max-width: 180px;
+  padding: 6px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--menu-surface);
+  color: var(--text);
+  font: 11px/16px system-ui, sans-serif;
+  pointer-events: none;
+}
