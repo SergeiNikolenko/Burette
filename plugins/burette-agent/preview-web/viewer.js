@@ -2867,7 +2867,10 @@
     const data = event.data || {};
     const body = data.source === 'burette-host' ? data.body : null;
     if (!body) return;
-    if (event.source === window.parent && body.type === 'openXyzrenderEditor') { void openXyzrender3DEditor(); return; }
+    if (event.source === window.parent && body.type === 'openXyzrenderEditor') {
+      if (body.documentId === (activeConfig || window.BuretteConfig || {}).documentId) void openXyzrender3DEditor();
+      return;
+    }
     if (event.source === window.parent && body.type === 'applyXyzrenderAnimationFrame') {
       const { width, height, pixels } = body;
       if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 1024 || height > 1024 || !(pixels instanceof Uint8ClampedArray) || pixels.length !== width * height * 4) return;
@@ -14163,12 +14166,7 @@ SOFTWARE.
       for (const key of ['left', 'top', 'width', 'height']) baseItem.style[key] = `${savedView.item[key]}px`;
       setSheetItemRotation(baseItem, savedView.item.rotation);
     }
-    const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root, savedView?.viewport, view => {
-      scale = view.scale;
-      translateX = view.x;
-      translateY = view.y;
-      apply();
-    });
+    const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root, savedView?.viewport);
     externalArtifactViewSnapshot = () => ({
       scale, x: translateX, y: translateY,
       viewport: { width: root.clientWidth, height: root.clientHeight },
