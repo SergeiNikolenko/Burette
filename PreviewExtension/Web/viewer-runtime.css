@@ -2021,7 +2021,8 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   color: #ffb8b8;
 }
 .buret-renderer-control.visible { display: flex; }
-.buret-renderer-choice { min-width: 38px; }
+.buret-mode-button { width: 34px; min-width: 34px; padding: 0; }
+.buret-mode-button svg { width: 18px; height: 18px; }
 .buret-molstar-preset-slot { display: none; align-items: center; }
 .buret-molstar-preset-slot.visible { display: flex; }
 .buret-xyzrender-preset-slot { display: none; align-items: center; }

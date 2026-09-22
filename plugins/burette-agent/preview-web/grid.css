@@ -424,6 +424,9 @@ button:disabled {
   padding: 0;
 }
 
+/* The standalone grid does not load Tailwind utilities used by shared icons. */
+#grid-controls .ab-ico .stroke-none { stroke: none; }
+
 #grid-controls .ab-btn-icon .ab-ico {
   color: currentColor;
 }

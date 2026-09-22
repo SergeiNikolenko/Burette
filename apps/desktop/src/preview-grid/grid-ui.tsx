@@ -1,4 +1,5 @@
 import React from "react";
+import { Cube, Edit } from "../components/ui/app-icons";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -748,24 +749,24 @@ function GridActionToolbar(props: GridControlProps) {
         <div id="selected-open-actions" className="buret-selected-open-actions" role="group" aria-label="Open selection">
           {props.ketcherOpen ? <button
             id="open-selected-ketcher"
-            className="ab-btn"
+            className="ab-btn ab-btn-icon"
             type="button"
             aria-label="Open in Ketcher"
             disabled={props.selectedCount === 0 || props.ketcherPending}
             onClick={props.onOpenKetcher}
           >
-            Ketcher
+            <Edit className="ab-ico" aria-hidden="true" />
             <ControlTooltip label={props.selectedCount ? "Edit selected molecules in Ketcher" : "Select molecules to edit in Ketcher"} />
           </button> : null}
           {props.molstarOpen ? <button
             id="open-selected-molstar"
-            className="ab-btn"
+            className="ab-btn ab-btn-icon"
             type="button"
             aria-label="Open in Molstar"
             disabled={props.selectedCount === 0}
             onClick={() => props.onRendererSwitch("molstar")}
           >
-            Mol*
+            <Cube className="ab-ico" aria-hidden="true" />
             <ControlTooltip label={props.selectedCount ? "View selected molecules in Molstar" : "Select molecules to view in Molstar"} />
           </button> : null}
         </div>
