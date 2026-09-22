@@ -30,6 +30,8 @@ contains only documents that describe the active project.
   diagnostics, and security reporting.
 - [Molecular drag and drop](drag-and-drop.md): source/destination matrix, safe file creation,
   gesture feedback, bounds and focused checks.
+- [Scene naming proposal](scene-naming.md): content-based automatic titles, stable file
+  identity, manual names and export scope; proposed, not yet implemented.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   Ketcher editing scope, artifacts, and checks.
 - [Mesoscale viewer implementation plan](mesoscale-viewer-implementation-plan.md):
