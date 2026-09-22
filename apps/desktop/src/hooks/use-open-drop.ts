@@ -413,6 +413,18 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
 
   const handleFileDrop = useCallback(
     (event: DragDropEvent) => {
+      if (event.type === "enter" || event.type === "over") {
+        const element = elementFromTauriDropPosition(event.position);
+        window.dispatchEvent(new CustomEvent("burette-native-drag-hover", {
+          detail: {
+            tabId: element?.closest<HTMLElement>(".tab-shell")?.dataset.tabId ?? null,
+            sourceTabId: event.type === "enter" && event.paths.length ? null : nativeTabDragRef.current,
+            x: tauriDropPoint(event.position)?.x,
+          },
+        }));
+      } else {
+        window.dispatchEvent(new Event("burette-native-drag-end"));
+      }
       if (event.type === "enter") {
         if (event.paths.length) nativeTabDragRef.current = null;
         nativeDragPayloadRef.current = event.paths.length

@@ -65,3 +65,7 @@ Native internal tab drops on the tab strip dispatch `burette-native-tab-drop`
 with `{ tabId, x }` to the tab owner for reordering. They never enter molecular
 import routing. Native enter may precede the grid source message; the validated
 message fills the pending native payload before drop.
+
+`burette-native-drag-hover` carries `{ tabId, sourceTabId, x }` to the tab owner
+for delayed activation or live reordering; `burette-native-drag-end` cancels the
+activation timer on native leave/drop. WKWebView may consume HTML dragover too.

@@ -395,9 +395,23 @@ export function EditorTabs({
       if (Number.isFinite(x) && state.tabs.some(tab => tab.id === tabId)) moveDraggedTab(tabId, x!);
       stopTabDrag();
     };
+    const hover = (event: Event) => {
+      const { tabId, sourceTabId, x } = (event as CustomEvent<{ tabId: string | null; sourceTabId: string | null; x?: number }>).detail;
+      if (sourceTabId) {
+        clearDragActivation();
+        if (tabId && Number.isFinite(x)) moveDraggedTab(sourceTabId, x!);
+      } else if (tabId) scheduleDragActivation(tabId);
+      else clearDragActivation();
+    };
     window.addEventListener("burette-native-tab-drop", drop);
-    return () => window.removeEventListener("burette-native-tab-drop", drop);
-  }, [readOnly, state.tabs, moveDraggedTab, stopTabDrag]);
+    window.addEventListener("burette-native-drag-hover", hover);
+    window.addEventListener("burette-native-drag-end", clearDragActivation);
+    return () => {
+      window.removeEventListener("burette-native-tab-drop", drop);
+      window.removeEventListener("burette-native-drag-hover", hover);
+      window.removeEventListener("burette-native-drag-end", clearDragActivation);
+    };
+  }, [readOnly, state.tabs, moveDraggedTab, stopTabDrag, scheduleDragActivation, clearDragActivation]);
 
   const updateNativeTabDrag = useCallback((event: React.DragEvent<HTMLElement>) => {
     const tabId = draggingTabIdRef.current;
@@ -551,6 +565,7 @@ export function EditorTabs({
               key={tab.id}
               ref={(node) => setTabShellRef(tab.id, node)}
               className="tab-shell"
+              data-tab-id={tab.id}
               data-active={active || undefined}
               data-selected={selected || undefined}
               data-dragging={isDragging || undefined}
