@@ -115,7 +115,7 @@ const folder = document.createElement('div');
 folder.dataset.dropDirectory = '/project/native';
 folder.getBoundingClientRect = () => ({ left: 10, top: 180, width: 200, height: 30 });
 document.elementFromPoint = (x, y) => { assert.deepEqual([x, y], [90, 198]); return folder; };
-const nativeDeps = { ...dependencies, buildFileDropPreview, navigator: { platform: 'MacIntel' }, Event: window.Event,
+const nativeDeps = { ...dependencies, CustomEvent: window.CustomEvent, requestAnimationFrame: fn => fn(), buildFileDropPreview, navigator: { platform: 'MacIntel' }, Event: window.Event,
   isTauriRuntime: () => true, useEffect: fn => nativeEffects.push(fn),
   getCurrentWindow: () => ({ onDragDropEvent: fn => { nativeDrop = fn; return Promise.resolve(() => {}); } }),
   trackTauriListener: () => () => {},
@@ -129,5 +129,29 @@ nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } 
 message('structureDragEnd'); // Can arrive before the native bridge dispatches drop.
 nativeDrop({ payload: { type: 'drop', paths: [], position: { x: 90, y: 198 } } });
 assert.deepEqual(nativeSaved, [{ records, directory: '/project/native' }]);
+nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } });
+message('structureDragStart'); // Native enter may beat the iframe postMessage.
+message('structureDragEnd');
+nativeDrop({ payload: { type: 'drop', paths: [], position: { x: 90, y: 198 } } });
+assert.deepEqual(nativeSaved, [0, 1].map(() => ({ records, directory: '/project/native' })));
+const strip = document.createElement('div');
+strip.className = 'tab-strip';
+const tab = document.createElement('div');
+strip.appendChild(tab);
+document.elementFromPoint = () => tab;
+const tabTransfer = new window.DataTransfer();
+drag.writeStructureDragPayload(tabTransfer, payload);
+tabTransfer.setData(drag.TAB_DRAG_MIME, 'source-tab');
+tabTransfer.setDragImage = () => {};
+const reordered = [];
+window.addEventListener('burette-native-tab-drop', event => reordered.push(event.detail));
+const tabStart = new window.DragEvent('dragstart');
+Object.defineProperty(tabStart, 'dataTransfer', { value: tabTransfer });
+window.dispatchEvent(tabStart);
+nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } });
+window.dispatchEvent(new window.DragEvent('dragend'));
+nativeDrop({ payload: { type: 'drop', paths: [], position: { x: 90, y: 198 } } });
+assert.deepEqual(reordered, [{ tabId: 'source-tab', x: 90 }]);
+assert.equal(nativeSaved.length, 2, 'Tab reorder must not import its structure');
 for (const cleanup of nativeCleanups) cleanup?.();
 console.log('WKWebView internal drops retain molecular records and use logical Retina coordinates');

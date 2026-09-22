@@ -60,3 +60,8 @@ check unique creation, traversal rejection and overwrite protection.
 `tests/test-xyzrender-sheet-editing.mjs` checks layout under zoom/pan and preservation
 of manual placement. Browser UI and the separately built native app remain
 separate acceptance surfaces.
+
+Native internal tab drops on the tab strip dispatch `burette-native-tab-drop`
+with `{ tabId, x }` to the tab owner for reordering. They never enter molecular
+import routing. Native enter may precede the grid source message; the validated
+message fills the pending native payload before drop.

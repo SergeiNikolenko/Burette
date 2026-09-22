@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { ShellActions, ShellViewState } from "../types";
 import type { MenuItemSpec } from "../menu-types";
 import { ScrollFade } from "../scroll-fade";
-import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
+import { TAB_DRAG_MIME, hasStructureDrag, readStructureDragPayload, type StructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { showNativeContextMenu } from "../native-context-menu";
 import { pageKind } from "./page-kinds";
@@ -15,7 +15,6 @@ import { Badge } from "../ui/badge";
 import type { DropTargetContext } from "../../lib/drop-actions";
 import { describeDropTargetElement } from "../../lib/drop-target";
 
-const TAB_DRAG_MIME = "application/x-burette-tab-id";
 const TAB_REORDER_ANIMATION_MS = 170;
 const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
 const TAB_MOUSE_REORDER_THRESHOLD_PX = 8;
@@ -388,6 +387,17 @@ export function EditorTabs({
       removeMouseDragListeners();
     };
   }, [removeMouseDragListeners, stopTabDrag]);
+
+  useEffect(() => {
+    if (readOnly) return;
+    const drop = (event: Event) => {
+      const { tabId, x } = (event as CustomEvent<{ tabId: string; x?: number }>).detail;
+      if (Number.isFinite(x) && state.tabs.some(tab => tab.id === tabId)) moveDraggedTab(tabId, x!);
+      stopTabDrag();
+    };
+    window.addEventListener("burette-native-tab-drop", drop);
+    return () => window.removeEventListener("burette-native-tab-drop", drop);
+  }, [readOnly, state.tabs, moveDraggedTab, stopTabDrag]);
 
   const updateNativeTabDrag = useCallback((event: React.DragEvent<HTMLElement>) => {
     const tabId = draggingTabIdRef.current;

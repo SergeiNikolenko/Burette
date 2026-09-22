@@ -11,7 +11,7 @@ import { buildFileDropPreview } from "../lib/drop-preview";
 import type { DropPreviewTarget, FileDropPreview } from "../lib/drop-preview";
 import { describeDropTargetElement } from "../lib/drop-target";
 import { parentDirectory } from "../lib/sidebar-projects";
-import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
+import { TAB_DRAG_MIME, hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 
@@ -151,6 +151,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   const [dropActive, setDropActive] = useState(false);
   const [dropPreview, setDropPreview] = useState<FileDropPreview | null>(null);
   const nativeDragPayloadRef = useRef<StructureDragPayload | null>(null);
+  const nativeTabDragRef = useRef<string | null>(null);
   const browserDragPayloadRef = useRef<StructureDragPayload | null>(null);
   const cancelledBrowserDragRef = useRef(false);
   const hideDropFeedback = useCallback(() => {
@@ -413,11 +414,13 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   const handleFileDrop = useCallback(
     (event: DragDropEvent) => {
       if (event.type === "enter") {
+        if (event.paths.length) nativeTabDragRef.current = null;
         nativeDragPayloadRef.current = event.paths.length
           ? { paths: event.paths, records: [] }
           : browserDragPayloadRef.current ?? { paths: [], records: [] };
         const point = tauriDropPoint(event.position) ?? { x: 0, y: 0 };
         const element = elementFromTauriDropPosition(event.position);
+        if (nativeTabDragRef.current && element?.closest(".tab-strip")) { hideDropFeedback(); return; }
         showDropFeedback(
           nativeDragPayloadRef.current,
           dropTargetForElement(element),
@@ -430,6 +433,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       if (event.type === "over") {
         const point = tauriDropPoint(event.position) ?? { x: 0, y: 0 };
         const element = elementFromTauriDropPosition(event.position);
+        if (nativeTabDragRef.current && element?.closest(".tab-strip")) { hideDropFeedback(); return; }
         const payload = nativeDragPayloadRef.current ?? { paths: [], records: [] };
         showDropFeedback(payload, dropTargetForElement(element), element, point, payload.paths.length);
         return;
@@ -438,6 +442,14 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         const point = tauriDropPoint(event.position);
         const element = elementFromTauriDropPosition(event.position);
         const target = dropTargetForElement(element);
+        const tabId = nativeTabDragRef.current;
+        nativeTabDragRef.current = null;
+        if (tabId && element?.closest(".tab-strip")) {
+          nativeDragPayloadRef.current = null;
+          hideDropFeedback();
+          window.dispatchEvent(new CustomEvent("burette-native-tab-drop", { detail: { tabId, x: point?.x } }));
+          return;
+        }
         // WKWebView's native handler consumes internal HTML drops too. Such
         // drags have no Finder paths, so use the bounded dragstart payload.
         const payload: StructureDragPayload = event.paths.length
@@ -449,6 +461,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         return;
       }
       nativeDragPayloadRef.current = null;
+      nativeTabDragRef.current = null;
       hideDropFeedback();
     },
     [dropTargetForElement, hideDropFeedback, runFinderDropAction, showDropFeedback],
@@ -483,9 +496,11 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     // after the source's dragstart handler has written it, while it is readable.
     const rememberBrowserDrag = (event: DragEvent) => {
       cancelledBrowserDragRef.current = false;
+      nativeTabDragRef.current = event.dataTransfer?.getData(TAB_DRAG_MIME) || null;
       if (event.dataTransfer && hasStructureDrag(event.dataTransfer)) {
         const payload = readStructureDragPayload(event.dataTransfer);
         browserDragPayloadRef.current = payload;
+        if (nativeDragPayloadRef.current) nativeDragPayloadRef.current = payload;
         const count = payload.paths.length + payload.records.length || payload.items?.length || 1;
         const label = payload.paths[0] || payload.records[0]?.path || payload.items?.[0]?.title || "Structure";
         const preview = document.createElement("div");
@@ -504,6 +519,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       if (body?.type === "structureDragCancel") {
         cancelledBrowserDragRef.current = true;
         nativeDragPayloadRef.current = null;
+        nativeTabDragRef.current = null;
         resetDropState();
         window.dispatchEvent(new Event("burette-structure-drag-cancel"));
         return;
@@ -513,12 +529,15 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       if (records.length > 200 || records.some((record: StructureDragRecord) => !record || typeof record.text !== "string" || typeof record.path !== "string" || typeof record.inputExtension !== "string")) return;
       if (records.reduce((size: number, record: StructureDragRecord) => size + new TextEncoder().encode(record.text).length, 0) > 24 * 1024 * 1024) return;
       browserDragPayloadRef.current = { paths: [], records };
+      if (nativeDragPayloadRef.current) nativeDragPayloadRef.current = browserDragPayloadRef.current;
+      nativeTabDragRef.current = null;
       cancelledBrowserDragRef.current = false;
     };
     const resetOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (browserDragPayloadRef.current) cancelledBrowserDragRef.current = true;
         nativeDragPayloadRef.current = null;
+        nativeTabDragRef.current = null;
         resetDropState();
       }
     };

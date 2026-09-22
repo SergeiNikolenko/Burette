@@ -1,3 +1,4 @@
+export const TAB_DRAG_MIME = "application/x-burette-tab-id";
 export const STRUCTURE_DRAG_MIME = "application/x-burette-structure-paths";
 
 export type StructureDragRecord = {

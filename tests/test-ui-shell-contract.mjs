@@ -8700,7 +8700,6 @@ assert.match(componentsTypes, /addXyzrenderSheetItems: \(targetDocumentId: strin
 assert.match(editorTabs, /from "\.\.\/\.\.\/lib\/structure-drag"/);
 assert.match(editorTabs, /from "\.\.\/drop-action-executor"/);
 assert.doesNotMatch(editorTabs, /from "\.\.\/\.\.\/lib\/docking-documents"/);
-assert.match(editorTabs, /const TAB_DRAG_MIME = "application\/x-burette-tab-id"/);
 assert.match(editorTabs, /const TAB_DRAG_ACTIVATE_DELAY_MS = 520/);
 assert.match(editorTabs, /const TAB_MOUSE_REORDER_THRESHOLD_PX = 8/);
 assert.doesNotMatch(editorTabs, /const openStructurePayloadAsTabs = useCallback/);
