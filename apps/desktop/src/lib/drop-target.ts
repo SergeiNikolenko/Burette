@@ -12,6 +12,7 @@ export type DropTargetDescriptor =
       area: DockArea;
       tabKind: DockTabKind;
     }
+  | { kind: "folder"; directory: string }
   | {
       kind: "sidebar" | "tab-strip" | "ketcher";
     };
@@ -24,6 +25,9 @@ export function describeDropTargetElement(element: Element | null): DropTargetDe
     const tabKind = activeTab && dockTabCatalog(area).includes(activeTab) ? activeTab : "files";
     return { kind: "dock", area, tabKind };
   }
+
+  const folderTarget = element?.closest<HTMLElement>("[data-drop-directory]");
+  if (folderTarget?.dataset.dropDirectory) return { kind: "folder", directory: folderTarget.dataset.dropDirectory };
 
   const documentTarget = element?.closest<HTMLElement>("[data-drop-document-path]");
   const documentPath = documentTarget?.dataset.dropDocumentPath?.trim();

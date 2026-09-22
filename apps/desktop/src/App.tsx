@@ -954,7 +954,6 @@ export default function App() {
   });
 
   const {
-    addXyzrenderSheetItems,
     addXyzrenderSheetItemsToDocument,
     appendGridRecords,
   } = useAppGridWorkflows({
@@ -1026,7 +1025,7 @@ export default function App() {
     tabActions: agentTabActions,
     openKetcherTab,
     addProjectRoots: addDroppedProjectRoots,
-    addXyzrenderSheetItems,
+    addXyzrenderSheetItems: addXyzrenderSheetItemsToDocument,
     appendGridRecords,
     chooseDropAction,
     documents,

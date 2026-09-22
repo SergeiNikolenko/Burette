@@ -54,7 +54,7 @@ export function useAppGridWorkflows({
   tabs,
   updateDirtyGridDocument,
 }: UseAppGridWorkflowsOptions) {
-  const pendingXyzrenderSheetDropRef = useRef<{ documentId: string; payload: StructureDragPayload } | null>(null);
+  const pendingXyzrenderSheetDropRef = useRef(new Map<string, StructureDragPayload[]>());
   const pendingBrowserGridAppendRef = useRef<BrowserGridAppend[]>([]);
   const readyBrowserGridFramesRef = useRef<Map<string, Window>>(new Map());
 
@@ -65,6 +65,8 @@ export function useAppGridWorkflows({
     if (!iframe?.contentWindow) return false;
     const iframeRect = iframe.getBoundingClientRect();
     const point = payload.point && Number.isFinite(payload.point.x) && Number.isFinite(payload.point.y)
+      && payload.point.x >= iframeRect.left && payload.point.x <= iframeRect.right
+      && payload.point.y >= iframeRect.top && payload.point.y <= iframeRect.bottom
       ? { x: payload.point.x - iframeRect.left, y: payload.point.y - iframeRect.top }
       : null;
     iframe.contentWindow.postMessage(
@@ -83,6 +85,12 @@ export function useAppGridWorkflows({
     return true;
   }, []);
 
+  const requestSheetReady = useCallback((documentId: string) => {
+    const frame = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]"))
+      .find(frame => frame.dataset.documentId === documentId);
+    frame?.contentWindow?.postMessage({ source: "burette-host", body: { type: "xyzrenderSheetReadyRequest" } }, "*");
+  }, []);
+
   const addXyzrenderSheetItemsToDocument = useCallback((targetDocumentId: string, payload: StructureDragPayload) => {
     const targetDocument = documents.find((document) => document.id === targetDocumentId);
     if (
@@ -90,24 +98,21 @@ export function useAppGridWorkflows({
       targetDocument.renderer !== "xyzrender-external" ||
       (payload.paths.length === 0 && payload.records.length === 0)
     ) return false;
-    const posted = postXyzrenderSheetItems(targetDocument.id, payload);
-    if (!posted) {
-      pendingXyzrenderSheetDropRef.current = { documentId: targetDocument.id, payload };
-      const tab = tabs.find((item) => item.location.kind === "file" && (
-        item.location.documentId === targetDocument.id ||
-        item.location.path === targetDocument.path
-      ));
-      if (tab) setActiveTab(tab.id);
+    const pending = pendingXyzrenderSheetDropRef.current.get(targetDocument.id) ?? [];
+    const queued = [...pending, payload];
+    if (queued.reduce((count, drop) => count + drop.paths.length + drop.records.length, 0) > 200 ||
+      queued.reduce((size, drop) => size + drop.records.reduce((bytes, record) => bytes + new TextEncoder().encode(record.text).length, 0), 0) > 24 * 1024 * 1024) {
+      pushStatus("Wait for the sheet to load before adding more structures (200 molecules / 24 MB maximum).", "error");
+      return true;
     }
+    pendingXyzrenderSheetDropRef.current.set(targetDocument.id, queued);
+    requestSheetReady(targetDocument.id);
+    const targetTab = tabs.find(item => item.location.kind === "file" && item.location.documentId === targetDocument.id);
+    if (targetTab) setActiveTab(targetTab.id);
     const count = payload.paths.length + payload.records.length;
     pushStatus(`Adding ${count} structure${count === 1 ? "" : "s"} to xyzrender sheet`);
     return true;
-  }, [documents, postXyzrenderSheetItems, pushStatus, setActiveTab, tabs]);
-
-  const addXyzrenderSheetItems = useCallback((payload: StructureDragPayload) => {
-    if (!activeDocument) return false;
-    return addXyzrenderSheetItemsToDocument(activeDocument.id, payload);
-  }, [activeDocument, addXyzrenderSheetItemsToDocument]);
+  }, [documents, requestSheetReady, pushStatus, setActiveTab, tabs]);
 
   const notifyGridRecordsAppended = useCallback((targetDocumentId: string, result: GridAppendResult) => {
     const iframe = activeViewerIframeForDocument(targetDocumentId, "grid2d");
@@ -256,13 +261,31 @@ export function useAppGridWorkflows({
     return true;
   }, [documents, notifyGridRecordsAppended, postBrowserGridAppend, pushErrorStatus, pushStatus, setActiveTab, showDelimitedGridColumnAppendMenu, tabs, updateDirtyGridDocument]);
 
+  const flushSheetDrops = useCallback((documentId: string) => {
+    const pending = pendingXyzrenderSheetDropRef.current.get(documentId);
+    if (!pending) return;
+    while (pending.length && postXyzrenderSheetItems(documentId, pending[0])) pending.shift();
+    if (!pending.length) pendingXyzrenderSheetDropRef.current.delete(documentId);
+  }, [postXyzrenderSheetItems]);
+
   useEffect(() => {
-    const pending = pendingXyzrenderSheetDropRef.current;
-    if (!pending || activeDocument?.id !== pending.documentId) return;
-    if (postXyzrenderSheetItems(pending.documentId, pending.payload)) {
-      pendingXyzrenderSheetDropRef.current = null;
+    if (activeDocument && pendingXyzrenderSheetDropRef.current.has(activeDocument.id)) requestSheetReady(activeDocument.id);
+    for (const id of pendingXyzrenderSheetDropRef.current.keys()) {
+      if (!documents.some(document => document.id === id)) pendingXyzrenderSheetDropRef.current.delete(id);
     }
-  }, [activeDocument?.id, postXyzrenderSheetItems]);
+  }, [activeDocument?.id, documents, requestSheetReady]);
+
+  useEffect(() => {
+    const ready = (event: MessageEvent) => {
+      if (event.data?.source !== "burette-viewer" || event.data.body?.type !== "xyzrenderSheetReady") return;
+      const frame = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]"))
+        .find(frame => frame.contentWindow === event.source);
+      if (!frame?.contentWindow || !frame.dataset.documentId) return;
+      flushSheetDrops(frame.dataset.documentId);
+    };
+    window.addEventListener("message", ready);
+    return () => window.removeEventListener("message", ready);
+  }, [flushSheetDrops]);
 
   useEffect(() => {
     if (activeDocument) flushPendingBrowserGridAppend(activeDocument.id);
@@ -294,7 +317,6 @@ export function useAppGridWorkflows({
   }, [activeDocument, notifyGridPoseReviewSelection, poseReviewSelections]);
 
   return {
-    addXyzrenderSheetItems,
     addXyzrenderSheetItemsToDocument,
     appendGridRecords,
   };

@@ -57,7 +57,6 @@ const [
   appMolstarXtbContextHook,
   appXtbWorkflowsHook,
   appOpenActionsHook,
-  appOpenDropMergeCollectionsHook,
   appOpenDropControllerHook,
   appPreferenceEffectsHook,
   appQuickLookHook,
@@ -282,7 +281,6 @@ const [
   source('apps/desktop/src/hooks/use-app-molstar-xtb-context.ts'),
   source('apps/desktop/src/hooks/use-app-xtb-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-open-actions.ts'),
-  source('apps/desktop/src/hooks/use-app-open-drop-merge-collections.ts'),
   source('apps/desktop/src/hooks/use-app-open-drop-controller.ts'),
   source('apps/desktop/src/hooks/use-app-preference-effects.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
@@ -445,7 +443,7 @@ const [
   source('apps/desktop/src-tauri/src/preview/xyzrender.rs'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('docs/keyboard-shortcuts.md'),
-  source('apps/desktop/src/styles.css'),
+  Promise.all([source('apps/desktop/src/styles.css'), source('apps/desktop/src/styles/drop-feedback.css')]).then(parts => parts.join('\n')),
   source('PreviewExtension/Web/grid.css'),
   source('apps/desktop/src/preview-grid/grid-ui.tsx'),
   source('PreviewExtension/Web/grid-viewer.js'),
@@ -1635,7 +1633,6 @@ assert.match(viewerFrame, /\.\.\.\(sandbox \? \{ sandbox \} : \{\}\)/);
 assert.match(viewerFrame, /"data-source-preview-role": active \? "active" : "staging"/);
 assert.match(viewerFrame, /"aria-hidden": active \? undefined : true/);
 assert.match(viewerFrame, /inert: !active \|\| closeTransitionActive/);
-assert.match(fileKind, /const sheetDropTarget = document\.renderer === "xyzrender-external"/);
 assert.match(fileKind, /const collectionDropTarget = document\.renderer === "grid2d"/);
 assert.doesNotMatch(fileKind, /viewer-generate-3d-button/);
 assert.doesNotMatch(styles, /\.viewer-generate-3d-button/);
@@ -1647,20 +1644,19 @@ assert.match(fileKind, /dockingRequest: document\.dockingRequest \?\? null/);
 assert.match(fileKind, /const viewerDropActionChoices = useCallback/);
 assert.match(fileKind, /shellDropActionChoices\(payload, dropTarget\)\.filter/);
 assert.match(fileKind, /choice\.action\.kind !== "open-documents" && choice\.action\.kind !== "open-structure-records"/);
-assert.match(fileKind, /type: "addXyzrenderSheetItems"/);
 assert.match(dropActions, /Add to xyzrender sheet/);
 assert.match(dropActions, /Append to grid/);
 assert.match(openDropHook, /addXyzrenderSheetItems\?: AddXyzrenderSheetItems/);
 assert.match(openDropHook, /appendGridRecords\?: AppendGridRecords/);
 assert.match(openDropHook, /type AppendGridRecords = \(targetDocumentId: string, payload: StructureDragPayload\) => boolean/);
-assert.match(openDropHook, /type AddXyzrenderSheetItems = \(payload: StructureDragPayload\) => boolean/);
+assert.match(openDropHook, /type AddXyzrenderSheetItems = \(targetDocumentId: string, payload: StructureDragPayload\) => boolean/);
 assert.match(openDropHook, /type OpenFepSetupWorkspace = \(request: FepSetupRequest\) => void/);
 assert.match(openDropHook, /fepSetupRequest\?: FepSetupRequest \| null/);
 assert.match(openDropHook, /openFepSetupWorkspace\?: OpenFepSetupWorkspace/);
 assert.match(openDropHook, /element\?\.closest\("\.pose-review-workspace, \.fep-setup-workspace"\)/);
 assert.match(openDropHook, /action\.kind === "append-grid-records"/);
 assert.match(openDropHook, /appendGridRecords\?\.\(action\.targetDocumentId, action\.payload\)/);
-assert.match(openDropHook, /addXyzrenderSheetItems\?\.\(action\.payload\)/);
+assert.match(openDropHook, /addXyzrenderSheetItems\?\.\(action\.targetDocumentId, action\.payload\)/);
 assert.match(openDropHook, /action\.kind === "prepare-fep-setup"/);
 assert.match(openDropHook, /openFepSetupWorkspace\(action\.request\)/);
 assert.match(viewer, /function installExternalArtifactSheet\(root, stage, toStagePoint, getStageScale\)/);
@@ -1715,7 +1711,7 @@ assert.match(viewer, /--buret-sheet-rotation/);
 assert.match(viewer, /function externalArtifactBaseItemHTML\(content, label\)/);
 assert.match(viewer, /buret-xyzrender-sheet-item buret-xyzrender-sheet-item-large buret-xyzrender-sheet-item-base" aria-label="\$\{safeLabel\}"/);
 assert.doesNotMatch(viewer, /buret-xyzrender-sheet-item-base selected/);
-assert.match(viewer, /item\.className = 'buret-xyzrender-sheet-item buret-xyzrender-sheet-item-large selected'/);
+assert.match(viewer, /item\.className = 'buret-xyzrender-sheet-item selected'/);
 assert.match(viewer, /const xyzrenderSheetItemEntries = new WeakMap\(\)/);
 assert.match(viewer, /function requestSelectedXyzrenderSheetItemsUpdate\(options = \{\}\)/);
 assert.match(viewer, /function frontmostXyzrenderSheetItem\(root = document\)/);
@@ -4289,14 +4285,8 @@ assert.match(commandPalette, /w-\[min\(560px,90vw\)\]/);
 assert.match(uiCommand, /data-selected:bg-muted/);
 assert.match(uiCommand, /max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto/);
 assert.doesNotMatch(app, /from "\.\/hooks\/use-app-open-drop-merge-collections"/);
-assert.match(appOpenDropControllerHook, /useAppOpenDropMergeCollections\(\{/);
-assert.match(appOpenDropControllerHook, /mergeMoleculeCollections: mergeDroppedMoleculeCollections/);
 assert.doesNotMatch(app, /mergeMoleculeCollections: activeDocument\?\.renderer === "grid2d"/);
 assert.doesNotMatch(app, /isMoleculeCollectionPath/);
-assert.match(appOpenDropMergeCollectionsHook, /export function useAppOpenDropMergeCollections\(\{/);
-assert.match(appOpenDropMergeCollectionsHook, /activeDocument\?\.renderer !== "grid2d"/);
-assert.match(appOpenDropMergeCollectionsHook, /paths\.some\(isMoleculeCollectionPath\)/);
-assert.match(appOpenDropMergeCollectionsHook, /void mergeMoleculeCollections\(activeDocument\.path, paths\)/);
 assert.match(appDockingWorkflowsHook, /const unsupportedPaths = candidatePaths\.filter\(\(path\) => !isMoleculeCollectionPath\(path\)\)/);
 assert.match(appDockingWorkflowsHook, /Collection merge accepts only SDF, SMILES, CSV, or TSV inputs\./);
 assert.match(appOpenDropControllerHook, /useOpenDrop\(openPaths, pushStatus, \{/);
@@ -4628,8 +4618,6 @@ assert.match(openDropHook, /renderer: activeDocumentRenderer/);
 assert.match(openDropHook, /void openDockingDocument\(\s*action\.request\.receptorPath,\s*action\.request\.ligandPaths,\s*\{\s*sceneMode: action\.request\.sceneMode \?\? null,\s*\}\s*\)/s);
 assert.match(openDropHook, /function elementFromTauriDropPosition/);
 assert.match(openDropHook, /scaled \? document\.elementFromPoint\(scaled\.x, scaled\.y\) : null/);
-assert.match(openDropHook, /document\.elementFromPoint\(position\.x, position\.y\)/);
-assert.match(openDropHook, /candidates\.find\(\(element\) => element\.closest\("\.dock-panel"\)\) \?\? candidates\[0\]/);
 assert.match(openDropHook, /if \(descriptor\?\.kind === "dock"\) return descriptor/);
 assert.match(openDropHook, /void openDockPayload\?\.\(\{ area: target\.area, tabKind: target\.tabKind, payload \}\)/);
 assert.match(app, /from "\.\/hooks\/use-app-dock-actions"/);
@@ -8488,7 +8476,7 @@ assert.match(gridViewer, /rowEl\.addEventListener\('keydown', event => \{/);
 assert.match(gridViewer, /let cardDragSourceAllowed = true;/);
 assert.match(gridViewer, /cardDragSourceAllowed = isCardDragSource\(event\.target\);/);
 assert.match(gridViewer, /if \(!cardDragSourceAllowed \|\| !isCardDragSource\(event\.target\)\) \{/);
-assert.match(gridViewer, /const records = gridDragRecordsForRow\(row\)/);
+assert.match(gridViewer, /const records = gridDragRecordsForRow\(row,/);
 assert.match(gridViewer, /event\.dataTransfer\?\.setData\(STRUCTURE_DRAG_MIME, JSON\.stringify\(payload\)\)/);
 assert.match(gridViewer, /records\.map\(item => item\.text\.trimEnd\(\)\)\.join\('\\n'\) \+ '\\n'/);
 assert.match(gridViewer, /installCardDrop\(el, row, cfg\)/);
@@ -8820,9 +8808,6 @@ assert.match(fileKind, /droppedPayload\.point = \{ x: event\.clientX, y: event\.
 assert.match(fileKind, /const choices = viewerDropActionChoices\(droppedPayload\)/);
 assert.match(fileKind, /if \(choices\.length === 0\) return/);
 assert.match(fileKind, /runShellDropActionChoices\(actions, droppedPayload, choices, \{ x: event\.clientX, y: event\.clientY \}/);
-assert.match(fileKind, /const point = payload\.point && iframeRect && Number\.isFinite\(payload\.point\.x\) && Number\.isFinite\(payload\.point\.y\)/);
-assert.match(fileKind, /addXyzrenderSheetItems: \(targetDocumentId, payload\) =>/);
-assert.match(fileKind, /targetDocumentId === document\.id && postXyzrenderSheetItems\(payload\)/);
 assert.doesNotMatch(fileKind, /dockingRequestForDrop/);
 assert.doesNotMatch(fileKind, /hasGridAppendInput/);
 assert.match(fileKind, /data-drop-document-path=\{document\.path\}/);

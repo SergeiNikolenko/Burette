@@ -240,6 +240,7 @@ export function ProjectGroup({
         role="treeitem"
         tabIndex={0}
         className="project-group-row"
+        data-drop-directory={project.rootPath ?? undefined}
         draggable={!renaming && project.items.length > 0}
         onMouseDown={(event) => {
           handleRowMouseDown(event);
@@ -456,6 +457,7 @@ function ProjectTreeNodeView({
         role="treeitem"
         tabIndex={0}
         className="project-folder-row"
+        data-drop-directory={project.rootPath ? `${project.rootPath}/${node.path}` : undefined}
         style={projectDepthStyle(depth)}
         draggable={nodeItems.length > 0}
         onMouseDown={(event) => {

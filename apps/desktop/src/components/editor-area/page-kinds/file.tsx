@@ -78,7 +78,6 @@ function StructureViewerSurface({
   const mesoscaleSceneOpen = useMesoscaleStore((store) => store.sessions[document.id]?.sceneOpen ?? false);
   const mesoscaleLeftPanelOpen = useMesoscaleStore((store) => store.sessions[document.id]?.summary?.layout.left ?? false);
   const mesoscaleRightPanelOpen = useMesoscaleStore((store) => store.sessions[document.id]?.summary?.layout.right ?? false);
-  const sheetDropTarget = document.renderer === "xyzrender-external";
   const collectionDropTarget = document.renderer === "grid2d";
   const postViewerVisibility = useCallback((frame = iframeRef.current, frameActive = true) => {
     frame?.contentWindow?.postMessage({
@@ -115,28 +114,6 @@ function StructureViewerSurface({
     ))
   ), [dropTarget]);
 
-  const postXyzrenderSheetItems = useCallback((payload: StructureDragPayload) => {
-    if (!sheetDropTarget || (payload.paths.length === 0 && payload.records.length === 0)) return false;
-    const iframeRect = iframeRef.current?.getBoundingClientRect();
-    const point = payload.point && iframeRect && Number.isFinite(payload.point.x) && Number.isFinite(payload.point.y)
-      ? { x: payload.point.x - iframeRect.left, y: payload.point.y - iframeRect.top }
-      : null;
-    iframeRef.current?.contentWindow?.postMessage(
-      {
-        source: "burette-host",
-        body: {
-          type: "addXyzrenderSheetItems",
-          documentId: document.id,
-          paths: payload.paths,
-          records: payload.records,
-          point,
-        },
-      },
-      "*",
-    );
-    return true;
-  }, [document.id, sheetDropTarget]);
-
   const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
     const payload = readStructureDragPayload(event.dataTransfer);
@@ -155,12 +132,8 @@ function StructureViewerSurface({
     event.preventDefault();
     event.stopPropagation();
     actions.setStructureDragActive(false);
-    runShellDropActionChoices(actions, droppedPayload, choices, { x: event.clientX, y: event.clientY }, {
-      addXyzrenderSheetItems: (targetDocumentId, payload) => (
-        targetDocumentId === document.id && postXyzrenderSheetItems(payload)
-      ),
-    });
-  }, [actions, document.id, postXyzrenderSheetItems, viewerDropActionChoices]);
+    runShellDropActionChoices(actions, droppedPayload, choices, { x: event.clientX, y: event.clientY });
+  }, [actions, viewerDropActionChoices]);
 
   const handleContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!collectionDropTarget) return;

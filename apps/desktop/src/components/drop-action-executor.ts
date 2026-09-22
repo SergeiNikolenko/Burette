@@ -105,7 +105,7 @@ function runShellDropAction(
   }
   if (action.kind === "open-structure-records") {
     if (action.paths.length > 0) void actions.openPaths(action.paths);
-    if (action.records.length > 0) void actions.openStructureRecords(action.records);
+    if (action.records.length > 0) void actions.openStructureRecords(action.records, action.directory);
     return;
   }
   void actions.openPaths(payload.paths);

@@ -309,7 +309,7 @@ export function EditorTabs({
 
   const scheduleDragActivation = useCallback((tabId: string) => {
     const draggedTabId = draggingTabIdRef.current;
-    if (!draggedTabId || tabId === draggedTabId || tabId === state.activeTabId) {
+    if (tabId === draggedTabId || tabId === state.activeTabId) {
       clearDragActivation();
       return;
     }
@@ -379,9 +379,11 @@ export function EditorTabs({
   useEffect(() => {
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") stopTabDrag(); };
     window.addEventListener("blur", stopTabDrag);
+    window.addEventListener("burette-structure-drag-cancel", stopTabDrag);
     window.addEventListener("keydown", escape, true);
     return () => {
       window.removeEventListener("blur", stopTabDrag);
+      window.removeEventListener("burette-structure-drag-cancel", stopTabDrag);
       window.removeEventListener("keydown", escape, true);
       removeMouseDragListeners();
     };
@@ -547,9 +549,13 @@ export function EditorTabs({
               data-drop-document-renderer={tabDropTarget?.renderer ?? undefined}
               onDragOver={readOnly ? undefined : (event) => {
                 updateNativeTabDrag(event);
-                scheduleDragActivation(tab.id);
+                if (hasStructureDrag(event.dataTransfer)) scheduleDragActivation(tab.id);
+              }}
+              onDragLeave={readOnly ? undefined : (event) => {
+                if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) clearDragActivation();
               }}
               onDrop={readOnly ? undefined : (event) => {
+                clearDragActivation();
                 if (!draggingTabIdRef.current) return;
                 event.preventDefault();
                 event.stopPropagation();
@@ -589,14 +595,21 @@ export function EditorTabs({
                 // after Escape and must never open a file or run an action.
                 onDragEnd={readOnly ? undefined : stopTabDrag}
                 onDragOver={readOnly ? undefined : (event) => {
-                  if (!hasStructureDrag(event.dataTransfer)) return;
-                  const payload = readStructureDragPayload(event.dataTransfer);
-                  if (!tabDropTarget || shellDropActionChoices(payload, tabDropTarget, { kind: "tab" }).length === 0) return;
+                  if (!hasStructureDrag(event.dataTransfer) || draggingTabIdRef.current) return;
+                  if (!tabDropTarget) return;
+                  scheduleDragActivation(tab.id);
                   event.preventDefault();
                   event.stopPropagation();
                   event.dataTransfer.dropEffect = "copy";
                 }}
                 onDrop={readOnly ? undefined : (event) => {
+                  clearDragActivation();
+                  if (draggingTabIdRef.current) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    stopTabDrag();
+                    return;
+                  }
                   if (!tabDocument || !hasStructureDrag(event.dataTransfer)) return;
                   const payload = readStructureDragPayload(event.dataTransfer);
                   if (payload.paths.length === 0 && payload.records.length === 0) return;

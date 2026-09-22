@@ -4,6 +4,7 @@ import { dockingCandidatesForDrop, isMolstarCombineSource, isMolstarCoordinateTr
 import type { StructureDragPayload, StructureDragRecord } from "./structure-drag";
 
 export type DropTargetContext =
+  | { kind: "folder"; directory: string }
   | {
       kind: "workspace";
     }
@@ -88,6 +89,7 @@ export type DropAction =
     }
   | {
       kind: "open-structure-records";
+      directory?: string;
       paths: string[];
       records: StructureDragRecord[];
     }
@@ -119,6 +121,12 @@ export function resolveDropActionChoices(
   source: DropSourceContext = UNKNOWN_DROP_SOURCE,
 ): DropActionChoice[] {
   if (payload.paths.length === 0 && payload.records.length === 0) return [];
+  if (target.kind === "folder") {
+    if (payload.records.length) return [choice("save-structure-records", "Save molecules in folder", "default", {
+      kind: "open-structure-records", paths: payload.paths, records: payload.records, directory: target.directory,
+    }, source)];
+    return workspaceDropActionChoices(payload, source);
+  }
   if (target.kind === "workspace" || target.kind === "sidebar" || target.kind === "tab-strip") {
     return workspaceDropActionChoices(payload, source);
   }
@@ -220,7 +228,7 @@ function isKetcherImportPath(path: string) {
 }
 
 export function isKetcherImportExtension(extension: string) {
-  return ["mol", "sd", "sdf", "smi", "smiles"].includes(extension.trim().replace(/^\./u, "").toLowerCase());
+  return ["mol", "sd", "sdf", "smi", "smiles", "rxn"].includes(extension.trim().replace(/^\./u, "").toLowerCase());
 }
 
 function fileExtension(path: string) {
