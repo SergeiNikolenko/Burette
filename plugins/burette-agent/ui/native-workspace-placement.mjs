@@ -49,9 +49,10 @@ export function createWorkspacePlacement(app, status) {
     if (Number.isFinite(context.containerDimensions?.width) && context.containerDimensions.width > 0) hostWidth = context.containerDimensions.width;
     // Some hosts implement requestDisplayMode but omit the optional mode list.
     // Absence is unknown, not an explicit denial; the host still decides.
-    const available = context.availableDisplayModes || app.getHostContext()?.availableDisplayModes;
     const target = mode === 'inline' ? 'fullscreen' : 'inline';
-    snapshot = { mode, target, disabled: pending || (Array.isArray(available) && !available.includes(target)) };
+    // Some hosts report an incomplete mode list while still accepting a
+    // requestDisplayMode call. Let the host make the final decision on click.
+    snapshot = { mode, target, disabled: pending };
     document.body.dataset.displayMode = mode;
     resize();
     for (const listener of listeners) listener();

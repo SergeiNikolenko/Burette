@@ -72,14 +72,14 @@ test('wide chats retain full host width and do not jump when content finishes lo
   assert.equal(document.body.style.margin, undefined);
 });
 
-test('unsupported placement is disabled and a rejected change keeps the current workspace', async () => {
+test('incomplete host mode list still allows a request and rejection keeps the workspace', async () => {
   const { placement, app, status } = fixture(['inline']);
-  assert.equal(placement.getSnapshot().disabled, true);
+  assert.equal(placement.getSnapshot().disabled, false);
   placement.update({ availableDisplayModes: ['inline', 'fullscreen'] });
   app.requestDisplayMode = async () => { throw new Error('Host declined'); };
   await assert.rejects(placement.set('fullscreen'), /Host declined/);
   assert.equal(placement.mode, 'inline');
-  assert.equal(placement.getSnapshot().disabled, true);
+  assert.equal(placement.getSnapshot().disabled, false);
   assert.match(status.textContent, /Host declined/);
 });
 

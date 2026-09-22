@@ -4,6 +4,7 @@ import { installWorkspaceTooltipLayout } from './native-workspace-tooltip-layout
 // is provided by the owning MCP component, not by a loopback web server.
 function startPreview(installTooltipLayout) {
   const bridge = window.parent.BuretteMcpWorkspace;
+  window.__BURETTE_HOSTED_MCP_WIDGET__ = true;
   window.fetch = bridge.fetch;
   window.Worker = bridge.Worker;
   window.BuretteNativeFirstFrame = async viewer => {
@@ -95,7 +96,7 @@ export function prepareWorkspacePreview(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const config = doc.getElementById('burette-runtime-config');
   if (config) {
-    config.textContent = JSON.stringify({ ...JSON.parse(config.textContent), defaultToolbarCollapsed: true }).replaceAll('<', '\\u003c');
+    config.textContent = JSON.stringify({ ...JSON.parse(config.textContent), defaultToolbarCollapsed: true, hostedMcpWidgetBootstrap: true }).replaceAll('<', '\\u003c');
   }
   doc.querySelectorAll('base').forEach(element => element.remove());
   for (const script of doc.querySelectorAll('script')) {

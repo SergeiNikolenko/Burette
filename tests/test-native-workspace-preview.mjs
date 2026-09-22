@@ -13,7 +13,7 @@ test('native preview preserves runtime configuration and safely defaults control
   const config = { documentId: 'fixture', title: '</script><img src=x>', theme: 'dark' };
   const html = prepare(`<html><head><script type="application/json" id="burette-runtime-config">${JSON.stringify(config).replaceAll('<', '\\u003c')}</script><script src="viewer.js"></script></head><body></body></html>`);
   const doc = new window.DOMParser().parseFromString(html, 'text/html');
-  assert.deepEqual(JSON.parse(doc.getElementById('burette-runtime-config').textContent), { ...config, defaultToolbarCollapsed: true });
+  assert.deepEqual(JSON.parse(doc.getElementById('burette-runtime-config').textContent), { ...config, defaultToolbarCollapsed: true, hostedMcpWidgetBootstrap: true });
   assert.equal(doc.querySelector('img'), null);
   assert.equal(doc.querySelector('[data-burette-script="viewer.js"]').type, 'application/burette-pending');
   await window.happyDOM.close();

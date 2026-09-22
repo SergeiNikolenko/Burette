@@ -44,7 +44,7 @@ test('native file actions retain application images and a separate placement con
   }
 });
 
-test('the Apps SDK display menu moves the existing workspace and reflects host availability', async () => {
+test('the solid Apps SDK button directly moves the existing workspace', async () => {
   const source = await readFile(new URL('../apps/desktop/src/components/native-workspace-placement-control.tsx', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   for (const mode of ['inline', 'fullscreen']) {
@@ -56,9 +56,8 @@ test('the Apps SDK display menu moves the existing workspace and reflects host a
         '../hooks/use-native-workspace-placement': { useNativeWorkspacePlacement: () => ({ mode, target, disabled }) },
         './radix-menu': { useThemePortalContainer: () => ({ ownerDocument: { body: 'outside-inert-root' } }) },
         'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) },
-        '@openai/apps-sdk-ui/components/Icon': { ChevronUp: 'ChevronUp', ExpandLarge: 'ExpandLarge', CollapseLarge: 'CollapseLarge' },
+        '@openai/apps-sdk-ui/components/Icon': { ExpandLarge: 'ExpandLarge', CollapseLarge: 'CollapseLarge' },
         '@openai/apps-sdk-ui/components/Button': { Button: 'SDKButton' },
-        '@openai/apps-sdk-ui/components/Menu': { Menu: Object.assign(() => {}, { Trigger: 'Trigger', Content: 'Content', Item: 'Item' }) },
         '../plugin-ui.css': {},
       };
       const exports = {};
@@ -67,23 +66,15 @@ test('the Apps SDK display menu moves the existing workspace and reflects host a
       const row = exports.NativeWorkspacePlacementControl();
       assert.match(row.props.className, /absolute.*right-3.*bottom-3/);
       assert.ok('data-workspace-placement-control' in row.props);
-      const menu = row.props.children;
-      const [trigger, content] = menu.props.children;
-      const button = trigger.props.children;
+      const button = row.props.children;
       assert.equal(button.type, 'SDKButton');
-      assert.equal(button.props.disabled, undefined, 'menu remains openable even when placement is unavailable');
+      assert.equal(button.props.disabled, disabled);
       assert.equal(button.props.size, 'sm');
-      assert.equal(button.props.variant, 'outline');
+      assert.equal(button.props.variant, 'solid');
       assert.equal(button.props.style, undefined);
-      assert.equal(button.props['aria-label'], 'Codex workspace menu');
+      assert.equal(button.props['aria-label'], mode === 'inline' ? 'Open in side pane' : 'Return to chat');
       assert.equal(button.props.children[0].trim(), 'Codex');
-      assert.equal(content.props.side, 'top');
-      assert.equal(content.props.align, 'end');
-      const [item, explanation] = content.props.children;
-      assert.equal(Boolean(explanation), disabled);
-      assert.equal(item.props.disabled, disabled);
-      assert.equal(item.props.children[1], mode === 'inline' ? 'Open in side pane' : 'Return to chat');
-      if (!disabled) { item.props.onSelect(); assert.deepEqual(requested, [target]); }
+      if (!disabled) { button.props.onClick(); assert.deepEqual(requested, [target]); }
       window.BuretteMcpWorkspace = undefined;
       assert.equal(exports.NativeWorkspacePlacementControl(), null, 'ordinary desktop has no host-placement control');
     }
