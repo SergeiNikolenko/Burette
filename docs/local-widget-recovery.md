@@ -7,7 +7,30 @@ The commit contains the full recovered source tree, tests, and prebuilt offline
 plugin, including previously uncommitted changes. It is an independent snapshot
 of the recovered tree, not a merge or rollback of the current application.
 
-## Restore without overwriting another checkout
+## Current packaged widget
+
+`config/native-widget.json` pins the corrected widget revision. Run
+`bun run install:plugin` to stage and install it. `scripts/stage-native-widget.mjs`
+extracts only its plugin subtree into ignored `plugins/burette-native-bundle`,
+checks its version and every compressed native asset, and records provenance.
+The first stage needs the pinned Git object (fetched from origin if missing).
+The standard Rust check command stages it too; before invoking Cargo directly
+in a fresh checkout, run `node scripts/stage-native-widget.mjs` once.
+Native application builds stage this package before copying the isolated build
+tree; Tauri includes it at the unchanged `plugins/burette-agent` resource path.
+This packages the preserved widget without reverting current desktop sources.
+
+The package installs as `burette@burette-widget`, isolated from legacy desktop
+auto-refresh. The new app refresh path recognizes that namespace. Its legacy
+Python fallback must not install native widgets into a different marketplace.
+An already-installed older application is not changed by merging this work;
+installation and update acceptance require a newly built application.
+
+Rebuild UI changes in the widget source branch, commit the generated package,
+then advance the pin. Do not edit staged files. This is a packaging bridge,
+not a completed forward port of the older UI source into current desktop code.
+
+## Restore the historical snapshot without overwriting another checkout
 
 From an existing Burette Git checkout:
 

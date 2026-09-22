@@ -567,6 +567,7 @@ bun scripts/check-js-syntax.mjs \
 clean_detritus "$ROOT"
 rm -f /tmp/Burette.log "${TMPDIR:-/tmp}/Burette.log" 2>/dev/null || true
 
+bun "$ROOT/scripts/stage-native-widget.mjs"
 rsync -a --delete \
   --exclude build \
   --exclude node_modules \

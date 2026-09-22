@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import "./test-plugin-native-preservation.mjs";
+import "./test-native-widget-stage.mjs";
 import { spawnSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -83,7 +84,7 @@ const preflightScript = await read("scripts/burette_agent_preflight.mjs");
 assert.match(preflightScript, /story_authoring_reference: "supported_from_installed_molstar_schema"/);
 
 const rootPackageJson = JSON.parse(await readFile("package.json", "utf8"));
-assert.equal(rootPackageJson.scripts["install:plugin"], "bun plugins/burette-agent/scripts/install-local.mjs");
+assert.equal(rootPackageJson.scripts["install:plugin"], "bun scripts/stage-native-widget.mjs && bun plugins/burette-native-bundle/scripts/install-local.mjs");
 assert.equal(rootPackageJson.scripts["build:agent-shell"], "bun scripts/build-agent-shell-plugin.mjs");
 
 const repoMarketplace = JSON.parse(await readFile(".agents/plugins/marketplace.json", "utf8"));
