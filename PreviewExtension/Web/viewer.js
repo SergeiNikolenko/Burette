@@ -12806,6 +12806,7 @@ SOFTWARE.
         showAxes: false
       };
       const preset = normalizeXyzrenderPreset(config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
+      let failed = false;
       for (const entry of cleanEntries) {
         const label = sheetEntryLabel(entry);
         try {
@@ -12813,15 +12814,15 @@ SOFTWARE.
           sheetItemSerial += 1;
           addXyzrenderSheetItem(sheet, payload.svg, label, point, sheetItemSerial, getStageScale, entry);
         } catch (error) {
+          failed = true;
           setStatus(`Could not add ${label} to xyzrender sheet: ${error instanceof Error ? error.message : String(error)}`, 'error');
         }
       }
-      setTimeout(hideStatus, 450);
+      if (!failed) hideStatus();
     };
 
     const onDragOver = event => {
-      const payload = readStructureDropPayload(event.dataTransfer);
-      if (payload.paths.length === 0 && payload.records.length === 0) return;
+      if (!Array.from(event.dataTransfer?.types || []).some(type => type === STRUCTURE_DRAG_MIME || type === 'Files')) return;
       event.preventDefault();
       event.stopPropagation();
       root.classList.add('sheet-drop-active');
@@ -12850,6 +12851,10 @@ SOFTWARE.
         resolveHostXyzrenderSheetItem(body);
         return;
       }
+      if (data.source === 'burette-host' && body.type === 'xyzrenderSheetReadyRequest') {
+        post('xyzrenderSheetReady', '');
+        return;
+      }
       if (data.source !== 'burette-host' || body.type !== 'addXyzrenderSheetItems') return;
       const documentId = String((activeConfig || window.BuretteConfig || {}).documentId || '');
       if (body.documentId && documentId && String(body.documentId) !== documentId) return;
@@ -12864,6 +12869,7 @@ SOFTWARE.
     root.addEventListener('dragleave', onDragLeave);
     root.addEventListener('drop', onDrop);
     window.addEventListener('message', onMessage);
+    post('xyzrenderSheetReady', '');
     return () => {
       root.removeEventListener('dragover', onDragOver);
       root.removeEventListener('dragleave', onDragLeave);
@@ -13414,21 +13420,49 @@ SOFTWARE.
 
   function addXyzrenderSheetItem(sheet, svg, path, point, serial, getStageScale, entry = path) {
     const item = document.createElement('div');
-    item.className = 'buret-xyzrender-sheet-item buret-xyzrender-sheet-item-large selected';
+    item.className = 'buret-xyzrender-sheet-item selected';
     item.setAttribute('role', 'button');
     item.setAttribute('tabindex', '0');
     item.setAttribute('aria-label', `Sheet structure ${path}`);
     setXyzrenderSheetItemEntry(item, entry);
     const rect = sheet.getBoundingClientRect();
-    const fallbackX = rect.width * (0.42 + ((serial - 1) % 4) * 0.06);
-    const fallbackY = rect.height * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
+    const scale = Math.max(0.05, Number(getStageScale?.() || 1));
+    const fallbackX = rect.width / scale * (0.42 + ((serial - 1) % 4) * 0.06);
+    const fallbackY = rect.height / scale * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
     item.style.left = `${Number.isFinite(point?.x) ? point.x : fallbackX}px`;
     item.style.top = `${Number.isFinite(point?.y) ? point.y : fallbackY}px`;
     item.innerHTML = `<div class="buret-xyzrender-sheet-item-background"></div><div class="buret-xyzrender-sheet-item-body">${svg}</div>${rotatableArtifactControlsHTML()}<div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
     sheet.appendChild(item);
+    if (!point) layoutAddedXyzrenderSheetItems(sheet, scale);
+    else item.dataset.buretSheetPositioned = 'true';
     selectRotatableArtifact(item);
     installXyzrenderSheetItemInteractions(item, getStageScale, { removable: true });
     return item;
+  }
+
+  function layoutAddedXyzrenderSheetItems(sheet, scale = 1) {
+    const items = Array.from(sheet.querySelectorAll('.buret-xyzrender-sheet-item'));
+    // Once a user places or resizes an item, additions must preserve that layout.
+    if (items.some(item => item.dataset.buretSheetPositioned === 'true')) return;
+    const root = sheet.closest('.buret-external-artifact-root') || sheet;
+    const viewport = root.getBoundingClientRect();
+    const sheetRect = sheet.getBoundingClientRect();
+    const originX = (viewport.left - sheetRect.left) / scale;
+    const originY = (viewport.top - sheetRect.top) / scale;
+    const width = root.clientWidth / scale;
+    const height = root.clientHeight / scale;
+    if (!width || !height) return;
+    const columns = Math.min(items.length, Math.max(1, Math.ceil(Math.sqrt(items.length * width / height))));
+    const rows = Math.ceil(items.length / columns);
+    const cellWidth = (width - 32 / scale) / columns;
+    const cellHeight = (height - 96 / scale) / rows;
+    items.forEach((item, index) => {
+      const size = Math.max(48 / scale, Math.min(360 / scale, cellWidth - 24 / scale, cellHeight - 36 / scale));
+      item.style.width = `${size}px`;
+      item.style.height = `${size}px`;
+      item.style.left = `${originX + 16 / scale + cellWidth * (index % columns + 0.5)}px`;
+      item.style.top = `${originY + 72 / scale + cellHeight * (Math.floor(index / columns) + 0.5)}px`;
+    });
   }
 
   function setSheetItemRotation(item, rotation) {
@@ -13653,6 +13687,7 @@ SOFTWARE.
       startLeft = position.left;
       startTop = position.top;
       startRotation = ((parseFloat(item.dataset.rotation || '0') || 0) * Math.PI) / 180;
+      item.dataset.buretSheetPositioned = 'true';
       item.classList.add('resizing');
       try { handle.setPointerCapture(event.pointerId); } catch (_) {}
     };
@@ -13796,6 +13831,7 @@ SOFTWARE.
       if (pointerId !== event.pointerId) return;
       const stageScale = Math.max(0.05, Number(getStageScale?.() || 1));
       for (const position of positions) {
+        if (Math.hypot(event.clientX - startX, event.clientY - startY) > 3) position.element.dataset.buretSheetPositioned = 'true';
         position.element.style.left = `${position.left + (event.clientX - startX) / stageScale}px`;
         position.element.style.top = `${position.top + (event.clientY - startY) / stageScale}px`;
       }
@@ -14103,10 +14139,10 @@ SOFTWARE.
       zoomAt(gestureBaseScale * Number(event.scale || 1), Number(event.clientX || 0), Number(event.clientY || 0));
     };
     const toStagePoint = (clientX, clientY) => {
-      const rect = root.getBoundingClientRect();
+      const rect = stage.getBoundingClientRect();
       return {
-        x: (Number(clientX) - rect.left - translateX) / scale,
-        y: (Number(clientY) - rect.top - translateY) / scale
+        x: (Number(clientX) - rect.left) / scale,
+        y: (Number(clientY) - rect.top) / scale
       };
     };
     installExternalArtifactBaseItemInteractions(root, () => scale);
