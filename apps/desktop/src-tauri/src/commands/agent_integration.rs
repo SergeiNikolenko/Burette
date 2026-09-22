@@ -37,6 +37,7 @@ pub(super) fn refresh_bundled_codex_plugin(
         return Ok(());
     }
     let installed = [
+        ".codex/plugins/burette-widget-marketplace/plugins/burette",
         ".codex/plugins/burette-marketplace/plugins/burette",
         ".codex/plugins/burette",
     ]

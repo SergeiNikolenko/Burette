@@ -27,3 +27,4 @@ __pycache__/
 
 # Local demo files for the Retab viewer (not part of the app)
 .retab-demo/
+/plugins/burette-native-bundle/

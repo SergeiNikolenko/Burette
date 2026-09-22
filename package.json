@@ -27,7 +27,7 @@
     "build:grid-ui": "bun build apps/desktop/src/preview-grid/grid-ui.tsx --outfile PreviewExtension/Web/grid-ui.js --target browser --format iife --production --minify",
     "build:macos": "bash scripts/build.sh",
     "build:agent-shell": "bun scripts/build-agent-shell-plugin.mjs",
-    "install:plugin": "bun plugins/burette-agent/scripts/install-local.mjs",
+    "install:plugin": "bun scripts/stage-native-widget.mjs && bun plugins/burette-native-bundle/scripts/install-local.mjs",
     "agent:preview": "bun scripts/agent-preview.mjs",
     "agent": "bun scripts/burette-agent.mjs",
     "test:agent": "bun tests/test-burette-deep-links.mjs && bun test ./apps/burette-public-plugin/tests/mcp-wire.test.ts ./apps/burette-public-plugin/tests/ketcher-relay.test.ts && bun tests/test-burette-agent-cli-bridge.mjs && bun tests/test-agent-shell-security.mjs && bun tests/test-burette-agent.mjs && bun tests/test-agent-tab-actions.mjs && bun tests/test-ketcher-agent-registry.mjs && bun tests/test-mvs-story.mjs && node tests/test-agent-preview-server.mjs && bun tests/test-amber-nc-preview.mjs && bun tests/test-burette-agent-cli.mjs && bun tests/test-burette-agent-plugin.mjs && node tests/test-burette-agent-mcp.mjs && node tests/test-burette-agent-bundled-mcp.mjs && bun tests/test-burette-agent-structure-summary.mjs",
@@ -62,7 +62,7 @@
     "build:web": "cd apps/desktop && bun run build && cd ../.. && bun scripts/bundle-report.mjs",
     "build-web": "bun run build:web",
     "build:web:desktop": "bun run build:web",
-    "build:tauri": "cd apps/desktop && bun run build:tauri",
+    "build:tauri": "bun scripts/stage-native-widget.mjs && cd apps/desktop && bun run build:tauri",
     "tauri": "cd apps/desktop && bun run tauri",
     "dev": "bun run dev:desktop",
     "test:ssh": "bun tests/test-browser-dev-ssh.mjs && python3 tests/test-ssh-reader.py && bun tests/test-ssh-projects.mjs"

@@ -12,6 +12,14 @@ const repoRoot = path.resolve(pluginRoot, "..", "..");
 const shouldBuild = process.argv.includes("--build");
 const home = process.env.HOME;
 
+// Source-checkout installs must use the same pinned package as application builds.
+if (existsSync(path.join(repoRoot, "config/native-widget.json"))) {
+  if (shouldBuild) throw new Error("Rebuild the widget in its pinned source checkout, then update config/native-widget.json.");
+  await run(process.execPath, [path.join(repoRoot, "scripts/stage-native-widget.mjs")], { cwd: repoRoot });
+  await run(process.execPath, [path.join(repoRoot, "plugins/burette-native-bundle/scripts/install-local.mjs")], { cwd: repoRoot });
+  process.exit(0);
+}
+
 if (!home) {
   throw new Error("HOME is not set.");
 }

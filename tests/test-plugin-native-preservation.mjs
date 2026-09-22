@@ -60,6 +60,9 @@ import { preserveNativeWidget } from "../plugins/burette-agent/scripts/preserve-
     assert.equal(run(), "reached-installation");
     await put(staged, "assets/native-workspace.html");
     assert.equal(run(), "codex plugin sync skipped: preserving installed native widget");
+    await rm(staged, { recursive: true, force: true });
+    await put(path.join(root, "home/.codex/plugins/burette-widget-marketplace/plugins/burette"), "assets/native-workspace.html");
+    assert.equal(run(), "codex plugin sync skipped: preserving installed native widget");
     for (const file of [
       "assets/native-workspace.html", "assets/native-workspace/manifest.json",
       "assets/local-viewer.html", "mcp/registrations/local-viewer/register.mjs",
