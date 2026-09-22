@@ -33,30 +33,29 @@
     }
     return result;
   }
-  // Refit the complete sheet into the space left by the workspace docks.
-  // Measure layout coordinates so the previous camera transform cannot feed back.
-  function observeSheetViewport(root, initialViewport, fit) {
-    let width = initialViewport?.width || 0;
-    let height = initialViewport?.height || 0;
+  // Keep the user's zoom and sheet geometry when docks resize the viewport.
+  // Pin responsive item sizes once; move layout centers by the viewport delta.
+  function observeSheetViewport(root, initialViewport) {
+    let width = initialViewport?.width || root.clientWidth;
+    let height = initialViewport?.height || root.clientHeight;
+    const pinned = new WeakSet();
     const resize = () => {
       const nextWidth = root.clientWidth, nextHeight = root.clientHeight;
-      if (!nextWidth || !nextHeight || (width === nextWidth && height === nextHeight)) return;
-      width = nextWidth; height = nextHeight;
-      const items = Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item'));
-      if (!items.length) return;
-      let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
-      for (const item of items) {
-        const angle = Number(item.dataset.rotation || 0) * Math.PI / 180;
-        const w = Math.abs(item.offsetWidth * Math.cos(angle)) + Math.abs(item.offsetHeight * Math.sin(angle));
-        const h = Math.abs(item.offsetWidth * Math.sin(angle)) + Math.abs(item.offsetHeight * Math.cos(angle));
-        left = Math.min(left, item.offsetLeft - w / 2);
-        right = Math.max(right, item.offsetLeft + w / 2);
-        top = Math.min(top, item.offsetTop - h / 2);
-        bottom = Math.max(bottom, item.offsetTop + h / 2);
+      if (!nextWidth || !nextHeight) return;
+      const dx = width ? (nextWidth - width) / 2 : 0;
+      const dy = height ? (nextHeight - height) / 2 : 0;
+      for (const item of root.querySelectorAll('.buret-xyzrender-sheet-item')) {
+        if (!pinned.has(item)) {
+          item.style.width = `${item.offsetWidth}px`;
+          item.style.height = `${item.offsetHeight}px`;
+          item.style.left = `${item.offsetLeft}px`;
+          item.style.top = `${item.offsetTop}px`;
+          pinned.add(item);
+        }
+        item.style.left = `${parseFloat(item.style.left) + dx}px`;
+        item.style.top = `${parseFloat(item.style.top) + dy}px`;
       }
-      if (!(right > left && bottom > top)) return;
-      const scale = Math.min(8, Math.max(0.05, Math.min(Math.max(1, width - 64) / (right - left), Math.max(1, height - 128) / (bottom - top))));
-      fit({ scale, x: -scale * ((left + right - width) / 2), y: 24 - scale * ((top + bottom - height) / 2) });
+      width = nextWidth; height = nextHeight;
     };
     resize();
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
