@@ -1,22 +1,27 @@
-import { createPortal } from "react-dom";
+import { useState } from "react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { ExpandLarge, CollapseLarge } from "@openai/apps-sdk-ui/components/Icon";
-import { useThemePortalContainer } from "./radix-menu";
 import { useNativeWorkspacePlacement } from "../hooks/use-native-workspace-placement";
 import "../plugin-ui.css";
 
 export function NativeWorkspacePlacementControl() {
   const placement = window.BuretteMcpWorkspace?.placement;
   const state = useNativeWorkspacePlacement();
-  const container = useThemePortalContainer();
-  if (!placement || !state || !container) return null;
+  const [error, setError] = useState("");
+  if (!placement || !state) return null;
   const label = state.mode === "inline" ? "Open in side pane" : "Return to chat";
-  return createPortal(
-    <div className="absolute right-3 bottom-3 z-20" data-workspace-placement-control>
+  return (
+    <div data-workspace-placement-control>
+      {error && <div role="alert" className="workspace-placement-error">{error}</div>}
       <Button color="secondary" variant="solid" size="sm" disabled={state.disabled}
-        aria-label={label} onClick={() => { void placement.set(state.target).catch(() => {}); }}>
+        aria-label={label} onClick={() => {
+          setError("");
+          void placement.set(state.target).then(result => {
+            if (!result.ok) setError("Codex did not change the panel.");
+          }).catch(cause => setError(`Could not change panel: ${cause.message}`));
+        }}>
         Codex {state.mode === "inline" ? <ExpandLarge aria-hidden="true" /> : <CollapseLarge aria-hidden="true" />}
       </Button>
-    </div>, container.ownerDocument.body
+    </div>
   );
 }

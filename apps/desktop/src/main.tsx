@@ -27,11 +27,6 @@ function Root() {
     <React.StrictMode>
       <ErrorBoundary>
         <App />
-        {window.BuretteMcpWorkspace && (
-          <React.Suspense fallback={null}>
-            <NativeWorkspacePlacementControl />
-          </React.Suspense>
-        )}
       </ErrorBoundary>
     </React.StrictMode>
   );
@@ -44,6 +39,27 @@ if (import.meta.env.VITE_BURETTE_WEB_DEMO === "1") {
 }
 if (!window.BuretteMcpWorkspace?.closed) {
   const root = createRoot(document.getElementById("root")!);
-  if (window.BuretteMcpWorkspace) window.BuretteMcpWorkspace.unmount = () => root.unmount();
+  // The preview root is inert until the molecular scene is ready. Host controls
+  // need their own React root so their event handlers remain usable meanwhile.
+  const controlHost = window.BuretteMcpWorkspace ? document.createElement("div") : null;
+  if (controlHost) {
+    controlHost.dataset.workspacePlacementHost = "";
+    document.body.appendChild(controlHost);
+  }
+  const controlsRoot = controlHost ? createRoot(controlHost) : null;
+  if (window.BuretteMcpWorkspace) window.BuretteMcpWorkspace.unmount = () => {
+    controlsRoot?.unmount();
+    controlHost?.remove();
+    root.unmount();
+  };
   root.render(<Root />);
+  controlsRoot?.render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <React.Suspense fallback={null}>
+          <NativeWorkspacePlacementControl />
+        </React.Suspense>
+      </ErrorBoundary>
+    </React.StrictMode>,
+  );
 }

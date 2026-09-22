@@ -137,7 +137,8 @@ container holding the app. Specify either width or maxWidth, and either height o
     #root{position:relative;display:flex;flex-direction:column;flex:1;min-height:0;height:auto;box-sizing:border-box}
     #root .app-shell{width:100%;flex:1;min-height:0;height:auto}
     #root .app-shell .workbench{border-left:0;border-radius:0;box-shadow:none}
-    body>[data-workspace-placement-control]{position:fixed;right:12px;bottom:12px;z-index:100;pointer-events:auto}
+    body>[data-workspace-placement-host]{position:fixed;right:12px;bottom:12px;z-index:101;pointer-events:auto}
+    .workspace-placement-error{max-width:240px;margin-bottom:8px;padding:8px 10px;border-radius:8px;background:#b42318;color:#fff;font:12px/1.4 system-ui}
     body[data-display-mode="inline"] .app-shell{--chrome-height:0px;--chrome-drag-height:0px}
     body[data-display-mode="inline"] :is(.topbar,.chrome-leading-controls,.chrome-trailing-controls,.tab-strip,.drag-region){display:none}
     #status{flex:none;max-height:72px;overflow:auto}

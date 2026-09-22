@@ -439,8 +439,10 @@ Inline startup requests a stable content height; use the side pane for more room
 The inline widget suppresses the top navigation and tab strip, bottom dock, its menu toggle and internal resize
 handle, including when restored state says it was open. Side-pane mode retains
 the dock state and shows top navigation. Loading observations do not renegotiate size.
-The placement control is portaled to the document body outside the inert loading
-root, so its menu remains interactive during loading and errors, without a footer row.
+The placement control mounts in its own React root on the document body, outside
+the inert loading root, so its button remains interactive during loading and
+errors, without a footer row. A rejected host placement request is shown next
+to the button instead of being silently ignored.
 Startup errors replace the cover with an explicit retry action.
 Molecular summaries are reused until the underlying structure objects change;
 acknowledgements run without an extra one-second heartbeat delay.
