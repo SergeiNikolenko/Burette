@@ -221,8 +221,12 @@ bun run install:plugin
 The repository contains a prebuilt MCP server with its runtime dependencies
 bundled, so standard Codex marketplace installation does not require
 `node_modules`. The installer stages that bundle and its marketplace descriptor
-under `~/.codex/plugins/burette-marketplace`, then runs
-`codex plugin marketplace add` and `codex plugin add burette@burette`. Codex owns
+under `~/.codex/plugins/burette-widget-marketplace`, then runs
+`codex plugin marketplace add` and `codex plugin add burette@burette-widget`. This
+separate namespace prevents legacy desktop auto-refresh from overwriting the
+native-widget package. Remove the old `burette` marketplace registration and
+staged plugin after migration; keep source checkouts and recovery backups.
+Codex owns
 the installed cache copy and the enabled state in `~/.codex/config.toml`. After
 the new plugin is active, the installer removes earlier Burette plugin ids and
 marketplace entries while preserving unrelated plugins. If no working Codex CLI

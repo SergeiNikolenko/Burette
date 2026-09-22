@@ -15,8 +15,10 @@ if (!home) {
   throw new Error("HOME is not set.");
 }
 
-const marketplaceName = "burette";
-const marketplaceRoot = path.join(home, ".codex", "plugins", "burette-marketplace");
+// Keep the recovered native widget outside the legacy desktop updater's
+// hard-coded marketplace. Older installed apps do not honor capability guards.
+const marketplaceName = "burette-widget";
+const marketplaceRoot = path.join(home, ".codex", "plugins", "burette-widget-marketplace");
 const marketplacePath = path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json");
 const personalPluginRoot = path.join(marketplaceRoot, "plugins", "burette");
 const codexConfigPath = path.join(home, ".codex", "config.toml");

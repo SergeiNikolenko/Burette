@@ -118,7 +118,7 @@ const requiredPreviewRuntimeAssets = [
   "trajectory-smoothing.js",
   "openchemlib/openchemlib.js",
 ];
-assert.match(installScript, /\.codex", "plugins", "burette-marketplace"/);
+assert.match(installScript, /\.codex", "plugins", "burette-widget-marketplace"/);
 assert.match(installScript, /"plugin", "marketplace", "add", marketplaceRoot, "--json"/);
 assert.match(installScript, /"plugin", "add", pluginId, "--json"/);
 assert.match(installScript, /"plugin", "list", "--json"/);
