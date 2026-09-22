@@ -68,7 +68,7 @@
     "test:ssh": "bun tests/test-browser-dev-ssh.mjs && python3 tests/test-ssh-reader.py && bun tests/test-ssh-projects.mjs"
   },
   "dependencies": {
-    "@codemirror/commands": "6.10.4",
+    "@codemirror/commands": "6.11.1",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-markdown": "^6.4.0",
     "@codemirror/language": "6.12.3",
