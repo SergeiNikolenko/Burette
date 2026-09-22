@@ -47,6 +47,7 @@ export function buildFileDropPreview({
     ? []
     : resolveDropActionChoices(payload, target, source);
   const previewTarget = target.kind !== "dock"
+    && target.kind !== "folder"
     && target.kind !== "sidebar"
     && target.kind !== "tab-strip"
     && dropActionUsesWorkspace(choices[0]?.action.kind)
@@ -74,12 +75,14 @@ function dropActionUsesWorkspace(kind: DropAction["kind"] | undefined) {
 }
 
 function previewTargetKind(target: DropPreviewTarget): FileDropPreview["targetKind"] {
+  if (target.kind === "folder") return "sidebar";
   if (target.kind === "active-viewer") return "viewer";
   if (target.kind === "fep-setup") return "fep";
   return target.kind;
 }
 
 function previewTargetLabel(target: DropPreviewTarget) {
+  if (target.kind === "folder") return fileName(target.directory);
   if (target.kind === "active-viewer") return fileName(target.documentPath);
   if (target.kind === "dock") {
     return target.area === "right" ? "Right dock" : "Bottom dock";

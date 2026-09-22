@@ -250,6 +250,36 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
     }
   });
 
+  server.middlewares.use("/__burette/create-text-file", async (req, res) => {
+    if (req.method !== "POST") { sendJson(res, 405, { error: "Method not allowed" }); return; }
+    try {
+      const body = await readJsonBody(req, 24 * 1024 * 1024 * 6 + 1024);
+      if (typeof body.path !== "string" || typeof body.name !== "string" || typeof body.contents !== "string"
+        || !body.name.trim() || body.name !== body.name.trim() || /[\\/\x00:]/.test(body.name) || [".", ".."].includes(body.name)
+        || !body.contents.trim() || Buffer.byteLength(body.contents) > 24 * 1024 * 1024) {
+        sendJson(res, 400, { error: "Invalid filename or contents (maximum 24 MB)" }); return;
+      }
+      const directory = await realpath(resolve(body.path));
+      if (!options.isDevFileReadAllowed(directory) || !(await stat(directory)).isDirectory()) {
+        sendJson(res, 403, { error: "Folder is outside this workspace" }); return;
+      }
+      const dot = body.name.lastIndexOf(".");
+      const stem = dot > 0 ? body.name.slice(0, dot) : body.name;
+      const extension = dot > 0 ? body.name.slice(dot) : "";
+      for (let index = 0; index < 10_000; index++) {
+        const path = join(directory, index ? `${stem} ${index}${extension}` : body.name);
+        let file;
+        try { file = await openFile(path, "wx"); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") continue; throw error; }
+        try { await file.writeFile(body.contents, "utf8"); await file.sync(); }
+        catch (error) { await file.close(); await rm(path, { force: true }); throw error; }
+        await file.close();
+        sendJson(res, 200, { path }); return;
+      }
+      sendJson(res, 409, { error: "Could not choose an unused filename" });
+    } catch (error) { sendJsonError(res, 500, error); }
+  });
+
   server.middlewares.use("/__burette/write-text-file", async (req, res) => {
     if ((req.method || "GET").toUpperCase() !== "PUT") {
       sendJson(res, 405, { error: "Method not allowed" });

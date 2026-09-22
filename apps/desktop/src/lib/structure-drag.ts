@@ -1,3 +1,4 @@
+export const TAB_DRAG_MIME = "application/x-burette-tab-id";
 export const STRUCTURE_DRAG_MIME = "application/x-burette-structure-paths";
 
 export type StructureDragRecord = {
@@ -37,10 +38,10 @@ export function structureDragMovementExceedsThreshold(
 
 const BROWSER_DROP_MAX_TEXT_BYTES = 25 * 1024 * 1024;
 const BROWSER_DROP_TEXT_EXTENSIONS = new Set([
-  "arc", "cfg", "cif", "cms", "com", "cub", "cube", "csv", "data", "dump", "ent",
+  "arc", "cfg", "cif", "cms", "com", "cub", "cube", "csv", "data", "dump", "dwar", "ent",
   "fasta", "fdf", "gro", "in", "inp", "lammpstrj", "lammps", "lmp", "log", "mae",
   "mcif", "mmcif", "mol", "mol2", "nw", "out", "pdb", "pdbqt", "ph4", "pqr", "psi4",
-  "qcin", "sd", "sdf", "smi", "smiles", "tsv", "vasp", "xyz",
+  "qcin", "rdf", "rxn", "sd", "sdf", "smi", "smiles", "tsv", "vasp", "xyz",
 ]);
 
 export function emptyStructureDragPayload(): StructureDragPayload {

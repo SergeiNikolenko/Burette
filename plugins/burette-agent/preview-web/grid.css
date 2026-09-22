@@ -1686,6 +1686,24 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--buret-accent) 78%, transparent);
 }
 
+.buret-structure-drag-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483647;
+  max-width: 180px;
+  padding: 6px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--buret-text) 20%, transparent);
+  border-radius: 6px;
+  background: var(--buret-menu-surface);
+  color: var(--buret-text);
+  font: 11px/16px system-ui, sans-serif;
+  pointer-events: none;
+}
+
 .buret-card.buret-card-drop-target {
   border-color: var(--buret-accent);
   box-shadow:

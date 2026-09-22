@@ -94,3 +94,6 @@ export const X = /* @__PURE__ */ appIcon("X");
 export const XCircleCrossedClose = /* @__PURE__ */ appIcon("XCircleCrossedClose");
 export const PinFilled = /* @__PURE__ */ appIcon("PinFilled");
 export const Edit = /* @__PURE__ */ appIcon("Edit");
+export const ThemeLight = /* @__PURE__ */ appIcon("ThemeLight");
+export const ThemeDark = /* @__PURE__ */ appIcon("ThemeDark");
+export const ThemeAuto = /* @__PURE__ */ appIcon("ThemeAuto");

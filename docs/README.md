@@ -28,6 +28,10 @@ contains only documents that describe the active project.
 - [Security and permissions](security-and-permissions.md): local file access,
   Tauri permissions, browser/agent surfaces, local servers, release secrets,
   diagnostics, and security reporting.
+- [Molecular drag and drop](drag-and-drop.md): source/destination matrix, safe file creation,
+  gesture feedback, bounds and focused checks.
+- [Scene naming proposal](scene-naming.md): content-based automatic titles, stable file
+  identity, manual names and export scope; proposed, not yet implemented.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   Ketcher editing scope, artifacts, and checks.
 - [Mesoscale viewer implementation plan](mesoscale-viewer-implementation-plan.md):

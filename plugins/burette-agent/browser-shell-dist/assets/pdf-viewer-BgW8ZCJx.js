@@ -1,1 +1,0 @@
-import{a as e}from"./document-page-DnSAFeT7.js";export{e as PdfResourceContent};

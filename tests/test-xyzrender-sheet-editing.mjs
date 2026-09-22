@@ -85,3 +85,59 @@ assert.equal(items[1].isConnected, false);
 assert.deepEqual(removals.map(({type, itemId, documentId}) => [type, itemId, documentId]), [['xyzrenderItemRemoved', messages[1].itemId, 'doc']]);
 assert.match(declaration('showXyzrenderSheetContextMenu'), /\['view:hide', \(\) => removeXyzrenderSheetItem\(item\)\]/);
 assert.match(declaration('installRotatableArtifactKeyboard'), /removeXyzrenderSheetItem\(item\)/);
+
+// A tab drop arranges two structures side by side, preserving later manual placement.
+const layoutSheet = document.createElement('div');
+Object.defineProperties(layoutSheet, { clientWidth: { value: 1000 }, clientHeight: { value: 700 } });
+layoutSheet.innerHTML = '<div class="buret-xyzrender-sheet-item"></div><div class="buret-xyzrender-sheet-item"></div>';
+const arrange = new Function(declaration('layoutAddedXyzrenderSheetItems') + '; return layoutAddedXyzrenderSheetItems;')();
+arrange(layoutSheet);
+const pair = [...layoutSheet.children];
+assert.ok(parseFloat(pair[0].style.left) + parseFloat(pair[0].style.width) / 2 < parseFloat(pair[1].style.left) - parseFloat(pair[1].style.width) / 2);
+// A previously zoomed and panned viewport still receives fully visible items.
+const layoutRoot = document.createElement('div');
+layoutRoot.className = 'buret-external-artifact-root';
+Object.defineProperties(layoutRoot, { clientWidth: { value: 1000 }, clientHeight: { value: 700 } });
+layoutRoot.getBoundingClientRect = () => ({ left: 0, top: 0 });
+layoutRoot.appendChild(layoutSheet);
+layoutSheet.getBoundingClientRect = () => ({ left: -400, top: -250 });
+arrange(layoutSheet, 2);
+for (const item of pair) {
+  const x = -400 + parseFloat(item.style.left) * 2;
+  const y = -250 + parseFloat(item.style.top) * 2;
+  const size = parseFloat(item.style.width) * 2;
+  assert.ok(x - size / 2 >= 0 && x + size / 2 <= 1000);
+  assert.ok(y - size / 2 >= 0 && y + size / 2 <= 700);
+}
+pair[0].dataset.buretSheetPositioned = 'true';
+pair[0].style.left = '200px';
+arrange(layoutSheet);
+assert.equal(pair[0].style.left, '200px');
+console.log('Sheet additions fit side by side and preserve manual placement');
+
+// Dense selections must fit without overlapping in a small viewport at any zoom.
+for (const count of [2, 5, 16, 40, 200]) {
+  for (const scale of [0.5, 1, 2]) {
+    const root = document.createElement('div');
+    root.className = 'buret-external-artifact-root';
+    Object.defineProperties(root, { clientWidth: { value: 420 }, clientHeight: { value: 320 } });
+    root.getBoundingClientRect = () => ({ left: 0, top: 0 });
+    const sheet = document.createElement('div');
+    sheet.getBoundingClientRect = () => ({ left: -40, top: -25 });
+    sheet.innerHTML = '<div class="buret-xyzrender-sheet-item"></div>'.repeat(count);
+    root.appendChild(sheet);
+    arrange(sheet, scale);
+    const boxes = [...sheet.children].map(item => {
+      const size = parseFloat(item.style.width) * scale;
+      const x = -40 + parseFloat(item.style.left) * scale;
+      const y = -25 + parseFloat(item.style.top) * scale;
+      assert.ok(size > 0 && x - size / 2 >= 0 && x + size / 2 <= 420 && y - size / 2 >= 0 && y + size / 2 <= 320, `${count} items fit at ${scale} zoom`);
+      return { x, y, size };
+    });
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      assert.ok(Math.abs(a.x-b.x) >= (a.size+b.size)/2 || Math.abs(a.y-b.y) >= (a.size+b.size)/2, `${count} items do not overlap at ${scale} zoom`);
+    }
+  }
+}
+console.log('Dense sheet selections fit at 50%, 100% and 200% zoom');
