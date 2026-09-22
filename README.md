@@ -1,9 +1,8 @@
 <h1 align="center">Burette</h1>
 
 <p align="center">
-  A molecular file workspace with macOS Finder Quick Look previews, Mol* 3D,
-  external xyzrender SVG rendering, RDKit molecule grids, Ketcher sketching,
-  a source-built iPhone preview app, and a hosted OpenAI Mol* viewer.
+  Preview molecular files with a press of Space.
+  Open the Mac workspace to inspect structures, compare compounds, and edit molecules.
 </p>
 
 <p align="center">
@@ -16,17 +15,24 @@
 </p>
 
 <p align="center">
-  <img src="docs/public/burette-quick-look-preview.png" alt="Burette desktop preview of caffeine.fdf" width="90%" />
+  <a href="https://burette-landing.vercel.app/">Website</a> ·
+  <a href="https://github.com/SergeiNikolenko/Burette/releases/latest">Download for Mac</a> ·
+  <a href="https://burette-landing.vercel.app/docs">Documentation</a> ·
+  <a href="https://burette-landing.vercel.app/demo">Try in your browser</a>
 </p>
+
+<p align="center">
+  <img src="docs/public/readme/quick-look.jpg" alt="Buckyball structure in Burette Finder Quick Look, with rotation and display controls" width="960" />
+</p>
+
+<p align="center">Select a molecular file in Finder and press Space to inspect it in 3D.</p>
 
 ## What Is Burette?
 
-Burette is a macOS desktop app, Finder Quick Look extension, source-built
-iPhone preview app, and hosted public plugin for molecular structure files. It is built for the small
-daily loop of computational chemistry, structural biology, and cheminformatics
-work: open a structure, confirm what it is, switch renderer when needed,
-compare files in tabs, and recover quickly when Quick Look or renderer caches
-need maintenance.
+Burette brings molecular previews, structure inspection, and collection browsing
+into one Mac workspace. Explore a protein and its ligand, step through a
+trajectory, filter compounds by their properties, or edit a molecule in Ketcher.
+Project folders, tabs, and side panels keep related files together.
 
 Use it in four ways:
 
@@ -39,8 +45,8 @@ Use it in four ways:
 - **Public molecular plugin:** preview an authorized molecular attachment or a
   public PDB entry directly in the Burette workspace through ChatGPT or Codex.
 
-Burette is intentionally a compact utility, not a full molecular modeling
-environment.
+The desktop app is complemented by a source-built iPhone viewer and a hosted
+plugin for working with molecular files through ChatGPT or Codex.
 
 ## Download
 
@@ -124,6 +130,30 @@ Opening Burette directly gives you a compact molecular workspace:
 - text and structure source viewing with live editing and save for logs,
   scripts, configs, and molecular source files, plus rich Markdown and image
   previews in mixed project folders
+
+## A Look Inside
+
+### Inspect structures
+
+Rotate and zoom from the protein fold to its ligand. Use the scene tree to
+focus on a chain, hide water, and choose the representations you need.
+
+![Protein and ligand in the Burette desktop viewer](docs/public/readme/structures.jpg)
+
+### Compare compounds
+
+Switch between molecular drawings and a property table. Select a compound to
+inspect its structure and descriptors alongside the collection.
+
+![Molecular collection table with a selected compound and its properties](docs/public/readme/collections.jpg)
+
+### Explore Chemical Space
+
+Map a collection by molecular similarity, inspect neighbouring compounds, and
+bring selected molecules back to the table. Native Chemical Space calculations
+run on Apple Silicon in the Mac app.
+
+![Chemical Space map beside the molecular collection](docs/public/readme/chemical-space.jpg)
 
 ## iPhone Preview App
 
