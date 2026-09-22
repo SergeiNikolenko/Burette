@@ -48,7 +48,7 @@ url = "2"
 uuid = { version = "1", features = ["v4", "fast-rng"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-tauri-plugin-sparkle-updater = { version = "=0.2.6", optional = true }
+tauri-plugin-sparkle-updater = { version = "=0.2.8", optional = true }
 cocoa = "0.26"
 core-foundation = "0.10"
 dispatch2 = "0.3"

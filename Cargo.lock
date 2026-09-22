@@ -4450,9 +4450,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-sparkle-updater"
-version = "0.2.6"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8fcfe3a06c5044f7414603af835034a7cb580e9323a9be3bcc7f8ff0c8890b0"
+checksum = "f19c9b9c28f3a9ec92df404cac336d38a55034aa78d60dc45fd76077e0b89fff"
 dependencies = [
  "dispatch",
  "log",
