@@ -22,8 +22,9 @@ Hovering a destination tab activates it after the existing delay. Leaving the
 header or cancelling the drag clears that timer. A compact native label follows the pointer; the action label stays anchored to
 the receiving surface. No travelling import icon or animated target outline is
 used. Collection rows and shell files/tabs share this compact treatment. Native
-Retina coordinates are converted once before hit-testing; a distant dock is
-never preferred through an unscaled fallback.
+Retina coordinates are normalized once for the host before hit-testing;
+WKWebView reports logical points and other hosts report physical pixels. A
+distant dock is never preferred through a second coordinate fallback.
 
 ## Reliability and limits
 
@@ -38,6 +39,9 @@ never preferred through an unscaled fallback.
   does not imply that every renderer understands every format.
 - Cross-iframe drag feedback receives a bounded payload only from a mounted
   viewer. Protected `dragover` data is not treated as an empty structure.
+- WKWebView native events may consume internal HTML drops without file paths.
+  The native drag session retains the source records until drop or leave, even
+  when the source iframe reports drag end first.
 - Sheet additions wait for readiness from the actual destination iframe, including
   inactive/loading tabs. A queue is bounded to 200 sources / 24 MiB and is cleared
   when the document closes.

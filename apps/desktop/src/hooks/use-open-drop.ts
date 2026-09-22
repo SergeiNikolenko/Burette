@@ -79,14 +79,17 @@ function browserDropPoint(event: React.DragEvent<HTMLElement>) {
 
 function tauriDropPoint(position: { x: number; y: number } | null | undefined) {
   if (!position || typeof window === "undefined") return null;
-  const scale = Math.max(1, window.devicePixelRatio || 1);
+  // Wry 0.55 WKWebView reports NSDraggingInfo coordinates in logical points;
+  // Tauri wraps them as PhysicalPosition without conversion. Other hosts use pixels.
+  const mac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+  const scale = mac ? 1 : Math.max(1, window.devicePixelRatio || 1);
   return { x: position.x / scale, y: position.y / scale };
 }
 
 function elementFromTauriDropPosition(position: { x: number; y: number } | null | undefined) {
   if (!position || typeof document === "undefined") return null;
   const scaled = tauriDropPoint(position);
-  // Tauri positions are physical pixels; hit-test exactly the logical point.
+  // Normalize once for the host, then hit-test exactly the logical point.
   // Trying both coordinate systems can select a distant dock on Retina displays.
   return scaled ? document.elementFromPoint(scaled.x, scaled.y) : null;
 }
@@ -151,7 +154,6 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   const browserDragPayloadRef = useRef<StructureDragPayload | null>(null);
   const cancelledBrowserDragRef = useRef(false);
   const hideDropFeedback = useCallback(() => {
-    nativeDragPayloadRef.current = null;
     setDropActive(false);
     setDropPreview(null);
   }, []);
@@ -411,7 +413,9 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   const handleFileDrop = useCallback(
     (event: DragDropEvent) => {
       if (event.type === "enter") {
-        nativeDragPayloadRef.current = { paths: event.paths, records: [] };
+        nativeDragPayloadRef.current = event.paths.length
+          ? { paths: event.paths, records: [] }
+          : browserDragPayloadRef.current ?? { paths: [], records: [] };
         const point = tauriDropPoint(event.position) ?? { x: 0, y: 0 };
         const element = elementFromTauriDropPosition(event.position);
         showDropFeedback(
@@ -434,11 +438,17 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         const point = tauriDropPoint(event.position);
         const element = elementFromTauriDropPosition(event.position);
         const target = dropTargetForElement(element);
-        const payload: StructureDragPayload = { paths: event.paths, records: [], point };
+        // WKWebView's native handler consumes internal HTML drops too. Such
+        // drags have no Finder paths, so use the bounded dragstart payload.
+        const payload: StructureDragPayload = event.paths.length
+          ? { paths: event.paths, records: [], point }
+          : { ...(nativeDragPayloadRef.current ?? browserDragPayloadRef.current ?? { paths: [], records: [] }), point };
+        nativeDragPayloadRef.current = null;
         hideDropFeedback();
         void runFinderDropAction(payload, target);
         return;
       }
+      nativeDragPayloadRef.current = null;
       hideDropFeedback();
     },
     [dropTargetForElement, hideDropFeedback, runFinderDropAction, showDropFeedback],
@@ -493,6 +503,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       if (body?.type === "structureDragEnd") { resetDropState(); return; }
       if (body?.type === "structureDragCancel") {
         cancelledBrowserDragRef.current = true;
+        nativeDragPayloadRef.current = null;
         resetDropState();
         window.dispatchEvent(new Event("burette-structure-drag-cancel"));
         return;
@@ -507,6 +518,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     const resetOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (browserDragPayloadRef.current) cancelledBrowserDragRef.current = true;
+        nativeDragPayloadRef.current = null;
         resetDropState();
       }
     };

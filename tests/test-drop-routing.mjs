@@ -3,6 +3,7 @@ import ts from 'typescript';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import { resolveDropActionChoices } from '../apps/desktop/src/lib/drop-actions.ts';
+import { buildFileDropPreview } from '../apps/desktop/src/lib/drop-preview.ts';
 import { describeDropTargetElement } from '../apps/desktop/src/lib/drop-target.ts';
 import * as drag from '../apps/desktop/src/lib/structure-drag.ts';
 
@@ -77,9 +78,9 @@ console.log('Cold sheet drops wait for the matching frame and flush exactly once
 // Retina native events must never hit-test a second, unscaled point in a dock.
 const queried = [];
 const actualTarget = { id: 'under-cursor' };
-const retinaHitTest = new Function('document', 'window', ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText + '\nreturn elementFromTauriDropPosition;')({
+const retinaHitTest = new Function('document', 'window', 'navigator', ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText + '\nreturn elementFromTauriDropPosition;')({
   elementFromPoint(x, y) { queried.push([x, y]); return x === 300 ? actualTarget : { closest: () => ({ id: 'wrong-dock' }) }; },
-}, { devicePixelRatio: 2 });
+}, { devicePixelRatio: 2 }, { platform: 'Win32' });
 assert.equal(retinaHitTest({ x: 600, y: 400 }), actualTarget);
 assert.deepEqual(queried, [[300, 200]]);
 console.log('Retina drag hit-testing uses one coordinate system and the target under the cursor');
@@ -105,3 +106,28 @@ dropTarget.dispatchEvent(new window.DragEvent('drop', { bubbles: true, cancelabl
 assert.equal(performed, 1);
 for (const cleanup of cancelCleanups) cleanup?.();
 console.log('Iframe cancellation blocks the pending drop, and a new drag works normally');
+
+// WKWebView consumes an internal HTML drop and emits native events with no paths.
+const nativeEffects = [];
+let nativeDrop;
+const nativeSaved = [];
+const folder = document.createElement('div');
+folder.dataset.dropDirectory = '/project/native';
+folder.getBoundingClientRect = () => ({ left: 10, top: 180, width: 200, height: 30 });
+document.elementFromPoint = (x, y) => { assert.deepEqual([x, y], [90, 198]); return folder; };
+const nativeDeps = { ...dependencies, buildFileDropPreview, navigator: { platform: 'MacIntel' }, Event: window.Event,
+  isTauriRuntime: () => true, useEffect: fn => nativeEffects.push(fn),
+  getCurrentWindow: () => ({ onDragDropEvent: fn => { nativeDrop = fn; return Promise.resolve(() => {}); } }),
+  trackTauriListener: () => () => {},
+};
+Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true });
+const nativeHook = new Function(...Object.keys(nativeDeps), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText + '\nreturn useOpenDrop;')(...Object.values(nativeDeps));
+nativeHook(() => {}, () => {}, { openStructureRecords: (records, directory) => nativeSaved.push({ records, directory }) });
+const nativeCleanups = nativeEffects.map(fn => fn());
+message('structureDragStart');
+nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } });
+message('structureDragEnd'); // Can arrive before the native bridge dispatches drop.
+nativeDrop({ payload: { type: 'drop', paths: [], position: { x: 90, y: 198 } } });
+assert.deepEqual(nativeSaved, [{ records, directory: '/project/native' }]);
+for (const cleanup of nativeCleanups) cleanup?.();
+console.log('WKWebView internal drops retain molecular records and use logical Retina coordinates');
