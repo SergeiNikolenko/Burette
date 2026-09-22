@@ -41,14 +41,17 @@ distant dock is never preferred through a second coordinate fallback.
   viewer. Protected `dragover` data is not treated as an empty structure.
 - WKWebView native events may consume internal HTML drops without file paths.
   The native drag session retains the source records until drop or leave, even
-  when the source iframe reports drag end first.
+  when the source iframe reports drag end first. Source identity survives leaving
+  and re-entering the window. Cancellation blocks late native hover/drop events;
+  a completed drop consumes its cached source payload exactly once.
 - Sheet additions wait for readiness from the actual destination iframe, including
   inactive/loading tabs. A queue is bounded to 200 sources / 24 MiB and is cleared
   when the document closes.
 - A tab-header drop has no canvas coordinates. Automatic layout fits additions
   side by side in the visible viewport, accounting for zoom and pan. Manually
   positioned/resized items retain their placement. A direct canvas drop uses the
-  actual drop point in sheet coordinates.
+  actual drop point in sheet coordinates. Dense automatic layouts reduce tile
+  sizes and spacing to fit instead of enforcing a minimum that causes overlap.
 
 ## Focused checks
 

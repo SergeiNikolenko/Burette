@@ -114,3 +114,30 @@ pair[0].style.left = '200px';
 arrange(layoutSheet);
 assert.equal(pair[0].style.left, '200px');
 console.log('Sheet additions fit side by side and preserve manual placement');
+
+// Dense selections must fit without overlapping in a small viewport at any zoom.
+for (const count of [2, 5, 16, 40, 200]) {
+  for (const scale of [0.5, 1, 2]) {
+    const root = document.createElement('div');
+    root.className = 'buret-external-artifact-root';
+    Object.defineProperties(root, { clientWidth: { value: 420 }, clientHeight: { value: 320 } });
+    root.getBoundingClientRect = () => ({ left: 0, top: 0 });
+    const sheet = document.createElement('div');
+    sheet.getBoundingClientRect = () => ({ left: -40, top: -25 });
+    sheet.innerHTML = '<div class="buret-xyzrender-sheet-item"></div>'.repeat(count);
+    root.appendChild(sheet);
+    arrange(sheet, scale);
+    const boxes = [...sheet.children].map(item => {
+      const size = parseFloat(item.style.width) * scale;
+      const x = -40 + parseFloat(item.style.left) * scale;
+      const y = -25 + parseFloat(item.style.top) * scale;
+      assert.ok(size > 0 && x - size / 2 >= 0 && x + size / 2 <= 420 && y - size / 2 >= 0 && y + size / 2 <= 320, `${count} items fit at ${scale} zoom`);
+      return { x, y, size };
+    });
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      assert.ok(Math.abs(a.x-b.x) >= (a.size+b.size)/2 || Math.abs(a.y-b.y) >= (a.size+b.size)/2, `${count} items do not overlap at ${scale} zoom`);
+    }
+  }
+}
+console.log('Dense sheet selections fit at 50%, 100% and 200% zoom');
