@@ -65,6 +65,7 @@ export const Flask = /* @__PURE__ */ appIcon("Flask");
 export const Folder = /* @__PURE__ */ appIcon("Folder");
 export const FolderOpen = /* @__PURE__ */ appIcon("FolderOpen");
 export const FolderPlus = /* @__PURE__ */ appIcon("FolderPlus");
+export const Grid = /* @__PURE__ */ appIcon("Grid");
 export const History = /* @__PURE__ */ appIcon("History");
 export const InfoCircle = /* @__PURE__ */ appIcon("InfoCircle");
 export const Keyboard = /* @__PURE__ */ appIcon("Keyboard");

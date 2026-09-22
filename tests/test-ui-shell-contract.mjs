@@ -8839,7 +8839,7 @@ assert.doesNotMatch(viewer, /payload\.paths\.push\(\.\.\.text\.split/);
 assert.match(previewViewer, /const showTrajectoryControls = activeConfig\?\.trajectoryControls === true/);
 assert.match(previewViewer, /viewportShowTrajectoryControls: showTrajectoryControls/);
 assert.match(viewerShell, /data-buret-action="sdf-grid"/);
-assert.match(viewerShell, /Show SDF grid[\s\S]*>Grid<span class="buret-tooltip" role="tooltip">Return to the SDF grid<\/span><\/button>/);
+assert.match(viewerShell, /Show SDF grid[\s\S]*data-buret-mode-icon="Grid"[^>]*><\/span><span class="buret-tooltip" role="tooltip">Return to the SDF grid<\/span><\/button>/);
 assert.match(previewViewer, /function canOpenSdfGridFromConfig\(config\)/);
 assert.match(previewViewer, /function sdfGridPathForConfig\(config\)/);
 assert.match(previewViewer, /Array\.isArray\(config\?\.docking\?\.ligands\)/);
