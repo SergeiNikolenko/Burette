@@ -152,6 +152,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   const [dropPreview, setDropPreview] = useState<FileDropPreview | null>(null);
   const nativeDragPayloadRef = useRef<StructureDragPayload | null>(null);
   const nativeTabDragRef = useRef<string | null>(null);
+  const browserTabDragRef = useRef<string | null>(null);
   const browserDragPayloadRef = useRef<StructureDragPayload | null>(null);
   const cancelledBrowserDragRef = useRef(false);
   const hideDropFeedback = useCallback(() => {
@@ -413,6 +414,13 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
 
   const handleFileDrop = useCallback(
     (event: DragDropEvent) => {
+      if (event.type === "enter" && event.paths.length) cancelledBrowserDragRef.current = false;
+      if (cancelledBrowserDragRef.current) {
+        hideDropFeedback();
+        window.dispatchEvent(new Event("burette-native-drag-end"));
+        return;
+      }
+      if (event.type === "enter" && !event.paths.length) nativeTabDragRef.current = browserTabDragRef.current;
       if (event.type === "enter" || event.type === "over") {
         const element = elementFromTauriDropPosition(event.position);
         window.dispatchEvent(new CustomEvent("burette-native-drag-hover", {
@@ -456,8 +464,10 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         const target = dropTargetForElement(element);
         const tabId = nativeTabDragRef.current;
         nativeTabDragRef.current = null;
+        browserTabDragRef.current = null;
         if (tabId && element?.closest(".tab-strip")) {
           nativeDragPayloadRef.current = null;
+          browserDragPayloadRef.current = null;
           hideDropFeedback();
           window.dispatchEvent(new CustomEvent("burette-native-tab-drop", { detail: { tabId, x: point?.x } }));
           return;
@@ -468,6 +478,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
           ? { paths: event.paths, records: [], point }
           : { ...(nativeDragPayloadRef.current ?? browserDragPayloadRef.current ?? { paths: [], records: [] }), point };
         nativeDragPayloadRef.current = null;
+        browserDragPayloadRef.current = null;
         hideDropFeedback();
         void runFinderDropAction(payload, target);
         return;
@@ -502,13 +513,15 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   useEffect(() => {
     const resetDropState = () => {
       browserDragPayloadRef.current = null;
+      browserTabDragRef.current = null;
       hideDropFeedback();
     };
     // dragover exposes MIME types but protects getData(). Read our payload
     // after the source's dragstart handler has written it, while it is readable.
     const rememberBrowserDrag = (event: DragEvent) => {
       cancelledBrowserDragRef.current = false;
-      nativeTabDragRef.current = event.dataTransfer?.getData(TAB_DRAG_MIME) || null;
+      browserTabDragRef.current = event.dataTransfer?.getData(TAB_DRAG_MIME) || null;
+      nativeTabDragRef.current = browserTabDragRef.current;
       if (event.dataTransfer && hasStructureDrag(event.dataTransfer)) {
         const payload = readStructureDragPayload(event.dataTransfer);
         browserDragPayloadRef.current = payload;
@@ -543,6 +556,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       browserDragPayloadRef.current = { paths: [], records };
       if (nativeDragPayloadRef.current) nativeDragPayloadRef.current = browserDragPayloadRef.current;
       nativeTabDragRef.current = null;
+      browserTabDragRef.current = null;
       cancelledBrowserDragRef.current = false;
     };
     const resetOnEscape = (event: KeyboardEvent) => {
@@ -561,14 +575,14 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       resetDropState();
     };
     const resetWhenHidden = () => {
-      if (document.visibilityState === "hidden") resetDropState();
+      if (document.visibilityState === "hidden") hideDropFeedback();
     };
 
     window.addEventListener("message", rememberGridDrag);
     window.addEventListener("dragstart", rememberBrowserDrag);
     window.addEventListener("drop", finishDrop, true);
     window.addEventListener("keydown", resetOnEscape, true);
-    window.addEventListener("blur", resetDropState);
+    window.addEventListener("blur", hideDropFeedback);
     window.addEventListener("dragend", resetDropState);
     document.addEventListener("visibilitychange", resetWhenHidden);
     return () => {
@@ -576,7 +590,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       window.removeEventListener("dragstart", rememberBrowserDrag);
       window.removeEventListener("drop", finishDrop, true);
       window.removeEventListener("keydown", resetOnEscape, true);
-      window.removeEventListener("blur", resetDropState);
+      window.removeEventListener("blur", hideDropFeedback);
       window.removeEventListener("dragend", resetDropState);
       document.removeEventListener("visibilitychange", resetWhenHidden);
     };

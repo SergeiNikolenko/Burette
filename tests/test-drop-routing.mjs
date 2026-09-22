@@ -54,10 +54,12 @@ frame.dataset.documentId = 'cold-target';
 document.body.appendChild(frame);
 const sent = [];
 frame.contentWindow.postMessage = message => sent.push(message.body);
+const workflowDocuments = [{ id: 'cold-target', path: '/target.sdf', renderer: 'xyzrender-external' }];
+const workflowStatuses = [];
 const workflow = workflows({
-  activeDocument: null, documents: [{ id: 'cold-target', path: '/target.sdf', renderer: 'xyzrender-external' }],
+  activeDocument: null, documents: workflowDocuments,
   tabs: [{ id: 'target-tab', location: { kind: 'file', documentId: 'cold-target' } }],
-  setActiveTab: id => selectedTabs.push(id), pushStatus() {}, pushErrorStatus() {}, poseReviewSelections: {},
+  setActiveTab: id => selectedTabs.push(id), pushStatus: message => workflowStatuses.push(message), pushErrorStatus() {}, poseReviewSelections: {},
 });
 const cleanups = effects.map(fn => fn());
 const payload = { paths: [], records, point: { x: 20, y: 30 } };
@@ -72,6 +74,19 @@ window.dispatchEvent(new window.MessageEvent('message', { data: readyBody, sourc
 assert.deepEqual(sent.filter(body => body.type === 'addXyzrenderSheetItems'), [0, 1].map(() => ({ type: 'addXyzrenderSheetItems', documentId: 'cold-target', paths: [], records, point: null })));
 window.dispatchEvent(new window.MessageEvent('message', { data: readyBody, source: frame.contentWindow }));
 assert.equal(sent.filter(body => body.type === 'addXyzrenderSheetItems').length, 2);
+const previousAdds = () => sent.filter(body => body.type === 'addXyzrenderSheetItems');
+workflow.addXyzrenderSheetItemsToDocument('cold-target', { paths: [], records: Array(200).fill(records[0]) });
+workflow.addXyzrenderSheetItemsToDocument('cold-target', payload);
+assert.match(workflowStatuses.at(-1), /200 molecules/);
+window.dispatchEvent(new window.MessageEvent('message', { data: readyBody, source: frame.contentWindow }));
+assert.equal(previousAdds().length, 3);
+assert.equal(previousAdds().at(-1).records.length, 200);
+workflow.addXyzrenderSheetItemsToDocument('cold-target', payload);
+workflowDocuments.length = 0;
+effects[0](); // Closing the queued destination clears its pending additions.
+window.dispatchEvent(new window.MessageEvent('message', { data: readyBody, source: frame.contentWindow }));
+assert.equal(previousAdds().length, 3);
+assert.equal(workflow.addXyzrenderSheetItemsToDocument('cold-target', payload), false);
 for (const cleanup of cleanups) cleanup?.();
 console.log('Cold sheet drops wait for the matching frame and flush exactly once');
 
@@ -166,5 +181,57 @@ assert.deepEqual(hovered.at(-1), { tabId: 'target-tab', sourceTabId: null, x: 90
 nativeDrop({ payload: { type: 'leave' } });
 assert.equal(ended, 2);
 assert.equal(nativeSaved.length, 2, 'Tab reorder must not import its structure');
+// Leaving the window does not turn a returning tab drag into molecular import.
+window.dispatchEvent(tabStart);
+nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } });
+nativeDrop({ payload: { type: 'leave' } });
+window.dispatchEvent(new window.Event('blur'));
+nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } });
+window.dispatchEvent(new window.DragEvent('dragend'));
+nativeDrop({ payload: { type: 'drop', paths: [], position: { x: 90, y: 198 } } });
+assert.equal(reordered.length, 2, 'Returning tab drag must retain reorder identity');
+
+// Late native over/drop after Escape cannot reactivate a target or save files.
+document.elementFromPoint = () => folder;
+message('structureDragStart');
+nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } });
+window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }));
+const hoverCountBeforeCancel = hovered.length;
+nativeDrop({ payload: { type: 'over', position: { x: 90, y: 198 } } });
+nativeDrop({ payload: { type: 'drop', paths: [], position: { x: 90, y: 198 } } });
+assert.equal(hovered.length, hoverCountBeforeCancel, 'Cancelled drag must not restart tab hover');
+assert.equal(nativeSaved.length, 2);
+
+// A new gesture works after cancellation and repeated bridge drops are inert.
+message('structureDragStart');
+nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } });
+nativeDrop({ payload: { type: 'drop', paths: [], position: { x: 90, y: 198 } } });
+nativeDrop({ payload: { type: 'drop', paths: [], position: { x: 90, y: 198 } } });
+assert.equal(nativeSaved.length, 3, 'Source payload must be consumed once');
+message('structureDragEnd');
+// Unknown frames and malformed/oversized source records cannot become a drop.
+for (const entry of [
+  { source: window, records },
+  { source: frame.contentWindow, records: [null] },
+  { source: frame.contentWindow, records: Array(201).fill(records[0]) },
+  { source: frame.contentWindow, records: [{ ...records[0], text: 'x'.repeat(24 * 1024 * 1024 + 1) }] },
+]) {
+  nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } });
+  window.dispatchEvent(new window.MessageEvent('message', { source: entry.source,
+    data: { source: 'burette-grid', body: { type: 'structureDragStart', payload: { records: entry.records } } } }));
+  nativeDrop({ payload: { type: 'drop', paths: [], position: { x: 90, y: 198 } } });
+  assert.equal(nativeSaved.length, 3);
+}
+const selection = [...records, { path: 'acetic-acid.smi', inputExtension: 'smi', text: 'CC(=O)O acetic acid' }];
+window.dispatchEvent(new window.MessageEvent('message', { source: frame.contentWindow,
+  data: { source: 'burette-grid', body: { type: 'structureDragStart', payload: { records: selection } } } }));
+nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } });
+nativeDrop({ payload: { type: 'leave' } });
+window.dispatchEvent(new window.Event('blur'));
+nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } });
+message('structureDragEnd');
+nativeDrop({ payload: { type: 'drop', paths: [], position: { x: 90, y: 198 } } });
+assert.deepEqual(nativeSaved.at(-1), { records: selection, directory: '/project/native' });
+assert.equal(nativeSaved.length, 4);
 for (const cleanup of nativeCleanups) cleanup?.();
 console.log('WKWebView internal drops retain molecular records and use logical Retina coordinates');

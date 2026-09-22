@@ -4543,7 +4543,6 @@ assert.match(openDropHook, /const \[dropPreview, setDropPreview\] = useState<Fil
 assert.match(openDropHook, /buildFileDropPreview\(\{/);
 assert.match(openDropHook, /function fileDropTargetElement/);
 assert.match(openDropHook, /nativeDragPayloadRef/);
-assert.match(openDropHook, /window\.addEventListener\("blur", resetDropState\)/);
 assert.match(openDropHook, /document\.addEventListener\("visibilitychange", resetWhenHidden\)/);
 assert.doesNotMatch(openDropHook, /dropResetTimerRef|window\.setTimeout/);
 assert.match(appOpenDropControllerHook, /dropPreview,/);
