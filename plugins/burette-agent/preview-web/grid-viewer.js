@@ -2353,7 +2353,12 @@
       setStatus(`[grid] ${molstarRecordFailureReason('Selected molecules')}`, 'error');
       return;
     }
-    const title = records.length === 1
+    const entireCollection = state.remoteMode
+      ? !state.indexing && rows.length === (state.recordsTotalHint || state.recordsIndexed)
+      : rows.length === state.all.length;
+    const title = entireCollection && cfg?.label
+      ? `${String(cfg.label).replace(/\.[^.]+$/u, '')}.sdf`
+      : records.length === 1
       ? `${safeStructureFileStem(rows[0]?.name || `molecule-${Number(rows[0]?.index) + 1 || 1}`, Number(rows[0]?.index))}.sdf`
       : `selected-${records.length}-molecules.sdf`;
     post('openSdfMolstarDocument', '[grid] Open selected molecules in Molstar.', {
@@ -2894,15 +2899,14 @@
           ensureRdkitMolCoordinates(mol);
           templateMol = mol;
         }
-        molecules.push(mol);
+        molecules.push({ mol, row });
       }
       if (!templateMol) return [];
       return molecules
-        .map(mol => alignedMolblockForMolstar(mol, templateMol))
-        .map(sdfRecordFromMolblock)
+        .map(({ mol, row }) => serializeSdfRows([{ ...row, molblock: alignedMolblockForMolstar(mol, templateMol) }]))
         .filter(text => typeof text === 'string' && text.trim().length > 0);
     } finally {
-      for (const mol of molecules) {
+      for (const { mol } of molecules) {
         try { mol?.delete?.(); } catch {}
       }
     }

@@ -1,1 +1,0 @@
-import{a as e}from"./document-page-CiVr37c5.js";export{e as PdfResourceContent};
