@@ -48,7 +48,7 @@ export function JobsPanel({ state, actions }: Props) {
   return (
     <section className="jobs-panel" aria-label="Calculations">
       <div className="jobs-panel-toolbar">
-        <span>{running ? `${running} running · ` : ""}{rows.length} jobs</span>
+        <span>{running ? `${running} running · ` : ""}{rows.length} {rows.length === 1 ? "job" : "jobs"}</span>
         <Button variant="ghost" size="xs" disabled={rows.length === running} onClick={() => {
           actions.clearConformerJobs(); actions.clearXtbJobs(); actions.clearDerivedColumnJobs(); actions.clearDatabaseJobs();
         }}>Clear finished</Button>
@@ -57,28 +57,25 @@ export function JobsPanel({ state, actions }: Props) {
         <ol className="jobs-panel-list">
           {rows.map((job) => (
             <li key={job.id} className="jobs-panel-row" data-status={job.status}>
-              <div className="jobs-panel-heading">
-                <strong title={job.title}>{job.title}</strong>
-                <span className="jobs-panel-status">{active(job) ? <span className="dock-job-spinner" aria-hidden="true" /> : null}{statusLabels[job.status] ?? job.status}</span>
+              <details className="jobs-panel-details">
+                <summary>
+                  <span className="jobs-panel-heading">
+                    <strong title={job.title}>{job.title}</strong>
+                    <span className="jobs-panel-status">{active(job) ? <span className="dock-job-spinner" aria-hidden="true" /> : null}{statusLabels[job.status] ?? job.status}</span>
+                  </span>
+                </summary>
+                <p className="jobs-panel-summary">{[job.source, job.summary].filter(Boolean).join(" · ")}</p>
+                {job.details ? <pre>{job.details}</pre> : null}
                 <div className="jobs-panel-actions">
-                  {job.cancel ? <Button variant="ghost" size="xs" onClick={job.cancel}>Cancel</Button> : null}
-                  {job.open ? <Button variant="secondary" size="xs" onClick={job.open}>Open result</Button>
-                    : job.report ? <Button variant="ghost" size="xs" onClick={job.report}>Report</Button> : null}
+                  {job.report && job.open ? <Button variant="ghost" size="xs" onClick={job.report}>Report</Button> : null}
+                  {job.log ? <Button variant="ghost" size="xs" onClick={job.log}>Log</Button> : null}
                 </div>
+              </details>
+              <div className="jobs-panel-actions">
+                {job.cancel ? <Button variant="ghost" size="xs" onClick={job.cancel}>Cancel</Button> : null}
+                {job.open ? <Button variant="ghost" size="xs" onClick={job.open}>Open result</Button>
+                  : job.report ? <Button variant="ghost" size="xs" onClick={job.report}>Report</Button> : null}
               </div>
-              <p className="jobs-panel-summary" title={[job.source, job.summary].filter(Boolean).join(" · ")}>
-                {job.source}{job.summary && job.status !== "failed" ? ` · ${job.summary}` : ""}
-              </p>
-              {job.details || job.log || (job.report && job.open) ? (
-                <details className="jobs-panel-details">
-                  <summary>{job.status === "failed" ? "Error details" : "Details"}</summary>
-                  {job.details ? <pre>{job.details}</pre> : null}
-                  <div className="jobs-panel-actions">
-                    {job.report && job.open ? <Button variant="ghost" size="xs" onClick={job.report}>Report</Button> : null}
-                    {job.log ? <Button variant="ghost" size="xs" onClick={job.log}>Log</Button> : null}
-                  </div>
-                </details>
-              ) : null}
             </li>
           ))}
         </ol>

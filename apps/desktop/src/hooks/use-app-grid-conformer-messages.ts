@@ -153,12 +153,9 @@ export function useAppGridConformerMessages({
           .catch((error) => pushErrorStatus(error, "Result saved; could not open report"));
         const converged = result.rows.filter((row) => row.converged).length;
         const failed = result.rows.length - converged;
-        const execution = result.backend === "nativeMetalScfHybrid"
-          ? `with Metal SCF kernels (${result.gpuTimeMs.toLocaleString()} ms GPU, ${result.hostTimeMs.toLocaleString()} ms host)`
-          : `on the CPU reference backend in ${result.hostTimeMs.toLocaleString()} ms`;
         pushStatus(
-          `Calculated native ${result.method} energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} ${execution}${failed ? `; ${failed.toLocaleString()} failed` : ""}; ${result.gridApplied ? "results were written to Grid" : "results were saved but could not be applied to Grid"}.`,
-          failed || !result.gridApplied ? "error" : "success",
+          `${result.method}: ${converged.toLocaleString()} calculated${failed ? ` · ${failed.toLocaleString()} failed` : ""}${!result.gridApplied ? " · table not updated" : ""}`,
+          !converged || !result.gridApplied ? "error" : "success",
           result.gridWarning ? [result.gridWarning] : undefined,
         );
         reply("gridSemiempiricalFinished", {
@@ -206,7 +203,7 @@ export function useAppGridConformerMessages({
           .catch((error) => pushErrorStatus(error, "Result saved; could not open report"));
         const compared = Math.max(0, result.scores.length - 1);
         pushStatus(
-          `Aligned and scored ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"} against the first selected row on Metal in ${result.gpuTimeMs.toLocaleString()} ms; ${result.gridApplied ? "scores were written to Grid" : "scores were saved but could not be applied to Grid"}.`,
+          `Aligned ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"}${!result.gridApplied ? " · table not updated" : ""}`,
           result.gridApplied ? "success" : "error",
         );
         reply("gridAlignmentFinished", {
@@ -349,12 +346,11 @@ export function useAppGridConformerMessages({
           primaryOpenPath: result.primaryOpenPath,
           error: failureMessage || result.gridWarning,
         });
+        const failed = result.failedCount + inputFailures;
         pushStatus(
-          optimizeInputGeometry
-            ? `Processed and validated ${result.passedCount.toLocaleString()} input geometries with ${mmffVariant} via Metal GPU; ${result.gridApplied ? "per-row status and energy were written to Grid" : "results were saved but the table was not updated"}.`
-            : `Generated and ${mmffVariant}-optimized ${result.passedCount.toLocaleString()} valid 3D geometries with ${conformerVariant} via Metal GPU and opened the generated conformer artifact.`,
-          result.failedCount || inputFailures || (gridSource && !result.gridApplied) ? "error" : "success",
-          result.gridWarning ? [result.gridWarning] : undefined,
+          `${optimizeInputGeometry ? "Optimized" : "Generated 3D for"} ${result.passedCount.toLocaleString()} molecule${result.passedCount === 1 ? "" : "s"}${failed ? ` · ${failed} failed` : ""}${gridSource && !result.gridApplied ? " · table not updated" : ""}`,
+          !result.passedCount || (gridSource && !result.gridApplied) ? "error" : "success",
+          [failureMessage, result.gridWarning].filter((message): message is string => Boolean(message)),
         );
         // Opening is presentation, not computation. Keep the published result
         // successful when a viewer cannot be created or restored.

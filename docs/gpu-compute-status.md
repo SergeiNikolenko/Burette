@@ -41,6 +41,10 @@ changes. Their result columns are included in paged table responses. The
 `gridGenerate3DFinished` bridge event carries `gridApplied`; the grid refreshes
 its page after successful conformer/MMFF writeback.
 
+Startup recovery preserves the reserved `partial-analysis` directory rather
+than rejecting it as an unknown artifact. It validates ownership/type and rejects
+symlinks or writable shared directories; existing diagnostic reports are retained.
+
 Partial failures, failed input extraction, non-convergence, and failed table
 writeback are distinguished from successful completion. Unconverged SCF values
 remain in the diagnostic report but are excluded from numeric table columns.
@@ -55,6 +59,34 @@ result-column filtering, and failure-status tests. Actual Metal tests cover the
 24-case pinned RDKit MMFF corpus, reordered-pose alignment, and the existing
 small semiempirical molecule corpus. These checks do not establish universal
 accuracy of the semiempirical methods or performance on large collections.
+
+The collection Actions menu exposes Generate 3D, MMFF optimization, energy and
+charges, and alignment on the native collection bridge. Alignment opens a new
+result tab and leaves the source collection available; a viewer failure does not
+reclassify saved calculation results as failed. Energy headers include units and
+place total energy before diagnostic charge arrays.
+
+Jobs use one collapsed row per run, with active work first and reports/logs in
+expandable details. Clearing finished jobs retains active and queued work.
+Grid error acknowledgments no longer echo duplicate host notifications; long
+error diagnostics are available through Details. Native grid configuration is
+embedded safely in the HTML so restoring a grid does not depend on a sidecar
+script fetch.
+
+The isolated `sar-8f22` debug app was exercised after restarting with existing
+partial-analysis artifacts: ETKDGv3 generated seven valid geometries from the
+eight-row SAR fixture and reported the invalid input as partial completion.
+RM1 on two explicit-H water records converged in 22 iterations; the table showed
+energy units. Native alignment kept the source tab and wrote RMSD scores while
+opening a separate result. This is desktop acceptance, not Finder/Quick Look or
+release-package certification.
+
+Scaffold analysis runs batches of at most 200 molecules (4 Mi UTF-16 code units
+of molecular text) in a dedicated OCL worker. It does not load RDKit or OCL
+predictor tables. The worker is released after the run, including failures.
+This reduces main-thread chemistry work, but does not migrate scaffold or R-group
+jobs into the native durable compute coordinator: R-group decomposition retains
+its bounded RDKit Python runner and atomic source-checked writeback.
 
 ## Interactive analysis control (2026-09-21)
 

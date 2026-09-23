@@ -30,7 +30,9 @@ test("mixed jobs use one ordered list, keep error details collapsed and preserve
   } as unknown as ShellViewState;
   await act(async () => { root.render(<JobsPanel state={state} actions={actions} />); });
   expect([...container.querySelectorAll("li strong")].map(node => node.textContent)).toEqual(["Alignment", "xTB", "Scaffolds", "MMFF", "Failed energy"]);
-  expect(container.querySelector("details")?.open).toBe(false);
+  expect([...container.querySelectorAll("details")].every(details => !details.open)).toBe(true);
+  expect([...container.querySelectorAll("li > p")]).toHaveLength(0);
+  expect([...container.querySelectorAll("summary")].map(node => node.textContent)).toEqual(["AlignmentRunning", "xTBRunning", "ScaffoldsPartial", "MMFFDone", "Failed energyFailed"]);
   expect(container.querySelector("details pre")?.textContent).toBe("Full technical error");
   expect(container.textContent).toContain("Partial");
   expect(container.textContent).not.toContain("No xTB");

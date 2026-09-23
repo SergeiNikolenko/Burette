@@ -64,6 +64,7 @@ function roundedSize(value: number, minimum: number): number {
 // enough to stay legible against a dark surface. The light theme keeps RDKit's
 // own palette, which is what it was designed for.
 const DARK_STRUCTURE_PALETTE = {
+  "1": [0.87, 0.87, 0.87],
   "6": [0.87, 0.87, 0.87],
   "7": [0.45, 0.62, 1],
   "8": [1, 0.45, 0.45],
