@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 const calls: Array<{ command: string; args: Record<string, unknown> }> = [];
 let destination: string | null = '/tmp/animation.gif';
 const reference = '2\nref\nH -1 0 0\nH 1 0 0\n';
@@ -45,4 +46,31 @@ test('trajectory and vibration use the full source rather than the selected inli
   calls.length = 0;
   await renderXyzrender({ path: 'edited.xyz', inputDataBase64: 'edited-inline', animation: { mode: 'trajectory' } });
   expect(calls[0].args.request).toMatchObject({ path: 'edited.xyz', inputDataBase64: 'edited-inline' });
+});
+
+test('periodic XYZ rotation turns atoms and lattice without passing unsupported --ref', async () => {
+  calls.length = 0;
+  const original = readFileSync(new URL('../samples/structures/demo/caffeine_cell.xyz', import.meta.url), 'utf8');
+  const response = await renderXyzrender({ path: '/tmp/caffeine_cell.xyz', inputExtension: 'xyz',
+    inputDataBase64: btoa(original), orientation: [0, 0, 90] });
+  expect(response.ok).toBe(true);
+  expect(calls).toHaveLength(1);
+  const request = calls[0].args.request as Record<string, unknown>;
+  expect(request.orientationRef).toBeUndefined();
+  const rotated = atob(request.inputDataBase64 as string);
+  expect(rotated).toContain('Lattice="0.000000000 14.800000000 0.000000000');
+  expect(rotated).toContain('C -3.715750000 3.137184070 3.547155480');
+  expect((await response.json()).orientationRef).toBe(rotated);
+});
+
+test('periodic orientation remains the input for style and animation renders', async () => {
+  const original = readFileSync(new URL('../samples/structures/demo/caffeine_cell.xyz', import.meta.url), 'utf8');
+  calls.length = 0;
+  await renderXyzrender({ path: '/tmp/caffeine_cell.xyz', preset: 'illustrative',
+    orientationRef: original, inputExtension: 'xyz' });
+  expect(calls[0].args.request).toMatchObject({ orientationRef: undefined, inputDataBase64: btoa(original) });
+  calls.length = 0;
+  await renderXyzrender({ path: '/tmp/caffeine_cell.xyz', orientationRef: original,
+    animation: { mode: 'rotation' } });
+  expect(calls[0].args.request).toMatchObject({ orientationRef: undefined, inputDataBase64: btoa(original) });
 });

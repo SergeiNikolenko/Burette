@@ -866,7 +866,25 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     } else {
         default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
     };
-    let renderer = resolve_renderer(&format, requested_renderer_for_document);
+    // Mol* does not load extended XYZ cells reliably; keep the first view on
+    // the renderer that understands their Lattice metadata.
+    let periodic_xyz = runtime_extension == "xyz"
+        && runtime_data
+            .split(|byte| *byte == b'\n')
+            .nth(1)
+            .is_some_and(|comment| {
+                comment
+                    .windows(b"Lattice=\"".len())
+                    .any(|part| part == b"Lattice=\"")
+            });
+    let renderer = if requested_renderer == "auto"
+        && requested_renderer_for_document == "molstar"
+        && periodic_xyz
+    {
+        "xyzrender-external".to_string()
+    } else {
+        resolve_renderer(&format, requested_renderer_for_document)
+    };
     let runtime = create_runtime(
         app,
         &canonical,
@@ -2720,6 +2738,40 @@ f_m_ct {
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
         }
+    }
+
+    #[test]
+    fn opens_periodic_xyz_in_xyzrender_by_default() {
+        with_fake_xyzrender(|| {
+            let app = mock_app_with_grid_registry();
+            let path = temp_fixture_path("structures/demo/caffeine_cell.xyz");
+            let document = open_document(app.handle(), path.clone(), &viewer_preferences(), None)
+                .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+            assert_eq!(document.renderer, "xyzrender-external");
+            let config_js = fs::read_to_string(
+                Path::new(&document.runtime_path)
+                    .parent()
+                    .unwrap()
+                    .join("preview-config.js"),
+            )
+            .unwrap();
+            let config: serde_json::Value = serde_json::from_str(
+                config_js
+                    .trim()
+                    .strip_prefix("window.BuretteConfig = ")
+                    .and_then(|value| value.strip_suffix(';'))
+                    .unwrap(),
+            )
+            .unwrap();
+            let input = base64::engine::general_purpose::STANDARD
+                .decode(config["xyzrenderInputDataBase64"].as_str().unwrap())
+                .unwrap();
+            assert!(String::from_utf8(input).unwrap().contains("Lattice=\""));
+            remove_runtime_artifacts(&document.runtime_path);
+            if let Some(parent) = path.parent() {
+                let _ = fs::remove_dir_all(parent);
+            }
+        });
     }
 
     #[test]
