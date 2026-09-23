@@ -267,3 +267,13 @@ opens the same file in Grid and dispatches the analysis only after its records
 are ready. Leaving the target tab cancels the pending analysis. Grid-specific
 selection, unsaved-edit, and Python RDKit requirements still apply. Opening all
 rows in Mol* keeps the collection title, and 2D alignment preserves SD properties.
+
+Spread arranges collection molecules in a grid in the 3D scene without changing
+the source coordinates. All/Spread loads each molecule as a separate structure,
+so selection and scene-tree operations stay scoped to that molecule. Stepping
+changes foreground styling without replacing the other structures. Align remains
+a separate operation and is hidden when the collection cannot be aligned.
+
+The initial Mol* canvas stays hidden until its background is configured. Paint
+waits use a timer fallback because WKWebView can suspend animation callbacks for
+hidden canvases; startup must not depend on revealing the canvas first.
