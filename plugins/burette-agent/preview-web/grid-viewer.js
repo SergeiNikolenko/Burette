@@ -7010,7 +7010,6 @@
         <div class="buret-grid-molecule-detail-body">
           <div class="buret-grid-molecule-detail-title-row">
             <div>
-              <div class="buret-eyebrow">Molecule ${Number.isFinite(index) ? index + 1 : ''}</div>
               <h2 id="buret-grid-molecule-detail-title">${escapeHTML(row.name || `Molecule ${index + 1}`)}</h2>
             </div>
             <button type="button" data-buret-detail-close aria-label="Close molecule detail" title="Close">&times;</button>
