@@ -27265,7 +27265,9 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
   }
 
   function showError(error) {
-    const message = error && (error.stack || error.message) ? (error.stack || error.message) : String(error);
+    const message = error instanceof Error
+      ? `${error.name}: ${error.message}${error.stack ? `\n${error.stack}` : ''}`
+      : String(error);
     const diagnostics = window.__BURETTE_HOSTED_MCP_WIDGET__ === true
       ? ''
       : '\n\nCheck: ./scripts/tail-log.sh';
