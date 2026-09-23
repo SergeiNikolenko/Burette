@@ -54,6 +54,12 @@ render(); effects.at(-1)();
 state.activeDocument.renderer = 'molstar'; render();
 assert.equal(calls.at(-1)[4].shouldApply(), false, 'returning to the source must not revive a cancelled open');
 assert.equal(calls.filter(call => call[0] === 'dock').length, 1, 'cancel when leaving target tab');
+state.activeTab.pinned = true;
+options.gridMenuState = null; render(); await handler({ command: 'analyze.chemical-space' });
+state.activeTabId = 'new-grid'; state.activeDocument.renderer = 'grid2d';
+options.gridMenuState = { hasMolecules: true, saveEnabled: true };
+render(); effects.at(-1)();
+assert.equal(calls.filter(call => call[0] === 'dock').length, 2, 'pinned source intentionally opens analysis in a new tab');
 console.log('native collection analysis transition passed');
 
 // Opening a 2D collection in Mol* may replace its coordinates, but it must not

@@ -97,7 +97,7 @@ export function useAppNativeMenu({
   sourceSaveEnabled,
   saveActiveSource,
 }: UseAppNativeMenuOptions) {
-  const [pendingAnalysis, setPendingAnalysis] = useState<{ command: string; path: string; tabId: string | null } | null>(null);
+  const [pendingAnalysis, setPendingAnalysis] = useState<{ command: string; path: string; tabId: string | null; opensNewTab: boolean } | null>(null);
   const [shellEditingText, setShellEditingText] = useState(false);
   const activeDocument = state.activeDocument;
   const analysisRequestRef = useRef(0);
@@ -429,7 +429,7 @@ export function useAppNativeMenu({
     if (command.startsWith("analyze.") && canOpenCollectionAnalysis && activeDocument) {
       const request = ++analysisRequestRef.current;
       const target = analysisTargetRef.current;
-      setPendingAnalysis({ command, path: activeDocument.path, tabId: state.activeTabId });
+      setPendingAnalysis({ command, path: activeDocument.path, tabId: state.activeTabId, opensNewTab: state.activeTab?.pinned === true });
       try {
         await openDocuments([activeDocument.path], undefined, { rendererMode: "grid2d" }, {
           inActiveTab: true,
@@ -699,13 +699,14 @@ export function useAppNativeMenu({
       default:
         console.warn(`Unknown native menu command: ${command}`);
     }
-  }, [actions, activeDocument, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.tabs]);
+  }, [actions, activeDocument, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.activeTab?.pinned, state.tabs]);
 
   // Grid commands need the mounted grid and its records, not just a new document.
   // Cancel if the user leaves the target tab while it is opening.
   useEffect(() => {
     if (!pendingAnalysis) return;
-    if (state.activeTabId !== pendingAnalysis.tabId || activeDocument?.path !== pendingAnalysis.path) {
+    // Opening from a pinned source intentionally creates a new grid tab.
+    if ((state.activeTabId !== pendingAnalysis.tabId && !(pendingAnalysis.opensNewTab && isGrid)) || activeDocument?.path !== pendingAnalysis.path) {
       analysisRequestRef.current += 1;
       setPendingAnalysis(null);
       return;
