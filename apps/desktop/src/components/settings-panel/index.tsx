@@ -143,7 +143,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                 <SettingsSection
                   title="Structure Rendering"
                   rows={[
-                    preferenceRow<"rendererMode">("Mode", "Choose the renderer used for newly opened structures.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode)),
+                    preferenceRow<"rendererMode">("Mode", "Preferred renderer for direct previews. Files opened normally use Auto; use Open As to choose a renderer for one file.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode)),
                     preferenceRow<"molstarStyle">("Mol* appearance", "Default lighting and outline appearance for the Mol* renderer.", preferences.molstarStyle, ["default", "illustrative"], defaultPreferences.molstarStyle, (molstarStyle) => actions.setPreference("molstarStyle", molstarStyle)),
                     {
                       label: "Desktop preview limit",
