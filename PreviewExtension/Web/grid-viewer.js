@@ -3761,6 +3761,11 @@
     if (state.tableColumnScrollFrame || state.rendering || !state.rows.length) return;
     state.tableColumnScrollFrame = window.requestAnimationFrame(() => {
       state.tableColumnScrollFrame = 0;
+      const columns = tableColumnWindow(tableVisibleColumns(tableColumnCatalog()));
+      if (wrapper.dataset.columnWindow === columns.windowColumns.map(column => column.id).join('|')) {
+        startVisibleRdkitCards();
+        return;
+      }
       void renderVirtualWindow(cfg, state.token, { force: true });
     });
   }
@@ -3969,9 +3974,10 @@
       const row = grid.querySelector('.buret-grid-table-row');
       const rect = row?.getBoundingClientRect?.();
       state.estimatedColumnCount = 1;
+      state.estimatedGridGap = 0;
       state.estimatedRowHeight = rect && Number.isFinite(rect.height) && rect.height > 0
         ? Math.max(36, rect.height)
-        : 44;
+        : effectiveMolecularGrid(safeConfig()) ? 61 : 36;
       return;
     }
     const card = grid.querySelector('.buret-card');
@@ -4741,6 +4747,8 @@
     const columnSpan = tableRenderedColumnSpan(columnWindow);
     const wrapper = document.createElement('div');
     wrapper.className = 'buret-grid-table-wrap';
+    wrapper.classList.toggle('buret-grid-table-molecular', effectiveMolecularGrid(cfg));
+    wrapper.dataset.columnWindow = columnWindow.windowColumns.map(column => column.id).join('|');
     wrapper.tabIndex = 0;
     wrapper.setAttribute('aria-label', effectiveMolecularGrid(cfg) ? 'Molecule table' : 'Data table');
     wrapper.innerHTML = `
@@ -4972,7 +4980,9 @@
 
   function tableVisibleColumns(catalog) {
     return catalog.filter(column => column.fixed || !state.tableHiddenColumns.has(column.id))
-      .sort((a, b) => Number(state.tablePinnedColumns.has(b.id)) - Number(state.tablePinnedColumns.has(a.id)));
+      .sort((a, b) => Number(state.tablePinnedColumns.has(b.id)) - Number(state.tablePinnedColumns.has(a.id))
+        || Number(['prop:CSV row', 'prop:SMILES column'].includes(a.id))
+          - Number(['prop:CSV row', 'prop:SMILES column'].includes(b.id)));
   }
 
   function tableColumnWindow(columns) {
@@ -5048,24 +5058,22 @@
   function tableColumnWidth(column) {
     const override = state.tableColumnWidths.get(column.id);
     if (Number.isFinite(override)) return override;
-    if (column.id === 'index') return 64;
+    if (column.id === 'index') return 44;
     if (column.id === 'molecule') return 74;
     if (column.id === 'name') return 160;
-    if (column.id === 'smiles') return 240;
+    if (column.id === 'smiles') return 180;
     return TABLE_DEFAULT_COLUMN_WIDTH;
   }
 
-  // Only user-resized columns get inline widths; the others keep the
-  // stylesheet's content-driven min/max clamp.
+  // Use the same widths for layout and column virtualization to avoid jumps.
   function tableColumnWidthStyle(column) {
     const pinnedLeft = state.tablePinnedOffsets.get(column.id);
     if (pinnedLeft !== undefined) {
       const width = tableColumnWidth(column);
       return ` data-buret-pinned-column="true" style="position:sticky;left:${pinnedLeft}px;width:${width}px;min-width:${width}px;max-width:${width}px"`;
     }
-    const override = state.tableColumnWidths.get(column.id);
-    if (!Number.isFinite(override)) return '';
-    return ` style="width:${override}px;min-width:${override}px;max-width:${override}px"`;
+    const width = tableColumnWidth(column);
+    return ` style="width:${width}px;min-width:${width}px;max-width:${width}px"`;
   }
 
   function tableColumnResizable(column) {

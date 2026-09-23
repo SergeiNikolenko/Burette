@@ -51,6 +51,26 @@ assert.deepEqual([...state.svgCache.keys()], ['cold', 'hot'], 'recently viewed d
 console.log('Grid card scheduling: priority, frame budget, in-flight deduplication, bounded prefetch and LRU passed.');
 
 {
+  const callbacks = [];
+  const scrolling = { tableScrollLeft: 0, tableColumnScrollFrame: 0, rows: [{}], token: 1 };
+  let columns = [{ id: 'name' }, { id: 'smiles' }], rebuilds = 0;
+  const scroll = new Function('state', 'window', 'tableColumnWindow', 'tableVisibleColumns',
+    'tableColumnCatalog', 'startVisibleRdkitCards', 'renderVirtualWindow', `
+      ${body('handleTableColumnScroll')} return handleTableColumnScroll;
+    `)(scrolling, { requestAnimationFrame(fn) { callbacks.push(fn); return 1; } },
+    () => ({ windowColumns: columns }), value => value, () => [], () => {}, () => { rebuilds++; });
+  const wrapper = { scrollLeft: 20, dataset: { columnWindow: 'name|smiles' } };
+  scroll(wrapper, {});
+  callbacks.shift()();
+  assert.equal(rebuilds, 0, 'scrolling within mounted columns preserves the table and its drawings');
+  columns = [{ id: 'smiles' }, { id: 'prop:RGroup_Core' }];
+  wrapper.scrollLeft = 200;
+  scroll(wrapper, {});
+  callbacks.shift()();
+  assert.equal(rebuilds, 1, 'crossing the column window mounts newly visible columns');
+}
+
+{
   const pendingFrames = [], updates = [];
   let draws = 0;
   const shared = { rdkit: {}, rdkitCardRendering: false, rdkitCardQueue: [], rdkitCardPending: new Map(), rdkitCardSeq: 0, svgCache: new Map() };

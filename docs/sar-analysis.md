@@ -58,3 +58,5 @@ original SMILES. Identical visible fragments share a cached depiction.
 CSV Save and Export use the same marked encoding so provenance columns cannot
 be mistaken for additional structures on reopen. The native Save output in
 `tests/fixtures/sar/two-series-saved.csv` is a regression fixture for this path.
+The browser importer and Swift preview parser also honour that primary SMILES
+column (`test-collection-documents.mjs`, `test-sar-preview-import.mjs`).

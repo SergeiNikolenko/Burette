@@ -1176,7 +1176,7 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
    spectrum peak table's row-state language on top. */
 .buret-grid-table {
   width: max-content;
-  min-width: 100%;
+  min-width: 0;
   border: 1px solid var(--buret-border);
   border-collapse: separate;
   border-spacing: 0;
@@ -1192,7 +1192,7 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   box-sizing: border-box;
   min-width: 118px;
   max-width: 220px;
-  padding: 8px 12px;
+  padding: 4px 10px;
   border: 0;
   border-bottom: 1px solid var(--buret-table-divider);
   overflow: hidden;
@@ -1204,6 +1204,11 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
 .buret-grid-table td {
   background: var(--buret-table-surface);
   transition: background 120ms ease-out;
+}
+
+/* Keep the vertical position stable when structural columns leave the window. */
+.buret-grid-table-molecular .buret-grid-table-row {
+  height: 61px;
 }
 
 .buret-grid-table th.buret-grid-table-search-column {
@@ -1229,14 +1234,14 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   width: 74px;
   min-width: 74px;
   max-width: 74px;
-  padding-block: 7px;
+  padding-block: 4px;
 }
 
 .buret-grid-table th[data-column="index"],
 .buret-grid-table td[data-column="index"] {
-  width: 64px;
-  min-width: 64px;
-  max-width: 64px;
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
 }
 
 .buret-grid-table-filter-header {
@@ -1258,9 +1263,9 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
 
 .buret-grid-table th[data-column="smiles"],
 .buret-grid-table td[data-column="smiles"] {
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: 180px;
+  min-width: 180px;
+  max-width: 180px;
 }
 
 .buret-grid-table-column-spacer {
@@ -1276,10 +1281,7 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   height: 52px;
   box-sizing: border-box;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--buret-table-divider) 76%, transparent);
-  border-radius: 10px;
   background: var(--buret-picture-bg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.035);
 }
 
 .buret-grid-table-molecule svg,
@@ -2796,16 +2798,18 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
 .buret-grid-table-fragment {
   width: 100%;
   min-width: 96px;
-  height: 88px;
+  height: 52px;
   display: grid;
   place-items: center;
   background: var(--buret-picture-bg);
   overflow: hidden;
 }
+.buret-grid-table-fragment > div:not(.buret-molecule-loading),
 .buret-grid-table-fragment svg {
   display: block;
   width: 100%;
   height: 100%;
+  min-height: 0;
 }
 .buret-grid-table-fragment .buret-molecule-loading {
   min-height: 0;

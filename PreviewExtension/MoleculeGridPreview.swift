@@ -424,7 +424,10 @@ enum MoleculeGridPreviewBuilder {
         let inferredSmilesIndexes = firstRowLooksLikeData
             ? []
             : inferSmilesColumnIndexes(rows: Array(rows.dropFirst()), columnCount: headers.count, separator: separator)
-        let smilesIndexes = Array(Set(namedSmilesIndexes + inferredSmilesIndexes)).sorted()
+        let savedSmilesIndex = normalizedHeaders.contains("burette_encoding")
+            ? normalizedHeaders.firstIndex(of: "smiles") : nil
+        let smilesIndexes = savedSmilesIndex.map { [$0] }
+            ?? Array(Set(namedSmilesIndexes + inferredSmilesIndexes)).sorted()
         guard !smilesIndexes.isEmpty else {
             throw MoleculeGridPreviewError.missingMoleculeColumn(format.uppercased())
         }
@@ -454,6 +457,7 @@ enum MoleculeGridPreviewBuilder {
                 ]
                 for (index, header) in headers.enumerated() where !smilesIndexes.contains(index) && index != nameIndex {
                     guard index < cells.count else { continue }
+                    if savedSmilesIndex != nil && ["burette_encoding", "index"].contains(normalizedHeaders[index]) { continue }
                     let value = cells[index].trimmingCharacters(in: .whitespacesAndNewlines)
                     if !header.isEmpty, !value.isEmpty, props.count < 64 {
                         props[clipped(header, limit: 80)] = clipped(value, limit: 500)

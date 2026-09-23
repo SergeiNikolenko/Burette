@@ -112,7 +112,7 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v193";
+const GRID_ASSET_VERSION = "grid-ui-v194";
 const VIEWER_ASSET_VERSION = "viewer-ui-v86";
 const MESOSCALE_ASSET_VERSION = "mesoscale-ui-v1";
 // One cache-buster per page load, not per render: the viewer iframe is keyed by
@@ -1676,13 +1676,17 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
     .filter((row) => row.some((cell) => cell.trim() !== ""));
   if (rows.length < 2) return [];
   const headers = rows[0].map((cell) => cell.trim());
+  const normalizedHeaders = headers.map((header) => header.toLowerCase());
+  const savedSmilesIndex = normalizedHeaders.includes("burette_encoding")
+    ? normalizedHeaders.indexOf("smiles") : -1;
   const namedSmilesIndexes = headers
     .map((header, index) => (isDelimitedSmilesHeader(header) ? index : -1))
     .filter((index) => index >= 0);
   const inferredSmilesIndexes = rows[0].some((cell) => looksLikeSmiles(cell))
     ? []
     : inferDelimitedSmilesColumns(rows.slice(1), headers.length);
-  const smilesIndexes = [...new Set([...namedSmilesIndexes, ...inferredSmilesIndexes])].sort((left, right) => left - right);
+  const smilesIndexes = savedSmilesIndex >= 0 ? [savedSmilesIndex]
+    : [...new Set([...namedSmilesIndexes, ...inferredSmilesIndexes])].sort((left, right) => left - right);
   if (!smilesIndexes.length) return parseDelimitedTableRows(rows, headers);
   const smilesIndexSet = new Set(smilesIndexes);
   const hasMultipleSmilesColumns = smilesIndexes.length > 1;
@@ -1697,7 +1701,7 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
     const records: GridRecord[] = [];
     for (const smilesIndex of smilesIndexes) {
       const smiles = row[smilesIndex]?.trim();
-      if (!looksLikeSmiles(smiles)) continue;
+      if (!smiles || (savedSmilesIndex < 0 && !looksLikeSmiles(smiles))) continue;
       const columnName = headers[smilesIndex] || `Column ${smilesIndex + 1}`;
       const props: Record<string, string> = {
         "CSV row": String(rowIndex + 1),
@@ -1706,6 +1710,7 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
       const descriptors: GridRecord["descriptors"] = {};
       headers.forEach((header, index) => {
         if (smilesIndexSet.has(index) || index === nameIndex) return;
+        if (savedSmilesIndex >= 0 && ["burette_encoding", "index"].includes(normalizedHeaders[index])) return;
         const value = row[index]?.trim();
         const descriptor = descriptorColumns.get(index);
         if (descriptor) {
