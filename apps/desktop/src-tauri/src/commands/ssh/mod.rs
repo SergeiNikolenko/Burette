@@ -55,8 +55,8 @@ fn validate(request: &Request) -> Result<(), String> {
 fn run(request: &Request, operation: &str) -> Result<Vec<u8>, String> {
     validate(request)?;
     let _guard = REQUEST_LOCK
-        .try_lock()
-        .map_err(|_| "Another SSH request is running; try again when it finishes")?;
+        .lock()
+        .map_err(|_| "SSH request queue is unavailable")?;
     let mut payload =
         serde_json::json!({"operation": operation, "root": request.root, "path": request.path});
     if operation == "list" && request.chemical {
@@ -307,6 +307,33 @@ mod tests {
             .is_ok());
         }
     }
+    #[test]
+    #[ignore = "requires an explicitly selected trusted SSH host and directory"]
+    fn live_concurrent_remote_lists() {
+        let request = Request {
+            host: std::env::var("BURETTE_SSH_TEST_HOST").expect("test host"),
+            root: std::env::var("BURETTE_SSH_TEST_ROOT").expect("test root"),
+            path: ".".into(),
+            chemical: false,
+        };
+        let start = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let workers: Vec<_> = (0..2)
+            .map(|_| {
+                let request = request.clone();
+                let start = start.clone();
+                std::thread::spawn(move || {
+                    start.wait();
+                    let bytes = run(&request, "list").expect("queued remote listing");
+                    let listing: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                    assert!(listing["entries"].is_array());
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().expect("concurrent SSH request");
+        }
+    }
+
     #[test]
     #[ignore = "requires an explicitly selected trusted SSH host and sample directory"]
     fn live_remote_structure_roundtrip() {

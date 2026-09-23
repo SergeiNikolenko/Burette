@@ -51,6 +51,10 @@ export function isProteinLikeDockingSource(path: string) {
   return ["bcif", "cif", "cms", "ent", "mae", "maegz", "mcif", "mmcif", "pdb", "pdbqt", "pqr"].includes(extensionForDocking(path));
 }
 
+export function isMolstarSceneImportSource(path: string) {
+  return ["pdb", "cif", "mmcif", "mol", "mol2", "sdf", "xyz"].includes(extensionForDocking(path));
+}
+
 export function isMolstarCombineSource(path: string) {
   return MOLSTAR_COMBINE_EXTENSIONS.has(extensionForDocking(path));
 }

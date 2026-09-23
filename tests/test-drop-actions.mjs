@@ -987,3 +987,21 @@ assert.equal(buildFileDropPreview({
   target: { kind: "workspace" }, source: { kind: "sidebar" },
   bounds: previewBounds, point: { x: 400, y: 200 },
 }).itemLabel, "ligand.sdf");
+
+// A drop into a mounted Mol* document appends to that exact scene, including
+// inactive tabs and existing docking scenes; it must never rebuild the receptor.
+for (const source of [{ kind: "sidebar" }, { kind: "grid" }, { kind: "finder" }, { kind: "tab" }]) {
+  for (const incoming of [payload(["/tmp/poses.sdf"]), payload([], [{ path: "collection/row-7/ligand.sdf", inputExtension: "sdf", text: "ligand" }])]) {
+    const target = { kind: "active-viewer", documentId: "receptor-tab", documentPath: "/tmp/receptor.pdb", renderer: "molstar" };
+    assert.deepEqual(resolveDropAction(incoming, target, source), {
+      kind: "append-scene-files", targetDocumentId: "receptor-tab", payload: incoming,
+    });
+    assert.deepEqual(resolveDropAction(incoming, { ...target, dockingRequest: { receptorPath: "/tmp/receptor.pdb", ligandPaths: ["/tmp/old.sdf"] } }, source), {
+      kind: "append-scene-files", targetDocumentId: "receptor-tab", payload: incoming,
+    });
+    assert.equal(resolveDropActionChoices(incoming, target, source)[0].label, "Add to scene");
+  }
+}
+assert.equal(resolveDropAction(payload(["/tmp/motion.xtc"]), {
+  kind: "active-viewer", documentId: "receptor-tab", documentPath: "/tmp/receptor.pdb", renderer: "molstar",
+}).kind, "open-docking", "trajectory pairing retains its explicit workflow");

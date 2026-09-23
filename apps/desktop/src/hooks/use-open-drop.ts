@@ -1,3 +1,4 @@
+import { appendScenePayload } from "./workspace-scene-import";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -246,6 +247,10 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   }, [activeTabKind, activeViewerTarget]);
 
   const executeDropAction = useCallback((action: DropAction, payload: StructureDragPayload) => {
+    if (action.kind === "append-scene-files") {
+      void appendScenePayload(action.targetDocumentId, action.payload).catch(error => pushStatus(`Add to scene failed: ${String(error)}`, "error"));
+      return;
+    }
     if (action.kind === "merge-collection") {
       if (mergeMoleculeCollections) {
         void mergeMoleculeCollections(action.targetPath, action.paths);
