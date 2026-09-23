@@ -140,6 +140,7 @@ assert.deepEqual([...reversed.rows].sort((a,b)=>a.rowId-b.rowId), [...decomposed
 // Rejoin every decomposition to its input, including hydrogen, stereo, salt,
 // and a bridge attached to the core at two positions.
 const reconstructionCases = [
+  ["C1CCCCC1", ["CC1(C)CCCCC1", "CCC1(C)CCCCC1"]],
   ["c1ccccc1", ["c1ccccc1", "Cc1ccccc1", "C[C@H](O)c1ccccc1", "C[C@@H](O)c1ccccc1"]],
   ["c1ccccc1", ["Oc1ccccc1", "COc1ccccc1"]],
   ["c1ccccc1", ["[Na+].[O-]c1ccccc1", "[Na+].[O-]c1ccc(C)cc1"]],

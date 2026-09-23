@@ -51,13 +51,11 @@ def fold_constants(Chem, assignments):
     constants = [label for label in labels
                  if len({row.get(label, "") for row in assignments}) == 1]
     for row in assignments:
-        # A bridging substituent appears under multiple R labels. Zip it once.
-        fragments = list(dict.fromkeys(row[label] for label in constants if row.get(label)))
-        if fragments:
-            combined = Chem.MolFromSmiles(row["Core"])
-            for fragment in fragments:
-                combined = Chem.CombineMols(combined, Chem.MolFromSmiles(fragment))
-            core = Chem.molzip(combined)
+        if constants:
+            # RDKit's row overload handles duplicated bridge fragments and
+            # broken cycles; concatenating SMILES can duplicate attachment atoms.
+            core = Chem.molzip({label: Chem.MolFromSmiles(row[label])
+                                for label in ["Core", *constants] if row.get(label)})
             Chem.SanitizeMol(core)
             row["Core"] = Chem.MolToSmiles(Chem.RemoveHs(core))
         for label in constants:
@@ -99,6 +97,7 @@ def decompose(payload, engine):
         parameters = rgd.RGroupDecompositionParameters()
         parameters.removeAllHydrogenRGroups = True
         parameters.onlyMatchAtRGroups = False
+        parameters.allowMultipleRGroupsOnUnlabelled = True
         parameters.timeout = 30
         decomposition = rgd.RGroupDecomposition(core, parameters)
         matched = []
@@ -125,7 +124,8 @@ def decompose(payload, engine):
                 values["Components"] = components[row_id]
             rows.append({"rowId": row_id, "values": values})
         series.append({"id": series_id, "core": assignments[0]["Core"], "query": key,
-                       "matchedRows": len(matched), "labels": labels, "constantPositions": len(constants)})
+                       "matchedRows": len(matched), "labels": labels, "constantPositions": len(constants),
+                       "coreVariantCount": len({row["Core"] for row in assignments})})
     labels = ["Series", "Status", "Core"] + sorted(rlabels, key=lambda label: int(label[1:]))
     if components:
         labels.append("Components")
