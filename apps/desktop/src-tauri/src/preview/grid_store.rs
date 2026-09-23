@@ -1054,7 +1054,13 @@ fn attach_latest_analysis_runs(
     page_rows: &mut [GridPageRow],
 ) -> Result<Vec<GridAnalysisColumn>, String> {
     let mut columns = Vec::new();
-    for workflow_template in ["cluster.v1", "similaritySearch.v1", "conformer.v1"] {
+    for workflow_template in [
+        "cluster.v1",
+        "similaritySearch.v1",
+        "conformer.v1",
+        "alignment.v1",
+        "semiempirical.v1",
+    ] {
         columns.extend(attach_latest_analysis_run(
             connection,
             page_rows,
@@ -1192,6 +1198,11 @@ fn analysis_label(value_id: &str) -> &str {
         "mmffOptimizationStatus" => "MMFF status",
         "mmffOptimizationError" => "MMFF error",
         "conformerError" => "Conformer error",
+        "alignmentReference" => "Reference pose",
+        "alignedRmsd" => "Aligned RMSD (Å)",
+        "shapeTanimoto" => "Shape Tanimoto",
+        "electrostaticCarbo" => "Electrostatic Carbo",
+        "combinedPoseSimilarity" => "Pose similarity",
         _ => value_id,
     }
 }
@@ -4259,134 +4270,145 @@ mod tests {
 
     #[test]
     fn analysis_filtered_page_matches_the_shared_predicate() {
-        let runtime_dir = temp_runtime_dir();
-        let csv = "smiles,name\nCCO,Ethanol\nc1ccccc1,Benzene\nCCN,Ethylamine\n";
-        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
-        wait_for_index_ready(&database_path);
-        let connection = Connection::open(&database_path).expect("open database");
-        let run_id = uuid::Uuid::from_u128(7);
-        let (document_fingerprint_sha256, source_revision) = connection
-            .query_row(
-                "select document_fingerprint_sha256, source_revision
+        for (workflow_template, value_id, label) in [
+            (WorkflowTemplateId::ClusterV1, "clusterId", "Cluster ID"),
+            (
+                WorkflowTemplateId::AlignmentV1,
+                "alignedRmsd",
+                "Aligned RMSD (Å)",
+            ),
+            (
+                WorkflowTemplateId::SemiempiricalV1,
+                "rm1TotalEnergyEv",
+                "rm1TotalEnergyEv",
+            ),
+        ] {
+            let runtime_dir = temp_runtime_dir();
+            let csv = "smiles,name\nCCO,Ethanol\nc1ccccc1,Benzene\nCCN,Ethylamine\n";
+            let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+            wait_for_index_ready(&database_path);
+            let connection = Connection::open(&database_path).expect("open database");
+            let run_id = uuid::Uuid::from_u128(7);
+            let (document_fingerprint_sha256, source_revision) = connection
+                .query_row(
+                    "select document_fingerprint_sha256, source_revision
                  from grid_metadata where id = 1",
-                [],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?)),
-            )
-            .expect("read current Grid identity");
-        let molecules = {
-            let mut statement = connection
-                .prepare(
-                    "select id, source_index, molecule_content_sha256
-                     from molecules order by source_index",
+                    [],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?)),
                 )
-                .expect("prepare molecule identities");
-            let rows = statement
-                .query_map([], |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, u64>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
-                })
-                .expect("query molecule identities")
-                .collect::<Result<Vec<_>, _>>()
-                .expect("collect molecule identities");
-            rows
-        };
-        drop(connection);
-        grid_analysis::apply_analysis_run(
-            &database_path,
-            &grid_analysis::GridAnalysisApplyInput {
-                run_id,
-                workflow_template: WorkflowTemplateId::ClusterV1,
-                document_fingerprint_sha256,
-                source_revision,
-                snapshot_id: uuid::Uuid::from_u128(8),
-                snapshot_sha256: "c".repeat(64),
-                normalized_settings_sha256: "b".repeat(64),
-                maturity: CapabilityMaturity::Experimental,
-                representative_policy: RepresentativePolicy::ButinaMaxNeighborsV1,
-                provenance: serde_json::json!({}),
-                created_at_ms: 1,
-                values: molecules
-                    .into_iter()
-                    .map(|(molecule_id, source_index, molecule_content_sha256)| {
-                        grid_analysis::GridAnalysisValueInput {
-                            molecule_id,
-                            source_index,
-                            molecule_content_sha256,
-                            value_id: "clusterId".into(),
-                            value: grid_analysis::GridAnalysisValue::Integer(
-                                ((source_index + 1) * 10) as i64,
-                            ),
-                        }
+                .expect("read current Grid identity");
+            let molecules = {
+                let mut statement = connection
+                    .prepare(
+                        "select id, source_index, molecule_content_sha256
+                     from molecules order by source_index",
+                    )
+                    .expect("prepare molecule identities");
+                let rows = statement
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, u64>(1)?,
+                            row.get::<_, String>(2)?,
+                        ))
                     })
-                    .collect(),
-                artifacts: Vec::new(),
-            },
-        )
-        .expect("apply typed analysis values");
+                    .expect("query molecule identities")
+                    .collect::<Result<Vec<_>, _>>()
+                    .expect("collect molecule identities");
+                rows
+            };
+            drop(connection);
+            grid_analysis::apply_analysis_run(
+                &database_path,
+                &grid_analysis::GridAnalysisApplyInput {
+                    run_id,
+                    workflow_template,
+                    document_fingerprint_sha256,
+                    source_revision,
+                    snapshot_id: uuid::Uuid::from_u128(8),
+                    snapshot_sha256: "c".repeat(64),
+                    normalized_settings_sha256: "b".repeat(64),
+                    maturity: CapabilityMaturity::Experimental,
+                    representative_policy: RepresentativePolicy::ButinaMaxNeighborsV1,
+                    provenance: serde_json::json!({}),
+                    created_at_ms: 1,
+                    values: molecules
+                        .into_iter()
+                        .map(|(molecule_id, source_index, molecule_content_sha256)| {
+                            grid_analysis::GridAnalysisValueInput {
+                                molecule_id,
+                                source_index,
+                                molecule_content_sha256,
+                                value_id: value_id.into(),
+                                value: grid_analysis::GridAnalysisValue::Integer(
+                                    ((source_index + 1) * 10) as i64,
+                                ),
+                            }
+                        })
+                        .collect(),
+                    artifacts: Vec::new(),
+                },
+            )
+            .expect("apply typed analysis values");
 
-        let analysis_filters = vec![AnalysisFilter {
-            run_id,
-            value_id: "clusterId".to_string(),
-            min: Some(15.0),
-            max: Some(25.0),
-        }];
-        let page = fetch_page(
-            &database_path,
-            &GridQuery {
-                query: String::new(),
-                sort: "index".to_string(),
-                analysis_filters: analysis_filters.clone(),
-                column_filters: Vec::new(),
-                descriptor_filters: Vec::new(),
-                descriptor_sort: None,
-                offset: 0,
-                limit: 96,
-            },
-        )
-        .expect("fetch analysis-filtered page");
-        let plan = grid_predicate::plan_grid_predicate(
-            &GridTextQuery::Text {
-                text: String::new(),
-            },
-            &[],
-            &[],
-            &analysis_filters,
-        )
-        .expect("plan matching predicate");
-        let connection = Connection::open(&database_path).expect("reopen database");
-        let direct_sql = format!(
-            "select source_index from molecules where {} order by source_index",
-            plan.predicate_sql
-        );
-        let direct_indexes = connection
-            .prepare(&direct_sql)
-            .expect("prepare direct predicate")
-            .query_map(params_from_iter(plan.params.iter()), |row| row.get(0))
-            .expect("query direct predicate")
-            .collect::<Result<Vec<usize>, _>>()
-            .expect("collect direct indexes");
+            let analysis_filters = vec![AnalysisFilter {
+                run_id,
+                value_id: value_id.to_string(),
+                min: Some(15.0),
+                max: Some(25.0),
+            }];
+            let page = fetch_page(
+                &database_path,
+                &GridQuery {
+                    query: String::new(),
+                    sort: "index".to_string(),
+                    analysis_filters: analysis_filters.clone(),
+                    column_filters: Vec::new(),
+                    descriptor_filters: Vec::new(),
+                    descriptor_sort: None,
+                    offset: 0,
+                    limit: 96,
+                },
+            )
+            .expect("fetch analysis-filtered page");
+            let plan = grid_predicate::plan_grid_predicate(
+                &GridTextQuery::Text {
+                    text: String::new(),
+                },
+                &[],
+                &[],
+                &analysis_filters,
+            )
+            .expect("plan matching predicate");
+            let connection = Connection::open(&database_path).expect("reopen database");
+            let direct_sql = format!(
+                "select source_index from molecules where {} order by source_index",
+                plan.predicate_sql
+            );
+            let direct_indexes = connection
+                .prepare(&direct_sql)
+                .expect("prepare direct predicate")
+                .query_map(params_from_iter(plan.params.iter()), |row| row.get(0))
+                .expect("query direct predicate")
+                .collect::<Result<Vec<usize>, _>>()
+                .expect("collect direct indexes");
 
-        assert_eq!(
-            page.rows.iter().map(|row| row.index).collect::<Vec<_>>(),
-            direct_indexes
-        );
-        assert_eq!(direct_indexes, vec![1]);
-        assert_eq!(page.analysis_columns.len(), 1);
-        assert_eq!(page.analysis_columns[0].run_id, run_id.to_string());
-        assert_eq!(page.analysis_columns[0].value_id, "clusterId");
-        assert_eq!(page.analysis_columns[0].label, "Cluster ID");
-        assert_eq!(page.analysis_columns[0].value_kind, "integer");
-        assert_eq!(
-            page.rows[0]
-                .analyses
-                .get("clusterId")
-                .map(|cell| &cell.value),
-            Some(&serde_json::json!(20))
-        );
-        let _ = std::fs::remove_dir_all(&runtime_dir);
+            assert_eq!(
+                page.rows.iter().map(|row| row.index).collect::<Vec<_>>(),
+                direct_indexes
+            );
+            assert_eq!(direct_indexes, vec![1]);
+            assert_eq!(page.analysis_columns.len(), 1);
+            assert_eq!(page.analysis_columns[0].run_id, run_id.to_string());
+            assert_eq!(page.analysis_columns[0].value_id, value_id);
+            assert_eq!(page.analysis_columns[0].label, label);
+            assert_eq!(page.analysis_columns[0].value_kind, "integer");
+            assert_eq!(
+                page.rows[0].analyses.get(value_id).map(|cell| &cell.value),
+                Some(&serde_json::json!(20))
+            );
+            let _ = std::fs::remove_dir_all(&runtime_dir);
+        }
     }
 
     #[test]

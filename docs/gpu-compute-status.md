@@ -31,6 +31,31 @@ Acceptance contract:
 Upstream ledger:
 [mlxmolkit Provenance and Adaptation Ledger](third-party/mlxmolkit-provenance.md)
 
+## Collection compute reliability (2026-09-23)
+
+Native collection calculations resolve the complete selected index set against a
+frozen grid snapshot; the WebView no longer copies only the loaded page into a
+standalone conformer job. Alignment and semiempirical writeback use the original
+snapshot revision and record hashes, with transactional rejection if the source
+changes. Their result columns are included in paged table responses. The
+`gridGenerate3DFinished` bridge event carries `gridApplied`; the grid refreshes
+its page after successful conformer/MMFF writeback.
+
+Partial failures, failed input extraction, non-convergence, and failed table
+writeback are distinguished from successful completion. Unconverged SCF values
+remain in the diagnostic report but are excluded from numeric table columns.
+Energy evaluation requires finite spatial coordinates and a conservative
+closed-shell explicit-valence input domain: unexpanded hydrogen counts,
+radicals, unsupported valences, and explicit 2D drawings are rejected. Planar
+molecules are allowed. This guard is not a general chemical sanitization or
+preparation engine; unsupported chemistry still needs a preparation path.
+
+Focused validation includes stale-source atomic writeback, paged selection,
+result-column filtering, and failure-status tests. Actual Metal tests cover the
+24-case pinned RDKit MMFF corpus, reordered-pose alignment, and the existing
+small semiempirical molecule corpus. These checks do not establish universal
+accuracy of the semiempirical methods or performance on large collections.
+
 ## Interactive analysis control (2026-09-21)
 
 `compute_align_grid_poses` and `compute_evaluate_grid_semiempirical` retain their
