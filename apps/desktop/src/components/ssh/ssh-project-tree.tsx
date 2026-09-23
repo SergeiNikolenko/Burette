@@ -24,18 +24,24 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
   const [limits, setLimits] = useState<Record<string, number>>({});
   const [deleting, setDeleting] = useState<{ path: string; fullPath: string } | null>(null);
   const lock = useRef(false);
-  const queued = useRef<{ operation: Operation; refresh: boolean } | null>(null);
+  const queued = useRef<Array<{ operation: Operation; refresh: boolean }>>([]);
   const projectMenu = useSshProjectMenu(project, connection);
   const enabled = connection?.enabled !== false;
   const health = useSshStatus(project.host);
   const status = !enabled ? "Disabled" : pending ? "Connecting…" : failure ? "Connection or file error" : (health ? health.available : !!lastSuccess) ? "Available" : "Connects when needed";
   async function run(operation: Operation, refresh = false) {
-    if (lock.current) { queued.current = { operation, refresh }; return; }
-    if (!enabled) { setFailure({ operation, message: "Enable this connection in Settings → Connections." }); return; }
-    const cached = directories.get(operation.path);
-    if (operation.type === "list" && !refresh && cached && Date.now() - cached.time < 30000) { setFailure(null); return; }
-    lock.current = true; setPending(operation); setFailure(null);
+    if (lock.current) {
+      const existing = queued.current.find(item => item.operation.type === operation.type && item.operation.path === operation.path);
+      if (existing) existing.refresh ||= refresh;
+      else queued.current.push({ operation, refresh });
+      return;
+    }
+    lock.current = true;
     try {
+      if (!enabled) { setFailure({ operation, message: "Enable this connection in Settings → Connections." }); return; }
+      const cached = directories.get(operation.path);
+      if (operation.type === "list" && !refresh && cached && Date.now() - cached.time < 30000) { setFailure(null); return; }
+      setPending(operation); setFailure(null);
       if (operation.type === "list") {
         const value = await sshList(project.host, project.root, operation.path, true);
         const records = [value, ...(value.discovered ?? [])];
@@ -68,7 +74,7 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
     } catch (error) { setFailure({ operation, message: String(error) }); }
     finally {
       lock.current = false; setPending(null);
-      const next = queued.current; queued.current = null;
+      const next = queued.current.shift();
       if (next) void run(next.operation, next.refresh);
     }
   }
@@ -123,8 +129,9 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
           <span className="ssh-host-name">{connection?.name ?? project.host}</span>
           <span className={`ssh-connection-dot${enabled && (health ? health.available : !!lastSuccess) && !failure ? " available" : failure ? " failed" : ""}${pending ? " ssh-activity" : ""}`} aria-label={status} />
           <span className="project-group-actions" onClick={event => event.stopPropagation()}>
+            <button type="button" className="project-group-menu-button" aria-label={`${expanded.has(".") ? "Collapse" : "Expand"} ${project.name}`} onClick={() => { if (expanded.has(".")) setExpanded(new Set()); else toggle("."); }}><FolderExpandCollapseIcon collapse={expanded.has(".")} /></button>
             <NativeDropdownMenu items={[
-              { kind: "item", id: "refresh", text: "Refresh", disabled: !!pending, action: () => { setDirectories(new Map()); setExpanded(new Set(["."])); void run({ type: "list", path: "." }, true); } },
+              { kind: "item", id: "refresh", text: "Refresh", disabled: !!pending, action: () => { setExpanded(new Set(["."])); void run({ type: "list", path: "." }, true); } },
               ...projectMenu.items,
             ]} trigger={<button className="project-group-menu-button" aria-label={`Options for ${project.name}`}><DotsHorizontal size={14} /></button>} />
           </span>

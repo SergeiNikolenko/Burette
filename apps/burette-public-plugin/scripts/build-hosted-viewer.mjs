@@ -31,6 +31,7 @@ const VIEWER_FILES = [
   "color-picker.js",
   "sequence-panel.js",
   "scene-file-actions.js",
+  "renderer-view-state.js",
   "viewer.js",
 ];
 

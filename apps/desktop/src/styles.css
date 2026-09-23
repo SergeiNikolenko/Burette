@@ -9511,12 +9511,16 @@ img.settings-open-destination-icon {
 .sidebar-expand-projects:hover,
 .sidebar-expand-projects:focus-visible { background: transparent; }
 
-.ssh-project-row { padding-right: 10px; }
+.ssh-project-row { padding-right: 54px; }
 .ssh-project-row > .project-group-copy { flex: 0 1 auto; min-width: 0; max-width: calc(100% - 45px); margin-right: auto; }
 .ssh-host-name { flex: 0 10000 auto; min-width: 0; max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-faint); }
 .ssh-connection-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--text-faint); margin-left: 3px; }
 .ssh-connection-dot.available { background: #38c779; }
 .ssh-connection-dot.failed { background: var(--destructive); }
+/* Match local folders: expansion appears only on hover or keyboard focus. */
+.ssh-project-tree .project-folder-row > .project-group-actions > button:first-child { opacity: 0; pointer-events: none; }
+.ssh-project-tree .project-folder-row:hover > .project-group-actions > button:first-child,
+.ssh-project-tree .project-folder-row:focus-within > .project-group-actions > button:first-child { opacity: 1; pointer-events: auto; }
 .ssh-project-row > .project-group-actions { opacity: 0; pointer-events: none; }
 .ssh-project-row:hover > .project-group-actions, .ssh-project-row:has(.project-group-menu-button:focus-visible) > .project-group-actions { opacity: 1; pointer-events: auto; }
 .ssh-project-row:hover > .ssh-connection-dot, .ssh-project-row:has(.project-group-menu-button:focus-visible) > .ssh-connection-dot { visibility: hidden; }

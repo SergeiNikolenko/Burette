@@ -1,3 +1,4 @@
+import { useSidebarStructureDrag } from "./sidebar/use-sidebar-structure-drag";
 import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
 import type { AnimationSource } from "./xyzrender-animation-dialog";
 import { Switch } from "./ui/switch";
@@ -143,6 +144,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   ));
   const activeTab = visibleTabs.find((tab) => tab.kind === activeTabKind) ?? visibleTabs[0] ?? tabs[0];
   const filesTabDragPayload = dockFilesDragPayload(dockDocument, dockTextDocument, dockTool);
+  const filesTabDrag = useSidebarStructureDrag({ state, actions, disabled: readOnly, getPayload: () => filesTabDragPayload });
   const dockDrops = useMemo(
     () => state.dockDroppedStructures.filter((item) => item.area === area && item.tabKind === activeTab.kind),
     [activeTab.kind, area, state.dockDroppedStructures],
@@ -249,12 +251,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
                       className="dock-tab"
                       data-active={active || undefined}
                       draggable={tab.kind === "files" && Boolean(filesTabDragPayload)}
-                      onDragStart={(event) => {
-                        if (tab.kind !== "files" || !filesTabDragPayload) return;
-                        writeStructureDragPayload(event.dataTransfer, filesTabDragPayload);
-                        actions.setStructureDragActive(true);
-                      }}
-                      onDragEnd={() => actions.setStructureDragActive(false)}
+                      {...(tab.kind === "files" ? filesTabDrag : {})}
                       onClick={() => actions.setDockActiveTab(area, tab.kind)}
                       role="tab"
                       aria-selected={active}
@@ -380,6 +377,7 @@ function DockPanelContent({
   if (activeTabKind === "files") {
     const fileTabs = (
       <DockFileTabs
+        state={state}
         area={area}
         entries={fileEntries}
         activeKey={activeFileEntryKey}

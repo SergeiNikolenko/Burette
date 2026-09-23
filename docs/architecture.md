@@ -231,3 +231,13 @@ the source row IDs and structures again under the write transaction; a changed
 collection requires a new calculation. Failed writes preserve the previous run.
 See [Scaffold and R-group analysis](sar-analysis.md) for chemistry semantics,
 limits, result columns, and focused verification.
+
+### Adding files to an open scene
+
+Dropping structures or collection records onto a Mol* document appends them to
+that document's mounted scene. The receptor's representations and camera stay
+intact; SDF imports retain all models. Both native and browser drop routes use
+the same scene import operation as Add to Scene. Trajectory pairing retains its
+separate document workflow. Combined scenes can be saved through Export → Scene.
+SSH requests wait for the shared native worker rather than treating contention
+as a connection failure; refreshing a remote project keeps its cached tree visible.

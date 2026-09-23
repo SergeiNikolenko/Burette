@@ -16,7 +16,9 @@ const removed = [];
 const viewer = { plugin: { state: { data: { cells, build: () => ({ delete(ref) { removed.push(ref); return this; }, async commit() { removed.forEach(ref => cells.delete(ref)); } }) } } } };
 const camera = { position: [10, 20, 30], target: [0, 0, 0] };
 let restored;
+const loaded = [];
 const context = { capture: () => camera, restore: (_, value) => { restored = value; }, load: async (_, source) => {
+  loaded.push(source);
   cells.set(source.path, { transform: { parent: 'root' } });
   if (source.path === '/broken.cif') throw new Error('parse failed');
 } };
@@ -57,3 +59,6 @@ const imports = records.map(record => ({ path: record.path, data: record.text, f
 assert.equal((await window.BuretteSceneFiles.append(viewer, { sources: imports }, context)).result.added, 2);
 await assert.rejects(window.BuretteSceneFiles.append(viewer, { sources: [imports[0]] }, context), /already in this scene/);
 console.log('Same-name grid poses import separately with stable source-scoped identities');
+
+await window.BuretteSceneFiles.append(viewer, { sources: [{ path: '/poses.sdf', format: 'sdf', data: 'poses' }] }, context);
+assert.equal(loaded.at(-1).loadPreset, 'all-models', 'append must retain every ligand in an SDF collection');

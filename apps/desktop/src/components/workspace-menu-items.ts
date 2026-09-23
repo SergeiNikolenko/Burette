@@ -1,3 +1,4 @@
+import { isMolstarSceneImportSource } from "../lib/docking-documents";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 import type { MenuItemSpec } from "./menu-types";
 
@@ -17,7 +18,7 @@ export function fileCapabilities(path: string) {
   const format = previewFormatRegistry.formats.find(format => format.extensions.includes(extension));
   return {
     xyzrender: format?.preview?.capabilities?.canSwitchRenderer === true,
-    scene: ['pdb', 'cif', 'mmcif', 'mol', 'mol2', 'sdf', 'xyz'].includes(extension),
+    scene: isMolstarSceneImportSource(path),
     molecule: ['mol', 'mol2', 'sdf', 'smi', 'smiles', 'cxsmiles'].includes(extension),
     poses: ['mol', 'sdf'].includes(extension),
     collection: ['sdf', 'sd', 'smi', 'smiles', 'csv', 'tsv'].includes(extension),

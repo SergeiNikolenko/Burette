@@ -2459,7 +2459,7 @@ assert.doesNotMatch(dockPanel, /kind === "descriptors"/);
 assert.doesNotMatch(dockPanel, /descriptorDockBlocked/);
 assert.doesNotMatch(dockPanel, /if \(!open\) return null/);
 assert.match(dockPanel, /function dockFilesDragPayload/);
-assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, filesTabDragPayload\)/);
+assert.match(dockPanel, /useSidebarStructureDrag\(\{ state, actions, disabled: readOnly, getPayload: \(\) => filesTabDragPayload \}\)/);
 assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, item\.payload\)/);
 assert.match(dockPanel, /const dockStructureDocument = dockDocument \?\? activeDocument/);
 assert.match(dockPanel, /const xyzrenderDockDocument = area === "right" && activeStructureDocument\?\.renderer === "xyzrender-external"/);

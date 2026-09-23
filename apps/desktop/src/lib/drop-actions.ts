@@ -1,6 +1,6 @@
 import type { DockingDocumentRequest, FepSetupRequest } from "../types";
 import { isMoleculeCollectionPath } from "./collection-documents";
-import { dockingCandidatesForDrop, isMolstarCombineSource, isMolstarCoordinateTrajectorySource, isProteinLikeDockingSource, isTrajectoryDocumentRequest } from "./docking-documents";
+import { dockingCandidatesForDrop, isMolstarSceneImportSource, isMolstarCombineSource, isMolstarCoordinateTrajectorySource, isProteinLikeDockingSource, isTrajectoryDocumentRequest } from "./docking-documents";
 import type { StructureDragPayload, StructureDragRecord } from "./structure-drag";
 
 export type DropTargetContext =
@@ -38,6 +38,7 @@ export type DropSourceContext =
     };
 
 export type DropAction =
+  | { kind: "append-scene-files"; targetDocumentId: string; payload: StructureDragPayload }
   | {
       kind: "merge-collection";
       targetPath: string;
@@ -174,6 +175,14 @@ export function resolveDropActionChoices(
       targetDocumentId: target.documentId,
       payload,
     }, source)];
+  }
+
+  if (target.renderer === "molstar" && target.documentId
+    && payload.paths.every(isMolstarSceneImportSource)
+    && payload.records.every(record => isMolstarSceneImportSource(`record.${record.inputExtension}`))) {
+    return withOpenSeparately(payload, {
+      kind: "append-scene-files", targetDocumentId: target.documentId, payload,
+    }, "Add to scene", source);
   }
 
   const dockingChoices = dockingActionChoices(target.documentPath, payload, target.dockingRequest);

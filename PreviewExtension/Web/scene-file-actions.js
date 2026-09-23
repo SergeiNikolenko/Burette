@@ -53,7 +53,12 @@
       const before = new Set(data.cells.keys());
       const camera = context.capture(viewer);
       try {
-        for (const source of sources) await context.load(viewer, { ...source, label: source.label || source.path.split('/').pop() });
+        for (const source of sources) await context.load(viewer, {
+          ...source,
+          label: source.label || source.path.split('/').pop(),
+          // Each SDF record is a ligand, not an animation frame to discard.
+          loadPreset: source.format === 'sdf' ? 'all-models' : 'default'
+        });
         sources.forEach(source => session.paths.add(source.path));
         return { ok: true, command: 'append_scene_files', result: { added: sources.length, paths: Array.from(session.paths) } };
       } catch (error) {

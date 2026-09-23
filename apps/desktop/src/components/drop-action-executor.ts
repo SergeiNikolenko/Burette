@@ -1,3 +1,5 @@
+import { toast } from "./ui/toast";
+import { appendScenePayload } from "../hooks/workspace-scene-import";
 import { resolveDropActionChoices, type DropActionChoice, type DropSourceContext, type DropTargetContext } from "../lib/drop-actions";
 import { structureDragRecordsToFragments, type StructureDragPayload } from "../lib/structure-drag";
 import type { ShellActions } from "./types";
@@ -55,6 +57,10 @@ function runShellDropAction(
   handlers: ShellDropActionHandlers,
 ) {
   const action = choice.action;
+  if (action.kind === "append-scene-files") {
+    void appendScenePayload(action.targetDocumentId, action.payload).catch(error => toast.add({ title: "Add to scene failed", description: String(error), type: "error" }));
+    return;
+  }
   if (action.kind === "merge-collection") {
     void actions.mergeMoleculeCollections(action.targetPath, action.paths);
     return;
