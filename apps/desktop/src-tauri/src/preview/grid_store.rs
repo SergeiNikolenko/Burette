@@ -3111,10 +3111,18 @@ fn parse_delimited_table_with_inference(
         .iter()
         .map(|value| normalize_column_name(value))
         .collect();
+    // Our saved tables have one authoritative structure column. Metadata such
+    // as "SMILES column" must not create additional molecules on reopen.
+    let saved_smiles_column = encoding_index.and_then(|_| {
+        normalized_headers
+            .iter()
+            .position(|header| header == "smiles")
+            .map(|index| headers[index].as_str())
+    });
     let smiles_indexes = resolve_smiles_columns(
         &headers,
         &normalized_headers,
-        options.smiles_column.as_deref(),
+        options.smiles_column.as_deref().or(saved_smiles_column),
         &inferred_smiles_indexes,
     )?;
     let has_multiple_smiles_columns = smiles_indexes.len() > 1;
@@ -3220,6 +3228,7 @@ fn parse_delimited_table_with_inference(
                     || Some(index) == name_index
                     || Some(index) == molblock_index
                     || Some(index) == encoding_index
+                    || (saved_grid_encoding && normalized_headers[index] == "index")
                 {
                     continue;
                 }

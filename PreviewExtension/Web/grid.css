@@ -2791,3 +2791,22 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
     display: none;
   }
 }
+
+/* Scaffold and R-group columns retain text values for filtering/copy/export. */
+.buret-grid-table-fragment {
+  width: 100%;
+  min-width: 96px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+  background: var(--buret-picture-bg);
+  overflow: hidden;
+}
+.buret-grid-table-fragment svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.buret-grid-table-fragment .buret-molecule-loading {
+  min-height: 0;
+}

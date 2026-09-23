@@ -51,3 +51,10 @@ SAR text columns support table filtering and sorting. CSV and SDF exports carry
 an export restores data columns, not a live calculation. Invalid molecular
 records remain available in the table and exclusion report; the card view omits
 unparsable structures and the inspector suppresses their molecular preview.
+
+Core, R-group, component and scaffold cells display 2D structures in the table,
+including imported SAR property columns. Copy Cell Value and filters use their
+original SMILES. Identical visible fragments share a cached depiction.
+CSV Save and Export use the same marked encoding so provenance columns cannot
+be mistaken for additional structures on reopen. The native Save output in
+`tests/fixtures/sar/two-series-saved.csv` is a regression fixture for this path.

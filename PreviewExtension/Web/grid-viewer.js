@@ -3824,6 +3824,7 @@
         fragment.appendChild(gridTable(rows, cfg, range));
         grid.replaceChildren(fragment);
         restoreTableScrollPosition(grid);
+        requestAnimationFrame(startVisibleRdkitCards);
         updateTableHeaderStick();
         state.windowStart = range.start;
         state.windowEnd = range.end;
@@ -5172,7 +5173,13 @@
 
   function tableCellHTML(row, column, cfg) {
     if (column.html) return column.html(row, cfg);
-    return `<span class="buret-cell-marquee"><span>${tableHighlightedTextHTML(String(column.get(row) ?? ''))}</span></span>`;
+    const value = String(column.get(row) ?? '');
+    const id = column.id.replace(/^(?:descriptor|prop):/u, '');
+    if (value && /^(?:Scaffold|RGroup_(?:Core|R[1-9][0-9]*|Components))$/u.test(id)) {
+      const fragment = { index: 'fragment', smiles: value, fragment: true };
+      return `<div class="buret-grid-table-fragment" data-buret-fragment-smiles="${escapeAttr(value)}" data-buret-molecule-picture role="img" aria-label="${escapeAttr(value)}" title="${escapeAttr(value)}">${drawRdkitPlaceholder(fragment)}</div>`;
+    }
+    return `<span class="buret-cell-marquee"><span>${tableHighlightedTextHTML(value)}</span></span>`;
   }
 
   function tableHighlightedTextHTML(text) {
@@ -7832,6 +7839,7 @@
     try {
       mol = state.rdkit.get_mol(row.molblock || row.smiles || '');
       if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid()) || mol.get_num_atoms?.() === 0) {
+        if (row.fragment) return escapeHTML(row.smiles);
         omitInvalidCard(row);
         return '';
       }
@@ -7857,6 +7865,7 @@
       if (isDegenerateMoleculeSVG(html)) throw new Error('invalid molecule drawing');
     } catch (error) {
       if (!mol) {
+        if (row.fragment) return escapeHTML(row.smiles);
         omitInvalidCard(row);
         return '';
       }
@@ -7951,19 +7960,20 @@
   }
 
   function scheduleRdkitCard(card, row) {
-    const target = card.querySelector('[data-buret-rdkit-card-key]');
-    if (!target) return;
-    const key = target.getAttribute('data-buret-rdkit-card-key');
-    if (!key) return;
-    const start = () => enqueueRdkitCard(row, key, target);
-    state.rdkitCardLazyJobs.set(target, start);
-    state.rdkitCardLazyTargets.push(target);
-    const observer = ensureRdkitCardObserver();
-    if (observer) {
-      observer.observe(target);
-      return;
+    for (const target of card.querySelectorAll('[data-buret-rdkit-card-key]')) {
+      const key = target.getAttribute('data-buret-rdkit-card-key');
+      if (!key) continue;
+      const fragment = target.closest('[data-buret-fragment-smiles]');
+      const source = fragment
+        ? { index: 'fragment', smiles: fragment.getAttribute('data-buret-fragment-smiles'), fragment: true }
+        : row;
+      const start = () => enqueueRdkitCard(source, key, target);
+      state.rdkitCardLazyJobs.set(target, start);
+      state.rdkitCardLazyTargets.push(target);
+      const observer = ensureRdkitCardObserver();
+      if (observer) observer.observe(target);
+      else window.setTimeout(() => startLazyRdkitCard(target), 0);
     }
-    window.setTimeout(() => startLazyRdkitCard(target), 0);
   }
 
   function ensureRdkitCardObserver() {
@@ -8012,7 +8022,8 @@
     }
     const existing = state.rdkitCardPending.get(key);
     if (existing) {
-      existing.target = target || existing.target;
+      existing.targets ??= new Set([existing.target]);
+      existing.targets.add(target);
       return;
     }
     const job = { row, key, target, seq: state.rdkitCardSeq++ };
@@ -8033,7 +8044,8 @@
       try {
         while (state.rdkitCardQueue.length && processed < RDKIT_CARD_FRAME_BATCH) {
           const job = state.rdkitCardQueue.shift();
-          updateRdkitCard(job.key, drawRdkit(job.row), job.target);
+          const html = drawRdkit(job.row);
+          for (const target of job.targets || [job.target]) updateRdkitCard(job.key, html, target);
           state.rdkitCardPending.delete(job.key);
           processed++;
           const now = nowMs();
@@ -8796,15 +8808,9 @@
   }
 
   async function exportCSV(cfg) {
-    let rows = await collectExportRows(cfg);
+    const rows = await collectExportRows(cfg);
     if (!rows) return;
-    rows = withSarProperties(rows);
-    const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
-    const data = [
-      ['index', 'name', 'smiles', ...props],
-      ...rows.map(row => [row.index, row.name || '', row.smiles || '', ...props.map(prop => (row.props || {})[prop] ?? '')])
-    ];
-    download(data.map(row => row.map(csv).join(',')).join('\n') + '\n', baseName(cfg.label) + '.csv', 'text/csv');
+    download(serializeDelimitedRows(rows, ','), baseName(cfg.label) + '.csv', 'text/csv');
   }
 
   async function saveGridAs(cfg) {

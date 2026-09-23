@@ -80,3 +80,39 @@ fn sar_text_columns_filter_sort_and_page() {
         .collect();
     assert_eq!(filtered, vec![1]);
 }
+
+#[test]
+fn saved_sar_csv_reopens_without_metadata_becoming_structures() {
+    // Captured from the native app's Save command after analysing two-series.csv.
+    let csv = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../tests/fixtures/sar/two-series-saved.csv"
+    ));
+    let batch = parse_delimited_table_batch(
+        csv,
+        ',',
+        GridCursor::default(),
+        0,
+        100,
+        &GridParseOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(batch.records.len(), 8);
+    assert_eq!(batch.records[0].name, "Benzene methyl chloro");
+    assert_eq!(batch.records[0].smiles.as_deref(), Some("Cc1ccc(Cl)cc1"));
+    assert_eq!(
+        batch.records[0]
+            .props
+            .get("RGroup_Series")
+            .map(String::as_str),
+        Some("S1")
+    );
+    assert_eq!(
+        batch.records[7]
+            .props
+            .get("RGroup_Status")
+            .map(String::as_str),
+        Some("Invalid structure")
+    );
+    assert!(!batch.records[0].props.contains_key("index"));
+}
